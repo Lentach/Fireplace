@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="pl">
+<html lang="en">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -15,7 +15,7 @@
       font-size: 10px;
       color: #e0e0e0;
       background: #0a0a2e;
-      /* Subtelne gwiazdy w tle */
+      /* Subtle stars in the background */
       background-image:
         radial-gradient(1px 1px at 10% 20%, #ffffff44, transparent),
         radial-gradient(1px 1px at 30% 70%, #ffffff33, transparent),
@@ -32,14 +32,14 @@
       image-rendering: pixelated;
     }
 
-    /* === RPG DIALOG BOX — pikselowa ramka === */
+    /* === RPG DIALOG BOX — pixel border === */
     .rpg-box {
       background: #0f0f3d;
       border: 4px solid #4a4ae0;
       border-radius: 2px;
       padding: 20px;
       position: relative;
-      /* Podwójna ramka w stylu FF */
+      /* Double border in FF style */
       box-shadow:
         inset 0 0 0 2px #0f0f3d,
         inset 0 0 0 4px #7b7bf5,
@@ -214,7 +214,7 @@
       height: calc(100% - 50px);
     }
 
-    /* Sidebar — lista konwersacji / nowy czat */
+    /* Sidebar — conversation list / new chat */
     .sidebar {
       width: 200px;
       display: flex;
@@ -289,7 +289,7 @@
       background: #2a2a6e;
     }
 
-    /* Obszar wiadomości */
+    /* Messages area */
     .chat-main {
       flex: 1;
       display: flex;
@@ -312,7 +312,7 @@
     .messages-area::-webkit-scrollbar-track { background: #0a0a24; }
     .messages-area::-webkit-scrollbar-thumb { background: #3a3a8a; }
 
-    /* Wiadomość jako RPG dialog box */
+    /* Message as RPG dialog box */
     .message {
       max-width: 80%;
       padding: 8px 10px;
@@ -337,7 +337,7 @@
       text-align: right;
     }
 
-    /* Moja wiadomość — wyrównana do prawej, złoty border */
+    /* My message — aligned right, gold border */
     .message.mine {
       align-self: flex-end;
       border-color: #ffcc00;
@@ -348,7 +348,7 @@
       color: #ffcc00;
     }
 
-    /* Wiadomość drugiej osoby — wyrównana do lewej, fioletowy border */
+    /* Other person's message — aligned left, purple border */
     .message.theirs {
       align-self: flex-start;
       border-color: #7b7bf5;
@@ -358,7 +358,7 @@
       color: #7b7bf5;
     }
 
-    /* Input do wysyłania wiadomości */
+    /* Message send input */
     .message-input-bar {
       display: flex;
       gap: 6px;
@@ -406,7 +406,7 @@
       line-height: 2;
     }
 
-    /* Animacja migającego kursora */
+    /* Blinking cursor animation */
     @keyframes blink {
       0%, 100% { opacity: 1; }
       50% { opacity: 0; }
@@ -701,7 +701,7 @@
       const isMine = msg.senderId === currentUser.id;
       el.className = 'message ' + (isMine ? 'mine' : 'theirs');
 
-      const time = new Date(msg.createdAt).toLocaleTimeString('pl-PL', {
+      const time = new Date(msg.createdAt).toLocaleTimeString('en-US', {
         hour: '2-digit', minute: '2-digit'
       });
 

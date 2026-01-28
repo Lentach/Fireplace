@@ -7,11 +7,11 @@ import { AppModule } from './app.module';
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
 
-  // ValidationPipe sprawdza DTO (np. czy email jest poprawny).
-  // whitelist: true — ignoruje pola których nie ma w DTO (bezpieczeństwo).
+  // ValidationPipe validates DTOs (e.g. checks if email is valid).
+  // whitelist: true — strips properties not defined in the DTO (security).
   app.useGlobalPipes(new ValidationPipe({ whitelist: true }));
 
-  // Serwowanie plików statycznych (frontend) z folderu public
+  // Serve static files (frontend) from the public directory
   app.useStaticAssets(join(__dirname, '..', 'src', 'public'));
 
   const port = process.env.PORT || 3000;

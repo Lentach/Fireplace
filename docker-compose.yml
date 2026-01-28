@@ -1,6 +1,6 @@
-# docker-compose.yml — uruchamia PostgreSQL + aplikację NestJS
+# docker-compose.yml — runs PostgreSQL + NestJS application
 services:
-  # Baza danych PostgreSQL
+  # PostgreSQL database
   db:
     image: postgres:16-alpine
     environment:
@@ -12,7 +12,7 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
-  # Aplikacja NestJS
+  # NestJS application
   app:
     build: .
     ports:

@@ -11,8 +11,8 @@ export class ConversationsService {
     private convRepo: Repository<Conversation>,
   ) {}
 
-  // Szukamy istniejącej konwersacji między dwoma użytkownikami.
-  // Jeśli nie ma — tworzymy nową. Dzięki temu nie powstają duplikaty.
+  // Find an existing conversation between two users.
+  // If none exists — create a new one. This prevents duplicates.
   async findOrCreate(userOne: User, userTwo: User): Promise<Conversation> {
     const existing = await this.convRepo.findOne({
       where: [
@@ -31,7 +31,7 @@ export class ConversationsService {
     return this.convRepo.findOne({ where: { id } });
   }
 
-  // Wszystkie konwersacje danego użytkownika
+  // All conversations for a given user
   async findByUser(userId: number): Promise<Conversation[]> {
     return this.convRepo.find({
       where: [

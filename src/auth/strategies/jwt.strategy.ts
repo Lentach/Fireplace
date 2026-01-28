@@ -3,8 +3,8 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { UsersService } from '../../users/users.service';
 
-// Strategia Passport — automatycznie weryfikuje token JWT
-// i wstrzykuje dane użytkownika do request.user
+// Passport strategy — automatically verifies the JWT token
+// and injects user data into request.user
 @Injectable()
 export class JwtStrategy extends PassportStrategy(Strategy) {
   constructor(private usersService: UsersService) {
@@ -14,8 +14,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     });
   }
 
-  // Passport wywołuje tę metodę po zweryfikowaniu podpisu tokena.
-  // Zwracamy obiekt użytkownika, który trafi do request.user.
+  // Passport calls this method after verifying the token signature.
+  // Returns the user object which will be available in request.user.
   async validate(payload: { sub: number; email: string }) {
     const user = await this.usersService.findById(payload.sub);
     if (!user) {

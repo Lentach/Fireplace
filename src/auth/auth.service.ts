@@ -12,7 +12,7 @@ export class AuthService {
 
   async register(email: string, password: string) {
     const user = await this.usersService.create(email, password);
-    // Nie zwracamy hasła w odpowiedzi
+    // Don't return the password in the response
     return { id: user.id, email: user.email };
   }
 
@@ -27,7 +27,7 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    // Payload tokena — sub to standard JWT dla "subject" (id użytkownika)
+    // Token payload — sub is the JWT standard for "subject" (user id)
     const payload = { sub: user.id, email: user.email };
     return {
       access_token: this.jwtService.sign(payload),

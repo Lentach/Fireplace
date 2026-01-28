@@ -13,13 +13,13 @@ import { UsersService } from '../users/users.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { MessagesService } from '../messages/messages.service';
 
-// cors: '*' — uproszczenie dla MVP, w produkcji ustaw konkretną domenę
+// cors: '*' — simplified for MVP, set a specific domain in production
 @WebSocketGateway({ cors: { origin: '*' } })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
-  // Mapa: userId -> socketId, żeby wiedzieć kto jest online
+  // Map: userId -> socketId, to track who is online
   private onlineUsers = new Map<number, string>();
 
   constructor(
@@ -29,9 +29,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private messagesService: MessagesService,
   ) {}
 
-  // Przy połączeniu WebSocket — weryfikujemy JWT token.
-  // Klient wysyła token w query: ?token=xxx
-  // Uproszczenie: w produkcji lepiej użyć middleware lub handshake headers.
+  // On WebSocket connection — verify the JWT token.
+  // Client sends token in query: ?token=xxx
+  // Simplified: in production use middleware or handshake headers.
   async handleConnection(client: Socket) {
     try {
       const token =
@@ -51,7 +51,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      // Zapisujemy dane użytkownika w obiekcie socketa
+      // Store user data in the socket object
       client.data.user = { id: user.id, email: user.email };
       this.onlineUsers.set(user.id, client.id);
 
@@ -68,12 +68,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }
   }
 
-  // Klient wysyła: { recipientId: number, content: string }
-  // Serwer:
-  //   1. Znajduje lub tworzy konwersację
-  //   2. Zapisuje wiadomość w bazie
-  //   3. Wysyła wiadomość do odbiorcy (jeśli jest online)
-  //   4. Potwierdza nadawcy
+  // Client sends: { recipientId: number, content: string }
+  // Server:
+  //   1. Finds or creates a conversation
+  //   2. Saves the message to the database
+  //   3. Sends the message to the recipient (if online)
+  //   4. Confirms to the sender
   @SubscribeMessage('sendMessage')
   async handleMessage(
     @ConnectedSocket() client: Socket,
@@ -90,13 +90,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
-    // Znajdź lub utwórz konwersację między tymi dwoma użytkownikami
+    // Find or create a conversation between these two users
     const conversation = await this.conversationsService.findOrCreate(
       sender,
       recipient,
     );
 
-    // Zapisz wiadomość w PostgreSQL
+    // Save the message to PostgreSQL
     const message = await this.messagesService.create(
       data.content,
       sender,
@@ -112,17 +112,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       createdAt: message.createdAt,
     };
 
-    // Wyślij do odbiorcy jeśli jest online
+    // Send to recipient if they are online
     const recipientSocketId = this.onlineUsers.get(recipient.id);
     if (recipientSocketId) {
       this.server.to(recipientSocketId).emit('newMessage', messagePayload);
     }
 
-    // Potwierdzenie dla nadawcy
+    // Confirmation to the sender
     client.emit('messageSent', messagePayload);
   }
 
-  // Rozpocznij konwersację po emailu — frontend wysyła email drugiego użytkownika
+  // Start a conversation by email — frontend sends the other user's email
   @SubscribeMessage('startConversation')
   async handleStartConversation(
     @ConnectedSocket() client: Socket,
@@ -149,7 +149,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       recipient,
     );
 
-    // Odśwież listę konwersacji dla nadawcy
+    // Refresh the conversation list for the sender
     const conversations = await this.conversationsService.findByUser(senderId);
     const mapped = conversations.map((c) => ({
       id: c.id,
@@ -159,11 +159,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     }));
     client.emit('conversationsList', mapped);
 
-    // Automatycznie otwórz nową konwersację
+    // Automatically open the new conversation
     client.emit('openConversation', { conversationId: conversation.id });
   }
 
-  // Pobierz historię wiadomości danej konwersacji
+  // Get message history for a conversation
   @SubscribeMessage('getMessages')
   async handleGetMessages(
     @ConnectedSocket() client: Socket,
@@ -185,7 +185,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     client.emit('messageHistory', mapped);
   }
 
-  // Pobierz listę konwersacji użytkownika
+  // Get the user's conversation list
   @SubscribeMessage('getConversations')
   async handleGetConversations(@ConnectedSocket() client: Socket) {
     const userId: number = client.data.user?.id;

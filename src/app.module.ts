@@ -11,8 +11,8 @@ import { Message } from './messages/message.entity';
 
 @Module({
   imports: [
-    // TypeORM automatycznie tworzy tabele (synchronize: true).
-    // W produkcji wyłącz synchronize i używaj migracji!
+    // TypeORM auto-creates tables (synchronize: true).
+    // In production disable synchronize and use migrations!
     TypeOrmModule.forRoot({
       type: 'postgres',
       host: process.env.DB_HOST || 'localhost',
@@ -21,7 +21,7 @@ import { Message } from './messages/message.entity';
       password: process.env.DB_PASS || 'postgres',
       database: process.env.DB_NAME || 'chatdb',
       entities: [User, Conversation, Message],
-      synchronize: true, // Tylko dla developmentu!
+      synchronize: true, // Development only!
     }),
     AuthModule,
     UsersModule,

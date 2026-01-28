@@ -7,8 +7,8 @@ import {
 } from 'typeorm';
 import { User } from '../users/user.entity';
 
-// Konwersacja łączy dwóch użytkowników.
-// W MVP nie robimy grup — tylko czat 1-na-1.
+// A conversation links two users.
+// In this MVP there are no groups — 1-on-1 chat only.
 @Entity('conversations')
 export class Conversation {
   @PrimaryGeneratedColumn()

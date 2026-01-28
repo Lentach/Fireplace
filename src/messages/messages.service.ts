@@ -21,8 +21,8 @@ export class MessagesService {
     return this.msgRepo.save(msg);
   }
 
-  // Ostatnie 50 wiadomości z konwersacji, od najstarszej do najnowszej.
-  // Uproszczenie: brak paginacji w MVP.
+  // Last 50 messages in a conversation, oldest first.
+  // Simplified: no pagination in the MVP.
   async findByConversation(conversationId: number): Promise<Message[]> {
     return this.msgRepo.find({
       where: { conversation: { id: conversationId } },

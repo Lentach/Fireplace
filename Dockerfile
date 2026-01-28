@@ -2,8 +2,8 @@ FROM node:20-alpine
 
 WORKDIR /app
 
-# Najpierw kopiujemy package*.json — dzięki temu Docker cachuje
-# warstwę z node_modules (szybszy rebuild gdy zmienia się tylko kod)
+# Copy package*.json first — Docker caches the node_modules layer
+# (faster rebuild when only source code changes)
 COPY package*.json ./
 RUN npm install
 
