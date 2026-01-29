@@ -1,4 +1,4 @@
-# docker-compose.yml — runs PostgreSQL + NestJS application
+# docker-compose.yml — runs PostgreSQL + NestJS backend + Flutter frontend
 services:
   # PostgreSQL database
   db:
@@ -12,11 +12,11 @@ services:
     volumes:
       - pgdata:/var/lib/postgresql/data
 
-  # NestJS application
-  app:
-    build: .
-    ports:
-      - '3000:3000'
+  # NestJS backend
+  backend:
+    build: ./backend
+    expose:
+      - '3000'
     environment:
       DB_HOST: db
       DB_PORT: '5432'
@@ -26,6 +26,14 @@ services:
       JWT_SECRET: my-super-secret-jwt-key-change-in-production
     depends_on:
       - db
+
+  # Flutter web frontend (nginx)
+  frontend:
+    build: ./frontend
+    ports:
+      - '8080:80'
+    depends_on:
+      - backend
 
 volumes:
   pgdata:

@@ -1,6 +1,6 @@
 # MVP Chat App
 
-Real-time 1-on-1 chat application. NestJS backend with WebSocket communication (Socket.IO), JWT authentication, and PostgreSQL database. Run everything with a single command using Docker Compose.
+Real-time 1-on-1 chat application with an RPG-themed UI. NestJS backend with WebSocket communication (Socket.IO), Flutter frontend, JWT authentication, and PostgreSQL database. Run everything with a single command using Docker Compose.
 
 ---
 
@@ -9,6 +9,7 @@ Real-time 1-on-1 chat application. NestJS backend with WebSocket communication (
 | Layer          | Technology                   |
 |----------------|------------------------------|
 | Backend        | NestJS (Node.js / TypeScript)|
+| Frontend       | Flutter (Dart)               |
 | Database       | PostgreSQL 16                |
 | WebSocket      | Socket.IO                    |
 | Authentication | JWT + Passport + bcrypt      |
@@ -30,17 +31,20 @@ cd mvp-chat-app
 docker-compose up --build
 ```
 
-The app will be available at **http://localhost:3000**
-
-A built-in test client (frontend) is served at the same address and opens automatically in the browser.
+- **Frontend:** http://localhost:8080
+- **Backend API:** http://localhost:3000
 
 ---
 
 ## Running Locally (without Docker)
 
-> Requirements: Node.js 20+, PostgreSQL
+> Requirements: Node.js 20+, PostgreSQL, Flutter SDK
+
+### Backend
 
 ```bash
+cd backend
+
 # 1. Install dependencies
 npm install
 
@@ -54,6 +58,51 @@ export JWT_SECRET=my-secret-key
 
 # 3. Run in development mode (hot-reload)
 npm run start:dev
+```
+
+### Frontend
+
+```bash
+cd frontend
+
+# 1. Install dependencies
+flutter pub get
+
+# 2. Run in Chrome (connects to backend on localhost:3000)
+flutter run -d chrome
+```
+
+---
+
+## Project Structure
+
+```
+mvp-chat-app/
+├── backend/
+│   ├── src/
+│   │   ├── auth/                # Registration, login, JWT strategy
+│   │   ├── users/               # User entity, service
+│   │   ├── conversations/       # Conversation entity (1-on-1), findOrCreate
+│   │   ├── messages/            # Message entity, CRUD
+│   │   ├── chat/                # WebSocket Gateway (Socket.IO)
+│   │   ├── app.module.ts        # Root module
+│   │   └── main.ts              # Entry point
+│   ├── Dockerfile
+│   └── package.json
+├── frontend/
+│   ├── lib/
+│   │   ├── config/              # App configuration (base URL)
+│   │   ├── models/              # Data models (User, Conversation, Message)
+│   │   ├── services/            # API and Socket.IO services
+│   │   ├── providers/           # State management (Auth, Chat)
+│   │   ├── screens/             # Auth and Chat screens
+│   │   ├── widgets/             # Reusable RPG-themed widgets
+│   │   ├── theme/               # RPG theme constants
+│   │   └── main.dart            # App entry point
+│   ├── Dockerfile
+│   └── nginx.conf
+├── docker-compose.yml
+└── README.md
 ```
 
 ---
@@ -117,22 +166,6 @@ const socket = io('http://localhost:3000', {
 
 ---
 
-## Architecture
-
-```
-src/
-├── auth/                # Registration, login, JWT strategy
-├── users/               # User entity, service
-├── conversations/       # Conversation entity (1-on-1), findOrCreate
-├── messages/            # Message entity, CRUD
-├── chat/                # WebSocket Gateway (Socket.IO)
-├── public/              # Built-in test client (HTML)
-├── app.module.ts        # Root module
-└── main.ts              # Entry point
-```
-
----
-
 ## Environment Variables
 
 | Variable     | Default           | Description             |
@@ -147,9 +180,10 @@ src/
 
 ---
 
-## npm Scripts
+## npm Scripts (backend)
 
 ```bash
+cd backend
 npm run build          # Compile TypeScript
 npm run start:dev      # Development mode (hot-reload)
 npm run start          # Run compiled version

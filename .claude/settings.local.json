@@ -16,7 +16,22 @@
       "Bash(npx --yes socket.io-client@4 node test-chat.mjs)",
       "Bash(node --experimental-fetch test-chat.mjs:*)",
       "Bash(git init:*)",
-      "Bash(git add:*)"
+      "Bash(git add:*)",
+      "Bash(dir /s \"C:\\\\Users\\\\Lentach\\\\desktop\\\\mvp-chat-app\")",
+      "Bash(flutter pub get:*)",
+      "Bash(flutter analyze:*)",
+      "Bash(flutter build web:*)",
+      "Bash(npx nest build)",
+      "Bash(docker info:*)",
+      "Bash(docker compose up:*)",
+      "Bash(docker-compose down:*)",
+      "Bash(docker ps:*)",
+      "Bash(docker stop:*)",
+      "Bash(docker rm:*)",
+      "Bash(find:*)",
+      "Bash(npm ls:*)",
+      "Bash(docker rmi:*)",
+      "Bash(findstr:*)"
     ]
   }
 }
