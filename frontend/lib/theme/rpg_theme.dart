@@ -36,43 +36,111 @@ class RpgTheme {
     );
   }
 
-  static BoxDecoration rpgBoxDecoration() {
-    return BoxDecoration(
-      color: boxBg,
-      border: Border.all(color: border, width: 4),
-      borderRadius: BorderRadius.circular(2),
-      boxShadow: const [
-        BoxShadow(color: Color(0x881A1A5E), blurRadius: 20),
-      ],
+  static TextStyle bodyFont({double fontSize = 14, Color color = textColor, FontWeight fontWeight = FontWeight.normal}) {
+    return GoogleFonts.inter(
+      fontSize: fontSize,
+      color: color,
+      fontWeight: fontWeight,
     );
   }
 
-  static BoxDecoration rpgOuterBorderDecoration() {
-    return BoxDecoration(
-      border: Border.all(color: outerBorder, width: 3),
-      borderRadius: BorderRadius.circular(4),
+  static ThemeData get themeData {
+    return ThemeData.dark().copyWith(
+      scaffoldBackgroundColor: background,
+      colorScheme: const ColorScheme.dark(
+        primary: gold,
+        secondary: purple,
+        surface: boxBg,
+        error: errorColor,
+        onPrimary: Color(0xFF0A0A2E),
+        onSecondary: Colors.white,
+        onSurface: textColor,
+        onError: Colors.white,
+      ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: boxBg,
+        elevation: 0,
+        centerTitle: false,
+        titleTextStyle: GoogleFonts.pressStart2p(
+          fontSize: 14,
+          color: gold,
+        ),
+        iconTheme: const IconThemeData(color: textColor),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: inputBg,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        border: OutlineInputBorder(
+          borderSide: const BorderSide(color: tabBorder, width: 1.5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: tabBorder, width: 1.5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: gold, width: 2),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: errorColor, width: 1.5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        hintStyle: GoogleFonts.inter(color: mutedText, fontSize: 14),
+        labelStyle: GoogleFonts.inter(color: labelText, fontSize: 14),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: buttonBg,
+          foregroundColor: gold,
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: const BorderSide(color: gold, width: 2),
+          ),
+          textStyle: GoogleFonts.inter(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: purple,
+          textStyle: GoogleFonts.inter(fontSize: 14),
+        ),
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: purple,
+        foregroundColor: Colors.white,
+      ),
+      listTileTheme: ListTileThemeData(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        tileColor: Colors.transparent,
+        selectedTileColor: activeTabBg,
+      ),
+      dividerTheme: const DividerThemeData(
+        color: convItemBorder,
+        thickness: 1,
+      ),
+      textTheme: TextTheme(
+        bodyLarge: GoogleFonts.inter(color: textColor, fontSize: 16),
+        bodyMedium: GoogleFonts.inter(color: textColor, fontSize: 14),
+        bodySmall: GoogleFonts.inter(color: mutedText, fontSize: 12),
+        titleLarge: GoogleFonts.pressStart2p(color: gold, fontSize: 16),
+        titleMedium: GoogleFonts.inter(color: textColor, fontSize: 16, fontWeight: FontWeight.w600),
+        titleSmall: GoogleFonts.inter(color: textColor, fontSize: 14, fontWeight: FontWeight.w600),
+        labelLarge: GoogleFonts.inter(color: textColor, fontSize: 14, fontWeight: FontWeight.w500),
+      ),
     );
   }
 
-  static InputDecoration rpgInputDecoration({String? hintText}) {
+  static InputDecoration rpgInputDecoration({String? hintText, IconData? prefixIcon}) {
     return InputDecoration(
       hintText: hintText,
-      hintStyle: pressStart2P(fontSize: 9, color: mutedText),
-      filled: true,
-      fillColor: inputBg,
-      contentPadding: const EdgeInsets.all(10),
-      border: OutlineInputBorder(
-        borderSide: const BorderSide(color: tabBorder, width: 2),
-        borderRadius: BorderRadius.zero,
-      ),
-      enabledBorder: OutlineInputBorder(
-        borderSide: const BorderSide(color: tabBorder, width: 2),
-        borderRadius: BorderRadius.zero,
-      ),
-      focusedBorder: OutlineInputBorder(
-        borderSide: const BorderSide(color: gold, width: 2),
-        borderRadius: BorderRadius.zero,
-      ),
+      prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: mutedText, size: 20) : null,
     );
   }
 }

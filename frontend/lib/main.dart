@@ -3,7 +3,8 @@ import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/chat_provider.dart';
 import 'screens/auth_screen.dart';
-import 'screens/chat_screen.dart';
+import 'screens/conversations_screen.dart';
+import 'theme/rpg_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
@@ -23,9 +24,7 @@ class RpgChatApp extends StatelessWidget {
       child: MaterialApp(
         title: 'RPG Chat',
         debugShowCheckedModeBanner: false,
-        theme: ThemeData.dark().copyWith(
-          scaffoldBackgroundColor: const Color(0xFF0A0A2E),
-        ),
+        theme: RpgTheme.themeData,
         home: const AuthGate(),
       ),
     );
@@ -39,7 +38,7 @@ class AuthGate extends StatelessWidget {
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
     if (auth.isLoggedIn) {
-      return const ChatScreen();
+      return const ConversationsScreen();
     }
     return const AuthScreen();
   }

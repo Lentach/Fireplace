@@ -31,7 +31,13 @@
       "Bash(find:*)",
       "Bash(npm ls:*)",
       "Bash(docker rmi:*)",
-      "Bash(findstr:*)"
+      "Bash(findstr:*)",
+      "Bash(git commit:*)",
+      "Bash(git push)",
+      "Bash(del frontendlibscreenschat_screen.dart frontendlibwidgetsrpg_box.dart frontendlibwidgetssidebar.dart frontendlibwidgetsconversation_item.dart frontendlibwidgetsmessage_bubble.dart frontendlibwidgetsmessage_input_bar.dart frontendlibwidgetsno_chat_selected.dart frontendlibwidgetsblinking_cursor.dart frontendlibwidgetstab_bar_widget.dart)",
+      "Bash(python:*)",
+      "Bash(flutter run:*)",
+      "Bash(docker system:*)"
     ]
   }
 }

@@ -44,51 +44,40 @@ class _AuthFormState extends State<AuthForm> {
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
-        Text(
-          '\u{1F4E7} EMAIL',
-          style: RpgTheme.pressStart2P(fontSize: 8, color: RpgTheme.labelText),
-        ),
-        const SizedBox(height: 6),
         TextField(
           controller: _emailController,
-          style: RpgTheme.pressStart2P(fontSize: 9, color: Colors.white),
-          decoration: RpgTheme.rpgInputDecoration(hintText: 'hero@quest.com'),
+          style: RpgTheme.bodyFont(fontSize: 14, color: Colors.white),
+          decoration: RpgTheme.rpgInputDecoration(
+            hintText: 'Email',
+            prefixIcon: Icons.email_outlined,
+          ),
           keyboardType: TextInputType.emailAddress,
           onSubmitted: (_) => _handleSubmit(),
         ),
-        const SizedBox(height: 14),
-        Text(
-          '\u{1F511} PASSWORD${widget.isLogin ? '' : ' (min 6)'}',
-          style: RpgTheme.pressStart2P(fontSize: 8, color: RpgTheme.labelText),
-        ),
-        const SizedBox(height: 6),
+        const SizedBox(height: 16),
         TextField(
           controller: _passwordController,
-          style: RpgTheme.pressStart2P(fontSize: 9, color: Colors.white),
-          decoration: RpgTheme.rpgInputDecoration(hintText: '******'),
+          style: RpgTheme.bodyFont(fontSize: 14, color: Colors.white),
+          decoration: RpgTheme.rpgInputDecoration(
+            hintText: widget.isLogin ? 'Password' : 'Password (min 6 chars)',
+            prefixIcon: Icons.lock_outlined,
+          ),
           obscureText: true,
           onSubmitted: (_) => _handleSubmit(),
         ),
-        const SizedBox(height: 16),
-        GestureDetector(
-          onTap: _loading ? null : _handleSubmit,
-          child: Container(
-            padding: const EdgeInsets.symmetric(vertical: 12),
-            decoration: BoxDecoration(
-              color: RpgTheme.buttonBg,
-              border: Border.all(color: RpgTheme.gold, width: 3),
-            ),
-            alignment: Alignment.center,
-            child: _loading
-                ? Text(
-                    'LOADING...',
-                    style: RpgTheme.pressStart2P(fontSize: 10, color: RpgTheme.gold),
-                  )
-                : Text(
-                    widget.isLogin ? '\u25B6 ENTER REALM' : '\u2726 CREATE HERO',
-                    style: RpgTheme.pressStart2P(fontSize: 10, color: RpgTheme.gold),
+        const SizedBox(height: 24),
+        ElevatedButton(
+          onPressed: _loading ? null : _handleSubmit,
+          child: _loading
+              ? const SizedBox(
+                  height: 20,
+                  width: 20,
+                  child: CircularProgressIndicator(
+                    strokeWidth: 2,
+                    color: RpgTheme.gold,
                   ),
-          ),
+                )
+              : Text(widget.isLogin ? 'Login' : 'Create Account'),
         ),
       ],
     );

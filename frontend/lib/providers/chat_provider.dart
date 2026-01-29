@@ -12,15 +12,40 @@ class ChatProvider extends ChangeNotifier {
   int? _activeConversationId;
   int? _currentUserId;
   String? _errorMessage;
+  final Map<int, MessageModel> _lastMessages = {};
+  int? _pendingOpenConversationId;
 
   List<ConversationModel> get conversations => _conversations;
   List<MessageModel> get messages => _messages;
   int? get activeConversationId => _activeConversationId;
+  int? get currentUserId => _currentUserId;
   String? get errorMessage => _errorMessage;
+  Map<int, MessageModel> get lastMessages => _lastMessages;
+  int? get pendingOpenConversationId => _pendingOpenConversationId;
 
   void clearError() {
     _errorMessage = null;
     notifyListeners();
+  }
+
+  int? consumePendingOpen() {
+    final id = _pendingOpenConversationId;
+    _pendingOpenConversationId = null;
+    return id;
+  }
+
+  String getOtherUserEmail(ConversationModel conv) {
+    if (_currentUserId == null) return '';
+    return conv.userOne.id == _currentUserId
+        ? conv.userTwo.email
+        : conv.userOne.email;
+  }
+
+  int getOtherUserId(ConversationModel conv) {
+    if (_currentUserId == null) return 0;
+    return conv.userOne.id == _currentUserId
+        ? conv.userTwo.id
+        : conv.userOne.id;
   }
 
   void connect({required String token, required int userId}) {
@@ -49,6 +74,7 @@ class ChatProvider extends ChangeNotifier {
       onMessageSent: (data) {
         final msg =
             MessageModel.fromJson(data as Map<String, dynamic>);
+        _lastMessages[msg.conversationId] = msg;
         if (msg.conversationId == _activeConversationId) {
           _messages.add(msg);
         }
@@ -58,6 +84,7 @@ class ChatProvider extends ChangeNotifier {
       onNewMessage: (data) {
         final msg =
             MessageModel.fromJson(data as Map<String, dynamic>);
+        _lastMessages[msg.conversationId] = msg;
         if (msg.conversationId == _activeConversationId) {
           _messages.add(msg);
         }
@@ -66,7 +93,8 @@ class ChatProvider extends ChangeNotifier {
       },
       onOpenConversation: (data) {
         final convId = (data as Map<String, dynamic>)['conversationId'] as int;
-        openConversation(convId);
+        _pendingOpenConversationId = convId;
+        notifyListeners();
       },
       onError: (err) {
         debugPrint('Socket error: $err');
@@ -87,6 +115,12 @@ class ChatProvider extends ChangeNotifier {
     _activeConversationId = conversationId;
     _messages = [];
     _socketService.getMessages(conversationId);
+    notifyListeners();
+  }
+
+  void clearActiveConversation() {
+    _activeConversationId = null;
+    _messages = [];
     notifyListeners();
   }
 
@@ -114,6 +148,8 @@ class ChatProvider extends ChangeNotifier {
     _messages = [];
     _activeConversationId = null;
     _currentUserId = null;
+    _lastMessages.clear();
+    _pendingOpenConversationId = null;
     notifyListeners();
   }
 }
