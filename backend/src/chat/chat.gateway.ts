@@ -25,6 +25,9 @@ import {
   StartConversationDto,
   UnfriendDto,
 } from './dto/chat.dto';
+import { UserMapper } from './mappers/user.mapper';
+import { ConversationMapper } from './mappers/conversation.mapper';
+import { FriendRequestMapper } from './mappers/friend-request.mapper';
 
 // cors: configured from environment or default to localhost for development
 @WebSocketGateway({
@@ -261,14 +264,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const conversations =
       await this.conversationsService.findByUser(userId);
 
-    const mapped = conversations.map((c) => ({
-      id: c.id,
-      userOne: { id: c.userOne.id, email: c.userOne.email, username: c.userOne.username },
-      userTwo: { id: c.userTwo.id, email: c.userTwo.email, username: c.userTwo.username },
-      createdAt: c.createdAt,
-    }));
-
-    client.emit('conversationsList', mapped);
+    client.emit('conversationsList', ConversationMapper.toPayloadArray(conversations));
   }
 
   // Delete a conversation (hard delete for both users)
@@ -680,16 +676,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     try {
       const pendingRequests = await this.friendsService.getPendingRequests(userId);
-      const mapped = pendingRequests.map((r) => ({
-        id: r.id,
-        sender: { id: r.sender.id, email: r.sender.email, username: r.sender.username },
-        receiver: { id: r.receiver.id, email: r.receiver.email, username: r.receiver.username },
-        status: r.status,
-        createdAt: r.createdAt,
-        respondedAt: r.respondedAt,
-      }));
-
-      client.emit('friendRequestsList', mapped);
+      client.emit('friendRequestsList', FriendRequestMapper.toPayloadArray(pendingRequests));
 
       const count = await this.friendsService.getPendingRequestCount(userId);
       client.emit('pendingRequestsCount', { count });
@@ -706,13 +693,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     try {
       const friends = await this.friendsService.getFriends(userId);
-      const mapped = friends.map((f) => ({
-        id: f.id,
-        email: f.email,
-        username: f.username,
-      }));
-
-      client.emit('friendsList', mapped);
+      client.emit('friendsList', UserMapper.toPayloadArray(friends));
     } catch (error) {
       client.emit('error', { message: error.message });
     }
