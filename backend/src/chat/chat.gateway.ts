@@ -12,6 +12,7 @@ import { JwtService } from '@nestjs/jwt';
 import { UsersService } from '../users/users.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { MessagesService } from '../messages/messages.service';
+import { FriendsService } from '../friends/friends.service';
 
 // cors: '*' — simplified for MVP, set a specific domain in production
 @WebSocketGateway({ cors: { origin: '*' } })
@@ -27,6 +28,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private usersService: UsersService,
     private conversationsService: ConversationsService,
     private messagesService: MessagesService,
+    private friendsService: FriendsService,
   ) {}
 
   // On WebSocket connection — verify the JWT token.
@@ -52,7 +54,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       }
 
       // Store user data in the socket object
-      client.data.user = { id: user.id, email: user.email };
+      client.data.user = { id: user.id, email: user.email, username: user.username };
       this.onlineUsers.set(user.id, client.id);
 
       console.log(`User connected: ${user.email} (socket: ${client.id})`);
@@ -90,6 +92,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
+    // Check if users are friends
+    const areFriends = await this.friendsService.areFriends(senderId, data.recipientId);
+    if (!areFriends) {
+      client.emit('error', { message: 'You must be friends to send messages' });
+      return;
+    }
+
     // Find or create a conversation between these two users
     const conversation = await this.conversationsService.findOrCreate(
       sender,
@@ -108,6 +117,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       content: message.content,
       senderId: sender.id,
       senderEmail: sender.email,
+      senderUsername: sender.username,
       conversationId: conversation.id,
       createdAt: message.createdAt,
     };
@@ -150,6 +160,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       return;
     }
 
+    // Check if users are friends
+    const areFriends = await this.friendsService.areFriends(sender.id, recipient.id);
+    if (!areFriends) {
+      client.emit('error', { message: 'You must be friends to start a conversation' });
+      return;
+    }
+
     const conversation = await this.conversationsService.findOrCreate(
       sender,
       recipient,
@@ -159,8 +176,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     const conversations = await this.conversationsService.findByUser(senderId);
     const mapped = conversations.map((c) => ({
       id: c.id,
-      userOne: { id: c.userOne.id, email: c.userOne.email },
-      userTwo: { id: c.userTwo.id, email: c.userTwo.email },
+      userOne: { id: c.userOne.id, email: c.userOne.email, username: c.userOne.username },
+      userTwo: { id: c.userTwo.id, email: c.userTwo.email, username: c.userTwo.username },
       createdAt: c.createdAt,
     }));
     client.emit('conversationsList', mapped);
@@ -184,6 +201,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       content: m.content,
       senderId: m.sender.id,
       senderEmail: m.sender.email,
+      senderUsername: m.sender.username,
       conversationId: data.conversationId,
       createdAt: m.createdAt,
     }));
@@ -202,11 +220,302 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
     const mapped = conversations.map((c) => ({
       id: c.id,
-      userOne: { id: c.userOne.id, email: c.userOne.email },
-      userTwo: { id: c.userTwo.id, email: c.userTwo.email },
+      userOne: { id: c.userOne.id, email: c.userOne.email, username: c.userOne.username },
+      userTwo: { id: c.userTwo.id, email: c.userTwo.email, username: c.userTwo.username },
       createdAt: c.createdAt,
     }));
 
     client.emit('conversationsList', mapped);
+  }
+
+  // Delete a conversation (hard delete for both users)
+  @SubscribeMessage('deleteConversation')
+  async handleDeleteConversation(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { conversationId: number },
+  ) {
+    const userId = client.data.user?.id;
+    if (!userId) return;
+
+    const conversation = await this.conversationsService.findById(data.conversationId);
+
+    if (!conversation) {
+      client.emit('error', { message: 'Conversation not found' });
+      return;
+    }
+
+    // Authorization check
+    if (conversation.userOne.id !== userId && conversation.userTwo.id !== userId) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+
+    await this.conversationsService.delete(data.conversationId);
+
+    // Refresh list
+    const conversations = await this.conversationsService.findByUser(userId);
+    const mapped = conversations.map((c) => ({
+      id: c.id,
+      userOne: { id: c.userOne.id, email: c.userOne.email, username: c.userOne.username },
+      userTwo: { id: c.userTwo.id, email: c.userTwo.email, username: c.userTwo.username },
+      createdAt: c.createdAt,
+    }));
+    client.emit('conversationsList', mapped);
+  }
+
+  // Send a friend request by recipient email
+  @SubscribeMessage('sendFriendRequest')
+  async handleSendFriendRequest(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { recipientEmail: string },
+  ) {
+    const senderId: number = client.data.user?.id;
+    if (!senderId) return;
+
+    const sender = await this.usersService.findById(senderId);
+    const recipient = await this.usersService.findByEmail(data.recipientEmail);
+
+    if (!sender || !recipient) {
+      client.emit('error', { message: 'User not found' });
+      return;
+    }
+
+    try {
+      const friendRequest = await this.friendsService.sendRequest(sender, recipient);
+
+      const payload = {
+        id: friendRequest.id,
+        sender: { id: sender.id, email: sender.email, username: sender.username },
+        receiver: { id: recipient.id, email: recipient.email, username: recipient.username },
+        status: friendRequest.status,
+        createdAt: friendRequest.createdAt,
+        respondedAt: friendRequest.respondedAt,
+      };
+
+      // Notify sender
+      client.emit('friendRequestSent', payload);
+
+      // Notify recipient if online
+      const recipientSocketId = this.onlineUsers.get(recipient.id);
+      if (recipientSocketId) {
+        this.server.to(recipientSocketId).emit('newFriendRequest', payload);
+        // Also send updated count
+        const count = await this.friendsService.getPendingRequestCount(recipient.id);
+        this.server.to(recipientSocketId).emit('pendingRequestsCount', { count });
+      }
+    } catch (error) {
+      client.emit('error', { message: error.message });
+    }
+  }
+
+  // Accept a friend request
+  @SubscribeMessage('acceptFriendRequest')
+  async handleAcceptFriendRequest(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { requestId: number },
+  ) {
+    const userId: number = client.data.user?.id;
+    if (!userId) return;
+
+    try {
+      const friendRequest = await this.friendsService.acceptRequest(data.requestId, userId);
+
+      const payload = {
+        id: friendRequest.id,
+        sender: { id: friendRequest.sender.id, email: friendRequest.sender.email, username: friendRequest.sender.username },
+        receiver: { id: friendRequest.receiver.id, email: friendRequest.receiver.email, username: friendRequest.receiver.username },
+        status: friendRequest.status,
+        createdAt: friendRequest.createdAt,
+        respondedAt: friendRequest.respondedAt,
+      };
+
+      // Notify both users
+      client.emit('friendRequestAccepted', payload);
+
+      const senderSocketId = this.onlineUsers.get(friendRequest.sender.id);
+      if (senderSocketId) {
+        this.server.to(senderSocketId).emit('friendRequestAccepted', payload);
+      }
+
+      // Refresh conversations for both
+      const senderConversations = await this.conversationsService.findByUser(friendRequest.sender.id);
+      const senderMapped = senderConversations.map((c) => ({
+        id: c.id,
+        userOne: { id: c.userOne.id, email: c.userOne.email, username: c.userOne.username },
+        userTwo: { id: c.userTwo.id, email: c.userTwo.email, username: c.userTwo.username },
+        createdAt: c.createdAt,
+      }));
+
+      if (senderSocketId) {
+        this.server.to(senderSocketId).emit('conversationsList', senderMapped);
+      }
+
+      const receiverConversations = await this.conversationsService.findByUser(userId);
+      const receiverMapped = receiverConversations.map((c) => ({
+        id: c.id,
+        userOne: { id: c.userOne.id, email: c.userOne.email, username: c.userOne.username },
+        userTwo: { id: c.userTwo.id, email: c.userTwo.email, username: c.userTwo.username },
+        createdAt: c.createdAt,
+      }));
+      client.emit('conversationsList', receiverMapped);
+
+      // Update request list
+      const pendingRequests = await this.friendsService.getPendingRequests(userId);
+      const mapped = pendingRequests.map((r) => ({
+        id: r.id,
+        sender: { id: r.sender.id, email: r.sender.email, username: r.sender.username },
+        receiver: { id: r.receiver.id, email: r.receiver.email, username: r.receiver.username },
+        status: r.status,
+        createdAt: r.createdAt,
+        respondedAt: r.respondedAt,
+      }));
+      client.emit('friendRequestsList', mapped);
+    } catch (error) {
+      client.emit('error', { message: error.message });
+    }
+  }
+
+  // Reject a friend request
+  @SubscribeMessage('rejectFriendRequest')
+  async handleRejectFriendRequest(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { requestId: number },
+  ) {
+    const userId: number = client.data.user?.id;
+    if (!userId) return;
+
+    try {
+      const friendRequest = await this.friendsService.rejectRequest(data.requestId, userId);
+
+      const payload = {
+        id: friendRequest.id,
+        sender: { id: friendRequest.sender.id, email: friendRequest.sender.email, username: friendRequest.sender.username },
+        receiver: { id: friendRequest.receiver.id, email: friendRequest.receiver.email, username: friendRequest.receiver.username },
+        status: friendRequest.status,
+        createdAt: friendRequest.createdAt,
+        respondedAt: friendRequest.respondedAt,
+      };
+
+      // Notify receiver (silently, sender doesn't know)
+      client.emit('friendRequestRejected', payload);
+
+      // Update request list
+      const pendingRequests = await this.friendsService.getPendingRequests(userId);
+      const mapped = pendingRequests.map((r) => ({
+        id: r.id,
+        sender: { id: r.sender.id, email: r.sender.email, username: r.sender.username },
+        receiver: { id: r.receiver.id, email: r.receiver.email, username: r.receiver.username },
+        status: r.status,
+        createdAt: r.createdAt,
+        respondedAt: r.respondedAt,
+      }));
+      client.emit('friendRequestsList', mapped);
+
+      // Update pending count
+      const count = await this.friendsService.getPendingRequestCount(userId);
+      client.emit('pendingRequestsCount', { count });
+    } catch (error) {
+      client.emit('error', { message: error.message });
+    }
+  }
+
+  // Get pending friend requests for current user
+  @SubscribeMessage('getFriendRequests')
+  async handleGetFriendRequests(@ConnectedSocket() client: Socket) {
+    const userId: number = client.data.user?.id;
+    if (!userId) return;
+
+    try {
+      const pendingRequests = await this.friendsService.getPendingRequests(userId);
+      const mapped = pendingRequests.map((r) => ({
+        id: r.id,
+        sender: { id: r.sender.id, email: r.sender.email, username: r.sender.username },
+        receiver: { id: r.receiver.id, email: r.receiver.email, username: r.receiver.username },
+        status: r.status,
+        createdAt: r.createdAt,
+        respondedAt: r.respondedAt,
+      }));
+
+      client.emit('friendRequestsList', mapped);
+
+      const count = await this.friendsService.getPendingRequestCount(userId);
+      client.emit('pendingRequestsCount', { count });
+    } catch (error) {
+      client.emit('error', { message: error.message });
+    }
+  }
+
+  // Get friends list
+  @SubscribeMessage('getFriends')
+  async handleGetFriends(@ConnectedSocket() client: Socket) {
+    const userId: number = client.data.user?.id;
+    if (!userId) return;
+
+    try {
+      const friends = await this.friendsService.getFriends(userId);
+      const mapped = friends.map((f) => ({
+        id: f.id,
+        email: f.email,
+        username: f.username,
+      }));
+
+      client.emit('friendsList', mapped);
+    } catch (error) {
+      client.emit('error', { message: error.message });
+    }
+  }
+
+  // Unfriend a user and delete conversation
+  @SubscribeMessage('unfriend')
+  async handleUnfriend(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: { userId: number },
+  ) {
+    const currentUserId: number = client.data.user?.id;
+    if (!currentUserId) return;
+
+    try {
+      // Delete the friend relationship
+      await this.friendsService.unfriend(currentUserId, data.userId);
+
+      // Delete the conversation
+      const conversation = await this.conversationsService.findByUsers(currentUserId, data.userId);
+      if (conversation) {
+        await this.conversationsService.delete(conversation.id);
+      }
+
+      // Notify both users
+      const notifyPayload = { userId: currentUserId };
+
+      client.emit('unfriended', notifyPayload);
+
+      const otherUserSocketId = this.onlineUsers.get(data.userId);
+      if (otherUserSocketId) {
+        this.server.to(otherUserSocketId).emit('unfriended', { userId: currentUserId });
+      }
+
+      // Refresh conversations for both
+      const conversations = await this.conversationsService.findByUser(currentUserId);
+      const mapped = conversations.map((c) => ({
+        id: c.id,
+        userOne: { id: c.userOne.id, email: c.userOne.email, username: c.userOne.username },
+        userTwo: { id: c.userTwo.id, email: c.userTwo.email, username: c.userTwo.username },
+        createdAt: c.createdAt,
+      }));
+      client.emit('conversationsList', mapped);
+
+      if (otherUserSocketId) {
+        const otherConversations = await this.conversationsService.findByUser(data.userId);
+        const otherMapped = otherConversations.map((c) => ({
+          id: c.id,
+          userOne: { id: c.userOne.id, email: c.userOne.email, username: c.userOne.username },
+          userTwo: { id: c.userTwo.id, email: c.userTwo.email, username: c.userTwo.username },
+          createdAt: c.createdAt,
+        }));
+        this.server.to(otherUserSocketId).emit('conversationsList', otherMapped);
+      }
+    } catch (error) {
+      client.emit('error', { message: error.message });
+    }
   }
 }

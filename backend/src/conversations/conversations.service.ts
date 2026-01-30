@@ -3,12 +3,15 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { Conversation } from './conversation.entity';
 import { User } from '../users/user.entity';
+import { Message } from '../messages/message.entity';
 
 @Injectable()
 export class ConversationsService {
   constructor(
     @InjectRepository(Conversation)
     private convRepo: Repository<Conversation>,
+    @InjectRepository(Message)
+    private messageRepo: Repository<Message>,
   ) {}
 
   // Find an existing conversation between two users.
@@ -28,7 +31,10 @@ export class ConversationsService {
   }
 
   async findById(id: number): Promise<Conversation | null> {
-    return this.convRepo.findOne({ where: { id } });
+    return this.convRepo.findOne({
+      where: { id },
+      relations: ['userOne', 'userTwo'],
+    });
   }
 
   // All conversations for a given user
@@ -39,5 +45,21 @@ export class ConversationsService {
         { userTwo: { id: userId } },
       ],
     });
+  }
+
+  // Find conversation between two specific users
+  async findByUsers(userId1: number, userId2: number): Promise<Conversation | null> {
+    return this.convRepo.findOne({
+      where: [
+        { userOne: { id: userId1 }, userTwo: { id: userId2 } },
+        { userOne: { id: userId2 }, userTwo: { id: userId1 } },
+      ],
+    });
+  }
+
+  async delete(id: number): Promise<void> {
+    // Delete messages first (no cascade configured)
+    await this.messageRepo.delete({ conversation: { id } });
+    await this.convRepo.delete({ id });
   }
 }

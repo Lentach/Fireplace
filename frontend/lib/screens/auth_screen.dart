@@ -119,11 +119,11 @@ class _AuthScreenState extends State<AuthScreen> {
                   const SizedBox(height: 24),
                   AuthForm(
                     isLogin: _isLogin,
-                    onSubmit: (email, password) async {
+                    onSubmit: (email, password, username) async {
                       if (_isLogin) {
                         await authProvider.login(email, password);
                       } else {
-                        final success = await authProvider.register(email, password);
+                        final success = await authProvider.register(email, password, username);
                         if (success && mounted) {
                           setState(() => _isLogin = true);
                         }

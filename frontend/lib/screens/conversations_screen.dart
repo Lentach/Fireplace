@@ -6,6 +6,8 @@ import '../theme/rpg_theme.dart';
 import '../widgets/conversation_tile.dart';
 import 'chat_detail_screen.dart';
 import 'new_chat_screen.dart';
+import 'settings_screen.dart';
+import 'friend_requests_screen.dart';
 
 class ConversationsScreen extends StatefulWidget {
   const ConversationsScreen({super.key});
@@ -53,6 +55,54 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     }
   }
 
+  void _openSettings() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const SettingsScreen()),
+    );
+  }
+
+  void _openFriendRequests() {
+    Navigator.of(context).push(
+      MaterialPageRoute(builder: (_) => const FriendRequestsScreen()),
+    );
+  }
+
+  void _deleteConversation(int conversationId) {
+    showDialog(
+      context: context,
+      builder: (context) => AlertDialog(
+        backgroundColor: RpgTheme.boxBg,
+        title: Text(
+          'Delete Conversation?',
+          style: RpgTheme.bodyFont(fontSize: 16, color: RpgTheme.gold, fontWeight: FontWeight.w600),
+        ),
+        content: Text(
+          'This will delete all messages. This action cannot be undone.',
+          style: RpgTheme.bodyFont(fontSize: 14, color: Colors.white70),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(context),
+            child: Text(
+              'Cancel',
+              style: RpgTheme.bodyFont(fontSize: 14, color: RpgTheme.mutedText),
+            ),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(context);
+              context.read<ChatProvider>().deleteConversation(conversationId);
+            },
+            child: Text(
+              'Delete',
+              style: RpgTheme.bodyFont(fontSize: 14, color: RpgTheme.logoutRed, fontWeight: FontWeight.w600),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return LayoutBuilder(
@@ -74,6 +124,46 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           style: RpgTheme.pressStart2P(fontSize: 14, color: RpgTheme.gold),
         ),
         actions: [
+          Stack(
+            children: [
+              IconButton(
+                icon: const Icon(Icons.person_add, color: RpgTheme.purple),
+                onPressed: _openFriendRequests,
+                tooltip: 'Friend requests',
+              ),
+              Consumer<ChatProvider>(
+                builder: (context, chat, _) {
+                  if (chat.pendingRequestsCount == 0) {
+                    return const SizedBox.shrink();
+                  }
+                  return Positioned(
+                    right: 8,
+                    top: 8,
+                    child: Container(
+                      padding: const EdgeInsets.all(4),
+                      decoration: const BoxDecoration(
+                        color: Colors.red,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(
+                        '${chat.pendingRequestsCount}',
+                        style: RpgTheme.bodyFont(
+                          fontSize: 10,
+                          color: Colors.white,
+                          fontWeight: FontWeight.bold,
+                        ),
+                      ),
+                    ),
+                  );
+                },
+              ),
+            ],
+          ),
+          IconButton(
+            icon: const Icon(Icons.settings, color: RpgTheme.purple),
+            onPressed: _openSettings,
+            tooltip: 'Settings',
+          ),
           IconButton(
             icon: const Icon(Icons.logout, color: RpgTheme.logoutRed),
             onPressed: _logout,
@@ -117,6 +207,46 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                         icon: const Icon(Icons.chat_bubble_outline, color: RpgTheme.purple, size: 20),
                         onPressed: _startNewChat,
                         tooltip: 'New chat',
+                      ),
+                      Stack(
+                        children: [
+                          IconButton(
+                            icon: const Icon(Icons.person_add, color: RpgTheme.purple, size: 20),
+                            onPressed: _openFriendRequests,
+                            tooltip: 'Friend requests',
+                          ),
+                          Consumer<ChatProvider>(
+                            builder: (context, chat, _) {
+                              if (chat.pendingRequestsCount == 0) {
+                                return const SizedBox.shrink();
+                              }
+                              return Positioned(
+                                right: 6,
+                                top: 6,
+                                child: Container(
+                                  padding: const EdgeInsets.all(3),
+                                  decoration: const BoxDecoration(
+                                    color: Colors.red,
+                                    shape: BoxShape.circle,
+                                  ),
+                                  child: Text(
+                                    '${chat.pendingRequestsCount}',
+                                    style: RpgTheme.bodyFont(
+                                      fontSize: 8,
+                                      color: Colors.white,
+                                      fontWeight: FontWeight.bold,
+                                    ),
+                                  ),
+                                ),
+                              );
+                            },
+                          ),
+                        ],
+                      ),
+                      IconButton(
+                        icon: const Icon(Icons.settings, color: RpgTheme.purple, size: 20),
+                        onPressed: _openSettings,
+                        tooltip: 'Settings',
                       ),
                       IconButton(
                         icon: const Icon(Icons.logout, color: RpgTheme.logoutRed, size: 20),
@@ -190,13 +320,14 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       separatorBuilder: (_, _) => const SizedBox(height: 2),
       itemBuilder: (context, index) {
         final conv = conversations[index];
-        final email = chat.getOtherUserEmail(conv);
+        final displayName = chat.getOtherUserUsername(conv);
         final lastMsg = chat.lastMessages[conv.id];
         return ConversationTile(
-          email: email,
+          displayName: displayName,
           lastMessage: lastMsg,
           isActive: conv.id == chat.activeConversationId,
           onTap: () => _openChat(conv.id),
+          onDelete: () => _deleteConversation(conv.id),
         );
       },
     );

@@ -62,11 +62,47 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     });
   }
 
-  String _getContactEmail() {
+  String _getContactName() {
     final chat = context.read<ChatProvider>();
     final conv = chat.conversations.where((c) => c.id == widget.conversationId).firstOrNull;
     if (conv == null) return '';
-    return chat.getOtherUserEmail(conv);
+    return chat.getOtherUserUsername(conv);
+  }
+
+  int _getOtherUserId() {
+    final chat = context.read<ChatProvider>();
+    final conv = chat.conversations.where((c) => c.id == widget.conversationId).firstOrNull;
+    if (conv == null) return 0;
+    return chat.getOtherUserId(conv);
+  }
+
+  void _unfriend() {
+    final otherUserId = _getOtherUserId();
+    final otherUsername = _getContactName();
+
+    showDialog(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: Text('Unfriend $otherUsername?'),
+        content: const Text('This will delete your entire conversation history.'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx),
+            child: const Text('Cancel'),
+          ),
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              context.read<ChatProvider>().unfriend(otherUserId);
+              if (!widget.isEmbedded && mounted) {
+                Navigator.pop(context);
+              }
+            },
+            child: const Text('Unfriend', style: TextStyle(color: Colors.red)),
+          ),
+        ],
+      ),
+    );
   }
 
   bool _isDifferentDay(DateTime a, DateTime b) {
@@ -78,7 +114,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final chat = context.watch<ChatProvider>();
     final auth = context.watch<AuthProvider>();
     final messages = chat.messages;
-    final contactEmail = _getContactEmail();
+    final contactName = _getContactName();
 
     _scrollToBottom();
 
@@ -133,10 +169,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             ),
             child: Row(
               children: [
-                AvatarCircle(email: contactEmail, radius: 18),
+                AvatarCircle(email: contactName, radius: 18),
                 const SizedBox(width: 12),
                 Text(
-                  contactEmail,
+                  contactName,
                   style: RpgTheme.bodyFont(
                     fontSize: 16,
                     color: Colors.white,
@@ -162,11 +198,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         ),
         title: Row(
           children: [
-            AvatarCircle(email: contactEmail, radius: 16),
+            AvatarCircle(email: contactName, radius: 16),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
-                contactEmail,
+                contactName,
                 style: RpgTheme.bodyFont(
                   fontSize: 16,
                   color: Colors.white,
@@ -177,6 +213,27 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             ),
           ],
         ),
+        actions: [
+          PopupMenuButton<String>(
+            onSelected: (value) {
+              if (value == 'unfriend') {
+                _unfriend();
+              }
+            },
+            itemBuilder: (context) => [
+              PopupMenuItem(
+                value: 'unfriend',
+                child: Row(
+                  children: [
+                    Icon(Icons.person_remove, color: Colors.red),
+                    const SizedBox(width: 8),
+                    const Text('Unfriend'),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ],
       ),
       body: body,
     );

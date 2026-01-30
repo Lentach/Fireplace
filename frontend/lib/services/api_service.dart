@@ -6,11 +6,20 @@ class ApiService {
 
   ApiService({required this.baseUrl});
 
-  Future<Map<String, dynamic>> register(String email, String password) async {
+  Future<Map<String, dynamic>> register(
+    String email,
+    String password,
+    String? username,
+  ) async {
+    final body = {'email': email, 'password': password};
+    if (username != null && username.isNotEmpty) {
+      body['username'] = username;
+    }
+
     final response = await http.post(
       Uri.parse('$baseUrl/auth/register'),
       headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'email': email, 'password': password}),
+      body: jsonEncode(body),
     );
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;

@@ -5,9 +5,11 @@ import { UsersModule } from './users/users.module';
 import { ChatModule } from './chat/chat.module';
 import { ConversationsModule } from './conversations/conversations.module';
 import { MessagesModule } from './messages/messages.module';
+import { FriendsModule } from './friends/friends.module';
 import { User } from './users/user.entity';
 import { Conversation } from './conversations/conversation.entity';
 import { Message } from './messages/message.entity';
+import { FriendRequest } from './friends/friend-request.entity';
 
 @Module({
   imports: [
@@ -20,13 +22,14 @@ import { Message } from './messages/message.entity';
       username: process.env.DB_USER || 'postgres',
       password: process.env.DB_PASS || 'postgres',
       database: process.env.DB_NAME || 'chatdb',
-      entities: [User, Conversation, Message],
+      entities: [User, Conversation, Message, FriendRequest],
       synchronize: true, // Development only!
     }),
     AuthModule,
     UsersModule,
     ConversationsModule,
     MessagesModule,
+    FriendsModule,
     ChatModule,
   ],
 })

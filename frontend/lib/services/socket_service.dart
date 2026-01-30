@@ -16,6 +16,14 @@ class SocketService {
     required void Function(dynamic) onOpenConversation,
     required void Function(dynamic) onError,
     required void Function(dynamic) onDisconnect,
+    required void Function(dynamic) onFriendRequestsList,
+    required void Function(dynamic) onNewFriendRequest,
+    required void Function(dynamic) onFriendRequestSent,
+    required void Function(dynamic) onFriendRequestAccepted,
+    required void Function(dynamic) onFriendRequestRejected,
+    required void Function(dynamic) onPendingRequestsCount,
+    required void Function(dynamic) onFriendsList,
+    required void Function(dynamic) onUnfriended,
   }) {
     _socket = io.io(
       baseUrl,
@@ -34,6 +42,14 @@ class SocketService {
     _socket!.on('newMessage', onNewMessage);
     _socket!.on('openConversation', onOpenConversation);
     _socket!.on('error', onError);
+    _socket!.on('friendRequestsList', onFriendRequestsList);
+    _socket!.on('newFriendRequest', onNewFriendRequest);
+    _socket!.on('friendRequestSent', onFriendRequestSent);
+    _socket!.on('friendRequestAccepted', onFriendRequestAccepted);
+    _socket!.on('friendRequestRejected', onFriendRequestRejected);
+    _socket!.on('pendingRequestsCount', onPendingRequestsCount);
+    _socket!.on('friendsList', onFriendsList);
+    _socket!.on('unfriended', onUnfriended);
     _socket!.onDisconnect(onDisconnect);
 
     _socket!.connect();
@@ -59,6 +75,44 @@ class SocketService {
   void getMessages(int conversationId) {
     _socket?.emit('getMessages', {
       'conversationId': conversationId,
+    });
+  }
+
+  void deleteConversation(int conversationId) {
+    _socket?.emit('deleteConversation', {
+      'conversationId': conversationId,
+    });
+  }
+
+  void sendFriendRequest(String recipientEmail) {
+    _socket?.emit('sendFriendRequest', {
+      'recipientEmail': recipientEmail,
+    });
+  }
+
+  void acceptFriendRequest(int requestId) {
+    _socket?.emit('acceptFriendRequest', {
+      'requestId': requestId,
+    });
+  }
+
+  void rejectFriendRequest(int requestId) {
+    _socket?.emit('rejectFriendRequest', {
+      'requestId': requestId,
+    });
+  }
+
+  void getFriendRequests() {
+    _socket?.emit('getFriendRequests');
+  }
+
+  void getFriends() {
+    _socket?.emit('getFriends');
+  }
+
+  void unfriend(int userId) {
+    _socket?.emit('unfriend', {
+      'userId': userId,
     });
   }
 

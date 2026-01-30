@@ -25,9 +25,20 @@ class _NewChatScreenState extends State<NewChatScreen> {
     if (email.isEmpty) return;
 
     setState(() => _loading = true);
-    final chat = context.read<ChatProvider>();
-    chat.clearError();
-    chat.startConversation(email);
+    context.read<ChatProvider>().clearError();
+    context.read<ChatProvider>().sendFriendRequest(email);
+
+    Future.delayed(const Duration(milliseconds: 500), () {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('Friend request sent to $email'),
+            backgroundColor: Colors.green,
+          ),
+        );
+        Navigator.pop(context);
+      }
+    });
   }
 
   @override
@@ -52,7 +63,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
     return Scaffold(
       appBar: AppBar(
         title: Text(
-          'New Chat',
+          'Add Friend',
           style: RpgTheme.bodyFont(
             fontSize: 18,
             color: Colors.white,
@@ -67,7 +78,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Enter the email of the person you want to chat with:',
+                'Enter the email of the person you want to add:',
                 style: RpgTheme.bodyFont(fontSize: 14, color: RpgTheme.labelText),
               ),
               const SizedBox(height: 16),
@@ -94,7 +105,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
                           color: RpgTheme.gold,
                         ),
                       )
-                    : const Text('Start Chat'),
+                    : const Text('Send Friend Request'),
               ),
               if (chat.errorMessage != null) ...[
                 const SizedBox(height: 16),

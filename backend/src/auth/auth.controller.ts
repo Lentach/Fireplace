@@ -10,7 +10,7 @@ export class AuthController {
   // POST /auth/register — creates a new user
   @Post('register')
   register(@Body() dto: RegisterDto) {
-    return this.authService.register(dto.email, dto.password);
+    return this.authService.register(dto.email, dto.password, dto.username);
   }
 
   // POST /auth/login — returns JWT token

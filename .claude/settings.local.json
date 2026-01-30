@@ -37,7 +37,25 @@
       "Bash(del frontendlibscreenschat_screen.dart frontendlibwidgetsrpg_box.dart frontendlibwidgetssidebar.dart frontendlibwidgetsconversation_item.dart frontendlibwidgetsmessage_bubble.dart frontendlibwidgetsmessage_input_bar.dart frontendlibwidgetsno_chat_selected.dart frontendlibwidgetsblinking_cursor.dart frontendlibwidgetstab_bar_widget.dart)",
       "Bash(python:*)",
       "Bash(flutter run:*)",
-      "Bash(docker system:*)"
+      "Bash(docker system:*)",
+      "Bash(ipconfig:*)",
+      "Bash(npm run start:dev:*)",
+      "Bash(timeout /t 5)",
+      "Bash(ping:*)",
+      "Bash(docker:*)",
+      "Bash(docker-compose ps:*)",
+      "Bash(__NEW_LINE_dbb2306308cad5f3__ docker-compose exec -T backend curl -s -X POST http://localhost:3000/auth/register -H \"Content-Type: application/json\" -d '{\n    \"\"email\"\": \"\"alice@test.com\"\",\n    \"\"username\"\": \"\"Alice\"\",\n    \"\"password\"\": \"\"password123\"\"\n  }')",
+      "Bash(__NEW_LINE_dbb2306308cad5f3__ echo \"\")",
+      "Bash(__NEW_LINE_dbb2306308cad5f3__ docker-compose exec -T backend curl -s -X POST http://localhost:3000/auth/register -H \"Content-Type: application/json\" -d '{\n    \"\"email\"\": \"\"bob@test.com\"\",\n    \"\"username\"\": \"\"Bob\"\",\n    \"\"password\"\": \"\"password123\"\"\n  }')",
+      "Bash(timeout 60 node:*)",
+      "Bash(__NEW_LINE_03be0f799be093e7__ node -e \"\nconst http = require\\(''http''\\);\n\nfunction httpRequest\\(method, path, data = null\\) {\n  return new Promise\\(\\(resolve, reject\\) => {\n    const options = {\n      hostname: ''localhost'',\n      port: 3000,\n      path: path,\n      method: method,\n      headers: {\n        ''Content-Type'': ''application/json'',\n      },\n    };\n\n    const req = http.request\\(options, \\(res\\) => {\n      let body = '''';\n      res.on\\(''data'', \\(chunk\\) => \\(body += chunk\\)\\);\n      res.on\\(''end'', \\(\\) => {\n        console.log\\(''Status:'', res.statusCode\\);\n        try {\n          resolve\\(JSON.parse\\(body\\)\\);\n        } catch {\n          resolve\\(body\\);\n        }\n      }\\);\n    }\\);\n\n    req.on\\(''error'', \\(e\\) => {\n      console.error\\(''Request error:'', e.message\\);\n      reject\\(e\\);\n    }\\);\n    \n    if \\(data\\) req.write\\(JSON.stringify\\(data\\)\\);\n    req.end\\(\\);\n  }\\);\n}\n\nhttpRequest\\(''POST'', ''/auth/register'', {\n  email: ''alice@test.com'',\n  username: ''Alice'',\n  password: ''password123'',\n}\\).then\\(res => console.log\\(JSON.stringify\\(res, null, 2\\)\\)\\)\n  .catch\\(err => console.error\\(''Error:'', err.message\\)\\);\n\")",
+      "Bash(docker-compose exec:*)",
+      "Bash(__NEW_LINE_aa8bd7537a191c66__ docker-compose exec -T backend sh -c 'wget -q -O - --post-data=\"\"{\\\\\"\"email\\\\\"\":\\\\\"\"alice@test.com\\\\\"\",\\\\\"\"username\\\\\"\":\\\\\"\"Alice\\\\\"\",\\\\\"\"password\\\\\"\":\\\\\"\"password123\\\\\"\"}\"\" --header=\"\"Content-Type: application/json\"\" http://localhost:3000/auth/register')",
+      "Bash(__NEW_LINE_2d800c4f33bb6440__ docker-compose exec -T db psql -U postgres -d chatdb -c \"\\\\dt friend*\")",
+      "Bash(__NEW_LINE_0cbffb1c01ed776f__ docker-compose exec -T db psql -U postgres -d chatdb -c \"\\\\d friend_requests\")",
+      "Bash(docker-compose logs:*)",
+      "Bash(__NEW_LINE_59742ea5738cd601__ echo \"\")",
+      "Bash(__NEW_LINE_a8e2a6774ea79f69__ echo \"\")"
     ]
   }
 }

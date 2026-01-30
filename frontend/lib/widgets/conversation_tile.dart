@@ -4,17 +4,19 @@ import '../models/message_model.dart';
 import 'avatar_circle.dart';
 
 class ConversationTile extends StatelessWidget {
-  final String email;
+  final String displayName;
   final MessageModel? lastMessage;
   final bool isActive;
   final VoidCallback onTap;
+  final VoidCallback onDelete;
 
   const ConversationTile({
     super.key,
-    required this.email,
+    required this.displayName,
     this.lastMessage,
     this.isActive = false,
     required this.onTap,
+    required this.onDelete,
   });
 
   String _formatTime(DateTime dt) {
@@ -39,14 +41,14 @@ class ConversationTile extends StatelessWidget {
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
-              AvatarCircle(email: email),
+              AvatarCircle(email: displayName),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      email,
+                      displayName,
                       style: RpgTheme.bodyFont(
                         fontSize: 14,
                         color: Colors.white,
@@ -70,14 +72,29 @@ class ConversationTile extends StatelessWidget {
                   ],
                 ),
               ),
-              if (lastMessage != null)
-                Text(
-                  _formatTime(lastMessage!.createdAt),
-                  style: RpgTheme.bodyFont(
-                    fontSize: 11,
-                    color: RpgTheme.timeColor,
+              Column(
+                crossAxisAlignment: CrossAxisAlignment.end,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (lastMessage != null)
+                    Text(
+                      _formatTime(lastMessage!.createdAt),
+                      style: RpgTheme.bodyFont(
+                        fontSize: 11,
+                        color: RpgTheme.timeColor,
+                      ),
+                    ),
+                  const SizedBox(height: 4),
+                  IconButton(
+                    icon: const Icon(Icons.delete_outline, size: 18),
+                    color: RpgTheme.logoutRed,
+                    onPressed: onDelete,
+                    padding: EdgeInsets.zero,
+                    constraints: const BoxConstraints(),
+                    tooltip: 'Delete conversation',
                   ),
-                ),
+                ],
+              ),
             ],
           ),
         ),

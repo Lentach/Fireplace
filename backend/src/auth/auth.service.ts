@@ -10,10 +10,10 @@ export class AuthService {
     private jwtService: JwtService,
   ) {}
 
-  async register(email: string, password: string) {
-    const user = await this.usersService.create(email, password);
+  async register(email: string, password: string, username?: string) {
+    const user = await this.usersService.create(email, password, username);
     // Don't return the password in the response
-    return { id: user.id, email: user.email };
+    return { id: user.id, email: user.email, username: user.username };
   }
 
   async login(email: string, password: string) {
@@ -28,7 +28,7 @@ export class AuthService {
     }
 
     // Token payload — sub is the JWT standard for "subject" (user id)
-    const payload = { sub: user.id, email: user.email };
+    const payload = { sub: user.id, email: user.email, username: user.username };
     return {
       access_token: this.jwtService.sign(payload),
     };

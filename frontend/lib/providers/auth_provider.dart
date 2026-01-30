@@ -32,14 +32,15 @@ class AuthProvider extends ChangeNotifier {
       _currentUser = UserModel(
         id: payload['sub'] as int,
         email: payload['email'] as String,
+        username: payload['username'] as String?,
       );
       notifyListeners();
     }
   }
 
-  Future<bool> register(String email, String password) async {
+  Future<bool> register(String email, String password, String? username) async {
     try {
-      await _api.register(email, password);
+      await _api.register(email, password, username);
       _statusMessage = 'Hero created! Now login.';
       _isError = false;
       notifyListeners();
@@ -61,6 +62,7 @@ class AuthProvider extends ChangeNotifier {
       _currentUser = UserModel(
         id: payload['sub'] as int,
         email: payload['email'] as String,
+        username: payload['username'] as String?,
       );
 
       final prefs = await SharedPreferences.getInstance();
@@ -85,7 +87,7 @@ class AuthProvider extends ChangeNotifier {
     _isError = false;
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('jwt_token');
+    await prefs.clear();
 
     notifyListeners();
   }
