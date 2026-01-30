@@ -295,23 +295,40 @@ if (records.length > 0) {
 - Partial success now possible - users get some updates even if later operations fail
 - Improved error messages distinguish critical vs non-critical failures
 
-### In Progress
-
-⏳ **Issue #8: Split Gateway**
-- Break 750-line `chat.gateway.ts` into `ChatMessageService`, `ChatFriendRequestService`, `ChatConversationService`
+✅ **Issue #8: Split Gateway into Service Classes**
+- Created `ChatMessageService` — handles sendMessage, getMessages (2 handlers)
+- Created `ChatFriendRequestService` — handles 6 friend request handlers (send, accept, reject, get, getFriends, unfriend)
+- Created `ChatConversationService` — handles 3 conversation handlers (start, get, delete)
+- Refactored `chat.gateway.ts` from 864 lines to 195 lines (77% reduction)
+- Gateway now only handles WebSocket connection/disconnection and delegates to services
+- All business logic moved to service classes for better testability and maintainability
+- Services injected via constructor, receive server and onlineUsers Map as parameters
 
 ---
 
 ## 🔍 QUICK REFERENCE - Find Stuff Fast
 
 ### Modify friend request logic
-- Backend: `backend/src/friends/friends.service.ts` (9 methods)
-- Gateway handlers: `backend/src/chat/chat.gateway.ts` (6 handlers)
+- Backend core logic: `backend/src/friends/friends.service.ts` (9 methods)
+- Backend WebSocket handlers: `backend/src/chat/services/chat-friend-request.service.ts` (6 handlers)
+- Gateway delegation: `backend/src/chat/chat.gateway.ts` (delegates to service)
+
+### Modify message logic
+- Backend core logic: `backend/src/messages/messages.service.ts`
+- Backend WebSocket handlers: `backend/src/chat/services/chat-message.service.ts` (2 handlers)
+- Gateway delegation: `backend/src/chat/chat.gateway.ts`
+
+### Modify conversation logic
+- Backend core logic: `backend/src/conversations/conversations.service.ts`
+- Backend WebSocket handlers: `backend/src/chat/services/chat-conversation.service.ts` (3 handlers)
+- Gateway delegation: `backend/src/chat/chat.gateway.ts`
 
 ### Add new WebSocket event
-1. Add handler in `backend/src/chat/chat.gateway.ts` with `@SubscribeMessage`
-2. Add listener in `frontend/lib/services/socket_service.dart` (socket.on() in connect())
-3. Add callback in `frontend/lib/providers/chat_provider.dart`
+1. Add business logic in appropriate service (`chat-message.service.ts`, `chat-friend-request.service.ts`, or `chat-conversation.service.ts`)
+2. Add handler method in the service (receives client, data, server, onlineUsers)
+3. Add delegation in `backend/src/chat/chat.gateway.ts` with `@SubscribeMessage` decorator
+4. Add listener in `frontend/lib/services/socket_service.dart` (socket.on() in connect())
+5. Add callback in `frontend/lib/providers/chat_provider.dart`
 
 ### Change badge appearance
 - `frontend/lib/screens/conversations_screen.dart` (search "Stack" for badge UI)
@@ -499,10 +516,10 @@ Commit: b9edc3b, docs: 02720c8
 - Clever reactive navigation pattern (`consumePendingOpen()`)
 
 **Current issues (lower priority):**
-- Chat gateway still large (750+ lines, needs split into services)
 - No test coverage (zero tests currently)
 - Magic numbers scattered (500ms delay, 600px breakpoint)
 - Could use database indexes on frequently-queried columns
+- Consider adding WebSocket reconnection logic in frontend
 
 ---
 
