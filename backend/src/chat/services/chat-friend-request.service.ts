@@ -9,6 +9,7 @@ import {
   AcceptFriendRequestDto,
   RejectFriendRequestDto,
   UnfriendDto,
+  UpdateActiveStatusDto,
 } from '../dto/chat.dto';
 import { FriendRequestMapper } from '../mappers/friend-request.mapper';
 import { UserMapper } from '../mappers/user.mapper';
@@ -594,5 +595,68 @@ export class ChatFriendRequestService {
         error,
       );
     }
+  }
+
+  async handleUpdateActiveStatus(
+    client: Socket,
+    data: any,
+    server: Server,
+    onlineUsers: Map<number, string>,
+  ) {
+    const userId: number = client.data.user?.id;
+    if (!userId) return;
+
+    try {
+      const dto = validateDto(UpdateActiveStatusDto, data);
+      data = dto;
+    } catch (error) {
+      client.emit('error', { message: error.message });
+      return;
+    }
+
+    this.logger.debug(
+      `handleUpdateActiveStatus: userId=${userId}, activeStatus=${data.activeStatus}`,
+    );
+
+    // Step 1: Update active status in database (CRITICAL)
+    try {
+      await this.usersService.updateActiveStatus(userId, data.activeStatus);
+    } catch (error) {
+      this.logger.error(
+        'handleUpdateActiveStatus: Failed to update status:',
+        error,
+      );
+      client.emit('error', {
+        message: error.message || 'Failed to update active status',
+      });
+      return; // Critical failure - stop here
+    }
+
+    // Step 2: Notify all friends about the status change (non-critical)
+    try {
+      const friends = await this.friendsService.getFriends(userId);
+
+      for (const friend of friends) {
+        const friendSocketId = onlineUsers.get(friend.id);
+        if (friendSocketId) {
+          server.to(friendSocketId).emit('userStatusChanged', {
+            userId,
+            activeStatus: data.activeStatus,
+          });
+          this.logger.debug(
+            `handleUpdateActiveStatus: notified friend ${friend.id} about status change`,
+          );
+        }
+      }
+    } catch (error) {
+      this.logger.error(
+        'handleUpdateActiveStatus: Failed to notify friends (non-critical):',
+        error,
+      );
+      // Status was updated successfully, just couldn't notify - not critical
+    }
+
+    // Confirm to the user
+    client.emit('activeStatusUpdated', { activeStatus: data.activeStatus });
   }
 }

@@ -72,12 +72,14 @@ cd frontend && flutter build web
 
 | Component | Purpose |
 |-----------|---------|
-| **AuthProvider** | JWT lifecycle, token persistence via SharedPreferences |
+| **AuthProvider** | JWT lifecycle, token persistence via SharedPreferences, profile management |
 | **ChatProvider** | WebSocket connection, conversations/messages state, socket events |
+| **SettingsProvider** | Dark mode preference persistence via SharedPreferences |
 | **ConversationsScreen** | Main hub: mobile (list) or desktop (master-detail) at 600px breakpoint |
 | **ChatDetailScreen** | Full chat view with message input |
 | **FriendRequestsScreen** | Accept/reject pending requests, auto-navigate on accept |
 | **NewChatScreen** | Send friend request by email |
+| **SettingsScreen** | User settings: profile picture, active status, dark mode, password reset, account deletion |
 | **RpgTheme** | Retro RPG color palette + Press Start 2P/Inter fonts |
 
 ---
@@ -92,6 +94,8 @@ users
   ├─ email (unique)
   ├─ username (unique)
   ├─ password (bcrypt)
+  ├─ profilePictureUrl (nullable)
+  ├─ activeStatus (boolean, default: true)
   └─ createdAt
 
 conversations
@@ -135,10 +139,11 @@ friend_requests
 | `getFriendRequests` | — | `friendRequestsList`, `pendingRequestsCount` |
 | `getFriends` | — | `friendsList` |
 | `unfriend` | `{userId}` | `unfriended` (both users), `conversationsList` refreshed |
+| `updateActiveStatus` | `{activeStatus}` | `userStatusChanged` (to all friends) |
 
 ### Server → Client
 
-`conversationsList` | `messageHistory` | `messageSent` | `newMessage` | `openConversation` | `error` | `newFriendRequest` | `friendRequestSent` | `friendRequestAccepted` | `friendRequestRejected` | `friendRequestsList` | `pendingRequestsCount` | `friendsList` | `unfriended`
+`conversationsList` | `messageHistory` | `messageSent` | `newMessage` | `openConversation` | `error` | `newFriendRequest` | `friendRequestSent` | `friendRequestAccepted` | `friendRequestRejected` | `friendRequestsList` | `pendingRequestsCount` | `friendsList` | `unfriended` | `userStatusChanged`
 
 **Connection:** Socket.IO with JWT token via query param `?token=xxx`. Server tracks online users via `Map<userId, socketId>`.
 
@@ -242,12 +247,23 @@ if (records.length > 0) {
 
 ---
 
-## 📝 REST Endpoints (Only 2)
+## 📝 REST Endpoints
+
+**Authentication (2 endpoints):**
 
 | Endpoint | Body | Response |
 |----------|------|----------|
 | POST /auth/register | `{email, username, password}` | `{id, email, username}` |
 | POST /auth/login | `{email, password}` | `{access_token}` |
+
+**User Management (4 endpoints, all require JWT auth):**
+
+| Endpoint | Method | Body | Response |
+|----------|--------|------|----------|
+| /users/profile-picture | POST | `multipart/form-data {file}` | `{profilePictureUrl}` |
+| /users/reset-password | POST | `{oldPassword, newPassword}` | `200 OK` |
+| /users/account | DELETE | `{password}` | `200 OK` |
+| /users/active-status | PATCH | `{activeStatus}` | `200 OK` |
 
 **All chat operations use WebSocket.**
 
@@ -258,10 +274,12 @@ if (records.length > 0) {
 ## 🔐 Security Features
 
 ✅ **CORS:** Uses `ALLOWED_ORIGINS` env var (default: `http://localhost:3000`)
-✅ **Rate limiting:** Login 5/15min, Register 3/hour
-✅ **WebSocket validation:** All 8 handlers validate input via DTOs
+✅ **Rate limiting:** Login 5/15min, Register 3/hour, Profile picture upload 10/hour
+✅ **WebSocket validation:** All handlers validate input via DTOs
 ✅ **Env var validation:** Startup fails if JWT_SECRET or critical DB vars missing
 ✅ **Password strength:** 8+ chars + uppercase + lowercase + number
+✅ **File upload security:** Only JPEG/PNG images allowed, max 5MB
+✅ **JWT authentication:** All user management endpoints require JWT auth
 
 ---
 
@@ -303,6 +321,35 @@ if (records.length > 0) {
 - Gateway now only handles WebSocket connection/disconnection and delegates to services
 - All business logic moved to service classes for better testability and maintainability
 - Services injected via constructor, receive server and onlineUsers Map as parameters
+
+✅ **User Settings Feature (Phase 1 & 2 - 2026-01-31)**
+**Backend (Phase 1):**
+- Added `profilePictureUrl` (varchar, nullable) and `activeStatus` (boolean, default: true) columns to users table
+- Created `UsersController` with 4 new REST endpoints (profile picture, reset password, delete account, active status)
+- Created 3 new DTOs: `ResetPasswordDto`, `DeleteAccountDto`, `UpdateActiveStatusDto`
+- Configured Multer for file upload: JPEG/PNG only, max 5MB, stored in `./uploads/profiles/`
+- Added static file serving in `main.ts` at `/uploads/` prefix
+- Added Docker volume mount: `./backend/uploads:/app/uploads`
+- Updated `AuthService.login()` to include `profilePictureUrl` and `activeStatus` in JWT payload
+- Updated `JwtStrategy.validate()` to extract new user fields from JWT
+- Added WebSocket handler `updateActiveStatus` in `ChatFriendRequestService` → broadcasts `userStatusChanged` to all friends
+- Updated `UserMapper.toPayload()` to include `profilePictureUrl` and `activeStatus`
+- npm packages: `multer`, `@types/multer`, `@nestjs/platform-express`
+
+**Frontend (Phase 2):**
+- Updated `UserModel` with `profilePictureUrl` and `activeStatus` fields + `copyWith()` method
+- Created `SettingsProvider` for dark mode preference persistence (system/light/dark)
+- Updated `AuthProvider` with 3 new methods: `updateProfilePicture()`, `resetPassword()`, `deleteAccount()`
+- Updated `AuthProvider.logout()` to preserve dark mode preference after logout
+- Updated `ChatProvider` with `socket` getter to expose `SocketService`
+- Added `ChatProvider.onUserStatusChanged()` listener to update friends' active status in real-time
+- Updated `ApiService` with 4 new methods matching backend endpoints
+- Updated `SocketService` with `updateActiveStatus()` emit and `userStatusChanged` listener
+- Completely redesigned `SettingsScreen` with 6 tiles: profile header, active status toggle, dark mode dropdown, privacy (coming soon), devices, reset password, delete account, logout button
+- Rewrote `AvatarCircle` as `StatefulWidget` with profile picture support, fallback to gradient, online indicator (green/grey dot), loading state
+- Created 3 new dialogs: `ResetPasswordDialog`, `DeleteAccountDialog`, `ProfilePictureDialog` (camera vs gallery)
+- Updated `main.dart` to include `SettingsProvider` in `MultiProvider` and consume dark mode preference
+- Flutter packages: `image_picker: ^1.1.2`, `device_info_plus: ^11.5.0`
 
 ---
 
@@ -355,6 +402,18 @@ if (records.length > 0) {
 - Gateway orchestration: `backend/src/chat/chat.gateway.ts` → `handleUnfriend()`
 - Conversation cleanup: `backend/src/conversations/conversations.service.ts` → `delete()`
 
+### Modify settings screen
+- UI and layout: `frontend/lib/screens/settings_screen.dart`
+- Dialogs: `frontend/lib/widgets/dialogs/` (reset_password_dialog, delete_account_dialog, profile_picture_dialog)
+- Avatar with profile picture: `frontend/lib/widgets/avatar_circle.dart`
+
+### Add new user management endpoint
+1. Add method to `backend/src/users/users.service.ts`
+2. Add endpoint to `backend/src/users/users.controller.ts` with `@UseGuards(JwtAuthGuard)`
+3. Add method to `frontend/lib/services/api_service.dart`
+4. Add method to `frontend/lib/providers/auth_provider.dart`
+5. Call from `frontend/lib/screens/settings_screen.dart`
+
 ---
 
 ## 🧪 ENVIRONMENT VARIABLES
@@ -382,10 +441,12 @@ if (records.length > 0) {
 
 ### State Management (Provider Pattern)
 
-- **AuthProvider:** JWT lifecycle → login → decode JWT → save to SharedPreferences → auto-restore on app start (checks expiry)
+- **AuthProvider:** JWT lifecycle → login → decode JWT → save to SharedPreferences → auto-restore on app start (checks expiry). User management methods: `updateProfilePicture()`, `resetPassword()`, `deleteAccount()`
 - **ChatProvider:** WebSocket connection → listen to all events → manage state. Key methods:
   - `openConversation(conversationId)` — clears messages, fetches history
   - `consumePendingOpen()` — returns and clears `_pendingOpenConversationId` for navigation
+  - `socket` getter — exposes `SocketService` for direct WebSocket operations (e.g., `updateActiveStatus()`)
+- **SettingsProvider:** Dark mode preference (system/light/dark) → saved to SharedPreferences → survives logout
 
 ### Navigation
 
@@ -416,6 +477,7 @@ main.dart → AuthGate (watches AuthProvider.isLoggedIn)
 
 ### Dependencies
 
+**Frontend:**
 ```yaml
 provider: ^6.1.2                    # State management
 socket_io_client: ^2.0.3+1          # WebSocket
@@ -423,6 +485,15 @@ http: ^1.2.2                        # REST
 jwt_decoder: ^2.0.1                 # JWT parsing
 shared_preferences: ^2.3.4          # Token persistence
 google_fonts: ^6.2.1                # Press Start 2P + Inter
+image_picker: ^1.1.2                # Profile picture from camera/gallery
+device_info_plus: ^11.5.0           # Device name for settings screen
+```
+
+**Backend:**
+```
+multer                              # File upload middleware
+@types/multer                       # TypeScript types for multer
+@nestjs/platform-express            # Express platform for NestJS (static files)
 ```
 
 ---
@@ -430,12 +501,13 @@ google_fonts: ^6.2.1                # Press Start 2P + Inter
 ## 🚧 KNOWN LIMITATIONS
 
 - ❌ No user search/discovery — must know exact email to send friend request
-- ❌ No user profiles beyond email/username
+- ✅ User profiles: profile pictures, active status, password reset, account deletion
 - ❌ No typing indicators, read receipts, message editing/deletion
 - ✅ Message pagination supported (limit/offset params, default 50 messages)
 - ❌ No last message in `conversationsList` — track client-side
 - ❌ No database unique constraint on user pair (deduplication in `findOrCreate`)
 - ❌ No unique constraint on (sender, receiver) in friend_requests (intentional, allows resend)
+- ❌ Profile pictures stored locally in `./uploads/` (not cloud storage like S3)
 
 ---
 

@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'package:flutter/foundation.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:shared_preferences/shared_preferences.dart';
@@ -33,6 +34,7 @@ class AuthProvider extends ChangeNotifier {
         id: payload['sub'] as int,
         email: payload['email'] as String,
         username: payload['username'] as String?,
+        profilePictureUrl: payload['profilePictureUrl'] as String?,
       );
       notifyListeners();
     }
@@ -63,6 +65,7 @@ class AuthProvider extends ChangeNotifier {
         id: payload['sub'] as int,
         email: payload['email'] as String,
         username: payload['username'] as String?,
+        profilePictureUrl: payload['profilePictureUrl'] as String?,
       );
 
       final prefs = await SharedPreferences.getInstance();
@@ -87,7 +90,8 @@ class AuthProvider extends ChangeNotifier {
     _isError = false;
 
     final prefs = await SharedPreferences.getInstance();
-    await prefs.clear();
+    // Don't clear dark mode preference - only clear token
+    await prefs.remove('jwt_token');
 
     notifyListeners();
   }
@@ -96,5 +100,53 @@ class AuthProvider extends ChangeNotifier {
     _statusMessage = null;
     _isError = false;
     notifyListeners();
+  }
+
+  Future<void> updateProfilePicture(File imageFile) async {
+    if (_token == null) {
+      throw Exception('Not authenticated');
+    }
+
+    try {
+      final profilePictureUrl = await _api.uploadProfilePicture(_token!, imageFile);
+
+      // Update current user with new profile picture URL
+      if (_currentUser != null) {
+        _currentUser = _currentUser!.copyWith(
+          profilePictureUrl: profilePictureUrl,
+        );
+        notifyListeners();
+      }
+    } catch (e) {
+      throw Exception(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<void> resetPassword(String oldPassword, String newPassword) async {
+    if (_token == null) {
+      throw Exception('Not authenticated');
+    }
+
+    try {
+      await _api.resetPassword(_token!, oldPassword, newPassword);
+    } catch (e) {
+      throw Exception(e.toString().replaceFirst('Exception: ', ''));
+    }
+  }
+
+  Future<bool> deleteAccount(String password) async {
+    if (_token == null) {
+      throw Exception('Not authenticated');
+    }
+
+    try {
+      await _api.deleteAccount(_token!, password);
+
+      // Log out after successful deletion
+      await logout();
+      return true;
+    } catch (e) {
+      throw Exception(e.toString().replaceFirst('Exception: ', ''));
+    }
   }
 }

@@ -202,4 +202,17 @@ export class ChatGateway
       this.onlineUsers,
     );
   }
+
+  @SubscribeMessage('updateActiveStatus')
+  async handleUpdateActiveStatus(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
+  ) {
+    return this.chatFriendRequestService.handleUpdateActiveStatus(
+      client,
+      data,
+      this.server,
+      this.onlineUsers,
+    );
+  }
 }

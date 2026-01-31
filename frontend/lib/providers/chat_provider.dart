@@ -32,6 +32,7 @@ class ChatProvider extends ChangeNotifier {
   int get pendingRequestsCount => _pendingRequestsCount;
   List<UserModel> get friends => _friends;
   bool get friendRequestJustSent => _friendRequestJustSent;
+  SocketService get socket => _socketService;
 
   void clearError() {
     _errorMessage = null;
@@ -191,6 +192,18 @@ class ChatProvider extends ChangeNotifier {
             _messages = [];
           }
         }
+        notifyListeners();
+      },
+      onUserStatusChanged: (data) {
+        final userId = (data as Map<String, dynamic>)['userId'] as int;
+        final activeStatus = data['activeStatus'] as bool;
+        // Update friends list to reflect new status
+        _friends = _friends.map((f) {
+          if (f.id == userId) {
+            return f.copyWith(activeStatus: activeStatus);
+          }
+          return f;
+        }).toList();
         notifyListeners();
       },
       onDisconnect: (_) {

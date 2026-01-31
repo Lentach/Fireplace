@@ -1,8 +1,14 @@
-import { Injectable, ConflictException } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  UnauthorizedException,
+  NotFoundException,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './user.entity';
+import * as fs from 'fs/promises';
 
 @Injectable()
 export class UsersService {
@@ -52,5 +58,86 @@ export class UsersService {
       .createQueryBuilder('user')
       .where('LOWER(user.username) = LOWER(:username)', { username })
       .getOne();
+  }
+
+  async updateProfilePicture(userId: number, url: string): Promise<User> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Delete old profile picture if exists
+    if (user.profilePictureUrl) {
+      try {
+        const oldPath = `.${user.profilePictureUrl}`;
+        await fs.unlink(oldPath);
+      } catch (error) {
+        // File might not exist, continue
+      }
+    }
+
+    user.profilePictureUrl = url;
+    return this.usersRepo.save(user);
+  }
+
+  async resetPassword(
+    userId: number,
+    oldPassword: string,
+    newPassword: string,
+  ): Promise<void> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Verify old password
+    const isValidPassword = await bcrypt.compare(oldPassword, user.password);
+    if (!isValidPassword) {
+      throw new UnauthorizedException('Invalid old password');
+    }
+
+    // Hash new password
+    const hash = await bcrypt.hash(newPassword, 10);
+    user.password = hash;
+    await this.usersRepo.save(user);
+  }
+
+  async deleteAccount(userId: number, password: string): Promise<void> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    // Verify password
+    const isValidPassword = await bcrypt.compare(password, user.password);
+    if (!isValidPassword) {
+      throw new UnauthorizedException('Invalid password');
+    }
+
+    // Delete profile picture if exists
+    if (user.profilePictureUrl) {
+      try {
+        const picturePath = `.${user.profilePictureUrl}`;
+        await fs.unlink(picturePath);
+      } catch (error) {
+        // File might not exist, continue
+      }
+    }
+
+    // TypeORM cascades will delete related records
+    await this.usersRepo.remove(user);
+  }
+
+  async updateActiveStatus(
+    userId: number,
+    activeStatus: boolean,
+  ): Promise<User> {
+    const user = await this.findById(userId);
+    if (!user) {
+      throw new NotFoundException('User not found');
+    }
+
+    user.activeStatus = activeStatus;
+    return this.usersRepo.save(user);
   }
 }

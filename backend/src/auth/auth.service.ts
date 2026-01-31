@@ -47,7 +47,12 @@ export class AuthService {
     }
 
     // Token payload — sub is the JWT standard for "subject" (user id)
-    const payload = { sub: user.id, email: user.email, username: user.username };
+    const payload = {
+      sub: user.id,
+      email: user.email,
+      username: user.username,
+      profilePictureUrl: user.profilePictureUrl,
+    };
     return {
       access_token: this.jwtService.sign(payload),
     };

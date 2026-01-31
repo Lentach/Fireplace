@@ -24,6 +24,8 @@ services:
       DB_PASS: postgres
       DB_NAME: chatdb
       JWT_SECRET: my-super-secret-jwt-key-change-in-production
+    volumes:
+      - ./backend/uploads:/app/uploads
     depends_on:
       - db
 

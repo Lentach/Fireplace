@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'providers/auth_provider.dart';
 import 'providers/chat_provider.dart';
+import 'providers/settings_provider.dart';
 import 'screens/auth_screen.dart';
 import 'screens/conversations_screen.dart';
 import 'theme/rpg_theme.dart';
@@ -20,12 +21,19 @@ class RpgChatApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
+        ChangeNotifierProvider(create: (_) => SettingsProvider()),
       ],
-      child: MaterialApp(
-        title: 'RPG Chat',
-        debugShowCheckedModeBanner: false,
-        theme: RpgTheme.themeData,
-        home: const AuthGate(),
+      child: Consumer<SettingsProvider>(
+        builder: (context, settings, _) {
+          return MaterialApp(
+            title: 'RPG Chat',
+            debugShowCheckedModeBanner: false,
+            theme: RpgTheme.themeData,
+            darkTheme: RpgTheme.themeData, // Same theme (RPG is dark by design)
+            themeMode: settings.themeMode,
+            home: const AuthGate(),
+          );
+        },
       ),
     );
   }
