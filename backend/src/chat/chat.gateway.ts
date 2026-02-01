@@ -23,9 +23,7 @@ import { ChatConversationService } from './services/chat-conversation.service';
       .map((o) => o.trim()),
   },
 })
-export class ChatGateway
-  implements OnGatewayConnection, OnGatewayDisconnect
-{
+export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(ChatGateway.name);
 
   @WebSocketServer()
@@ -70,9 +68,7 @@ export class ChatGateway
       };
       this.onlineUsers.set(user.id, client.id);
 
-      this.logger.debug(
-        `User connected: ${user.email} (socket: ${client.id})`,
-      );
+      this.logger.debug(`User connected: ${user.email} (socket: ${client.id})`);
     } catch (error) {
       this.logger.error(`handleConnection failed: ${error.message}`);
       client.disconnect();
@@ -126,10 +122,7 @@ export class ChatGateway
 
   @SubscribeMessage('getConversations')
   async handleGetConversations(@ConnectedSocket() client: Socket) {
-    return this.chatConversationService.handleGetConversations(
-      client,
-      this.onlineUsers,
-    );
+    return this.chatConversationService.handleGetConversations(client);
   }
 
   @SubscribeMessage('deleteConversation')
@@ -191,10 +184,7 @@ export class ChatGateway
 
   @SubscribeMessage('getFriends')
   async handleGetFriends(@ConnectedSocket() client: Socket) {
-    return this.chatFriendRequestService.handleGetFriends(
-      client,
-      this.onlineUsers,
-    );
+    return this.chatFriendRequestService.handleGetFriends(client);
   }
 
   @SubscribeMessage('unfriend')
@@ -203,19 +193,6 @@ export class ChatGateway
     @MessageBody() data: any,
   ) {
     return this.chatFriendRequestService.handleUnfriend(
-      client,
-      data,
-      this.server,
-      this.onlineUsers,
-    );
-  }
-
-  @SubscribeMessage('updateActiveStatus')
-  async handleUpdateActiveStatus(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: any,
-  ) {
-    return this.chatFriendRequestService.handleUpdateActiveStatus(
       client,
       data,
       this.server,

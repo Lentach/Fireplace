@@ -10,7 +10,13 @@ import { MessagesModule } from '../messages/messages.module';
 import { FriendsModule } from '../friends/friends.module';
 
 @Module({
-  imports: [AuthModule, UsersModule, ConversationsModule, MessagesModule, FriendsModule],
+  imports: [
+    AuthModule,
+    UsersModule,
+    ConversationsModule,
+    MessagesModule,
+    FriendsModule,
+  ],
   providers: [
     ChatGateway,
     ChatMessageService,

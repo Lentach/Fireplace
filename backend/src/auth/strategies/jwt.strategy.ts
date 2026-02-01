@@ -21,7 +21,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     email: string;
     username: string;
     profilePictureUrl: string;
-    activeStatus?: boolean;
   }) {
     const user = await this.usersService.findById(payload.sub);
     if (!user) {
@@ -32,7 +31,6 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       email: user.email,
       username: user.username,
       profilePictureUrl: user.profilePictureUrl,
-      activeStatus: user.activeStatus,
     };
   }
 }

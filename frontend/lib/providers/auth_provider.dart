@@ -35,7 +35,6 @@ class AuthProvider extends ChangeNotifier {
         email: payload['email'] as String,
         username: payload['username'] as String?,
         profilePictureUrl: payload['profilePictureUrl'] as String?,
-        activeStatus: payload['activeStatus'] as bool?,
       );
       notifyListeners();
     }
@@ -67,7 +66,6 @@ class AuthProvider extends ChangeNotifier {
         email: payload['email'] as String,
         username: payload['username'] as String?,
         profilePictureUrl: payload['profilePictureUrl'] as String?,
-        activeStatus: payload['activeStatus'] as bool?,
       );
 
       final prefs = await SharedPreferences.getInstance();

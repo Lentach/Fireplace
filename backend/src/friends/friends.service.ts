@@ -1,4 +1,9 @@
-import { Injectable, ConflictException, NotFoundException, Logger } from '@nestjs/common';
+import {
+  Injectable,
+  ConflictException,
+  NotFoundException,
+  Logger,
+} from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { FriendRequest, FriendRequestStatus } from './friend-request.entity';
@@ -215,15 +220,17 @@ export class FriendsService {
       }
     });
 
-    return Array.from(friendIds).map((id) => {
-      const request = friendRequests.find(
-        (fr) =>
-          (fr.sender.id === userId && fr.receiver.id === id) ||
-          (fr.receiver.id === userId && fr.sender.id === id),
-      );
-      if (!request) return null;
-      return request.sender.id === userId ? request.receiver : request.sender;
-    }).filter((f) => f !== null) as User[];
+    return Array.from(friendIds)
+      .map((id) => {
+        const request = friendRequests.find(
+          (fr) =>
+            (fr.sender.id === userId && fr.receiver.id === id) ||
+            (fr.receiver.id === userId && fr.sender.id === id),
+        );
+        if (!request) return null;
+        return request.sender.id === userId ? request.receiver : request.sender;
+      })
+      .filter((f) => f !== null);
   }
 
   async unfriend(userId1: number, userId2: number): Promise<boolean> {
@@ -244,7 +251,9 @@ export class FriendsService {
       ],
     });
 
-    this.logger.debug(`unfriend: found ${friendships.length} ACCEPTED records between users ${userId1} and ${userId2}`);
+    this.logger.debug(
+      `unfriend: found ${friendships.length} ACCEPTED records between users ${userId1} and ${userId2}`,
+    );
 
     if (friendships.length === 0) {
       return false;

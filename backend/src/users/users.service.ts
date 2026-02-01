@@ -18,7 +18,11 @@ export class UsersService {
     private cloudinaryService: CloudinaryService,
   ) {}
 
-  async create(email: string, password: string, username?: string): Promise<User> {
+  async create(
+    email: string,
+    password: string,
+    username?: string,
+  ): Promise<User> {
     // Check if email is already taken
     const existing = await this.usersRepo.findOne({ where: { email } });
     if (existing) {
@@ -122,18 +126,5 @@ export class UsersService {
 
     // TypeORM cascades will delete related records
     await this.usersRepo.remove(user);
-  }
-
-  async updateActiveStatus(
-    userId: number,
-    activeStatus: boolean,
-  ): Promise<User> {
-    const user = await this.findById(userId);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    user.activeStatus = activeStatus;
-    return this.usersRepo.save(user);
   }
 }

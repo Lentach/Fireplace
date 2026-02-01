@@ -9,7 +9,6 @@ import {
   AcceptFriendRequestDto,
   RejectFriendRequestDto,
   UnfriendDto,
-  UpdateActiveStatusDto,
 } from '../dto/chat.dto';
 import { FriendRequestMapper } from '../mappers/friend-request.mapper';
 import { UserMapper } from '../mappers/user.mapper';
@@ -24,31 +23,6 @@ export class ChatFriendRequestService {
     private readonly usersService: UsersService,
     private readonly conversationsService: ConversationsService,
   ) {}
-
-  private toUserPayloadWithOnline(user: { id: number; activeStatus: boolean }, onlineUsers: Map<number, string>) {
-    return { 
-      ...UserMapper.toPayload(user as any), 
-      isOnline: onlineUsers.has(user.id) && user.activeStatus 
-    };
-  }
-
-  private toConversationPayloadWithOnline(
-    conv: { userOne: { id: number; activeStatus: boolean }; userTwo: { id: number; activeStatus: boolean } },
-    onlineUsers: Map<number, string>,
-  ) {
-    const payload = ConversationMapper.toPayload(conv as any);
-    return {
-      ...payload,
-      userOne: { 
-        ...payload.userOne, 
-        isOnline: onlineUsers.has(conv.userOne.id) && conv.userOne.activeStatus 
-      },
-      userTwo: { 
-        ...payload.userTwo, 
-        isOnline: onlineUsers.has(conv.userTwo.id) && conv.userTwo.activeStatus 
-      },
-    };
-  }
 
   async handleSendFriendRequest(
     client: Socket,
@@ -124,16 +98,14 @@ export class ChatFriendRequestService {
 
         client.emit(
           'friendsList',
-          senderFriends.map((u) => this.toUserPayloadWithOnline(u, onlineUsers)),
+          senderFriends.map((u) => UserMapper.toPayload(u)),
         );
 
         if (recipientSocketId) {
-          server
-            .to(recipientSocketId)
-            .emit(
-              'friendsList',
-              receiverFriends.map((u) => this.toUserPayloadWithOnline(u, onlineUsers)),
-            );
+          server.to(recipientSocketId).emit(
+            'friendsList',
+            receiverFriends.map((u) => UserMapper.toPayload(u)),
+          );
         }
       } catch (error) {
         this.logger.error(
@@ -158,18 +130,16 @@ export class ChatFriendRequestService {
         );
         client.emit(
           'conversationsList',
-          senderConversations.map((c) => this.toConversationPayloadWithOnline(c, onlineUsers)),
+          senderConversations.map((c) => ConversationMapper.toPayload(c)),
         );
 
         if (recipientSocketId) {
           const receiverConversations =
             await this.conversationsService.findByUser(recipient.id);
-          server
-            .to(recipientSocketId)
-            .emit(
-              'conversationsList',
-              receiverConversations.map((c) => this.toConversationPayloadWithOnline(c, onlineUsers)),
-            );
+          server.to(recipientSocketId).emit(
+            'conversationsList',
+            receiverConversations.map((c) => ConversationMapper.toPayload(c)),
+          );
         }
       } catch (error) {
         this.logger.error(
@@ -241,9 +211,7 @@ export class ChatFriendRequestService {
           const count = await this.friendsService.getPendingRequestCount(
             recipient.id,
           );
-          server
-            .to(recipientSocketId)
-            .emit('pendingRequestsCount', { count });
+          server.to(recipientSocketId).emit('pendingRequestsCount', { count });
           this.logger.debug(
             `sendFriendRequest: emitted newFriendRequest + pendingRequestsCount(${count}) to recipient`,
           );
@@ -342,20 +310,21 @@ export class ChatFriendRequestService {
       );
 
       if (senderSocketId) {
-        server
-          .to(senderSocketId)
-          .emit(
-            'conversationsList',
-            senderConversations.map((c) => this.toConversationPayloadWithOnline(c, onlineUsers)),
-          );
+        server.to(senderSocketId).emit(
+          'conversationsList',
+          senderConversations.map((c) =>
+            ConversationMapper.toPayload(c),
+          ),
+        );
       }
 
-      const receiverConversations = await this.conversationsService.findByUser(
-        userId,
-      );
+      const receiverConversations =
+        await this.conversationsService.findByUser(userId);
       client.emit(
         'conversationsList',
-        receiverConversations.map((c) => this.toConversationPayloadWithOnline(c, onlineUsers)),
+        receiverConversations.map((c) =>
+          ConversationMapper.toPayload(c),
+        ),
       );
     } catch (error) {
       this.logger.error(
@@ -367,17 +336,15 @@ export class ChatFriendRequestService {
 
     // Step 4: Update friend requests list and pending count (non-critical)
     try {
-      const pendingRequests = await this.friendsService.getPendingRequests(
-        userId,
-      );
+      const pendingRequests =
+        await this.friendsService.getPendingRequests(userId);
       client.emit(
         'friendRequestsList',
         pendingRequests.map(FriendRequestMapper.toPayload),
       );
 
-      const pendingCount = await this.friendsService.getPendingRequestCount(
-        userId,
-      );
+      const pendingCount =
+        await this.friendsService.getPendingRequestCount(userId);
       client.emit('pendingRequestsCount', { count: pendingCount });
     } catch (error) {
       this.logger.error(
@@ -403,18 +370,16 @@ export class ChatFriendRequestService {
 
       // Send to sender (if online)
       if (senderSocketId) {
-        server
-          .to(senderSocketId)
-          .emit(
-            'friendsList',
-            senderFriends.map((u) => this.toUserPayloadWithOnline(u, onlineUsers)),
-          );
+        server.to(senderSocketId).emit(
+          'friendsList',
+          senderFriends.map((u) => UserMapper.toPayload(u)),
+        );
       }
 
       // Send to receiver (current user)
       client.emit(
         'friendsList',
-        receiverFriends.map((u) => this.toUserPayloadWithOnline(u, onlineUsers)),
+        receiverFriends.map((u) => UserMapper.toPayload(u)),
       );
     } catch (error) {
       this.logger.error(
@@ -467,17 +432,15 @@ export class ChatFriendRequestService {
     const payload = FriendRequestMapper.toPayload(friendRequest);
     client.emit('friendRequestRejected', payload);
 
-    const pendingRequests = await this.friendsService.getPendingRequests(
-      userId,
-    );
+    const pendingRequests =
+      await this.friendsService.getPendingRequests(userId);
     client.emit(
       'friendRequestsList',
       pendingRequests.map(FriendRequestMapper.toPayload),
     );
 
-    const pendingCount = await this.friendsService.getPendingRequestCount(
-      userId,
-    );
+    const pendingCount =
+      await this.friendsService.getPendingRequestCount(userId);
     client.emit('pendingRequestsCount', { count: pendingCount });
   }
 
@@ -495,15 +458,12 @@ export class ChatFriendRequestService {
     client.emit('pendingRequestsCount', { count });
   }
 
-  async handleGetFriends(
-    client: Socket,
-    onlineUsers: Map<number, string>,
-  ) {
+  async handleGetFriends(client: Socket) {
     const userId: number = client.data.user?.id;
     if (!userId) return;
 
     const friends = await this.friendsService.getFriends(userId);
-    const list = friends.map((u) => this.toUserPayloadWithOnline(u, onlineUsers));
+    const list = friends.map((u) => UserMapper.toPayload(u));
     client.emit('friendsList', list);
   }
 
@@ -580,24 +540,25 @@ export class ChatFriendRequestService {
 
     // Step 4: Refresh conversations for both users (non-critical)
     try {
-      const conversations = await this.conversationsService.findByUser(
-        currentUserId,
-      );
+      const conversations =
+        await this.conversationsService.findByUser(currentUserId);
       client.emit(
         'conversationsList',
-        conversations.map((c) => this.toConversationPayloadWithOnline(c, onlineUsers)),
+        conversations.map((c) =>
+          ConversationMapper.toPayload(c),
+        ),
       );
 
       if (otherUserSocketId) {
         const otherConversations = await this.conversationsService.findByUser(
           data.userId,
         );
-        server
-          .to(otherUserSocketId)
-          .emit(
-            'conversationsList',
-            otherConversations.map((c) => this.toConversationPayloadWithOnline(c, onlineUsers)),
-          );
+        server.to(otherUserSocketId).emit(
+          'conversationsList',
+          otherConversations.map((c) =>
+            ConversationMapper.toPayload(c),
+          ),
+        );
       }
     } catch (error) {
       this.logger.error(
@@ -608,12 +569,11 @@ export class ChatFriendRequestService {
 
     // Step 5: Emit updated friends lists to both users (non-critical)
     try {
-      const currentUserFriends = await this.friendsService.getFriends(
-        currentUserId,
-      );
+      const currentUserFriends =
+        await this.friendsService.getFriends(currentUserId);
       client.emit(
         'friendsList',
-        currentUserFriends.map((u) => this.toUserPayloadWithOnline(u, onlineUsers)),
+        currentUserFriends.map((u) => UserMapper.toPayload(u)),
       );
       this.logger.debug(
         `handleUnfriend: emitted friendsList to currentUser, count=${currentUserFriends.length}`,
@@ -623,12 +583,10 @@ export class ChatFriendRequestService {
         const otherUserFriends = await this.friendsService.getFriends(
           data.userId,
         );
-        server
-          .to(otherUserSocketId)
-          .emit(
-            'friendsList',
-            otherUserFriends.map((u) => this.toUserPayloadWithOnline(u, onlineUsers)),
-          );
+        server.to(otherUserSocketId).emit(
+          'friendsList',
+          otherUserFriends.map((u) => UserMapper.toPayload(u)),
+        );
         this.logger.debug(
           `handleUnfriend: emitted friendsList to otherUser, count=${otherUserFriends.length}`,
         );
@@ -639,68 +597,5 @@ export class ChatFriendRequestService {
         error,
       );
     }
-  }
-
-  async handleUpdateActiveStatus(
-    client: Socket,
-    data: any,
-    server: Server,
-    onlineUsers: Map<number, string>,
-  ) {
-    const userId: number = client.data.user?.id;
-    if (!userId) return;
-
-    try {
-      const dto = validateDto(UpdateActiveStatusDto, data);
-      data = dto;
-    } catch (error) {
-      client.emit('error', { message: error.message });
-      return;
     }
-
-    this.logger.debug(
-      `handleUpdateActiveStatus: userId=${userId}, activeStatus=${data.activeStatus}`,
-    );
-
-    // Step 1: Update active status in database (CRITICAL)
-    try {
-      await this.usersService.updateActiveStatus(userId, data.activeStatus);
-    } catch (error) {
-      this.logger.error(
-        'handleUpdateActiveStatus: Failed to update status:',
-        error,
-      );
-      client.emit('error', {
-        message: error.message || 'Failed to update active status',
-      });
-      return; // Critical failure - stop here
-    }
-
-    // Step 2: Notify all friends about the status change (non-critical)
-    try {
-      const friends = await this.friendsService.getFriends(userId);
-
-      for (const friend of friends) {
-        const friendSocketId = onlineUsers.get(friend.id);
-        if (friendSocketId) {
-          server.to(friendSocketId).emit('userStatusChanged', {
-            userId,
-            activeStatus: data.activeStatus,
-          });
-          this.logger.debug(
-            `handleUpdateActiveStatus: notified friend ${friend.id} about status change`,
-          );
-        }
-      }
-    } catch (error) {
-      this.logger.error(
-        'handleUpdateActiveStatus: Failed to notify friends (non-critical):',
-        error,
-      );
-      // Status was updated successfully, just couldn't notify - not critical
-    }
-
-    // Confirm to the user
-    client.emit('activeStatusUpdated', { activeStatus: data.activeStatus });
-  }
 }

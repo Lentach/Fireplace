@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:device_info_plus/device_info_plus.dart';
 import 'package:image_picker/image_picker.dart';
 import '../theme/rpg_theme.dart';
 import '../providers/auth_provider.dart';
@@ -21,25 +20,11 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   String? _deviceName;
-  bool _activeStatus = true;
-  bool _activeStatusSyncedFromAuth = false;
 
   @override
   void initState() {
     super.initState();
     _loadDeviceName();
-  }
-
-  @override
-  void didChangeDependencies() {
-    super.didChangeDependencies();
-    if (!_activeStatusSyncedFromAuth) {
-      _activeStatusSyncedFromAuth = true;
-      final auth = context.read<AuthProvider>();
-      setState(() {
-        _activeStatus = auth.currentUser?.activeStatus ?? true;
-      });
-    }
   }
 
   Future<void> _loadDeviceName() async {
@@ -49,10 +34,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (kIsWeb) {
         name = 'Web Browser';
       } else {
-        final deviceInfo = DeviceInfoPlugin();
-        // Native platforms need dart:io imports which are handled by image_picker
-        // For web, we show 'Web Browser' above
-        // For other native platforms, show generic name
+        // Native platforms: show generic name (DeviceInfoPlugin could be used for real name)
         name = 'Native Device';
       }
     } catch (e) {
@@ -180,27 +162,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _updateActiveStatus(bool value) async {
-    setState(() => _activeStatus = value);
-    try {
-      final chat = context.read<ChatProvider>();
-      chat.socket.updateActiveStatus(value);
-    } catch (e) {
-      setState(() => _activeStatus = !value); // Revert on error
-      if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Failed to update status: ${e.toString()}',
-              style: RpgTheme.bodyFont(color: Colors.white),
-            ),
-            backgroundColor: const Color(0xFFFF6666),
-          ),
-        );
-      }
-    }
-  }
-
   Widget _buildSettingsTile({
     required IconData icon,
     required String title,
@@ -280,8 +241,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       email: auth.currentUser?.email ?? '',
                       radius: 60,
                       profilePictureUrl: auth.currentUser?.profilePictureUrl,
-                      showOnlineIndicator: true,
-                      isOnline: _activeStatus && chat.socket.isConnected,
                     ),
                     Positioned(
                       bottom: 0,
@@ -331,16 +290,6 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
 
             // Settings Tiles
-            _buildSettingsTile(
-              icon: Icons.circle,
-              title: 'Active Status',
-              trailing: Switch(
-                value: _activeStatus,
-                onChanged: _updateActiveStatus,
-                activeTrackColor: theme.colorScheme.primary,
-              ),
-            ),
-
             _buildSettingsTile(
               icon: Icons.palette_outlined,
               title: 'Dark Mode',

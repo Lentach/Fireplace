@@ -177,10 +177,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
 
     final otherUser = _getOtherUser();
-    final showOnline = otherUser != null &&
-        (otherUser.activeStatus == true) &&
-        (otherUser.isOnline == true);
-
     if (widget.isEmbedded) {
       final borderColor = isDark
           ? RpgTheme.convItemBorder
@@ -199,8 +195,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   email: contactName,
                   radius: 18,
                   profilePictureUrl: otherUser?.profilePictureUrl,
-                  showOnlineIndicator: true,
-                  isOnline: showOnline,
                 ),
                 const SizedBox(width: 12),
                 Text(
@@ -234,8 +228,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               email: contactName,
               radius: 16,
               profilePictureUrl: otherUser?.profilePictureUrl,
-              showOnlineIndicator: true,
-              isOnline: showOnline,
             ),
             const SizedBox(width: 10),
             Expanded(

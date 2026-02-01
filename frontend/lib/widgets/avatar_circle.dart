@@ -6,16 +6,12 @@ class AvatarCircle extends StatefulWidget {
   final String email;
   final double radius;
   final String? profilePictureUrl;
-  final bool showOnlineIndicator;
-  final bool isOnline;
 
   const AvatarCircle({
     super.key,
     required this.email,
     this.radius = 22,
     this.profilePictureUrl,
-    this.showOnlineIndicator = false,
-    this.isOnline = false,
   });
 
   @override
@@ -52,9 +48,6 @@ class _AvatarCircleState extends State<AvatarCircle> {
         : const [RpgTheme.primaryLight, RpgTheme.primaryLightHover];
     final letterColor =
         isDark ? RpgTheme.background : Colors.white;
-    final indicatorBorderColor = isDark
-        ? RpgTheme.background
-        : Theme.of(context).colorScheme.surface;
 
     return Stack(
       children: [
@@ -143,25 +136,6 @@ class _AvatarCircleState extends State<AvatarCircle> {
                   ),
                 ),
         ),
-
-        // Online indicator
-        if (widget.showOnlineIndicator)
-          Positioned(
-            right: 0,
-            bottom: 0,
-            child: Container(
-              width: widget.radius * 0.4,
-              height: widget.radius * 0.4,
-              decoration: BoxDecoration(
-                shape: BoxShape.circle,
-                color: widget.isOnline ? Colors.green : Colors.grey,
-                border: Border.all(
-                  color: indicatorBorderColor,
-                  width: 2,
-                ),
-              ),
-            ),
-          ),
       ],
     );
   }

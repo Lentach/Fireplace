@@ -1,4 +1,8 @@
-import { Injectable, UnauthorizedException, BadRequestException } from '@nestjs/common';
+import {
+  Injectable,
+  UnauthorizedException,
+  BadRequestException,
+} from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { UsersService } from '../users/users.service';
@@ -7,7 +11,8 @@ import { UsersService } from '../users/users.service';
 export class AuthService {
   // Password strength requirements
   private PASSWORD_MIN_LENGTH = 8;
-  private PASSWORD_REGEX = /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d\s@$!%*?&]{8,}$/;
+  private PASSWORD_REGEX =
+    /^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d\s@$!%*?&]{8,}$/;
 
   constructor(
     private usersService: UsersService,
@@ -52,7 +57,6 @@ export class AuthService {
       email: user.email,
       username: user.username,
       profilePictureUrl: user.profilePictureUrl,
-      activeStatus: user.activeStatus,
     };
     return {
       access_token: this.jwtService.sign(payload),

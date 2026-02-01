@@ -52,10 +52,6 @@ class ConversationTile extends StatelessWidget {
               AvatarCircle(
                 email: displayName,
                 profilePictureUrl: otherUser?.profilePictureUrl,
-                showOnlineIndicator: otherUser != null,
-                isOnline: otherUser != null &&
-                    (otherUser!.activeStatus == true) &&
-                    (otherUser!.isOnline == true),
               ),
               const SizedBox(width: 12),
               Expanded(

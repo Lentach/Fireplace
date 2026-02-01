@@ -4,10 +4,7 @@ import { ConversationsService } from '../../conversations/conversations.service'
 import { UsersService } from '../../users/users.service';
 import { FriendsService } from '../../friends/friends.service';
 import { validateDto } from '../utils/dto.validator';
-import {
-  StartConversationDto,
-  DeleteConversationDto,
-} from '../dto/chat.dto';
+import { StartConversationDto, DeleteConversationDto } from '../dto/chat.dto';
 import { ConversationMapper } from '../mappers/conversation.mapper';
 import { UserMapper } from '../mappers/user.mapper';
 
@@ -54,46 +51,29 @@ export class ChatConversationService {
     const conversations = await this.conversationsService.findByUser(userId);
     client.emit(
       'conversationsList',
-      conversations.map((c) => this.toConversationPayloadWithOnline(c, onlineUsers)),
+      conversations.map((c) => ConversationMapper.toPayload(c as any)),
     );
 
     client.emit('openConversation', { conversationId: conversation.id });
   }
 
-  private toConversationPayloadWithOnline(
-    conv: { id: number; userOne: { id: number; activeStatus: boolean }; userTwo: { id: number; activeStatus: boolean }; createdAt: Date },
-    onlineUsers: Map<number, string>,
-  ) {
-    const payload = ConversationMapper.toPayload(conv as any);
-    return {
-      ...payload,
-      userOne: { 
-        ...payload.userOne, 
-        isOnline: onlineUsers.has(conv.userOne.id) && conv.userOne.activeStatus 
-      },
-      userTwo: { 
-        ...payload.userTwo, 
-        isOnline: onlineUsers.has(conv.userTwo.id) && conv.userTwo.activeStatus 
-      },
-    };
-  }
-
-  async handleGetConversations(
-    client: Socket,
-    onlineUsers: Map<number, string>,
-  ) {
+  async handleGetConversations(client: Socket) {
     const userId: number = client.data.user?.id;
     if (!userId) {
       this.logger.warn('handleGetConversations: no userId in client.data');
       return;
     }
 
-    this.logger.debug(`handleGetConversations: userId=${userId}, email=${client.data.user?.email}`);
+    this.logger.debug(
+      `handleGetConversations: userId=${userId}, email=${client.data.user?.email}`,
+    );
     const conversations = await this.conversationsService.findByUser(userId);
-    this.logger.debug(`handleGetConversations: found ${conversations.length} conversations for userId=${userId}`);
+    this.logger.debug(
+      `handleGetConversations: found ${conversations.length} conversations for userId=${userId}`,
+    );
 
     const list = conversations.map((conv) =>
-      this.toConversationPayloadWithOnline(conv as any, onlineUsers),
+      ConversationMapper.toPayload(conv as any),
     );
     client.emit('conversationsList', list);
   }
@@ -154,41 +134,30 @@ export class ChatConversationService {
     const conversations = await this.conversationsService.findByUser(userId);
     client.emit(
       'conversationsList',
-      conversations.map((c) => this.toConversationPayloadWithOnline(c as any, onlineUsers)),
+      conversations.map((c) => ConversationMapper.toPayload(c as any)),
     );
 
     if (otherUserSocketId) {
-      const otherConversations = await this.conversationsService.findByUser(
-        otherUserId,
+      const otherConversations =
+        await this.conversationsService.findByUser(otherUserId);
+      server.to(otherUserSocketId).emit(
+        'conversationsList',
+        otherConversations.map((c) => ConversationMapper.toPayload(c as any)),
       );
-      server
-        .to(otherUserSocketId)
-        .emit(
-          'conversationsList',
-          otherConversations.map((c) => this.toConversationPayloadWithOnline(c as any, onlineUsers)),
-        );
     }
 
     const friends = await this.friendsService.getFriends(userId);
     client.emit(
       'friendsList',
-      friends.map((u) => ({ 
-        ...UserMapper.toPayload(u), 
-        isOnline: onlineUsers.has(u.id) && u.activeStatus 
-      })),
+      friends.map((u) => UserMapper.toPayload(u)),
     );
 
     if (otherUserSocketId) {
       const otherFriends = await this.friendsService.getFriends(otherUserId);
-      server
-        .to(otherUserSocketId)
-        .emit(
-          'friendsList',
-          otherFriends.map((u) => ({ 
-            ...UserMapper.toPayload(u), 
-            isOnline: onlineUsers.has(u.id) && u.activeStatus 
-          })),
-        );
+      server.to(otherUserSocketId).emit(
+        'friendsList',
+        otherFriends.map((u) => UserMapper.toPayload(u)),
+      );
     }
   }
 }

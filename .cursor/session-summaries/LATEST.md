@@ -1,10 +1,10 @@
 # Ostatnia sesja (najnowsze podsumowanie)
 
 **Data:** 2026-02-01  
-**Pełne podsumowanie:** [2026-02-01-active-status-fix.md](2026-02-01-active-status-fix.md)
+**Pełne podsumowanie:** [2026-02-01-remove-active-status.md](2026-02-01-remove-active-status.md)
 
 ## Skrót
-- **Active Status Green Dot Fix:** Naprawiono logikę zielonego kółka - teraz pokazuje się tylko gdy `activeStatus == true` AND `isOnline == true`. Backend sprawdza oba warunki w `toConversationPayloadWithOnline()` (2 pliki) i wszystkich emisjach `friendsList` (4 lokalizacje). Settings screen używa `_activeStatus && chat.socket.isConnected`. Dodano `SocketService.isConnected` getter.
+- **Remove Active Status Toggle:** Całkowicie usunięto toggle "Active Status" z ustawień. Zielone kółko = użytkownik połączony (WebSocket), szare = offline. Logika: `isOnline: onlineUsers.has(userId)` (tylko połączenie). Usunięto: kolumnę activeStatus, endpoint PATCH /users/active-status, handler updateActiveStatus, event userStatusChanged, cały kod frontendu z toggle.
 - Backend: chat-conversation.service.ts, chat-friend-request.service.ts - wszystkie payload'y z `isOnline` sprawdzają `onlineUsers.has(id) && activeStatus`
 - Frontend: SocketService.isConnected, settings_screen avatar fix, ChatProvider connection logging
 - Wszystkie testy kompilacji przeszły pomyślnie. Manual testing wymaga restartu Docker Desktop.

@@ -219,36 +219,6 @@ class ChatProvider extends ChangeNotifier {
         }
         notifyListeners();
       },
-      onUserStatusChanged: (data) {
-        final userId = (data as Map<String, dynamic>)['userId'] as int;
-        final activeStatus = data['activeStatus'] as bool;
-        _friends = _friends.map((f) {
-          if (f.id == userId) {
-            return f.copyWith(activeStatus: activeStatus);
-          }
-          return f;
-        }).toList();
-        _conversations = _conversations.map((c) {
-          if (c.userOne.id == userId) {
-            return ConversationModel(
-              id: c.id,
-              userOne: c.userOne.copyWith(activeStatus: activeStatus),
-              userTwo: c.userTwo,
-              createdAt: c.createdAt,
-            );
-          }
-          if (c.userTwo.id == userId) {
-            return ConversationModel(
-              id: c.id,
-              userOne: c.userOne,
-              userTwo: c.userTwo.copyWith(activeStatus: activeStatus),
-              createdAt: c.createdAt,
-            );
-          }
-          return c;
-        }).toList();
-        notifyListeners();
-      },
       onDisconnect: (_) {},
     );
   }

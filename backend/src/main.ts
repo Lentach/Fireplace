@@ -15,9 +15,11 @@ async function bootstrap() {
 
   // Allow cross-origin requests from the Flutter frontend
   // Use ConfigService for environment-based CORS instead of hardcoded origin
-  const allowedOrigins = (configService.get('ALLOWED_ORIGINS') || 'http://localhost:3000')
+  const allowedOrigins = (
+    configService.get('ALLOWED_ORIGINS') || 'http://localhost:3000'
+  )
     .split(',')
-    .map(o => o.trim());
+    .map((o) => o.trim());
   app.enableCors({ origin: allowedOrigins });
 
   const port = configService.get('PORT') || 3000;

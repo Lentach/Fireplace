@@ -26,9 +26,6 @@ export class User {
   @Column({ nullable: true })
   profilePicturePublicId: string;
 
-  @Column({ default: true })
-  activeStatus: boolean;
-
   @CreateDateColumn()
   createdAt: Date;
 }

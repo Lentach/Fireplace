@@ -1,4 +1,4 @@
-import { IsString, MinLength, Matches, IsBoolean } from 'class-validator';
+import { IsString, MinLength, Matches } from 'class-validator';
 
 export class ResetPasswordDto {
   @IsString()
@@ -17,9 +17,4 @@ export class DeleteAccountDto {
   @IsString()
   @MinLength(1)
   password: string;
-}
-
-export class UpdateActiveStatusDto {
-  @IsBoolean()
-  activeStatus: boolean;
 }

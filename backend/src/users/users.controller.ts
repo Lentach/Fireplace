@@ -2,7 +2,6 @@ import {
   Controller,
   Post,
   Delete,
-  Patch,
   Body,
   UseGuards,
   Request,
@@ -17,11 +16,7 @@ import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { UsersService } from './users.service';
-import {
-  ResetPasswordDto,
-  DeleteAccountDto,
-  UpdateActiveStatusDto,
-} from './dto/user.dto';
+import { ResetPasswordDto, DeleteAccountDto } from './dto/user.dto';
 
 @Controller('users')
 export class UsersController {
@@ -62,12 +57,11 @@ export class UsersController {
 
     const userId = req.user.id;
 
-    const { secureUrl, publicId } =
-      await this.cloudinaryService.uploadAvatar(
-        userId,
-        file.buffer,
-        file.mimetype,
-      );
+    const { secureUrl, publicId } = await this.cloudinaryService.uploadAvatar(
+      userId,
+      file.buffer,
+      file.mimetype,
+    );
 
     this.logger.debug(`User ${userId} uploaded profile picture to Cloudinary`);
 
@@ -110,25 +104,5 @@ export class UsersController {
     await this.usersService.deleteAccount(userId, dto.password);
 
     return { message: 'Account deleted successfully' };
-  }
-
-  @Patch('active-status')
-  @UseGuards(JwtAuthGuard)
-  @Throttle({ default: { limit: 20, ttl: 3600000 } })
-  async updateActiveStatus(@Body() dto: UpdateActiveStatusDto, @Request() req) {
-    const userId = req.user.id;
-
-    this.logger.debug(
-      `User ${userId} updating active status to ${dto.activeStatus}`,
-    );
-
-    const user = await this.usersService.updateActiveStatus(
-      userId,
-      dto.activeStatus,
-    );
-
-    return {
-      activeStatus: user.activeStatus,
-    };
   }
 }

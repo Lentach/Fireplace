@@ -5,8 +5,6 @@ class SocketService {
 
   io.Socket? get socket => _socket;
 
-  bool get isConnected => _socket != null && _socket!.connected;
-
   void connect({
     required String baseUrl,
     required String token,
@@ -26,7 +24,6 @@ class SocketService {
     required void Function(dynamic) onPendingRequestsCount,
     required void Function(dynamic) onFriendsList,
     required void Function(dynamic) onUnfriended,
-    required void Function(dynamic) onUserStatusChanged,
   }) {
     // Defensive cleanup: ensure any previous socket is fully disposed
     // before creating a new one (prevents cache reuse)
@@ -62,7 +59,6 @@ class SocketService {
     _socket!.on('pendingRequestsCount', onPendingRequestsCount);
     _socket!.on('friendsList', onFriendsList);
     _socket!.on('unfriended', onUnfriended);
-    _socket!.on('userStatusChanged', onUserStatusChanged);
     _socket!.onDisconnect(onDisconnect);
 
     _socket!.connect();
@@ -129,12 +125,6 @@ class SocketService {
   void unfriend(int userId) {
     _socket?.emit('unfriend', {
       'userId': userId,
-    });
-  }
-
-  void updateActiveStatus(bool activeStatus) {
-    _socket?.emit('updateActiveStatus', {
-      'activeStatus': activeStatus,
     });
   }
 

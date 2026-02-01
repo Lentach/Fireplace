@@ -7,11 +7,10 @@ export class UserMapper {
       email: user.email,
       username: user.username,
       profilePictureUrl: user.profilePictureUrl,
-      activeStatus: user.activeStatus,
     };
   }
 
   static toPayloadArray(users: User[]) {
-    return users.map(u => this.toPayload(u));
+    return users.map((u) => this.toPayload(u));
   }
 }

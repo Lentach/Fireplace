@@ -4,6 +4,13 @@
 
 **MANDATORY RULE: Keep This File Up To Date**
 
+**After EVERY code change (bug fix, new feature, refactor, config change), update this file immediately.** This is the single source of truth for future agents.A future agent must be able to read ONLY this file and understand the current state of the project without reading every source file
+
+**Sessions:** At the start, the agent reads `.cursor/session-summaries/LATEST.md`; at the end, it writes a summary to `.cursor/session-summaries/YYYY-MM-DD-session.md` and updates `LATEST.md`. Rule: `.cursor/rules/session-summaries.mdc`
+
+**Code language:** Always write code in English (variables, functions, comments, commits). Rule: `.cursor/rules/code-in-english.mdc`
+
+
 ---
 
 ## ✅ RECENT CHANGE - Light Mode Color Renovation (2026-02-01)
@@ -20,7 +27,7 @@
 
 ---
 
-## ✅ RECENT CHANGE - Light/Dark Theme + Active Status Green Dot (2026-02-01)
+## ✅ RECENT CHANGE - Light/Dark Theme + Online Indicator (2026-02-01)
 
 **Theme:**
 - Default theme preference is **dark** (was system). SettingsProvider default `_darkModePreference = 'dark'`, load fallback `'dark'`.
@@ -28,19 +35,8 @@
 - **main.dart:** `theme: RpgTheme.themeDataLight`, `darkTheme: RpgTheme.themeData` so ThemeMode.light/dark switch immediately.
 - Settings screen: tile label "Dark Mode" → "Theme" with subtitle "System / Light / Dark"; Settings tiles use theme-aware colors (colorScheme.surface, onSurface).
 
-**Active status + green dot:**
-- **JWT:** AuthService.login() and JwtStrategy.validate() include `activeStatus` in payload/return so frontend gets it on login and from saved token.
-- **Backend:** All `friendsList` and `conversationsList` emissions now include `isOnline: onlineUsers.has(user.id) && user.activeStatus` - green dot shows ONLY when user is BOTH connected via WebSocket AND has activeStatus enabled. Both `toConversationPayloadWithOnline()` methods (in chat-conversation.service.ts and chat-friend-request.service.ts) check BOTH conditions. All friendsList emissions (4 locations) also check BOTH conditions.
-- **Frontend:** UserModel has `isOnline` (bool?); AuthProvider sets `activeStatus` from JWT. SocketService has `isConnected` getter (`_socket != null && _socket!.connected`).
-- **Settings screen:** Own avatar shows `isOnline: _activeStatus && chat.socket.isConnected` - green dot only when toggle ON and WebSocket connected. Always shows indicator (`showOnlineIndicator: true`), but color depends on BOTH conditions.
-- **Green dot logic:** Shown only when `user.activeStatus == true` AND `onlineUsers.has(user.id) == true`. ConversationTile and ChatDetailScreen pass `otherUser` (UserModel) to AvatarCircle with `showOnlineIndicator: true` and `isOnline: (activeStatus && isOnline)` check from backend. ChatProvider.getOtherUser(conv) helper; onUserStatusChanged updates both _friends and _conversations so green dot updates in real time when a friend toggles status.
-- **Connection logging:** ChatProvider.connect() and disconnect() now log connection state for debugging.
+**Online indicator / isOnline / active status:** Removed entirely. No green/gray dot, no isOnline in payloads or UserModel, no isConnected getter. Backend no longer adds isOnline to conversationsList or friendsList.
 
-**After EVERY code change (bug fix, new feature, refactor, config change), update this file immediately.** This is the single source of truth for future agents.A future agent must be able to read ONLY this file and understand the current state of the project without reading every source file
-
-**Sessions:** At the start, the agent reads `.cursor/session-summaries/LATEST.md`; at the end, it writes a summary to `.cursor/session-summaries/YYYY-MM-DD-session.md` and updates `LATEST.md`. Rule: `.cursor/rules/session-summaries.mdc`
-
-**Code language:** Always write code in English (variables, functions, comments, commits). Rule: `.cursor/rules/code-in-english.mdc`
 
 ---
 
@@ -168,7 +164,7 @@ cd frontend && flutter build web
 | **ChatDetailScreen** | Full chat view with message input |
 | **FriendRequestsScreen** | Accept/reject pending requests, auto-navigate on accept |
 | **NewChatScreen** | Send friend request by email |
-| **SettingsScreen** | User settings: profile picture, active status, dark mode, password reset, account deletion |
+| **SettingsScreen** | User settings: profile picture, dark mode, password reset, account deletion |
 | **RpgTheme** | Retro RPG color palette + Press Start 2P/Inter fonts |
 
 ---
@@ -185,7 +181,6 @@ users
   ├─ password (bcrypt)
   ├─ profilePictureUrl (nullable) — full Cloudinary URL or legacy relative path
   ├─ profilePicturePublicId (nullable) — Cloudinary public_id for deletion
-  ├─ activeStatus (boolean, default: true)
   └─ createdAt
 
 conversations
@@ -221,19 +216,18 @@ friend_requests
 |-------|---------|----------|
 | `sendMessage` | `{recipientId, content}` | `messageSent` (sender), `newMessage` (recipient) |
 | `getMessages` | `{conversationId}` | `messageHistory` (last 50, oldest first) |
-| `getConversations` | — | `conversationsList` (userOne/userTwo have `isOnline`) |
+| `getConversations` | — | `conversationsList` |
 | `deleteConversation` | `{conversationId}` | Unfriends + `conversationsList` refreshed (both users) |
 | `sendFriendRequest` | `{recipientEmail}` | `friendRequestSent` (sender), `newFriendRequest` + `pendingRequestsCount` (recipient). If mutual: auto-accept both |
 | `acceptFriendRequest` | `{requestId}` | `friendRequestAccepted`, `conversationsList`, `friendsList`, `openConversation` (both users) |
 | `rejectFriendRequest` | `{requestId}` | `friendRequestRejected`, `friendRequestsList`, `pendingRequestsCount` (receiver only) |
 | `getFriendRequests` | — | `friendRequestsList`, `pendingRequestsCount` |
-| `getFriends` | — | `friendsList` (each user has `isOnline`) |
+| `getFriends` | — | `friendsList` |
 | `unfriend` | `{userId}` | `unfriended` (both users), `conversationsList` refreshed |
-| `updateActiveStatus` | `{activeStatus}` | `userStatusChanged` (to all friends) |
 
 ### Server → Client
 
-`conversationsList` | `messageHistory` | `messageSent` | `newMessage` | `openConversation` | `error` | `newFriendRequest` | `friendRequestSent` | `friendRequestAccepted` | `friendRequestRejected` | `friendRequestsList` | `pendingRequestsCount` | `friendsList` | `unfriended` | `userStatusChanged`
+`conversationsList` | `messageHistory` | `messageSent` | `newMessage` | `openConversation` | `error` | `newFriendRequest` | `friendRequestSent` | `friendRequestAccepted` | `friendRequestRejected` | `friendRequestsList` | `pendingRequestsCount` | `friendsList` | `unfriended`
 
 **Connection:** Socket.IO with JWT token via query param `?token=xxx`. Server tracks online users via `Map<userId, socketId>`.
 
@@ -373,14 +367,13 @@ if (records.length > 0) {
 | POST /auth/register | `{email, username, password}` | `{id, email, username}` |
 | POST /auth/login | `{email, password}` | `{access_token}` |
 
-**User Management (4 endpoints, all require JWT auth):**
+**User Management (3 endpoints, all require JWT auth):**
 
 | Endpoint | Method | Body | Response |
 |----------|--------|------|----------|
 | /users/profile-picture | POST | `multipart/form-data {file}` | `{profilePictureUrl}` (Cloudinary URL) |
 | /users/reset-password | POST | `{oldPassword, newPassword}` | `200 OK` |
 | /users/account | DELETE | `{password}` | `200 OK` |
-| /users/active-status | PATCH | `{activeStatus}` | `200 OK` |
 
 **All chat operations use WebSocket.**
 
@@ -440,29 +433,26 @@ if (records.length > 0) {
 - Services injected via constructor, receive server and onlineUsers Map as parameters
 
 ✅ **User Settings Feature (Phase 1 & 2 - 2026-01-31)**
-**Backend (Phase 1 + Cloudinary 2026-02-01):**
-- Added `profilePictureUrl` (varchar, nullable), `profilePicturePublicId` (nullable), `activeStatus` (boolean, default: true) to users table
-- Created `UsersController` with 4 new REST endpoints (profile picture, reset password, delete account, active status)
-- Created 3 new DTOs: `ResetPasswordDto`, `DeleteAccountDto`, `UpdateActiveStatusDto`
+**Backend (Phase 1 + Cloudinary 2026-02-01, active status toggle removed 2026-02-01):**
+- Added `profilePictureUrl` (varchar, nullable), `profilePicturePublicId` (nullable) to users table
+- Created `UsersController` with 3 REST endpoints (profile picture, reset password, delete account)
+- Created 2 DTOs: `ResetPasswordDto`, `DeleteAccountDto`
 - Profile pictures: Multer memoryStorage → Cloudinary upload (JPEG/PNG only, max 5MB)
 - CloudinaryModule + CloudinaryService for upload/delete
-- Updated `AuthService.login()` to include `profilePictureUrl` and `activeStatus` in JWT payload (2026-02-01: activeStatus in JWT; isOnline in friends/conversations payloads)
-- Updated `JwtStrategy.validate()` to extract new user fields from JWT (including activeStatus)
-- Added WebSocket handler `updateActiveStatus` in `ChatFriendRequestService` → broadcasts `userStatusChanged` to all friends
-- Updated `UserMapper.toPayload()` to include `profilePictureUrl` and `activeStatus`
+- Updated `AuthService.login()` to include `profilePictureUrl` in JWT payload
+- Updated `JwtStrategy.validate()` to extract user fields from JWT
+- Updated `UserMapper.toPayload()` to include `profilePictureUrl`
 - npm packages: `multer`, `@types/multer`, `@nestjs/platform-express`
 
-**Frontend (Phase 2):**
-- Updated `UserModel` with `profilePictureUrl`, `activeStatus`, and `isOnline` (bool?) + `copyWith()` method
+**Frontend (Phase 2, active status toggle removed 2026-02-01):**
+- Updated `UserModel` with `profilePictureUrl` + `copyWith()` method
 - Created `SettingsProvider` for dark mode preference persistence (system/light/dark)
 - Updated `AuthProvider` with 3 new methods: `updateProfilePicture()`, `resetPassword()`, `deleteAccount()`
 - Updated `AuthProvider.logout()` to preserve dark mode preference after logout
 - Updated `ChatProvider` with `socket` getter to expose `SocketService`
-- Added `ChatProvider.onUserStatusChanged()` listener to update friends' active status in real-time
-- Updated `ApiService` with 4 new methods matching backend endpoints
-- Updated `SocketService` with `updateActiveStatus()` emit and `userStatusChanged` listener
-- Completely redesigned `SettingsScreen` with 6 tiles: profile header, active status toggle, dark mode dropdown, privacy (coming soon), devices, reset password, delete account, logout button
-- Rewrote `AvatarCircle` as `StatefulWidget` with profile picture support, fallback to gradient, online indicator (green/grey dot), loading state
+- Updated `ApiService` with 3 new methods matching backend endpoints
+- Completely redesigned `SettingsScreen` with 5 tiles: profile header, dark mode dropdown, privacy (coming soon), devices, reset password, delete account, logout button
+- Rewrote `AvatarCircle` as `StatefulWidget` with profile picture support, fallback to gradient, loading state
 - Created 3 new dialogs: `ResetPasswordDialog`, `DeleteAccountDialog`, `ProfilePictureDialog` (camera vs gallery)
 - Updated `main.dart` to include `SettingsProvider` in `MultiProvider` and consume dark mode preference
 - Flutter packages: `image_picker: ^1.1.2`, `device_info_plus: ^11.5.0`
@@ -568,7 +558,7 @@ if (records.length > 0) {
 - **ChatProvider:** WebSocket connection → listen to all events → manage state. Key methods:
   - `openConversation(conversationId)` — clears messages, fetches history
   - `consumePendingOpen()` — returns and clears `_pendingOpenConversationId` for navigation
-  - `socket` getter — exposes `SocketService` for direct WebSocket operations (e.g., `updateActiveStatus()`)
+  - `socket` getter — exposes `SocketService`
 - **SettingsProvider:** Dark mode preference (system/light/dark) → saved to SharedPreferences → survives logout
 
 ### Navigation
@@ -626,7 +616,7 @@ multer                              # File upload middleware (memoryStorage)
 ## 🚧 KNOWN LIMITATIONS
 
 - ❌ No user search/discovery — must know exact email to send friend request
-- ✅ User profiles: profile pictures, active status, password reset, account deletion
+- ✅ User profiles: profile pictures, password reset, account deletion
 - ❌ No typing indicators, read receipts, message editing/deletion
 - ✅ Message pagination supported (limit/offset params, default 50 messages)
 - ❌ No last message in `conversationsList` — track client-side

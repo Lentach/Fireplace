@@ -2,7 +2,10 @@ import { plainToInstance } from 'class-transformer';
 import { validateSync } from 'class-validator';
 import { BadRequestException } from '@nestjs/common';
 
-export function validateDto<T extends object>(dtoClass: new () => T, data: unknown): T {
+export function validateDto<T extends object>(
+  dtoClass: new () => T,
+  data: unknown,
+): T {
   const instance = plainToInstance(dtoClass, data);
   const errors = validateSync(instance);
 

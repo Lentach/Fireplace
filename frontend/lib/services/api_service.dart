@@ -124,20 +124,4 @@ class ApiService {
       throw Exception(data['message'] ?? 'Account deletion failed');
     }
   }
-
-  Future<void> updateActiveStatus(String token, bool activeStatus) async {
-    final response = await http.patch(
-      Uri.parse('$baseUrl/users/active-status'),
-      headers: {
-        'Content-Type': 'application/json',
-        'Authorization': 'Bearer $token',
-      },
-      body: jsonEncode({'activeStatus': activeStatus}),
-    );
-
-    if (response.statusCode != 200) {
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      throw Exception(data['message'] ?? 'Active status update failed');
-    }
-  }
 }

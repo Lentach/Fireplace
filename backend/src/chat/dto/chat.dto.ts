@@ -6,7 +6,6 @@ import {
   MaxLength,
   IsOptional,
   Min,
-  IsBoolean,
 } from 'class-validator';
 
 export class SendMessageDto {
@@ -72,9 +71,4 @@ export class UnfriendDto {
   @IsNumber()
   @IsPositive()
   userId: number;
-}
-
-export class UpdateActiveStatusDto {
-  @IsBoolean()
-  activeStatus: boolean;
 }

@@ -40,16 +40,16 @@ export class ConversationsService {
   // All conversations for a given user
   async findByUser(userId: number): Promise<Conversation[]> {
     return this.convRepo.find({
-      where: [
-        { userOne: { id: userId } },
-        { userTwo: { id: userId } },
-      ],
+      where: [{ userOne: { id: userId } }, { userTwo: { id: userId } }],
       relations: ['userOne', 'userTwo'],
     });
   }
 
   // Find conversation between two specific users
-  async findByUsers(userId1: number, userId2: number): Promise<Conversation | null> {
+  async findByUsers(
+    userId1: number,
+    userId2: number,
+  ): Promise<Conversation | null> {
     return this.convRepo.findOne({
       where: [
         { userOne: { id: userId1 }, userTwo: { id: userId2 } },
