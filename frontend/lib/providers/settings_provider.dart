@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 class SettingsProvider extends ChangeNotifier {
-  String _darkModePreference = 'system'; // 'system', 'light', 'dark'
+  String _darkModePreference = 'dark'; // 'system', 'light', 'dark'
 
   String get darkModePreference => _darkModePreference;
 
@@ -23,7 +23,7 @@ class SettingsProvider extends ChangeNotifier {
 
   Future<void> _loadDarkModePreference() async {
     final prefs = await SharedPreferences.getInstance();
-    _darkModePreference = prefs.getString('dark_mode_preference') ?? 'system';
+    _darkModePreference = prefs.getString('dark_mode_preference') ?? 'dark';
     notifyListeners();
   }
 

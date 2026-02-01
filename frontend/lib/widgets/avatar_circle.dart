@@ -46,6 +46,15 @@ class _AvatarCircleState extends State<AvatarCircle> {
   @override
   Widget build(BuildContext context) {
     final letter = widget.email.isNotEmpty ? widget.email[0].toUpperCase() : '?';
+    final isDark = RpgTheme.isDark(context);
+    final gradientColors = isDark
+        ? const [RpgTheme.purple, RpgTheme.gold]
+        : const [RpgTheme.primaryLight, RpgTheme.primaryLightHover];
+    final letterColor =
+        isDark ? RpgTheme.background : Colors.white;
+    final indicatorBorderColor = isDark
+        ? RpgTheme.background
+        : Theme.of(context).colorScheme.surface;
 
     return Stack(
       children: [
@@ -57,10 +66,10 @@ class _AvatarCircleState extends State<AvatarCircle> {
             shape: BoxShape.circle,
             gradient: widget.profilePictureUrl != null && !_imageLoadError
                 ? null
-                : const LinearGradient(
+                : LinearGradient(
                     begin: Alignment.topLeft,
                     end: Alignment.bottomRight,
-                    colors: [RpgTheme.purple, RpgTheme.gold],
+                    colors: gradientColors,
                   ),
           ),
           child: widget.profilePictureUrl != null && !_imageLoadError
@@ -77,12 +86,12 @@ class _AvatarCircleState extends State<AvatarCircle> {
                         }
                       });
                       return Container(
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           gradient: LinearGradient(
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
-                            colors: [RpgTheme.purple, RpgTheme.gold],
+                            colors: gradientColors,
                           ),
                         ),
                         alignment: Alignment.center,
@@ -90,7 +99,7 @@ class _AvatarCircleState extends State<AvatarCircle> {
                           letter,
                           style: RpgTheme.bodyFont(
                             fontSize: widget.radius * 0.8,
-                            color: RpgTheme.background,
+                            color: letterColor,
                             fontWeight: FontWeight.w700,
                           ),
                         ),
@@ -99,12 +108,12 @@ class _AvatarCircleState extends State<AvatarCircle> {
                     loadingBuilder: (context, child, loadingProgress) {
                       if (loadingProgress == null) return child;
                       return Container(
-                        decoration: const BoxDecoration(
+                        decoration: BoxDecoration(
                           shape: BoxShape.circle,
                           gradient: LinearGradient(
                             begin: Alignment.topLeft,
                             end: Alignment.bottomRight,
-                            colors: [RpgTheme.purple, RpgTheme.gold],
+                            colors: gradientColors,
                           ),
                         ),
                         alignment: Alignment.center,
@@ -114,7 +123,9 @@ class _AvatarCircleState extends State<AvatarCircle> {
                                   loadingProgress.expectedTotalBytes!
                               : null,
                           strokeWidth: 2,
-                          valueColor: const AlwaysStoppedAnimation(RpgTheme.gold),
+                          valueColor: AlwaysStoppedAnimation<Color>(
+                            isDark ? RpgTheme.gold : Colors.white,
+                          ),
                         ),
                       );
                     },
@@ -126,7 +137,7 @@ class _AvatarCircleState extends State<AvatarCircle> {
                     letter,
                     style: RpgTheme.bodyFont(
                       fontSize: widget.radius * 0.8,
-                      color: RpgTheme.background,
+                      color: letterColor,
                       fontWeight: FontWeight.w700,
                     ),
                   ),
@@ -145,7 +156,7 @@ class _AvatarCircleState extends State<AvatarCircle> {
                 shape: BoxShape.circle,
                 color: widget.isOnline ? Colors.green : Colors.grey,
                 border: Border.all(
-                  color: RpgTheme.background,
+                  color: indicatorBorderColor,
                   width: 2,
                 ),
               ),

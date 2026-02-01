@@ -45,11 +45,20 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = RpgTheme.isDark(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    final bgColor = colorScheme.surface;
+    final borderColor = isDark ? RpgTheme.border : RpgTheme.convItemBorderLight;
+    final fillColor = isDark ? RpgTheme.background : RpgTheme.inputBgLight;
+    final textColor = colorScheme.onSurface;
+    final mutedColor =
+        isDark ? RpgTheme.mutedText : RpgTheme.textSecondaryLight;
+
     return Dialog(
-      backgroundColor: RpgTheme.boxBg,
+      backgroundColor: bgColor,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: RpgTheme.border, width: 2),
+        side: BorderSide(color: borderColor, width: 2),
       ),
       child: Container(
         padding: const EdgeInsets.all(24),
@@ -64,7 +73,7 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
                 'Reset Password',
                 style: RpgTheme.pressStart2P(
                   fontSize: 16,
-                  color: RpgTheme.gold,
+                  color: colorScheme.primary,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -76,23 +85,23 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
                 obscureText: true,
                 decoration: InputDecoration(
                   labelText: 'Old Password',
-                  labelStyle: RpgTheme.bodyFont(color: RpgTheme.mutedText),
+                  labelStyle: RpgTheme.bodyFont(color: mutedColor),
                   filled: true,
-                  fillColor: RpgTheme.background,
+                  fillColor: fillColor,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: RpgTheme.border),
+                    borderSide: BorderSide(color: borderColor),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: RpgTheme.border),
+                    borderSide: BorderSide(color: borderColor),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: RpgTheme.purple, width: 2),
+                    borderSide: BorderSide(color: colorScheme.primary, width: 2),
                   ),
                 ),
-                style: RpgTheme.bodyFont(color: RpgTheme.textColor),
+                style: RpgTheme.bodyFont(color: textColor),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Old password is required';
@@ -108,23 +117,23 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
                 obscureText: true,
                 decoration: InputDecoration(
                   labelText: 'New Password',
-                  labelStyle: RpgTheme.bodyFont(color: RpgTheme.mutedText),
+                  labelStyle: RpgTheme.bodyFont(color: mutedColor),
                   filled: true,
-                  fillColor: RpgTheme.background,
+                  fillColor: fillColor,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: RpgTheme.border),
+                    borderSide: BorderSide(color: borderColor),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: RpgTheme.border),
+                    borderSide: BorderSide(color: borderColor),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: RpgTheme.purple, width: 2),
+                    borderSide: BorderSide(color: colorScheme.primary, width: 2),
                   ),
                 ),
-                style: RpgTheme.bodyFont(color: RpgTheme.textColor),
+                style: RpgTheme.bodyFont(color: textColor),
                 validator: _validatePassword,
               ),
               const SizedBox(height: 24),
@@ -136,12 +145,12 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
                     child: OutlinedButton(
                       onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
                       style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: RpgTheme.border, width: 1.5),
+                        side: BorderSide(color: borderColor, width: 1.5),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                       child: Text(
                         'Cancel',
-                        style: RpgTheme.bodyFont(color: RpgTheme.mutedText),
+                        style: RpgTheme.bodyFont(color: mutedColor),
                       ),
                     ),
                   ),
@@ -150,7 +159,7 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _submit,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: RpgTheme.purple,
+                        backgroundColor: colorScheme.primary,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                       child: _isLoading

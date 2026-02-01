@@ -4,7 +4,41 @@
 
 **MANDATORY RULE: Keep This File Up To Date**
 
+---
+
+## ✅ RECENT CHANGE - Light Mode Color Renovation (2026-02-01)
+
+**Design:** Modern neutral palette (Slack-inspired). Purple accent #4A154B replaces gold in light mode. Soft grays (#F4F5F7 main, #FFFFFF surface), high-contrast text (#1D1C1D primary, #616061 secondary).
+
+**Changes:**
+- **RpgTheme:** New `primaryLight`, `primaryLightHover`, `textSecondaryLight`, `activeTileBgLight`, `mineMsgBgLight`, `theirsMsgBgLight`, etc. `themeDataLight` uses primaryLight (not gold) for ColorScheme.primary. Helpers: `isDark(context)`, `primaryColor(context)`, `surfaceColor(context)`.
+- **Theme-aware widgets:** All screens and widgets use `Theme.of(context).colorScheme` or `RpgTheme.isDark(context)` for colors. ConversationTile, ConversationsScreen, ChatDetailScreen, ChatInputBar, ChatMessageBubble, AvatarCircle, MessageDateSeparator, SettingsScreen, dialogs, AuthScreen, AuthForm, FriendRequestsScreen, NewChatScreen.
+- **Sidebar header:** Same color as rest (colorScheme.surface), logo uses colorScheme.primary.
+- **rpgInputDecoration:** Optional `context` param for theme-aware icon color.
+
+**Plan:** `docs/plans/2026-02-01-light-mode-color-renovation.md`
+
+---
+
+## ✅ RECENT CHANGE - Light/Dark Theme + Active Status Green Dot (2026-02-01)
+
+**Theme:**
+- Default theme preference is **dark** (was system). SettingsProvider default `_darkModePreference = 'dark'`, load fallback `'dark'`.
+- **RpgTheme.themeDataLight** added: light palette (backgroundLight, boxBgLight, textColorLight, etc.) and `themeDataLight` getter (ThemeData.light() with same structure as dark).
+- **main.dart:** `theme: RpgTheme.themeDataLight`, `darkTheme: RpgTheme.themeData` so ThemeMode.light/dark switch immediately.
+- Settings screen: tile label "Dark Mode" → "Theme" with subtitle "System / Light / Dark"; Settings tiles use theme-aware colors (colorScheme.surface, onSurface).
+
+**Active status + green dot:**
+- **JWT:** AuthService.login() and JwtStrategy.validate() include `activeStatus` in payload/return so frontend gets it on login and from saved token.
+- **Backend:** All `friendsList` and `conversationsList` emissions now include `isOnline: onlineUsers.has(user.id)` (or per userOne/userTwo in conversations). getFriends and getConversations accept `onlineUsers`; ChatFriendRequestService and ChatConversationService enrich payloads with isOnline.
+- **Frontend:** UserModel has `isOnline` (bool?); AuthProvider sets `activeStatus` from JWT in login and _loadSavedToken. Settings screen init: _activeStatus synced from auth.currentUser?.activeStatus once in didChangeDependencies.
+- **Green dot:** Shown only when `activeStatus == true` **and** `isOnline == true`. ConversationTile and ChatDetailScreen pass `otherUser` (UserModel) to AvatarCircle with showOnlineIndicator and isOnline; Settings avatar shows dot only when _activeStatus is on. ChatProvider.getOtherUser(conv) added; onUserStatusChanged updates both _friends and _conversations so green dot updates in real time when a friend toggles status.
+
 **After EVERY code change (bug fix, new feature, refactor, config change), update this file immediately.** This is the single source of truth for future agents.A future agent must be able to read ONLY this file and understand the current state of the project without reading every source file
+
+**Sessions:** At the start, the agent reads `.cursor/session-summaries/LATEST.md`; at the end, it writes a summary to `.cursor/session-summaries/YYYY-MM-DD-session.md` and updates `LATEST.md`. Rule: `.cursor/rules/session-summaries.mdc`
+
+**Code language:** Always write code in English (variables, functions, comments, commits). Rule: `.cursor/rules/code-in-english.mdc`
 
 ---
 
@@ -127,7 +161,7 @@ cd frontend && flutter build web
 |-----------|---------|
 | **AuthProvider** | JWT lifecycle, token persistence via SharedPreferences, profile management |
 | **ChatProvider** | WebSocket connection, conversations/messages state, socket events |
-| **SettingsProvider** | Dark mode preference persistence via SharedPreferences |
+| **SettingsProvider** | Theme preference (system/light/dark, default dark) via SharedPreferences |
 | **ConversationsScreen** | Main hub: mobile (list) or desktop (master-detail) at 600px breakpoint |
 | **ChatDetailScreen** | Full chat view with message input |
 | **FriendRequestsScreen** | Accept/reject pending requests, auto-navigate on accept |
@@ -185,13 +219,13 @@ friend_requests
 |-------|---------|----------|
 | `sendMessage` | `{recipientId, content}` | `messageSent` (sender), `newMessage` (recipient) |
 | `getMessages` | `{conversationId}` | `messageHistory` (last 50, oldest first) |
-| `getConversations` | — | `conversationsList` |
+| `getConversations` | — | `conversationsList` (userOne/userTwo have `isOnline`) |
 | `deleteConversation` | `{conversationId}` | Unfriends + `conversationsList` refreshed (both users) |
 | `sendFriendRequest` | `{recipientEmail}` | `friendRequestSent` (sender), `newFriendRequest` + `pendingRequestsCount` (recipient). If mutual: auto-accept both |
 | `acceptFriendRequest` | `{requestId}` | `friendRequestAccepted`, `conversationsList`, `friendsList`, `openConversation` (both users) |
 | `rejectFriendRequest` | `{requestId}` | `friendRequestRejected`, `friendRequestsList`, `pendingRequestsCount` (receiver only) |
 | `getFriendRequests` | — | `friendRequestsList`, `pendingRequestsCount` |
-| `getFriends` | — | `friendsList` |
+| `getFriends` | — | `friendsList` (each user has `isOnline`) |
 | `unfriend` | `{userId}` | `unfriended` (both users), `conversationsList` refreshed |
 | `updateActiveStatus` | `{activeStatus}` | `userStatusChanged` (to all friends) |
 
@@ -410,14 +444,14 @@ if (records.length > 0) {
 - Created 3 new DTOs: `ResetPasswordDto`, `DeleteAccountDto`, `UpdateActiveStatusDto`
 - Profile pictures: Multer memoryStorage → Cloudinary upload (JPEG/PNG only, max 5MB)
 - CloudinaryModule + CloudinaryService for upload/delete
-- Updated `AuthService.login()` to include `profilePictureUrl` and `activeStatus` in JWT payload
-- Updated `JwtStrategy.validate()` to extract new user fields from JWT
+- Updated `AuthService.login()` to include `profilePictureUrl` and `activeStatus` in JWT payload (2026-02-01: activeStatus in JWT; isOnline in friends/conversations payloads)
+- Updated `JwtStrategy.validate()` to extract new user fields from JWT (including activeStatus)
 - Added WebSocket handler `updateActiveStatus` in `ChatFriendRequestService` → broadcasts `userStatusChanged` to all friends
 - Updated `UserMapper.toPayload()` to include `profilePictureUrl` and `activeStatus`
 - npm packages: `multer`, `@types/multer`, `@nestjs/platform-express`
 
 **Frontend (Phase 2):**
-- Updated `UserModel` with `profilePictureUrl` and `activeStatus` fields + `copyWith()` method
+- Updated `UserModel` with `profilePictureUrl`, `activeStatus`, and `isOnline` (bool?) + `copyWith()` method
 - Created `SettingsProvider` for dark mode preference persistence (system/light/dark)
 - Updated `AuthProvider` with 3 new methods: `updateProfilePicture()`, `resetPassword()`, `deleteAccount()`
 - Updated `AuthProvider.logout()` to preserve dark mode preference after logout
@@ -556,7 +590,8 @@ main.dart → AuthGate (watches AuthProvider.isLoggedIn)
 
 ### Theme System
 
-- **Colors:** RPG palette (background #0A0A2E, gold #FFCC00, purple #7B7BF5, border #4A4AE0)
+- **Light/Dark:** `RpgTheme.themeDataLight` (light) and `RpgTheme.themeData` (dark). main.dart uses theme/themedataLight and darkTheme/themedata; ThemeMode from SettingsProvider (default preference: dark).
+- **Colors:** RPG palette dark (background #0A0A2E, gold #FFCC00, purple #7B7BF5); light palette (backgroundLight, boxBgLight, textColorLight, etc.) for themeDataLight.
 - **Fonts:**
   - `pressStart2P()` — retro font for titles/headers/logos ONLY
   - `bodyFont()` — readable Inter font for body text, messages, form fields

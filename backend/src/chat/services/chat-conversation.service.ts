@@ -54,13 +54,28 @@ export class ChatConversationService {
     const conversations = await this.conversationsService.findByUser(userId);
     client.emit(
       'conversationsList',
-      conversations.map(ConversationMapper.toPayload),
+      conversations.map((c) => this.toConversationPayloadWithOnline(c, onlineUsers)),
     );
 
     client.emit('openConversation', { conversationId: conversation.id });
   }
 
-  async handleGetConversations(client: Socket) {
+  private toConversationPayloadWithOnline(
+    conv: { id: number; userOne: { id: number }; userTwo: { id: number }; createdAt: Date },
+    onlineUsers: Map<number, string>,
+  ) {
+    const payload = ConversationMapper.toPayload(conv as any);
+    return {
+      ...payload,
+      userOne: { ...payload.userOne, isOnline: onlineUsers.has(conv.userOne.id) },
+      userTwo: { ...payload.userTwo, isOnline: onlineUsers.has(conv.userTwo.id) },
+    };
+  }
+
+  async handleGetConversations(
+    client: Socket,
+    onlineUsers: Map<number, string>,
+  ) {
     const userId: number = client.data.user?.id;
     if (!userId) {
       this.logger.warn('handleGetConversations: no userId in client.data');
@@ -71,10 +86,10 @@ export class ChatConversationService {
     const conversations = await this.conversationsService.findByUser(userId);
     this.logger.debug(`handleGetConversations: found ${conversations.length} conversations for userId=${userId}`);
 
-    client.emit(
-      'conversationsList',
-      conversations.map(ConversationMapper.toPayload),
+    const list = conversations.map((conv) =>
+      this.toConversationPayloadWithOnline(conv as any, onlineUsers),
     );
+    client.emit('conversationsList', list);
   }
 
   async handleDeleteConversation(
@@ -133,7 +148,7 @@ export class ChatConversationService {
     const conversations = await this.conversationsService.findByUser(userId);
     client.emit(
       'conversationsList',
-      conversations.map(ConversationMapper.toPayload),
+      conversations.map((c) => this.toConversationPayloadWithOnline(c as any, onlineUsers)),
     );
 
     if (otherUserSocketId) {
@@ -144,18 +159,24 @@ export class ChatConversationService {
         .to(otherUserSocketId)
         .emit(
           'conversationsList',
-          otherConversations.map(ConversationMapper.toPayload),
+          otherConversations.map((c) => this.toConversationPayloadWithOnline(c as any, onlineUsers)),
         );
     }
 
     const friends = await this.friendsService.getFriends(userId);
-    client.emit('friendsList', friends.map(UserMapper.toPayload));
+    client.emit(
+      'friendsList',
+      friends.map((u) => ({ ...UserMapper.toPayload(u), isOnline: onlineUsers.has(u.id) })),
+    );
 
     if (otherUserSocketId) {
       const otherFriends = await this.friendsService.getFriends(otherUserId);
       server
         .to(otherUserSocketId)
-        .emit('friendsList', otherFriends.map(UserMapper.toPayload));
+        .emit(
+          'friendsList',
+          otherFriends.map((u) => ({ ...UserMapper.toPayload(u), isOnline: onlineUsers.has(u.id) })),
+        );
     }
   }
 }

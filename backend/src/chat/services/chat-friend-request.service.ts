@@ -25,6 +25,22 @@ export class ChatFriendRequestService {
     private readonly conversationsService: ConversationsService,
   ) {}
 
+  private toUserPayloadWithOnline(user: { id: number }, onlineUsers: Map<number, string>) {
+    return { ...UserMapper.toPayload(user as any), isOnline: onlineUsers.has(user.id) };
+  }
+
+  private toConversationPayloadWithOnline(
+    conv: { userOne: { id: number }; userTwo: { id: number } },
+    onlineUsers: Map<number, string>,
+  ) {
+    const payload = ConversationMapper.toPayload(conv as any);
+    return {
+      ...payload,
+      userOne: { ...payload.userOne, isOnline: onlineUsers.has(conv.userOne.id) },
+      userTwo: { ...payload.userTwo, isOnline: onlineUsers.has(conv.userTwo.id) },
+    };
+  }
+
   async handleSendFriendRequest(
     client: Socket,
     data: any,
@@ -97,12 +113,18 @@ export class ChatFriendRequestService {
           recipient.id,
         );
 
-        client.emit('friendsList', senderFriends.map(UserMapper.toPayload));
+        client.emit(
+          'friendsList',
+          senderFriends.map((u) => this.toUserPayloadWithOnline(u, onlineUsers)),
+        );
 
         if (recipientSocketId) {
           server
             .to(recipientSocketId)
-            .emit('friendsList', receiverFriends.map(UserMapper.toPayload));
+            .emit(
+              'friendsList',
+              receiverFriends.map((u) => this.toUserPayloadWithOnline(u, onlineUsers)),
+            );
         }
       } catch (error) {
         this.logger.error(
@@ -127,7 +149,7 @@ export class ChatFriendRequestService {
         );
         client.emit(
           'conversationsList',
-          senderConversations.map(ConversationMapper.toPayload),
+          senderConversations.map((c) => this.toConversationPayloadWithOnline(c, onlineUsers)),
         );
 
         if (recipientSocketId) {
@@ -137,7 +159,7 @@ export class ChatFriendRequestService {
             .to(recipientSocketId)
             .emit(
               'conversationsList',
-              receiverConversations.map(ConversationMapper.toPayload),
+              receiverConversations.map((c) => this.toConversationPayloadWithOnline(c, onlineUsers)),
             );
         }
       } catch (error) {
@@ -315,7 +337,7 @@ export class ChatFriendRequestService {
           .to(senderSocketId)
           .emit(
             'conversationsList',
-            senderConversations.map(ConversationMapper.toPayload),
+            senderConversations.map((c) => this.toConversationPayloadWithOnline(c, onlineUsers)),
           );
       }
 
@@ -324,7 +346,7 @@ export class ChatFriendRequestService {
       );
       client.emit(
         'conversationsList',
-        receiverConversations.map(ConversationMapper.toPayload),
+        receiverConversations.map((c) => this.toConversationPayloadWithOnline(c, onlineUsers)),
       );
     } catch (error) {
       this.logger.error(
@@ -374,11 +396,17 @@ export class ChatFriendRequestService {
       if (senderSocketId) {
         server
           .to(senderSocketId)
-          .emit('friendsList', senderFriends.map(UserMapper.toPayload));
+          .emit(
+            'friendsList',
+            senderFriends.map((u) => this.toUserPayloadWithOnline(u, onlineUsers)),
+          );
       }
 
       // Send to receiver (current user)
-      client.emit('friendsList', receiverFriends.map(UserMapper.toPayload));
+      client.emit(
+        'friendsList',
+        receiverFriends.map((u) => this.toUserPayloadWithOnline(u, onlineUsers)),
+      );
     } catch (error) {
       this.logger.error(
         'acceptFriendRequest: Failed to emit friends lists (non-critical):',
@@ -458,12 +486,16 @@ export class ChatFriendRequestService {
     client.emit('pendingRequestsCount', { count });
   }
 
-  async handleGetFriends(client: Socket) {
+  async handleGetFriends(
+    client: Socket,
+    onlineUsers: Map<number, string>,
+  ) {
     const userId: number = client.data.user?.id;
     if (!userId) return;
 
     const friends = await this.friendsService.getFriends(userId);
-    client.emit('friendsList', friends.map(UserMapper.toPayload));
+    const list = friends.map((u) => this.toUserPayloadWithOnline(u, onlineUsers));
+    client.emit('friendsList', list);
   }
 
   async handleUnfriend(
@@ -544,7 +576,7 @@ export class ChatFriendRequestService {
       );
       client.emit(
         'conversationsList',
-        conversations.map(ConversationMapper.toPayload),
+        conversations.map((c) => this.toConversationPayloadWithOnline(c, onlineUsers)),
       );
 
       if (otherUserSocketId) {
@@ -555,7 +587,7 @@ export class ChatFriendRequestService {
           .to(otherUserSocketId)
           .emit(
             'conversationsList',
-            otherConversations.map(ConversationMapper.toPayload),
+            otherConversations.map((c) => this.toConversationPayloadWithOnline(c, onlineUsers)),
           );
       }
     } catch (error) {
@@ -572,7 +604,7 @@ export class ChatFriendRequestService {
       );
       client.emit(
         'friendsList',
-        currentUserFriends.map(UserMapper.toPayload),
+        currentUserFriends.map((u) => this.toUserPayloadWithOnline(u, onlineUsers)),
       );
       this.logger.debug(
         `handleUnfriend: emitted friendsList to currentUser, count=${currentUserFriends.length}`,
@@ -584,7 +616,10 @@ export class ChatFriendRequestService {
         );
         server
           .to(otherUserSocketId)
-          .emit('friendsList', otherUserFriends.map(UserMapper.toPayload));
+          .emit(
+            'friendsList',
+            otherUserFriends.map((u) => this.toUserPayloadWithOnline(u, onlineUsers)),
+          );
         this.logger.debug(
           `handleUnfriend: emitted friendsList to otherUser, count=${otherUserFriends.length}`,
         );

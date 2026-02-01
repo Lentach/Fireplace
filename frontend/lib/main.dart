@@ -28,8 +28,8 @@ class RpgChatApp extends StatelessWidget {
           return MaterialApp(
             title: 'RPG Chat',
             debugShowCheckedModeBanner: false,
-            theme: RpgTheme.themeData,
-            darkTheme: RpgTheme.themeData, // Same theme (RPG is dark by design)
+            theme: RpgTheme.themeDataLight,
+            darkTheme: RpgTheme.themeData,
             themeMode: settings.themeMode,
             home: const AuthGate(),
           );

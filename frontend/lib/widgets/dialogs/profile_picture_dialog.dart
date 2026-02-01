@@ -7,11 +7,17 @@ class ProfilePictureDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = RpgTheme.isDark(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    final borderColor = isDark ? RpgTheme.border : RpgTheme.convItemBorderLight;
+    final mutedColor =
+        isDark ? RpgTheme.mutedText : RpgTheme.textSecondaryLight;
+
     return Dialog(
-      backgroundColor: RpgTheme.boxBg,
+      backgroundColor: colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: RpgTheme.border, width: 2),
+        side: BorderSide(color: borderColor, width: 2),
       ),
       child: Container(
         padding: const EdgeInsets.all(24),
@@ -24,7 +30,7 @@ class ProfilePictureDialog extends StatelessWidget {
               'Choose Photo',
               style: RpgTheme.pressStart2P(
                 fontSize: 14,
-                color: RpgTheme.gold,
+                color: colorScheme.primary,
               ),
               textAlign: TextAlign.center,
             ),
@@ -34,7 +40,7 @@ class ProfilePictureDialog extends StatelessWidget {
             ElevatedButton.icon(
               onPressed: () => Navigator.of(context).pop(ImageSource.camera),
               style: ElevatedButton.styleFrom(
-                backgroundColor: RpgTheme.purple,
+                backgroundColor: colorScheme.primary,
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
               icon: const Icon(Icons.camera_alt, color: Colors.white),
@@ -49,7 +55,7 @@ class ProfilePictureDialog extends StatelessWidget {
             ElevatedButton.icon(
               onPressed: () => Navigator.of(context).pop(ImageSource.gallery),
               style: ElevatedButton.styleFrom(
-                backgroundColor: RpgTheme.purple,
+                backgroundColor: colorScheme.primary,
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
               icon: const Icon(Icons.photo_library, color: Colors.white),
@@ -64,12 +70,12 @@ class ProfilePictureDialog extends StatelessWidget {
             OutlinedButton(
               onPressed: () => Navigator.of(context).pop(),
               style: OutlinedButton.styleFrom(
-                side: const BorderSide(color: RpgTheme.border, width: 1.5),
+                side: BorderSide(color: borderColor, width: 1.5),
                 padding: const EdgeInsets.symmetric(vertical: 12),
               ),
               child: Text(
                 'Cancel',
-                style: RpgTheme.bodyFont(color: RpgTheme.mutedText),
+                style: RpgTheme.bodyFont(color: mutedColor),
               ),
             ),
           ],

@@ -1,0 +1,15 @@
+---
+description: 
+alwaysApply: true
+---
+
+# Code Language
+
+**All code must be written in English.**
+
+- Variable names, function names, class names: English
+- Comments in code: English
+- Commit messages: English
+- Log messages, error messages in code: English
+
+User-facing strings (UI labels, snackbars, etc.) may remain in the app's target language if the product is localized.

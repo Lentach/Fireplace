@@ -18,6 +18,19 @@ class ChatMessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = RpgTheme.isDark(context);
+    final bubbleColor = isMine
+        ? (isDark ? RpgTheme.mineMsgBg : RpgTheme.mineMsgBgLight)
+        : (isDark ? RpgTheme.theirsMsgBg : RpgTheme.theirsMsgBgLight);
+    final borderColor = isMine
+        ? (isDark ? RpgTheme.gold : RpgTheme.primaryLight)
+        : (isDark ? RpgTheme.purple : RpgTheme.primaryLight);
+    final textColor = isMine
+        ? (isDark ? RpgTheme.textColor : Colors.white)
+        : (isDark ? RpgTheme.textColor : RpgTheme.textColorLight);
+    final timeColor =
+        isDark ? RpgTheme.timeColor : RpgTheme.textSecondaryLight;
+
     return Align(
       alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
       child: Container(
@@ -30,7 +43,7 @@ class ChatMessageBubble extends StatelessWidget {
           bottom: 4,
         ),
         decoration: BoxDecoration(
-          color: isMine ? RpgTheme.mineMsgBg : RpgTheme.theirsMsgBg,
+          color: bubbleColor,
           borderRadius: BorderRadius.only(
             topLeft: const Radius.circular(16),
             topRight: const Radius.circular(16),
@@ -39,7 +52,7 @@ class ChatMessageBubble extends StatelessWidget {
           ),
           border: Border(
             left: BorderSide(
-              color: isMine ? RpgTheme.gold : RpgTheme.purple,
+              color: borderColor,
               width: 3,
             ),
           ),
@@ -50,14 +63,14 @@ class ChatMessageBubble extends StatelessWidget {
           children: [
             Text(
               message.content,
-              style: RpgTheme.bodyFont(fontSize: 14, color: RpgTheme.textColor),
+              style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
             ),
             const SizedBox(height: 4),
             Align(
               alignment: Alignment.bottomRight,
               child: Text(
                 _formatTime(message.createdAt),
-                style: RpgTheme.bodyFont(fontSize: 10, color: RpgTheme.timeColor),
+                style: RpgTheme.bodyFont(fontSize: 10, color: timeColor),
               ),
             ),
           ],

@@ -40,37 +40,55 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = RpgTheme.isDark(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    final borderColor =
+        isDark ? RpgTheme.convItemBorder : RpgTheme.convItemBorderLight;
+    final inputBg = isDark ? RpgTheme.inputBg : RpgTheme.inputBgLight;
+    final tabBorderColor =
+        isDark ? RpgTheme.tabBorder : RpgTheme.tabBorderLight;
+    final sendIconColor = _hasText
+        ? (isDark ? RpgTheme.gold : Colors.white)
+        : (isDark ? RpgTheme.mutedText : RpgTheme.textSecondaryLight);
+
     return SafeArea(
       top: false,
       child: Container(
         padding: const EdgeInsets.fromLTRB(8, 8, 8, 8),
-        decoration: const BoxDecoration(
-          color: RpgTheme.boxBg,
-          border: Border(top: BorderSide(color: RpgTheme.convItemBorder)),
+        decoration: BoxDecoration(
+          color: colorScheme.surface,
+          border: Border(top: BorderSide(color: borderColor)),
         ),
         child: Row(
           children: [
             Expanded(
               child: TextField(
                 controller: _controller,
-                style: RpgTheme.bodyFont(fontSize: 14, color: Colors.white),
+                style: RpgTheme.bodyFont(
+                  fontSize: 14,
+                  color: colorScheme.onSurface,
+                ),
                 decoration: InputDecoration(
                   hintText: 'Type a message...',
-                  contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
+                  contentPadding:
+                      const EdgeInsets.symmetric(horizontal: 16, vertical: 10),
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
-                    borderSide: const BorderSide(color: RpgTheme.tabBorder),
+                    borderSide: BorderSide(color: tabBorderColor),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
-                    borderSide: const BorderSide(color: RpgTheme.tabBorder),
+                    borderSide: BorderSide(color: tabBorderColor),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(24),
-                    borderSide: const BorderSide(color: RpgTheme.purple, width: 1.5),
+                    borderSide: BorderSide(
+                      color: RpgTheme.primaryColor(context),
+                      width: 1.5,
+                    ),
                   ),
                   filled: true,
-                  fillColor: RpgTheme.inputBg,
+                  fillColor: inputBg,
                 ),
                 maxLines: null,
                 textInputAction: TextInputAction.send,
@@ -79,14 +97,14 @@ class _ChatInputBarState extends State<ChatInputBar> {
             ),
             const SizedBox(width: 8),
             Container(
-              decoration: const BoxDecoration(
+              decoration: BoxDecoration(
                 shape: BoxShape.circle,
-                color: RpgTheme.purple,
+                color: RpgTheme.primaryColor(context),
               ),
               child: IconButton(
                 icon: Icon(
                   Icons.send_rounded,
-                  color: _hasText ? RpgTheme.gold : RpgTheme.mutedText,
+                  color: sendIconColor,
                   size: 22,
                 ),
                 onPressed: _hasText ? _send : null,

@@ -29,6 +29,36 @@ class RpgTheme {
   static const Color outerBorder = Color(0xFF2A2A7A);
   static const Color timeColor = Color(0xFF5555AA);
 
+  // Light theme palette - modern neutral (Slack-inspired)
+  static const Color primaryLight = Color(0xFF4A154B);
+  static const Color primaryLightHover = Color(0xFF611F69);
+  static const Color backgroundLight = Color(0xFFF4F5F7);
+  static const Color boxBgLight = Color(0xFFFFFFFF);
+  static const Color chatAreaBgLight = Color(0xFFFAFBFC);
+  static const Color textColorLight = Color(0xFF1D1C1D);
+  static const Color textSecondaryLight = Color(0xFF616061);
+  static const Color mutedTextLight = Color(0xFF8B8A8B);
+  static const Color labelTextLight = Color(0xFF4A4A6A);
+  static const Color inputBgLight = Color(0xFFEEEEF2);
+  static const Color tabBorderLight = Color(0xFFE8EAED);
+  static const Color activeTabBgLight = Color(0xFFE8E4EC);
+  static const Color buttonBgLight = Color(0xFF4A154B);
+  static const Color convItemBgLight = Color(0xFFF0F0F5);
+  static const Color convItemBorderLight = Color(0xFFE8EAED);
+  static const Color messagesAreaBgLight = Color(0xFFFAFBFC);
+  static const Color mineMsgBgLight = Color(0xFF4A154B);
+  static const Color theirsMsgBgLight = Color(0xFFE8E4EC);
+  static const Color timeColorLight = Color(0xFF616061);
+
+  static bool isDark(BuildContext context) =>
+      Theme.of(context).brightness == Brightness.dark;
+
+  static Color primaryColor(BuildContext context) =>
+      isDark(context) ? gold : primaryLight;
+
+  static Color surfaceColor(BuildContext context) =>
+      isDark(context) ? boxBg : boxBgLight;
+
   static TextStyle pressStart2P({double fontSize = 10, Color color = textColor}) {
     return GoogleFonts.pressStart2p(
       fontSize: fontSize,
@@ -137,10 +167,112 @@ class RpgTheme {
     );
   }
 
-  static InputDecoration rpgInputDecoration({String? hintText, IconData? prefixIcon}) {
+  static ThemeData get themeDataLight {
+    return ThemeData.light().copyWith(
+      scaffoldBackgroundColor: backgroundLight,
+      colorScheme: const ColorScheme.light(
+        primary: primaryLight,
+        secondary: primaryLightHover,
+        surface: boxBgLight,
+        error: errorColor,
+        onPrimary: Colors.white,
+        onSecondary: Colors.white,
+        onSurface: textColorLight,
+        onError: Colors.white,
+      ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: boxBgLight,
+        elevation: 0,
+        centerTitle: false,
+        titleTextStyle: GoogleFonts.pressStart2p(
+          fontSize: 14,
+          color: primaryLight,
+        ),
+        iconTheme: const IconThemeData(color: textColorLight),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: inputBgLight,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        border: OutlineInputBorder(
+          borderSide: const BorderSide(color: tabBorderLight, width: 1.5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: tabBorderLight, width: 1.5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: primaryLight, width: 2),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: errorColor, width: 1.5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        hintStyle: GoogleFonts.inter(color: mutedTextLight, fontSize: 14),
+        labelStyle: GoogleFonts.inter(color: labelTextLight, fontSize: 14),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: primaryLight,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: const BorderSide(color: primaryLight, width: 2),
+          ),
+          textStyle: GoogleFonts.inter(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: primaryLight,
+          textStyle: GoogleFonts.inter(fontSize: 14),
+        ),
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: primaryLight,
+        foregroundColor: Colors.white,
+      ),
+      listTileTheme: ListTileThemeData(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        tileColor: Colors.transparent,
+        selectedTileColor: activeTabBgLight,
+      ),
+      dividerTheme: const DividerThemeData(
+        color: convItemBorderLight,
+        thickness: 1,
+      ),
+      textTheme: TextTheme(
+        bodyLarge: GoogleFonts.inter(color: textColorLight, fontSize: 16),
+        bodyMedium: GoogleFonts.inter(color: textColorLight, fontSize: 14),
+        bodySmall: GoogleFonts.inter(color: textSecondaryLight, fontSize: 12),
+        titleLarge: GoogleFonts.pressStart2p(color: primaryLight, fontSize: 16),
+        titleMedium: GoogleFonts.inter(color: textColorLight, fontSize: 16, fontWeight: FontWeight.w600),
+        titleSmall: GoogleFonts.inter(color: textColorLight, fontSize: 14, fontWeight: FontWeight.w600),
+        labelLarge: GoogleFonts.inter(color: textColorLight, fontSize: 14, fontWeight: FontWeight.w500),
+      ),
+    );
+  }
+
+  static InputDecoration rpgInputDecoration({
+    String? hintText,
+    IconData? prefixIcon,
+    BuildContext? context,
+  }) {
+    final iconColor = context != null
+        ? (isDark(context) ? mutedText : textSecondaryLight)
+        : mutedText;
     return InputDecoration(
       hintText: hintText,
-      prefixIcon: prefixIcon != null ? Icon(prefixIcon, color: mutedText, size: 20) : null,
+      prefixIcon: prefixIcon != null
+          ? Icon(prefixIcon, color: iconColor, size: 20)
+          : null,
     );
   }
 }

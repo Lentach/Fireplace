@@ -46,15 +46,17 @@ class _AuthFormState extends State<AuthForm> {
 
   @override
   Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     return Column(
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         TextField(
           controller: _emailController,
-          style: RpgTheme.bodyFont(fontSize: 14, color: Colors.white),
+          style: RpgTheme.bodyFont(fontSize: 14, color: colorScheme.onSurface),
           decoration: RpgTheme.rpgInputDecoration(
             hintText: 'Email',
             prefixIcon: Icons.email_outlined,
+            context: context,
           ),
           keyboardType: TextInputType.emailAddress,
           onSubmitted: (_) => _handleSubmit(),
@@ -74,10 +76,11 @@ class _AuthFormState extends State<AuthForm> {
         ],
         TextField(
           controller: _passwordController,
-          style: RpgTheme.bodyFont(fontSize: 14, color: Colors.white),
+          style: RpgTheme.bodyFont(fontSize: 14, color: colorScheme.onSurface),
           decoration: RpgTheme.rpgInputDecoration(
             hintText: widget.isLogin ? 'Password' : 'Password (min 6 chars)',
             prefixIcon: Icons.lock_outlined,
+            context: context,
           ),
           obscureText: true,
           onSubmitted: (_) => _handleSubmit(),
@@ -86,12 +89,12 @@ class _AuthFormState extends State<AuthForm> {
         ElevatedButton(
           onPressed: _loading ? null : _handleSubmit,
           child: _loading
-              ? const SizedBox(
+              ? SizedBox(
                   height: 20,
                   width: 20,
                   child: CircularProgressIndicator(
                     strokeWidth: 2,
-                    color: RpgTheme.gold,
+                    color: colorScheme.primary,
                   ),
                 )
               : Text(widget.isLogin ? 'Login' : 'Create Account'),

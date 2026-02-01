@@ -27,8 +27,16 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = RpgTheme.isDark(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    final fillColor = isDark ? RpgTheme.background : RpgTheme.inputBgLight;
+    final textColor = colorScheme.onSurface;
+    final mutedColor =
+        isDark ? RpgTheme.mutedText : RpgTheme.textSecondaryLight;
+    final borderColor = isDark ? RpgTheme.border : RpgTheme.convItemBorderLight;
+
     return Dialog(
-      backgroundColor: RpgTheme.boxBg,
+      backgroundColor: colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
         side: const BorderSide(color: Color(0xFFFF6666), width: 2),
@@ -77,23 +85,23 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
                 obscureText: true,
                 decoration: InputDecoration(
                   labelText: 'Enter password to confirm',
-                  labelStyle: RpgTheme.bodyFont(color: RpgTheme.mutedText),
+                  labelStyle: RpgTheme.bodyFont(color: mutedColor),
                   filled: true,
-                  fillColor: RpgTheme.background,
+                  fillColor: fillColor,
                   border: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: RpgTheme.border),
+                    borderSide: BorderSide(color: borderColor),
                   ),
                   enabledBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: RpgTheme.border),
+                    borderSide: BorderSide(color: borderColor),
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
                     borderSide: const BorderSide(color: Color(0xFFFF6666), width: 2),
                   ),
                 ),
-                style: RpgTheme.bodyFont(color: RpgTheme.textColor),
+                style: RpgTheme.bodyFont(color: textColor),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
                     return 'Password is required';
@@ -110,12 +118,12 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
                     child: OutlinedButton(
                       onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
                       style: OutlinedButton.styleFrom(
-                        side: const BorderSide(color: RpgTheme.border, width: 1.5),
+                        side: BorderSide(color: borderColor, width: 1.5),
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                       child: Text(
                         'Cancel',
-                        style: RpgTheme.bodyFont(color: RpgTheme.mutedText),
+                        style: RpgTheme.bodyFont(color: mutedColor),
                       ),
                     ),
                   ),

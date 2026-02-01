@@ -4,6 +4,7 @@ class UserModel {
   final String? username;
   final String? profilePictureUrl;
   final bool? activeStatus;
+  final bool? isOnline;
 
   UserModel({
     required this.id,
@@ -11,6 +12,7 @@ class UserModel {
     this.username,
     this.profilePictureUrl,
     this.activeStatus,
+    this.isOnline,
   });
 
   factory UserModel.fromJson(Map<String, dynamic> json) {
@@ -20,6 +22,7 @@ class UserModel {
       username: json['username'] as String?,
       profilePictureUrl: json['profilePictureUrl'] as String?,
       activeStatus: json['activeStatus'] as bool?,
+      isOnline: json['isOnline'] as bool?,
     );
   }
 
@@ -29,6 +32,7 @@ class UserModel {
     String? username,
     String? profilePictureUrl,
     bool? activeStatus,
+    bool? isOnline,
   }) {
     return UserModel(
       id: id ?? this.id,
@@ -36,6 +40,7 @@ class UserModel {
       username: username ?? this.username,
       profilePictureUrl: profilePictureUrl ?? this.profilePictureUrl,
       activeStatus: activeStatus ?? this.activeStatus,
+      isOnline: isOnline ?? this.isOnline,
     );
   }
 }

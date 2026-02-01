@@ -126,7 +126,10 @@ export class ChatGateway
 
   @SubscribeMessage('getConversations')
   async handleGetConversations(@ConnectedSocket() client: Socket) {
-    return this.chatConversationService.handleGetConversations(client);
+    return this.chatConversationService.handleGetConversations(
+      client,
+      this.onlineUsers,
+    );
   }
 
   @SubscribeMessage('deleteConversation')
@@ -188,7 +191,10 @@ export class ChatGateway
 
   @SubscribeMessage('getFriends')
   async handleGetFriends(@ConnectedSocket() client: Socket) {
-    return this.chatFriendRequestService.handleGetFriends(client);
+    return this.chatFriendRequestService.handleGetFriends(
+      client,
+      this.onlineUsers,
+    );
   }
 
   @SubscribeMessage('unfriend')

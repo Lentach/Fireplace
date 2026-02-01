@@ -62,7 +62,14 @@
       "Bash(xargs:*)",
       "Bash(timeout /t 15 /nobreak)",
       "Bash(node:*)",
-      "Bash(tree:*)"
+      "Bash(tree:*)",
+      "Bash(flutter clean:*)",
+      "Bash(tasklist:*)",
+      "Bash(netstat:*)",
+      "Bash(taskkill:*)",
+      "Bash(docker-compose restart:*)",
+      "Bash(del \"C:\\\\Users\\\\Lentach\\\\desktop\\\\mvp-chat-app\\\\test_socket.js\")",
+      "Bash(docker-compose build:*)"
     ]
   }
 }

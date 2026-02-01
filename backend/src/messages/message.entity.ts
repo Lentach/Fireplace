@@ -14,7 +14,7 @@ export class Message {
   @PrimaryGeneratedColumn()
   id: number;
 
-  // Treść wiadomości — zwykły tekst, bez formatowania w MVP
+  // Message content — plain text, no formatting in MVP
   @Column('text')
   content: string;
 

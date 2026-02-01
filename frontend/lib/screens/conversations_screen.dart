@@ -73,36 +73,53 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   void _deleteConversation(int conversationId) {
     showDialog(
       context: context,
-      builder: (context) => AlertDialog(
-        backgroundColor: RpgTheme.boxBg,
-        title: Text(
-          'Delete Conversation?',
-          style: RpgTheme.bodyFont(fontSize: 16, color: RpgTheme.gold, fontWeight: FontWeight.w600),
-        ),
-        content: Text(
-          'This will delete all messages. This action cannot be undone.',
-          style: RpgTheme.bodyFont(fontSize: 14, color: Colors.white70),
-        ),
-        actions: [
-          TextButton(
-            onPressed: () => Navigator.pop(context),
-            child: Text(
-              'Cancel',
-              style: RpgTheme.bodyFont(fontSize: 14, color: RpgTheme.mutedText),
+      builder: (dialogContext) {
+        final colorScheme = Theme.of(dialogContext).colorScheme;
+        final mutedColor = RpgTheme.isDark(dialogContext)
+            ? RpgTheme.mutedText
+            : RpgTheme.textSecondaryLight;
+        return AlertDialog(
+          backgroundColor: colorScheme.surface,
+          title: Text(
+            'Delete Conversation?',
+            style: RpgTheme.bodyFont(
+              fontSize: 16,
+              color: colorScheme.primary,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          TextButton(
-            onPressed: () {
-              Navigator.pop(context);
-              context.read<ChatProvider>().deleteConversation(conversationId);
-            },
-            child: Text(
-              'Delete',
-              style: RpgTheme.bodyFont(fontSize: 14, color: RpgTheme.logoutRed, fontWeight: FontWeight.w600),
+          content: Text(
+            'This will delete all messages. This action cannot be undone.',
+            style: RpgTheme.bodyFont(
+              fontSize: 14,
+              color: colorScheme.onSurface.withValues(alpha: 0.8),
             ),
           ),
-        ],
-      ),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.pop(dialogContext),
+              child: Text(
+                'Cancel',
+                style: RpgTheme.bodyFont(fontSize: 14, color: mutedColor),
+              ),
+            ),
+            TextButton(
+              onPressed: () {
+                Navigator.pop(dialogContext);
+                context.read<ChatProvider>().deleteConversation(conversationId);
+              },
+              child: Text(
+                'Delete',
+                style: RpgTheme.bodyFont(
+                  fontSize: 14,
+                  color: RpgTheme.logoutRed,
+                  fontWeight: FontWeight.w600,
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 
@@ -120,17 +137,18 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   }
 
   Widget _buildMobileLayout() {
+    final colorScheme = Theme.of(context).colorScheme;
     return Scaffold(
       appBar: AppBar(
         title: Text(
           'RPG CHAT',
-          style: RpgTheme.pressStart2P(fontSize: 14, color: RpgTheme.gold),
+          style: RpgTheme.pressStart2P(fontSize: 14, color: colorScheme.primary),
         ),
         actions: [
           Stack(
             children: [
               IconButton(
-                icon: const Icon(Icons.person_add, color: RpgTheme.purple),
+                icon: Icon(Icons.person_add, color: colorScheme.primary),
                 onPressed: _openFriendRequests,
                 tooltip: 'Friend requests',
               ),
@@ -163,7 +181,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
             ],
           ),
           IconButton(
-            icon: const Icon(Icons.settings, color: RpgTheme.purple),
+            icon: Icon(Icons.settings, color: colorScheme.primary),
             onPressed: _openSettings,
             tooltip: 'Settings',
           ),
@@ -184,6 +202,10 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 
   Widget _buildDesktopLayout() {
     final chat = context.watch<ChatProvider>();
+    final colorScheme = Theme.of(context).colorScheme;
+    final isDark = RpgTheme.isDark(context);
+    final borderColor =
+        isDark ? RpgTheme.convItemBorder : RpgTheme.convItemBorderLight;
 
     return Scaffold(
       body: Row(
@@ -194,27 +216,38 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
               children: [
                 Container(
                   padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-                  decoration: const BoxDecoration(
-                    color: RpgTheme.boxBg,
-                    border: Border(bottom: BorderSide(color: RpgTheme.convItemBorder)),
+                  decoration: BoxDecoration(
+                    color: colorScheme.surface,
+                    border: Border(bottom: BorderSide(color: borderColor)),
                   ),
                   child: Row(
                     children: [
                       Expanded(
                         child: Text(
                           'RPG CHAT',
-                          style: RpgTheme.pressStart2P(fontSize: 12, color: RpgTheme.gold),
+                          style: RpgTheme.pressStart2P(
+                            fontSize: 12,
+                            color: colorScheme.primary,
+                          ),
                         ),
                       ),
                       IconButton(
-                        icon: const Icon(Icons.chat_bubble_outline, color: RpgTheme.purple, size: 20),
+                        icon: Icon(
+                          Icons.chat_bubble_outline,
+                          color: colorScheme.primary,
+                          size: 20,
+                        ),
                         onPressed: _startNewChat,
                         tooltip: 'New chat',
                       ),
                       Stack(
                         children: [
                           IconButton(
-                            icon: const Icon(Icons.person_add, color: RpgTheme.purple, size: 20),
+                            icon: Icon(
+                              Icons.person_add,
+                              color: colorScheme.primary,
+                              size: 20,
+                            ),
                             onPressed: _openFriendRequests,
                             tooltip: 'Friend requests',
                           ),
@@ -247,12 +280,20 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                         ],
                       ),
                       IconButton(
-                        icon: const Icon(Icons.settings, color: RpgTheme.purple, size: 20),
+                        icon: Icon(
+                          Icons.settings,
+                          color: colorScheme.primary,
+                          size: 20,
+                        ),
                         onPressed: _openSettings,
                         tooltip: 'Settings',
                       ),
                       IconButton(
-                        icon: const Icon(Icons.logout, color: RpgTheme.logoutRed, size: 20),
+                        icon: const Icon(
+                          Icons.logout,
+                          color: RpgTheme.logoutRed,
+                          size: 20,
+                        ),
                         onPressed: _logout,
                         tooltip: 'Logout',
                       ),
@@ -263,7 +304,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
               ],
             ),
           ),
-          Container(width: 1, color: RpgTheme.convItemBorder),
+          Container(width: 1, color: borderColor),
           Expanded(
             child: chat.activeConversationId != null
                 ? ChatDetailScreen(
@@ -274,11 +315,22 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                     child: Column(
                       mainAxisSize: MainAxisSize.min,
                       children: [
-                        Icon(Icons.chat_bubble_outline, size: 64, color: RpgTheme.mutedText),
+                        Icon(
+                          Icons.chat_bubble_outline,
+                          size: 64,
+                          color: isDark
+                              ? RpgTheme.mutedText
+                              : RpgTheme.textSecondaryLight,
+                        ),
                         const SizedBox(height: 16),
                         Text(
                           'Select a conversation',
-                          style: RpgTheme.bodyFont(fontSize: 16, color: RpgTheme.mutedText),
+                          style: RpgTheme.bodyFont(
+                            fontSize: 16,
+                            color: isDark
+                                ? RpgTheme.mutedText
+                                : RpgTheme.textSecondaryLight,
+                          ),
                         ),
                       ],
                     ),
@@ -292,6 +344,9 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   Widget _buildConversationList() {
     final chat = context.watch<ChatProvider>();
     final conversations = chat.conversations;
+    final isDark = RpgTheme.isDark(context);
+    final mutedColor =
+        isDark ? RpgTheme.mutedText : RpgTheme.textSecondaryLight;
 
     if (conversations.isEmpty) {
       return Center(
@@ -300,16 +355,19 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
-              Icon(Icons.forum_outlined, size: 48, color: RpgTheme.mutedText),
+              Icon(Icons.forum_outlined, size: 48, color: mutedColor),
               const SizedBox(height: 16),
               Text(
                 'No conversations yet',
-                style: RpgTheme.bodyFont(fontSize: 16, color: RpgTheme.mutedText),
+                style: RpgTheme.bodyFont(fontSize: 16, color: mutedColor),
               ),
               const SizedBox(height: 8),
               Text(
                 'Start a new chat to begin',
-                style: RpgTheme.bodyFont(fontSize: 13, color: RpgTheme.timeColor),
+                style: RpgTheme.bodyFont(
+                  fontSize: 13,
+                  color: isDark ? RpgTheme.timeColor : RpgTheme.textSecondaryLight,
+                ),
               ),
             ],
           ),
@@ -323,6 +381,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       separatorBuilder: (_, _) => const SizedBox(height: 2),
       itemBuilder: (context, index) {
         final conv = conversations[index];
+        final otherUser = chat.getOtherUser(conv);
         final displayName = chat.getOtherUserUsername(conv);
         final lastMsg = chat.lastMessages[conv.id];
         return ConversationTile(
@@ -331,6 +390,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           isActive: conv.id == chat.activeConversationId,
           onTap: () => _openChat(conv.id),
           onDelete: () => _deleteConversation(conv.id),
+          otherUser: otherUser,
         );
       },
     );

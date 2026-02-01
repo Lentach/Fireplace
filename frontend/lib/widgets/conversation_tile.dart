@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/rpg_theme.dart';
 import '../models/message_model.dart';
+import '../models/user_model.dart';
 import 'avatar_circle.dart';
 
 class ConversationTile extends StatelessWidget {
@@ -9,6 +10,7 @@ class ConversationTile extends StatelessWidget {
   final bool isActive;
   final VoidCallback onTap;
   final VoidCallback onDelete;
+  final UserModel? otherUser;
 
   const ConversationTile({
     super.key,
@@ -17,6 +19,7 @@ class ConversationTile extends StatelessWidget {
     this.isActive = false,
     required this.onTap,
     required this.onDelete,
+    this.otherUser,
   });
 
   String _formatTime(DateTime dt) {
@@ -30,18 +33,30 @@ class ConversationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final isDark = RpgTheme.isDark(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    final activeBg = isDark ? RpgTheme.activeTabBg : RpgTheme.activeTabBgLight;
+    final secondaryColor = isDark ? RpgTheme.mutedText : RpgTheme.textSecondaryLight;
+
     return Material(
-      color: isActive ? RpgTheme.activeTabBg : Colors.transparent,
+      color: isActive ? activeBg : Colors.transparent,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
-        splashColor: RpgTheme.purple.withValues(alpha: 0.2),
+        splashColor: RpgTheme.primaryColor(context).withValues(alpha: 0.2),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
-              AvatarCircle(email: displayName),
+              AvatarCircle(
+                email: displayName,
+                profilePictureUrl: otherUser?.profilePictureUrl,
+                showOnlineIndicator: otherUser != null,
+                isOnline: otherUser != null &&
+                    (otherUser!.activeStatus == true) &&
+                    (otherUser!.isOnline == true),
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -51,7 +66,7 @@ class ConversationTile extends StatelessWidget {
                       displayName,
                       style: RpgTheme.bodyFont(
                         fontSize: 14,
-                        color: Colors.white,
+                        color: colorScheme.onSurface,
                         fontWeight: FontWeight.w600,
                       ),
                       maxLines: 1,
@@ -63,7 +78,7 @@ class ConversationTile extends StatelessWidget {
                         lastMessage!.content,
                         style: RpgTheme.bodyFont(
                           fontSize: 13,
-                          color: RpgTheme.mutedText,
+                          color: secondaryColor,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -81,7 +96,7 @@ class ConversationTile extends StatelessWidget {
                       _formatTime(lastMessage!.createdAt),
                       style: RpgTheme.bodyFont(
                         fontSize: 11,
-                        color: RpgTheme.timeColor,
+                        color: secondaryColor,
                       ),
                     ),
                   const SizedBox(height: 4),

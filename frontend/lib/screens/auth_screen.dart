@@ -17,6 +17,17 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
+    final isDark = RpgTheme.isDark(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    final primaryColor = colorScheme.primary;
+    final inputBg = isDark ? RpgTheme.inputBg : RpgTheme.inputBgLight;
+    final tabBorderColor =
+        isDark ? RpgTheme.tabBorder : RpgTheme.tabBorderLight;
+    final activeTabBg =
+        isDark ? RpgTheme.activeTabBg : RpgTheme.activeTabBgLight;
+    final activeTextColor = isDark ? RpgTheme.gold : Colors.white;
+    final mutedColor =
+        isDark ? RpgTheme.mutedText : RpgTheme.textSecondaryLight;
 
     return Scaffold(
       body: SafeArea(
@@ -32,7 +43,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     'RPG CHAT',
                     style: RpgTheme.pressStart2P(
                       fontSize: 20,
-                      color: RpgTheme.gold,
+                      color: primaryColor,
                     ).copyWith(
                       shadows: [
                         const Shadow(
@@ -52,16 +63,16 @@ class _AuthScreenState extends State<AuthScreen> {
                     'Enter the realm',
                     style: RpgTheme.bodyFont(
                       fontSize: 14,
-                      color: RpgTheme.purple,
+                      color: primaryColor,
                     ),
                   ),
                   const SizedBox(height: 32),
                   // Toggle
                   Container(
                     decoration: BoxDecoration(
-                      color: RpgTheme.inputBg,
+                      color: inputBg,
                       borderRadius: BorderRadius.circular(8),
-                      border: Border.all(color: RpgTheme.tabBorder, width: 1.5),
+                      border: Border.all(color: tabBorderColor, width: 1.5),
                     ),
                     child: Row(
                       children: [
@@ -74,7 +85,7 @@ class _AuthScreenState extends State<AuthScreen> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
-                                color: _isLogin ? RpgTheme.activeTabBg : Colors.transparent,
+                                color: _isLogin ? activeTabBg : Colors.transparent,
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               alignment: Alignment.center,
@@ -82,7 +93,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                 'LOGIN',
                                 style: RpgTheme.bodyFont(
                                   fontSize: 14,
-                                  color: _isLogin ? RpgTheme.gold : RpgTheme.mutedText,
+                                  color: _isLogin ? activeTextColor : mutedColor,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),
@@ -98,7 +109,7 @@ class _AuthScreenState extends State<AuthScreen> {
                             child: Container(
                               padding: const EdgeInsets.symmetric(vertical: 12),
                               decoration: BoxDecoration(
-                                color: !_isLogin ? RpgTheme.activeTabBg : Colors.transparent,
+                                color: !_isLogin ? activeTabBg : Colors.transparent,
                                 borderRadius: BorderRadius.circular(6),
                               ),
                               alignment: Alignment.center,
@@ -106,7 +117,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                 'REGISTER',
                                 style: RpgTheme.bodyFont(
                                   fontSize: 14,
-                                  color: !_isLogin ? RpgTheme.gold : RpgTheme.mutedText,
+                                  color: !_isLogin ? activeTextColor : mutedColor,
                                   fontWeight: FontWeight.w600,
                                 ),
                               ),

@@ -76,7 +76,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
           'Add Friend',
           style: RpgTheme.bodyFont(
             fontSize: 18,
-            color: Colors.white,
+            color: Theme.of(context).colorScheme.onSurface,
             fontWeight: FontWeight.w600,
           ),
         ),
@@ -89,15 +89,22 @@ class _NewChatScreenState extends State<NewChatScreen> {
             children: [
               Text(
                 'Enter the email of the person you want to add:',
-                style: RpgTheme.bodyFont(fontSize: 14, color: RpgTheme.labelText),
+                style: RpgTheme.bodyFont(
+                  fontSize: 14,
+                  color: Theme.of(context).colorScheme.onSurfaceVariant,
+                ),
               ),
               const SizedBox(height: 16),
               TextField(
                 controller: _emailController,
-                style: RpgTheme.bodyFont(fontSize: 14, color: Colors.white),
+                style: RpgTheme.bodyFont(
+                  fontSize: 14,
+                  color: Theme.of(context).colorScheme.onSurface,
+                ),
                 decoration: RpgTheme.rpgInputDecoration(
                   hintText: 'user@example.com',
                   prefixIcon: Icons.email_outlined,
+                  context: context,
                 ),
                 keyboardType: TextInputType.emailAddress,
                 autofocus: true,
@@ -107,12 +114,12 @@ class _NewChatScreenState extends State<NewChatScreen> {
               ElevatedButton(
                 onPressed: _loading ? null : _startChat,
                 child: _loading
-                    ? const SizedBox(
+                    ? SizedBox(
                         height: 20,
                         width: 20,
                         child: CircularProgressIndicator(
                           strokeWidth: 2,
-                          color: RpgTheme.gold,
+                          color: Theme.of(context).colorScheme.primary,
                         ),
                       )
                     : const Text('Send Friend Request'),

@@ -19,13 +19,13 @@ export class UsersService {
   ) {}
 
   async create(email: string, password: string, username?: string): Promise<User> {
-    // Sprawdzamy czy email jest już zajęty
+    // Check if email is already taken
     const existing = await this.usersRepo.findOne({ where: { email } });
     if (existing) {
       throw new ConflictException('Email already in use');
     }
 
-    // Sprawdzamy czy username jest już zajęty (case-insensitive)
+    // Check if username is already taken (case-insensitive)
     if (username) {
       const existingUsername = await this.usersRepo
         .createQueryBuilder('user')
@@ -36,7 +36,7 @@ export class UsersService {
       }
     }
 
-    // 10 rund bcrypt — dobry balans bezpieczeństwo/wydajność
+    // 10 bcrypt rounds — good balance of security and performance
     const hash = await bcrypt.hash(password, 10);
 
     const user = this.usersRepo.create({ email, password: hash, username });

@@ -24,6 +24,13 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
   @override
   Widget build(BuildContext context) {
     final chat = context.watch<ChatProvider>();
+    final isDark = RpgTheme.isDark(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    final cardBg = isDark ? RpgTheme.convItemBg : RpgTheme.convItemBgLight;
+    final borderColor = isDark ? RpgTheme.border : RpgTheme.convItemBorderLight;
+    final textColor = colorScheme.onSurface;
+    final secondaryColor =
+        isDark ? RpgTheme.border : RpgTheme.textSecondaryLight;
 
     // Listen for pending open conversation to navigate
     final pendingId = chat.consumePendingOpen();
@@ -53,14 +60,14 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
                   Icon(
                     Icons.person_add_disabled,
                     size: 64,
-                    color: RpgTheme.border,
+                    color: secondaryColor,
                   ),
                   const SizedBox(height: 16),
                   Text(
                     'No pending requests',
                     style: RpgTheme.bodyFont(
                       fontSize: 16,
-                      color: RpgTheme.border,
+                      color: secondaryColor,
                     ),
                   ),
                 ],
@@ -78,10 +85,10 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
 
               return Card(
                 margin: const EdgeInsets.symmetric(vertical: 8),
-                color: RpgTheme.convItemBg,
+                color: cardBg,
                 shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(12),
-                  side: BorderSide(color: RpgTheme.border, width: 2),
+                  side: BorderSide(color: borderColor, width: 2),
                 ),
                 child: Padding(
                   padding: const EdgeInsets.all(12),
@@ -92,13 +99,13 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
                           // Avatar
                           CircleAvatar(
                             radius: 24,
-                            backgroundColor: RpgTheme.gold,
+                            backgroundColor: colorScheme.primary,
                             child: Text(
                               firstLetter,
                               style: RpgTheme.bodyFont(
                                 fontSize: 18,
                                 fontWeight: FontWeight.bold,
-                                color: RpgTheme.background,
+                                color: colorScheme.onPrimary,
                               ),
                             ),
                           ),
@@ -113,7 +120,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
                                   style: RpgTheme.bodyFont(
                                     fontSize: 14,
                                     fontWeight: FontWeight.bold,
-                                    color: Colors.white,
+                                    color: textColor,
                                   ),
                                 ),
                                 const SizedBox(height: 4),
@@ -121,7 +128,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
                                   'wants to add you as a friend',
                                   style: RpgTheme.bodyFont(
                                     fontSize: 12,
-                                    color: RpgTheme.border,
+                                    color: secondaryColor,
                                   ),
                                 ),
                               ],

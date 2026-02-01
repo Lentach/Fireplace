@@ -1,0 +1,20 @@
+---
+description: Agent musi na start czytać podsumowania sesji i na koniec zapisywać nowe
+alwaysApply: true
+---
+
+# Zasady sesji – podsumowania
+
+## Na START każdej sesji
+1. Przeczytaj plik `.cursor/session-summaries/LATEST.md` aby poznać kontekst poprzednich prac.
+2. Opcjonalnie: przeczytaj najnowsze pliki `YYYY-MM-DD-session.md` jeśli potrzebujesz więcej szczegółów.
+
+## Na KONIEC każdej sesji
+1. Utwórz nowy plik `.cursor/session-summaries/YYYY-MM-DD-session.md` z dzisiejszą datą.
+2. Zapisz streszczenie:
+   - Co udało się zrobić
+   - Kluczowe pliki zmodyfikowane
+   - Stan projektu / ewentualne uwagi dla następnej sesji
+3. Zaktualizuj `.cursor/session-summaries/LATEST.md` – wpisz datę i link do nowego podsumowania.
+
+Nie pomijaj tego kroku – przyszłe sesje zależą od tych streszczeń.

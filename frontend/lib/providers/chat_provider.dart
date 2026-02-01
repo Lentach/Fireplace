@@ -73,6 +73,13 @@ class ChatProvider extends ChangeNotifier {
         : conv.userOne.id;
   }
 
+  UserModel? getOtherUser(ConversationModel conv) {
+    if (_currentUserId == null) return null;
+    return conv.userOne.id == _currentUserId
+        ? conv.userTwo
+        : conv.userOne;
+  }
+
   void connect({required String token, required int userId}) {
     // Clear ALL state before connecting to prevent data leakage between users
     _conversations = [];
@@ -218,6 +225,25 @@ class ChatProvider extends ChangeNotifier {
             return f.copyWith(activeStatus: activeStatus);
           }
           return f;
+        }).toList();
+        _conversations = _conversations.map((c) {
+          if (c.userOne.id == userId) {
+            return ConversationModel(
+              id: c.id,
+              userOne: c.userOne.copyWith(activeStatus: activeStatus),
+              userTwo: c.userTwo,
+              createdAt: c.createdAt,
+            );
+          }
+          if (c.userTwo.id == userId) {
+            return ConversationModel(
+              id: c.id,
+              userOne: c.userOne,
+              userTwo: c.userTwo.copyWith(activeStatus: activeStatus),
+              createdAt: c.createdAt,
+            );
+          }
+          return c;
         }).toList();
         notifyListeners();
       },

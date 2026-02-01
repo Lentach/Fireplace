@@ -22,11 +22,24 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   String? _deviceName;
   bool _activeStatus = true;
+  bool _activeStatusSyncedFromAuth = false;
 
   @override
   void initState() {
     super.initState();
     _loadDeviceName();
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    if (!_activeStatusSyncedFromAuth) {
+      _activeStatusSyncedFromAuth = true;
+      final auth = context.read<AuthProvider>();
+      setState(() {
+        _activeStatus = auth.currentUser?.activeStatus ?? true;
+      });
+    }
   }
 
   Future<void> _loadDeviceName() async {
@@ -74,7 +87,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'Profile picture updated',
               style: RpgTheme.bodyFont(color: Colors.white),
             ),
-            backgroundColor: RpgTheme.purple,
+            backgroundColor: Theme.of(context).colorScheme.primary,
           ),
         );
       }
@@ -115,7 +128,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               'Password updated successfully',
               style: RpgTheme.bodyFont(color: Colors.white),
             ),
-            backgroundColor: RpgTheme.purple,
+            backgroundColor: Theme.of(context).colorScheme.primary,
           ),
         );
       }
@@ -196,20 +209,22 @@ class _SettingsScreenState extends State<SettingsScreen> {
     VoidCallback? onTap,
     Color? textColor,
   }) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
       decoration: BoxDecoration(
-        color: RpgTheme.boxBg,
+        color: colorScheme.surface,
         borderRadius: BorderRadius.circular(12),
-        border: Border.all(color: RpgTheme.border, width: 1.5),
+        border: Border.all(color: colorScheme.outline.withValues(alpha: 0.5), width: 1.5),
       ),
       child: ListTile(
-        leading: Icon(icon, color: RpgTheme.purple, size: 24),
+        leading: Icon(icon, color: colorScheme.primary, size: 24),
         title: Text(
           title,
           style: RpgTheme.bodyFont(
             fontSize: 14,
-            color: textColor ?? RpgTheme.textColor,
+            color: textColor ?? colorScheme.onSurface,
             fontWeight: FontWeight.w500,
           ),
         ),
@@ -218,7 +233,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 subtitle,
                 style: RpgTheme.bodyFont(
                   fontSize: 12,
-                  color: RpgTheme.mutedText,
+                  color: colorScheme.onSurfaceVariant,
                 ),
               )
             : null,
@@ -235,20 +250,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final chat = context.read<ChatProvider>();
     final settings = context.watch<SettingsProvider>();
 
+    final theme = Theme.of(context);
     return Scaffold(
-      backgroundColor: RpgTheme.background,
+      backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         title: Text(
           'Settings',
           style: RpgTheme.bodyFont(
             fontSize: 18,
-            color: RpgTheme.gold,
+            color: theme.colorScheme.primary,
             fontWeight: FontWeight.w600,
           ),
         ),
-        backgroundColor: RpgTheme.boxBg,
+        backgroundColor: theme.colorScheme.surface,
         elevation: 0,
-        iconTheme: const IconThemeData(color: RpgTheme.gold),
+        iconTheme: IconThemeData(color: theme.colorScheme.primary),
       ),
       body: SafeArea(
         child: ListView(
@@ -264,6 +280,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       email: auth.currentUser?.email ?? '',
                       radius: 60,
                       profilePictureUrl: auth.currentUser?.profilePictureUrl,
+                      showOnlineIndicator: _activeStatus,
+                      isOnline: _activeStatus,
                     ),
                     Positioned(
                       bottom: 0,
@@ -274,10 +292,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           width: 36,
                           height: 36,
                           decoration: BoxDecoration(
-                            color: RpgTheme.purple,
+                            color: theme.colorScheme.primary,
                             shape: BoxShape.circle,
                             border: Border.all(
-                              color: RpgTheme.background,
+                              color: theme.colorScheme.surface,
                               width: 3,
                             ),
                           ),
@@ -296,7 +314,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   auth.currentUser?.username ?? 'Hero',
                   style: RpgTheme.bodyFont(
                     fontSize: 20,
-                    color: RpgTheme.textColor,
+                    color: theme.colorScheme.onSurface,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
@@ -305,7 +323,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   auth.currentUser?.email ?? '',
                   style: RpgTheme.bodyFont(
                     fontSize: 14,
-                    color: RpgTheme.mutedText,
+                    color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
                 const SizedBox(height: 32),
@@ -319,47 +337,36 @@ class _SettingsScreenState extends State<SettingsScreen> {
               trailing: Switch(
                 value: _activeStatus,
                 onChanged: _updateActiveStatus,
-                activeTrackColor: RpgTheme.purple,
+                activeTrackColor: theme.colorScheme.primary,
               ),
             ),
 
             _buildSettingsTile(
-              icon: Icons.dark_mode,
+              icon: Icons.palette_outlined,
               title: 'Dark Mode',
-              trailing: DropdownButton<String>(
-                value: settings.darkModePreference,
+              subtitle: 'Light / Dark',
+              trailing: Switch(
+                value: settings.darkModePreference == 'dark',
                 onChanged: (value) {
-                  if (value != null) {
-                    settings.setDarkModePreference(value);
-                  }
+                  settings.setDarkModePreference(value ? 'dark' : 'light');
                 },
-                items: const [
-                  DropdownMenuItem(value: 'system', child: Text('System')),
-                  DropdownMenuItem(value: 'light', child: Text('Light')),
-                  DropdownMenuItem(value: 'dark', child: Text('Dark')),
-                ],
-                underline: const SizedBox(),
-                style: RpgTheme.bodyFont(
-                  fontSize: 14,
-                  color: RpgTheme.textColor,
-                ),
-                dropdownColor: RpgTheme.boxBg,
+                activeTrackColor: theme.colorScheme.primary,
               ),
             ),
 
             _buildSettingsTile(
               icon: Icons.security,
               title: 'Privacy and Safety',
-              trailing: Icon(Icons.chevron_right, color: RpgTheme.mutedText),
+              trailing: Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
               onTap: () {
                 ScaffoldMessenger.of(context).showSnackBar(
-                  SnackBar(
-                    content: Text(
-                      'Coming soon',
-                      style: RpgTheme.bodyFont(color: Colors.white),
-                    ),
-                    backgroundColor: RpgTheme.purple,
+                SnackBar(
+                  content: Text(
+                    'Coming soon',
+                    style: RpgTheme.bodyFont(color: Colors.white),
                   ),
+                  backgroundColor: Theme.of(context).colorScheme.primary,
+                ),
                 );
               },
             ),
@@ -368,20 +375,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
               icon: Icons.devices,
               title: 'Devices',
               subtitle: _deviceName ?? 'Loading...',
-              trailing: Icon(Icons.chevron_right, color: RpgTheme.mutedText),
+              trailing: Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
             ),
 
             _buildSettingsTile(
               icon: Icons.lock_reset,
               title: 'Reset Password',
-              trailing: Icon(Icons.chevron_right, color: RpgTheme.mutedText),
+              trailing: Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
               onTap: _showResetPasswordDialog,
             ),
 
             _buildSettingsTile(
               icon: Icons.delete_forever,
               title: 'Delete Account',
-              trailing: Icon(Icons.chevron_right, color: RpgTheme.mutedText),
+              trailing: Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
               onTap: _showDeleteAccountDialog,
               textColor: const Color(0xFFFF6666),
             ),

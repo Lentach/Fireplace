@@ -6,6 +6,7 @@ import '../theme/rpg_theme.dart';
 import '../widgets/chat_message_bubble.dart';
 import '../widgets/chat_input_bar.dart';
 import '../widgets/message_date_separator.dart';
+import '../models/user_model.dart';
 import '../widgets/avatar_circle.dart';
 
 class ChatDetailScreen extends StatefulWidget {
@@ -76,6 +77,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     return chat.getOtherUserId(conv);
   }
 
+  UserModel? _getOtherUser() {
+    final chat = context.read<ChatProvider>();
+    final conv = chat.conversations.where((c) => c.id == widget.conversationId).firstOrNull;
+    if (conv == null) return null;
+    return chat.getOtherUser(conv);
+  }
+
   void _unfriend() {
     final otherUserId = _getOtherUserId();
     final otherUsername = _getContactName();
@@ -118,16 +126,26 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
     _scrollToBottom();
 
+    final isDark = RpgTheme.isDark(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    final messagesAreaBg =
+        isDark ? RpgTheme.messagesAreaBg : RpgTheme.messagesAreaBgLight;
+    final mutedColor =
+        isDark ? RpgTheme.mutedText : RpgTheme.textSecondaryLight;
+
     final body = Column(
       children: [
         Expanded(
           child: Container(
-            color: RpgTheme.messagesAreaBg,
+            color: messagesAreaBg,
             child: messages.isEmpty
                 ? Center(
                     child: Text(
                       'No messages yet',
-                      style: RpgTheme.bodyFont(fontSize: 14, color: RpgTheme.mutedText),
+                      style: RpgTheme.bodyFont(
+                        fontSize: 14,
+                        color: mutedColor,
+                      ),
                     ),
                   )
                 : ListView.builder(
@@ -158,24 +176,38 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       ],
     );
 
+    final otherUser = _getOtherUser();
+    final showOnline = otherUser != null &&
+        (otherUser.activeStatus == true) &&
+        (otherUser.isOnline == true);
+
     if (widget.isEmbedded) {
+      final borderColor = isDark
+          ? RpgTheme.convItemBorder
+          : RpgTheme.convItemBorderLight;
       return Column(
         children: [
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-            decoration: const BoxDecoration(
-              color: RpgTheme.boxBg,
-              border: Border(bottom: BorderSide(color: RpgTheme.convItemBorder)),
+            decoration: BoxDecoration(
+              color: colorScheme.surface,
+              border: Border(bottom: BorderSide(color: borderColor)),
             ),
             child: Row(
               children: [
-                AvatarCircle(email: contactName, radius: 18),
+                AvatarCircle(
+                  email: contactName,
+                  radius: 18,
+                  profilePictureUrl: otherUser?.profilePictureUrl,
+                  showOnlineIndicator: true,
+                  isOnline: showOnline,
+                ),
                 const SizedBox(width: 12),
                 Text(
                   contactName,
                   style: RpgTheme.bodyFont(
                     fontSize: 16,
-                    color: Colors.white,
+                    color: colorScheme.onSurface,
                     fontWeight: FontWeight.w600,
                   ),
                 ),
@@ -198,14 +230,20 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         ),
         title: Row(
           children: [
-            AvatarCircle(email: contactName, radius: 16),
+            AvatarCircle(
+              email: contactName,
+              radius: 16,
+              profilePictureUrl: otherUser?.profilePictureUrl,
+              showOnlineIndicator: true,
+              isOnline: showOnline,
+            ),
             const SizedBox(width: 10),
             Expanded(
               child: Text(
                 contactName,
                 style: RpgTheme.bodyFont(
                   fontSize: 16,
-                  color: Colors.white,
+                  color: colorScheme.onSurface,
                   fontWeight: FontWeight.w600,
                 ),
                 overflow: TextOverflow.ellipsis,

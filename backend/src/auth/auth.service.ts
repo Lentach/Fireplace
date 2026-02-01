@@ -52,6 +52,7 @@ export class AuthService {
       email: user.email,
       username: user.username,
       profilePictureUrl: user.profilePictureUrl,
+      activeStatus: user.activeStatus,
     };
     return {
       access_token: this.jwtService.sign(payload),
