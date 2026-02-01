@@ -61,14 +61,20 @@ export class ChatConversationService {
   }
 
   private toConversationPayloadWithOnline(
-    conv: { id: number; userOne: { id: number }; userTwo: { id: number }; createdAt: Date },
+    conv: { id: number; userOne: { id: number; activeStatus: boolean }; userTwo: { id: number; activeStatus: boolean }; createdAt: Date },
     onlineUsers: Map<number, string>,
   ) {
     const payload = ConversationMapper.toPayload(conv as any);
     return {
       ...payload,
-      userOne: { ...payload.userOne, isOnline: onlineUsers.has(conv.userOne.id) },
-      userTwo: { ...payload.userTwo, isOnline: onlineUsers.has(conv.userTwo.id) },
+      userOne: { 
+        ...payload.userOne, 
+        isOnline: onlineUsers.has(conv.userOne.id) && conv.userOne.activeStatus 
+      },
+      userTwo: { 
+        ...payload.userTwo, 
+        isOnline: onlineUsers.has(conv.userTwo.id) && conv.userTwo.activeStatus 
+      },
     };
   }
 
@@ -166,7 +172,10 @@ export class ChatConversationService {
     const friends = await this.friendsService.getFriends(userId);
     client.emit(
       'friendsList',
-      friends.map((u) => ({ ...UserMapper.toPayload(u), isOnline: onlineUsers.has(u.id) })),
+      friends.map((u) => ({ 
+        ...UserMapper.toPayload(u), 
+        isOnline: onlineUsers.has(u.id) && u.activeStatus 
+      })),
     );
 
     if (otherUserSocketId) {
@@ -175,7 +184,10 @@ export class ChatConversationService {
         .to(otherUserSocketId)
         .emit(
           'friendsList',
-          otherFriends.map((u) => ({ ...UserMapper.toPayload(u), isOnline: onlineUsers.has(u.id) })),
+          otherFriends.map((u) => ({ 
+            ...UserMapper.toPayload(u), 
+            isOnline: onlineUsers.has(u.id) && u.activeStatus 
+          })),
         );
     }
   }

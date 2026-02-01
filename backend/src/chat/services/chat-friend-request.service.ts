@@ -25,19 +25,28 @@ export class ChatFriendRequestService {
     private readonly conversationsService: ConversationsService,
   ) {}
 
-  private toUserPayloadWithOnline(user: { id: number }, onlineUsers: Map<number, string>) {
-    return { ...UserMapper.toPayload(user as any), isOnline: onlineUsers.has(user.id) };
+  private toUserPayloadWithOnline(user: { id: number; activeStatus: boolean }, onlineUsers: Map<number, string>) {
+    return { 
+      ...UserMapper.toPayload(user as any), 
+      isOnline: onlineUsers.has(user.id) && user.activeStatus 
+    };
   }
 
   private toConversationPayloadWithOnline(
-    conv: { userOne: { id: number }; userTwo: { id: number } },
+    conv: { userOne: { id: number; activeStatus: boolean }; userTwo: { id: number; activeStatus: boolean } },
     onlineUsers: Map<number, string>,
   ) {
     const payload = ConversationMapper.toPayload(conv as any);
     return {
       ...payload,
-      userOne: { ...payload.userOne, isOnline: onlineUsers.has(conv.userOne.id) },
-      userTwo: { ...payload.userTwo, isOnline: onlineUsers.has(conv.userTwo.id) },
+      userOne: { 
+        ...payload.userOne, 
+        isOnline: onlineUsers.has(conv.userOne.id) && conv.userOne.activeStatus 
+      },
+      userTwo: { 
+        ...payload.userTwo, 
+        isOnline: onlineUsers.has(conv.userTwo.id) && conv.userTwo.activeStatus 
+      },
     };
   }
 
