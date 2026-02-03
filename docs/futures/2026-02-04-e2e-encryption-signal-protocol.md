@@ -75,9 +75,9 @@ This document describes the complete architecture for implementing end-to-end en
 ┌─────────────────────────────────────────────────────────────┐
 │                    NestJS Backend                            │
 │  ┌───────────────────────────────────────────────────────┐  │
-│  │ @signalapp/libsignal-client                           │  │
-│  │ - Signature Verification                              │  │
-│  │ - PreKey Routing                                      │  │
+│  │ @noble/ed25519 (signature verification only)          │  │
+│  │ - Verify Signed PreKey; no full libsignal on server   │  │
+│  │ - PreKey Storage & Routing                            │  │
 │  └───────────────────────────────────────────────────────┘  │
 │  ┌───────────────────────────────────────────────────────┐  │
 │  │ PreKey Store                                          │  │
@@ -239,12 +239,11 @@ for (var preKey in oneTimePreKeys) {
   );
 }
 
-// Step 3: Send public keys to server
-final deviceId = Uuid().v4();
+// Step 3: Send public keys to server (use deviceId from Step 0!)
 final registrationId = generateRegistrationId(); // random 14-bit int
 
 await api.post('/devices/register', body: {
-  'deviceId': deviceId,
+  'deviceId': deviceId,  // From secure storage (Step 0), NOT a new UUID
   'deviceName': await getDeviceName(), // "iPhone 13", "Galaxy S23"
   'registrationId': registrationId,
   'identityKey': base64Encode(identityKeyPair.publicKey),
@@ -1753,6 +1752,11 @@ describe('Encrypted Messaging E2E', () => {
 - [ ] One-Time PreKeys exhausted → fallback to Signed PreKey
 - [ ] Signed PreKey rotation (after 7 days)
 - [ ] Out-of-order messages (network delay)
+
+**Negative / Invalid Input (no crash, no plaintext in logs):**
+- [ ] Invalid or truncated ciphertext → decryption fails gracefully
+- [ ] Tampered payload (bit flip in blob) → rejected, no plaintext leaked
+- [ ] Wrong message type / malformed base64 → safe error handling
 
 **Security Verification:**
 - [ ] Server logs: no plaintext appears
