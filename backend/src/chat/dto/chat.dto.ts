@@ -17,6 +17,11 @@ export class SendMessageDto {
   @MinLength(1, { message: 'Message cannot be empty' })
   @MaxLength(5000, { message: 'Message cannot exceed 5000 characters' })
   content: string;
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  expiresIn?: number; // seconds until message expires
 }
 
 export class SendFriendRequestDto {

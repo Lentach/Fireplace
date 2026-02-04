@@ -9,6 +9,19 @@ import {
 import { User } from '../users/user.entity';
 import { Conversation } from '../conversations/conversation.entity';
 
+export enum MessageDeliveryStatus {
+  SENDING = 'SENDING',
+  SENT = 'SENT',
+  DELIVERED = 'DELIVERED',
+}
+
+export enum MessageType {
+  TEXT = 'TEXT',
+  PING = 'PING',
+  IMAGE = 'IMAGE',
+  DRAWING = 'DRAWING',
+}
+
 @Entity('messages')
 export class Message {
   @PrimaryGeneratedColumn()
@@ -17,6 +30,26 @@ export class Message {
   // Message content — plain text, no formatting in MVP
   @Column('text')
   content: string;
+
+  @Column({
+    type: 'enum',
+    enum: MessageDeliveryStatus,
+    default: MessageDeliveryStatus.SENT,
+  })
+  deliveryStatus: MessageDeliveryStatus;
+
+  @Column({ type: 'timestamp', nullable: true })
+  expiresAt: Date | null;
+
+  @Column({
+    type: 'enum',
+    enum: MessageType,
+    default: MessageType.TEXT,
+  })
+  messageType: MessageType;
+
+  @Column({ type: 'text', nullable: true })
+  mediaUrl: string | null;
 
   @ManyToOne(() => User, { eager: true })
   @JoinColumn({ name: 'sender_id' })

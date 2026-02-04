@@ -1,7 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
-import { Message } from './message.entity';
+import { Message, MessageDeliveryStatus, MessageType } from './message.entity';
 import { User } from '../users/user.entity';
 import { Conversation } from '../conversations/conversation.entity';
 
@@ -16,8 +16,22 @@ export class MessagesService {
     content: string,
     sender: User,
     conversation: Conversation,
+    options?: {
+      deliveryStatus?: MessageDeliveryStatus;
+      expiresAt?: Date | null;
+      messageType?: MessageType;
+      mediaUrl?: string | null;
+    },
   ): Promise<Message> {
-    const msg = this.msgRepo.create({ content, sender, conversation });
+    const msg = this.msgRepo.create({
+      content,
+      sender,
+      conversation,
+      deliveryStatus: options?.deliveryStatus || MessageDeliveryStatus.SENT,
+      expiresAt: options?.expiresAt || null,
+      messageType: options?.messageType || MessageType.TEXT,
+      mediaUrl: options?.mediaUrl || null,
+    });
     return this.msgRepo.save(msg);
   }
 

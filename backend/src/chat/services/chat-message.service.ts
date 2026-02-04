@@ -57,10 +57,18 @@ export class ChatMessageService {
       sender,
       recipient,
     );
+
+    const expiresAt = data.expiresIn
+      ? new Date(Date.now() + data.expiresIn * 1000)
+      : null;
+
     const message = await this.messagesService.create(
       data.content,
       sender,
       conversation,
+      {
+        expiresAt,
+      },
     );
 
     const messagePayload = {
@@ -71,6 +79,10 @@ export class ChatMessageService {
       senderUsername: sender.username,
       conversationId: conversation.id,
       createdAt: message.createdAt,
+      deliveryStatus: message.deliveryStatus,
+      expiresAt: message.expiresAt,
+      messageType: message.messageType,
+      mediaUrl: message.mediaUrl,
     };
 
     // Emit to sender (confirmation)
@@ -106,6 +118,10 @@ export class ChatMessageService {
       senderUsername: m.sender.username,
       conversationId: data.conversationId,
       createdAt: m.createdAt,
+      deliveryStatus: m.deliveryStatus || 'SENT',
+      expiresAt: m.expiresAt,
+      messageType: m.messageType || 'TEXT',
+      mediaUrl: m.mediaUrl,
     }));
 
     client.emit('messageHistory', mapped);
