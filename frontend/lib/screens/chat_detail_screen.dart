@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
@@ -26,6 +28,7 @@ class ChatDetailScreen extends StatefulWidget {
 
 class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final _scrollController = ScrollController();
+  Timer? _timerCountdownRefresh;
 
   @override
   void initState() {
@@ -36,6 +39,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         chat.openConversation(widget.conversationId);
       }
     });
+
+    // Refresh every second to update countdown
+    _timerCountdownRefresh = Timer.periodic(
+      const Duration(seconds: 1),
+      (_) {
+        if (mounted) setState(() {});
+      },
+    );
   }
 
   @override
@@ -49,6 +60,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   @override
   void dispose() {
     _scrollController.dispose();
+    _timerCountdownRefresh?.cancel();
     super.dispose();
   }
 
