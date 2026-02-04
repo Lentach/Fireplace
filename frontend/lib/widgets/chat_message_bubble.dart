@@ -127,29 +127,32 @@ class ChatMessageBubble extends StatelessWidget {
             else if ((message.messageType == MessageType.image ||
                      message.messageType == MessageType.drawing) &&
                      message.mediaUrl != null)
-              ClipRRect(
-                borderRadius: BorderRadius.circular(8),
-                child: Image.network(
-                  message.mediaUrl!,
-                  fit: BoxFit.cover,
-                  loadingBuilder: (context, child, loadingProgress) {
-                    if (loadingProgress == null) return child;
-                    return const Center(
-                      child: Padding(
-                        padding: EdgeInsets.all(16.0),
-                        child: CircularProgressIndicator(),
-                      ),
-                    );
-                  },
-                  errorBuilder: (context, error, stackTrace) {
-                    return Padding(
-                      padding: const EdgeInsets.all(8.0),
-                      child: Text(
-                        '[Image failed to load]',
-                        style: RpgTheme.bodyFont(fontSize: 12, color: Colors.red),
-                      ),
-                    );
-                  },
+              ConstrainedBox(
+                constraints: const BoxConstraints(maxWidth: 200),
+                child: ClipRRect(
+                  borderRadius: BorderRadius.circular(8),
+                  child: Image.network(
+                    message.mediaUrl!,
+                    fit: BoxFit.contain,
+                    loadingBuilder: (context, child, loadingProgress) {
+                      if (loadingProgress == null) return child;
+                      return const Center(
+                        child: Padding(
+                          padding: EdgeInsets.all(16.0),
+                          child: CircularProgressIndicator(),
+                        ),
+                      );
+                    },
+                    errorBuilder: (context, error, stackTrace) {
+                      return Padding(
+                        padding: const EdgeInsets.all(8.0),
+                        child: Text(
+                          '[Image failed to load]',
+                          style: RpgTheme.bodyFont(fontSize: 12, color: Colors.red),
+                        ),
+                      );
+                    },
+                  ),
                 ),
               )
             else

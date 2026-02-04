@@ -72,13 +72,21 @@ class SocketService {
     _socket?.emit('getConversations');
   }
 
-  void sendMessage(int recipientId, String content, {int? expiresIn}) {
+  void sendMessage(
+    int recipientId,
+    String content, {
+    int? expiresIn,
+    String? tempId,
+  }) {
     final payload = {
       'recipientId': recipientId,
       'content': content,
     };
     if (expiresIn != null) {
       payload['expiresIn'] = expiresIn;
+    }
+    if (tempId != null) {
+      payload['tempId'] = tempId;
     }
     _socket?.emit('sendMessage', payload);
   }

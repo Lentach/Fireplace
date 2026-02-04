@@ -85,6 +85,7 @@ export class ChatMessageService {
       expiresAt: message.expiresAt,
       messageType: message.messageType,
       mediaUrl: message.mediaUrl,
+      tempId: data.tempId, // Return tempId for optimistic message matching
     };
 
     // Emit to sender (confirmation)

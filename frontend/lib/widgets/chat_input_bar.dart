@@ -39,7 +39,11 @@ class _ChatInputBarState extends State<ChatInputBar> {
   void _send() {
     final text = _controller.text.trim();
     if (text.isEmpty) return;
-    context.read<ChatProvider>().sendMessage(text);
+
+    final chat = context.read<ChatProvider>();
+    final expiresIn = chat.conversationDisappearingTimer;
+    chat.sendMessage(text, expiresIn: expiresIn);
+
     _controller.clear();
 
     if (_showEmojiPicker) {
@@ -186,7 +190,10 @@ class _ChatInputBarState extends State<ChatInputBar> {
                 onEmojiSelected: (category, emoji) {
                   _controller.text += emoji.emoji;
                 },
-                config: const Config(),
+                config: Config(
+                  // Use available parameters in emoji_picker_flutter 2.0.0
+                  // Most styling is handled by the theme automatically
+                ),
               ),
             ),
         ],

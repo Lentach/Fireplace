@@ -72,8 +72,8 @@ class ChatProvider extends ChangeNotifier {
     final msg = MessageModel.fromJson(data as Map<String, dynamic>);
 
     // If this is our own message (messageSent), replace temp optimistic message
-    if (msg.senderId == _currentUserId) {
-      final tempIndex = _messages.indexWhere((m) => m.id < 0 && m.content == msg.content);
+    if (msg.senderId == _currentUserId && msg.tempId != null) {
+      final tempIndex = _messages.indexWhere((m) => m.tempId == msg.tempId);
       if (tempIndex != -1) {
         _messages.removeAt(tempIndex);
       }
@@ -304,6 +304,9 @@ class ChatProvider extends ChangeNotifier {
     // Use conversation disappearing timer if expiresIn not provided
     final effectiveExpiresIn = expiresIn ?? conversationDisappearingTimer;
 
+    // Generate unique tempId for optimistic message matching
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}_$_currentUserId';
+
     // Create optimistic message with SENDING status
     final tempMessage = MessageModel(
       id: -DateTime.now().millisecondsSinceEpoch, // Temporary negative ID
@@ -316,12 +319,18 @@ class ChatProvider extends ChangeNotifier {
       expiresAt: effectiveExpiresIn != null
           ? DateTime.now().add(Duration(seconds: effectiveExpiresIn))
           : null,
+      tempId: tempId,
     );
 
     _messages.add(tempMessage);
     notifyListeners();
 
-    _socketService.sendMessage(recipientId, content, expiresIn: effectiveExpiresIn);
+    _socketService.sendMessage(
+      recipientId,
+      content,
+      expiresIn: effectiveExpiresIn,
+      tempId: tempId,
+    );
   }
 
   void sendPing(int recipientId) {

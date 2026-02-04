@@ -23,6 +23,7 @@ class MessageModel {
   final DateTime? expiresAt;
   final MessageType messageType;
   final String? mediaUrl;
+  final String? tempId; // For optimistic message matching
 
   MessageModel({
     required this.id,
@@ -36,6 +37,7 @@ class MessageModel {
     this.expiresAt,
     this.messageType = MessageType.text,
     this.mediaUrl,
+    this.tempId,
   });
 
   factory MessageModel.fromJson(Map<String, dynamic> json) {
@@ -53,6 +55,7 @@ class MessageModel {
           : null,
       messageType: _parseMessageType(json['messageType'] as String?),
       mediaUrl: json['mediaUrl'] as String?,
+      tempId: json['tempId'] as String?,
     );
   }
 
@@ -99,6 +102,7 @@ class MessageModel {
       expiresAt: expiresAt ?? this.expiresAt,
       messageType: messageType,
       mediaUrl: mediaUrl,
+      tempId: tempId,
     );
   }
 }

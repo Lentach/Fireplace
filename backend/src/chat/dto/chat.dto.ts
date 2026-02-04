@@ -22,6 +22,10 @@ export class SendMessageDto {
   @IsNumber()
   @IsPositive()
   expiresIn?: number; // seconds until message expires
+
+  @IsOptional()
+  @IsString()
+  tempId?: string; // Client-generated ID for optimistic message matching
 }
 
 export class SendFriendRequestDto {
