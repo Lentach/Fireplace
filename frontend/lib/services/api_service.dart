@@ -124,4 +124,54 @@ class ApiService {
       throw Exception(data['message'] ?? 'Account deletion failed');
     }
   }
+
+  Future<Map<String, dynamic>> uploadImageMessage(
+    String token,
+    XFile imageFile,
+    int recipientId,
+    int? expiresIn,
+  ) async {
+    var request = http.MultipartRequest(
+      'POST',
+      Uri.parse('$baseUrl/messages/image'),
+    );
+
+    request.headers['Authorization'] = 'Bearer $token';
+    request.fields['recipientId'] = recipientId.toString();
+    if (expiresIn != null) {
+      request.fields['expiresIn'] = expiresIn.toString();
+    }
+
+    // Handle web vs native platforms
+    if (kIsWeb) {
+      // Web: use readAsBytes with proper MIME type
+      final bytes = await imageFile.readAsBytes();
+      final extension = imageFile.name.toLowerCase().split('.').last;
+      final mimeType = extension == 'png' ? 'image/png' : 'image/jpeg';
+
+      request.files.add(
+        http.MultipartFile.fromBytes(
+          'file',
+          bytes,
+          filename: imageFile.name,
+          contentType: http.MediaType.parse(mimeType),
+        ),
+      );
+    } else {
+      // Native: use fromPath
+      request.files.add(
+        await http.MultipartFile.fromPath('file', imageFile.path),
+      );
+    }
+
+    final streamedResponse = await request.send();
+    final response = await http.Response.fromStream(streamedResponse);
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 201 && response.statusCode != 200) {
+      throw Exception(data['message'] ?? 'Upload failed');
+    }
+
+    return data;
+  }
 }

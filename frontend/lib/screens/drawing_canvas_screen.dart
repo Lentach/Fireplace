@@ -1,4 +1,13 @@
+import 'dart:io';
+import 'dart:ui' as ui;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/rendering.dart';
+import 'package:image_picker/image_picker.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
+import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
 
 class DrawingCanvasScreen extends StatefulWidget {
@@ -118,13 +127,64 @@ class _DrawingCanvasScreenState extends State<DrawingCanvasScreen> {
       return;
     }
 
-    // TODO: Convert canvas to image and upload (Phase 5)
-    // For now, just pop with success message
-    if (mounted) {
-      Navigator.pop(context);
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Drawing upload coming soon')),
-      );
+    // Capture providers before async operations
+    final chat = context.read<ChatProvider>();
+    final auth = context.read<AuthProvider>();
+
+    try {
+      // Show loading
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Uploading drawing...')),
+        );
+      }
+
+      // Capture canvas as image
+      final boundary = _canvasKey.currentContext!.findRenderObject()
+          as RenderRepaintBoundary;
+      final image = await boundary.toImage(pixelRatio: 2.0);
+      final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
+      final pngBytes = byteData!.buffer.asUint8List();
+
+      // Save to temporary file
+      final tempDir = await getTemporaryDirectory();
+      final timestamp = DateTime.now().millisecondsSinceEpoch;
+      final file = File('${tempDir.path}/drawing_$timestamp.png');
+      await file.writeAsBytes(pngBytes);
+
+      // Convert to XFile
+      final xFile = XFile(file.path);
+
+      if (chat.activeConversationId == null) {
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('No active conversation')),
+          );
+        }
+        return;
+      }
+
+      final conv = chat.conversations
+          .firstWhere((c) => c.id == chat.activeConversationId);
+      final recipientId = chat.getOtherUserId(conv);
+
+      await chat.sendImageMessage(auth.token!, xFile, recipientId);
+
+      // Clean up temp file
+      await file.delete();
+
+      if (mounted) {
+        Navigator.pop(context);
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Drawing sent!')),
+        );
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('Upload failed: $e')),
+        );
+      }
     }
   }
 }

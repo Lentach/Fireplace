@@ -1,12 +1,14 @@
 import 'dart:async';
 
 import 'package:flutter/foundation.dart';
+import 'package:image_picker/image_picker.dart';
 import '../config/app_config.dart';
 import '../constants/app_constants.dart';
 import '../models/conversation_model.dart';
 import '../models/friend_request_model.dart';
 import '../models/message_model.dart';
 import '../models/user_model.dart';
+import '../services/api_service.dart';
 import '../services/socket_service.dart';
 
 class ChatProvider extends ChangeNotifier {
@@ -324,6 +326,41 @@ class ChatProvider extends ChangeNotifier {
 
   void sendPing(int recipientId) {
     _socketService.sendPing(recipientId);
+  }
+
+  Future<void> sendImageMessage(
+    String token,
+    XFile imageFile,
+    int recipientId,
+  ) async {
+    final api = ApiService(baseUrl: AppConfig.baseUrl);
+
+    // Use conversation disappearing timer
+    final effectiveExpiresIn = conversationDisappearingTimer;
+
+    try {
+      final response = await api.uploadImageMessage(
+        token,
+        imageFile,
+        recipientId,
+        effectiveExpiresIn,
+      );
+
+      // Parse response and add to messages
+      final message = MessageModel.fromJson(response);
+
+      if (_activeConversationId == message.conversationId) {
+        _messages.add(message);
+      }
+
+      _lastMessages[message.conversationId] = message;
+      notifyListeners();
+    } catch (e) {
+      debugPrint('[ChatProvider] Image upload failed: $e');
+      _errorMessage = 'Image upload failed: ${e.toString()}';
+      notifyListeners();
+      rethrow;
+    }
   }
 
   void _handleMessageDelivered(dynamic data) {

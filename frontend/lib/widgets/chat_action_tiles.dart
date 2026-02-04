@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:image_picker/image_picker.dart';
+import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../screens/drawing_canvas_screen.dart';
@@ -105,8 +107,9 @@ class ChatActionTiles extends StatelessWidget {
     );
   }
 
-  void _openCamera(BuildContext context) {
+  Future<void> _openCamera(BuildContext context) async {
     final chat = context.read<ChatProvider>();
+    final auth = context.read<AuthProvider>();
 
     // Guard: Check if conversation is active
     if (chat.activeConversationId == null) {
@@ -116,8 +119,36 @@ class ChatActionTiles extends StatelessWidget {
       return;
     }
 
-    // TODO: Open camera (Phase 5)
-    _showComingSoon(context, 'Camera');
+    final conv = chat.conversations
+        .firstWhere((c) => c.id == chat.activeConversationId);
+    final recipientId = chat.getOtherUserId(conv);
+
+    final picker = ImagePicker();
+    final image = await picker.pickImage(source: ImageSource.camera);
+
+    if (image != null) {
+      // Show loading indicator
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Uploading image...')),
+        );
+      }
+
+      try {
+        await chat.sendImageMessage(auth.token!, image, recipientId);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Image sent!')),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('Upload failed: $e')),
+          );
+        }
+      }
+    }
   }
 
   void _openDrawing(BuildContext context) {
