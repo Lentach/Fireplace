@@ -443,7 +443,7 @@ Frontend: BASE_URL dart define (default localhost:3000).
 
 ---
 
-## 14. Bug Fix History (Lessons)
+## 15. Bug Fix History (Lessons)
 
 - **Delete Account FK:** Cascade delete dependents before user. users.service.ts, users.module.ts.
 - **Avatar overwrite:** Skip deleteAvatar when same public_id. users.service.ts.
@@ -455,13 +455,13 @@ Frontend: BASE_URL dart define (default localhost:3000).
 
 ---
 
-## 15. Known Limitations
+## 16. Known Limitations
 
 No user search. No typing/read receipts. No message edit/delete. No unique on (sender,receiver) — duplicate friend requests allowed. Last message not in conversationsList (client keeps lastMessages map). Message pagination: limit/offset, default 50.
 
 ---
 
-## 16. Tech Debt
+## 17. Tech Debt
 
 - Manual E2E scripts in scripts/ (Node, run against running backend). Not part of shipped app.
 - Flutter tests: 9 (AppConstants, UserModel, ConversationModel, widget). `flutter test`.
