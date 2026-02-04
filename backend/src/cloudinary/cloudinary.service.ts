@@ -7,6 +7,11 @@ export interface UploadAvatarResult {
   publicId: string;
 }
 
+export interface UploadImageResult {
+  secureUrl: string;
+  publicId: string;
+}
+
 @Injectable()
 export class CloudinaryService {
   constructor(private configService: ConfigService) {
@@ -27,6 +32,24 @@ export class CloudinaryService {
     const result = await cloudinary.uploader.upload(dataUri, {
       public_id: `avatars/user-${userId}`,
       overwrite: true,
+    });
+
+    return {
+      secureUrl: result.secure_url,
+      publicId: result.public_id,
+    };
+  }
+
+  async uploadImage(
+    userId: number,
+    buffer: Buffer,
+    mimeType: string,
+  ): Promise<UploadImageResult> {
+    const dataUri = `data:${mimeType};base64,${buffer.toString('base64')}`;
+
+    const result = await cloudinary.uploader.upload(dataUri, {
+      folder: 'message-images',
+      public_id: `user-${userId}-${Date.now()}`,
     });
 
     return {
