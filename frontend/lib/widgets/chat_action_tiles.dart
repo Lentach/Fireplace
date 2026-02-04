@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
+import '../screens/drawing_canvas_screen.dart';
 
 class ChatActionTiles extends StatelessWidget {
   const ChatActionTiles({super.key});
@@ -130,8 +131,12 @@ class ChatActionTiles extends StatelessWidget {
       return;
     }
 
-    // TODO: Open drawing canvas (Task 3.6)
-    _showComingSoon(context, 'Drawing');
+    Navigator.push(
+      context,
+      MaterialPageRoute(
+        builder: (context) => const DrawingCanvasScreen(),
+      ),
+    );
   }
 
   void _showComingSoon(BuildContext context, String feature) {
