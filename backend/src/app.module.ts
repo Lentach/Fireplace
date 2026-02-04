@@ -2,6 +2,7 @@ import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
+import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from './auth/auth.module';
 import { CloudinaryModule } from './cloudinary/cloudinary.module';
 import { UsersModule } from './users/users.module';
@@ -23,6 +24,8 @@ import { validate } from './config/env.validation';
       isGlobal: true,
       envFilePath: ['.env.local', '.env'],
     }),
+    // Schedule cron jobs for message expiration
+    ScheduleModule.forRoot(),
     // Rate limiting: 100 requests per 15 minutes globally
     ThrottlerModule.forRoot([
       {
