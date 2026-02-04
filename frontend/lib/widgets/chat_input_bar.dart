@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
+import 'chat_action_tiles.dart';
 
 class ChatInputBar extends StatefulWidget {
   const ChatInputBar({super.key});
@@ -82,6 +83,9 @@ class _ChatInputBarState extends State<ChatInputBar> {
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Action tiles row
+          const ChatActionTiles(),
+
           // Input row
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),

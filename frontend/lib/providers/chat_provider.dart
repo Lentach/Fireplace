@@ -27,6 +27,7 @@ class ChatProvider extends ChangeNotifier {
   String? _tokenForReconnect;
   int _reconnectAttempts = 0;
   Timer? _reconnectTimer;
+  final Map<int, int?> _conversationTimers = {}; // conversationId -> seconds
 
   List<ConversationModel> get conversations => _conversations;
   List<MessageModel> get messages => _messages;
@@ -40,6 +41,17 @@ class ChatProvider extends ChangeNotifier {
   List<UserModel> get friends => _friends;
   bool get friendRequestJustSent => _friendRequestJustSent;
   SocketService get socket => _socketService;
+
+  int? get conversationDisappearingTimer {
+    if (_activeConversationId == null) return null;
+    return _conversationTimers[_activeConversationId];
+  }
+
+  void setConversationDisappearingTimer(int? seconds) {
+    if (_activeConversationId == null) return;
+    _conversationTimers[_activeConversationId!] = seconds;
+    notifyListeners();
+  }
 
   void clearError() {
     _errorMessage = null;
@@ -279,6 +291,9 @@ class ChatProvider extends ChangeNotifier {
         ? conv.userTwo.id
         : conv.userOne.id;
 
+    // Use conversation disappearing timer if expiresIn not provided
+    final effectiveExpiresIn = expiresIn ?? conversationDisappearingTimer;
+
     // Create optimistic message with SENDING status
     final tempMessage = MessageModel(
       id: -DateTime.now().millisecondsSinceEpoch, // Temporary negative ID
@@ -288,15 +303,15 @@ class ChatProvider extends ChangeNotifier {
       conversationId: _activeConversationId!,
       createdAt: DateTime.now(),
       deliveryStatus: MessageDeliveryStatus.sending,
-      expiresAt: expiresIn != null
-          ? DateTime.now().add(Duration(seconds: expiresIn))
+      expiresAt: effectiveExpiresIn != null
+          ? DateTime.now().add(Duration(seconds: effectiveExpiresIn))
           : null,
     );
 
     _messages.add(tempMessage);
     notifyListeners();
 
-    _socketService.sendMessage(recipientId, content, expiresIn: expiresIn);
+    _socketService.sendMessage(recipientId, content, expiresIn: effectiveExpiresIn);
   }
 
   void sendPing(int recipientId) {
