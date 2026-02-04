@@ -4,6 +4,8 @@
 **Status:** Draft - do implementacji
 **Cel:** Uruchomić aplikację Flutter na fizycznym telefonie (iOS + Android) w trybie debug z backendem działającym na komputerze w lokalnej sieci WiFi.
 
+> **Source of truth (dla agenta):** `docs/futures/2026-02-04-mobile-deployment-plan.md` — pełna dokumentacja w języku angielskim, dokładne ścieżki plików, zmiany w kodzie, troubleshooting. Agent implementujący powinien najpierw przeczytać ten plik.
+
 ## Spis Treści
 1. [TL;DR - Quick Start](#tldr---quick-start)
 2. [Obecna Konfiguracja](#obecna-konfiguracja)

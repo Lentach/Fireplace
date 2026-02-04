@@ -69,7 +69,15 @@
       "Bash(taskkill:*)",
       "Bash(docker-compose restart:*)",
       "Bash(del \"C:\\\\Users\\\\Lentach\\\\desktop\\\\mvp-chat-app\\\\test_socket.js\")",
-      "Bash(docker-compose build:*)"
+      "Bash(docker-compose build:*)",
+      "Bash(wmic process where ProcessId=5028 delete:*)",
+      "Bash(wmic process where ProcessId=15176 delete)",
+      "Bash(explorer:*)",
+      "Bash(git rm:*)",
+      "Bash(claude mcp add:*)",
+      "Bash(dir:*)",
+      "Bash(ls \"C:\\\\Users\\\\Lentach\\\\desktop\\\\mvp-chat-app\\\\frontend\\\\test\\\\models\"\" 2>&1 || echo \"models test directory not found \")",
+      "Bash(flutter test:*)"
     ]
   }
 }
