@@ -8,6 +8,7 @@ import '../widgets/chat_input_bar.dart';
 import '../widgets/message_date_separator.dart';
 import '../models/user_model.dart';
 import '../widgets/avatar_circle.dart';
+import '../widgets/ping_effect_overlay.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final int conversationId;
@@ -208,7 +209,23 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               ],
             ),
           ),
-          Expanded(child: body),
+          Expanded(
+            child: Stack(
+              children: [
+                body,
+
+                // Ping effect overlay
+                if (chat.showPingEffect)
+                  Positioned.fill(
+                    child: PingEffectOverlay(
+                      onComplete: () {
+                        chat.clearPingEffect();
+                      },
+                    ),
+                  ),
+              ],
+            ),
+          ),
         ],
       );
     }
@@ -263,7 +280,21 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           ),
         ],
       ),
-      body: body,
+      body: Stack(
+        children: [
+          body,
+
+          // Ping effect overlay
+          if (chat.showPingEffect)
+            Positioned.fill(
+              child: PingEffectOverlay(
+                onComplete: () {
+                  chat.clearPingEffect();
+                },
+              ),
+            ),
+        ],
+      ),
     );
   }
 }

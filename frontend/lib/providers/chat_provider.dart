@@ -28,6 +28,7 @@ class ChatProvider extends ChangeNotifier {
   int _reconnectAttempts = 0;
   Timer? _reconnectTimer;
   final Map<int, int?> _conversationTimers = {}; // conversationId -> seconds
+  bool _showPingEffect = false;
 
   List<ConversationModel> get conversations => _conversations;
   List<MessageModel> get messages => _messages;
@@ -47,9 +48,16 @@ class ChatProvider extends ChangeNotifier {
     return _conversationTimers[_activeConversationId];
   }
 
+  bool get showPingEffect => _showPingEffect;
+
   void setConversationDisappearingTimer(int? seconds) {
     if (_activeConversationId == null) return;
     _conversationTimers[_activeConversationId!] = seconds;
+    notifyListeners();
+  }
+
+  void clearPingEffect() {
+    _showPingEffect = false;
     notifyListeners();
   }
 
@@ -342,6 +350,9 @@ class ChatProvider extends ChangeNotifier {
 
     // Update last message
     _lastMessages[message.conversationId] = message;
+
+    // Set flag for showing ping effect
+    _showPingEffect = true;
 
     notifyListeners();
   }
