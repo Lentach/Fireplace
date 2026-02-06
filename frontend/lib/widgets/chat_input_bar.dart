@@ -80,8 +80,17 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
   }
 
+  String _formatTimer(int seconds) {
+    if (seconds >= 86400) return '${seconds ~/ 86400}d';
+    if (seconds >= 3600) return '${seconds ~/ 3600}h';
+    if (seconds >= 60) return '${seconds ~/ 60}m';
+    return '${seconds}s';
+  }
+
   @override
   Widget build(BuildContext context) {
+    final chat = context.watch<ChatProvider>();
+    final activeTimer = chat.conversationDisappearingTimer;
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
     final borderColor =
@@ -95,6 +104,31 @@ class _ChatInputBarState extends State<ChatInputBar>
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
+          // Active timer indicator
+          if (activeTimer != null)
+            Container(
+              width: double.infinity,
+              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+              color: isDark
+                  ? Colors.orange.withValues(alpha: 0.15)
+                  : Colors.orange.withValues(alpha: 0.1),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(Icons.timer_outlined, size: 14,
+                    color: isDark ? Colors.orange.shade300 : Colors.orange.shade700),
+                  const SizedBox(width: 4),
+                  Text(
+                    'Disappearing messages: ${_formatTimer(activeTimer)}',
+                    style: RpgTheme.bodyFont(
+                      fontSize: 11,
+                      color: isDark ? Colors.orange.shade300 : Colors.orange.shade700,
+                    ),
+                  ),
+                ],
+              ),
+            ),
           // Input row
           Container(
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),

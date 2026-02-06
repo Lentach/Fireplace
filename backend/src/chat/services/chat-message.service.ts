@@ -115,10 +115,12 @@ export class ChatMessageService {
       );
 
       // Filter out expired messages (cron cleans DB every minute, but messages
-      // may still be in DB between cron runs)
-      const now = new Date();
+      // may still be in DB between cron runs).
+      // Use getTime() because TypeORM may return expiresAt as string or Date
+      // depending on pg driver — direct comparison (string > Date) yields NaN.
+      const nowMs = Date.now();
       const active = messages.filter(
-        (m) => !m.expiresAt || m.expiresAt > now,
+        (m) => !m.expiresAt || new Date(m.expiresAt).getTime() > nowMs,
       );
 
       const mapped = active.map((m) => ({

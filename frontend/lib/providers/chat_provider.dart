@@ -193,11 +193,14 @@ class ChatProvider extends ChangeNotifier {
       },
       onMessageHistory: (data) {
         final list = data as List<dynamic>;
-        final now = DateTime.now();
         _messages = list
             .map((m) => MessageModel.fromJson(m as Map<String, dynamic>))
-            .where((m) => m.expiresAt == null || m.expiresAt!.isAfter(now))
             .toList();
+        // Immediately remove any already-expired messages
+        final now = DateTime.now();
+        _messages.removeWhere(
+          (m) => m.expiresAt != null && m.expiresAt!.isBefore(now),
+        );
         notifyListeners();
         if (_activeConversationId != null) {
           markConversationRead(_activeConversationId!);
