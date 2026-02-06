@@ -29,15 +29,28 @@ class ChatDetailScreen extends StatefulWidget {
 class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final _scrollController = ScrollController();
   Timer? _timerCountdownRefresh;
+  bool _showScrollToBottomButton = false;
+  static const double _scrollToBottomThreshold = 80;
+
+  void _onScroll() {
+    if (!_scrollController.hasClients) return;
+    final pos = _scrollController.position;
+    final atBottom = pos.pixels >= pos.maxScrollExtent - _scrollToBottomThreshold;
+    if (_showScrollToBottomButton != !atBottom && mounted) {
+      setState(() => _showScrollToBottomButton = !atBottom);
+    }
+  }
 
   @override
   void initState() {
     super.initState();
+    _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final chat = context.read<ChatProvider>();
       if (chat.activeConversationId != widget.conversationId) {
         chat.openConversation(widget.conversationId);
       }
+      _scrollToBottomOnce();
     });
 
     // Refresh every second to update countdown
@@ -54,14 +67,23 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.conversationId != widget.conversationId) {
       context.read<ChatProvider>().openConversation(widget.conversationId);
+      _scrollToBottomOnce();
     }
   }
 
   @override
   void dispose() {
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _timerCountdownRefresh?.cancel();
     super.dispose();
+  }
+
+  void _scrollToBottomOnce() {
+    Future.delayed(const Duration(milliseconds: 300), () {
+      if (!mounted) return;
+      _scrollToBottom();
+    });
   }
 
   void _scrollToBottom() {
@@ -69,11 +91,31 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
           _scrollController.position.maxScrollExtent,
-          duration: const Duration(milliseconds: 100),
+          duration: const Duration(milliseconds: 300),
           curve: Curves.easeOut,
         );
       }
     });
+  }
+
+  Widget _buildScrollToBottomButton() {
+    return Positioned(
+      bottom: 72,
+      right: 16,
+      child: Material(
+        elevation: 2,
+        borderRadius: BorderRadius.circular(24),
+        color: Theme.of(context).colorScheme.surface,
+        child: InkWell(
+          onTap: _scrollToBottom,
+          borderRadius: BorderRadius.circular(24),
+          child: const Padding(
+            padding: EdgeInsets.all(10),
+            child: Icon(Icons.keyboard_arrow_down, size: 28),
+          ),
+        ),
+      ),
+    );
   }
 
   String _getContactName() {
@@ -136,8 +178,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final auth = context.watch<AuthProvider>();
     final messages = chat.messages;
     final contactName = _getContactName();
-
-    _scrollToBottom();
 
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
@@ -209,13 +249,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                   radius: 18,
                   profilePictureUrl: otherUser?.profilePictureUrl,
                 ),
-                const SizedBox(width: 12),
-                Text(
-                  contactName,
-                  style: RpgTheme.bodyFont(
-                    fontSize: 16,
-                    color: colorScheme.onSurface,
-                    fontWeight: FontWeight.w600,
+                Expanded(
+                  child: Center(
+                    child: Text(
+                      contactName,
+                      style: RpgTheme.bodyFont(
+                        fontSize: 16,
+                        color: colorScheme.onSurface,
+                        fontWeight: FontWeight.w600,
+                      ),
+                      overflow: TextOverflow.ellipsis,
+                    ),
                   ),
                 ),
               ],
@@ -235,6 +279,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       },
                     ),
                   ),
+                if (_showScrollToBottomButton) _buildScrollToBottomButton(),
               ],
             ),
           ),
@@ -244,6 +289,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
     return Scaffold(
       appBar: AppBar(
+        centerTitle: true,
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
@@ -305,6 +351,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 },
               ),
             ),
+          if (_showScrollToBottomButton) _buildScrollToBottomButton(),
         ],
       ),
     );

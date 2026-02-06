@@ -1,0 +1,13 @@
+FROM ghcr.io/cirruslabs/flutter:latest
+
+WORKDIR /app
+
+# Copy dependency files first for layer caching
+COPY pubspec.* ./
+RUN flutter pub get
+
+# Copy the rest of the source
+COPY . .
+
+EXPOSE 8080
+CMD ["flutter", "run", "-d", "web-server", "--web-port=8080", "--web-hostname=0.0.0.0", "--web-renderer=html", "--dart-define=BASE_URL=http://localhost:3000"]

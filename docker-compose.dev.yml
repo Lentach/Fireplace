@@ -1,0 +1,56 @@
+# docker-compose.dev.yml — development mode with hot reload
+# Usage: docker-compose -f docker-compose.dev.yml up --build
+#
+# Backend: NestJS watch mode — auto-restarts on file changes in src/
+# Frontend: Flutter web dev server — refresh browser to see changes
+# DB: Same as production
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: chatdb
+    ports:
+      - '5433:5432'
+    volumes:
+      - pgdata_dev:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile.dev
+    ports:
+      - '3000:3000'
+    environment:
+      DB_HOST: db
+      DB_PORT: '5432'
+      DB_USER: postgres
+      DB_PASS: postgres
+      DB_NAME: chatdb
+      JWT_SECRET: my-super-secret-jwt-key-change-in-production
+      ALLOWED_ORIGINS: 'http://localhost:3000,http://localhost:8080,http://192.168.1.11:8080'
+      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
+      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
+      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+    depends_on:
+      - db
+    volumes:
+      - ./backend/src:/app/src
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile.dev
+    ports:
+      - '8080:8080'
+    depends_on:
+      - backend
+    volumes:
+      - ./frontend/lib:/app/lib
+      - ./frontend/web:/app/web
+      - ./frontend/assets:/app/assets
+
+volumes:
+  pgdata_dev:
