@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:image_picker/image_picker.dart';
-import 'package:emoji_picker_flutter/emoji_picker_flutter.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
 import 'chat_action_tiles.dart';
@@ -13,11 +11,13 @@ class ChatInputBar extends StatefulWidget {
   State<ChatInputBar> createState() => _ChatInputBarState();
 }
 
-class _ChatInputBarState extends State<ChatInputBar> {
+class _ChatInputBarState extends State<ChatInputBar>
+    with SingleTickerProviderStateMixin {
   final _controller = TextEditingController();
-  final _imagePicker = ImagePicker();
   bool _hasText = false;
-  bool _showEmojiPicker = false;
+  bool _showActionPanel = false;
+  late final AnimationController _actionPanelController;
+  late final Animation<double> _actionPanelAnimation;
 
   @override
   void initState() {
@@ -28,11 +28,20 @@ class _ChatInputBarState extends State<ChatInputBar> {
         setState(() => _hasText = has);
       }
     });
+    _actionPanelController = AnimationController(
+      duration: const Duration(milliseconds: 250),
+      vsync: this,
+    );
+    _actionPanelAnimation = CurvedAnimation(
+      parent: _actionPanelController,
+      curve: Curves.easeInOut,
+    );
   }
 
   @override
   void dispose() {
     _controller.dispose();
+    _actionPanelController.dispose();
     super.dispose();
   }
 
@@ -45,24 +54,17 @@ class _ChatInputBarState extends State<ChatInputBar> {
     chat.sendMessage(text, expiresIn: expiresIn);
 
     _controller.clear();
-
-    if (_showEmojiPicker) {
-      setState(() => _showEmojiPicker = false);
-    }
   }
 
-  void _toggleEmojiPicker() {
-    setState(() => _showEmojiPicker = !_showEmojiPicker);
-  }
-
-  Future<void> _pickImageFromGallery() async {
-    final XFile? image = await _imagePicker.pickImage(source: ImageSource.gallery);
-    if (image != null && mounted) {
-      // TODO: Upload image and send as message (Phase 5)
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Image upload coming soon')),
-      );
-    }
+  void _toggleActionPanel() {
+    setState(() {
+      _showActionPanel = !_showActionPanel;
+      if (_showActionPanel) {
+        _actionPanelController.forward();
+      } else {
+        _actionPanelController.reverse();
+      }
+    });
   }
 
   void _recordVoice() {
@@ -96,12 +98,16 @@ class _ChatInputBarState extends State<ChatInputBar> {
             ),
             child: Row(
               children: [
-                // Attachment button (gallery)
+                // Action panel toggle (arrow down/up)
                 IconButton(
-                  icon: const Icon(Icons.attach_file),
+                  icon: Icon(
+                    _showActionPanel
+                        ? Icons.keyboard_arrow_up
+                        : Icons.keyboard_arrow_down,
+                  ),
                   iconSize: 24,
                   color: isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight,
-                  onPressed: _pickImageFromGallery,
+                  onPressed: _toggleActionPanel,
                 ),
 
                 // Text field
@@ -144,18 +150,6 @@ class _ChatInputBarState extends State<ChatInputBar> {
 
                 const SizedBox(width: 4),
 
-                // Emoji button
-                IconButton(
-                  icon: Icon(
-                    _showEmojiPicker ? Icons.keyboard : Icons.emoji_emotions_outlined,
-                  ),
-                  iconSize: 24,
-                  color: isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight,
-                  onPressed: _toggleEmojiPicker,
-                ),
-
-                const SizedBox(width: 4),
-
                 // Mic / Send toggle
                 Container(
                   decoration: BoxDecoration(
@@ -179,23 +173,12 @@ class _ChatInputBarState extends State<ChatInputBar> {
             ),
           ),
 
-          // Action tiles row (POD tekstem)
-          const ChatActionTiles(),
-
-          // Emoji picker
-          if (_showEmojiPicker)
-            SizedBox(
-              height: 250,
-              child: EmojiPicker(
-                onEmojiSelected: (category, emoji) {
-                  _controller.text += emoji.emoji;
-                },
-                config: Config(
-                  // Use available parameters in emoji_picker_flutter 2.0.0
-                  // Most styling is handled by the theme automatically
-                ),
-              ),
-            ),
+          // Action tiles with slide animation
+          SizeTransition(
+            sizeFactor: _actionPanelAnimation,
+            axisAlignment: -1.0,
+            child: const ChatActionTiles(),
+          ),
         ],
       ),
     );

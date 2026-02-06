@@ -1,6 +1,6 @@
 # CLAUDE.md — MVP Chat App
 
-**Last updated:** 2026-02-01
+**Last updated:** 2026-02-05
 
 **Rule:** Update this file after every code change. Single source of truth for agents. **A future agent must be able to read ONLY this file and understand the current state of the project without reading every source file.**
 
@@ -420,13 +420,11 @@ Telegram/Wire-inspired UI with delivery indicators, disappearing messages, ping 
 
 ---
 
-## 13. Recent Changes (2026-02-01)
+## 13. Recent Changes (2026-02-05)
 
-- **Conversations UI redesign:** MainShell + BottomNav (Conversations, Archive, Settings). ConversationsScreen: custom header (avatar+shield, "Conversations", plus with badge); plus → AddOrInvitationsScreen; list separator = Divider. ArchivePlaceholderScreen "Coming soon". Logout only from Settings; SettingsScreen pops only when canPop().
-- **Code review / shipping:** Removed dead RpgTheme colors; ChatProvider single _handleIncomingMessage; E2E scripts moved to scripts/.
-- **Delete account cascade:** Manual delete of messages → conversations → friend_requests → user. No TypeORM cascade on User.
-- **Avatar:** Only deleteAvatar when oldPublicId !== newPublicId (overwrite same id).
-- **No isOnline/active status:** Removed; no green dot, no isOnline in payloads.
+- **Chat screen avatar blink fix:** Avatar in chat header was blinking every ~1–2 s because ChatDetailScreen’s Timer.periodic(1s) triggered full rebuilds and AvatarCircle used `DateTime.now()` in the image URL on every build, so Image.network reloaded. Fix: AvatarCircle keeps a stable cache-bust per profilePictureUrl (initState + didUpdateWidget); URL only changes when profilePictureUrl changes. avatar_circle.dart.
+
+**2026-02-01:** Conversations UI redesign (MainShell + BottomNav, ConversationsScreen header, AddOrInvitationsScreen). Code review; delete account cascade; avatar overwrite fix; no isOnline/active status.
 
 ---
 
@@ -452,6 +450,7 @@ Frontend: BASE_URL dart define (default localhost:3000).
 - **Session leak:** connect() clears state first; AuthGate clears on logout.
 - **Unfriend:** find-then-remove. friends.service.ts.
 - **deleteConversation:** Call unfriend() first. chat-conversation.service.ts.
+- **Avatar blink in chat screen:** Use stable cache-bust per profilePictureUrl in AvatarCircle so parent rebuilds (e.g. Timer.periodic in ChatDetailScreen) don’t change image URL and reload. avatar_circle.dart.
 
 ---
 

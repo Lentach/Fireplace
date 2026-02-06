@@ -39,10 +39,10 @@ class ChatActionTiles extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           _ActionTile(
-            icon: Icons.camera_alt,
-            tooltip: 'Camera',
+            icon: Icons.attach_file,
+            tooltip: 'Attachment',
             color: iconColor,
-            onTap: () => _openCamera(context),
+            onTap: () => _pickAttachment(context),
           ),
           const SizedBox(width: 12),
           _ActionTile(
@@ -92,7 +92,7 @@ class ChatActionTiles extends StatelessWidget {
     );
   }
 
-  Future<void> _openCamera(BuildContext context) async {
+  Future<void> _pickAttachment(BuildContext context) async {
     final chat = context.read<ChatProvider>();
     final auth = context.read<AuthProvider>();
 
@@ -109,7 +109,7 @@ class ChatActionTiles extends StatelessWidget {
     final recipientId = chat.getOtherUserId(conv);
 
     final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.camera);
+    final image = await picker.pickImage(source: ImageSource.gallery);
 
     if (image != null) {
       // Show loading indicator
