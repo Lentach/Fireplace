@@ -82,7 +82,9 @@ export class ChatMessageService {
       conversationId: conversation.id,
       createdAt: message.createdAt,
       deliveryStatus: message.deliveryStatus,
-      expiresAt: message.expiresAt,
+      expiresAt: message.expiresAt
+        ? new Date(message.expiresAt).toISOString()
+        : null,
       messageType: message.messageType,
       mediaUrl: message.mediaUrl,
       tempId: data.tempId, // Return tempId for optimistic message matching
@@ -119,9 +121,34 @@ export class ChatMessageService {
       // Use getTime() because TypeORM may return expiresAt as string or Date
       // depending on pg driver — direct comparison (string > Date) yields NaN.
       const nowMs = Date.now();
+
+      // Debug: log raw message data for disappearing messages diagnostics
+      const withExpiry = messages.filter((m) => m.expiresAt);
+      if (withExpiry.length > 0) {
+        this.logger.debug(
+          `[getMessages] conv=${data.conversationId}: ${messages.length} total, ` +
+          `${withExpiry.length} with expiresAt. now=${new Date(nowMs).toISOString()}`,
+        );
+        for (const m of withExpiry) {
+          const raw = m.expiresAt;
+          const parsed = new Date(raw as any).getTime();
+          const diff = parsed - nowMs;
+          this.logger.debug(
+            `  msg#${m.id}: expiresAt raw=${raw} (type=${typeof raw}), ` +
+            `parsed=${parsed}, diff=${diff}ms, keep=${!isNaN(parsed) && parsed > nowMs}`,
+          );
+        }
+      }
+
       const active = messages.filter(
-        (m) => !m.expiresAt || new Date(m.expiresAt).getTime() > nowMs,
+        (m) => !m.expiresAt || new Date(m.expiresAt as any).getTime() > nowMs,
       );
+
+      if (withExpiry.length > 0) {
+        this.logger.debug(
+          `[getMessages] After filter: ${active.length} active (was ${messages.length})`,
+        );
+      }
 
       const mapped = active.map((m) => ({
         id: m.id,
@@ -132,7 +159,9 @@ export class ChatMessageService {
         conversationId: data.conversationId,
         createdAt: m.createdAt,
         deliveryStatus: m.deliveryStatus || 'SENT',
-        expiresAt: m.expiresAt,
+        expiresAt: m.expiresAt
+          ? new Date(m.expiresAt as any).toISOString()
+          : null,
         messageType: m.messageType || 'TEXT',
         mediaUrl: m.mediaUrl,
       }));
@@ -211,7 +240,9 @@ export class ChatMessageService {
       createdAt: message.createdAt,
       messageType: MessageType.PING,
       deliveryStatus: message.deliveryStatus,
-      expiresAt: null,
+      expiresAt: message.expiresAt
+        ? new Date(message.expiresAt).toISOString()
+        : null,
       mediaUrl: null,
     };
 

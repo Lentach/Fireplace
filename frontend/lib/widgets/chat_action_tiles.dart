@@ -197,15 +197,8 @@ class _ActionTile extends StatelessWidget {
   }
 }
 
-class _TimerDialog extends StatefulWidget {
-  @override
-  State<_TimerDialog> createState() => _TimerDialogState();
-}
-
-class _TimerDialogState extends State<_TimerDialog> {
-  int? _selectedSeconds;
-
-  final _options = [
+class _TimerDialog extends StatelessWidget {
+  final _options = const [
     {'label': '30 seconds', 'value': 30},
     {'label': '1 minute', 'value': 60},
     {'label': '5 minutes', 'value': 300},
@@ -215,43 +208,28 @@ class _TimerDialogState extends State<_TimerDialog> {
   ];
 
   @override
-  void initState() {
-    super.initState();
-    final chat = context.read<ChatProvider>();
-    _selectedSeconds = chat.conversationDisappearingTimer;
-  }
-
-  @override
   Widget build(BuildContext context) {
+    final chat = context.read<ChatProvider>();
+    final current = chat.conversationDisappearingTimer;
+
     return AlertDialog(
       title: const Text('Disappearing Messages'),
       content: Column(
         mainAxisSize: MainAxisSize.min,
         children: _options.map((opt) {
+          final value = opt['value'] as int?;
+          final isSelected = value == current;
           return RadioListTile<int?>(
             title: Text(opt['label'] as String),
-            value: opt['value'] as int?,
-            groupValue: _selectedSeconds,
-            onChanged: (val) {
-              setState(() => _selectedSeconds = val);
+            value: value,
+            groupValue: current,
+            onChanged: (_) {
+              chat.setConversationDisappearingTimer(value);
+              Navigator.pop(context);
             },
           );
         }).toList(),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: const Text('Cancel'),
-        ),
-        TextButton(
-          onPressed: () {
-            final chat = context.read<ChatProvider>();
-            chat.setConversationDisappearingTimer(_selectedSeconds);
-            Navigator.pop(context);
-          },
-          child: const Text('Set'),
-        ),
-      ],
     );
   }
 }

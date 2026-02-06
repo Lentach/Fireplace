@@ -58,10 +58,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     super.initState();
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      final chat = context.read<ChatProvider>();
-      if (chat.activeConversationId != widget.conversationId) {
-        chat.openConversation(widget.conversationId);
-      }
+      // Always reload messages from server when entering/re-entering chat
+      // to ensure timed messages reflect their current state
+      context.read<ChatProvider>().openConversation(widget.conversationId);
       _scrollToBottomOnce();
     });
 

@@ -196,6 +196,20 @@ class ChatProvider extends ChangeNotifier {
         _messages = list
             .map((m) => MessageModel.fromJson(m as Map<String, dynamic>))
             .toList();
+
+        // Debug: log received messages with expiresAt
+        final withExpiry = _messages.where((m) => m.expiresAt != null).toList();
+        if (withExpiry.isNotEmpty) {
+          final now = DateTime.now();
+          debugPrint('[ChatProvider] onMessageHistory: ${_messages.length} msgs, '
+              '${withExpiry.length} with expiresAt. now=$now');
+          for (final m in withExpiry) {
+            final diff = m.expiresAt!.difference(now);
+            debugPrint('  msg#${m.id}: expiresAt=${m.expiresAt}, diff=${diff.inSeconds}s, '
+                'expired=${m.expiresAt!.isBefore(now)}');
+          }
+        }
+
         // Immediately remove any already-expired messages
         final now = DateTime.now();
         _messages.removeWhere(
@@ -284,6 +298,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   void openConversation(int conversationId, {int limit = AppConstants.messagePageSize}) {
+    debugPrint('[ChatProvider] openConversation($conversationId) — requesting messages');
     _activeConversationId = conversationId;
     _messages = [];
     _socketService.getMessages(conversationId, limit: limit);
