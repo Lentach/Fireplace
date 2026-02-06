@@ -1,7 +1,7 @@
 # Chat Screen Architecture - Source of Truth
 
-**Last updated:** 2026-02-04
-**Status:** Design Complete - Ready for Implementation
+**Last updated:** 2026-02-06
+**Status:** Implemented — Disappearing messages bug fixes applied (three-layer expiration)
 **Related Plan:** `futures/plans/2026-02-04-chat-screen-redesign.md`
 
 ---
@@ -70,6 +70,7 @@ sequenceDiagram
   participant User
   participant UI as ChatActionTiles
   participant Provider as ChatProvider
+  participant Screen as ChatDetailScreen
   participant Backend
   participant Cron as MessageCleanupService
 
@@ -86,13 +87,32 @@ sequenceDiagram
 
   Note over UI: Message bubble shows countdown: "5m" → "4m 59s" → ...
 
-  loop Every minute
+  loop Every 1 second (ChatDetailScreen Timer.periodic)
+    Screen->>Provider: removeExpiredMessages()
+    Provider->>Provider: Remove messages where expiresAt < now
+    Provider->>UI: notifyListeners() → message vanishes from UI
+  end
+
+  loop Every minute (backend cleanup)
     Cron->>Backend: Check for expired messages
     Backend->>Backend: DELETE FROM messages WHERE expiresAt < now
   end
 
-  Note over UI: Message disappears from both sender and recipient
+  Note over Backend: handleGetMessages also filters out expired messages before emitting messageHistory
+  Note over Provider: onMessageHistory also filters out expired messages on receive
 ```
+
+#### Disappearing Messages — Three-Layer Expiration
+
+Messages expire through three complementary mechanisms:
+
+1. **Frontend real-time removal (ChatDetailScreen):** `Timer.periodic(1s)` calls `ChatProvider.removeExpiredMessages()` which removes messages where `expiresAt < now` from `_messages` list. This makes messages vanish instantly when the countdown reaches zero.
+
+2. **Backend cron cleanup (MessageCleanupService):** `@Cron(EVERY_MINUTE)` deletes expired messages from PostgreSQL. This is the authoritative cleanup.
+
+3. **Backend response filtering (handleGetMessages):** When serving `messageHistory`, expired messages are filtered out before emitting. This prevents showing stale messages when re-entering a chat between cron runs.
+
+4. **Frontend receive filtering (onMessageHistory):** When receiving `messageHistory`, ChatProvider filters out messages where `expiresAt < now`. Belt-and-suspenders safety.
 
 ### Ping Feature Flow
 
@@ -446,12 +466,12 @@ flutter:
 
 ## Key Constraints & Design Decisions
 
-### 1. Delivery Status: Why Only 3 States?
+### 1. Delivery Status: 4 States
 
 - **SENDING:** Optimistic UI - shows immediately when user hits send
 - **SENT:** Confirmed by server (message persisted in DB)
-- **DELIVERED:** Recipient's socket received the message (they're online)
-- **NO "READ" status:** Privacy-focused design (like Signal/Wire)
+- **DELIVERED:** Recipient's socket received the message (they're online) — shown as single grey check (✓)
+- **READ:** Recipient opened the conversation — shown as double blue checks (✓✓). Triggered by `markConversationRead` event.
 
 ### 2. Disappearing Timer: Why Global Per Conversation?
 
@@ -657,7 +677,8 @@ See `docs/testing/2026-02-04-chat-redesign-manual-tests.md` (created in Task 6.1
 
 ### Live Countdown
 
-- **Current:** Timer.periodic(1 second) rebuilds entire ChatDetailScreen
+- **Current:** Timer.periodic(1 second) rebuilds entire ChatDetailScreen + calls `removeExpiredMessages()`
+- **Dual purpose:** Updates countdown text AND removes expired messages from `_messages`
 - **Optimization:** Only rebuild ChatMessageBubble with active timer
 - **Trade-off:** Adds complexity, current approach is simpler
 
@@ -763,13 +784,14 @@ See `docs/testing/2026-02-04-chat-redesign-manual-tests.md` (created in Task 6.1
 
 ### Messages Not Expiring
 
-**Symptom:** Message shows "Expired" but still visible
-**Cause:** Cron job not running or DB not updated
+**Symptom:** Message stays visible after timer reaches zero
+**Cause:** Frontend `removeExpiredMessages()` not running, or cron job not running
 **Fix:**
-1. Check backend logs for "Deleted N expired messages"
-2. Verify ScheduleModule.forRoot() in AppModule
-3. Check DB: `SELECT * FROM messages WHERE expires_at < NOW()`
-4. Restart backend to re-initialize cron
+1. Verify ChatDetailScreen has `Timer.periodic(1s)` calling `chat.removeExpiredMessages()`
+2. Check backend logs for "Deleted N expired messages"
+3. Verify ScheduleModule.forRoot() in AppModule
+4. Check DB: `SELECT * FROM messages WHERE expires_at < NOW()`
+5. Restart backend to re-initialize cron
 
 ---
 

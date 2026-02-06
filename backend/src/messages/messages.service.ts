@@ -44,11 +44,20 @@ export class MessagesService {
   ): Promise<Message[]> {
     return this.msgRepo.find({
       where: { conversation: { id: conversationId } },
+      relations: ['sender'],
       order: { createdAt: 'ASC' },
       take: limit,
       skip: offset,
     });
   }
+
+  /** Status order: never downgrade (e.g. READ must not become DELIVERED when events are processed out of order). */
+  private static readonly DELIVERY_STATUS_ORDER: Record<MessageDeliveryStatus, number> = {
+    [MessageDeliveryStatus.SENDING]: 0,
+    [MessageDeliveryStatus.SENT]: 1,
+    [MessageDeliveryStatus.DELIVERED]: 2,
+    [MessageDeliveryStatus.READ]: 3,
+  };
 
   async updateDeliveryStatus(
     messageId: number,
@@ -56,14 +65,42 @@ export class MessagesService {
   ): Promise<Message | null> {
     const message = await this.msgRepo.findOne({
       where: { id: messageId },
-      relations: ['sender'],
+      relations: ['sender', 'conversation'],
     });
 
     if (!message) {
       return null;
     }
 
+    const currentOrder = MessagesService.DELIVERY_STATUS_ORDER[message.deliveryStatus];
+    const newOrder = MessagesService.DELIVERY_STATUS_ORDER[status];
+    if (newOrder <= currentOrder) {
+      return message;
+    }
+
     message.deliveryStatus = status;
     return this.msgRepo.save(message);
+  }
+
+  /** Mark all messages in the conversation that were sent BY senderId (to the other participant) as READ. Returns updated messages with sender. */
+  async markConversationAsReadFromSender(
+    conversationId: number,
+    senderId: number,
+  ): Promise<Message[]> {
+    const messages = await this.msgRepo.find({
+      where: {
+        conversation: { id: conversationId },
+        sender: { id: senderId },
+      },
+      relations: ['sender', 'conversation'],
+      order: { createdAt: 'ASC' },
+    });
+    const updated: Message[] = [];
+    for (const m of messages) {
+      if (m.deliveryStatus === MessageDeliveryStatus.READ) continue;
+      m.deliveryStatus = MessageDeliveryStatus.READ;
+      updated.push(await this.msgRepo.save(m));
+    }
+    return updated;
   }
 }

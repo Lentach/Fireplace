@@ -87,10 +87,16 @@ class ChatProvider extends ChangeNotifier {
     _lastMessages[msg.conversationId] = msg;
     notifyListeners();
 
-    // Emit messageDelivered if this is incoming from other user
     if (msg.senderId != _currentUserId) {
       _socketService.emitMessageDelivered(msg.id);
+      if (msg.conversationId == _activeConversationId) {
+        markConversationRead(msg.conversationId);
+      }
     }
+  }
+
+  void markConversationRead(int conversationId) {
+    _socketService.emitMarkConversationRead(conversationId);
   }
 
   int? consumePendingOpen() {
@@ -187,10 +193,15 @@ class ChatProvider extends ChangeNotifier {
       },
       onMessageHistory: (data) {
         final list = data as List<dynamic>;
+        final now = DateTime.now();
         _messages = list
             .map((m) => MessageModel.fromJson(m as Map<String, dynamic>))
+            .where((m) => m.expiresAt == null || m.expiresAt!.isAfter(now))
             .toList();
         notifyListeners();
+        if (_activeConversationId != null) {
+          markConversationRead(_activeConversationId!);
+        }
       },
       onMessageSent: _handleIncomingMessage,
       onNewMessage: _handleIncomingMessage,
@@ -290,6 +301,24 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Remove messages whose expiresAt has passed. Called every second by ChatDetailScreen timer.
+  void removeExpiredMessages() {
+    final now = DateTime.now();
+    final hadExpired = _messages.any(
+      (m) => m.expiresAt != null && m.expiresAt!.isBefore(now),
+    );
+    if (!hadExpired) return;
+
+    _messages.removeWhere(
+      (m) => m.expiresAt != null && m.expiresAt!.isBefore(now),
+    );
+    // Also clean up lastMessages so conversation list doesn't show stale entries
+    _lastMessages.removeWhere(
+      (_, m) => m.expiresAt != null && m.expiresAt!.isBefore(now),
+    );
+    notifyListeners();
+  }
+
   void sendMessage(String content, {int? expiresIn}) {
     if (_activeConversationId == null || _currentUserId == null) return;
 
@@ -373,15 +402,28 @@ class ChatProvider extends ChangeNotifier {
   }
 
   void _handleMessageDelivered(dynamic data) {
-    final messageId = (data as Map<String, dynamic>)['messageId'] as int;
-    final status = data['deliveryStatus'] as String;
+    final map = data as Map<String, dynamic>;
+    final messageId = map['messageId'] as int;
+    final status = map['deliveryStatus'] as String;
+    final conversationId = map['conversationId'] as int?;
+    final newStatus = MessageModel.parseDeliveryStatus(status);
 
-    // Update message in _messages list
+    // Update message in _messages list (current chat)
     final index = _messages.indexWhere((m) => m.id == messageId);
     if (index != -1) {
       _messages[index] = _messages[index].copyWith(
-        deliveryStatus: MessageModel.parseDeliveryStatus(status),
+        deliveryStatus: newStatus,
       );
+    }
+
+    // Update _lastMessages so list and re-opened chat show correct status
+    if (conversationId != null &&
+        _lastMessages[conversationId]?.id == messageId) {
+      _lastMessages[conversationId] =
+          _lastMessages[conversationId]!.copyWith(deliveryStatus: newStatus);
+    }
+
+    if (index != -1 || conversationId != null) {
       notifyListeners();
     }
   }

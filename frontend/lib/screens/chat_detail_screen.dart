@@ -30,6 +30,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final _scrollController = ScrollController();
   Timer? _timerCountdownRefresh;
   bool _showScrollToBottomButton = false;
+  int _newMessagesCount = 0;
+  int _lastMessageCount = 0;
   static const double _scrollToBottomThreshold = 80;
 
   void _onScroll() {
@@ -38,6 +40,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final atBottom = pos.pixels >= pos.maxScrollExtent - _scrollToBottomThreshold;
     if (_showScrollToBottomButton != !atBottom && mounted) {
       setState(() => _showScrollToBottomButton = !atBottom);
+    }
+  }
+
+  void _onNewMessages(int currentCount, int added) {
+    if (added <= 0) return;
+    _lastMessageCount = currentCount;
+    if (!_showScrollToBottomButton) {
+      _scrollToBottom();
+    } else {
+      setState(() => _newMessagesCount += added);
     }
   }
 
@@ -53,11 +65,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       _scrollToBottomOnce();
     });
 
-    // Refresh every second to update countdown
+    // Refresh every second to update countdown and remove expired messages
     _timerCountdownRefresh = Timer.periodic(
       const Duration(seconds: 1),
       (_) {
-        if (mounted) setState(() {});
+        if (!mounted) return;
+        context.read<ChatProvider>().removeExpiredMessages();
+        setState(() {});
       },
     );
   }
@@ -66,6 +80,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void didUpdateWidget(ChatDetailScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.conversationId != widget.conversationId) {
+      _lastMessageCount = 0;
+      _newMessagesCount = 0;
       context.read<ChatProvider>().openConversation(widget.conversationId);
       _scrollToBottomOnce();
     }
@@ -87,6 +103,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   void _scrollToBottom() {
+    if (mounted) setState(() => _newMessagesCount = 0);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (_scrollController.hasClients) {
         _scrollController.animateTo(
@@ -95,6 +112,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           curve: Curves.easeOut,
         );
       }
+      if (mounted) setState(() => _lastMessageCount = context.read<ChatProvider>().messages.length);
     });
   }
 
@@ -109,9 +127,35 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         child: InkWell(
           onTap: _scrollToBottom,
           borderRadius: BorderRadius.circular(24),
-          child: const Padding(
-            padding: EdgeInsets.all(10),
-            child: Icon(Icons.keyboard_arrow_down, size: 28),
+          child: Padding(
+            padding: const EdgeInsets.all(10),
+            child: Stack(
+              clipBehavior: Clip.none,
+              children: [
+                const Icon(Icons.keyboard_arrow_down, size: 28),
+                if (_newMessagesCount > 0)
+                  Positioned(
+                    top: -4,
+                    right: -4,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      decoration: const BoxDecoration(
+                        color: Colors.blue,
+                        borderRadius: BorderRadius.all(Radius.circular(10)),
+                      ),
+                      constraints: const BoxConstraints(minWidth: 18),
+                      child: Text(
+                        _newMessagesCount > 99 ? '99+' : '$_newMessagesCount',
+                        style: const TextStyle(
+                          color: Colors.white,
+                          fontSize: 11,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                    ),
+                  ),
+              ],
+            ),
           ),
         ),
       ),
@@ -178,6 +222,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final auth = context.watch<AuthProvider>();
     final messages = chat.messages;
     final contactName = _getContactName();
+
+    if (messages.isNotEmpty && messages.length != _lastMessageCount) {
+      final added = messages.length - _lastMessageCount;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        if (_lastMessageCount == 0) {
+          _lastMessageCount = messages.length;
+          return;
+        }
+        _onNewMessages(messages.length, added);
+      });
+    }
 
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;

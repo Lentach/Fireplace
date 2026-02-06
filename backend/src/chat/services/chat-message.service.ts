@@ -107,27 +107,42 @@ export class ChatMessageService {
       return;
     }
 
-    const messages = await this.messagesService.findByConversation(
-      data.conversationId,
-      data.limit,
-      data.offset,
-    );
+    try {
+      const messages = await this.messagesService.findByConversation(
+        data.conversationId,
+        data.limit,
+        data.offset,
+      );
 
-    const mapped = messages.map((m) => ({
-      id: m.id,
-      content: m.content,
-      senderId: m.sender.id,
-      senderEmail: m.sender.email,
-      senderUsername: m.sender.username,
-      conversationId: data.conversationId,
-      createdAt: m.createdAt,
-      deliveryStatus: m.deliveryStatus || 'SENT',
-      expiresAt: m.expiresAt,
-      messageType: m.messageType || 'TEXT',
-      mediaUrl: m.mediaUrl,
-    }));
+      // Filter out expired messages (cron cleans DB every minute, but messages
+      // may still be in DB between cron runs)
+      const now = new Date();
+      const active = messages.filter(
+        (m) => !m.expiresAt || m.expiresAt > now,
+      );
 
-    client.emit('messageHistory', mapped);
+      const mapped = active.map((m) => ({
+        id: m.id,
+        content: m.content,
+        senderId: m.sender.id,
+        senderEmail: m.sender.email,
+        senderUsername: m.sender.username,
+        conversationId: data.conversationId,
+        createdAt: m.createdAt,
+        deliveryStatus: m.deliveryStatus || 'SENT',
+        expiresAt: m.expiresAt,
+        messageType: m.messageType || 'TEXT',
+        mediaUrl: m.mediaUrl,
+      }));
+
+      client.emit('messageHistory', mapped);
+    } catch (error) {
+      this.logger.error(
+        `Failed to get messages for conversation ${data.conversationId}: ${error.message}`,
+        error.stack,
+      );
+      client.emit('messageHistory', []);
+    }
   }
 
   async handleSendPing(
@@ -221,23 +236,64 @@ export class ChatMessageService {
       return;
     }
 
-    // Update message delivery status
     const updated = await this.messagesService.updateDeliveryStatus(
       messageId,
       MessageDeliveryStatus.DELIVERED,
     );
 
-    if (!updated) {
-      return; // Message not found or already updated
-    }
+    if (!updated) return;
 
-    // Notify the sender that their message was delivered
+    // Emit actual status (READ if markConversationRead was processed first)
     const senderSocketId = onlineUsers.get(updated.sender.id);
     if (senderSocketId) {
       server.to(senderSocketId).emit('messageDelivered', {
         messageId: updated.id,
-        deliveryStatus: MessageDeliveryStatus.DELIVERED,
+        conversationId: updated.conversation?.id,
+        deliveryStatus: updated.deliveryStatus,
       });
+    }
+  }
+
+  async handleMarkConversationRead(
+    client: Socket,
+    data: any,
+    server: Server,
+    onlineUsers: Map<number, string>,
+  ) {
+    const user = client.data.user;
+    if (!user) return;
+
+    const conversationId = data?.conversationId;
+    if (conversationId == null) {
+      client.emit('error', { message: 'conversationId is required' });
+      return;
+    }
+
+    const conversation = await this.conversationsService.findById(
+      Number(conversationId),
+    );
+    if (!conversation) return;
+
+    const readerId = user.id;
+    const otherUserId =
+      conversation.userOne.id === readerId
+        ? conversation.userTwo.id
+        : conversation.userOne.id;
+
+    const updated = await this.messagesService.markConversationAsReadFromSender(
+      Number(conversationId),
+      otherUserId,
+    );
+
+    for (const message of updated) {
+      const senderSocketId = onlineUsers.get(message.sender.id);
+      if (senderSocketId) {
+        server.to(senderSocketId).emit('messageDelivered', {
+          messageId: message.id,
+          conversationId: Number(conversationId),
+          deliveryStatus: MessageDeliveryStatus.READ,
+        });
+      }
     }
   }
 }

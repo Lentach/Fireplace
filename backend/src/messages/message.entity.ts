@@ -13,6 +13,7 @@ export enum MessageDeliveryStatus {
   SENDING = 'SENDING',
   SENT = 'SENT',
   DELIVERED = 'DELIVERED',
+  READ = 'READ',
 }
 
 export enum MessageType {

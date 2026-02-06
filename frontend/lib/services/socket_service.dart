@@ -103,6 +103,12 @@ class SocketService {
     });
   }
 
+  void emitMarkConversationRead(int conversationId) {
+    _socket?.emit('markConversationRead', {
+      'conversationId': conversationId,
+    });
+  }
+
   void startConversation(String recipientEmail) {
     _socket?.emit('startConversation', {
       'recipientEmail': recipientEmail,

@@ -210,6 +210,8 @@ erDiagram
 | **getFriendRequests** | ChatFriendRequestService.handleGetFriendRequests | `friendRequestsList` (array) | — |
 | **getFriends** | ChatFriendRequestService.handleGetFriends | `friendsList` (array of users) | — |
 | **unfriend** | ChatFriendRequestService.handleUnfriend | `unfriended`, `conversationsList` | To other: `unfriended` { userId }, `conversationsList` |
+| **messageDelivered** | ChatMessageService.handleMessageDelivered | — | To sender: `messageDelivered` { messageId, deliveryStatus: 'DELIVERED' } |
+| **markConversationRead** | ChatMessageService.handleMarkConversationRead | — | To each sender of marked messages: `messageDelivered` { messageId, deliveryStatus: 'READ' } |
 
 **Payload shapes (essential):**
 
@@ -221,7 +223,7 @@ erDiagram
 - **friendRequestAccepted / newFriendRequest / friendRequestSent:** FriendRequest payload (id, sender, receiver, status).
 - **unfriended:** `{ userId: number }` (the peer that was unfriended).
 
-**Client DTOs (backend validates):** SendMessageDto: recipientId, content. SendFriendRequestDto / StartConversationDto: recipientEmail. AcceptFriendRequestDto / RejectFriendRequestDto: requestId. DeleteConversationDto: conversationId. GetMessagesDto: conversationId, optional limit/offset. UnfriendDto: userId.
+**Client DTOs (backend validates):** SendMessageDto: recipientId, content. SendFriendRequestDto / StartConversationDto: recipientEmail. AcceptFriendRequestDto / RejectFriendRequestDto: requestId. DeleteConversationDto: conversationId. GetMessagesDto: conversationId, optional limit/offset. UnfriendDto: userId. messageDelivered: messageId. markConversationRead: conversationId.
 
 ---
 
@@ -378,8 +380,8 @@ Telegram/Wire-inspired UI with delivery indicators, disappearing messages, ping 
 
 ### New Message Features
 
-- **Delivery Status Tracking:** SENDING (clock), SENT (✓), DELIVERED (✓✓) indicators on own messages only. Backend: `MessageDeliveryStatus` enum. Frontend: optimistic UI updates.
-- **Disappearing Messages:** Global timer per conversation (30s, 1m, 5m, 1h, 1d, Off). Set via Timer action tile. Messages include `expiresAt` field. Cron job cleanup (every minute) not yet implemented.
+- **Delivery Status Tracking:** SENDING (clock), SENT (✓ grey), DELIVERED (✓ grey), READ (✓✓ blue) on own messages only. One check = delivered; two checks = read (recipient opened chat). Backend: `MessageDeliveryStatus` (SENDING, SENT, DELIVERED, READ). Client emits `messageDelivered`(messageId) when receiving; emits `markConversationRead`(conversationId) when opening/viewing chat so sender sees read receipts.
+- **Disappearing Messages:** Global timer per conversation (30s, 1m, 5m, 1h, 1d, Off). Set via Timer action tile. Messages include `expiresAt` field. **Three-layer expiration:** (1) Frontend `removeExpiredMessages()` called every 1s by ChatDetailScreen timer — instant vanish at zero. (2) Backend cron deletes from DB every minute. (3) `handleGetMessages` + `onMessageHistory` both filter out expired messages.
 - **Ping Messages:** One-shot notification with empty content and `messageType=PING`. Backend emits `pingSent` to sender, `newPing` to recipient. UI shows campaign icon + "PING!" text.
 - **Message Types:** TEXT, PING, IMAGE, DRAWING (last two not fully implemented).
 
@@ -412,17 +414,18 @@ Telegram/Wire-inspired UI with delivery indicators, disappearing messages, ping 
 
 ### Not Yet Implemented
 
-- Ping visual effect + sound (Task 3.5)
 - Drawing canvas screen (Task 3.6)
-- Message expiration cron job (Task 4.1)
-- Live timer countdown refresh (Task 4.2)
 - Image upload endpoint + camera/drawing upload (Tasks 5.1, 5.2)
 
 ---
 
-## 13. Recent Changes (2026-02-05)
+## 13. Recent Changes (2026-02-06)
 
-- **Chat screen avatar blink fix:** Avatar in chat header was blinking every ~1–2 s because ChatDetailScreen’s Timer.periodic(1s) triggered full rebuilds and AvatarCircle used `DateTime.now()` in the image URL on every build, so Image.network reloaded. Fix: AvatarCircle keeps a stable cache-bust per profilePictureUrl (initState + didUpdateWidget); URL only changes when profilePictureUrl changes. avatar_circle.dart.
+- **Disappearing messages fix (2026-02-06):** Two bugs fixed: (1) Timer reaching zero showed "Expired" text instead of removing the message — added `ChatProvider.removeExpiredMessages()` called every 1s by ChatDetailScreen timer; `ChatMessageBubble._getTimerText()` returns null for expired messages. (2) Messages disappeared when leaving/re-entering chat before timer expired — added `relations: ['sender']` to `findByConversation`, error handling in `handleGetMessages`, and three-layer expiration filtering (backend response + frontend receive + frontend timer). Files: chat_provider.dart, chat_detail_screen.dart, chat_message_bubble.dart, messages.service.ts, chat-message.service.ts.
+
+- **Docker hot-reload fix (2026-02-06):** Windows Docker volumes don't propagate inotify events. Backend: added `watchOptions` with polling to tsconfig.json. Frontend: polling watcher script (dev-entrypoint.sh) that detects file content changes and touches files to trigger inotify. Files: tsconfig.json, Dockerfile.dev, dev-entrypoint.sh.
+
+- **Chat screen avatar blink fix (2026-02-05):** Avatar in chat header was blinking every ~1–2 s because ChatDetailScreen's Timer.periodic(1s) triggered full rebuilds and AvatarCircle used `DateTime.now()` in the image URL on every build. Fix: AvatarCircle keeps a stable cache-bust per profilePictureUrl. avatar_circle.dart.
 
 **2026-02-01:** Conversations UI redesign (MainShell + BottomNav, ConversationsScreen header, AddOrInvitationsScreen). Code review; delete account cascade; avatar overwrite fix; no isOnline/active status.
 
@@ -450,13 +453,15 @@ Frontend: BASE_URL dart define (default localhost:3000).
 - **Session leak:** connect() clears state first; AuthGate clears on logout.
 - **Unfriend:** find-then-remove. friends.service.ts.
 - **deleteConversation:** Call unfriend() first. chat-conversation.service.ts.
-- **Avatar blink in chat screen:** Use stable cache-bust per profilePictureUrl in AvatarCircle so parent rebuilds (e.g. Timer.periodic in ChatDetailScreen) don’t change image URL and reload. avatar_circle.dart.
+- **Avatar blink in chat screen:** Use stable cache-bust per profilePictureUrl in AvatarCircle so parent rebuilds (e.g. Timer.periodic in ChatDetailScreen) don't change image URL and reload. avatar_circle.dart.
+- **Disappearing messages — "Expired" not vanishing:** Frontend never removed expired messages from `_messages`. Fix: `ChatProvider.removeExpiredMessages()` called every 1s removes messages where `expiresAt < now`. `_getTimerText()` returns null (not "Expired"). chat_provider.dart, chat_message_bubble.dart, chat_detail_screen.dart.
+- **Disappearing messages — vanish on chat re-entry:** Backend `findByConversation` relied on eager loading for sender (fragile). Fix: explicit `relations: ['sender']`, error handling in `handleGetMessages`, expired message filtering in backend response and frontend receive. messages.service.ts, chat-message.service.ts, chat_provider.dart.
 
 ---
 
 ## 16. Known Limitations
 
-No user search. No typing/read receipts. No message edit/delete. No unique on (sender,receiver) — duplicate friend requests allowed. Last message not in conversationsList (client keeps lastMessages map). Message pagination: limit/offset, default 50.
+No user search. No typing indicators. No message edit/delete. No unique on (sender,receiver) — duplicate friend requests allowed. Last message not in conversationsList (client keeps lastMessages map). Message pagination: limit/offset, default 50.
 
 ---
 

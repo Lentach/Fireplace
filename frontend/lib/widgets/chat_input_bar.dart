@@ -14,6 +14,7 @@ class ChatInputBar extends StatefulWidget {
 class _ChatInputBarState extends State<ChatInputBar>
     with SingleTickerProviderStateMixin {
   final _controller = TextEditingController();
+  final _focusNode = FocusNode();
   bool _hasText = false;
   bool _showActionPanel = false;
   late final AnimationController _actionPanelController;
@@ -41,6 +42,7 @@ class _ChatInputBarState extends State<ChatInputBar>
   @override
   void dispose() {
     _controller.dispose();
+    _focusNode.dispose();
     _actionPanelController.dispose();
     super.dispose();
   }
@@ -54,6 +56,10 @@ class _ChatInputBarState extends State<ChatInputBar>
     chat.sendMessage(text, expiresIn: expiresIn);
 
     _controller.clear();
+    // Keep focus on the text field so user can type the next message immediately
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (mounted) _focusNode.requestFocus();
+    });
   }
 
   void _toggleActionPanel() {
@@ -114,6 +120,7 @@ class _ChatInputBarState extends State<ChatInputBar>
                 Expanded(
                   child: TextField(
                     controller: _controller,
+                    focusNode: _focusNode,
                     style: RpgTheme.bodyFont(
                       fontSize: 14,
                       color: colorScheme.onSurface,

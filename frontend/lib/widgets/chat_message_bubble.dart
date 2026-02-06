@@ -16,6 +16,7 @@ class ChatMessageBubble extends StatelessWidget {
     return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 
+  /// One check = delivered (reached recipient device). Two checks = read (recipient opened/read).
   Widget _buildDeliveryIcon() {
     if (!isMine) return const SizedBox.shrink();
 
@@ -32,6 +33,10 @@ class ChatMessageBubble extends StatelessWidget {
         color = Colors.grey;
         break;
       case MessageDeliveryStatus.delivered:
+        icon = Icons.check;
+        color = Colors.grey;
+        break;
+      case MessageDeliveryStatus.read:
         icon = Icons.done_all;
         color = Colors.blue;
         break;
@@ -46,7 +51,8 @@ class ChatMessageBubble extends StatelessWidget {
     final now = DateTime.now();
     final remaining = message.expiresAt!.difference(now);
 
-    if (remaining.isNegative) return 'Expired';
+    // Expired messages are removed by ChatProvider.removeExpiredMessages()
+    if (remaining.isNegative) return null;
 
     if (remaining.inHours > 0) {
       return '${remaining.inHours}h';
