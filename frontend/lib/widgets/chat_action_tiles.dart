@@ -5,6 +5,7 @@ import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../screens/drawing_canvas_screen.dart';
+import 'top_snackbar.dart';
 
 class ChatActionTiles extends StatelessWidget {
   const ChatActionTiles({super.key});
@@ -75,9 +76,7 @@ class ChatActionTiles extends StatelessWidget {
 
     // Guard: Check if conversation is active
     if (chat.activeConversationId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Open a conversation first')),
-      );
+      showTopSnackBar(context, 'Open a conversation first');
       return;
     }
 
@@ -87,9 +86,7 @@ class ChatActionTiles extends StatelessWidget {
 
     chat.sendPing(recipientId);
 
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Ping sent!')),
-    );
+    showTopSnackBar(context, 'Ping sent!');
   }
 
   Future<void> _pickAttachment(BuildContext context) async {
@@ -98,9 +95,7 @@ class ChatActionTiles extends StatelessWidget {
 
     // Guard: Check if conversation is active
     if (chat.activeConversationId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Open a conversation first')),
-      );
+      showTopSnackBar(context, 'Open a conversation first');
       return;
     }
 
@@ -114,23 +109,17 @@ class ChatActionTiles extends StatelessWidget {
     if (image != null) {
       // Show loading indicator
       if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Uploading image...')),
-        );
+        showTopSnackBar(context, 'Uploading image...');
       }
 
       try {
         await chat.sendImageMessage(auth.token!, image, recipientId);
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('Image sent!')),
-          );
+          showTopSnackBar(context, 'Image sent!');
         }
       } catch (e) {
         if (context.mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(content: Text('Upload failed: $e')),
-          );
+          showTopSnackBar(context, 'Upload failed: $e', backgroundColor: Colors.red);
         }
       }
     }
@@ -141,9 +130,7 @@ class ChatActionTiles extends StatelessWidget {
 
     // Guard: Check if conversation is active
     if (chat.activeConversationId == null) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Open a conversation first')),
-      );
+      showTopSnackBar(context, 'Open a conversation first');
       return;
     }
 
@@ -156,9 +143,7 @@ class ChatActionTiles extends StatelessWidget {
   }
 
   void _showComingSoon(BuildContext context, String feature) {
-    ScaffoldMessenger.of(context).showSnackBar(
-      SnackBar(content: Text('$feature coming soon')),
-    );
+    showTopSnackBar(context, '$feature coming soon');
   }
 }
 

@@ -9,6 +9,7 @@ import 'package:provider/provider.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
+import '../widgets/top_snackbar.dart';
 
 class DrawingCanvasScreen extends StatefulWidget {
   const DrawingCanvasScreen({super.key});
@@ -121,9 +122,7 @@ class _DrawingCanvasScreenState extends State<DrawingCanvasScreen> {
 
   Future<void> _sendDrawing() async {
     if (_lines.isEmpty) {
-      ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('Canvas is empty')),
-      );
+      showTopSnackBar(context, 'Canvas is empty');
       return;
     }
 
@@ -134,9 +133,7 @@ class _DrawingCanvasScreenState extends State<DrawingCanvasScreen> {
     try {
       // Show loading
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Uploading drawing...')),
-        );
+        showTopSnackBar(context, 'Uploading drawing...');
       }
 
       // Capture canvas as image
@@ -157,9 +154,7 @@ class _DrawingCanvasScreenState extends State<DrawingCanvasScreen> {
 
       if (chat.activeConversationId == null) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            const SnackBar(content: Text('No active conversation')),
-          );
+          showTopSnackBar(context, 'No active conversation');
         }
         return;
       }
@@ -175,15 +170,11 @@ class _DrawingCanvasScreenState extends State<DrawingCanvasScreen> {
 
       if (mounted) {
         Navigator.pop(context);
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('Drawing sent!')),
-        );
+        showTopSnackBar(context, 'Drawing sent!');
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(content: Text('Upload failed: $e')),
-        );
+        showTopSnackBar(context, 'Upload failed: $e', backgroundColor: Colors.red);
       }
     }
   }

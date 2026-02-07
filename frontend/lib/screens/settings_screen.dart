@@ -9,6 +9,7 @@ import '../providers/settings_provider.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/dialogs/reset_password_dialog.dart';
 import '../widgets/dialogs/delete_account_dialog.dart';
+import '../widgets/top_snackbar.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -55,26 +56,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
       await auth.updateProfilePicture(image);
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Profile picture updated',
-              style: RpgTheme.bodyFont(color: Colors.white),
-            ),
-            backgroundColor: Theme.of(context).colorScheme.primary,
-          ),
+        showTopSnackBar(
+          context,
+          'Profile picture updated',
+          backgroundColor: Theme.of(context).colorScheme.primary,
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Upload failed: ${e.toString()}',
-              style: RpgTheme.bodyFont(color: Colors.white),
-            ),
-            backgroundColor: const Color(0xFFFF6666),
-          ),
+        showTopSnackBar(
+          context,
+          'Upload failed: ${e.toString()}',
+          backgroundColor: const Color(0xFFFF6666),
         );
       }
     }
@@ -96,26 +89,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
 
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Password updated successfully',
-              style: RpgTheme.bodyFont(color: Colors.white),
-            ),
-            backgroundColor: Theme.of(context).colorScheme.primary,
-          ),
+        showTopSnackBar(
+          context,
+          'Password updated successfully',
+          backgroundColor: Theme.of(context).colorScheme.primary,
         );
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Password reset failed: ${e.toString()}',
-              style: RpgTheme.bodyFont(color: Colors.white),
-            ),
-            backgroundColor: const Color(0xFFFF6666),
-          ),
+        showTopSnackBar(
+          context,
+          'Password reset failed: ${e.toString()}',
+          backgroundColor: const Color(0xFFFF6666),
         );
       }
     }
@@ -141,14 +126,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
       }
     } catch (e) {
       if (mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          SnackBar(
-            content: Text(
-              'Account deletion failed: ${e.toString()}',
-              style: RpgTheme.bodyFont(color: Colors.white),
-            ),
-            backgroundColor: const Color(0xFFFF6666),
-          ),
+        showTopSnackBar(
+          context,
+          'Account deletion failed: ${e.toString()}',
+          backgroundColor: const Color(0xFFFF6666),
         );
       }
     }
@@ -304,14 +285,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: 'Privacy and Safety',
               trailing: Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
               onTap: () {
-                ScaffoldMessenger.of(context).showSnackBar(
-                SnackBar(
-                  content: Text(
-                    'Coming soon',
-                    style: RpgTheme.bodyFont(color: Colors.white),
-                  ),
+                showTopSnackBar(
+                  context,
+                  'Coming soon',
                   backgroundColor: Theme.of(context).colorScheme.primary,
-                ),
                 );
               },
             ),

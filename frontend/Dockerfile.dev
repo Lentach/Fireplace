@@ -9,8 +9,6 @@ RUN flutter pub get
 # Copy the rest of the source
 COPY . .
 
-# Make the dev entrypoint executable
-RUN chmod +x dev-entrypoint.sh
-
 EXPOSE 8080
-CMD ["./dev-entrypoint.sh"]
+# Convert Windows CRLF to Unix LF, then run the script
+CMD ["sh", "-c", "sed -i 's/\\r$//' dev-entrypoint.sh && sh dev-entrypoint.sh"]

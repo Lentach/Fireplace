@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
+import '../widgets/top_snackbar.dart';
 
 /// Single screen with tabs: Add by email, Friend requests.
 class AddOrInvitationsScreen extends StatelessWidget {
@@ -91,12 +92,7 @@ class _AddByEmailTabState extends State<_AddByEmailTab> {
       final email = _emailController.text.trim();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Friend request sent to $email'),
-              backgroundColor: Colors.green,
-            ),
-          );
+          showTopSnackBar(context, 'Friend request sent to $email', backgroundColor: Colors.green);
           Navigator.pop(context);
         }
       });
@@ -302,12 +298,7 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
                             context
                                 .read<ChatProvider>()
                                 .acceptFriendRequest(request.id);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Friend added: $displayName'),
-                                backgroundColor: Colors.green,
-                              ),
-                            );
+                            showTopSnackBar(context, 'Friend added: $displayName', backgroundColor: Colors.green);
                           },
                           icon: const Icon(Icons.check),
                           label: const Text('Accept'),
@@ -321,12 +312,7 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
                             context
                                 .read<ChatProvider>()
                                 .rejectFriendRequest(request.id);
-                            ScaffoldMessenger.of(context).showSnackBar(
-                              SnackBar(
-                                content: Text('Request rejected'),
-                                backgroundColor: Colors.red,
-                              ),
-                            );
+                            showTopSnackBar(context, 'Request rejected', backgroundColor: Colors.red);
                           },
                           icon: const Icon(Icons.close),
                           label: const Text('Reject'),

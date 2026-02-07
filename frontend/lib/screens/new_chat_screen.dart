@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
+import '../widgets/top_snackbar.dart';
 
 class NewChatScreen extends StatefulWidget {
   const NewChatScreen({super.key});
@@ -54,12 +55,7 @@ class _NewChatScreenState extends State<NewChatScreen> {
       final email = _emailController.text.trim();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
-          ScaffoldMessenger.of(context).showSnackBar(
-            SnackBar(
-              content: Text('Friend request sent to $email'),
-              backgroundColor: Colors.green,
-            ),
-          );
+          showTopSnackBar(context, 'Friend request sent to $email', backgroundColor: Colors.green);
           Navigator.pop(context);
         }
       });

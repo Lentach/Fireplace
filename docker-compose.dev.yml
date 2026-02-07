@@ -37,7 +37,10 @@ services:
     depends_on:
       - db
     volumes:
-      - ./backend/src:/app/src
+      # Mount entire backend directory for hot reload
+      - ./backend:/app
+      # Anonymous volume for node_modules (don't overwrite from host)
+      - /app/node_modules
 
   frontend:
     build:
@@ -48,9 +51,12 @@ services:
     depends_on:
       - backend
     volumes:
-      - ./frontend/lib:/app/lib
-      - ./frontend/web:/app/web
-      - ./frontend/assets:/app/assets
+      # Mount entire frontend directory for hot reload
+      - ./frontend:/app
+      # Anonymous volumes for Flutter build artifacts and dependencies
+      - /app/.dart_tool
+      - /app/build
+      - /app/.packages
 
 volumes:
   pgdata:

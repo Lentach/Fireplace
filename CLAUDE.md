@@ -1,6 +1,6 @@
 # CLAUDE.md — MVP Chat App
 
-**Last updated:** 2026-02-05
+**Last updated:** 2026-02-07
 
 **Rule:** Update this file after every code change. Single source of truth for agents. **A future agent must be able to read ONLY this file and understand the current state of the project without reading every source file.**
 
@@ -266,7 +266,11 @@ erDiagram
 
 ### 7.4 consumeFriendRequestSent
 
-- After sendFriendRequest, backend may emit `friendRequestSent`. ChatProvider sets _friendRequestJustSent = true. Add by email tab (or NewChatScreen) in build() calls `chat.consumeFriendRequestSent()`; if true, shows SnackBar and Navigator.pop(context). Used so the “Send Friend Request” flow can close the screen and show success.
+- After sendFriendRequest, backend may emit `friendRequestSent`. ChatProvider sets _friendRequestJustSent = true. Add by email tab (or NewChatScreen) in build() calls `chat.consumeFriendRequestSent()`; if true, shows top snackbar and Navigator.pop(context). Used so the “Send Friend Request” flow can close the screen and show success.
+
+### 7.7 Notifications (top snackbar)
+
+- All transient notifications (errors, success, "coming soon") use **showTopSnackBar** from `widgets/top_snackbar.dart` so they appear **at the top** of the screen and do not cover the chat input bar at the bottom. Implemented via Overlay; optional `backgroundColor`; auto-dismiss after 2.5s.
 
 ### 7.5 Message handling
 
@@ -342,6 +346,7 @@ erDiagram
 | Theme / colors | theme/rpg_theme.dart, providers/settings_provider.dart |
 | Constants (breakpoint, page size, reconnect) | constants/app_constants.dart |
 | Conversation tile / avatar | widgets/conversation_tile.dart, widgets/avatar_circle.dart |
+| Top notifications (no bottom SnackBar) | widgets/top_snackbar.dart — use showTopSnackBar() |
 
 ---
 
@@ -420,7 +425,11 @@ Telegram/Wire-inspired UI with delivery indicators, disappearing messages, ping 
 
 ---
 
-## 13. Recent Changes (2026-02-06)
+## 13. Recent Changes (2026-02-07)
+
+- **Notifications at top (2026-02-07):** Error/success/feedback messages no longer cover the chat input bar. Added `showTopSnackBar()` in `widgets/top_snackbar.dart` (Overlay at top, 2.5s dismiss). Replaced all `ScaffoldMessenger.showSnackBar` usages in add_or_invitations_screen, friend_requests_screen, chat_action_tiles, chat_input_bar, drawing_canvas_screen, settings_screen, new_chat_screen with `showTopSnackBar(context, message, backgroundColor?: ...)`.
+
+**2026-02-06:**
 
 - **Disappearing messages fix (2026-02-06):** Three bugs fixed: (1) Timer reaching zero showed "Expired" text — added `ChatProvider.removeExpiredMessages()` called every 1s. (2) Messages disappeared on chat re-entry — root cause: TypeORM returns `expiresAt` as string; `string > Date` yields NaN in JS, filtering out all timed messages. Fix: `new Date(m.expiresAt).getTime() > nowMs`. (3) Added visual orange timer indicator bar in ChatInputBar showing active disappearing timer duration (e.g. "Disappearing messages: 1m"). Timer is sticky per conversation — set once, applies to all future messages. Files: chat_provider.dart, chat_detail_screen.dart, chat_message_bubble.dart, chat_input_bar.dart, messages.service.ts, chat-message.service.ts.
 

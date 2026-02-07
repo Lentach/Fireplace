@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
 import 'chat_action_tiles.dart';
+import 'top_snackbar.dart';
 
 class ChatInputBar extends StatefulWidget {
   const ChatInputBar({super.key});
@@ -75,9 +76,7 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   void _recordVoice() {
     // TODO: Voice recording (future feature)
-    ScaffoldMessenger.of(context).showSnackBar(
-      const SnackBar(content: Text('Voice messages coming soon')),
-    );
+    showTopSnackBar(context, 'Voice messages coming soon');
   }
 
   String _formatTimer(int seconds) {
@@ -191,7 +190,7 @@ class _ChatInputBarState extends State<ChatInputBar>
 
                 const SizedBox(width: 4),
 
-                // Mic / Send toggle
+                // Mic / Send toggle (send icon must contrast with primary-colored circle)
                 Container(
                   decoration: BoxDecoration(
                     shape: BoxShape.circle,
@@ -205,7 +204,7 @@ class _ChatInputBarState extends State<ChatInputBar>
                       size: 22,
                     ),
                     color: _hasText
-                        ? (isDark ? RpgTheme.accentDark : Colors.white)
+                        ? Colors.white
                         : (isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight),
                     onPressed: _hasText ? _send : _recordVoice,
                   ),

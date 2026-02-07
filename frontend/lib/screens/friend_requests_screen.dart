@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
+import '../widgets/top_snackbar.dart';
 
 class FriendRequestsScreen extends StatefulWidget {
   const FriendRequestsScreen({super.key});
@@ -150,12 +151,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
                           ElevatedButton.icon(
                             onPressed: () {
                               context.read<ChatProvider>().acceptFriendRequest(request.id);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Friend added: $displayName'),
-                                  backgroundColor: Colors.green,
-                                ),
-                              );
+                              showTopSnackBar(context, 'Friend added: $displayName', backgroundColor: Colors.green);
                             },
                             icon: const Icon(Icons.check),
                             label: const Text('Accept'),
@@ -168,12 +164,7 @@ class _FriendRequestsScreenState extends State<FriendRequestsScreen> {
                           ElevatedButton.icon(
                             onPressed: () {
                               context.read<ChatProvider>().rejectFriendRequest(request.id);
-                              ScaffoldMessenger.of(context).showSnackBar(
-                                SnackBar(
-                                  content: Text('Request rejected'),
-                                  backgroundColor: Colors.red,
-                                ),
-                              );
+                              showTopSnackBar(context, 'Request rejected', backgroundColor: Colors.red);
                             },
                             icon: const Icon(Icons.close),
                             label: const Text('Reject'),

@@ -17,31 +17,28 @@ class ChatMessageBubble extends StatelessWidget {
   }
 
   /// One check = delivered (reached recipient device). Two checks = read (recipient opened/read).
+  /// Uses light colors so the icon is visible on the dark "mine" bubble (mineMsgBg / mineMsgBgLight).
   Widget _buildDeliveryIcon() {
     if (!isMine) return const SizedBox.shrink();
 
     IconData icon;
-    Color color;
-
     switch (message.deliveryStatus) {
       case MessageDeliveryStatus.sending:
         icon = Icons.access_time;
-        color = Colors.grey;
         break;
       case MessageDeliveryStatus.sent:
-        icon = Icons.check;
-        color = Colors.grey;
-        break;
       case MessageDeliveryStatus.delivered:
         icon = Icons.check;
-        color = Colors.grey;
         break;
       case MessageDeliveryStatus.read:
         icon = Icons.done_all;
-        color = Colors.blue;
         break;
     }
 
+    const Color sendingSentColor = Color(0xFFE0E0E0); // light, visible on dark bubble
+    const Color readColor = Color(0xFF64B5F6); // light blue for read receipts
+
+    final color = message.deliveryStatus == MessageDeliveryStatus.read ? readColor : sendingSentColor;
     return Icon(icon, size: 12, color: color);
   }
 
