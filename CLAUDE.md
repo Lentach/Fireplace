@@ -425,7 +425,15 @@ Telegram/Wire-inspired UI with delivery indicators, disappearing messages, ping 
 
 ---
 
-## 13. Recent Changes (2026-02-07)
+## 13. Recent Changes (2026-02-08)
+
+- **Messages disappear after switching chat (2026-02-08):** Preview in conversation list showed the latest message, but the chat window did not. Root cause: `messages.service.ts` `findByConversation` returned the 50 oldest messages (ASC). When conversation had 50+ messages, newest were excluded. Fix: fetch with `order: DESC`, take limit, then reverse to return most recent N messages in chronological order. messages.service.ts.
+
+**2026-02-07:**
+
+- **Docker image optimization (2026-02-07):**
+  - **Frontend:** 7.64GB → 136MB (98% reduction). Added `frontend/.dockerignore` to exclude build artifacts (`build/`, `.dart_tool/`, `.git/`, etc.). Optimized both `Dockerfile` and `Dockerfile.dev` with layer caching (`COPY pubspec.* → RUN flutter pub get → COPY . .`) and cache cleanup (`flutter pub cache clean --force`). Production uses multi-stage build (Flutter build stage + nginx:alpine serve stage).
+  - **Backend:** 644MB → 357MB (44% reduction). Expanded `backend/.dockerignore` to exclude tests, logs, IDE files. Optimized `Dockerfile` with multi-stage build: (1) Builder stage installs production deps, builds app, prunes to production; (2) Final stage copies only `node_modules`, `dist`, and `package.json`. Uses `npm ci --only=production` + `npm prune --production` to minimize dependencies.
 
 - **Notifications at top (2026-02-07):** Error/success/feedback messages no longer cover the chat input bar. Added `showTopSnackBar()` in `widgets/top_snackbar.dart` (Overlay at top, 2.5s dismiss). Replaced all `ScaffoldMessenger.showSnackBar` usages in add_or_invitations_screen, friend_requests_screen, chat_action_tiles, chat_input_bar, drawing_canvas_screen, settings_screen, new_chat_screen with `showTopSnackBar(context, message, backgroundColor?: ...)`.
 
@@ -466,6 +474,7 @@ Frontend: BASE_URL dart define (default localhost:3000).
 - **Avatar blink in chat screen:** Use stable cache-bust per profilePictureUrl in AvatarCircle so parent rebuilds (e.g. Timer.periodic in ChatDetailScreen) don't change image URL and reload. avatar_circle.dart.
 - **Disappearing messages — "Expired" not vanishing:** Frontend never removed expired messages from `_messages`. Fix: `ChatProvider.removeExpiredMessages()` called every 1s removes messages where `expiresAt < now`. `_getTimerText()` returns null (not "Expired"). chat_provider.dart, chat_message_bubble.dart, chat_detail_screen.dart.
 - **Disappearing messages — vanish on chat re-entry:** Two-stage fix. (1) Added explicit `relations: ['sender']` and error handling. (2) **Root cause:** TypeORM returns `expiresAt` as string from pg driver; `string > Date` yields NaN in JavaScript, filtering out ALL timed messages. Fix: `new Date(m.expiresAt).getTime() > nowMs`. Also fixed frontend `onMessageHistory` to use `.removeWhere()` instead of `.where()` filter. messages.service.ts, chat-message.service.ts, chat_provider.dart.
+- **Messages disappear after switching chat (preview shows, chat does not):** Backend `findByConversation` used `order: ASC` + `limit 50`, returning the 50 oldest messages. With 50+ messages, newest were never returned. Fix: `order: DESC`, `take`, then `.reverse()` to return the N most recent messages oldest-first. messages.service.ts.
 
 ---
 

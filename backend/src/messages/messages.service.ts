@@ -36,19 +36,21 @@ export class MessagesService {
   }
 
   // Get messages from a conversation with pagination support.
-  // Returns messages ordered oldest first (ASC).
+  // Fetches the N most recent messages (DESC), returns them oldest-first (ASC) for display.
+  // offset=0: newest messages; offset=50: next 50 older messages.
   async findByConversation(
     conversationId: number,
     limit: number = 50,
     offset: number = 0,
   ): Promise<Message[]> {
-    return this.msgRepo.find({
+    const messages = await this.msgRepo.find({
       where: { conversation: { id: conversationId } },
       relations: ['sender'],
-      order: { createdAt: 'ASC' },
+      order: { createdAt: 'DESC' },
       take: limit,
       skip: offset,
     });
+    return messages.reverse();
   }
 
   /** Status order: never downgrade (e.g. READ must not become DELIVERED when events are processed out of order). */
