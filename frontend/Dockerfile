@@ -2,9 +2,16 @@
 FROM ghcr.io/cirruslabs/flutter:latest AS build
 
 WORKDIR /app
+
+# Copy dependency files first for better layer caching
+COPY pubspec.* ./
+RUN flutter pub get && \
+    flutter pub cache clean --force
+
+# Copy source code
 COPY . .
 
-RUN flutter pub get
+# Build for web
 RUN flutter build web --dart-define=BASE_URL= --release
 
 # Stage 2: Serve with nginx

@@ -1,3 +1,33 @@
 node_modules
 dist
 .git
+.gitignore
+
+# IDE
+.idea
+.vscode
+*.iml
+*.swp
+
+# Tests
+test
+coverage
+*.spec.ts
+*.test.ts
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment
+.env.local
+.env*.local
+
+# Misc
+.DS_Store
+Thumbs.db
+README.md
+
+# TypeScript
+tsconfig.build.tsbuild.json
+*.tsbuildinfo

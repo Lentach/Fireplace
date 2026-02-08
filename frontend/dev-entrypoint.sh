@@ -16,8 +16,7 @@ mkfifo $PIPE
 
 echo "[dev-watch] Starting Flutter web dev server..."
 # Keep pipe open in background, redirect to Flutter stdin
-(tail -f $PIPE) | flutter run -d web-server --web-port=8080 --web-hostname=0.0.0.0 \
-  --dart-define=BASE_URL=http://localhost:3000 &
+(tail -f $PIPE) | flutter run -d web-server --web-port=8080 --web-hostname=0.0.0.0 &
 FLUTTER_PID=$!
 
 # Wait for initial compilation

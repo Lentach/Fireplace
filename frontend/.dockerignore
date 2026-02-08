@@ -1,0 +1,37 @@
+# Flutter build artifacts
+build/
+.dart_tool/
+.flutter-plugins
+.flutter-plugins-dependencies
+.packages
+
+# Git
+.git/
+.gitignore
+
+# IDE
+.idea/
+.vscode/
+*.iml
+*.iws
+
+# Misc
+*.log
+.DS_Store
+coverage/
+*.swp
+.metadata
+
+# Tests
+test/.test_coverage.dart
+
+# Local env
+.env.local
+.env*.local
+
+# Windows
+Thumbs.db
+
+# Documentation (kopiowane osobno jeśli potrzebne)
+README.md
+docs/
