@@ -1,0 +1,27 @@
+# docker-compose.web.yml — Full stack with web frontend
+# Use when you need web preview: docker-compose -f docker-compose.web.yml up
+
+services:
+  db:
+    extends:
+      file: docker-compose.yml
+      service: db
+
+  backend:
+    extends:
+      file: docker-compose.yml
+      service: backend
+
+  frontend:
+    build:
+      context: ./frontend
+      dockerfile: Dockerfile
+      args:
+        BASE_URL: http://192.168.1.11:3000
+    ports:
+      - '8080:80'
+    depends_on:
+      - backend
+
+volumes:
+  pgdata:
