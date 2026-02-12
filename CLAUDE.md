@@ -1,6 +1,6 @@
 # CLAUDE.md — MVP Chat App
 
-**Last updated:** 2026-02-07
+**Last updated:** 2026-02-12
 
 **Rule:** Update this file after every code change. Single source of truth for agents. **A future agent must be able to read ONLY this file and understand the current state of the project without reading every source file.**
 
@@ -25,19 +25,37 @@
 
 ## 2. Quick Start
 
-**Stack:** NestJS + Flutter + PostgreSQL + Socket.IO + JWT. 1-on-1 chat.
+**Stack:** NestJS + Flutter + PostgreSQL + Socket.IO + JWT. Mobile-first, web optional.
 
-**Structure:** `backend/` :3000, `frontend/` :8080 (nginx in Docker). Manual E2E scripts in `scripts/` (see `scripts/README.md`).
+**Structure:** `backend/` :3000, `frontend/` Flutter app (run locally or build for web :8080). Manual E2E scripts in `scripts/` (see `scripts/README.md`).
 
-**Run:**
-```bash
-# .env: CLOUDINARY_CLOUD_NAME, CLOUDINARY_API_KEY, CLOUDINARY_API_SECRET
-docker-compose up --build
-```
+**Development workflow:**
 
-**Before run:** `tasklist | findstr node` → kill if needed. One backend only.
+1. **Start backend + DB** (always):
+   ```bash
+   docker-compose up
+   ```
+   Backend: http://192.168.1.11:3000 (accessible from phone)
 
-**Frontend config:** `BASE_URL` dart define (default localhost:3000). JWT stored in SharedPreferences (`jwt_token`).
+2. **Run Flutter on device** (mobile dev - recommended):
+   ```bash
+   cd frontend
+   flutter devices  # List available devices
+   flutter run -d <device-id>  # Hot-reload enabled
+   ```
+
+3. **Or run web build** (optional, for web testing):
+   ```bash
+   docker-compose -f docker-compose.web.yml up --build
+   ```
+   Frontend: http://192.168.1.11:8080
+
+**Before run:**
+- Kill existing node processes: `taskkill //F //IM node.exe`
+- Ensure phone/computer on same WiFi network
+- Update `BASE_URL` in flutter run: `--dart-define=BASE_URL=http://192.168.1.11:3000`
+
+**Frontend config:** `BASE_URL` via dart-define or hardcoded default. JWT stored in SharedPreferences (`jwt_token`).
 
 ---
 
