@@ -18,21 +18,32 @@ Real-time 1-on-1 chat application with an RPG-themed UI. NestJS backend with Web
 
 ---
 
-## Quick Start (Docker)
+## Quick Start (Mobile Development)
 
-> Requirements: [Docker](https://docs.docker.com/get-docker/) and Docker Compose
+> Requirements: [Flutter SDK](https://flutter.dev/docs/get-started/install), [Docker](https://docs.docker.com/get-docker/)
 
 ```bash
 # 1. Clone the repository
 git clone https://github.com/Lentach/mvp-chat-app.git
 cd mvp-chat-app
 
-# 2. Build and run
-docker-compose up --build
+# 2. Start backend + database
+docker-compose up
+
+# 3. In another terminal: Run Flutter on your device
+cd frontend
+flutter devices              # List available devices
+flutter run -d <device-id>   # Hot-reload enabled
 ```
 
-- **Frontend:** http://localhost:8080
-- **Backend API:** http://localhost:3000
+- **Backend API:** http://192.168.1.11:3000 (accessible from phone)
+- **Frontend:** Native Flutter app with instant hot-reload
+
+**Optional - Web Preview:**
+```bash
+docker-compose -f docker-compose.web.yml up --build
+```
+- **Frontend (web):** http://localhost:8080
 
 ---
 
@@ -62,14 +73,24 @@ npm run start:dev
 
 ### Frontend
 
+**Mobile (Recommended):**
 ```bash
 cd frontend
 
 # 1. Install dependencies
 flutter pub get
 
-# 2. Run in Chrome (connects to backend on localhost:3000)
-flutter run -d chrome
+# 2. Connect device via USB or WiFi
+flutter devices
+
+# 3. Run on device
+flutter run -d <device-id> --dart-define=BASE_URL=http://192.168.1.11:3000
+```
+
+**Web (Optional):**
+```bash
+cd frontend
+flutter run -d chrome --dart-define=BASE_URL=http://localhost:3000
 ```
 
 ---
