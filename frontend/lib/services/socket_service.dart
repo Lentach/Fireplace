@@ -103,6 +103,15 @@ class SocketService {
     });
   }
 
+  void emitClearChatHistory(int conversationId) {
+    if (_socket == null) {
+      debugPrint('[SocketService] Cannot emit clearChatHistory: socket is null');
+      return;
+    }
+    debugPrint('[SocketService] Emitting clearChatHistory for conversation $conversationId');
+    _socket!.emit('clearChatHistory', {'conversationId': conversationId});
+  }
+
   void emitMarkConversationRead(int conversationId) {
     _socket?.emit('markConversationRead', {
       'conversationId': conversationId,
