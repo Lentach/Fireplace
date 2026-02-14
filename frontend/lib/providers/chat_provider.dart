@@ -500,6 +500,18 @@ class ChatProvider extends ChangeNotifier {
     // Update last message
     _lastMessages[message.conversationId] = message;
 
+    // Update unread count (same logic as normal messages)
+    if (message.senderId != _currentUserId) {
+      if (message.conversationId != _activeConversationId) {
+        _unreadCounts[message.conversationId] =
+            (_unreadCounts[message.conversationId] ?? 0) + 1;
+      }
+      _socketService.emitMessageDelivered(message.id);
+      if (message.conversationId == _activeConversationId) {
+        markConversationRead(message.conversationId);
+      }
+    }
+
     // Set flag for showing ping effect
     _showPingEffect = true;
 
