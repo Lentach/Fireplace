@@ -53,6 +53,17 @@ export class MessagesService {
     return messages.reverse();
   }
 
+  // Get the last (most recent) message from a conversation.
+  // Returns null if no messages exist.
+  async getLastMessage(conversationId: number): Promise<Message | null> {
+    const message = await this.msgRepo.findOne({
+      where: { conversation: { id: conversationId } },
+      relations: ['sender'],
+      order: { createdAt: 'DESC' },
+    });
+    return message || null;
+  }
+
   /** Status order: never downgrade (e.g. READ must not become DELIVERED when events are processed out of order). */
   private static readonly DELIVERY_STATUS_ORDER: Record<MessageDeliveryStatus, number> = {
     [MessageDeliveryStatus.SENDING]: 0,
@@ -127,5 +138,13 @@ export class MessagesService {
       updated.push(await this.msgRepo.save(m));
     }
     return updated;
+  }
+
+  /**
+   * Delete all messages in a conversation.
+   * Used when clearing chat history.
+   */
+  async deleteAllByConversation(conversationId: number): Promise<void> {
+    await this.msgRepo.delete({ conversation: { id: conversationId } });
   }
 }
