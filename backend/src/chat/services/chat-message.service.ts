@@ -219,6 +219,11 @@ export class ChatMessageService {
       recipient,
     );
 
+    // Use conversation's disappearing timer for ping expiration
+    const expiresAt = conversation.disappearingTimer
+      ? new Date(Date.now() + conversation.disappearingTimer * 1000)
+      : null;
+
     // Create ping message
     const message = await this.messagesService.create(
       '', // Empty content for ping
@@ -226,7 +231,7 @@ export class ChatMessageService {
       conversation,
       {
         messageType: MessageType.PING,
-        expiresAt: null, // Pings don't expire
+        expiresAt,
       },
     );
 
