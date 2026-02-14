@@ -81,3 +81,5 @@ export class UnfriendDto {
   @IsPositive()
   userId: number;
 }
+
+export * from './clear-chat-history.dto';
