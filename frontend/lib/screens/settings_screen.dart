@@ -196,7 +196,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: Text(
           'Settings',
           style: RpgTheme.pressStart2P(
-            fontSize: 10,
+            fontSize: 12,
             color: theme.colorScheme.primary,
           ),
         ),
@@ -206,17 +206,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.symmetric(vertical: 13),
+          padding: const EdgeInsets.symmetric(vertical: 16),
           children: [
             // Header Section
             Column(
               children: [
-                const SizedBox(height: 19),
+                const SizedBox(height: 24),
                 Stack(
                   children: [
                     AvatarCircle(
                       email: auth.currentUser?.email ?? '',
-                      radius: 48,
+                      radius: 60,
                       profilePictureUrl: auth.currentUser?.profilePictureUrl,
                     ),
                     Positioned(
@@ -225,8 +225,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: GestureDetector(
                         onTap: _showProfilePictureDialog,
                         child: Container(
-                          width: 29,
-                          height: 29,
+                          width: 36,
+                          height: 36,
                           decoration: BoxDecoration(
                             color: theme.colorScheme.primary,
                             shape: BoxShape.circle,
@@ -238,31 +238,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
                           child: const Icon(
                             Icons.camera_alt,
                             color: Colors.white,
-                            size: 14,
+                            size: 18,
                           ),
                         ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 13),
+                const SizedBox(height: 16),
                 Text(
                   auth.currentUser?.username ?? 'Hero',
                   style: RpgTheme.bodyFont(
-                    fontSize: 16,
+                    fontSize: 20,
                     color: theme.colorScheme.onSurface,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 3),
+                const SizedBox(height: 4),
                 Text(
                   auth.currentUser?.email ?? '',
                   style: RpgTheme.bodyFont(
-                    fontSize: 11,
+                    fontSize: 14,
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 26),
+                const SizedBox(height: 32),
               ],
             ),
 
@@ -315,11 +315,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               textColor: const Color(0xFFFF6666),
             ),
 
-            const SizedBox(height: 19),
+            const SizedBox(height: 24),
 
             // Logout Button
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 13),
+              padding: const EdgeInsets.symmetric(horizontal: 16),
               child: ElevatedButton(
                 onPressed: () {
                   chat.disconnect();
@@ -331,20 +331,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: RpgTheme.accentDark,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 13),
+                  padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(6),
+                    borderRadius: BorderRadius.circular(8),
                   ),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.logout, size: 16),
-                    const SizedBox(width: 6),
+                    const Icon(Icons.logout, size: 20),
+                    const SizedBox(width: 8),
                     Text(
                       'Logout',
                       style: RpgTheme.bodyFont(
-                        fontSize: 11,
+                        fontSize: 14,
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
                       ),
