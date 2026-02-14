@@ -202,6 +202,17 @@ class ChatProvider extends ChangeNotifier {
           final convId = m['id'] as int;
           final unread = (m['unreadCount'] as num?)?.toInt() ?? 0;
           _unreadCounts[convId] = unread;
+
+          // Update last message from backend data (fixes preview not showing when user was offline)
+          final lastMsgData = m['lastMessage'];
+          if (lastMsgData != null) {
+            try {
+              final lastMsg = MessageModel.fromJson(lastMsgData as Map<String, dynamic>);
+              _lastMessages[convId] = lastMsg;
+            } catch (e) {
+              debugPrint('[ChatProvider] Failed to parse lastMessage for conversation $convId: $e');
+            }
+          }
         }
         notifyListeners();
       },
@@ -307,6 +318,10 @@ class ChatProvider extends ChangeNotifier {
       },
       onMessageDelivered: _handleMessageDelivered,
       onPingReceived: _handlePingReceived,
+      onChatHistoryCleared: (data) {
+        debugPrint('[ChatProvider] Received chatHistoryCleared event');
+        _handleChatHistoryCleared(data);
+      },
       onDisconnect: (_) => _onDisconnect(),
     );
   }
@@ -434,6 +449,11 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
+  void clearChatHistory(int conversationId) {
+    _socketService.emitClearChatHistory(conversationId);
+    debugPrint('[ChatProvider] Emitted clearChatHistory for conversation $conversationId');
+  }
+
   void _handleMessageDelivered(dynamic data) {
     final map = data as Map<String, dynamic>;
     final messageId = map['messageId'] as int;
@@ -474,6 +494,19 @@ class ChatProvider extends ChangeNotifier {
 
     // Set flag for showing ping effect
     _showPingEffect = true;
+
+    notifyListeners();
+  }
+
+  void _handleChatHistoryCleared(dynamic data) {
+    final m = data as Map<String, dynamic>;
+    final conversationId = m['conversationId'] as int;
+
+    debugPrint('[ChatProvider] Chat history cleared for conversation $conversationId');
+
+    // Clear messages from memory
+    _messages.remove(conversationId);
+    _lastMessages.remove(conversationId);
 
     notifyListeners();
   }
