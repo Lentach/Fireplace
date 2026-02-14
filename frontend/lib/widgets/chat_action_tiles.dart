@@ -25,6 +25,12 @@ class ChatActionTiles extends StatelessWidget {
       child: Row(
         mainAxisAlignment: MainAxisAlignment.center,
         children: [
+          _LongPressActionTile(
+            icon: Icons.delete_forever,
+            color: iconColor,
+            onLongPressComplete: () => _handleClearChatHistory(context),
+          ),
+          const SizedBox(width: 12),
           _ActionTile(
             icon: Icons.timer_outlined,
             tooltip: 'Timer',
@@ -144,6 +150,31 @@ class ChatActionTiles extends StatelessWidget {
 
   void _showComingSoon(BuildContext context, String feature) {
     showTopSnackBar(context, '$feature coming soon');
+  }
+
+  void _handleClearChatHistory(BuildContext context) {
+    final chat = context.read<ChatProvider>();
+
+    // Guard: Check if conversation is active
+    if (chat.activeConversationId == null) {
+      showTopSnackBar(context, 'Open a conversation first');
+      return;
+    }
+
+    final conversationId = chat.activeConversationId!;
+
+    // Clear chat history
+    chat.clearChatHistory(conversationId);
+
+    // Show success feedback
+    if (context.mounted) {
+      showTopSnackBar(context, 'Chat history deleted');
+    }
+
+    // Close action panel (navigate back if possible)
+    if (context.mounted && Navigator.of(context).canPop()) {
+      Navigator.of(context).pop();
+    }
   }
 }
 
