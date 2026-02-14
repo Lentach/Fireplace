@@ -63,4 +63,15 @@ export class ConversationsService {
     await this.messageRepo.delete({ conversation: { id } });
     await this.convRepo.delete({ id });
   }
+
+  async updateDisappearingTimer(
+    conversationId: number,
+    seconds: number | null,
+  ): Promise<Conversation | null> {
+    const conversation = await this.findById(conversationId);
+    if (!conversation) return null;
+
+    conversation.disappearingTimer = seconds;
+    return this.convRepo.save(conversation);
+  }
 }

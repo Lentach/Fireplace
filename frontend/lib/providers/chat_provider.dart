@@ -29,7 +29,6 @@ class ChatProvider extends ChangeNotifier {
   String? _tokenForReconnect;
   int _reconnectAttempts = 0;
   Timer? _reconnectTimer;
-  final Map<int, int?> _conversationTimers = {}; // conversationId -> seconds
   bool _showPingEffect = false;
   final Map<int, int> _unreadCounts = {}; // conversationId -> count
 
@@ -48,7 +47,10 @@ class ChatProvider extends ChangeNotifier {
 
   int? get conversationDisappearingTimer {
     if (_activeConversationId == null) return null;
-    return _conversationTimers[_activeConversationId];
+    final conv = _conversations
+        .where((c) => c.id == _activeConversationId)
+        .firstOrNull;
+    return conv?.disappearingTimer;
   }
 
   bool get showPingEffect => _showPingEffect;
@@ -57,8 +59,8 @@ class ChatProvider extends ChangeNotifier {
 
   void setConversationDisappearingTimer(int? seconds) {
     if (_activeConversationId == null) return;
-    _conversationTimers[_activeConversationId!] = seconds;
-    notifyListeners();
+    _socketService.emitSetDisappearingTimer(_activeConversationId!, seconds);
+    // Timer will be updated when backend confirms via disappearingTimerUpdated event
   }
 
   void clearPingEffect() {
@@ -323,6 +325,10 @@ class ChatProvider extends ChangeNotifier {
         debugPrint('[ChatProvider] Received chatHistoryCleared event');
         _handleChatHistoryCleared(data);
       },
+      onDisappearingTimerUpdated: (data) {
+        debugPrint('[ChatProvider] Received disappearingTimerUpdated event');
+        _handleDisappearingTimerUpdated(data);
+      },
       onDisconnect: (_) => _onDisconnect(),
     );
   }
@@ -506,8 +512,32 @@ class ChatProvider extends ChangeNotifier {
     debugPrint('[ChatProvider] Chat history cleared for conversation $conversationId');
 
     // Clear messages from memory
-    _messages.remove(conversationId);
+    _messages.removeWhere((m) => m.conversationId == conversationId);
     _lastMessages.remove(conversationId);
+
+    notifyListeners();
+  }
+
+  void _handleDisappearingTimerUpdated(dynamic data) {
+    final m = data as Map<String, dynamic>;
+    final conversationId = m['conversationId'] as int;
+    final seconds = m['seconds'] as int?;
+
+    debugPrint('[ChatProvider] Disappearing timer updated for conversation $conversationId: ${seconds}s');
+
+    // Find and update conversation in list
+    final index = _conversations.indexWhere((c) => c.id == conversationId);
+    if (index != -1) {
+      final oldConv = _conversations[index];
+      // Create new instance with updated timer (ConversationModel is immutable)
+      _conversations[index] = ConversationModel(
+        id: oldConv.id,
+        userOne: oldConv.userOne,
+        userTwo: oldConv.userTwo,
+        createdAt: oldConv.createdAt,
+        disappearingTimer: seconds,
+      );
+    }
 
     notifyListeners();
   }

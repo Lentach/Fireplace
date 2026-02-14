@@ -29,6 +29,7 @@ class SocketService {
     required void Function(dynamic) onPingReceived,
     required void Function(dynamic) onPingSent,
     required void Function(dynamic) onChatHistoryCleared,
+    required void Function(dynamic) onDisappearingTimerUpdated,
   }) {
     // Defensive cleanup: ensure any previous socket is fully disposed
     // before creating a new one (prevents cache reuse)
@@ -68,6 +69,7 @@ class SocketService {
     _socket!.on('newPing', onPingReceived);
     _socket!.on('pingSent', onPingSent);
     _socket!.on('chatHistoryCleared', onChatHistoryCleared);
+    _socket!.on('disappearingTimerUpdated', onDisappearingTimerUpdated);
     _socket!.onDisconnect(onDisconnect);
 
     _socket!.connect();
@@ -115,6 +117,18 @@ class SocketService {
     }
     debugPrint('[SocketService] Emitting clearChatHistory for conversation $conversationId');
     _socket!.emit('clearChatHistory', {'conversationId': conversationId});
+  }
+
+  void emitSetDisappearingTimer(int conversationId, int? seconds) {
+    if (_socket == null) {
+      debugPrint('[SocketService] Cannot emit setDisappearingTimer: socket is null');
+      return;
+    }
+    debugPrint('[SocketService] Emitting setDisappearingTimer for conversation $conversationId: ${seconds}s');
+    _socket!.emit('setDisappearingTimer', {
+      'conversationId': conversationId,
+      'seconds': seconds,
+    });
   }
 
   void emitMarkConversationRead(int conversationId) {

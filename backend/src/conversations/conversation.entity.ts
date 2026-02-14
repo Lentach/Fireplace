@@ -4,6 +4,7 @@ import {
   CreateDateColumn,
   ManyToOne,
   JoinColumn,
+  Column,
 } from 'typeorm';
 import { User } from '../users/user.entity';
 
@@ -24,4 +25,7 @@ export class Conversation {
 
   @CreateDateColumn()
   createdAt: Date;
+
+  @Column({ type: 'int', nullable: true, default: 86400 })
+  disappearingTimer: number | null; // Timer in seconds, default 1 day (86400s)
 }

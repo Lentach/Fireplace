@@ -190,6 +190,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
+  @SubscribeMessage('setDisappearingTimer')
+  async handleSetDisappearingTimer(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
+  ) {
+    return this.chatConversationService.handleSetDisappearingTimer(
+      client,
+      data,
+      this.server,
+      this.onlineUsers,
+    );
+  }
+
   // ========== FRIEND REQUEST HANDLERS ==========
 
   @SubscribeMessage('sendFriendRequest')

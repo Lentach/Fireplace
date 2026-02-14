@@ -83,3 +83,4 @@ export class UnfriendDto {
 }
 
 export * from './clear-chat-history.dto';
+export * from './set-disappearing-timer.dto';
