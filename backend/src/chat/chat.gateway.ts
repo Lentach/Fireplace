@@ -177,12 +177,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return this.chatConversationService.handleGetConversations(client);
   }
 
-  @SubscribeMessage('deleteConversation')
-  async handleDeleteConversation(
+  @SubscribeMessage('deleteConversationOnly')
+  async handleDeleteConversationOnly(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    return this.chatConversationService.handleDeleteConversation(
+    await this.chatConversationService.handleDeleteConversationOnly(
       client,
       data,
       this.server,
