@@ -9,6 +9,7 @@ import {
   StartConversationDto,
   DeleteConversationDto,
   SetDisappearingTimerDto,
+  DeleteConversationOnlyDto,
 } from '../dto/chat.dto';
 import { ConversationMapper } from '../mappers/conversation.mapper';
 import { UserMapper } from '../mappers/user.mapper';
@@ -98,86 +99,85 @@ export class ChatConversationService {
     client.emit('conversationsList', list);
   }
 
-  async handleDeleteConversation(
+  async handleDeleteConversationOnly(
     client: Socket,
     data: any,
     server: Server,
     onlineUsers: Map<number, string>,
   ) {
-    const userId: number = client.data.user?.id;
+    const userId = client.data.user?.id;
     if (!userId) return;
 
+    // 1. Validate DTO
+    let dto: DeleteConversationOnlyDto;
     try {
-      const dto = validateDto(DeleteConversationDto, data);
-      data = dto;
+      dto = validateDto(DeleteConversationOnlyDto, data);
     } catch (error) {
       client.emit('error', { message: error.message });
       return;
     }
 
-    this.logger.debug(
-      `deleteConversation: userId=${userId}, conversationId=${data.conversationId}`,
-    );
-
+    // 2. Find conversation
     const conversation = await this.conversationsService.findById(
-      data.conversationId,
+      dto.conversationId,
     );
     if (!conversation) {
       client.emit('error', { message: 'Conversation not found' });
       return;
     }
 
+    // 3. Verify user belongs to conversation
+    const userBelongs =
+      conversation.userOne.id === userId || conversation.userTwo.id === userId;
+    if (!userBelongs) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+
+    // 4. Get other user ID
     const otherUserId =
       conversation.userOne.id === userId
         ? conversation.userTwo.id
         : conversation.userOne.id;
 
-    this.logger.debug(
-      `deleteConversation: userId=${userId}, otherUserId=${otherUserId}, conversationId=${data.conversationId}`,
-    );
-
+    // 5. Delete messages + conversation (wrap in try-catch)
     try {
-      await this.friendsService.unfriend(userId, otherUserId);
+      await this.messagesService.deleteAllByConversation(dto.conversationId);
+      await this.conversationsService.delete(dto.conversationId);
     } catch (error) {
-      this.logger.error('deleteConversation: unfriend failed:', error);
-      client.emit('error', { message: error.message });
+      this.logger.error('Failed to delete conversation:', error);
+      client.emit('error', { message: 'Failed to delete conversation' });
       return;
     }
 
-    const otherUserSocketId = onlineUsers.get(otherUserId);
-    if (otherUserSocketId) {
-      server.to(otherUserSocketId).emit('unfriended', { userId });
+    // 6. Emit to both users
+    const payload = { conversationId: dto.conversationId };
+    client.emit('conversationDeleted', payload);
+
+    const otherSocketId = onlineUsers.get(otherUserId);
+    if (otherSocketId) {
+      server.to(otherSocketId).emit('conversationDeleted', payload);
     }
 
-    await this.conversationsService.delete(data.conversationId);
+    // 7. Refresh conversations list for both users
+    const userConvs = await this.conversationsService.findByUser(userId);
+    const userList = await this._conversationsWithUnread(userConvs, userId);
+    client.emit('conversationsList', userList);
 
-    const conversations = await this.conversationsService.findByUser(userId);
-    const list = await this._conversationsWithUnread(conversations, userId);
-    client.emit('conversationsList', list);
-
-    if (otherUserSocketId) {
-      const otherConversations =
-        await this.conversationsService.findByUser(otherUserId);
+    if (otherSocketId) {
+      const otherConvs = await this.conversationsService.findByUser(otherUserId);
       const otherList = await this._conversationsWithUnread(
-        otherConversations,
+        otherConvs,
         otherUserId,
       );
-      server.to(otherUserSocketId).emit('conversationsList', otherList);
+      server.to(otherSocketId).emit('conversationsList', otherList);
     }
 
-    const friends = await this.friendsService.getFriends(userId);
-    client.emit(
-      'friendsList',
-      friends.map((u) => UserMapper.toPayload(u)),
+    this.logger.debug(
+      `Conversation ${dto.conversationId} deleted by user ${userId}. Friend relationship preserved.`,
     );
 
-    if (otherUserSocketId) {
-      const otherFriends = await this.friendsService.getFriends(otherUserId);
-      server.to(otherUserSocketId).emit(
-        'friendsList',
-        otherFriends.map((u) => UserMapper.toPayload(u)),
-      );
-    }
+    // NOTE: friend_request is NOT deleted - remains ACCEPTED
   }
 
   async handleSetDisappearingTimer(
