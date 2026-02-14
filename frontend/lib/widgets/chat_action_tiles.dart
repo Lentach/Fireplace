@@ -182,6 +182,105 @@ class _ActionTile extends StatelessWidget {
   }
 }
 
+class _LongPressActionTile extends StatefulWidget {
+  final IconData icon;
+  final Color color;
+  final VoidCallback onLongPressComplete;
+
+  const _LongPressActionTile({
+    required this.icon,
+    required this.color,
+    required this.onLongPressComplete,
+  });
+
+  @override
+  State<_LongPressActionTile> createState() => _LongPressActionTileState();
+}
+
+class _LongPressActionTileState extends State<_LongPressActionTile>
+    with SingleTickerProviderStateMixin {
+  late AnimationController _animationController;
+  bool _isPressed = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _animationController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1500),
+    )..addListener(() {
+        setState(() {});
+      })..addStatusListener((status) {
+        if (status == AnimationStatus.completed && _isPressed) {
+          // Animation completed while still pressing → trigger action
+          widget.onLongPressComplete();
+          _reset();
+        }
+      });
+  }
+
+  @override
+  void dispose() {
+    _animationController.dispose();
+    super.dispose();
+  }
+
+  void _reset() {
+    setState(() {
+      _isPressed = false;
+      _animationController.reset();
+    });
+  }
+
+  void _onLongPressStart(LongPressStartDetails details) {
+    setState(() {
+      _isPressed = true;
+    });
+    _animationController.forward();
+  }
+
+  void _onLongPressEnd(LongPressEndDetails details) {
+    if (_animationController.status != AnimationStatus.completed) {
+      // Released before completion → cancel
+      _reset();
+    }
+  }
+
+  void _onLongPressCancel() {
+    _reset();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    return GestureDetector(
+      onLongPressStart: _onLongPressStart,
+      onLongPressEnd: _onLongPressEnd,
+      onLongPressCancel: _onLongPressCancel,
+      child: Container(
+        width: 40,
+        height: 40,
+        padding: const EdgeInsets.all(8),
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            // Progress ring
+            if (_isPressed)
+              CustomPaint(
+                size: const Size(40, 40),
+                painter: _CircularProgressPainter(
+                  progress: _animationController.value,
+                  color: Colors.red,
+                ),
+              ),
+            // Icon
+            Icon(widget.icon, size: 24, color: widget.color),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 class _TimerDialog extends StatelessWidget {
   final _options = const [
     {'label': '30 seconds', 'value': 30},
