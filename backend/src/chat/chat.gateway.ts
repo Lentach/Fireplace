@@ -144,6 +144,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
+  @SubscribeMessage('clearChatHistory')
+  handleClearChatHistory(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
+  ) {
+    return this.chatMessageService.handleClearChatHistory(
+      client,
+      data,
+      this.server,
+      this.onlineUsers,
+    );
+  }
+
   // ========== CONVERSATION HANDLERS ==========
 
   @SubscribeMessage('startConversation')
