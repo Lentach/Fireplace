@@ -147,21 +147,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final colorScheme = theme.colorScheme;
     final isDark = RpgTheme.isDark(context);
     return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+      margin: const EdgeInsets.symmetric(horizontal: 13, vertical: 3),
       decoration: BoxDecoration(
         color: isDark ? RpgTheme.settingsTileBgDark : colorScheme.surface,
-        borderRadius: BorderRadius.circular(12),
+        borderRadius: BorderRadius.circular(10),
         border: Border.all(
           color: isDark ? RpgTheme.settingsTileBorderDark : colorScheme.outline.withValues(alpha: 0.5),
-          width: 1.5,
+          width: 1.2,
         ),
       ),
       child: ListTile(
-        leading: Icon(icon, color: colorScheme.primary, size: 24),
+        leading: Icon(icon, color: colorScheme.primary, size: 19),
         title: Text(
           title,
           style: RpgTheme.bodyFont(
-            fontSize: 14,
+            fontSize: 11,
             color: textColor ?? colorScheme.onSurface,
             fontWeight: FontWeight.w500,
           ),
@@ -170,7 +170,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ? Text(
                 subtitle,
                 style: RpgTheme.bodyFont(
-                  fontSize: 12,
+                  fontSize: 10,
                   color: colorScheme.onSurfaceVariant,
                 ),
               )
@@ -196,7 +196,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         title: Text(
           'Settings',
           style: RpgTheme.pressStart2P(
-            fontSize: 12,
+            fontSize: 10,
             color: theme.colorScheme.primary,
           ),
         ),
@@ -206,17 +206,17 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ),
       body: SafeArea(
         child: ListView(
-          padding: const EdgeInsets.symmetric(vertical: 16),
+          padding: const EdgeInsets.symmetric(vertical: 13),
           children: [
             // Header Section
             Column(
               children: [
-                const SizedBox(height: 24),
+                const SizedBox(height: 19),
                 Stack(
                   children: [
                     AvatarCircle(
                       email: auth.currentUser?.email ?? '',
-                      radius: 60,
+                      radius: 48,
                       profilePictureUrl: auth.currentUser?.profilePictureUrl,
                     ),
                     Positioned(
@@ -225,44 +225,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       child: GestureDetector(
                         onTap: _showProfilePictureDialog,
                         child: Container(
-                          width: 36,
-                          height: 36,
+                          width: 29,
+                          height: 29,
                           decoration: BoxDecoration(
                             color: theme.colorScheme.primary,
                             shape: BoxShape.circle,
                             border: Border.all(
                               color: theme.colorScheme.surface,
-                              width: 3,
+                              width: 2,
                             ),
                           ),
                           child: const Icon(
                             Icons.camera_alt,
                             color: Colors.white,
-                            size: 18,
+                            size: 14,
                           ),
                         ),
                       ),
                     ),
                   ],
                 ),
-                const SizedBox(height: 16),
+                const SizedBox(height: 13),
                 Text(
                   auth.currentUser?.username ?? 'Hero',
                   style: RpgTheme.bodyFont(
-                    fontSize: 20,
+                    fontSize: 16,
                     color: theme.colorScheme.onSurface,
                     fontWeight: FontWeight.w700,
                   ),
                 ),
-                const SizedBox(height: 4),
+                const SizedBox(height: 3),
                 Text(
                   auth.currentUser?.email ?? '',
                   style: RpgTheme.bodyFont(
-                    fontSize: 14,
+                    fontSize: 11,
                     color: theme.colorScheme.onSurfaceVariant,
                   ),
                 ),
-                const SizedBox(height: 32),
+                const SizedBox(height: 26),
               ],
             ),
 
@@ -315,11 +315,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
               textColor: const Color(0xFFFF6666),
             ),
 
-            const SizedBox(height: 24),
+            const SizedBox(height: 19),
 
             // Logout Button
             Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
+              padding: const EdgeInsets.symmetric(horizontal: 13),
               child: ElevatedButton(
                 onPressed: () {
                   chat.disconnect();
@@ -331,20 +331,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 style: ElevatedButton.styleFrom(
                   backgroundColor: RpgTheme.accentDark,
                   foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
+                  padding: const EdgeInsets.symmetric(vertical: 13),
                   shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
+                    borderRadius: BorderRadius.circular(6),
                   ),
                 ),
                 child: Row(
                   mainAxisAlignment: MainAxisAlignment.center,
                   children: [
-                    const Icon(Icons.logout, size: 20),
-                    const SizedBox(width: 8),
+                    const Icon(Icons.logout, size: 16),
+                    const SizedBox(width: 6),
                     Text(
                       'Logout',
                       style: RpgTheme.bodyFont(
-                        fontSize: 14,
+                        fontSize: 11,
                         color: Colors.white,
                         fontWeight: FontWeight.w600,
                       ),
