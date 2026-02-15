@@ -12,3 +12,6 @@ frontend/.dart_tool/
 frontend/.packages
 frontend/.flutter-plugins
 frontend/.flutter-plugins-dependencies
+
+# Git worktrees
+.worktrees/
