@@ -141,7 +141,9 @@ class ConversationTile extends StatelessWidget {
                       Text(
                         lastMessage!.messageType == MessageType.ping
                             ? 'PING!'
-                            : lastMessage!.content,
+                            : lastMessage!.messageType == MessageType.voice
+                                ? 'Voice message'
+                                : lastMessage!.content,
                         style: RpgTheme.bodyFont(
                           fontSize: 13,
                           color: secondaryColor,

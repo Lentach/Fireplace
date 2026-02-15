@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -11,6 +12,24 @@ import '../models/message_model.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/socket_service.dart';
+
+// #region agent log
+void _debugLog(String location, String message, Map<String, dynamic> data, String hypothesisId) {
+  final payload = {'location': location, 'message': message, 'data': data, 'hypothesisId': hypothesisId};
+  if (kIsWeb) {
+    debugPrint('[DEBUG_LOG] ${jsonEncode(payload)}');
+    return;
+  }
+  try {
+    final line = jsonEncode({
+      'id': 'log_${DateTime.now().millisecondsSinceEpoch}',
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      ...payload,
+    }) + '\n';
+    File(r'c:\Users\Lentach\Desktop\mvp-chat-app\.cursor\debug.log').writeAsStringSync(line, mode: FileMode.append);
+  } catch (_) {}
+}
+// #endregion
 
 class ChatProvider extends ChangeNotifier {
   final SocketService _socketService = SocketService();
@@ -150,6 +169,9 @@ class ChatProvider extends ChangeNotifier {
   }
 
   void connect({required String token, required int userId}) {
+    // #region agent log
+    _debugLog('chat_provider.dart:connect:entry', 'connect() called', {'reconnectAttemptsBefore': _reconnectAttempts, 'userId': userId}, 'H1');
+    // #endregion
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _intentionalDisconnect = false;
@@ -173,6 +195,9 @@ class ChatProvider extends ChangeNotifier {
 
     // Clean up old socket if it exists
     if (_socketService.socket != null) {
+      // #region agent log
+      _debugLog('chat_provider.dart:connect:beforeOldDisconnect', 'disconnecting OLD socket before new connect', {'reconnectAttempts': _reconnectAttempts}, 'H2');
+      // #endregion
       _socketService.disconnect();
     }
 
@@ -183,6 +208,9 @@ class ChatProvider extends ChangeNotifier {
       baseUrl: AppConfig.baseUrl,
       token: token,
       onConnect: () {
+        // #region agent log
+        _debugLog('chat_provider.dart:onConnect', 'onConnect fired, resetting reconnectAttempts to 0', {'reconnectAttemptsWas': _reconnectAttempts}, 'H1');
+        // #endregion
         _reconnectAttempts = 0; // Reset on successful connection
         _socketService.getConversations();
         _socketService.getFriendRequests();
@@ -791,6 +819,9 @@ class ChatProvider extends ChangeNotifier {
   }
 
   void _onDisconnect() {
+    // #region agent log
+    _debugLog('chat_provider.dart:_onDisconnect', 'onDisconnect fired', {'intentional': _intentionalDisconnect, 'reconnectAttempts': _reconnectAttempts, 'hasToken': _tokenForReconnect != null, 'hasUserId': _currentUserId != null}, 'H1');
+    // #endregion
     if (_intentionalDisconnect || _tokenForReconnect == null || _currentUserId == null) {
       return;
     }
@@ -806,6 +837,9 @@ class ChatProvider extends ChangeNotifier {
   void _scheduleReconnect() {
     _reconnectAttempts++;
     final delay = _reconnectDelay;
+    // #region agent log
+    _debugLog('chat_provider.dart:_scheduleReconnect', 'scheduling reconnect', {'reconnectAttemptsAfterIncrement': _reconnectAttempts, 'delaySeconds': delay.inSeconds}, 'H1');
+    // #endregion
     debugPrint('[ChatProvider] Scheduling reconnect attempt $_reconnectAttempts in ${delay.inSeconds}s');
     _reconnectTimer = Timer(delay, () {
       if (_intentionalDisconnect || _tokenForReconnect == null || _currentUserId == null) {
