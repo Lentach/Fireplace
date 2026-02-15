@@ -2,6 +2,7 @@ node_modules/
 dist/
 .env
 *.log
+mcp.json
 
 # User uploads (profile pictures)
 backend/uploads/

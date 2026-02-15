@@ -105,7 +105,9 @@
       "Bash(git checkout:*)",
       "Bash(git pull:*)",
       "Bash(git merge:*)",
-      "Bash(git stash:*)"
+      "Bash(git stash:*)",
+      "Bash(1 --since 30s)",
+      "Bash(npx @modelcontextprotocol/inspector:*)"
     ]
   }
 }
