@@ -108,4 +108,51 @@ export class MessagesController {
       mediaUrl: message.mediaUrl,
     };
   }
+
+  @Post('voice')
+  @UseGuards(JwtAuthGuard)
+  @UseInterceptors(
+    FileInterceptor('audio', {
+      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+      fileFilter: (req, file, cb) => {
+        const allowedMimes = [
+          'audio/aac',
+          'audio/mp4',
+          'audio/m4a',
+          'audio/mpeg',
+          'audio/webm',
+        ];
+        if (!allowedMimes.includes(file.mimetype)) {
+          return cb(
+            new BadRequestException('Invalid audio format'),
+            false,
+          );
+        }
+        cb(null, true);
+      },
+    }),
+  )
+  async uploadVoiceMessage(
+    @UploadedFile() file: Express.Multer.File,
+    @Body('duration') duration: string,
+    @Body('expiresIn') expiresIn?: string,
+    @Request() req?,
+  ) {
+    const userId = req.user.id;
+    const durationNum = parseInt(duration, 10);
+    const expiresInNum = expiresIn ? parseInt(expiresIn, 10) : undefined;
+
+    const result = await this.cloudinaryService.uploadVoiceMessage(
+      userId,
+      file.buffer,
+      file.mimetype,
+      expiresInNum,
+    );
+
+    return {
+      mediaUrl: result.secureUrl,
+      publicId: result.publicId,
+      duration: result.duration || durationNum,
+    };
+  }
 }
