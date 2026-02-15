@@ -76,7 +76,22 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
     }
   }
 
+  bool _isExpired() {
+    if (widget.message.expiresAt == null) return false;
+    return widget.message.expiresAt!.isBefore(DateTime.now());
+  }
+
   Future<void> _loadAndPlayAudio() async {
+    // Check if message expired
+    if (_isExpired()) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('Audio no longer available')),
+        );
+      }
+      return;
+    }
+
     setState(() {
       _isLoading = true;
     });
@@ -201,8 +216,9 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
                       )
                     : IconButton(
                         icon: Icon(_isPlaying ? Icons.pause : Icons.play_arrow),
-                        onPressed: _togglePlayPause,
+                        onPressed: _isExpired() ? null : _togglePlayPause,
                         iconSize: 32,
+                        color: _isExpired() ? Colors.grey : null,
                       ),
 
                 const SizedBox(width: 8),
