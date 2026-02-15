@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../theme/rpg_theme.dart';
 import '../models/message_model.dart';
+import '../providers/chat_provider.dart';
 import 'voice_message_bubble.dart';
 
 class ChatMessageBubble extends StatelessWidget {
@@ -22,6 +24,10 @@ class ChatMessageBubble extends StatelessWidget {
   Widget _buildDeliveryIcon() {
     if (!isMine) return const SizedBox.shrink();
 
+    if (message.deliveryStatus == MessageDeliveryStatus.failed) {
+      return const Icon(Icons.error, size: 12, color: Colors.red);
+    }
+
     IconData icon;
     switch (message.deliveryStatus) {
       case MessageDeliveryStatus.sending:
@@ -34,6 +40,9 @@ class ChatMessageBubble extends StatelessWidget {
       case MessageDeliveryStatus.read:
         icon = Icons.done_all;
         break;
+      case MessageDeliveryStatus.failed:
+        icon = Icons.error;
+        break;
     }
 
     const Color sendingSentColor = Color(0xFFE0E0E0); // light, visible on dark bubble
@@ -41,6 +50,27 @@ class ChatMessageBubble extends StatelessWidget {
 
     final color = message.deliveryStatus == MessageDeliveryStatus.read ? readColor : sendingSentColor;
     return Icon(icon, size: 12, color: color);
+  }
+
+  Widget? _buildRetryButton(BuildContext context) {
+    if (!isMine || message.deliveryStatus != MessageDeliveryStatus.failed) {
+      return null;
+    }
+
+    return TextButton.icon(
+      onPressed: () {
+        final chat = Provider.of<ChatProvider>(context, listen: false);
+        if (message.tempId != null) {
+          chat.retryVoiceMessage(message.tempId!);
+        }
+      },
+      icon: const Icon(Icons.refresh, size: 16),
+      label: const Text('Retry'),
+      style: TextButton.styleFrom(
+        foregroundColor: Colors.red,
+        padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
+      ),
+    );
   }
 
   String? _getTimerText() {
@@ -172,6 +202,11 @@ class ChatMessageBubble extends StatelessWidget {
                 message.content.isNotEmpty ? message.content : '[Unsupported message type]',
                 style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
               ),
+            // Retry button for failed messages
+            if (_buildRetryButton(context) != null) ...[
+              const SizedBox(height: 4),
+              _buildRetryButton(context)!,
+            ],
             const SizedBox(height: 4),
             // Bottom row: time + delivery + timer
             Align(

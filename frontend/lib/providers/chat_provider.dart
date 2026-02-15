@@ -521,6 +521,47 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> retryVoiceMessage(String tempId) async {
+    final message = _messages.firstWhere(
+      (m) => m.tempId == tempId,
+      orElse: () => throw Exception('Message not found'),
+    );
+
+    if (message.messageType != MessageType.voice) {
+      throw Exception('Not a voice message');
+    }
+
+    if (message.deliveryStatus != MessageDeliveryStatus.failed) {
+      return; // Already sent
+    }
+
+    // Get recipientId from conversation
+    final conversation = _conversations.firstWhere(
+      (c) => c.id == message.conversationId,
+    );
+
+    final recipientId = conversation.userOne.id == _currentUserId
+        ? conversation.userTwo.id
+        : conversation.userOne.id;
+
+    // Update status to SENDING
+    final index = _messages.indexWhere((m) => m.tempId == tempId);
+    if (index != -1) {
+      _messages[index] = _messages[index].copyWith(
+        deliveryStatus: MessageDeliveryStatus.sending,
+      );
+      notifyListeners();
+    }
+
+    // Re-attempt upload using cached local file
+    await sendVoiceMessage(
+      recipientId: recipientId,
+      localAudioPath: message.mediaUrl!, // Still has local path
+      duration: message.mediaDuration ?? 0,
+      conversationId: message.conversationId,
+    );
+  }
+
   Future<void> sendImageMessage(
     String token,
     XFile imageFile,
