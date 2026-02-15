@@ -1,8 +1,14 @@
+import 'dart:async';
+import 'dart:io';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:record/record.dart';
+import 'package:path_provider/path_provider.dart';
+import 'package:permission_handler/permission_handler.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
 import 'chat_action_tiles.dart';
+import 'voice_recording_overlay.dart';
 import 'top_snackbar.dart';
 
 class ChatInputBar extends StatefulWidget {
@@ -20,6 +26,15 @@ class _ChatInputBarState extends State<ChatInputBar>
   bool _showActionPanel = false;
   late final AnimationController _actionPanelController;
   late final Animation<double> _actionPanelAnimation;
+
+  // Voice recording state
+  bool _isRecording = false;
+  bool _isSendingVoice = false;
+  AudioRecorder? _audioRecorder;
+  String? _recordingPath;
+  Timer? _recordingTimer;
+  int _recordingDuration = 0; // seconds
+  OverlayEntry? _recordingOverlay;
 
   @override
   void initState() {
@@ -45,6 +60,9 @@ class _ChatInputBarState extends State<ChatInputBar>
     _controller.dispose();
     _focusNode.dispose();
     _actionPanelController.dispose();
+    _recordingTimer?.cancel();
+    _audioRecorder?.dispose();
+    _recordingOverlay?.remove();
     super.dispose();
   }
 
@@ -74,9 +92,201 @@ class _ChatInputBarState extends State<ChatInputBar>
     });
   }
 
-  void _recordVoice() {
-    // TODO: Voice recording (future feature)
-    showTopSnackBar(context, 'Voice messages coming soon');
+  Future<void> _checkMicPermission() async {
+    if (Platform.isAndroid || Platform.isIOS) {
+      final status = await Permission.microphone.request();
+      if (status.isDenied || status.isPermanentlyDenied) {
+        if (!mounted) return;
+        showTopSnackBar(context, 'Microphone permission required');
+        throw Exception('Permission denied');
+      }
+    }
+    // Web: permission handled by browser automatically
+  }
+
+  Future<void> _startRecording() async {
+    try {
+      await _checkMicPermission();
+
+      _audioRecorder = AudioRecorder();
+      final tempDir = await getTemporaryDirectory();
+      _recordingPath = '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+
+      final hasPermission = await _audioRecorder!.hasPermission();
+      if (!hasPermission) {
+        if (!mounted) return;
+        showTopSnackBar(context, 'Microphone permission denied');
+        return;
+      }
+
+      await _audioRecorder!.start(
+        const RecordConfig(
+          encoder: AudioEncoder.aacLc, // AAC/M4A format
+          bitRate: 128000,
+          sampleRate: 44100,
+        ),
+        path: _recordingPath!,
+      );
+
+      setState(() {
+        _isRecording = true;
+        _recordingDuration = 0;
+      });
+
+      // Show overlay
+      _showRecordingOverlay();
+
+      // Start timer (increment every second)
+      _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
+        if (mounted) {
+          setState(() {
+            _recordingDuration++;
+            if (_recordingDuration >= 120) {
+              // Auto-stop at 2 minutes
+              _stopRecording();
+            } else {
+              // Update overlay with new duration
+              _updateRecordingOverlay();
+            }
+          });
+        }
+      });
+    } catch (e) {
+      if (!mounted) return;
+      showTopSnackBar(context, 'Failed to start recording');
+      print('Recording error: $e');
+    }
+  }
+
+  Future<void> _stopRecording() async {
+    if (_audioRecorder == null || !_isRecording) return;
+
+    _recordingTimer?.cancel();
+    _recordingTimer = null;
+
+    final path = await _audioRecorder!.stop();
+    await _audioRecorder!.dispose();
+    _audioRecorder = null;
+
+    _hideRecordingOverlay();
+
+    setState(() {
+      _isRecording = false;
+    });
+
+    // Check duration
+    if (_recordingDuration < 1) {
+      // Too short, cancel
+      if (path != null && File(path).existsSync()) {
+        await File(path).delete();
+      }
+      if (!mounted) return;
+      showTopSnackBar(context, 'Hold longer to record voice message');
+      setState(() {
+        _recordingDuration = 0;
+        _recordingPath = null;
+      });
+      return;
+    }
+
+    // Send voice message
+    if (path != null && File(path).existsSync()) {
+      await _sendVoiceMessage(path, _recordingDuration);
+    }
+
+    setState(() {
+      _recordingDuration = 0;
+      _recordingPath = null;
+    });
+  }
+
+  Future<void> _cancelRecording() async {
+    if (_audioRecorder == null || !_isRecording) return;
+
+    _recordingTimer?.cancel();
+    _recordingTimer = null;
+
+    await _audioRecorder!.stop();
+    await _audioRecorder!.dispose();
+    _audioRecorder = null;
+
+    _hideRecordingOverlay();
+
+    // Delete temp file
+    if (_recordingPath != null && File(_recordingPath!).existsSync()) {
+      await File(_recordingPath!).delete();
+    }
+
+    setState(() {
+      _isRecording = false;
+      _recordingDuration = 0;
+      _recordingPath = null;
+    });
+  }
+
+  Future<void> _sendVoiceMessage(String path, int duration) async {
+    setState(() {
+      _isSendingVoice = true;
+    });
+
+    try {
+      final chat = Provider.of<ChatProvider>(context, listen: false);
+      final conversationId = chat.activeConversationId;
+
+      if (conversationId == null) {
+        if (!mounted) return;
+        showTopSnackBar(context, 'No active conversation');
+        return;
+      }
+
+      // Get recipientId from conversation
+      final conversation = chat.conversations.firstWhere(
+        (c) => c.id == conversationId,
+      );
+      final recipientId = conversation.userOne.id == chat.currentUserId
+          ? conversation.userTwo.id
+          : conversation.userOne.id;
+
+      await chat.sendVoiceMessage(
+        recipientId: recipientId,
+        localAudioPath: path,
+        duration: duration,
+        conversationId: conversationId,
+      );
+    } catch (e) {
+      if (!mounted) return;
+      showTopSnackBar(context, 'Failed to send voice message');
+      print('Send voice error: $e');
+    } finally {
+      if (mounted) {
+        setState(() {
+          _isSendingVoice = false;
+        });
+      }
+    }
+  }
+
+  void _showRecordingOverlay() {
+    _recordingOverlay = OverlayEntry(
+      builder: (context) => VoiceRecordingOverlay(
+        onSendVoice: (path, duration) {
+          // Not used, we handle send in _stopRecording
+        },
+        onCancel: _cancelRecording,
+        recordingDuration: _recordingDuration,
+      ),
+    );
+    Overlay.of(context).insert(_recordingOverlay!);
+  }
+
+  void _updateRecordingOverlay() {
+    _hideRecordingOverlay();
+    _showRecordingOverlay();
+  }
+
+  void _hideRecordingOverlay() {
+    _recordingOverlay?.remove();
+    _recordingOverlay = null;
   }
 
   String _formatTimer(int seconds) {
@@ -198,16 +408,35 @@ class _ChatInputBarState extends State<ChatInputBar>
                         ? RpgTheme.primaryColor(context)
                         : Colors.transparent,
                   ),
-                  child: IconButton(
-                    icon: Icon(
-                      _hasText ? Icons.send_rounded : Icons.mic,
-                      size: 22,
-                    ),
-                    color: _hasText
-                        ? Colors.white
-                        : (isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight),
-                    onPressed: _hasText ? _send : _recordVoice,
-                  ),
+                  child: _isSendingVoice
+                      ? const Padding(
+                          padding: EdgeInsets.all(12.0),
+                          child: SizedBox(
+                            width: 22,
+                            height: 22,
+                            child: CircularProgressIndicator(strokeWidth: 2),
+                          ),
+                        )
+                      : _hasText
+                          ? IconButton(
+                              icon: const Icon(Icons.send_rounded, size: 22),
+                              color: Colors.white,
+                              onPressed: _send,
+                            )
+                          : GestureDetector(
+                              onLongPressStart: (_) => _startRecording(),
+                              onLongPressEnd: (_) => _stopRecording(),
+                              child: IconButton(
+                                icon: Icon(
+                                  _isRecording ? Icons.mic : Icons.mic_none,
+                                  size: 22,
+                                ),
+                                color: _isRecording
+                                    ? Colors.red
+                                    : (isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight),
+                                onPressed: null, // Disabled, use long-press
+                              ),
+                            ),
                 ),
               ],
             ),
