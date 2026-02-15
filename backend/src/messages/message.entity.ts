@@ -53,6 +53,9 @@ export class Message {
   @Column({ type: 'text', nullable: true })
   mediaUrl: string | null;
 
+  @Column({ type: 'int', nullable: true })
+  mediaDuration: number | null;
+
   @ManyToOne(() => User, { eager: true })
   @JoinColumn({ name: 'sender_id' })
   sender: User;
