@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../theme/rpg_theme.dart';
 import '../models/message_model.dart';
+import 'voice_message_bubble.dart';
 
 class ChatMessageBubble extends StatelessWidget {
   final MessageModel message;
@@ -62,6 +63,14 @@ class ChatMessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // Handle voice messages with dedicated widget
+    if (message.messageType == MessageType.voice) {
+      return VoiceMessageBubble(
+        message: message,
+        isMine: isMine,
+      );
+    }
+
     final isDark = RpgTheme.isDark(context);
     final bubbleColor = isMine
         ? (isDark ? RpgTheme.mineMsgBg : RpgTheme.mineMsgBgLight)
