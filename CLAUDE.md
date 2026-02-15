@@ -1,6 +1,6 @@
 # CLAUDE.md — MVP Chat App
 
-**Last updated:** 2026-02-14
+**Last updated:** 2026-02-15
 
 **Rule:** Update this file after every code change. Single source of truth for agents. **A future agent must be able to read ONLY this file and understand the current state of the project without reading every source file.**
 
@@ -262,6 +262,7 @@ erDiagram
 | POST | /users/profile-picture | JWT | multipart file (JPEG/PNG, max 5MB) → update profilePictureUrl, profilePicturePublicId |
 | POST | /users/reset-password | JWT | oldPassword, newPassword |
 | DELETE | /users/account | JWT | body: { password } → deletes user and all dependents |
+| POST | /messages/voice | JWT | multipart audio file (AAC/M4A/MP3/WebM, max 10MB), duration (int), expiresIn? (int) → { mediaUrl, publicId, duration } |
 
 **Password rules:** 8+ chars, at least one uppercase, one lowercase, one number.
 
@@ -360,6 +361,7 @@ erDiagram
 | Message logic | messages/messages.service.ts, chat/services/chat-message.service.ts |
 | WebSocket events (new event) | chat/dto/chat.dto.ts, chat/services/*.ts, chat.gateway.ts |
 | Avatar/Cloudinary | cloudinary/cloudinary.service.ts, users/users.controller.ts |
+| Voice messages upload | messages/messages.controller.ts (POST /messages/voice), cloudinary/cloudinary.service.ts (uploadVoiceMessage) |
 
 **Frontend (Flutter):**
 
@@ -380,6 +382,8 @@ erDiagram
 | Constants (breakpoint, page size, reconnect) | constants/app_constants.dart |
 | Conversation tile / avatar | widgets/conversation_tile.dart, widgets/avatar_circle.dart |
 | Top notifications (no bottom SnackBar) | widgets/top_snackbar.dart — use showTopSnackBar() |
+| Voice messages (recording) | widgets/voice_recording_overlay.dart, chat_input_bar.dart, chat_provider.dart (sendVoiceMessage, retryVoiceMessage) |
+| Voice messages (playback) | widgets/voice_message_bubble.dart, chat_message_bubble.dart (routing) |
 
 ---
 
@@ -422,7 +426,7 @@ Telegram/Wire-inspired UI with delivery indicators, disappearing messages, ping 
 - **Delivery Status Tracking:** SENDING (clock), SENT (✓ grey), DELIVERED (✓ grey), READ (✓✓ blue) on own messages only. One check = delivered; two checks = read (recipient opened chat). Backend: `MessageDeliveryStatus` (SENDING, SENT, DELIVERED, READ). Client emits `messageDelivered`(messageId) when receiving; emits `markConversationRead`(conversationId) when opening/viewing chat so sender sees read receipts.
 - **Disappearing Messages:** Global timer per conversation (30s, 1m, 5m, 1h, 1d, Off). Set via Timer action tile. Messages include `expiresAt` field. **Three-layer expiration:** (1) Frontend `removeExpiredMessages()` called every 1s by ChatDetailScreen timer — instant vanish at zero. (2) Backend cron deletes from DB every minute. (3) `handleGetMessages` + `onMessageHistory` both filter out expired messages.
 - **Ping Messages:** One-shot notification with empty content and `messageType=PING`. Backend emits `pingSent` to sender, `newPing` to recipient. UI shows campaign icon + "PING!" text.
-- **Message Types:** TEXT, PING, IMAGE, DRAWING (last two not fully implemented).
+- **Message Types:** TEXT, PING, IMAGE, DRAWING, VOICE. IMAGE and DRAWING not fully implemented (no camera/drawing upload endpoints).
 
 ### UI Components
 
@@ -458,7 +462,94 @@ Telegram/Wire-inspired UI with delivery indicators, disappearing messages, ping 
 
 ---
 
-## 13. Recent Changes
+## 13. Voice Messages (2026-02-15)
+
+Telegram-like voice messaging with hold-to-record, optimistic UI, Cloudinary storage with TTL auto-delete, and rich playback controls.
+
+### Recording Flow
+
+- **Long-press mic button** in ChatInputBar to start recording. Release to send, swipe left to cancel.
+- **Permission handling:** Uses `permission_handler` on mobile, browser API on web. Shows permission dialog on first use.
+- **Recording UI:** Full-screen overlay (`VoiceRecordingOverlay`) with pulsing mic icon, timer, and "Slide to cancel" hint. Timer shows yellow at 1:50, red at 1:58. Auto-stops at 2 minutes.
+- **Format:** AAC/M4A, 128kbps, 44.1kHz via `record` package (cross-platform).
+- **Min duration:** 1 second. Messages shorter than 1s are not sent.
+
+### Upload and Storage
+
+- **Optimistic UI:** Message appears immediately with SENDING status and local file path. Background upload to Cloudinary via POST /messages/voice.
+- **Cloudinary:** Uses `resource_type: 'video'` for audio files, folder `voice-messages/`. Public ID: `user-{userId}-{timestamp}`.
+- **TTL Auto-Delete:** If conversation has disappearing timer, uploads with `expires_at = expiresIn + 3600` (1h buffer). Cloudinary deletes expired files automatically.
+- **Retry:** If upload fails, message shows FAILED status with retry button. Calls `retryVoiceMessage(tempId)` to re-upload from local file.
+- **Backend validation:** Max 10MB, allowed formats: AAC, M4A, MP3, WebM.
+
+### Playback
+
+- **Lazy download:** Audio only downloaded on first play. HTTP GET from `message.mediaUrl` (Cloudinary URL).
+- **Local caching:** Downloaded files cached in `{appDocDir}/audio_cache/{messageId}.m4a` to avoid re-downloading.
+- **Expired messages:** Play button greyed out if `expiresAt < now`. Shows "Audio no longer available" snackbar if user taps.
+- **Playback controls:** Play/pause button, waveform visualization with progress, scrub slider, speed toggle (1x/1.5x/2x).
+- **just_audio package:** Manages audio playback, streams for position/duration.
+
+### UI Components
+
+- **VoiceRecordingOverlay** (new): Full-screen overlay with timer, pulsing animation, cancel gesture. Replaces mic button UI during recording.
+- **VoiceMessageBubble** (new): Dedicated widget for VOICE messages. Shows play/pause, waveform (CustomPainter pseudo-random bars), duration, speed toggle. Same bubble colors as text messages.
+- **ChatMessageBubble:** Routes VOICE messageType to VoiceMessageBubble. Shows retry button for FAILED messages.
+- **ChatInputBar:** Long-press mic (onLongPress) starts recording. Uses OverlayEntry to show VoiceRecordingOverlay.
+
+### Backend Changes
+
+- **Message Entity:** Added `mediaDuration` column (int, nullable). VOICE enum added to MessageType.
+- **Cloudinary Service:** New `uploadVoiceMessage()` method with TTL support. Returns { secureUrl, publicId, duration }.
+- **Messages Controller:** New POST /messages/voice endpoint. Multipart upload with `audio` field + `duration` field. JWT auth required.
+- **SendMessageDto:** Added optional `messageType`, `mediaUrl`, `mediaDuration` fields.
+- **WebSocket:** `sendMessage` event now accepts media fields. Payload includes `{ messageType: 'VOICE', mediaUrl, mediaDuration }`.
+
+### Frontend Changes
+
+- **MessageModel:** Added `voice` to MessageType enum, `mediaDuration` field, `failed` to MessageDeliveryStatus enum.
+- **ChatProvider:** New `sendVoiceMessage()` method with optimistic UI + background upload. New `retryVoiceMessage()` for failed uploads.
+- **ApiService:** New `uploadVoiceMessage()` method. Returns `VoiceUploadResult` with mediaUrl, publicId, duration.
+- **SocketService:** Updated `sendMessage()` to accept mediaUrl, mediaDuration, messageType parameters.
+- **Dependencies:** Added `record ^5.0.0`, `just_audio`, `audio_waveforms ^1.0.5`, `permission_handler ^11.0.0` to pubspec.yaml.
+
+### Files Modified
+
+**Backend:**
+- message.entity.ts (VOICE enum, mediaDuration column)
+- cloudinary.service.ts (uploadVoiceMessage method)
+- messages.controller.ts (POST /messages/voice endpoint)
+- chat.dto.ts (SendMessageDto media fields)
+- chat-message.service.ts (handleSendMessage media support)
+- messages.service.ts (create method media params)
+
+**Frontend:**
+- message_model.dart (voice enum, mediaDuration, failed status)
+- voice_recording_overlay.dart (new - recording UI)
+- voice_message_bubble.dart (new - playback UI)
+- chat_input_bar.dart (long-press mic, recording logic)
+- chat_message_bubble.dart (VOICE routing, retry button)
+- chat_provider.dart (sendVoiceMessage, retryVoiceMessage)
+- api_service.dart (uploadVoiceMessage)
+- socket_service.dart (sendMessage media params)
+- pubspec.yaml (new dependencies)
+
+### Key Patterns
+
+- **Optimistic UI:** Create message with negative ID + SENDING status. Update to real ID + Cloudinary URL when upload completes.
+- **Local file retention:** On upload failure, keep local audio path in message for retry.
+- **TTL coordination:** Backend sets Cloudinary `expires_at` using conversation's `disappearingTimer` + 1h buffer.
+- **Lazy download:** Only download on first play to save bandwidth. Cache locally for repeat plays.
+- **Cross-platform recording:** `record` package works on web, iOS, Android with same API.
+- **Expiration check:** Before playing, verify `message.expiresAt == null || message.expiresAt > now`. Grey out play button if expired.
+
+---
+
+## 14. Recent Changes
+
+**2026-02-15:**
+
+- **Voice messages (2026-02-15):** Full-featured voice messaging with Telegram-like UX. Hold-to-record mic button in ChatInputBar, full-screen recording overlay with timer and swipe-to-cancel. Optimistic UI: message appears instantly with SENDING status, uploads to Cloudinary in background. Retry on failure with FAILED status + retry button. Lazy download playback with local caching in audio_cache/ folder. Rich playback controls: play/pause, waveform visualization (CustomPainter), scrub slider, speed toggle (1x/1.5x/2x). Cloudinary TTL auto-delete for disappearing messages. Cross-platform recording via `record` package (AAC/M4A, 128kbps, 44.1kHz), playback via `just_audio`. Backend: POST /messages/voice endpoint, `mediaDuration` column, Cloudinary `resource_type: 'video'` for audio. Frontend: `VoiceRecordingOverlay`, `VoiceMessageBubble`, `sendVoiceMessage()`, `retryVoiceMessage()`. Files: message.entity.ts, cloudinary.service.ts, messages.controller.ts, voice_recording_overlay.dart, voice_message_bubble.dart, chat_input_bar.dart, chat_message_bubble.dart, chat_provider.dart, api_service.dart, socket_service.dart, pubspec.yaml. Design doc: docs/plans/2026-02-15-voice-messages-design.md, implementation plan: docs/plans/2026-02-15-voice-messages-implementation.md.
 
 **2026-02-14:**
 
@@ -500,7 +591,7 @@ Telegram/Wire-inspired UI with delivery indicators, disappearing messages, ping 
 
 ---
 
-## 14. Environment
+## 15. Environment
 
 | Var | Required | Purpose |
 |-----|----------|---------|
@@ -513,7 +604,7 @@ Frontend: BASE_URL dart define (default localhost:3000).
 
 ---
 
-## 15. Bug Fix History (Lessons)
+## 16. Bug Fix History (Lessons)
 
 - **Delete Account FK:** Cascade delete dependents before user. users.service.ts, users.module.ts.
 - **Avatar overwrite:** Skip deleteAvatar when same public_id. users.service.ts.
@@ -530,13 +621,13 @@ Frontend: BASE_URL dart define (default localhost:3000).
 
 ---
 
-## 16. Known Limitations
+## 17. Known Limitations
 
 No user search. No typing indicators. No message edit/delete. No unique on (sender,receiver) — duplicate friend requests allowed. Last message not in conversationsList (client keeps lastMessages map). Message pagination: limit/offset, default 50.
 
 ---
 
-## 17. Tech Debt
+## 18. Tech Debt
 
 - Manual E2E scripts in scripts/ (Node, run against running backend). Not part of shipped app.
 - Flutter tests: 9 (AppConstants, UserModel, ConversationModel, widget). `flutter test`.
