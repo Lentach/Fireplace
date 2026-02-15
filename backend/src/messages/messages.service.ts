@@ -21,6 +21,7 @@ export class MessagesService {
       expiresAt?: Date | null;
       messageType?: MessageType;
       mediaUrl?: string | null;
+      mediaDuration?: number | null;
     },
   ): Promise<Message> {
     const msg = this.msgRepo.create({
@@ -31,6 +32,7 @@ export class MessagesService {
       expiresAt: options?.expiresAt || null,
       messageType: options?.messageType || MessageType.TEXT,
       mediaUrl: options?.mediaUrl || null,
+      mediaDuration: options?.mediaDuration || null,
     });
     return this.msgRepo.save(msg);
   }

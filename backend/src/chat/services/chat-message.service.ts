@@ -70,6 +70,9 @@ export class ChatMessageService {
       conversation,
       {
         expiresAt,
+        messageType: data.messageType,
+        mediaUrl: data.mediaUrl,
+        mediaDuration: data.mediaDuration,
       },
     );
 
@@ -87,6 +90,7 @@ export class ChatMessageService {
         : null,
       messageType: message.messageType,
       mediaUrl: message.mediaUrl,
+      mediaDuration: message.mediaDuration,
       tempId: data.tempId, // Return tempId for optimistic message matching
     };
 

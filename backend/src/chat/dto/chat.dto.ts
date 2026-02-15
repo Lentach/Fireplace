@@ -26,6 +26,19 @@ export class SendMessageDto {
   @IsOptional()
   @IsString()
   tempId?: string; // Client-generated ID for optimistic message matching
+
+  @IsOptional()
+  @IsString()
+  messageType?: string; // 'TEXT', 'VOICE', 'PING', etc.
+
+  @IsOptional()
+  @IsString()
+  mediaUrl?: string; // Cloudinary URL for voice/image
+
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  mediaDuration?: number; // duration in seconds
 }
 
 export class SendFriendRequestDto {
