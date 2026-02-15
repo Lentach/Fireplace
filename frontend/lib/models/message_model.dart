@@ -60,7 +60,9 @@ class MessageModel {
           : null,
       messageType: _parseMessageType(json['messageType'] as String?),
       mediaUrl: json['mediaUrl'] as String?,
-      mediaDuration: json['mediaDuration'] as int?,
+      mediaDuration: json['mediaDuration'] != null
+          ? (json['mediaDuration'] as num).round()
+          : null,
       tempId: json['tempId'] as String?,
     );
   }

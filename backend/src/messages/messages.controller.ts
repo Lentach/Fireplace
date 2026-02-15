@@ -121,6 +121,9 @@ export class MessagesController {
           'audio/m4a',
           'audio/mpeg',
           'audio/webm',
+          'audio/wav',
+          'audio/wave',
+          'audio/x-wav',
         ];
         if (!allowedMimes.includes(file.mimetype)) {
           return cb(

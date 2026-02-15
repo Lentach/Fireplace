@@ -469,9 +469,9 @@ Telegram-like voice messaging with hold-to-record, optimistic UI, Cloudinary sto
 ### Recording Flow
 
 - **Long-press mic button** in ChatInputBar to start recording. Release to send, swipe left to cancel.
-- **Permission handling:** Uses `permission_handler` on mobile, browser API on web. Shows permission dialog on first use.
+- **Permission handling:** Uses `permission_handler` on mobile only (`!kIsWeb`). Web: browser handles mic permission; no `dart:io` Platform usage on web.
 - **Recording UI:** Full-screen overlay (`VoiceRecordingOverlay`) with pulsing mic icon, timer, and "Slide to cancel" hint. Timer shows yellow at 1:50, red at 1:58. Auto-stops at 2 minutes.
-- **Format:** AAC/M4A, 128kbps, 44.1kHz via `record` package (cross-platform).
+- **Format:** Native: AAC/M4A. Web: WAV (best mic capture on web). 44.1kHz mono via `record` package.
 - **Min duration:** 1 second. Messages shorter than 1s are not sent.
 
 ### Upload and Storage
@@ -479,7 +479,7 @@ Telegram-like voice messaging with hold-to-record, optimistic UI, Cloudinary sto
 - **Optimistic UI:** Message appears immediately with SENDING status and local file path. Background upload to Cloudinary via POST /messages/voice.
 - **Cloudinary:** Uses `resource_type: 'video'` for audio files, folder `voice-messages/`. Public ID: `user-{userId}-{timestamp}`.
 - **TTL Auto-Delete:** If conversation has disappearing timer, uploads with `expires_at = expiresIn + 3600` (1h buffer). Cloudinary deletes expired files automatically.
-- **Retry:** If upload fails, message shows FAILED status with retry button. Calls `retryVoiceMessage(tempId)` to re-upload from local file.
+- **Retry:** If upload fails, message shows FAILED status with retry button. Calls `retryVoiceMessage(tempId)` to re-upload from local file. Retry only supported on native (web has no cached bytes).
 - **Backend validation:** Max 10MB, allowed formats: AAC, M4A, MP3, WebM.
 
 ### Playback
@@ -548,6 +548,8 @@ Telegram-like voice messaging with hold-to-record, optimistic UI, Cloudinary sto
 ## 14. Recent Changes
 
 **2026-02-15:**
+
+- **Voice messages web fix (2026-02-15):** Fixed "Failed to start recording" and "Platform._operatingSystem" on Flutter web. Root cause: `dart:io` (Platform, File, getTemporaryDirectory) is unsupported on web. Changes: (1) Guard `Platform.isAndroid/isIOS` with `!kIsWeb` in _checkMicPermission. (2) On web, skip getTemporaryDirectory; use simple path for record. (3) On web, use Opus encoder (Chrome/Firefox); record returns blob URL, fetch bytes via http.get, pass to uploadVoiceMessage(audioBytes). (4) ApiService.uploadVoiceMessage accepts optional audioBytes (web) or audioPath (native). (5) ChatProvider.sendVoiceMessage accepts localAudioBytes or localAudioPath; only delete temp file when !kIsWeb. (6) Retry on web shows "Retry not available" (no cached bytes). Files: chat_input_bar.dart, api_service.dart, chat_provider.dart.
 
 - **Voice messages (2026-02-15):** Full-featured voice messaging with Telegram-like UX. Hold-to-record mic button in ChatInputBar, full-screen recording overlay with timer and swipe-to-cancel. Optimistic UI: message appears instantly with SENDING status, uploads to Cloudinary in background. Retry on failure with FAILED status + retry button. Lazy download playback with local caching in audio_cache/ folder. Rich playback controls: play/pause, waveform visualization (CustomPainter), scrub slider, speed toggle (1x/1.5x/2x). Cloudinary TTL auto-delete for disappearing messages. Cross-platform recording via `record` package (AAC/M4A, 128kbps, 44.1kHz), playback via `just_audio`. Backend: POST /messages/voice endpoint, `mediaDuration` column, Cloudinary `resource_type: 'video'` for audio. Frontend: `VoiceRecordingOverlay`, `VoiceMessageBubble`, `sendVoiceMessage()`, `retryVoiceMessage()`. Files: message.entity.ts, cloudinary.service.ts, messages.controller.ts, voice_recording_overlay.dart, voice_message_bubble.dart, chat_input_bar.dart, chat_message_bubble.dart, chat_provider.dart, api_service.dart, socket_service.dart, pubspec.yaml. Design doc: docs/plans/2026-02-15-voice-messages-design.md, implementation plan: docs/plans/2026-02-15-voice-messages-implementation.md.
 
@@ -618,6 +620,8 @@ Frontend: BASE_URL dart define (default localhost:3000).
 - **Disappearing messages — vanish on chat re-entry:** Two-stage fix. (1) Added explicit `relations: ['sender']` and error handling. (2) **Root cause:** TypeORM returns `expiresAt` as string from pg driver; `string > Date` yields NaN in JavaScript, filtering out ALL timed messages. Fix: `new Date(m.expiresAt).getTime() > nowMs`. Also fixed frontend `onMessageHistory` to use `.removeWhere()` instead of `.where()` filter. messages.service.ts, chat-message.service.ts, chat_provider.dart.
 - **Messages disappear after switching chat (preview shows, chat does not):** Backend `findByConversation` used `order: ASC` + `limit 50`, returning the 50 oldest messages. With 50+ messages, newest were never returned. Fix: `order: DESC`, `take`, then `.reverse()` to return the N most recent messages oldest-first. messages.service.ts.
 - **Ping message not appearing in sender's chat:** Frontend only handled `newPing` event (recipient) but not `pingSent` event (sender). Backend emits both events but sender never registered handler for their own ping. Fix: Add `onPingSent` listener using same handler as `onPingReceived` (payload identical). Also fixed `setState() during build` by wrapping `openConversation()` in `addPostFrameCallback`. socket_service.dart, chat_provider.dart, chat_detail_screen.dart.
+- **Voice recording "Platform._operatingSystem" on Flutter web:** `dart:io` Platform, File, and getTemporaryDirectory are unsupported on web. Fix: Guard Platform usage with `!kIsWeb`; on web use WAV encoder, blob URL fetch, and uploadVoiceMessage(audioBytes). chat_input_bar.dart, api_service.dart, chat_provider.dart.
+- **Voice messages not reaching recipient, disappearing on chat exit:** SendMessageDto had @MinLength(1) on content, rejecting empty content for VOICE messages. Backend never created/stored the message. Fix: Add @ValidateIf((o) => !['VOICE','PING'].includes(o?.messageType)) so MinLength is skipped for VOICE/PING. Also add mediaDuration to messageHistory payload. chat.dto.ts, chat-message.service.ts.
 
 ---
 

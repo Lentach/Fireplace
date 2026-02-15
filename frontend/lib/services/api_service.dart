@@ -179,16 +179,23 @@ class ApiService {
 
   Future<VoiceUploadResult> uploadVoiceMessage({
     required String token,
-    required String audioPath,
     required int duration,
     int? expiresIn,
+    String? audioPath,
+    List<int>? audioBytes,
   }) async {
-    final file = File(audioPath);
-    if (!await file.exists()) {
-      throw Exception('Audio file not found: $audioPath');
+    List<int> bytes;
+    if (audioBytes != null) {
+      bytes = audioBytes;
+    } else if (audioPath != null) {
+      final file = File(audioPath);
+      if (!await file.exists()) {
+        throw Exception('Audio file not found: $audioPath');
+      }
+      bytes = await file.readAsBytes();
+    } else {
+      throw Exception('Either audioPath or audioBytes required');
     }
-
-    final bytes = await file.readAsBytes();
 
     final request = http.MultipartRequest(
       'POST',
@@ -197,11 +204,14 @@ class ApiService {
 
     request.headers['Authorization'] = 'Bearer $token';
 
+    final isWeb = audioBytes != null;
+    final ext = isWeb ? 'wav' : 'm4a';
+    final mime = isWeb ? 'wav' : 'm4a';
     request.files.add(http.MultipartFile.fromBytes(
       'audio',
       bytes,
-      filename: 'voice_${DateTime.now().millisecondsSinceEpoch}.m4a',
-      contentType: MediaType('audio', 'm4a'),
+      filename: 'voice_${DateTime.now().millisecondsSinceEpoch}.$ext',
+      contentType: MediaType('audio', mime),
     ));
 
     request.fields['duration'] = duration.toString();
@@ -236,7 +246,7 @@ class VoiceUploadResult {
     return VoiceUploadResult(
       mediaUrl: json['mediaUrl'] as String,
       publicId: json['publicId'] as String,
-      duration: json['duration'] as int,
+      duration: (json['duration'] as num).round(),
     );
   }
 }

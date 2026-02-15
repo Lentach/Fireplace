@@ -1,7 +1,10 @@
 import 'dart:async';
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
+import 'dart:typed_data';
 import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
@@ -93,7 +96,7 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   Future<void> _checkMicPermission() async {
-    if (Platform.isAndroid || Platform.isIOS) {
+    if (!kIsWeb && (Platform.isAndroid || Platform.isIOS)) {
       final status = await Permission.microphone.request();
       if (status.isDenied || status.isPermanentlyDenied) {
         if (!mounted) return;
@@ -109,8 +112,12 @@ class _ChatInputBarState extends State<ChatInputBar>
       await _checkMicPermission();
 
       _audioRecorder = AudioRecorder();
-      final tempDir = await getTemporaryDirectory();
-      _recordingPath = '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      if (kIsWeb) {
+        _recordingPath = 'voice_${DateTime.now().millisecondsSinceEpoch}.wav';
+      } else {
+        final tempDir = await getTemporaryDirectory();
+        _recordingPath = '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      }
 
       final hasPermission = await _audioRecorder!.hasPermission();
       if (!hasPermission) {
@@ -120,10 +127,11 @@ class _ChatInputBarState extends State<ChatInputBar>
       }
 
       await _audioRecorder!.start(
-        const RecordConfig(
-          encoder: AudioEncoder.aacLc, // AAC/M4A format
+        RecordConfig(
+          encoder: kIsWeb ? AudioEncoder.wav : AudioEncoder.aacLc,
           bitRate: 128000,
           sampleRate: 44100,
+          numChannels: 1,
         ),
         path: _recordingPath!,
       );
@@ -176,9 +184,11 @@ class _ChatInputBarState extends State<ChatInputBar>
 
     // Check duration
     if (_recordingDuration < 1) {
-      // Too short, cancel
-      if (path != null && File(path).existsSync()) {
-        await File(path).delete();
+      if (!kIsWeb && path != null) {
+        try {
+          final file = File(path);
+          if (await file.exists()) await file.delete();
+        } catch (_) {}
       }
       if (!mounted) return;
       showTopSnackBar(context, 'Hold longer to record voice message');
@@ -190,8 +200,27 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
 
     // Send voice message
-    if (path != null && File(path).existsSync()) {
-      await _sendVoiceMessage(path, _recordingDuration);
+    if (path != null) {
+      if (kIsWeb) {
+        // Web: path is blob URL, fetch bytes
+        try {
+          final response = await http.get(Uri.parse(path));
+          if (response.statusCode == 200) {
+            await _sendVoiceMessage(duration: _recordingDuration, audioBytes: response.bodyBytes);
+          } else {
+            if (!mounted) return;
+            showTopSnackBar(context, 'Failed to read recording');
+          }
+        } catch (e) {
+          if (!mounted) return;
+          showTopSnackBar(context, 'Failed to send voice message');
+        }
+      } else {
+        final file = File(path);
+        if (await file.exists()) {
+          await _sendVoiceMessage(duration: _recordingDuration, localAudioPath: path);
+        }
+      }
     }
 
     setState(() {
@@ -212,9 +241,12 @@ class _ChatInputBarState extends State<ChatInputBar>
 
     _hideRecordingOverlay();
 
-    // Delete temp file
-    if (_recordingPath != null && File(_recordingPath!).existsSync()) {
-      await File(_recordingPath!).delete();
+    // Delete temp file (native only; web uses blob)
+    if (!kIsWeb && _recordingPath != null) {
+      try {
+        final file = File(_recordingPath!);
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
     }
 
     setState(() {
@@ -224,7 +256,11 @@ class _ChatInputBarState extends State<ChatInputBar>
     });
   }
 
-  Future<void> _sendVoiceMessage(String path, int duration) async {
+  Future<void> _sendVoiceMessage({
+    required int duration,
+    String? localAudioPath,
+    Uint8List? audioBytes,
+  }) async {
     setState(() {
       _isSendingVoice = true;
     });
@@ -249,9 +285,10 @@ class _ChatInputBarState extends State<ChatInputBar>
 
       await chat.sendVoiceMessage(
         recipientId: recipientId,
-        localAudioPath: path,
         duration: duration,
         conversationId: conversationId,
+        localAudioPath: localAudioPath,
+        localAudioBytes: audioBytes?.toList(),
       );
     } catch (e) {
       if (!mounted) return;

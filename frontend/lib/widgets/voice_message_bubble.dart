@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
@@ -92,25 +93,30 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
       return;
     }
 
+    final mediaUrl = widget.message.mediaUrl;
+    if (mediaUrl == null || mediaUrl.isEmpty) {
+      throw Exception('No media URL');
+    }
+
     setState(() {
       _isLoading = true;
     });
 
     try {
-      // Check if cached
-      _cachedFilePath = await _getCachedFilePath();
-
-      if (_cachedFilePath != null && File(_cachedFilePath!).existsSync()) {
-        // Use cached file
-        await _audioPlayer.setFilePath(_cachedFilePath!);
+      if (kIsWeb) {
+        // Web: play directly from URL (no file cache)
+        await _audioPlayer.setUrl(mediaUrl);
       } else {
-        // Download and cache
-        if (widget.message.mediaUrl == null) {
-          throw Exception('No media URL');
-        }
+        // Native: check cache, download if needed
+        _cachedFilePath = await _getCachedFilePath();
 
-        _cachedFilePath = await _downloadAndCache(widget.message.mediaUrl!);
-        await _audioPlayer.setFilePath(_cachedFilePath!);
+        if (_cachedFilePath != null && File(_cachedFilePath!).existsSync()) {
+          await _audioPlayer.setFilePath(_cachedFilePath!);
+        } else {
+          final path = await _downloadAndCache(mediaUrl);
+          _cachedFilePath = path;
+          await _audioPlayer.setFilePath(path);
+        }
       }
 
       await _audioPlayer.play();

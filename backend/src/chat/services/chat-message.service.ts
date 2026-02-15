@@ -168,6 +168,7 @@ export class ChatMessageService {
           : null,
         messageType: m.messageType || 'TEXT',
         mediaUrl: m.mediaUrl,
+        mediaDuration: m.mediaDuration ?? undefined,
       }));
 
       client.emit('messageHistory', mapped);

@@ -425,10 +425,14 @@ class ChatProvider extends ChangeNotifier {
 
   Future<void> sendVoiceMessage({
     required int recipientId,
-    required String localAudioPath,
     required int duration,
     int? conversationId,
+    String? localAudioPath,
+    List<int>? localAudioBytes,
   }) async {
+    if (localAudioPath == null && localAudioBytes == null) {
+      throw Exception('Either localAudioPath or localAudioBytes required');
+    }
     if (_currentUserId == null) return;
 
     // Use provided conversationId or active one
@@ -452,7 +456,7 @@ class ChatProvider extends ChangeNotifier {
       createdAt: DateTime.now(),
       deliveryStatus: MessageDeliveryStatus.sending,
       messageType: MessageType.voice,
-      mediaUrl: localAudioPath, // local file path initially
+      mediaUrl: localAudioPath ?? '', // local path or empty on web
       mediaDuration: duration,
       tempId: tempId,
       expiresAt: effectiveExpiresIn != null
@@ -474,9 +478,10 @@ class ChatProvider extends ChangeNotifier {
       final api = ApiService(baseUrl: AppConfig.baseUrl);
       final result = await api.uploadVoiceMessage(
         token: _tokenForReconnect!,
-        audioPath: localAudioPath,
         duration: duration,
         expiresIn: effectiveExpiresIn,
+        audioPath: localAudioPath,
+        audioBytes: localAudioBytes,
       );
 
       // 4. Send via WebSocket with Cloudinary URL
@@ -501,10 +506,12 @@ class ChatProvider extends ChangeNotifier {
         notifyListeners();
       }
 
-      // 6. Delete temp file after successful upload
-      final file = File(localAudioPath);
-      if (await file.exists()) {
-        await file.delete();
+      // 6. Delete temp file after successful upload (native only; web uses blob)
+      if (!kIsWeb && localAudioPath != null) {
+        final file = File(localAudioPath);
+        if (await file.exists()) {
+          await file.delete();
+        }
       }
     } catch (e) {
       // 7. Mark as failed, keep local file for retry
@@ -553,10 +560,16 @@ class ChatProvider extends ChangeNotifier {
       notifyListeners();
     }
 
-    // Re-attempt upload using cached local file
+    // Re-attempt upload (native only; web retry not supported - no cached bytes)
+    final localPath = message.mediaUrl;
+    if (localPath == null || localPath.isEmpty) {
+      _errorMessage = 'Retry not available for this message';
+      notifyListeners();
+      return;
+    }
     await sendVoiceMessage(
       recipientId: recipientId,
-      localAudioPath: message.mediaUrl!, // Still has local path
+      localAudioPath: localPath,
       duration: message.mediaDuration ?? 0,
       conversationId: message.conversationId,
     );

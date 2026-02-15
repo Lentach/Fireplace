@@ -80,11 +80,21 @@ export class CloudinaryService {
   ): Promise<UploadVoiceResult> {
     const dataUri = `data:${mimeType};base64,${buffer.toString('base64')}`;
 
+    // Cloudinary format from mime (wav, webm, m4a)
+    let format = 'm4a';
+    if (mimeType.includes('wav') || mimeType.includes('wave')) {
+      format = 'wav';
+    } else if (mimeType.includes('webm')) {
+      format = 'webm';
+    } else if (mimeType.includes('mp3') || mimeType.includes('mpeg')) {
+      format = 'mp3';
+    }
+
     const uploadOptions: any = {
       folder: 'voice-messages',
       public_id: `user-${userId}-${Date.now()}`,
       resource_type: 'video', // Cloudinary uses 'video' for audio files
-      format: 'm4a',
+      format,
     };
 
     // Set TTL if disappearing timer is active
