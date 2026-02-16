@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -11,7 +12,6 @@ import 'package:permission_handler/permission_handler.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
 import 'chat_action_tiles.dart';
-import 'voice_recording_overlay.dart';
 import 'top_snackbar.dart';
 
 class ChatInputBar extends StatefulWidget {
@@ -39,7 +39,13 @@ class _ChatInputBarState extends State<ChatInputBar>
   DateTime? _recordingStartTime;
   ValueNotifier<int>? _recordingSecondsNotifier; // survives overlay rebuilds
   int _recordingDuration = 0;
-  OverlayEntry? _recordingOverlay;
+
+  // Slide-to-cancel state
+  double _cancelDragOffset = 0.0;
+  bool _showTrashIcon = false;
+
+  // Pulsing red dot animation
+  late final AnimationController _pulseController;
 
   @override
   void initState() {
@@ -58,6 +64,10 @@ class _ChatInputBarState extends State<ChatInputBar>
       parent: _actionPanelController,
       curve: Curves.easeInOut,
     );
+    _pulseController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 1000),
+    )..repeat(reverse: true);
   }
 
   @override
@@ -65,10 +75,10 @@ class _ChatInputBarState extends State<ChatInputBar>
     _controller.dispose();
     _focusNode.dispose();
     _actionPanelController.dispose();
+    _pulseController.dispose();
     _recordingTimer?.cancel();
     _recordingSecondsNotifier?.dispose();
     _audioRecorder?.dispose();
-    _recordingOverlay?.remove();
     super.dispose();
   }
 
@@ -110,11 +120,40 @@ class _ChatInputBarState extends State<ChatInputBar>
     // Web: permission handled by browser automatically
   }
 
+  // #region agent log
+  static void _debugLog(String location, String message, {String? hypothesisId, Map<String, dynamic>? data}) {
+    final payload = <String, dynamic>{
+      'location': location,
+      'message': message,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      if (hypothesisId != null) 'hypothesisId': hypothesisId,
+      if (data != null) 'data': data,
+    };
+    http.post(
+      Uri.parse('http://127.0.0.1:7243/ingest/c9b15008-bee2-4d0d-aaf6-09aeadf0df80'),
+      headers: <String, String>{'Content-Type': 'application/json'},
+      body: jsonEncode(payload),
+    ).catchError((_) {});
+  }
+  // #endregion
+
   Future<void> _startRecording() async {
     try {
+      // #region agent log
+      _debugLog('chat_input_bar:_startRecording', 'entry', hypothesisId: 'H0');
+      // #endregion
       await _checkMicPermission();
+      // #region agent log
+      _debugLog('chat_input_bar:_startRecording', 'after checkMicPermission', hypothesisId: 'H4');
+      // #endregion
 
+      // #region agent log
+      _debugLog('chat_input_bar:_startRecording', 'before AudioRecorder()', hypothesisId: 'H1');
+      // #endregion
       _audioRecorder = AudioRecorder();
+      // #region agent log
+      _debugLog('chat_input_bar:_startRecording', 'after AudioRecorder()', hypothesisId: 'H1');
+      // #endregion
       if (kIsWeb) {
         _recordingPath = 'voice_${DateTime.now().millisecondsSinceEpoch}.wav';
       } else {
@@ -122,13 +161,22 @@ class _ChatInputBarState extends State<ChatInputBar>
         _recordingPath = '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
       }
 
+      // #region agent log
+      _debugLog('chat_input_bar:_startRecording', 'before hasPermission', hypothesisId: 'H2');
+      // #endregion
       final hasPermission = await _audioRecorder!.hasPermission();
+      // #region agent log
+      _debugLog('chat_input_bar:_startRecording', 'after hasPermission', data: <String, dynamic>{'hasPermission': hasPermission}, hypothesisId: 'H2');
+      // #endregion
       if (!hasPermission) {
         if (!mounted) return;
         showTopSnackBar(context, 'Microphone permission denied');
         return;
       }
 
+      // #region agent log
+      _debugLog('chat_input_bar:_startRecording', 'before start()', data: <String, dynamic>{'path': _recordingPath, 'kIsWeb': kIsWeb}, hypothesisId: 'H3');
+      // #endregion
       await _audioRecorder!.start(
         RecordConfig(
           encoder: kIsWeb ? AudioEncoder.wav : AudioEncoder.aacLc,
@@ -138,25 +186,30 @@ class _ChatInputBarState extends State<ChatInputBar>
         ),
         path: _recordingPath!,
       );
+      // #region agent log
+      _debugLog('chat_input_bar:_startRecording', 'after start()', hypothesisId: 'H3');
+      // #endregion
 
       _recordingStartTime = DateTime.now();
       _recordingSecondsNotifier = ValueNotifier(0);
       setState(() {
         _isRecording = true;
         _recordingDuration = 0;
+        _cancelDragOffset = 0.0;
+        _showTrashIcon = false;
       });
 
-      // Show overlay (ValueListenableBuilder reads from _recordingSecondsNotifier)
-      _showRecordingOverlay();
-
-      // Timer: tick every second, update notifier + 120s auto-stop (parent-owned, survives overlay rebuilds)
+      // Timer: tick every second, update notifier + 120s auto-stop
       _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         if (!mounted || _recordingStartTime == null) return;
         final elapsed = DateTime.now().difference(_recordingStartTime!).inSeconds;
         _recordingSecondsNotifier?.value = elapsed;
         if (elapsed >= 120) _stopRecording();
       });
-    } catch (e) {
+    } catch (e, stack) {
+      // #region agent log
+      _debugLog('chat_input_bar:_startRecording', 'catch', hypothesisId: 'H5', data: <String, dynamic>{'error': e.toString(), 'stack': stack.toString()});
+      // #endregion
       if (!mounted) return;
       showTopSnackBar(context, 'Failed to start recording');
       print('Recording error: $e');
@@ -175,10 +228,10 @@ class _ChatInputBarState extends State<ChatInputBar>
     await _audioRecorder!.dispose();
     _audioRecorder = null;
 
-    _hideRecordingOverlay();
-
     setState(() {
       _isRecording = false;
+      _cancelDragOffset = 0.0;
+      _showTrashIcon = false;
     });
 
     // Use actual elapsed duration for send (timer display may lag on last tick)
@@ -247,8 +300,6 @@ class _ChatInputBarState extends State<ChatInputBar>
     await _audioRecorder!.dispose();
     _audioRecorder = null;
 
-    _hideRecordingOverlay();
-
     // Delete temp file (native only; web uses blob)
     if (!kIsWeb && _recordingPath != null) {
       try {
@@ -261,6 +312,8 @@ class _ChatInputBarState extends State<ChatInputBar>
       _isRecording = false;
       _recordingDuration = 0;
       _recordingPath = null;
+      _cancelDragOffset = 0.0;
+      _showTrashIcon = false;
     });
   }
 
@@ -311,20 +364,24 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
   }
 
-  void _showRecordingOverlay() {
-    if (_recordingSecondsNotifier == null) return;
-    _recordingOverlay = OverlayEntry(
-      builder: (context) => VoiceRecordingOverlay(
-        onCancel: _cancelRecording,
-        recordingSeconds: _recordingSecondsNotifier!,
-      ),
-    );
-    Overlay.of(context).insert(_recordingOverlay!);
-  }
+  void _onRecordingDragUpdate(double offsetX) {
+    if (!_isRecording) return;
 
-  void _hideRecordingOverlay() {
-    _recordingOverlay?.remove();
-    _recordingOverlay = null;
+    setState(() {
+      _cancelDragOffset = offsetX;
+
+      // Show trash icon when user starts sliding left
+      if (_cancelDragOffset < -20) {
+        _showTrashIcon = true;
+      } else {
+        _showTrashIcon = false;
+      }
+
+      // Cancel threshold: -150px
+      if (_cancelDragOffset < -150) {
+        _cancelRecording();
+      }
+    });
   }
 
   String _formatTimer(int seconds) {
@@ -332,6 +389,88 @@ class _ChatInputBarState extends State<ChatInputBar>
     if (seconds >= 3600) return '${seconds ~/ 3600}h';
     if (seconds >= 60) return '${seconds ~/ 60}m';
     return '${seconds}s';
+  }
+
+  String _formatRecordingDuration(int seconds) {
+    final minutes = seconds ~/ 60;
+    final secs = seconds % 60;
+    return '${minutes}:${secs.toString().padLeft(2, '0')}';
+  }
+
+  Widget _buildRecordingBar(BuildContext context) {
+    final isDark = RpgTheme.isDark(context);
+    final tabBorderColor = isDark ? RpgTheme.tabBorderDark : RpgTheme.tabBorderLight;
+    final inputBg = isDark ? RpgTheme.inputBg : RpgTheme.inputBgLight;
+
+    return Container(
+      height: 48,
+      padding: const EdgeInsets.symmetric(horizontal: 16),
+      decoration: BoxDecoration(
+        borderRadius: BorderRadius.circular(24),
+        border: Border.all(color: tabBorderColor),
+        color: inputBg,
+      ),
+      child: Row(
+        children: [
+          // Trash icon (left side, visible when dragging left)
+          if (_showTrashIcon)
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: Icon(
+                Icons.delete_outline,
+                color: Colors.red,
+                size: 24,
+              ),
+            ),
+
+          // Pulsing red dot
+          AnimatedBuilder(
+            animation: _pulseController,
+            builder: (context, child) {
+              return Container(
+                width: 12,
+                height: 12,
+                decoration: BoxDecoration(
+                  shape: BoxShape.circle,
+                  color: Colors.red.withOpacity(0.7 + (_pulseController.value * 0.3)),
+                ),
+              );
+            },
+          ),
+
+          const SizedBox(width: 12),
+
+          // Timer
+          ValueListenableBuilder<int>(
+            valueListenable: _recordingSecondsNotifier!,
+            builder: (context, seconds, _) => Text(
+              _formatRecordingDuration(seconds),
+              style: RpgTheme.bodyFont(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+          ),
+
+          const SizedBox(width: 16),
+
+          // "Slide to cancel" text (fades out when dragging)
+          Expanded(
+            child: Opacity(
+              opacity: _showTrashIcon ? 0.0 : 1.0,
+              child: Text(
+                '< Slide to cancel',
+                style: RpgTheme.bodyFont(
+                  fontSize: 14,
+                  color: isDark ? Colors.white60 : Colors.black54,
+                ),
+              ),
+            ),
+          ),
+        ],
+      ),
+    );
   }
 
   @override
@@ -385,68 +524,72 @@ class _ChatInputBarState extends State<ChatInputBar>
             ),
             child: Row(
               children: [
-                // Action panel toggle (arrow down/up)
-                IconButton(
-                  icon: Icon(
-                    _showActionPanel
-                        ? Icons.keyboard_arrow_up
-                        : Icons.keyboard_arrow_down,
+                // Action panel toggle (hidden during recording)
+                if (!_isRecording)
+                  IconButton(
+                    icon: Icon(
+                      _showActionPanel
+                          ? Icons.keyboard_arrow_up
+                          : Icons.keyboard_arrow_down,
+                    ),
+                    iconSize: 24,
+                    color: isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight,
+                    onPressed: _toggleActionPanel,
                   ),
-                  iconSize: 24,
-                  color: isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight,
-                  onPressed: _toggleActionPanel,
-                ),
 
-                // Text field
+                // Text field or recording bar
                 Expanded(
-                  child: TextField(
-                    controller: _controller,
-                    focusNode: _focusNode,
-                    style: RpgTheme.bodyFont(
-                      fontSize: 14,
-                      color: colorScheme.onSurface,
-                    ),
-                    decoration: InputDecoration(
-                      hintText: 'Type a message...',
-                      contentPadding: const EdgeInsets.symmetric(
-                        horizontal: 16,
-                        vertical: 10,
-                      ),
-                      border: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide(color: tabBorderColor),
-                      ),
-                      enabledBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide(color: tabBorderColor),
-                      ),
-                      focusedBorder: OutlineInputBorder(
-                        borderRadius: BorderRadius.circular(24),
-                        borderSide: BorderSide(
-                          color: RpgTheme.primaryColor(context),
-                          width: 1.5,
+                  child: _isRecording
+                      ? _buildRecordingBar(context)
+                      : TextField(
+                          controller: _controller,
+                          focusNode: _focusNode,
+                          style: RpgTheme.bodyFont(
+                            fontSize: 14,
+                            color: colorScheme.onSurface,
+                          ),
+                          decoration: InputDecoration(
+                            hintText: 'Type a message...',
+                            contentPadding: const EdgeInsets.symmetric(
+                              horizontal: 16,
+                              vertical: 10,
+                            ),
+                            border: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide(color: tabBorderColor),
+                            ),
+                            enabledBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide(color: tabBorderColor),
+                            ),
+                            focusedBorder: OutlineInputBorder(
+                              borderRadius: BorderRadius.circular(24),
+                              borderSide: BorderSide(
+                                color: RpgTheme.primaryColor(context),
+                                width: 1.5,
+                              ),
+                            ),
+                            filled: true,
+                            fillColor: inputBg,
+                          ),
+                          maxLines: null,
+                          textInputAction: TextInputAction.send,
+                          onSubmitted: (_) => _send(),
                         ),
-                      ),
-                      filled: true,
-                      fillColor: inputBg,
-                    ),
-                    maxLines: null,
-                    textInputAction: TextInputAction.send,
-                    onSubmitted: (_) => _send(),
-                  ),
                 ),
 
                 const SizedBox(width: 4),
 
-                // Mic / Send toggle (send icon must contrast with primary-colored circle)
-                Container(
-                  decoration: BoxDecoration(
-                    shape: BoxShape.circle,
-                    color: _hasText
-                        ? RpgTheme.primaryColor(context)
-                        : Colors.transparent,
-                  ),
-                  child: _isSendingVoice
+                // Mic / Send toggle (hidden during recording)
+                if (!_isRecording)
+                  Container(
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: _hasText
+                          ? RpgTheme.primaryColor(context)
+                          : Colors.transparent,
+                    ),
+                    child: _isSendingVoice
                       ? const Padding(
                           padding: EdgeInsets.all(12.0),
                           child: SizedBox(
@@ -463,6 +606,7 @@ class _ChatInputBarState extends State<ChatInputBar>
                             )
                           : GestureDetector(
                               onLongPressStart: (_) => _startRecording(),
+                              onLongPressMoveUpdate: (details) => _onRecordingDragUpdate(details.localOffsetFromOrigin.dx),
                               onLongPressEnd: (_) => _stopRecording(),
                               child: IconButton(
                                 icon: Icon(
