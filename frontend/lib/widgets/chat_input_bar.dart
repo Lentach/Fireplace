@@ -38,10 +38,12 @@ class _ChatInputBarState extends State<ChatInputBar>
   DateTime? _recordingStartTime;
   ValueNotifier<int>? _recordingSecondsNotifier; // tick-based timer for recording duration display
 
-  // Slide-to-cancel state
+  // Slide-to-cancel state (Telegram-style: slide LEFT to cancel)
+  static const double _cancelThresholdPx = 100.0; // screen pixels left to cancel
   double _cancelDragOffset = 0.0;
-  double _dragStartX = 0.0; // track start position for delta calculation
+  double _dragStartX = 0.0; // global X when drag started
   bool _showTrashIcon = false;
+  bool _canceledBySlide = false; // true when user slid to cancel (do not send on release)
 
   // Pulsing red dot animation
   late final AnimationController _pulseController;
@@ -158,6 +160,7 @@ class _ChatInputBarState extends State<ChatInputBar>
         _isRecording = true;
         _cancelDragOffset = 0.0;
         _showTrashIcon = false;
+        _canceledBySlide = false;
       });
 
       // Timer: tick every second, update notifier + 120s auto-stop
@@ -266,6 +269,7 @@ class _ChatInputBarState extends State<ChatInputBar>
   Future<void> _cancelRecording() async {
     if (_audioRecorder == null || !_isRecording) return;
 
+    _canceledBySlide = true;
     _recordingTimer?.cancel();
     _recordingTimer = null;
     _recordingSecondsNotifier?.dispose();
@@ -349,22 +353,18 @@ class _ChatInputBarState extends State<ChatInputBar>
     if (!_isRecording) return;
 
     setState(() {
-      // Calculate offset from start position (negative = left, positive = right)
+      // Delta in screen pixels (negative = slid left)
       _cancelDragOffset = currentX - _dragStartX;
 
-      print('[VOICE] Drag update: currentX=$currentX, startX=$_dragStartX, offset=$_cancelDragOffset');
-
-      // Show trash icon when user starts sliding left
+      // Show trash when sliding left
       if (_cancelDragOffset < -20) {
         _showTrashIcon = true;
-        print('[VOICE] Trash icon shown');
       } else {
         _showTrashIcon = false;
       }
 
-      // Cancel threshold: -150px
-      if (_cancelDragOffset < -150) {
-        print('[VOICE] Cancel threshold reached!');
+      // Cancel when slid left past threshold (Telegram-style)
+      if (_cancelDragOffset < -_cancelThresholdPx) {
         _cancelRecording();
       }
     });
@@ -392,7 +392,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     return Semantics(
       label: 'Recording voice message, ${_formatRecordingDuration(currentSeconds)}. Swipe left to cancel.',
       child: Transform.translate(
-        offset: Offset(_cancelDragOffset.clamp(-150, 0), 0),
+        offset: Offset(_cancelDragOffset.clamp(-_cancelThresholdPx, 0), 0),
         child: Container(
           height: 48,
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -573,52 +573,55 @@ class _ChatInputBarState extends State<ChatInputBar>
 
                 const SizedBox(width: 4),
 
-                // Mic / Send toggle (hidden during recording)
-                if (!_isRecording)
+                // Mic / Send: keep mic visible during recording so gesture (release, drag) is still received
+                if (_isSendingVoice)
+                  const Padding(
+                    padding: EdgeInsets.all(12.0),
+                    child: SizedBox(
+                      width: 22,
+                      height: 22,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    ),
+                  )
+                else if (_hasText && !_isRecording)
                   Container(
                     decoration: BoxDecoration(
                       shape: BoxShape.circle,
-                      color: _hasText
-                          ? RpgTheme.primaryColor(context)
-                          : Colors.transparent,
+                      color: RpgTheme.primaryColor(context),
                     ),
-                    child: _isSendingVoice
-                      ? const Padding(
-                          padding: EdgeInsets.all(12.0),
-                          child: SizedBox(
-                            width: 22,
-                            height: 22,
-                            child: CircularProgressIndicator(strokeWidth: 2),
-                          ),
-                        )
-                      : _hasText
-                          ? IconButton(
-                              icon: const Icon(Icons.send_rounded, size: 22),
-                              color: Colors.white,
-                              onPressed: _send,
-                            )
-                          : GestureDetector(
-                              onLongPressStart: (details) {
-                                _onRecordingDragStart(details.localPosition.dx);
-                                _startRecording();
-                              },
-                              onLongPressMoveUpdate: (details) => _onRecordingDragUpdate(details.localPosition.dx),
-                              onLongPressEnd: (_) {
-                                print('[VOICE] Long press ended, calling _stopRecording()');
-                                _stopRecording();
-                              },
-                              child: IconButton(
-                                icon: Icon(
-                                  _isRecording ? Icons.mic : Icons.mic_none,
-                                  size: 22,
-                                ),
-                                color: _isRecording
-                                    ? Colors.red
-                                    : (isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight),
-                                onPressed: null, // Disabled, use long-press
-                              ),
-                            ),
-                ),
+                    child: IconButton(
+                      icon: const Icon(Icons.send_rounded, size: 22),
+                      color: Colors.white,
+                      onPressed: _send,
+                    ),
+                  )
+                else
+                  Transform.translate(
+                    offset: Offset(_isRecording ? _cancelDragOffset.clamp(-_cancelThresholdPx, 0) : 0, 0),
+                    child: GestureDetector(
+                      onLongPressStart: (details) {
+                        _onRecordingDragStart(details.globalPosition.dx);
+                        _startRecording();
+                      },
+                      onLongPressMoveUpdate: (details) => _onRecordingDragUpdate(details.globalPosition.dx),
+                      onLongPressEnd: (_) {
+                        if (_isRecording && !_canceledBySlide) _stopRecording();
+                      },
+                      onLongPressCancel: () {
+                        if (_isRecording && !_canceledBySlide) _stopRecording();
+                      },
+                      child: IconButton(
+                        icon: Icon(
+                          _isRecording ? Icons.mic : Icons.mic_none,
+                          size: 22,
+                        ),
+                        color: _isRecording
+                            ? Colors.red
+                            : (isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight),
+                        onPressed: null, // Disabled, use long-press
+                      ),
+                    ),
+                  ),
               ],
             ),
           ),

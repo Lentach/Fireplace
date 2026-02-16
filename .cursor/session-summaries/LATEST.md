@@ -1,7 +1,7 @@
 # Ostatnia sesja (najnowsze podsumowanie)
 
-**Data:** 2026-02-15  
-**Pełne podsumowanie:** [2026-02-15-session.md](2026-02-15-session.md)
+**Data:** 2026-02-16  
+**Pełne podsumowanie:** [2026-02-16-session.md](2026-02-16-session.md)
 
 ## Skrót
-- **Voice recording web fix:** Naprawiono "Failed to start recording" i błąd "Platform._operatingSystem" na Flutter web. Przyczyna: `dart:io` nie działa w przeglądarce. Rozwiązanie: guardy `!kIsWeb` dla Platform/File/path_provider, na web: Opus encoder, blob URL → fetch bytes → upload. chat_input_bar.dart, api_service.dart, chat_provider.dart.
+- **Voice recording Telegram-style:** Slide w lewo = anuluj (ikona kosza, próg 100px). Puść = wyślij. Użycie globalnych współrzędnych dla dragu; obsługa `onLongPressCancel`, flaga `_canceledBySlide`. chat_input_bar.dart.
