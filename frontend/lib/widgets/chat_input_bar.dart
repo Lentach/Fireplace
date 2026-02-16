@@ -1,9 +1,7 @@
 import 'dart:async';
 import 'dart:io';
-import 'dart:convert';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'dart:typed_data';
 import 'package:record/record.dart';
@@ -37,8 +35,7 @@ class _ChatInputBarState extends State<ChatInputBar>
   String? _recordingPath;
   Timer? _recordingTimer;
   DateTime? _recordingStartTime;
-  ValueNotifier<int>? _recordingSecondsNotifier; // survives overlay rebuilds
-  int _recordingDuration = 0;
+  ValueNotifier<int>? _recordingSecondsNotifier; // tick-based timer for recording duration display
 
   // Slide-to-cancel state
   double _cancelDragOffset = 0.0;
@@ -120,40 +117,12 @@ class _ChatInputBarState extends State<ChatInputBar>
     // Web: permission handled by browser automatically
   }
 
-  // #region agent log
-  static void _debugLog(String location, String message, {String? hypothesisId, Map<String, dynamic>? data}) {
-    final payload = <String, dynamic>{
-      'location': location,
-      'message': message,
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-      if (hypothesisId != null) 'hypothesisId': hypothesisId,
-      if (data != null) 'data': data,
-    };
-    http.post(
-      Uri.parse('http://127.0.0.1:7243/ingest/c9b15008-bee2-4d0d-aaf6-09aeadf0df80'),
-      headers: <String, String>{'Content-Type': 'application/json'},
-      body: jsonEncode(payload),
-    ).catchError((_) {});
-  }
-  // #endregion
 
   Future<void> _startRecording() async {
     try {
-      // #region agent log
-      _debugLog('chat_input_bar:_startRecording', 'entry', hypothesisId: 'H0');
-      // #endregion
       await _checkMicPermission();
-      // #region agent log
-      _debugLog('chat_input_bar:_startRecording', 'after checkMicPermission', hypothesisId: 'H4');
-      // #endregion
 
-      // #region agent log
-      _debugLog('chat_input_bar:_startRecording', 'before AudioRecorder()', hypothesisId: 'H1');
-      // #endregion
       _audioRecorder = AudioRecorder();
-      // #region agent log
-      _debugLog('chat_input_bar:_startRecording', 'after AudioRecorder()', hypothesisId: 'H1');
-      // #endregion
       if (kIsWeb) {
         _recordingPath = 'voice_${DateTime.now().millisecondsSinceEpoch}.wav';
       } else {
@@ -161,22 +130,13 @@ class _ChatInputBarState extends State<ChatInputBar>
         _recordingPath = '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
       }
 
-      // #region agent log
-      _debugLog('chat_input_bar:_startRecording', 'before hasPermission', hypothesisId: 'H2');
-      // #endregion
       final hasPermission = await _audioRecorder!.hasPermission();
-      // #region agent log
-      _debugLog('chat_input_bar:_startRecording', 'after hasPermission', data: <String, dynamic>{'hasPermission': hasPermission}, hypothesisId: 'H2');
-      // #endregion
       if (!hasPermission) {
         if (!mounted) return;
         showTopSnackBar(context, 'Microphone permission denied');
         return;
       }
 
-      // #region agent log
-      _debugLog('chat_input_bar:_startRecording', 'before start()', data: <String, dynamic>{'path': _recordingPath, 'kIsWeb': kIsWeb}, hypothesisId: 'H3');
-      // #endregion
       await _audioRecorder!.start(
         RecordConfig(
           encoder: kIsWeb ? AudioEncoder.wav : AudioEncoder.aacLc,
@@ -186,15 +146,11 @@ class _ChatInputBarState extends State<ChatInputBar>
         ),
         path: _recordingPath!,
       );
-      // #region agent log
-      _debugLog('chat_input_bar:_startRecording', 'after start()', hypothesisId: 'H3');
-      // #endregion
 
       _recordingStartTime = DateTime.now();
       _recordingSecondsNotifier = ValueNotifier(0);
       setState(() {
         _isRecording = true;
-        _recordingDuration = 0;
         _cancelDragOffset = 0.0;
         _showTrashIcon = false;
       });
@@ -206,10 +162,7 @@ class _ChatInputBarState extends State<ChatInputBar>
         _recordingSecondsNotifier?.value = elapsed;
         if (elapsed >= 120) _stopRecording();
       });
-    } catch (e, stack) {
-      // #region agent log
-      _debugLog('chat_input_bar:_startRecording', 'catch', hypothesisId: 'H5', data: <String, dynamic>{'error': e.toString(), 'stack': stack.toString()});
-      // #endregion
+    } catch (e) {
       if (!mounted) return;
       showTopSnackBar(context, 'Failed to start recording');
       print('Recording error: $e');
@@ -237,7 +190,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     // Use actual elapsed duration for send (timer display may lag on last tick)
     final durationSeconds = _recordingStartTime != null
         ? DateTime.now().difference(_recordingStartTime!).inSeconds
-        : _recordingDuration;
+        : 0;
     _recordingStartTime = null;
 
     // Check duration
@@ -251,7 +204,6 @@ class _ChatInputBarState extends State<ChatInputBar>
       if (!mounted) return;
       showTopSnackBar(context, 'Hold longer to record voice message');
       setState(() {
-        _recordingDuration = 0;
         _recordingPath = null;
       });
       return;
@@ -282,7 +234,6 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
 
     setState(() {
-      _recordingDuration = 0;
       _recordingPath = null;
     });
   }
@@ -310,7 +261,6 @@ class _ChatInputBarState extends State<ChatInputBar>
 
     setState(() {
       _isRecording = false;
-      _recordingDuration = 0;
       _recordingPath = null;
       _cancelDragOffset = 0.0;
       _showTrashIcon = false;
