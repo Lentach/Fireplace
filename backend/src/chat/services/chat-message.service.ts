@@ -8,6 +8,7 @@ import { validateDto } from '../utils/dto.validator';
 import { SendMessageDto, GetMessagesDto, ClearChatHistoryDto } from '../dto/chat.dto';
 import { SendPingDto } from '../dto/send-ping.dto';
 import { MessageType, MessageDeliveryStatus } from '../../messages/message.entity';
+import { MessageMapper } from '../../messages/message.mapper';
 
 @Injectable()
 export class ChatMessageService {
@@ -76,23 +77,10 @@ export class ChatMessageService {
       },
     );
 
-    const messagePayload = {
-      id: message.id,
-      content: message.content,
-      senderId: sender.id,
-      senderEmail: sender.email,
-      senderUsername: sender.username,
+    const messagePayload = MessageMapper.toPayload(message, {
+      tempId: data.tempId,
       conversationId: conversation.id,
-      createdAt: message.createdAt,
-      deliveryStatus: message.deliveryStatus,
-      expiresAt: message.expiresAt
-        ? new Date(message.expiresAt).toISOString()
-        : null,
-      messageType: message.messageType,
-      mediaUrl: message.mediaUrl,
-      mediaDuration: message.mediaDuration,
-      tempId: data.tempId, // Return tempId for optimistic message matching
-    };
+    });
 
     // Emit to sender (confirmation)
     client.emit('messageSent', messagePayload);
@@ -154,22 +142,9 @@ export class ChatMessageService {
         );
       }
 
-      const mapped = active.map((m) => ({
-        id: m.id,
-        content: m.content,
-        senderId: m.sender.id,
-        senderEmail: m.sender.email,
-        senderUsername: m.sender.username,
-        conversationId: data.conversationId,
-        createdAt: m.createdAt,
-        deliveryStatus: m.deliveryStatus || 'SENT',
-        expiresAt: m.expiresAt
-          ? new Date(m.expiresAt as any).toISOString()
-          : null,
-        messageType: m.messageType || 'TEXT',
-        mediaUrl: m.mediaUrl,
-        mediaDuration: m.mediaDuration ?? undefined,
-      }));
+      const mapped = active.map((m) =>
+        MessageMapper.toPayload(m, { conversationId: data.conversationId }),
+      );
 
       client.emit('messageHistory', mapped);
     } catch (error) {
@@ -240,21 +215,9 @@ export class ChatMessageService {
       },
     );
 
-    const payload = {
-      id: message.id,
-      content: '',
-      senderId: user.id,
-      senderEmail: user.email,
-      senderUsername: user.username,
+    const payload = MessageMapper.toPayload(message, {
       conversationId: conversation.id,
-      createdAt: message.createdAt,
-      messageType: MessageType.PING,
-      deliveryStatus: message.deliveryStatus,
-      expiresAt: message.expiresAt
-        ? new Date(message.expiresAt).toISOString()
-        : null,
-      mediaUrl: null,
-    };
+    });
 
     client.emit('pingSent', payload);
 

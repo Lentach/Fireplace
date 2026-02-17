@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
+import '../models/conversation_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
@@ -77,35 +78,28 @@ class ChatActionTiles extends StatelessWidget {
     );
   }
 
-  void _sendPing(BuildContext context) {
+  /// Returns (conv, recipientId) if conversation is active; otherwise shows snackbar and returns null.
+  (ConversationModel, int)? _requireActiveConversation(BuildContext context) {
+    if (!_ensureHasActiveConversation(context)) return null;
     final chat = context.read<ChatProvider>();
+    final conv = chat.getConversationById(chat.activeConversationId!);
+    if (conv == null) return null;
+    return (conv, chat.getOtherUserId(conv));
+  }
 
-    // Guard: Check if conversation is active
-    if (chat.activeConversationId == null) {
-      showTopSnackBar(context, 'Open a conversation first');
-      return;
-    }
-
-    final conv = chat.conversations
-        .firstWhere((c) => c.id == chat.activeConversationId);
-    final recipientId = chat.getOtherUserId(conv);
-
-    chat.sendPing(recipientId);
+  void _sendPing(BuildContext context) {
+    final result = _requireActiveConversation(context);
+    if (result == null) return;
+    context.read<ChatProvider>().sendPing(result.$2);
   }
 
   Future<void> _pickAttachment(BuildContext context) async {
+    final result = _requireActiveConversation(context);
+    if (result == null) return;
+
     final chat = context.read<ChatProvider>();
     final auth = context.read<AuthProvider>();
-
-    // Guard: Check if conversation is active
-    if (chat.activeConversationId == null) {
-      showTopSnackBar(context, 'Open a conversation first');
-      return;
-    }
-
-    final conv = chat.conversations
-        .firstWhere((c) => c.id == chat.activeConversationId);
-    final recipientId = chat.getOtherUserId(conv);
+    final recipientId = result.$2;
 
     final picker = ImagePicker();
     final image = await picker.pickImage(source: ImageSource.gallery);
@@ -129,14 +123,16 @@ class ChatActionTiles extends StatelessWidget {
     }
   }
 
-  void _openDrawing(BuildContext context) {
-    final chat = context.read<ChatProvider>();
-
-    // Guard: Check if conversation is active
-    if (chat.activeConversationId == null) {
+  bool _ensureHasActiveConversation(BuildContext context) {
+    if (context.read<ChatProvider>().activeConversationId == null) {
       showTopSnackBar(context, 'Open a conversation first');
-      return;
+      return false;
     }
+    return true;
+  }
+
+  void _openDrawing(BuildContext context) {
+    if (!_ensureHasActiveConversation(context)) return;
 
     Navigator.push(
       context,
@@ -151,14 +147,9 @@ class ChatActionTiles extends StatelessWidget {
   }
 
   void _handleClearChatHistory(BuildContext context) {
+    if (!_ensureHasActiveConversation(context)) return;
+
     final chat = context.read<ChatProvider>();
-
-    // Guard: Check if conversation is active
-    if (chat.activeConversationId == null) {
-      showTopSnackBar(context, 'Open a conversation first');
-      return;
-    }
-
     final conversationId = chat.activeConversationId!;
 
     // Clear chat history
@@ -331,7 +322,6 @@ class _TimerDialog extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: _options.map((opt) {
           final value = opt['value'] as int?;
-          final isSelected = value == current;
           return RadioListTile<int?>(
             title: Text(opt['label'] as String),
             value: value,

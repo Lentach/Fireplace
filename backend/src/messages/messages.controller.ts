@@ -17,6 +17,7 @@ import { ConversationsService } from '../conversations/conversations.service';
 import { UsersService } from '../users/users.service';
 import { FriendsService } from '../friends/friends.service';
 import { MessageType } from './message.entity';
+import { MessageMapper } from './message.mapper';
 
 @Controller('messages')
 export class MessagesController {
@@ -94,19 +95,9 @@ export class MessagesController {
       expiresAt,
     });
 
-    return {
-      id: message.id,
-      content: message.content,
-      senderId: sender.id,
-      senderEmail: sender.email,
-      senderUsername: sender.username,
+    return MessageMapper.toPayload(message, {
       conversationId: conversation.id,
-      createdAt: message.createdAt,
-      deliveryStatus: message.deliveryStatus,
-      expiresAt: message.expiresAt,
-      messageType: message.messageType,
-      mediaUrl: message.mediaUrl,
-    };
+    });
   }
 
   @Post('voice')

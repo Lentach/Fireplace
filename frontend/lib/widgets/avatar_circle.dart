@@ -21,13 +21,11 @@ class AvatarCircle extends StatefulWidget {
 class _AvatarCircleState extends State<AvatarCircle> {
   bool _imageLoadError = false;
   /// Stable cache-bust per profilePictureUrl so parent rebuilds don't change URL and reload image.
-  String? _lastProfilePictureUrl;
   int? _urlCacheBust;
 
   @override
   void initState() {
     super.initState();
-    _lastProfilePictureUrl = widget.profilePictureUrl;
     if (widget.profilePictureUrl != null &&
         widget.profilePictureUrl!.trim().isNotEmpty) {
       _urlCacheBust = DateTime.now().millisecondsSinceEpoch;
@@ -39,7 +37,6 @@ class _AvatarCircleState extends State<AvatarCircle> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.profilePictureUrl != widget.profilePictureUrl) {
       _imageLoadError = false;
-      _lastProfilePictureUrl = widget.profilePictureUrl;
       _urlCacheBust = widget.profilePictureUrl != null &&
               widget.profilePictureUrl!.trim().isNotEmpty
           ? DateTime.now().millisecondsSinceEpoch

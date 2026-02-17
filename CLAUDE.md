@@ -30,7 +30,7 @@ cd frontend && flutter run -d chrome
 
 **Stack:** NestJS 11 + Flutter 3.x + PostgreSQL 16 + Socket.IO 4 + JWT + Cloudinary
 
-**Mobile (on hold):** Local network config issues. Will return later.
+**Run for phone (same WiFi):** Use **web-server**, not Chrome — `-d chrome` with `--web-hostname 0.0.0.0` breaks the debug WebSocket (AppConnectionException). Run: `cd frontend && .\run_web_for_phone.ps1` or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`. Then open `http://YOUR_PC_IP:8080` on the phone. Backend CORS allows `192.168.*` and `10.*` in dev.
 
 ---
 
@@ -325,7 +325,7 @@ Breakpoint: `AppConstants.layoutBreakpointDesktop = 600`. Below = stacked naviga
 **Files:**
 - `providers/chat_provider.dart` — main provider (~750 lines), structured with section comments (Message handlers, Open conversation, Send message/voice/image, Delivery events, Conversation events, Friend actions, Connection lifecycle)
 - `providers/chat_reconnect_manager.dart` — WebSocket reconnection state and exponential backoff
-- `providers/conversation_helpers.dart` — pure helpers: `getOtherUserId`, `getOtherUser`, `getOtherUserEmail`, `getOtherUserUsername(conv, currentUserId)`
+- `providers/conversation_helpers.dart` — pure helpers: `getOtherUserId`, `getOtherUser`, `getOtherUserUsername(conv, currentUserId)`
 
 **Internal state:**
 
@@ -493,6 +493,7 @@ flowchart TD
 | Mapper | File | Method | Converts |
 |---|---|---|---|
 | `UserMapper` | `chat/mappers/user.mapper.ts` | `toPayload(user)` | User -> `{ id, email, username, profilePictureUrl }` |
+| `MessageMapper` | `messages/message.mapper.ts` | `toPayload(message, options?)` | Message -> payload; options: tempId?, conversationId? |
 | `ConversationMapper` | `chat/mappers/conversation.mapper.ts` | `toPayload(conv, options?)` | Conversation -> payload with optional unreadCount + lastMessage |
 | `FriendRequestMapper` | `chat/mappers/friend-request.mapper.ts` | `toPayload(request)` | FriendRequest -> payload with sender/receiver as UserPayload |
 
@@ -587,12 +588,12 @@ Upload via REST: POST /messages/image (multipart, JPEG/PNG, max 5MB). Creates me
 | **Auth** | `auth/auth.service.ts`, `auth/auth.controller.ts`, `auth/jwt-auth.guard.ts`, `auth/jwt.strategy.ts` |
 | **Users** | `users/user.entity.ts`, `users/users.service.ts`, `users/users.controller.ts` |
 | **Conversations** | `conversations/conversation.entity.ts`, `conversations/conversations.service.ts` |
-| **Messages** | `messages/message.entity.ts`, `messages/messages.service.ts`, `messages/messages.controller.ts` |
+| **Messages** | `messages/message.entity.ts`, `messages/message.mapper.ts`, `messages/messages.service.ts`, `messages/messages.controller.ts` |
 | **Friends** | `friends/friend-request.entity.ts`, `friends/friends.service.ts` |
 | **WebSocket gateway** | `chat/chat.gateway.ts` (router only, delegates to services) |
 | **Chat services** | `chat/services/chat-message.service.ts`, `chat/services/chat-conversation.service.ts`, `chat/services/chat-friend-request.service.ts` |
 | **DTOs** | `chat/dto/chat.dto.ts` (main), `chat/dto/send-ping.dto.ts`, `chat/dto/clear-chat-history.dto.ts`, `chat/dto/set-disappearing-timer.dto.ts`, `chat/dto/delete-conversation-only.dto.ts` |
-| **Mappers** | `chat/mappers/conversation.mapper.ts`, `chat/mappers/user.mapper.ts`, `chat/mappers/friend-request.mapper.ts` |
+| **Mappers** | `chat/mappers/conversation.mapper.ts`, `chat/mappers/user.mapper.ts`, `chat/mappers/friend-request.mapper.ts`, `messages/message.mapper.ts` |
 | **Utils** | `chat/utils/dto.validator.ts` |
 | **Cloudinary** | `cloudinary/cloudinary.service.ts`, `cloudinary/cloudinary.module.ts` |
 | **App config** | `app.module.ts` (TypeORM, Throttler, JWT, Cloudinary, Schedule) |
@@ -723,8 +724,11 @@ Frontend runs locally (not in Docker): `flutter run -d chrome`
 ## 13. Recent Changes (Last 14 Days)
 
 **2026-02-17:**
+- **Backend unit tests:** Added 22 unit tests (AuthService, validateDto, User/Message/Conversation/FriendRequest mappers). No DB—mocked deps. `npm test` uses `jest.config.json` + `tsconfig.spec.json`.
+- **Dead code removal:** Removed unused `_lastProfilePictureUrl` from AvatarCircle; removed unused `isSelected` from ChatActionTiles _TimerDialog; replaced `print` with `debugPrint` in VoiceMessageBubble; removed unused `getOtherUserEmail` from ChatProvider and conversation_helpers.
+- **Duplicate code removal:** (1) ChatProvider: added `getConversationById(id)`; ChatDetailScreen uses `_getActiveConversation()` instead of 3x repeated conv lookup. (2) ChatActionTiles: extracted `_ensureHasActiveConversation()` and `_requireActiveConversation()` (conv+recipientId) to replace 4x guard + 2x conv/recipientId blocks. (3) Backend: created `MessageMapper.toPayload()` in `messages/message.mapper.ts`; chat-message.service, messages.controller, conversation.mapper now use it for all message payloads.
 - **chat-friend-request.service.ts refactor:** Reduced from ~602 to ~428 lines. Added private helpers: `emitFriendsListToBoth`, `emitConversationsListToBoth`, `emitPendingCountToBoth`, `emitOpenConversationToBoth`, `emitAutoAcceptFlow`. Handlers `handleSendFriendRequest` (auto-accept block), `handleAcceptFriendRequest`, `handleUnfriend` now use these; behavior unchanged.
-- **ChatProvider refactor:** Extracted `ChatReconnectManager` (reconnect state + exponential backoff) and `conversation_helpers.dart` (getOtherUserId, getOtherUser, getOtherUserEmail, getOtherUserUsername). Main file structured with section comments for messages, conversations, friends, connection. Public API unchanged.
+- **ChatProvider refactor:** Extracted `ChatReconnectManager` (reconnect state + exponential backoff) and `conversation_helpers.dart` (getOtherUserId, getOtherUser, getOtherUserUsername). Main file structured with section comments for messages, conversations, friends, connection. Public API unchanged.
 - **Voice recording drag-to-trash:** User must drag mic to trash to cancel; trash scales up (1.25x) when mic gets close; cancel only on release when mic is over trash zone. Max drag = 50% of screen width.
 - **Voice message compact UI:** Scrubbable waveform (Telegram-style) — tap or drag on waveform to seek; removed separate slider row. Time display integrated into one row.
 - **Quick clean refactoring:** Removed dead code, debug prints, unused exports. Net -454 lines.
@@ -773,7 +777,7 @@ Frontend runs locally (not in Docker): `flutter run -d chrome`
 - `_conversationsWithUnread()` has N+1 query pattern
 
 ### Tech Debt
-- No backend unit tests (only Flutter has 9 basic tests)
+- Backend has 22 unit tests (AuthService, validateDto, User/Message/Conversation/FriendRequest mappers). Run: `npm test`. Uses `jest.config.json` + `tsconfig.spec.json` (no DB).
 - Manual E2E scripts in `scripts/` (not part of shipped app)
 - Large files: `chat_provider.dart` (~654 lines, refactored with helpers + section comments). `chat-friend-request.service.ts` reduced to ~428 lines via private emit helpers (emitFriendsListToBoth, emitConversationsListToBoth, emitPendingCountToBoth, emitOpenConversationToBoth, emitAutoAcceptFlow).
 

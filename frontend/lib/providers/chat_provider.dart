@@ -57,6 +57,10 @@ class ChatProvider extends ChangeNotifier {
 
   int getUnreadCount(int conversationId) => _unreadCounts[conversationId] ?? 0;
 
+  /// Returns conversation by id, or null if not found.
+  ConversationModel? getConversationById(int id) =>
+      _conversations.where((c) => c.id == id).firstOrNull;
+
   void setConversationDisappearingTimer(int? seconds) {
     if (_activeConversationId == null) return;
     _socketService.emitSetDisappearingTimer(_activeConversationId!, seconds);
@@ -120,9 +124,6 @@ class ChatProvider extends ChangeNotifier {
     _friendRequestJustSent = false;
     return sent;
   }
-
-  String getOtherUserEmail(ConversationModel conv) =>
-      conv_helpers.getOtherUserEmail(conv, _currentUserId);
 
   String getOtherUserUsername(ConversationModel conv) =>
       conv_helpers.getOtherUserUsername(conv, _currentUserId);

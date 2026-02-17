@@ -8,6 +8,7 @@ import '../theme/rpg_theme.dart';
 import '../widgets/chat_message_bubble.dart';
 import '../widgets/chat_input_bar.dart';
 import '../widgets/message_date_separator.dart';
+import '../models/conversation_model.dart';
 import '../models/user_model.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/ping_effect_overlay.dart';
@@ -161,25 +162,20 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
   }
 
-  String _getContactName() {
-    final chat = context.read<ChatProvider>();
-    final conv = chat.conversations.where((c) => c.id == widget.conversationId).firstOrNull;
-    if (conv == null) return '';
-    return chat.getOtherUserUsername(conv);
+  ConversationModel? _getActiveConversation() {
+    return context.read<ChatProvider>().getConversationById(widget.conversationId);
   }
 
-  int _getOtherUserId() {
-    final chat = context.read<ChatProvider>();
-    final conv = chat.conversations.where((c) => c.id == widget.conversationId).firstOrNull;
-    if (conv == null) return 0;
-    return chat.getOtherUserId(conv);
+  String _getContactName() {
+    final conv = _getActiveConversation();
+    return conv != null
+        ? context.read<ChatProvider>().getOtherUserUsername(conv)
+        : '';
   }
 
   UserModel? _getOtherUser() {
-    final chat = context.read<ChatProvider>();
-    final conv = chat.conversations.where((c) => c.id == widget.conversationId).firstOrNull;
-    if (conv == null) return null;
-    return chat.getOtherUser(conv);
+    final conv = _getActiveConversation();
+    return conv != null ? context.read<ChatProvider>().getOtherUser(conv) : null;
   }
 
   bool _isDifferentDay(DateTime a, DateTime b) {

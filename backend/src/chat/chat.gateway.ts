@@ -15,12 +15,23 @@ import { ChatMessageService } from './services/chat-message.service';
 import { ChatFriendRequestService } from './services/chat-friend-request.service';
 import { ChatConversationService } from './services/chat-conversation.service';
 
-// cors: configured from environment or default to localhost for development
+// CORS: allow localhost and LAN (192.168.x, 10.x) in dev so phone can connect
+const allowedOriginsList = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
+  .split(',')
+  .map((o) => o.trim());
 @WebSocketGateway({
   cors: {
-    origin: (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
-      .split(',')
-      .map((o) => o.trim()),
+    origin: (origin: string, cb: (err: Error | null, allow?: boolean) => void) => {
+      if (!origin || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
+        cb(null, true);
+      } else if (origin.startsWith('http://192.168.') || origin.startsWith('http://10.')) {
+        cb(null, true);
+      } else if (allowedOriginsList.includes(origin)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Not allowed by CORS'), false);
+      }
+    },
   },
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {

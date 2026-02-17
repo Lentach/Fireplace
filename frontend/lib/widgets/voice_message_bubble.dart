@@ -1,4 +1,5 @@
 import 'dart:io';
+import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
@@ -145,7 +146,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
       if (_loadCancelled || !mounted) return;
       await _audioPlayer.play();
     } catch (e) {
-      print('Audio load error: $e');
+      debugPrint('Audio load error: $e');
       if (mounted) showTopSnackBar(context, 'Failed to load audio');
     } finally {
       if (mounted) {
@@ -322,6 +323,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
                                   progress: _position.inMilliseconds /
                                       _displayDuration.inMilliseconds,
                                   color: borderColor,
+                                  messageId: widget.message.id,
                                 ),
                                 size: Size(w, 28),
                               )
@@ -406,10 +408,12 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
 class _WaveformPainter extends CustomPainter {
   final double progress;
   final Color color;
+  final int messageId; // seed for per-message waveform variation
 
   _WaveformPainter({
     required this.progress,
     required this.color,
+    required this.messageId,
   });
 
   @override
@@ -424,28 +428,30 @@ class _WaveformPainter extends CustomPainter {
       ..strokeWidth = 2
       ..strokeCap = StrokeCap.round;
 
-    // Generate random-looking waveform (in real impl, use actual audio data)
     final barCount = 50;
     final barWidth = size.width / barCount;
+    final seed = messageId.abs() % 1000; // per-message variation (id can be negative for temp)
 
     for (int i = 0; i < barCount; i++) {
-      // Pseudo-random height based on index (deterministic for same message)
-      final heightFactor = ((i * 7) % 10) / 10.0;
-      final barHeight = size.height * 0.2 + (size.height * 0.6 * heightFactor);
+      // Wave-like pattern: multiple overlapping sine waves for natural variation
+      final t = (i + seed * 0.1) * 0.35;
+      final wave1 = math.sin(t) * 0.4;
+      final wave2 = math.sin(t * 2.3 + 1.5) * 0.2;
+      final wave3 = math.sin(t * 0.7 + 3) * 0.15;
+      final heightFactor = (0.5 + wave1 + wave2 + wave3).clamp(0.15, 0.95);
+      final barHeight = size.height * heightFactor;
 
       final x = i * barWidth + barWidth / 2;
       final y1 = (size.height - barHeight) / 2;
       final y2 = y1 + barHeight;
 
-      // Use filled paint if before progress, else unfilled
       final currentPaint = (i / barCount) <= progress ? paintFilled : paint;
-
       canvas.drawLine(Offset(x, y1), Offset(x, y2), currentPaint);
     }
   }
 
   @override
   bool shouldRepaint(_WaveformPainter oldDelegate) {
-    return oldDelegate.progress != progress;
+    return oldDelegate.progress != progress || oldDelegate.messageId != messageId;
   }
 }
