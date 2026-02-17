@@ -39,12 +39,12 @@ class SocketService {
       _socket = null;
     }
 
+    // Token in auth only (not query) — avoids URL/log/Referer leakage
     _socket = io.io(
       baseUrl,
       io.OptionBuilder()
           .setTransports(['websocket'])
           .setAuth({'token': token})
-          .setQuery({'token': token})
           .disableAutoConnect()
           .enableForceNew()
           .build(),

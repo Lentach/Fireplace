@@ -405,7 +405,7 @@ class _ChatInputBarState extends State<ChatInputBar>
                 height: 12,
                 decoration: BoxDecoration(
                   shape: BoxShape.circle,
-                  color: Colors.red.withOpacity(0.7 + (_pulseController.value * 0.3)),
+                  color: Colors.red.withValues(alpha: 0.7 + (_pulseController.value * 0.3)),
                 ),
               );
             },

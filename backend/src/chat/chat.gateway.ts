@@ -15,24 +15,36 @@ import { ChatMessageService } from './services/chat-message.service';
 import { ChatFriendRequestService } from './services/chat-friend-request.service';
 import { ChatConversationService } from './services/chat-conversation.service';
 
-// CORS: allow localhost and LAN (192.168.x, 10.x) in dev so phone can connect
-const allowedOriginsList = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
-  .split(',')
-  .map((o) => o.trim());
+// CORS: In production only ALLOWED_ORIGINS. In dev also allow localhost + LAN (phone).
+function buildCorsOrigin() {
+  const allowed = (process.env.ALLOWED_ORIGINS || 'http://localhost:3000')
+    .split(',')
+    .map((o) => o.trim());
+  const isProd = process.env.NODE_ENV === 'production';
+  return (origin: string, cb: (err: Error | null, allow?: boolean) => void) => {
+    if (!origin) {
+      cb(null, true);
+      return;
+    }
+    if (allowed.includes(origin)) {
+      cb(null, true);
+      return;
+    }
+    if (
+      !isProd &&
+      (origin.startsWith('http://localhost:') ||
+        origin.startsWith('http://127.0.0.1:') ||
+        origin.startsWith('http://192.168.') ||
+        origin.startsWith('http://10.'))
+    ) {
+      cb(null, true);
+      return;
+    }
+    cb(new Error('Not allowed by CORS'), false);
+  };
+}
 @WebSocketGateway({
-  cors: {
-    origin: (origin: string, cb: (err: Error | null, allow?: boolean) => void) => {
-      if (!origin || origin.startsWith('http://localhost:') || origin.startsWith('http://127.0.0.1:')) {
-        cb(null, true);
-      } else if (origin.startsWith('http://192.168.') || origin.startsWith('http://10.')) {
-        cb(null, true);
-      } else if (allowedOriginsList.includes(origin)) {
-        cb(null, true);
-      } else {
-        cb(new Error('Not allowed by CORS'), false);
-      }
-    },
-  },
+  cors: { origin: buildCorsOrigin() },
 })
 export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   private readonly logger = new Logger(ChatGateway.name);
@@ -54,9 +66,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // On WebSocket connection — verify the JWT token.
   async handleConnection(client: Socket) {
     try {
+      // Prefer auth over query — token in URL leaks to logs/Referer
       const token =
-        (client.handshake.query.token as string) ||
-        client.handshake.auth?.token;
+        (client.handshake.auth?.token as string) ||
+        (client.handshake.query.token as string);
 
       if (!token) {
         client.disconnect();

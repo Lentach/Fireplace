@@ -2,6 +2,7 @@ import {
   Injectable,
   UnauthorizedException,
   BadRequestException,
+  Logger,
 } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
@@ -9,6 +10,7 @@ import { UsersService } from '../users/users.service';
 
 @Injectable()
 export class AuthService {
+  private readonly auditLogger = new Logger('Audit');
   // Password strength requirements
   private PASSWORD_MIN_LENGTH = 8;
   private PASSWORD_REGEX =
@@ -43,13 +45,17 @@ export class AuthService {
   async login(email: string, password: string) {
     const user = await this.usersService.findByEmail(email);
     if (!user) {
+      this.auditLogger.log(`login failed email=${email}`);
       throw new UnauthorizedException('Invalid credentials');
     }
 
     const passwordValid = await bcrypt.compare(password, user.password);
     if (!passwordValid) {
+      this.auditLogger.log(`login failed email=${email}`);
       throw new UnauthorizedException('Invalid credentials');
     }
+
+    this.auditLogger.log(`login success userId=${user.id} email=${email}`);
 
     // Token payload — sub is the JWT standard for "subject" (user id)
     const payload = {

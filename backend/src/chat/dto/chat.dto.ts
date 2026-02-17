@@ -6,8 +6,12 @@ import {
   MaxLength,
   IsOptional,
   Min,
+  Matches,
   ValidateIf,
 } from 'class-validator';
+
+/** Cloudinary URL pattern — prevents SSRF/redirect injection */
+const CLOUDINARY_URL_REGEX = /^https:\/\/res\.cloudinary\.com\/[a-zA-Z0-9_-]+\/(video|image)\/upload\/.+/;
 
 export class SendMessageDto {
   @IsNumber()
@@ -35,6 +39,10 @@ export class SendMessageDto {
 
   @IsOptional()
   @IsString()
+  @ValidateIf((o) => o.mediaUrl != null && o.mediaUrl !== '')
+  @Matches(CLOUDINARY_URL_REGEX, {
+    message: 'mediaUrl must be a valid Cloudinary URL (res.cloudinary.com)',
+  })
   mediaUrl?: string; // Cloudinary URL for voice/image
 
   @IsOptional()

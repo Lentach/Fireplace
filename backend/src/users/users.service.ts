@@ -3,6 +3,7 @@ import {
   ConflictException,
   UnauthorizedException,
   NotFoundException,
+  Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
@@ -15,6 +16,8 @@ import { FriendRequest } from '../friends/friend-request.entity';
 
 @Injectable()
 export class UsersService {
+  private readonly auditLogger = new Logger('Audit');
+
   constructor(
     @InjectRepository(User)
     private usersRepo: Repository<User>,
@@ -114,6 +117,7 @@ export class UsersService {
     const hash = await bcrypt.hash(newPassword, 10);
     user.password = hash;
     await this.usersRepo.save(user);
+    this.auditLogger.log(`resetPassword success userId=${userId}`);
   }
 
   async deleteAccount(userId: number, password: string): Promise<void> {
@@ -157,5 +161,6 @@ export class UsersService {
     }
 
     await this.usersRepo.remove(user);
+    this.auditLogger.log(`deleteAccount success userId=${userId} email=${user.email}`);
   }
 }

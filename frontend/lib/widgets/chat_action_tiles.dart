@@ -318,20 +318,22 @@ class _TimerDialog extends StatelessWidget {
 
     return AlertDialog(
       title: const Text('Disappearing Messages'),
-      content: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: _options.map((opt) {
-          final value = opt['value'] as int?;
-          return RadioListTile<int?>(
-            title: Text(opt['label'] as String),
-            value: value,
-            groupValue: current,
-            onChanged: (_) {
-              chat.setConversationDisappearingTimer(value);
-              Navigator.pop(context);
-            },
-          );
-        }).toList(),
+      content: RadioGroup<int?>(
+        groupValue: current,
+        onChanged: (value) {
+          chat.setConversationDisappearingTimer(value);
+          Navigator.pop(context);
+        },
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: _options.map((opt) {
+            final value = opt['value'] as int?;
+            return RadioListTile<int?>(
+              title: Text(opt['label'] as String),
+              value: value,
+            );
+          }).toList(),
+        ),
       ),
     );
   }
@@ -355,7 +357,7 @@ class _CircularProgressPainter extends CustomPainter {
 
     // Background circle (light gray)
     final bgPaint = Paint()
-      ..color = Colors.grey.withOpacity(0.3)
+      ..color = Colors.grey.withValues(alpha: 0.3)
       ..style = PaintingStyle.stroke
       ..strokeWidth = 3.0;
     canvas.drawCircle(center, radius, bgPaint);

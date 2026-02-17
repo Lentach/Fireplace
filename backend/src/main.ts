@@ -2,12 +2,16 @@ import { NestFactory } from '@nestjs/core';
 import { ValidationPipe, Logger } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';
+import helmet from 'helmet';
 import { AppModule } from './app.module';
 
 async function bootstrap() {
   const app = await NestFactory.create<NestExpressApplication>(AppModule);
   const logger = new Logger('Bootstrap');
   const configService = app.get(ConfigService);
+
+  // Security headers (X-Content-Type-Options, X-Frame-Options, etc.)
+  app.use(helmet());
 
   // ValidationPipe validates DTOs (e.g. checks if email is valid).
   // whitelist: true — strips properties not defined in the DTO (security).

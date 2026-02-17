@@ -60,7 +60,7 @@ flowchart TB
     end
 
     Client -->|"REST + Bearer JWT"| REST
-    Client -->|"Socket.IO ?token=JWT"| WS
+    Client -->|"Socket.IO auth.token"| WS
 ```
 
 ### State Management
@@ -147,7 +147,7 @@ erDiagram
 
 ## 3. WebSocket API -- Complete Event Reference
 
-**Connection:** `io(baseUrl, { query: { token: JWT }, auth: { token: JWT } })`
+**Connection:** `io(baseUrl, { auth: { token: JWT } })` — token in auth only (not query) to avoid URL/log leakage.
 Gateway verifies JWT via `jwtService.verify()`, stores `client.data.user = { id, email, username }`, tracks `onlineUsers: Map<userId, socketId>`.
 
 ### 3.1 Message Events
@@ -221,7 +221,7 @@ Gateway verifies JWT via `jwtService.verify()`, stores `client.data.user = { id,
 
 | DTO | Fields | Notes |
 |---|---|---|
-| `SendMessageDto` | recipientId (int+), content (str 1-5000), expiresIn?, tempId?, messageType?, mediaUrl?, mediaDuration? | content validation skipped for VOICE/PING via `@ValidateIf` |
+| `SendMessageDto` | recipientId (int+), content (str 1-5000), expiresIn?, tempId?, messageType?, mediaUrl?, mediaDuration? | content validation skipped for VOICE/PING via `@ValidateIf`; mediaUrl validated as Cloudinary URL (res.cloudinary.com) |
 | `SendFriendRequestDto` | recipientEmail (str 5-255) | |
 | `AcceptFriendRequestDto` | requestId (int+) | |
 | `RejectFriendRequestDto` | requestId (int+) | |
@@ -237,15 +237,15 @@ Gateway verifies JWT via `jwtService.verify()`, stores `client.data.user = { id,
 
 ## 4. REST API
 
-| Method | Path | Auth | Body / Params | Response |
-|---|---|---|---|---|
-| POST | `/auth/register` | -- | `{ email, password, username? }` | 201: `{ id, email, username }` |
-| POST | `/auth/login` | -- | `{ email, password }` | 200: `{ access_token }` |
-| POST | `/users/profile-picture` | JWT | multipart `file` (JPEG/PNG, max 5MB) | `{ profilePictureUrl }` |
-| POST | `/users/reset-password` | JWT | `{ oldPassword, newPassword }` | 200 |
-| DELETE | `/users/account` | JWT | `{ password }` | 200 (cascade deletes all data) |
-| POST | `/messages/voice` | JWT | multipart `audio` (AAC/M4A/MP3/WebM/WAV, max 10MB) + `duration` + `expiresIn?` | `{ mediaUrl, publicId, duration }` |
-| POST | `/messages/image` | JWT | multipart `file` (JPEG/PNG, max 5MB) + `recipientId` + `expiresIn?` | MessagePayload |
+| Method | Path | Auth | Body / Params | Response | Audit |
+|---|---|---|---|---|---|
+| POST | `/auth/register` | -- | `{ email, password, username? }` | 201: `{ id, email, username }` | -- |
+| POST | `/auth/login` | -- | `{ email, password }` | 200: `{ access_token }` | success/failure |
+| POST | `/users/profile-picture` | JWT | multipart `file` (JPEG/PNG, max 5MB) | `{ profilePictureUrl }` | -- |
+| POST | `/users/reset-password` | JWT | `{ oldPassword, newPassword }` | 200 | success |
+| DELETE | `/users/account` | JWT | `{ password }` | 200 (cascade deletes all data) | success |
+| POST | `/messages/voice` | JWT | multipart `audio` (AAC/M4A/MP3/WebM/WAV, max 10MB) + `duration` + `expiresIn?` | `{ mediaUrl, publicId, duration }` | -- |
+| POST | `/messages/image` | JWT | multipart `file` (JPEG/PNG, max 5MB) + `recipientId` + `expiresIn?` | MessagePayload | -- |
 
 **Password rules:** 8+ chars, 1 uppercase, 1 lowercase, 1 number. Regex: `/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d\s@$!%*?&]{8,}$/`
 
@@ -499,7 +499,7 @@ flowchart TD
 
 ### 7.5 DTO Validation Utility
 
-`chat/utils/dto.validator.ts` -- Runtime validation using `class-transformer` (plainToInstance) + `class-validator` (validateSync). Used by all chat service handlers before processing data.
+`chat/utils/dto.validator.ts` -- Runtime validation using `class-transformer` (plainToInstance) + `class-validator` (validateSync). Used by all chat service handlers before processing data. `SendMessageDto.mediaUrl` is validated as Cloudinary URL when provided (see Section 3.5).
 
 ---
 
@@ -549,6 +549,8 @@ const active = messages.filter(
 3. On success: send via WebSocket with `mediaUrl` + `mediaDuration`, delete temp file (native)
 4. On failure: mark as FAILED -> retry button (native only, web has no cached bytes)
 
+**Backend mediaUrl validation:** `SendMessageDto` accepts only Cloudinary URLs (`res.cloudinary.com/.../(video|image)/upload/...`) when `mediaUrl` is provided. Prevents SSRF/redirect injection.
+
 **Playback:** Lazy download from `mediaUrl`, cached at `{appDocDir}/audio_cache/{messageId}.m4a`. **Scrubbable waveform** (Telegram-style): tap or drag on waveform to seek; no separate slider. Speed toggle (1x/1.5x/2x via `just_audio`).
 
 **Format:** AAC/M4A (native), WAV (web). 44.1kHz mono. Max 2 min, min 1s.
@@ -585,16 +587,16 @@ Upload via REST: POST /messages/image (multipart, JPEG/PNG, max 5MB). Creates me
 
 | Domain | Files |
 |---|---|
-| **Auth** | `auth/auth.service.ts`, `auth/auth.controller.ts`, `auth/jwt-auth.guard.ts`, `auth/jwt.strategy.ts` |
-| **Users** | `users/user.entity.ts`, `users/users.service.ts`, `users/users.controller.ts` |
+| **Auth** | `auth/auth.service.ts` (audit: login success/failure), `auth/auth.controller.ts`, `auth/jwt-auth.guard.ts`, `auth/jwt.strategy.ts` |
+| **Users** | `users/user.entity.ts`, `users/users.service.ts` (audit: resetPassword, deleteAccount), `users/users.controller.ts` |
 | **Conversations** | `conversations/conversation.entity.ts`, `conversations/conversations.service.ts` |
 | **Messages** | `messages/message.entity.ts`, `messages/message.mapper.ts`, `messages/messages.service.ts`, `messages/messages.controller.ts` |
 | **Friends** | `friends/friend-request.entity.ts`, `friends/friends.service.ts` |
 | **WebSocket gateway** | `chat/chat.gateway.ts` (router only, delegates to services) |
 | **Chat services** | `chat/services/chat-message.service.ts`, `chat/services/chat-conversation.service.ts`, `chat/services/chat-friend-request.service.ts` |
-| **DTOs** | `chat/dto/chat.dto.ts` (main), `chat/dto/send-ping.dto.ts`, `chat/dto/clear-chat-history.dto.ts`, `chat/dto/set-disappearing-timer.dto.ts`, `chat/dto/delete-conversation-only.dto.ts` |
+| **DTOs** | `chat/dto/chat.dto.ts` (main; SendMessageDto.mediaUrl validated as Cloudinary URL), `chat/dto/send-ping.dto.ts`, `chat/dto/clear-chat-history.dto.ts`, `chat/dto/set-disappearing-timer.dto.ts`, `chat/dto/delete-conversation-only.dto.ts` |
 | **Mappers** | `chat/mappers/conversation.mapper.ts`, `chat/mappers/user.mapper.ts`, `chat/mappers/friend-request.mapper.ts`, `messages/message.mapper.ts` |
-| **Utils** | `chat/utils/dto.validator.ts` |
+| **Utils** | `chat/utils/dto.validator.ts` (validateDto; SendMessageDto mediaUrl tests in dto.validator.spec.ts) |
 | **Cloudinary** | `cloudinary/cloudinary.service.ts`, `cloudinary/cloudinary.module.ts` |
 | **App config** | `app.module.ts` (TypeORM, Throttler, JWT, Cloudinary, Schedule) |
 
@@ -668,6 +670,8 @@ Upload via REST: POST /messages/image (multipart, JPEG/PNG, max 5MB). Creates me
 
 | Rule | Reason |
 |---|---|
+| mediaUrl in SendMessageDto must be Cloudinary URL when provided | Prevents SSRF/redirect injection; validated via `@Matches` regex |
+| Audit-log sensitive actions: login, resetPassword, deleteAccount | AuthService and UsersService use Logger('Audit'); logs to stdout |
 | Delete account cascade: msgs -> convs -> friend_reqs -> user | No cascade on User entity |
 | Avatar delete: only if `oldPublicId !== newPublicId` | Overwrite uses same public_id |
 | `conversationsService.delete()` deletes msgs first | No cascade configured |
@@ -682,11 +686,23 @@ Upload via REST: POST /messages/image (multipart, JPEG/PNG, max 5MB). Creates me
 | Variable | Required | Used By | Purpose |
 |---|---|---|---|
 | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME` | Yes | Backend | PostgreSQL connection |
-| `JWT_SECRET` | Yes | Backend | JWT signing key |
+| `JWT_SECRET` | Yes | Backend | JWT signing key. **Production:** must be strong, no dev fallback |
 | `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Yes | Backend | Media storage (from .env) |
-| `ALLOWED_ORIGINS` | No | Backend | CORS origins (comma-separated, default localhost:3000) |
+| `ALLOWED_ORIGINS` | No | Backend | CORS origins (comma-separated). **Production:** set to frontend URL(s) |
 | `PORT`, `NODE_ENV` | No | Backend | Server port, environment |
 | `BASE_URL` | No | Frontend | Dart define; defaults to auto-detect `http://{browser_host}:3000` |
+
+### Production Checklist
+
+Before deploying to production:
+
+1. **JWT_SECRET** – Strong secret (≥32 chars). App fails to start if missing or equals dev fallback when `NODE_ENV=production`.
+2. **ALLOWED_ORIGINS** – Set to exact frontend URL(s), e.g. `https://app.example.com`. CORS rejects all others in production.
+3. **CORS** – REST and WebSocket use strict origin list when `NODE_ENV=production`; LAN IPs (192.168.*, 10.*) allowed only in dev.
+4. **Rate limits** – Global 100 req/15min; per-route: login 5/15min, register 3/h, image 10/min, voice 10/60s, etc.
+5. **TypeORM** – `synchronize: true` only when `NODE_ENV=development`; use migrations in production.
+6. **Audit logs** – Login, reset password, delete account are logged via Logger('Audit') to stdout. In production, redirect stdout to a log aggregation or file.
+7. **Template** – Copy `backend/.env.example` to `backend/.env` and fill values.
 
 ### Docker Compose (`docker-compose.yml`)
 
@@ -724,6 +740,13 @@ Frontend runs locally (not in Docker): `flutter run -d chrome`
 ## 13. Recent Changes (Last 14 Days)
 
 **2026-02-17:**
+- **mediaUrl validation:** SendMessageDto validates mediaUrl as Cloudinary URL (regex `res.cloudinary.com/{cloud_name}/(video|image)/upload/...`) when provided. Prevents SSRF/redirect injection.
+- **Audit logging:** Logger with context 'Audit' in AuthService (login success/failure by email, userId on success) and UsersService (resetPassword success, deleteAccount success). Logs to stdout.
+- **Socket.IO token:** Frontend sends JWT in `auth.token` only (removed from query). Backend prefers `handshake.auth.token` over query. Avoids token leakage in URL/logs/Referer.
+- **Helmet:** Added helmet middleware for HTTP security headers (X-Content-Type-Options, X-Frame-Options, etc.) in main.ts.
+- **RegisterDto password validation:** Aligned with AuthService—MinLength(8) + @Matches (uppercase, lowercase, number). ValidationPipe rejects weak passwords before AuthService.
+- **Production security:** JWT: no fallback in prod—AuthModule/JwtStrategy use ConfigService; fail if JWT_SECRET missing or equals dev key when NODE_ENV=production. CORS: WebSocket gateway uses strict origin list in prod (no 192.168.*, 10.*). Added backend/.env.example and Production Checklist to CLAUDE.md.
+- **Tech debt (deprecations, deps):** Replaced `withOpacity` with `withValues(alpha:)` in chat_action_tiles, chat_input_bar, voice_message_bubble. Migrated RadioListTile to RadioGroup (Flutter 3.35+). Added `cross_file` and `http_parser` to pubspec.yaml (direct deps).
 - **Backend unit tests:** Added 22 unit tests (AuthService, validateDto, User/Message/Conversation/FriendRequest mappers). No DB—mocked deps. `npm test` uses `jest.config.json` + `tsconfig.spec.json`.
 - **Dead code removal:** Removed unused `_lastProfilePictureUrl` from AvatarCircle; removed unused `isSelected` from ChatActionTiles _TimerDialog; replaced `print` with `debugPrint` in VoiceMessageBubble; removed unused `getOtherUserEmail` from ChatProvider and conversation_helpers.
 - **Duplicate code removal:** (1) ChatProvider: added `getConversationById(id)`; ChatDetailScreen uses `_getActiveConversation()` instead of 3x repeated conv lookup. (2) ChatActionTiles: extracted `_ensureHasActiveConversation()` and `_requireActiveConversation()` (conv+recipientId) to replace 4x guard + 2x conv/recipientId blocks. (3) Backend: created `MessageMapper.toPayload()` in `messages/message.mapper.ts`; chat-message.service, messages.controller, conversation.mapper now use it for all message payloads.
@@ -777,7 +800,7 @@ Frontend runs locally (not in Docker): `flutter run -d chrome`
 - `_conversationsWithUnread()` has N+1 query pattern
 
 ### Tech Debt
-- Backend has 22 unit tests (AuthService, validateDto, User/Message/Conversation/FriendRequest mappers). Run: `npm test`. Uses `jest.config.json` + `tsconfig.spec.json` (no DB).
+- Backend has 26 unit tests (AuthService, validateDto, SendMessageDto mediaUrl, User/Message/Conversation/FriendRequest mappers). Run: `npm test`. Uses `jest.config.json` + `tsconfig.spec.json` (no DB).
 - Manual E2E scripts in `scripts/` (not part of shipped app)
 - Large files: `chat_provider.dart` (~654 lines, refactored with helpers + section comments). `chat-friend-request.service.ts` reduced to ~428 lines via private emit helpers (emitFriendsListToBoth, emitConversationsListToBoth, emitPendingCountToBoth, emitOpenConversationToBoth, emitAutoAcceptFlow).
 

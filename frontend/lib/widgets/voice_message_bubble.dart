@@ -329,7 +329,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
                               )
                             : Container(
                                 height: 28,
-                                color: Colors.grey.withOpacity(0.1),
+                                color: Colors.grey.withValues(alpha: 0.1),
                               ),
                       );
                     },
@@ -419,7 +419,7 @@ class _WaveformPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()
-      ..color = color.withOpacity(0.3)
+      ..color = color.withValues(alpha: 0.3)
       ..strokeWidth = 2
       ..strokeCap = StrokeCap.round;
 
