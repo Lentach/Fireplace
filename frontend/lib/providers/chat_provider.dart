@@ -1,4 +1,3 @@
-import 'dart:async';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -11,10 +10,14 @@ import '../models/message_model.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/socket_service.dart';
+import 'chat_reconnect_manager.dart';
+import 'conversation_helpers.dart' as conv_helpers;
 
 class ChatProvider extends ChangeNotifier {
   final SocketService _socketService = SocketService();
+  final ChatReconnectManager _reconnect = ChatReconnectManager();
 
+  // ---------- State ----------
   List<ConversationModel> _conversations = [];
   List<MessageModel> _messages = [];
   int? _activeConversationId;
@@ -26,10 +29,6 @@ class ChatProvider extends ChangeNotifier {
   int _pendingRequestsCount = 0;
   List<UserModel> _friends = [];
   bool _friendRequestJustSent = false;
-  bool _intentionalDisconnect = false;
-  String? _tokenForReconnect;
-  int _reconnectAttempts = 0;
-  Timer? _reconnectTimer;
   bool _showPingEffect = false;
   final Map<int, int> _unreadCounts = {}; // conversationId -> count
 
@@ -73,6 +72,8 @@ class ChatProvider extends ChangeNotifier {
     _errorMessage = null;
     notifyListeners();
   }
+
+  // ---------- Message handlers (socket events) ----------
 
   void _handleIncomingMessage(dynamic data) {
     final msg = MessageModel.fromJson(data as Map<String, dynamic>);
@@ -120,40 +121,22 @@ class ChatProvider extends ChangeNotifier {
     return sent;
   }
 
-  String getOtherUserEmail(ConversationModel conv) {
-    if (_currentUserId == null) return '';
-    return conv.userOne.id == _currentUserId
-        ? conv.userTwo.email
-        : conv.userOne.email;
-  }
+  String getOtherUserEmail(ConversationModel conv) =>
+      conv_helpers.getOtherUserEmail(conv, _currentUserId);
 
-  String getOtherUserUsername(ConversationModel conv) {
-    if (_currentUserId == null) return '';
-    final otherUser = conv.userOne.id == _currentUserId
-        ? conv.userTwo
-        : conv.userOne;
-    return otherUser.username ?? otherUser.email;
-  }
+  String getOtherUserUsername(ConversationModel conv) =>
+      conv_helpers.getOtherUserUsername(conv, _currentUserId);
 
-  int getOtherUserId(ConversationModel conv) {
-    if (_currentUserId == null) return 0;
-    return conv.userOne.id == _currentUserId
-        ? conv.userTwo.id
-        : conv.userOne.id;
-  }
+  int getOtherUserId(ConversationModel conv) =>
+      conv_helpers.getOtherUserId(conv, _currentUserId);
 
-  UserModel? getOtherUser(ConversationModel conv) {
-    if (_currentUserId == null) return null;
-    return conv.userOne.id == _currentUserId
-        ? conv.userTwo
-        : conv.userOne;
-  }
+  UserModel? getOtherUser(ConversationModel conv) =>
+      conv_helpers.getOtherUser(conv, _currentUserId);
 
   void connect({required String token, required int userId}) {
-    _reconnectTimer?.cancel();
-    _reconnectTimer = null;
-    _intentionalDisconnect = false;
-    _tokenForReconnect = token;
+    _reconnect.cancel();
+    _reconnect.intentionalDisconnect = false;
+    _reconnect.tokenForReconnect = token;
 
     // Clear ALL state before connecting to prevent data leakage between users
     _conversations = [];
@@ -181,7 +164,7 @@ class ChatProvider extends ChangeNotifier {
       baseUrl: AppConfig.baseUrl,
       token: token,
       onConnect: () {
-        _reconnectAttempts = 0; // Reset on successful connection
+        _reconnect.resetAttempts();
         _socketService.getConversations();
         _socketService.getFriendRequests();
         _socketService.getFriends();
@@ -310,9 +293,19 @@ class ChatProvider extends ChangeNotifier {
       onChatHistoryCleared: _handleChatHistoryCleared,
       onDisappearingTimerUpdated: _handleDisappearingTimerUpdated,
       onConversationDeleted: _handleConversationDeleted,
-      onDisconnect: (_) => _onDisconnect(),
+      onDisconnect: (_) {
+        _reconnect.onDisconnect(
+          () => connect(token: _reconnect.tokenForReconnect!, userId: _currentUserId!),
+          (msg) {
+            _errorMessage = msg;
+            notifyListeners();
+          },
+        );
+      },
     );
   }
+
+  // ---------- Open conversation & message list ----------
 
   void openConversation(int conversationId, {int limit = AppConstants.messagePageSize}) {
     _activeConversationId = conversationId;
@@ -353,6 +346,8 @@ class ChatProvider extends ChangeNotifier {
     );
     notifyListeners();
   }
+
+  // ---------- Send message / voice / image ----------
 
   void sendMessage(String content, {int? expiresIn}) {
     if (_activeConversationId == null || _currentUserId == null) return;
@@ -449,13 +444,13 @@ class ChatProvider extends ChangeNotifier {
 
     // 3. Upload to backend in background
     try {
-      if (_tokenForReconnect == null) {
+      if (_reconnect.tokenForReconnect == null) {
         throw Exception('No authentication token available');
       }
 
       final api = ApiService(baseUrl: AppConfig.baseUrl);
       final result = await api.uploadVoiceMessage(
-        token: _tokenForReconnect!,
+        token: _reconnect.tokenForReconnect!,
         duration: duration,
         expiresIn: effectiveExpiresIn,
         audioPath: localAudioPath,
@@ -520,14 +515,10 @@ class ChatProvider extends ChangeNotifier {
       return; // Already sent
     }
 
-    // Get recipientId from conversation
     final conversation = _conversations.firstWhere(
       (c) => c.id == message.conversationId,
     );
-
-    final recipientId = conversation.userOne.id == _currentUserId
-        ? conversation.userTwo.id
-        : conversation.userOne.id;
+    final recipientId = conv_helpers.getOtherUserId(conversation, _currentUserId);
 
     // Update status to SENDING
     final index = _messages.indexWhere((m) => m.tempId == tempId);
@@ -591,6 +582,8 @@ class ChatProvider extends ChangeNotifier {
   void clearChatHistory(int conversationId) {
     _socketService.emitClearChatHistory(conversationId);
   }
+
+  // ---------- Message delivery & history events ----------
 
   void _handleMessageDelivered(dynamic data) {
     final map = data as Map<String, dynamic>;
@@ -659,6 +652,8 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---------- Conversation events ----------
+
   void _handleDisappearingTimerUpdated(dynamic data) {
     final m = data as Map<String, dynamic>;
     final conversationId = m['conversationId'] as int;
@@ -704,6 +699,8 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  // ---------- Conversation & friend actions (socket) ----------
+
   void startConversation(String recipientEmail) {
     _socketService.startConversation(recipientEmail);
   }
@@ -740,12 +737,13 @@ class ChatProvider extends ChangeNotifier {
     return _friends.any((f) => f.id == userId);
   }
 
+  // ---------- Connection lifecycle ----------
+
   void disconnect() {
-    _intentionalDisconnect = true;
-    _tokenForReconnect = null;
-    _reconnectTimer?.cancel();
-    _reconnectTimer = null;
-    _reconnectAttempts = 0;
+    _reconnect.intentionalDisconnect = true;
+    _reconnect.tokenForReconnect = null;
+    _reconnect.cancel();
+    _reconnect.resetAttempts();
     _socketService.disconnect();
     _conversations = [];
     _messages = [];
@@ -761,33 +759,4 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  void _onDisconnect() {
-    if (_intentionalDisconnect || _tokenForReconnect == null || _currentUserId == null) {
-      return;
-    }
-    if (_reconnectAttempts >= AppConstants.reconnectMaxAttempts) {
-      debugPrint('[ChatProvider] Reconnect max attempts reached');
-      _errorMessage = 'Connection lost. Please refresh the page.';
-      notifyListeners();
-      return;
-    }
-    _scheduleReconnect();
-  }
-
-  void _scheduleReconnect() {
-    _reconnectAttempts++;
-    final delay = _reconnectDelay;
-    _reconnectTimer = Timer(delay, () {
-      if (_intentionalDisconnect || _tokenForReconnect == null || _currentUserId == null) {
-        return;
-      }
-      connect(token: _tokenForReconnect!, userId: _currentUserId!);
-    });
-  }
-
-  Duration get _reconnectDelay {
-    final exponential = AppConstants.reconnectInitialDelay.inMilliseconds * (1 << (_reconnectAttempts - 1));
-    final capped = exponential.clamp(0, AppConstants.reconnectMaxDelay.inMilliseconds);
-    return Duration(milliseconds: capped);
-  }
 }

@@ -6,6 +6,7 @@ alwaysApply: true
 # CLAUDE.md — MVP Chat App
 
 **Rules:**
+- Always read this file before you every code change
 - Update this file after every code change
 - Single source of truth for agents — if CLAUDE.md says X, X is correct
 - All code in English (vars, functions, comments, commits). Polish OK in .md files only
@@ -299,7 +300,7 @@ flowchart TD
 | **ChatInputBar** | `widgets/chat_input_bar.dart` | Text input + send + mic (voice) + action tiles toggle. Telegram-style hold-to-record. |
 | **ChatActionTiles** | `widgets/chat_action_tiles.dart` | Grid: Camera, Gallery, Ping, Timer, Clear History, Drawing. |
 | **ChatMessageBubble** | `widgets/chat_message_bubble.dart` | Renders TEXT/PING/IMAGE/DRAWING/VOICE bubbles. Delivery status icons (own msgs only). |
-| **VoiceMessageBubble** | `widgets/voice_message_bubble.dart` | Waveform (CustomPainter), play/pause, **scrubbable waveform** (tap/drag to seek, Telegram-style), speed toggle (1x/1.5x/2x via just_audio). Lazy download + caching. |
+| **VoiceMessageBubble** | `widgets/voice_message_bubble.dart` | Waveform (CustomPainter, sine-wave pattern per message), play/pause, scrubbable waveform (tap/drag to seek), speed toggle (1x/1.5x/2x via just_audio). Lazy download + caching. |
 | **ConversationTile** | `widgets/conversation_tile.dart` | Dismissible swipe-to-delete. Avatar, name, last message preview, unread badge, timestamp. |
 | **TopSnackbar** | `widgets/top_snackbar.dart` | All notifications at top of screen. Never use ScaffoldMessenger. |
 | **AvatarCircle** | `widgets/avatar_circle.dart` | Profile picture with stable cache-bust (per profilePictureUrl, NOT DateTime.now()). |
@@ -321,7 +322,10 @@ Breakpoint: `AppConstants.layoutBreakpointDesktop = 600`. Below = stacked naviga
 
 ### 6.1 ChatProvider (central hub)
 
-**File:** `providers/chat_provider.dart` (~793 lines)
+**Files:**
+- `providers/chat_provider.dart` — main provider (~750 lines), structured with section comments (Message handlers, Open conversation, Send message/voice/image, Delivery events, Conversation events, Friend actions, Connection lifecycle)
+- `providers/chat_reconnect_manager.dart` — WebSocket reconnection state and exponential backoff
+- `providers/conversation_helpers.dart` — pure helpers: `getOtherUserId`, `getOtherUser`, `getOtherUserEmail`, `getOtherUserUsername(conv, currentUserId)`
 
 **Internal state:**
 
@@ -338,12 +342,10 @@ Breakpoint: `AppConstants.layoutBreakpointDesktop = 600`. Below = stacked naviga
 | `_pendingOpenConversationId` | `int?` | consumePendingOpen pattern |
 | `_friendRequestJustSent` | `bool` | consumeFriendRequestSent pattern |
 | `_showPingEffect` | `bool` | Triggers ping animation |
-| `_tokenForReconnect` | `String?` | JWT stored for reconnection |
-| `_reconnectAttempts` | `int` | Current reconnect attempt count (max 5) |
-| `_intentionalDisconnect` | `bool` | Prevents reconnect on intentional logout |
+| `_reconnect` | `ChatReconnectManager` | Reconnection state (token, attempts, intentionalDisconnect, timer) |
 
 **Connect flow:**
-1. Cancel pending reconnect timer, set `_intentionalDisconnect = false`
+1. `_reconnect.cancel()`, set `_reconnect.intentionalDisconnect = false`, store token
 2. Clear ALL state (prevents data leakage between users)
 3. Dispose old socket, create new with `enableForceNew()`
 4. On connect: fetch conversations, friend requests, friends
@@ -370,7 +372,7 @@ sequenceDiagram
     ChatProvider->>UI: notifyListeners()
 ```
 
-**Reconnection:** Exponential backoff: `initialDelay * 2^(attempt-1)`, capped at 30s. Max 5 attempts. Only when `_intentionalDisconnect == false` and token exists.
+**Reconnection:** Handled by `ChatReconnectManager`: exponential backoff `initialDelay * 2^(attempt-1)`, capped at 30s; max 5 attempts; only when `intentionalDisconnect == false` and token exists.
 
 ### 6.2 Key Provider Patterns
 
@@ -601,7 +603,7 @@ Upload via REST: POST /messages/image (multipart, JPEG/PNG, max 5MB). Creates me
 |---|---|
 | **Entry + config** | `main.dart`, `config/app_config.dart`, `constants/app_constants.dart` |
 | **Models** | `models/user_model.dart`, `models/conversation_model.dart`, `models/message_model.dart`, `models/friend_request_model.dart` |
-| **Providers** | `providers/auth_provider.dart`, `providers/chat_provider.dart`, `providers/settings_provider.dart` |
+| **Providers** | `providers/auth_provider.dart`, `providers/chat_provider.dart`, `providers/settings_provider.dart`, `providers/chat_reconnect_manager.dart`, `providers/conversation_helpers.dart` |
 | **Services** | `services/socket_service.dart` (22 event callbacks), `services/api_service.dart` (REST client) |
 | **Screens** | `screens/auth_screen.dart`, `screens/main_shell.dart`, `screens/conversations_screen.dart`, `screens/contacts_screen.dart`, `screens/settings_screen.dart`, `screens/chat_detail_screen.dart`, `screens/add_or_invitations_screen.dart` |
 | **Widgets** | `widgets/chat_input_bar.dart`, `widgets/chat_action_tiles.dart`, `widgets/chat_message_bubble.dart`, `widgets/voice_message_bubble.dart`, `widgets/conversation_tile.dart`, `widgets/top_snackbar.dart`, `widgets/avatar_circle.dart` |
@@ -721,6 +723,8 @@ Frontend runs locally (not in Docker): `flutter run -d chrome`
 ## 13. Recent Changes (Last 14 Days)
 
 **2026-02-17:**
+- **chat-friend-request.service.ts refactor:** Reduced from ~602 to ~428 lines. Added private helpers: `emitFriendsListToBoth`, `emitConversationsListToBoth`, `emitPendingCountToBoth`, `emitOpenConversationToBoth`, `emitAutoAcceptFlow`. Handlers `handleSendFriendRequest` (auto-accept block), `handleAcceptFriendRequest`, `handleUnfriend` now use these; behavior unchanged.
+- **ChatProvider refactor:** Extracted `ChatReconnectManager` (reconnect state + exponential backoff) and `conversation_helpers.dart` (getOtherUserId, getOtherUser, getOtherUserEmail, getOtherUserUsername). Main file structured with section comments for messages, conversations, friends, connection. Public API unchanged.
 - **Voice recording drag-to-trash:** User must drag mic to trash to cancel; trash scales up (1.25x) when mic gets close; cancel only on release when mic is over trash zone. Max drag = 50% of screen width.
 - **Voice message compact UI:** Scrubbable waveform (Telegram-style) — tap or drag on waveform to seek; removed separate slider row. Time display integrated into one row.
 - **Quick clean refactoring:** Removed dead code, debug prints, unused exports. Net -454 lines.
@@ -771,8 +775,7 @@ Frontend runs locally (not in Docker): `flutter run -d chrome`
 ### Tech Debt
 - No backend unit tests (only Flutter has 9 basic tests)
 - Manual E2E scripts in `scripts/` (not part of shipped app)
-- `getOtherUserId` pattern repeated across ChatProvider + screens
-- Large files: `chat_provider.dart` (~793 lines), `chat-friend-request.service.ts` (~601 lines)
+- Large files: `chat_provider.dart` (~654 lines, refactored with helpers + section comments). `chat-friend-request.service.ts` reduced to ~428 lines via private emit helpers (emitFriendsListToBoth, emitConversationsListToBoth, emitPendingCountToBoth, emitOpenConversationToBoth, emitAutoAcceptFlow).
 
 ---
 

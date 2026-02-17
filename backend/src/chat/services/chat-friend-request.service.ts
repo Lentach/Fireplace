@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { FriendsService } from '../../friends/friends.service';
 import { UsersService } from '../../users/users.service';
+import { User } from '../../users/user.entity';
 import { ConversationsService } from '../../conversations/conversations.service';
 import { validateDto } from '../utils/dto.validator';
 import {
@@ -23,6 +24,112 @@ export class ChatFriendRequestService {
     private readonly usersService: UsersService,
     private readonly conversationsService: ConversationsService,
   ) {}
+
+  /** Emit friendsList to client and optionally to another socket. */
+  private async emitFriendsListToBoth(
+    client: Socket,
+    server: Server,
+    clientUserId: number,
+    otherSocketId: string | undefined,
+    otherUserId: number | undefined,
+  ): Promise<void> {
+    try {
+      const clientFriends = await this.friendsService.getFriends(clientUserId);
+      client.emit('friendsList', clientFriends.map((u) => UserMapper.toPayload(u)));
+      if (otherSocketId != null && otherUserId != null) {
+        const otherFriends = await this.friendsService.getFriends(otherUserId);
+        server.to(otherSocketId).emit('friendsList', otherFriends.map((u) => UserMapper.toPayload(u)));
+      }
+    } catch (error) {
+      this.logger.error('emitFriendsListToBoth (non-critical):', error);
+    }
+  }
+
+  /** Emit conversationsList to client and optionally to another socket. */
+  private async emitConversationsListToBoth(
+    client: Socket,
+    server: Server,
+    clientUserId: number,
+    otherSocketId: string | undefined,
+    otherUserId: number | undefined,
+  ): Promise<void> {
+    try {
+      const clientConvs = await this.conversationsService.findByUser(clientUserId);
+      client.emit('conversationsList', clientConvs.map((c) => ConversationMapper.toPayload(c)));
+      if (otherSocketId != null && otherUserId != null) {
+        const otherConvs = await this.conversationsService.findByUser(otherUserId);
+        server.to(otherSocketId).emit('conversationsList', otherConvs.map((c) => ConversationMapper.toPayload(c)));
+      }
+    } catch (error) {
+      this.logger.error('emitConversationsListToBoth (non-critical):', error);
+    }
+  }
+
+  /** Emit pendingRequestsCount to client and optionally to another socket. */
+  private async emitPendingCountToBoth(
+    client: Socket,
+    server: Server,
+    clientUserId: number,
+    otherSocketId: string | undefined,
+    otherUserId: number | undefined,
+  ): Promise<void> {
+    try {
+      const clientCount = await this.friendsService.getPendingRequestCount(clientUserId);
+      client.emit('pendingRequestsCount', { count: clientCount });
+      if (otherSocketId != null && otherUserId != null) {
+        const otherCount = await this.friendsService.getPendingRequestCount(otherUserId);
+        server.to(otherSocketId).emit('pendingRequestsCount', { count: otherCount });
+      }
+    } catch (error) {
+      this.logger.error('emitPendingCountToBoth (non-critical):', error);
+    }
+  }
+
+  /** Emit openConversation to client and optionally to another socket. */
+  private emitOpenConversationToBoth(
+    client: Socket,
+    server: Server,
+    conversationId: number,
+    otherSocketId: string | undefined,
+  ): void {
+    try {
+      client.emit('openConversation', { conversationId });
+      if (otherSocketId) {
+        server.to(otherSocketId).emit('openConversation', { conversationId });
+      }
+    } catch (error) {
+      this.logger.error('emitOpenConversationToBoth (non-critical):', error);
+    }
+  }
+
+  /** Emit full auto-accept flow: friendRequestAccepted, friendsList, conversation + lists, openConversation, pendingCount. */
+  private async emitAutoAcceptFlow(
+    client: Socket,
+    server: Server,
+    sender: User,
+    recipient: User,
+    payload: any,
+    onlineUsers: Map<number, string>,
+  ): Promise<void> {
+    const recipientSocketId = onlineUsers.get(recipient.id);
+    try {
+      client.emit('friendRequestAccepted', payload);
+      if (recipientSocketId) server.to(recipientSocketId).emit('friendRequestAccepted', payload);
+    } catch (error) {
+      this.logger.error('emitAutoAcceptFlow: friendRequestAccepted (non-critical):', error);
+    }
+    await this.emitFriendsListToBoth(client, server, sender.id, recipientSocketId, recipient.id);
+    let conversation: any = null;
+    try {
+      conversation = await this.conversationsService.findOrCreate(sender, recipient);
+      this.logger.debug(`Auto-accept: conversation created/found id=${conversation.id}`);
+    } catch (error) {
+      this.logger.error('emitAutoAcceptFlow: findOrCreate (non-critical):', error);
+    }
+    await this.emitConversationsListToBoth(client, server, sender.id, recipientSocketId, recipient.id);
+    if (conversation) this.emitOpenConversationToBoth(client, server, conversation.id, recipientSocketId);
+    await this.emitPendingCountToBoth(client, server, sender.id, recipientSocketId, recipient.id);
+  }
 
   async handleSendFriendRequest(
     client: Socket,
@@ -74,117 +181,7 @@ export class ChatFriendRequestService {
     // Check if it was auto-accepted (mutual request scenario)
     if (friendRequest.status === 'accepted') {
       this.logger.debug(`Auto-accept: ${sender.email} <-> ${recipient.email}`);
-      const recipientSocketId = onlineUsers.get(recipient.id);
-
-      // Step 3a: Emit acceptance events (important but not critical)
-      try {
-        client.emit('friendRequestAccepted', payload);
-        if (recipientSocketId) {
-          server.to(recipientSocketId).emit('friendRequestAccepted', payload);
-        }
-      } catch (error) {
-        this.logger.error(
-          'sendFriendRequest: Failed to emit friendRequestAccepted (non-critical):',
-          error,
-        );
-      }
-
-      // Step 3b: Emit friends lists (non-critical)
-      try {
-        const senderFriends = await this.friendsService.getFriends(sender.id);
-        const receiverFriends = await this.friendsService.getFriends(
-          recipient.id,
-        );
-
-        client.emit(
-          'friendsList',
-          senderFriends.map((u) => UserMapper.toPayload(u)),
-        );
-
-        if (recipientSocketId) {
-          server.to(recipientSocketId).emit(
-            'friendsList',
-            receiverFriends.map((u) => UserMapper.toPayload(u)),
-          );
-        }
-      } catch (error) {
-        this.logger.error(
-          'sendFriendRequest: Failed to emit friends lists (non-critical):',
-          error,
-        );
-      }
-
-      // Step 3c: Create conversation and refresh lists (non-critical)
-      let conversation: any = null;
-      try {
-        conversation = await this.conversationsService.findOrCreate(
-          sender,
-          recipient,
-        );
-        this.logger.debug(
-          `Auto-accept: conversation created/found id=${conversation.id}`,
-        );
-
-        const senderConversations = await this.conversationsService.findByUser(
-          sender.id,
-        );
-        client.emit(
-          'conversationsList',
-          senderConversations.map((c) => ConversationMapper.toPayload(c)),
-        );
-
-        if (recipientSocketId) {
-          const receiverConversations =
-            await this.conversationsService.findByUser(recipient.id);
-          server.to(recipientSocketId).emit(
-            'conversationsList',
-            receiverConversations.map((c) => ConversationMapper.toPayload(c)),
-          );
-        }
-      } catch (error) {
-        this.logger.error(
-          'sendFriendRequest: Failed to create/refresh conversations (non-critical):',
-          error,
-        );
-      }
-
-      // Step 3d: Emit openConversation (non-critical)
-      try {
-        if (conversation) {
-          client.emit('openConversation', { conversationId: conversation.id });
-
-          if (recipientSocketId) {
-            server.to(recipientSocketId).emit('openConversation', {
-              conversationId: conversation.id,
-            });
-          }
-        }
-      } catch (error) {
-        this.logger.error(
-          'sendFriendRequest: Failed to emit openConversation (non-critical):',
-          error,
-        );
-      }
-
-      // Step 3e: Update pending counts (non-critical)
-      try {
-        const senderCount = await this.friendsService.getPendingRequestCount(
-          sender.id,
-        );
-        client.emit('pendingRequestsCount', { count: senderCount });
-        if (recipientSocketId) {
-          const receiverCount =
-            await this.friendsService.getPendingRequestCount(recipient.id);
-          server
-            .to(recipientSocketId)
-            .emit('pendingRequestsCount', { count: receiverCount });
-        }
-      } catch (error) {
-        this.logger.error(
-          'sendFriendRequest: Failed to update pending counts (non-critical):',
-          error,
-        );
-      }
+      await this.emitAutoAcceptFlow(client, server, sender, recipient, payload, onlineUsers);
     } else {
       // Normal pending request flow
       // Step 4a: Notify sender (important but not critical)
@@ -304,111 +301,37 @@ export class ChatFriendRequestService {
     }
 
     // Step 3: Refresh conversations list (non-critical)
-    try {
-      const senderConversations = await this.conversationsService.findByUser(
-        friendRequest.sender.id,
-      );
-
-      if (senderSocketId) {
-        server.to(senderSocketId).emit(
-          'conversationsList',
-          senderConversations.map((c) =>
-            ConversationMapper.toPayload(c),
-          ),
-        );
-      }
-
-      const receiverConversations =
-        await this.conversationsService.findByUser(userId);
-      client.emit(
-        'conversationsList',
-        receiverConversations.map((c) =>
-          ConversationMapper.toPayload(c),
-        ),
-      );
-    } catch (error) {
-      this.logger.error(
-        'acceptFriendRequest: Failed to refresh conversations (non-critical):',
-        error,
-      );
-      // Continue - user still sees friend request accepted
-    }
+    await this.emitConversationsListToBoth(
+      client,
+      server,
+      userId,
+      senderSocketId,
+      friendRequest.sender.id,
+    );
 
     // Step 4: Update friend requests list and pending count (non-critical)
     try {
-      const pendingRequests =
-        await this.friendsService.getPendingRequests(userId);
-      client.emit(
-        'friendRequestsList',
-        pendingRequests.map(FriendRequestMapper.toPayload),
-      );
-
-      const pendingCount =
-        await this.friendsService.getPendingRequestCount(userId);
+      const pendingRequests = await this.friendsService.getPendingRequests(userId);
+      client.emit('friendRequestsList', pendingRequests.map(FriendRequestMapper.toPayload));
+      const pendingCount = await this.friendsService.getPendingRequestCount(userId);
       client.emit('pendingRequestsCount', { count: pendingCount });
     } catch (error) {
-      this.logger.error(
-        'acceptFriendRequest: Failed to update friend requests list (non-critical):',
-        error,
-      );
-      // Continue
+      this.logger.error('acceptFriendRequest: friend requests list (non-critical):', error);
     }
 
-    // Step 5: Emit updated friends lists (non-critical but important)
-    try {
-      const senderFriends = await this.friendsService.getFriends(
-        friendRequest.sender.id,
-      );
-      this.logger.debug(
-        `acceptFriendRequest: senderFriends count=${senderFriends.length}`,
-      );
+    // Step 5: Emit updated friends lists (non-critical)
+    await this.emitFriendsListToBoth(
+      client,
+      server,
+      userId,
+      senderSocketId,
+      friendRequest.sender.id,
+    );
 
-      const receiverFriends = await this.friendsService.getFriends(userId);
-      this.logger.debug(
-        `acceptFriendRequest: receiverFriends count=${receiverFriends.length}`,
-      );
-
-      // Send to sender (if online)
-      if (senderSocketId) {
-        server.to(senderSocketId).emit(
-          'friendsList',
-          senderFriends.map((u) => UserMapper.toPayload(u)),
-        );
-      }
-
-      // Send to receiver (current user)
-      client.emit(
-        'friendsList',
-        receiverFriends.map((u) => UserMapper.toPayload(u)),
-      );
-    } catch (error) {
-      this.logger.error(
-        'acceptFriendRequest: Failed to emit friends lists (non-critical):',
-        error,
-      );
-      // Continue
-    }
-
-    // Step 6: Emit openConversation event (non-critical)
-    try {
-      if (conversation) {
-        this.logger.debug(
-          `acceptFriendRequest: emitting openConversation id=${conversation.id}`,
-        );
-        client.emit('openConversation', { conversationId: conversation.id });
-
-        if (senderSocketId) {
-          server.to(senderSocketId).emit('openConversation', {
-            conversationId: conversation.id,
-          });
-        }
-      }
-    } catch (error) {
-      this.logger.error(
-        'acceptFriendRequest: Failed to emit openConversation (non-critical):',
-        error,
-      );
-      // No need to continue - this is the last step
+    // Step 6: Emit openConversation (non-critical)
+    if (conversation) {
+      this.logger.debug(`acceptFriendRequest: emitting openConversation id=${conversation.id}`);
+      this.emitOpenConversationToBoth(client, server, conversation.id, senderSocketId);
     }
   }
 
@@ -523,79 +446,28 @@ export class ChatFriendRequestService {
 
     // Step 3: Notify both users (non-critical)
     try {
-      const notifyPayload = { userId: currentUserId };
-      client.emit('unfriended', notifyPayload);
-
+      client.emit('unfriended', { userId: currentUserId });
       if (otherUserSocketId) {
-        server
-          .to(otherUserSocketId)
-          .emit('unfriended', { userId: currentUserId });
+        server.to(otherUserSocketId).emit('unfriended', { userId: currentUserId });
       }
     } catch (error) {
-      this.logger.error(
-        'handleUnfriend: Failed to emit unfriended event (non-critical):',
-        error,
-      );
+      this.logger.error('handleUnfriend: emit unfriended (non-critical):', error);
     }
 
-    // Step 4: Refresh conversations for both users (non-critical)
-    try {
-      const conversations =
-        await this.conversationsService.findByUser(currentUserId);
-      client.emit(
-        'conversationsList',
-        conversations.map((c) =>
-          ConversationMapper.toPayload(c),
-        ),
-      );
-
-      if (otherUserSocketId) {
-        const otherConversations = await this.conversationsService.findByUser(
-          data.userId,
-        );
-        server.to(otherUserSocketId).emit(
-          'conversationsList',
-          otherConversations.map((c) =>
-            ConversationMapper.toPayload(c),
-          ),
-        );
-      }
-    } catch (error) {
-      this.logger.error(
-        'handleUnfriend: Failed to refresh conversations (non-critical):',
-        error,
-      );
-    }
-
-    // Step 5: Emit updated friends lists to both users (non-critical)
-    try {
-      const currentUserFriends =
-        await this.friendsService.getFriends(currentUserId);
-      client.emit(
-        'friendsList',
-        currentUserFriends.map((u) => UserMapper.toPayload(u)),
-      );
-      this.logger.debug(
-        `handleUnfriend: emitted friendsList to currentUser, count=${currentUserFriends.length}`,
-      );
-
-      if (otherUserSocketId) {
-        const otherUserFriends = await this.friendsService.getFriends(
-          data.userId,
-        );
-        server.to(otherUserSocketId).emit(
-          'friendsList',
-          otherUserFriends.map((u) => UserMapper.toPayload(u)),
-        );
-        this.logger.debug(
-          `handleUnfriend: emitted friendsList to otherUser, count=${otherUserFriends.length}`,
-        );
-      }
-    } catch (error) {
-      this.logger.error(
-        'handleUnfriend: Failed to emit friends lists (non-critical):',
-        error,
-      );
-    }
-    }
+    // Step 4 & 5: Refresh conversations and friends lists for both users (non-critical)
+    await this.emitConversationsListToBoth(
+      client,
+      server,
+      currentUserId,
+      otherUserSocketId,
+      data.userId,
+    );
+    await this.emitFriendsListToBoth(
+      client,
+      server,
+      currentUserId,
+      otherUserSocketId,
+      data.userId,
+    );
+  }
 }
