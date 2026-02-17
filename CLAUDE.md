@@ -1,496 +1,791 @@
-# CLAUDE.md — MVP Chat App
+---
+description: 
+alwaysApply: true
+---
 
-**Last updated:** 2026-02-16
+# CLAUDE.md — MVP Chat App
 
 **Rules:**
 - Update this file after every code change
-- Single source of truth for agents
-- Read `.cursor/session-summaries/LATEST.md` at start; write `YYYY-MM-DD-session.md` and update `LATEST.md` at end
+- Single source of truth for agents — if CLAUDE.md says X, X is correct
 - All code in English (vars, functions, comments, commits). Polish OK in .md files only
+
 
 ---
 
 ## 0. Quick Start
 
-**Stack:** NestJS + Flutter + PostgreSQL + Socket.IO + JWT. Web-first (dev), mobile later.
-
-**Structure:** `backend/` :3000, `frontend/` Flutter app. Manual E2E scripts in `scripts/`.
-
-**Run (current - web):**
-
 ```bash
-# Terminal 1: Backend + DB (auto hot-reload)
+# Terminal 1: Backend + DB (auto hot-reload via NestJS watch mode)
 docker-compose up
 
-# Terminal 2: Flutter web (manual hot-reload with 'r')
-cd frontend
-flutter run -d chrome
+# Terminal 2: Flutter web (manual hot-reload — press 'r' in terminal)
+cd frontend && flutter run -d chrome
 ```
 
-**Before start:**
-- Kill node: `taskkill //F //IM node.exe`
-- Frontend: http://localhost:<random-port> (check terminal)
-- Backend: http://localhost:3000
-- Hot-reload web: Press `r` in terminal after changes
+**Before start:** Kill stale node processes: `taskkill //F //IM node.exe`
 
-**Mobile (on hold):** Network config issues. Will return to this later.
+**Ports:** Backend :3000, Frontend :random (check terminal), DB :5433 (host) -> :5432 (container)
 
----
+**Stack:** NestJS 11 + Flutter 3.x + PostgreSQL 16 + Socket.IO 4 + JWT + Cloudinary
 
-## 1. Critical Rules — Must Read First
-
-| Rule | Why |
-|------|-----|
-| **TypeORM relations** | Always `relations: ['sender','receiver']` on friendRequestRepository. Without: empty objects, crashes. |
-| **TypeORM .delete()** | Cannot use nested relation conditions. Use find-then-remove: `.find()` then `.remove()`. |
-| **TypeORM timestamps** | `expiresAt` may be string or Date from pg. Always use `new Date(val).getTime()` for comparisons. |
-| **Socket.IO (Dart)** | Use `enableForceNew()` when reconnecting with new JWT (logout→login). Caches by URL otherwise. |
-| **Provider→Navigator** | `ChatProvider` can't call `Navigator.push`. Use `consumePendingOpen()`: set ID, notifyListeners, screen pops in build. |
-| **Multiple backends** | If frontend shows weird data vs backend logs: kill local `node.exe`, use Docker only. |
-| **Notifications** | Use `showTopSnackBar()` (top of screen). Never `ScaffoldMessenger` (covers input bar). |
+**Mobile (on hold):** Local network config issues. Will return later.
 
 ---
 
-## 2. Architecture
-
-### 2.1 Stack & Flow
+## 1. Architecture Overview
 
 ```mermaid
 flowchart TB
-  subgraph client [Flutter App]
-    AuthGate --> |logged out| AuthScreen
-    AuthGate --> |logged in| MainShell
-  end
+    subgraph Client["Flutter App (Web / Mobile)"]
+        AuthGate -->|logged out| AuthScreen
+        AuthGate -->|logged in| MainShell
+        MainShell --> ConversationsScreen
+        MainShell --> ContactsScreen
+        MainShell --> SettingsScreen
+        ConversationsScreen -->|tap| ChatDetailScreen
+        ContactsScreen -->|tap| ChatDetailScreen
+    end
 
-  subgraph main_shell [MainShell - BottomNav]
-    Tab0[Conversations]
-    Tab1[Contacts]
-    Tab2[Settings]
-  end
+    subgraph Backend["NestJS Backend :3000"]
+        REST["REST API\n/auth /users /messages"]
+        WS["WebSocket Gateway\nSocket.IO"]
+        REST --> Services
+        WS --> ChatServices["Chat Services\nmessage | conversation | friend-request"]
+        ChatServices --> Services
+        Services["Core Services\nusers | conversations | messages | friends"]
+        Services --> DB[(PostgreSQL :5433)]
+        Services --> Cloud["Cloudinary\navatars + voice + images"]
+    end
 
-  subgraph backend [NestJS Backend]
-    REST[REST: /auth, /users, /messages]
-    WS[WebSocket Gateway]
-    DB[(PostgreSQL)]
-    REST --> DB
-    WS --> DB
-  end
-
-  client --> |REST + JWT| REST
-  client --> |Socket.IO ?token=JWT| WS
+    Client -->|"REST + Bearer JWT"| REST
+    Client -->|"Socket.IO ?token=JWT"| WS
 ```
 
-### 2.2 Navigation (Post-login)
+### State Management
 
 ```mermaid
 flowchart LR
-  AuthGate --> MainShell
-  MainShell --> ConversationsScreen
-  MainShell --> ContactsScreen
-  MainShell --> SettingsScreen
+    subgraph Providers["Flutter Providers (ChangeNotifier)"]
+        AuthProvider["AuthProvider\nlogin, logout, token, user"]
+        ChatProvider["ChatProvider\nconversations, messages,\nfriends, socket events"]
+        SettingsProvider["SettingsProvider\nthemeMode (dark/light)"]
+    end
 
-  ConversationsScreen --> |plus| AddOrInvitationsScreen
-  ConversationsScreen --> |tap| ChatDetailScreen
-  ContactsScreen --> |tap| ChatDetailScreen
-  ContactsScreen --> |long-press| UnfriendDialog
-  SettingsScreen --> |logout| AuthGate
+    subgraph Services["Services"]
+        SocketService["SocketService\nSocket.IO wrapper"]
+        ApiService["ApiService\nHTTP client (REST)"]
+    end
+
+    AuthProvider --> ApiService
+    ChatProvider --> SocketService
+    ChatProvider --> ApiService
+    SettingsProvider --> SharedPreferences
 ```
 
-- **Conversations tab:** Custom header + list. Plus → AddOrInvitationsScreen. Swipe-to-delete → removes chat history only (preserves friend).
-- **Contacts tab:** Friends list. Tap → open chat. Long-press → unfriend dialog (total delete).
-- **Desktop (>600px):** Sidebar + embedded ChatDetailScreen.
+---
 
-### 2.3 Auth Flow
-
-```mermaid
-sequenceDiagram
-  User->>AuthScreen: email + password
-  AuthScreen->>AuthProvider: login()
-  AuthProvider->>Backend: POST /auth/login
-  Backend-->>AuthProvider: JWT + user
-  AuthProvider->>AuthProvider: decode, save token
-  AuthGate->>MainShell: isLoggedIn=true
-  MainShell->>ChatProvider: connect(token, userId)
-```
-
-**Logout:** Settings → `chat.disconnect()` + `auth.logout()` → AuthGate shows AuthScreen.
-
-### 2.4 Database Schema
-
-**PostgreSQL, TypeORM `synchronize: true` (column additions auto-apply).**
+## 2. Database Schema
 
 ```mermaid
 erDiagram
-  users ||--o{ conversations : "user_one/user_two"
-  users ||--o{ messages : "sender"
-  users ||--o{ friend_requests : "sender/receiver"
-  conversations ||--o{ messages : "conversation"
+    users ||--o{ conversations : "userOne / userTwo"
+    users ||--o{ messages : "sender"
+    users ||--o{ friend_requests : "sender / receiver"
+    conversations ||--o{ messages : "conversation"
 
-  users {
-    int id PK
-    string email
-    string username
-    string password
-    string profilePictureUrl
-    string profilePicturePublicId
-  }
+    users {
+        int id PK
+        string email UK
+        string username UK "nullable, case-insensitive"
+        string password "bcrypt hash, 10 rounds"
+        string profilePictureUrl "nullable"
+        string profilePicturePublicId "nullable, Cloudinary"
+        timestamp createdAt
+    }
 
-  conversations {
-    int id PK
-    int user_one_id FK
-    int user_two_id FK
-    int disappearingTimer "default 86400"
-  }
+    conversations {
+        int id PK
+        int user_one_id FK "eager: true"
+        int user_two_id FK "eager: true"
+        int disappearingTimer "nullable, default 86400s (1 day)"
+        timestamp createdAt
+    }
 
-  messages {
-    int id PK
-    text content
-    int sender_id FK
-    int conversation_id FK
-    timestamp createdAt
-    timestamp expiresAt
-    enum deliveryStatus "SENDING, SENT, DELIVERED, READ"
-    enum messageType "TEXT, PING, VOICE, IMAGE, DRAWING"
-    text mediaUrl
-    int mediaDuration
-  }
+    messages {
+        int id PK
+        text content
+        int sender_id FK "eager: true"
+        int conversation_id FK "eager: false"
+        enum deliveryStatus "SENDING|SENT|DELIVERED|READ"
+        enum messageType "TEXT|PING|IMAGE|DRAWING|VOICE"
+        text mediaUrl "nullable, Cloudinary URL"
+        int mediaDuration "nullable, seconds"
+        timestamp expiresAt "nullable"
+        timestamp createdAt
+    }
 
-  friend_requests {
-    int id PK
-    int sender_id FK
-    int receiver_id FK
-    enum status "PENDING, ACCEPTED, REJECTED"
-  }
+    friend_requests {
+        int id PK
+        int sender_id FK "eager: true, CASCADE"
+        int receiver_id FK "eager: true, CASCADE"
+        enum status "PENDING|ACCEPTED|REJECTED"
+        timestamp createdAt
+        timestamp respondedAt "nullable"
+    }
 ```
 
-**Key rules:**
-- **users:** No cascade. Delete account manually deletes dependents (users.service deleteAccount).
-- **messages:** Delete conversation: delete messages first, then conversation.
-- **friend_requests:** Use **find-then-remove** for delete/unfriend (no .delete() with relation conditions).
+**TypeORM config:** `synchronize: true` -- column additions auto-apply on restart. No migrations.
+
+**Key constraints:**
+- `friend_requests`: index on `(sender, receiver)`
+- No cascade on User entity -- `deleteAccount()` manually cleans dependents
+- `conversations.delete()` must delete messages first (no cascade)
 
 ---
 
-## 3. API Reference
+## 3. WebSocket API -- Complete Event Reference
 
-### 3.1 WebSocket Events
+**Connection:** `io(baseUrl, { query: { token: JWT }, auth: { token: JWT } })`
+Gateway verifies JWT via `jwtService.verify()`, stores `client.data.user = { id, email, username }`, tracks `onlineUsers: Map<userId, socketId>`.
 
-**Connection:** `?token=JWT`. Gateway verifies, sets `client.data.user = { id, email, username }`.
+### 3.1 Message Events
 
-| Client emit | Server emit (to caller) | Server emit (to others) |
-|-------------|--------------------------|--------------------------|
-| **sendMessage** | `messageSent` | To recipient: `newMessage` |
-| **getMessages** | `messageHistory` (array) | — |
-| **startConversation** | `conversationsList`, `openConversation` | — |
-| **getConversations** | `conversationsList` | — |
-| **deleteConversationOnly** | `conversationDeleted`, `conversationsList` | To other: same |
-| **sendFriendRequest** | `friendRequestSent` or `friendRequestAccepted` + `openConversation` | To recipient: `newFriendRequest` or `friendRequestAccepted` + `openConversation` |
-| **acceptFriendRequest** | `friendRequestAccepted`, `friendsList`, `conversationsList`, `openConversation` | To sender: same |
-| **rejectFriendRequest** | `friendRequestRejected`, `friendRequestsList` | — |
-| **getFriendRequests** | `friendRequestsList` | — |
-| **getFriends** | `friendsList` | — |
-| **unfriend** | `unfriended`, `conversationsList` | To other: `unfriended`, `conversationsList` |
-| **messageDelivered** | — | To sender: `messageDelivered` { messageId, deliveryStatus } |
-| **markConversationRead** | — | To senders: `messageDelivered` (READ) for each message |
-| **sendPing** | `pingSent` | To recipient: `newPing` |
-| **clearChatHistory** | — | To other: chat messages cleared |
-| **setDisappearingTimer** | `disappearingTimerUpdated` | To other: `disappearingTimerUpdated` |
+| Client Emit | Server Emit (caller) | Server Emit (recipient) |
+|---|---|---|
+| `sendMessage` | `messageSent` | `newMessage` |
+| `getMessages` | `messageHistory` (array) | -- |
+| `sendPing` | `pingSent` | `newPing` |
+| `messageDelivered` | -- | `messageDelivered` (to sender) |
+| `markConversationRead` | -- | `messageDelivered` (READ) per msg |
+| `clearChatHistory` | `chatHistoryCleared` | `chatHistoryCleared` |
 
-**Key payloads:**
-- **messageSent/newMessage:** `{ id, content, senderId, conversationId, createdAt, deliveryStatus, messageType, mediaUrl, mediaDuration, expiresAt }`
-- **conversationsList:** `[{ id, userOne, userTwo, disappearingTimer, unreadCount }]`
-- **openConversation:** `{ conversationId }`
+### 3.2 Conversation Events
 
-### 3.2 REST API
+| Client Emit | Server Emit (caller) | Server Emit (other) |
+|---|---|---|
+| `startConversation` | `conversationsList` + `openConversation` | -- |
+| `getConversations` | `conversationsList` | -- |
+| `deleteConversationOnly` | `conversationDeleted` + `conversationsList` | same |
+| `setDisappearingTimer` | `disappearingTimerUpdated` | `disappearingTimerUpdated` |
 
-| Method | Path | Auth | Purpose |
-|--------|------|------|---------|
-| POST | /auth/register | — | email, password, username → 201 |
-| POST | /auth/login | — | email, password → { accessToken } |
-| POST | /users/profile-picture | JWT | multipart JPEG/PNG (max 5MB) → update avatar |
-| POST | /users/reset-password | JWT | oldPassword, newPassword |
-| DELETE | /users/account | JWT | { password } → delete user + all dependents |
-| POST | /messages/voice | JWT | multipart audio (AAC/M4A/MP3/WebM, max 10MB), duration, expiresIn? → { mediaUrl, publicId, duration } |
+### 3.3 Friend Events
 
-**Password rules:** 8+ chars, 1 uppercase, 1 lowercase, 1 number.
+| Client Emit | Server Emit (caller) | Server Emit (other) |
+|---|---|---|
+| `sendFriendRequest` | `friendRequestSent` OR auto-accept flow | `newFriendRequest` OR auto-accept |
+| `acceptFriendRequest` | `friendRequestAccepted` + lists + `openConversation` | same |
+| `rejectFriendRequest` | `friendRequestRejected` + `friendRequestsList` | -- |
+| `getFriendRequests` | `friendRequestsList` + `pendingRequestsCount` | -- |
+| `getFriends` | `friendsList` | -- |
+| `unfriend` | `unfriended` + `conversationsList` + `friendsList` | same |
 
-**Rate limits:** login 5/15min, register 3/h, upload 10/h.
+### 3.4 Key Payloads
 
----
+**Message payload** (`messageSent` / `newMessage` / `pingSent` / `newPing`):
+```typescript
+{
+  id: number,
+  content: string,
+  senderId: number,
+  senderEmail: string,
+  senderUsername: string | null,
+  conversationId: number,
+  createdAt: string,             // ISO timestamp
+  deliveryStatus: string,        // SENDING | SENT | DELIVERED | READ
+  messageType: string,           // TEXT | PING | IMAGE | DRAWING | VOICE
+  mediaUrl: string | null,       // Cloudinary URL
+  mediaDuration: number | null,  // seconds (voice)
+  expiresAt: string | null,      // ISO timestamp
+  tempId: string | null,         // client-generated for optimistic matching
+}
+```
 
-## 4. File Location Map
+**Conversation payload** (`conversationsList` item):
+```typescript
+{
+  id: number,
+  userOne: { id, email, username, profilePictureUrl },
+  userTwo: { id, email, username, profilePictureUrl },
+  createdAt: string,
+  disappearingTimer: number | null,  // seconds
+  unreadCount: number,
+  lastMessage: MessagePayload | null,
+}
+```
 
-**Backend (NestJS):**
+**Friend request payload:** `{ id, sender: UserPayload, receiver: UserPayload, status, createdAt, respondedAt }`
 
-| Change | Files |
-|--------|-------|
-| Auth | auth/auth.service.ts, auth.controller.ts |
-| User (profile, password, delete) | users/users.service.ts, users.controller.ts |
-| Friend request logic | friends/friends.service.ts, chat/services/chat-friend-request.service.ts |
-| Conversation logic | conversations/conversations.service.ts, chat/services/chat-conversation.service.ts |
-| Message logic | messages/messages.service.ts, chat/services/chat-message.service.ts |
-| WebSocket gateway | chat/chat.gateway.ts |
-| WebSocket DTOs | chat/dto/chat.dto.ts |
-| Cloudinary (avatar, voice) | cloudinary/cloudinary.service.ts |
-| Voice upload endpoint | messages/messages.controller.ts |
+### 3.5 DTO Validation (class-validator)
 
-**Frontend (Flutter):**
-
-| Change | Files |
-|--------|-------|
-| Auth gate | main.dart |
-| Bottom nav / shell | screens/main_shell.dart |
-| Conversations list | screens/conversations_screen.dart |
-| Add friend / requests | screens/add_or_invitations_screen.dart |
-| Contacts list | screens/contacts_screen.dart |
-| Settings / logout | screens/settings_screen.dart |
-| Chat screen | screens/chat_detail_screen.dart |
-| Chat input / action tiles | widgets/chat_input_bar.dart, widgets/chat_action_tiles.dart |
-| Message bubbles | widgets/chat_message_bubble.dart, widgets/voice_message_bubble.dart |
-| Voice recording overlay | widgets/voice_recording_overlay.dart |
-| Swipe-to-delete | widgets/conversation_tile.dart (Dismissible) |
-| Socket connection | services/socket_service.dart |
-| Chat state / events | providers/chat_provider.dart |
-| Auth state | providers/auth_provider.dart |
-| API calls | services/api_service.dart |
-| Theme | theme/rpg_theme.dart, providers/settings_provider.dart |
-| Top notifications | widgets/top_snackbar.dart |
-| Constants | constants/app_constants.dart |
-
-**Quick patterns:**
-- Add WebSocket event: `chat.dto.ts` → handler in `chat/services/*.service.ts` → `chat.gateway.ts` @SubscribeMessage → `socket_service.dart` → `chat_provider.dart`
-- Add REST endpoint: `*.service.ts` → `*.controller.ts` @UseGuards(JwtAuthGuard) → `api_service.dart` → provider/screen
-- Add DB column: `*.entity.ts` → restart backend (TypeORM sync) → update frontend model
+| DTO | Fields | Notes |
+|---|---|---|
+| `SendMessageDto` | recipientId (int+), content (str 1-5000), expiresIn?, tempId?, messageType?, mediaUrl?, mediaDuration? | content validation skipped for VOICE/PING via `@ValidateIf` |
+| `SendFriendRequestDto` | recipientEmail (str 5-255) | |
+| `AcceptFriendRequestDto` | requestId (int+) | |
+| `RejectFriendRequestDto` | requestId (int+) | |
+| `GetMessagesDto` | conversationId (int+), limit?, offset? | |
+| `StartConversationDto` | recipientEmail (str 5-255) | |
+| `UnfriendDto` | userId (int+) | |
+| `ClearChatHistoryDto` | conversationId (int+) | separate file |
+| `SetDisappearingTimerDto` | conversationId (int+), seconds (int, nullable) | separate file |
+| `DeleteConversationOnlyDto` | conversationId (int+) | separate file |
+| `SendPingDto` | recipientId (int+) | separate file |
 
 ---
 
-## 5. Key Features
+## 4. REST API
 
-### 5.1 Disappearing Messages
+| Method | Path | Auth | Body / Params | Response |
+|---|---|---|---|---|
+| POST | `/auth/register` | -- | `{ email, password, username? }` | 201: `{ id, email, username }` |
+| POST | `/auth/login` | -- | `{ email, password }` | 200: `{ access_token }` |
+| POST | `/users/profile-picture` | JWT | multipart `file` (JPEG/PNG, max 5MB) | `{ profilePictureUrl }` |
+| POST | `/users/reset-password` | JWT | `{ oldPassword, newPassword }` | 200 |
+| DELETE | `/users/account` | JWT | `{ password }` | 200 (cascade deletes all data) |
+| POST | `/messages/voice` | JWT | multipart `audio` (AAC/M4A/MP3/WebM/WAV, max 10MB) + `duration` + `expiresIn?` | `{ mediaUrl, publicId, duration }` |
+| POST | `/messages/image` | JWT | multipart `file` (JPEG/PNG, max 5MB) + `recipientId` + `expiresIn?` | MessagePayload |
 
-**Architecture:**
-- **Timer storage:** Database (`conversations.disappearingTimer`, default 86400s = 1 day). Synced via WebSocket to both users.
-- **Timer starts on DELIVERY**, not send (Telegram/Signal behavior).
-- **Three-layer expiration:**
-  1. Frontend: `ChatProvider.removeExpiredMessages()` called every 1s → instant vanish at zero.
-  2. Backend cron: deletes from DB every minute (DELIVERED/READ only).
-  3. `handleGetMessages` + `onMessageHistory`: filter out expired messages.
+**Password rules:** 8+ chars, 1 uppercase, 1 lowercase, 1 number. Regex: `/^(?=.*[a-z])(?=.*[A-Z])(?=.*\d)[a-zA-Z\d\s@$!%*?&]{8,}$/`
 
-**Key fields:**
-- `expiresAt`: timestamp when message expires
-- `expiresInSeconds`: original timer duration (for display)
+**Rate limits:** Login 5/15min, Register 3/h, Image upload 10/min, Voice upload 10/60s.
 
-**Frontend logic in:** `chat_provider.dart` (removeExpiredMessages, onMessageHistory filter).
-
-**Backend logic in:** `messages.service.ts` (findByConversation filter), `chat-message.service.ts` (handleSendMessage sets expiresAt, updateDeliveryStatus recalculates on DELIVERED).
-
-### 5.2 Voice Messages
-
-**Recording (Telegram-style):**
-- Long-press mic in `ChatInputBar` → recording bar appears inline (timer, “⬅ Slide to cancel”).
-- **Release** → send; **slide left** (~100px) → cancel (trash icon, then discard). Drag uses **global** position so slide works across the screen.
-- **Mic stays visible** during recording (no `if (!_isRecording)` hiding it): the same GestureDetector stays in the tree so `onLongPressEnd`/`onLongPressCancel` and drag updates are received. Mic icon is wrapped in `Transform.translate` so it slides left with the finger; recording bar also shifts left and shows trash when sliding.
-- `onLongPressCancel` handled: if user releases and gesture is canceled, still call `_stopRecording()` unless they had slid to cancel (`_canceledBySlide`).
-- Format: AAC/M4A (native), WAV (web). 44.1kHz mono. Max 2 min, min 1s.
-- **Permission:** `permission_handler` on mobile only (`!kIsWeb`). Web: browser handles.
-- **Timer:** Managed by parent (ChatInputBar) via `ValueNotifier<int>` (prevents timer freeze on rebuild).
-
-**Upload:**
-- **Optimistic UI:** Message appears with SENDING status, uploads in background.
-- POST /messages/voice → Cloudinary (`resource_type: 'video'`, folder `voice-messages/`).
-- **TTL:** If disappearing timer active, `expires_at = expiresIn + 3600` (1h buffer). Cloudinary auto-deletes.
-- **Retry:** FAILED status + retry button. Web: no retry (no cached bytes). Native: re-upload from local file.
-
-**Playback:**
-- **Lazy download:** Audio downloaded on first play from `message.mediaUrl`.
-- **Caching:** `{appDocDir}/audio_cache/{messageId}.m4a` (avoid re-download).
-- **Controls:** Play/pause, waveform (CustomPainter), scrub slider, speed (1x/1.5x/2x) via `just_audio`.
-- **Expiration:** Play button greyed if `expiresAt < now`.
-
-**Files:** `voice_recording_overlay.dart`, `voice_message_bubble.dart`, `chat_input_bar.dart`, `chat_message_bubble.dart`, `messages.controller.ts`, `cloudinary.service.ts`, `message.entity.ts`.
-
-### 5.3 Delivery Status
-
-**Statuses:** SENDING (clock) → SENT (✓ grey) → DELIVERED (✓ grey) → READ (✓✓ blue). Own messages only.
-
-**Flow:**
-1. Send: SENDING → backend → SENT.
-2. Recipient receives: emits `messageDelivered` → sender sees DELIVERED.
-3. Recipient opens chat: emits `markConversationRead` → sender sees READ (✓✓).
-
-**Frontend:** `ChatProvider._handleMessageDelivered()`, `chat_message_bubble.dart` (delivery icons).
-
-**Backend:** `chat-message.service.ts` (handleMessageDelivered, handleMarkConversationRead).
-
-### 5.4 Delete Conversation vs Unfriend
-
-| Action | Location | Effect | WebSocket Event |
-|--------|----------|--------|-----------------|
-| **Delete conversation** | Conversations tab (swipe) | Removes chat history only. Friend remains in Contacts. | `deleteConversationOnly` |
-| **Unfriend** | Contacts tab (long-press) | Total delete: friend_request + conversation + messages. | `unfriend` |
-
-**Re-open chat:** After delete conversation, tap contact in Contacts → `startConversation` → new empty conversation (friendship exists).
-
-### 5.5 Ping Messages
-
-**Purpose:** One-shot notification. Empty content, `messageType=PING`.
-
-**Flow:**
-- User taps Ping tile → `sendPing` event → backend creates PING message.
-- Backend emits: `pingSent` (sender), `newPing` (recipient).
-- Frontend handles both via `_handlePingReceived()`.
-
-**UI:** Campaign icon + "PING!" text in bubble.
-
-### 5.6 Unread Badge
-
-**Display:** Orange badge with count (e.g. "4") on conversation tile.
-
-**Logic:**
-- Backend: `MessagesService.countUnreadForRecipient()` counts messages where sender ≠ user and deliveryStatus ≠ READ (excluding expired).
-- `conversationsList` payload includes `unreadCount`.
-- Frontend: `ChatProvider._unreadCounts` stores counts, increments on `newMessage` when chat not active, clears on `openConversation`.
+**JWT payload:** `{ sub: userId, email, username, profilePictureUrl }`. Frontend decodes via `jwt_decoder` package.
 
 ---
 
-## 6. Recent Changes (Last 14 Days)
+## 5. Frontend -- Screen & Navigation Map
+
+```mermaid
+flowchart TD
+    main["main.dart\nRpgChatApp + AuthGate"]
+    auth["AuthScreen\nlogin / register tabs"]
+    shell["MainShell\nBottomNavigationBar (IndexedStack)"]
+    convs["ConversationsScreen\ncustom gradient header + list"]
+    contacts["ContactsScreen\nfriends list"]
+    settings["SettingsScreen\navatar, theme, password, delete, logout"]
+    chat["ChatDetailScreen\nmessages + input bar + 1s timer"]
+    add["AddOrInvitationsScreen\nadd by email + friend requests tabs"]
+
+    main -->|not logged in| auth
+    main -->|logged in| shell
+    shell --> convs
+    shell --> contacts
+    shell --> settings
+    convs -->|tap conversation| chat
+    convs -->|plus button| add
+    contacts -->|tap friend| chat
+    contacts -->|long-press friend| UnfriendDialog
+    add -->|send/accept request| openConversation
+    settings -->|logout| auth
+```
+
+### 5.1 Screen Details
+
+| Screen | File | Key Behavior |
+|---|---|---|
+| **AuthScreen** | `screens/auth_screen.dart` | Tabs: Login, Register. Uses `AuthProvider`. `clearStatus()` on tab switch. |
+| **MainShell** | `screens/main_shell.dart` | `IndexedStack` with 3 tabs. Custom chat bubble icon (CustomPainter). Avatar tap -> settings. |
+| **ConversationsScreen** | `screens/conversations_screen.dart` | Custom gradient header. `consumePendingOpen()` pattern. Swipe-to-delete (Dismissible). Desktop >600px: sidebar+detail. |
+| **ContactsScreen** | `screens/contacts_screen.dart` | Friends list from `ChatProvider.friends`. Tap -> start conversation. Long-press -> unfriend dialog. |
+| **SettingsScreen** | `screens/settings_screen.dart` | Avatar upload (image_picker), theme toggle, password reset, delete account, logout. |
+| **ChatDetailScreen** | `screens/chat_detail_screen.dart` | Message list + ChatInputBar. Timer.periodic(1s) calls `removeExpiredMessages()`. `markConversationRead` on open. |
+| **AddOrInvitationsScreen** | `screens/add_or_invitations_screen.dart` | Two tabs: `_AddByEmailTab`, `_FriendRequestsTab`. `consumeFriendRequestSent()` pattern. |
+
+### 5.2 Widget Details
+
+| Widget | File | Purpose |
+|---|---|---|
+| **ChatInputBar** | `widgets/chat_input_bar.dart` | Text input + send + mic (voice) + action tiles toggle. Telegram-style hold-to-record. |
+| **ChatActionTiles** | `widgets/chat_action_tiles.dart` | Grid: Camera, Gallery, Ping, Timer, Clear History, Drawing. |
+| **ChatMessageBubble** | `widgets/chat_message_bubble.dart` | Renders TEXT/PING/IMAGE/DRAWING/VOICE bubbles. Delivery status icons (own msgs only). |
+| **VoiceMessageBubble** | `widgets/voice_message_bubble.dart` | Waveform (CustomPainter), play/pause, **scrubbable waveform** (tap/drag to seek, Telegram-style), speed toggle (1x/1.5x/2x via just_audio). Lazy download + caching. |
+| **ConversationTile** | `widgets/conversation_tile.dart` | Dismissible swipe-to-delete. Avatar, name, last message preview, unread badge, timestamp. |
+| **TopSnackbar** | `widgets/top_snackbar.dart` | All notifications at top of screen. Never use ScaffoldMessenger. |
+| **AvatarCircle** | `widgets/avatar_circle.dart` | Profile picture with stable cache-bust (per profilePictureUrl, NOT DateTime.now()). |
+
+### 5.3 Desktop Layout (>600px)
+
+```mermaid
+flowchart LR
+    subgraph Desktop["ConversationsScreen width > 600px"]
+        Sidebar["Conversation List\n(left panel)"] --> Detail["ChatDetailScreen\n(embedded right panel)"]
+    end
+```
+
+Breakpoint: `AppConstants.layoutBreakpointDesktop = 600`. Below = stacked navigation (push/pop).
+
+---
+
+## 6. Frontend -- State Management Deep Dive
+
+### 6.1 ChatProvider (central hub)
+
+**File:** `providers/chat_provider.dart` (~793 lines)
+
+**Internal state:**
+
+| Field | Type | Purpose |
+|---|---|---|
+| `_conversations` | `List<ConversationModel>` | All user's conversations |
+| `_messages` | `List<MessageModel>` | Messages for active conversation only |
+| `_activeConversationId` | `int?` | Currently viewed conversation |
+| `_currentUserId` | `int?` | Logged-in user ID |
+| `_lastMessages` | `Map<int, MessageModel>` | Last message per conversation (list preview) |
+| `_unreadCounts` | `Map<int, int>` | Unread count per conversation |
+| `_friends` | `List<UserModel>` | Friend list |
+| `_friendRequests` | `List<FriendRequestModel>` | Pending incoming friend requests |
+| `_pendingOpenConversationId` | `int?` | consumePendingOpen pattern |
+| `_friendRequestJustSent` | `bool` | consumeFriendRequestSent pattern |
+| `_showPingEffect` | `bool` | Triggers ping animation |
+| `_tokenForReconnect` | `String?` | JWT stored for reconnection |
+| `_reconnectAttempts` | `int` | Current reconnect attempt count (max 5) |
+| `_intentionalDisconnect` | `bool` | Prevents reconnect on intentional logout |
+
+**Connect flow:**
+1. Cancel pending reconnect timer, set `_intentionalDisconnect = false`
+2. Clear ALL state (prevents data leakage between users)
+3. Dispose old socket, create new with `enableForceNew()`
+4. On connect: fetch conversations, friend requests, friends
+5. Register 22 event listeners on socket
+6. Delayed re-fetch after 500ms if conversations empty (handles slow initial response)
+
+**Optimistic messaging flow:**
+```mermaid
+sequenceDiagram
+    participant UI
+    participant ChatProvider
+    participant SocketService
+    participant Backend
+
+    UI->>ChatProvider: sendMessage(content)
+    ChatProvider->>ChatProvider: Create temp message (id=-timestamp, SENDING, tempId)
+    ChatProvider->>UI: notifyListeners() - shows immediately
+    ChatProvider->>SocketService: emit sendMessage
+    SocketService->>Backend: sendMessage event
+    Backend->>Backend: Create real message (SENT)
+    Backend-->>SocketService: messageSent (with tempId)
+    SocketService-->>ChatProvider: _handleIncomingMessage
+    ChatProvider->>ChatProvider: Find temp by tempId, replace with real
+    ChatProvider->>UI: notifyListeners()
+```
+
+**Reconnection:** Exponential backoff: `initialDelay * 2^(attempt-1)`, capped at 30s. Max 5 attempts. Only when `_intentionalDisconnect == false` and token exists.
+
+### 6.2 Key Provider Patterns
+
+**consumePendingOpen (Provider -> Navigator bridge):**
+```
+Backend emits openConversation { conversationId }
+  -> ChatProvider sets _pendingOpenConversationId, notifyListeners()
+  -> Screen in build() calls consumePendingOpen() -> returns id, clears it
+  -> If id != null: addPostFrameCallback -> Navigator.pop(context, id)
+```
+Used in: AddOrInvitationsScreen, ConversationsScreen.
+
+**consumeFriendRequestSent:**
+```
+Backend emits friendRequestSent
+  -> ChatProvider sets _friendRequestJustSent = true
+  -> Screen calls consumeFriendRequestSent() -> returns true, resets flag
+  -> Shows snackbar + Navigator.pop
+```
+
+### 6.3 AuthProvider
+
+**File:** `providers/auth_provider.dart` (~152 lines)
+
+- On construction: loads saved JWT from SharedPreferences, decodes user via `JwtDecoder`
+- `login()`: POST /auth/login -> decode JWT -> save to SharedPreferences (`jwt_token`)
+- `logout()`: clear token + user, remove `jwt_token` from prefs (keeps dark mode pref)
+- `updateProfilePicture()`: upload via ApiService, update local user model via `copyWith`
+- `resetPassword()`, `deleteAccount()`: delegate to ApiService
+- `clearStatus()`: clear status message (used by AuthScreen on tab switch -- DO NOT DELETE)
+
+### 6.4 SettingsProvider
+
+Manages `themeMode` (dark/light/system). Persisted in SharedPreferences as `isDarkMode`.
+
+### 6.5 Frontend Models
+
+| Model | File | Fields | Notes |
+|---|---|---|---|
+| `UserModel` | `models/user_model.dart` | id, email, username?, profilePictureUrl? | `copyWith()` for all fields |
+| `ConversationModel` | `models/conversation_model.dart` | id, userOne, userTwo, createdAt, disappearingTimer? | Immutable |
+| `MessageModel` | `models/message_model.dart` | id, content, senderId, senderEmail, senderUsername?, conversationId, createdAt, deliveryStatus, expiresAt?, messageType, mediaUrl?, mediaDuration?, tempId? | `copyWith()` for deliveryStatus, expiresAt, mediaUrl, mediaDuration |
+| `FriendRequestModel` | `models/friend_request_model.dart` | id, sender, receiver, status, createdAt, respondedAt? | |
+
+**Enums (frontend):** `MessageDeliveryStatus` (sending, sent, delivered, read, **failed**), `MessageType` (text, ping, image, drawing, voice). Note: frontend adds `failed` status not present in backend enum.
+
+---
+
+## 7. Backend -- Service Architecture
+
+```mermaid
+flowchart TB
+    Gateway["ChatGateway\n@WebSocketGateway\n15 @SubscribeMessage handlers\nroutes to 3 chat services"]
+
+    Gateway --> CMS["ChatMessageService\nsendMessage, getMessages,\nsendPing, messageDelivered,\nmarkConversationRead,\nclearChatHistory"]
+
+    Gateway --> CCS["ChatConversationService\nstartConversation,\ngetConversations,\ndeleteConversationOnly,\nsetDisappearingTimer"]
+
+    Gateway --> CFRS["ChatFriendRequestService\nsendFriendRequest (auto-accept),\nacceptFriendRequest,\nrejectFriendRequest,\ngetFriendRequests,\ngetFriends, unfriend"]
+
+    CMS --> MS["MessagesService\ncreate, findByConversation,\ngetLastMessage, updateDeliveryStatus,\ncountUnreadForRecipient,\nmarkConversationAsReadFromSender,\ndeleteAllByConversation"]
+
+    CMS & CCS --> CS["ConversationsService\nfindOrCreate, findById,\nfindByUser, findByUsers,\ndelete, updateDisappearingTimer"]
+
+    CMS & CFRS --> FS["FriendsService\nsendRequest (with auto-accept),\nacceptRequest, rejectRequest,\nareFriends, getPendingRequests,\ngetFriends, unfriend,\ngetPendingRequestCount"]
+
+    CCS & CFRS --> US["UsersService\ncreate, findByEmail (case-insensitive),\nfindById, findByUsername,\nupdateProfilePicture,\nresetPassword, deleteAccount"]
+
+    subgraph Controllers["REST Controllers"]
+        AC["AuthController\nPOST /auth/register\nPOST /auth/login"]
+        UC["UsersController\nPOST /users/profile-picture\nPOST /users/reset-password\nDELETE /users/account"]
+        MC["MessagesController\nPOST /messages/voice\nPOST /messages/image"]
+    end
+
+    AC --> AS["AuthService\nvalidatePassword, register, login"]
+    AS --> US
+    UC --> US
+    MC --> MS
+    MC --> CloudS["CloudinaryService\nuploadAvatar, deleteAvatar,\nuploadVoiceMessage, uploadImage"]
+```
+
+### 7.1 Delivery Status State Machine
+
+```mermaid
+stateDiagram-v2
+    [*] --> SENT: message created in DB
+    SENT --> DELIVERED: recipient emits messageDelivered
+    DELIVERED --> READ: recipient emits markConversationRead
+```
+
+Status order enforced via `DELIVERY_STATUS_ORDER` map in `MessagesService.updateDeliveryStatus()` -- never downgrades (READ cannot become DELIVERED even if events arrive out of order).
+
+### 7.2 Friend Request -- Auto-Accept (Mutual Requests)
+
+```mermaid
+flowchart TD
+    A["User A sends request to User B"] --> B{"Does B have\npending request to A?"}
+    B -->|No| C["Create PENDING request\nemit friendRequestSent to A\nemit newFriendRequest to B"]
+    B -->|Yes| D["Auto-accept BOTH requests\nSet status=ACCEPTED, respondedAt=now"]
+    D --> E["Emit friendRequestAccepted to both\nCreate conversation via findOrCreate\nEmit openConversation to both\nRefresh friends lists + conversations lists"]
+```
+
+### 7.3 Delete Account Cascade
+
+```mermaid
+flowchart TD
+    A["deleteAccount(userId, password)"] --> B["Verify password (bcrypt.compare)"]
+    B --> C["Delete Cloudinary avatar\nif profilePicturePublicId exists"]
+    C --> D["Find all conversations\nwhere userOne=userId OR userTwo=userId"]
+    D --> E["For each conversation:\n1. messageRepo.delete(conversation.id)\n2. convRepo.delete(conversation.id)"]
+    E --> F["Find all friend_requests\nwhere sender=userId OR receiver=userId"]
+    F --> G["friendRequestRepo.remove(records)\n(find-then-remove pattern!)"]
+    G --> H["usersRepo.remove(user)"]
+```
+
+### 7.4 Mappers (WebSocket payload builders)
+
+| Mapper | File | Method | Converts |
+|---|---|---|---|
+| `UserMapper` | `chat/mappers/user.mapper.ts` | `toPayload(user)` | User -> `{ id, email, username, profilePictureUrl }` |
+| `ConversationMapper` | `chat/mappers/conversation.mapper.ts` | `toPayload(conv, options?)` | Conversation -> payload with optional unreadCount + lastMessage |
+| `FriendRequestMapper` | `chat/mappers/friend-request.mapper.ts` | `toPayload(request)` | FriendRequest -> payload with sender/receiver as UserPayload |
+
+### 7.5 DTO Validation Utility
+
+`chat/utils/dto.validator.ts` -- Runtime validation using `class-transformer` (plainToInstance) + `class-validator` (validateSync). Used by all chat service handlers before processing data.
+
+---
+
+## 8. Feature Details
+
+### 8.1 Disappearing Messages
+
+```mermaid
+flowchart LR
+    subgraph Expiration["Three-Layer Expiration"]
+        L1["Layer 1: Frontend\nremoveExpiredMessages()\nevery 1s via ChatDetailScreen timer"]
+        L2["Layer 2: Backend\nhandleGetMessages() filters\nexpired before sending to client"]
+        L3["Layer 3: Cloudinary\nTTL auto-delete for media\nexpiresIn + 3600s buffer"]
+    end
+```
+
+**Config:** `conversations.disappearingTimer` (default 86400s = 1 day). Set via `setDisappearingTimer` event. `null` = disabled.
+
+**Timer starts on DELIVERY, not send** (Telegram/Signal behavior).
+
+**Backend handleGetMessages filter:**
+```typescript
+// TypeORM may return expiresAt as string or Date -- direct comparison yields NaN
+const nowMs = Date.now();
+const active = messages.filter(
+  (m) => !m.expiresAt || new Date(m.expiresAt as any).getTime() > nowMs,
+);
+```
+
+**Frontend removeExpiredMessages:** Removes from both `_messages` AND `_lastMessages` maps.
+
+### 8.2 Voice Messages (Telegram-style)
+
+**Recording flow in ChatInputBar:**
+1. Long-press mic -> recording starts via `record` package
+2. Timer shown via `ValueNotifier<int>` (prevents rebuild freeze)
+3. **Release** -> `_stopRecording()` -> upload + send
+4. **Slide left ~100px** -> cancel (`_canceledBySlide` flag), trash icon shows
+5. `onLongPressCancel` -> still calls `_stopRecording()` unless canceled by slide
+6. **Mic stays visible** during recording (GestureDetector must stay in tree for events)
+7. `Transform.translate` moves mic icon with finger drag (global position tracking)
+
+**Upload flow:**
+1. Create optimistic message (SENDING status, negative temp ID)
+2. POST /messages/voice -> Cloudinary (`resource_type: 'video'`, folder `voice-messages/`)
+3. On success: send via WebSocket with `mediaUrl` + `mediaDuration`, delete temp file (native)
+4. On failure: mark as FAILED -> retry button (native only, web has no cached bytes)
+
+**Playback:** Lazy download from `mediaUrl`, cached at `{appDocDir}/audio_cache/{messageId}.m4a`. **Scrubbable waveform** (Telegram-style): tap or drag on waveform to seek; no separate slider. Speed toggle (1x/1.5x/2x via `just_audio`).
+
+**Format:** AAC/M4A (native), WAV (web). 44.1kHz mono. Max 2 min, min 1s.
+
+**Platform guard:** `permission_handler` on mobile only (`!kIsWeb`). Web: browser handles mic permission.
+
+### 8.3 Delete Conversation vs Unfriend
+
+| Action | Trigger | What's Deleted | Friend Preserved? | Event |
+|---|---|---|---|---|
+| **Delete Conversation** | Swipe on ConversationsScreen | Messages + Conversation | Yes | `deleteConversationOnly` |
+| **Unfriend** | Long-press on ContactsScreen | FriendRequest + Conversation + Messages | No | `unfriend` |
+| **Clear Chat History** | Action tile in ChatDetailScreen | Messages only | Yes (conv too) | `clearChatHistory` |
+
+### 8.4 Unread Badge
+
+- Backend: `countUnreadForRecipient()` uses QueryBuilder: sender != user AND status != READ AND not expired
+- `conversationsList` includes `unreadCount` per conversation
+- Frontend: `_unreadCounts` map, incremented on `newMessage` when chat not active, cleared on `openConversation`
+
+### 8.5 Ping Messages
+
+One-shot notification. Empty content, `messageType=PING`. Uses conversation's `disappearingTimer` for expiration. Both `pingSent` and `newPing` handled by same `_handlePingReceived()`.
+
+### 8.6 Image Messages
+
+Upload via REST: POST /messages/image (multipart, JPEG/PNG, max 5MB). Creates message in DB with `messageType=IMAGE` + `mediaUrl`. Verifies friend relationship. Supports disappearing timer via `expiresIn` param.
+
+---
+
+## 9. File Location Map
+
+### Backend (NestJS) -- `backend/src/`
+
+| Domain | Files |
+|---|---|
+| **Auth** | `auth/auth.service.ts`, `auth/auth.controller.ts`, `auth/jwt-auth.guard.ts`, `auth/jwt.strategy.ts` |
+| **Users** | `users/user.entity.ts`, `users/users.service.ts`, `users/users.controller.ts` |
+| **Conversations** | `conversations/conversation.entity.ts`, `conversations/conversations.service.ts` |
+| **Messages** | `messages/message.entity.ts`, `messages/messages.service.ts`, `messages/messages.controller.ts` |
+| **Friends** | `friends/friend-request.entity.ts`, `friends/friends.service.ts` |
+| **WebSocket gateway** | `chat/chat.gateway.ts` (router only, delegates to services) |
+| **Chat services** | `chat/services/chat-message.service.ts`, `chat/services/chat-conversation.service.ts`, `chat/services/chat-friend-request.service.ts` |
+| **DTOs** | `chat/dto/chat.dto.ts` (main), `chat/dto/send-ping.dto.ts`, `chat/dto/clear-chat-history.dto.ts`, `chat/dto/set-disappearing-timer.dto.ts`, `chat/dto/delete-conversation-only.dto.ts` |
+| **Mappers** | `chat/mappers/conversation.mapper.ts`, `chat/mappers/user.mapper.ts`, `chat/mappers/friend-request.mapper.ts` |
+| **Utils** | `chat/utils/dto.validator.ts` |
+| **Cloudinary** | `cloudinary/cloudinary.service.ts`, `cloudinary/cloudinary.module.ts` |
+| **App config** | `app.module.ts` (TypeORM, Throttler, JWT, Cloudinary, Schedule) |
+
+### Frontend (Flutter) -- `frontend/lib/`
+
+| Domain | Files |
+|---|---|
+| **Entry + config** | `main.dart`, `config/app_config.dart`, `constants/app_constants.dart` |
+| **Models** | `models/user_model.dart`, `models/conversation_model.dart`, `models/message_model.dart`, `models/friend_request_model.dart` |
+| **Providers** | `providers/auth_provider.dart`, `providers/chat_provider.dart`, `providers/settings_provider.dart` |
+| **Services** | `services/socket_service.dart` (22 event callbacks), `services/api_service.dart` (REST client) |
+| **Screens** | `screens/auth_screen.dart`, `screens/main_shell.dart`, `screens/conversations_screen.dart`, `screens/contacts_screen.dart`, `screens/settings_screen.dart`, `screens/chat_detail_screen.dart`, `screens/add_or_invitations_screen.dart` |
+| **Widgets** | `widgets/chat_input_bar.dart`, `widgets/chat_action_tiles.dart`, `widgets/chat_message_bubble.dart`, `widgets/voice_message_bubble.dart`, `widgets/conversation_tile.dart`, `widgets/top_snackbar.dart`, `widgets/avatar_circle.dart` |
+| **Theme** | `theme/rpg_theme.dart` (themeData dark + themeDataLight) |
+
+---
+
+## 10. How-To: Adding New Features
+
+### Add a new WebSocket event:
+1. Define DTO in `chat/dto/` with class-validator decorators
+2. Export from `chat/dto/chat.dto.ts` (or create separate file + export)
+3. Add handler method in appropriate `chat/services/chat-*.service.ts`
+4. Add `@SubscribeMessage('eventName')` in `chat/chat.gateway.ts` -> delegate to service
+5. Add emit method in `frontend/lib/services/socket_service.dart`
+6. Add callback param to `SocketService.connect()` and register listener
+7. Pass handler from `ChatProvider.connect()` to socket service
+8. Handle state update + `notifyListeners()` in `ChatProvider`
+
+### Add a new REST endpoint:
+1. Add method in `*.service.ts` (business logic)
+2. Add route in `*.controller.ts` with `@UseGuards(JwtAuthGuard)` if auth needed
+3. Add API call in `frontend/lib/services/api_service.dart`
+4. Call from provider or screen
+
+### Add a new DB column:
+1. Add to `*.entity.ts` (with @Column decorator)
+2. Restart backend (TypeORM `synchronize: true` auto-applies)
+3. Update mapper in `chat/mappers/*.mapper.ts` if it touches WebSocket payloads
+4. Update frontend model (`models/*.dart`): constructor, `fromJson()`, `copyWith()`
+5. Update all places that create/use the model
+
+---
+
+## 11. Critical Rules & Gotchas
+
+### TypeORM
+
+| Rule | Reason |
+|---|---|
+| Always `relations: ['sender', 'receiver']` on `friendRequestRepository` queries | Without: eager-loaded fields return empty objects or crash |
+| Use find-then-remove for `friend_requests` delete | `.delete()` cannot use nested relation conditions like `sender: { id }` |
+| Always `new Date(val).getTime()` for `expiresAt` comparisons | TypeORM returns string or Date from pg -- `string > Date` yields NaN |
+| `messageRepo.delete({ conversation: { id } })` is OK | Single-relation delete works fine |
+| `deliveryStatus` never downgrades | Enforced in `updateDeliveryStatus()` via `DELIVERY_STATUS_ORDER` map |
+
+### Frontend
+
+| Rule | Reason |
+|---|---|
+| Use `showTopSnackBar()` for notifications | `ScaffoldMessenger.showSnackBar` covers the chat input bar |
+| `enableForceNew()` on Socket.IO reconnect | Without it, Dart caches socket by URL -- old JWT used after re-login |
+| Provider can't call Navigator | Use `consumePendingOpen()` / `consumeFriendRequestSent()` patterns |
+| Guard `Platform` with `!kIsWeb` | `dart:io` Platform crashes on web -- use `kIsWeb` from `foundation.dart` |
+| `copyWith` must include ALL fields | Missing field in copyWith -> data silently lost on state update |
+| Voice recording: mic must stay in widget tree | If mic hidden during recording, GestureDetector unmounts -> no release/drag events |
+| Timer via `ValueNotifier<int>` | Overlay rebuilds freeze timer -- use ValueListenableBuilder for isolation |
+| Multiple backends issue | If frontend shows weird data: kill local `node.exe`, use Docker only |
+
+### Backend
+
+| Rule | Reason |
+|---|---|
+| Delete account cascade: msgs -> convs -> friend_reqs -> user | No cascade on User entity |
+| Avatar delete: only if `oldPublicId !== newPublicId` | Overwrite uses same public_id |
+| `conversationsService.delete()` deletes msgs first | No cascade configured |
+| Chat services use critical/non-critical pattern | Critical failures (accept request) stop execution; non-critical (emit friends list) log and continue |
+
+---
+
+## 12. Environment & Configuration
+
+### Environment Variables
+
+| Variable | Required | Used By | Purpose |
+|---|---|---|---|
+| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME` | Yes | Backend | PostgreSQL connection |
+| `JWT_SECRET` | Yes | Backend | JWT signing key |
+| `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` | Yes | Backend | Media storage (from .env) |
+| `ALLOWED_ORIGINS` | No | Backend | CORS origins (comma-separated, default localhost:3000) |
+| `PORT`, `NODE_ENV` | No | Backend | Server port, environment |
+| `BASE_URL` | No | Frontend | Dart define; defaults to auto-detect `http://{browser_host}:3000` |
+
+### Docker Compose (`docker-compose.yml`)
+
+| Service | Image | Port | Notes |
+|---|---|---|---|
+| `db` | postgres:16-alpine | 5433->5432 | Volume: pgdata. Creds: postgres/postgres/chatdb |
+| `backend` | node:20-alpine | 3000 | Mounts `./backend:/app`. Runs `npm install && npm run start:dev` |
+
+Frontend runs locally (not in Docker): `flutter run -d chrome`
+
+### Docker Production Builds
+
+| Component | Build | Result |
+|---|---|---|
+| Backend | Multi-stage: node:20-alpine build -> node:20-alpine runtime | 357MB (was 644MB) |
+| Frontend | Multi-stage: Flutter SDK build -> nginx:alpine serve | 136MB (was 7.64GB) |
+
+### Constants (`app_constants.dart`)
+
+| Constant | Value | Purpose |
+|---|---|---|
+| `layoutBreakpointDesktop` | 600.0 | Desktop vs mobile layout switch |
+| `conversationsRefreshDelay` | 500ms | Re-fetch delay on connect |
+| `messagePageSize` | 50 | Messages per page |
+| `reconnectMaxAttempts` | 5 | Max reconnect tries |
+| `reconnectInitialDelay` | 1s | First reconnect delay |
+| `reconnectMaxDelay` | 30s | Max backoff cap |
+
+### Frontend Config (`config/app_config.dart`)
+
+`AppConfig.baseUrl`: If `BASE_URL` dart define is set, use it. Otherwise auto-detect from browser URL: `http://{Uri.base.host}:3000`.
+
+---
+
+## 13. Recent Changes (Last 14 Days)
+
+**2026-02-17:**
+- **Voice message compact UI:** Scrubbable waveform (Telegram-style) — tap or drag on waveform to seek; removed separate slider row. Time display integrated into one row.
+- **Quick clean refactoring:** Removed dead code, debug prints, unused exports. Net -454 lines.
+  - Deleted 3 dead screens: `archive_placeholder_screen.dart`, `friend_requests_screen.dart`, `new_chat_screen.dart`
+  - Cleaned 42 debug prints from `chat_input_bar.dart` (23), `chat_provider.dart` (13), `socket_service.dart` (6)
+  - Backend: removed unused `DeleteConversationDto`, 3x unused `toPayloadArray()` from mappers, unused imports
 
 **2026-02-16:**
-
-- **Voice recording Telegram-style:** (1) Release now sends: use **global** position for drag; `onLongPressCancel` so release always calls `_stopRecording()` unless slid to cancel. (2) Slide-left to cancel: 100px threshold, trash icon. (3) **Mic stays visible during recording** so the GestureDetector is not unmounted—release and drag are received; mic icon uses `Transform.translate` so it slides left with the finger. File: `chat_input_bar.dart`.
+- **Voice recording Telegram-style:** Release sends (global position drag), slide-left cancel (100px threshold), mic stays visible during recording, `Transform.translate` for mic drag.
 
 **2026-02-15:**
-
-- **Voice recording timer fix:** Timer was freezing/jumping due to overlay rebuilds. Fix: moved timer to parent (ChatInputBar) with `ValueNotifier<int>`, overlay uses `ValueListenableBuilder`. Duration computed from `_recordingStartTime`.
-
-- **Voice messages web fix:** Fixed `Platform._operatingSystem` error on web. Guard Platform usage with `!kIsWeb`. Web: use WAV encoder, blob URL fetch, `uploadVoiceMessage(audioBytes)`. Retry not available on web (no cached bytes).
-
-- **Voice messages full implementation:** Hold-to-record mic, full-screen overlay, optimistic UI, Cloudinary storage with TTL auto-delete, lazy download playback with caching, rich controls (play/pause, waveform, scrub, speed toggle). Backend: POST /messages/voice, `mediaDuration` column. Frontend: `VoiceRecordingOverlay`, `VoiceMessageBubble`. Design: `docs/plans/2026-02-15-voice-messages-design.md`.
+- **Voice recording timer fix:** ValueNotifier<int> prevents overlay rebuild freeze
+- **Voice messages web fix:** Guard Platform with `!kIsWeb`, WAV encoder for web
+- **Voice messages full implementation:** Hold-to-record, optimistic UI, Cloudinary TTL, lazy playback with caching
 
 **2026-02-14:**
-
-- **Contacts tab:** New tab replaces Archive. Shows friends list. Long-press → unfriend (total delete). Tap → open chat.
-
-- **Swipe-to-delete conversations:** Conversations tab uses swipe gesture (left-to-right) + confirmation dialog. Calls `deleteConversationOnly` (preserves friend).
-
-- **Delete chat history:** Long-press action tile in ChatActionTiles permanently deletes all messages for both users. Real-time sync via `clearChatHistory` WebSocket event.
-
-- **Ping instant display fix:** Ping didn't appear in sender's chat. Frontend only handled `newPing`, not `pingSent`. Fix: added `onPingSent` listener using same handler.
-
-- **Default 1-day disappearing timer:** New conversations get 86400s timer stored in DB. Synced via `setDisappearingTimer` / `disappearingTimerUpdated` WebSocket events.
+- **Contacts tab:** Replaces Archive. Friends list, long-press unfriend, tap to chat
+- **Swipe-to-delete conversations:** Dismissible + confirmation dialog
+- **Delete chat history:** Action tile, real-time sync via `clearChatHistory` event
+- **Ping instant display fix:** Added `onPingSent` handler
+- **Default 1-day disappearing timer:** 86400s stored in DB
 
 **2026-02-08:**
-
-- **Unread badge:** Orange badge with count on conversation tiles. Backend counts unread (sender ≠ user, deliveryStatus ≠ READ, not expired). Frontend updates on `newMessage`, clears on `openConversation`.
-
-- **Messages disappear after switching chat:** Backend `findByConversation` returned 50 oldest (ASC). Fix: `order: DESC`, `take`, then `.reverse()` to return most recent N oldest-first.
+- **Unread badge:** Orange badge with count. Backend counts, frontend tracks
+- **Messages disappear after switching chat:** Fixed DESC + take + reverse
 
 **2026-02-07:**
-
-- **Docker optimization:** Frontend 7.64GB → 136MB (98%). Backend 644MB → 357MB (44%). Added `.dockerignore`, multi-stage builds, cache cleanup.
-
-- **Notifications at top:** All notifications use `showTopSnackBar()` (top of screen) instead of `ScaffoldMessenger` (covered input bar).
+- **Docker optimization:** Frontend 98% reduction, backend 44% reduction
+- **Top notifications:** All via `showTopSnackBar()`, never ScaffoldMessenger
 
 **2026-02-06:**
-
-- **Disappearing messages fix:** Three bugs: (1) Timer zero showed "Expired" → added `removeExpiredMessages()`. (2) Messages disappeared on re-entry → TypeORM returns `expiresAt` as string, `string > Date` = NaN → use `new Date(val).getTime()`. (3) Added orange timer indicator bar in ChatInputBar.
-
-- **Docker hot-reload:** Windows volumes don't propagate inotify. Backend: polling in tsconfig.json. Frontend: polling watcher script (dev-entrypoint.sh).
+- **Disappearing messages fix:** Three bugs (removeExpiredMessages, TypeORM string vs Date, timer indicator)
+- **Docker hot-reload:** Polling for Windows volumes
 
 ---
 
-## 7. Patterns & Gotchas
+## 14. Known Limitations & Tech Debt
 
-### 7.1 TypeORM Patterns
-
-- **Relations required:** Always `relations: ['sender','receiver']` on friendRequestRepository. Otherwise: empty objects.
-- **.delete() limitation:** Cannot use nested relation conditions. Use find-then-remove: `.find({ where: [...] })` then `.remove(records)`.
-- **Timestamp comparison:** `expiresAt` may be string or Date from pg driver. Always `new Date(val).getTime()` for comparisons.
-- **Single-relation delete OK:** `messageRepo.delete({ conversation: { id } })` works (single relation).
-
-### 7.2 Frontend Patterns
-
-- **consumePendingOpen (Provider→Navigator):**
-  - Problem: ChatProvider can't call Navigator.push (no BuildContext).
-  - Solution: Backend emits `openConversation` { conversationId }. ChatProvider sets `_pendingOpenConversationId`, notifyListeners. Screen in build() calls `chat.consumePendingOpen()` → returns id, clears. If id != null, addPostFrameCallback → Navigator.pop(context, id).
-  - Used in: AddOrInvitationsScreen, ConversationsScreen.
-
-- **consumeFriendRequestSent:**
-  - After `sendFriendRequest`, backend emits `friendRequestSent`. ChatProvider sets `_friendRequestJustSent = true`. Screen calls `consumeFriendRequestSent()` in build() → shows snackbar, Navigator.pop.
-
-- **Socket reconnect:**
-  - `connect(token, userId)`: cancels reconnect timer, sets `_intentionalDisconnect = false`, **clears all state**, disposes old socket, creates new with `enableForceNew()`.
-  - `disconnect()`: sets `_intentionalDisconnect = true`, cancels timer, disposes socket.
-  - `onDisconnect`: if not intentional and token exists, exponential backoff reconnect (max 5 attempts).
-
-- **Notifications:**
-  - Always use `showTopSnackBar(context, message, backgroundColor?)` (top of screen).
-  - Never `ScaffoldMessenger.showSnackBar` (covers input bar).
-
-- **Theme:**
-  - `RpgTheme`: themeData (dark), themeDataLight. SettingsProvider.themeMode drives MaterialApp.
-  - Breakpoint 600px: `AppConstants.layoutBreakpointDesktop`.
-
-### 7.3 Backend Patterns
-
-- **Delete account cascade (users.service.ts deleteAccount):**
-  1. Verify password.
-  2. Delete Cloudinary avatar if `profilePicturePublicId` set.
-  3. Find all conversations (userOne or userTwo). For each: delete messages, delete conversation.
-  4. Find all friend_requests (sender or receiver). **remove(records)** (find-then-remove).
-  5. Remove user.
-
-- **Avatar update (Cloudinary):**
-  - Only call `deleteAvatar(oldPublicId)` when `oldPublicId !== newPublicId` (overwrite uses same public_id).
-
-- **deleteConversation:**
-  - Must call `friendsService.unfriend()` first (removes friend_request), then delete messages, then conversation.
-
-### 7.4 Bug Lessons Learned
-
-- **Avatar blink:** ChatDetailScreen Timer.periodic(1s) triggered full rebuilds. AvatarCircle used `DateTime.now()` in URL → image reload. Fix: stable cache-bust per profilePictureUrl.
-
-- **Disappearing messages not vanishing:** Frontend never removed expired. Fix: `removeExpiredMessages()` called every 1s.
-
-- **Disappearing messages vanish on re-entry:** TypeORM returns `expiresAt` as string; `string > Date` = NaN in JS, filtering ALL timed messages. Fix: `new Date(m.expiresAt).getTime() > nowMs`.
-
-- **Messages disappear after chat switch:** Backend returned 50 oldest (ASC). Fix: `order: DESC`, take, reverse.
-
-- **Ping not appearing in sender chat:** Frontend only handled `newPing`, not `pingSent`. Fix: added `onPingSent` listener.
-
-- **Voice recording "Platform._operatingSystem" on web:** `dart:io` unsupported on web. Fix: guard with `!kIsWeb`, use WAV encoder + blob URL fetch on web.
-
-- **Voice messages not reaching recipient:** SendMessageDto had `@MinLength(1)` on content, rejected VOICE (empty content). Fix: `@ValidateIf((o) => !['VOICE','PING'].includes(o?.messageType))`.
-
----
-
-## 8. Environment, Limits & Tech Debt
-
-### 8.1 Environment Variables
-
-| Var | Required | Purpose |
-|-----|----------|---------|
-| DB_HOST, DB_PORT, DB_USER, DB_PASS, DB_NAME | ✓ | PostgreSQL connection |
-| JWT_SECRET | ✓ | JWT signing |
-| CLOUDINARY_CLOUD_NAME, _API_KEY, _API_SECRET | ✓ | Avatar + voice storage |
-| PORT, NODE_ENV, ALLOWED_ORIGINS | — | Optional |
-
-**Frontend:** BASE_URL dart define (default localhost:3000). JWT in SharedPreferences (`jwt_token`).
-
-### 8.2 Known Limitations
-
-- No user search
+### Limitations
+- No user search (only add by exact email)
 - No typing indicators
-- No message edit/delete (only clear chat history)
-- No unique constraint on (sender, receiver) in friend_requests → duplicate requests allowed
-- Last message not in conversationsList payload (client keeps `_lastMessages` map)
-- Message pagination: limit/offset, default 50
+- No message edit/delete (only clear entire chat history)
+- No push notifications
+- No unique constraint on `(sender, receiver)` in `friend_requests`
+- Message pagination: simple limit/offset, default 50
+- `_conversationsWithUnread()` has N+1 query pattern
 
-### 8.3 Tech Debt
+### Tech Debt
+- No backend unit tests (only Flutter has 9 basic tests)
+- Manual E2E scripts in `scripts/` (not part of shipped app)
+- `getOtherUserId` pattern repeated across ChatProvider + screens
+- Large files: `chat_provider.dart` (~793 lines), `chat-friend-request.service.ts` (~601 lines)
 
-- Manual E2E scripts in `scripts/` (Node, run against running backend). Not part of shipped app.
-- Flutter tests: 9 (AppConstants, UserModel, ConversationModel, widget). Run: `flutter test`.
-- Constants in `app_constants.dart`: layoutBreakpointDesktop, conversationsRefreshDelay, messagePageSize, reconnect*.
-- Reconnect: exponential backoff, max 5 attempts; token stored; onDisconnect triggers unless intentional logout.
+---
+
+## 15. Bug Lessons Learned
+
+| Bug | Root Cause | Fix |
+|---|---|---|
+| Avatar blinks every second | Timer.periodic(1s) -> rebuild -> `DateTime.now()` in avatar URL | Stable cache-bust per profilePictureUrl |
+| Messages vanish on re-entry | TypeORM returns `expiresAt` as string; `string > Date` = NaN | Always `new Date(val).getTime()` |
+| Messages disappear after chat switch | findByConversation returned 50 oldest (ASC) | DESC + take + `.reverse()` |
+| Ping not showing for sender | Frontend only handled `newPing`, not `pingSent` | Added `onPingSent` (same handler) |
+| Voice timer freezing | Overlay rebuilds reset timer | ValueNotifier<int> + ValueListenableBuilder |
+| Platform crash on web | `dart:io` unsupported on web | Guard with `!kIsWeb` |
+| Voice message rejected by backend | `@MinLength(1)` on content rejected VOICE | `@ValidateIf` to skip for VOICE/PING |
+| "Unused" method broke auth | `clearStatus()` appeared unused but called from auth_screen.dart | Always run `flutter analyze` before deleting |
 
 ---
 

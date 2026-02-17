@@ -179,6 +179,15 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
     }
   }
 
+  void _seekFromWaveformPosition(double localX, double width) {
+    if (width <= 0 || _displayDuration.inMilliseconds <= 0) return;
+    final progress = (localX / width).clamp(0.0, 1.0);
+    final newPosition = Duration(
+      milliseconds: (progress * _displayDuration.inMilliseconds).round(),
+    );
+    _audioPlayer.seek(newPosition);
+  }
+
   void _toggleSpeed() {
     setState(() {
       if (_playbackSpeed == 1.0) {
@@ -294,23 +303,43 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
 
                 const SizedBox(width: 8),
 
-                // Waveform with progress (use _displayDuration for pre-load display)
+                // Waveform: scrubbable (tap/drag to seek), Telegram-style
                 Expanded(
-                  child: _displayDuration.inMilliseconds > 0
-                      ? CustomPaint(
-                          painter: _WaveformPainter(
-                            progress: _displayDuration.inMilliseconds > 0
-                                ? _position.inMilliseconds /
-                                    _displayDuration.inMilliseconds
-                                : 0.0,
-                            color: borderColor,
-                          ),
-                          size: const Size(double.infinity, 28),
-                        )
-                      : Container(
-                          height: 28,
-                          color: Colors.grey.withOpacity(0.1),
-                        ),
+                  child: LayoutBuilder(
+                    builder: (context, constraints) {
+                      final w = constraints.maxWidth;
+                      return GestureDetector(
+                        onTapDown: _displayDuration.inMilliseconds > 0
+                            ? (d) => _seekFromWaveformPosition(d.localPosition.dx, w)
+                            : null,
+                        onHorizontalDragUpdate: _displayDuration.inMilliseconds > 0
+                            ? (d) => _seekFromWaveformPosition(d.localPosition.dx, w)
+                            : null,
+                        behavior: HitTestBehavior.opaque,
+                        child: _displayDuration.inMilliseconds > 0
+                            ? CustomPaint(
+                                painter: _WaveformPainter(
+                                  progress: _position.inMilliseconds /
+                                      _displayDuration.inMilliseconds,
+                                  color: borderColor,
+                                ),
+                                size: Size(w, 28),
+                              )
+                            : Container(
+                                height: 28,
+                                color: Colors.grey.withOpacity(0.1),
+                              ),
+                      );
+                    },
+                  ),
+                ),
+
+                const SizedBox(width: 4),
+
+                // Time: position / duration (compact)
+                Text(
+                  '${_formatDuration(_position)}/${_formatDuration(_displayDuration)}',
+                  style: const TextStyle(fontSize: 10),
                 ),
 
                 const SizedBox(width: 6),
@@ -333,39 +362,6 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
               ],
             ),
 
-            const SizedBox(height: 4),
-
-            // Duration slider
-            Row(
-              children: [
-                Text(
-                  _formatDuration(_position),
-                  style: const TextStyle(fontSize: 11),
-                ),
-                Expanded(
-                  child: Slider(
-                    value: _displayDuration.inMilliseconds > 0
-                        ? _position.inMilliseconds /
-                            _displayDuration.inMilliseconds
-                        : 0.0,
-                    onChanged: _displayDuration.inMilliseconds > 0
-                        ? (value) {
-                            final newPosition = Duration(
-                              milliseconds: (_displayDuration.inMilliseconds *
-                                      value)
-                                  .round(),
-                            );
-                            _audioPlayer.seek(newPosition);
-                          }
-                        : null,
-                  ),
-                ),
-                Text(
-                  _formatDuration(_displayDuration),
-                  style: const TextStyle(fontSize: 11),
-                ),
-              ],
-            ),
             const SizedBox(height: 4),
             Align(
               alignment: Alignment.bottomRight,
