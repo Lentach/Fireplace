@@ -593,7 +593,7 @@ Upload via REST: POST /messages/image (multipart, JPEG/PNG, max 5MB). Creates me
 | **Messages** | `messages/message.entity.ts`, `messages/message.mapper.ts`, `messages/messages.service.ts`, `messages/messages.controller.ts` |
 | **Friends** | `friends/friend-request.entity.ts`, `friends/friends.service.ts` |
 | **WebSocket gateway** | `chat/chat.gateway.ts` (router only, delegates to services) |
-| **Chat services** | `chat/services/chat-message.service.ts`, `chat/services/chat-conversation.service.ts`, `chat/services/chat-friend-request.service.ts` |
+| **Chat services** | `chat/services/chat-message.service.ts` (+ `chat-message.service.spec.ts`: mediaUrl validation integration), `chat/services/chat-conversation.service.ts`, `chat/services/chat-friend-request.service.ts` |
 | **DTOs** | `chat/dto/chat.dto.ts` (main; SendMessageDto.mediaUrl validated as Cloudinary URL), `chat/dto/send-ping.dto.ts`, `chat/dto/clear-chat-history.dto.ts`, `chat/dto/set-disappearing-timer.dto.ts`, `chat/dto/delete-conversation-only.dto.ts` |
 | **Mappers** | `chat/mappers/conversation.mapper.ts`, `chat/mappers/user.mapper.ts`, `chat/mappers/friend-request.mapper.ts`, `messages/message.mapper.ts` |
 | **Utils** | `chat/utils/dto.validator.ts` (validateDto; SendMessageDto mediaUrl tests in dto.validator.spec.ts) |
@@ -717,8 +717,8 @@ Frontend runs locally (not in Docker): `flutter run -d chrome`
 
 | Component | Build | Result |
 |---|---|---|
-| Backend | Multi-stage: node:20-alpine build -> node:20-alpine runtime | 357MB (was 644MB) |
-| Frontend | Multi-stage: Flutter SDK build -> nginx:alpine serve | 136MB (was 7.64GB) |
+| Backend | Multi-stage: node:20-alpine build -> node:20-alpine runtime |
+| Frontend | Multi-stage: Flutter SDK build -> nginx:alpine serve |
 
 ### Constants (`app_constants.dart`)
 
@@ -740,7 +740,7 @@ Frontend runs locally (not in Docker): `flutter run -d chrome`
 ## 13. Recent Changes (Last 14 Days)
 
 **2026-02-17:**
-- **mediaUrl validation:** SendMessageDto validates mediaUrl as Cloudinary URL (regex `res.cloudinary.com/{cloud_name}/(video|image)/upload/...`) when provided. Prevents SSRF/redirect injection.
+- **mediaUrl validation:** SendMessageDto validates mediaUrl as Cloudinary URL (regex `res.cloudinary.com/{cloud_name}/(video|image)/upload/...`) when provided. Prevents SSRF/redirect injection. Integration test in `chat-message.service.spec.ts`: reject non-Cloudinary mediaUrl (emit error, no message created), accept valid Cloudinary URL.
 - **Audit logging:** Logger with context 'Audit' in AuthService (login success/failure by email, userId on success) and UsersService (resetPassword success, deleteAccount success). Logs to stdout.
 - **Socket.IO token:** Frontend sends JWT in `auth.token` only (removed from query). Backend prefers `handshake.auth.token` over query. Avoids token leakage in URL/logs/Referer.
 - **Helmet:** Added helmet middleware for HTTP security headers (X-Content-Type-Options, X-Frame-Options, etc.) in main.ts.
@@ -800,7 +800,7 @@ Frontend runs locally (not in Docker): `flutter run -d chrome`
 - `_conversationsWithUnread()` has N+1 query pattern
 
 ### Tech Debt
-- Backend has 26 unit tests (AuthService, validateDto, SendMessageDto mediaUrl, User/Message/Conversation/FriendRequest mappers). Run: `npm test`. Uses `jest.config.json` + `tsconfig.spec.json` (no DB).
+- Backend has 28 unit tests (AuthService, validateDto, SendMessageDto mediaUrl, User/Message/Conversation/FriendRequest mappers, ChatMessageService handleSendMessage mediaUrl integration). Run: `npm test`. Uses `jest.config.json` + `tsconfig.spec.json` (no DB).
 - Manual E2E scripts in `scripts/` (not part of shipped app)
 - Large files: `chat_provider.dart` (~654 lines, refactored with helpers + section comments). `chat-friend-request.service.ts` reduced to ~428 lines via private emit helpers (emitFriendsListToBoth, emitConversationsListToBoth, emitPendingCountToBoth, emitOpenConversationToBoth, emitAutoAcceptFlow).
 
