@@ -62,12 +62,6 @@ export class RejectFriendRequestDto {
   requestId: number;
 }
 
-export class DeleteConversationDto {
-  @IsNumber()
-  @IsPositive()
-  conversationId: number;
-}
-
 export class GetMessagesDto {
   @IsNumber()
   @IsPositive()

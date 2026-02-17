@@ -7,12 +7,10 @@ import { FriendsService } from '../../friends/friends.service';
 import { validateDto } from '../utils/dto.validator';
 import {
   StartConversationDto,
-  DeleteConversationDto,
   SetDisappearingTimerDto,
   DeleteConversationOnlyDto,
 } from '../dto/chat.dto';
 import { ConversationMapper } from '../mappers/conversation.mapper';
-import { UserMapper } from '../mappers/user.mapper';
 
 @Injectable()
 export class ChatConversationService {

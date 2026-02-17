@@ -10,7 +10,4 @@ export class UserMapper {
     };
   }
 
-  static toPayloadArray(users: User[]) {
-    return users.map((u) => this.toPayload(u));
-  }
 }

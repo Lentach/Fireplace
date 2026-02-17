@@ -123,11 +123,8 @@ class _ChatInputBarState extends State<ChatInputBar>
 
 
   Future<void> _startRecording() async {
-    print('[VOICE] _startRecording called');
     try {
-      print('[VOICE] Checking mic permission');
       await _checkMicPermission();
-      print('[VOICE] Mic permission OK');
 
       _audioRecorder = AudioRecorder();
       if (kIsWeb) {
@@ -173,16 +170,12 @@ class _ChatInputBarState extends State<ChatInputBar>
     } catch (e) {
       if (!mounted) return;
       showTopSnackBar(context, 'Failed to start recording');
-      print('Recording error: $e');
+      debugPrint('Recording error: $e');
     }
   }
 
   Future<void> _stopRecording() async {
-    print('[VOICE] _stopRecording called, _isRecording=$_isRecording, _audioRecorder=${_audioRecorder != null}');
-    if (_audioRecorder == null || !_isRecording) {
-      print('[VOICE] Early return: audioRecorder null or not recording');
-      return;
-    }
+    if (_audioRecorder == null || !_isRecording) return;
 
     _recordingTimer?.cancel();
     _recordingTimer = null;
@@ -190,7 +183,6 @@ class _ChatInputBarState extends State<ChatInputBar>
     _recordingSecondsNotifier = null;
 
     final path = await _audioRecorder!.stop();
-    print('[VOICE] Recording stopped, path=$path');
     await _audioRecorder!.dispose();
     _audioRecorder = null;
 
@@ -204,12 +196,10 @@ class _ChatInputBarState extends State<ChatInputBar>
     final durationSeconds = _recordingStartTime != null
         ? DateTime.now().difference(_recordingStartTime!).inSeconds
         : 0;
-    print('[VOICE] Duration: $durationSeconds seconds');
     _recordingStartTime = null;
 
     // Check duration
     if (durationSeconds < 1) {
-      print('[VOICE] Duration too short (<1s), not sending');
       if (!kIsWeb && path != null) {
         try {
           final file = File(path);
@@ -226,39 +216,27 @@ class _ChatInputBarState extends State<ChatInputBar>
 
     // Send voice message
     if (path != null) {
-      print('[VOICE] Sending voice message, path=$path, kIsWeb=$kIsWeb');
       if (kIsWeb) {
         // Web: path is blob URL, fetch bytes
         try {
-          print('[VOICE] Fetching blob from $path');
           final response = await http.get(Uri.parse(path));
-          print('[VOICE] Blob fetch response: ${response.statusCode}');
           if (response.statusCode == 200) {
-            print('[VOICE] Calling _sendVoiceMessage with ${response.bodyBytes.length} bytes');
             await _sendVoiceMessage(duration: durationSeconds, audioBytes: response.bodyBytes);
-            print('[VOICE] Voice message sent successfully');
           } else {
             if (!mounted) return;
             showTopSnackBar(context, 'Failed to read recording');
-            print('[VOICE] ERROR: Failed to read recording, status=${response.statusCode}');
           }
         } catch (e) {
           if (!mounted) return;
           showTopSnackBar(context, 'Failed to send voice message');
-          print('[VOICE] ERROR: Exception sending voice message: $e');
+          debugPrint('Send voice error: $e');
         }
       } else {
         final file = File(path);
         if (await file.exists()) {
-          print('[VOICE] File exists, sending from path');
           await _sendVoiceMessage(duration: durationSeconds, localAudioPath: path);
-          print('[VOICE] Voice message sent successfully');
-        } else {
-          print('[VOICE] ERROR: File does not exist at $path');
         }
       }
-    } else {
-      print('[VOICE] ERROR: path is null, cannot send');
     }
 
     setState(() {
@@ -333,7 +311,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     } catch (e) {
       if (!mounted) return;
       showTopSnackBar(context, 'Failed to send voice message');
-      print('Send voice error: $e');
+      debugPrint('Send voice error: $e');
     } finally {
       if (mounted) {
         setState(() {
@@ -346,7 +324,6 @@ class _ChatInputBarState extends State<ChatInputBar>
   void _onRecordingDragStart(double startX) {
     _dragStartX = startX;
     _cancelDragOffset = 0.0;
-    print('[VOICE] Drag start at x=$startX');
   }
 
   void _onRecordingDragUpdate(double currentX) {

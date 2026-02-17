@@ -32,7 +32,4 @@ export class ConversationMapper {
     };
   }
 
-  static toPayloadArray(conversations: Conversation[]) {
-    return conversations.map((c) => this.toPayload(c));
-  }
 }

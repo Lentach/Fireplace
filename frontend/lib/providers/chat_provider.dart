@@ -1,5 +1,4 @@
 import 'dart:async';
-import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
@@ -12,24 +11,6 @@ import '../models/message_model.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/socket_service.dart';
-
-// #region agent log
-void _debugLog(String location, String message, Map<String, dynamic> data, String hypothesisId) {
-  final payload = {'location': location, 'message': message, 'data': data, 'hypothesisId': hypothesisId};
-  if (kIsWeb) {
-    debugPrint('[DEBUG_LOG] ${jsonEncode(payload)}');
-    return;
-  }
-  try {
-    final line = jsonEncode({
-      'id': 'log_${DateTime.now().millisecondsSinceEpoch}',
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-      ...payload,
-    }) + '\n';
-    File(r'c:\Users\Lentach\Desktop\mvp-chat-app\.cursor\debug.log').writeAsStringSync(line, mode: FileMode.append);
-  } catch (_) {}
-}
-// #endregion
 
 class ChatProvider extends ChangeNotifier {
   final SocketService _socketService = SocketService();
@@ -169,9 +150,6 @@ class ChatProvider extends ChangeNotifier {
   }
 
   void connect({required String token, required int userId}) {
-    // #region agent log
-    _debugLog('chat_provider.dart:connect:entry', 'connect() called', {'reconnectAttemptsBefore': _reconnectAttempts, 'userId': userId}, 'H1');
-    // #endregion
     _reconnectTimer?.cancel();
     _reconnectTimer = null;
     _intentionalDisconnect = false;
@@ -195,22 +173,14 @@ class ChatProvider extends ChangeNotifier {
 
     // Clean up old socket if it exists
     if (_socketService.socket != null) {
-      // #region agent log
-      _debugLog('chat_provider.dart:connect:beforeOldDisconnect', 'disconnecting OLD socket before new connect', {'reconnectAttempts': _reconnectAttempts}, 'H2');
-      // #endregion
       _socketService.disconnect();
     }
-
-    debugPrint('[ChatProvider] Connecting WebSocket for userId=$userId');
 
     _currentUserId = userId;
     _socketService.connect(
       baseUrl: AppConfig.baseUrl,
       token: token,
       onConnect: () {
-        // #region agent log
-        _debugLog('chat_provider.dart:onConnect', 'onConnect fired, resetting reconnectAttempts to 0', {'reconnectAttemptsWas': _reconnectAttempts}, 'H1');
-        // #endregion
         _reconnectAttempts = 0; // Reset on successful connection
         _socketService.getConversations();
         _socketService.getFriendRequests();
@@ -252,19 +222,6 @@ class ChatProvider extends ChangeNotifier {
         _messages = list
             .map((m) => MessageModel.fromJson(m as Map<String, dynamic>))
             .toList();
-
-        // Debug: log received messages with expiresAt
-        final withExpiry = _messages.where((m) => m.expiresAt != null).toList();
-        if (withExpiry.isNotEmpty) {
-          final now = DateTime.now();
-          debugPrint('[ChatProvider] onMessageHistory: ${_messages.length} msgs, '
-              '${withExpiry.length} with expiresAt. now=$now');
-          for (final m in withExpiry) {
-            final diff = m.expiresAt!.difference(now);
-            debugPrint('  msg#${m.id}: expiresAt=${m.expiresAt}, diff=${diff.inSeconds}s, '
-                'expired=${m.expiresAt!.isBefore(now)}');
-          }
-        }
 
         // Immediately remove any already-expired messages
         final now = DateTime.now();
@@ -350,21 +307,14 @@ class ChatProvider extends ChangeNotifier {
       onMessageDelivered: _handleMessageDelivered,
       onPingReceived: _handlePingReceived,
       onPingSent: _handlePingReceived,
-      onChatHistoryCleared: (data) {
-        debugPrint('[ChatProvider] Received chatHistoryCleared event');
-        _handleChatHistoryCleared(data);
-      },
-      onDisappearingTimerUpdated: (data) {
-        debugPrint('[ChatProvider] Received disappearingTimerUpdated event');
-        _handleDisappearingTimerUpdated(data);
-      },
+      onChatHistoryCleared: _handleChatHistoryCleared,
+      onDisappearingTimerUpdated: _handleDisappearingTimerUpdated,
       onConversationDeleted: _handleConversationDeleted,
       onDisconnect: (_) => _onDisconnect(),
     );
   }
 
   void openConversation(int conversationId, {int limit = AppConstants.messagePageSize}) {
-    debugPrint('[ChatProvider] openConversation($conversationId) — requesting messages');
     _activeConversationId = conversationId;
     _unreadCounts[conversationId] = 0;
     _messages = [];
@@ -552,7 +502,7 @@ class ChatProvider extends ChangeNotifier {
       }
 
       _errorMessage = 'Failed to send voice message';
-      print('Voice upload error: $e');
+      debugPrint('Voice upload error: $e');
     }
   }
 
@@ -640,7 +590,6 @@ class ChatProvider extends ChangeNotifier {
 
   void clearChatHistory(int conversationId) {
     _socketService.emitClearChatHistory(conversationId);
-    debugPrint('[ChatProvider] Emitted clearChatHistory for conversation $conversationId');
   }
 
   void _handleMessageDelivered(dynamic data) {
@@ -703,8 +652,6 @@ class ChatProvider extends ChangeNotifier {
     final m = data as Map<String, dynamic>;
     final conversationId = m['conversationId'] as int;
 
-    debugPrint('[ChatProvider] Chat history cleared for conversation $conversationId');
-
     // Clear messages from memory
     _messages.removeWhere((m) => m.conversationId == conversationId);
     _lastMessages.remove(conversationId);
@@ -716,8 +663,6 @@ class ChatProvider extends ChangeNotifier {
     final m = data as Map<String, dynamic>;
     final conversationId = m['conversationId'] as int;
     final seconds = m['seconds'] as int?;
-
-    debugPrint('[ChatProvider] Disappearing timer updated for conversation $conversationId: ${seconds}s');
 
     // Find and update conversation in list
     final index = _conversations.indexWhere((c) => c.id == conversationId);
@@ -738,7 +683,6 @@ class ChatProvider extends ChangeNotifier {
 
   void _handleConversationDeleted(dynamic data) {
     final convId = data['conversationId'] as int;
-    debugPrint('[ChatProvider] Conversation deleted: $convId');
 
     // Remove from conversations list
     _conversations.removeWhere((c) => c.id == convId);
@@ -797,7 +741,6 @@ class ChatProvider extends ChangeNotifier {
   }
 
   void disconnect() {
-    debugPrint('[ChatProvider] Disconnecting WebSocket');
     _intentionalDisconnect = true;
     _tokenForReconnect = null;
     _reconnectTimer?.cancel();
@@ -819,9 +762,6 @@ class ChatProvider extends ChangeNotifier {
   }
 
   void _onDisconnect() {
-    // #region agent log
-    _debugLog('chat_provider.dart:_onDisconnect', 'onDisconnect fired', {'intentional': _intentionalDisconnect, 'reconnectAttempts': _reconnectAttempts, 'hasToken': _tokenForReconnect != null, 'hasUserId': _currentUserId != null}, 'H1');
-    // #endregion
     if (_intentionalDisconnect || _tokenForReconnect == null || _currentUserId == null) {
       return;
     }
@@ -837,15 +777,10 @@ class ChatProvider extends ChangeNotifier {
   void _scheduleReconnect() {
     _reconnectAttempts++;
     final delay = _reconnectDelay;
-    // #region agent log
-    _debugLog('chat_provider.dart:_scheduleReconnect', 'scheduling reconnect', {'reconnectAttemptsAfterIncrement': _reconnectAttempts, 'delaySeconds': delay.inSeconds}, 'H1');
-    // #endregion
-    debugPrint('[ChatProvider] Scheduling reconnect attempt $_reconnectAttempts in ${delay.inSeconds}s');
     _reconnectTimer = Timer(delay, () {
       if (_intentionalDisconnect || _tokenForReconnect == null || _currentUserId == null) {
         return;
       }
-      debugPrint('[ChatProvider] Reconnecting WebSocket...');
       connect(token: _tokenForReconnect!, userId: _currentUserId!);
     });
   }

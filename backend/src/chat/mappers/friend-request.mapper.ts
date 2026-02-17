@@ -13,7 +13,4 @@ export class FriendRequestMapper {
     };
   }
 
-  static toPayloadArray(requests: FriendRequest[]) {
-    return requests.map((r) => this.toPayload(r));
-  }
 }

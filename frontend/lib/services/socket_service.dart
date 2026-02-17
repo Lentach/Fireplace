@@ -1,4 +1,3 @@
-import 'package:flutter/foundation.dart';
 import 'package:socket_io_client/socket_io_client.dart' as io;
 
 class SocketService {
@@ -71,10 +70,7 @@ class SocketService {
     _socket!.on('pingSent', onPingSent);
     _socket!.on('chatHistoryCleared', onChatHistoryCleared);
     _socket!.on('disappearingTimerUpdated', onDisappearingTimerUpdated);
-    _socket!.on('conversationDeleted', (data) {
-      debugPrint('[SocketService] Received conversationDeleted: $data');
-      onConversationDeleted(data);
-    });
+    _socket!.on('conversationDeleted', onConversationDeleted);
     _socket!.onDisconnect(onDisconnect);
 
     _socket!.connect();
@@ -128,11 +124,7 @@ class SocketService {
   }
 
   void emitClearChatHistory(int conversationId) {
-    if (_socket == null) {
-      debugPrint('[SocketService] Cannot emit clearChatHistory: socket is null');
-      return;
-    }
-    debugPrint('[SocketService] Emitting clearChatHistory for conversation $conversationId');
+    if (_socket == null) return;
     _socket!.emit('clearChatHistory', {'conversationId': conversationId});
   }
 
@@ -140,15 +132,10 @@ class SocketService {
     _socket?.emit('deleteConversationOnly', {
       'conversationId': conversationId,
     });
-    debugPrint('[SocketService] Emitted deleteConversationOnly: $conversationId');
   }
 
   void emitSetDisappearingTimer(int conversationId, int? seconds) {
-    if (_socket == null) {
-      debugPrint('[SocketService] Cannot emit setDisappearingTimer: socket is null');
-      return;
-    }
-    debugPrint('[SocketService] Emitting setDisappearingTimer for conversation $conversationId: ${seconds}s');
+    if (_socket == null) return;
     _socket!.emit('setDisappearingTimer', {
       'conversationId': conversationId,
       'seconds': seconds,
