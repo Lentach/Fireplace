@@ -29,6 +29,8 @@ class ChatProvider extends ChangeNotifier {
   List<FriendRequestModel> _friendRequests = [];
   int _pendingRequestsCount = 0;
   List<UserModel> _friends = [];
+  List<UserModel> _blockedUsers = [];
+  final Set<int> _blockedByUserIds = {};
   bool _friendRequestJustSent = false;
   bool _showPingEffect = false;
   List<UserModel>? _searchResults;
@@ -72,6 +74,8 @@ class ChatProvider extends ChangeNotifier {
   List<FriendRequestModel> get friendRequests => _friendRequests;
   int get pendingRequestsCount => _pendingRequestsCount;
   List<UserModel> get friends => _friends;
+  List<UserModel> get blockedUsers => _blockedUsers;
+  Set<int> get blockedByUserIds => Set<int>.from(_blockedByUserIds);
   bool get friendRequestJustSent => _friendRequestJustSent;
   List<UserModel>? get searchResults => _searchResults;
   SocketService get socket => _socketService;
@@ -216,9 +220,11 @@ class ChatProvider extends ChangeNotifier {
       token: token,
       onConnect: () {
         _reconnect.resetAttempts();
+        _blockedByUserIds.clear();
         _socketService.getConversations();
         _socketService.getFriendRequests();
         _socketService.getFriends();
+        _socketService.getBlockedList();
         Future.delayed(AppConstants.conversationsRefreshDelay, () {
           if (_conversations.isEmpty) {
             _socketService.getConversations();
@@ -338,6 +344,39 @@ class ChatProvider extends ChangeNotifier {
         }
         notifyListeners();
       },
+      onBlockedList: (data) {
+        final list = data as List<dynamic>;
+        _blockedUsers = list
+            .map((u) => UserModel.fromJson(u as Map<String, dynamic>))
+            .toList();
+        final blockedIds = _blockedUsers.map((u) => u.id).toSet();
+        _friends.removeWhere((f) => blockedIds.contains(f.id));
+        _conversations.removeWhere((c) =>
+            blockedIds.contains(c.userOne.id) || blockedIds.contains(c.userTwo.id));
+        if (_activeConversationId != null) {
+          final activeConv = _conversations.where((c) => c.id == _activeConversationId).firstOrNull;
+          if (activeConv == null) {
+            _activeConversationId = null;
+            _messages = [];
+          }
+        }
+        notifyListeners();
+      },
+      onYouWereBlocked: (data) {
+        final blockerId = (data as Map<String, dynamic>)['userId'] as int;
+        _blockedByUserIds.add(blockerId);
+        _friends.removeWhere((f) => f.id == blockerId);
+        _conversations.removeWhere((c) =>
+            c.userOne.id == blockerId || c.userTwo.id == blockerId);
+        if (_activeConversationId != null) {
+          final activeConv = _conversations.where((c) => c.id == _activeConversationId).firstOrNull;
+          if (activeConv == null) {
+            _activeConversationId = null;
+            _messages = [];
+          }
+        }
+        notifyListeners();
+      },
       onMessageDelivered: _handleMessageDelivered,
       onPingReceived: _handlePingReceived,
       onPingSent: _handlePingReceived,
@@ -355,6 +394,7 @@ class ChatProvider extends ChangeNotifier {
       onPartnerTyping: _handlePartnerTyping,
       onPartnerRecordingVoice: _handlePartnerRecordingVoice,
       onReactionUpdated: _handleReactionUpdated,
+      onLinkPreviewReady: _handleLinkPreviewReady,
       onDisconnect: (_) {
         _reconnect.onDisconnect(
           () => connect(token: _reconnect.tokenForReconnect!, userId: _currentUserId!),
@@ -867,6 +907,19 @@ class ChatProvider extends ChangeNotifier {
     }
   }
 
+  void _handleLinkPreviewReady(dynamic data) {
+    final m = data as Map<String, dynamic>;
+    final messageId = m['messageId'] as int;
+    final index = _messages.indexWhere((msg) => msg.id == messageId);
+    if (index == -1) return;
+    _messages[index] = _messages[index].copyWith(
+      linkPreviewUrl: m['linkPreviewUrl'] as String?,
+      linkPreviewTitle: m['linkPreviewTitle'] as String?,
+      linkPreviewImageUrl: m['linkPreviewImageUrl'] as String?,
+    );
+    notifyListeners();
+  }
+
   void _handlePartnerRecordingVoice(dynamic data) {
     final map = data as Map<String, dynamic>;
     final conversationId = map['conversationId'] as int;
@@ -922,6 +975,19 @@ class ChatProvider extends ChangeNotifier {
 
   void unfriend(int userId) {
     _socketService.unfriend(userId);
+  }
+
+  void blockUser(int userId) {
+    _socketService.emitBlockUser(userId);
+    // Server will emit blockedList and unfriended; we may remove from friends/conversations locally after blockedList
+  }
+
+  void unblockUser(int userId) {
+    _socketService.emitUnblockUser(userId);
+  }
+
+  void loadBlockedList() {
+    _socketService.getBlockedList();
   }
 
   bool isFriend(int userId) {

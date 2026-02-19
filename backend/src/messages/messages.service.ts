@@ -283,6 +283,20 @@ export class MessagesService {
     return this.msgRepo.save(message);
   }
 
+  async updateLinkPreview(
+    messageId: number,
+    url: string,
+    title: string | null,
+    imageUrl: string | null,
+  ): Promise<Message | null> {
+    const message = await this.msgRepo.findOne({ where: { id: messageId } });
+    if (!message) return null;
+    message.linkPreviewUrl = url;
+    message.linkPreviewTitle = title;
+    message.linkPreviewImageUrl = imageUrl;
+    return this.msgRepo.save(message);
+  }
+
   /**
    * "Delete for everyone" — hard delete the message. Only sender can call this.
    */

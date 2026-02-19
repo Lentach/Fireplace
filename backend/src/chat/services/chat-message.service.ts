@@ -3,7 +3,9 @@ import { Server, Socket } from 'socket.io';
 import { MessagesService } from '../../messages/messages.service';
 import { ConversationsService } from '../../conversations/conversations.service';
 import { FriendsService } from '../../friends/friends.service';
+import { BlockedService } from '../../blocked/blocked.service';
 import { UsersService } from '../../users/users.service';
+import { LinkPreviewService } from './link-preview.service';
 import { validateDto } from '../utils/dto.validator';
 import { SendMessageDto, GetMessagesDto, ClearChatHistoryDto, DeleteMessageDto, AddReactionDto, RemoveReactionDto } from '../dto/chat.dto';
 import { SendPingDto } from '../dto/send-ping.dto';
@@ -18,7 +20,9 @@ export class ChatMessageService {
     private readonly messagesService: MessagesService,
     private readonly conversationsService: ConversationsService,
     private readonly friendsService: FriendsService,
+    private readonly blockedService: BlockedService,
     private readonly usersService: UsersService,
+    private readonly linkPreviewService: LinkPreviewService,
   ) {}
 
   async handleSendMessage(
@@ -38,6 +42,16 @@ export class ChatMessageService {
       return;
     }
 
+    const blocked = await this.blockedService.isBlockedByEither(
+      senderId,
+      data.recipientId,
+    );
+    if (blocked) {
+      client.emit('error', {
+        message: 'Cannot message this user',
+      });
+      return;
+    }
     const areFriends = await this.friendsService.areFriends(
       senderId,
       data.recipientId,
@@ -90,6 +104,31 @@ export class ChatMessageService {
     const recipientSocketId = onlineUsers.get(data.recipientId);
     if (recipientSocketId) {
       server.to(recipientSocketId).emit('newMessage', messagePayload);
+    }
+
+    // Async link preview — fire and forget, does not block send
+    if (message.messageType === MessageType.TEXT && data.content) {
+      this.linkPreviewService.fetchPreview(data.content).then(async (preview) => {
+        if (!preview) return;
+        const updated = await this.messagesService.updateLinkPreview(
+          message.id,
+          preview.url,
+          preview.title,
+          preview.imageUrl,
+        );
+        if (!updated) return;
+        const previewPayload = {
+          messageId: message.id,
+          conversationId: conversation.id,
+          linkPreviewUrl: preview.url,
+          linkPreviewTitle: preview.title,
+          linkPreviewImageUrl: preview.imageUrl,
+        };
+        client.emit('linkPreviewReady', previewPayload);
+        if (recipientSocketId) {
+          server.to(recipientSocketId).emit('linkPreviewReady', previewPayload);
+        }
+      }).catch(() => { /* swallow — preview is best-effort */ });
     }
   }
 
@@ -180,6 +219,14 @@ export class ChatMessageService {
 
     const { recipientId } = data;
 
+    const blocked = await this.blockedService.isBlockedByEither(
+      user.id,
+      recipientId,
+    );
+    if (blocked) {
+      client.emit('error', { message: 'Cannot message this user' });
+      return;
+    }
     // Check if friends
     const areFriends = await this.friendsService.areFriends(
       user.id,

@@ -1,5 +1,7 @@
+import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../theme/rpg_theme.dart';
 import '../models/message_model.dart';
 import '../providers/auth_provider.dart';
@@ -261,10 +263,7 @@ class ChatMessageBubble extends StatelessWidget {
             ],
             // Message content based on type
             if (message.messageType == MessageType.text)
-              Text(
-                message.content,
-                style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
-              )
+              _buildTextWithLinks(context, message.content, textColor)
             else if (message.messageType == MessageType.ping)
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -317,6 +316,9 @@ class ChatMessageBubble extends StatelessWidget {
                 message.content.isNotEmpty ? message.content : '[Unsupported message type]',
                 style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
               ),
+            // Link preview card (shown for text messages with a URL)
+            if (message.linkPreviewUrl != null)
+              _buildLinkPreviewCard(context, isDark, textColor),
             // Retry button for failed messages
             Builder(
               builder: (ctx) {
@@ -387,6 +389,109 @@ class ChatMessageBubble extends StatelessWidget {
     ],
   ),
 ),
+      ),
+    );
+  }
+
+  Widget _buildTextWithLinks(BuildContext context, String text, Color textColor) {
+    final urlRegex = RegExp(r'https?://[^\s]+', caseSensitive: false);
+    final spans = <InlineSpan>[];
+    int last = 0;
+
+    for (final match in urlRegex.allMatches(text)) {
+      if (match.start > last) {
+        spans.add(TextSpan(
+          text: text.substring(last, match.start),
+          style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
+        ));
+      }
+      final url = match.group(0)!;
+      spans.add(TextSpan(
+        text: url,
+        style: RpgTheme.bodyFont(
+          fontSize: 14,
+          color: Colors.blue.shade300,
+        ).copyWith(decoration: TextDecoration.underline),
+        recognizer: TapGestureRecognizer()
+          ..onTap = () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+      ));
+      last = match.end;
+    }
+    if (last < text.length) {
+      spans.add(TextSpan(
+        text: text.substring(last),
+        style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
+      ));
+    }
+
+    if (spans.isEmpty) {
+      return Text(text, style: RpgTheme.bodyFont(fontSize: 14, color: textColor));
+    }
+    return RichText(text: TextSpan(children: spans));
+  }
+
+  Widget _buildLinkPreviewCard(BuildContext context, bool isDark, Color textColor) {
+    final cardBg = isDark
+        ? Colors.white.withValues(alpha: 0.06)
+        : Colors.black.withValues(alpha: 0.04);
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 8),
+      child: GestureDetector(
+        onTap: () => launchUrl(
+          Uri.parse(message.linkPreviewUrl!),
+          mode: LaunchMode.externalApplication,
+        ),
+        child: Container(
+          decoration: BoxDecoration(
+            color: cardBg,
+            borderRadius: BorderRadius.circular(8),
+          ),
+          clipBehavior: Clip.hardEdge,
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              if (message.linkPreviewImageUrl != null)
+                Image.network(
+                  message.linkPreviewImageUrl!,
+                  width: double.infinity,
+                  height: 120,
+                  fit: BoxFit.cover,
+                  errorBuilder: (_, err, st) => const SizedBox.shrink(),
+                ),
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    if (message.linkPreviewTitle != null)
+                      Text(
+                        message.linkPreviewTitle!,
+                        style: RpgTheme.bodyFont(
+                          fontSize: 13,
+                          color: textColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                      ),
+                    const SizedBox(height: 2),
+                    Text(
+                      message.linkPreviewUrl!,
+                      style: RpgTheme.bodyFont(
+                        fontSize: 11,
+                        color: isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+        ),
       ),
     );
   }

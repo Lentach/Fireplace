@@ -24,6 +24,8 @@ class SocketService {
     required void Function(dynamic) onPendingRequestsCount,
     required void Function(dynamic) onFriendsList,
     required void Function(dynamic) onUnfriended,
+    required void Function(dynamic) onBlockedList,
+    required void Function(dynamic) onYouWereBlocked,
     required void Function(dynamic) onMessageDelivered,
     required void Function(dynamic) onPingReceived,
     required void Function(dynamic) onPingSent,
@@ -35,6 +37,7 @@ class SocketService {
     void Function(dynamic)? onPartnerTyping,
     void Function(dynamic)? onPartnerRecordingVoice,
     void Function(dynamic)? onReactionUpdated,
+    void Function(dynamic)? onLinkPreviewReady,
   }) {
     // Defensive cleanup: ensure any previous socket is fully disposed
     // before creating a new one (prevents cache reuse)
@@ -70,6 +73,8 @@ class SocketService {
     _socket!.on('pendingRequestsCount', onPendingRequestsCount);
     _socket!.on('friendsList', onFriendsList);
     _socket!.on('unfriended', onUnfriended);
+    _socket!.on('blockedList', onBlockedList);
+    _socket!.on('youWereBlocked', onYouWereBlocked);
     _socket!.on('messageDelivered', onMessageDelivered);
     _socket!.on('newPing', onPingReceived);
     _socket!.on('pingSent', onPingSent);
@@ -86,6 +91,9 @@ class SocketService {
     }
     if (onReactionUpdated != null) {
       _socket!.on('reactionUpdated', onReactionUpdated);
+    }
+    if (onLinkPreviewReady != null) {
+      _socket!.on('linkPreviewReady', onLinkPreviewReady);
     }
     _socket!.onDisconnect(onDisconnect);
 
@@ -254,6 +262,18 @@ class SocketService {
     _socket?.emit('unfriend', {
       'userId': userId,
     });
+  }
+
+  void emitBlockUser(int userId) {
+    _socket?.emit('blockUser', {'userId': userId});
+  }
+
+  void emitUnblockUser(int userId) {
+    _socket?.emit('unblockUser', {'userId': userId});
+  }
+
+  void getBlockedList() {
+    _socket?.emit('getBlockedList');
   }
 
   void disconnect() {

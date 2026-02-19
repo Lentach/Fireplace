@@ -105,6 +105,9 @@ erDiagram
         int mediaDuration "nullable, seconds"
         varchar hiddenByUserIds "comma-separated, delete for me"
         text reactions "nullable JSON: {emoji:[userId]}"
+        text linkPreviewUrl "nullable"
+        text linkPreviewTitle "nullable"
+        text linkPreviewImageUrl "nullable"
         timestamp expiresAt "nullable"
         timestamp createdAt
     }
@@ -143,6 +146,7 @@ Gateway verifies JWT, stores `client.data.user = { id, username, tag }`, tracks 
 | `deleteMessage` | `messageDeleted` | `messageDeleted` (for_everyone only) |
 | `addReaction` | `reactionUpdated` | `reactionUpdated` |
 | `removeReaction` | `reactionUpdated` | `reactionUpdated` |
+| -- (async, backend-only) | `linkPreviewReady` | `linkPreviewReady` |
 
 ### 3.2 Conversation Events
 
@@ -164,6 +168,9 @@ Gateway verifies JWT, stores `client.data.user = { id, username, tag }`, tracks 
 | `getFriendRequests` | `friendRequestsList` + `pendingRequestsCount` | -- |
 | `getFriends` | `friendsList` | -- |
 | `unfriend` | `unfriended` + `conversationsList` + `friendsList` | same |
+| `blockUser` | `blockedList` | `youWereBlocked` (pushed to blocked user) |
+| `unblockUser` | `blockedList` | -- |
+| `getBlockedList` | `blockedList` | -- |
 
 ### 3.4 Key Payloads
 
@@ -238,7 +245,9 @@ Gateway verifies JWT, stores `client.data.user = { id, username, tag }`, tracks 
 
 **Files:** `providers/chat_provider.dart`, `providers/chat_reconnect_manager.dart` (exponential backoff), `providers/conversation_helpers.dart` (getOtherUserId/User/Username/DisplayHandle).
 
-**Connect flow:** cancel reconnect -> clear ALL state -> dispose old socket + create new with `enableForceNew()` -> on connect: fetch conversations/friendRequests/friends + register 22 listeners -> delayed re-fetch 500ms if empty.
+**Connect flow:** cancel reconnect -> clear ALL state -> dispose old socket + create new with `enableForceNew()` -> on connect: fetch conversations/friendRequests/friends + register listeners -> delayed re-fetch 500ms if empty.
+
+**Blocking state:** `_blockedUsers` (List) = users blocked **by me** (from `blockedList`). `_blockedByUserIds` (Set\<int\>) = IDs of users who blocked **me** (populated from `youWereBlocked` push event). When `youWereBlocked` arrives: add to `_blockedByUserIds`, remove blocker from `_friends`, remove their conversations, clear active chat if it was with them.
 
 **Optimistic messaging:** Create temp message (id=-timestamp, SENDING, tempId) -> notifyListeners (shows immediately) -> emit sendMessage -> backend returns `messageSent` with tempId -> replace temp with real message.
 
@@ -327,6 +336,8 @@ Three-layer expiration: (1) Frontend `removeExpiredMessages()` every 1s, (2) Bac
 **Unread badge:** Backend `countUnreadForRecipient()` (sender != user, status != READ, not expired). Frontend `_unreadCounts` map, incremented on `newMessage` when chat not active, cleared on open.
 
 **Ping:** One-shot notification, empty content, `messageType=PING`. Uses conversation's `disappearingTimer`.
+
+**Blocking:** `blockUser` / `unblockUser` / `getBlockedList` WebSocket events. `blockedList` returned to caller. When user B blocks user A: server pushes `youWereBlocked` to A's socket → A's ChatProvider removes B from friends + removes shared conversations + clears active chat if with B. `_blockedUsers` = whom I blocked; `_blockedByUserIds` = Set of IDs who blocked me (`blockedByUserIds` getter). `BlockedService.isBlockedByEither()` guards `sendMessage` and `sendPing`.
 
 **Image messages:** POST /messages/image (JPEG/PNG, max 5MB). Creates `IMAGE` message with `mediaUrl`. Verifies friend relationship.
 
@@ -453,6 +464,14 @@ Frontend runs locally: `flutter run -d chrome`
 ---
 
 ## 13. Recent Changes
+
+**2026-02-19 (session 3):**
+- **`youWereBlocked` push event + `_blockedByUserIds`:** When user B blocks user A, backend pushes `youWereBlocked` to A's socket in real time. `ChatProvider` handles it: adds B's ID to `_blockedByUserIds` (Set), removes B from `_friends`, removes shared conversations, clears active chat if it was with B. New getter `blockedByUserIds` exposed. `SocketService` now requires `onYouWereBlocked` callback in `connect()`.
+
+**2026-02-19 (session 2):**
+- **Link Preview (Messenger/iMessage-style):** Text messages containing URLs automatically show a preview card (title + image + domain) below the text. Backend fetches OG metadata asynchronously after send (fire-and-forget, does not block send). SSRF protection: private IP block + 5s timeout + max 100KB read. No new npm packages (Node 20 `fetch`). Frontend: URLs in text are clickable (RichText + TapGestureRecognizer), preview card opens browser on tap. Persists in DB — visible on history reload.
+  - Backend: 3 new columns in `messages` (`linkPreviewUrl`, `linkPreviewTitle`, `linkPreviewImageUrl`); new `LinkPreviewService` (`backend/src/chat/services/link-preview.service.ts`); `MessagesService.updateLinkPreview()`; `MessageMapper` 3 new fields; `ChatMessageService` fire-and-forget after `messageSent`; `ChatModule` registers `LinkPreviewService`; emits `linkPreviewReady` to both users.
+  - Frontend: `url_launcher ^6.3.1` added to pubspec; `MessageModel` 3 new nullable fields + `fromJson` + `copyWith`; `SocketService` optional `onLinkPreviewReady` callback; `ChatProvider._handleLinkPreviewReady()` updates message in `_messages`; `ChatMessageBubble._buildTextWithLinks()` + `._buildLinkPreviewCard()`.
 
 **2026-02-19:**
 - **Emoji Reactions (Messenger/Slack-style):** Long-press any message → 6 emoji picker (👍 ❤️ 😂 😮 😢 🔥) at top of modal, above delete options. Max 1 emoji per user per message (tap different = swap, tap active = remove). Floating chip overlays top edge of bubble (`Stack + Positioned top: -14`). `ReactionChipsRow` widget shared between `ChatMessageBubble` and `VoiceMessageBubble`. Backend: `messages.reactions` column (JSON text `{"👍":[1,3]}`), `addOrUpdateReaction`/`removeReaction` in MessagesService, `addReaction`/`removeReaction` WebSocket events → `reactionUpdated` to both users.

@@ -24,6 +24,9 @@ export class MessageMapper {
         : null,
       tempId: options?.tempId ?? null,
       reactions: message.reactions ? JSON.parse(message.reactions) : {},
+      linkPreviewUrl: message.linkPreviewUrl ?? null,
+      linkPreviewTitle: message.linkPreviewTitle ?? null,
+      linkPreviewImageUrl: message.linkPreviewImageUrl ?? null,
     };
 
     if (message.replyTo) {

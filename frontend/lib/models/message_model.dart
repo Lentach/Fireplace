@@ -54,6 +54,9 @@ class MessageModel {
   final Map<String, List<int>> reactions; // emoji -> [userId]
   final int? replyToMessageId;
   final ReplyToPreview? replyTo;
+  final String? linkPreviewUrl;
+  final String? linkPreviewTitle;
+  final String? linkPreviewImageUrl;
 
   MessageModel({
     required this.id,
@@ -71,6 +74,9 @@ class MessageModel {
     this.reactions = const {},
     this.replyToMessageId,
     this.replyTo,
+    this.linkPreviewUrl,
+    this.linkPreviewTitle,
+    this.linkPreviewImageUrl,
   });
 
   factory MessageModel.fromJson(Map<String, dynamic> json) {
@@ -98,6 +104,9 @@ class MessageModel {
       replyTo: json['replyTo'] != null
           ? ReplyToPreview.fromJson(json['replyTo'] as Map<String, dynamic>)
           : null,
+      linkPreviewUrl: json['linkPreviewUrl'] as String?,
+      linkPreviewTitle: json['linkPreviewTitle'] as String?,
+      linkPreviewImageUrl: json['linkPreviewImageUrl'] as String?,
     );
   }
 
@@ -151,6 +160,9 @@ class MessageModel {
     Map<String, List<int>>? reactions,
     int? replyToMessageId,
     ReplyToPreview? replyTo,
+    String? linkPreviewUrl,
+    String? linkPreviewTitle,
+    String? linkPreviewImageUrl,
   }) {
     return MessageModel(
       id: id,
@@ -168,6 +180,9 @@ class MessageModel {
       reactions: reactions ?? this.reactions,
       replyToMessageId: replyToMessageId ?? this.replyToMessageId,
       replyTo: replyTo ?? this.replyTo,
+      linkPreviewUrl: linkPreviewUrl ?? this.linkPreviewUrl,
+      linkPreviewTitle: linkPreviewTitle ?? this.linkPreviewTitle,
+      linkPreviewImageUrl: linkPreviewImageUrl ?? this.linkPreviewImageUrl,
     );
   }
 }

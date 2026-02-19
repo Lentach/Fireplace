@@ -64,6 +64,15 @@ export class Message {
   @Column({ type: 'text', nullable: true, default: null })
   reactions: string | null;
 
+  @Column({ type: 'text', nullable: true, default: null })
+  linkPreviewUrl: string | null;
+
+  @Column({ type: 'text', nullable: true, default: null })
+  linkPreviewTitle: string | null;
+
+  @Column({ type: 'text', nullable: true, default: null })
+  linkPreviewImageUrl: string | null;
+
   /** ID of the message being replied to (same conversation). */
   @Column({ type: 'int', nullable: true })
   replyToMessageId: number | null;
