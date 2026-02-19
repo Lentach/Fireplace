@@ -83,9 +83,11 @@ class ChatMessageBubble extends StatelessWidget {
     if (remaining.isNegative) return null;
 
     if (remaining.inHours > 0) {
-      return '${remaining.inHours}h';
+      final mins = remaining.inMinutes % 60;
+      return mins > 0 ? '${remaining.inHours}h ${mins}m' : '${remaining.inHours}h';
     } else if (remaining.inMinutes > 0) {
-      return '${remaining.inMinutes}m';
+      final secs = remaining.inSeconds % 60;
+      return secs > 0 ? '${remaining.inMinutes}m ${secs}s' : '${remaining.inMinutes}m';
     } else {
       return '${remaining.inSeconds}s';
     }

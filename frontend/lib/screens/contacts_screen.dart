@@ -38,7 +38,7 @@ class ContactsScreen extends StatelessWidget {
     }
   }
 
-  void _unfriendContact(BuildContext context, int userId, String displayHandle) {
+  void _unfriendContact(BuildContext context, int userId, String username) {
     showDialog(
       context: context,
       builder: (dialogContext) {
@@ -57,7 +57,7 @@ class ContactsScreen extends StatelessWidget {
             ),
           ),
           content: Text(
-            'Remove $displayHandle from your contacts? This will delete all conversation history.',
+            'Remove $username from your contacts? This will delete all conversation history.',
             style: RpgTheme.bodyFont(
               fontSize: 14,
               color: colorScheme.onSurface.withValues(alpha: 0.8),
@@ -189,14 +189,13 @@ class ContactsScreen extends StatelessWidget {
   Widget _buildContactTile(BuildContext context, dynamic friend) {
     final colorScheme = Theme.of(context).colorScheme;
     final user = friend as UserModel;
-    final displayHandle = user.displayHandle;
 
     return Material(
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
         onTap: () => _openChatWithContact(context, user.id),
-        onLongPress: () => _unfriendContact(context, user.id, displayHandle),
+        onLongPress: () => _unfriendContact(context, user.id, user.username),
         borderRadius: BorderRadius.circular(8),
         splashColor: RpgTheme.primaryColor(context).withValues(alpha: 0.2),
         child: Padding(
@@ -210,7 +209,7 @@ class ContactsScreen extends StatelessWidget {
               const SizedBox(width: 12),
               Expanded(
                 child: Text(
-                  displayHandle,
+                  user.username,
                   style: RpgTheme.bodyFont(
                     fontSize: 14,
                     color: colorScheme.onSurface,

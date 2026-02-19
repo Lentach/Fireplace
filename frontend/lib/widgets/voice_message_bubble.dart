@@ -217,8 +217,14 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
     final now = DateTime.now();
     final remaining = widget.message.expiresAt!.difference(now);
     if (remaining.isNegative) return null;
-    if (remaining.inHours > 0) return '${remaining.inHours}h';
-    if (remaining.inMinutes > 0) return '${remaining.inMinutes}m';
+    if (remaining.inHours > 0) {
+      final mins = remaining.inMinutes % 60;
+      return mins > 0 ? '${remaining.inHours}h ${mins}m' : '${remaining.inHours}h';
+    }
+    if (remaining.inMinutes > 0) {
+      final secs = remaining.inSeconds % 60;
+      return secs > 0 ? '${remaining.inMinutes}m ${secs}s' : '${remaining.inMinutes}m';
+    }
     return '${remaining.inSeconds}s';
   }
 

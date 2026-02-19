@@ -221,6 +221,7 @@ class _LongPressActionTileState extends State<_LongPressActionTile>
     with SingleTickerProviderStateMixin {
   late AnimationController _animationController;
   bool _isPressed = false;
+  OverlayEntry? _progressOverlay;
 
   @override
   void initState() {
@@ -232,7 +233,6 @@ class _LongPressActionTileState extends State<_LongPressActionTile>
         setState(() {});
       })..addStatusListener((status) {
         if (status == AnimationStatus.completed && _isPressed) {
-          // Animation completed while still pressing → trigger action
           widget.onLongPressComplete();
           _reset();
         }
@@ -241,27 +241,45 @@ class _LongPressActionTileState extends State<_LongPressActionTile>
 
   @override
   void dispose() {
+    _removeProgressOverlay();
     _animationController.dispose();
     super.dispose();
   }
 
+  void _removeProgressOverlay() {
+    _progressOverlay?.remove();
+    _progressOverlay = null;
+  }
+
   void _reset() {
+    _removeProgressOverlay();
     setState(() {
       _isPressed = false;
       _animationController.reset();
     });
   }
 
+  void _showProgressOverlay() {
+    _removeProgressOverlay();
+    final overlay = Overlay.of(context);
+    final accentColor = RpgTheme.primaryColor(context);
+    _progressOverlay = OverlayEntry(
+      builder: (context) => _CenterProgressOverlay(
+        progress: _animationController,
+        color: accentColor,
+      ),
+    );
+    overlay.insert(_progressOverlay!);
+  }
+
   void _onLongPressStart(LongPressStartDetails details) {
-    setState(() {
-      _isPressed = true;
-    });
+    setState(() => _isPressed = true);
     _animationController.forward();
+    _showProgressOverlay();
   }
 
   void _onLongPressEnd(LongPressEndDetails details) {
     if (_animationController.status != AnimationStatus.completed) {
-      // Released before completion → cancel
       _reset();
     }
   }
@@ -280,20 +298,49 @@ class _LongPressActionTileState extends State<_LongPressActionTile>
         width: 40,
         height: 40,
         padding: const EdgeInsets.all(8),
-        child: Stack(
-          alignment: Alignment.center,
+        child: Icon(widget.icon, size: 24, color: widget.color),
+      ),
+    );
+  }
+}
+
+class _CenterProgressOverlay extends StatelessWidget {
+  final Animation<double> progress;
+  final Color color;
+
+  const _CenterProgressOverlay({
+    required this.progress,
+    required this.color,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.black54,
+      child: Center(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
           children: [
-            // Progress ring
-            if (_isPressed)
-              CustomPaint(
-                size: const Size(40, 40),
-                painter: _CircularProgressPainter(
-                  progress: _animationController.value,
-                  color: Colors.red,
-                ),
+            AnimatedBuilder(
+              animation: progress,
+              builder: (context, _) {
+                return CustomPaint(
+                  size: const Size(100, 100),
+                  painter: _CircularProgressPainter(
+                    progress: progress.value,
+                    color: color,
+                  ),
+                );
+              },
+            ),
+            const SizedBox(height: 16),
+            Text(
+              'Clearing...',
+              style: RpgTheme.bodyFont(
+                fontSize: 14,
+                color: Colors.white,
               ),
-            // Icon
-            Icon(widget.icon, size: 24, color: widget.color),
+            ),
           ],
         ),
       ),

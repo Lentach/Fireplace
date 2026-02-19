@@ -30,7 +30,9 @@ class ChatDetailScreen extends StatefulWidget {
 class _ChatDetailScreenState extends State<ChatDetailScreen> {
   final _scrollController = ScrollController();
   Timer? _timerCountdownRefresh;
+  Timer? _showFullHandleTimer;
   bool _showScrollToBottomButton = false;
+  bool _showingFullHandle = false;
   int _newMessagesCount = 0;
   int _lastMessageCount = 0;
   double _lastKeyboardHeight = 0;
@@ -78,6 +80,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void didUpdateWidget(ChatDetailScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.conversationId != widget.conversationId) {
+      _showFullHandleTimer?.cancel();
+      _showingFullHandle = false;
       _lastMessageCount = 0;
       _newMessagesCount = 0;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -92,7 +96,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _timerCountdownRefresh?.cancel();
+    _showFullHandleTimer?.cancel();
     super.dispose();
+  }
+
+  void _onAvatarTap() {
+    _showFullHandleTimer?.cancel();
+    if (!mounted) return;
+    setState(() => _showingFullHandle = true);
+    _showFullHandleTimer = Timer(const Duration(seconds: 5), () {
+      if (mounted) setState(() => _showingFullHandle = false);
+    });
   }
 
   void _scrollToBottomOnce() {
@@ -176,6 +190,62 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   UserModel? _getOtherUser() {
     final conv = _getActiveConversation();
     return conv != null ? context.read<ChatProvider>().getOtherUser(conv) : null;
+  }
+
+  Widget _buildHeaderTitle(BuildContext context, String contactName, UserModel? otherUser) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final accentColor = RpgTheme.primaryColor(context);
+    final baseStyle = RpgTheme.bodyFont(
+      fontSize: 16,
+      color: colorScheme.onSurface,
+      fontWeight: FontWeight.w600,
+    );
+    return AnimatedSwitcher(
+      duration: const Duration(milliseconds: 250),
+      switchInCurve: Curves.easeOut,
+      switchOutCurve: Curves.easeIn,
+      transitionBuilder: (Widget child, Animation<double> animation) {
+        return FadeTransition(
+          opacity: animation,
+          child: SlideTransition(
+            position: Tween<Offset>(
+              begin: const Offset(0.25, 0),
+              end: Offset.zero,
+            ).animate(CurvedAnimation(
+              parent: animation,
+              curve: Curves.easeOut,
+              reverseCurve: Curves.easeIn,
+            )),
+            child: child,
+          ),
+        );
+      },
+      child: _showingFullHandle && otherUser != null
+          ? Text.rich(
+              key: const ValueKey<bool>(true),
+              TextSpan(
+                style: baseStyle,
+                children: [
+                  TextSpan(text: otherUser.username),
+                  TextSpan(
+                    text: '#${otherUser.tag}',
+                    style: RpgTheme.bodyFont(
+                      fontSize: 16,
+                      color: accentColor,
+                      fontWeight: FontWeight.w600,
+                    ),
+                  ),
+                ],
+              ),
+              overflow: TextOverflow.ellipsis,
+            )
+          : Text(
+              key: const ValueKey<bool>(false),
+              contactName,
+              style: baseStyle,
+              overflow: TextOverflow.ellipsis,
+            ),
+    );
   }
 
   bool _isDifferentDay(DateTime a, DateTime b) {
@@ -292,22 +362,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             ),
             child: Row(
               children: [
-                AvatarCircle(
-                  displayName: contactName,
-                  radius: 18,
-                  profilePictureUrl: otherUser?.profilePictureUrl,
+                GestureDetector(
+                  onTap: _onAvatarTap,
+                  child: AvatarCircle(
+                    displayName: contactName,
+                    radius: 18,
+                    profilePictureUrl: otherUser?.profilePictureUrl,
+                  ),
                 ),
                 Expanded(
                   child: Center(
-                    child: Text(
-                      contactName,
-                      style: RpgTheme.bodyFont(
-                        fontSize: 16,
-                        color: colorScheme.onSurface,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      overflow: TextOverflow.ellipsis,
-                    ),
+                    child: _buildHeaderTitle(context, contactName, otherUser),
                   ),
                 ),
               ],
@@ -346,23 +411,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             Navigator.of(context).pop();
           },
         ),
-        title: Text(
-          contactName,
-          style: RpgTheme.bodyFont(
-            fontSize: 16,
-            color: colorScheme.onSurface,
-            fontWeight: FontWeight.w600,
-          ),
-          overflow: TextOverflow.ellipsis,
-        ),
+        title: _buildHeaderTitle(context, contactName, otherUser),
         actions: [
-          // Avatar on the right
           Padding(
             padding: const EdgeInsets.only(right: 12),
-            child: AvatarCircle(
-              displayName: contactName,
-              radius: 18,
-              profilePictureUrl: otherUser?.profilePictureUrl,
+            child: GestureDetector(
+              onTap: _onAvatarTap,
+              child: AvatarCircle(
+                displayName: contactName,
+                radius: 18,
+                profilePictureUrl: otherUser?.profilePictureUrl,
+              ),
             ),
           ),
         ],

@@ -1,4 +1,4 @@
 # Latest session summary
 
-**Date:** 2026-02-17  
-**Summary:** [2026-02-17-username-tag.md](2026-02-17-username-tag.md) — Username#Tag feature: Discord-style 4-digit tag, add-by-username search, display in Settings/Contacts/ConversationTile/chat header, recipientId-based friend requests and startConversation.
+**Date:** 2026-02-19  
+**Summary:** [2026-02-19-session.md](2026-02-19-session.md) — #tag visibility: Contacts shows username only; tap avatar in chat to reveal username#tag for 5s (tag in accent color).

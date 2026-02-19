@@ -326,7 +326,7 @@ Each user has a 4-digit tag (1000–9999), random at registration. Display forma
 
 **Add-by-username#tag flow:** User enters full handle `username#tag` (e.g. `username#1234`) -> `searchUsers` emits `{ handle }` -> backend uses `findByUsernameAndTag`, returns 0 or 1 user. Note in Add tab: "#tag is in Settings, next to your nickname. Each #tag is unique."
 
-**Display:** Settings: `username#tag` on one line (e.g. `ziomek1#1234`). Contacts: `displayHandle`. **Conversations tab and Chat header** show username only (no tag).
+**Display:** Settings: `username#tag` on one line. **Contacts** and **Conversations tab** and **Chat header** show username only (no tag). Tap avatar in chat header to reveal `username#tag` for 5 seconds (tag in accent color).
 
 **Login:** Use username or `username#tag`.
 
@@ -443,6 +443,9 @@ Frontend runs locally: `flutter run -d chrome`
 ---
 
 ## 13. Recent Changes
+
+**2026-02-19:**
+- **#tag visibility:** Contacts tab shows username only (no tag). Settings keeps username#tag. Chat header: tap avatar to reveal username#tag for 5 seconds, with #tag in app accent color (RpgTheme.primaryColor).
 
 **2026-02-17:**
 - **Username#tag:** 4-digit tag per user (unique with username). Display `username#tag` in Settings, Contacts, ConversationTile, chat header. Add-by-username: `searchUsers` -> picker when multiple. Login by username or username#tag. SendFriendRequest/StartConversation use recipientId.
