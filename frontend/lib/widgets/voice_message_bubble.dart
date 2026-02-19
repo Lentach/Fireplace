@@ -3,6 +3,8 @@ import 'dart:math' as math;
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:provider/provider.dart';
+import '../providers/chat_provider.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import '../models/message_model.dart';
@@ -385,22 +387,34 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
                   ),
                   const SizedBox(width: 4),
                   _buildDeliveryIcon(),
-                  if (_getTimerText() != null) ...[
-                    const SizedBox(width: 6),
-                    Icon(
-                      Icons.timer_outlined,
-                      size: 10,
-                      color: isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight,
-                    ),
-                    const SizedBox(width: 2),
-                    Text(
-                      _getTimerText()!,
-                      style: RpgTheme.bodyFont(
-                        fontSize: 10,
-                        color: isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight,
-                      ),
-                    ),
-                  ],
+                  Builder(
+                    builder: (ctx) {
+                      final timerText = _getTimerText();
+                      if (timerText == null) return const SizedBox.shrink();
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          const SizedBox(width: 6),
+                          Icon(
+                            Icons.timer_outlined,
+                            size: 10,
+                            color: isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight,
+                          ),
+                          const SizedBox(width: 2),
+                          ValueListenableBuilder<int>(
+                            valueListenable: ctx.read<ChatProvider>().countdownTickNotifier,
+                            builder: (_, __, ___) => Text(
+                              _getTimerText() ?? '',
+                              style: RpgTheme.bodyFont(
+                                fontSize: 10,
+                                color: isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight,
+                              ),
+                            ),
+                          ),
+                        ],
+                      );
+                    },
+                  ),
                 ],
               ),
             ),

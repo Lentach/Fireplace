@@ -33,6 +33,14 @@ class ChatProvider extends ChangeNotifier {
   List<UserModel>? _searchResults;
   final Map<int, int> _unreadCounts = {}; // conversationId -> count
 
+  /// Ticks every second for countdown display. Bubbles use ValueListenableBuilder
+  /// so only they rebuild, not the whole screen. Prevents recording timer freeze.
+  final ValueNotifier<int> countdownTickNotifier = ValueNotifier(0);
+
+  /// True while user holds mic to record. Countdown timer skips ticks to avoid
+  /// starving the recording timer callback (progressive freeze).
+  bool isRecordingVoice = false;
+
   List<ConversationModel> get conversations => _conversations;
   List<MessageModel> get messages => _messages;
   int? get activeConversationId => _activeConversationId;
@@ -354,7 +362,6 @@ class ChatProvider extends ChangeNotifier {
     _messages.removeWhere(
       (m) => m.expiresAt != null && m.expiresAt!.isBefore(now),
     );
-    // Also clean up lastMessages so conversation list doesn't show stale entries
     _lastMessages.removeWhere(
       (_, m) => m.expiresAt != null && m.expiresAt!.isBefore(now),
     );

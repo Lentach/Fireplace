@@ -36,7 +36,6 @@ class _ChatInputBarState extends State<ChatInputBar>
   String? _recordingPath;
   Timer? _recordingTimer;
   DateTime? _recordingStartTime;
-  ValueNotifier<int>? _recordingSecondsNotifier; // tick-based timer for recording duration display
 
   // Slide-to-cancel: drag mic TO trash to cancel (release over trash zone)
   static const double _trashOpenThresholdPx = 60.0;  // trash "opens" (scales) when mic this close
@@ -81,7 +80,6 @@ class _ChatInputBarState extends State<ChatInputBar>
     _actionPanelController.dispose();
     _pulseController.dispose();
     _recordingTimer?.cancel();
-    _recordingSecondsNotifier?.dispose();
     _audioRecorder?.dispose();
     super.dispose();
   }
@@ -155,7 +153,7 @@ class _ChatInputBarState extends State<ChatInputBar>
       );
 
       _recordingStartTime = DateTime.now();
-      _recordingSecondsNotifier = ValueNotifier(0);
+      context.read<ChatProvider>().isRecordingVoice = true;
       setState(() {
         _isRecording = true;
         _cancelDragOffset = 0.0;
@@ -163,11 +161,11 @@ class _ChatInputBarState extends State<ChatInputBar>
         _canceledBySlide = false;
       });
 
-      // Timer: tick every second, update notifier + 120s auto-stop
+      // Only auto-stop at 120s. Display is driven by pulse animation (AnimatedBuilder)
+      // so we avoid Timer.periodic starving the main thread and freezing the display.
       _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
         if (!mounted || _recordingStartTime == null) return;
         final elapsed = DateTime.now().difference(_recordingStartTime!).inSeconds;
-        _recordingSecondsNotifier?.value = elapsed;
         if (elapsed >= 120) _stopRecording();
       });
     } catch (e) {
@@ -180,10 +178,9 @@ class _ChatInputBarState extends State<ChatInputBar>
   Future<void> _stopRecording() async {
     if (_audioRecorder == null || !_isRecording) return;
 
+    context.read<ChatProvider>().isRecordingVoice = false;
     _recordingTimer?.cancel();
     _recordingTimer = null;
-    _recordingSecondsNotifier?.dispose();
-    _recordingSecondsNotifier = null;
 
     final path = await _audioRecorder!.stop();
     await _audioRecorder!.dispose();
@@ -250,11 +247,10 @@ class _ChatInputBarState extends State<ChatInputBar>
   Future<void> _cancelRecording() async {
     if (_audioRecorder == null || !_isRecording) return;
 
+    context.read<ChatProvider>().isRecordingVoice = false;
     _canceledBySlide = true;
     _recordingTimer?.cancel();
     _recordingTimer = null;
-    _recordingSecondsNotifier?.dispose();
-    _recordingSecondsNotifier = null;
     _recordingStartTime = null;
 
     await _audioRecorder!.stop();
@@ -366,10 +362,12 @@ class _ChatInputBarState extends State<ChatInputBar>
     final isDark = RpgTheme.isDark(context);
     final tabBorderColor = isDark ? RpgTheme.tabBorderDark : RpgTheme.tabBorderLight;
     final inputBg = isDark ? RpgTheme.inputBg : RpgTheme.inputBgLight;
-    final currentSeconds = _recordingSecondsNotifier?.value ?? 0;
+    final elapsedSec = _recordingStartTime != null
+        ? DateTime.now().difference(_recordingStartTime!).inSeconds
+        : 0;
 
     return Semantics(
-      label: 'Recording voice message, ${_formatRecordingDuration(currentSeconds)}. Swipe left to cancel.',
+      label: 'Recording voice message, ${_formatRecordingDuration(elapsedSec)}. Swipe left to cancel.',
       child: Container(
           height: 48,
           padding: const EdgeInsets.symmetric(horizontal: 16),
@@ -396,44 +394,37 @@ class _ChatInputBarState extends State<ChatInputBar>
               ),
             ),
 
-          // Pulsing red dot
+          // Pulsing red dot + timer (both driven by pulse animation, avoids Timer freeze)
           AnimatedBuilder(
             animation: _pulseController,
             builder: (context, child) {
-              return Container(
-                width: 12,
-                height: 12,
-                decoration: BoxDecoration(
-                  shape: BoxShape.circle,
-                  color: Colors.red.withValues(alpha: 0.7 + (_pulseController.value * 0.3)),
-                ),
-              );
-            },
-          ),
-
-          const SizedBox(width: 12),
-
-          // Timer (guard: notifier can be null briefly on stop/cancel before setState)
-          _recordingSecondsNotifier != null
-              ? ValueListenableBuilder<int>(
-                  valueListenable: _recordingSecondsNotifier!,
-                  builder: (context, seconds, _) => Text(
-                    _formatRecordingDuration(seconds),
+              final sec = _recordingStartTime != null
+                  ? DateTime.now().difference(_recordingStartTime!).inSeconds
+                  : 0;
+              return Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    width: 12,
+                    height: 12,
+                    decoration: BoxDecoration(
+                      shape: BoxShape.circle,
+                      color: Colors.red.withValues(alpha: 0.7 + (_pulseController.value * 0.3)),
+                    ),
+                  ),
+                  const SizedBox(width: 12),
+                  Text(
+                    _formatRecordingDuration(sec),
                     style: RpgTheme.bodyFont(
                       fontSize: 16,
                       fontWeight: FontWeight.w600,
                       color: isDark ? Colors.white : Colors.black87,
                     ),
                   ),
-                )
-              : Text(
-                  _formatRecordingDuration(0),
-                  style: RpgTheme.bodyFont(
-                    fontSize: 16,
-                    fontWeight: FontWeight.w600,
-                    color: isDark ? Colors.white : Colors.black87,
-                  ),
-                ),
+                ],
+              );
+            },
+          ),
 
           const SizedBox(width: 16),
 

@@ -65,13 +65,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       _scrollToBottomOnce();
     });
 
-    // Refresh every second to update countdown and remove expired messages
+    // Refresh every second: remove expired and tick countdown. No setState here -
+    // countdownTickNotifier triggers only bubble rebuilds via ValueListenableBuilder,
+    // avoiding full-screen rebuild that blocked the recording timer.
     _timerCountdownRefresh = Timer.periodic(
       const Duration(seconds: 1),
       (_) {
         if (!mounted) return;
-        context.read<ChatProvider>().removeExpiredMessages();
-        setState(() {});
+        final chat = context.read<ChatProvider>();
+        if (chat.isRecordingVoice) return; // Skip during recording to avoid starving recording timer
+        chat.removeExpiredMessages();
+        chat.countdownTickNotifier.value++;
       },
     );
   }

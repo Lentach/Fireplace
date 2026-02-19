@@ -220,28 +220,34 @@ class ChatMessageBubble extends StatelessWidget {
               },
             ),
             const SizedBox(height: 4),
-            // Bottom row: time + delivery + timer
+            // Bottom row: time + delivery + timer (ValueListenableBuilder avoids full-screen rebuild every second)
             Align(
               alignment: Alignment.bottomRight,
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  Text(
-                    _formatTime(message.createdAt),
-                    style: RpgTheme.bodyFont(fontSize: 10, color: timeColor),
-                  ),
-                  const SizedBox(width: 4),
-                  _buildDeliveryIcon(),
-                  if (_getTimerText() != null) ...[
-                    const SizedBox(width: 6),
-                    Icon(Icons.timer_outlined, size: 10, color: timeColor),
-                    const SizedBox(width: 2),
-                    Text(
-                      _getTimerText()!,
-                      style: RpgTheme.bodyFont(fontSize: 10, color: timeColor),
-                    ),
-                  ],
-                ],
+              child: ValueListenableBuilder<int>(
+                valueListenable: context.read<ChatProvider>().countdownTickNotifier,
+                builder: (_, __, ___) {
+                      final timerText = _getTimerText();
+                      return Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: [
+                          Text(
+                            _formatTime(message.createdAt),
+                            style: RpgTheme.bodyFont(fontSize: 10, color: timeColor),
+                          ),
+                          const SizedBox(width: 4),
+                          _buildDeliveryIcon(),
+                          if (timerText != null) ...[
+                            const SizedBox(width: 6),
+                            Icon(Icons.timer_outlined, size: 10, color: timeColor),
+                            const SizedBox(width: 2),
+                            Text(
+                              timerText,
+                              style: RpgTheme.bodyFont(fontSize: 10, color: timeColor),
+                            ),
+                          ],
+                        ],
+                      );
+                    },
               ),
             ),
           ],
