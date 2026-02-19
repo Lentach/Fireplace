@@ -161,7 +161,9 @@ class _ChatInputBarState extends State<ChatInputBar>
       );
 
       _recordingStartTime = DateTime.now();
-      context.read<ChatProvider>().isRecordingVoice = true;
+      final chat = context.read<ChatProvider>();
+      chat.isRecordingVoice = true;
+      chat.notifyListeners();
       setState(() {
         _isRecording = true;
         _cancelDragOffset = 0.0;
@@ -186,7 +188,9 @@ class _ChatInputBarState extends State<ChatInputBar>
   Future<void> _stopRecording() async {
     if (_audioRecorder == null || !_isRecording) return;
 
-    context.read<ChatProvider>().isRecordingVoice = false;
+    final chat = context.read<ChatProvider>();
+    chat.isRecordingVoice = false;
+    chat.notifyListeners();
     _recordingTimer?.cancel();
     _recordingTimer = null;
 
@@ -255,7 +259,9 @@ class _ChatInputBarState extends State<ChatInputBar>
   Future<void> _cancelRecording() async {
     if (_audioRecorder == null || !_isRecording) return;
 
-    context.read<ChatProvider>().isRecordingVoice = false;
+    final chat = context.read<ChatProvider>();
+    chat.isRecordingVoice = false;
+    chat.notifyListeners();
     _canceledBySlide = true;
     _recordingTimer?.cancel();
     _recordingTimer = null;

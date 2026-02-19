@@ -108,3 +108,4 @@ export class UnfriendDto {
 export * from './clear-chat-history.dto';
 export * from './set-disappearing-timer.dto';
 export * from './delete-conversation-only.dto';
+export * from './delete-message.dto';

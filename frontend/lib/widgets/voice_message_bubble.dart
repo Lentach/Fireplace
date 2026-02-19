@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
+import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
@@ -214,6 +215,40 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
     return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 
+  void _showDeleteOptions() {
+    final chat = context.read<ChatProvider>();
+    final auth = context.read<AuthProvider>();
+    final isMine = widget.message.senderId == auth.currentUser?.id;
+
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Delete for me'),
+              onTap: () {
+                Navigator.pop(ctx);
+                chat.deleteMessage(widget.message.id, forEveryone: false);
+              },
+            ),
+            if (isMine)
+              ListTile(
+                leading: const Icon(Icons.delete_forever),
+                title: const Text('Delete for everyone'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  chat.deleteMessage(widget.message.id, forEveryone: true);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
+  }
+
   String? _getTimerText() {
     if (widget.message.expiresAt == null) return null;
     final now = DateTime.now();
@@ -268,9 +303,11 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
         ? (isDark ? RpgTheme.accentDark : RpgTheme.primaryLight)
         : (isDark ? RpgTheme.borderDark : RpgTheme.primaryLight);
 
-    return Align(
-      alignment: widget.isMine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
+    return GestureDetector(
+      onLongPress: _showDeleteOptions,
+      child: Align(
+        alignment: widget.isMine ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.6,
         ),
@@ -421,6 +458,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
           ],
         ),
       ),
+    ),
     );
   }
 }

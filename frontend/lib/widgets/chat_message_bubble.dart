@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../theme/rpg_theme.dart';
 import '../models/message_model.dart';
+import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
 import 'voice_message_bubble.dart';
 
@@ -50,6 +51,40 @@ class ChatMessageBubble extends StatelessWidget {
 
     final color = message.deliveryStatus == MessageDeliveryStatus.read ? readColor : sendingSentColor;
     return Icon(icon, size: 12, color: color);
+  }
+
+  void _showDeleteOptions(BuildContext context) {
+    final chat = context.read<ChatProvider>();
+    final auth = context.read<AuthProvider>();
+    final isMine = message.senderId == auth.currentUser?.id;
+
+    showModalBottomSheet<void>(
+      context: context,
+      builder: (ctx) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.delete_outline),
+              title: const Text('Delete for me'),
+              onTap: () {
+                Navigator.pop(ctx);
+                chat.deleteMessage(message.id, forEveryone: false);
+              },
+            ),
+            if (isMine)
+              ListTile(
+                leading: const Icon(Icons.delete_forever),
+                title: const Text('Delete for everyone'),
+                onTap: () {
+                  Navigator.pop(ctx);
+                  chat.deleteMessage(message.id, forEveryone: true);
+                },
+              ),
+          ],
+        ),
+      ),
+    );
   }
 
   Widget? _buildRetryButton(BuildContext context) {
@@ -116,9 +151,11 @@ class ChatMessageBubble extends StatelessWidget {
     final timeColor =
         isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight;
 
-    return Align(
-      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-      child: Container(
+    return GestureDetector(
+      onLongPress: () => _showDeleteOptions(context),
+      child: Align(
+        alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+        child: Container(
         constraints: BoxConstraints(
           maxWidth: MediaQuery.of(context).size.width * 0.75,
         ),
@@ -253,6 +290,7 @@ class ChatMessageBubble extends StatelessWidget {
           ],
         ),
       ),
+    ),
     );
   }
 }

@@ -5,7 +5,7 @@ import { ConversationsService } from '../../conversations/conversations.service'
 import { FriendsService } from '../../friends/friends.service';
 import { UsersService } from '../../users/users.service';
 import { validateDto } from '../utils/dto.validator';
-import { SendMessageDto, GetMessagesDto, ClearChatHistoryDto } from '../dto/chat.dto';
+import { SendMessageDto, GetMessagesDto, ClearChatHistoryDto, DeleteMessageDto } from '../dto/chat.dto';
 import { SendPingDto } from '../dto/send-ping.dto';
 import { MessageType, MessageDeliveryStatus } from '../../messages/message.entity';
 import { MessageMapper } from '../../messages/message.mapper';
@@ -93,6 +93,9 @@ export class ChatMessageService {
   }
 
   async handleGetMessages(client: Socket, data: any) {
+    const userId: number = client.data.user?.id;
+    if (!userId) return;
+
     try {
       const dto = validateDto(GetMessagesDto, data);
       data = dto;
@@ -106,6 +109,7 @@ export class ChatMessageService {
         data.conversationId,
         data.limit,
         data.offset,
+        userId,
       );
 
       // Filter out expired messages (cron cleans DB every minute, but messages
@@ -360,5 +364,85 @@ export class ChatMessageService {
     this.logger.debug(
       `User ${userId} cleared chat history for conversation ${data.conversationId}`,
     );
+  }
+
+  async handleDeleteMessage(
+    client: Socket,
+    data: any,
+    server: Server,
+    onlineUsers: Map<number, string>,
+  ) {
+    const userId: number = client.data.user?.id;
+    if (!userId) return;
+
+    try {
+      const dto = validateDto(DeleteMessageDto, data);
+      data = dto;
+    } catch (error) {
+      client.emit('error', { message: error.message });
+      return;
+    }
+
+    const { messageId, mode } = data;
+
+    const message = await this.messagesService.findByIdWithConversation(messageId);
+    if (!message) {
+      client.emit('error', { message: 'Message not found' });
+      return;
+    }
+
+    const conv = message.conversation;
+    if (!conv) {
+      client.emit('error', { message: 'Conversation not found' });
+      return;
+    }
+
+    const userBelongs = conv.userOne.id === userId || conv.userTwo.id === userId;
+    if (!userBelongs) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+
+    const otherUserId = conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
+    const conversationId = conv.id;
+
+    if (mode === 'for_me') {
+      const ok = await this.messagesService.hideMessageForUser(messageId, userId);
+      if (!ok) {
+        client.emit('error', { message: 'Failed to hide message' });
+        return;
+      }
+      client.emit('messageDeleted', {
+        messageId,
+        conversationId,
+        forEveryone: false,
+      });
+      this.logger.debug(`User ${userId} hid message ${messageId} for self`);
+      return;
+    }
+
+    if (mode === 'for_everyone') {
+      const deleted = await this.messagesService.deleteById(messageId, userId);
+      if (!deleted) {
+        client.emit('error', {
+          message: 'Only the sender can delete for everyone',
+        });
+        return;
+      }
+      client.emit('messageDeleted', {
+        messageId,
+        conversationId,
+        forEveryone: true,
+      });
+      const otherSocketId = onlineUsers.get(otherUserId);
+      if (otherSocketId) {
+        server.to(otherSocketId).emit('messageDeleted', {
+          messageId,
+          conversationId,
+          forEveryone: true,
+        });
+      }
+      this.logger.debug(`User ${userId} deleted message ${messageId} for everyone`);
+    }
   }
 }

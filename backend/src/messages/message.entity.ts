@@ -56,6 +56,10 @@ export class Message {
   @Column({ type: 'int', nullable: true })
   mediaDuration: number | null;
 
+  /** Comma-separated user IDs who "deleted for me" — hidden from their view only */
+  @Column({ type: 'varchar', length: 500, default: '' })
+  hiddenByUserIds: string;
+
   @ManyToOne(() => User, { eager: true })
   @JoinColumn({ name: 'sender_id' })
   sender: User;

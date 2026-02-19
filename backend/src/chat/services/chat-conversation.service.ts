@@ -70,7 +70,10 @@ export class ChatConversationService {
         conv.id,
         userId,
       );
-      const lastMessage = await this.messagesService.getLastMessage(conv.id);
+      const lastMessage = await this.messagesService.getLastMessage(
+        conv.id,
+        userId,
+      );
       result.push(
         ConversationMapper.toPayload(conv, { unreadCount, lastMessage }),
       );
