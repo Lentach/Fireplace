@@ -148,40 +148,6 @@ class ChatMessageBubble extends StatelessWidget {
     );
   }
 
-  void _showDeleteConfirmation(BuildContext context) {
-    final chat = context.read<ChatProvider>();
-    final auth = context.read<AuthProvider>();
-    final isMineMsg = message.senderId == auth.currentUser?.id;
-
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.delete_outline),
-              title: const Text('Delete for me'),
-              onTap: () {
-                Navigator.pop(ctx);
-                chat.deleteMessage(message.id, forEveryone: false);
-              },
-            ),
-            if (isMineMsg)
-              ListTile(
-                leading: const Icon(Icons.delete_forever),
-                title: const Text('Delete for everyone'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  chat.deleteMessage(message.id, forEveryone: true);
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget? _buildRetryButton(BuildContext context) {
     if (!isMine || message.deliveryStatus != MessageDeliveryStatus.failed) {
       return null;
@@ -252,7 +218,7 @@ class ChatMessageBubble extends StatelessWidget {
     return MessageSwipeWrapper(
       isMine: isMine,
       onSwipeReply: () => chat.setReplyingTo(message),
-      onSwipeDelete: () => _showDeleteConfirmation(context),
+      onSwipeDelete: () => chat.deleteMessage(message.id, forEveryone: isMine),
       onLongPress: () => _showReactionOptions(context),
       child: Align(
         alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,

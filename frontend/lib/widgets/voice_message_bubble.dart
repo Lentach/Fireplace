@@ -258,40 +258,6 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
     );
   }
 
-  void _showDeleteConfirmation() {
-    final chat = context.read<ChatProvider>();
-    final auth = context.read<AuthProvider>();
-    final isMineMsg = widget.message.senderId == auth.currentUser?.id;
-
-    showModalBottomSheet<void>(
-      context: context,
-      builder: (ctx) => SafeArea(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            ListTile(
-              leading: const Icon(Icons.delete_outline),
-              title: const Text('Delete for me'),
-              onTap: () {
-                Navigator.pop(ctx);
-                chat.deleteMessage(widget.message.id, forEveryone: false);
-              },
-            ),
-            if (isMineMsg)
-              ListTile(
-                leading: const Icon(Icons.delete_forever),
-                title: const Text('Delete for everyone'),
-                onTap: () {
-                  Navigator.pop(ctx);
-                  chat.deleteMessage(widget.message.id, forEveryone: true);
-                },
-              ),
-          ],
-        ),
-      ),
-    );
-  }
-
   Widget _buildReplyQuote(
     BuildContext context,
     ReplyToPreview replyTo,
@@ -408,7 +374,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
     return MessageSwipeWrapper(
       isMine: widget.isMine,
       onSwipeReply: () => chat.setReplyingTo(widget.message),
-      onSwipeDelete: _showDeleteConfirmation,
+      onSwipeDelete: () => chat.deleteMessage(widget.message.id, forEveryone: widget.isMine),
       onLongPress: _showReactionOptions,
       child: Align(
         alignment: widget.isMine ? Alignment.centerRight : Alignment.centerLeft,
