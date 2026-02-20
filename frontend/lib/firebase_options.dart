@@ -29,17 +29,14 @@ class DefaultFirebaseOptions {
     }
   }
 
-  // TODO: Add web app in Firebase Console → Project Settings → Add app → Web
-  // Then fill in apiKey, appId, measurementId from the web app config.
-  // Also set VAPID key in push_service.dart (Cloud Messaging → Web push certs).
+  // Filled from Firebase Console → Web app config
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'TODO_REPLACE_WITH_WEB_API_KEY',
-    appId: 'TODO_REPLACE_WITH_WEB_APP_ID',
+    apiKey: 'REMOVED',
+    appId: '1:650276507312:web:a3d4c73e91ac8d7b79b575',
     messagingSenderId: '650276507312',
     projectId: 'fireplace-android',
     authDomain: 'fireplace-android.firebaseapp.com',
     storageBucket: 'fireplace-android.firebasestorage.app',
-    measurementId: 'TODO_REPLACE_WITH_MEASUREMENT_ID',
   );
 
   // Filled from google-services.json

@@ -9,12 +9,12 @@ importScripts('https://www.gstatic.com/firebasejs/10.7.0/firebase-app-compat.js'
 importScripts('https://www.gstatic.com/firebasejs/10.7.0/firebase-messaging-compat.js');
 
 firebase.initializeApp({
-  apiKey: 'TODO_REPLACE_WITH_WEB_API_KEY',       // z web app config
+  apiKey: 'REMOVED',
   authDomain: 'fireplace-android.firebaseapp.com',
   projectId: 'fireplace-android',
   storageBucket: 'fireplace-android.firebasestorage.app',
   messagingSenderId: '650276507312',
-  appId: 'TODO_REPLACE_WITH_WEB_APP_ID',          // z web app config
+  appId: '1:650276507312:web:a3d4c73e91ac8d7b79b575',
 });
 
 const messaging = firebase.messaging();
