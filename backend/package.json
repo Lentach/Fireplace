@@ -1,7 +1,7 @@
 {
-  "name": "mvp-chat-app",
+  "name": "fireplace-backend",
   "version": "0.0.1",
-  "description": "",
+  "description": "Fireplace messenger backend",
   "author": "",
   "private": true,
   "license": "UNLICENSED",

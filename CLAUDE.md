@@ -3,7 +3,7 @@ description:
 alwaysApply: true
 ---
 
-# CLAUDE.md — MVP Chat App
+# CLAUDE.md — Fireplace
 
 **Rules:**
 - Always read this file before you every code change
@@ -480,7 +480,8 @@ Frontend runs locally: `flutter run -d chrome`
 - **Push Notifications (FCM):** Silent push (privacy like Signal — FCM only sees `{ type: 'new_message' }`, no message content).
   - Backend: `FcmToken` entity/service/module (`backend/src/fcm-tokens/`); `PushNotificationsService` (`backend/src/push-notifications/`) uses `firebase-admin`; gracefully disabled if `FIREBASE_SERVICE_ACCOUNT` env var not set. `POST /users/fcm-token` + `DELETE /users/fcm-token` REST endpoints. `chat-message.service.ts` calls `pushNotificationsService.notify(recipientId)` when recipient offline (same for pings). `users.service.ts` cleans up FCM tokens on account deletion. `app.module.ts` + `chat.module.ts` updated.
   - Frontend: `firebase_core ^3.8.0` + `firebase_messaging ^15.1.6` added to pubspec. `lib/firebase_options.dart` placeholder (run FlutterFire CLI to replace). `main.dart` calls `Firebase.initializeApp()` with try-catch (graceful if not configured). `PushService` (`lib/services/push_service.dart`) — init on connect, unregister on logout. `ApiService` has `registerFcmToken` + `removeFcmToken`. `ChatProvider` initializes push on first `onConnect` callback. `AuthProvider.logout()` unregisters FCM before clearing JWT. Android: `settings.gradle.kts` + `app/build.gradle.kts` have google-services plugin; `AndroidManifest.xml` has `POST_NOTIFICATIONS`. Web: `frontend/web/firebase-messaging-sw.js`.
-  - **Setup required before it works:** (1) Create Firebase project → add Android/iOS/Web apps → download config files → run FlutterFire CLI → set `FIREBASE_SERVICE_ACCOUNT` env var. (2) Replace TODO values in `firebase_options.dart`, `push_service.dart` (VAPID key), and `firebase-messaging-sw.js`. See plan for full setup steps.
+  - **Firebase config (already done):** `firebase_options.dart` imports from `firebase_secrets.dart` (gitignored). `firebase-messaging-sw.js` loads from `firebase-config.js` (gitignored). Real values stored in gitignored files only — never in git history. `.example` templates committed for new contributors.
+  - **Setup for new contributors:** Copy `firebase_secrets.dart.example` → `firebase_secrets.dart` and fill values. Copy `firebase-config.js.example` → `firebase-config.js` and fill values. Set `FIREBASE_SERVICE_ACCOUNT` env var.
   - 55 backend tests still pass.
 
 **2026-02-20:**
@@ -518,7 +519,8 @@ Frontend runs locally: `flutter run -d chrome`
 ## 14. Known Limitations & Tech Debt
 
 ### Limitations
-- Add by username (search returns list; if multiple, picker). No fuzzy search. No typing indicators, no message edit/delete, no push notifications
+- Add by username (search returns list; if multiple, picker). No fuzzy search. No message edit
+- Push notifications: implemented (FCM, silent payload). iOS APNs not yet set up (requires Apple Developer account + certificates)
 - No unique constraint on `(sender, receiver)` in friend_requests
 - Message pagination: simple limit/offset (default 50), `_conversationsWithUnread()` has N+1
 

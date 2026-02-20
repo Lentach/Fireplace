@@ -19,11 +19,11 @@ void main() async {
     // Firebase not configured yet — push notifications will be disabled.
     // Run FlutterFire CLI to set up: see lib/firebase_options.dart for instructions.
   }
-  runApp(const RpgChatApp());
+  runApp(const FireplaceApp());
 }
 
-class RpgChatApp extends StatelessWidget {
-  const RpgChatApp({super.key});
+class FireplaceApp extends StatelessWidget {
+  const FireplaceApp({super.key});
 
   @override
   Widget build(BuildContext context) {
@@ -36,7 +36,7 @@ class RpgChatApp extends StatelessWidget {
       child: Consumer<SettingsProvider>(
         builder: (context, settings, _) {
           return MaterialApp(
-            title: 'RPG Chat',
+            title: 'Fireplace',
             debugShowCheckedModeBanner: false,
             theme: RpgTheme.themeDataLight,
             darkTheme: RpgTheme.themeData,

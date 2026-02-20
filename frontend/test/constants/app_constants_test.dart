@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:frontend/constants/app_constants.dart';
+import 'package:fireplace/constants/app_constants.dart';
 
 void main() {
   group('AppConstants', () {

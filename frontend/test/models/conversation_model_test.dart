@@ -1,5 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:frontend/models/conversation_model.dart';
+import 'package:fireplace/models/conversation_model.dart';
 
 void main() {
   group('ConversationModel', () {

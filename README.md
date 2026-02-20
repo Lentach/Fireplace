@@ -1,6 +1,6 @@
-# MVP Chat App
+# Fireplace
 
-Real-time 1-on-1 chat application with an RPG-themed UI. NestJS backend with WebSocket communication (Socket.IO), Flutter frontend, JWT authentication, and PostgreSQL database. Run everything with a single command using Docker Compose.
+Fireplace – real-time messenger with RPG-themed UI. NestJS backend with WebSocket (Socket.IO), Flutter frontend, JWT authentication, and PostgreSQL. Run everything with Docker Compose.
 
 ---
 
@@ -24,8 +24,8 @@ Real-time 1-on-1 chat application with an RPG-themed UI. NestJS backend with Web
 
 ```bash
 # 1. Clone the repository
-git clone https://github.com/Lentach/mvp-chat-app.git
-cd mvp-chat-app
+git clone https://github.com/Lentach/fireplace.git
+cd fireplace
 
 # 2. Start backend + database
 docker-compose up
@@ -98,7 +98,7 @@ flutter run -d chrome --dart-define=BASE_URL=http://localhost:3000
 ## Project Structure
 
 ```
-mvp-chat-app/
+fireplace/
 ├── backend/
 │   ├── src/
 │   │   ├── auth/                # Registration, login, JWT strategy
