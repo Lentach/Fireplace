@@ -49,6 +49,9 @@ class PushService {
       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
         _api.registerFcmToken(jwtToken, newToken, platform).catchError((_) {});
       });
+
+      // Foreground: do not show notification — user has active tab, WebSocket already delivered the message
+      FirebaseMessaging.onMessage.listen((_) {});
     } catch (_) {
       // Push setup failed (Firebase not configured, no permission, etc.) — silently ignored
     }

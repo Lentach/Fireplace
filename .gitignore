@@ -17,6 +17,9 @@ frontend/.flutter-plugins-dependencies
 # Git worktrees
 .worktrees/
 
+# Jacques AI (exclude from project)
+.jacques/
+
 # Firebase secrets — never commit these
 frontend/lib/firebase_secrets.dart
 frontend/web/firebase-config.js

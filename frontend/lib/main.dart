@@ -9,17 +9,12 @@ import 'screens/auth_screen.dart';
 import 'screens/main_shell.dart';
 import 'theme/rpg_theme.dart';
 
-void main() async {
+void main() {
   WidgetsFlutterBinding.ensureInitialized();
-  try {
-    await Firebase.initializeApp(
-      options: DefaultFirebaseOptions.currentPlatform,
-    );
-  } catch (_) {
-    // Firebase not configured yet — push notifications will be disabled.
-    // Run FlutterFire CLI to set up: see lib/firebase_options.dart for instructions.
-  }
   runApp(const FireplaceApp());
+  // Firebase init in background — app shows immediately; push ready shortly after
+  Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform)
+      .catchError((_) {});
 }
 
 class FireplaceApp extends StatelessWidget {

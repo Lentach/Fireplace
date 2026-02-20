@@ -102,13 +102,16 @@ export class ChatMessageService {
     // Emit to sender (confirmation)
     client.emit('messageSent', messagePayload);
 
-    // Emit to recipient if online; push notify if offline
+    // Emit to recipient if online via WebSocket
     const recipientSocketId = onlineUsers.get(data.recipientId);
     if (recipientSocketId) {
       server.to(recipientSocketId).emit('newMessage', messagePayload);
-    } else {
-      this.pushNotificationsService.notify(data.recipientId).catch(() => {});
     }
+
+    // Always send push — when browser is minimized WebSocket stays connected but
+    // user won't see the message; FCM delivers to Service Worker which shows system notification.
+    // When app is foreground FCM delivers to onMessage, no duplicate notification shown.
+    this.pushNotificationsService.notify(data.recipientId).catch(() => {});
 
     // Async link preview — fire and forget, does not block send
     if (message.messageType === MessageType.TEXT && data.content) {
@@ -280,9 +283,8 @@ export class ChatMessageService {
     const recipientSocketId = onlineUsers.get(recipientId);
     if (recipientSocketId) {
       server.to(recipientSocketId).emit('newPing', payload);
-    } else {
-      this.pushNotificationsService.notify(recipientId).catch(() => {});
     }
+    this.pushNotificationsService.notify(recipientId).catch(() => {});
   }
 
   async handleMessageDelivered(

@@ -1,1 +1,0 @@
-# Should show: profile_picture_url (varchar), active_status (boolean)

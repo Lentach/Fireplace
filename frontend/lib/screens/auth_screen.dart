@@ -40,7 +40,7 @@ class _AuthScreenState extends State<AuthScreen> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   Text(
-                    'RPG CHAT',
+                    'Fireplace',
                     style: RpgTheme.pressStart2P(
                       fontSize: 20,
                       color: primaryColor,
