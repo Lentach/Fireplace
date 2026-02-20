@@ -1,0 +1,12 @@
+// Copy this file to firebase-config.js and fill in real values.
+// Get values from Firebase Console → Project Settings → Your web app.
+// firebase-config.js is gitignored — never commit it.
+
+const firebaseConfig = {
+  apiKey: 'TODO_REPLACE',
+  authDomain: 'TODO_REPLACE.firebaseapp.com',
+  projectId: 'TODO_REPLACE',
+  storageBucket: 'TODO_REPLACE.firebasestorage.app',
+  messagingSenderId: 'TODO_REPLACE',
+  appId: 'TODO_REPLACE',
+};

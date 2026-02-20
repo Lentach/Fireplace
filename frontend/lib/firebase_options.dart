@@ -1,16 +1,11 @@
-// THIS FILE IS A PLACEHOLDER — replace it by running FlutterFire CLI:
-//
-//   npm install -g firebase-tools
-//   dart pub global activate flutterfire_cli
-//   cd frontend
-//   flutterfire configure --project=<your-firebase-project-id>
-//
-// The CLI will overwrite this file with real credentials for each platform.
-// Do NOT commit real Firebase credentials to version control.
+// Firebase options per platform.
+// API keys live in firebase_secrets.dart (gitignored — never committed).
+// To set up: copy firebase_secrets.dart.example → firebase_secrets.dart and fill in values.
 
 import 'package:firebase_core/firebase_core.dart' show FirebaseOptions;
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import 'firebase_secrets.dart' as secrets;
 
 class DefaultFirebaseOptions {
   static FirebaseOptions get currentPlatform {
@@ -29,32 +24,30 @@ class DefaultFirebaseOptions {
     }
   }
 
-  // Filled from Firebase Console → Web app config
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'REMOVED',
-    appId: '1:650276507312:web:a3d4c73e91ac8d7b79b575',
-    messagingSenderId: '650276507312',
-    projectId: 'fireplace-android',
-    authDomain: 'fireplace-android.firebaseapp.com',
-    storageBucket: 'fireplace-android.firebasestorage.app',
+    apiKey: secrets.kFirebaseWebApiKey,
+    appId: secrets.kFirebaseWebAppId,
+    messagingSenderId: secrets.kFirebaseMessagingSenderId,
+    projectId: secrets.kFirebaseProjectId,
+    authDomain: secrets.kFirebaseAuthDomain,
+    storageBucket: secrets.kFirebaseStorageBucket,
   );
 
-  // Filled from google-services.json
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'REMOVED',
-    appId: '1:650276507312:android:1ff894f0a7d940a079b575',
-    messagingSenderId: '650276507312',
-    projectId: 'fireplace-android',
-    storageBucket: 'fireplace-android.firebasestorage.app',
+    apiKey: secrets.kFirebaseAndroidApiKey,
+    appId: secrets.kFirebaseAndroidAppId,
+    messagingSenderId: secrets.kFirebaseMessagingSenderId,
+    projectId: secrets.kFirebaseProjectId,
+    storageBucket: secrets.kFirebaseStorageBucket,
   );
 
-  // TODO: Add iOS app in Firebase Console → add app → iOS → download GoogleService-Info.plist
+  // TODO: Add iOS app in Firebase Console → download GoogleService-Info.plist
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'TODO_REPLACE_WITH_IOS_API_KEY',
+    apiKey: secrets.kFirebaseWebApiKey,
     appId: 'TODO_REPLACE_WITH_IOS_APP_ID',
-    messagingSenderId: '650276507312',
-    projectId: 'fireplace-android',
-    storageBucket: 'fireplace-android.firebasestorage.app',
+    messagingSenderId: secrets.kFirebaseMessagingSenderId,
+    projectId: secrets.kFirebaseProjectId,
+    storageBucket: secrets.kFirebaseStorageBucket,
     iosBundleId: 'com.fireplace.app',
   );
 }
