@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "650276507312",
+    "project_id": "fireplace-android",
+    "storage_bucket": "fireplace-android.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:650276507312:android:1ff894f0a7d940a079b575",
+        "android_client_info": {
+          "package_name": "com.fireplace.app"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyBUJZQAvwNx9U8ryaHI3RZEKuaUPQBViVM"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}

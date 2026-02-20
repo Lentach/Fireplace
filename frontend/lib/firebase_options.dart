@@ -29,34 +29,35 @@ class DefaultFirebaseOptions {
     }
   }
 
-  // TODO: Replace with real values from Firebase Console → Project Settings → Web app
-  // (also set the VAPID key in push_service.dart)
+  // TODO: Add web app in Firebase Console → Project Settings → Add app → Web
+  // Then fill in apiKey, appId, measurementId from the web app config.
+  // Also set VAPID key in push_service.dart (Cloud Messaging → Web push certs).
   static const FirebaseOptions web = FirebaseOptions(
-    apiKey: 'TODO_REPLACE_WITH_REAL_API_KEY',
-    appId: 'TODO_REPLACE_WITH_REAL_APP_ID',
-    messagingSenderId: 'TODO_REPLACE_WITH_REAL_SENDER_ID',
-    projectId: 'TODO_REPLACE_WITH_REAL_PROJECT_ID',
-    authDomain: 'TODO_REPLACE.firebaseapp.com',
-    storageBucket: 'TODO_REPLACE.firebasestorage.app',
-    measurementId: 'TODO_REPLACE',
+    apiKey: 'TODO_REPLACE_WITH_WEB_API_KEY',
+    appId: 'TODO_REPLACE_WITH_WEB_APP_ID',
+    messagingSenderId: '650276507312',
+    projectId: 'fireplace-android',
+    authDomain: 'fireplace-android.firebaseapp.com',
+    storageBucket: 'fireplace-android.firebasestorage.app',
+    measurementId: 'TODO_REPLACE_WITH_MEASUREMENT_ID',
   );
 
-  // TODO: Replace with real values (from google-services.json → android/app/)
+  // Filled from google-services.json
   static const FirebaseOptions android = FirebaseOptions(
-    apiKey: 'TODO_REPLACE_WITH_REAL_API_KEY',
-    appId: 'TODO_REPLACE_WITH_REAL_APP_ID',
-    messagingSenderId: 'TODO_REPLACE_WITH_REAL_SENDER_ID',
-    projectId: 'TODO_REPLACE_WITH_REAL_PROJECT_ID',
-    storageBucket: 'TODO_REPLACE.firebasestorage.app',
+    apiKey: 'REMOVED',
+    appId: '1:650276507312:android:1ff894f0a7d940a079b575',
+    messagingSenderId: '650276507312',
+    projectId: 'fireplace-android',
+    storageBucket: 'fireplace-android.firebasestorage.app',
   );
 
-  // TODO: Replace with real values (from GoogleService-Info.plist → ios/Runner/)
+  // TODO: Add iOS app in Firebase Console → add app → iOS → download GoogleService-Info.plist
   static const FirebaseOptions ios = FirebaseOptions(
-    apiKey: 'TODO_REPLACE_WITH_REAL_API_KEY',
-    appId: 'TODO_REPLACE_WITH_REAL_APP_ID',
-    messagingSenderId: 'TODO_REPLACE_WITH_REAL_SENDER_ID',
-    projectId: 'TODO_REPLACE_WITH_REAL_PROJECT_ID',
-    storageBucket: 'TODO_REPLACE.firebasestorage.app',
-    iosBundleId: 'com.rpgchat.frontend',
+    apiKey: 'TODO_REPLACE_WITH_IOS_API_KEY',
+    appId: 'TODO_REPLACE_WITH_IOS_APP_ID',
+    messagingSenderId: '650276507312',
+    projectId: 'fireplace-android',
+    storageBucket: 'fireplace-android.firebasestorage.app',
+    iosBundleId: 'com.fireplace.app',
   );
 }
