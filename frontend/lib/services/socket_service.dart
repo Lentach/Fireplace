@@ -38,6 +38,10 @@ class SocketService {
     void Function(dynamic)? onPartnerRecordingVoice,
     void Function(dynamic)? onReactionUpdated,
     void Function(dynamic)? onLinkPreviewReady,
+    void Function(dynamic)? onKeyBundleUploaded,
+    void Function(dynamic)? onOneTimePreKeysUploaded,
+    void Function(dynamic)? onPreKeyBundleResponse,
+    void Function(dynamic)? onPreKeysLow,
   }) {
     // Defensive cleanup: ensure any previous socket is fully disposed
     // before creating a new one (prevents cache reuse)
@@ -95,6 +99,18 @@ class SocketService {
     if (onLinkPreviewReady != null) {
       _socket!.on('linkPreviewReady', onLinkPreviewReady);
     }
+    if (onKeyBundleUploaded != null) {
+      _socket!.on('keyBundleUploaded', onKeyBundleUploaded);
+    }
+    if (onOneTimePreKeysUploaded != null) {
+      _socket!.on('oneTimePreKeysUploaded', onOneTimePreKeysUploaded);
+    }
+    if (onPreKeyBundleResponse != null) {
+      _socket!.on('preKeyBundleResponse', onPreKeyBundleResponse);
+    }
+    if (onPreKeysLow != null) {
+      _socket!.on('preKeysLow', onPreKeysLow);
+    }
     _socket!.onDisconnect(onDisconnect);
 
     _socket!.connect();
@@ -113,6 +129,7 @@ class SocketService {
     int? expiresIn,
     String? tempId,
     int? replyToMessageId,
+    String? encryptedContent,
   }) {
     final payload = <String, dynamic>{
       'recipientId': recipientId,
@@ -135,6 +152,9 @@ class SocketService {
     }
     if (replyToMessageId != null) {
       payload['replyToMessageId'] = replyToMessageId;
+    }
+    if (encryptedContent != null) {
+      payload['encryptedContent'] = encryptedContent;
     }
     _socket?.emit('sendMessage', payload);
   }
@@ -274,6 +294,20 @@ class SocketService {
 
   void getBlockedList() {
     _socket?.emit('getBlockedList');
+  }
+
+  // ========== E2E Key Exchange ==========
+
+  void uploadKeyBundle(Map<String, dynamic> bundle) {
+    _socket?.emit('uploadKeyBundle', bundle);
+  }
+
+  void uploadOneTimePreKeys(List<Map<String, dynamic>> keys) {
+    _socket?.emit('uploadOneTimePreKeys', {'keys': keys});
+  }
+
+  void fetchPreKeyBundle(int userId) {
+    _socket?.emit('fetchPreKeyBundle', {'userId': userId});
   }
 
   void disconnect() {

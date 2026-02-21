@@ -11,6 +11,7 @@ import '../widgets/dialogs/reset_password_dialog.dart';
 import '../widgets/dialogs/delete_account_dialog.dart';
 import '../widgets/top_snackbar.dart';
 import 'blocked_users_screen.dart';
+import 'privacy_safety_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -120,6 +121,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       final chat = context.read<ChatProvider>();
 
       await auth.deleteAccount(password);
+      await chat.clearEncryptionKeys();
       chat.disconnect();
 
       if (mounted) {
@@ -146,14 +148,14 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final isDark = RpgTheme.isDark(context);
+    final fc = FireplaceColors.of(context);
     return Container(
       margin: const EdgeInsets.symmetric(horizontal: 13, vertical: 3),
       decoration: BoxDecoration(
-        color: isDark ? RpgTheme.settingsTileBgDark : colorScheme.surface,
+        color: fc.settingsTileBg,
         borderRadius: BorderRadius.circular(10),
         border: Border.all(
-          color: isDark ? RpgTheme.settingsTileBorderDark : colorScheme.outline.withValues(alpha: 0.5),
+          color: fc.settingsTileBorder,
           width: 1.2,
         ),
       ),
@@ -262,14 +264,25 @@ class _SettingsScreenState extends State<SettingsScreen> {
             // Settings Tiles
             _buildSettingsTile(
               icon: Icons.palette_outlined,
-              title: 'Dark Mode',
-              subtitle: 'Light / Dark',
-              trailing: Switch(
-                value: settings.darkModePreference == 'dark',
-                onChanged: (value) {
-                  settings.setDarkModePreference(value ? 'dark' : 'light');
+              title: 'Theme',
+              subtitle: 'Light / Dark (Wire) / Blue',
+              trailing: SegmentedButton<String>(
+                segments: const [
+                  ButtonSegment(value: 'light', label: Text('Light')),
+                  ButtonSegment(value: 'dark', label: Text('Dark')),
+                  ButtonSegment(value: 'blue', label: Text('Blue')),
+                ],
+                selected: {settings.themePreference},
+                onSelectionChanged: (Set<String> selected) {
+                  if (selected.isNotEmpty) {
+                    settings.setThemePreference(selected.first);
+                  }
                 },
-                activeTrackColor: theme.colorScheme.primary,
+                style: ButtonStyle(
+                  visualDensity: VisualDensity.compact,
+                  padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 6, vertical: 4)),
+                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
+                ),
               ),
             ),
 
@@ -278,10 +291,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
               title: 'Privacy and Safety',
               trailing: Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
               onTap: () {
-                showTopSnackBar(
-                  context,
-                  'Coming soon',
-                  backgroundColor: Theme.of(context).colorScheme.primary,
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) => const PrivacySafetyScreen(),
+                  ),
                 );
               },
             ),
@@ -335,7 +348,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   }
                 },
                 style: ElevatedButton.styleFrom(
-                  backgroundColor: RpgTheme.accentDark,
+                  backgroundColor: theme.colorScheme.primary,
                   foregroundColor: Colors.white,
                   padding: const EdgeInsets.symmetric(vertical: 16),
                   shape: RoundedRectangleBorder(

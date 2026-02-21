@@ -52,7 +52,7 @@ class _MessageSwipeWrapperState extends State<MessageSwipeWrapper> {
 
   @override
   Widget build(BuildContext context) {
-    final accentColor = RpgTheme.primaryColor(context);
+    final accentColor = Theme.of(context).colorScheme.primary;
     final replyBg = accentColor.withValues(alpha: 0.15);
     final deleteBg = Colors.red.withValues(alpha: 0.15);
 

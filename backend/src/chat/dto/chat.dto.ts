@@ -20,10 +20,15 @@ export class SendMessageDto {
   recipientId: number;
 
   @IsString()
-  @ValidateIf((o) => !['VOICE', 'PING'].includes(o?.messageType))
+  @ValidateIf((o) => !o.encryptedContent && !['VOICE', 'PING'].includes(o?.messageType))
   @MinLength(1, { message: 'Message cannot be empty' })
   @MaxLength(5000, { message: 'Message cannot exceed 5000 characters' })
   content: string;
+
+  @IsOptional()
+  @IsString()
+  @MinLength(1)
+  encryptedContent?: string; // Base64-encoded Signal Protocol ciphertext
 
   @IsOptional()
   @IsNumber()

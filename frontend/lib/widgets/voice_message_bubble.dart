@@ -244,7 +244,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: alreadyReacted
-                        ? RpgTheme.primaryColor(context).withValues(alpha: 0.15)
+                        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
                         : Colors.transparent,
                     shape: BoxShape.circle,
                   ),
@@ -363,11 +363,11 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
   Widget build(BuildContext context) {
     final isDark = RpgTheme.isDark(context);
     final bubbleColor = widget.isMine
-        ? (isDark ? RpgTheme.mineMsgBg : RpgTheme.mineMsgBgLight)
-        : (isDark ? RpgTheme.theirsMsgBg : RpgTheme.theirsMsgBgLight);
+        ? FireplaceColors.of(context).mineMsgBg
+        : FireplaceColors.of(context).theirsMsgBg;
     final borderColor = widget.isMine
-        ? (isDark ? RpgTheme.accentDark : RpgTheme.primaryLight)
-        : (isDark ? RpgTheme.borderDark : RpgTheme.primaryLight);
+        ? Theme.of(context).colorScheme.primary
+        : FireplaceColors.of(context).borderColor;
     final currentUserId = context.read<AuthProvider>().currentUser?.id;
     final chat = context.read<ChatProvider>();
 

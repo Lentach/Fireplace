@@ -108,7 +108,29 @@ erDiagram
         text linkPreviewUrl "nullable"
         text linkPreviewTitle "nullable"
         text linkPreviewImageUrl "nullable"
+        text encryptedContent "nullable, E2E ciphertext"
         timestamp expiresAt "nullable"
+        timestamp createdAt
+    }
+
+    key_bundles {
+        int id PK
+        int userId "unique"
+        int registrationId
+        text identityPublicKey
+        int signedPreKeyId
+        text signedPreKeyPublic
+        text signedPreKeySignature
+        timestamp createdAt
+        timestamp updatedAt
+    }
+
+    one_time_pre_keys {
+        int id PK
+        int userId
+        int keyId
+        text publicKey
+        boolean used "default false, index(userId+used)"
         timestamp createdAt
     }
 
@@ -180,13 +202,21 @@ Gateway verifies JWT, stores `client.data.user = { id, username, tag }`, tracks 
 | `unblockUser` | `blockedList` | -- |
 | `getBlockedList` | `blockedList` | -- |
 
-### 3.4 Key Payloads
+### 3.4 E2E Key Exchange Events
+
+| Client Emit | Server Emit (caller) | Server Emit (target) |
+|---|---|---|
+| `uploadKeyBundle` | `keyBundleUploaded` | -- |
+| `uploadOneTimePreKeys` | `oneTimePreKeysUploaded` | -- |
+| `fetchPreKeyBundle` | `preKeyBundleResponse` | `preKeysLow` (when < 10 remaining) |
+
+### 3.5 Key Payloads
 
 **Message payload** (`messageSent` / `newMessage` / `pingSent` / `newPing`):
 ```typescript
 { id, content, senderId, senderEmail, senderUsername, conversationId,
   createdAt, deliveryStatus, messageType, mediaUrl, mediaDuration,
-  expiresAt, tempId, reactions }
+  expiresAt, tempId, reactions, encryptedContent }
 ```
 
 **Conversation payload** (`conversationsList` item):
@@ -197,11 +227,14 @@ Gateway verifies JWT, stores `client.data.user = { id, username, tag }`, tracks 
 
 **Friend request payload:** `{ id, sender: UserPayload, receiver: UserPayload, status, createdAt, respondedAt }`
 
-### 3.5 DTO Validation (class-validator)
+### 3.6 DTO Validation (class-validator)
 
 | DTO | Fields | Notes |
 |---|---|---|
-| `SendMessageDto` | recipientId (int+), content (str 1-5000), expiresIn?, tempId?, messageType?, mediaUrl?, mediaDuration? | content validation skipped for VOICE/PING via `@ValidateIf`; mediaUrl validated as Cloudinary URL |
+| `SendMessageDto` | recipientId (int+), content (str 1-5000), expiresIn?, tempId?, messageType?, mediaUrl?, mediaDuration?, encryptedContent? | content validation skipped for VOICE/PING/encrypted via `@ValidateIf`; mediaUrl validated as Cloudinary URL |
+| `UploadKeyBundleDto` | registrationId, identityPublicKey, signedPreKeyId, signedPreKeyPublic, signedPreKeySignature | |
+| `UploadOneTimePreKeysDto` | keys[]{keyId, publicKey} | Nested array validation |
+| `FetchPreKeyBundleDto` | userId (int+) | |
 | `SearchUsersDto` | username (str 3-20, a-z 0-9 _) | |
 | `SendFriendRequestDto` | recipientId (int+) | |
 | `AcceptFriendRequestDto` / `RejectFriendRequestDto` | requestId (int+) | |
@@ -241,7 +274,7 @@ Gateway verifies JWT, stores `client.data.user = { id, username, tag }`, tracks 
 
 **Navigation:** AuthGate -> AuthScreen (login/register) OR MainShell (IndexedStack: Conversations, Contacts, Settings). Conversations/Contacts -> ChatDetailScreen. Conversations + button -> AddOrInvitationsScreen. Desktop >600px: sidebar+detail layout.
 
-**Key screens:** AuthScreen (login by username or username#tag, `clearStatus()` on tab switch — DO NOT DELETE), ConversationsScreen (swipe-to-delete, `consumePendingOpen()` pattern), ChatDetailScreen (Timer.periodic 1s for `removeExpiredMessages()`, `markConversationRead` on open), AddOrInvitationsScreen (searchUsers -> 1 result auto-send, multiple results picker, `consumeFriendRequestSent()` pattern).
+**Key screens:** AuthScreen (login by username or username#tag, `clearStatus()` on tab switch — DO NOT DELETE), ConversationsScreen (swipe-to-delete, `consumePendingOpen()` pattern), ChatDetailScreen (Timer.periodic 1s for `removeExpiredMessages()`, `markConversationRead` on open), AddOrInvitationsScreen (searchUsers -> 1 result auto-send, multiple results picker, `consumeFriendRequestSent()` pattern), PrivacySafetyScreen (E2E info, identity fingerprint, accessed from Settings).
 
 **Key widgets:** ChatInputBar (text+send+mic hold-to-record+action tiles), ChatActionTiles (Camera/Gallery/Ping/Timer/Clear/Drawing), ChatMessageBubble (TEXT/PING/IMAGE/DRAWING/VOICE, long-press -> delete for me/everyone), VoiceMessageBubble (scrubbable waveform, speed toggle 1x/1.5x/2x, long-press -> delete), ConversationTile (Dismissible swipe-to-delete, unread badge), TopSnackbar (all notifications — never use ScaffoldMessenger), AvatarCircle (stable cache-bust per profilePictureUrl).
 
@@ -257,7 +290,9 @@ Gateway verifies JWT, stores `client.data.user = { id, username, tag }`, tracks 
 
 **Blocking state:** `_blockedUsers` (List) = users blocked **by me** (from `blockedList`). `_blockedByUserIds` (Set\<int\>) = IDs of users who blocked **me** (populated from `youWereBlocked` push event). When `youWereBlocked` arrives: add to `_blockedByUserIds`, remove blocker from `_friends`, remove their conversations, clear active chat if it was with them.
 
-**Optimistic messaging:** Create temp message (id=-timestamp, SENDING, tempId) -> notifyListeners (shows immediately) -> emit sendMessage -> backend returns `messageSent` with tempId -> replace temp with real message.
+**Optimistic messaging:** Create temp message (id=-timestamp, SENDING, tempId) -> notifyListeners (shows immediately) -> encrypt async -> emit sendMessage with encryptedContent -> backend returns `messageSent` with tempId -> replace temp with real message.
+
+**E2E Encryption in ChatProvider:** `EncryptionService` initialized on connect. Send flow: content -> `LinkPreviewService.fetchPreview()` -> build JSON envelope `{content, linkPreview?}` -> `_ensureSession(recipientId)` (Completer-based async pre-key fetch if no session) -> `encrypt()` -> emit with `encryptedContent`. Receive flow: if `encryptedContent` present, `_decryptMessageAsync()` decrypts + parses envelope, updates message in-place with `notifyListeners()`. Fallback: if encryption fails, sends unencrypted. `clearEncryptionKeys()` called on account deletion.
 
 **Reconnection:** `ChatReconnectManager`: exponential backoff capped at 30s, max 5 attempts, only when `intentionalDisconnect == false`.
 
@@ -277,7 +312,7 @@ Loads JWT from SharedPreferences on construction. `login()`: POST -> decode -> s
 |---|---|---|
 | `UserModel` | id, username, tag, profilePictureUrl? | `displayHandle` getter → `username#tag`; `copyWith()` all fields |
 | `ConversationModel` | id, userOne, userTwo, createdAt, disappearingTimer? | Immutable |
-| `MessageModel` | id, content, senderId, conversationId, deliveryStatus, messageType, mediaUrl?, mediaDuration?, expiresAt?, tempId? | `copyWith()` for deliveryStatus, expiresAt, mediaUrl, mediaDuration |
+| `MessageModel` | id, content, senderId, conversationId, deliveryStatus, messageType, mediaUrl?, mediaDuration?, expiresAt?, tempId?, encryptedContent? | `copyWith()` for deliveryStatus, expiresAt, mediaUrl, mediaDuration, content, encryptedContent |
 | `FriendRequestModel` | id, sender, receiver, status, createdAt, respondedAt? | |
 
 **Frontend-only enum value:** `MessageDeliveryStatus.failed` (not in backend).
@@ -288,10 +323,11 @@ Loads JWT from SharedPreferences on construction. `login()`: POST -> decode -> s
 
 ```mermaid
 flowchart TB
-    Gateway["ChatGateway\n15 @SubscribeMessage handlers"] --> CMS["ChatMessageService"] & CCS["ChatConversationService"] & CFRS["ChatFriendRequestService"]
+    Gateway["ChatGateway\n18 @SubscribeMessage handlers"] --> CMS["ChatMessageService"] & CCS["ChatConversationService"] & CFRS["ChatFriendRequestService"] & CKES["ChatKeyExchangeService"]
     CMS --> MS["MessagesService"] & CS["ConversationsService"] & FS["FriendsService"]
     CCS --> CS & US["UsersService"]
     CFRS --> FS & US
+    CKES --> KBS["KeyBundlesService"]
     Controllers["REST: AuthController, UsersController, MessagesController"] --> AS["AuthService"] & US & MS & CloudS["CloudinaryService"]
 ```
 
@@ -299,7 +335,7 @@ flowchart TB
 
 **Friend request auto-accept:** If B already has pending request to A when A sends to B -> auto-accept both, create conversation, emit openConversation to both.
 
-**Delete account cascade:** Verify password -> delete Cloudinary avatar -> delete messages per conversation -> delete conversations -> find-then-remove friend_requests -> remove user.
+**Delete account cascade:** Verify password -> delete Cloudinary avatar -> delete key bundles + OTPs -> delete messages per conversation -> delete conversations -> find-then-remove friend_requests -> remove user.
 
 **Mappers:** `UserMapper`, `MessageMapper`, `ConversationMapper`, `FriendRequestMapper` — all have `toPayload()` method. Located in `chat/mappers/` and `messages/message.mapper.ts`.
 
@@ -349,7 +385,31 @@ Three-layer expiration: (1) Frontend `removeExpiredMessages()` every 1s, (2) Bac
 
 **Image messages:** POST /messages/image (JPEG/PNG, max 5MB). Creates `IMAGE` message with `mediaUrl`. Verifies friend relationship.
 
-### 8.5 Username#Tag (Discord-style)
+### 8.5 E2E Encryption (Signal Protocol)
+
+**Library:** `libsignal_protocol_dart` v0.7.4 (pure Dart, GPL-3.0). `flutter_secure_storage` for key persistence (Keychain/Keystore on mobile, encrypted localStorage on web).
+
+**Scope:** Text messages only. Media (images, voice, drawings) NOT yet encrypted.
+
+**Protocol flow:** X3DH (Extended Triple Diffie-Hellman) key agreement → Double Ratchet per-message encryption. Single-device model (deviceId=1). TOFU identity verification.
+
+**Ciphertext format:** `"{type}:{base64_body}"` where type 3 = PreKeySignalMessage, type 1 = SignalMessage.
+
+**Encrypted envelope:** `JSON.encode({"content": "text", "linkPreview": {"url", "title", "imageUrl"}?})`. Server stores ciphertext in `messages.encryptedContent`, stores `"[encrypted]"` as `content` placeholder.
+
+**Client-side link preview:** `LinkPreviewService` fetches OG metadata from URLs *before* encrypting (so server never sees content). SSRF protection: private IP blocking, 5s timeout, 100KB limit.
+
+**Key management:** 100 one-time pre-keys per batch. Server emits `preKeysLow` when < 10 remaining → client auto-generates more. Keys persist in secure storage across app restarts. New device = new keys = no old message access (like Signal).
+
+**Session establishment:** Completer-based async pattern: `_ensureSession(recipientId)` → if no session, `fetchPreKeyBundle` → wait for `preKeyBundleResponse` via Completer (10s timeout) → `buildSession()`.
+
+**Backend:** Zero-knowledge pass-through. `key_bundles` + `one_time_pre_keys` tables store public key material only. `KeyBundlesService` manages CRUD. `ChatKeyExchangeService` handles 3 WebSocket events. Server-side link preview skipped when `encryptedContent` present.
+
+**Privacy & Safety screen:** Settings → Privacy & Safety → informational screen with E2E status, identity fingerprint (selectable text), key info cards.
+
+**Migration:** Run `backend/scripts/migrate-enable-e2e.ts` to clear all old plaintext messages.
+
+### 8.6 Username#Tag (Discord-style)
 
 Each user has a 4-digit tag (1000–9999), random at registration. Display format: `username#tag` (e.g. `ziomek#0427`). **Username is unique** (case-insensitive) — registration throws "nickname is already taken" if username exists. Tag stays when username changes.
 
@@ -374,8 +434,9 @@ Each user has a 4-digit tag (1000–9999), random at registration. Display forma
 | **Conversations** | `conversations/conversation.entity.ts`, `conversations/conversations.service.ts` |
 | **Messages** | `messages/message.entity.ts`, `messages/message.mapper.ts`, `messages/messages.service.ts`, `messages/messages.controller.ts` |
 | **Friends** | `friends/friend-request.entity.ts`, `friends/friends.service.ts` |
-| **Chat** | `chat/chat.gateway.ts`, `chat/services/chat-{message,conversation,friend-request}.service.ts` |
-| **DTOs** | `chat/dto/chat.dto.ts` (main), `chat/dto/{send-ping,clear-chat-history,set-disappearing-timer,delete-conversation-only,delete-message}.dto.ts` |
+| **Chat** | `chat/chat.gateway.ts`, `chat/services/chat-{message,conversation,friend-request,key-exchange}.service.ts` |
+| **DTOs** | `chat/dto/chat.dto.ts` (main), `chat/dto/{send-ping,clear-chat-history,set-disappearing-timer,delete-conversation-only,delete-message,upload-key-bundle,upload-one-time-pre-keys,fetch-pre-key-bundle}.dto.ts` |
+| **Key Bundles (E2E)** | `key-bundles/key-bundle.entity.ts`, `key-bundles/one-time-pre-key.entity.ts`, `key-bundles/key-bundles.service.ts`, `key-bundles/key-bundles.module.ts` |
 | **Mappers** | `chat/mappers/{conversation,user,friend-request}.mapper.ts`, `messages/message.mapper.ts` |
 | **FCM Tokens** | `fcm-tokens/fcm-token.entity.ts`, `fcm-tokens/fcm-tokens.service.ts`, `fcm-tokens/fcm-tokens.module.ts` |
 | **Push Notifications** | `push-notifications/push-notifications.service.ts`, `push-notifications/push-notifications.module.ts` |
@@ -388,8 +449,9 @@ Each user has a 4-digit tag (1000–9999), random at registration. Display forma
 | **Entry** | `main.dart`, `config/app_config.dart`, `constants/app_constants.dart` |
 | **Models** | `models/{user,conversation,message,friend_request}_model.dart` |
 | **Providers** | `providers/{auth,chat,settings}_provider.dart`, `providers/chat_reconnect_manager.dart`, `providers/conversation_helpers.dart` |
-| **Services** | `services/socket_service.dart`, `services/api_service.dart` |
-| **Screens** | `screens/{auth,main_shell,conversations,contacts,settings,chat_detail,add_or_invitations}_screen.dart` |
+| **Services** | `services/socket_service.dart`, `services/api_service.dart`, `services/encryption_service.dart`, `services/link_preview_service.dart` |
+| **Encryption** | `services/encryption/signal_stores.dart` (4 persistent Signal stores backed by flutter_secure_storage) |
+| **Screens** | `screens/{auth,main_shell,conversations,contacts,settings,chat_detail,add_or_invitations,privacy_safety}_screen.dart` |
 | **Widgets** | `widgets/{chat_input_bar,chat_action_tiles,chat_message_bubble,voice_message_bubble,conversation_tile,top_snackbar,avatar_circle}.dart` |
 | **Theme** | `theme/rpg_theme.dart` |
 | **Push** | `services/push_service.dart`, `lib/firebase_options.dart` (placeholder — run FlutterFire CLI) |
@@ -437,9 +499,19 @@ Each user has a 4-digit tag (1000–9999), random at registration. Display forma
 
 ### Backend
 - mediaUrl must be Cloudinary URL when provided — prevents SSRF; validated via `@Matches` regex
-- Delete account cascade: msgs -> convs -> friend_reqs -> user (no cascade on User entity)
+- Delete account cascade: key bundles -> msgs -> convs -> friend_reqs -> user (no cascade on User entity)
 - `conversationsService.delete()` deletes msgs first (no cascade)
 - Chat services: critical failures stop execution; non-critical (emit lists) log and continue
+- Skip server-side link preview when `encryptedContent` present (server can't read content)
+
+### E2E Encryption
+- `EncryptionService.decrypt()` returns `Future` — must use async patterns (no sync decryption)
+- Decryption of message history is async: messages render immediately, then decrypt in-place with `notifyListeners()`
+- Own messages skip decryption (sender already has plaintext from optimistic display)
+- Conversation list shows "Encrypted message" for encrypted lastMessage (not decrypted at list level)
+- Session establishment uses Completer with 10s timeout — if server doesn't respond, falls back to unencrypted
+- `flutter_secure_storage` on web uses encrypted localStorage (less secure than mobile Keychain/Keystore)
+- Keys NOT cleared on logout (persist for re-login on same device). Only cleared on account deletion via `clearEncryptionKeys()`
 
 ---
 
@@ -475,6 +547,16 @@ Frontend runs locally: `flutter run -d chrome`
 ---
 
 ## 13. Recent Changes
+
+**2026-02-21 (session 2):**
+- **E2E Encryption (Signal Protocol):** Full end-to-end encryption for text messages using `libsignal_protocol_dart`. Server never sees message content — stores opaque ciphertext blob.
+  - Backend: `key_bundles` + `one_time_pre_keys` tables (`backend/src/key-bundles/`); `KeyBundlesService` (upsert/fetch/count/delete); `ChatKeyExchangeService` with 3 WebSocket handlers (`uploadKeyBundle`, `uploadOneTimePreKeys`, `fetchPreKeyBundle`); `messages.encryptedContent` column; `SendMessageDto` accepts `encryptedContent`; server-side link preview skipped for encrypted messages; delete account cascade includes key cleanup.
+  - Frontend: `libsignal_protocol_dart ^0.7.4` + `flutter_secure_storage ^9.2.4`; `EncryptionService` (initialize/encrypt/decrypt/session mgmt); 4 persistent Signal stores in `services/encryption/signal_stores.dart`; `LinkPreviewService` for client-side OG metadata fetch; `ChatProvider` integrated with async encrypt/decrypt, Completer-based session establishment, pre-key replenishment; `PrivacySafetyScreen` (identity fingerprint, key info).
+  - Migration: `backend/scripts/migrate-enable-e2e.ts` clears old plaintext messages.
+  - 80 backend tests (10 suites). New: `key-bundles.service.spec.ts` (10 tests), `chat-key-exchange.service.spec.ts` (11 tests), encrypted message tests in `chat-message.service.spec.ts` (2 tests).
+
+**2026-02-21:**
+- **3 theme modes:** Light, Dark (Wire-style gray), Blue (red-blue accent). SettingsProvider `themePreference` 'light'|'dark'|'blue'. SegmentedButton in Settings for 3-way selection. New `themeDataDarkGray` (Wire-style neutral grays), `themeDataBlue` (current red accent). `FireplaceColors` ThemeExtension carries theme-specific colors; widgets use `FireplaceColors.of(context)` and `Theme.of(context).colorScheme.primary` for accents. Migration: old `dark_mode_preference` maps to `theme_preference` (dark/system → blue).
 
 **2026-02-20 (session 2):**
 - **Push Notifications (FCM):** Silent push (privacy like Signal — FCM only sees `{ type: 'new_message' }`, no message content).
@@ -523,11 +605,16 @@ Frontend runs locally: `flutter run -d chrome`
 - Push notifications: implemented (FCM, silent payload). iOS APNs not yet set up (requires Apple Developer account + certificates)
 - No unique constraint on `(sender, receiver)` in friend_requests
 - Message pagination: simple limit/offset (default 50), `_conversationsWithUnread()` has N+1
+- E2E encryption: text messages only (media/voice/images/drawings not yet encrypted)
+- E2E: no multi-device support (single-device model, deviceId=1)
+- E2E: no key recovery (new device = new keys = no history)
+- E2E: conversation list shows "Encrypted message" instead of decrypted preview
 
 ### Tech Debt
-- 55 unit tests (no DB). Run: `npm test`
+- 80 unit tests (no DB). Run: `npm test`
 - Manual E2E scripts in `scripts/`
-- Large files: `chat_provider.dart` (~654 lines), `chat-friend-request.service.ts` (~428 lines)
+- Large files: `chat_provider.dart` (~750 lines), `chat-friend-request.service.ts` (~428 lines)
+- E2E: reply-to preview leaks content to server (should show "Encrypted message" as reply preview)
 
 ---
 

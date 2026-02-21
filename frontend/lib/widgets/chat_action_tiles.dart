@@ -15,8 +15,8 @@ class ChatActionTiles extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = RpgTheme.isDark(context);
     final borderColor =
-        isDark ? RpgTheme.convItemBorderDark : RpgTheme.convItemBorderLight;
-    final iconColor = isDark ? RpgTheme.accentDark : RpgTheme.primaryLight;
+        FireplaceColors.of(context).convItemBorder;
+    final iconColor = Theme.of(context).colorScheme.primary;
 
     return Container(
       height: 48,
@@ -262,7 +262,7 @@ class _LongPressActionTileState extends State<_LongPressActionTile>
   void _showProgressOverlay() {
     _removeProgressOverlay();
     final overlay = Overlay.of(context);
-    final accentColor = RpgTheme.primaryColor(context);
+    final accentColor = Theme.of(context).colorScheme.primary;
     _progressOverlay = OverlayEntry(
       builder: (context) => _CenterProgressOverlay(
         progress: _animationController,

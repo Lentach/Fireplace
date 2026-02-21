@@ -157,5 +157,72 @@ describe('ChatMessageService', () => {
       );
       expect(mockClient.emit).toHaveBeenCalledWith('messageSent', expect.any(Object));
     });
+    it('should pass encryptedContent to create and store [encrypted] as content', async () => {
+      friendsService.areFriends.mockResolvedValue(true);
+      usersService.findById
+        .mockResolvedValueOnce(mockSender as User)
+        .mockResolvedValueOnce(mockRecipient as User);
+      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+      messagesService.create.mockResolvedValue({
+        ...mockMessage,
+        content: '[encrypted]',
+        encryptedContent: '3:base64ciphertext==',
+        messageType: 'TEXT',
+      } as Message);
+
+      const data = {
+        recipientId: 2,
+        content: '[encrypted]',
+        encryptedContent: '3:base64ciphertext==',
+      };
+
+      await service.handleSendMessage(
+        mockClient as Socket,
+        data,
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      expect(messagesService.create).toHaveBeenCalledWith(
+        '[encrypted]',
+        mockSender,
+        mockConversation,
+        expect.objectContaining({
+          encryptedContent: '3:base64ciphertext==',
+        }),
+      );
+      expect(mockClient.emit).toHaveBeenCalledWith('messageSent', expect.any(Object));
+    });
+
+    it('should skip link preview when encryptedContent is present', async () => {
+      const linkPreviewService = { fetchPreview: jest.fn() };
+      friendsService.areFriends.mockResolvedValue(true);
+      usersService.findById
+        .mockResolvedValueOnce(mockSender as User)
+        .mockResolvedValueOnce(mockRecipient as User);
+      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+      messagesService.create.mockResolvedValue({
+        ...mockMessage,
+        content: '[encrypted]',
+        encryptedContent: '3:base64ciphertext==',
+        messageType: 'TEXT',
+      } as Message);
+
+      const data = {
+        recipientId: 2,
+        content: '[encrypted]',
+        encryptedContent: '3:base64ciphertext==',
+      };
+
+      await service.handleSendMessage(
+        mockClient as Socket,
+        data,
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      // Link preview should not be fetched for encrypted messages
+      expect(linkPreviewService.fetchPreview).not.toHaveBeenCalled();
+    });
   });
 });

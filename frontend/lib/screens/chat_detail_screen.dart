@@ -229,7 +229,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     String? statusText,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
-    final accentColor = RpgTheme.primaryColor(context);
+    final accentColor = Theme.of(context).colorScheme.primary;
     final baseStyle = RpgTheme.bodyFont(
       fontSize: 16,
       color: colorScheme.onSurface,
@@ -360,8 +360,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
-    final messagesAreaBg =
-        isDark ? RpgTheme.messagesAreaBg : RpgTheme.messagesAreaBgLight;
+    final messagesAreaBg = FireplaceColors.of(context).messagesAreaBg;
     final mutedColor =
         isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
     final otherUser = _getOtherUser();
@@ -450,9 +449,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
 
     if (widget.isEmbedded) {
-      final borderColor = isDark
-          ? RpgTheme.convItemBorderDark
-          : RpgTheme.convItemBorderLight;
+      final borderColor = FireplaceColors.of(context).convItemBorder;
       return Column(
         children: [
           Container(

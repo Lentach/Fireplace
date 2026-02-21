@@ -12,6 +12,7 @@ import { MessagesModule } from './messages/messages.module';
 import { FriendsModule } from './friends/friends.module';
 import { BlockedModule } from './blocked/blocked.module';
 import { FcmTokensModule } from './fcm-tokens/fcm-tokens.module';
+import { KeyBundlesModule } from './key-bundles/key-bundles.module';
 import { PushNotificationsModule } from './push-notifications/push-notifications.module';
 import { User } from './users/user.entity';
 import { Conversation } from './conversations/conversation.entity';
@@ -19,6 +20,8 @@ import { Message } from './messages/message.entity';
 import { FriendRequest } from './friends/friend-request.entity';
 import { BlockedUser } from './blocked/blocked-user.entity';
 import { FcmToken } from './fcm-tokens/fcm-token.entity';
+import { KeyBundle } from './key-bundles/key-bundle.entity';
+import { OneTimePreKey } from './key-bundles/one-time-pre-key.entity';
 import { validate } from './config/env.validation';
 
 @Module({
@@ -50,7 +53,7 @@ import { validate } from './config/env.validation';
         username: configService.get('DB_USER'),
         password: configService.get('DB_PASS'),
         database: configService.get('DB_NAME'),
-        entities: [User, Conversation, Message, FriendRequest, BlockedUser, FcmToken],
+        entities: [User, Conversation, Message, FriendRequest, BlockedUser, FcmToken, KeyBundle, OneTimePreKey],
         synchronize: configService.get('NODE_ENV') === 'development',
       }),
     }),
@@ -62,6 +65,7 @@ import { validate } from './config/env.validation';
     FriendsModule,
     BlockedModule,
     FcmTokensModule,
+    KeyBundlesModule,
     PushNotificationsModule,
     ChatModule,
   ],

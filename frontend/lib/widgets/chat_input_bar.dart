@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:io';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:http/http.dart' as http;
@@ -11,6 +12,8 @@ import 'package:permission_handler/permission_handler.dart';
 import '../models/message_model.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
+import '../utils/secure_context_stub.dart'
+    if (dart.library.html) '../utils/secure_context_web.dart' as secure_context;
 import 'chat_action_tiles.dart';
 import 'top_snackbar.dart';
 
@@ -132,7 +135,6 @@ class _ChatInputBarState extends State<ChatInputBar>
     // Web: permission handled by browser automatically
   }
 
-
   Future<void> _startRecording() async {
     try {
       await _checkMicPermission();
@@ -143,6 +145,14 @@ class _ChatInputBarState extends State<ChatInputBar>
       } else {
         final tempDir = await getTemporaryDirectory();
         _recordingPath = '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+      }
+      if (kIsWeb && !secure_context.isWebSecureContext()) {
+        if (!mounted) return;
+        showTopSnackBar(
+          context,
+          'Voice recording requires HTTPS or localhost. Use https:// or open from localhost.',
+        );
+        return;
       }
 
       final hasPermission = await _audioRecorder!.hasPermission();
@@ -411,7 +421,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     if (msg == null) return const SizedBox.shrink();
 
     final isDark = RpgTheme.isDark(context);
-    final borderColor = isDark ? RpgTheme.accentDark : RpgTheme.primaryLight;
+    final borderColor = Theme.of(context).colorScheme.primary;
     final mutedColor = isDark ? Colors.white60 : Colors.black54;
 
     return Container(
@@ -422,7 +432,7 @@ class _ChatInputBarState extends State<ChatInputBar>
         border: Border(
           left: BorderSide(color: borderColor, width: 4),
           bottom: BorderSide(
-            color: isDark ? RpgTheme.tabBorderDark : RpgTheme.tabBorderLight,
+                    color: fc.tabBorder,
           ),
         ),
       ),
@@ -465,8 +475,7 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   Widget _buildRecordingBar(BuildContext context) {
     final isDark = RpgTheme.isDark(context);
-    final tabBorderColor = isDark ? RpgTheme.tabBorderDark : RpgTheme.tabBorderLight;
-    final inputBg = isDark ? RpgTheme.inputBg : RpgTheme.inputBgLight;
+    final fc = FireplaceColors.of(context);
     final elapsedSec = _recordingStartTime != null
         ? DateTime.now().difference(_recordingStartTime!).inSeconds
         : 0;
@@ -478,8 +487,8 @@ class _ChatInputBarState extends State<ChatInputBar>
           padding: const EdgeInsets.symmetric(horizontal: 16),
           decoration: BoxDecoration(
             borderRadius: BorderRadius.circular(24),
-            border: Border.all(color: tabBorderColor),
-            color: inputBg,
+            border: Border.all(color: fc.tabBorder),
+            color: fc.inputBg,
           ),
       child: Row(
         children: [
@@ -569,11 +578,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     final activeTimer = chat.conversationDisappearingTimer;
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
-    final borderColor =
-        isDark ? RpgTheme.convItemBorderDark : RpgTheme.convItemBorderLight;
-    final inputBg = isDark ? RpgTheme.inputBg : RpgTheme.inputBgLight;
-    final tabBorderColor =
-        isDark ? RpgTheme.tabBorderDark : RpgTheme.tabBorderLight;
+    final fc = FireplaceColors.of(context);
 
     return SafeArea(
       top: false,
@@ -613,7 +618,7 @@ class _ChatInputBarState extends State<ChatInputBar>
             padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
             decoration: BoxDecoration(
               color: colorScheme.surface,
-              border: Border(top: BorderSide(color: borderColor)),
+              border: Border(top: BorderSide(color: fc.convItemBorder)),
             ),
             child: Row(
               children: [
@@ -649,11 +654,11 @@ class _ChatInputBarState extends State<ChatInputBar>
                             ),
                             border: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide(color: tabBorderColor),
+                              borderSide: BorderSide(color: fc.tabBorder),
                             ),
                             enabledBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide(color: tabBorderColor),
+                              borderSide: BorderSide(color: fc.tabBorder),
                             ),
                             focusedBorder: OutlineInputBorder(
                               borderRadius: BorderRadius.circular(24),
@@ -663,7 +668,7 @@ class _ChatInputBarState extends State<ChatInputBar>
                               ),
                             ),
                             filled: true,
-                            fillColor: inputBg,
+                            fillColor: fc.inputBg,
                           ),
                           maxLines: null,
                           textInputAction: TextInputAction.send,

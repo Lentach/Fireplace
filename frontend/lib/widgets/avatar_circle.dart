@@ -59,10 +59,9 @@ class _AvatarCircleState extends State<AvatarCircle> {
     final letter = widget.displayName.isNotEmpty ? widget.displayName[0].toUpperCase() : '?';
     final isDark = RpgTheme.isDark(context);
     final gradientColors = isDark
-        ? const [RpgTheme.borderDark, RpgTheme.accentDark]
-        : const [RpgTheme.primaryLight, RpgTheme.primaryLightHover];
-    final letterColor =
-        isDark ? RpgTheme.background : Colors.white;
+        ? [Theme.of(context).colorScheme.secondary, Theme.of(context).colorScheme.primary]
+        : [Theme.of(context).colorScheme.primary, Theme.of(context).colorScheme.secondary];
+    final letterColor = Colors.white;
 
     return Stack(
       children: [
@@ -132,7 +131,7 @@ class _AvatarCircleState extends State<AvatarCircle> {
                               : null,
                           strokeWidth: 2,
                           valueColor: AlwaysStoppedAnimation<Color>(
-                            isDark ? RpgTheme.accentDark : Colors.white,
+                            Theme.of(context).colorScheme.primary,
                           ),
                         ),
                       );

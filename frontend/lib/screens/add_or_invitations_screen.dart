@@ -274,7 +274,7 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
     final chat = context.watch<ChatProvider>();
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
-    final cardBg = isDark ? RpgTheme.convItemBgDark : colorScheme.surface;
+    final cardBg = FireplaceColors.of(context).convItemBg;
     final borderColor = isDark
         ? RpgTheme.borderDark
         : colorScheme.outline.withValues(alpha: 0.5);

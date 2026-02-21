@@ -14,6 +14,7 @@ import { UsersService } from '../users/users.service';
 import { ChatMessageService } from './services/chat-message.service';
 import { ChatFriendRequestService } from './services/chat-friend-request.service';
 import { ChatConversationService } from './services/chat-conversation.service';
+import { ChatKeyExchangeService } from './services/chat-key-exchange.service';
 import { BlockedService } from '../blocked/blocked.service';
 import { validateDto } from './utils/dto.validator';
 import { BlockUserDto } from './dto/chat.dto';
@@ -65,6 +66,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private chatMessageService: ChatMessageService,
     private chatFriendRequestService: ChatFriendRequestService,
     private chatConversationService: ChatConversationService,
+    private chatKeyExchangeService: ChatKeyExchangeService,
     private blockedService: BlockedService,
   ) {}
 
@@ -249,6 +251,37 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       conversationId,
       isRecording,
     });
+  }
+
+  // ========== KEY EXCHANGE HANDLERS (E2E Encryption) ==========
+
+  @SubscribeMessage('uploadKeyBundle')
+  async handleUploadKeyBundle(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
+  ) {
+    return this.chatKeyExchangeService.handleUploadKeyBundle(client, data);
+  }
+
+  @SubscribeMessage('uploadOneTimePreKeys')
+  async handleUploadOneTimePreKeys(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
+  ) {
+    return this.chatKeyExchangeService.handleUploadOneTimePreKeys(client, data);
+  }
+
+  @SubscribeMessage('fetchPreKeyBundle')
+  async handleFetchPreKeyBundle(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
+  ) {
+    return this.chatKeyExchangeService.handleFetchPreKeyBundle(
+      client,
+      data,
+      this.server,
+      this.onlineUsers,
+    );
   }
 
   // ========== CONVERSATION HANDLERS ==========

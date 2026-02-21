@@ -99,8 +99,7 @@ class ContactsScreen extends StatelessWidget {
       builder: (dialogContext) {
         final colorScheme = Theme.of(dialogContext).colorScheme;
         final isDark = RpgTheme.isDark(dialogContext);
-        final mutedColor =
-            isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
+        final mutedColor = FireplaceColors.of(dialogContext).mutedText;
         return AlertDialog(
           backgroundColor: colorScheme.surface,
           title: Text(
@@ -167,9 +166,7 @@ class ContactsScreen extends StatelessWidget {
         color: colorScheme.surface,
         border: Border(
           bottom: BorderSide(
-            color: isDark
-                ? RpgTheme.convItemBorderDark
-                : RpgTheme.convItemBorderLight,
+            color: FireplaceColors.of(context).convItemBorder,
           ),
         ),
       ),
@@ -207,8 +204,7 @@ class ContactsScreen extends StatelessWidget {
     final friends = List<UserModel>.from(chat.friends)
       ..sort(_compareByDisplayName);
     final isDark = RpgTheme.isDark(context);
-    final mutedColor =
-        isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
+    final mutedColor = FireplaceColors.of(context).mutedText;
 
     if (friends.isEmpty) {
       return Center(
@@ -240,7 +236,7 @@ class ContactsScreen extends StatelessWidget {
     }
 
     final borderColor =
-        isDark ? RpgTheme.convItemBorderDark : RpgTheme.convItemBorderLight;
+        FireplaceColors.of(context).convItemBorder;
 
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
@@ -267,7 +263,7 @@ class ContactsScreen extends StatelessWidget {
         onTap: () => _openChatWithContact(context, user.id),
         onLongPress: () => _showContactContextMenu(context, user),
         borderRadius: BorderRadius.circular(8),
-        splashColor: RpgTheme.primaryColor(context).withValues(alpha: 0.2),
+        splashColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           child: Row(

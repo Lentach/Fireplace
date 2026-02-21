@@ -51,6 +51,9 @@ dependencies:
   url_launcher: ^6.3.1
   firebase_core: ^3.8.0
   firebase_messaging: ^15.1.6
+  web: ^1.1.0
+  libsignal_protocol_dart: ^0.7.4
+  flutter_secure_storage: ^9.2.4
 
 dev_dependencies:
   flutter_test:

@@ -29,17 +29,17 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
   Widget build(BuildContext context) {
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
-    final fillColor = isDark ? RpgTheme.background : RpgTheme.inputBgLight;
+    final fillColor = FireplaceColors.of(context).inputBg;
     final textColor = colorScheme.onSurface;
     final mutedColor =
         isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
-    final borderColor = isDark ? RpgTheme.borderDark : RpgTheme.convItemBorderLight;
+    final borderColor = FireplaceColors.of(context).borderColor;
 
     return Dialog(
       backgroundColor: colorScheme.surface,
       shape: RoundedRectangleBorder(
         borderRadius: BorderRadius.circular(12),
-        side: const BorderSide(color: RpgTheme.accentDark, width: 2),
+        side: const BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
       ),
       child: Container(
         padding: const EdgeInsets.all(24),
@@ -54,7 +54,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
                 'Delete Account',
                 style: RpgTheme.pressStart2P(
                   fontSize: 16,
-                  color: RpgTheme.accentDark,
+                  color: Theme.of(context).colorScheme.primary,
                 ),
                 textAlign: TextAlign.center,
               ),
@@ -71,7 +71,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
                 child: Text(
                   'This action is permanent and cannot be undone. All your messages and conversations will be deleted.',
                   style: RpgTheme.bodyFont(
-                    color: RpgTheme.accentDark,
+                    color: Theme.of(context).colorScheme.primary,
                     fontSize: 13,
                   ),
                   textAlign: TextAlign.center,
@@ -98,7 +98,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
                   ),
                   focusedBorder: OutlineInputBorder(
                     borderRadius: BorderRadius.circular(8),
-                    borderSide: const BorderSide(color: RpgTheme.accentDark, width: 2),
+                    borderSide: const BorderSide(color: Theme.of(context).colorScheme.primary, width: 2),
                   ),
                 ),
                 style: RpgTheme.bodyFont(color: textColor),
@@ -132,7 +132,7 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
                     child: ElevatedButton(
                       onPressed: _isLoading ? null : _submit,
                       style: ElevatedButton.styleFrom(
-                        backgroundColor: RpgTheme.accentDark,
+                        backgroundColor: Theme.of(context).colorScheme.primary,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                       child: _isLoading

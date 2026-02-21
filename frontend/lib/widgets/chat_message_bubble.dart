@@ -136,7 +136,7 @@ class ChatMessageBubble extends StatelessWidget {
                   padding: const EdgeInsets.all(8),
                   decoration: BoxDecoration(
                     color: alreadyReacted
-                        ? RpgTheme.primaryColor(context).withValues(alpha: 0.15)
+                        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
                         : Colors.transparent,
                     shape: BoxShape.circle,
                   ),
@@ -203,11 +203,11 @@ class ChatMessageBubble extends StatelessWidget {
 
     final isDark = RpgTheme.isDark(context);
     final bubbleColor = isMine
-        ? (isDark ? RpgTheme.mineMsgBg : RpgTheme.mineMsgBgLight)
-        : (isDark ? RpgTheme.theirsMsgBg : RpgTheme.theirsMsgBgLight);
+        ? FireplaceColors.of(context).mineMsgBg
+        : FireplaceColors.of(context).theirsMsgBg;
     final borderColor = isMine
-        ? (isDark ? RpgTheme.accentDark : RpgTheme.primaryLight)
-        : (isDark ? RpgTheme.borderDark : RpgTheme.primaryLight);
+        ? Theme.of(context).colorScheme.primary
+        : FireplaceColors.of(context).borderColor;
     final textColor = isMine
         ? (isDark ? RpgTheme.textColor : Colors.white)
         : (isDark ? RpgTheme.textColor : RpgTheme.textColorLight);
@@ -521,12 +521,12 @@ class ReactionChipsRow extends StatelessWidget {
               padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
               decoration: BoxDecoration(
                 color: isMine
-                    ? RpgTheme.primaryColor(context).withValues(alpha: 0.15)
+                    ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
                     : Theme.of(context).colorScheme.surface,
                 borderRadius: BorderRadius.circular(12),
                 border: Border.all(
                   color: isMine
-                      ? RpgTheme.primaryColor(context)
+                      ? Theme.of(context).colorScheme.primary
                       : Theme.of(context).colorScheme.outline.withValues(alpha: 0.4),
                 ),
               ),

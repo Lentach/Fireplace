@@ -55,9 +55,7 @@ class BlockedUsersScreen extends StatelessWidget {
               itemCount: blocked.length,
               separatorBuilder: (_, __) => Divider(
                 height: 1,
-                color: isDark
-                    ? RpgTheme.convItemBorderDark
-                    : RpgTheme.convItemBorderLight,
+                color: FireplaceColors.of(context).convItemBorder,
               ),
               itemBuilder: (context, index) {
                 final user = blocked[index];

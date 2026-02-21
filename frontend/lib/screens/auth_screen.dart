@@ -20,12 +20,12 @@ class _AuthScreenState extends State<AuthScreen> {
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
     final primaryColor = colorScheme.primary;
-    final inputBg = isDark ? RpgTheme.inputBg : RpgTheme.inputBgLight;
+    final inputBg = FireplaceColors.of(context).inputBg;
     final tabBorderColor =
         isDark ? RpgTheme.tabBorderDark : RpgTheme.tabBorderLight;
     final activeTabBg =
         isDark ? RpgTheme.activeTabBgDark : RpgTheme.activeTabBgLight;
-    final activeTextColor = isDark ? RpgTheme.accentDark : Colors.white;
+    final activeTextColor = Theme.of(context).colorScheme.primary;
     final mutedColor =
         isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
 

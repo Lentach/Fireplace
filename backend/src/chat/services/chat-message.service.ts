@@ -82,7 +82,7 @@ export class ChatMessageService {
       : null;
 
     const message = await this.messagesService.create(
-      data.content,
+      data.encryptedContent ? '[encrypted]' : data.content,
       sender,
       conversation,
       {
@@ -91,6 +91,7 @@ export class ChatMessageService {
         mediaUrl: data.mediaUrl,
         mediaDuration: data.mediaDuration,
         replyToMessageId: data.replyToMessageId ?? null,
+        encryptedContent: data.encryptedContent ?? null,
       },
     );
 
@@ -114,7 +115,8 @@ export class ChatMessageService {
     this.pushNotificationsService.notify(data.recipientId).catch(() => {});
 
     // Async link preview — fire and forget, does not block send
-    if (message.messageType === MessageType.TEXT && data.content) {
+    // Skip for encrypted messages (server cannot read content)
+    if (!data.encryptedContent && message.messageType === MessageType.TEXT && data.content) {
       this.linkPreviewService.fetchPreview(data.content).then(async (preview) => {
         if (!preview) return;
         const updated = await this.messagesService.updateLinkPreview(

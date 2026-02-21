@@ -23,6 +23,7 @@ export class MessagesService {
       mediaUrl?: string | null;
       mediaDuration?: number | null;
       replyToMessageId?: number | null;
+      encryptedContent?: string | null;
     },
   ): Promise<Message> {
     let replyTo: Message | null = null;
@@ -45,6 +46,7 @@ export class MessagesService {
       messageType: options?.messageType || MessageType.TEXT,
       mediaUrl: options?.mediaUrl || null,
       mediaDuration: options?.mediaDuration || null,
+      encryptedContent: options?.encryptedContent || null,
       replyTo,
     });
     const saved = await this.msgRepo.save(msg);

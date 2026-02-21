@@ -48,8 +48,8 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
     final bgColor = colorScheme.surface;
-    final borderColor = isDark ? RpgTheme.borderDark : RpgTheme.convItemBorderLight;
-    final fillColor = isDark ? RpgTheme.background : RpgTheme.inputBgLight;
+    final borderColor = FireplaceColors.of(context).borderColor;
+    final fillColor = FireplaceColors.of(context).inputBg;
     final textColor = colorScheme.onSurface;
     final mutedColor =
         isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;

@@ -34,7 +34,7 @@ class FireplaceApp extends StatelessWidget {
             title: 'Fireplace',
             debugShowCheckedModeBanner: false,
             theme: RpgTheme.themeDataLight,
-            darkTheme: RpgTheme.themeData,
+            darkTheme: settings.darkTheme,
             themeMode: settings.themeMode,
             home: const AuthGate(),
           );

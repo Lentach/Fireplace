@@ -1,41 +1,62 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import '../theme/rpg_theme.dart';
 
 class SettingsProvider extends ChangeNotifier {
-  String _darkModePreference = 'dark'; // 'system', 'light', 'dark'
+  /// 'light' | 'dark' (Wire gray) | 'blue' (red-blue accent)
+  String _themePreference = 'blue';
 
-  String get darkModePreference => _darkModePreference;
+  String get themePreference => _themePreference;
 
   ThemeMode get themeMode {
-    switch (_darkModePreference) {
+    if (_themePreference == 'light') return ThemeMode.light;
+    return ThemeMode.dark;
+  }
+
+  ThemeData get themeData {
+    switch (_themePreference) {
       case 'light':
-        return ThemeMode.light;
+        return RpgTheme.themeDataLight;
       case 'dark':
-        return ThemeMode.dark;
+        return RpgTheme.themeDataDarkGray;
+      case 'blue':
       default:
-        return ThemeMode.system;
+        return RpgTheme.themeDataBlue;
     }
   }
+
+  ThemeData get darkTheme =>
+      _themePreference == 'dark'
+          ? RpgTheme.themeDataDarkGray
+          : RpgTheme.themeDataBlue;
 
   SettingsProvider() {
-    _loadDarkModePreference();
+    _loadThemePreference();
   }
 
-  Future<void> _loadDarkModePreference() async {
+  Future<void> _loadThemePreference() async {
     final prefs = await SharedPreferences.getInstance();
-    _darkModePreference = prefs.getString('dark_mode_preference') ?? 'dark';
+    var saved = prefs.getString('theme_preference');
+    if (saved == null) {
+      final legacy = prefs.getString('dark_mode_preference');
+      if (legacy == 'light') saved = 'light';
+      else if (legacy == 'dark' || legacy == 'system') saved = 'blue';
+    }
+    if (saved == 'light' || saved == 'dark' || saved == 'blue') {
+      _themePreference = saved;
+    } else {
+      _themePreference = 'blue';
+    }
     notifyListeners();
   }
 
-  Future<void> setDarkModePreference(String preference) async {
-    if (preference != 'system' && preference != 'light' && preference != 'dark') {
+  Future<void> setThemePreference(String preference) async {
+    if (preference != 'light' && preference != 'dark' && preference != 'blue') {
       return;
     }
-
-    _darkModePreference = preference;
+    _themePreference = preference;
     notifyListeners();
-
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('dark_mode_preference', preference);
+    await prefs.setString('theme_preference', preference);
   }
 }

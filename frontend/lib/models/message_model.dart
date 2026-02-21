@@ -57,6 +57,7 @@ class MessageModel {
   final String? linkPreviewUrl;
   final String? linkPreviewTitle;
   final String? linkPreviewImageUrl;
+  final String? encryptedContent;
 
   MessageModel({
     required this.id,
@@ -77,6 +78,7 @@ class MessageModel {
     this.linkPreviewUrl,
     this.linkPreviewTitle,
     this.linkPreviewImageUrl,
+    this.encryptedContent,
   });
 
   factory MessageModel.fromJson(Map<String, dynamic> json) {
@@ -107,6 +109,7 @@ class MessageModel {
       linkPreviewUrl: json['linkPreviewUrl'] as String?,
       linkPreviewTitle: json['linkPreviewTitle'] as String?,
       linkPreviewImageUrl: json['linkPreviewImageUrl'] as String?,
+      encryptedContent: json['encryptedContent'] as String?,
     );
   }
 
@@ -153,6 +156,7 @@ class MessageModel {
   }
 
   MessageModel copyWith({
+    String? content,
     MessageDeliveryStatus? deliveryStatus,
     DateTime? expiresAt,
     String? mediaUrl,
@@ -163,10 +167,11 @@ class MessageModel {
     String? linkPreviewUrl,
     String? linkPreviewTitle,
     String? linkPreviewImageUrl,
+    String? encryptedContent,
   }) {
     return MessageModel(
       id: id,
-      content: content,
+      content: content ?? this.content,
       senderId: senderId,
       senderUsername: senderUsername,
       conversationId: conversationId,
@@ -183,6 +188,7 @@ class MessageModel {
       linkPreviewUrl: linkPreviewUrl ?? this.linkPreviewUrl,
       linkPreviewTitle: linkPreviewTitle ?? this.linkPreviewTitle,
       linkPreviewImageUrl: linkPreviewImageUrl ?? this.linkPreviewImageUrl,
+      encryptedContent: encryptedContent ?? this.encryptedContent,
     );
   }
 }

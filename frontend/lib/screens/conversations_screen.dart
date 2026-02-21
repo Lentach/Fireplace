@@ -92,8 +92,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         border: Border(
           bottom: BorderSide(
             color: isDark
-                ? RpgTheme.convItemBorderDark
-                : RpgTheme.convItemBorderLight,
+                FireplaceColors.of(context).convItemBorder,
           ),
         ),
       ),
@@ -178,7 +177,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     final chat = context.watch<ChatProvider>();
     final isDark = RpgTheme.isDark(context);
     final borderColor =
-        isDark ? RpgTheme.convItemBorderDark : RpgTheme.convItemBorderLight;
+        FireplaceColors.of(context).convItemBorder;
 
     return Scaffold(
       body: Row(
@@ -271,7 +270,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     }
 
     final borderColor =
-        isDark ? RpgTheme.convItemBorderDark : RpgTheme.convItemBorderLight;
+        FireplaceColors.of(context).convItemBorder;
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
       itemCount: conversations.length,

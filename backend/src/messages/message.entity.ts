@@ -29,9 +29,13 @@ export class Message {
   @PrimaryGeneratedColumn()
   id: number;
 
-  // Message content — plain text, no formatting in MVP
+  // Message content — plaintext or "[encrypted]" placeholder when E2E encrypted
   @Column('text')
   content: string;
+
+  // Base64-encoded Signal Protocol ciphertext. Null for unencrypted messages.
+  @Column({ type: 'text', nullable: true, default: null })
+  encryptedContent: string | null;
 
   @Column({
     type: 'enum',

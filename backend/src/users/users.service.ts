@@ -14,6 +14,7 @@ import { Conversation } from '../conversations/conversation.entity';
 import { Message } from '../messages/message.entity';
 import { FriendRequest } from '../friends/friend-request.entity';
 import { FcmTokensService } from '../fcm-tokens/fcm-tokens.service';
+import { KeyBundlesService } from '../key-bundles/key-bundles.service';
 
 @Injectable()
 export class UsersService {
@@ -30,6 +31,7 @@ export class UsersService {
     private friendRequestRepo: Repository<FriendRequest>,
     private cloudinaryService: CloudinaryService,
     private fcmTokensService: FcmTokensService,
+    private keyBundlesService: KeyBundlesService,
   ) {}
 
   async create(username: string, password: string): Promise<User> {
@@ -158,8 +160,9 @@ export class UsersService {
       await this.friendRequestRepo.remove(friendRequests);
     }
 
-    // Remove FCM tokens before user deletion
+    // Remove FCM tokens and encryption keys before user deletion
     await this.fcmTokensService.removeByUserId(userId);
+    await this.keyBundlesService.deleteByUserId(userId);
 
     await this.usersRepo.remove(user);
     this.auditLogger.log(`deleteAccount success userId=${userId} username=${user.username}`);

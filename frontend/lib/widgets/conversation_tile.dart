@@ -97,7 +97,7 @@ class ConversationTile extends StatelessWidget {
                     'Delete',
                     style: RpgTheme.bodyFont(
                       fontSize: 14,
-                      color: RpgTheme.accentDark,
+                      color: Theme.of(context).colorScheme.primary,
                       fontWeight: FontWeight.w600,
                     ),
                   ),
@@ -114,7 +114,7 @@ class ConversationTile extends StatelessWidget {
       child: InkWell(
         onTap: onTap,
         borderRadius: BorderRadius.circular(8),
-        splashColor: RpgTheme.primaryColor(context).withValues(alpha: 0.2),
+        splashColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
@@ -144,7 +144,7 @@ class ConversationTile extends StatelessWidget {
                         'typing...',
                         style: RpgTheme.bodyFont(
                           fontSize: 13,
-                          color: RpgTheme.primaryColor(context),
+                          color: Theme.of(context).colorScheme.primary,
                         ).copyWith(fontStyle: FontStyle.italic),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
@@ -183,7 +183,7 @@ class ConversationTile extends StatelessWidget {
                             vertical: 2,
                           ),
                           decoration: BoxDecoration(
-                            color: RpgTheme.accentDark,
+                            color: Theme.of(context).colorScheme.primary,
                             borderRadius: BorderRadius.circular(10),
                           ),
                           constraints: const BoxConstraints(minWidth: 18),

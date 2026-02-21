@@ -101,7 +101,7 @@ class _DrawingCanvasScreenState extends State<DrawingCanvasScreen> {
           // Toolbar
           Container(
             padding: const EdgeInsets.all(16),
-            color: isDark ? RpgTheme.inputBg : RpgTheme.inputBgLight,
+            color: FireplaceColors.of(context).inputBg,
             child: Row(
               children: [
                 Text(

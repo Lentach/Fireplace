@@ -1,6 +1,48 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
+/// Theme-specific colors for chat UI. Use via Theme.of(context).extension<FireplaceColors>()!
+class FireplaceColors extends ThemeExtension<FireplaceColors> {
+  final Color inputBg;
+  final Color convItemBorder;
+  final Color convItemBg;
+  final Color messagesAreaBg;
+  final Color mineMsgBg;
+  final Color theirsMsgBg;
+  final Color settingsTileBg;
+  final Color settingsTileBorder;
+  final Color tabBorder;
+  final Color borderColor;
+  final Color mutedText;
+
+  const FireplaceColors({
+    required this.inputBg,
+    required this.convItemBorder,
+    required this.convItemBg,
+    required this.messagesAreaBg,
+    required this.mineMsgBg,
+    required this.theirsMsgBg,
+    required this.settingsTileBg,
+    required this.settingsTileBorder,
+    required this.tabBorder,
+    required this.borderColor,
+    required this.mutedText,
+  });
+
+  static FireplaceColors of(BuildContext context) =>
+      Theme.of(context).extension<FireplaceColors>()!;
+
+  @override
+  ThemeExtension<FireplaceColors> copyWith({/* unused */}) => this;
+
+  @override
+  ThemeExtension<FireplaceColors> lerp(
+    covariant ThemeExtension<FireplaceColors>? other,
+    double t,
+  ) =>
+      this;
+}
+
 class RpgTheme {
   static const Color background = Color(0xFF0A0A2E);
   static const Color boxBg = Color(0xFF0F0F3D);
@@ -25,6 +67,23 @@ class RpgTheme {
   static const Color timeColorDark = Color(0xFF9A7A7A);
   static Color get settingsTileBgDark => accentDark.withValues(alpha: 0.1);
   static const Color settingsTileBorderDark = accentDark;
+
+  // Dark gray theme (Wire-style) – neutral grays
+  static const Color backgroundDarkGray = Color(0xFF17181A);
+  static const Color boxBgDarkGray = Color(0xFF25262B);
+  static const Color inputBgDarkGray = Color(0xFF1E1F23);
+  static const Color textColorDarkGray = Color(0xFFF5F5F5);
+  static const Color accentDarkGray = Color(0xFF5C9EAD);
+  static const Color mutedDarkGray = Color(0xFF949798);
+  static const Color convItemBorderDarkGray = Color(0xFF34383B);
+  static const Color convItemBgDarkGray = Color(0xFF1E1F23);
+  static const Color tabBorderDarkGray = Color(0xFF34383B);
+  static const Color messagesAreaBgDarkGray = Color(0xFF17181A);
+  static const Color mineMsgBgDarkGray = Color(0xFF2C2E33);
+  static const Color theirsMsgBgDarkGray = Color(0xFF25262B);
+  static const Color activeTabBgDarkGray = Color(0xFF2C2E33);
+  static const Color timeColorDarkGray = Color(0xFF949798);
+  static const Color settingsTileBorderDarkGray = Color(0xFF5C9EAD);
 
   // Light theme palette - modern neutral (Slack-inspired)
   static const Color primaryLight = Color(0xFF4A154B);
@@ -71,7 +130,8 @@ class RpgTheme {
     );
   }
 
-  static ThemeData get themeData {
+  /// Blue theme – red accents (current default dark).
+  static ThemeData get themeDataBlue {
     return ThemeData.dark().copyWith(
       scaffoldBackgroundColor: background,
       colorScheme: const ColorScheme.dark(
@@ -161,8 +221,135 @@ class RpgTheme {
         titleSmall: GoogleFonts.inter(color: textColor, fontSize: 14, fontWeight: FontWeight.w600),
         labelLarge: GoogleFonts.inter(color: textColor, fontSize: 14, fontWeight: FontWeight.w500),
       ),
+      extensions: [
+        const FireplaceColors(
+          inputBg: inputBg,
+          convItemBorder: convItemBorderDark,
+          convItemBg: convItemBgDark,
+          messagesAreaBg: messagesAreaBg,
+          mineMsgBg: mineMsgBg,
+          theirsMsgBg: theirsMsgBg,
+          settingsTileBg: convItemBgDark,
+          settingsTileBorder: settingsTileBorderDark,
+          tabBorder: tabBorderDark,
+          borderColor: borderDark,
+          mutedText: mutedDark,
+        ),
+      ],
     );
   }
+
+  /// Dark gray theme – Wire-style neutral.
+  static ThemeData get themeDataDarkGray {
+    return ThemeData.dark().copyWith(
+      scaffoldBackgroundColor: backgroundDarkGray,
+      colorScheme: const ColorScheme.dark(
+        primary: accentDarkGray,
+        secondary: accentDarkGray,
+        surface: boxBgDarkGray,
+        error: errorColor,
+        onPrimary: backgroundDarkGray,
+        onSecondary: textColorDarkGray,
+        onSurface: textColorDarkGray,
+        onError: Colors.white,
+      ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: boxBgDarkGray,
+        elevation: 0,
+        centerTitle: false,
+        titleTextStyle: GoogleFonts.pressStart2p(
+          fontSize: 14,
+          color: accentDarkGray,
+        ),
+        iconTheme: const IconThemeData(color: textColorDarkGray),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: inputBgDarkGray,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        border: OutlineInputBorder(
+          borderSide: const BorderSide(color: tabBorderDarkGray, width: 1.5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: tabBorderDarkGray, width: 1.5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: accentDarkGray, width: 2),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: errorColor, width: 1.5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        hintStyle: GoogleFonts.inter(color: mutedDarkGray, fontSize: 14),
+        labelStyle: GoogleFonts.inter(color: mutedDarkGray, fontSize: 14),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: accentDarkGray,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: const BorderSide(color: accentDarkGray, width: 2),
+          ),
+          textStyle: GoogleFonts.inter(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: accentDarkGray,
+          textStyle: GoogleFonts.inter(fontSize: 14),
+        ),
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: accentDarkGray,
+        foregroundColor: Colors.white,
+      ),
+      listTileTheme: ListTileThemeData(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        tileColor: Colors.transparent,
+        selectedTileColor: activeTabBgDarkGray,
+      ),
+      dividerTheme: const DividerThemeData(
+        color: convItemBorderDarkGray,
+        thickness: 1,
+      ),
+      textTheme: TextTheme(
+        bodyLarge: GoogleFonts.inter(color: textColorDarkGray, fontSize: 16),
+        bodyMedium: GoogleFonts.inter(color: textColorDarkGray, fontSize: 14),
+        bodySmall: GoogleFonts.inter(color: mutedDarkGray, fontSize: 12),
+        titleLarge: GoogleFonts.pressStart2p(color: accentDarkGray, fontSize: 16),
+        titleMedium: GoogleFonts.inter(color: textColorDarkGray, fontSize: 16, fontWeight: FontWeight.w600),
+        titleSmall: GoogleFonts.inter(color: textColorDarkGray, fontSize: 14, fontWeight: FontWeight.w600),
+        labelLarge: GoogleFonts.inter(color: textColorDarkGray, fontSize: 14, fontWeight: FontWeight.w500),
+      ),
+      extensions: [
+        const FireplaceColors(
+          inputBg: inputBgDarkGray,
+          convItemBorder: convItemBorderDarkGray,
+          convItemBg: convItemBgDarkGray,
+          messagesAreaBg: messagesAreaBgDarkGray,
+          mineMsgBg: mineMsgBgDarkGray,
+          theirsMsgBg: theirsMsgBgDarkGray,
+          settingsTileBg: Color(0xFF25262B),
+          settingsTileBorder: settingsTileBorderDarkGray,
+          tabBorder: tabBorderDarkGray,
+          borderColor: accentDarkGray,
+          mutedText: mutedDarkGray,
+        ),
+      ],
+    );
+  }
+
+  /// Backwards compatibility alias.
+  static ThemeData get themeData => themeDataBlue;
 
   static ThemeData get themeDataLight {
     return ThemeData.light().copyWith(
@@ -254,6 +441,21 @@ class RpgTheme {
         titleSmall: GoogleFonts.inter(color: textColorLight, fontSize: 14, fontWeight: FontWeight.w600),
         labelLarge: GoogleFonts.inter(color: textColorLight, fontSize: 14, fontWeight: FontWeight.w500),
       ),
+      extensions: [
+        const FireplaceColors(
+          inputBg: inputBgLight,
+          convItemBorder: convItemBorderLight,
+          convItemBg: convItemBgLight,
+          messagesAreaBg: messagesAreaBgLight,
+          mineMsgBg: mineMsgBgLight,
+          theirsMsgBg: theirsMsgBgLight,
+          settingsTileBg: boxBgLight,
+          settingsTileBorder: convItemBorderLight,
+          tabBorder: tabBorderLight,
+          borderColor: primaryLight,
+          mutedText: textSecondaryLight,
+        ),
+      ],
     );
   }
 
