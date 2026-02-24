@@ -13,6 +13,7 @@ import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/encryption_service.dart';
 import '../services/link_preview_service.dart';
+import '../utils/e2e_envelope.dart';
 import '../services/push_service.dart';
 import '../services/socket_service.dart';
 import 'chat_reconnect_manager.dart';
@@ -29,6 +30,7 @@ class ChatProvider extends ChangeNotifier {
   final EncryptionService _encryptionService = EncryptionService();
   bool _e2eInitialized = false;
   final Map<int, Completer<Map<String, dynamic>>> _pendingPreKeyFetches = {};
+  bool _generatingMoreKeys = false;
 
   // ---------- State ----------
   List<ConversationModel> _conversations = [];
@@ -122,6 +124,16 @@ class ChatProvider extends ChangeNotifier {
   ConversationModel? getConversationById(int id) =>
       _conversations.where((c) => c.id == id).firstOrNull;
 
+  /// Clears active conversation and messages if the active conv was removed.
+  void _clearActiveIfRemoved() {
+    if (_activeConversationId == null) return;
+    final exists = _conversations.any((c) => c.id == _activeConversationId);
+    if (!exists) {
+      _activeConversationId = null;
+      _messages = [];
+    }
+  }
+
   void setConversationDisappearingTimer(int? seconds) {
     if (_activeConversationId == null) return;
     _socketService.emitSetDisappearingTimer(_activeConversationId!, seconds);
@@ -144,9 +156,7 @@ class ChatProvider extends ChangeNotifier {
     final msg = MessageModel.fromJson(data as Map<String, dynamic>);
 
     // If encrypted, decrypt async and update in-place
-    if (msg.encryptedContent != null &&
-        msg.encryptedContent!.isNotEmpty &&
-        msg.senderId != _currentUserId) {
+    if (msg.needsDecryption(_currentUserId)) {
       _addMessageToState(msg);
       _decryptMessageAsync(msg).then((decrypted) {
         final idx = _messages.indexWhere((m) => m.id == decrypted.id);
@@ -303,10 +313,7 @@ class ChatProvider extends ChangeNotifier {
           if (lastMsgData != null) {
             try {
               var lastMsg = MessageModel.fromJson(lastMsgData as Map<String, dynamic>);
-              // Show friendly text for encrypted messages in conversation list
-              if (lastMsg.encryptedContent != null &&
-                  lastMsg.encryptedContent!.isNotEmpty &&
-                  lastMsg.content == '[encrypted]') {
+              if (lastMsg.displayAsEncryptedPlaceholder) {
                 lastMsg = lastMsg.copyWith(content: 'Encrypted message');
               }
               _lastMessages[convId] = lastMsg;
@@ -398,13 +405,7 @@ class ChatProvider extends ChangeNotifier {
         _friends.removeWhere((f) => f.id == unfriendUserId);
         _friendRequests.removeWhere((r) =>
             r.sender.id == unfriendUserId || r.receiver.id == unfriendUserId);
-        if (_activeConversationId != null) {
-          final activeConv = _conversations.where((c) => c.id == _activeConversationId).firstOrNull;
-          if (activeConv == null) {
-            _activeConversationId = null;
-            _messages = [];
-          }
-        }
+        _clearActiveIfRemoved();
         notifyListeners();
       },
       onBlockedList: (data) {
@@ -416,13 +417,7 @@ class ChatProvider extends ChangeNotifier {
         _friends.removeWhere((f) => blockedIds.contains(f.id));
         _conversations.removeWhere((c) =>
             blockedIds.contains(c.userOne.id) || blockedIds.contains(c.userTwo.id));
-        if (_activeConversationId != null) {
-          final activeConv = _conversations.where((c) => c.id == _activeConversationId).firstOrNull;
-          if (activeConv == null) {
-            _activeConversationId = null;
-            _messages = [];
-          }
-        }
+        _clearActiveIfRemoved();
         notifyListeners();
       },
       onYouWereBlocked: (data) {
@@ -431,13 +426,7 @@ class ChatProvider extends ChangeNotifier {
         _friends.removeWhere((f) => f.id == blockerId);
         _conversations.removeWhere((c) =>
             c.userOne.id == blockerId || c.userTwo.id == blockerId);
-        if (_activeConversationId != null) {
-          final activeConv = _conversations.where((c) => c.id == _activeConversationId).firstOrNull;
-          if (activeConv == null) {
-            _activeConversationId = null;
-            _messages = [];
-          }
-        }
+        _clearActiveIfRemoved();
         notifyListeners();
       },
       onMessageDelivered: _handleMessageDelivered,
@@ -527,10 +516,7 @@ class ChatProvider extends ChangeNotifier {
     final conv = _conversations.firstWhere(
       (c) => c.id == _activeConversationId,
     );
-
-    final recipientId = conv.userOne.id == _currentUserId
-        ? conv.userTwo.id
-        : conv.userOne.id;
+    final recipientId = conv_helpers.getOtherUserId(conv, _currentUserId);
 
     // Use conversation disappearing timer if expiresIn not provided
     final effectiveExpiresIn = expiresIn ?? conversationDisappearingTimer;
@@ -593,6 +579,17 @@ class ChatProvider extends ChangeNotifier {
     );
   }
 
+  void _markMessageFailed(String tempId, String errorMsg) {
+    final idx = _messages.indexWhere((m) => m.tempId == tempId);
+    if (idx != -1) {
+      _messages[idx] = _messages[idx].copyWith(
+        deliveryStatus: MessageDeliveryStatus.failed,
+      );
+    }
+    _errorMessage = errorMsg;
+    notifyListeners();
+  }
+
   Future<void> _encryptAndSend({
     required int recipientId,
     required String content,
@@ -601,13 +598,9 @@ class ChatProvider extends ChangeNotifier {
     int? effectiveReplyToId,
   }) async {
     if (!_e2eInitialized) {
-      // Fallback: send unencrypted if E2E not ready
-      _socketService.sendMessage(
-        recipientId,
-        content,
-        expiresIn: effectiveExpiresIn,
-        tempId: tempId,
-        replyToMessageId: effectiveReplyToId,
+      _markMessageFailed(
+        tempId,
+        'Encryption not ready. Please wait and try again.',
       );
       return;
     }
@@ -621,12 +614,8 @@ class ChatProvider extends ChangeNotifier {
         debugPrint('[E2E] Link preview fetch failed (non-fatal): $e');
       }
 
-      // 2. Build encrypted envelope
-      final envelope = <String, dynamic>{'content': content};
-      if (linkPreview != null) {
-        envelope['linkPreview'] = linkPreview;
-      }
-      final envelopeJson = jsonEncode(envelope);
+      // 2. Build encrypted envelope (content + optional linkPreview)
+      final envelopeJson = jsonEncode(E2eEnvelope.build(content, linkPreview));
 
       // 3. Ensure session exists with recipient
       await _ensureSession(recipientId);
@@ -645,14 +634,10 @@ class ChatProvider extends ChangeNotifier {
         replyToMessageId: effectiveReplyToId,
       );
     } catch (e) {
-      debugPrint('[E2E] Encryption failed, sending unencrypted: $e');
-      // Fallback: send unencrypted
-      _socketService.sendMessage(
-        recipientId,
-        content,
-        expiresIn: effectiveExpiresIn,
-        tempId: tempId,
-        replyToMessageId: effectiveReplyToId,
+      debugPrint('[E2E] Encryption failed: $e');
+      _markMessageFailed(
+        tempId,
+        'Could not send encrypted message. Recipient may not have encryption enabled yet.',
       );
     }
   }
@@ -671,13 +656,9 @@ class ChatProvider extends ChangeNotifier {
 
   void emitTyping() {
     if (_activeConversationId == null || _currentUserId == null) return;
-    ConversationModel? conv;
-    try {
-      conv = _conversations.firstWhere((c) => c.id == _activeConversationId);
-    } catch (_) { return; }
-    final recipientId = conv.userOne.id == _currentUserId
-        ? conv.userTwo.id
-        : conv.userOne.id;
+    final conv = _conversations.where((c) => c.id == _activeConversationId).firstOrNull;
+    if (conv == null) return;
+    final recipientId = conv_helpers.getOtherUserId(conv, _currentUserId);
     _socketService.emitTyping(recipientId, _activeConversationId!);
   }
 
@@ -1156,6 +1137,9 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> _ensureSession(int recipientId) async {
+    if (!_e2eInitialized || _currentUserId == null) {
+      throw StateError('E2E not initialized or user not authenticated');
+    }
     if (await _encryptionService.hasSession(recipientId)) return;
 
     // Check if we already have a pending fetch for this user
@@ -1183,31 +1167,37 @@ class ChatProvider extends ChangeNotifier {
   void _handlePreKeyBundleResponse(dynamic data) {
     final map = data as Map<String, dynamic>;
     final userId = map['userId'] as int;
-    final bundle = map['bundle'] as Map<String, dynamic>;
+    final bundle = map['bundle'];
 
     final completer = _pendingPreKeyFetches.remove(userId);
-    if (completer != null && !completer.isCompleted) {
-      completer.complete(bundle);
+    if (completer == null || completer.isCompleted) return;
+
+    if (bundle == null || bundle is! Map<String, dynamic>) {
+      completer.completeError(
+        StateError('Recipient has no key bundle (userId=$userId)'),
+      );
+      return;
     }
+    completer.complete(bundle);
   }
 
   void _handlePreKeysLow(dynamic data) {
+    if (_generatingMoreKeys) return;
+    _generatingMoreKeys = true;
     debugPrint('[E2E] Server reports pre-keys low, generating more...');
     _encryptionService.generateMorePreKeys().then((keys) {
       _socketService.uploadOneTimePreKeys(keys);
       debugPrint('[E2E] Uploaded ${keys.length} new one-time pre-keys');
     }).catchError((e) {
       debugPrint('[E2E] Failed to generate more pre-keys: $e');
-    });
+    }).whenComplete(() => _generatingMoreKeys = false);
   }
 
   Future<void> _decryptMessageHistory() async {
     bool changed = false;
     for (var i = 0; i < _messages.length; i++) {
       final msg = _messages[i];
-      if (msg.encryptedContent != null &&
-          msg.encryptedContent!.isNotEmpty &&
-          msg.senderId != _currentUserId) {
+      if (msg.needsDecryption(_currentUserId)) {
         final decrypted = await _decryptMessageAsync(msg);
         // Check the message is still in the list (user might have navigated away)
         if (i < _messages.length && _messages[i].id == msg.id) {
@@ -1233,17 +1223,12 @@ class ChatProvider extends ChangeNotifier {
         msg.senderId,
         msg.encryptedContent!,
       );
-
-      // Parse the envelope: {"content": "text", "linkPreview": {...}?}
-      final envelope = jsonDecode(plaintext) as Map<String, dynamic>;
-      final content = envelope['content'] as String? ?? '';
-      final lp = envelope['linkPreview'] as Map<String, dynamic>?;
-
+      final parsed = E2eEnvelope.parse(plaintext);
       return msg.copyWith(
-        content: content,
-        linkPreviewUrl: lp?['url'] as String?,
-        linkPreviewTitle: lp?['title'] as String?,
-        linkPreviewImageUrl: lp?['imageUrl'] as String?,
+        content: parsed.content,
+        linkPreviewUrl: parsed.linkPreviewUrl,
+        linkPreviewTitle: parsed.linkPreviewTitle,
+        linkPreviewImageUrl: parsed.linkPreviewImageUrl,
       );
     } catch (e) {
       debugPrint('[E2E] Decrypt failed for msg ${msg.id}: $e');
@@ -1282,7 +1267,7 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Clear all E2E encryption keys (call on logout / account deletion).
+  /// Clear all E2E encryption keys. Call on account deletion only.
   Future<void> clearEncryptionKeys() async {
     await _encryptionService.clearAllKeys();
     _e2eInitialized = false;
