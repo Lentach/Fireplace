@@ -76,23 +76,33 @@ export class MessagesService {
     offset: number = 0,
     hiddenByUserId?: number,
   ): Promise<Message[]> {
-    const fetchLimit = hiddenByUserId != null ? limit * 3 + offset : limit + offset;
+    if (hiddenByUserId == null) {
+      // No hidden messages: efficient DB-level pagination
+      const messages = await this.msgRepo.find({
+        where: { conversation: { id: conversationId } },
+        relations: ['sender', 'replyTo', 'replyTo.sender'],
+        order: { createdAt: 'DESC' },
+        take: limit,
+        skip: offset,
+      });
+      return messages.reverse();
+    }
+
+    // With hidden messages: fetch extra rows to account for filtered items.
+    // No artificial 500-cap — use a generous multiple so deep offsets work.
+    const fetchLimit = limit * 3 + offset + 50;
     const messages = await this.msgRepo.find({
       where: { conversation: { id: conversationId } },
       relations: ['sender', 'replyTo', 'replyTo.sender'],
       order: { createdAt: 'DESC' },
-      take: Math.min(fetchLimit, 500),
+      take: fetchLimit,
       skip: 0,
     });
 
-    let filtered = messages;
-    if (hiddenByUserId != null) {
-      filtered = messages.filter(
-        (m) => !MessagesService.parseHiddenIds(m.hiddenByUserIds).includes(hiddenByUserId),
-      );
-    }
-    const slice = filtered.slice(offset, offset + limit);
-    return slice.reverse();
+    const filtered = messages.filter(
+      (m) => !MessagesService.parseHiddenIds(m.hiddenByUserIds).includes(hiddenByUserId),
+    );
+    return filtered.slice(offset, offset + limit).reverse();
   }
 
   /** Find message by ID with conversation and sender loaded (for delete flow). */
