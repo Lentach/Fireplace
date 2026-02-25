@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import '../config/app_config.dart';
 import '../constants/app_constants.dart';
@@ -20,6 +21,10 @@ import 'chat_reconnect_manager.dart';
 import 'conversation_helpers.dart' as conv_helpers;
 
 class ChatProvider extends ChangeNotifier {
+  static void _e2eFlowLog(String step, [Map<String, dynamic>? data]) {
+    if (kDebugMode) debugPrint('[E2E-FLOW] $step | ${data ?? {}}');
+  }
+
   final SocketService _socketService = SocketService();
   final ChatReconnectManager _reconnect = ChatReconnectManager();
   late final PushService _pushService =
@@ -31,6 +36,10 @@ class ChatProvider extends ChangeNotifier {
   bool _e2eInitialized = false;
   final Map<int, Completer<Map<String, dynamic>>> _pendingPreKeyFetches = {};
   bool _generatingMoreKeys = false;
+  /// Cache of decrypted messages by id. Used when history decrypt hits DuplicateMessageException (session already advanced by live messages).
+  final Map<int, MessageModel> _decryptedContentCache = {};
+  bool _decryptingHistory = false;
+  final List<Map<String, dynamic>> _incomingMessageQueue = [];
 
   // ---------- State ----------
   List<ConversationModel> _conversations = [];
@@ -52,6 +61,8 @@ class ChatProvider extends ChangeNotifier {
   final Map<int, bool> _typingStatus = {};
   final Map<int, Timer> _typingTimers = {};
   final Map<int, bool> _partnerRecordingVoice = {}; // conversationId -> isRecording
+  /// IDs of messages we were told were deleted (messageDeleted). Used so a late messageHistory response doesn't re-add them.
+  final Set<int> _deletedMessageIds = {};
 
   /// Ticks every second for countdown display. Bubbles use ValueListenableBuilder
   /// so only they rebuild, not the whole screen. Prevents recording timer freeze.
@@ -154,11 +165,25 @@ class ChatProvider extends ChangeNotifier {
 
   void _handleIncomingMessage(dynamic data) {
     final msg = MessageModel.fromJson(data as Map<String, dynamic>);
-
+    // Queue incoming encrypted messages for active conversation while we're decrypting history (so history decrypt runs first and session order is preserved).
+    if (_decryptingHistory &&
+        msg.conversationId == _activeConversationId &&
+        msg.needsDecryption(_currentUserId)) {
+      _incomingMessageQueue.add(data as Map<String, dynamic>);
+      return;
+    }
+    _e2eFlowLog('RECV_MSG', {
+      'msgId': msg.id,
+      'senderId': msg.senderId,
+      'hasEncryptedContent': msg.encryptedContent != null && msg.encryptedContent!.isNotEmpty,
+      'needsDecryption': msg.needsDecryption(_currentUserId),
+    });
     // If encrypted, decrypt async and update in-place
     if (msg.needsDecryption(_currentUserId)) {
       _addMessageToState(msg);
-      _decryptMessageAsync(msg).then((decrypted) {
+      _decryptMessageAsync(msg).then((decrypted) async {
+        _decryptedContentCache[decrypted.id] = decrypted;
+        await _persistDecryptedContent(decrypted);
         final idx = _messages.indexWhere((m) => m.id == decrypted.id);
         if (idx != -1) {
           _messages[idx] = decrypted;
@@ -166,6 +191,7 @@ class ChatProvider extends ChangeNotifier {
         if (_lastMessages[decrypted.conversationId]?.id == decrypted.id) {
           _lastMessages[decrypted.conversationId] = decrypted;
         }
+        _e2eFlowLog('RECV_DECRYPT_DONE', {'msgId': decrypted.id, 'contentLength': decrypted.content.length});
         notifyListeners();
       });
       return;
@@ -174,12 +200,42 @@ class ChatProvider extends ChangeNotifier {
     _addMessageToState(msg);
   }
 
+  void _processIncomingMessageQueue() {
+    if (_incomingMessageQueue.isEmpty) return;
+    final queue = List<Map<String, dynamic>>.from(_incomingMessageQueue);
+    _incomingMessageQueue.clear();
+    for (final data in queue) {
+      _handleIncomingMessage(data);
+    }
+  }
+
+  Future<void> _persistDecryptedContent(MessageModel decrypted) async {
+    if (decrypted.content.isEmpty ||
+        decrypted.content == '[Decryption failed]' ||
+        decrypted.content == '[Encryption not initialized]') return;
+    final data = <String, dynamic>{
+      'content': decrypted.content,
+      if (decrypted.linkPreviewUrl != null) 'linkPreviewUrl': decrypted.linkPreviewUrl!,
+      if (decrypted.linkPreviewTitle != null) 'linkPreviewTitle': decrypted.linkPreviewTitle!,
+      if (decrypted.linkPreviewImageUrl != null) 'linkPreviewImageUrl': decrypted.linkPreviewImageUrl!,
+    };
+    try {
+      await _encryptionService.saveDecryptedContent(decrypted.id, data);
+    } catch (_) {}
+  }
+
   void _addMessageToState(MessageModel msg) {
     // If this is our own message (messageSent), replace temp optimistic message
+    // and keep plaintext for display (server stores "[encrypted]" as content).
     if (msg.senderId == _currentUserId && msg.tempId != null) {
       final tempIndex = _messages.indexWhere((m) => m.tempId == msg.tempId);
       if (tempIndex != -1) {
+        final plaintextContent = _messages[tempIndex].content;
         _messages.removeAt(tempIndex);
+        if (msg.content == '[encrypted]' && plaintextContent.isNotEmpty) {
+          msg = msg.copyWith(content: plaintextContent);
+          _encryptionService.saveDecryptedContent(msg.id, {'content': plaintextContent}).catchError((_) {});
+        }
       }
     }
 
@@ -247,6 +303,7 @@ class ChatProvider extends ChangeNotifier {
     _messages = [];
     _activeConversationId = null;
     _lastMessages.clear();
+    _deletedMessageIds.clear();
     _unreadCounts.clear();
     _typingStatus.clear();
     for (final t in _typingTimers.values) { t.cancel(); }
@@ -330,6 +387,9 @@ class ChatProvider extends ChangeNotifier {
             .map((m) => MessageModel.fromJson(m as Map<String, dynamic>))
             .toList();
 
+        // Don't re-add messages we already received as deleted (e.g. ping deleted by other user; late messageHistory can overwrite)
+        _messages.removeWhere((m) => _deletedMessageIds.contains(m.id));
+
         // Immediately remove any already-expired messages
         final now = DateTime.now();
         _messages.removeWhere(
@@ -340,8 +400,12 @@ class ChatProvider extends ChangeNotifier {
           markConversationRead(_activeConversationId!);
         }
 
-        // Decrypt E2E encrypted messages in history (async, update in-place)
-        _decryptMessageHistory();
+        // Decrypt history first so no live message advances the session before we decrypt in order. Queue any incoming messages until done.
+        _decryptingHistory = true;
+        _decryptMessageHistory().whenComplete(() {
+          _decryptingHistory = false;
+          _processIncomingMessageQueue();
+        });
       },
       onMessageSent: _handleIncomingMessage,
       onNewMessage: _handleIncomingMessage,
@@ -351,11 +415,12 @@ class ChatProvider extends ChangeNotifier {
         notifyListeners();
       },
       onError: (err) {
-        if (err is Map<String, dynamic> && err['message'] != null) {
-          _errorMessage = err['message'] as String;
-        } else {
-          _errorMessage = err.toString();
-        }
+        final String msg = err is Map<String, dynamic> && err['message'] != null
+            ? err['message'] as String
+            : err.toString();
+        _errorMessage = msg;
+        // If server rejected send (e.g. not friends, blocked), mark optimistic message as failed so Retry appears
+        _markSendingMessagesFailed(msg);
         notifyListeners();
       },
       onFriendRequestsList: (data) {
@@ -590,6 +655,23 @@ class ChatProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Mark any message currently in "sending" state as failed (e.g. after socket 'error' from server).
+  void _markSendingMessagesFailed(String errorMsg) {
+    final sending = _messages
+        .where((m) => m.deliveryStatus == MessageDeliveryStatus.sending)
+        .toList();
+    if (sending.isEmpty) return;
+    // Mark most recent sending message (user usually has only one)
+    sending.sort((a, b) => b.createdAt.compareTo(a.createdAt));
+    final last = sending.first;
+    final idx = _messages.indexWhere((m) => m.tempId == last.tempId);
+    if (idx != -1) {
+      _messages[idx] = _messages[idx].copyWith(
+        deliveryStatus: MessageDeliveryStatus.failed,
+      );
+    }
+  }
+
   Future<void> _encryptAndSend({
     required int recipientId,
     required String content,
@@ -597,6 +679,7 @@ class ChatProvider extends ChangeNotifier {
     int? effectiveExpiresIn,
     int? effectiveReplyToId,
   }) async {
+    _e2eFlowLog('SEND_START', {'recipientId': recipientId, 'e2eInitialized': _e2eInitialized});
     if (!_e2eInitialized) {
       _markMessageFailed(
         tempId,
@@ -623,8 +706,10 @@ class ChatProvider extends ChangeNotifier {
       // 4. Encrypt
       final ciphertext =
           await _encryptionService.encrypt(recipientId, envelopeJson);
+      _e2eFlowLog('SEND_ENCRYPT_DONE', {'recipientId': recipientId, 'ciphertextLength': ciphertext.length});
 
       // 5. Send with encrypted content
+      _e2eFlowLog('SEND_EMIT', {'recipientId': recipientId});
       _socketService.sendMessage(
         recipientId,
         '[encrypted]',
@@ -635,11 +720,30 @@ class ChatProvider extends ChangeNotifier {
       );
     } catch (e) {
       debugPrint('[E2E] Encryption failed: $e');
-      _markMessageFailed(
-        tempId,
-        'Could not send encrypted message. Recipient may not have encryption enabled yet.',
-      );
+      _e2eFlowLog('SEND_FAIL', {'recipientId': recipientId, 'error': e.toString()});
+      final String userMsg = _userFriendlySendError(e, recipientId);
+      _markMessageFailed(tempId, userMsg);
     }
+  }
+
+  /// User-friendly error when encrypt/send fails (e.g. no key bundle, timeout).
+  String _userFriendlySendError(Object e, int recipientId) {
+    final s = e.toString();
+    if (s.contains('Recipient has no key bundle') || s.contains('no key bundle')) {
+      final otherName = _conversations
+          .where((c) => conv_helpers.getOtherUserId(c, _currentUserId) == recipientId)
+          .map((c) => conv_helpers.getOtherUserUsername(c, _currentUserId))
+          .firstOrNull;
+      final who = otherName ?? 'Odbiorca';
+      return 'Nie można wysłać: $who nie ma jeszcze kluczy szyfrowania. Poproś, żeby otworzył aplikację.';
+    }
+    if (e is TimeoutException || s.contains('timed out') || s.contains('Timeout')) {
+      return 'Przekroczono czas oczekiwania na klucze odbiorcy. Spróbuj ponownie.';
+    }
+    if (!_e2eInitialized) {
+      return 'Szyfrowanie nie gotowe. Poczekaj chwilę i spróbuj ponownie.';
+    }
+    return 'Nie można wysłać wiadomości szyfrowanej. Odbiorca może nie mieć włączonego szyfrowania – poproś, żeby otworzył aplikację.';
   }
 
   void sendPing(int recipientId) {
@@ -810,6 +914,35 @@ class ChatProvider extends ChangeNotifier {
     );
   }
 
+  /// Retry sending a failed message (text or voice). Voice uses cached file; text re-sends content.
+  Future<void> retryFailedMessage(String tempId) async {
+    final index = _messages.indexWhere((m) => m.tempId == tempId);
+    if (index == -1) return;
+    final message = _messages[index];
+    if (message.deliveryStatus != MessageDeliveryStatus.failed) return;
+
+    if (message.messageType == MessageType.voice) {
+      await retryVoiceMessage(tempId);
+      return;
+    }
+    if (message.messageType == MessageType.text) {
+      final content = message.content;
+      final conversationId = message.conversationId;
+      _messages.removeAt(index);
+      final stillInConv = _messages.where((m) => m.conversationId == conversationId).toList();
+      if (stillInConv.isNotEmpty) {
+        stillInConv.sort((a, b) => a.createdAt.compareTo(b.createdAt));
+        _lastMessages[conversationId] = stillInConv.last;
+      } else {
+        _lastMessages.remove(conversationId);
+      }
+      notifyListeners();
+      if (_activeConversationId == conversationId && content.isNotEmpty) {
+        sendMessage(content);
+      }
+    }
+  }
+
   Future<void> sendImageMessage(
     String token,
     XFile imageFile,
@@ -928,6 +1061,7 @@ class ChatProvider extends ChangeNotifier {
     final conversationId = m['conversationId'] as int;
     final forEveryone = m['forEveryone'] as bool? ?? false;
 
+    _deletedMessageIds.add(messageId);
     _messages.removeWhere((msg) => msg.id == messageId);
 
     // Update last message preview for conversation list
@@ -1114,10 +1248,13 @@ class ChatProvider extends ChangeNotifier {
   // ---------- E2E Encryption ----------
 
   Future<void> _initializeE2E() async {
+    if (_currentUserId == null) return;
+    _e2eFlowLog('E2E_INIT_START', {});
     try {
-      await _encryptionService.initialize();
+      await _encryptionService.initialize(_currentUserId!);
       _e2eInitialized = true;
       debugPrint('[E2E] Encryption service initialized');
+      _e2eFlowLog('E2E_INIT_DONE', {'needsKeyUpload': _encryptionService.needsKeyUpload});
 
       if (_encryptionService.needsKeyUpload) {
         final keys = _encryptionService.getKeysForUpload();
@@ -1128,11 +1265,23 @@ class ChatProvider extends ChangeNotifier {
               (keys['oneTimePreKeys'] as List)
                   .cast<Map<String, dynamic>>());
           debugPrint('[E2E] Uploaded key bundle + one-time pre-keys');
+          _e2eFlowLog('E2E_KEYS_UPLOADED', {});
+        }
+      } else {
+        // Always re-upload key bundle so server has our keys (e.g. after DB restart).
+        final keyBundle = await _encryptionService.getKeyBundleForReupload();
+        if (keyBundle != null) {
+          _socketService.uploadKeyBundle(keyBundle);
+          debugPrint('[E2E] Re-uploaded key bundle on connect');
+          _e2eFlowLog('E2E_KEYS_REUPLOADED', {});
+        } else {
+          debugPrint('[E2E] Re-upload skipped: could not build key bundle from storage');
         }
       }
     } catch (e) {
       debugPrint('[E2E] Initialization failed: $e');
       _e2eInitialized = false;
+      _e2eFlowLog('E2E_INIT_FAIL', {'error': e.toString()});
     }
   }
 
@@ -1140,7 +1289,9 @@ class ChatProvider extends ChangeNotifier {
     if (!_e2eInitialized || _currentUserId == null) {
       throw StateError('E2E not initialized or user not authenticated');
     }
-    if (await _encryptionService.hasSession(recipientId)) return;
+    final hasSession = await _encryptionService.hasSession(recipientId);
+    _e2eFlowLog('SESSION_ENSURE', {'recipientId': recipientId, 'hasSession': hasSession});
+    if (hasSession) return;
 
     // Check if we already have a pending fetch for this user
     if (_pendingPreKeyFetches.containsKey(recipientId)) {
@@ -1151,6 +1302,7 @@ class ChatProvider extends ChangeNotifier {
     final completer = Completer<Map<String, dynamic>>();
     _pendingPreKeyFetches[recipientId] = completer;
 
+    _e2eFlowLog('SESSION_FETCH_EMIT', {'recipientId': recipientId});
     _socketService.fetchPreKeyBundle(recipientId);
 
     // Wait for the server response with a timeout
@@ -1162,12 +1314,14 @@ class ChatProvider extends ChangeNotifier {
 
     await _encryptionService.buildSession(recipientId, bundle);
     debugPrint('[E2E] Session established with userId=$recipientId');
+    _e2eFlowLog('SESSION_BUILT', {'recipientId': recipientId});
   }
 
   void _handlePreKeyBundleResponse(dynamic data) {
     final map = data as Map<String, dynamic>;
     final userId = map['userId'] as int;
     final bundle = map['bundle'];
+    _e2eFlowLog('PREKEY_RESP', {'userId': userId, 'hasBundle': bundle != null && bundle is Map<String, dynamic>});
 
     final completer = _pendingPreKeyFetches.remove(userId);
     if (completer == null || completer.isCompleted) return;
@@ -1194,18 +1348,39 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> _decryptMessageHistory() async {
+    final toDecrypt = _messages.where((m) => m.needsDecryption(_currentUserId)).length;
+    if (toDecrypt > 0) _e2eFlowLog('HISTORY_DECRYPT_START', {'count': toDecrypt});
+    // Double Ratchet requires decrypting in chronological order (oldest first) to avoid DuplicateMessageException.
+    final sorted = List<MessageModel>.from(_messages)
+      ..sort((a, b) {
+        final byTime = a.createdAt.compareTo(b.createdAt);
+        if (byTime != 0) return byTime;
+        return a.id.compareTo(b.id);
+      });
     bool changed = false;
-    for (var i = 0; i < _messages.length; i++) {
-      final msg = _messages[i];
+    for (var i = 0; i < sorted.length; i++) {
+      final msg = sorted[i];
       if (msg.needsDecryption(_currentUserId)) {
         final decrypted = await _decryptMessageAsync(msg);
-        // Check the message is still in the list (user might have navigated away)
-        if (i < _messages.length && _messages[i].id == msg.id) {
-          _messages[i] = decrypted;
+        final idx = _messages.indexWhere((m) => m.id == msg.id);
+        if (idx != -1) {
+          _messages[idx] = decrypted;
           changed = true;
+        }
+      } else if (msg.senderId == _currentUserId && msg.content == '[encrypted]') {
+        final stored = await _encryptionService.getDecryptedContent(msg.id);
+        final storedContent = stored?['content'] as String? ?? '';
+        if (storedContent.isNotEmpty) {
+          final restored = msg.copyWith(content: storedContent);
+          final idx = _messages.indexWhere((m) => m.id == msg.id);
+          if (idx != -1) {
+            _messages[idx] = restored;
+            changed = true;
+          }
         }
       }
     }
+    if (changed) _e2eFlowLog('HISTORY_DECRYPT_DONE', {'changed': true});
     if (changed) notifyListeners();
   }
 
@@ -1218,20 +1393,49 @@ class ChatProvider extends ChangeNotifier {
       return msg.copyWith(content: '[Encryption not initialized]');
     }
 
+    _e2eFlowLog('DECRYPT_START', {'msgId': msg.id, 'senderId': msg.senderId});
     try {
       final plaintext = await _encryptionService.decrypt(
         msg.senderId,
         msg.encryptedContent!,
       );
-      final parsed = E2eEnvelope.parse(plaintext);
-      return msg.copyWith(
-        content: parsed.content,
-        linkPreviewUrl: parsed.linkPreviewUrl,
-        linkPreviewTitle: parsed.linkPreviewTitle,
-        linkPreviewImageUrl: parsed.linkPreviewImageUrl,
-      );
+      try {
+        final parsed = E2eEnvelope.parse(plaintext);
+        _e2eFlowLog('DECRYPT_OK', {'msgId': msg.id, 'contentLength': parsed.content.length});
+        final decryptedMsg = msg.copyWith(
+          content: parsed.content,
+          linkPreviewUrl: parsed.linkPreviewUrl,
+          linkPreviewTitle: parsed.linkPreviewTitle,
+          linkPreviewImageUrl: parsed.linkPreviewImageUrl,
+        );
+        _decryptedContentCache[msg.id] = decryptedMsg;
+        await _persistDecryptedContent(decryptedMsg);
+        return decryptedMsg;
+      } catch (parseErr) {
+        debugPrint('[E2E] Envelope parse failed for msg ${msg.id}, using raw plaintext: $parseErr');
+        final fallback = msg.copyWith(content: plaintext);
+        _decryptedContentCache[msg.id] = fallback;
+        if (plaintext.isNotEmpty) await _persistDecryptedContent(fallback);
+        return fallback;
+      }
     } catch (e) {
+      // DuplicateMessageException: session was already advanced. Use memory cache or persisted cache (survives logout).
+      final cached = _decryptedContentCache[msg.id];
+      if (cached != null) return cached;
+      final persisted = await _encryptionService.getDecryptedContent(msg.id);
+      final persistedContent = persisted?['content'] as String? ?? '';
+      if (persisted != null && persistedContent.isNotEmpty) {
+        final restored = msg.copyWith(
+          content: persistedContent,
+          linkPreviewUrl: persisted['linkPreviewUrl'] as String?,
+          linkPreviewTitle: persisted['linkPreviewTitle'] as String?,
+          linkPreviewImageUrl: persisted['linkPreviewImageUrl'] as String?,
+        );
+        _decryptedContentCache[msg.id] = restored;
+        return restored;
+      }
       debugPrint('[E2E] Decrypt failed for msg ${msg.id}: $e');
+      _e2eFlowLog('DECRYPT_FAIL', {'msgId': msg.id, 'error': e.toString()});
       return msg.copyWith(content: '[Decryption failed]');
     }
   }
@@ -1249,6 +1453,7 @@ class ChatProvider extends ChangeNotifier {
     _activeConversationId = null;
     _currentUserId = null;
     _lastMessages.clear();
+    _deletedMessageIds.clear();
     _unreadCounts.clear();
     _typingStatus.clear();
     for (final t in _typingTimers.values) { t.cancel(); }
@@ -1264,6 +1469,9 @@ class ChatProvider extends ChangeNotifier {
     // Clear E2E state (keys persist in secure storage for next login)
     _e2eInitialized = false;
     _pendingPreKeyFetches.clear();
+    _decryptedContentCache.clear();
+    _incomingMessageQueue.clear();
+    _decryptingHistory = false;
     notifyListeners();
   }
 

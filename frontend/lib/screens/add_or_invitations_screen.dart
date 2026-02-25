@@ -131,7 +131,7 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
       });
     }
 
-    if (chat.consumeFriendRequestSent() && _loading && !_requestSent) {
+    if (chat.consumeFriendRequestSent() && !_requestSent) {
       _requestSent = true;
       _loading = false;
       final displayHandle = _handleController.text.trim();
@@ -222,7 +222,10 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
                     )
                   : const Text('Add new user'),
             ),
-            if (searchResults != null && searchResults.isEmpty && !_loading) ...[
+            if (searchResults != null &&
+                searchResults.isEmpty &&
+                !_loading &&
+                chat.errorMessage == null) ...[
               const SizedBox(height: 16),
               Text(
                 'User not found',
@@ -276,11 +279,11 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
     final colorScheme = Theme.of(context).colorScheme;
     final cardBg = FireplaceColors.of(context).convItemBg;
     final borderColor = isDark
-        ? RpgTheme.borderDark
+        ? RpgTheme.convItemBorderDarkGray
         : colorScheme.outline.withValues(alpha: 0.5);
     final textColor = colorScheme.onSurface;
     final secondaryColor =
-        isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
+        isDark ? RpgTheme.mutedDarkGray : RpgTheme.textSecondaryLight;
 
     // Listen for pending open conversation to navigate
     final pendingId = chat.consumePendingOpen();
