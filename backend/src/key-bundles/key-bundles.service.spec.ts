@@ -154,7 +154,10 @@ describe('KeyBundlesService', () => {
         oneTimePreKeyPublic: 'otp-pk-7',
       });
 
-      expect(otpRepo.query).toHaveBeenCalled();
+      expect(otpRepo.query).toHaveBeenCalledWith(
+        expect.stringContaining('UPDATE one_time_pre_keys'),
+        [5],
+      );
       expect(otpRepo.save).not.toHaveBeenCalled();
     });
 
@@ -183,13 +186,6 @@ describe('KeyBundlesService', () => {
       expect(otpRepo.save).not.toHaveBeenCalled();
     });
 
-    it('uses atomic UPDATE to claim OTP (prevents double-serve race)', async () => {
-      // Verify the implementation uses query() (atomic SQL path) rather than findOne + save
-      const spy = jest.spyOn(otpRepo as any, 'query');
-      keyBundleRepo.findOne.mockResolvedValue({ id: 1, userId: 1, ...mockKeyBundleData });
-      await service.fetchPreKeyBundle(1);
-      expect(spy).toHaveBeenCalled();
-    });
   });
 
   describe('countUnusedPreKeys', () => {
