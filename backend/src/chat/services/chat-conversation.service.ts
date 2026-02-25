@@ -81,22 +81,19 @@ export class ChatConversationService {
     conversations: any[],
     userId: number,
   ): Promise<any[]> {
-    const result: any[] = [];
-    for (const conv of conversations) {
-      const unreadCount = await this.messagesService.countUnreadForRecipient(
-        conv.id,
-        userId,
-      );
-      const lastMessage = await this.messagesService.getLastMessage(
-        conv.id,
-        userId,
-      );
-      result.push(
-        ConversationMapper.toPayload(conv, { unreadCount, lastMessage }),
-      );
-    }
-    // Sort by newest message first (conversation with most recent activity at top)
-    result.sort((a, b) => {
+    if (conversations.length === 0) return [];
+
+    const results = await Promise.all(
+      conversations.map(async (conv) => {
+        const [unreadCount, lastMessage] = await Promise.all([
+          this.messagesService.countUnreadForRecipient(conv.id, userId),
+          this.messagesService.getLastMessage(conv.id, userId),
+        ]);
+        return ConversationMapper.toPayload(conv, { unreadCount, lastMessage });
+      }),
+    );
+
+    (results as any[]).sort((a, b) => {
       const aTime = a.lastMessage?.createdAt
         ? new Date(a.lastMessage.createdAt).getTime()
         : new Date(a.createdAt).getTime();
@@ -105,7 +102,8 @@ export class ChatConversationService {
         : new Date(b.createdAt).getTime();
       return bTime - aTime;
     });
-    return result;
+
+    return results;
   }
 
   async handleGetConversations(client: Socket) {
