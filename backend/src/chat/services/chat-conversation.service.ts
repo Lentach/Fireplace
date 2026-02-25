@@ -93,13 +93,15 @@ export class ChatConversationService {
       }),
     );
 
-    (results as any[]).sort((a, b) => {
-      const aTime = a.lastMessage?.createdAt
-        ? new Date(a.lastMessage.createdAt).getTime()
-        : new Date(a.createdAt).getTime();
-      const bTime = b.lastMessage?.createdAt
-        ? new Date(b.lastMessage.createdAt).getTime()
-        : new Date(b.createdAt).getTime();
+    results.sort((a, b) => {
+      const aLm = a.lastMessage as { createdAt: string | Date } | null;
+      const bLm = b.lastMessage as { createdAt: string | Date } | null;
+      const aTime = aLm?.createdAt
+        ? new Date(aLm.createdAt).getTime()
+        : new Date(a.createdAt as Date | string).getTime();
+      const bTime = bLm?.createdAt
+        ? new Date(bLm.createdAt).getTime()
+        : new Date(b.createdAt as Date | string).getTime();
       return bTime - aTime;
     });
 
