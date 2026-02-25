@@ -66,19 +66,26 @@ export class KeyBundlesService {
     const bundle = await this.keyBundleRepo.findOne({ where: { userId } });
     if (!bundle) return null;
 
-    // Find one unused OTP and mark it as used
-    const otp = await this.otpRepo.findOne({
-      where: { userId, used: false },
-      order: { id: 'ASC' },
-    });
+    // Atomic claim: UPDATE ... WHERE id = (SELECT id ... LIMIT 1) RETURNING *
+    // Prevents race condition where two concurrent calls serve the same OTP.
+    const [otp]: Array<{ id: number; keyId: number; publicKey: string } | undefined> =
+      await this.otpRepo.query(
+        `UPDATE one_time_pre_keys
+           SET used = true
+         WHERE id = (
+           SELECT id FROM one_time_pre_keys
+           WHERE "userId" = $1 AND used = false
+           ORDER BY id ASC
+           LIMIT 1
+         )
+         RETURNING id, "keyId", "publicKey"`,
+        [userId],
+      );
 
-    if (otp) {
-      otp.used = true;
-      await this.otpRepo.save(otp);
-    } else {
-      // No OTPs left — session will be established without one-time pre-key,
-      // reducing forward secrecy. Client should replenish via uploadOneTimePreKeys.
-      this.logger.warn(`OTP exhausted for userId=${userId}: serving bundle without one-time pre-key`);
+    if (!otp) {
+      this.logger.warn(
+        `OTP exhausted for userId=${userId}: serving bundle without one-time pre-key`,
+      );
     }
 
     return {

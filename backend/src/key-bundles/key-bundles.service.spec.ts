@@ -32,6 +32,7 @@ describe('KeyBundlesService', () => {
       save: jest.fn(),
       delete: jest.fn(),
       count: jest.fn(),
+      query: jest.fn().mockResolvedValue([]),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -127,20 +128,19 @@ describe('KeyBundlesService', () => {
       const result = await service.fetchPreKeyBundle(99);
 
       expect(result).toBeNull();
-      expect(otpRepo.findOne).not.toHaveBeenCalled();
+      expect(otpRepo.query).not.toHaveBeenCalled();
     });
 
-    it('should return bundle with one unused OTP and mark it as used', async () => {
+    it('should return bundle with one unused OTP via atomic UPDATE', async () => {
       const bundle = {
         id: 1,
         userId: 5,
         ...mockKeyBundleData,
       };
-      const otp = { id: 10, userId: 5, keyId: 7, publicKey: 'otp-pk-7', used: false };
+      const otp = { id: 10, keyId: 7, publicKey: 'otp-pk-7' };
 
       keyBundleRepo.findOne.mockResolvedValue(bundle);
-      otpRepo.findOne.mockResolvedValue(otp);
-      otpRepo.save.mockResolvedValue({ ...otp, used: true });
+      otpRepo.query.mockResolvedValue([otp]);
 
       const result = await service.fetchPreKeyBundle(5);
 
@@ -154,12 +154,8 @@ describe('KeyBundlesService', () => {
         oneTimePreKeyPublic: 'otp-pk-7',
       });
 
-      expect(otp.used).toBe(true);
-      expect(otpRepo.save).toHaveBeenCalledWith(otp);
-      expect(otpRepo.findOne).toHaveBeenCalledWith({
-        where: { userId: 5, used: false },
-        order: { id: 'ASC' },
-      });
+      expect(otpRepo.query).toHaveBeenCalled();
+      expect(otpRepo.save).not.toHaveBeenCalled();
     });
 
     it('should return null OTP fields when no unused pre-keys remain', async () => {
@@ -170,7 +166,7 @@ describe('KeyBundlesService', () => {
       };
 
       keyBundleRepo.findOne.mockResolvedValue(bundle);
-      otpRepo.findOne.mockResolvedValue(null);
+      otpRepo.query.mockResolvedValue([]);
 
       const result = await service.fetchPreKeyBundle(5);
 
@@ -185,6 +181,14 @@ describe('KeyBundlesService', () => {
       });
 
       expect(otpRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('uses atomic UPDATE to claim OTP (prevents double-serve race)', async () => {
+      // Verify the implementation uses query() (atomic SQL path) rather than findOne + save
+      const spy = jest.spyOn(otpRepo as any, 'query');
+      keyBundleRepo.findOne.mockResolvedValue({ id: 1, userId: 1, ...mockKeyBundleData });
+      await service.fetchPreKeyBundle(1);
+      expect(spy).toHaveBeenCalled();
     });
   });
 
