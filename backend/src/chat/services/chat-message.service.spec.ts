@@ -225,4 +225,49 @@ describe('ChatMessageService', () => {
       expect(linkPreviewService.fetchPreview).not.toHaveBeenCalled();
     });
   });
+
+  describe('handleMessageDelivered', () => {
+    it('rejects when caller is the sender, not the recipient', async () => {
+      // Message sender = userId 1 (the caller). Recipient = userId 2.
+      const conv = { id: 10, userOne: { id: 1 }, userTwo: { id: 2 } };
+      const msg = { id: 99, sender: { id: 1 }, conversation: conv };
+      (messagesService as any).findByIdWithConversation = jest
+        .fn()
+        .mockResolvedValue(msg);
+      (messagesService as any).updateDeliveryStatus = jest.fn();
+
+      await service.handleMessageDelivered(
+        mockClient as any,
+        { messageId: 99 },
+        mockServer as any,
+        onlineUsers,
+      );
+
+      expect((messagesService as any).updateDeliveryStatus).not.toHaveBeenCalled();
+    });
+
+    it('allows when caller is the recipient', async () => {
+      // Message sender = userId 2. Caller = userId 1 (recipient).
+      const conv = { id: 10, userOne: { id: 2 }, userTwo: { id: 1 } };
+      const updatedMsg = { id: 99, sender: { id: 2 }, conversation: conv, deliveryStatus: 'DELIVERED' };
+      (messagesService as any).findByIdWithConversation = jest
+        .fn()
+        .mockResolvedValue({ id: 99, sender: { id: 2 }, conversation: conv });
+      (messagesService as any).updateDeliveryStatus = jest
+        .fn()
+        .mockResolvedValue(updatedMsg);
+
+      await service.handleMessageDelivered(
+        mockClient as any,
+        { messageId: 99 },
+        mockServer as any,
+        onlineUsers,
+      );
+
+      expect((messagesService as any).updateDeliveryStatus).toHaveBeenCalledWith(
+        99,
+        expect.any(String),
+      );
+    });
+  });
 });

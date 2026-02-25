@@ -297,6 +297,7 @@ export class ChatMessageService {
   ) {
     const user = client.data.user;
     if (!user) return;
+    const userId: number = user.id;
 
     const { messageId } = data;
     if (!messageId) {
@@ -304,14 +305,21 @@ export class ChatMessageService {
       return;
     }
 
+    // Verify caller is the recipient of this message
+    const message = await this.messagesService.findByIdWithConversation(messageId);
+    if (!message) return;
+
+    const conv = message.conversation as any;
+    const recipientId =
+      conv.userOne?.id === message.sender.id ? conv.userTwo?.id : conv.userOne?.id;
+    if (userId !== recipientId) return; // Silently ignore — not the intended recipient
+
     const updated = await this.messagesService.updateDeliveryStatus(
       messageId,
       MessageDeliveryStatus.DELIVERED,
     );
-
     if (!updated) return;
 
-    // Emit actual status (READ if markConversationRead was processed first)
     const senderSocketId = onlineUsers.get(updated.sender.id);
     if (senderSocketId) {
       server.to(senderSocketId).emit('messageDelivered', {
