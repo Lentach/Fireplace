@@ -41,8 +41,9 @@ describe('MessagesService.findByConversation', () => {
     await service.findByConversation(1, 5, 0, 99);
 
     // With hiddenByUserId, skip should be 0 (fetch more, filter client-side)
+    // fetchLimit = limit * 3 + offset + 50 = 5 * 3 + 0 + 50 = 65
     expect(repo.find).toHaveBeenCalledWith(
-      expect.objectContaining({ skip: 0 }),
+      expect.objectContaining({ skip: 0, take: 65 }),
     );
   });
 });
