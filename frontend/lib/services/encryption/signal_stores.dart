@@ -5,28 +5,29 @@ import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 /// Persistent IdentityKeyStore backed by flutter_secure_storage.
 class SecureIdentityKeyStore extends IdentityKeyStore {
   final FlutterSecureStorage _storage;
+  final String _p;
   IdentityKeyPair? _identityKeyPair;
   int? _localRegistrationId;
 
-  SecureIdentityKeyStore(this._storage);
+  SecureIdentityKeyStore(this._storage, this._p);
 
   Future<void> initialize(
       IdentityKeyPair identityKeyPair, int registrationId) async {
     _identityKeyPair = identityKeyPair;
     _localRegistrationId = registrationId;
     await _storage.write(
-      key: 'e2e_identity_key_pair',
+      key: '${_p}identity_key_pair',
       value: base64Encode(identityKeyPair.serialize()),
     );
     await _storage.write(
-      key: 'e2e_registration_id',
+      key: '${_p}registration_id',
       value: registrationId.toString(),
     );
   }
 
   Future<bool> loadFromStorage() async {
-    final pairB64 = await _storage.read(key: 'e2e_identity_key_pair');
-    final regIdStr = await _storage.read(key: 'e2e_registration_id');
+    final pairB64 = await _storage.read(key: '${_p}identity_key_pair');
+    final regIdStr = await _storage.read(key: '${_p}registration_id');
     if (pairB64 == null || regIdStr == null) return false;
     _identityKeyPair =
         IdentityKeyPair.fromSerialized(base64Decode(pairB64));
@@ -48,7 +49,7 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
   Future<bool> saveIdentity(
       SignalProtocolAddress address, IdentityKey? identityKey) async {
     if (identityKey == null) return false;
-    final key = 'e2e_trusted_identity_${address.getName()}_${address.getDeviceId()}';
+    final key = '${_p}trusted_identity_${address.getName()}_${address.getDeviceId()}';
     await _storage.write(
       key: key,
       value: base64Encode(identityKey.serialize()),
@@ -60,7 +61,7 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
   Future<bool> isTrustedIdentity(SignalProtocolAddress address,
       IdentityKey? identityKey, Direction direction) async {
     if (identityKey == null) return false;
-    final key = 'e2e_trusted_identity_${address.getName()}_${address.getDeviceId()}';
+    final key = '${_p}trusted_identity_${address.getName()}_${address.getDeviceId()}';
     final stored = await _storage.read(key: key);
     if (stored == null) return true; // First time — trust on first use (TOFU)
     final storedKey = IdentityKey.fromBytes(base64Decode(stored), 0);
@@ -69,7 +70,7 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
 
   @override
   Future<IdentityKey?> getIdentity(SignalProtocolAddress address) async {
-    final key = 'e2e_trusted_identity_${address.getName()}_${address.getDeviceId()}';
+    final key = '${_p}trusted_identity_${address.getName()}_${address.getDeviceId()}';
     final stored = await _storage.read(key: key);
     if (stored == null) return null;
     return IdentityKey.fromBytes(base64Decode(stored), 0);
@@ -79,12 +80,13 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
 /// Persistent PreKeyStore backed by flutter_secure_storage.
 class SecurePreKeyStore extends PreKeyStore {
   final FlutterSecureStorage _storage;
+  final String _p;
 
-  SecurePreKeyStore(this._storage);
+  SecurePreKeyStore(this._storage, this._p);
 
   @override
   Future<PreKeyRecord> loadPreKey(int preKeyId) async {
-    final data = await _storage.read(key: 'e2e_pre_key_$preKeyId');
+    final data = await _storage.read(key: '${_p}pre_key_$preKeyId');
     if (data == null) {
       throw InvalidKeyIdException('No pre-key found for id: $preKeyId');
     }
@@ -94,33 +96,34 @@ class SecurePreKeyStore extends PreKeyStore {
   @override
   Future<void> storePreKey(int preKeyId, PreKeyRecord record) async {
     await _storage.write(
-      key: 'e2e_pre_key_$preKeyId',
+      key: '${_p}pre_key_$preKeyId',
       value: base64Encode(record.serialize()),
     );
   }
 
   @override
   Future<bool> containsPreKey(int preKeyId) async {
-    final data = await _storage.read(key: 'e2e_pre_key_$preKeyId');
+    final data = await _storage.read(key: '${_p}pre_key_$preKeyId');
     return data != null;
   }
 
   @override
   Future<void> removePreKey(int preKeyId) async {
-    await _storage.delete(key: 'e2e_pre_key_$preKeyId');
+    await _storage.delete(key: '${_p}pre_key_$preKeyId');
   }
 }
 
 /// Persistent SignedPreKeyStore backed by flutter_secure_storage.
 class SecureSignedPreKeyStore extends SignedPreKeyStore {
   final FlutterSecureStorage _storage;
+  final String _p;
 
-  SecureSignedPreKeyStore(this._storage);
+  SecureSignedPreKeyStore(this._storage, this._p);
 
   @override
   Future<SignedPreKeyRecord> loadSignedPreKey(int signedPreKeyId) async {
     final data =
-        await _storage.read(key: 'e2e_signed_pre_key_$signedPreKeyId');
+        await _storage.read(key: '${_p}signed_pre_key_$signedPreKeyId');
     if (data == null) {
       throw InvalidKeyIdException(
           'No signed pre-key found for id: $signedPreKeyId');
@@ -132,7 +135,7 @@ class SecureSignedPreKeyStore extends SignedPreKeyStore {
   Future<void> storeSignedPreKey(
       int signedPreKeyId, SignedPreKeyRecord record) async {
     await _storage.write(
-      key: 'e2e_signed_pre_key_$signedPreKeyId',
+      key: '${_p}signed_pre_key_$signedPreKeyId',
       value: base64Encode(record.serialize()),
     );
   }
@@ -151,24 +154,25 @@ class SecureSignedPreKeyStore extends SignedPreKeyStore {
   @override
   Future<bool> containsSignedPreKey(int signedPreKeyId) async {
     final data =
-        await _storage.read(key: 'e2e_signed_pre_key_$signedPreKeyId');
+        await _storage.read(key: '${_p}signed_pre_key_$signedPreKeyId');
     return data != null;
   }
 
   @override
   Future<void> removeSignedPreKey(int signedPreKeyId) async {
-    await _storage.delete(key: 'e2e_signed_pre_key_$signedPreKeyId');
+    await _storage.delete(key: '${_p}signed_pre_key_$signedPreKeyId');
   }
 }
 
 /// Persistent SessionStore backed by flutter_secure_storage.
 class SecureSessionStore extends SessionStore {
   final FlutterSecureStorage _storage;
+  final String _p;
 
-  SecureSessionStore(this._storage);
+  SecureSessionStore(this._storage, this._p);
 
   String _sessionKey(SignalProtocolAddress address) =>
-      'e2e_session_${address.getName()}_${address.getDeviceId()}';
+      '${_p}session_${address.getName()}_${address.getDeviceId()}';
 
   @override
   Future<SessionRecord> loadSession(SignalProtocolAddress address) async {
@@ -208,6 +212,6 @@ class SecureSessionStore extends SessionStore {
   @override
   Future<void> deleteAllSessions(String name) async {
     // Delete session for device 1 (our only device)
-    await _storage.delete(key: 'e2e_session_${name}_1');
+    await _storage.delete(key: '${_p}session_${name}_1');
   }
 }

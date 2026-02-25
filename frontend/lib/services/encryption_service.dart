@@ -31,10 +31,12 @@ class EncryptionService {
   /// secure storage or generates new ones if this is a fresh install.
   Future<void> initialize(int userId) async {
     _userId = userId;
-    _identityStore = SecureIdentityKeyStore(_storage);
-    _preKeyStore = SecurePreKeyStore(_storage);
-    _signedPreKeyStore = SecureSignedPreKeyStore(_storage);
-    _sessionStore = SecureSessionStore(_storage);
+    final p = 'e2e_${userId}_'; // per-user storage key prefix
+
+    _identityStore = SecureIdentityKeyStore(_storage, p);
+    _preKeyStore = SecurePreKeyStore(_storage, p);
+    _signedPreKeyStore = SecureSignedPreKeyStore(_storage, p);
+    _sessionStore = SecureSessionStore(_storage, p);
 
     final loaded = await _identityStore.loadFromStorage();
     if (loaded) {
@@ -72,7 +74,7 @@ class EncryptionService {
 
     // Save next pre-key id
     await _storage.write(
-      key: 'e2e_next_pre_key_id',
+      key: 'e2e_${_userId}_next_pre_key_id',
       value: _preKeyBatchSize.toString(),
     );
 
@@ -90,7 +92,7 @@ class EncryptionService {
       'oneTimePreKeys': preKeys.map(_preKeyToUploadFormat).toList(),
     };
 
-    await _storage.write(key: 'e2e_setup_complete', value: 'true');
+    await _storage.write(key: 'e2e_${_userId}_setup_complete', value: 'true');
   }
 
   /// Check if we have an active session with the given user.
@@ -173,7 +175,7 @@ class EncryptionService {
 
   /// Generate more one-time pre-keys and return them for server upload.
   Future<List<Map<String, dynamic>>> generateMorePreKeys() async {
-    final nextIdStr = await _storage.read(key: 'e2e_next_pre_key_id');
+    final nextIdStr = await _storage.read(key: 'e2e_${_userId}_next_pre_key_id');
     final nextId = int.parse(nextIdStr ?? '100');
 
     final preKeys = generatePreKeys(nextId, _preKeyBatchSize);
@@ -182,7 +184,7 @@ class EncryptionService {
     }
 
     await _storage.write(
-      key: 'e2e_next_pre_key_id',
+      key: 'e2e_${_userId}_next_pre_key_id',
       value: (nextId + _preKeyBatchSize).toString(),
     );
 
@@ -259,12 +261,23 @@ class EncryptionService {
     }
   }
 
-  /// Clear all encryption keys from storage (call on account deletion only).
+  /// Clear all E2E encryption keys for this user from storage.
+  /// Uses selective deletion (not deleteAll) to avoid wiping non-E2E data.
   Future<void> clearAllKeys() async {
-    await _storage.deleteAll();
+    final userId = _userId;
+    if (userId != null) {
+      final prefix = 'e2e_${userId}_';
+      final all = await _storage.readAll();
+      for (final key in all.keys) {
+        if (key.startsWith(prefix)) {
+          await _storage.delete(key: key);
+        }
+      }
+    }
     _initialized = false;
     needsKeyUpload = false;
     _keysForUpload = null;
+    _userId = null;
     debugPrint('[EncryptionService] All encryption keys cleared');
   }
 }
