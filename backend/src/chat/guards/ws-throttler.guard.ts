@@ -1,30 +1,21 @@
 import { ExecutionContext, Injectable } from '@nestjs/common';
-import { ThrottlerGuard, ThrottlerException } from '@nestjs/throttler';
+import { ThrottlerGuard } from '@nestjs/throttler';
+import { Socket } from 'socket.io';
 
 @Injectable()
 export class WsThrottlerGuard extends ThrottlerGuard {
-  async canActivate(context: ExecutionContext): Promise<boolean> {
-    const client = context.switchToWs().getClient();
-    const userId: string =
-      client.data?.user?.id?.toString() ??
-      client.handshake?.address ??
-      'unknown';
+  protected getRequestResponse(context: ExecutionContext) {
+    const client = context.switchToWs().getClient<Socket>();
+    // For WebSocket, both req and res point to the client socket
+    return { req: client as unknown as Record<string, unknown>, res: client as unknown as Record<string, unknown> };
+  }
 
-    // Use userId as the throttler tracking key
-    const { ttl, limit } = this.options[0];
-    const key = `ws_throttle_${userId}`;
-
-    const { totalHits } = await this.storageService.increment(
-      key,
-      ttl,
-      limit,
-      ttl,
-      'default',
+  protected async getTracker(req: Record<string, unknown>): Promise<string> {
+    const socket = req as unknown as Socket;
+    return (
+      (socket.data?.user as { id?: number } | undefined)?.id?.toString() ??
+      socket.handshake?.address ??
+      'unknown'
     );
-
-    if (totalHits > limit) {
-      throw new ThrottlerException();
-    }
-    return true;
   }
 }
