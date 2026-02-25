@@ -734,16 +734,16 @@ class ChatProvider extends ChangeNotifier {
           .where((c) => conv_helpers.getOtherUserId(c, _currentUserId) == recipientId)
           .map((c) => conv_helpers.getOtherUserUsername(c, _currentUserId))
           .firstOrNull;
-      final who = otherName ?? 'Odbiorca';
-      return 'Nie można wysłać: $who nie ma jeszcze kluczy szyfrowania. Poproś, żeby otworzył aplikację.';
+      final who = otherName ?? 'Recipient';
+      return 'Cannot send: $who does not have encryption keys yet. Ask them to open the app.';
     }
     if (e is TimeoutException || s.contains('timed out') || s.contains('Timeout')) {
-      return 'Przekroczono czas oczekiwania na klucze odbiorcy. Spróbuj ponownie.';
+      return 'Timed out waiting for recipient keys. Try again.';
     }
     if (!_e2eInitialized) {
-      return 'Szyfrowanie nie gotowe. Poczekaj chwilę i spróbuj ponownie.';
+      return 'Encryption not ready. Wait a moment and try again.';
     }
-    return 'Nie można wysłać wiadomości szyfrowanej. Odbiorca może nie mieć włączonego szyfrowania – poproś, żeby otworzył aplikację.';
+    return 'Cannot send encrypted message. Recipient may not have encryption enabled – ask them to open the app.';
   }
 
   void sendPing(int recipientId) {
