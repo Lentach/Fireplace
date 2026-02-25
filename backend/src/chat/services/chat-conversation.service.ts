@@ -59,6 +59,12 @@ export class ChatConversationService {
       return;
     }
 
+    const areFriends = await this.friendsService.areFriends(userId, data.recipientId);
+    if (!areFriends) {
+      client.emit('error', { message: 'You can only start conversations with friends' });
+      return;
+    }
+
     const conversation = await this.conversationsService.findOrCreate(
       user,
       otherUser,
