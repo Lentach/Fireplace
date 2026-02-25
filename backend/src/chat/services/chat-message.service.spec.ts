@@ -9,7 +9,7 @@ import { PushNotificationsService } from '../../push-notifications/push-notifica
 import { ChatMessageService } from './chat-message.service';
 import { User } from '../../users/user.entity';
 import { Conversation } from '../../conversations/conversation.entity';
-import { Message } from '../../messages/message.entity';
+import { Message, MessageDeliveryStatus } from '../../messages/message.entity';
 import { Socket } from 'socket.io';
 import { Server } from 'socket.io';
 
@@ -266,7 +266,7 @@ describe('ChatMessageService', () => {
 
       expect((messagesService as any).updateDeliveryStatus).toHaveBeenCalledWith(
         99,
-        expect.any(String),
+        MessageDeliveryStatus.DELIVERED,
       );
     });
   });

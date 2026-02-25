@@ -99,7 +99,7 @@ export class MessagesService {
   async findByIdWithConversation(messageId: number): Promise<Message | null> {
     const message = await this.msgRepo.findOne({
       where: { id: messageId },
-      relations: ['sender', 'conversation'],
+      relations: ['sender', 'conversation', 'conversation.userOne', 'conversation.userTwo'],
     });
     return message || null;
   }
