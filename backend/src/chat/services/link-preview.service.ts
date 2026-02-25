@@ -17,6 +17,17 @@ function isPrivateOrLocal(url: string): boolean {
   }
 }
 
+/** True only for safe HTTPS URLs pointing to public hosts */
+function isSafeImageUrl(url: string): boolean {
+  try {
+    const { protocol } = new URL(url);
+    if (protocol !== 'https:') return false;
+    return !isPrivateOrLocal(url);
+  } catch {
+    return false;
+  }
+}
+
 function parseOgMeta(html: string): {
   title: string | null;
   imageUrl: string | null;
@@ -34,7 +45,7 @@ function parseOgMeta(html: string): {
 
   return {
     title: title ? title.trim().substring(0, 200) : null,
-    imageUrl: imageUrl ? imageUrl.trim() : null,
+    imageUrl: imageUrl && isSafeImageUrl(imageUrl.trim()) ? imageUrl.trim() : null,
   };
 }
 
