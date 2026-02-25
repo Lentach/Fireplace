@@ -9,7 +9,8 @@ import {
 } from '@nestjs/websockets';
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
-import { Logger } from '@nestjs/common';
+import { Logger, UseGuards } from '@nestjs/common';
+import { WsThrottlerGuard } from './guards/ws-throttler.guard';
 import { UsersService } from '../users/users.service';
 import { ChatMessageService } from './services/chat-message.service';
 import { ChatFriendRequestService } from './services/chat-friend-request.service';
@@ -111,6 +112,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // ========== MESSAGE HANDLERS ==========
 
+  @UseGuards(WsThrottlerGuard)
   @SubscribeMessage('sendMessage')
   async handleSendMessage(
     @ConnectedSocket() client: Socket,
@@ -132,6 +134,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return this.chatMessageService.handleGetMessages(client, data);
   }
 
+  @UseGuards(WsThrottlerGuard)
   @SubscribeMessage('sendPing')
   async handleSendPing(
     @ConnectedSocket() client: Socket,

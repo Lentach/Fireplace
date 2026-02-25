@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { ChatGateway } from './chat.gateway';
+import { WsThrottlerGuard } from './guards/ws-throttler.guard';
 import { ChatMessageService } from './services/chat-message.service';
 import { ChatFriendRequestService } from './services/chat-friend-request.service';
 import { ChatConversationService } from './services/chat-conversation.service';
@@ -32,6 +33,7 @@ import { PushNotificationsModule } from '../push-notifications/push-notification
     ChatFriendRequestService,
     ChatConversationService,
     ChatKeyExchangeService,
+    WsThrottlerGuard,
   ],
 })
 export class ChatModule {}
