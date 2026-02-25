@@ -80,10 +80,15 @@ export class BlockedService {
     return !!one;
   }
 
-  /** True if either user has blocked the other (so they cannot message each other) */
+  /** True if either user has blocked the other. Single query instead of two sequential round-trips. */
   async isBlockedByEither(userId1: number, userId2: number): Promise<boolean> {
-    const a = await this.isBlocked(userId1, userId2);
-    if (a) return true;
-    return this.isBlocked(userId2, userId1);
+    const count = await this.blockedRepo
+      .createQueryBuilder('bu')
+      .where(
+        '(bu.blocker_id = :a AND bu.blocked_id = :b) OR (bu.blocker_id = :b AND bu.blocked_id = :a)',
+        { a: userId1, b: userId2 },
+      )
+      .getCount();
+    return count > 0;
   }
 }
