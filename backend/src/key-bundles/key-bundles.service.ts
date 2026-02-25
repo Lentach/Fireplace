@@ -39,14 +39,11 @@ export class KeyBundlesService {
   ) {}
 
   async upsertKeyBundle(userId: number, data: KeyBundleData): Promise<void> {
-    const existing = await this.keyBundleRepo.findOne({ where: { userId } });
-    if (existing) {
-      Object.assign(existing, data);
-      await this.keyBundleRepo.save(existing);
-    } else {
-      const bundle = this.keyBundleRepo.create({ userId, ...data });
-      await this.keyBundleRepo.save(bundle);
-    }
+    // Atomic upsert — handles concurrent connections from same user (e.g. two tabs)
+    await this.keyBundleRepo.upsert(
+      { userId, ...data },
+      { conflictPaths: ['userId'] },
+    );
     this.logger.log(`Key bundle upserted for userId=${userId}`);
   }
 

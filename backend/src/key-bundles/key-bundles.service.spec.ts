@@ -23,6 +23,7 @@ describe('KeyBundlesService', () => {
       create: jest.fn(),
       save: jest.fn(),
       delete: jest.fn(),
+      upsert: jest.fn(),
     };
 
     otpRepo = {
@@ -52,49 +53,28 @@ describe('KeyBundlesService', () => {
   });
 
   describe('upsertKeyBundle', () => {
-    it('should create a new key bundle when none exists', async () => {
-      keyBundleRepo.findOne.mockResolvedValue(null);
-      const createdBundle = { id: 1, userId: 1, ...mockKeyBundleData };
-      keyBundleRepo.create.mockReturnValue(createdBundle);
-      keyBundleRepo.save.mockResolvedValue(createdBundle);
+    it('should upsert key bundle (atomic insert-or-update)', async () => {
+      keyBundleRepo.upsert.mockResolvedValue({ identifiers: [], generatedMaps: [], raw: [] });
 
       await service.upsertKeyBundle(1, mockKeyBundleData);
 
-      expect(keyBundleRepo.findOne).toHaveBeenCalledWith({
-        where: { userId: 1 },
-      });
-      expect(keyBundleRepo.create).toHaveBeenCalledWith({
-        userId: 1,
-        ...mockKeyBundleData,
-      });
-      expect(keyBundleRepo.save).toHaveBeenCalledWith(createdBundle);
+      expect(keyBundleRepo.upsert).toHaveBeenCalledWith(
+        { userId: 1, ...mockKeyBundleData },
+        { conflictPaths: ['userId'] },
+      );
+      expect(keyBundleRepo.findOne).not.toHaveBeenCalled();
+      expect(keyBundleRepo.save).not.toHaveBeenCalled();
     });
 
-    it('should update existing key bundle when one exists', async () => {
-      const existing = {
-        id: 1,
-        userId: 1,
-        registrationId: 99999,
-        identityPublicKey: 'old-key',
-        signedPreKeyId: 0,
-        signedPreKeyPublic: 'old-signed',
-        signedPreKeySignature: 'old-sig',
-      };
-      keyBundleRepo.findOne.mockResolvedValue(existing);
-      keyBundleRepo.save.mockResolvedValue({ ...existing, ...mockKeyBundleData });
+    it('should use the same upsert call for both create and update paths', async () => {
+      keyBundleRepo.upsert.mockResolvedValue({ identifiers: [], generatedMaps: [], raw: [] });
 
-      await service.upsertKeyBundle(1, mockKeyBundleData);
+      await service.upsertKeyBundle(42, mockKeyBundleData);
 
-      expect(keyBundleRepo.findOne).toHaveBeenCalledWith({
-        where: { userId: 1 },
-      });
-      expect(keyBundleRepo.create).not.toHaveBeenCalled();
-      expect(keyBundleRepo.save).toHaveBeenCalledWith(
-        expect.objectContaining({
-          id: 1,
-          userId: 1,
-          ...mockKeyBundleData,
-        }),
+      expect(keyBundleRepo.upsert).toHaveBeenCalledTimes(1);
+      expect(keyBundleRepo.upsert).toHaveBeenCalledWith(
+        { userId: 42, ...mockKeyBundleData },
+        { conflictPaths: ['userId'] },
       );
     });
   });
