@@ -11,7 +11,9 @@ function extractFirstUrl(text: string): string | null {
 function isPrivateOrLocal(url: string): boolean {
   try {
     const { hostname } = new URL(url);
-    return PRIVATE_IP_RE.test(hostname);
+    // Node's URL parser wraps IPv6 addresses in brackets (e.g. '[::1]'); strip them before regex
+    const host = hostname.startsWith('[') ? hostname.slice(1, -1) : hostname;
+    return PRIVATE_IP_RE.test(host);
   } catch {
     return true;
   }
