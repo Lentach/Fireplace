@@ -5,8 +5,7 @@ import { MessagesService } from '../../messages/messages.service';
 import { UsersService } from '../../users/users.service';
 import { FriendsService } from '../../friends/friends.service';
 import { BlockedService } from '../../blocked/blocked.service';
-import { Socket } from 'socket.io';
-import { Server } from 'socket.io';
+import { Socket, Server } from 'socket.io';
 
 describe('ChatConversationService', () => {
   let service: ChatConversationService;
@@ -66,9 +65,10 @@ describe('ChatConversationService', () => {
         new Map(),
       );
 
+      expect(friendsService.areFriends).toHaveBeenCalledWith(1, 2);
       expect(mockClient.emit).toHaveBeenCalledWith(
         'error',
-        expect.objectContaining({ message: expect.any(String) }),
+        { message: 'You can only start conversations with friends' },
       );
       expect(conversationsService.findOrCreate).not.toHaveBeenCalled();
     });
