@@ -210,6 +210,7 @@ class ApiService {
   Future<VoiceUploadResult> uploadVoiceMessage({
     required String token,
     required int duration,
+    required int recipientId,
     int? expiresIn,
     String? audioPath,
     List<int>? audioBytes,
@@ -245,6 +246,7 @@ class ApiService {
     ));
 
     request.fields['duration'] = duration.toString();
+    request.fields['recipientId'] = recipientId.toString();
     if (expiresIn != null) {
       request.fields['expiresIn'] = expiresIn.toString();
     }

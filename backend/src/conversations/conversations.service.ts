@@ -23,11 +23,22 @@ export class ConversationsService {
         { userOne: { id: userTwo.id }, userTwo: { id: userOne.id } },
       ],
     });
-
     if (existing) return existing;
 
-    const conv = this.convRepo.create({ userOne, userTwo });
-    return this.convRepo.save(conv);
+    try {
+      const conv = this.convRepo.create({ userOne, userTwo });
+      return await this.convRepo.save(conv);
+    } catch {
+      // Race condition: another concurrent request inserted first — return theirs
+      const race = await this.convRepo.findOne({
+        where: [
+          { userOne: { id: userOne.id }, userTwo: { id: userTwo.id } },
+          { userOne: { id: userTwo.id }, userTwo: { id: userOne.id } },
+        ],
+      });
+      if (race) return race;
+      throw new Error(`Failed to find or create conversation between ${userOne.id} and ${userTwo.id}`);
+    }
   }
 
   async findById(id: number): Promise<Conversation | null> {

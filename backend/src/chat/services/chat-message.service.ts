@@ -342,7 +342,13 @@ export class ChatMessageService {
     );
     if (!conversation) return;
 
+    // Verify the caller is a member of this conversation
     const readerId = user.id;
+    if (conversation.userOne.id !== readerId && conversation.userTwo.id !== readerId) {
+      this.logger.warn(`handleMarkConversationRead: user ${readerId} is not a member of conv ${conversationId}`);
+      return;
+    }
+
     const otherUserId =
       conversation.userOne.id === readerId
         ? conversation.userTwo.id

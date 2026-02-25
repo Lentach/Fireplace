@@ -10,5 +10,6 @@ export class LoginDto {
   identifier: string;
 
   @IsString()
+  @MaxLength(200)
   password: string;
 }

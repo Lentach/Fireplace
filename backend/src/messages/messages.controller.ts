@@ -102,25 +102,17 @@ export class MessagesController {
 
   @Post('voice')
   @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 10, ttl: 60000 } })
   @UseInterceptors(
     FileInterceptor('audio', {
-      limits: { fileSize: 10 * 1024 * 1024 }, // 10MB max
+      limits: { fileSize: 10 * 1024 * 1024 },
       fileFilter: (req, file, cb) => {
         const allowedMimes = [
-          'audio/aac',
-          'audio/mp4',
-          'audio/m4a',
-          'audio/mpeg',
-          'audio/webm',
-          'audio/wav',
-          'audio/wave',
-          'audio/x-wav',
+          'audio/aac', 'audio/mp4', 'audio/m4a', 'audio/mpeg',
+          'audio/webm', 'audio/wav', 'audio/wave', 'audio/x-wav',
         ];
         if (!allowedMimes.includes(file.mimetype)) {
-          return cb(
-            new BadRequestException('Invalid audio format'),
-            false,
-          );
+          return cb(new BadRequestException('Invalid audio format'), false);
         }
         cb(null, true);
       },
@@ -129,15 +121,31 @@ export class MessagesController {
   async uploadVoiceMessage(
     @UploadedFile() file: Express.Multer.File,
     @Body('duration') duration: string,
+    @Body('recipientId') recipientId: string,
     @Body('expiresIn') expiresIn?: string,
     @Request() req?,
   ) {
-    const userId = req.user.id;
+    const sender = req.user;
+    const recipientIdNum = parseInt(recipientId, 10);
+    if (!recipientId || isNaN(recipientIdNum)) {
+      throw new BadRequestException('recipientId is required');
+    }
+
+    const recipient = await this.usersService.findById(recipientIdNum);
+    if (!recipient) {
+      throw new BadRequestException('Recipient not found');
+    }
+
+    const areFriends = await this.friendsService.areFriends(sender.id, recipient.id);
+    if (!areFriends) {
+      throw new BadRequestException('You can only send voice messages to friends');
+    }
+
     const durationNum = parseInt(duration, 10);
     const expiresInNum = expiresIn ? parseInt(expiresIn, 10) : undefined;
 
     const result = await this.cloudinaryService.uploadVoiceMessage(
-      userId,
+      sender.id,
       file.buffer,
       file.mimetype,
       expiresInNum,

@@ -6,7 +6,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './user.entity';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
@@ -23,15 +23,10 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepo: Repository<User>,
-    @InjectRepository(Conversation)
-    private convRepo: Repository<Conversation>,
-    @InjectRepository(Message)
-    private messageRepo: Repository<Message>,
-    @InjectRepository(FriendRequest)
-    private friendRequestRepo: Repository<FriendRequest>,
     private cloudinaryService: CloudinaryService,
     private fcmTokensService: FcmTokensService,
     private keyBundlesService: KeyBundlesService,
+    private dataSource: DataSource,
   ) {}
 
   async create(username: string, password: string): Promise<User> {
@@ -126,45 +121,42 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    // Verify password
     const isValidPassword = await bcrypt.compare(password, user.password);
     if (!isValidPassword) {
       throw new UnauthorizedException('Invalid password');
     }
 
-    // Delete Cloudinary avatar if exists
+    // External I/O before transaction (non-transactional by nature)
     if (user.profilePicturePublicId) {
       await this.cloudinaryService.deleteAvatar(user.profilePicturePublicId);
     }
 
-    // Delete dependent data first: messages → conversations → friend_requests (User entity has no cascade)
-    const conversations = await this.convRepo.find({
-      where: [
-        { userOne: { id: userId } },
-        { userTwo: { id: userId } },
-      ],
-    });
-
-    for (const conv of conversations) {
-      await this.messageRepo.delete({ conversation: { id: conv.id } });
-      await this.convRepo.delete({ id: conv.id });
-    }
-
-    const friendRequests = await this.friendRequestRepo.find({
-      where: [
-        { sender: { id: userId } },
-        { receiver: { id: userId } },
-      ],
-    });
-    if (friendRequests.length > 0) {
-      await this.friendRequestRepo.remove(friendRequests);
-    }
-
-    // Remove FCM tokens and encryption keys before user deletion
+    // FCM tokens and key bundles use their own repos — delete outside transaction
     await this.fcmTokensService.removeByUserId(userId);
     await this.keyBundlesService.deleteByUserId(userId);
 
-    await this.usersRepo.remove(user);
+    // All DB operations in a single transaction to prevent partial deletion
+    await this.dataSource.transaction(async (manager) => {
+      const conversations = await manager.find(Conversation, {
+        where: [{ userOne: { id: userId } }, { userTwo: { id: userId } }],
+      });
+
+      for (const conv of conversations) {
+        await manager.delete(Message, { conversation: { id: conv.id } });
+        await manager.delete(Conversation, { id: conv.id });
+      }
+
+      // Use find-then-remove for friend requests (delete() can't use nested relation conditions)
+      const friendRequests = await manager.find(FriendRequest, {
+        where: [{ sender: { id: userId } }, { receiver: { id: userId } }],
+      });
+      if (friendRequests.length > 0) {
+        await manager.remove(friendRequests);
+      }
+
+      await manager.remove(User, user);
+    });
+
     this.auditLogger.log(`deleteAccount success userId=${userId} username=${user.username}`);
   }
 }

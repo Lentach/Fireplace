@@ -39,7 +39,12 @@ class ChatProvider extends ChangeNotifier {
   /// Cache of decrypted messages by id. Used when history decrypt hits DuplicateMessageException (session already advanced by live messages).
   final Map<int, MessageModel> _decryptedContentCache = {};
   bool _decryptingHistory = false;
+  bool _decryptHistoryCancelled = false;
   final List<Map<String, dynamic>> _incomingMessageQueue = [];
+
+  // Monotonic counter for temporary negative message IDs — prevents collision
+  // if two messages are sent within the same millisecond.
+  static int _tempIdSeq = 0;
 
   // ---------- State ----------
   List<ConversationModel> _conversations = [];
@@ -297,6 +302,7 @@ class ChatProvider extends ChangeNotifier {
     _reconnect.cancel();
     _reconnect.intentionalDisconnect = false;
     _reconnect.tokenForReconnect = token;
+    _decryptHistoryCancelled = false;
 
     // Clear ALL state before connecting to prevent data leakage between users
     _conversations = [];
@@ -613,7 +619,7 @@ class ChatProvider extends ChangeNotifier {
 
     // Create optimistic message with SENDING status
     final tempMessage = MessageModel(
-      id: -DateTime.now().millisecondsSinceEpoch, // Temporary negative ID
+      id: -(++ChatProvider._tempIdSeq), // Monotonic temporary negative ID
       content: content,
       senderId: _currentUserId!,
       senderUsername: '', // Will be replaced when server confirms
@@ -734,16 +740,16 @@ class ChatProvider extends ChangeNotifier {
           .where((c) => conv_helpers.getOtherUserId(c, _currentUserId) == recipientId)
           .map((c) => conv_helpers.getOtherUserUsername(c, _currentUserId))
           .firstOrNull;
-      final who = otherName ?? 'Odbiorca';
-      return 'Nie można wysłać: $who nie ma jeszcze kluczy szyfrowania. Poproś, żeby otworzył aplikację.';
+      final who = otherName ?? 'Recipient';
+      return 'Cannot send: $who does not have encryption keys yet. Ask them to open the app.';
     }
     if (e is TimeoutException || s.contains('timed out') || s.contains('Timeout')) {
-      return 'Przekroczono czas oczekiwania na klucze odbiorcy. Spróbuj ponownie.';
+      return 'Timed out waiting for recipient keys. Try again.';
     }
     if (!_e2eInitialized) {
-      return 'Szyfrowanie nie gotowe. Poczekaj chwilę i spróbuj ponownie.';
+      return 'Encryption not ready. Wait a moment and try again.';
     }
-    return 'Nie można wysłać wiadomości szyfrowanej. Odbiorca może nie mieć włączonego szyfrowania – poproś, żeby otworzył aplikację.';
+    return 'Cannot send encrypted message. Recipient may not have encryption enabled – ask them to open the app.';
   }
 
   void sendPing(int recipientId) {
@@ -791,7 +797,7 @@ class ChatProvider extends ChangeNotifier {
 
     // 1. Create optimistic message
     final optimisticMessage = MessageModel(
-      id: -DateTime.now().millisecondsSinceEpoch, // Temporary negative ID
+      id: -(++ChatProvider._tempIdSeq), // Monotonic temporary negative ID
       content: '',
       senderId: _currentUserId!,
       senderUsername: '', // Will be replaced when server confirms
@@ -822,6 +828,7 @@ class ChatProvider extends ChangeNotifier {
       final result = await api.uploadVoiceMessage(
         token: _reconnect.tokenForReconnect!,
         duration: duration,
+        recipientId: recipientId,
         expiresIn: effectiveExpiresIn,
         audioPath: localAudioPath,
         audioBytes: localAudioBytes,
@@ -938,7 +945,7 @@ class ChatProvider extends ChangeNotifier {
       }
       notifyListeners();
       if (_activeConversationId == conversationId && content.isNotEmpty) {
-        sendMessage(content);
+        sendMessage(content, replyToMessageId: message.replyToMessageId);
       }
     }
   }
@@ -1348,6 +1355,7 @@ class ChatProvider extends ChangeNotifier {
   }
 
   Future<void> _decryptMessageHistory() async {
+    _decryptHistoryCancelled = false;
     final toDecrypt = _messages.where((m) => m.needsDecryption(_currentUserId)).length;
     if (toDecrypt > 0) _e2eFlowLog('HISTORY_DECRYPT_START', {'count': toDecrypt});
     // Double Ratchet requires decrypting in chronological order (oldest first) to avoid DuplicateMessageException.
@@ -1359,6 +1367,7 @@ class ChatProvider extends ChangeNotifier {
       });
     bool changed = false;
     for (var i = 0; i < sorted.length; i++) {
+      if (_decryptHistoryCancelled) break;
       final msg = sorted[i];
       if (msg.needsDecryption(_currentUserId)) {
         final decrypted = await _decryptMessageAsync(msg);
@@ -1472,6 +1481,7 @@ class ChatProvider extends ChangeNotifier {
     _decryptedContentCache.clear();
     _incomingMessageQueue.clear();
     _decryptingHistory = false;
+    _decryptHistoryCancelled = true;
     notifyListeners();
   }
 

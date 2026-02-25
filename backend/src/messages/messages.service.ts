@@ -189,21 +189,29 @@ export class MessagesService {
     conversationId: number,
     senderId: number,
   ): Promise<Message[]> {
-    const messages = await this.msgRepo.find({
+    // Batch update — single query instead of N individual saves
+    await this.msgRepo
+      .createQueryBuilder()
+      .update(Message)
+      .set({ deliveryStatus: MessageDeliveryStatus.READ })
+      .where(
+        'conversation_id = :convId AND sender_id = :senderId AND delivery_status != :status',
+        {
+          convId: conversationId,
+          senderId,
+          status: MessageDeliveryStatus.READ,
+        },
+      )
+      .execute();
+
+    // Return all sender messages in conversation for event emission
+    return this.msgRepo.find({
       where: {
         conversation: { id: conversationId },
         sender: { id: senderId },
       },
-      relations: ['sender', 'conversation'],
-      order: { createdAt: 'ASC' },
+      relations: ['sender'],
     });
-    const updated: Message[] = [];
-    for (const m of messages) {
-      if (m.deliveryStatus === MessageDeliveryStatus.READ) continue;
-      m.deliveryStatus = MessageDeliveryStatus.READ;
-      updated.push(await this.msgRepo.save(m));
-    }
-    return updated;
   }
 
   /**

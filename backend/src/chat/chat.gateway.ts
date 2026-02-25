@@ -73,10 +73,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // On WebSocket connection — verify the JWT token.
   async handleConnection(client: Socket) {
     try {
-      // Prefer auth over query — token in URL leaks to logs/Referer
-      const token =
-        (client.handshake.auth?.token as string) ||
-        (client.handshake.query.token as string);
+      const token = client.handshake.auth?.token as string;
 
       if (!token) {
         client.disconnect();
