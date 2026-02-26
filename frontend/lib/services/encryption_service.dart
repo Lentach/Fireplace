@@ -56,6 +56,8 @@ class EncryptionService {
 
   /// Generate identity key pair, signed pre-key, and one-time pre-keys.
   Future<void> _generateKeys() async {
+    final uid = _userId; // always non-null when called from initialize()
+    if (uid == null) return;
     final identityKeyPair = generateIdentityKeyPair();
     final registrationId = generateRegistrationId(false);
 
@@ -74,7 +76,7 @@ class EncryptionService {
 
     // Save next pre-key id
     await _storage.write(
-      key: 'e2e_${_userId}_next_pre_key_id',
+      key: 'e2e_${uid}_next_pre_key_id',
       value: _preKeyBatchSize.toString(),
     );
 
@@ -92,7 +94,7 @@ class EncryptionService {
       'oneTimePreKeys': preKeys.map(_preKeyToUploadFormat).toList(),
     };
 
-    await _storage.write(key: 'e2e_${_userId}_setup_complete', value: 'true');
+    await _storage.write(key: 'e2e_${uid}_setup_complete', value: 'true');
   }
 
   /// Check if we have an active session with the given user.
@@ -175,7 +177,9 @@ class EncryptionService {
 
   /// Generate more one-time pre-keys and return them for server upload.
   Future<List<Map<String, dynamic>>> generateMorePreKeys() async {
-    final nextIdStr = await _storage.read(key: 'e2e_${_userId}_next_pre_key_id');
+    final uid = _userId;
+    if (uid == null) return [];
+    final nextIdStr = await _storage.read(key: 'e2e_${uid}_next_pre_key_id');
     final nextId = int.parse(nextIdStr ?? '100');
 
     final preKeys = generatePreKeys(nextId, _preKeyBatchSize);
@@ -184,7 +188,7 @@ class EncryptionService {
     }
 
     await _storage.write(
-      key: 'e2e_${_userId}_next_pre_key_id',
+      key: 'e2e_${uid}_next_pre_key_id',
       value: (nextId + _preKeyBatchSize).toString(),
     );
 
