@@ -31,7 +31,7 @@ cd frontend && flutter run -d chrome
 
 **Phone (same WiFi):** `cd frontend && .\run_web_for_phone.ps1` or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`
 
-**Tests:** `cd backend && npm test` (80 unit tests, 10 suites, no DB required)
+**Tests:** `cd backend && npm test` (86 unit tests, 12 suites, no DB required)
 
 ---
 
@@ -62,6 +62,14 @@ cd frontend && flutter run -d chrome
 - `conversationsService.delete()` deletes msgs first (no cascade)
 - Chat services: critical failures stop execution; non-critical (emit lists) log and continue
 - Skip server-side link preview when `encryptedContent` present (server can't read content)
+- `handleMessageDelivered` verifies caller is recipient (not sender) — ownership enforced
+- `handleStartConversation` requires friendship — blocks strangers from opening DMs
+- OTP claim is atomic: `UPDATE ... WHERE id = (SELECT ... LIMIT 1) RETURNING *` in `key-bundles.service.ts`
+- `isBlockedByEither` uses single OR query (one DB round-trip, not two)
+- `_conversationsWithUnread` uses `Promise.all` — parallel, not sequential
+- `findByConversation` uses DB-level `skip`/`take` when no hidden messages
+- `og:image` from link preview validated via `isSafeImageUrl` (HTTPS + non-private host only); IPv6 brackets stripped before regex
+- WS rate limiting: `WsThrottlerGuard` on `sendMessage` and `sendPing` (extends ThrottlerGuard via `getRequestResponse`+`getTracker`)
 
 ### E2E Encryption
 - `EncryptionService.decrypt()` returns `Future` — must use async patterns
@@ -70,6 +78,8 @@ cd frontend && flutter run -d chrome
 - Conversation list shows "Encrypted message" for encrypted lastMessage (not decrypted at list level)
 - Session establishment uses Completer with 10s timeout — on failure, message marked as failed (no unencrypted fallback)
 - Keys NOT cleared on logout (persist for re-login). Only cleared on account deletion via `clearEncryptionKeys()`
+- All Signal store keys use `e2e_${userId}_` prefix — multi-account isolation in same browser
+- `clearAllKeys()` uses selective deletion (reads all, deletes by prefix) — never wipes other data
 
 ---
 
