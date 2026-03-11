@@ -6,7 +6,10 @@ import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'encryption/signal_stores.dart';
 
 class EncryptionService {
+  /// Batch size for replenishment (preKeysLow). Server threshold is 10.
   static const int _preKeyBatchSize = 100;
+  /// Smaller initial batch for fresh install — faster startup, preKeysLow replenishes when low.
+  static const int _initialPreKeyBatchSize = 20;
   static const int _deviceId = 1;
 
   final FlutterSecureStorage _storage = const FlutterSecureStorage();
@@ -68,16 +71,16 @@ class EncryptionService {
     await _signedPreKeyStore.storeSignedPreKey(
         signedPreKey.id, signedPreKey);
 
-    // Generate one-time pre-keys (ids 0..99)
-    final preKeys = generatePreKeys(0, _preKeyBatchSize);
-    for (final pk in preKeys) {
-      await _preKeyStore.storePreKey(pk.id, pk);
-    }
+    // Generate one-time pre-keys (smaller batch for fast startup; preKeysLow replenishes)
+    final preKeys = generatePreKeys(0, _initialPreKeyBatchSize);
+    await Future.wait(
+      preKeys.map((pk) => _preKeyStore.storePreKey(pk.id, pk)),
+    );
 
     // Save next pre-key id
     await _storage.write(
       key: 'e2e_${uid}_next_pre_key_id',
-      value: _preKeyBatchSize.toString(),
+      value: _initialPreKeyBatchSize.toString(),
     );
 
     // Prepare public data for server upload
@@ -188,8 +191,13 @@ class EncryptionService {
     final nextId = int.parse(nextIdStr ?? '100');
 
     final preKeys = generatePreKeys(nextId, _preKeyBatchSize);
-    for (final pk in preKeys) {
-      await _preKeyStore.storePreKey(pk.id, pk);
+    // Parallel writes (chunked to avoid overwhelming secure storage)
+    const chunkSize = 25;
+    for (var i = 0; i < preKeys.length; i += chunkSize) {
+      final chunk = preKeys.skip(i).take(chunkSize).toList();
+      await Future.wait(
+        chunk.map((pk) => _preKeyStore.storePreKey(pk.id, pk)),
+      );
     }
 
     await _storage.write(

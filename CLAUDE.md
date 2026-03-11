@@ -74,6 +74,8 @@ cd frontend && flutter run -d chrome
 - Raw SQL in `markConversationAsReadFromSender`: use `"deliveryStatus"` (quoted) — PostgreSQL column is camelCase
 
 ### E2E Encryption
+- Fresh install: 20 one-time pre-keys (not 100) for fast startup; preKeysLow replenishes when < 10
+- Pre-key storage: parallel writes (Future.wait); replenishment uses chunked parallel (25 at a time)
 - `EncryptionService.decrypt()` returns `Future` — must use async patterns
 - Message history decrypts async: renders immediately, then decrypts in-place with `notifyListeners()`
 - Own messages skip decryption (sender has plaintext from optimistic display)
