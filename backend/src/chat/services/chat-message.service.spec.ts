@@ -1,9 +1,8 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { MessagesService } from '../../messages/messages.service';
 import { ConversationsService } from '../../conversations/conversations.service';
-import { FriendsService } from '../../friends/friends.service';
+import { ChatValidationService } from './chat-validation.service';
 import { UsersService } from '../../users/users.service';
-import { BlockedService } from '../../blocked/blocked.service';
 import { LinkPreviewService } from './link-preview.service';
 import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
 import { ChatMessageService } from './chat-message.service';
@@ -17,7 +16,7 @@ describe('ChatMessageService', () => {
   let service: ChatMessageService;
   let messagesService: jest.Mocked<MessagesService>;
   let conversationsService: jest.Mocked<ConversationsService>;
-  let friendsService: jest.Mocked<FriendsService>;
+  let chatValidationService: jest.Mocked<ChatValidationService>;
   let usersService: jest.Mocked<UsersService>;
 
   const mockSender: Partial<User> = { id: 1, username: 'alice' };
@@ -66,16 +65,12 @@ describe('ChatMessageService', () => {
           },
         },
         {
-          provide: FriendsService,
-          useValue: { areFriends: jest.fn() },
+          provide: ChatValidationService,
+          useValue: { validateCanMessage: jest.fn().mockResolvedValue({ valid: true }) },
         },
         {
           provide: UsersService,
           useValue: { findById: jest.fn() },
-        },
-        {
-          provide: BlockedService,
-          useValue: { isBlockedByEither: jest.fn().mockResolvedValue(false) },
         },
         {
           provide: LinkPreviewService,
@@ -91,7 +86,7 @@ describe('ChatMessageService', () => {
     service = module.get<ChatMessageService>(ChatMessageService);
     messagesService = module.get(MessagesService);
     conversationsService = module.get(ConversationsService);
-    friendsService = module.get(FriendsService);
+    chatValidationService = module.get(ChatValidationService);
     usersService = module.get(UsersService);
     jest.clearAllMocks();
   });
@@ -123,7 +118,7 @@ describe('ChatMessageService', () => {
     });
 
     it('should accept valid Cloudinary mediaUrl and create message', async () => {
-      friendsService.areFriends.mockResolvedValue(true);
+      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
       usersService.findById
         .mockResolvedValueOnce(mockSender as User)
         .mockResolvedValueOnce(mockRecipient as User);
@@ -158,7 +153,7 @@ describe('ChatMessageService', () => {
       expect(mockClient.emit).toHaveBeenCalledWith('messageSent', expect.any(Object));
     });
     it('should pass encryptedContent to create and store [encrypted] as content', async () => {
-      friendsService.areFriends.mockResolvedValue(true);
+      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
       usersService.findById
         .mockResolvedValueOnce(mockSender as User)
         .mockResolvedValueOnce(mockRecipient as User);
@@ -196,7 +191,7 @@ describe('ChatMessageService', () => {
 
     it('should skip link preview when encryptedContent is present', async () => {
       const linkPreviewService = { fetchPreview: jest.fn() };
-      friendsService.areFriends.mockResolvedValue(true);
+      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
       usersService.findById
         .mockResolvedValueOnce(mockSender as User)
         .mockResolvedValueOnce(mockRecipient as User);

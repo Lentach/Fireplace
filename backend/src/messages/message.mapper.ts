@@ -32,6 +32,7 @@ export class MessageMapper {
 
     if (message.replyTo) {
       const rt = message.replyTo;
+      payload.replyToMessageId = rt.id;
       const contentPreview =
         rt.content && rt.messageType === 'TEXT'
           ? rt.content.substring(0, 150)

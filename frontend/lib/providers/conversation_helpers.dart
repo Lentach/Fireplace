@@ -18,9 +18,3 @@ String getOtherUserUsername(ConversationModel conv, int? currentUserId) {
   final other = getOtherUser(conv, currentUserId);
   return other?.username ?? '';
 }
-
-String getOtherUserDisplayHandle(ConversationModel conv, int? currentUserId) {
-  if (currentUserId == null) return '';
-  final other = getOtherUser(conv, currentUserId);
-  return other?.displayHandle ?? '';
-}

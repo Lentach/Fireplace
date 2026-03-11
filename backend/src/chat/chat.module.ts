@@ -5,6 +5,7 @@ import { ChatMessageService } from './services/chat-message.service';
 import { ChatFriendRequestService } from './services/chat-friend-request.service';
 import { ChatConversationService } from './services/chat-conversation.service';
 import { ChatKeyExchangeService } from './services/chat-key-exchange.service';
+import { ChatValidationModule } from './chat-validation.module';
 import { LinkPreviewModule } from './services/link-preview.module';
 import { AuthModule } from '../auth/auth.module';
 import { UsersModule } from '../users/users.module';
@@ -23,6 +24,7 @@ import { PushNotificationsModule } from '../push-notifications/push-notification
     MessagesModule,
     FriendsModule,
     BlockedModule,
+    ChatValidationModule,
     KeyBundlesModule,
     LinkPreviewModule,
     PushNotificationsModule,

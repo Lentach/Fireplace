@@ -3,8 +3,8 @@ import { Server, Socket } from 'socket.io';
 import { ConversationsService } from '../../conversations/conversations.service';
 import { MessagesService } from '../../messages/messages.service';
 import { UsersService } from '../../users/users.service';
-import { FriendsService } from '../../friends/friends.service';
 import { BlockedService } from '../../blocked/blocked.service';
+import { ChatValidationService } from './chat-validation.service';
 import { validateDto } from '../utils/dto.validator';
 import {
   StartConversationDto,
@@ -21,8 +21,8 @@ export class ChatConversationService {
     private readonly conversationsService: ConversationsService,
     private readonly messagesService: MessagesService,
     private readonly usersService: UsersService,
-    private readonly friendsService: FriendsService,
     private readonly blockedService: BlockedService,
+    private readonly chatValidationService: ChatValidationService,
   ) {}
 
   async handleStartConversation(
@@ -50,18 +50,12 @@ export class ChatConversationService {
       return;
     }
 
-    const blocked = await this.blockedService.isBlockedByEither(
+    const validation = await this.chatValidationService.validateCanMessage(
       userId,
       data.recipientId,
     );
-    if (blocked) {
-      client.emit('error', { message: 'Cannot message this user' });
-      return;
-    }
-
-    const areFriends = await this.friendsService.areFriends(userId, data.recipientId);
-    if (!areFriends) {
-      client.emit('error', { message: 'You can only start conversations with friends' });
+    if (!validation.valid) {
+      client.emit('error', { message: validation.error });
       return;
     }
 

@@ -2,8 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { MessagesService } from '../../messages/messages.service';
 import { ConversationsService } from '../../conversations/conversations.service';
-import { FriendsService } from '../../friends/friends.service';
-import { BlockedService } from '../../blocked/blocked.service';
+import { ChatValidationService } from './chat-validation.service';
 import { UsersService } from '../../users/users.service';
 import { LinkPreviewService } from './link-preview.service';
 import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
@@ -20,8 +19,7 @@ export class ChatMessageService {
   constructor(
     private readonly messagesService: MessagesService,
     private readonly conversationsService: ConversationsService,
-    private readonly friendsService: FriendsService,
-    private readonly blockedService: BlockedService,
+    private readonly chatValidationService: ChatValidationService,
     private readonly usersService: UsersService,
     private readonly linkPreviewService: LinkPreviewService,
     private readonly pushNotificationsService: PushNotificationsService,
@@ -44,24 +42,12 @@ export class ChatMessageService {
       return;
     }
 
-    const blocked = await this.blockedService.isBlockedByEither(
+    const validation = await this.chatValidationService.validateCanMessage(
       senderId,
       data.recipientId,
     );
-    if (blocked) {
-      client.emit('error', {
-        message: 'Cannot message this user',
-      });
-      return;
-    }
-    const areFriends = await this.friendsService.areFriends(
-      senderId,
-      data.recipientId,
-    );
-    if (!areFriends) {
-      client.emit('error', {
-        message: 'You can only message friends',
-      });
+    if (!validation.valid) {
+      client.emit('error', { message: validation.error });
       return;
     }
 
@@ -235,21 +221,12 @@ export class ChatMessageService {
 
     const { recipientId } = data;
 
-    const blocked = await this.blockedService.isBlockedByEither(
+    const validation = await this.chatValidationService.validateCanMessage(
       user.id,
       recipientId,
     );
-    if (blocked) {
-      client.emit('error', { message: 'Cannot message this user' });
-      return;
-    }
-    // Check if friends
-    const areFriends = await this.friendsService.areFriends(
-      user.id,
-      recipientId,
-    );
-    if (!areFriends) {
-      client.emit('error', { message: 'You can only ping friends' });
+    if (!validation.valid) {
+      client.emit('error', { message: validation.error });
       return;
     }
 

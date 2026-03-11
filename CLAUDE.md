@@ -45,6 +45,7 @@ cd frontend && flutter run -d chrome
 - `synchronize: true` — column additions auto-apply on restart. No migrations
 
 ### Frontend
+- `file_utils_stub.dart` / `file_utils_io.dart` — conditional import for temp file deletion (web: no-op; native: dart:io)
 - Use `showTopSnackBar()` — ScaffoldMessenger covers chat input bar
 - `enableForceNew()` on Socket.IO reconnect — Dart caches socket by URL, old JWT reused
 - Provider can't call Navigator — use `consumePendingOpen()` / `consumeFriendRequestSent()` patterns
@@ -58,6 +59,7 @@ cd frontend && flutter run -d chrome
 - Mobile _openChat: only Navigator.push; ChatDetailScreen initState calls openConversation (avoids double getMessages and decrypt loop)
 
 ### Backend
+- `ChatValidationService.validateCanMessage(senderId, recipientId)` — shared validation for blocked + friends; used by sendMessage, sendPing, startConversation, image/voice upload
 - mediaUrl must be Cloudinary URL when provided — prevents SSRF; validated via `@Matches` regex
 - Delete account cascade: key bundles -> OTPs -> msgs -> convs -> friend_reqs -> user (no cascade on User entity)
 - `conversationsService.delete()` deletes msgs first (no cascade)
@@ -140,7 +142,7 @@ flowchart TB
 | **Key Bundles** | `key-bundles/key-bundle.entity.ts`, `key-bundles/one-time-pre-key.entity.ts`, `key-bundles/key-bundles.service.ts` |
 | **Mappers** | `chat/mappers/{conversation,user,friend-request}.mapper.ts`, `messages/message.mapper.ts` |
 | **FCM/Push** | `fcm-tokens/fcm-token.entity.ts`, `fcm-tokens/fcm-tokens.service.ts`, `push-notifications/push-notifications.service.ts` |
-| **Utils** | `chat/utils/dto.validator.ts`, `chat/services/link-preview.service.ts`, `cloudinary/cloudinary.service.ts`, `app.module.ts` |
+| **Utils** | `chat/utils/dto.validator.ts`, `chat/services/chat-validation.service.ts`, `chat/services/link-preview.service.ts`, `cloudinary/cloudinary.service.ts`, `app.module.ts` |
 
 ### Frontend (`frontend/lib/`)
 
@@ -425,7 +427,7 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/voi
 - No message edit, no fuzzy search, no iOS APNs
 - No unique constraint on `(sender, receiver)` in friend_requests
 - Pagination: simple limit/offset (default 50), N+1 in `_conversationsWithUnread()`
-- Large files: `chat_provider.dart` (~750 lines), `chat-friend-request.service.ts` (~428 lines)
+- Large files: `chat_provider.dart` (~1512 lines), `chat-friend-request.service.ts` (~428 lines)
 - Reply-to preview leaks content to server (should show "Encrypted message")
 - Migration scripts in `backend/scripts/` (manual)
 

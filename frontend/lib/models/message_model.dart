@@ -151,8 +151,6 @@ class MessageModel {
     }
   }
 
-  static MessageType parseMessageType(String? type) => _parseMessageType(type);
-
   static MessageType _parseMessageType(String? type) {
     switch (type?.toUpperCase()) {
       case 'PING':

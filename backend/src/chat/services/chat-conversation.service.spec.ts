@@ -3,14 +3,13 @@ import { ChatConversationService } from './chat-conversation.service';
 import { ConversationsService } from '../../conversations/conversations.service';
 import { MessagesService } from '../../messages/messages.service';
 import { UsersService } from '../../users/users.service';
-import { FriendsService } from '../../friends/friends.service';
 import { BlockedService } from '../../blocked/blocked.service';
+import { ChatValidationService } from './chat-validation.service';
 import { Socket, Server } from 'socket.io';
 
 describe('ChatConversationService', () => {
   let service: ChatConversationService;
-  let friendsService: jest.Mocked<FriendsService>;
-  let blockedService: jest.Mocked<BlockedService>;
+  let chatValidationService: jest.Mocked<ChatValidationService>;
   let usersService: jest.Mocked<UsersService>;
   let conversationsService: jest.Mocked<ConversationsService>;
   let mockClient: Partial<Socket>;
@@ -38,14 +37,22 @@ describe('ChatConversationService', () => {
           },
         },
         { provide: UsersService, useValue: { findById: jest.fn() } },
-        { provide: FriendsService, useValue: { areFriends: jest.fn() } },
-        { provide: BlockedService, useValue: { isBlockedByEither: jest.fn() } },
+        {
+          provide: BlockedService,
+          useValue: {
+            getBlockedUserIds: jest.fn().mockResolvedValue([]),
+            getBlockedByUserIds: jest.fn().mockResolvedValue([]),
+          },
+        },
+        {
+          provide: ChatValidationService,
+          useValue: { validateCanMessage: jest.fn().mockResolvedValue({ valid: true }) },
+        },
       ],
     }).compile();
 
     service = module.get(ChatConversationService);
-    friendsService = module.get(FriendsService) as jest.Mocked<FriendsService>;
-    blockedService = module.get(BlockedService) as jest.Mocked<BlockedService>;
+    chatValidationService = module.get(ChatValidationService) as jest.Mocked<ChatValidationService>;
     usersService = module.get(UsersService) as jest.Mocked<UsersService>;
     conversationsService = module.get(ConversationsService) as jest.Mocked<ConversationsService>;
   });
@@ -55,8 +62,10 @@ describe('ChatConversationService', () => {
       usersService.findById
         .mockResolvedValueOnce({ id: 1, username: 'alice' } as any)
         .mockResolvedValueOnce({ id: 2, username: 'bob' } as any);
-      blockedService.isBlockedByEither.mockResolvedValue(false);
-      friendsService.areFriends.mockResolvedValue(false);
+      chatValidationService.validateCanMessage.mockResolvedValue({
+        valid: false,
+        error: 'You can only message friends',
+      });
 
       await service.handleStartConversation(
         mockClient as any,
@@ -65,10 +74,10 @@ describe('ChatConversationService', () => {
         new Map(),
       );
 
-      expect(friendsService.areFriends).toHaveBeenCalledWith(1, 2);
+      expect(chatValidationService.validateCanMessage).toHaveBeenCalledWith(1, 2);
       expect(mockClient.emit).toHaveBeenCalledWith(
         'error',
-        { message: 'You can only start conversations with friends' },
+        { message: 'You can only message friends' },
       );
       expect(conversationsService.findOrCreate).not.toHaveBeenCalled();
     });
@@ -77,8 +86,7 @@ describe('ChatConversationService', () => {
       usersService.findById
         .mockResolvedValueOnce({ id: 1, username: 'alice' } as any)
         .mockResolvedValueOnce({ id: 2, username: 'bob' } as any);
-      blockedService.isBlockedByEither.mockResolvedValue(false);
-      friendsService.areFriends.mockResolvedValue(true);
+      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
       conversationsService.findOrCreate.mockResolvedValue({ id: 10 } as any);
 
       await service.handleStartConversation(

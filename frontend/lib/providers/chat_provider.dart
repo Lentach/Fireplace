@@ -1,8 +1,8 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:io';
 
 import 'package:flutter/foundation.dart';
+import '../utils/file_utils_stub.dart' if (dart.library.io) '../utils/file_utils_io.dart' as file_utils;
 import 'package:image_picker/image_picker.dart';
 import '../config/app_config.dart';
 import '../constants/app_constants.dart';
@@ -26,8 +26,8 @@ class ChatProvider extends ChangeNotifier {
 
   final SocketService _socketService = SocketService();
   final ChatReconnectManager _reconnect = ChatReconnectManager();
-  late final PushService _pushService =
-      PushService(ApiService(baseUrl: AppConfig.baseUrl));
+  late final ApiService _api = ApiService(baseUrl: AppConfig.baseUrl);
+  late final PushService _pushService = PushService(_api);
   bool _pushInitialized = false;
 
   // ---------- E2E Encryption ----------
@@ -287,9 +287,6 @@ class ChatProvider extends ChangeNotifier {
 
   String getOtherUserUsername(ConversationModel conv) =>
       conv_helpers.getOtherUserUsername(conv, _currentUserId);
-
-  String getOtherUserDisplayHandle(ConversationModel conv) =>
-      conv_helpers.getOtherUserDisplayHandle(conv, _currentUserId);
 
   int getOtherUserId(ConversationModel conv) =>
       conv_helpers.getOtherUserId(conv, _currentUserId);
@@ -834,8 +831,7 @@ class ChatProvider extends ChangeNotifier {
         throw Exception('No authentication token available');
       }
 
-      final api = ApiService(baseUrl: AppConfig.baseUrl);
-      final result = await api.uploadVoiceMessage(
+      final result = await _api.uploadVoiceMessage(
         token: _reconnect.tokenForReconnect!,
         duration: duration,
         recipientId: recipientId,
@@ -868,10 +864,7 @@ class ChatProvider extends ChangeNotifier {
 
       // 6. Delete temp file after successful upload (native only; web uses blob)
       if (!kIsWeb && localAudioPath != null) {
-        final file = File(localAudioPath);
-        if (await file.exists()) {
-          await file.delete();
-        }
+        await file_utils.deleteFileIfExists(localAudioPath);
       }
     } catch (e) {
       // 7. Mark as failed, keep local file for retry
@@ -965,13 +958,11 @@ class ChatProvider extends ChangeNotifier {
     XFile imageFile,
     int recipientId,
   ) async {
-    final api = ApiService(baseUrl: AppConfig.baseUrl);
-
     // Use conversation disappearing timer
     final effectiveExpiresIn = conversationDisappearingTimer;
 
     try {
-      final response = await api.uploadImageMessage(
+      final response = await _api.uploadImageMessage(
         token,
         imageFile,
         recipientId,

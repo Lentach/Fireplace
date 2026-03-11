@@ -15,7 +15,7 @@ import { MessagesService } from './messages.service';
 import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { UsersService } from '../users/users.service';
-import { FriendsService } from '../friends/friends.service';
+import { ChatValidationService } from '../chat/services/chat-validation.service';
 import { MessageType } from './message.entity';
 import { MessageMapper } from './message.mapper';
 
@@ -26,7 +26,7 @@ export class MessagesController {
     private cloudinaryService: CloudinaryService,
     private conversationsService: ConversationsService,
     private usersService: UsersService,
-    private friendsService: FriendsService,
+    private chatValidationService: ChatValidationService,
   ) {}
 
   @Post('image')
@@ -59,13 +59,12 @@ export class MessagesController {
       throw new BadRequestException('Recipient not found');
     }
 
-    // Verify friend relationship
-    const areFriends = await this.friendsService.areFriends(
+    const validation = await this.chatValidationService.validateCanMessage(
       sender.id,
       recipient.id,
     );
-    if (!areFriends) {
-      throw new BadRequestException('You can only send images to friends');
+    if (!validation.valid) {
+      throw new BadRequestException(validation.error);
     }
 
     // Upload to Cloudinary
@@ -136,9 +135,12 @@ export class MessagesController {
       throw new BadRequestException('Recipient not found');
     }
 
-    const areFriends = await this.friendsService.areFriends(sender.id, recipient.id);
-    if (!areFriends) {
-      throw new BadRequestException('You can only send voice messages to friends');
+    const validation = await this.chatValidationService.validateCanMessage(
+      sender.id,
+      recipient.id,
+    );
+    if (!validation.valid) {
+      throw new BadRequestException(validation.error);
     }
 
     const durationNum = parseInt(duration, 10);
