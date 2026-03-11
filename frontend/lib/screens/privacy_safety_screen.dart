@@ -126,6 +126,17 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
                   'Media files (images, voice messages, drawings) are not '
                   'yet encrypted end-to-end.',
             ),
+            const SizedBox(height: 16),
+
+            _buildInfoCard(
+              context,
+              icon: Icons.info_outline,
+              title: 'What the server stores (metadata)',
+              description:
+                  'To deliver messages, the server stores: who is in each '
+                  'conversation, when messages were sent, and delivery status. '
+                  'Message content is never visible to the server.',
+            ),
             const SizedBox(height: 32),
 
             // Fingerprint section

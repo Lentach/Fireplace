@@ -430,6 +430,7 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/voi
 - Pagination: simple limit/offset (default 50), N+1 in `_conversationsWithUnread()`
 - Large files: `chat_provider.dart` (~1512 lines), `chat-friend-request.service.ts` (~428 lines)
 - Migration scripts in `backend/scripts/` (manual)
+- Metadata: server stores who, with whom, when, conversation structure (see `docs/METADATA.md`); design for future options in `docs/plans/2026-03-11-metadata-privacy-design.md`
 
 ---
 
