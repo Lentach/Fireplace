@@ -21,12 +21,11 @@ services:
     environment:
       DB_HOST: db
       DB_PORT: '5432'
-      DB_USER: postgres
-      DB_PASS: postgres
-      DB_NAME: chatdb
-      JWT_SECRET: my-super-secret-jwt-key-change-in-production
-      # Include your machine IP so phone browser can call API (e.g. 192.168.1.11)
-      ALLOWED_ORIGINS: 'http://localhost:3000,http://127.0.0.1:8080,http://127.0.0.1:8081,http://192.168.1.11:3000,http://192.168.1.11:8080,http://192.168.1.11:8081'
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASS: ${DB_PASS:-postgres}
+      DB_NAME: ${DB_NAME:-chatdb}
+      JWT_SECRET: ${JWT_SECRET:-my-super-secret-jwt-key-change-in-production}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
       CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
       CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
       CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
