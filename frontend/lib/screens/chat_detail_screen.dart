@@ -387,13 +387,26 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           Expanded(
             child: Container(
               color: messagesAreaBg,
-              child: messages.isEmpty
-                  ? Center(
-                      child: Text(
-                        'No messages yet',
-                        style: RpgTheme.bodyFont(
-                          fontSize: 14,
-                          color: mutedColor,
+              child: RefreshIndicator(
+                onRefresh: () async {
+                  context.read<ChatProvider>().openConversation(widget.conversationId);
+                  await Future.delayed(const Duration(milliseconds: 800));
+                },
+                child: messages.isEmpty
+                  ? LayoutBuilder(
+                      builder: (context, constraints) => SingleChildScrollView(
+                        physics: const AlwaysScrollableScrollPhysics(),
+                        child: SizedBox(
+                          height: constraints.maxHeight,
+                          child: Center(
+                            child: Text(
+                              'No messages yet',
+                              style: RpgTheme.bodyFont(
+                                fontSize: 14,
+                                color: mutedColor,
+                              ),
+                            ),
+                          ),
                         ),
                       ),
                     )
@@ -425,6 +438,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                         );
                       },
                     ),
+              ),
             ),
           ),
           if (otherUser != null && chat.blockedByUserIds.contains(otherUser.id))
