@@ -30,7 +30,7 @@ function isSafeImageUrl(url: string): boolean {
   }
 }
 
-function parseOgMeta(html: string): {
+function parseOgMeta(html: string, pageUrl: string): {
   title: string | null;
   imageUrl: string | null;
 } {
@@ -40,14 +40,27 @@ function parseOgMeta(html: string): {
     html.match(/<title[^>]*>([^<]+)<\/title>/i)?.[1] ??
     null;
 
-  const imageUrl =
+  const rawImageUrl =
     html.match(/<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']+)["']/i)?.[1] ??
     html.match(/<meta[^>]+content=["']([^"']+)["'][^>]+property=["']og:image["']/i)?.[1] ??
     null;
 
+  const imageUrl = rawImageUrl
+    ? (() => {
+        try {
+          const resolved = rawImageUrl.startsWith('http')
+            ? rawImageUrl
+            : new URL(rawImageUrl.trim(), pageUrl).href;
+          return isSafeImageUrl(resolved) ? resolved : null;
+        } catch {
+          return null;
+        }
+      })()
+    : null;
+
   return {
     title: title ? title.trim().substring(0, 200) : null,
-    imageUrl: imageUrl && isSafeImageUrl(imageUrl.trim()) ? imageUrl.trim() : null,
+    imageUrl,
   };
 }
 
@@ -93,7 +106,7 @@ export class LinkPreviewService {
       }
       reader.cancel();
 
-      const { title, imageUrl } = parseOgMeta(html);
+      const { title, imageUrl } = parseOgMeta(html, url);
       if (!title && !imageUrl) return null;
 
       return { url, title, imageUrl };

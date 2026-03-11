@@ -168,12 +168,13 @@ class ChatProvider extends ChangeNotifier {
   // ---------- Message handlers (socket events) ----------
 
   void _handleIncomingMessage(dynamic data) {
-    final msg = MessageModel.fromJson(data as Map<String, dynamic>);
+    final dataMap = data as Map<String, dynamic>;
+    final msg = MessageModel.fromJson(dataMap);
     // Queue incoming encrypted messages for active conversation while we're decrypting history (so history decrypt runs first and session order is preserved).
     if (_decryptingHistory &&
         msg.conversationId == _activeConversationId &&
         msg.needsDecryption(_currentUserId)) {
-      _incomingMessageQueue.add(data as Map<String, dynamic>);
+      _incomingMessageQueue.add(dataMap);
       return;
     }
     _e2eFlowLog('RECV_MSG', {
@@ -1414,11 +1415,20 @@ class ChatProvider extends ChangeNotifier {
       try {
         final parsed = E2eEnvelope.parse(plaintext);
         _e2eFlowLog('DECRYPT_OK', {'msgId': msg.id, 'contentLength': parsed.content.length});
+        // SSRF: validate imageUrl before storing (defense in depth for old/untrusted envelopes)
+        final safeImageUrl = parsed.linkPreviewImageUrl != null &&
+                parsed.linkPreviewUrl != null &&
+                LinkPreviewService.isSafeImageUrl(
+                  parsed.linkPreviewImageUrl,
+                  parsed.linkPreviewUrl,
+                )
+            ? parsed.linkPreviewImageUrl
+            : null;
         final decryptedMsg = msg.copyWith(
           content: parsed.content,
           linkPreviewUrl: parsed.linkPreviewUrl,
           linkPreviewTitle: parsed.linkPreviewTitle,
-          linkPreviewImageUrl: parsed.linkPreviewImageUrl,
+          linkPreviewImageUrl: safeImageUrl,
         );
         _decryptedContentCache[msg.id] = decryptedMsg;
         await _persistDecryptedContent(decryptedMsg);
@@ -1437,11 +1447,19 @@ class ChatProvider extends ChangeNotifier {
       final persisted = await _encryptionService.getDecryptedContent(msg.id);
       final persistedContent = persisted?['content'] as String? ?? '';
       if (persisted != null && persistedContent.isNotEmpty) {
+        // SSRF: validate imageUrl when restoring from persistence (defense in depth for old data)
+        final rawImageUrl = persisted['linkPreviewImageUrl'] as String?;
+        final rawPageUrl = persisted['linkPreviewUrl'] as String?;
+        final safeImageUrl = rawImageUrl != null &&
+                rawPageUrl != null &&
+                LinkPreviewService.isSafeImageUrl(rawImageUrl, rawPageUrl)
+            ? rawImageUrl
+            : null;
         final restored = msg.copyWith(
           content: persistedContent,
           linkPreviewUrl: persisted['linkPreviewUrl'] as String?,
           linkPreviewTitle: persisted['linkPreviewTitle'] as String?,
-          linkPreviewImageUrl: persisted['linkPreviewImageUrl'] as String?,
+          linkPreviewImageUrl: safeImageUrl,
         );
         _decryptedContentCache[msg.id] = restored;
         return restored;

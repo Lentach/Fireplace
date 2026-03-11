@@ -6,7 +6,9 @@ export function validateDto<T extends object>(
   dtoClass: new () => T,
   data: unknown,
 ): T {
-  const instance = plainToInstance(dtoClass, data);
+  const instance = plainToInstance(dtoClass, data, {
+    enableImplicitConversion: true,
+  });
   const errors = validateSync(instance);
 
   if (errors.length > 0) {

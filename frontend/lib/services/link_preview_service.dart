@@ -13,6 +13,25 @@ class LinkPreviewService {
     caseSensitive: false,
   );
 
+  /// SSRF protection: only HTTPS, no private IPs.
+  /// [pageUrl] used to resolve relative imageUrl (e.g. /image.png).
+  static bool isSafeImageUrl(String? imageUrl, [String? pageUrl]) {
+    if (imageUrl == null || imageUrl.isEmpty) return false;
+    try {
+      final Uri? resolved = pageUrl != null
+          ? Uri.parse(pageUrl).resolve(imageUrl.trim())
+          : Uri.tryParse(imageUrl.trim());
+      if (resolved == null) return false;
+      if (resolved.scheme != 'https') return false;
+      final host = resolved.host;
+      if (host.isEmpty) return false;
+      final hostNorm = host.startsWith('[') ? host.substring(1, host.length - 1) : host;
+      return !_privateIpRegex.hasMatch(hostNorm);
+    } catch (_) {
+      return false;
+    }
+  }
+
   /// Extract first URL from text, fetch OG metadata, return preview or null.
   static Future<Map<String, String?>?> fetchPreview(String text) async {
     final match = _urlRegex.firstMatch(text);
@@ -42,7 +61,10 @@ class LinkPreviewService {
           response.body.substring(0, min(response.body.length, 100000));
 
       final title = _extractOgTag(html, 'og:title') ?? _extractTitle(html);
-      final imageUrl = _extractOgTag(html, 'og:image');
+      final rawImageUrl = _extractOgTag(html, 'og:image');
+      final imageUrl = rawImageUrl != null && isSafeImageUrl(rawImageUrl, url)
+          ? rawImageUrl
+          : null;
 
       if (title == null && imageUrl == null) return null;
 

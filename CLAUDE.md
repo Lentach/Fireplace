@@ -31,7 +31,7 @@ cd frontend && flutter run -d chrome
 
 **Phone (same WiFi):** `cd frontend && .\run_web_for_phone.ps1` or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`
 
-**Tests:** `cd backend && npm test` (86 unit tests, 12 suites, no DB required)
+**Tests:** `cd backend && npm test` (111 unit tests, 14 suites, no DB required); `cd frontend && flutter test` (23 tests)
 
 ---
 
@@ -72,7 +72,7 @@ cd frontend && flutter run -d chrome
 - `isBlockedByEither` uses single OR query (one DB round-trip, not two)
 - `_conversationsWithUnread` uses `Promise.all` — parallel, not sequential
 - `findByConversation` uses DB-level `skip`/`take` when no hidden messages
-- `og:image` from link preview validated via `isSafeImageUrl` (HTTPS + non-private host only); IPv6 brackets stripped before regex
+- `og:image` from link preview validated via `isSafeImageUrl` (HTTPS + non-private host only); IPv6 brackets stripped before regex; backend resolves relative og:image URLs using pageUrl
 - WS rate limiting: `WsThrottlerGuard` on `sendMessage` and `sendPing` — provides mock `res` with no-op `header()` (Socket has no such method; ThrottlerGuard expects it)
 - Raw SQL in `markConversationAsReadFromSender`: use `"deliveryStatus"` (quoted) — PostgreSQL column is camelCase
 
@@ -385,7 +385,7 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/voi
 - **Reactions:** Long-press message -> 6 emoji picker. Max 1 per user. `reactions` column (JSON). `addReaction`/`removeReaction` events.
 - **Typing indicators:** 300ms debounce, 3s auto-clear. Backend relay only (no DB). `typing` -> `partnerTyping`.
 - **Unread badge:** Backend `countUnreadForRecipient()`. Frontend `_unreadCounts` map.
-- **Link preview:** Client-side OG fetch before encryption. Stored in `linkPreview*` columns. `linkPreviewReady` event for unencrypted.
+- **Link preview:** E2E: client fetches OG before encrypting, stores in envelope; recipient decrypts and displays. Unencrypted: server fetches, `linkPreviewReady` event. SSRF: `isSafeImageUrl` on og:image (frontend + backend); frontend validates when restoring from persisted decrypted content.
 - **Image messages:** POST /messages/image. Verifies friend relationship. `messageType=IMAGE`.
 - **Ping:** Empty content, `messageType=PING`. Uses conversation's `disappearingTimer`.
 - **Push (FCM):** Silent payload (no content). Gracefully disabled without `FIREBASE_SERVICE_ACCOUNT`. Firebase config in gitignored `firebase_secrets.dart` / `firebase-config.js`.

@@ -6,6 +6,7 @@ import '../theme/rpg_theme.dart';
 import '../models/message_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
+import '../services/link_preview_service.dart';
 import 'message_swipe_wrapper.dart';
 import 'voice_message_bubble.dart';
 
@@ -459,7 +460,11 @@ class ChatMessageBubble extends StatelessWidget {
             crossAxisAlignment: CrossAxisAlignment.start,
             mainAxisSize: MainAxisSize.min,
             children: [
-              if (message.linkPreviewImageUrl != null)
+              if (message.linkPreviewImageUrl != null &&
+                  LinkPreviewService.isSafeImageUrl(
+                    message.linkPreviewImageUrl,
+                    message.linkPreviewUrl,
+                  ))
                 Image.network(
                   message.linkPreviewImageUrl!,
                   width: double.infinity,

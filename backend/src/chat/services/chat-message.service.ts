@@ -9,6 +9,8 @@ import { PushNotificationsService } from '../../push-notifications/push-notifica
 import { validateDto } from '../utils/dto.validator';
 import { SendMessageDto, GetMessagesDto, ClearChatHistoryDto, DeleteMessageDto, AddReactionDto, RemoveReactionDto } from '../dto/chat.dto';
 import { SendPingDto } from '../dto/send-ping.dto';
+import { MessageDeliveredDto } from '../dto/message-delivered.dto';
+import { MarkConversationReadDto } from '../dto/mark-conversation-read.dto';
 import { MessageType, MessageDeliveryStatus } from '../../messages/message.entity';
 import { MessageMapper } from '../../messages/message.mapper';
 
@@ -283,14 +285,19 @@ export class ChatMessageService {
     if (!user) return;
     const userId: number = user.id;
 
-    const { messageId } = data;
-    if (!messageId) {
-      client.emit('error', { message: 'messageId is required' });
+    let messageId: number;
+    try {
+      const dto = validateDto(MessageDeliveredDto, data);
+      messageId = dto.messageId;
+    } catch (error) {
+      client.emit('error', { message: error.message });
       return;
     }
 
     // Verify caller is the recipient of this message
-    const message = await this.messagesService.findByIdWithConversation(messageId);
+    const message = await this.messagesService.findByIdWithConversation(
+      messageId,
+    );
     if (!message) return;
 
     const conv = message.conversation as any;
@@ -323,14 +330,17 @@ export class ChatMessageService {
     const user = client.data.user;
     if (!user) return;
 
-    const conversationId = data?.conversationId;
-    if (conversationId == null) {
-      client.emit('error', { message: 'conversationId is required' });
+    let conversationId: number;
+    try {
+      const dto = validateDto(MarkConversationReadDto, data);
+      conversationId = dto.conversationId;
+    } catch (error) {
+      client.emit('error', { message: error.message });
       return;
     }
 
     const conversation = await this.conversationsService.findById(
-      Number(conversationId),
+      conversationId,
     );
     if (!conversation) return;
 
@@ -347,7 +357,7 @@ export class ChatMessageService {
         : conversation.userOne.id;
 
     const updated = await this.messagesService.markConversationAsReadFromSender(
-      Number(conversationId),
+      conversationId,
       otherUserId,
     );
 
