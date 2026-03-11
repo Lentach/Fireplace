@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart';
-import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import '../config/app_config.dart';
 import '../constants/app_constants.dart';
@@ -393,6 +392,9 @@ class ChatProvider extends ChangeNotifier {
             .map((m) => MessageModel.fromJson(m as Map<String, dynamic>))
             .toList();
 
+        // Cancel any in-flight decrypt so we process the latest messages
+        if (_decryptingHistory) _decryptHistoryCancelled = true;
+
         // Don't re-add messages we already received as deleted (e.g. ping deleted by other user; late messageHistory can overwrite)
         _messages.removeWhere((m) => _deletedMessageIds.contains(m.id));
 
@@ -539,6 +541,14 @@ class ChatProvider extends ChangeNotifier {
   }
 
   // ---------- Open conversation & message list ----------
+
+  /// Sets active conversation without fetching messages. Use when ChatDetailScreen
+  /// will call openConversation (avoids double getMessages on desktop).
+  void setActiveConversation(int conversationId) {
+    _activeConversationId = conversationId;
+    _unreadCounts[conversationId] = 0;
+    notifyListeners();
+  }
 
   void openConversation(int conversationId, {int limit = AppConstants.messagePageSize}) {
     _activeConversationId = conversationId;
@@ -1369,6 +1379,8 @@ class ChatProvider extends ChangeNotifier {
     for (var i = 0; i < sorted.length; i++) {
       if (_decryptHistoryCancelled) break;
       final msg = sorted[i];
+      // Skip messages we already failed to decrypt (avoids repeated work and UI freeze)
+      if (msg.content == '[Decryption failed]') continue;
       if (msg.needsDecryption(_currentUserId)) {
         final decrypted = await _decryptMessageAsync(msg);
         final idx = _messages.indexWhere((m) => m.id == msg.id);

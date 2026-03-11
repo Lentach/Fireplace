@@ -55,6 +55,7 @@ cd frontend && flutter run -d chrome
 - `clearStatus()` in AuthProvider appears unused but is called from auth_screen.dart — DO NOT DELETE
 - Always run `flutter analyze` before deleting "unused" methods
 - Multiple backends: if weird data, kill local `node.exe`, use Docker only
+- Mobile _openChat: only Navigator.push; ChatDetailScreen initState calls openConversation (avoids double getMessages and decrypt loop)
 
 ### Backend
 - mediaUrl must be Cloudinary URL when provided — prevents SSRF; validated via `@Matches` regex
@@ -69,7 +70,8 @@ cd frontend && flutter run -d chrome
 - `_conversationsWithUnread` uses `Promise.all` — parallel, not sequential
 - `findByConversation` uses DB-level `skip`/`take` when no hidden messages
 - `og:image` from link preview validated via `isSafeImageUrl` (HTTPS + non-private host only); IPv6 brackets stripped before regex
-- WS rate limiting: `WsThrottlerGuard` on `sendMessage` and `sendPing` (extends ThrottlerGuard via `getRequestResponse`+`getTracker`)
+- WS rate limiting: `WsThrottlerGuard` on `sendMessage` and `sendPing` — provides mock `res` with no-op `header()` (Socket has no such method; ThrottlerGuard expects it)
+- Raw SQL in `markConversationAsReadFromSender`: use `"deliveryStatus"` (quoted) — PostgreSQL column is camelCase
 
 ### E2E Encryption
 - `EncryptionService.decrypt()` returns `Future` — must use async patterns

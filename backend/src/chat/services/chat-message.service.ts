@@ -107,6 +107,13 @@ export class ChatMessageService {
     const recipientSocketId = onlineUsers.get(data.recipientId);
     if (recipientSocketId) {
       server.to(recipientSocketId).emit('newMessage', messagePayload);
+      this.logger.log(
+        `[sendMessage] newMessage emitted to recipient ${data.recipientId} (socket ${recipientSocketId})`,
+      );
+    } else {
+      this.logger.log(
+        `[sendMessage] Recipient ${data.recipientId} NOT ONLINE - newMessage not emitted. Online userIds: [${Array.from(onlineUsers.keys()).join(', ')}]`,
+      );
     }
 
     // Always send push — when browser is minimized WebSocket stays connected but

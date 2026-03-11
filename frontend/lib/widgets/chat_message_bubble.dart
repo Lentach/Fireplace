@@ -159,7 +159,7 @@ class ChatMessageBubble extends StatelessWidget {
       onPressed: () {
         final chat = Provider.of<ChatProvider>(context, listen: false);
         if (message.tempId != null) {
-          chat.retryVoiceMessage(message.tempId!);
+          chat.retryFailedMessage(message.tempId!);
         }
       },
       icon: const Icon(Icons.refresh, size: 16),

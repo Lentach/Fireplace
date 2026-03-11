@@ -205,7 +205,7 @@ export class MessagesService {
       .update(Message)
       .set({ deliveryStatus: MessageDeliveryStatus.READ })
       .where(
-        'conversation_id = :convId AND sender_id = :senderId AND delivery_status != :status',
+        'conversation_id = :convId AND sender_id = :senderId AND "deliveryStatus" != :status',
         {
           convId: conversationId,
           senderId,

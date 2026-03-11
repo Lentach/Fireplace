@@ -120,6 +120,12 @@ class EncryptionService {
           base64Decode(preKeyBundle['oneTimePreKeyPublic'] as String), 0);
     }
 
+    final identityKey = IdentityKey.fromBytes(
+        base64Decode(preKeyBundle['identityPublicKey'] as String), 0);
+    // Trust the identity from the bundle so we don't throw UntrustedIdentityException
+    // when the peer has rotated keys (e.g. after they regenerated keys).
+    await _identityStore.saveIdentity(address, identityKey);
+
     final bundle = PreKeyBundle(
       preKeyBundle['registrationId'] as int,
       _deviceId,
@@ -130,8 +136,7 @@ class EncryptionService {
           base64Decode(preKeyBundle['signedPreKeyPublic'] as String), 0),
       Uint8List.fromList(
           base64Decode(preKeyBundle['signedPreKeySignature'] as String)),
-      IdentityKey.fromBytes(
-          base64Decode(preKeyBundle['identityPublicKey'] as String), 0),
+      identityKey,
     );
 
     await builder.processPreKeyBundle(bundle);

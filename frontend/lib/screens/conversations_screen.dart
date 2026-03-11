@@ -31,10 +31,12 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 
   void _openChat(int conversationId) {
     final chat = context.read<ChatProvider>();
-    chat.openConversation(conversationId);
-
     final width = MediaQuery.of(context).size.width;
-    if (width < AppConstants.layoutBreakpointDesktop) {
+    if (width >= AppConstants.layoutBreakpointDesktop) {
+      // Desktop: only set active so ChatDetailScreen shows; it will call openConversation (avoids double getMessages)
+      chat.setActiveConversation(conversationId);
+    } else {
+      // Mobile: only navigate; ChatDetailScreen initState will call openConversation (avoids double getMessages)
       Navigator.of(context).push(
         MaterialPageRoute(
           builder: (_) => ChatDetailScreen(conversationId: conversationId),
