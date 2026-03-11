@@ -1,4 +1,4 @@
 # Latest session summary
 
 **Date:** 2026-03-11  
-**Summary:** [2026-03-11-code-review-fixes.md](2026-03-11-code-review-fixes.md) — Implemented all code review recommendations: replyToMessageId in payload, removed dead code, extracted validateCanMessage, conditional dart:io import, centralized ApiService.
+**Summary:** [2026-03-11-reply-to-e2e-fix.md](2026-03-11-reply-to-e2e-fix.md) — Fixed reply-to preview E2E leak: MessageMapper uses "Encrypted message" for encrypted replyTo; frontend fallback for `[encrypted]`.

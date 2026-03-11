@@ -52,7 +52,7 @@ class ChatMessageBubble extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            replyTo.content.isNotEmpty ? replyTo.content : _replyTypeLabel(replyTo.messageType),
+            _replyDisplayContent(replyTo),
             style: RpgTheme.bodyFont(fontSize: 12, color: mutedColor),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -60,6 +60,13 @@ class ChatMessageBubble extends StatelessWidget {
         ],
       ),
     );
+  }
+
+  /// E2E: never show plaintext in reply — use placeholder for encrypted.
+  String _replyDisplayContent(ReplyToPreview replyTo) {
+    if (replyTo.content == '[encrypted]') return 'Encrypted message';
+    if (replyTo.content.isNotEmpty) return replyTo.content;
+    return _replyTypeLabel(replyTo.messageType);
   }
 
   String _replyTypeLabel(MessageType type) {

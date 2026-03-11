@@ -265,7 +265,10 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
     Color borderColor,
   ) {
     final mutedColor = isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight;
-    String content = replyTo.content;
+    // E2E: never show plaintext in reply — use placeholder for encrypted
+    String content = replyTo.content == '[encrypted]'
+        ? 'Encrypted message'
+        : replyTo.content;
     if (content.isEmpty) {
       switch (replyTo.messageType) {
         case MessageType.voice:

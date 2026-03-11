@@ -37,7 +37,7 @@ Alice                          Server                         Bob
   │  fetchPreKeyBundle(bob) ────┤                              │
   │  ◄── bob's public keys ─────┤                              │
   │                             │                              │
-  │  X3DH → shared secret      │                              │
+  │  X3DH → shared secret       │                              │
   │  Double Ratchet init        │                              │
   │  encrypt("Cześć!")          │                              │
   │  sendMessage(ciphertext) ───┤── newMessage(ciphertext) ──► │
@@ -475,7 +475,7 @@ Update: Section 2 (schema — new tables), Section 3 (WebSocket events — key e
 | Session corruption / key loss | Catch decrypt errors → "[Decryption failed]"; add "Reset encryption keys" button in Privacy & Safety |
 | First message latency (async pre-key fetch) | Completer with 10s timeout; optionally pre-fetch bundles for all friends on connect |
 | flutter_secure_storage on web (less secure) | Acceptable (web is secondary); note in Privacy & Safety |
-| Reply-to preview leaks content to server | Show "Encrypted message" as reply preview |
+| Reply-to preview leaks content to server | ✅ Fixed: MessageMapper uses "Encrypted message" when replyTo.encryptedContent present |
 | Link preview: client HTTP to arbitrary URLs | Private IP blocking (mirrors backend SSRF protection) |
 | libsignal_protocol_dart v0.7.4 stability | Pin exact version; library used by MixinNetwork in production |
 

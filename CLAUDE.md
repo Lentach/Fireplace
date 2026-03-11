@@ -65,6 +65,7 @@ cd frontend && flutter run -d chrome
 - `conversationsService.delete()` deletes msgs first (no cascade)
 - Chat services: critical failures stop execution; non-critical (emit lists) log and continue
 - Skip server-side link preview when `encryptedContent` present (server can't read content)
+- Reply-to preview: MessageMapper uses "Encrypted message" when replyTo has encryptedContent; frontend fallback for `[encrypted]`
 - `handleMessageDelivered` verifies caller is recipient (not sender) — ownership enforced
 - `handleStartConversation` requires friendship — blocks strangers from opening DMs
 - OTP claim is atomic: `UPDATE ... WHERE id = (SELECT ... LIMIT 1) RETURNING *` in `key-bundles.service.ts`
@@ -428,7 +429,6 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/voi
 - No unique constraint on `(sender, receiver)` in friend_requests
 - Pagination: simple limit/offset (default 50), N+1 in `_conversationsWithUnread()`
 - Large files: `chat_provider.dart` (~1512 lines), `chat-friend-request.service.ts` (~428 lines)
-- Reply-to preview leaks content to server (should show "Encrypted message")
 - Migration scripts in `backend/scripts/` (manual)
 
 ---

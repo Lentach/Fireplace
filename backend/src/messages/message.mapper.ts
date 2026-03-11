@@ -33,16 +33,19 @@ export class MessageMapper {
     if (message.replyTo) {
       const rt = message.replyTo;
       payload.replyToMessageId = rt.id;
+      // E2E: never expose plaintext in reply preview — use placeholder for encrypted
       const contentPreview =
-        rt.content && rt.messageType === 'TEXT'
-          ? rt.content.substring(0, 150)
-          : rt.messageType === 'VOICE'
-            ? 'Voice message'
-            : rt.messageType === 'IMAGE' || rt.messageType === 'DRAWING'
-              ? 'Image'
-              : rt.messageType === 'PING'
-                ? 'Ping'
-                : '';
+        rt.encryptedContent != null
+          ? 'Encrypted message'
+          : rt.content && rt.messageType === 'TEXT'
+            ? rt.content.substring(0, 150)
+            : rt.messageType === 'VOICE'
+              ? 'Voice message'
+              : rt.messageType === 'IMAGE' || rt.messageType === 'DRAWING'
+                ? 'Image'
+                : rt.messageType === 'PING'
+                  ? 'Ping'
+                  : '';
       payload.replyTo = {
         id: rt.id,
         content: contentPreview,

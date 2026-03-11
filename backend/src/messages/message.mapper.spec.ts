@@ -60,4 +60,24 @@ describe('MessageMapper', () => {
     const payload = MessageMapper.toPayload(msg);
     expect(payload.expiresAt).toBe('2025-02-20T18:00:00.000Z');
   });
+
+  it('should use "Encrypted message" for replyTo when replied-to message has encryptedContent', () => {
+    const replyToMsg = {
+      id: 42,
+      content: '[encrypted]',
+      encryptedContent: '2:base64ciphertext...',
+      messageType: MessageType.TEXT,
+      sender: { username: 'bob' },
+    } as unknown as Message;
+    const msg = createMockMessage({
+      replyTo: replyToMsg,
+    });
+    const payload = MessageMapper.toPayload(msg);
+    expect(payload.replyTo).toMatchObject({
+      id: 42,
+      content: 'Encrypted message',
+      senderUsername: 'bob',
+      messageType: 'TEXT',
+    });
+  });
 });
