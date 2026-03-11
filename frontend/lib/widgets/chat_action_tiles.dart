@@ -23,9 +23,12 @@ class ChatActionTiles extends StatelessWidget {
       decoration: BoxDecoration(
         border: Border(top: BorderSide(color: borderColor)),
       ),
-      child: Row(
-        mainAxisAlignment: MainAxisAlignment.center,
-        children: [
+      child: SingleChildScrollView(
+        scrollDirection: Axis.horizontal,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        child: Row(
+          mainAxisAlignment: MainAxisAlignment.center,
+          children: [
           _LongPressActionTile(
             icon: Icons.delete_forever,
             color: iconColor,
@@ -67,6 +70,7 @@ class ChatActionTiles extends StatelessWidget {
             onTap: () => _showComingSoon(context, 'GIF picker'),
           ),
         ],
+        ),
       ),
     );
   }

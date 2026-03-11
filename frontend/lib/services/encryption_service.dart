@@ -12,7 +12,11 @@ class EncryptionService {
   static const int _initialPreKeyBatchSize = 20;
   static const int _deviceId = 1;
 
-  final FlutterSecureStorage _storage = const FlutterSecureStorage();
+  /// On web: app-specific dbName isolates from other apps; WebCrypto encrypts at rest.
+  /// Mobile: uses Keychain/Keystore (hardware-backed when available).
+  final FlutterSecureStorage _storage = FlutterSecureStorage(
+    webOptions: const WebOptions(dbName: 'FireplaceE2E'),
+  );
 
   late SecureIdentityKeyStore _identityStore;
   late SecurePreKeyStore _preKeyStore;

@@ -33,6 +33,11 @@ The server needs certain metadata to deliver messages and manage conversations.
 - **Data retention:** Metadata is stored for as long as the account and conversations exist. No automatic purge by default. `METADATA_RETENTION_DAYS` (optional env var) is reserved for future auto-purge.
 - **Logging:** Backend logs may include userId, conversationId for debugging. In production, use appropriate log levels (e.g. `warn`/`error` only) to minimize metadata in logs.
 
+## Key Storage (E2E)
+
+- **Mobile:** Keys in Keychain (iOS) / Keystore (Android) — hardware-backed when available.
+- **Web:** Keys in browser storage, encrypted with WebCrypto. Uses app-specific db (`FireplaceE2E`). Someone with device access could potentially extract them. Privacy & Safety screen shows a web-specific warning; mobile app recommended for maximum security.
+
 ## Future Improvements
 
 See `docs/plans/2026-03-11-metadata-privacy-design.md` for options to reduce metadata visibility (e.g. Sealed Sender).

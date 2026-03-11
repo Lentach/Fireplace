@@ -87,6 +87,7 @@ cd frontend && flutter run -d chrome
 - Keys NOT cleared on logout (persist for re-login). Only cleared on account deletion via `clearEncryptionKeys()`
 - All Signal store keys use `e2e_${userId}_` prefix — multi-account isolation in same browser
 - `clearAllKeys()` uses selective deletion (reads all, deletes by prefix) — never wipes other data
+- Web: WebOptions(dbName: 'FireplaceE2E') for app-specific storage; Privacy & Safety shows web key-storage warning
 
 ---
 

@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../providers/chat_provider.dart';
@@ -115,8 +116,19 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
                   'Each device has its own encryption keys. '
                   'Messages are tied to the device that sent or received them.',
             ),
+            if (kIsWeb) ...[
+              const SizedBox(height: 16),
+              _buildInfoCard(
+                context,
+                icon: Icons.laptop,
+                title: 'Web: key storage',
+                description:
+                    'On web, keys are stored in the browser (encrypted with WebCrypto). '
+                    'Someone with access to this device could potentially read them. '
+                    'For maximum security, use the mobile app.',
+              ),
+            ],
             const SizedBox(height: 16),
-
             _buildInfoCard(
               context,
               icon: Icons.photo_library_outlined,
