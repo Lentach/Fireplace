@@ -10,6 +10,6 @@ export class LoginDto {
   identifier: string;
 
   @IsString()
-  @MaxLength(200)
+  @MaxLength(128) // M2: bcrypt limit 72 bytes; 128 chars reasonable for user input
   password: string;
 }

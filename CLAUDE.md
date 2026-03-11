@@ -75,6 +75,9 @@ cd frontend && flutter run -d chrome
 - `og:image` from link preview validated via `isSafeImageUrl` (HTTPS + non-private host only); IPv6 brackets stripped before regex; backend resolves relative og:image URLs using pageUrl
 - WS rate limiting: `WsThrottlerGuard` on `sendMessage` and `sendPing` — provides mock `res` with no-op `header()` (Socket has no such method; ThrottlerGuard expects it)
 - Raw SQL in `markConversationAsReadFromSender`: use `"deliveryStatus"` (quoted) — PostgreSQL column is camelCase
+- `_conversationsWithUnread` uses batch `countUnreadForRecipientBatch` + `getLastMessagesBatch` (2 queries total, not 2N)
+- Production: logger level `['error','warn','log']` — no debug
+- friend_requests: unique index on (sender, receiver)
 
 ### E2E Encryption
 - Fresh install: 20 one-time pre-keys (not 100) for fast startup; preKeysLow replenishes when < 10
@@ -137,10 +140,10 @@ flowchart TB
 | **Auth** | `auth/auth.service.ts`, `auth/auth.controller.ts`, `auth/jwt-auth.guard.ts`, `auth/jwt.strategy.ts`, `auth/password.constants.ts` |
 | **Users** | `users/user.entity.ts`, `users/users.service.ts`, `users/users.controller.ts` |
 | **Conversations** | `conversations/conversation.entity.ts`, `conversations/conversations.service.ts` |
-| **Messages** | `messages/message.entity.ts`, `messages/message.mapper.ts`, `messages/messages.service.ts`, `messages/messages.controller.ts` |
+| **Messages** | `messages/message.entity.ts`, `messages/message.mapper.ts`, `messages/messages.service.ts`, `messages/messages.controller.ts`, `messages/dto/{upload-image,upload-voice}.dto.ts` |
 | **Friends** | `friends/friend-request.entity.ts`, `friends/friends.service.ts` |
 | **Chat** | `chat/chat.gateway.ts`, `chat/services/chat-{message,conversation,friend-request,key-exchange}.service.ts` |
-| **DTOs** | `chat/dto/chat.dto.ts` (main) + `chat/dto/{send-ping,clear-chat-history,set-disappearing-timer,delete-conversation-only,delete-message,upload-key-bundle,upload-one-time-pre-keys,fetch-pre-key-bundle}.dto.ts` |
+| **DTOs** | `chat/dto/chat.dto.ts` + `{typing,recording-voice,send-ping,...}.dto.ts` |
 | **Key Bundles** | `key-bundles/key-bundle.entity.ts`, `key-bundles/one-time-pre-key.entity.ts`, `key-bundles/key-bundles.service.ts` |
 | **Mappers** | `chat/mappers/{conversation,user,friend-request}.mapper.ts`, `messages/message.mapper.ts` |
 | **FCM/Push** | `fcm-tokens/fcm-token.entity.ts`, `fcm-tokens/fcm-tokens.service.ts`, `push-notifications/push-notifications.service.ts` |
@@ -389,7 +392,7 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/voi
 - **Image messages:** POST /messages/image. Verifies friend relationship. `messageType=IMAGE`.
 - **Ping:** Empty content, `messageType=PING`. Uses conversation's `disappearingTimer`.
 - **Push (FCM):** Silent payload (no content). Gracefully disabled without `FIREBASE_SERVICE_ACCOUNT`. Firebase config in gitignored `firebase_secrets.dart` / `firebase-config.js`.
-- **3 themes:** Light, Dark (Wire-style gray), Blue (red-blue accent). `FireplaceColors` ThemeExtension.
+- **3 themes:** Light, Dark (Wire-style gray), Blue (red-blue accent). Default for new users: Dark. `FireplaceColors` ThemeExtension.
 - **Friend auto-accept:** If B has pending request to A when A sends to B -> auto-accept, create conversation, emit `openConversation`.
 
 ---

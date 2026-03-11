@@ -18,6 +18,9 @@ import { UsersService } from '../users/users.service';
 import { ChatValidationService } from '../chat/services/chat-validation.service';
 import { MessageType } from './message.entity';
 import { MessageMapper } from './message.mapper';
+import { UploadImageDto } from './dto/upload-image.dto';
+import { UploadVoiceDto } from './dto/upload-voice.dto';
+import { validateDto } from '../chat/utils/dto.validator';
 
 @Controller('messages')
 export class MessagesController {
@@ -35,8 +38,7 @@ export class MessagesController {
   @UseInterceptors(FileInterceptor('file'))
   async uploadImageMessage(
     @UploadedFile() file: Express.Multer.File,
-    @Body('recipientId') recipientId: string,
-    @Body('expiresIn') expiresIn: string,
+    @Body() body: Record<string, unknown>,
     @Request() req,
   ) {
     if (!file) {
@@ -53,8 +55,9 @@ export class MessagesController {
       throw new BadRequestException('File size must not exceed 5 MB');
     }
 
+    const dto = validateDto(UploadImageDto, body);
     const sender = req.user;
-    const recipient = await this.usersService.findById(parseInt(recipientId));
+    const recipient = await this.usersService.findById(dto.recipientId);
     if (!recipient) {
       throw new BadRequestException('Recipient not found');
     }
@@ -67,27 +70,22 @@ export class MessagesController {
       throw new BadRequestException(validation.error);
     }
 
-    // Upload to Cloudinary
     const uploadResult = await this.cloudinaryService.uploadImage(
       sender.id,
       file.buffer,
       file.mimetype,
     );
 
-    // Find or create conversation
     const conversation = await this.conversationsService.findOrCreate(
       sender,
       recipient,
     );
 
-    // Calculate expiresAt
     let expiresAt: Date | null = null;
-    if (expiresIn && parseInt(expiresIn) > 0) {
-      const seconds = parseInt(expiresIn);
-      expiresAt = new Date(Date.now() + seconds * 1000);
+    if (dto.expiresIn != null && dto.expiresIn > 0) {
+      expiresAt = new Date(Date.now() + dto.expiresIn * 1000);
     }
 
-    // Create image message
     const message = await this.messagesService.create('', sender, conversation, {
       messageType: MessageType.IMAGE,
       mediaUrl: uploadResult.secureUrl,
@@ -119,18 +117,15 @@ export class MessagesController {
   )
   async uploadVoiceMessage(
     @UploadedFile() file: Express.Multer.File,
-    @Body('duration') duration: string,
-    @Body('recipientId') recipientId: string,
-    @Body('expiresIn') expiresIn?: string,
+    @Body() body: Record<string, unknown>,
     @Request() req?,
   ) {
-    const sender = req.user;
-    const recipientIdNum = parseInt(recipientId, 10);
-    if (!recipientId || isNaN(recipientIdNum)) {
-      throw new BadRequestException('recipientId is required');
+    if (!file) {
+      throw new BadRequestException('No audio file uploaded');
     }
-
-    const recipient = await this.usersService.findById(recipientIdNum);
+    const dto = validateDto(UploadVoiceDto, body);
+    const sender = req.user;
+    const recipient = await this.usersService.findById(dto.recipientId);
     if (!recipient) {
       throw new BadRequestException('Recipient not found');
     }
@@ -143,20 +138,17 @@ export class MessagesController {
       throw new BadRequestException(validation.error);
     }
 
-    const durationNum = parseInt(duration, 10);
-    const expiresInNum = expiresIn ? parseInt(expiresIn, 10) : undefined;
-
     const result = await this.cloudinaryService.uploadVoiceMessage(
       sender.id,
       file.buffer,
       file.mimetype,
-      expiresInNum,
+      dto.expiresIn,
     );
 
     return {
       mediaUrl: result.secureUrl,
       publicId: result.publicId,
-      duration: result.duration || durationNum,
+      duration: result.duration || dto.duration,
     };
   }
 }

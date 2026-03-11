@@ -185,13 +185,101 @@ export class MessagesService {
     qb.andWhere(
       '(m."expiresAt" IS NULL OR m."expiresAt" > CURRENT_TIMESTAMP)',
     );
-    // Exclude messages "deleted for me" by recipient
     qb.andWhere(
       `(m."hiddenByUserIds" IS NULL OR m."hiddenByUserIds" = '' OR ` +
         `(',' || COALESCE(m."hiddenByUserIds", '') || ',' NOT LIKE :hiddenPattern))`,
       { hiddenPattern: `%,${recipientUserId},%` },
     );
     return qb.getCount();
+  }
+
+  /**
+   * Batch count unread for multiple conversations (I3: avoids N+1).
+   * Returns Map<conversationId, unreadCount>.
+   */
+  async countUnreadForRecipientBatch(
+    conversationIds: number[],
+    recipientUserId: number,
+  ): Promise<Map<number, number>> {
+    if (conversationIds.length === 0) return new Map();
+    const hiddenPattern = `%,${recipientUserId},%`;
+    const rows = await this.msgRepo
+      .createQueryBuilder('m')
+      .innerJoin('m.sender', 's')
+      .select('m.conversation_id', 'conversationId')
+      .addSelect('COUNT(*)::int', 'count')
+      .where('m.conversation_id IN (:...ids)', { ids: conversationIds })
+      .andWhere('s.id != :userId', { userId: recipientUserId })
+      .andWhere('m."deliveryStatus" != :status', {
+        status: MessageDeliveryStatus.READ,
+      })
+      .andWhere(
+        '(m."expiresAt" IS NULL OR m."expiresAt" > CURRENT_TIMESTAMP)',
+      )
+      .andWhere(
+        `(m."hiddenByUserIds" IS NULL OR m."hiddenByUserIds" = '' OR ` +
+          `(',' || COALESCE(m."hiddenByUserIds", '') || ',' NOT LIKE :hiddenPattern))`,
+        { hiddenPattern },
+      )
+      .groupBy('m.conversation_id')
+      .getRawMany();
+    const map = new Map<number, number>();
+    for (const r of rows) {
+      map.set(Number(r.conversationId), Number(r.count));
+    }
+    for (const id of conversationIds) {
+      if (!map.has(id)) map.set(id, 0);
+    }
+    return map;
+  }
+
+  /**
+   * Batch get last message per conversation (I3: avoids N+1).
+   * Uses PostgreSQL DISTINCT ON. Returns Map<conversationId, Message | null>.
+   */
+  async getLastMessagesBatch(
+    conversationIds: number[],
+    hiddenByUserId?: number,
+  ): Promise<Map<number, Message | null>> {
+    if (conversationIds.length === 0) return new Map();
+    let hiddenClause = '';
+    if (hiddenByUserId != null) {
+      hiddenClause =
+        ` AND ("hiddenByUserIds" IS NULL OR "hiddenByUserIds" = '' OR ` +
+        `(',' || COALESCE("hiddenByUserIds", '') || ',' NOT LIKE '%,${hiddenByUserId},%'))`;
+    }
+    const rawRows = await this.msgRepo.query(
+      `SELECT id, conversation_id as "conversationId" FROM (
+        SELECT *, ROW_NUMBER() OVER (PARTITION BY conversation_id ORDER BY "createdAt" DESC) as rn
+        FROM messages
+        WHERE conversation_id = ANY($1::int[])${hiddenClause}
+      ) sub WHERE rn = 1`,
+      [conversationIds],
+    );
+    const msgIds = rawRows.map((r: { id: number }) => r.id);
+    const convIdByMsgId = new Map<number, number>();
+    for (const r of rawRows) {
+      convIdByMsgId.set(r.id, r.conversationId);
+    }
+    if (msgIds.length === 0) {
+      const map = new Map<number, Message | null>();
+      for (const id of conversationIds) map.set(id, null);
+      return map;
+    }
+    const messages = await this.msgRepo.find({
+      where: { id: msgIds as any },
+      relations: ['sender'],
+    });
+    const byConvId = new Map<number, Message>();
+    for (const m of messages) {
+      const convId = convIdByMsgId.get(m.id);
+      if (convId != null) byConvId.set(convId, m);
+    }
+    const map = new Map<number, Message | null>();
+    for (const id of conversationIds) {
+      map.set(id, byConvId.get(id) ?? null);
+    }
+    return map;
   }
 
   /** Mark all messages in the conversation that were sent BY senderId (to the other participant) as READ. Returns updated messages with sender. */

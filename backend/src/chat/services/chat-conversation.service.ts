@@ -77,13 +77,16 @@ export class ChatConversationService {
   ): Promise<any[]> {
     if (conversations.length === 0) return [];
 
-    const results = await Promise.all(
-      conversations.map(async (conv) => {
-        const [unreadCount, lastMessage] = await Promise.all([
-          this.messagesService.countUnreadForRecipient(conv.id, userId),
-          this.messagesService.getLastMessage(conv.id, userId),
-        ]);
-        return ConversationMapper.toPayload(conv, { unreadCount, lastMessage });
+    const convIds = conversations.map((c) => c.id);
+    const [unreadMap, lastMsgMap] = await Promise.all([
+      this.messagesService.countUnreadForRecipientBatch(convIds, userId),
+      this.messagesService.getLastMessagesBatch(convIds, userId),
+    ]);
+
+    const results = conversations.map((conv) =>
+      ConversationMapper.toPayload(conv, {
+        unreadCount: unreadMap.get(conv.id) ?? 0,
+        lastMessage: lastMsgMap.get(conv.id) ?? null,
       }),
     );
 

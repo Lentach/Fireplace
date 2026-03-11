@@ -19,6 +19,8 @@ import { ChatKeyExchangeService } from './services/chat-key-exchange.service';
 import { BlockedService } from '../blocked/blocked.service';
 import { validateDto } from './utils/dto.validator';
 import { BlockUserDto } from './dto/chat.dto';
+import { TypingDto } from './dto/typing.dto';
+import { RecordingVoiceDto } from './dto/recording-voice.dto';
 import { UserMapper } from './mappers/user.mapper';
 
 // CORS: In production only ALLOWED_ORIGINS. In dev also allow localhost + LAN (phone).
@@ -209,12 +211,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ): void {
     const senderId: number = client.data.user?.id;
     if (!senderId) return;
-    const recipientId = typeof data?.recipientId === 'number' ? data.recipientId : null;
-    const conversationId = typeof data?.conversationId === 'number' ? data.conversationId : null;
-    if (!recipientId || !conversationId) return;
-    const recipientSocketId = this.onlineUsers.get(recipientId);
-    if (!recipientSocketId) return; // offline — silent no-op
-    this.server.to(recipientSocketId).emit('partnerTyping', { senderId, conversationId });
+    try {
+      const dto = validateDto(TypingDto, data);
+      const recipientSocketId = this.onlineUsers.get(dto.recipientId);
+      if (!recipientSocketId) return;
+      this.server.to(recipientSocketId).emit('partnerTyping', {
+        senderId,
+        conversationId: dto.conversationId,
+      });
+    } catch {
+      return; // invalid payload — silent no-op
+    }
   }
 
   @SubscribeMessage('addReaction')
@@ -240,17 +247,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   ): void {
     const senderId: number = client.data.user?.id;
     if (!senderId) return;
-    const recipientId = typeof data?.recipientId === 'number' ? data.recipientId : null;
-    const conversationId = typeof data?.conversationId === 'number' ? data.conversationId : null;
-    const isRecording = data?.isRecording === true;
-    if (!recipientId || !conversationId) return;
-    const recipientSocketId = this.onlineUsers.get(recipientId);
-    if (!recipientSocketId) return; // offline — silent no-op
-    this.server.to(recipientSocketId).emit('partnerRecordingVoice', {
-      senderId,
-      conversationId,
-      isRecording,
-    });
+    try {
+      const dto = validateDto(RecordingVoiceDto, data);
+      const recipientSocketId = this.onlineUsers.get(dto.recipientId);
+      if (!recipientSocketId) return;
+      this.server.to(recipientSocketId).emit('partnerRecordingVoice', {
+        senderId,
+        conversationId: dto.conversationId,
+        isRecording: dto.isRecording,
+      });
+    } catch {
+      return; // invalid payload — silent no-op
+    }
   }
 
   // ========== KEY EXCHANGE HANDLERS (E2E Encryption) ==========
@@ -409,6 +417,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (!userId) return;
     try {
       const dto = validateDto(BlockUserDto, data);
+      if (dto.userId === userId) {
+        client.emit('error', { message: 'Cannot block yourself' });
+        return;
+      }
       await this.blockedService.block(userId, dto.userId);
       const blocked = await this.blockedService.getBlockedUsers(userId);
       client.emit('blockedList', blocked.map((u) => UserMapper.toPayload(u)));

@@ -4,7 +4,7 @@ import '../theme/rpg_theme.dart';
 
 class SettingsProvider extends ChangeNotifier {
   /// 'light' | 'dark' (Wire gray) | 'blue' (red-blue accent)
-  String _themePreference = 'blue';
+  String _themePreference = 'dark';
 
   String get themePreference => _themePreference;
 
@@ -40,12 +40,12 @@ class SettingsProvider extends ChangeNotifier {
     if (saved == null) {
       final legacy = prefs.getString('dark_mode_preference');
       if (legacy == 'light') saved = 'light';
-      else if (legacy == 'dark' || legacy == 'system') saved = 'blue';
+      else if (legacy == 'dark' || legacy == 'system') saved = 'dark';
     }
     if (saved == 'light' || saved == 'dark' || saved == 'blue') {
       _themePreference = saved!;
     } else {
-      _themePreference = 'blue';
+      _themePreference = 'dark';
     }
     notifyListeners();
   }

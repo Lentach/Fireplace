@@ -218,11 +218,20 @@ class ChatProvider extends ChangeNotifier {
     if (decrypted.content.isEmpty ||
         decrypted.content == '[Decryption failed]' ||
         decrypted.content == '[Encryption not initialized]') return;
+    // I1: validate linkPreviewImageUrl before persist (SSRF defense in depth)
+    final safeImageUrl = decrypted.linkPreviewImageUrl != null &&
+            decrypted.linkPreviewUrl != null &&
+            LinkPreviewService.isSafeImageUrl(
+              decrypted.linkPreviewImageUrl,
+              decrypted.linkPreviewUrl,
+            )
+        ? decrypted.linkPreviewImageUrl
+        : null;
     final data = <String, dynamic>{
       'content': decrypted.content,
       if (decrypted.linkPreviewUrl != null) 'linkPreviewUrl': decrypted.linkPreviewUrl!,
       if (decrypted.linkPreviewTitle != null) 'linkPreviewTitle': decrypted.linkPreviewTitle!,
-      if (decrypted.linkPreviewImageUrl != null) 'linkPreviewImageUrl': decrypted.linkPreviewImageUrl!,
+      if (safeImageUrl != null) 'linkPreviewImageUrl': safeImageUrl,
     };
     try {
       await _encryptionService.saveDecryptedContent(decrypted.id, data);

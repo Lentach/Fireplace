@@ -16,7 +16,7 @@ export enum FriendRequestStatus {
 }
 
 @Entity('friend_requests')
-@Index(['sender', 'receiver'])
+@Index(['sender', 'receiver'], { unique: true }) // M3: prevent duplicate A->B requests
 export class FriendRequest {
   @PrimaryGeneratedColumn()
   id: number;
