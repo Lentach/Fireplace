@@ -33,6 +33,8 @@ cd frontend && flutter run -d chrome
 
 **Tests:** `cd backend && npm test` (111 unit tests, 14 suites, no DB required); `cd frontend && flutter test` (23 tests)
 
+**Production:** https://fireplace.ignorelist.com — Google Cloud e2-medium VM (Warszawa), Docker + Nginx + Let's Encrypt. Deploy: SSH to server → `~/deploy.sh` (git pull + docker build + flutter web build).
+
 ---
 
 ## 1. Critical Rules & Gotchas
