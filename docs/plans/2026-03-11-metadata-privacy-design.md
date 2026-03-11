@@ -1,7 +1,7 @@
 # Metadata Privacy — Design Options
 
 **Date:** 2026-03-11  
-**Status:** Draft — awaiting user decision
+**Status:** Approach A implemented
 
 ## Problem
 

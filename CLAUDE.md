@@ -415,6 +415,7 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/voi
 | `FIREBASE_SERVICE_ACCOUNT` | No | FCM push (graceful if missing) |
 | `ALLOWED_ORIGINS` | No | CORS (comma-separated, strict in prod) |
 | `BASE_URL` | No | Frontend dart define, defaults to `http://{host}:3000` |
+| `METADATA_RETENTION_DAYS` | No | Reserved for future auto-purge of old metadata |
 
 **Docker:** `db` postgres:16-alpine (5433->5432, postgres/postgres/chatdb), `backend` node:20-alpine (:3000). Frontend runs locally.
 

@@ -28,6 +28,11 @@ The server needs certain metadata to deliver messages and manage conversations.
 - **Access control:** Only conversation participants can read messages.
 - **Offline/history:** Messages are stored so users can fetch them when they reconnect.
 
+## Retention & Logging
+
+- **Data retention:** Metadata is stored for as long as the account and conversations exist. No automatic purge by default. `METADATA_RETENTION_DAYS` (optional env var) is reserved for future auto-purge.
+- **Logging:** Backend logs may include userId, conversationId for debugging. In production, use appropriate log levels (e.g. `warn`/`error` only) to minimize metadata in logs.
+
 ## Future Improvements
 
 See `docs/plans/2026-03-11-metadata-privacy-design.md` for options to reduce metadata visibility (e.g. Sealed Sender).
