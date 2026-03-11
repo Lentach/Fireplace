@@ -138,6 +138,68 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  Widget _buildThemeTile(BuildContext context, SettingsProvider settings) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final fc = FireplaceColors.of(context);
+    final current = settings.themePreference;
+
+    Widget themeIconBtn(String value, IconData icon) {
+      final isSelected = current == value;
+      return InkWell(
+        onTap: () => settings.setThemePreference(value),
+        customBorder: const CircleBorder(),
+        child: Container(
+          width: 44,
+          height: 44,
+          decoration: BoxDecoration(
+            color: isSelected ? colorScheme.primary.withValues(alpha: 0.2) : Colors.transparent,
+            shape: BoxShape.circle,
+            border: Border.all(
+              color: isSelected ? colorScheme.primary : fc.settingsTileBorder,
+              width: isSelected ? 2 : 1,
+            ),
+          ),
+          child: Icon(
+            icon,
+            size: 24,
+            color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 13, vertical: 3),
+      decoration: BoxDecoration(
+        color: fc.settingsTileBg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: fc.settingsTileBorder, width: 1.2),
+      ),
+      child: ListTile(
+        leading: Icon(Icons.palette_outlined, color: colorScheme.primary, size: 24),
+        title: Text(
+          'Theme',
+          style: RpgTheme.bodyFont(
+            fontSize: 14,
+            color: colorScheme.onSurface,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            themeIconBtn('light', Icons.light_mode),
+            const SizedBox(width: 8),
+            themeIconBtn('dark', Icons.dark_mode),
+            const SizedBox(width: 8),
+            themeIconBtn('blue', Icons.water_drop),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildSettingsTile({
     required IconData icon,
     required String title,
@@ -262,29 +324,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
 
             // Settings Tiles
-            _buildSettingsTile(
-              icon: Icons.palette_outlined,
-              title: 'Theme',
-              subtitle: 'Light / Dark (Wire) / Blue',
-              trailing: SegmentedButton<String>(
-                segments: const [
-                  ButtonSegment(value: 'light', label: Text('Light')),
-                  ButtonSegment(value: 'dark', label: Text('Dark')),
-                  ButtonSegment(value: 'blue', label: Text('Blue')),
-                ],
-                selected: {settings.themePreference},
-                onSelectionChanged: (Set<String> selected) {
-                  if (selected.isNotEmpty) {
-                    settings.setThemePreference(selected.first);
-                  }
-                },
-                style: ButtonStyle(
-                  visualDensity: VisualDensity.compact,
-                  padding: WidgetStateProperty.all(const EdgeInsets.symmetric(horizontal: 6, vertical: 4)),
-                  tapTargetSize: MaterialTapTargetSize.shrinkWrap,
-                ),
-              ),
-            ),
+            _buildThemeTile(context, settings),
 
             _buildSettingsTile(
               icon: Icons.security,
