@@ -92,18 +92,21 @@ export class ChatConversationService {
   ): Promise<any[]> {
     if (conversations.length === 0) return [];
 
-    const convIds = conversations.map((c) => c.id);
+    const convIds = conversations
+      .map((c) => Number(c.id))
+      .filter((id) => !Number.isNaN(id));
     const [unreadMap, lastMsgMap] = await Promise.all([
       this.messagesService.countUnreadForRecipientBatch(convIds, userId),
       this.messagesService.getLastMessagesBatch(convIds, userId),
     ]);
 
-    const results = conversations.map((conv) =>
-      ConversationMapper.toPayload(conv, {
-        unreadCount: unreadMap.get(conv.id) ?? 0,
-        lastMessage: lastMsgMap.get(conv.id) ?? null,
-      }),
-    );
+    const results = conversations.map((conv) => {
+      const convId = Number(conv.id);
+      return ConversationMapper.toPayload(conv, {
+        unreadCount: unreadMap.get(convId) ?? 0,
+        lastMessage: lastMsgMap.get(convId) ?? null,
+      });
+    });
 
     results.sort((a, b) => {
       const aLm = a.lastMessage as { createdAt: string | Date } | null;

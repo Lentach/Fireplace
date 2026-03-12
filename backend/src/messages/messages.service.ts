@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { In, Repository } from 'typeorm';
 import { Message, MessageDeliveryStatus, MessageType } from './message.entity';
 import { User } from '../users/user.entity';
 import { Conversation } from '../conversations/conversation.entity';
@@ -202,13 +202,15 @@ export class MessagesService {
     recipientUserId: number,
   ): Promise<Map<number, number>> {
     if (conversationIds.length === 0) return new Map();
+    const ids = conversationIds.map((id) => Number(id)).filter((id) => !Number.isNaN(id));
+    if (ids.length === 0) return new Map();
     const hiddenPattern = `%,${recipientUserId},%`;
     const rows = await this.msgRepo
       .createQueryBuilder('m')
       .innerJoin('m.sender', 's')
       .select('m.conversation_id', 'conversationId')
       .addSelect('COUNT(*)::int', 'count')
-      .where('m.conversation_id IN (:...ids)', { ids: conversationIds })
+      .where('m.conversation_id IN (:...ids)', { ids })
       .andWhere('s.id != :userId', { userId: recipientUserId })
       .andWhere('m."deliveryStatus" != :status', {
         status: MessageDeliveryStatus.READ,
@@ -227,7 +229,7 @@ export class MessagesService {
     for (const r of rows) {
       map.set(Number(r.conversationId), Number(r.count));
     }
-    for (const id of conversationIds) {
+    for (const id of ids) {
       if (!map.has(id)) map.set(id, 0);
     }
     return map;
@@ -242,6 +244,8 @@ export class MessagesService {
     hiddenByUserId?: number,
   ): Promise<Map<number, Message | null>> {
     if (conversationIds.length === 0) return new Map();
+    const ids = conversationIds.map((id) => Number(id)).filter((id) => !Number.isNaN(id));
+    if (ids.length === 0) return new Map();
     let hiddenClause = '';
     if (hiddenByUserId != null) {
       hiddenClause =
@@ -254,20 +258,22 @@ export class MessagesService {
         FROM messages
         WHERE conversation_id = ANY($1::int[])${hiddenClause}
       ) sub WHERE rn = 1`,
-      [conversationIds],
+      [ids],
     );
-    const msgIds = rawRows.map((r: { id: number }) => r.id);
+    const msgIds = rawRows.map((r: { id: unknown }) => Number(r.id)).filter((id) => !Number.isNaN(id));
     const convIdByMsgId = new Map<number, number>();
     for (const r of rawRows) {
-      convIdByMsgId.set(r.id, r.conversationId);
+      const mid = Number((r as { id: unknown }).id);
+      const cid = Number((r as { conversationId: unknown }).conversationId);
+      if (!Number.isNaN(mid) && !Number.isNaN(cid)) convIdByMsgId.set(mid, cid);
     }
     if (msgIds.length === 0) {
       const map = new Map<number, Message | null>();
-      for (const id of conversationIds) map.set(id, null);
+      for (const id of conversationIds) map.set(Number(id), null);
       return map;
     }
     const messages = await this.msgRepo.find({
-      where: { id: msgIds as any },
+      where: { id: In(msgIds) },
       relations: ['sender'],
     });
     const byConvId = new Map<number, Message>();
@@ -277,7 +283,8 @@ export class MessagesService {
     }
     const map = new Map<number, Message | null>();
     for (const id of conversationIds) {
-      map.set(id, byConvId.get(id) ?? null);
+      const numId = Number(id);
+      map.set(numId, byConvId.get(numId) ?? null);
     }
     return map;
   }

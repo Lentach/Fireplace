@@ -1,0 +1,84 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1024 1024">
+  <!-- Background: deep navy from RpgTheme.background -->
+  <rect width="1024" height="1024" rx="220" fill="#0A0A2E"/>
+
+  <!-- Outer glow behind flame -->
+  <ellipse cx="512" cy="650" rx="200" ry="30" fill="#FF4400" opacity="0.25"/>
+
+  <!-- Log left -->
+  <rect x="290" y="680" width="220" height="60" rx="30" fill="#5C3317"/>
+  <rect x="290" y="680" width="220" height="20" rx="10" fill="#7A4520"/>
+
+  <!-- Log right -->
+  <rect x="514" y="680" width="220" height="60" rx="30" fill="#5C3317"/>
+  <rect x="514" y="680" width="220" height="20" rx="10" fill="#7A4520"/>
+
+  <!-- Ember dots -->
+  <circle cx="420" cy="668" r="8" fill="#FF8800" opacity="0.9"/>
+  <circle cx="512" cy="660" r="6" fill="#FFAA00" opacity="0.8"/>
+  <circle cx="600" cy="668" r="7" fill="#FF6600" opacity="0.85"/>
+  <circle cx="360" cy="655" r="5" fill="#FF4400" opacity="0.6"/>
+  <circle cx="650" cy="655" r="5" fill="#FF4400" opacity="0.6"/>
+
+  <!-- Flame layer 1 — outer red, wide base -->
+  <path d="
+    M512 170
+    C490 220 440 270 400 330
+    C350 410 330 490 350 570
+    C365 630 400 680 440 700
+    L584 700
+    C624 680 659 630 674 570
+    C694 490 674 410 624 330
+    C584 270 534 220 512 170Z
+  " fill="#CC2200"/>
+
+  <!-- Flame layer 2 — red-orange -->
+  <path d="
+    M512 230
+    C494 275 455 320 425 375
+    C385 445 370 515 388 585
+    C400 640 432 682 460 698
+    L564 698
+    C592 682 624 640 636 585
+    C654 515 639 445 599 375
+    C569 320 530 275 512 230Z
+  " fill="#FF3300"/>
+
+  <!-- Flame layer 3 — orange -->
+  <path d="
+    M512 300
+    C498 340 472 378 452 425
+    C425 490 418 555 436 610
+    C448 650 474 685 496 698
+    L528 698
+    C550 685 576 650 588 610
+    C606 555 599 490 572 425
+    C552 378 526 340 512 300Z
+  " fill="#FF6600"/>
+
+  <!-- Flame layer 4 — warm orange -->
+  <path d="
+    M512 370
+    C502 402 485 432 472 468
+    C454 515 450 568 464 612
+    C474 645 492 676 508 692
+    L516 692
+    C532 676 550 645 560 612
+    C574 568 570 515 552 468
+    C539 432 522 402 512 370Z
+  " fill="#FF8C00"/>
+
+  <!-- Flame core — bright yellow-white -->
+  <path d="
+    M512 450
+    C506 472 498 494 494 520
+    C489 552 491 582 500 607
+    C506 625 510 648 512 665
+    C514 648 518 625 524 607
+    C533 582 535 552 530 520
+    C526 494 518 472 512 450Z
+  " fill="#FFD700"/>
+
+  <!-- Hotspot center -->
+  <ellipse cx="512" cy="600" rx="30" ry="50" fill="#FFFAE0" opacity="0.5"/>
+</svg>

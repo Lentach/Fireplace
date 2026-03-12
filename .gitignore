@@ -23,3 +23,7 @@ frontend/.flutter-plugins-dependencies
 # Firebase secrets — never commit these
 frontend/lib/firebase_secrets.dart
 frontend/web/firebase-config.js
+
+# Android release keystore — never commit these
+frontend/keystore/
+frontend/android/key.properties

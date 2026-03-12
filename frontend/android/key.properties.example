@@ -1,0 +1,7 @@
+# Copy this file to key.properties and fill in real values.
+# key.properties is gitignored — never commit it.
+
+storePassword=TWOJE_HASLO_DO_KEYSTORA
+keyPassword=TWOJE_HASLO_DO_KLUCZA
+keyAlias=fireplace
+storeFile=../keystore/fireplace-release.jks
