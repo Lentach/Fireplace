@@ -1,7 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'contacts_screen.dart';
 import 'conversations_screen.dart';
 import 'settings_screen.dart';
+import '../providers/auth_provider.dart';
+import '../providers/chat_provider.dart';
 
 /// Shell after login: bottom nav with Conversations, Contacts, Settings.
 class MainShell extends StatefulWidget {
@@ -11,8 +14,29 @@ class MainShell extends StatefulWidget {
   State<MainShell> createState() => _MainShellState();
 }
 
-class _MainShellState extends State<MainShell> {
+class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   int _selectedIndex = 0;
+
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addObserver(this);
+  }
+
+  @override
+  void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
+    super.dispose();
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    if (state != AppLifecycleState.resumed) return;
+    final chat = context.read<ChatProvider>();
+    final auth = context.read<AuthProvider>();
+    if (auth.currentUser == null || auth.token == null) return;
+    chat.ensureReconnectIfNeeded();
+  }
 
   @override
   Widget build(BuildContext context) {

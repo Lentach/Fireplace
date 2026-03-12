@@ -5,6 +5,9 @@ class SocketService {
 
   io.Socket? get socket => _socket;
 
+  /// True if the socket exists and is connected.
+  bool get isConnected => _socket?.connected ?? false;
+
   void connect({
     required String baseUrl,
     required String token,

@@ -1488,6 +1488,14 @@ class ChatProvider extends ChangeNotifier {
 
   // ---------- Connection lifecycle ----------
 
+  /// If socket is disconnected but we have token and userId (user was logged in),
+  /// reconnect and refetch. Call when app resumes from background.
+  void ensureReconnectIfNeeded() {
+    if (_socketService.isConnected) return;
+    if (_currentUserId == null || _reconnect.tokenForReconnect == null) return;
+    connect(token: _reconnect.tokenForReconnect!, userId: _currentUserId!);
+  }
+
   void disconnect() {
     _reconnect.intentionalDisconnect = true;
     _reconnect.tokenForReconnect = null;
