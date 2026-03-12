@@ -151,6 +151,7 @@ flowchart TB
 | **Key Bundles** | `key-bundles/key-bundle.entity.ts`, `key-bundles/one-time-pre-key.entity.ts`, `key-bundles/key-bundles.service.ts` |
 | **Mappers** | `chat/mappers/{conversation,user,friend-request}.mapper.ts`, `messages/message.mapper.ts` |
 | **FCM/Push** | `fcm-tokens/fcm-token.entity.ts`, `fcm-tokens/fcm-tokens.service.ts`, `push-notifications/push-notifications.service.ts` |
+| **Secret Notes** | `secret-notes/secret-note.entity.ts`, `secret-notes/secret-notes.service.ts`, `secret-notes/secret-notes.controller.ts`, `secret-notes/secret-notes.module.ts` |
 | **Utils** | `chat/utils/dto.validator.ts`, `chat/services/chat-validation.service.ts`, `chat/services/link-preview.service.ts`, `cloudinary/cloudinary.service.ts`, `app.module.ts` |
 
 ### Frontend (`frontend/lib/`)
@@ -163,7 +164,7 @@ flowchart TB
 | **Services** | `services/{socket_service,api_service,encryption_service,link_preview_service,push_service}.dart` |
 | **Encryption** | `services/encryption/signal_stores.dart` (4 persistent Signal stores) |
 | **Screens** | `screens/{auth,main_shell,conversations,contacts,settings,chat_detail,add_or_invitations,privacy_safety}_screen.dart` |
-| **Widgets** | `widgets/{chat_input_bar,chat_action_tiles,chat_message_bubble,voice_message_bubble,conversation_tile,top_snackbar,avatar_circle}.dart` |
+| **Widgets** | `widgets/{chat_input_bar,chat_action_tiles,chat_message_bubble,voice_message_bubble,conversation_tile,top_snackbar,avatar_circle,anti_quantum_note_dialog}.dart` |
 | **Theme** | `theme/rpg_theme.dart` (`FireplaceColors` ThemeExtension) |
 | **Push** | `services/push_service.dart`, `firebase_options.dart` |
 
@@ -248,9 +249,18 @@ erDiagram
         string token "unique"
         string platform "web|android|ios"
     }
+
+    secret_notes {
+        int id PK
+        varchar token "UNIQUE"
+        text ciphertext
+        timestamp expires_at
+        int creator_id FK "nullable"
+        timestamp created_at
+    }
 ```
 
-**Constraints:** `users` unique on `(username, tag)` — Discord-style `username#tag`. No cascade on User entity — `deleteAccount()` manually cleans dependents.
+**Constraints:** `users` unique on `(username, tag)` — Discord-style `username#tag`. No cascade on User entity — `deleteAccount()` manually cleans dependents. `secret_notes.token` unique — used as the public URL token for one-time reveal.
 
 ---
 
@@ -336,6 +346,9 @@ erDiagram
 | DELETE | `/users/account` | JWT | `{ password }` | 200 |
 | POST | `/messages/voice` | JWT | multipart `audio` (10MB) + `duration` + `expiresIn?` | `{ mediaUrl, publicId, duration }` |
 | POST | `/messages/image` | JWT | multipart `file` (5MB) + `recipientId` + `expiresIn?` | MessagePayload |
+| POST | `/notes` | JWT | `{ ciphertext, expiresIn }` | `{ token }` |
+| GET | `/note/:token` | None | -- | HTML page (landing/revealed/destroyed) |
+| POST | `/note/:token/reveal` | None | -- | `{ ciphertext }` or 404 |
 
 **Password:** 8+ chars, 1 uppercase, 1 lowercase, 1 number. **Login:** username or `username#tag`. **JWT:** `{ sub: userId, username, tag, profilePictureUrl }`. **Rate limits:** Login 5/15min, Register 3/h, Image 10/min, Voice 10/60s.
 
@@ -440,6 +453,7 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/voi
 - Large files: `chat_provider.dart` (~1512 lines), `chat-friend-request.service.ts` (~428 lines)
 - Migration scripts in `backend/scripts/` (manual)
 - Metadata: server stores who, with whom, when, conversation structure (see `docs/METADATA.md`); design for future options in `docs/plans/2026-03-11-metadata-privacy-design.md`
+- `secret_notes` table uses `synchronize: true` auto-creation — fine for dev, requires `NODE_ENV=development` in docker-compose
 
 ---
 
