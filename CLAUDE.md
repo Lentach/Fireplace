@@ -51,6 +51,7 @@ cd frontend && flutter run -d chrome
 - Use `showTopSnackBar()` — ScaffoldMessenger covers chat input bar
 - `enableForceNew()` on Socket.IO reconnect — Dart caches socket by URL, old JWT reused
 - Provider can't call Navigator — use `consumePendingOpen()` / `consumeFriendRequestSent()` patterns
+- Do NOT call `getConversations()` or `getFriends()` in `onFriendRequestAccepted` — backend already emits updated lists; extra get* causes race and overwrites with stale data (conversation/contact lost on acceptor)
 - Guard `Platform` with `!kIsWeb` — `dart:io` crashes on web
 - `copyWith` must include ALL fields — missing field = data silently lost
 - Voice recording: mic must stay in widget tree — GestureDetector unmounts -> no events

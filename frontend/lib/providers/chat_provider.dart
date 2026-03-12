@@ -457,8 +457,9 @@ class ChatProvider extends ChangeNotifier {
       onFriendRequestAccepted: (data) {
         final request = FriendRequestModel.fromJson(data as Map<String, dynamic>);
         _friendRequests.removeWhere((r) => r.id == request.id);
-        _socketService.getConversations();
-        _socketService.getFriends();
+        // Do NOT call getConversations/getFriends here — backend already emits
+        // conversationsList and friendsList; calling get* causes race and overwrites
+        // with stale data (A loses new conversation and contact flickers/disappears).
         notifyListeners();
       },
       onFriendRequestRejected: (data) {
