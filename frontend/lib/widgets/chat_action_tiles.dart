@@ -7,6 +7,7 @@ import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../screens/drawing_canvas_screen.dart';
 import 'top_snackbar.dart';
+import 'anti_quantum_note_dialog.dart';
 
 class ChatActionTiles extends StatelessWidget {
   const ChatActionTiles({super.key});
@@ -68,6 +69,13 @@ class ChatActionTiles extends StatelessWidget {
             tooltip: 'GIF',
             color: iconColor,
             onTap: () => _showComingSoon(context, 'GIF picker'),
+          ),
+          const SizedBox(width: 12),
+          _ActionTile(
+            icon: Icons.science_outlined,
+            tooltip: 'Anti-Quantum Note',
+            color: iconColor,
+            onTap: () => _showAntiQuantumNoteDialog(context),
           ),
         ],
         ),
@@ -142,6 +150,34 @@ class ChatActionTiles extends StatelessWidget {
       context,
       MaterialPageRoute(
         builder: (context) => const DrawingCanvasScreen(),
+      ),
+    );
+  }
+
+  void _showAntiQuantumNoteDialog(BuildContext context) {
+    final result = _requireActiveConversation(context);
+    if (result == null) return;
+
+    final chat = context.read<ChatProvider>();
+
+    showModalBottomSheet(
+      context: context,
+      isScrollControlled: true,
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      shape: const RoundedRectangleBorder(
+        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
+      ),
+      builder: (_) => AntiQuantumNoteDialog(
+        onSend: (content, ttl) async {
+          await chat.sendAntiQuantumNote(
+            content: content,
+            expiresInSeconds: ttl,
+          );
+          if (context.mounted) {
+            Navigator.of(context).pop();
+            showTopSnackBar(context, 'Anti-Quantum Note sent');
+          }
+        },
       ),
     );
   }
