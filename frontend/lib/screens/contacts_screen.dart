@@ -147,6 +147,21 @@ class ContactsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final chat = context.watch<ChatProvider>();
+    // When user tapped a contact and we had no conversation, we called startConversation.
+    // Backend emits openConversation; consume it here and open chat (AddOrInvitations only consumes when that screen is open).
+    if (chat.pendingOpenConversationId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final id = context.read<ChatProvider>().consumePendingOpen();
+        if (id != null && context.mounted) {
+          Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => ChatDetailScreen(conversationId: id),
+            ),
+          );
+        }
+      });
+    }
     return Scaffold(
       body: Column(
         children: [

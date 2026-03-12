@@ -356,6 +356,12 @@ class ChatProvider extends ChangeNotifier {
             _socketService.getConversations();
           }
         });
+        // Second retry for slow mobile: list can stay empty if first response is late or lost
+        Future.delayed(const Duration(seconds: 2), () {
+          if (_conversations.isEmpty) {
+            _socketService.getConversations();
+          }
+        });
         // Initialize push notifications once per session (first connect only)
         if (!_pushInitialized) {
           _pushInitialized = true;
