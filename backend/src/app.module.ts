@@ -22,6 +22,8 @@ import { BlockedUser } from './blocked/blocked-user.entity';
 import { FcmToken } from './fcm-tokens/fcm-token.entity';
 import { KeyBundle } from './key-bundles/key-bundle.entity';
 import { OneTimePreKey } from './key-bundles/one-time-pre-key.entity';
+import { SecretNote } from './secret-notes/secret-note.entity';
+import { SecretNotesModule } from './secret-notes/secret-notes.module';
 import { validate } from './config/env.validation';
 
 @Module({
@@ -53,7 +55,7 @@ import { validate } from './config/env.validation';
         username: configService.get('DB_USER'),
         password: configService.get('DB_PASS'),
         database: configService.get('DB_NAME'),
-        entities: [User, Conversation, Message, FriendRequest, BlockedUser, FcmToken, KeyBundle, OneTimePreKey],
+        entities: [User, Conversation, Message, FriendRequest, BlockedUser, FcmToken, KeyBundle, OneTimePreKey, SecretNote],
         synchronize: configService.get('NODE_ENV') === 'development',
       }),
     }),
@@ -68,6 +70,7 @@ import { validate } from './config/env.validation';
     KeyBundlesModule,
     PushNotificationsModule,
     ChatModule,
+    SecretNotesModule,
   ],
 })
 export class AppModule {}
