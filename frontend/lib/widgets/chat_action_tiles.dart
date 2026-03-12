@@ -169,13 +169,19 @@ class ChatActionTiles extends StatelessWidget {
       ),
       builder: (_) => AntiQuantumNoteDialog(
         onSend: (content, ttl) async {
-          await chat.sendAntiQuantumNote(
-            content: content,
-            expiresInSeconds: ttl,
-          );
-          if (context.mounted) {
-            Navigator.of(context).pop();
-            showTopSnackBar(context, 'Anti-Quantum Note sent');
+          try {
+            await chat.sendAntiQuantumNote(
+              content: content,
+              expiresInSeconds: ttl,
+            );
+            if (context.mounted) {
+              Navigator.of(context).pop();
+              showTopSnackBar(context, 'Anti-Quantum Note sent');
+            }
+          } catch (e) {
+            if (context.mounted) {
+              showTopSnackBar(context, 'Failed to send note: $e', backgroundColor: Colors.red);
+            }
           }
         },
       ),

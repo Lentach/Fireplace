@@ -2,12 +2,18 @@
 import {
   Controller, Post, Get, Body, Param, Req, Res, UseGuards,
 } from '@nestjs/common';
+import { IsString, IsNotEmpty, IsInt, MaxLength } from 'class-validator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SecretNotesService } from './secret-notes.service';
 import { Response } from 'express';
 
 class CreateNoteDto {
+  @IsString()
+  @IsNotEmpty()
+  @MaxLength(65536)
   ciphertext: string;
+
+  @IsInt()
   expiresIn: number; // seconds: 7200 | 21600 | 43200
 }
 

@@ -31,11 +31,11 @@ export class SecretNotesService {
   }
 
   async revealAndDelete(token: string): Promise<{ ciphertext: string } | null> {
-    const note = await this.repo.findOne({ where: { token } });
-    if (!note) return null;
-    const isExpired = new Date(note.expiresAt).getTime() < Date.now();
-    await this.repo.delete({ token });
-    if (isExpired) return null;
-    return { ciphertext: note.ciphertext };
+    const result = await this.repo.query(
+      `DELETE FROM secret_notes WHERE token = $1 AND expires_at > NOW() RETURNING ciphertext`,
+      [token],
+    );
+    if (result.length === 0) return null;
+    return { ciphertext: result[0].ciphertext };
   }
 }

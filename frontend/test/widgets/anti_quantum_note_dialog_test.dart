@@ -16,7 +16,7 @@ void main() {
     expect(find.text('2h'), findsOneWidget);
     expect(find.text('6h'), findsOneWidget);
     expect(find.text('12h'), findsOneWidget);
-    expect(find.text('Generate & Send'), findsOneWidget);
+    expect(find.text('🔗 Generate & Send'), findsOneWidget);
   });
 
   testWidgets('Generate & Send disabled when text is empty', (tester) async {

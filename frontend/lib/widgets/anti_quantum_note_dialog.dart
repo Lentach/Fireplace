@@ -137,7 +137,7 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     )
-                  : const Text('Generate & Send', style: TextStyle(fontWeight: FontWeight.w700)),
+                  : const Text('🔗 Generate & Send', style: TextStyle(fontWeight: FontWeight.w700)),
             ),
           ),
           const SizedBox(height: 8),

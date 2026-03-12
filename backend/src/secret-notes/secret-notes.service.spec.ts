@@ -9,6 +9,7 @@ const mockRepo = () => ({
   save: jest.fn(),
   findOne: jest.fn(),
   delete: jest.fn(),
+  query: jest.fn(),
 });
 
 describe('SecretNotesService', () => {
@@ -41,34 +42,20 @@ describe('SecretNotesService', () => {
   });
 
   describe('revealAndDelete', () => {
-    it('returns ciphertext and deletes the note when valid', async () => {
-      const future = new Date(Date.now() + 60000);
-      const note = { id: 1, token: 'tok', ciphertext: 'enc', expiresAt: future };
-      repo.findOne.mockResolvedValue(note);
-      repo.delete.mockResolvedValue({});
-
+    it('returns ciphertext when note found and not expired', async () => {
+      repo.query.mockResolvedValue([{ ciphertext: 'enc' }]);
       const result = await service.revealAndDelete('tok');
-
       expect(result).toEqual({ ciphertext: 'enc' });
-      expect(repo.delete).toHaveBeenCalledWith({ token: 'tok' });
+      expect(repo.query).toHaveBeenCalledWith(
+        expect.stringContaining('DELETE FROM secret_notes'),
+        ['tok'],
+      );
     });
 
-    it('returns null when note not found', async () => {
-      repo.findOne.mockResolvedValue(null);
+    it('returns null when note not found or expired', async () => {
+      repo.query.mockResolvedValue([]);
       const result = await service.revealAndDelete('missing');
       expect(result).toBeNull();
-    });
-
-    it('returns null and deletes when note is expired', async () => {
-      const past = new Date(Date.now() - 1000);
-      const note = { id: 1, token: 'tok', ciphertext: 'enc', expiresAt: past };
-      repo.findOne.mockResolvedValue(note);
-      repo.delete.mockResolvedValue({});
-
-      const result = await service.revealAndDelete('tok');
-
-      expect(result).toBeNull();
-      expect(repo.delete).toHaveBeenCalledWith({ token: 'tok' });
     });
   });
 
