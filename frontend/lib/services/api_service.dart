@@ -207,6 +207,22 @@ class ApiService {
     return data;
   }
 
+  Future<String> createSecretNote(String token, String ciphertext, int expiresIn) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/notes'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'ciphertext': ciphertext, 'expiresIn': expiresIn}),
+    );
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception('Failed to create secret note: ${response.statusCode}');
+    }
+    final data = jsonDecode(response.body);
+    return data['token'] as String;
+  }
+
   Future<VoiceUploadResult> uploadVoiceMessage({
     required String token,
     required int duration,
