@@ -67,8 +67,23 @@ export class ChatConversationService {
     const conversations = await this.conversationsService.findByUser(userId);
     const list = await this._conversationsWithUnread(conversations, userId);
     client.emit('conversationsList', list);
-
     client.emit('openConversation', { conversationId: conversation.id });
+
+    // Emit to the other user too (fixes: B never sees conversation when A uses startConversation)
+    const otherSocketId = onlineUsers.get(data.recipientId);
+    if (otherSocketId) {
+      const otherConvs = await this.conversationsService.findByUser(
+        data.recipientId,
+      );
+      const otherList = await this._conversationsWithUnread(
+        otherConvs,
+        data.recipientId,
+      );
+      server.to(otherSocketId).emit('conversationsList', otherList);
+      server.to(otherSocketId).emit('openConversation', {
+        conversationId: conversation.id,
+      });
+    }
   }
 
   private async _conversationsWithUnread(

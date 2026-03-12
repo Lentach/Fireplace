@@ -70,6 +70,7 @@ cd frontend && flutter run -d chrome
 - Reply-to preview: MessageMapper uses "Encrypted message" when replyTo has encryptedContent; frontend fallback for `[encrypted]`
 - `handleMessageDelivered` verifies caller is recipient (not sender) — ownership enforced
 - `handleStartConversation` requires friendship — blocks strangers from opening DMs
+- `handleStartConversation` emits `conversationsList` + `openConversation` to BOTH caller and recipient (fixes: B never sees conversation when A uses startConversation from Contacts on mobile)
 - OTP claim is atomic: `UPDATE ... WHERE id = (SELECT ... LIMIT 1) RETURNING *` in `key-bundles.service.ts`
 - `isBlockedByEither` uses single OR query (one DB round-trip, not two)
 - `_conversationsWithUnread` uses `Promise.all` — parallel, not sequential
@@ -293,7 +294,7 @@ erDiagram
 
 | Client Emit | Server Emit (caller) | Server Emit (other) |
 |---|---|---|
-| `startConversation` | `conversationsList` + `openConversation` | -- |
+| `startConversation` | `conversationsList` + `openConversation` | same (if recipient online) |
 | `getConversations` | `conversationsList` | -- |
 | `deleteConversationOnly` | `conversationDeleted` + `conversationsList` | same |
 | `setDisappearingTimer` | `disappearingTimerUpdated` | `disappearingTimerUpdated` |
