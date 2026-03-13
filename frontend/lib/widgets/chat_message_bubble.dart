@@ -244,37 +244,27 @@ class ChatMessageBubble extends StatelessWidget {
           margin: EdgeInsets.only(
             left: isMine ? 48 : 0,
             right: isMine ? 0 : 48,
-            bottom: 4,
+            bottom: 10,
           ),
           decoration: BoxDecoration(
             color: bubbleColor,
-            borderRadius: BorderRadius.only(
-              topLeft: const Radius.circular(16),
-              topRight: const Radius.circular(16),
-              bottomLeft: Radius.circular(isMine ? 16 : 4),
-              bottomRight: Radius.circular(isMine ? 4 : 16),
-            ),
-            border: Border(
-              left: BorderSide(
-                color: borderColor,
-                width: 3,
-              ),
-            ),
+            borderRadius: BorderRadius.circular(16),
           ),
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
           child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
           children: [
             if (message.replyTo != null) ...[
               _buildReplyQuote(context, message.replyTo!, isDark, textColor, borderColor),
               const SizedBox(height: 8),
             ],
-            // Message content based on type
+            // Message content based on type (sent: right-aligned, received: left-aligned)
             if (message.messageType == MessageType.text)
               _buildTextWithLinks(context, message.content, textColor)
             else if (message.messageType == MessageType.ping)
               Row(
                 mainAxisSize: MainAxisSize.min,
+                mainAxisAlignment: isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
                 children: [
                   Icon(Icons.campaign, size: 18, color: textColor),
                   const SizedBox(width: 6),
@@ -320,13 +310,20 @@ class ChatMessageBubble extends StatelessWidget {
                 ),
               )
             else
-              Text(
-                message.content.isNotEmpty ? message.content : '[Unsupported message type]',
-                style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
+              Align(
+                alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+                child: Text(
+                  message.content.isNotEmpty ? message.content : '[Unsupported message type]',
+                  style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
+                  textAlign: isMine ? TextAlign.right : TextAlign.left,
+                ),
               ),
             // Link preview card (shown for text messages with a URL)
             if (message.linkPreviewUrl != null)
-              _buildLinkPreviewCard(context, isDark, textColor),
+              Align(
+                alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+                child: _buildLinkPreviewCard(context, isDark, textColor),
+              ),
             // Retry button for failed messages
             Builder(
               builder: (ctx) {
@@ -334,7 +331,7 @@ class ChatMessageBubble extends StatelessWidget {
                 if (retryBtn == null) return const SizedBox.shrink();
                 return Column(
                   mainAxisSize: MainAxisSize.min,
-                  crossAxisAlignment: CrossAxisAlignment.start,
+                  crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
                   children: [
                     const SizedBox(height: 4),
                     retryBtn,
@@ -343,15 +340,16 @@ class ChatMessageBubble extends StatelessWidget {
               },
             ),
             const SizedBox(height: 4),
-            // Bottom row: time + delivery + timer (ValueListenableBuilder avoids full-screen rebuild every second)
+            // Bottom row: time + delivery + timer (Telegram style: right for sent, left for received)
             Align(
-              alignment: Alignment.bottomRight,
+              alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
               child: ValueListenableBuilder<int>(
                 valueListenable: context.read<ChatProvider>().countdownTickNotifier,
                 builder: (_, __, ___) {
                       final timerText = _getTimerText();
                       return Row(
                         mainAxisSize: MainAxisSize.min,
+                        mainAxisAlignment: isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
                         children: [
                           Text(
                             _formatTime(message.createdAt),
@@ -376,7 +374,7 @@ class ChatMessageBubble extends StatelessWidget {
           ],
         ),
       ),
-      if (message.reactions.isNotEmpty)
+    if (message.reactions.isNotEmpty)
         Positioned(
           top: -14,
           left: isMine ? null : 8,
@@ -401,7 +399,12 @@ class ChatMessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildTextWithLinks(BuildContext context, String text, Color textColor) {
+  Widget _buildTextWithLinks(
+    BuildContext context,
+    String text,
+    Color textColor, {
+    bool textAlignRight = false,
+  }) {
     final urlRegex = RegExp(r'https?://[^\s]+', caseSensitive: false);
     final spans = <InlineSpan>[];
     int last = 0;
@@ -432,10 +435,18 @@ class ChatMessageBubble extends StatelessWidget {
       ));
     }
 
+    final textAlign = textAlignRight ? TextAlign.right : TextAlign.left;
     if (spans.isEmpty) {
-      return Text(text, style: RpgTheme.bodyFont(fontSize: 14, color: textColor));
+      return Text(
+        text,
+        style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
+        textAlign: textAlign,
+      );
     }
-    return RichText(text: TextSpan(children: spans));
+    return RichText(
+      textAlign: textAlign,
+      text: TextSpan(children: spans),
+    );
   }
 
   Widget _buildLinkPreviewCard(BuildContext context, bool isDark, Color textColor) {

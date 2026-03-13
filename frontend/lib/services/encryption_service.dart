@@ -2,6 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 import 'encryption/signal_stores.dart';
 
@@ -27,6 +28,11 @@ class EncryptionService {
   bool get isInitialized => _initialized;
 
   int? _userId;
+
+  /// Cached SharedPreferences instance for synchronous-on-web message content cache.
+  SharedPreferences? _prefs;
+  Future<SharedPreferences> get _sharedPrefs async =>
+      _prefs ??= await SharedPreferences.getInstance();
 
   /// True if keys were just generated and need to be uploaded to the server.
   bool needsKeyUpload = false;
@@ -269,23 +275,34 @@ class EncryptionService {
   }
 
   /// Persist decrypted message content to survive app restart.
+  ///
+  /// Uses SharedPreferences (localStorage on web) instead of flutter_secure_storage
+  /// (IndexedDB) because localStorage writes are synchronous in JS — they survive
+  /// browser tab close, unlike in-flight IndexedDB transactions which are aborted.
   Future<void> saveDecryptedContent(int id, Map<String, dynamic> data) async {
     final userId = _userId;
     if (userId == null) return;
-    await _storage.write(
-      key: 'e2e_${userId}_decrypted_$id',
-      value: jsonEncode(data),
-    );
+    try {
+      final prefs = await _sharedPrefs;
+      await prefs.setString('e2e_${userId}_decrypted_$id', jsonEncode(data));
+    } catch (_) {}
   }
 
   /// Retrieve persisted decrypted message content, or null if not found.
+  /// Falls back to flutter_secure_storage for entries written by older versions.
   Future<Map<String, dynamic>?> getDecryptedContent(int id) async {
     final userId = _userId;
     if (userId == null) return null;
-    final raw = await _storage.read(key: 'e2e_${userId}_decrypted_$id');
-    if (raw == null) return null;
+    final key = 'e2e_${userId}_decrypted_$id';
     try {
-      return jsonDecode(raw) as Map<String, dynamic>;
+      // Primary: SharedPreferences (reliable on web — synchronous localStorage)
+      final prefs = await _sharedPrefs;
+      final raw = prefs.getString(key);
+      if (raw != null) return jsonDecode(raw) as Map<String, dynamic>;
+      // Fallback: flutter_secure_storage (written by older app versions)
+      final oldRaw = await _storage.read(key: key);
+      if (oldRaw != null) return jsonDecode(oldRaw) as Map<String, dynamic>;
+      return null;
     } catch (_) {
       return null;
     }
@@ -297,17 +314,29 @@ class EncryptionService {
     final userId = _userId;
     if (userId != null) {
       final prefix = 'e2e_${userId}_';
+      // flutter_secure_storage: collect keys first to avoid concurrent-modification
       final all = await _storage.readAll();
-      for (final key in all.keys) {
-        if (key.startsWith(prefix)) {
-          await _storage.delete(key: key);
-        }
+      final keysToDelete = all.keys.where((k) => k.startsWith(prefix)).toList();
+      for (final key in keysToDelete) {
+        await _storage.delete(key: key);
       }
+      // SharedPreferences: clear decrypted content cache entries
+      try {
+        final prefs = await _sharedPrefs;
+        final spKeysToDelete = prefs
+            .getKeys()
+            .where((k) => k.startsWith('e2e_${userId}_decrypted_'))
+            .toList();
+        for (final key in spKeysToDelete) {
+          await prefs.remove(key);
+        }
+      } catch (_) {}
     }
     _initialized = false;
     needsKeyUpload = false;
     _keysForUpload = null;
     _userId = null;
+    _prefs = null;
     debugPrint('[EncryptionService] All encryption keys cleared');
   }
 }
