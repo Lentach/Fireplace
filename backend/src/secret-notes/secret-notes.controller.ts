@@ -5,7 +5,7 @@ import {
 import { IsString, IsNotEmpty, IsInt, MaxLength } from 'class-validator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SecretNotesService } from './secret-notes.service';
-import { Response } from 'express';
+import type { Response } from 'express';
 
 class CreateNoteDto {
   @IsString()
