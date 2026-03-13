@@ -37,6 +37,9 @@ class ChatProvider extends ChangeNotifier {
   bool _e2eInitialized = false;
   final Map<int, Completer<Map<String, dynamic>>> _pendingPreKeyFetches = {};
   bool _generatingMoreKeys = false;
+  /// Single delayed retry for a failed text message (e.g. recipient had no key bundle, then came online).
+  Timer? _delayedRetryTimer;
+  String? _delayedRetryTempId;
   /// Cache of decrypted messages by id. Used when history decrypt hits DuplicateMessageException (session already advanced by live messages).
   final Map<int, MessageModel> _decryptedContentCache = {};
   bool _decryptingHistory = false;
@@ -333,6 +336,7 @@ class ChatProvider extends ChangeNotifier {
     _errorMessage = null;
     _e2eInitialized = false;
     _pendingPreKeyFetches.clear();
+    _cancelDelayedRetryIfAny();
 
     // Notify listeners immediately so UI shows empty state
     notifyListeners();
@@ -745,11 +749,75 @@ class ChatProvider extends ChangeNotifier {
         replyToMessageId: effectiveReplyToId,
       );
     } catch (e) {
+      _pendingPreKeyFetches.remove(recipientId);
       debugPrint('[E2E] Encryption failed: $e');
       _e2eFlowLog('SEND_FAIL', {'recipientId': recipientId, 'error': e.toString()});
       final String userMsg = _userFriendlySendError(e, recipientId);
       _markMessageFailed(tempId, userMsg);
+      if (_isKeyBundleOrTimeoutError(e)) {
+        _scheduleDelayedRetry(tempId);
+      }
     }
+  }
+
+  bool _isKeyBundleOrTimeoutError(Object e) {
+    final s = e.toString();
+    return s.contains('key bundle') || s.contains('no key bundle') ||
+        s.contains('timed out') || s.contains('Timeout') || e is TimeoutException;
+  }
+
+  void _cancelDelayedRetry(String? tempId) {
+    if (tempId != null && _delayedRetryTempId == tempId) {
+      _delayedRetryTimer?.cancel();
+      _delayedRetryTimer = null;
+      _delayedRetryTempId = null;
+    }
+  }
+
+  void _cancelDelayedRetryIfAny() {
+    _delayedRetryTimer?.cancel();
+    _delayedRetryTimer = null;
+    _delayedRetryTempId = null;
+  }
+
+  void _scheduleDelayedRetry(String tempId) {
+    _delayedRetryTimer?.cancel();
+    _delayedRetryTempId = tempId;
+    _delayedRetryTimer = Timer(const Duration(seconds: 4), () {
+      _delayedRetryTimer = null;
+      final tid = _delayedRetryTempId;
+      _delayedRetryTempId = null;
+      if (tid != null) _retrySendInPlace(tid);
+      notifyListeners();
+    });
+  }
+
+  void _retrySendInPlace(String tempId) {
+    final idx = _messages.indexWhere((m) => m.tempId == tempId);
+    if (idx == -1) return;
+    final message = _messages[idx];
+    if (message.deliveryStatus != MessageDeliveryStatus.failed) return;
+    if (message.messageType != MessageType.text || message.content.isEmpty) return;
+    final convList = _conversations.where((c) => c.id == message.conversationId).toList();
+    if (convList.isEmpty) return;
+    final conv = convList.first;
+    final recipientId = conv_helpers.getOtherUserId(conv, _currentUserId);
+    int? effectiveExpiresIn;
+    if (message.expiresAt != null) {
+      final secs = message.expiresAt!.difference(DateTime.now()).inSeconds;
+      effectiveExpiresIn = secs.clamp(1, 86400 * 30);
+    } else {
+      effectiveExpiresIn = conv.disappearingTimer;
+    }
+    _messages[idx] = message.copyWith(deliveryStatus: MessageDeliveryStatus.sending);
+    notifyListeners();
+    _encryptAndSend(
+      recipientId: recipientId,
+      content: message.content,
+      tempId: tempId,
+      effectiveExpiresIn: effectiveExpiresIn,
+      effectiveReplyToId: message.replyToMessageId,
+    );
   }
 
   /// User-friendly error when encrypt/send fails (e.g. no key bundle, timeout).
@@ -939,6 +1007,7 @@ class ChatProvider extends ChangeNotifier {
 
   /// Retry sending a failed message (text or voice). Voice uses cached file; text re-sends content.
   Future<void> retryFailedMessage(String tempId) async {
+    _cancelDelayedRetry(tempId);
     final index = _messages.indexWhere((m) => m.tempId == tempId);
     if (index == -1) return;
     final message = _messages[index];

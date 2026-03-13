@@ -91,6 +91,7 @@ cd frontend && flutter run -d chrome
 - Own messages skip decryption (sender has plaintext from optimistic display)
 - Conversation list shows "Encrypted message" for encrypted lastMessage (not decrypted at list level)
 - Session establishment uses Completer with 10s timeout — on failure, message marked as failed (no unencrypted fallback)
+- Send when recipient offline: on encrypt/session failure we clear `_pendingPreKeyFetches[recipientId]` so retry gets a fresh pre-key fetch. If failure is key-bundle or timeout, we schedule a single delayed retry (4s) so when recipient logs in and uploads keys, the message can send without user tapping Retry. Manual Retry cancels the delayed retry; connect/logout cancels it via `_cancelDelayedRetryIfAny()`.
 - Keys NOT cleared on logout (persist for re-login). Only cleared on account deletion via `clearEncryptionKeys()`
 - All Signal store keys use `e2e_${userId}_` prefix — multi-account isolation in same browser
 - `clearAllKeys()` uses selective deletion (reads all, deletes by prefix) — never wipes other data

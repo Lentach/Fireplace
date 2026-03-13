@@ -1,4 +1,4 @@
 # Latest session summary
 
-**Date:** 2026-03-11  
-**Summary:** [2026-03-11-critical-fixes.md](2026-03-11-critical-fixes.md) — Link preview + E2E; C2/C3 DTOs; **+38 tests** (link-preview 12, chat-friend-request 12, E2eEnvelope 6, LinkPreviewService 8).
+**Date:** 2026-03-13  
+**Summary:** [2026-03-13-session.md](2026-03-13-session.md) — Send when recipient offline: clear pending pre-key on failure, 4s delayed auto-retry for key-bundle/timeout, cancel on manual Retry or connect.
