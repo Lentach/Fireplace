@@ -315,30 +315,47 @@ class ChatProvider extends ChangeNotifier {
     _reconnect.tokenForReconnect = token;
     _decryptHistoryCancelled = false;
 
-    // Clear ALL state before connecting to prevent data leakage between users
-    _conversations = [];
-    _messages = [];
-    _activeConversationId = null;
-    _lastMessages.clear();
-    _deletedMessageIds.clear();
-    _unreadCounts.clear();
-    _typingStatus.clear();
-    for (final t in _typingTimers.values) { t.cancel(); }
-    _typingTimers.clear();
-    _partnerRecordingVoice.clear();
-    _replyingToMessage = null;
-    _pendingOpenConversationId = null;
-    _friendRequests = [];
-    _pendingRequestsCount = 0;
-    _friends = [];
-    _friendRequestJustSent = false;
-    _searchResults = null;
-    _errorMessage = null;
-    _e2eInitialized = false;
-    _pendingPreKeyFetches.clear();
-    _cancelDelayedRetryIfAny();
+    final isReconnect = (_currentUserId == userId && _conversations.isNotEmpty);
 
-    // Notify listeners immediately so UI shows empty state
+    if (!isReconnect) {
+      // Fresh connect or switch user: clear ALL state to prevent data leakage
+      _conversations = [];
+      _messages = [];
+      _activeConversationId = null;
+      _lastMessages.clear();
+      _deletedMessageIds.clear();
+      _unreadCounts.clear();
+      _typingStatus.clear();
+      for (final t in _typingTimers.values) { t.cancel(); }
+      _typingTimers.clear();
+      _partnerRecordingVoice.clear();
+      _replyingToMessage = null;
+      _pendingOpenConversationId = null;
+      _friendRequests = [];
+      _pendingRequestsCount = 0;
+      _friends = [];
+      _friendRequestJustSent = false;
+      _searchResults = null;
+      _errorMessage = null;
+      _e2eInitialized = false;
+      _pendingPreKeyFetches.clear();
+      _cancelDelayedRetryIfAny();
+    } else {
+      // Reconnect (same user): keep list state to avoid flicker when socket reconnects
+      // after screen wake. Only clear chat view and transient state.
+      _messages = [];
+      _activeConversationId = null;
+      _typingStatus.clear();
+      for (final t in _typingTimers.values) { t.cancel(); }
+      _typingTimers.clear();
+      _partnerRecordingVoice.clear();
+      _replyingToMessage = null;
+      _pendingOpenConversationId = null;
+      _searchResults = null;
+      _errorMessage = null;
+      _cancelDelayedRetryIfAny();
+    }
+
     notifyListeners();
 
     // Clean up old socket if it exists
@@ -372,6 +389,9 @@ class ChatProvider extends ChangeNotifier {
       },
       onConversationsList: (data) {
         final list = data as List<dynamic>;
+        if (list.isEmpty && _conversations.isNotEmpty) {
+          return;
+        }
         _conversations = list
             .map((c) =>
                 ConversationModel.fromJson(c as Map<String, dynamic>))
@@ -480,6 +500,9 @@ class ChatProvider extends ChangeNotifier {
       },
       onFriendsList: (data) {
         final list = data as List<dynamic>;
+        if (list.isEmpty && _friends.isNotEmpty) {
+          return;
+        }
         _friends = list
             .map((u) => UserModel.fromJson(u as Map<String, dynamic>))
             .toList();
