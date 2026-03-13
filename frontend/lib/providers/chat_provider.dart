@@ -391,9 +391,6 @@ class ChatProvider extends ChangeNotifier {
       },
       onConversationsList: (data) {
         final list = data as List<dynamic>;
-        if (list.isEmpty && _conversations.isNotEmpty) {
-          return;
-        }
         _conversations = list
             .map((c) =>
                 ConversationModel.fromJson(c as Map<String, dynamic>))
@@ -518,9 +515,6 @@ class ChatProvider extends ChangeNotifier {
       },
       onFriendsList: (data) {
         final list = data as List<dynamic>;
-        if (list.isEmpty && _friends.isNotEmpty) {
-          return;
-        }
         _friends = list
             .map((u) => UserModel.fromJson(u as Map<String, dynamic>))
             .toList();
