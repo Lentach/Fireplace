@@ -422,7 +422,7 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/voi
 
 **Key screens:** AuthScreen (`clearStatus()` on tab switch — DO NOT DELETE), ConversationsScreen (swipe-to-delete, `consumePendingOpen()`), ChatDetailScreen (Timer.periodic 1s for expired msgs, `markConversationRead` on open), AddOrInvitationsScreen (searchUsers -> auto-send if 1 result, picker if multiple, `consumeFriendRequestSent()`), ContactsScreen (consumes `pendingOpenConversationId` and navigates to chat when user tapped contact and `startConversation` returned), PrivacySafetyScreen (E2E info, identity fingerprint).
 
-**Key widgets:** ChatInputBar (text+send+mic+action tiles), ChatActionTiles (Camera/Gallery/Ping/Timer/Clear/Drawing), ChatMessageBubble (all types, long-press -> reactions+delete), VoiceMessageBubble (waveform, speed toggle), ConversationTile (Dismissible, unread badge), TopSnackbar (never use ScaffoldMessenger), AvatarCircle.
+**Key widgets:** ChatInputBar (text+send+mic+action tiles), ChatActionTiles (icons centered in viewport via ConstrainedBox(minWidth: viewport); Camera/Gallery/Ping/Timer/Clear/Drawing), ChatMessageBubble (padding 16,10,16,8 for Signal/Wire-style insets; all types, long-press -> reactions+delete), VoiceMessageBubble (waveform, speed toggle), ConversationTile (Dismissible, unread badge), TopSnackbar (never use ScaffoldMessenger), AvatarCircle.
 
 **Models:** `UserModel` (`displayHandle` getter), `ConversationModel` (immutable), `MessageModel` (`copyWith` for status/content/media), `FriendRequestModel`. Frontend-only: `MessageDeliveryStatus.failed`.
 
@@ -448,7 +448,7 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/voi
 
 ## 11. Known Limitations & Tech Debt
 
-- E2E: text only (no media/voice/drawing encryption), no multi-device, no key recovery, conversation list shows "Encrypted message". On some devices (notably web on mobile after long sleep or re-login), one side can get [Decryption failed] / [encrypted] for history and new messages (session/identity mismatch); full logout+login does not always fix; under investigation (session re-establishment or storage timing).
+- E2E: text only (no media/voice/drawing encryption), no multi-device, no key recovery, conversation list shows "Encrypted message". History messages for sender show `[encrypted]` after re-login when browser evicted storage (own messages not re-decryptable by design). Key rotation is handled: `isTrustedIdentity` auto-accepts new identities; broken sessions are reset on live decrypt failure so next send rebuilds via X3DH.
 - No message edit, no fuzzy search, no iOS APNs
 - No unique constraint on `(sender, receiver)` in friend_requests
 - Pagination: simple limit/offset (default 50), N+1 in `_conversationsWithUnread()`

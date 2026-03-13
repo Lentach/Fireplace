@@ -110,6 +110,15 @@ class EncryptionService {
     return _sessionStore.containsSession(address);
   }
 
+  /// Delete the session with the given user. Forces a fresh X3DH exchange
+  /// on the next outgoing message (type-3 PreKeySignalMessage), which allows
+  /// the remote peer to re-establish their session too.
+  Future<void> deleteSession(int userId) async {
+    final address = SignalProtocolAddress(userId.toString(), _deviceId);
+    await _sessionStore.deleteSession(address);
+    debugPrint('[EncryptionService] Session deleted for userId=$userId (broken session reset)');
+  }
+
   /// Build a session with the given user from their pre-key bundle.
   ///
   /// [preKeyBundle] must contain: registrationId, identityPublicKey,

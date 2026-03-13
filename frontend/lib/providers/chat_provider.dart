@@ -43,7 +43,9 @@ class ChatProvider extends ChangeNotifier {
   /// Cache of decrypted messages by id. Used when history decrypt hits DuplicateMessageException (session already advanced by live messages).
   final Map<int, MessageModel> _decryptedContentCache = {};
   bool _decryptingHistory = false;
-  bool _decryptHistoryCancelled = false;
+  /// Incremented on each new messageHistory to cancel stale in-flight decrypt loops.
+  /// Each loop captures its generation at start and exits when the counter changes.
+  int _decryptHistoryGeneration = 0;
   final List<Map<String, dynamic>> _incomingMessageQueue = [];
 
   // Monotonic counter for temporary negative message IDs — prevents collision
@@ -313,7 +315,7 @@ class ChatProvider extends ChangeNotifier {
     _reconnect.cancel();
     _reconnect.intentionalDisconnect = false;
     _reconnect.tokenForReconnect = token;
-    _decryptHistoryCancelled = false;
+    _decryptHistoryGeneration++; // cancel any in-flight history decrypt from previous connect
 
     final isReconnect = (_currentUserId == userId);
 
@@ -441,7 +443,7 @@ class ChatProvider extends ChangeNotifier {
             .toList();
 
         // Cancel any in-flight decrypt so we process the latest messages
-        if (_decryptingHistory) _decryptHistoryCancelled = true;
+        _decryptHistoryGeneration++;
 
         // Don't re-add messages we already received as deleted (e.g. ping deleted by other user; late messageHistory can overwrite)
         _messages.removeWhere((m) => _deletedMessageIds.contains(m.id));
@@ -457,9 +459,12 @@ class ChatProvider extends ChangeNotifier {
         }
 
         // Decrypt history first so no live message advances the session before we decrypt in order. Queue any incoming messages until done.
+        final myGeneration = _decryptHistoryGeneration;
         _decryptingHistory = true;
-        _decryptMessageHistory().whenComplete(() {
-          _decryptingHistory = false;
+        _decryptMessageHistory(myGeneration).whenComplete(() {
+          if (_decryptHistoryGeneration == myGeneration) {
+            _decryptingHistory = false;
+          }
           _processIncomingMessageQueue();
         });
       },
@@ -1520,8 +1525,7 @@ class ChatProvider extends ChangeNotifier {
     }).whenComplete(() => _generatingMoreKeys = false);
   }
 
-  Future<void> _decryptMessageHistory() async {
-    _decryptHistoryCancelled = false;
+  Future<void> _decryptMessageHistory(int generation) async {
     final toDecrypt = _messages.where((m) => m.needsDecryption(_currentUserId)).length;
     if (toDecrypt > 0) _e2eFlowLog('HISTORY_DECRYPT_START', {'count': toDecrypt});
     // Double Ratchet requires decrypting in chronological order (oldest first) to avoid DuplicateMessageException.
@@ -1533,7 +1537,7 @@ class ChatProvider extends ChangeNotifier {
       });
     bool changed = false;
     for (var i = 0; i < sorted.length; i++) {
-      if (_decryptHistoryCancelled) break;
+      if (_decryptHistoryGeneration != generation) break; // newer history arrived, abort
       final msg = sorted[i];
       // Skip messages we already failed to decrypt (avoids repeated work and UI freeze)
       if (msg.content == '[Decryption failed]') continue;
@@ -1630,6 +1634,13 @@ class ChatProvider extends ChangeNotifier {
       }
       debugPrint('[E2E] Decrypt failed for msg ${msg.id}: $e');
       _e2eFlowLog('DECRYPT_FAIL', {'msgId': msg.id, 'error': e.toString()});
+      // For live incoming messages (not history replay): delete the broken session.
+      // On next outgoing message to sender, we'll send a PreKeySignalMessage (type-3)
+      // which forces the sender to re-establish their session too.
+      if (!_decryptingHistory) {
+        _encryptionService.deleteSession(msg.senderId).catchError((_) {});
+        _e2eFlowLog('SESSION_RESET', {'peerId': msg.senderId});
+      }
       return msg.copyWith(content: '[Decryption failed]');
     }
   }
@@ -1674,7 +1685,7 @@ class ChatProvider extends ChangeNotifier {
     _decryptedContentCache.clear();
     _incomingMessageQueue.clear();
     _decryptingHistory = false;
-    _decryptHistoryCancelled = true;
+    _decryptHistoryGeneration++; // cancel any in-flight history decrypt
     notifyListeners();
   }
 

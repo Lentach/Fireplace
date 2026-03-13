@@ -27,9 +27,14 @@ class ChatActionTiles extends StatelessWidget {
       child: SingleChildScrollView(
         scrollDirection: Axis.horizontal,
         padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: Row(
-          mainAxisAlignment: MainAxisAlignment.center,
-          children: [
+        child: ConstrainedBox(
+          constraints: BoxConstraints(
+            minWidth: MediaQuery.sizeOf(context).width,
+          ),
+          child: Row(
+            mainAxisAlignment: MainAxisAlignment.center,
+            mainAxisSize: MainAxisSize.min,
+            children: [
           _LongPressActionTile(
             icon: Icons.delete_forever,
             color: iconColor,
@@ -77,7 +82,8 @@ class ChatActionTiles extends StatelessWidget {
             color: iconColor,
             onTap: () => _showAntiQuantumNoteDialog(context),
           ),
-        ],
+            ],
+          ),
         ),
       ),
     );

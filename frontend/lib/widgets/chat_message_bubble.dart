@@ -261,7 +261,7 @@ class ChatMessageBubble extends StatelessWidget {
               ),
             ),
           ),
-          padding: const EdgeInsets.fromLTRB(12, 8, 12, 6),
+          padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
           child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
