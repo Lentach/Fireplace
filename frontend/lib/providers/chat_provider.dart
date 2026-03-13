@@ -582,6 +582,11 @@ class ChatProvider extends ChangeNotifier {
       },
       onPreKeyBundleResponse: _handlePreKeyBundleResponse,
       onPreKeysLow: _handlePreKeysLow,
+      onSessionRebuildNeeded: (data) {
+        final fromUserId = (data as Map<String, dynamic>)['fromUserId'] as int;
+        _encryptionService.deleteSession(fromUserId).catchError((_) {});
+        _e2eFlowLog('SESSION_REBUILD_RECEIVED', {'fromUserId': fromUserId});
+      },
       onDisconnect: (_) {
         _reconnect.onDisconnect(
           () => connect(token: _reconnect.tokenForReconnect!, userId: _currentUserId!),
@@ -1634,11 +1639,11 @@ class ChatProvider extends ChangeNotifier {
       }
       debugPrint('[E2E] Decrypt failed for msg ${msg.id}: $e');
       _e2eFlowLog('DECRYPT_FAIL', {'msgId': msg.id, 'error': e.toString()});
-      // For live incoming messages (not history replay): delete the broken session.
-      // On next outgoing message to sender, we'll send a PreKeySignalMessage (type-3)
-      // which forces the sender to re-establish their session too.
+      // For live incoming messages (not history replay): delete the broken session
+      // and ask sender to rebuild theirs too, so their next message is type-3.
       if (!_decryptingHistory) {
         _encryptionService.deleteSession(msg.senderId).catchError((_) {});
+        _socketService.requestSessionRebuild(msg.senderId);
         _e2eFlowLog('SESSION_RESET', {'peerId': msg.senderId});
       }
       return msg.copyWith(content: '[Decryption failed]');

@@ -292,6 +292,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
+  @SubscribeMessage('requestSessionRebuild')
+  async handleRequestSessionRebuild(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
+  ) {
+    return this.chatKeyExchangeService.handleRequestSessionRebuild(
+      client,
+      data,
+      this.server,
+      this.onlineUsers,
+    );
+  }
+
   // ========== CONVERSATION HANDLERS ==========
 
   @SubscribeMessage('startConversation')

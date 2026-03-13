@@ -5,6 +5,7 @@ import { validateDto } from '../utils/dto.validator';
 import { UploadKeyBundleDto } from '../dto/upload-key-bundle.dto';
 import { UploadOneTimePreKeysDto } from '../dto/upload-one-time-pre-keys.dto';
 import { FetchPreKeyBundleDto } from '../dto/fetch-pre-key-bundle.dto';
+import { RequestSessionRebuildDto } from '../dto/request-session-rebuild.dto';
 
 const PRE_KEY_LOW_THRESHOLD = 10;
 
@@ -97,6 +98,36 @@ export class ChatKeyExchangeService {
       );
       client.emit('error', {
         message: error?.message || 'Failed to fetch pre-key bundle',
+      });
+    }
+  }
+
+  /// Relay a session-rebuild request to the target user.
+  /// Called when receiver cannot decrypt a live message — asks sender to
+  /// delete their stale session so their next send uses a fresh PreKeySignalMessage.
+  async handleRequestSessionRebuild(
+    client: Socket,
+    data: any,
+    server: Server,
+    onlineUsers: Map<number, string>,
+  ): Promise<void> {
+    const requesterId: number = client.data.user?.id;
+    if (!requesterId) return;
+
+    try {
+      const dto = validateDto(RequestSessionRebuildDto, data);
+      const targetSocketId = onlineUsers.get(dto.recipientId);
+      if (targetSocketId) {
+        server.to(targetSocketId).emit('sessionRebuildNeeded', {
+          fromUserId: requesterId,
+        });
+      }
+    } catch (error) {
+      this.logger.error(
+        `requestSessionRebuild failed requesterId=${requesterId}: ${error.message}`,
+      );
+      client.emit('error', {
+        message: error?.message || 'Failed to request session rebuild',
       });
     }
   }

@@ -283,4 +283,68 @@ describe('ChatKeyExchangeService', () => {
       expect(noUserClient.emit).not.toHaveBeenCalled();
     });
   });
+
+  describe('handleRequestSessionRebuild', () => {
+    const validData = { recipientId: 2 };
+
+    it('relays sessionRebuildNeeded to recipient when online', async () => {
+      onlineUsers.set(2, 'socket-of-user-2');
+
+      await service.handleRequestSessionRebuild(
+        mockClient as Socket,
+        validData,
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      expect(mockServer.to).toHaveBeenCalledWith('socket-of-user-2');
+      expect(mockServer.emit).toHaveBeenCalledWith('sessionRebuildNeeded', {
+        fromUserId: 1,
+      });
+    });
+
+    it('does nothing when recipient is offline', async () => {
+      // onlineUsers does not contain userId 2
+
+      await service.handleRequestSessionRebuild(
+        mockClient as Socket,
+        validData,
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      expect(mockServer.to).not.toHaveBeenCalled();
+      expect(mockServer.emit).not.toHaveBeenCalled();
+    });
+
+    it('emits error when DTO validation fails (invalid recipientId)', async () => {
+      await service.handleRequestSessionRebuild(
+        mockClient as Socket,
+        { recipientId: -1 },
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'error',
+        expect.objectContaining({
+          message: expect.stringContaining('Validation failed'),
+        }),
+      );
+    });
+
+    it('returns early when client has no userId', async () => {
+      const noUserClient = { data: { user: null }, emit: jest.fn() };
+      onlineUsers.set(2, 'socket-of-user-2');
+
+      await service.handleRequestSessionRebuild(
+        noUserClient as unknown as Socket,
+        validData,
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      expect(mockServer.to).not.toHaveBeenCalled();
+    });
+  });
 });

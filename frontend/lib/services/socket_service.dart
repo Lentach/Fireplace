@@ -45,6 +45,7 @@ class SocketService {
     void Function(dynamic)? onOneTimePreKeysUploaded,
     void Function(dynamic)? onPreKeyBundleResponse,
     void Function(dynamic)? onPreKeysLow,
+    void Function(dynamic)? onSessionRebuildNeeded,
   }) {
     // Defensive cleanup: ensure any previous socket is fully disposed
     // before creating a new one (prevents cache reuse)
@@ -113,6 +114,9 @@ class SocketService {
     }
     if (onPreKeysLow != null) {
       _socket!.on('preKeysLow', onPreKeysLow);
+    }
+    if (onSessionRebuildNeeded != null) {
+      _socket!.on('sessionRebuildNeeded', onSessionRebuildNeeded);
     }
     _socket!.onDisconnect(onDisconnect);
 
@@ -311,6 +315,10 @@ class SocketService {
 
   void fetchPreKeyBundle(int userId) {
     _socket?.emit('fetchPreKeyBundle', {'userId': userId});
+  }
+
+  void requestSessionRebuild(int recipientId) {
+    _socket?.emit('requestSessionRebuild', {'recipientId': recipientId});
   }
 
   void disconnect() {
