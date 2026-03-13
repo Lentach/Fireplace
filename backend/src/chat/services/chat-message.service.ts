@@ -194,13 +194,19 @@ export class ChatMessageService {
         MessageMapper.toPayload(m, { conversationId: data.conversationId }),
       );
 
-      client.emit('messageHistory', mapped);
+      client.emit('messageHistory', {
+        conversationId: data.conversationId,
+        messages: mapped,
+      });
     } catch (error) {
       this.logger.error(
         `Failed to get messages for conversation ${data.conversationId}: ${error.message}`,
         error.stack,
       );
-      client.emit('messageHistory', []);
+      client.emit('messageHistory', {
+        conversationId: data.conversationId,
+        messages: [],
+      });
     }
   }
 

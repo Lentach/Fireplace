@@ -52,7 +52,7 @@ cd frontend && flutter run -d chrome
 - `enableForceNew()` on Socket.IO reconnect — Dart caches socket by URL, old JWT reused
 - Provider can't call Navigator — use `consumePendingOpen()` / `consumeFriendRequestSent()` patterns
 - Do NOT call `getConversations()` or `getFriends()` in `onFriendRequestAccepted` — backend already emits updated lists; extra get* causes race and overwrites with stale data (conversation/contact lost on acceptor)
-- On reconnect (same user), `connect()` must NOT clear `_conversations`/`_friends` so the UI does not flicker (empty → full) when socket reconnects after screen wake; only clear chat view and transient state. Ignore empty `conversationsList`/`friendsList` responses when we already have list data (avoids overwriting with empty on race).
+- On reconnect (same user), `connect()` must NOT clear `_conversations`/`_friends` so the UI does not flicker (empty → full) when socket reconnects after screen wake; use `isReconnect = (_currentUserId == userId)` (no `_conversations.isNotEmpty` check so slow first response does not cause clear). Preserve `_activeConversationId` on reconnect and in `onConnect` call `getMessages(_activeConversationId!)` so the open chat refetches and is not left empty. Backend `messageHistory` payload is `{ conversationId, messages }`; frontend ignores response when `conversationId != _activeConversationId` (avoids overwriting wrong chat). Ignore empty `conversationsList`/`friendsList` when we already have list data (avoids overwriting with empty on race).
 - Guard `Platform` with `!kIsWeb` — `dart:io` crashes on web
 - `copyWith` must include ALL fields — missing field = data silently lost
 - Voice recording: mic must stay in widget tree — GestureDetector unmounts -> no events
@@ -294,7 +294,7 @@ erDiagram
 | Client Emit | Server Emit (caller) | Server Emit (recipient) |
 |---|---|---|
 | `sendMessage` | `messageSent` | `newMessage` |
-| `getMessages` | `messageHistory` | -- |
+| `getMessages` | `messageHistory` `{ conversationId, messages }` | -- |
 | `sendPing` | `pingSent` | `newPing` |
 | `messageDelivered` | -- | `messageDelivered` (to sender) |
 | `markConversationRead` | -- | `messageDelivered` (READ) per msg |
@@ -448,7 +448,7 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/voi
 
 ## 11. Known Limitations & Tech Debt
 
-- E2E: text only (no media/voice/drawing encryption), no multi-device, no key recovery, conversation list shows "Encrypted message"
+- E2E: text only (no media/voice/drawing encryption), no multi-device, no key recovery, conversation list shows "Encrypted message". On some devices (notably web on mobile after long sleep or re-login), one side can get [Decryption failed] / [encrypted] for history and new messages (session/identity mismatch); full logout+login does not always fix; under investigation (session re-establishment or storage timing).
 - No message edit, no fuzzy search, no iOS APNs
 - No unique constraint on `(sender, receiver)` in friend_requests
 - Pagination: simple limit/offset (default 50), N+1 in `_conversationsWithUnread()`

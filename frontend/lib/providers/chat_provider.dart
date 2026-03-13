@@ -315,7 +315,7 @@ class ChatProvider extends ChangeNotifier {
     _reconnect.tokenForReconnect = token;
     _decryptHistoryCancelled = false;
 
-    final isReconnect = (_currentUserId == userId && _conversations.isNotEmpty);
+    final isReconnect = (_currentUserId == userId);
 
     if (!isReconnect) {
       // Fresh connect or switch user: clear ALL state to prevent data leakage
@@ -341,10 +341,9 @@ class ChatProvider extends ChangeNotifier {
       _pendingPreKeyFetches.clear();
       _cancelDelayedRetryIfAny();
     } else {
-      // Reconnect (same user): keep list state to avoid flicker when socket reconnects
-      // after screen wake. Only clear chat view and transient state.
+      // Reconnect (same user): keep list state and active chat to avoid flicker and empty chat.
+      // Only clear message list; we will refetch in onConnect when socket is ready.
       _messages = [];
-      _activeConversationId = null;
       _typingStatus.clear();
       for (final t in _typingTimers.values) { t.cancel(); }
       _typingTimers.clear();
@@ -374,6 +373,9 @@ class ChatProvider extends ChangeNotifier {
         _socketService.getFriendRequests();
         _socketService.getFriends();
         _socketService.getBlockedList();
+        if (_activeConversationId != null) {
+          _socketService.getMessages(_activeConversationId!, limit: AppConstants.messagePageSize);
+        }
         Future.delayed(AppConstants.conversationsRefreshDelay, () {
           if (_conversations.isEmpty) {
             _socketService.getConversations();
@@ -420,7 +422,23 @@ class ChatProvider extends ChangeNotifier {
         notifyListeners();
       },
       onMessageHistory: (data) {
-        final list = data as List<dynamic>;
+        int? responseConversationId;
+        List<dynamic> list;
+        if (data is Map<String, dynamic> &&
+            data.containsKey('conversationId') &&
+            data.containsKey('messages')) {
+          responseConversationId = (data['conversationId'] as num).toInt();
+          list = data['messages'] as List<dynamic>;
+        } else if (data is List<dynamic>) {
+          list = data;
+        } else {
+          return;
+        }
+        if (responseConversationId != null &&
+            _activeConversationId != null &&
+            responseConversationId != _activeConversationId) {
+          return;
+        }
         _messages = list
             .map((m) => MessageModel.fromJson(m as Map<String, dynamic>))
             .toList();
