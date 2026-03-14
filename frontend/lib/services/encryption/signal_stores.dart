@@ -4,14 +4,14 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Reliable key-value storage that dual-writes to both flutter_secure_storage
-/// (IndexedDB+WebCrypto on web, Keychain/Keystore on mobile) AND SharedPreferences
-/// (localStorage on web, XML/plist on mobile).
+/// Platform-aware key-value storage for Signal Protocol keys.
 ///
-/// On web, flutter_secure_storage uses IndexedDB which can lose data when all tabs
-/// are closed (WebCrypto key eviction). SharedPreferences (localStorage) is reliable
-/// across sessions. Reads try flutter_secure_storage first, then SharedPreferences.
-/// On mobile, flutter_secure_storage is reliable so SharedPreferences is just a backup.
+/// **Web:** Uses ONLY SharedPreferences (localStorage). flutter_secure_storage
+/// on web uses IndexedDB+WebCrypto which loses data when browser tabs are closed
+/// or the WebCrypto key is evicted. localStorage never loses data.
+///
+/// **Mobile:** Uses flutter_secure_storage (Keychain on iOS, Keystore on Android)
+/// which is hardware-backed and reliable.
 class DualStorage {
   final FlutterSecureStorage _secure;
   SharedPreferences? _prefs;
@@ -21,73 +21,51 @@ class DualStorage {
   Future<SharedPreferences> get _sharedPrefs async =>
       _prefs ??= await SharedPreferences.getInstance();
 
+  /// Prefix for Signal keys in SharedPreferences to avoid collisions
+  /// with other SharedPreferences data (e.g. decrypted message cache).
+  static const String _spPrefix = 'sig_';
+
   Future<void> write({required String key, required String value}) async {
-    // Write to both storages
-    try {
-      await _secure.write(key: key, value: value);
-    } catch (e) {
-      debugPrint('[DualStorage] secure write failed for $key: $e');
-    }
-    try {
+    if (kIsWeb) {
       final prefs = await _sharedPrefs;
-      await prefs.setString(key, value);
-    } catch (e) {
-      debugPrint('[DualStorage] prefs write failed for $key: $e');
+      await prefs.setString('$_spPrefix$key', value);
+    } else {
+      await _secure.write(key: key, value: value);
     }
   }
 
   Future<String?> read({required String key}) async {
-    // Try flutter_secure_storage first
-    try {
-      final val = await _secure.read(key: key);
-      if (val != null) return val;
-    } catch (e) {
-      debugPrint('[DualStorage] secure read failed for $key: $e');
-    }
-    // Fallback to SharedPreferences (critical on web where IndexedDB can lose data)
-    try {
+    if (kIsWeb) {
       final prefs = await _sharedPrefs;
-      final val = prefs.getString(key);
-      if (val != null) {
-        // Restore to flutter_secure_storage for next time
-        try {
-          await _secure.write(key: key, value: val);
-        } catch (_) {}
-        return val;
-      }
-    } catch (e) {
-      debugPrint('[DualStorage] prefs read failed for $key: $e');
+      return prefs.getString('$_spPrefix$key');
+    } else {
+      return _secure.read(key: key);
     }
-    return null;
   }
 
   Future<void> delete({required String key}) async {
-    try {
-      await _secure.delete(key: key);
-    } catch (_) {}
-    try {
+    if (kIsWeb) {
       final prefs = await _sharedPrefs;
-      await prefs.remove(key);
-    } catch (_) {}
+      await prefs.remove('$_spPrefix$key');
+    } else {
+      await _secure.delete(key: key);
+    }
   }
 
-  /// Read all entries from both storages. Merges results (prefs fallback).
   Future<Map<String, String>> readAll() async {
-    final result = <String, String>{};
-    // SharedPreferences first (as base)
-    try {
+    if (kIsWeb) {
       final prefs = await _sharedPrefs;
+      final result = <String, String>{};
       for (final key in prefs.getKeys()) {
-        final val = prefs.getString(key);
-        if (val != null) result[key] = val;
+        if (key.startsWith(_spPrefix)) {
+          final val = prefs.getString(key);
+          if (val != null) result[key.substring(_spPrefix.length)] = val;
+        }
       }
-    } catch (_) {}
-    // flutter_secure_storage overwrites (authoritative when available)
-    try {
-      final secureAll = await _secure.readAll();
-      result.addAll(secureAll);
-    } catch (_) {}
-    return result;
+      return result;
+    } else {
+      return _secure.readAll();
+    }
   }
 
   void clearPrefsCache() {
