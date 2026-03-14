@@ -379,8 +379,8 @@ class ChatProvider extends ChangeNotifier {
       _cancelDelayedRetryIfAny();
     } else {
       // Reconnect (same user): keep list state and active chat to avoid flicker and empty chat.
-      // Only clear message list; we will refetch in onConnect when socket is ready.
-      _messages = [];
+      // Do NOT clear _messages — messageHistory will replace them when it arrives.
+      // Clearing here causes a ~500ms blank-chat flash on screen wake.
       _typingStatus.clear();
       for (final t in _typingTimers.values) { t.cancel(); }
       _typingTimers.clear();
