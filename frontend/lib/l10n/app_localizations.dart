@@ -170,11 +170,11 @@ abstract class AppLocalizations {
   /// **'Wyloguj'**
   String get logout;
 
-  /// No description provided for @conversations.
+  /// No description provided for @chat.
   ///
   /// In pl, this message translates to:
-  /// **'Konwersacje'**
-  String get conversations;
+  /// **'Czat'**
+  String get chat;
 
   /// No description provided for @contacts.
   ///
@@ -467,7 +467,7 @@ abstract class AppLocalizations {
   /// No description provided for @noConversationsYet.
   ///
   /// In pl, this message translates to:
-  /// **'Brak rozmów'**
+  /// **'Brak czatów'**
   String get noConversationsYet;
 
   /// No description provided for @startNewChatToBegin.
@@ -583,6 +583,78 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Nieobsługiwany typ wiadomości'**
   String get unsupportedMessageType;
+
+  /// No description provided for @resetPasswordDialogTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zmień hasło'**
+  String get resetPasswordDialogTitle;
+
+  /// No description provided for @oldPassword.
+  ///
+  /// In pl, this message translates to:
+  /// **'Obecne hasło'**
+  String get oldPassword;
+
+  /// No description provided for @newPassword.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nowe hasło'**
+  String get newPassword;
+
+  /// No description provided for @passwordRequired.
+  ///
+  /// In pl, this message translates to:
+  /// **'Hasło jest wymagane'**
+  String get passwordRequired;
+
+  /// No description provided for @passwordMinLength.
+  ///
+  /// In pl, this message translates to:
+  /// **'Hasło musi mieć co najmniej 8 znaków'**
+  String get passwordMinLength;
+
+  /// No description provided for @passwordMustContain.
+  ///
+  /// In pl, this message translates to:
+  /// **'Hasło musi zawierać wielką literę, małą literę i cyfrę'**
+  String get passwordMustContain;
+
+  /// No description provided for @oldPasswordRequired.
+  ///
+  /// In pl, this message translates to:
+  /// **'Obecne hasło jest wymagane'**
+  String get oldPasswordRequired;
+
+  /// No description provided for @resetButton.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zmień'**
+  String get resetButton;
+
+  /// No description provided for @deleteAccountDialogTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń konto'**
+  String get deleteAccountDialogTitle;
+
+  /// No description provided for @deleteAccountWarning.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ta operacja jest nieodwracalna. Wszystkie Twoje wiadomości i rozmowy zostaną usunięte.'**
+  String get deleteAccountWarning;
+
+  /// No description provided for @enterPasswordToConfirm.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wpisz hasło, aby potwierdzić'**
+  String get enterPasswordToConfirm;
+
+  /// No description provided for @clearingChat.
+  ///
+  /// In pl, this message translates to:
+  /// **'Czyszczenie…'**
+  String get clearingChat;
 }
 
 class _AppLocalizationsDelegate

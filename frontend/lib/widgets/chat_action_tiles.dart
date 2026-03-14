@@ -4,6 +4,7 @@ import 'package:image_picker/image_picker.dart';
 import '../models/conversation_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
+import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
 import '../screens/drawing_canvas_screen.dart';
 import 'top_snackbar.dart';
@@ -387,7 +388,7 @@ class _CenterProgressOverlay extends StatelessWidget {
             ),
             const SizedBox(height: 16),
             Text(
-              'Clearing...',
+              AppLocalizations.of(context).clearingChat,
               style: RpgTheme.bodyFont(
                 fontSize: 14,
                 color: Colors.white,

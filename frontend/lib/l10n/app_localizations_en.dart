@@ -45,7 +45,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get logout => 'Logout';
 
   @override
-  String get conversations => 'Conversations';
+  String get chat => 'Chat';
 
   @override
   String get contacts => 'Contacts';
@@ -205,7 +205,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get selectAConversation => 'Select a conversation';
 
   @override
-  String get noConversationsYet => 'No conversations yet';
+  String get noConversationsYet => 'No chats yet';
 
   @override
   String get startNewChatToBegin => 'Start a new chat to begin';
@@ -266,4 +266,42 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get unsupportedMessageType => 'Unsupported message type';
+
+  @override
+  String get resetPasswordDialogTitle => 'Reset Password';
+
+  @override
+  String get oldPassword => 'Old Password';
+
+  @override
+  String get newPassword => 'New Password';
+
+  @override
+  String get passwordRequired => 'Password is required';
+
+  @override
+  String get passwordMinLength => 'Password must be at least 8 characters';
+
+  @override
+  String get passwordMustContain =>
+      'Password must contain uppercase, lowercase, and number';
+
+  @override
+  String get oldPasswordRequired => 'Old password is required';
+
+  @override
+  String get resetButton => 'Reset';
+
+  @override
+  String get deleteAccountDialogTitle => 'Delete Account';
+
+  @override
+  String get deleteAccountWarning =>
+      'This action is permanent and cannot be undone. All your messages and conversations will be deleted.';
+
+  @override
+  String get enterPasswordToConfirm => 'Enter password to confirm';
+
+  @override
+  String get clearingChat => 'Clearing…';
 }

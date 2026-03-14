@@ -12,7 +12,7 @@
   "resetPassword": "Reset Password",
   "deleteAccount": "Delete Account",
   "logout": "Logout",
-  "conversations": "Conversations",
+  "chat": "Chat",
   "contacts": "Contacts",
   "profilePictureUpdated": "Profile picture updated",
   "uploadFailed": "Upload failed",
@@ -74,7 +74,7 @@
   "recordingVoice": "Recording voice…",
   "typing": "typing…",
   "selectAConversation": "Select a conversation",
-  "noConversationsYet": "No conversations yet",
+  "noConversationsYet": "No chats yet",
   "startNewChatToBegin": "Start a new chat to begin",
   "deleteConversationTitle": "Delete Conversation?",
   "deleteConversationConfirm": "This will delete all messages in this conversation. You can re-open the chat later from Contacts.",
@@ -98,5 +98,20 @@
   "addFriendsToStart": "Add friends to start chatting",
   "block": "Block",
   "imageFailedToLoad": "Image failed to load",
-  "unsupportedMessageType": "Unsupported message type"
+  "unsupportedMessageType": "Unsupported message type",
+
+  "resetPasswordDialogTitle": "Reset Password",
+  "oldPassword": "Old Password",
+  "newPassword": "New Password",
+  "passwordRequired": "Password is required",
+  "passwordMinLength": "Password must be at least 8 characters",
+  "passwordMustContain": "Password must contain uppercase, lowercase, and number",
+  "oldPasswordRequired": "Old password is required",
+  "resetButton": "Reset",
+
+  "deleteAccountDialogTitle": "Delete Account",
+  "deleteAccountWarning": "This action is permanent and cannot be undone. All your messages and conversations will be deleted.",
+  "enterPasswordToConfirm": "Enter password to confirm",
+
+  "clearingChat": "Clearing…"
 }

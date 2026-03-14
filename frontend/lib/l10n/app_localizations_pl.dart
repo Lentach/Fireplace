@@ -45,7 +45,7 @@ class AppLocalizationsPl extends AppLocalizations {
   String get logout => 'Wyloguj';
 
   @override
-  String get conversations => 'Konwersacje';
+  String get chat => 'Czat';
 
   @override
   String get contacts => 'Kontakty';
@@ -204,7 +204,7 @@ class AppLocalizationsPl extends AppLocalizations {
   String get selectAConversation => 'Wybierz rozmowę';
 
   @override
-  String get noConversationsYet => 'Brak rozmów';
+  String get noConversationsYet => 'Brak czatów';
 
   @override
   String get startNewChatToBegin => 'Rozpocznij czat, aby zacząć';
@@ -265,4 +265,42 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get unsupportedMessageType => 'Nieobsługiwany typ wiadomości';
+
+  @override
+  String get resetPasswordDialogTitle => 'Zmień hasło';
+
+  @override
+  String get oldPassword => 'Obecne hasło';
+
+  @override
+  String get newPassword => 'Nowe hasło';
+
+  @override
+  String get passwordRequired => 'Hasło jest wymagane';
+
+  @override
+  String get passwordMinLength => 'Hasło musi mieć co najmniej 8 znaków';
+
+  @override
+  String get passwordMustContain =>
+      'Hasło musi zawierać wielką literę, małą literę i cyfrę';
+
+  @override
+  String get oldPasswordRequired => 'Obecne hasło jest wymagane';
+
+  @override
+  String get resetButton => 'Zmień';
+
+  @override
+  String get deleteAccountDialogTitle => 'Usuń konto';
+
+  @override
+  String get deleteAccountWarning =>
+      'Ta operacja jest nieodwracalna. Wszystkie Twoje wiadomości i rozmowy zostaną usunięte.';
+
+  @override
+  String get enterPasswordToConfirm => 'Wpisz hasło, aby potwierdzić';
+
+  @override
+  String get clearingChat => 'Czyszczenie…';
 }
