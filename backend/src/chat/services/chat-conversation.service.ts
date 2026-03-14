@@ -200,14 +200,11 @@ export class ChatConversationService {
       return;
     }
 
-    // 6. Emit to both users
+    // 6. Emit conversationDeleted only to caller — B gets updated list only (no auto-close)
     const payload = { conversationId: dto.conversationId };
     client.emit('conversationDeleted', payload);
 
     const otherSocketId = onlineUsers.get(otherUserId);
-    if (otherSocketId) {
-      server.to(otherSocketId).emit('conversationDeleted', payload);
-    }
 
     // 7. Refresh conversations list for both users
     const userConvs = await this.conversationsService.findByUser(userId);

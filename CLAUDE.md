@@ -309,7 +309,7 @@ erDiagram
 |---|---|---|
 | `startConversation` | `conversationsList` + `openConversation` | `conversationsList` only (no openConversation) |
 | `getConversations` | `conversationsList` | -- |
-| `deleteConversationOnly` | `conversationDeleted` + `conversationsList` | same |
+| `deleteConversationOnly` | `conversationDeleted` + `conversationsList` | `conversationsList` only (no conversationDeleted — B's chat shows "deleted by other", no auto-close) |
 | `setDisappearingTimer` | `disappearingTimerUpdated` | `disappearingTimerUpdated` |
 
 ### Friend Events

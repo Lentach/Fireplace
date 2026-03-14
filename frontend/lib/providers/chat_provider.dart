@@ -71,6 +71,8 @@ class ChatProvider extends ChangeNotifier {
   bool _friendRequestJustSent = false;
   /// Set when we (sender) receive friendRequestAccepted — acceptor's username for snackbar.
   String? _pendingFriendAcceptedByName;
+  /// True when our active conversation was removed from list (e.g. other user deleted).
+  bool _activeConversationDeletedByOther = false;
   bool _showPingEffect = false;
   List<UserModel>? _searchResults;
   final Map<int, int> _unreadCounts = {}; // conversationId -> count
@@ -130,6 +132,7 @@ class ChatProvider extends ChangeNotifier {
   Set<int> get blockedByUserIds => Set<int>.from(_blockedByUserIds);
   bool get friendRequestJustSent => _friendRequestJustSent;
   String? get pendingFriendAcceptedByName => _pendingFriendAcceptedByName;
+  bool get activeConversationDeletedByOther => _activeConversationDeletedByOther;
   List<UserModel>? get searchResults => _searchResults;
   SocketService get socket => _socketService;
 
@@ -315,6 +318,16 @@ class ChatProvider extends ChangeNotifier {
     return name;
   }
 
+  /// Call when user navigates back from a chat that was deleted by the other user.
+  void clearActiveIfDeletedByOther() {
+    if (_activeConversationDeletedByOther) {
+      _activeConversationDeletedByOther = false;
+      _activeConversationId = null;
+      _messages = [];
+      notifyListeners();
+    }
+  }
+
   String getOtherUserUsername(ConversationModel conv) =>
       conv_helpers.getOtherUserUsername(conv, _currentUserId);
 
@@ -351,6 +364,7 @@ class ChatProvider extends ChangeNotifier {
       _friends = [];
       _friendRequestJustSent = false;
       _pendingFriendAcceptedByName = null;
+      _activeConversationDeletedByOther = false;
       _searchResults = null;
       _errorMessage = null;
       _e2eInitialized = false;
@@ -368,6 +382,7 @@ class ChatProvider extends ChangeNotifier {
       _replyingToMessage = null;
       _pendingOpenConversationId = null;
       _pendingFriendAcceptedByName = null;
+      _activeConversationDeletedByOther = false;
       _searchResults = null;
       _errorMessage = null;
       _cancelDelayedRetryIfAny();
@@ -409,10 +424,16 @@ class ChatProvider extends ChangeNotifier {
       },
       onConversationsList: (data) {
         final list = data as List<dynamic>;
-        _conversations = list
+        final newConvs = list
             .map((c) =>
                 ConversationModel.fromJson(c as Map<String, dynamic>))
             .toList();
+        // If our active conv is no longer in list (e.g. other user deleted), mark it — don't auto-close
+        if (_activeConversationId != null &&
+            !newConvs.any((c) => c.id == _activeConversationId)) {
+          _activeConversationDeletedByOther = true;
+        }
+        _conversations = newConvs;
         _unreadCounts.clear();
         for (final c in list) {
           final m = c as Map<String, dynamic>;
@@ -628,12 +649,14 @@ class ChatProvider extends ChangeNotifier {
   /// will call openConversation (avoids double getMessages on desktop).
   void setActiveConversation(int conversationId) {
     _activeConversationId = conversationId;
+    _activeConversationDeletedByOther = false;
     _unreadCounts[conversationId] = 0;
     notifyListeners();
   }
 
   void openConversation(int conversationId, {int limit = AppConstants.messagePageSize}) {
     _activeConversationId = conversationId;
+    _activeConversationDeletedByOther = false;
     _unreadCounts[conversationId] = 0;
     _messages = [];
     _socketService.getMessages(conversationId, limit: limit);
@@ -1328,9 +1351,10 @@ class ChatProvider extends ChangeNotifier {
     // Remove from unread counts
     _unreadCounts.remove(convId);
 
-    // Clear active conversation if it was deleted
+    // Clear active conversation if it was deleted (we are the initiator)
     if (_activeConversationId == convId) {
       _activeConversationId = null;
+      _activeConversationDeletedByOther = false;
     }
 
     notifyListeners();

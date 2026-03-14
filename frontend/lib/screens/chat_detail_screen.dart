@@ -366,7 +366,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
     final otherUser = _getOtherUser();
     final activeConv = chat.getConversationById(widget.conversationId);
-    if (activeConv == null && chat.conversations.isNotEmpty) {
+    final deletedByOther = activeConv == null && chat.activeConversationDeletedByOther;
+    // Auto-pop only when conv gone and NOT deleted by other (e.g. unfriend/block)
+    if (activeConv == null && chat.conversations.isNotEmpty && !deletedByOther) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         if (Navigator.canPop(context)) {
@@ -382,7 +384,28 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       });
     }
 
-    final body = SafeArea(
+    // When other user deleted the conversation, show message instead of auto-close
+    final body = deletedByOther
+        ? SafeArea(
+            child: Center(
+              child: Padding(
+                padding: const EdgeInsets.all(24),
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(Icons.delete_outline, size: 48, color: mutedColor),
+                    const SizedBox(height: 16),
+                    Text(
+                      'Conversation deleted by the other user',
+                      textAlign: TextAlign.center,
+                      style: RpgTheme.bodyFont(fontSize: 14, color: mutedColor),
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          )
+        : SafeArea(
       child: Column(
         children: [
           Expanded(
@@ -522,7 +545,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
-            context.read<ChatProvider>().clearActiveConversation();
+            final c = context.read<ChatProvider>();
+            if (c.activeConversationDeletedByOther) {
+              c.clearActiveIfDeletedByOther();
+            } else {
+              c.clearActiveConversation();
+            }
             Navigator.of(context).pop();
           },
         ),
