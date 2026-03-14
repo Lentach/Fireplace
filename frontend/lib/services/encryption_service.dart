@@ -13,11 +13,13 @@ class EncryptionService {
   static const int _initialPreKeyBatchSize = 20;
   static const int _deviceId = 1;
 
-  /// On web: app-specific dbName isolates from other apps; WebCrypto encrypts at rest.
-  /// Mobile: uses Keychain/Keystore (hardware-backed when available).
-  final FlutterSecureStorage _storage = FlutterSecureStorage(
+  /// DualStorage: writes to both flutter_secure_storage (IndexedDB on web) AND
+  /// SharedPreferences (localStorage on web). Reads try flutter_secure_storage
+  /// first, then falls back to SharedPreferences. This prevents data loss when
+  /// IndexedDB/WebCrypto keys are evicted by the browser.
+  final DualStorage _storage = DualStorage(FlutterSecureStorage(
     webOptions: const WebOptions(dbName: 'FireplaceE2E'),
-  );
+  ));
 
   late SecureIdentityKeyStore _identityStore;
   late SecurePreKeyStore _preKeyStore;
@@ -314,7 +316,7 @@ class EncryptionService {
     final userId = _userId;
     if (userId != null) {
       final prefix = 'e2e_${userId}_';
-      // flutter_secure_storage: collect keys first to avoid concurrent-modification
+      // DualStorage.readAll() merges both storages
       final all = await _storage.readAll();
       final keysToDelete = all.keys.where((k) => k.startsWith(prefix)).toList();
       for (final key in keysToDelete) {
@@ -337,6 +339,7 @@ class EncryptionService {
     _keysForUpload = null;
     _userId = null;
     _prefs = null;
+    _storage.clearPrefsCache();
     debugPrint('[EncryptionService] All encryption keys cleared');
   }
 }

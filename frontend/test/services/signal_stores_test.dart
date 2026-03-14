@@ -11,7 +11,7 @@ void main() {
 
     setUp(() {
       FlutterSecureStorage.setMockInitialValues({});
-      const storage = FlutterSecureStorage();
+      final storage = DualStorage(const FlutterSecureStorage());
       store = SecureIdentityKeyStore(storage, 'test_');
     });
 

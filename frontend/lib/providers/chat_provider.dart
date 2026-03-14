@@ -1621,6 +1621,36 @@ class ChatProvider extends ChangeNotifier {
       // Skip messages we already failed to decrypt (avoids repeated work and UI freeze)
       if (msg.content == '[Decryption failed]') continue;
       if (msg.needsDecryption(_currentUserId)) {
+        // Cache-first: check persisted cache before attempting live decryption.
+        // This avoids unnecessary session ratchet advancement and recovers
+        // messages when keys are lost (e.g. IndexedDB eviction on web).
+        final cached = _decryptedContentCache[msg.id];
+        if (cached != null) {
+          final idx = _messages.indexWhere((m) => m.id == msg.id);
+          if (idx != -1) { _messages[idx] = cached; changed = true; }
+          continue;
+        }
+        final persisted = await _encryptionService.getDecryptedContent(msg.id);
+        if (persisted != null && (persisted['content'] as String? ?? '').isNotEmpty) {
+          final safeImageUrl = persisted['linkPreviewImageUrl'] as String?;
+          final safePageUrl = persisted['linkPreviewUrl'] as String?;
+          final validImage = safeImageUrl != null &&
+                  safePageUrl != null &&
+                  LinkPreviewService.isSafeImageUrl(safeImageUrl, safePageUrl)
+              ? safeImageUrl
+              : null;
+          final restored = msg.copyWith(
+            content: persisted['content'] as String,
+            linkPreviewUrl: persisted['linkPreviewUrl'] as String?,
+            linkPreviewTitle: persisted['linkPreviewTitle'] as String?,
+            linkPreviewImageUrl: validImage,
+          );
+          _decryptedContentCache[msg.id] = restored;
+          final idx = _messages.indexWhere((m) => m.id == msg.id);
+          if (idx != -1) { _messages[idx] = restored; changed = true; }
+          continue;
+        }
+        // No cache — live decrypt (advances session ratchet)
         final decrypted = await _decryptMessageAsync(msg);
         final idx = _messages.indexWhere((m) => m.id == msg.id);
         if (idx != -1) {

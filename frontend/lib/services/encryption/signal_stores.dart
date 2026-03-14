@@ -1,10 +1,103 @@
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
-/// Persistent IdentityKeyStore backed by flutter_secure_storage.
+/// Reliable key-value storage that dual-writes to both flutter_secure_storage
+/// (IndexedDB+WebCrypto on web, Keychain/Keystore on mobile) AND SharedPreferences
+/// (localStorage on web, XML/plist on mobile).
+///
+/// On web, flutter_secure_storage uses IndexedDB which can lose data when all tabs
+/// are closed (WebCrypto key eviction). SharedPreferences (localStorage) is reliable
+/// across sessions. Reads try flutter_secure_storage first, then SharedPreferences.
+/// On mobile, flutter_secure_storage is reliable so SharedPreferences is just a backup.
+class DualStorage {
+  final FlutterSecureStorage _secure;
+  SharedPreferences? _prefs;
+
+  DualStorage(this._secure);
+
+  Future<SharedPreferences> get _sharedPrefs async =>
+      _prefs ??= await SharedPreferences.getInstance();
+
+  Future<void> write({required String key, required String value}) async {
+    // Write to both storages
+    try {
+      await _secure.write(key: key, value: value);
+    } catch (e) {
+      debugPrint('[DualStorage] secure write failed for $key: $e');
+    }
+    try {
+      final prefs = await _sharedPrefs;
+      await prefs.setString(key, value);
+    } catch (e) {
+      debugPrint('[DualStorage] prefs write failed for $key: $e');
+    }
+  }
+
+  Future<String?> read({required String key}) async {
+    // Try flutter_secure_storage first
+    try {
+      final val = await _secure.read(key: key);
+      if (val != null) return val;
+    } catch (e) {
+      debugPrint('[DualStorage] secure read failed for $key: $e');
+    }
+    // Fallback to SharedPreferences (critical on web where IndexedDB can lose data)
+    try {
+      final prefs = await _sharedPrefs;
+      final val = prefs.getString(key);
+      if (val != null) {
+        // Restore to flutter_secure_storage for next time
+        try {
+          await _secure.write(key: key, value: val);
+        } catch (_) {}
+        return val;
+      }
+    } catch (e) {
+      debugPrint('[DualStorage] prefs read failed for $key: $e');
+    }
+    return null;
+  }
+
+  Future<void> delete({required String key}) async {
+    try {
+      await _secure.delete(key: key);
+    } catch (_) {}
+    try {
+      final prefs = await _sharedPrefs;
+      await prefs.remove(key);
+    } catch (_) {}
+  }
+
+  /// Read all entries from both storages. Merges results (prefs fallback).
+  Future<Map<String, String>> readAll() async {
+    final result = <String, String>{};
+    // SharedPreferences first (as base)
+    try {
+      final prefs = await _sharedPrefs;
+      for (final key in prefs.getKeys()) {
+        final val = prefs.getString(key);
+        if (val != null) result[key] = val;
+      }
+    } catch (_) {}
+    // flutter_secure_storage overwrites (authoritative when available)
+    try {
+      final secureAll = await _secure.readAll();
+      result.addAll(secureAll);
+    } catch (_) {}
+    return result;
+  }
+
+  void clearPrefsCache() {
+    _prefs = null;
+  }
+}
+
+/// Persistent IdentityKeyStore backed by DualStorage.
 class SecureIdentityKeyStore extends IdentityKeyStore {
-  final FlutterSecureStorage _storage;
+  final DualStorage _storage;
   final String _p;
   IdentityKeyPair? _identityKeyPair;
   int? _localRegistrationId;
@@ -76,9 +169,9 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
   }
 }
 
-/// Persistent PreKeyStore backed by flutter_secure_storage.
+/// Persistent PreKeyStore backed by DualStorage.
 class SecurePreKeyStore extends PreKeyStore {
-  final FlutterSecureStorage _storage;
+  final DualStorage _storage;
   final String _p;
 
   SecurePreKeyStore(this._storage, this._p);
@@ -112,9 +205,9 @@ class SecurePreKeyStore extends PreKeyStore {
   }
 }
 
-/// Persistent SignedPreKeyStore backed by flutter_secure_storage.
+/// Persistent SignedPreKeyStore backed by DualStorage.
 class SecureSignedPreKeyStore extends SignedPreKeyStore {
-  final FlutterSecureStorage _storage;
+  final DualStorage _storage;
   final String _p;
 
   SecureSignedPreKeyStore(this._storage, this._p);
@@ -163,9 +256,9 @@ class SecureSignedPreKeyStore extends SignedPreKeyStore {
   }
 }
 
-/// Persistent SessionStore backed by flutter_secure_storage.
+/// Persistent SessionStore backed by DualStorage.
 class SecureSessionStore extends SessionStore {
-  final FlutterSecureStorage _storage;
+  final DualStorage _storage;
   final String _p;
 
   SecureSessionStore(this._storage, this._p);
