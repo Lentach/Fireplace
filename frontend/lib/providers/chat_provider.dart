@@ -46,6 +46,9 @@ class ChatProvider extends ChangeNotifier {
   /// Incremented on each new messageHistory to cancel stale in-flight decrypt loops.
   /// Each loop captures its generation at start and exits when the counter changes.
   int _decryptHistoryGeneration = 0;
+  /// User IDs whose sessions should be force-rebuilt on the next _ensureSession call.
+  /// Handlers add to this set (synchronously, no async); _ensureSession drains it atomically.
+  final Set<int> _forceSessionRebuild = {};
   final List<Map<String, dynamic>> _incomingMessageQueue = [];
 
   // Monotonic counter for temporary negative message IDs — prevents collision
@@ -341,6 +344,7 @@ class ChatProvider extends ChangeNotifier {
       _errorMessage = null;
       _e2eInitialized = false;
       _pendingPreKeyFetches.clear();
+      _forceSessionRebuild.clear();
       _cancelDelayedRetryIfAny();
     } else {
       // Reconnect (same user): keep list state and active chat to avoid flicker and empty chat.
@@ -584,7 +588,10 @@ class ChatProvider extends ChangeNotifier {
       onPreKeysLow: _handlePreKeysLow,
       onSessionRebuildNeeded: (data) {
         final fromUserId = (data as Map<String, dynamic>)['fromUserId'] as int;
-        _encryptionService.deleteSession(fromUserId).catchError((_) {});
+        // Mark session for rebuild — actual delete happens atomically in _ensureSession
+        // before the next send, avoiding the race where a hot-path deleteSession
+        // wipes a session that encrypt() is about to use.
+        _forceSessionRebuild.add(fromUserId);
         _e2eFlowLog('SESSION_REBUILD_RECEIVED', {'fromUserId': fromUserId});
       },
       onDisconnect: (_) {
@@ -1472,9 +1479,16 @@ class ChatProvider extends ChangeNotifier {
     if (!_e2eInitialized || _currentUserId == null) {
       throw StateError('E2E not initialized or user not authenticated');
     }
+    final needsRebuild = _forceSessionRebuild.remove(recipientId);
     final hasSession = await _encryptionService.hasSession(recipientId);
-    _e2eFlowLog('SESSION_ENSURE', {'recipientId': recipientId, 'hasSession': hasSession});
-    if (hasSession) return;
+    _e2eFlowLog('SESSION_ENSURE', {'recipientId': recipientId, 'hasSession': hasSession, 'needsRebuild': needsRebuild});
+    if (hasSession && !needsRebuild) return;
+
+    // Delete stale session before fetching a fresh bundle (atomic with rebuild).
+    if (needsRebuild && hasSession) {
+      await _encryptionService.deleteSession(recipientId);
+      _e2eFlowLog('SESSION_DELETED_FOR_REBUILD', {'recipientId': recipientId});
+    }
 
     // Check if we already have a pending fetch for this user
     if (_pendingPreKeyFetches.containsKey(recipientId)) {
@@ -1642,7 +1656,9 @@ class ChatProvider extends ChangeNotifier {
       // For live incoming messages (not history replay): delete the broken session
       // and ask sender to rebuild theirs too, so their next message is type-3.
       if (!_decryptingHistory) {
-        _encryptionService.deleteSession(msg.senderId).catchError((_) {});
+        // Mark for rebuild on next send (atomic in _ensureSession); don't delete here
+        // to avoid racing with an in-flight encrypt() on the same session.
+        _forceSessionRebuild.add(msg.senderId);
         _socketService.requestSessionRebuild(msg.senderId);
         _e2eFlowLog('SESSION_RESET', {'peerId': msg.senderId});
       }
