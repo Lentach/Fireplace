@@ -2,6 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
+import 'l10n/app_localizations.dart';
 import 'providers/auth_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/settings_provider.dart';
@@ -36,6 +37,14 @@ class FireplaceApp extends StatelessWidget {
             theme: RpgTheme.themeDataLight,
             darkTheme: settings.darkTheme,
             themeMode: settings.themeMode,
+            locale: settings.locale,
+            supportedLocales: const [
+              Locale('pl'),
+              Locale('en'),
+            ],
+            localizationsDelegates: const [
+              ...AppLocalizations.localizationsDelegates,
+            ],
             home: const AuthGate(),
           );
         },

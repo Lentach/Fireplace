@@ -2,6 +2,7 @@ import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
 import '../models/message_model.dart';
 import '../providers/auth_provider.dart';
@@ -31,6 +32,7 @@ class ChatMessageBubble extends StatelessWidget {
     Color textColor,
     Color borderColor,
   ) {
+    final l10n = AppLocalizations.of(context);
     final mutedColor = isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight;
     return Container(
       padding: const EdgeInsets.only(left: 10, top: 6, bottom: 6, right: 8),
@@ -44,7 +46,7 @@ class ChatMessageBubble extends StatelessWidget {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            replyTo.senderUsername.isNotEmpty ? replyTo.senderUsername : 'Unknown',
+            replyTo.senderUsername.isNotEmpty ? replyTo.senderUsername : l10n.unknown,
             style: RpgTheme.bodyFont(
               fontSize: 12,
               color: borderColor,
@@ -53,7 +55,7 @@ class ChatMessageBubble extends StatelessWidget {
           ),
           const SizedBox(height: 2),
           Text(
-            _replyDisplayContent(replyTo),
+            _replyDisplayContent(context, replyTo),
             style: RpgTheme.bodyFont(fontSize: 12, color: mutedColor),
             maxLines: 2,
             overflow: TextOverflow.ellipsis,
@@ -64,24 +66,34 @@ class ChatMessageBubble extends StatelessWidget {
   }
 
   /// E2E: never show plaintext in reply — use placeholder for encrypted.
-  String _replyDisplayContent(ReplyToPreview replyTo) {
-    if (replyTo.content == '[encrypted]') return 'Encrypted message';
+  String _replyDisplayContent(BuildContext context, ReplyToPreview replyTo) {
+    final l10n = AppLocalizations.of(context);
+    if (replyTo.content == '[encrypted]') return l10n.encryptedMessage;
     if (replyTo.content.isNotEmpty) return replyTo.content;
-    return _replyTypeLabel(replyTo.messageType);
+    return _replyTypeLabel(context, replyTo.messageType);
   }
 
-  String _replyTypeLabel(MessageType type) {
+  String _replyTypeLabel(BuildContext context, MessageType type) {
+    final l10n = AppLocalizations.of(context);
     switch (type) {
       case MessageType.voice:
-        return 'Voice message';
+        return l10n.voiceMessage;
       case MessageType.image:
       case MessageType.drawing:
-        return 'Image';
+        return l10n.image;
       case MessageType.ping:
-        return 'Ping';
+        return l10n.ping;
       default:
         return '';
     }
+  }
+
+  String _displayContent(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    if (message.content == '[Decryption failed]') return l10n.decryptionFailed;
+    if (message.content == '[Encryption not initialized]') return l10n.encryptionNotInitialized;
+    if (message.content.isNotEmpty) return message.content;
+    return l10n.unsupportedMessageType;
   }
 
   /// One check = delivered (reached recipient device). Two checks = read (recipient opened/read).
@@ -260,7 +272,7 @@ class ChatMessageBubble extends StatelessWidget {
             ],
             // Message content based on type (sent: right-aligned, received: left-aligned)
             if (message.messageType == MessageType.text)
-              _buildTextWithLinks(context, message.content, textColor)
+              _buildTextWithLinks(context, _displayContent(context), textColor)
             else if (message.messageType == MessageType.ping)
               Row(
                 mainAxisSize: MainAxisSize.min,
@@ -301,7 +313,7 @@ class ChatMessageBubble extends StatelessWidget {
                       return Padding(
                         padding: const EdgeInsets.all(8.0),
                         child: Text(
-                          '[Image failed to load]',
+                          AppLocalizations.of(context).imageFailedToLoad,
                           style: RpgTheme.bodyFont(fontSize: 12, color: Colors.red),
                         ),
                       );
@@ -313,7 +325,7 @@ class ChatMessageBubble extends StatelessWidget {
               Align(
                 alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
                 child: Text(
-                  message.content.isNotEmpty ? message.content : '[Unsupported message type]',
+                  _displayContent(context),
                   style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
                   textAlign: isMine ? TextAlign.right : TextAlign.left,
                 ),

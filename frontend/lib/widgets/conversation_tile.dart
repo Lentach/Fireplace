@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
 import '../models/message_model.dart';
 import '../models/user_model.dart';
@@ -35,6 +36,17 @@ class ConversationTile extends StatelessWidget {
     return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 
+  String _lastMessagePreview(BuildContext context, MessageModel lastMessage) {
+    final l10n = AppLocalizations.of(context);
+    if (lastMessage.messageType == MessageType.ping) return l10n.ping;
+    if (lastMessage.messageType == MessageType.voice) return l10n.voiceMessage;
+    if (lastMessage.displayAsEncryptedPlaceholder ||
+        lastMessage.content == 'Encrypted message') {
+      return l10n.encryptedMessage;
+    }
+    return lastMessage.content;
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = RpgTheme.isDark(context);
@@ -66,10 +78,11 @@ class ConversationTile extends StatelessWidget {
             final isDark = RpgTheme.isDark(dialogContext);
             final mutedColor =
                 isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
+            final l10n = AppLocalizations.of(dialogContext);
             return AlertDialog(
               backgroundColor: colorScheme.surface,
               title: Text(
-                'Delete Conversation?',
+                l10n.deleteConversationTitle,
                 style: RpgTheme.bodyFont(
                   fontSize: 16,
                   color: colorScheme.primary,
@@ -77,7 +90,7 @@ class ConversationTile extends StatelessWidget {
                 ),
               ),
               content: Text(
-                'This will delete all messages in this conversation. You can re-open the chat later from Contacts.',
+                l10n.deleteConversationConfirm,
                 style: RpgTheme.bodyFont(
                   fontSize: 14,
                   color: colorScheme.onSurface.withValues(alpha: 0.8),
@@ -87,14 +100,14 @@ class ConversationTile extends StatelessWidget {
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext, false),
                   child: Text(
-                    'Cancel',
+                    l10n.cancel,
                     style: RpgTheme.bodyFont(fontSize: 14, color: mutedColor),
                   ),
                 ),
                 TextButton(
                   onPressed: () => Navigator.pop(dialogContext, true),
                   child: Text(
-                    'Delete',
+                    l10n.delete,
                     style: RpgTheme.bodyFont(
                       fontSize: 14,
                       color: Theme.of(context).colorScheme.primary,
@@ -152,11 +165,7 @@ class ConversationTile extends StatelessWidget {
                     ] else if (lastMessage != null) ...[
                       const SizedBox(height: 3),
                       Text(
-                        lastMessage!.messageType == MessageType.ping
-                            ? 'PING!'
-                            : lastMessage!.messageType == MessageType.voice
-                                ? 'Voice message'
-                                : lastMessage!.content,
+                        _lastMessagePreview(context, lastMessage!),
                         style: RpgTheme.bodyFont(
                           fontSize: 13,
                           color: secondaryColor,

@@ -3,6 +3,7 @@ import 'package:provider/provider.dart';
 import 'contacts_screen.dart';
 import 'conversations_screen.dart';
 import 'settings_screen.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
 import '../widgets/top_snackbar.dart';
@@ -85,16 +86,16 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
               iconColor: colorScheme.primary,
               lineColor: colorScheme.onPrimary,
             ),
-            label: 'Conversations',
+            label: AppLocalizations.of(context).conversations,
           ),
-          const BottomNavigationBarItem(
+          BottomNavigationBarItem(
             icon: Icon(Icons.people_outline),
             activeIcon: Icon(Icons.people),
-            label: 'Contacts',
+            label: AppLocalizations.of(context).contacts,
           ),
-          const BottomNavigationBarItem(
+          BottomNavigationBarItem(
             icon: Icon(Icons.settings_outlined),
-            label: 'Settings',
+            label: AppLocalizations.of(context).settings,
           ),
         ],
       ),

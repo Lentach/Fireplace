@@ -2,6 +2,7 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
@@ -299,10 +300,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
   }
 
-  String? _getHeaderStatusText(ChatProvider chat) {
-    if (chat.isRecordingVoice) return 'Recording voice...';
-    if (chat.isPartnerRecordingVoice(widget.conversationId)) return 'Recording voice...';
-    if (chat.isPartnerTyping(widget.conversationId)) return 'typing...';
+  String? _getHeaderStatusText(BuildContext context, ChatProvider chat) {
+    final l10n = AppLocalizations.of(context);
+    if (chat.isRecordingVoice) return l10n.recordingVoice;
+    if (chat.isPartnerRecordingVoice(widget.conversationId)) return l10n.recordingVoice;
+    if (chat.isPartnerTyping(widget.conversationId)) return l10n.typing;
     return null;
   }
 
@@ -376,7 +378,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           if (mounted) {
             showTopSnackBar(
               context,
-              "You can't message this user",
+              AppLocalizations.of(context).cantMessageThisUser,
               backgroundColor: colorScheme.error,
             );
           }
@@ -396,7 +398,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     Icon(Icons.delete_outline, size: 48, color: mutedColor),
                     const SizedBox(height: 16),
                     Text(
-                      'Conversation deleted by the other user',
+                      AppLocalizations.of(context).conversationDeletedByOther,
                       textAlign: TextAlign.center,
                       style: RpgTheme.bodyFont(fontSize: 14, color: mutedColor),
                     ),
@@ -425,7 +427,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                           height: constraints.maxHeight,
                           child: Center(
                             child: Text(
-                              'No messages yet',
+                              AppLocalizations.of(context).noMessagesYet,
                               style: RpgTheme.bodyFont(
                                 fontSize: 14,
                                 color: mutedColor,
@@ -474,7 +476,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
               child: Center(
                 child: Text(
-                  "You can't type to this user",
+                  AppLocalizations.of(context).cantTypeToThisUser,
                   style: RpgTheme.bodyFont(
                     fontSize: 13,
                     color: mutedColor,
@@ -510,7 +512,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 ),
                 Expanded(
                   child: Center(
-                    child: _buildHeaderTitle(context, contactName, otherUser, _getHeaderStatusText(chat)),
+                    child: _buildHeaderTitle(context, contactName, otherUser, _getHeaderStatusText(context, chat)),
                   ),
                 ),
               ],
@@ -554,7 +556,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             Navigator.of(context).pop();
           },
         ),
-        title: _buildHeaderTitle(context, contactName, otherUser, _getHeaderStatusText(chat)),
+        title: _buildHeaderTitle(context, contactName, otherUser, _getHeaderStatusText(context, chat)),
         actions: [
           if (otherUser != null)
             PopupMenuButton<String>(
@@ -566,9 +568,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 }
               },
               itemBuilder: (context) => [
-                const PopupMenuItem<String>(
+                PopupMenuItem<String>(
                   value: 'block',
-                  child: Text('Block user'),
+                  child: Text(AppLocalizations.of(context).blockUser),
                 ),
               ],
             ),

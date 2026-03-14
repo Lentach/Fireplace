@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_constants.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
@@ -105,7 +106,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
             // Centered title (always in the middle of the header)
             Center(
               child: Text(
-                'Conversations',
+                AppLocalizations.of(context).conversations,
                 style: RpgTheme.pressStart2P(
                   fontSize: 12,
                   color: colorScheme.primary,
@@ -137,7 +138,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                       size: 28,
                     ),
                     onPressed: _startNewChat,
-                    tooltip: 'Add / Invitations',
+                    tooltip: AppLocalizations.of(context).addInvitations,
                   ),
                   Consumer<ChatProvider>(
                     builder: (context, chat, _) {
@@ -219,7 +220,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                         ),
                         const SizedBox(height: 16),
                         Text(
-                          'Select a conversation',
+                          AppLocalizations.of(context).selectAConversation,
                           style: RpgTheme.bodyFont(
                             fontSize: 16,
                             color: isDark
@@ -253,12 +254,12 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
               Icon(Icons.forum_outlined, size: 48, color: mutedColor),
               const SizedBox(height: 16),
               Text(
-                'No conversations yet',
+                AppLocalizations.of(context).noConversationsYet,
                 style: RpgTheme.bodyFont(fontSize: 16, color: mutedColor),
               ),
               const SizedBox(height: 8),
               Text(
-                'Start a new chat to begin',
+                AppLocalizations.of(context).startNewChatToBegin,
                 style: RpgTheme.bodyFont(
                   fontSize: 13,
                   color: isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight,

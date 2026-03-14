@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_constants.dart';
+import '../l10n/app_localizations.dart';
 import '../models/user_model.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
@@ -58,7 +59,7 @@ class ContactsScreen extends StatelessWidget {
                 ListTile(
                   leading: Icon(Icons.person_remove, color: colorScheme.error),
                   title: Text(
-                    'Usuń z kontaktów',
+                    AppLocalizations.of(context).removeFriendTitle.replaceAll('?', ''),
                     style: RpgTheme.bodyFont(
                       fontSize: 14,
                       color: colorScheme.onSurface,
@@ -73,7 +74,7 @@ class ContactsScreen extends StatelessWidget {
                 ListTile(
                   leading: Icon(Icons.block, color: colorScheme.error),
                   title: Text(
-                    'Block',
+                    AppLocalizations.of(context).block,
                     style: RpgTheme.bodyFont(
                       fontSize: 14,
                       color: colorScheme.onSurface,
@@ -97,13 +98,14 @@ class ContactsScreen extends StatelessWidget {
     showDialog(
       context: context,
       builder: (dialogContext) {
+        final l10n = AppLocalizations.of(dialogContext);
         final colorScheme = Theme.of(dialogContext).colorScheme;
         final isDark = RpgTheme.isDark(dialogContext);
         final mutedColor = FireplaceColors.of(dialogContext).mutedText;
         return AlertDialog(
           backgroundColor: colorScheme.surface,
           title: Text(
-            'Remove Friend?',
+            l10n.removeFriendTitle,
             style: RpgTheme.bodyFont(
               fontSize: 16,
               color: colorScheme.primary,
@@ -111,7 +113,7 @@ class ContactsScreen extends StatelessWidget {
             ),
           ),
           content: Text(
-            'Remove $username from your contacts? This will delete all conversation history.',
+            l10n.removeFriendConfirm(username),
             style: RpgTheme.bodyFont(
               fontSize: 14,
               color: colorScheme.onSurface.withValues(alpha: 0.8),
@@ -121,7 +123,7 @@ class ContactsScreen extends StatelessWidget {
             TextButton(
               onPressed: () => Navigator.pop(dialogContext),
               child: Text(
-                'Cancel',
+                l10n.cancel,
                 style: RpgTheme.bodyFont(fontSize: 14, color: mutedColor),
               ),
             ),
@@ -131,7 +133,7 @@ class ContactsScreen extends StatelessWidget {
                 context.read<ChatProvider>().unfriend(userId);
               },
               child: Text(
-                'Remove',
+                l10n.remove,
                 style: RpgTheme.bodyFont(
                   fontSize: 14,
                   color: Colors.red,
@@ -189,7 +191,7 @@ class ContactsScreen extends StatelessWidget {
         bottom: false,
         child: Center(
           child: Text(
-            'Contacts',
+            AppLocalizations.of(context).contacts,
             style: RpgTheme.pressStart2P(
               fontSize: 12,
               color: colorScheme.primary,
@@ -231,12 +233,12 @@ class ContactsScreen extends StatelessWidget {
               Icon(Icons.people_outline, size: 48, color: mutedColor),
               const SizedBox(height: 16),
               Text(
-                'No contacts yet',
+                AppLocalizations.of(context).noContactsYet,
                 style: RpgTheme.bodyFont(fontSize: 16, color: mutedColor),
               ),
               const SizedBox(height: 8),
               Text(
-                'Add friends to start chatting',
+                AppLocalizations.of(context).addFriendsToStart,
                 style: RpgTheme.bodyFont(
                   fontSize: 13,
                   color: isDark

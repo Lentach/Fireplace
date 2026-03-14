@@ -10,6 +10,7 @@ import '../widgets/avatar_circle.dart';
 import '../widgets/dialogs/reset_password_dialog.dart';
 import '../widgets/dialogs/delete_account_dialog.dart';
 import '../widgets/top_snackbar.dart';
+import '../l10n/app_localizations.dart';
 import 'blocked_users_screen.dart';
 import 'privacy_safety_screen.dart';
 
@@ -60,7 +61,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         showTopSnackBar(
           context,
-          'Profile picture updated',
+          AppLocalizations.of(context).profilePictureUpdated,
           backgroundColor: Theme.of(context).colorScheme.primary,
         );
       }
@@ -68,7 +69,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         showTopSnackBar(
           context,
-          'Upload failed: ${e.toString()}',
+          '${AppLocalizations.of(context).uploadFailed}: ${e.toString()}',
           backgroundColor: const Color(0xFFFF6666),
         );
       }
@@ -93,7 +94,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         showTopSnackBar(
           context,
-          'Password updated successfully',
+          AppLocalizations.of(context).passwordUpdatedSuccessfully,
           backgroundColor: Theme.of(context).colorScheme.primary,
         );
       }
@@ -101,7 +102,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         showTopSnackBar(
           context,
-          'Password reset failed: ${e.toString()}',
+          '${AppLocalizations.of(context).passwordResetFailed}: ${e.toString()}',
           backgroundColor: const Color(0xFFFF6666),
         );
       }
@@ -131,7 +132,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (mounted) {
         showTopSnackBar(
           context,
-          'Account deletion failed: ${e.toString()}',
+          '${AppLocalizations.of(context).accountDeletionFailed}: ${e.toString()}',
           backgroundColor: const Color(0xFFFF6666),
         );
       }
@@ -179,7 +180,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       child: ListTile(
         leading: Icon(Icons.palette_outlined, color: colorScheme.primary, size: 24),
         title: Text(
-          'Theme',
+          AppLocalizations.of(context).theme,
           style: RpgTheme.bodyFont(
             fontSize: 14,
             color: colorScheme.onSurface,
@@ -194,6 +195,69 @@ class _SettingsScreenState extends State<SettingsScreen> {
             themeIconBtn('dark', Icons.dark_mode),
             const SizedBox(width: 8),
             themeIconBtn('blue', Icons.water_drop),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _buildLanguageTile(BuildContext context, SettingsProvider settings) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final fc = FireplaceColors.of(context);
+    final current = settings.localeCode;
+    final l10n = AppLocalizations.of(context);
+
+    Widget langBtn(String code, String label) {
+      final isSelected = current == code;
+      return InkWell(
+        onTap: () => settings.setLocalePreference(code),
+        customBorder: const CircleBorder(),
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+          decoration: BoxDecoration(
+            color: isSelected ? colorScheme.primary.withValues(alpha: 0.2) : Colors.transparent,
+            borderRadius: BorderRadius.circular(20),
+            border: Border.all(
+              color: isSelected ? colorScheme.primary : fc.settingsTileBorder,
+              width: isSelected ? 2 : 1,
+            ),
+          ),
+          child: Text(
+            label,
+            style: RpgTheme.bodyFont(
+              fontSize: 13,
+              color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return Container(
+      margin: const EdgeInsets.symmetric(horizontal: 13, vertical: 3),
+      decoration: BoxDecoration(
+        color: fc.settingsTileBg,
+        borderRadius: BorderRadius.circular(10),
+        border: Border.all(color: fc.settingsTileBorder, width: 1.2),
+      ),
+      child: ListTile(
+        leading: Icon(Icons.language, color: colorScheme.primary, size: 24),
+        title: Text(
+          l10n.language,
+          style: RpgTheme.bodyFont(
+            fontSize: 14,
+            color: colorScheme.onSurface,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            langBtn('pl', l10n.languagePolish),
+            const SizedBox(width: 8),
+            langBtn('en', l10n.languageEnglish),
           ],
         ),
       ),
@@ -259,7 +323,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       appBar: AppBar(
         centerTitle: true,
         title: Text(
-          'Settings',
+          AppLocalizations.of(context).settings,
           style: RpgTheme.pressStart2P(
             fontSize: 12,
             color: theme.colorScheme.primary,
@@ -325,10 +389,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             // Settings Tiles
             _buildThemeTile(context, settings),
+            _buildLanguageTile(context, settings),
 
             _buildSettingsTile(
               icon: Icons.security,
-              title: 'Privacy and Safety',
+              title: AppLocalizations.of(context).privacyAndSafety,
               trailing: Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
               onTap: () {
                 Navigator.of(context).push(
@@ -341,7 +406,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             _buildSettingsTile(
               icon: Icons.block,
-              title: 'Blocked',
+              title: AppLocalizations.of(context).blocked,
               trailing: Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
               onTap: () {
                 Navigator.of(context).push(
@@ -354,21 +419,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             _buildSettingsTile(
               icon: Icons.devices,
-              title: 'Devices',
-              subtitle: _deviceName ?? 'Loading...',
+              title: AppLocalizations.of(context).devices,
+              subtitle: _deviceName ?? AppLocalizations.of(context).devicesLoading,
               trailing: Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
             ),
 
             _buildSettingsTile(
               icon: Icons.lock_reset,
-              title: 'Reset Password',
+              title: AppLocalizations.of(context).resetPassword,
               trailing: Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
               onTap: _showResetPasswordDialog,
             ),
 
             _buildSettingsTile(
               icon: Icons.delete_forever,
-              title: 'Delete Account',
+              title: AppLocalizations.of(context).deleteAccount,
               trailing: Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
               onTap: _showDeleteAccountDialog,
               textColor: const Color(0xFFFF6666),
@@ -401,7 +466,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     const Icon(Icons.logout, size: 20),
                     const SizedBox(width: 8),
                     Text(
-                      'Logout',
+                      AppLocalizations.of(context).logout,
                       style: RpgTheme.bodyFont(
                         fontSize: 14,
                         color: Colors.white,

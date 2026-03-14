@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
 import 'package:path_provider/path_provider.dart';
@@ -264,22 +265,23 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
     bool isDark,
     Color borderColor,
   ) {
+    final l10n = AppLocalizations.of(context);
     final mutedColor = isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight;
     // E2E: never show plaintext in reply — use placeholder for encrypted
     String content = replyTo.content == '[encrypted]'
-        ? 'Encrypted message'
+        ? l10n.encryptedMessage
         : replyTo.content;
     if (content.isEmpty) {
       switch (replyTo.messageType) {
         case MessageType.voice:
-          content = 'Voice message';
+          content = l10n.voiceMessage;
           break;
         case MessageType.image:
         case MessageType.drawing:
-          content = 'Image';
+          content = l10n.image;
           break;
         case MessageType.ping:
-          content = 'Ping';
+          content = l10n.ping;
           break;
         default:
           content = '';
@@ -297,7 +299,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
         mainAxisSize: MainAxisSize.min,
         children: [
           Text(
-            replyTo.senderUsername.isNotEmpty ? replyTo.senderUsername : 'Unknown',
+            replyTo.senderUsername.isNotEmpty ? replyTo.senderUsername : l10n.unknown,
             style: RpgTheme.bodyFont(
               fontSize: 12,
               color: borderColor,

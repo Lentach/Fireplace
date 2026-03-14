@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../models/user_model.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
@@ -22,7 +23,7 @@ class BlockedUsersScreen extends StatelessWidget {
       appBar: AppBar(
         centerTitle: true,
         title: Text(
-          'Blocked',
+          AppLocalizations.of(context).blocked,
           style: RpgTheme.pressStart2P(
             fontSize: 12,
             color: theme.colorScheme.primary,
@@ -42,7 +43,7 @@ class BlockedUsersScreen extends StatelessWidget {
                     Icon(Icons.block, size: 48, color: mutedColor),
                     const SizedBox(height: 16),
                     Text(
-                      'No blocked users',
+                      AppLocalizations.of(context).noBlockedUsers,
                       style: RpgTheme.bodyFont(fontSize: 16, color: mutedColor),
                       textAlign: TextAlign.center,
                     ),
@@ -101,7 +102,7 @@ class _BlockedUserTile extends StatelessWidget {
           TextButton(
             onPressed: () => chat.unblockUser(user.id),
             child: Text(
-              'Unblock',
+              AppLocalizations.of(context).unblock,
               style: RpgTheme.bodyFont(
                 fontSize: 13,
                 color: colorScheme.primary,

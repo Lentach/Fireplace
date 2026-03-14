@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/top_snackbar.dart';
@@ -16,7 +17,7 @@ class AddOrInvitationsScreen extends StatelessWidget {
       child: Scaffold(
         appBar: AppBar(
           title: Text(
-            'Add / Invitations',
+            AppLocalizations.of(context).addInvitations,
             style: RpgTheme.bodyFont(
               fontSize: 18,
               color: colorScheme.onSurface,
@@ -25,14 +26,14 @@ class AddOrInvitationsScreen extends StatelessWidget {
           ),
           bottom: TabBar(
             tabs: [
-              const Tab(text: 'Add user'),
+              Tab(text: AppLocalizations.of(context).addUser),
               Tab(
                 child: Consumer<ChatProvider>(
                   builder: (context, chat, _) => Row(
                     mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      const Text('Friend requests'),
+                      Text(AppLocalizations.of(context).friendRequests),
                       if (chat.pendingRequestsCount > 0) ...[
                         const SizedBox(width: 6),
                         Container(
@@ -113,7 +114,7 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
     context.read<ChatProvider>().sendFriendRequest(recipientId);
     showTopSnackBar(
       context,
-      'Friend request sent to $displayHandle',
+      AppLocalizations.of(context).friendRequestSentTo(displayHandle),
       backgroundColor: Colors.green,
     );
     Navigator.pop(context);
@@ -139,7 +140,7 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
         if (mounted) {
           showTopSnackBar(
             context,
-            'Friend request sent to $displayHandle',
+            AppLocalizations.of(context).friendRequestSentTo(displayHandle),
             backgroundColor: Colors.green,
           );
           Navigator.pop(context);
@@ -186,7 +187,7 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
                 ),
               ),
               child: Text(
-                'Add new user by username#tag (e.g. username#1234). Your #tag is in Settings, next to your nickname. Each #tag is unique.',
+                AppLocalizations.of(context).addNewUserHint,
                 style: RpgTheme.bodyFont(
                   fontSize: 12,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -201,7 +202,7 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
                 color: Theme.of(context).colorScheme.onSurface,
               ),
               decoration: RpgTheme.rpgInputDecoration(
-                hintText: 'username#1234',
+                hintText: AppLocalizations.of(context).usernameTagPlaceholder,
                 prefixIcon: Icons.person_outlined,
                 context: context,
               ),
@@ -220,7 +221,7 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
                         color: Theme.of(context).colorScheme.primary,
                       ),
                     )
-                  : const Text('Add new user'),
+                  : Text(AppLocalizations.of(context).addNewUser),
             ),
             if (searchResults != null &&
                 searchResults.isEmpty &&
@@ -228,7 +229,7 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
                 chat.errorMessage == null) ...[
               const SizedBox(height: 16),
               Text(
-                'User not found',
+                AppLocalizations.of(context).userNotFound,
                 style: RpgTheme.bodyFont(
                   fontSize: 14,
                   color: Theme.of(context).colorScheme.onSurfaceVariant,
@@ -310,7 +311,7 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
                 ),
                 const SizedBox(height: 16),
                 Text(
-                  'No pending requests',
+                  AppLocalizations.of(context).noPendingRequests,
                   style: RpgTheme.bodyFont(
                     fontSize: 16,
                     color: secondaryColor,
@@ -370,7 +371,7 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                'wants to add you as a friend',
+                                AppLocalizations.of(context).wantsToAddYouAsFriend,
                                 style: RpgTheme.bodyFont(
                                   fontSize: 12,
                                   color: secondaryColor,
@@ -390,10 +391,10 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
                             context
                                 .read<ChatProvider>()
                                 .acceptFriendRequest(request.id);
-                            showTopSnackBar(context, 'Friend added: $displayName', backgroundColor: Colors.green);
+                            showTopSnackBar(context, AppLocalizations.of(context).friendAdded(displayName), backgroundColor: Colors.green);
                           },
                           icon: const Icon(Icons.check),
-                          label: const Text('Accept'),
+                          label: Text(AppLocalizations.of(context).accept),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.green,
                             foregroundColor: Colors.white,
@@ -404,10 +405,10 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
                             context
                                 .read<ChatProvider>()
                                 .rejectFriendRequest(request.id);
-                            showTopSnackBar(context, 'Request rejected', backgroundColor: Colors.red);
+                            showTopSnackBar(context, AppLocalizations.of(context).requestRejected, backgroundColor: Colors.red);
                           },
                           icon: const Icon(Icons.close),
-                          label: const Text('Reject'),
+                          label: Text(AppLocalizations.of(context).reject),
                           style: ElevatedButton.styleFrom(
                             backgroundColor: Colors.red,
                             foregroundColor: Colors.white,

@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../l10n/app_localizations.dart';
 import '../providers/chat_provider.dart';
 import '../theme/rpg_theme.dart';
 
@@ -43,7 +44,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
       appBar: AppBar(
         centerTitle: true,
         title: Text(
-          'Privacy & Safety',
+          AppLocalizations.of(context).privacySafetyTitle,
           style: RpgTheme.pressStart2P(
             fontSize: 12,
             color: theme.colorScheme.primary,
@@ -71,7 +72,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
             // Title
             Center(
               child: Text(
-                'End-to-end encryption is enabled',
+                AppLocalizations.of(context).e2eEncryptionEnabled,
                 style: RpgTheme.bodyFont(
                   fontSize: 18,
                   fontWeight: FontWeight.bold,
@@ -84,9 +85,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
 
             // Description
             Text(
-              'Your messages are encrypted using the Signal Protocol. '
-              'Only you and the recipient can read them. '
-              'Not even Fireplace servers can access your message content.',
+              AppLocalizations.of(context).e2eEncryptionDescription,
               style: RpgTheme.bodyFont(
                 fontSize: 14,
                 color: mutedColor,
@@ -99,62 +98,47 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
             _buildInfoCard(
               context,
               icon: Icons.key,
-              title: 'Your encryption keys',
-              description:
-                  'Keys are stored securely on this device. '
-                  'If you switch devices or reinstall the app, '
-                  'a new set of keys will be generated and previous '
-                  'message history cannot be recovered.',
+              title: AppLocalizations.of(context).yourEncryptionKeys,
+              description: AppLocalizations.of(context).yourEncryptionKeysDescription,
             ),
             const SizedBox(height: 16),
 
             _buildInfoCard(
               context,
               icon: Icons.devices,
-              title: 'Single-device encryption',
-              description:
-                  'Each device has its own encryption keys. '
-                  'Messages are tied to the device that sent or received them.',
+              title: AppLocalizations.of(context).singleDeviceEncryption,
+              description: AppLocalizations.of(context).singleDeviceEncryptionDescription,
             ),
             if (kIsWeb) ...[
               const SizedBox(height: 16),
               _buildInfoCard(
                 context,
                 icon: Icons.laptop,
-                title: 'Web: key storage',
-                description:
-                    'On web, keys are stored in the browser (encrypted with WebCrypto). '
-                    'Someone with access to this device could potentially read them. '
-                    'For maximum security, use the mobile app.',
+                title: AppLocalizations.of(context).webKeyStorage,
+                description: AppLocalizations.of(context).webKeyStorageDescription,
               ),
             ],
             const SizedBox(height: 16),
             _buildInfoCard(
               context,
               icon: Icons.photo_library_outlined,
-              title: 'What is encrypted',
-              description:
-                  'Text messages and link previews are end-to-end encrypted. '
-                  'Media files (images, voice messages, drawings) are not '
-                  'yet encrypted end-to-end.',
+              title: AppLocalizations.of(context).whatIsEncrypted,
+              description: AppLocalizations.of(context).whatIsEncryptedDescription,
             ),
             const SizedBox(height: 16),
 
             _buildInfoCard(
               context,
               icon: Icons.info_outline,
-              title: 'What the server stores (metadata)',
-              description:
-                  'To deliver messages, the server stores: who is in each '
-                  'conversation, when messages were sent, and delivery status. '
-                  'Message content is never visible to the server.',
+              title: AppLocalizations.of(context).serverStoresMetadata,
+              description: AppLocalizations.of(context).serverStoresMetadataDescription,
             ),
             const SizedBox(height: 32),
 
             // Fingerprint section
             if (!_loading && _fingerprint != null) ...[
               Text(
-                'Your identity fingerprint',
+                AppLocalizations.of(context).yourIdentityFingerprint,
                 style: RpgTheme.bodyFont(
                   fontSize: 14,
                   fontWeight: FontWeight.bold,
@@ -163,7 +147,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
               ),
               const SizedBox(height: 8),
               Text(
-                'Share this with your contacts to verify your identity.',
+                AppLocalizations.of(context).shareFingerprintHint,
                 style: RpgTheme.bodyFont(fontSize: 12, color: mutedColor),
               ),
               const SizedBox(height: 12),

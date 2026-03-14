@@ -6,7 +6,14 @@ class SettingsProvider extends ChangeNotifier {
   /// 'light' | 'dark' (Wire gray) | 'blue' (red-blue accent)
   String _themePreference = 'dark';
 
+  /// 'pl' | 'en' — app UI language (default Polish)
+  String _localeCode = 'pl';
+
   String get themePreference => _themePreference;
+
+  String get localeCode => _localeCode;
+
+  Locale get locale => Locale(_localeCode);
 
   ThemeMode get themeMode {
     if (_themePreference == 'light') return ThemeMode.light;
@@ -32,6 +39,26 @@ class SettingsProvider extends ChangeNotifier {
 
   SettingsProvider() {
     _loadThemePreference();
+    _loadLocalePreference();
+  }
+
+  Future<void> _loadLocalePreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getString('locale_preference');
+    if (saved == 'pl' || saved == 'en') {
+      _localeCode = saved!;
+    } else {
+      _localeCode = 'pl';
+    }
+    notifyListeners();
+  }
+
+  Future<void> setLocalePreference(String code) async {
+    if (code != 'pl' && code != 'en') return;
+    _localeCode = code;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setString('locale_preference', code);
   }
 
   Future<void> _loadThemePreference() async {
