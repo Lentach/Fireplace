@@ -393,15 +393,12 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
         margin: EdgeInsets.only(
           left: widget.isMine ? 48 : 0,
           right: widget.isMine ? 0 : 48,
-          bottom: 4,
+          bottom: 10,
         ),
         padding: const EdgeInsets.all(8),
         decoration: BoxDecoration(
           color: bubbleColor,
           borderRadius: BorderRadius.circular(16),
-          border: Border(
-            left: BorderSide(color: borderColor, width: 3),
-          ),
         ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,

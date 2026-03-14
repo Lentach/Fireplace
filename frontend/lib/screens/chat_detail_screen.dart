@@ -11,6 +11,7 @@ import '../widgets/message_date_separator.dart';
 import '../models/conversation_model.dart';
 import '../models/user_model.dart';
 import '../widgets/avatar_circle.dart';
+import '../widgets/chat_background_pattern.dart';
 import '../widgets/ping_effect_overlay.dart';
 import '../widgets/top_snackbar.dart';
 
@@ -387,7 +388,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           Expanded(
             child: Container(
               color: messagesAreaBg,
-              child: RefreshIndicator(
+              child: ChatBackgroundPattern(
+                dotColor: mutedColor.withValues(alpha: 0.08),
+                child: RefreshIndicator(
                 onRefresh: () async {
                   context.read<ChatProvider>().openConversation(widget.conversationId);
                   await Future.delayed(const Duration(milliseconds: 800));
@@ -414,8 +417,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       controller: _scrollController,
                       cacheExtent: _expandCacheForScroll ? _largeCacheExtent : null,
                       padding: const EdgeInsets.only(
-                        left: 12,
-                        right: 12,
+                        left: 16,
+                        right: 20,
                         top: 8,
                         bottom: 8,
                       ),
@@ -430,6 +433,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                         return Column(
                           children: [
                             if (showDate) MessageDateSeparator(date: msg.createdAt),
+                            if (showDate) const SizedBox(height: 8),
                             ChatMessageBubble(
                               message: msg,
                               isMine: msg.senderId == auth.currentUser!.id,
@@ -439,6 +443,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       },
                     ),
               ),
+            ),
             ),
           ),
           if (otherUser != null && chat.blockedByUserIds.contains(otherUser.id))

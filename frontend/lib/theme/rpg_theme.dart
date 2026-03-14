@@ -52,8 +52,9 @@ class RpgTheme {
   static const Color errorColor = Color(0xFFFF4444);
   static const Color successColor = Color(0xFF44FF44);
   static const Color messagesAreaBg = Color(0xFF08081E);
-  static const Color mineMsgBg = Color(0xFF1A1A50);
-  static const Color theirsMsgBg = Color(0xFF121240);
+  // Telegram-style: sent = purple-blue, received = gray
+  static const Color mineMsgBg = Color(0xFF2B5278);
+  static const Color theirsMsgBg = Color(0xFF1E252B);
 
   // Dark mode – primary accent, borders, muted
   static const Color accentDark = Color(0xFFFF6666);
@@ -79,7 +80,7 @@ class RpgTheme {
   static const Color convItemBgDarkGray = Color(0xFF1E1F23);
   static const Color tabBorderDarkGray = Color(0xFF34383B);
   static const Color messagesAreaBgDarkGray = Color(0xFF17181A);
-  static const Color mineMsgBgDarkGray = Color(0xFF2C2E33);
+  static const Color mineMsgBgDarkGray = Color(0xFF2A4A5A);
   static const Color theirsMsgBgDarkGray = Color(0xFF25262B);
   static const Color activeTabBgDarkGray = Color(0xFF2C2E33);
   static const Color timeColorDarkGray = Color(0xFF949798);
@@ -102,7 +103,7 @@ class RpgTheme {
   static const Color convItemBgLight = Color(0xFFF0F0F5);
   static const Color convItemBorderLight = Color(0xFFE8EAED);
   static const Color messagesAreaBgLight = Color(0xFFFAFBFC);
-  static const Color mineMsgBgLight = Color(0xFF4A154B);
+  static const Color mineMsgBgLight = Color(0xFF5B7FDB);
   static const Color theirsMsgBgLight = Color(0xFFE8E4EC);
   static const Color timeColorLight = Color(0xFF616061);
 
