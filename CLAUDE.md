@@ -97,6 +97,8 @@ cd frontend && flutter run -d chrome
 - All Signal store keys use `e2e_${userId}_` prefix — multi-account isolation in same browser
 - `clearAllKeys()` uses selective deletion (reads all, deletes by prefix) — never wipes other data
 - Web: WebOptions(dbName: 'FireplaceE2E') for app-specific storage; Privacy & Safety shows web key-storage warning
+- `_pendingSendContent: Map<String, String>` stores tempId→plaintext when `sendMessage()` creates the optimistic message; survives `_messages` list overwrites (e.g. `messageHistory` arriving before `messageSent`). Drained in `_addMessageToState`. Prevents own messages showing `[encrypted]` after re-login.
+- `_initializeE2E()` skips `_encryptionService.initialize()` when `_e2eInitialized = true` (reconnect path) — prevents transient mobile storage errors from setting `_e2eInitialized = false` and causing all history messages to become permanently `[Decryption failed]`. Key bundle re-upload still runs on every connect.
 
 ---
 
