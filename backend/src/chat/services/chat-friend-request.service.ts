@@ -88,23 +88,6 @@ export class ChatFriendRequestService {
     }
   }
 
-  /** Emit openConversation to client and optionally to another socket. */
-  private emitOpenConversationToBoth(
-    client: Socket,
-    server: Server,
-    conversationId: number,
-    otherSocketId: string | undefined,
-  ): void {
-    try {
-      client.emit('openConversation', { conversationId });
-      if (otherSocketId) {
-        server.to(otherSocketId).emit('openConversation', { conversationId });
-      }
-    } catch (error) {
-      this.logger.error('emitOpenConversationToBoth (non-critical):', error);
-    }
-  }
-
   /** Emit full auto-accept flow: friendRequestAccepted, friendsList, conversation + lists, openConversation, pendingCount. */
   private async emitAutoAcceptFlow(
     client: Socket,
@@ -130,7 +113,7 @@ export class ChatFriendRequestService {
       this.logger.error('emitAutoAcceptFlow: findOrCreate (non-critical):', error);
     }
     await this.emitConversationsListToBoth(client, server, sender.id, recipientSocketId, recipient.id);
-    if (conversation) this.emitOpenConversationToBoth(client, server, conversation.id, recipientSocketId);
+    if (conversation) client.emit('openConversation', { conversationId: conversation.id });
     await this.emitPendingCountToBoth(client, server, sender.id, recipientSocketId, recipient.id);
   }
 
@@ -369,10 +352,10 @@ export class ChatFriendRequestService {
       friendRequest.sender.id,
     );
 
-    // Step 6: Emit openConversation (non-critical)
+    // Step 6: Emit openConversation only to caller (acceptor) — sender should not auto-open chat
     if (conversation) {
-      this.logger.debug(`acceptFriendRequest: emitting openConversation id=${conversation.id}`);
-      this.emitOpenConversationToBoth(client, server, conversation.id, senderSocketId);
+      this.logger.debug(`acceptFriendRequest: emitting openConversation id=${conversation.id} to acceptor only`);
+      client.emit('openConversation', { conversationId: conversation.id });
     }
   }
 

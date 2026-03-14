@@ -72,7 +72,7 @@ cd frontend && flutter run -d chrome
 - Reply-to preview: MessageMapper uses "Encrypted message" when replyTo has encryptedContent; frontend fallback for `[encrypted]`
 - `handleMessageDelivered` verifies caller is recipient (not sender) — ownership enforced
 - `handleStartConversation` requires friendship — blocks strangers from opening DMs
-- `handleStartConversation` emits `conversationsList` + `openConversation` to BOTH caller and recipient (fixes: B never sees conversation when A uses startConversation from Contacts on mobile)
+- `handleStartConversation` emits `conversationsList` + `openConversation` to caller only; recipient gets only `conversationsList` (B does not auto-open chat; B sees unread badge when A sends first message)
 - OTP claim is atomic: `UPDATE ... WHERE id = (SELECT ... LIMIT 1) RETURNING *` in `key-bundles.service.ts`
 - `isBlockedByEither` uses single OR query (one DB round-trip, not two)
 - `_conversationsWithUnread` uses `Promise.all` — parallel, not sequential
@@ -307,7 +307,7 @@ erDiagram
 
 | Client Emit | Server Emit (caller) | Server Emit (other) |
 |---|---|---|
-| `startConversation` | `conversationsList` + `openConversation` | same (if recipient online) |
+| `startConversation` | `conversationsList` + `openConversation` | `conversationsList` only (no openConversation) |
 | `getConversations` | `conversationsList` | -- |
 | `deleteConversationOnly` | `conversationDeleted` + `conversationsList` | same |
 | `setDisappearingTimer` | `disappearingTimerUpdated` | `disappearingTimerUpdated` |
@@ -318,7 +318,7 @@ erDiagram
 |---|---|---|
 | `searchUsers` | `searchUsersResult` | -- |
 | `sendFriendRequest` | `friendRequestSent` OR auto-accept | `newFriendRequest` OR auto-accept |
-| `acceptFriendRequest` | `friendRequestAccepted` + lists + `openConversation` | same |
+| `acceptFriendRequest` | `friendRequestAccepted` + lists + `openConversation` | `friendRequestAccepted` + lists (no openConversation; snackbar "X accepted your friend request") |
 | `rejectFriendRequest` | `friendRequestRejected` + `friendRequestsList` | -- |
 | `getFriendRequests` | `friendRequestsList` + `pendingRequestsCount` | -- |
 | `getFriends` | `friendsList` | -- |
@@ -368,7 +368,7 @@ erDiagram
 
 **Reconnection:** `ChatReconnectManager`: exponential backoff capped at 30s, max 5 attempts, only when `intentionalDisconnect == false`.
 
-**Key patterns:** `consumePendingOpen()` (backend emits `openConversation` -> provider stores ID -> screen consumes + navigates). `consumeFriendRequestSent()` (same for friend request -> snackbar + pop).
+**Key patterns:** `consumePendingOpen()` (backend emits `openConversation` -> provider stores ID -> screen consumes + navigates). `consumeFriendRequestSent()` (same for friend request -> snackbar + pop). `consumePendingFriendAccepted()` (when we sent request and other accepts -> MainShell shows snackbar).
 
 ### E2E Encryption (Signal Protocol)
 
@@ -412,7 +412,7 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/voi
 - **Ping:** Empty content, `messageType=PING`. Uses conversation's `disappearingTimer`.
 - **Push (FCM):** Silent payload (no content). Gracefully disabled without `FIREBASE_SERVICE_ACCOUNT`. Firebase config in gitignored `firebase_secrets.dart` / `firebase-config.js`.
 - **3 themes:** Light, Dark (Wire-style gray), Blue (red-blue accent). Default for new users: Dark. `FireplaceColors` ThemeExtension.
-- **Friend auto-accept:** If B has pending request to A when A sends to B -> auto-accept, create conversation, emit `openConversation`.
+- **Friend auto-accept:** If B has pending request to A when A sends to B -> auto-accept, create conversation, emit `openConversation` to A only (B gets lists, no auto-open).
 
 ---
 
@@ -420,7 +420,7 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/voi
 
 **Navigation:** AuthGate -> AuthScreen (login/register) OR MainShell (IndexedStack: Conversations, Contacts, Settings). Desktop >600px: sidebar+detail layout.
 
-**Key screens:** AuthScreen (`clearStatus()` on tab switch — DO NOT DELETE), ConversationsScreen (swipe-to-delete, `consumePendingOpen()`), ChatDetailScreen (Timer.periodic 1s for expired msgs, `markConversationRead` on open), AddOrInvitationsScreen (searchUsers -> auto-send if 1 result, picker if multiple, `consumeFriendRequestSent()`), ContactsScreen (consumes `pendingOpenConversationId` and navigates to chat when user tapped contact and `startConversation` returned), PrivacySafetyScreen (E2E info, identity fingerprint).
+**Key screens:** AuthScreen (`clearStatus()` on tab switch — DO NOT DELETE), MainShell (consumes `consumePendingFriendAccepted()` for snackbar), ConversationsScreen (swipe-to-delete, `consumePendingOpen()`), ChatDetailScreen (Timer.periodic 1s for expired msgs, `markConversationRead` on open), AddOrInvitationsScreen (searchUsers -> auto-send if 1 result, picker if multiple, `consumeFriendRequestSent()`), ContactsScreen (consumes `pendingOpenConversationId` and navigates to chat when user tapped contact and `startConversation` returned), PrivacySafetyScreen (E2E info, identity fingerprint).
 
 **Key widgets:** ChatInputBar (text+send+mic+action tiles), ChatActionTiles (icons centered in viewport; Camera/Gallery/Ping/Timer/Clear/Drawing), ChatMessageBubble (Wire-style: simple rounded corners, no tail; text: sent right-aligned, received left-aligned; padding 16,10,16,8; margin bottom 10; colors per theme), VoiceMessageBubble (same style), ChatBackgroundPattern (subtle dot pattern in chat area), ConversationTile (Dismissible, unread badge), TopSnackbar (never use ScaffoldMessenger), AvatarCircle.
 

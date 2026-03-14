@@ -69,7 +69,7 @@ export class ChatConversationService {
     client.emit('conversationsList', list);
     client.emit('openConversation', { conversationId: conversation.id });
 
-    // Emit to the other user too (fixes: B never sees conversation when A uses startConversation)
+    // Emit only conversationsList to the other user (no openConversation — B should not auto-open chat)
     const otherSocketId = onlineUsers.get(data.recipientId);
     if (otherSocketId) {
       const otherConvs = await this.conversationsService.findByUser(
@@ -80,9 +80,6 @@ export class ChatConversationService {
         data.recipientId,
       );
       server.to(otherSocketId).emit('conversationsList', otherList);
-      server.to(otherSocketId).emit('openConversation', {
-        conversationId: conversation.id,
-      });
     }
   }
 

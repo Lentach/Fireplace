@@ -1,4 +1,4 @@
 # Latest session summary
 
-**Date:** 2026-03-13  
-**Summary:** [2026-03-13-session.md](2026-03-13-session.md) — Send when recipient offline: clear pending pre-key on failure, 4s delayed auto-retry for key-bundle/timeout, cancel on manual Retry or connect.
+**Date:** 2026-03-14  
+**Summary:** [2026-03-14-session.md](2026-03-14-session.md) — No auto-open chat for the other user (startConversation, acceptFriendRequest). Recipient gets updated list + snackbar on accept. Unread badge shows on first message.

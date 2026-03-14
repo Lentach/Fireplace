@@ -5,6 +5,7 @@ import 'conversations_screen.dart';
 import 'settings_screen.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
+import '../widgets/top_snackbar.dart';
 
 /// Shell after login: bottom nav with Conversations, Contacts, Settings.
 class MainShell extends StatefulWidget {
@@ -42,6 +43,26 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
+    return Consumer<ChatProvider>(
+      builder: (context, chat, _) {
+        if (chat.pendingFriendAcceptedByName != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final name = context.read<ChatProvider>().consumePendingFriendAccepted();
+            if (name != null && context.mounted) {
+              showTopSnackBar(
+                context,
+                '$name accepted your friend request',
+                backgroundColor: Colors.green,
+              );
+            }
+          });
+        }
+        return _buildScaffold(context, theme, colorScheme);
+      },
+    );
+  }
+
+  Widget _buildScaffold(BuildContext context, ThemeData theme, ColorScheme colorScheme) {
     return Scaffold(
       body: IndexedStack(
         index: _selectedIndex,

@@ -69,6 +69,8 @@ class ChatProvider extends ChangeNotifier {
   List<UserModel> _blockedUsers = [];
   final Set<int> _blockedByUserIds = {};
   bool _friendRequestJustSent = false;
+  /// Set when we (sender) receive friendRequestAccepted — acceptor's username for snackbar.
+  String? _pendingFriendAcceptedByName;
   bool _showPingEffect = false;
   List<UserModel>? _searchResults;
   final Map<int, int> _unreadCounts = {}; // conversationId -> count
@@ -127,6 +129,7 @@ class ChatProvider extends ChangeNotifier {
   List<UserModel> get blockedUsers => _blockedUsers;
   Set<int> get blockedByUserIds => Set<int>.from(_blockedByUserIds);
   bool get friendRequestJustSent => _friendRequestJustSent;
+  String? get pendingFriendAcceptedByName => _pendingFriendAcceptedByName;
   List<UserModel>? get searchResults => _searchResults;
   SocketService get socket => _socketService;
 
@@ -305,6 +308,13 @@ class ChatProvider extends ChangeNotifier {
     return sent;
   }
 
+  /// Returns acceptor's username and clears; null if none. Call when showing snackbar.
+  String? consumePendingFriendAccepted() {
+    final name = _pendingFriendAcceptedByName;
+    _pendingFriendAcceptedByName = null;
+    return name;
+  }
+
   String getOtherUserUsername(ConversationModel conv) =>
       conv_helpers.getOtherUserUsername(conv, _currentUserId);
 
@@ -340,6 +350,7 @@ class ChatProvider extends ChangeNotifier {
       _pendingRequestsCount = 0;
       _friends = [];
       _friendRequestJustSent = false;
+      _pendingFriendAcceptedByName = null;
       _searchResults = null;
       _errorMessage = null;
       _e2eInitialized = false;
@@ -356,6 +367,7 @@ class ChatProvider extends ChangeNotifier {
       _partnerRecordingVoice.clear();
       _replyingToMessage = null;
       _pendingOpenConversationId = null;
+      _pendingFriendAcceptedByName = null;
       _searchResults = null;
       _errorMessage = null;
       _cancelDelayedRetryIfAny();
@@ -507,6 +519,10 @@ class ChatProvider extends ChangeNotifier {
       onFriendRequestAccepted: (data) {
         final request = FriendRequestModel.fromJson(data as Map<String, dynamic>);
         _friendRequests.removeWhere((r) => r.id == request.id);
+        // If we are the sender (we sent the request), show snackbar "X accepted your invitation"
+        if (_currentUserId == request.sender.id) {
+          _pendingFriendAcceptedByName = request.receiver.username;
+        }
         // Do NOT call getConversations/getFriends here — backend already emits
         // conversationsList and friendsList; calling get* causes race and overwrites
         // with stale data (A loses new conversation and contact flickers/disappears).
