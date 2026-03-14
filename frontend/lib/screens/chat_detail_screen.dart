@@ -386,11 +386,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       child: Column(
         children: [
           Expanded(
-            child: Container(
-              color: messagesAreaBg,
-              child: ChatBackgroundPattern(
-                dotColor: mutedColor.withValues(alpha: 0.08),
-                child: RefreshIndicator(
+            child: ChatBackgroundPattern(
+              dotColor: mutedColor.withValues(alpha: 0.08),
+              backgroundColor: messagesAreaBg,
+              child: RefreshIndicator(
                 onRefresh: () async {
                   context.read<ChatProvider>().openConversation(widget.conversationId);
                   await Future.delayed(const Duration(milliseconds: 800));
@@ -443,7 +442,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       },
                     ),
               ),
-            ),
             ),
           ),
           if (otherUser != null && chat.blockedByUserIds.contains(otherUser.id))

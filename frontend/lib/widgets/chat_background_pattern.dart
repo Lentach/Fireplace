@@ -4,11 +4,13 @@ import 'package:flutter/material.dart';
 class ChatBackgroundPattern extends StatelessWidget {
   final Widget child;
   final Color? dotColor;
+  final Color? backgroundColor;
 
   const ChatBackgroundPattern({
     super.key,
     required this.child,
     this.dotColor,
+    this.backgroundColor,
   });
 
   @override
@@ -21,21 +23,20 @@ class ChatBackgroundPattern extends StatelessWidget {
       builder: (context, constraints) {
         final w = constraints.maxWidth;
         final h = constraints.maxHeight;
-        return Stack(
-          clipBehavior: Clip.none,
-          children: [
-            Positioned(
-              left: 0,
-              top: 0,
-              right: 0,
-              bottom: 0,
-              child: CustomPaint(
+        return Container(
+          width: w,
+          height: h,
+          color: backgroundColor,
+          child: Stack(
+            fit: StackFit.expand,
+            children: [
+              CustomPaint(
                 size: Size(w, h),
                 painter: _DotPatternPainter(color: color),
               ),
-            ),
-            child,
-          ],
+              child,
+            ],
+          ),
         );
       },
     );
@@ -53,14 +54,11 @@ class _DotPatternPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final paint = Paint()..color = color;
-    final rect = Rect.fromLTWH(0, 0, size.width, size.height);
-    canvas.saveLayer(rect, Paint());
     for (double y = 0; y < size.height + _spacing; y += _spacing) {
       for (double x = 0; x < size.width + _spacing; x += _spacing) {
         canvas.drawCircle(Offset(x, y), _dotRadius, paint);
       }
     }
-    canvas.restoreLayer();
   }
 
   @override
