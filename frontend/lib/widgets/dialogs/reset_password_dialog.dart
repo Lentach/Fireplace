@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../l10n/app_localizations.dart';
 import '../../theme/rpg_theme.dart';
 
 class ResetPasswordDialog extends StatefulWidget {
@@ -21,22 +22,23 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
     super.dispose();
   }
 
-  String? _validatePassword(String? value) {
+  String? _validatePassword(BuildContext context, String? value) {
+    final l10n = AppLocalizations.of(context);
     if (value == null || value.isEmpty) {
-      return 'Password is required';
+      return l10n.passwordRequired;
     }
     if (value.length < 8) {
-      return 'Password must be at least 8 characters';
+      return l10n.passwordMinLength;
     }
     if (!RegExp(r'^(?=.*[a-z])(?=.*[A-Z])(?=.*\d).+$').hasMatch(value)) {
-      return 'Password must contain uppercase, lowercase, and number';
+      return l10n.passwordMustContain;
     }
     return null;
   }
 
   void _submit() {
     if (_formKey.currentState!.validate()) {
-      Navigator.of(context).pop({
+      Navigator.of(context).pop(<String, String>{
         'oldPassword': _oldPasswordController.text,
         'newPassword': _newPasswordController.text,
       });
@@ -45,6 +47,7 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
     final bgColor = colorScheme.surface;
@@ -70,7 +73,7 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
             crossAxisAlignment: CrossAxisAlignment.stretch,
             children: [
               Text(
-                'Reset Password',
+                l10n.resetPasswordDialogTitle,
                 style: RpgTheme.pressStart2P(
                   fontSize: 16,
                   color: colorScheme.primary,
@@ -84,7 +87,7 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
                 controller: _oldPasswordController,
                 obscureText: true,
                 decoration: InputDecoration(
-                  labelText: 'Old Password',
+                  labelText: l10n.oldPassword,
                   labelStyle: RpgTheme.bodyFont(color: mutedColor),
                   filled: true,
                   fillColor: fillColor,
@@ -104,7 +107,7 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
                 style: RpgTheme.bodyFont(color: textColor),
                 validator: (value) {
                   if (value == null || value.isEmpty) {
-                    return 'Old password is required';
+                    return l10n.oldPasswordRequired;
                   }
                   return null;
                 },
@@ -116,7 +119,7 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
                 controller: _newPasswordController,
                 obscureText: true,
                 decoration: InputDecoration(
-                  labelText: 'New Password',
+                  labelText: l10n.newPassword,
                   labelStyle: RpgTheme.bodyFont(color: mutedColor),
                   filled: true,
                   fillColor: fillColor,
@@ -134,7 +137,7 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
                   ),
                 ),
                 style: RpgTheme.bodyFont(color: textColor),
-                validator: _validatePassword,
+                validator: (value) => _validatePassword(context, value),
               ),
               const SizedBox(height: 24),
 
@@ -149,7 +152,7 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
                       child: Text(
-                        'Cancel',
+                        l10n.cancel,
                         style: RpgTheme.bodyFont(color: mutedColor),
                       ),
                     ),
@@ -172,7 +175,7 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
                               ),
                             )
                           : Text(
-                              'Reset',
+                              l10n.resetButton,
                               style: RpgTheme.bodyFont(color: Colors.white),
                             ),
                     ),

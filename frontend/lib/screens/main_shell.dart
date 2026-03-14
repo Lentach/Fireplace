@@ -86,7 +86,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
               iconColor: colorScheme.primary,
               lineColor: colorScheme.onPrimary,
             ),
-            label: AppLocalizations.of(context).conversations,
+            label: AppLocalizations.of(context).chat,
           ),
           BottomNavigationBarItem(
             icon: Icon(Icons.people_outline),

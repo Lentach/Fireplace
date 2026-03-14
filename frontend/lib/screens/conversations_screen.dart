@@ -106,7 +106,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
             // Centered title (always in the middle of the header)
             Center(
               child: Text(
-                AppLocalizations.of(context).conversations,
+                AppLocalizations.of(context).chat,
                 style: RpgTheme.pressStart2P(
                   fontSize: 12,
                   color: colorScheme.primary,
