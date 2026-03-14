@@ -50,6 +50,9 @@ class ChatProvider extends ChangeNotifier {
   /// Handlers add to this set (synchronously, no async); _ensureSession drains it atomically.
   final Set<int> _forceSessionRebuild = {};
   final List<Map<String, dynamic>> _incomingMessageQueue = [];
+  /// Plaintext content keyed by tempId — survives _messages list overwrites (e.g. when
+  /// messageHistory arrives before messageSent, wiping the optimistic temp message).
+  final Map<String, String> _pendingSendContent = {};
 
   // Monotonic counter for temporary negative message IDs — prevents collision
   // if two messages are sent within the same millisecond.
@@ -258,14 +261,16 @@ class ChatProvider extends ChangeNotifier {
     // If this is our own message (messageSent), replace temp optimistic message
     // and keep plaintext for display (server stores "[encrypted]" as content).
     if (msg.senderId == _currentUserId && msg.tempId != null) {
+      // Retrieve plaintext: prefer _pendingSendContent (survives list overwrites when
+      // messageHistory arrives before messageSent), fall back to temp message content.
+      final savedContent = _pendingSendContent.remove(msg.tempId);
       final tempIndex = _messages.indexWhere((m) => m.tempId == msg.tempId);
-      if (tempIndex != -1) {
-        final plaintextContent = _messages[tempIndex].content;
-        _messages.removeAt(tempIndex);
-        if (msg.content == '[encrypted]' && plaintextContent.isNotEmpty) {
-          msg = msg.copyWith(content: plaintextContent);
-          _encryptionService.saveDecryptedContent(msg.id, {'content': plaintextContent}).catchError((_) {});
-        }
+      final tempContent = tempIndex != -1 ? _messages[tempIndex].content : null;
+      if (tempIndex != -1) _messages.removeAt(tempIndex);
+      final plaintextContent = savedContent ?? tempContent ?? '';
+      if (msg.content == '[encrypted]' && plaintextContent.isNotEmpty) {
+        msg = msg.copyWith(content: plaintextContent);
+        _encryptionService.saveDecryptedContent(msg.id, {'content': plaintextContent}).catchError((_) {});
       }
     }
 
@@ -370,6 +375,7 @@ class ChatProvider extends ChangeNotifier {
       _e2eInitialized = false;
       _pendingPreKeyFetches.clear();
       _forceSessionRebuild.clear();
+      _pendingSendContent.clear();
       _cancelDelayedRetryIfAny();
     } else {
       // Reconnect (same user): keep list state and active chat to avoid flicker and empty chat.
@@ -750,6 +756,9 @@ class ChatProvider extends ChangeNotifier {
     );
 
     _messages.add(tempMessage);
+    // Persist plaintext separately so it survives if _messages is overwritten
+    // by a messageHistory response before messageSent arrives.
+    _pendingSendContent[tempId] = content;
     if (_replyingToMessage != null) {
       _replyingToMessage = null;
     }
@@ -1479,12 +1488,21 @@ class ChatProvider extends ChangeNotifier {
 
   Future<void> _initializeE2E() async {
     if (_currentUserId == null) return;
-    _e2eFlowLog('E2E_INIT_START', {});
+    _e2eFlowLog('E2E_INIT_START', {'alreadyInitialized': _e2eInitialized});
     try {
-      await _encryptionService.initialize(_currentUserId!);
-      _e2eInitialized = true;
-      debugPrint('[E2E] Encryption service initialized');
-      _e2eFlowLog('E2E_INIT_DONE', {'needsKeyUpload': _encryptionService.needsKeyUpload});
+      if (!_e2eInitialized) {
+        // Fresh session: load keys from storage (or generate on first install).
+        await _encryptionService.initialize(_currentUserId!);
+        _e2eInitialized = true;
+        debugPrint('[E2E] Encryption service initialized');
+        _e2eFlowLog('E2E_INIT_DONE', {'needsKeyUpload': _encryptionService.needsKeyUpload});
+      } else {
+        // Reconnect: stores are already valid — skip re-initialization to avoid
+        // the window where _identityStore._identityKeyPair is null and to prevent
+        // a transient storage error from incorrectly setting _e2eInitialized = false.
+        debugPrint('[E2E] Reconnect: skipping re-init, E2E already active');
+        _e2eFlowLog('E2E_RECONNECT_SKIP_INIT', {});
+      }
 
       if (_encryptionService.needsKeyUpload) {
         final keys = _encryptionService.getKeysForUpload();
@@ -1510,7 +1528,9 @@ class ChatProvider extends ChangeNotifier {
       }
     } catch (e) {
       debugPrint('[E2E] Initialization failed: $e');
-      _e2eInitialized = false;
+      // Only clear the flag if we hadn't initialized yet; don't undo a working
+      // reconnect just because the re-upload attempt threw.
+      if (!_e2eInitialized) _e2eInitialized = false;
       _e2eFlowLog('E2E_INIT_FAIL', {'error': e.toString()});
     }
   }
@@ -1743,6 +1763,7 @@ class ChatProvider extends ChangeNotifier {
     // Clear E2E state (keys persist in secure storage for next login)
     _e2eInitialized = false;
     _pendingPreKeyFetches.clear();
+    _pendingSendContent.clear();
     _decryptedContentCache.clear();
     _incomingMessageQueue.clear();
     _decryptingHistory = false;
