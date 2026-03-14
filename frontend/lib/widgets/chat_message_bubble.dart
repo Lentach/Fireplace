@@ -96,6 +96,122 @@ class ChatMessageBubble extends StatelessWidget {
     return l10n.unsupportedMessageType;
   }
 
+  /// Short = time/timer on the right (compact). Long = time/timer below (full-width text).
+  bool _isShortMessage(String displayContent) {
+    if (message.replyTo != null || message.linkPreviewUrl != null) return false;
+    switch (message.messageType) {
+      case MessageType.text:
+        return displayContent.length <= 25 && !displayContent.contains('\n');
+      case MessageType.ping:
+        return true;
+      case MessageType.image:
+      case MessageType.drawing:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  Widget _buildContentColumn(
+    BuildContext context,
+    bool isDark,
+    Color textColor,
+    Color borderColor, {
+    required double contentAreaWidth,
+  }) {
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      children: [
+        if (message.replyTo != null) ...[
+          _buildReplyQuote(context, message.replyTo!, isDark, textColor, borderColor),
+          const SizedBox(height: 8),
+        ],
+        if (message.messageType == MessageType.text)
+          ConstrainedBox(
+            constraints: BoxConstraints(maxWidth: contentAreaWidth),
+            child: _buildTextWithLinks(context, _displayContent(context), textColor, textAlignRight: isMine),
+          )
+        else if (message.messageType == MessageType.ping)
+          Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+            children: [
+              Icon(Icons.campaign, size: 18, color: textColor),
+              const SizedBox(width: 6),
+              Text(
+                'PING!',
+                style: RpgTheme.bodyFont(
+                  fontSize: 14,
+                  color: textColor,
+                  fontWeight: FontWeight.bold,
+                ),
+              ),
+            ],
+          )
+        else if ((message.messageType == MessageType.image ||
+                 message.messageType == MessageType.drawing) &&
+                 message.mediaUrl != null)
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxWidth: 200),
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(8),
+              child: Image.network(
+                message.mediaUrl!,
+                fit: BoxFit.contain,
+                loadingBuilder: (context, child, loadingProgress) {
+                  if (loadingProgress == null) return child;
+                  return const Center(
+                    child: Padding(
+                      padding: EdgeInsets.all(16.0),
+                      child: CircularProgressIndicator(),
+                    ),
+                  );
+                },
+                errorBuilder: (context, error, stackTrace) {
+                  return Padding(
+                    padding: const EdgeInsets.all(8.0),
+                    child: Text(
+                      AppLocalizations.of(context).imageFailedToLoad,
+                      style: RpgTheme.bodyFont(fontSize: 12, color: Colors.red),
+                    ),
+                  );
+                },
+              ),
+            ),
+          )
+        else
+          Align(
+            alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+            child: Text(
+              _displayContent(context),
+              style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
+              textAlign: isMine ? TextAlign.right : TextAlign.left,
+            ),
+          ),
+        if (message.linkPreviewUrl != null)
+          Align(
+            alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+            child: _buildLinkPreviewCard(context, isDark, textColor),
+          ),
+        Builder(
+          builder: (ctx) {
+            final retryBtn = _buildRetryButton(ctx);
+            if (retryBtn == null) return const SizedBox.shrink();
+            return Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+              children: [
+                const SizedBox(height: 4),
+                retryBtn,
+              ],
+            );
+          },
+        ),
+      ],
+    );
+  }
+
   /// One check = delivered (reached recipient device). Two checks = read (recipient opened/read).
   /// Uses light colors so the icon is visible on the dark "mine" bubble (mineMsgBg / mineMsgBgLight).
   Widget _buildDeliveryIcon() {
@@ -277,16 +393,19 @@ class ChatMessageBubble extends StatelessWidget {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-          ConstrainedBox(
-          constraints: BoxConstraints(
-            maxWidth: MediaQuery.of(context).size.width * 0.75,
-          ),
-          child: LayoutBuilder(
-            builder: (context, constraints) {
-              // Reserve space for gap + time/delivery/timer row; content uses rest (full width for long messages)
-              const timeRowWidth = 155.0;
-              final maxContentWidth = constraints.maxWidth - 6 - timeRowWidth;
-              return Container(
+          LayoutBuilder(
+            builder: (context, layoutConstraints) {
+              final maxBubbleWidth = layoutConstraints.maxWidth * 0.85;
+              final contentAreaWidth = maxBubbleWidth - 32;
+              const timeRowWidth = 88.0;
+              final maxContentWidthInline = contentAreaWidth - 6 - timeRowWidth;
+
+              final displayContent = _displayContent(context);
+              final isShortMessage = _isShortMessage(displayContent);
+
+              return ConstrainedBox(
+          constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+          child: Container(
           margin: EdgeInsets.only(
             left: isMine ? 48 : 0,
             right: isMine ? 0 : 48,
@@ -297,107 +416,49 @@ class ChatMessageBubble extends StatelessWidget {
             borderRadius: BorderRadius.circular(16),
           ),
           padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-          child: Row(
-          crossAxisAlignment: CrossAxisAlignment.end,
-          children: [
-            // Content column — Expanded so long messages use full width (iMessage/WhatsApp style)
-            Expanded(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                children: [
-                  if (message.replyTo != null) ...[
-                    _buildReplyQuote(context, message.replyTo!, isDark, textColor, borderColor),
-                    const SizedBox(height: 8),
+          child: isShortMessage
+              ? Row(
+                  mainAxisSize: MainAxisSize.min,
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  children: [
+                    Flexible(
+                      fit: FlexFit.loose,
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: maxContentWidthInline),
+                        child: _buildContentColumn(
+                          context,
+                          isDark,
+                          textColor,
+                          borderColor,
+                          contentAreaWidth: maxContentWidthInline,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 6),
+                    _buildTimeDeliveryTimerRow(context, timeColor),
                   ],
-                  if (message.messageType == MessageType.text)
-                    _buildTextWithLinks(context, _displayContent(context), textColor)
-                  else if (message.messageType == MessageType.ping)
-                    Row(
-                      mainAxisSize: MainAxisSize.min,
-                      mainAxisAlignment: isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
-                      children: [
-                        Icon(Icons.campaign, size: 18, color: textColor),
-                        const SizedBox(width: 6),
-                        Text(
-                          'PING!',
-                          style: RpgTheme.bodyFont(
-                            fontSize: 14,
-                            color: textColor,
-                            fontWeight: FontWeight.bold,
-                          ),
-                        ),
-                      ],
-                    )
-                  else if ((message.messageType == MessageType.image ||
-                           message.messageType == MessageType.drawing) &&
-                           message.mediaUrl != null)
-                    ConstrainedBox(
-                      constraints: const BoxConstraints(maxWidth: 200),
-                      child: ClipRRect(
-                        borderRadius: BorderRadius.circular(8),
-                        child: Image.network(
-                          message.mediaUrl!,
-                          fit: BoxFit.contain,
-                          loadingBuilder: (context, child, loadingProgress) {
-                            if (loadingProgress == null) return child;
-                            return const Center(
-                              child: Padding(
-                                padding: EdgeInsets.all(16.0),
-                                child: CircularProgressIndicator(),
-                              ),
-                            );
-                          },
-                          errorBuilder: (context, error, stackTrace) {
-                            return Padding(
-                              padding: const EdgeInsets.all(8.0),
-                              child: Text(
-                                AppLocalizations.of(context).imageFailedToLoad,
-                                style: RpgTheme.bodyFont(fontSize: 12, color: Colors.red),
-                              ),
-                            );
-                          },
-                        ),
-                      ),
-                    )
-                  else
-                    Align(
-                      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-                      child: Text(
-                        _displayContent(context),
-                        style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
-                        textAlign: isMine ? TextAlign.right : TextAlign.left,
-                      ),
+                )
+              : Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+          children: [
+                    _buildContentColumn(
+                      context,
+                      isDark,
+                      textColor,
+                      borderColor,
+                      contentAreaWidth: contentAreaWidth,
                     ),
-                  if (message.linkPreviewUrl != null)
-                    Align(
-                      alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-                      child: _buildLinkPreviewCard(context, isDark, textColor),
-                    ),
-                  Builder(
-                    builder: (ctx) {
-                      final retryBtn = _buildRetryButton(ctx);
-                      if (retryBtn == null) return const SizedBox.shrink();
-                      return Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                        children: [
-                          const SizedBox(height: 4),
-                          retryBtn,
-                        ],
-                      );
-                    },
-                  ),
-                ],
-              ),
+            const SizedBox(height: 4),
+            Align(
+              alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+              child: _buildTimeDeliveryTimerRow(context, timeColor),
             ),
-            const SizedBox(width: 6),
-            _buildTimeDeliveryTimerRow(context, timeColor),
           ],
         ),
-      );
+      ),
+    );
             },
-          ),
           ),
     if (message.reactions.isNotEmpty)
         Positioned(
