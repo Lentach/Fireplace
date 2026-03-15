@@ -10,6 +10,7 @@ import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 import { ConversationsModule } from '../conversations/conversations.module';
 import { UsersModule } from '../users/users.module';
 import { ChatValidationModule } from '../chat/chat-validation.module';
+import { LinkPreviewModule } from '../chat/services/link-preview.module';
 
 @Module({
   imports: [
@@ -21,6 +22,7 @@ import { ChatValidationModule } from '../chat/chat-validation.module';
     ConversationsModule,
     UsersModule,
     ChatValidationModule,
+    LinkPreviewModule,
   ],
   controllers: [MessagesController],
   providers: [MessagesService, MessageCleanupService],

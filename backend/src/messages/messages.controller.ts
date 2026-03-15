@@ -16,6 +16,7 @@ import { CloudinaryService } from '../cloudinary/cloudinary.service';
 import { ConversationsService } from '../conversations/conversations.service';
 import { UsersService } from '../users/users.service';
 import { ChatValidationService } from '../chat/services/chat-validation.service';
+import { LinkPreviewService } from '../chat/services/link-preview.service';
 import { MessageType } from './message.entity';
 import { MessageMapper } from './message.mapper';
 import { UploadImageDto } from './dto/upload-image.dto';
@@ -30,6 +31,7 @@ export class MessagesController {
     private conversationsService: ConversationsService,
     private usersService: UsersService,
     private chatValidationService: ChatValidationService,
+    private linkPreviewService: LinkPreviewService,
   ) {}
 
   @Post('image')
@@ -150,5 +152,17 @@ export class MessagesController {
       publicId: result.publicId,
       duration: result.duration || dto.duration,
     };
+  }
+
+  @Post('link-preview')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
+  async fetchLinkPreview(@Body() body: { text: string }) {
+    const text = body?.text;
+    if (!text || typeof text !== 'string') {
+      throw new BadRequestException('text is required');
+    }
+    const preview = await this.linkPreviewService.fetchPreview(text);
+    return preview ?? {};
   }
 }

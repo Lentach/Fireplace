@@ -31,7 +31,7 @@ cd frontend && flutter run -d chrome
 
 **Phone (same WiFi):** `cd frontend && .\run_web_for_phone.ps1` or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`
 
-**Tests:** `cd backend && npm test` (111 unit tests, 14 suites, no DB required); `cd frontend && flutter test` (23 tests)
+**Tests:** `cd backend && npm test` (125 unit tests, 16 suites, no DB required); `cd frontend && flutter test` (43 tests)
 
 **Production:** https://fireplace.ignorelist.com — Google Cloud e2-medium VM (Warszawa), Docker + Nginx + Let's Encrypt. Deploy: SSH to server → `~/deploy.sh` (git pull + docker build + flutter web build).
 
@@ -99,7 +99,7 @@ cd frontend && flutter run -d chrome
 - **DualStorage**: All Signal stores use `DualStorage` (writes to both `flutter_secure_storage` AND `SharedPreferences`). On web, IndexedDB+WebCrypto can lose data when all tabs are closed; localStorage (SharedPreferences) is the reliable fallback. Reads try flutter_secure_storage first, then SharedPreferences.
 - Web: WebOptions(dbName: 'FireplaceE2E') for app-specific storage; Privacy & Safety shows web key-storage warning
 - **Cache-first history decryption**: `_decryptMessageHistory` checks persisted cache (SharedPreferences/localStorage) BEFORE attempting live decryption. Avoids unnecessary session ratchet advancement and recovers messages when keys are lost.
-- `_pendingSendContent: Map<String, Map<String, String?>>` stores tempId→{content, linkPreviewUrl?, linkPreviewTitle?, linkPreviewImageUrl?} when `sendMessage()` creates the optimistic message; link preview data added in `_encryptAndSend()` after fetch. Survives `_messages` list overwrites (e.g. `messageHistory` arriving before `messageSent`). Drained in `_addMessageToState`. Prevents own messages showing `[encrypted]` and restores link preview for sender after re-login.
+- `_pendingSendContent: Map<String, Map<String, String?>>` stores tempId→{content, linkPreviewUrl?, linkPreviewTitle?, linkPreviewImageUrl?} when `sendMessage()` creates the optimistic message; link preview data added in `_encryptAndSend()` after fetch. Survives `_messages` list overwrites (e.g. `messageHistory` arriving before `messageSent`). Drained in `_addMessageToState`. Prevents own messages showing `[encrypted]` and restores link preview for sender after re-login. Use explicit type when assigning: `_pendingSendContent[tempId] = <String, String?>{'content': content}` to avoid DDC/JS IdentityMap subtype errors on web.
 - `_initializeE2E()` skips `_encryptionService.initialize()` when `_e2eInitialized = true` (reconnect path) — prevents transient mobile storage errors from setting `_e2eInitialized = false` and causing all history messages to become permanently `[Decryption failed]`. Key bundle re-upload still runs on every connect.
 
 ---
@@ -353,11 +353,12 @@ erDiagram
 | DELETE | `/users/account` | JWT | `{ password }` | 200 |
 | POST | `/messages/voice` | JWT | multipart `audio` (10MB) + `duration` + `expiresIn?` | `{ mediaUrl, publicId, duration }` |
 | POST | `/messages/image` | JWT | multipart `file` (5MB) + `recipientId` + `expiresIn?` | MessagePayload |
+| POST | `/messages/link-preview` | JWT | `{ text }` | `{ url, title, imageUrl }` or `{}` |
 | POST | `/notes` | JWT | `{ ciphertext, expiresIn }` | `{ token }` |
 | GET | `/note/:token` | None | -- | HTML page (landing/revealed/destroyed) |
 | POST | `/note/:token/reveal` | None | -- | `{ ciphertext }` or 404 |
 
-**Password:** 8+ chars, 1 uppercase, 1 lowercase, 1 number. **Login:** username or `username#tag`. **JWT:** `{ sub: userId, username, tag, profilePictureUrl }`. **Rate limits:** Login 5/15min, Register 3/h, Image 10/min, Voice 10/60s.
+**Password:** 8+ chars, 1 uppercase, 1 lowercase, 1 number. **Login:** username or `username#tag`. **JWT:** `{ sub: userId, username, tag, profilePictureUrl }`. **Rate limits:** Login 5/15min, Register 3/h, Image 10/min, Voice 10/60s, LinkPreview 30/min.
 
 ---
 
@@ -379,7 +380,7 @@ erDiagram
 
 `libsignal_protocol_dart` v0.7.4 + `flutter_secure_storage`. **Text messages only** — media not yet encrypted. X3DH key agreement -> Double Ratchet. Single-device (deviceId=1). TOFU verification.
 
-**Send:** content -> `LinkPreviewService.fetchPreview()` -> build envelope -> `_ensureSession(recipientId)` (Completer-based pre-key fetch) -> `encrypt()` -> emit with `encryptedContent`. **Receive:** if `encryptedContent` present, decrypt async + parse envelope + update in-place. **No fallback:** if E2E not ready or encryption fails, message is marked as failed (no unencrypted sending).
+**Send:** content -> fetch link preview (web: `POST /messages/link-preview` proxy; native: direct fetch) -> build envelope -> `_ensureSession(recipientId)` (Completer-based pre-key fetch) -> `encrypt()` -> emit with `encryptedContent`. **Receive:** if `encryptedContent` present, decrypt async + parse envelope + update in-place. **No fallback:** if E2E not ready or encryption fails, message is marked as failed (no unencrypted sending).
 
 **Ciphertext format:** `"{type}:{base64}"` (type 3 = PreKeySignalMessage, type 1 = SignalMessage). Server stores in `encryptedContent`, stores `"[encrypted]"` as `content` placeholder.
 
@@ -412,11 +413,11 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/voi
 - **Reactions:** Long-press message -> 6 emoji picker. Max 1 per user. `reactions` column (JSON). `addReaction`/`removeReaction` events.
 - **Typing indicators:** 300ms debounce, 3s auto-clear. Backend relay only (no DB). `typing` -> `partnerTyping`.
 - **Unread badge:** Backend `countUnreadForRecipient()`. Frontend `_unreadCounts` map.
-- **Link preview:** E2E: client fetches OG before encrypting, stores in envelope; recipient decrypts and displays. Unencrypted: server fetches, `linkPreviewReady` event. SSRF: `isSafeImageUrl` on og:image (frontend + backend); frontend validates when restoring from persisted decrypted content.
+- **Link preview:** E2E: client fetches OG before encrypting, stores in envelope; recipient decrypts and displays. On web, client uses `POST /messages/link-preview` backend proxy (CORS blocks direct fetch). Unencrypted: server fetches, `linkPreviewReady` event. SSRF: `isSafeImageUrl` on og:image (frontend + backend); frontend validates when restoring from persisted decrypted content.
 - **Image messages:** POST /messages/image. Verifies friend relationship. `messageType=IMAGE`.
 - **Ping:** Empty content, `messageType=PING`. Uses conversation's `disappearingTimer`.
 - **Push (FCM):** Silent payload (no content). Gracefully disabled without `FIREBASE_SERVICE_ACCOUNT`. Firebase config in gitignored `firebase_secrets.dart` / `firebase-config.js`.
-- **3 themes:** Light, Dark (Wire-style gray), Blue (red-blue accent). Default for new users: Dark. `FireplaceColors` ThemeExtension.
+- **3 themes:** Light, Dark (Wire-style gray), Blue (Telegram-style: dark blue background #17212B, blue accent #2AABEE, sent bubble #2481CC, received #2B2B2B). Default for new users: Dark. `FireplaceColors` ThemeExtension.
 - **App language:** Polish (default) or English. Settings tile "Language" (Język) with Polski / English toggle; choice persisted in SharedPreferences (`locale_preference`). Flutter l10n: `lib/l10n/app_pl.arb`, `app_en.arb`; generated `app_localizations.dart`; `MaterialApp` uses `locale` from `SettingsProvider`, `supportedLocales` (pl, en), `localizationsDelegates`. Settings screen and main shell tab labels use `AppLocalizations.of(context)`.
 - **Friend auto-accept:** If B has pending request to A when A sends to B -> auto-accept, create conversation, emit `openConversation` to A only (B gets lists, no auto-open).
 

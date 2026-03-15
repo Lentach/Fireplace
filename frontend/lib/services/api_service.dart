@@ -223,6 +223,29 @@ class ApiService {
     return data['token'] as String;
   }
 
+  /// Proxy link preview fetch (for web where CORS blocks direct requests).
+  Future<Map<String, String?>?> fetchLinkPreview(String token, String text) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/messages/link-preview'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'text': text}),
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 201) return null;
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (data.isEmpty || data['url'] == null) return null;
+
+    return {
+      'url': data['url'] as String?,
+      'title': data['title'] as String?,
+      'imageUrl': data['imageUrl'] as String?,
+    };
+  }
+
   Future<VoiceUploadResult> uploadVoiceMessage({
     required String token,
     required int duration,

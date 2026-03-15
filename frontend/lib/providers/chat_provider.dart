@@ -771,7 +771,8 @@ class ChatProvider extends ChangeNotifier {
     _messages.add(tempMessage);
     // Persist plaintext separately so it survives if _messages is overwritten
     // by a messageHistory response before messageSent arrives.
-    _pendingSendContent[tempId] = {'content': content};
+    // Use explicit Map type to avoid DDC/JS IdentityMap subtype errors when assigning.
+    _pendingSendContent[tempId] = <String, String?>{'content': content};
     if (_replyingToMessage != null) {
       _replyingToMessage = null;
     }
@@ -833,9 +834,17 @@ class ChatProvider extends ChangeNotifier {
 
     try {
       // 1. Fetch client-side link preview before encrypting
+      //    On web, use backend proxy to avoid CORS; on native, fetch directly.
       Map<String, String?>? linkPreview;
       try {
-        linkPreview = await LinkPreviewService.fetchPreview(content);
+        if (kIsWeb && _reconnect.tokenForReconnect != null) {
+          linkPreview = await _api.fetchLinkPreview(
+            _reconnect.tokenForReconnect!,
+            content,
+          );
+        } else {
+          linkPreview = await LinkPreviewService.fetchPreview(content);
+        }
       } catch (e) {
         debugPrint('[E2E] Link preview fetch failed (non-fatal): $e');
       }
