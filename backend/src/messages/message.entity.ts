@@ -20,7 +20,6 @@ export enum MessageType {
   TEXT = 'TEXT',
   PING = 'PING',
   IMAGE = 'IMAGE',
-  DRAWING = 'DRAWING',
   VOICE = 'VOICE',
 }
 

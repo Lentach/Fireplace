@@ -41,7 +41,7 @@ export class MessageMapper {
             ? rt.content.substring(0, 150)
             : rt.messageType === 'VOICE'
               ? 'Voice message'
-              : rt.messageType === 'IMAGE' || rt.messageType === 'DRAWING'
+              : rt.messageType === 'IMAGE'
                 ? 'Image'
                 : rt.messageType === 'PING'
                   ? 'Ping'
