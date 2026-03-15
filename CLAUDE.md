@@ -31,7 +31,7 @@ cd frontend && flutter run -d chrome
 
 **Phone (same WiFi):** `cd frontend && .\run_web_for_phone.ps1` or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`
 
-**Tests:** `cd backend && npm test` (125 unit tests, 16 suites, no DB required); `cd frontend && flutter test` (43 tests)
+**Tests:** `cd backend && npm test` (125 unit tests, 16 suites, no DB required); `cd frontend && flutter test` (48 tests)
 
 **Production:** https://fireplace.ignorelist.com — Google Cloud e2-medium VM (Warszawa), Docker + Nginx + Let's Encrypt. Deploy: SSH to server → `~/deploy.sh` (git pull + docker build + flutter web build).
 
@@ -63,7 +63,7 @@ cd frontend && flutter run -d chrome
 - Mobile _openChat: only Navigator.push; ChatDetailScreen initState calls openConversation (avoids double getMessages and decrypt loop)
 
 ### Backend
-- `ChatValidationService.validateCanMessage(senderId, recipientId)` — shared validation for blocked + friends; used by sendMessage, sendPing, startConversation, image/voice upload
+- `ChatValidationService.validateCanMessage(senderId, recipientId)` — shared validation for blocked + friends; used by sendMessage, startConversation
 - mediaUrl must be Cloudinary URL when provided — prevents SSRF; validated via `@Matches` regex
 - Delete account cascade: key bundles -> OTPs -> msgs -> convs -> friend_reqs -> user (no cascade on User entity)
 - `conversationsService.delete()` deletes msgs first (no cascade)
@@ -78,7 +78,7 @@ cd frontend && flutter run -d chrome
 - `_conversationsWithUnread` uses `Promise.all` — parallel, not sequential
 - `findByConversation` uses DB-level `skip`/`take` when no hidden messages
 - `og:image` from link preview validated via `isSafeImageUrl` (HTTPS + non-private host only); IPv6 brackets stripped before regex; backend resolves relative og:image URLs using pageUrl
-- WS rate limiting: `WsThrottlerGuard` on `sendMessage` and `sendPing` — provides mock `res` with no-op `header()` (Socket has no such method; ThrottlerGuard expects it)
+- WS rate limiting: `WsThrottlerGuard` on `sendMessage` — provides mock `res` with no-op `header()` (Socket has no such method; ThrottlerGuard expects it)
 - Raw SQL in `markConversationAsReadFromSender`: use `"deliveryStatus"` (quoted) — PostgreSQL column is camelCase
 - `_conversationsWithUnread` uses batch `countUnreadForRecipientBatch` + `getLastMessagesBatch` (2 queries total, not 2N)
 - Production: logger level `['error','warn','log']` — no debug
@@ -99,7 +99,7 @@ cd frontend && flutter run -d chrome
 - **DualStorage**: All Signal stores use `DualStorage` (writes to both `flutter_secure_storage` AND `SharedPreferences`). On web, IndexedDB+WebCrypto can lose data when all tabs are closed; localStorage (SharedPreferences) is the reliable fallback. Reads try flutter_secure_storage first, then SharedPreferences.
 - Web: WebOptions(dbName: 'FireplaceE2E') for app-specific storage; Privacy & Safety shows web key-storage warning
 - **Cache-first history decryption**: `_decryptMessageHistory` checks persisted cache (SharedPreferences/localStorage) BEFORE attempting live decryption. Avoids unnecessary session ratchet advancement and recovers messages when keys are lost.
-- `_pendingSendContent: Map<String, Map<String, String?>>` stores tempId→{content, linkPreviewUrl?, linkPreviewTitle?, linkPreviewImageUrl?} when `sendMessage()` creates the optimistic message; link preview data added in `_encryptAndSend()` after fetch. Survives `_messages` list overwrites (e.g. `messageHistory` arriving before `messageSent`). Drained in `_addMessageToState`. Prevents own messages showing `[encrypted]` and restores link preview for sender after re-login. Use explicit type when assigning: `_pendingSendContent[tempId] = <String, String?>{'content': content}` to avoid DDC/JS IdentityMap subtype errors on web.
+- `_pendingSendContent: Map<String, Map<String, dynamic>>` stores tempId→{content, messageType?, mediaUrl?, mediaDuration?, linkPreviewUrl?, linkPreviewTitle?, linkPreviewImageUrl?} when any send method creates the optimistic message; extra fields added in `_encryptAndSend()`. Survives `_messages` list overwrites (e.g. `messageHistory` arriving before `messageSent`). Drained in `_addMessageToState`. Prevents own messages showing `[encrypted]` and restores all fields for sender after re-login. Use explicit type when assigning: `_pendingSendContent[tempId] = <String, dynamic>{'content': content}` to avoid DDC/JS IdentityMap subtype errors on web.
 - `_initializeE2E()` skips `_encryptionService.initialize()` when `_e2eInitialized = true` (reconnect path) — prevents transient mobile storage errors from setting `_e2eInitialized = false` and causing all history messages to become permanently `[Decryption failed]`. Key bundle re-upload still runs on every connect.
 
 ---
@@ -135,7 +135,7 @@ flowchart TB
 
 **State Management:** 3 providers (ChangeNotifier): `AuthProvider` (login/logout/token/user), `ChatProvider` (conversations/messages/friends/socket/encryption), `SettingsProvider` (themeMode: light/dark/blue; locale: pl/en, default pl). Services: `SocketService` (Socket.IO), `ApiService` (REST), `EncryptionService` (Signal Protocol), `LinkPreviewService` (OG metadata).
 
-**Backend services:** `ChatGateway` (18 handlers) delegates to `ChatMessageService`, `ChatConversationService`, `ChatFriendRequestService`, `ChatKeyExchangeService`. REST: `AuthController`, `UsersController`, `MessagesController`. Mappers: `UserMapper`, `MessageMapper`, `ConversationMapper`, `FriendRequestMapper` — all have `toPayload()`.
+**Backend services:** `ChatGateway` (17 handlers) delegates to `ChatMessageService`, `ChatConversationService`, `ChatFriendRequestService`, `ChatKeyExchangeService`. REST: `AuthController`, `UsersController`, `MessagesController`. Mappers: `UserMapper`, `MessageMapper`, `ConversationMapper`, `FriendRequestMapper` — all have `toPayload()`.
 
 **DTO validation:** `chat/utils/dto.validator.ts` — runtime validation via `class-transformer` + `class-validator`. DTOs in `chat/dto/`.
 
@@ -150,10 +150,10 @@ flowchart TB
 | **Auth** | `auth/auth.service.ts`, `auth/auth.controller.ts`, `auth/jwt-auth.guard.ts`, `auth/jwt.strategy.ts`, `auth/password.constants.ts` |
 | **Users** | `users/user.entity.ts`, `users/users.service.ts`, `users/users.controller.ts` |
 | **Conversations** | `conversations/conversation.entity.ts`, `conversations/conversations.service.ts` |
-| **Messages** | `messages/message.entity.ts`, `messages/message.mapper.ts`, `messages/messages.service.ts`, `messages/messages.controller.ts`, `messages/dto/{upload-image,upload-voice}.dto.ts` |
+| **Messages** | `messages/message.entity.ts`, `messages/message.mapper.ts`, `messages/messages.service.ts`, `messages/messages.controller.ts`, `messages/dto/upload-media.dto.ts` |
 | **Friends** | `friends/friend-request.entity.ts`, `friends/friends.service.ts` |
 | **Chat** | `chat/chat.gateway.ts`, `chat/services/chat-{message,conversation,friend-request,key-exchange}.service.ts` |
-| **DTOs** | `chat/dto/chat.dto.ts` + `{typing,recording-voice,send-ping,...}.dto.ts` |
+| **DTOs** | `chat/dto/chat.dto.ts` + `{typing,recording-voice,...}.dto.ts` |
 | **Key Bundles** | `key-bundles/key-bundle.entity.ts`, `key-bundles/one-time-pre-key.entity.ts`, `key-bundles/key-bundles.service.ts` |
 | **Mappers** | `chat/mappers/{conversation,user,friend-request}.mapper.ts`, `messages/message.mapper.ts` |
 | **FCM/Push** | `fcm-tokens/fcm-token.entity.ts`, `fcm-tokens/fcm-tokens.service.ts`, `push-notifications/push-notifications.service.ts` |
@@ -210,7 +210,7 @@ erDiagram
         int sender_id FK "eager: true"
         int conversation_id FK "eager: false"
         enum deliveryStatus "SENDING|SENT|DELIVERED|READ"
-        enum messageType "TEXT|PING|IMAGE|DRAWING|VOICE"
+        enum messageType "TEXT|PING|IMAGE|VOICE"
         text mediaUrl "nullable, Cloudinary URL"
         int mediaDuration "nullable, seconds"
         varchar hiddenByUserIds "comma-separated, delete-for-me"
@@ -300,7 +300,6 @@ erDiagram
 |---|---|---|
 | `sendMessage` | `messageSent` | `newMessage` |
 | `getMessages` | `messageHistory` `{ conversationId, messages }` | -- |
-| `sendPing` | `pingSent` | `newPing` |
 | `messageDelivered` | -- | `messageDelivered` (to sender) |
 | `markConversationRead` | -- | `messageDelivered` (READ) per msg |
 | `clearChatHistory` | `chatHistoryCleared` | `chatHistoryCleared` |
@@ -351,8 +350,7 @@ erDiagram
 | POST | `/users/profile-picture` | JWT | multipart `file` (JPEG/PNG, 5MB) | `{ profilePictureUrl }` |
 | POST | `/users/reset-password` | JWT | `{ oldPassword, newPassword }` | 200 |
 | DELETE | `/users/account` | JWT | `{ password }` | 200 |
-| POST | `/messages/voice` | JWT | multipart `audio` (10MB) + `duration` + `expiresIn?` | `{ mediaUrl, publicId, duration }` |
-| POST | `/messages/image` | JWT | multipart `file` (5MB) + `recipientId` + `expiresIn?` | MessagePayload |
+| POST | `/messages/upload-media` | JWT | multipart `file` (10MB) + `type` ('image'\|'voice') + `duration?` + `expiresIn?` | `{ mediaUrl, mediaDuration? }` |
 | POST | `/messages/link-preview` | JWT | `{ text }` | `{ url, title, imageUrl }` or `{}` |
 | POST | `/notes` | JWT | `{ ciphertext, expiresIn }` | `{ token }` |
 | GET | `/note/:token` | None | -- | HTML page (landing/revealed/destroyed) |
@@ -378,9 +376,11 @@ erDiagram
 
 ### E2E Encryption (Signal Protocol)
 
-`libsignal_protocol_dart` v0.7.4 + `flutter_secure_storage`. **Text messages only** — media not yet encrypted. X3DH key agreement -> Double Ratchet. Single-device (deviceId=1). TOFU verification.
+`libsignal_protocol_dart` v0.7.4 + `flutter_secure_storage`. **All message types encrypted** (text, ping, voice, image). X3DH key agreement -> Double Ratchet. Single-device (deviceId=1). TOFU verification. Media files on Cloudinary are NOT encrypted — only the URL is hidden inside the encrypted envelope.
 
-**Send:** content -> fetch link preview (web: `POST /messages/link-preview` proxy; native: direct fetch) -> build envelope -> `_ensureSession(recipientId)` (Completer-based pre-key fetch) -> `encrypt()` -> emit with `encryptedContent`. **Receive:** if `encryptedContent` present, decrypt async + parse envelope + update in-place. **No fallback:** if E2E not ready or encryption fails, message is marked as failed (no unencrypted sending).
+**E2E Envelope:** `{ content, messageType?, mediaUrl?, mediaDuration?, linkPreview? }` — `messageType` defaults to `TEXT` when absent (backward compat). Server stores all encrypted messages as `messageType=TEXT`, `mediaUrl=null` — blind to real type.
+
+**Send (all types):** create optimistic message -> for voice/image: upload to `POST /messages/upload-media` first -> build envelope with all fields -> `_encryptAndSend()` -> `_ensureSession(recipientId)` -> `encrypt()` -> emit `sendMessage` with `encryptedContent` only. Link preview fetched for TEXT only (web: backend proxy; native: direct). **Receive:** decrypt async -> `E2eEnvelope.parse()` -> `copyWith(messageType, mediaUrl, mediaDuration, ...)` to restore real type. Ping effect triggered on decrypt when type is PING. **No fallback:** if E2E not ready or encryption fails, message is marked as failed (no unencrypted sending).
 
 **Ciphertext format:** `"{type}:{base64}"` (type 3 = PreKeySignalMessage, type 1 = SignalMessage). Server stores in `encryptedContent`, stores `"[encrypted]"` as `content` placeholder.
 
@@ -396,7 +396,7 @@ Three-layer: (1) Frontend `removeExpiredMessages()` every 1s, (2) Backend filter
 
 ### Voice Messages
 
-Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/voice -> Cloudinary -> WebSocket. Playback: cached at `audio_cache/`, scrubbable waveform, speed 1x/1.5x/2x. Format: AAC/M4A (native), WAV (web).
+Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/upload-media (voice) -> Cloudinary URL -> `_encryptAndSend` (URL in envelope) -> WebSocket. Playback: cached at `audio_cache/`, scrubbable waveform, speed 1x/1.5x/2x. Format: AAC/M4A (native), WAV (web).
 
 ### Delete Actions
 
@@ -414,8 +414,8 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/voi
 - **Typing indicators:** 300ms debounce, 3s auto-clear. Backend relay only (no DB). `typing` -> `partnerTyping`.
 - **Unread badge:** Backend `countUnreadForRecipient()`. Frontend `_unreadCounts` map.
 - **Link preview:** E2E: client fetches OG before encrypting, stores in envelope; recipient decrypts and displays. On web, client uses `POST /messages/link-preview` backend proxy (CORS blocks direct fetch). Unencrypted: server fetches, `linkPreviewReady` event. SSRF: `isSafeImageUrl` on og:image (frontend + backend); frontend validates when restoring from persisted decrypted content.
-- **Image messages:** POST /messages/image. Verifies friend relationship. `messageType=IMAGE`.
-- **Ping:** Empty content, `messageType=PING`. Uses conversation's `disappearingTimer`.
+- **Image messages:** Optimistic UI -> POST /messages/upload-media (image) -> Cloudinary URL -> `_encryptAndSend` (URL in envelope). Friend validation happens in `handleSendMessage`.
+- **Ping:** Encrypted via `sendMessage` (no dedicated `sendPing` event). Optimistic PING message -> `_encryptAndSend` with `messageType: 'PING'`. Uses conversation's `disappearingTimer`. Recipient sees ping effect after decrypting envelope.
 - **Push (FCM):** Silent payload (no content). Gracefully disabled without `FIREBASE_SERVICE_ACCOUNT`. Firebase config in gitignored `firebase_secrets.dart` / `firebase-config.js`.
 - **3 themes:** Light, Dark (Wire-style gray), Blue (Telegram-style: dark blue background #17212B, blue accent #2AABEE, sent bubble #2481CC, received #2B2B2B). Default for new users: Dark. `FireplaceColors` ThemeExtension.
 - **App language:** Polish (default) or English. Settings tile "Language" (Język) with Polski / English toggle; choice persisted in SharedPreferences (`locale_preference`). Flutter l10n: `lib/l10n/app_pl.arb`, `app_en.arb`; generated `app_localizations.dart`; `MaterialApp` uses `locale` from `SettingsProvider`, `supportedLocales` (pl, en), `localizationsDelegates`. Settings screen and main shell tab labels use `AppLocalizations.of(context)`.
@@ -429,7 +429,7 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/voi
 
 **Key screens:** AuthScreen (`clearStatus()` on tab switch — DO NOT DELETE), MainShell (consumes `consumePendingFriendAccepted()` for snackbar), ConversationsScreen (swipe-to-delete, `consumePendingOpen()`), ChatDetailScreen (Timer.periodic 1s for expired msgs, `markConversationRead` on open), AddOrInvitationsScreen (searchUsers -> auto-send if 1 result, picker if multiple, `consumeFriendRequestSent()`), ContactsScreen (consumes `pendingOpenConversationId` and navigates to chat when user tapped contact and `startConversation` returned), PrivacySafetyScreen (E2E info, identity fingerprint).
 
-**Key widgets:** ChatInputBar (text+send+mic+action tiles), ChatActionTiles (icons centered in viewport; Camera/Gallery/Ping/Timer/Clear/Drawing), ChatMessageBubble (Telegram-style: intrinsic width so bubble fits content; short messages narrow, long messages expand to 85% of chat width; time + delivery icon + optional timer in one row on the right for sent / left for received; Wire-style rounded corners, no tail; padding 16,10,16,8; margin bottom 10; colors per theme), VoiceMessageBubble (same style), ChatBackgroundPattern (subtle dot pattern in chat area), ConversationTile (Dismissible, unread badge), TopSnackbar (never use ScaffoldMessenger), AvatarCircle.
+**Key widgets:** ChatInputBar (text+send+mic+action tiles), ChatActionTiles (icons centered in viewport; Camera/Gallery/Ping/Timer/Clear), ChatMessageBubble (Telegram-style: intrinsic width so bubble fits content; short messages narrow, long messages expand to 85% of chat width; time + delivery icon + optional timer in one row on the right for sent / left for received; Wire-style rounded corners, no tail; padding 16,10,16,8; margin bottom 10; colors per theme), VoiceMessageBubble (same style), ChatBackgroundPattern (subtle dot pattern in chat area), ConversationTile (Dismissible, unread badge), TopSnackbar (never use ScaffoldMessenger), AvatarCircle.
 
 **Models:** `UserModel` (`displayHandle` getter), `ConversationModel` (immutable), `MessageModel` (`copyWith` for status/content/media), `FriendRequestModel`. Frontend-only: `MessageDeliveryStatus.failed`.
 
@@ -455,11 +455,11 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/voi
 
 ## 11. Known Limitations & Tech Debt
 
-- E2E: text only (no media/voice/drawing encryption), no multi-device, no key recovery, conversation list shows "Encrypted message". History messages for sender show `[encrypted]` after re-login when browser evicted storage (own messages not re-decryptable by design). Key rotation is handled: `isTrustedIdentity` auto-accepts new identities; broken sessions are reset on live decrypt failure so next send rebuilds via X3DH.
+- E2E: all types encrypted (text, ping, voice, image). Media files on Cloudinary NOT encrypted (only URLs encrypted in envelope). No multi-device, no key recovery, conversation list shows "Encrypted message". History messages for sender show `[encrypted]` after re-login when browser evicted storage (own messages not re-decryptable by design). Key rotation is handled: `isTrustedIdentity` auto-accepts new identities; broken sessions are reset on live decrypt failure so next send rebuilds via X3DH.
 - No message edit, no fuzzy search, no iOS APNs
 - No unique constraint on `(sender, receiver)` in friend_requests
 - Pagination: simple limit/offset (default 50), N+1 in `_conversationsWithUnread()`
-- Large files: `chat_provider.dart` (~1512 lines), `chat-friend-request.service.ts` (~428 lines)
+- Large files: `chat_provider.dart` (~1970 lines), `chat-friend-request.service.ts` (~428 lines)
 - Migration scripts in `backend/scripts/` (manual)
 - Metadata: server stores who, with whom, when, conversation structure (see `docs/METADATA.md`); design for future options in `docs/plans/2026-03-11-metadata-privacy-design.md`
 - `secret_notes` table uses `synchronize: true` auto-creation — fine for dev, requires `NODE_ENV=development` in docker-compose
