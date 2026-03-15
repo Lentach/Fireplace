@@ -50,9 +50,10 @@ class ChatProvider extends ChangeNotifier {
   /// Handlers add to this set (synchronously, no async); _ensureSession drains it atomically.
   final Set<int> _forceSessionRebuild = {};
   final List<Map<String, dynamic>> _incomingMessageQueue = [];
-  /// Plaintext content keyed by tempId — survives _messages list overwrites (e.g. when
-  /// messageHistory arrives before messageSent, wiping the optimistic temp message).
-  final Map<String, String> _pendingSendContent = {};
+  /// Plaintext content + link preview keyed by tempId — survives _messages list
+  /// overwrites (e.g. when messageHistory arrives before messageSent).
+  /// Value: {'content': String, 'linkPreviewUrl'?: String, 'linkPreviewTitle'?: String, 'linkPreviewImageUrl'?: String}
+  final Map<String, Map<String, String?>> _pendingSendContent = {};
 
   // Monotonic counter for temporary negative message IDs — prevents collision
   // if two messages are sent within the same millisecond.
@@ -261,16 +262,28 @@ class ChatProvider extends ChangeNotifier {
     // If this is our own message (messageSent), replace temp optimistic message
     // and keep plaintext for display (server stores "[encrypted]" as content).
     if (msg.senderId == _currentUserId && msg.tempId != null) {
-      // Retrieve plaintext: prefer _pendingSendContent (survives list overwrites when
-      // messageHistory arrives before messageSent), fall back to temp message content.
-      final savedContent = _pendingSendContent.remove(msg.tempId);
+      // Retrieve plaintext + link preview: prefer _pendingSendContent (survives list
+      // overwrites when messageHistory arrives before messageSent), fall back to temp message.
+      final savedData = _pendingSendContent.remove(msg.tempId);
+      final savedContent = savedData?['content'];
       final tempIndex = _messages.indexWhere((m) => m.tempId == msg.tempId);
       final tempContent = tempIndex != -1 ? _messages[tempIndex].content : null;
       if (tempIndex != -1) _messages.removeAt(tempIndex);
       final plaintextContent = savedContent ?? tempContent ?? '';
       if (msg.content == '[encrypted]' && plaintextContent.isNotEmpty) {
-        msg = msg.copyWith(content: plaintextContent);
-        _encryptionService.saveDecryptedContent(msg.id, {'content': plaintextContent}).catchError((_) {});
+        msg = msg.copyWith(
+          content: plaintextContent,
+          linkPreviewUrl: savedData?['linkPreviewUrl'],
+          linkPreviewTitle: savedData?['linkPreviewTitle'],
+          linkPreviewImageUrl: savedData?['linkPreviewImageUrl'],
+        );
+        final persistData = <String, dynamic>{
+          'content': plaintextContent,
+          if (savedData?['linkPreviewUrl'] != null) 'linkPreviewUrl': savedData!['linkPreviewUrl']!,
+          if (savedData?['linkPreviewTitle'] != null) 'linkPreviewTitle': savedData!['linkPreviewTitle']!,
+          if (savedData?['linkPreviewImageUrl'] != null) 'linkPreviewImageUrl': savedData!['linkPreviewImageUrl']!,
+        };
+        _encryptionService.saveDecryptedContent(msg.id, persistData).catchError((_) {});
       }
     }
 
@@ -758,7 +771,7 @@ class ChatProvider extends ChangeNotifier {
     _messages.add(tempMessage);
     // Persist plaintext separately so it survives if _messages is overwritten
     // by a messageHistory response before messageSent arrives.
-    _pendingSendContent[tempId] = content;
+    _pendingSendContent[tempId] = {'content': content};
     if (_replyingToMessage != null) {
       _replyingToMessage = null;
     }
@@ -827,7 +840,17 @@ class ChatProvider extends ChangeNotifier {
         debugPrint('[E2E] Link preview fetch failed (non-fatal): $e');
       }
 
-      // 2. Build encrypted envelope (content + optional linkPreview)
+      // 2. Store link preview in pending content so _addMessageToState can restore it
+      if (linkPreview != null) {
+        final pending = _pendingSendContent[tempId];
+        if (pending != null) {
+          if (linkPreview['url'] != null) pending['linkPreviewUrl'] = linkPreview['url'];
+          if (linkPreview['title'] != null) pending['linkPreviewTitle'] = linkPreview['title'];
+          if (linkPreview['imageUrl'] != null) pending['linkPreviewImageUrl'] = linkPreview['imageUrl'];
+        }
+      }
+
+      // 3. Build encrypted envelope (content + optional linkPreview)
       final envelopeJson = jsonEncode(E2eEnvelope.build(content, linkPreview));
 
       // 3. Ensure session exists with recipient
@@ -1661,7 +1684,20 @@ class ChatProvider extends ChangeNotifier {
         final stored = await _encryptionService.getDecryptedContent(msg.id);
         final storedContent = stored?['content'] as String? ?? '';
         if (storedContent.isNotEmpty) {
-          final restored = msg.copyWith(content: storedContent);
+          // Restore link preview from persisted cache (SSRF validated)
+          final rawImageUrl = stored?['linkPreviewImageUrl'] as String?;
+          final rawPageUrl = stored?['linkPreviewUrl'] as String?;
+          final safeImageUrl = rawImageUrl != null &&
+                  rawPageUrl != null &&
+                  LinkPreviewService.isSafeImageUrl(rawImageUrl, rawPageUrl)
+              ? rawImageUrl
+              : null;
+          final restored = msg.copyWith(
+            content: storedContent,
+            linkPreviewUrl: stored?['linkPreviewUrl'] as String?,
+            linkPreviewTitle: stored?['linkPreviewTitle'] as String?,
+            linkPreviewImageUrl: safeImageUrl,
+          );
           final idx = _messages.indexWhere((m) => m.id == msg.id);
           if (idx != -1) {
             _messages[idx] = restored;
