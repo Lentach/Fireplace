@@ -221,6 +221,214 @@ describe('ChatMessageService', () => {
     });
   });
 
+  describe('E2E encrypted message types', () => {
+    it('should store [encrypted] content and pass encryptedContent for PING', async () => {
+      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+      usersService.findById
+        .mockResolvedValueOnce(mockSender as User)
+        .mockResolvedValueOnce(mockRecipient as User);
+      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+      messagesService.create.mockResolvedValue({
+        ...mockMessage,
+        content: '[encrypted]',
+        encryptedContent: '3:pingCiphertext==',
+        messageType: 'TEXT', // server doesn't know real type when encrypted
+        mediaUrl: null,
+      } as Message);
+
+      const data = {
+        recipientId: 2,
+        content: '[encrypted]',
+        encryptedContent: '3:pingCiphertext==',
+        // No messageType, mediaUrl — hidden inside encrypted envelope
+      };
+
+      await service.handleSendMessage(
+        mockClient as Socket,
+        data,
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      expect(messagesService.create).toHaveBeenCalledWith(
+        '[encrypted]',
+        mockSender,
+        mockConversation,
+        expect.objectContaining({
+          encryptedContent: '3:pingCiphertext==',
+        }),
+      );
+      // Verify no mediaUrl or messageType leaked from client
+      const createCall = messagesService.create.mock.calls[0];
+      const opts = createCall[3] as Record<string, unknown>;
+      expect(opts.mediaUrl).toBeUndefined();
+      expect(opts.messageType).toBeUndefined();
+    });
+
+    it('should store [encrypted] for encrypted VOICE (no mediaUrl in payload)', async () => {
+      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+      usersService.findById
+        .mockResolvedValueOnce(mockSender as User)
+        .mockResolvedValueOnce(mockRecipient as User);
+      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+      messagesService.create.mockResolvedValue({
+        ...mockMessage,
+        content: '[encrypted]',
+        encryptedContent: '3:voiceCiphertext==',
+        messageType: 'TEXT',
+        mediaUrl: null,
+      } as Message);
+
+      const data = {
+        recipientId: 2,
+        content: '[encrypted]',
+        encryptedContent: '3:voiceCiphertext==',
+        // mediaUrl is inside the encrypted envelope, not in WS payload
+      };
+
+      await service.handleSendMessage(
+        mockClient as Socket,
+        data,
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      expect(messagesService.create).toHaveBeenCalledWith(
+        '[encrypted]',
+        mockSender,
+        mockConversation,
+        expect.objectContaining({
+          encryptedContent: '3:voiceCiphertext==',
+        }),
+      );
+      const opts = messagesService.create.mock.calls[0][3] as Record<string, unknown>;
+      expect(opts.mediaUrl).toBeUndefined();
+      expect(opts.mediaDuration).toBeUndefined();
+    });
+
+    it('should store [encrypted] for encrypted IMAGE (no mediaUrl in payload)', async () => {
+      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+      usersService.findById
+        .mockResolvedValueOnce(mockSender as User)
+        .mockResolvedValueOnce(mockRecipient as User);
+      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+      messagesService.create.mockResolvedValue({
+        ...mockMessage,
+        content: '[encrypted]',
+        encryptedContent: '3:imageCiphertext==',
+        messageType: 'TEXT',
+        mediaUrl: null,
+      } as Message);
+
+      const data = {
+        recipientId: 2,
+        content: '[encrypted]',
+        encryptedContent: '3:imageCiphertext==',
+      };
+
+      await service.handleSendMessage(
+        mockClient as Socket,
+        data,
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      const opts = messagesService.create.mock.calls[0][3] as Record<string, unknown>;
+      expect(opts.encryptedContent).toBe('3:imageCiphertext==');
+      expect(opts.mediaUrl).toBeUndefined();
+    });
+
+    it('should NOT fetch link preview for any encrypted message', async () => {
+      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+      usersService.findById
+        .mockResolvedValueOnce(mockSender as User)
+        .mockResolvedValueOnce(mockRecipient as User);
+      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+      messagesService.create.mockResolvedValue({
+        ...mockMessage,
+        content: '[encrypted]',
+        encryptedContent: '3:textWithLinkCipher==',
+        messageType: 'TEXT',
+      } as Message);
+
+      // Even though content placeholder is [encrypted], link preview must not run
+      const data = {
+        recipientId: 2,
+        content: '[encrypted]',
+        encryptedContent: '3:textWithLinkCipher==',
+      };
+
+      await service.handleSendMessage(
+        mockClient as Socket,
+        data,
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      // LinkPreviewService is injected but should NOT be called
+      const linkPreviewService = (service as any).linkPreviewService;
+      expect(linkPreviewService.fetchPreview).not.toHaveBeenCalled();
+    });
+
+    it('should emit messageSent and newMessage with encryptedContent for online recipient', async () => {
+      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+      usersService.findById
+        .mockResolvedValueOnce(mockSender as User)
+        .mockResolvedValueOnce(mockRecipient as User);
+      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+
+      const savedMsg = {
+        ...mockMessage,
+        id: 200,
+        content: '[encrypted]',
+        encryptedContent: '3:cipher==',
+        messageType: 'TEXT',
+        mediaUrl: null,
+        mediaDuration: null,
+        reactions: null,
+        replyTo: null,
+        expiresAt: null,
+      } as Message;
+      messagesService.create.mockResolvedValue(savedMsg);
+
+      onlineUsers.set(2, 'socket-bob');
+
+      const data = {
+        recipientId: 2,
+        content: '[encrypted]',
+        encryptedContent: '3:cipher==',
+        tempId: 'temp-123',
+      };
+
+      await service.handleSendMessage(
+        mockClient as Socket,
+        data,
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      // messageSent to sender
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'messageSent',
+        expect.objectContaining({
+          content: '[encrypted]',
+          encryptedContent: '3:cipher==',
+          tempId: 'temp-123',
+        }),
+      );
+
+      // newMessage to recipient
+      expect(mockServer.to).toHaveBeenCalledWith('socket-bob');
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        'newMessage',
+        expect.objectContaining({
+          content: '[encrypted]',
+          encryptedContent: '3:cipher==',
+        }),
+      );
+    });
+  });
+
   describe('handleMessageDelivered', () => {
     it('rejects when caller is the sender, not the recipient', async () => {
       // Message sender = userId 1 (the caller). Recipient = userId 2.

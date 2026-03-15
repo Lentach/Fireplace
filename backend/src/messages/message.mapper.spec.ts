@@ -80,4 +80,82 @@ describe('MessageMapper', () => {
       messageType: 'TEXT',
     });
   });
+
+  // --- E2E all message types: reply-to preview tests ---
+
+  it('should show "Encrypted message" for encrypted VOICE reply-to (not "Voice message")', () => {
+    const replyToMsg = {
+      id: 50,
+      content: '[encrypted]',
+      encryptedContent: '3:voiceCipher==',
+      messageType: MessageType.VOICE,
+      sender: { username: 'alice' },
+    } as unknown as Message;
+    const msg = createMockMessage({ replyTo: replyToMsg });
+    const payload = MessageMapper.toPayload(msg);
+    // encryptedContent takes priority — server can't know it's voice
+    expect((payload.replyTo as any).content).toBe('Encrypted message');
+  });
+
+  it('should show "Encrypted message" for encrypted IMAGE reply-to', () => {
+    const replyToMsg = {
+      id: 51,
+      content: '[encrypted]',
+      encryptedContent: '3:imageCipher==',
+      messageType: MessageType.IMAGE,
+      sender: { username: 'alice' },
+    } as unknown as Message;
+    const msg = createMockMessage({ replyTo: replyToMsg });
+    const payload = MessageMapper.toPayload(msg);
+    expect((payload.replyTo as any).content).toBe('Encrypted message');
+  });
+
+  it('should show "Encrypted message" for encrypted PING reply-to', () => {
+    const replyToMsg = {
+      id: 52,
+      content: '[encrypted]',
+      encryptedContent: '3:pingCipher==',
+      messageType: MessageType.PING,
+      sender: { username: 'alice' },
+    } as unknown as Message;
+    const msg = createMockMessage({ replyTo: replyToMsg });
+    const payload = MessageMapper.toPayload(msg);
+    expect((payload.replyTo as any).content).toBe('Encrypted message');
+  });
+
+  it('should show type-specific labels for unencrypted reply-to', () => {
+    const cases = [
+      { messageType: MessageType.VOICE, expected: 'Voice message' },
+      { messageType: MessageType.IMAGE, expected: 'Image' },
+      { messageType: MessageType.PING, expected: 'Ping' },
+    ];
+    for (const { messageType, expected } of cases) {
+      const replyToMsg = {
+        id: 60,
+        content: '',
+        encryptedContent: null,
+        messageType,
+        sender: { username: 'bob' },
+      } as unknown as Message;
+      const msg = createMockMessage({ replyTo: replyToMsg });
+      const payload = MessageMapper.toPayload(msg);
+      expect((payload.replyTo as any).content).toBe(expected);
+    }
+  });
+
+  it('should include encryptedContent in payload when present', () => {
+    const msg = createMockMessage({
+      content: '[encrypted]',
+      encryptedContent: '3:base64data==',
+    });
+    const payload = MessageMapper.toPayload(msg);
+    expect(payload.encryptedContent).toBe('3:base64data==');
+    expect(payload.content).toBe('[encrypted]');
+  });
+
+  it('should set encryptedContent to null when not present', () => {
+    const msg = createMockMessage();
+    const payload = MessageMapper.toPayload(msg);
+    expect(payload.encryptedContent).toBeNull();
+  });
 });
