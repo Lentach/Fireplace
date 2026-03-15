@@ -30,8 +30,6 @@ class SocketService {
     required void Function(dynamic) onBlockedList,
     required void Function(dynamic) onYouWereBlocked,
     required void Function(dynamic) onMessageDelivered,
-    required void Function(dynamic) onPingReceived,
-    required void Function(dynamic) onPingSent,
     required void Function(dynamic) onChatHistoryCleared,
     required void Function(dynamic) onMessageDeleted,
     required void Function(dynamic) onDisappearingTimerUpdated,
@@ -84,8 +82,6 @@ class SocketService {
     _socket!.on('blockedList', onBlockedList);
     _socket!.on('youWereBlocked', onYouWereBlocked);
     _socket!.on('messageDelivered', onMessageDelivered);
-    _socket!.on('newPing', onPingReceived);
-    _socket!.on('pingSent', onPingSent);
     _socket!.on('chatHistoryCleared', onChatHistoryCleared);
     _socket!.on('messageDeleted', onMessageDeleted);
     _socket!.on('disappearingTimerUpdated', onDisappearingTimerUpdated);
@@ -164,12 +160,6 @@ class SocketService {
       payload['encryptedContent'] = encryptedContent;
     }
     _socket?.emit('sendMessage', payload);
-  }
-
-  void sendPing(int recipientId) {
-    _socket?.emit('sendPing', {
-      'recipientId': recipientId,
-    });
   }
 
   void emitMessageDelivered(int messageId) {

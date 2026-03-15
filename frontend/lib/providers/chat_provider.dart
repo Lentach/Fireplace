@@ -50,10 +50,11 @@ class ChatProvider extends ChangeNotifier {
   /// Handlers add to this set (synchronously, no async); _ensureSession drains it atomically.
   final Set<int> _forceSessionRebuild = {};
   final List<Map<String, dynamic>> _incomingMessageQueue = [];
-  /// Plaintext content + link preview keyed by tempId — survives _messages list
-  /// overwrites (e.g. when messageHistory arrives before messageSent).
-  /// Value: {'content': String, 'linkPreviewUrl'?: String, 'linkPreviewTitle'?: String, 'linkPreviewImageUrl'?: String}
-  final Map<String, Map<String, String?>> _pendingSendContent = {};
+  /// Plaintext content + link preview + type/media keyed by tempId — survives
+  /// _messages list overwrites (e.g. when messageHistory arrives before messageSent).
+  /// Value: {'content': String, 'messageType'?: String, 'mediaUrl'?: String,
+  ///         'mediaDuration'?: int, 'linkPreviewUrl'?: String, ...}
+  final Map<String, Map<String, dynamic>> _pendingSendContent = {};
 
   // Monotonic counter for temporary negative message IDs — prevents collision
   // if two messages are sent within the same millisecond.
@@ -249,6 +250,9 @@ class ChatProvider extends ChangeNotifier {
         : null;
     final data = <String, dynamic>{
       'content': decrypted.content,
+      if (decrypted.messageType != MessageType.text) 'messageType': decrypted.messageType.name.toUpperCase(),
+      if (decrypted.mediaUrl != null) 'mediaUrl': decrypted.mediaUrl!,
+      if (decrypted.mediaDuration != null) 'mediaDuration': decrypted.mediaDuration!,
       if (decrypted.linkPreviewUrl != null) 'linkPreviewUrl': decrypted.linkPreviewUrl!,
       if (decrypted.linkPreviewTitle != null) 'linkPreviewTitle': decrypted.linkPreviewTitle!,
       if (safeImageUrl != null) 'linkPreviewImageUrl': safeImageUrl,
@@ -270,18 +274,25 @@ class ChatProvider extends ChangeNotifier {
       final tempContent = tempIndex != -1 ? _messages[tempIndex].content : null;
       if (tempIndex != -1) _messages.removeAt(tempIndex);
       final plaintextContent = savedContent ?? tempContent ?? '';
-      if (msg.content == '[encrypted]' && plaintextContent.isNotEmpty) {
+      if (msg.content == '[encrypted]') {
+        final restoredType = _parseMessageTypeString(savedData?['messageType'] as String?);
         msg = msg.copyWith(
-          content: plaintextContent,
-          linkPreviewUrl: savedData?['linkPreviewUrl'],
-          linkPreviewTitle: savedData?['linkPreviewTitle'],
-          linkPreviewImageUrl: savedData?['linkPreviewImageUrl'],
+          content: plaintextContent.isNotEmpty ? plaintextContent : null,
+          messageType: restoredType,
+          mediaUrl: savedData?['mediaUrl'] as String?,
+          mediaDuration: savedData?['mediaDuration'] as int?,
+          linkPreviewUrl: savedData?['linkPreviewUrl'] as String?,
+          linkPreviewTitle: savedData?['linkPreviewTitle'] as String?,
+          linkPreviewImageUrl: savedData?['linkPreviewImageUrl'] as String?,
         );
         final persistData = <String, dynamic>{
           'content': plaintextContent,
-          if (savedData?['linkPreviewUrl'] != null) 'linkPreviewUrl': savedData!['linkPreviewUrl']!,
-          if (savedData?['linkPreviewTitle'] != null) 'linkPreviewTitle': savedData!['linkPreviewTitle']!,
-          if (savedData?['linkPreviewImageUrl'] != null) 'linkPreviewImageUrl': savedData!['linkPreviewImageUrl']!,
+          if (savedData?['messageType'] != null) 'messageType': savedData!['messageType'],
+          if (savedData?['mediaUrl'] != null) 'mediaUrl': savedData!['mediaUrl'],
+          if (savedData?['mediaDuration'] != null) 'mediaDuration': savedData!['mediaDuration'],
+          if (savedData?['linkPreviewUrl'] != null) 'linkPreviewUrl': savedData!['linkPreviewUrl'],
+          if (savedData?['linkPreviewTitle'] != null) 'linkPreviewTitle': savedData!['linkPreviewTitle'],
+          if (savedData?['linkPreviewImageUrl'] != null) 'linkPreviewImageUrl': savedData!['linkPreviewImageUrl'],
         };
         _encryptionService.saveDecryptedContent(msg.id, persistData).catchError((_) {});
       }
@@ -617,8 +628,6 @@ class ChatProvider extends ChangeNotifier {
         notifyListeners();
       },
       onMessageDelivered: _handleMessageDelivered,
-      onPingReceived: _handlePingReceived,
-      onPingSent: _handlePingReceived,
       onChatHistoryCleared: _handleChatHistoryCleared,
       onMessageDeleted: _handleMessageDeleted,
       onDisappearingTimerUpdated: _handleDisappearingTimerUpdated,
@@ -771,7 +780,7 @@ class ChatProvider extends ChangeNotifier {
     // Persist plaintext separately so it survives if _messages is overwritten
     // by a messageHistory response before messageSent arrives.
     // Use explicit Map type to avoid DDC/JS IdentityMap subtype errors when assigning.
-    _pendingSendContent[tempId] = <String, String?>{'content': content};
+    _pendingSendContent[tempId] = <String, dynamic>{'content': content};
     if (_replyingToMessage != null) {
       _replyingToMessage = null;
     }
@@ -821,8 +830,11 @@ class ChatProvider extends ChangeNotifier {
     required String tempId,
     int? effectiveExpiresIn,
     int? effectiveReplyToId,
+    String messageType = 'TEXT',
+    String? mediaUrl,
+    int? mediaDuration,
   }) async {
-    _e2eFlowLog('SEND_START', {'recipientId': recipientId, 'e2eInitialized': _e2eInitialized});
+    _e2eFlowLog('SEND_START', {'recipientId': recipientId, 'e2eInitialized': _e2eInitialized, 'messageType': messageType});
     if (!_e2eInitialized) {
       _markMessageFailed(
         tempId,
@@ -832,44 +844,54 @@ class ChatProvider extends ChangeNotifier {
     }
 
     try {
-      // 1. Fetch client-side link preview before encrypting
-      //    On web, use backend proxy to avoid CORS; on native, fetch directly.
+      // 1. Fetch client-side link preview before encrypting (TEXT only)
       Map<String, String?>? linkPreview;
-      try {
-        if (kIsWeb && _reconnect.tokenForReconnect != null) {
-          linkPreview = await _api.fetchLinkPreview(
-            _reconnect.tokenForReconnect!,
-            content,
-          );
-        } else {
-          linkPreview = await LinkPreviewService.fetchPreview(content);
+      if (messageType == 'TEXT') {
+        try {
+          if (kIsWeb && _reconnect.tokenForReconnect != null) {
+            linkPreview = await _api.fetchLinkPreview(
+              _reconnect.tokenForReconnect!,
+              content,
+            );
+          } else {
+            linkPreview = await LinkPreviewService.fetchPreview(content);
+          }
+        } catch (e) {
+          debugPrint('[E2E] Link preview fetch failed (non-fatal): $e');
         }
-      } catch (e) {
-        debugPrint('[E2E] Link preview fetch failed (non-fatal): $e');
       }
 
-      // 2. Store link preview in pending content so _addMessageToState can restore it
-      if (linkPreview != null) {
-        final pending = _pendingSendContent[tempId];
-        if (pending != null) {
+      // 2. Store all fields in pending content so _addMessageToState can restore them
+      final pending = _pendingSendContent[tempId];
+      if (pending != null) {
+        pending['messageType'] = messageType;
+        if (mediaUrl != null) pending['mediaUrl'] = mediaUrl;
+        if (mediaDuration != null) pending['mediaDuration'] = mediaDuration;
+        if (linkPreview != null) {
           if (linkPreview['url'] != null) pending['linkPreviewUrl'] = linkPreview['url'];
           if (linkPreview['title'] != null) pending['linkPreviewTitle'] = linkPreview['title'];
           if (linkPreview['imageUrl'] != null) pending['linkPreviewImageUrl'] = linkPreview['imageUrl'];
         }
       }
 
-      // 3. Build encrypted envelope (content + optional linkPreview)
-      final envelopeJson = jsonEncode(E2eEnvelope.build(content, linkPreview));
+      // 3. Build encrypted envelope (content + type + media + optional linkPreview)
+      final envelopeJson = jsonEncode(E2eEnvelope.build(
+        content,
+        messageType: messageType,
+        mediaUrl: mediaUrl,
+        mediaDuration: mediaDuration,
+        linkPreview: linkPreview,
+      ));
 
-      // 3. Ensure session exists with recipient
+      // 4. Ensure session exists with recipient
       await _ensureSession(recipientId);
 
-      // 4. Encrypt
+      // 5. Encrypt
       final ciphertext =
           await _encryptionService.encrypt(recipientId, envelopeJson);
       _e2eFlowLog('SEND_ENCRYPT_DONE', {'recipientId': recipientId, 'ciphertextLength': ciphertext.length});
 
-      // 5. Send with encrypted content
+      // 6. Send with encrypted content — server is blind to type/media
       _e2eFlowLog('SEND_EMIT', {'recipientId': recipientId});
       _socketService.sendMessage(
         recipientId,
@@ -928,7 +950,9 @@ class ChatProvider extends ChangeNotifier {
     if (idx == -1) return;
     final message = _messages[idx];
     if (message.deliveryStatus != MessageDeliveryStatus.failed) return;
-    if (message.messageType != MessageType.text || message.content.isEmpty) return;
+    // Only auto-retry text and ping (media types need re-upload check)
+    if (message.messageType != MessageType.text && message.messageType != MessageType.ping) return;
+    if (message.messageType == MessageType.text && message.content.isEmpty) return;
     final convList = _conversations.where((c) => c.id == message.conversationId).toList();
     if (convList.isEmpty) return;
     final conv = convList.first;
@@ -948,7 +972,19 @@ class ChatProvider extends ChangeNotifier {
       tempId: tempId,
       effectiveExpiresIn: effectiveExpiresIn,
       effectiveReplyToId: message.replyToMessageId,
+      messageType: message.messageType.name.toUpperCase(),
     );
+  }
+
+  /// Parse a message type string from envelope/persisted data into MessageType enum.
+  MessageType? _parseMessageTypeString(String? type) {
+    switch (type) {
+      case 'TEXT': return MessageType.text;
+      case 'PING': return MessageType.ping;
+      case 'VOICE': return MessageType.voice;
+      case 'IMAGE': return MessageType.image;
+      default: return null;
+    }
   }
 
   /// User-friendly error when encrypt/send fails (e.g. no key bundle, timeout).
@@ -972,7 +1008,38 @@ class ChatProvider extends ChangeNotifier {
   }
 
   void sendPing(int recipientId) {
-    _socketService.sendPing(recipientId);
+    if (_activeConversationId == null || _currentUserId == null) return;
+
+    final effectiveExpiresIn = conversationDisappearingTimer;
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}_$_currentUserId';
+
+    final tempMessage = MessageModel(
+      id: -(++ChatProvider._tempIdSeq),
+      content: '',
+      senderId: _currentUserId!,
+      senderUsername: '',
+      conversationId: _activeConversationId!,
+      createdAt: DateTime.now(),
+      deliveryStatus: MessageDeliveryStatus.sending,
+      messageType: MessageType.ping,
+      expiresAt: effectiveExpiresIn != null
+          ? DateTime.now().add(Duration(seconds: effectiveExpiresIn))
+          : null,
+      tempId: tempId,
+    );
+
+    _messages.add(tempMessage);
+    _pendingSendContent[tempId] = <String, dynamic>{'content': '', 'messageType': 'PING'};
+    _showPingEffect = true;
+    notifyListeners();
+
+    _encryptAndSend(
+      recipientId: recipientId,
+      content: '',
+      tempId: tempId,
+      effectiveExpiresIn: effectiveExpiresIn,
+      messageType: 'PING',
+    );
   }
 
   void addReaction(int messageId, String emoji) {
@@ -1016,15 +1083,15 @@ class ChatProvider extends ChangeNotifier {
 
     // 1. Create optimistic message
     final optimisticMessage = MessageModel(
-      id: -(++ChatProvider._tempIdSeq), // Monotonic temporary negative ID
+      id: -(++ChatProvider._tempIdSeq),
       content: '',
       senderId: _currentUserId!,
-      senderUsername: '', // Will be replaced when server confirms
+      senderUsername: '',
       conversationId: effectiveConvId,
       createdAt: DateTime.now(),
       deliveryStatus: MessageDeliveryStatus.sending,
       messageType: MessageType.voice,
-      mediaUrl: localAudioPath ?? '', // local path or empty on web
+      mediaUrl: localAudioPath ?? '',
       mediaDuration: duration,
       tempId: tempId,
       expiresAt: effectiveExpiresIn != null
@@ -1034,109 +1101,60 @@ class ChatProvider extends ChangeNotifier {
 
     // 2. Add to messages immediately (optimistic)
     _messages.add(optimisticMessage);
+    _pendingSendContent[tempId] = <String, dynamic>{'content': '', 'messageType': 'VOICE'};
     _lastMessages[effectiveConvId] = optimisticMessage;
     notifyListeners();
 
-    // 3. Upload to backend in background
+    // 3. Upload to Cloudinary (no message created in DB)
     try {
       if (_reconnect.tokenForReconnect == null) {
         throw Exception('No authentication token available');
       }
 
-      final result = await _api.uploadVoiceMessage(
+      final responseData = await _api.uploadMedia(
         token: _reconnect.tokenForReconnect!,
+        type: 'voice',
         duration: duration,
-        recipientId: recipientId,
         expiresIn: effectiveExpiresIn,
         audioPath: localAudioPath,
         audioBytes: localAudioBytes,
       );
 
-      // 4. Send via WebSocket with Cloudinary URL
-      _socketService.sendMessage(
-        recipientId,
-        '', // empty content for voice
-        messageType: 'VOICE',
-        mediaUrl: result.mediaUrl,
-        mediaDuration: result.duration,
-        expiresIn: effectiveExpiresIn,
-        tempId: tempId,
-      );
+      final cloudinaryUrl = responseData['mediaUrl'] as String;
+      final serverDuration = (responseData['mediaDuration'] as num?)?.toInt() ?? duration;
 
-      // 5. Update local message with Cloudinary URL
+      // 4. Update optimistic message with Cloudinary URL
       final index = _messages.indexWhere((m) => m.tempId == tempId);
       if (index != -1) {
         _messages[index] = _messages[index].copyWith(
-          mediaUrl: result.mediaUrl,
-          mediaDuration: result.duration,
-          deliveryStatus: MessageDeliveryStatus.sent,
+          mediaUrl: cloudinaryUrl,
+          mediaDuration: serverDuration,
         );
         notifyListeners();
       }
 
-      // 6. Delete temp file after successful upload (native only; web uses blob)
+      // 5. Delete temp file after successful upload (native only; web uses blob)
       if (!kIsWeb && localAudioPath != null) {
         await file_utils.deleteFileIfExists(localAudioPath);
       }
-    } catch (e) {
-      // 7. Mark as failed, keep local file for retry
-      final index = _messages.indexWhere((m) => m.tempId == tempId);
-      if (index != -1) {
-        _messages[index] = _messages[index].copyWith(
-          deliveryStatus: MessageDeliveryStatus.failed,
-        );
-        notifyListeners();
-      }
 
-      _errorMessage = 'Failed to send voice message';
-      debugPrint('Voice upload error: $e');
-    }
-  }
-
-  Future<void> retryVoiceMessage(String tempId) async {
-    final message = _messages.firstWhere(
-      (m) => m.tempId == tempId,
-      orElse: () => throw Exception('Message not found'),
-    );
-
-    if (message.messageType != MessageType.voice) {
-      throw Exception('Not a voice message');
-    }
-
-    if (message.deliveryStatus != MessageDeliveryStatus.failed) {
-      return; // Already sent
-    }
-
-    final conversation = _conversations.firstWhere(
-      (c) => c.id == message.conversationId,
-    );
-    final recipientId = conv_helpers.getOtherUserId(conversation, _currentUserId);
-
-    // Update status to SENDING
-    final index = _messages.indexWhere((m) => m.tempId == tempId);
-    if (index != -1) {
-      _messages[index] = _messages[index].copyWith(
-        deliveryStatus: MessageDeliveryStatus.sending,
+      // 6. Encrypt and send via WebSocket (URL hidden in envelope)
+      _encryptAndSend(
+        recipientId: recipientId,
+        content: '',
+        tempId: tempId,
+        effectiveExpiresIn: effectiveExpiresIn,
+        messageType: 'VOICE',
+        mediaUrl: cloudinaryUrl,
+        mediaDuration: serverDuration,
       );
-      notifyListeners();
+    } catch (e) {
+      debugPrint('[ChatProvider] Voice upload failed: $e');
+      _markMessageFailed(tempId, 'Failed to send voice message');
     }
-
-    // Re-attempt upload (native only; web retry not supported - no cached bytes)
-    final localPath = message.mediaUrl;
-    if (localPath == null || localPath.isEmpty) {
-      _errorMessage = 'Retry not available for this message';
-      notifyListeners();
-      return;
-    }
-    await sendVoiceMessage(
-      recipientId: recipientId,
-      localAudioPath: localPath,
-      duration: message.mediaDuration ?? 0,
-      conversationId: message.conversationId,
-    );
   }
 
-  /// Retry sending a failed message (text or voice). Voice uses cached file; text re-sends content.
+  /// Retry sending a failed message (any type).
   Future<void> retryFailedMessage(String tempId) async {
     _cancelDelayedRetry(tempId);
     final index = _messages.indexWhere((m) => m.tempId == tempId);
@@ -1144,10 +1162,82 @@ class ChatProvider extends ChangeNotifier {
     final message = _messages[index];
     if (message.deliveryStatus != MessageDeliveryStatus.failed) return;
 
-    if (message.messageType == MessageType.voice) {
-      await retryVoiceMessage(tempId);
+    final conv = _conversations.where((c) => c.id == message.conversationId).firstOrNull;
+    if (conv == null) return;
+    final recipientId = conv_helpers.getOtherUserId(conv, _currentUserId);
+
+    if (message.messageType == MessageType.ping) {
+      _messages[index] = _messages[index].copyWith(
+        deliveryStatus: MessageDeliveryStatus.sending,
+      );
+      _pendingSendContent[tempId] = <String, dynamic>{'content': '', 'messageType': 'PING'};
+      notifyListeners();
+      _encryptAndSend(
+        recipientId: recipientId,
+        content: '',
+        tempId: tempId,
+        messageType: 'PING',
+      );
       return;
     }
+
+    if (message.messageType == MessageType.voice) {
+      // If Cloudinary URL already obtained, skip re-upload
+      if (message.mediaUrl != null && message.mediaUrl!.contains('cloudinary')) {
+        _messages[index] = _messages[index].copyWith(
+          deliveryStatus: MessageDeliveryStatus.sending,
+        );
+        _pendingSendContent[tempId] = <String, dynamic>{'content': '', 'messageType': 'VOICE'};
+        notifyListeners();
+        _encryptAndSend(
+          recipientId: recipientId,
+          content: '',
+          tempId: tempId,
+          messageType: 'VOICE',
+          mediaUrl: message.mediaUrl,
+          mediaDuration: message.mediaDuration,
+        );
+      } else {
+        // Re-upload needed (native only; web has no cached bytes)
+        final localPath = message.mediaUrl;
+        if (localPath == null || localPath.isEmpty) {
+          _errorMessage = 'Retry not available for this message';
+          notifyListeners();
+          return;
+        }
+        _messages[index] = _messages[index].copyWith(
+          deliveryStatus: MessageDeliveryStatus.sending,
+        );
+        notifyListeners();
+        await sendVoiceMessage(
+          recipientId: recipientId,
+          localAudioPath: localPath,
+          duration: message.mediaDuration ?? 0,
+          conversationId: message.conversationId,
+        );
+      }
+      return;
+    }
+
+    if (message.messageType == MessageType.image) {
+      // If Cloudinary URL already obtained, skip re-upload
+      if (message.mediaUrl != null && message.mediaUrl!.contains('cloudinary')) {
+        _messages[index] = _messages[index].copyWith(
+          deliveryStatus: MessageDeliveryStatus.sending,
+        );
+        _pendingSendContent[tempId] = <String, dynamic>{'content': '', 'messageType': 'IMAGE'};
+        notifyListeners();
+        _encryptAndSend(
+          recipientId: recipientId,
+          content: '',
+          tempId: tempId,
+          messageType: 'IMAGE',
+          mediaUrl: message.mediaUrl,
+        );
+      }
+      return;
+    }
+
     if (message.messageType == MessageType.text) {
       final content = message.content;
       final conversationId = message.conversationId;
@@ -1171,31 +1261,61 @@ class ChatProvider extends ChangeNotifier {
     XFile imageFile,
     int recipientId,
   ) async {
-    // Use conversation disappearing timer
+    if (_activeConversationId == null || _currentUserId == null) return;
+
     final effectiveExpiresIn = conversationDisappearingTimer;
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}_$_currentUserId';
+
+    // Create optimistic message
+    final tempMessage = MessageModel(
+      id: -(++ChatProvider._tempIdSeq),
+      content: '',
+      senderId: _currentUserId!,
+      senderUsername: '',
+      conversationId: _activeConversationId!,
+      createdAt: DateTime.now(),
+      deliveryStatus: MessageDeliveryStatus.sending,
+      messageType: MessageType.image,
+      expiresAt: effectiveExpiresIn != null
+          ? DateTime.now().add(Duration(seconds: effectiveExpiresIn))
+          : null,
+      tempId: tempId,
+    );
+
+    _messages.add(tempMessage);
+    _pendingSendContent[tempId] = <String, dynamic>{'content': '', 'messageType': 'IMAGE'};
+    notifyListeners();
 
     try {
-      final response = await _api.uploadImageMessage(
-        token,
-        imageFile,
-        recipientId,
-        effectiveExpiresIn,
+      // Upload to Cloudinary (no message created in DB)
+      final responseData = await _api.uploadMedia(
+        token: token,
+        type: 'image',
+        imageFile: imageFile,
+        expiresIn: effectiveExpiresIn,
       );
 
-      // Parse response and add to messages
-      final message = MessageModel.fromJson(response);
+      final cloudinaryUrl = responseData['mediaUrl'] as String;
 
-      if (_activeConversationId == message.conversationId) {
-        _messages.add(message);
+      // Update optimistic message with URL
+      final idx = _messages.indexWhere((m) => m.tempId == tempId);
+      if (idx != -1) {
+        _messages[idx] = _messages[idx].copyWith(mediaUrl: cloudinaryUrl);
+        notifyListeners();
       }
 
-      _lastMessages[message.conversationId] = message;
-      notifyListeners();
+      // Encrypt and send
+      _encryptAndSend(
+        recipientId: recipientId,
+        content: '',
+        tempId: tempId,
+        effectiveExpiresIn: effectiveExpiresIn,
+        messageType: 'IMAGE',
+        mediaUrl: cloudinaryUrl,
+      );
     } catch (e) {
       debugPrint('[ChatProvider] Image upload failed: $e');
-      _errorMessage = 'Image upload failed: ${e.toString()}';
-      notifyListeners();
-      rethrow;
+      _markMessageFailed(tempId, 'Image upload failed: ${e.toString()}');
     }
   }
 
@@ -1282,35 +1402,6 @@ class ChatProvider extends ChangeNotifier {
     if (index != -1 || conversationId != null) {
       notifyListeners();
     }
-  }
-
-  void _handlePingReceived(dynamic data) {
-    final message = MessageModel.fromJson(data as Map<String, dynamic>);
-
-    // Add to messages if active conversation matches
-    if (_activeConversationId == message.conversationId) {
-      _messages.add(message);
-    }
-
-    // Update last message
-    _lastMessages[message.conversationId] = message;
-
-    // Update unread count (same logic as normal messages)
-    if (message.senderId != _currentUserId) {
-      if (message.conversationId != _activeConversationId) {
-        _unreadCounts[message.conversationId] =
-            (_unreadCounts[message.conversationId] ?? 0) + 1;
-      }
-      _socketService.emitMessageDelivered(message.id);
-      if (message.conversationId == _activeConversationId) {
-        markConversationRead(message.conversationId);
-      }
-    }
-
-    // Set flag for showing ping effect
-    _showPingEffect = true;
-
-    notifyListeners();
   }
 
   void _handleChatHistoryCleared(dynamic data) {
@@ -1670,8 +1761,12 @@ class ChatProvider extends ChangeNotifier {
                   LinkPreviewService.isSafeImageUrl(safeImageUrl, safePageUrl)
               ? safeImageUrl
               : null;
+          final restoredType = _parseMessageTypeString(persisted['messageType'] as String?);
           final restored = msg.copyWith(
             content: persisted['content'] as String,
+            messageType: restoredType,
+            mediaUrl: persisted['mediaUrl'] as String?,
+            mediaDuration: persisted['mediaDuration'] as int?,
             linkPreviewUrl: persisted['linkPreviewUrl'] as String?,
             linkPreviewTitle: persisted['linkPreviewTitle'] as String?,
             linkPreviewImageUrl: validImage,
@@ -1691,8 +1786,8 @@ class ChatProvider extends ChangeNotifier {
       } else if (msg.senderId == _currentUserId && msg.content == '[encrypted]') {
         final stored = await _encryptionService.getDecryptedContent(msg.id);
         final storedContent = stored?['content'] as String? ?? '';
-        if (storedContent.isNotEmpty) {
-          // Restore link preview from persisted cache (SSRF validated)
+        if (storedContent.isNotEmpty || (stored?['messageType'] as String?) != null) {
+          // Restore all fields from persisted cache (SSRF validated)
           final rawImageUrl = stored?['linkPreviewImageUrl'] as String?;
           final rawPageUrl = stored?['linkPreviewUrl'] as String?;
           final safeImageUrl = rawImageUrl != null &&
@@ -1700,8 +1795,12 @@ class ChatProvider extends ChangeNotifier {
                   LinkPreviewService.isSafeImageUrl(rawImageUrl, rawPageUrl)
               ? rawImageUrl
               : null;
+          final restoredType = _parseMessageTypeString(stored?['messageType'] as String?);
           final restored = msg.copyWith(
-            content: storedContent,
+            content: storedContent.isNotEmpty ? storedContent : null,
+            messageType: restoredType,
+            mediaUrl: stored?['mediaUrl'] as String?,
+            mediaDuration: stored?['mediaDuration'] as int?,
             linkPreviewUrl: stored?['linkPreviewUrl'] as String?,
             linkPreviewTitle: stored?['linkPreviewTitle'] as String?,
             linkPreviewImageUrl: safeImageUrl,
@@ -1745,12 +1844,20 @@ class ChatProvider extends ChangeNotifier {
                 )
             ? parsed.linkPreviewImageUrl
             : null;
+        final parsedType = _parseMessageTypeString(parsed.messageType);
         final decryptedMsg = msg.copyWith(
           content: parsed.content,
+          messageType: parsedType,
+          mediaUrl: parsed.mediaUrl,
+          mediaDuration: parsed.mediaDuration,
           linkPreviewUrl: parsed.linkPreviewUrl,
           linkPreviewTitle: parsed.linkPreviewTitle,
           linkPreviewImageUrl: safeImageUrl,
         );
+        // Trigger ping effect for recipient when decrypted type is PING
+        if (parsedType == MessageType.ping && msg.senderId != _currentUserId) {
+          _showPingEffect = true;
+        }
         _decryptedContentCache[msg.id] = decryptedMsg;
         await _persistDecryptedContent(decryptedMsg);
         return decryptedMsg;
@@ -1776,8 +1883,12 @@ class ChatProvider extends ChangeNotifier {
                 LinkPreviewService.isSafeImageUrl(rawImageUrl, rawPageUrl)
             ? rawImageUrl
             : null;
+        final restoredType = _parseMessageTypeString(persisted['messageType'] as String?);
         final restored = msg.copyWith(
           content: persistedContent,
+          messageType: restoredType,
+          mediaUrl: persisted['mediaUrl'] as String?,
+          mediaDuration: persisted['mediaDuration'] as int?,
           linkPreviewUrl: persisted['linkPreviewUrl'] as String?,
           linkPreviewTitle: persisted['linkPreviewTitle'] as String?,
           linkPreviewImageUrl: safeImageUrl,

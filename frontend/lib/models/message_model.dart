@@ -164,6 +164,7 @@ class MessageModel {
   }
 
   MessageModel copyWith({
+    MessageType? messageType,
     String? content,
     MessageDeliveryStatus? deliveryStatus,
     DateTime? expiresAt,
@@ -186,7 +187,7 @@ class MessageModel {
       createdAt: createdAt,
       deliveryStatus: deliveryStatus ?? this.deliveryStatus,
       expiresAt: expiresAt ?? this.expiresAt,
-      messageType: messageType,
+      messageType: messageType ?? this.messageType,
       mediaUrl: mediaUrl ?? this.mediaUrl,
       mediaDuration: mediaDuration ?? this.mediaDuration,
       tempId: tempId,

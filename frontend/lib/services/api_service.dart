@@ -157,53 +157,65 @@ class ApiService {
     }
   }
 
-  Future<Map<String, dynamic>> uploadImageMessage(
-    String token,
-    XFile imageFile,
-    int recipientId,
+  /// Upload media (image or voice) to backend. Returns {mediaUrl, mediaDuration?}.
+  Future<Map<String, dynamic>> uploadMedia({
+    required String token,
+    required String type, // 'image' or 'voice'
+    int? duration,
     int? expiresIn,
-  ) async {
-    var request = http.MultipartRequest(
+    XFile? imageFile,
+    String? audioPath,
+    List<int>? audioBytes,
+  }) async {
+    final request = http.MultipartRequest(
       'POST',
-      Uri.parse('$baseUrl/messages/image'),
+      Uri.parse('$baseUrl/messages/upload-media'),
     );
-
     request.headers['Authorization'] = 'Bearer $token';
-    request.fields['recipientId'] = recipientId.toString();
-    if (expiresIn != null) {
-      request.fields['expiresIn'] = expiresIn.toString();
-    }
+    request.fields['type'] = type;
+    if (duration != null) request.fields['duration'] = duration.toString();
+    if (expiresIn != null) request.fields['expiresIn'] = expiresIn.toString();
 
-    // Handle web vs native platforms
-    if (kIsWeb) {
-      // Web: use readAsBytes with proper MIME type
-      final bytes = await imageFile.readAsBytes();
-      final extension = imageFile.name.toLowerCase().split('.').last;
-      final mimeType = extension == 'png' ? 'image/png' : 'image/jpeg';
-
-      request.files.add(
-        http.MultipartFile.fromBytes(
-          'file',
-          bytes,
+    if (type == 'image' && imageFile != null) {
+      if (kIsWeb) {
+        final bytes = await imageFile.readAsBytes();
+        final extension = imageFile.name.toLowerCase().split('.').last;
+        final mimeType = extension == 'png' ? 'image/png' : 'image/jpeg';
+        request.files.add(http.MultipartFile.fromBytes(
+          'file', bytes,
           filename: imageFile.name,
-          contentType: http.MediaType.parse(mimeType),
-        ),
-      );
-    } else {
-      // Native: use fromPath
-      request.files.add(
-        await http.MultipartFile.fromPath('file', imageFile.path),
-      );
+          contentType: MediaType.parse(mimeType),
+        ));
+      } else {
+        request.files.add(await http.MultipartFile.fromPath('file', imageFile.path));
+      }
+    } else if (type == 'voice') {
+      List<int> bytes;
+      if (audioBytes != null) {
+        bytes = audioBytes;
+      } else if (audioPath != null) {
+        final file = File(audioPath);
+        if (!await file.exists()) throw Exception('Audio file not found: $audioPath');
+        bytes = await file.readAsBytes();
+      } else {
+        throw Exception('Either audioPath or audioBytes required for voice upload');
+      }
+      final isWeb = audioBytes != null;
+      final ext = isWeb ? 'wav' : 'm4a';
+      final mime = isWeb ? 'wav' : 'm4a';
+      request.files.add(http.MultipartFile.fromBytes(
+        'file', bytes,
+        filename: 'voice_${DateTime.now().millisecondsSinceEpoch}.$ext',
+        contentType: MediaType('audio', mime),
+      ));
     }
 
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
-
     final data = jsonDecode(response.body) as Map<String, dynamic>;
-    if (response.statusCode != 201 && response.statusCode != 200) {
+    if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception(data['message'] ?? 'Upload failed');
     }
-
     return data;
   }
 
@@ -246,78 +258,4 @@ class ApiService {
     };
   }
 
-  Future<VoiceUploadResult> uploadVoiceMessage({
-    required String token,
-    required int duration,
-    required int recipientId,
-    int? expiresIn,
-    String? audioPath,
-    List<int>? audioBytes,
-  }) async {
-    List<int> bytes;
-    if (audioBytes != null) {
-      bytes = audioBytes;
-    } else if (audioPath != null) {
-      final file = File(audioPath);
-      if (!await file.exists()) {
-        throw Exception('Audio file not found: $audioPath');
-      }
-      bytes = await file.readAsBytes();
-    } else {
-      throw Exception('Either audioPath or audioBytes required');
-    }
-
-    final request = http.MultipartRequest(
-      'POST',
-      Uri.parse('$baseUrl/messages/voice'),
-    );
-
-    request.headers['Authorization'] = 'Bearer $token';
-
-    final isWeb = audioBytes != null;
-    final ext = isWeb ? 'wav' : 'm4a';
-    final mime = isWeb ? 'wav' : 'm4a';
-    request.files.add(http.MultipartFile.fromBytes(
-      'audio',
-      bytes,
-      filename: 'voice_${DateTime.now().millisecondsSinceEpoch}.$ext',
-      contentType: MediaType('audio', mime),
-    ));
-
-    request.fields['duration'] = duration.toString();
-    request.fields['recipientId'] = recipientId.toString();
-    if (expiresIn != null) {
-      request.fields['expiresIn'] = expiresIn.toString();
-    }
-
-    final response = await request.send();
-    final responseBody = await response.stream.bytesToString();
-
-    if (response.statusCode == 201 || response.statusCode == 200) {
-      final json = jsonDecode(responseBody);
-      return VoiceUploadResult.fromJson(json);
-    } else {
-      throw Exception('Failed to upload voice message: ${response.statusCode} - $responseBody');
-    }
-  }
-}
-
-class VoiceUploadResult {
-  final String mediaUrl;
-  final String publicId;
-  final int duration;
-
-  VoiceUploadResult({
-    required this.mediaUrl,
-    required this.publicId,
-    required this.duration,
-  });
-
-  factory VoiceUploadResult.fromJson(Map<String, dynamic> json) {
-    return VoiceUploadResult(
-      mediaUrl: json['mediaUrl'] as String,
-      publicId: json['publicId'] as String,
-      duration: (json['duration'] as num).round(),
-    );
-  }
 }

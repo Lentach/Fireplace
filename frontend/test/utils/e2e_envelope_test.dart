@@ -16,7 +16,7 @@ void main() {
         'title': 'Example',
         'imageUrl': 'https://example.com/thumb.png',
       };
-      final envelope = E2eEnvelope.build('Check this out', linkPreview);
+      final envelope = E2eEnvelope.build('Check this out', linkPreview: linkPreview);
       expect(envelope['content'], 'Check this out');
       expect(envelope['linkPreview'], linkPreview);
     });
@@ -59,13 +59,49 @@ void main() {
         'title': 'Example',
         'imageUrl': 'https://example.com/img.png',
       };
-      final envelope = E2eEnvelope.build(content, linkPreview);
+      final envelope = E2eEnvelope.build(content, linkPreview: linkPreview);
       final json = jsonEncode(envelope);
       final parsed = E2eEnvelope.parse(json);
       expect(parsed.content, content);
       expect(parsed.linkPreviewUrl, linkPreview['url']);
       expect(parsed.linkPreviewTitle, linkPreview['title']);
       expect(parsed.linkPreviewImageUrl, linkPreview['imageUrl']);
+    });
+
+    test('build includes messageType when provided', () {
+      final envelope = E2eEnvelope.build('', messageType: 'PING');
+      expect(envelope['messageType'], 'PING');
+    });
+
+    test('build includes mediaUrl and mediaDuration', () {
+      final envelope = E2eEnvelope.build('', messageType: 'VOICE', mediaUrl: 'https://example.com/audio.m4a', mediaDuration: 5);
+      expect(envelope['messageType'], 'VOICE');
+      expect(envelope['mediaUrl'], 'https://example.com/audio.m4a');
+      expect(envelope['mediaDuration'], 5);
+    });
+
+    test('parse returns messageType TEXT when absent (backward compat)', () {
+      final json = '{"content":"hello"}';
+      final parsed = E2eEnvelope.parse(json);
+      expect(parsed.messageType, 'TEXT');
+    });
+
+    test('parse extracts messageType, mediaUrl, mediaDuration', () {
+      final json = '{"content":"","messageType":"VOICE","mediaUrl":"https://example.com/a.m4a","mediaDuration":10}';
+      final parsed = E2eEnvelope.parse(json);
+      expect(parsed.messageType, 'VOICE');
+      expect(parsed.mediaUrl, 'https://example.com/a.m4a');
+      expect(parsed.mediaDuration, 10);
+    });
+
+    test('build then parse round-trip with all fields', () {
+      final envelope = E2eEnvelope.build('hello', messageType: 'IMAGE', mediaUrl: 'https://img.com/1.jpg');
+      final json = jsonEncode(envelope);
+      final parsed = E2eEnvelope.parse(json);
+      expect(parsed.content, 'hello');
+      expect(parsed.messageType, 'IMAGE');
+      expect(parsed.mediaUrl, 'https://img.com/1.jpg');
+      expect(parsed.mediaDuration, isNull);
     });
   });
 }
