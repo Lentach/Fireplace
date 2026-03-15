@@ -52,11 +52,33 @@ class RpgTheme {
   static const Color errorColor = Color(0xFFFF4444);
   static const Color successColor = Color(0xFF44FF44);
   static const Color messagesAreaBg = Color(0xFF08081E);
-  // Blue theme: red accent -> sent = dark red-brown, received = dark gray
+  // Blue theme: red accent -> sent = dark red-brown, received = dark gray (legacy; blue theme now uses Telegram palette)
   static const Color mineMsgBg = Color(0xFF4A2A35);
   static const Color theirsMsgBg = Color(0xFF1E2028);
 
-  // Dark mode – primary accent, borders, muted
+  // Telegram-style blue theme (default dark) – official Telegram colors
+  // Background: #17212B, accent: #2AABEE, sent bubble: #2481CC, received: #2B2B2B
+  static const Color backgroundBlue = Color(0xFF17212B);
+  static const Color boxBgBlue = Color(0xFF1E2D3A);
+  static const Color inputBgBlue = Color(0xFF1E2D3A);
+  static const Color textColorBlue = Color(0xFFE4E4E4);
+  static const Color mutedTextBlue = Color(0xFF8A8A8A);
+  static const Color messagesAreaBgBlue = Color(0xFF17212B);
+  static const Color mineMsgBgBlue = Color(0xFF2481CC); // sent bubble (Telegram blue, slightly darker for dark mode)
+  static const Color theirsMsgBgBlue = Color(0xFF2B2B2B); // received bubble (dark gray)
+  static const Color accentBlue = Color(0xFF2AABEE); // Telegram official blue
+  static const Color accentBlueDark = Color(0xFF229ED9); // alternative/hover
+  static const Color borderBlue = Color(0xFF3D5A6B);
+  static const Color buttonBgBlue = Color(0xFF2AABEE);
+  static const Color activeTabBgBlue = Color(0xFF1E3A4A);
+  static const Color tabBorderBlue = Color(0xFF3D5A6B);
+  static const Color convItemBorderBlue = Color(0xFF2B3B45);
+  static const Color convItemBgBlue = Color(0xFF1E2D3A);
+  static const Color timeColorBlue = Color(0xFF8A9BA8);
+  static Color get settingsTileBgBlue => accentBlue.withValues(alpha: 0.12);
+  static const Color settingsTileBorderBlue = Color(0xFF3D5A6B);
+
+  // Dark mode – primary accent, borders, muted (Wire-style dark gray theme uses these)
   static const Color accentDark = Color(0xFFFF6666);
   static const Color borderDark = Color(0xFFCC5555);
   static const Color mutedDark = Color(0xFF9A8A8A);
@@ -112,7 +134,7 @@ class RpgTheme {
       Theme.of(context).brightness == Brightness.dark;
 
   static Color primaryColor(BuildContext context) =>
-      isDark(context) ? accentDark : primaryLight;
+      Theme.of(context).colorScheme.primary;
 
   static Color surfaceColor(BuildContext context) =>
       isDark(context) ? boxBg : boxBgLight;
@@ -132,61 +154,61 @@ class RpgTheme {
     );
   }
 
-  /// Blue theme – red accents (current default dark).
+  /// Blue theme – Telegram-style (dark blue background, blue accent and sent bubbles).
   static ThemeData get themeDataBlue {
     return ThemeData.dark().copyWith(
-      scaffoldBackgroundColor: background,
+      scaffoldBackgroundColor: backgroundBlue,
       colorScheme: const ColorScheme.dark(
-        primary: accentDark,
-        secondary: borderDark,
-        surface: boxBg,
+        primary: accentBlue,
+        secondary: accentBlueDark,
+        surface: boxBgBlue,
         error: errorColor,
-        onPrimary: Color(0xFF0A0A2E),
+        onPrimary: Colors.white,
         onSecondary: Colors.white,
-        onSurface: textColor,
+        onSurface: textColorBlue,
         onError: Colors.white,
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: boxBg,
+        backgroundColor: boxBgBlue,
         elevation: 0,
         centerTitle: false,
         titleTextStyle: GoogleFonts.pressStart2p(
           fontSize: 14,
-          color: accentDark,
+          color: accentBlue,
         ),
-        iconTheme: const IconThemeData(color: textColor),
+        iconTheme: const IconThemeData(color: textColorBlue),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: inputBg,
+        fillColor: inputBgBlue,
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
-          borderSide: const BorderSide(color: tabBorderDark, width: 1.5),
+          borderSide: const BorderSide(color: tabBorderBlue, width: 1.5),
           borderRadius: BorderRadius.circular(8),
         ),
         enabledBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: tabBorderDark, width: 1.5),
+          borderSide: const BorderSide(color: tabBorderBlue, width: 1.5),
           borderRadius: BorderRadius.circular(8),
         ),
         focusedBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: accentDark, width: 2),
+          borderSide: const BorderSide(color: accentBlue, width: 2),
           borderRadius: BorderRadius.circular(8),
         ),
         errorBorder: OutlineInputBorder(
           borderSide: const BorderSide(color: errorColor, width: 1.5),
           borderRadius: BorderRadius.circular(8),
         ),
-        hintStyle: GoogleFonts.inter(color: mutedDark, fontSize: 14),
-        labelStyle: GoogleFonts.inter(color: mutedDark, fontSize: 14),
+        hintStyle: GoogleFonts.inter(color: mutedTextBlue, fontSize: 14),
+        labelStyle: GoogleFonts.inter(color: mutedTextBlue, fontSize: 14),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: buttonBgDark,
-          foregroundColor: accentDark,
+          backgroundColor: buttonBgBlue,
+          foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
-            side: const BorderSide(color: accentDark, width: 2),
+            side: const BorderSide(color: accentBlue, width: 2),
           ),
           textStyle: GoogleFonts.inter(
             fontSize: 16,
@@ -196,46 +218,46 @@ class RpgTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: borderDark,
+          foregroundColor: accentBlue,
           textStyle: GoogleFonts.inter(fontSize: 14),
         ),
       ),
       floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: accentDark,
+        backgroundColor: accentBlue,
         foregroundColor: Colors.white,
       ),
       listTileTheme: ListTileThemeData(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         tileColor: Colors.transparent,
-        selectedTileColor: activeTabBgDark,
+        selectedTileColor: activeTabBgBlue,
       ),
       dividerTheme: const DividerThemeData(
-        color: convItemBorderDark,
+        color: convItemBorderBlue,
         thickness: 1,
       ),
       textTheme: TextTheme(
-        bodyLarge: GoogleFonts.inter(color: textColor, fontSize: 16),
-        bodyMedium: GoogleFonts.inter(color: textColor, fontSize: 14),
-        bodySmall: GoogleFonts.inter(color: mutedDark, fontSize: 12),
-        titleLarge: GoogleFonts.pressStart2p(color: accentDark, fontSize: 16),
-        titleMedium: GoogleFonts.inter(color: textColor, fontSize: 16, fontWeight: FontWeight.w600),
-        titleSmall: GoogleFonts.inter(color: textColor, fontSize: 14, fontWeight: FontWeight.w600),
-        labelLarge: GoogleFonts.inter(color: textColor, fontSize: 14, fontWeight: FontWeight.w500),
+        bodyLarge: GoogleFonts.inter(color: textColorBlue, fontSize: 16),
+        bodyMedium: GoogleFonts.inter(color: textColorBlue, fontSize: 14),
+        bodySmall: GoogleFonts.inter(color: mutedTextBlue, fontSize: 12),
+        titleLarge: GoogleFonts.pressStart2p(color: accentBlue, fontSize: 16),
+        titleMedium: GoogleFonts.inter(color: textColorBlue, fontSize: 16, fontWeight: FontWeight.w600),
+        titleSmall: GoogleFonts.inter(color: textColorBlue, fontSize: 14, fontWeight: FontWeight.w600),
+        labelLarge: GoogleFonts.inter(color: textColorBlue, fontSize: 14, fontWeight: FontWeight.w500),
       ),
       extensions: [
         const FireplaceColors(
-          inputBg: inputBg,
-          convItemBorder: convItemBorderDark,
-          convItemBg: convItemBgDark,
-          messagesAreaBg: messagesAreaBg,
-          mineMsgBg: mineMsgBg,
-          theirsMsgBg: theirsMsgBg,
-          settingsTileBg: convItemBgDark,
-          settingsTileBorder: settingsTileBorderDark,
-          tabBorder: tabBorderDark,
-          borderColor: borderDark,
-          mutedText: mutedDark,
+          inputBg: inputBgBlue,
+          convItemBorder: convItemBorderBlue,
+          convItemBg: convItemBgBlue,
+          messagesAreaBg: messagesAreaBgBlue,
+          mineMsgBg: mineMsgBgBlue,
+          theirsMsgBg: theirsMsgBgBlue,
+          settingsTileBg: boxBgBlue,
+          settingsTileBorder: settingsTileBorderBlue,
+          tabBorder: tabBorderBlue,
+          borderColor: borderBlue,
+          mutedText: mutedTextBlue,
         ),
       ],
     );
@@ -467,7 +489,8 @@ class RpgTheme {
     BuildContext? context,
   }) {
     final iconColor = context != null
-        ? (isDark(context) ? mutedDark : textSecondaryLight)
+        ? (Theme.of(context).extension<FireplaceColors>()?.mutedText ??
+            (isDark(context) ? mutedDark : textSecondaryLight))
         : mutedText;
     return InputDecoration(
       hintText: hintText,

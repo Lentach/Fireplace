@@ -130,7 +130,7 @@ class ChatMessageBubble extends StatelessWidget {
         if (message.messageType == MessageType.text)
           ConstrainedBox(
             constraints: BoxConstraints(maxWidth: contentAreaWidth),
-            child: _buildTextWithLinks(context, _displayContent(context), textColor, textAlignRight: isMine),
+            child: _buildTextWithLinks(context, _displayContent(context), textColor, isMine: isMine, textAlignRight: isMine),
           )
         else if (message.messageType == MessageType.ping)
           Row(
@@ -192,7 +192,7 @@ class ChatMessageBubble extends StatelessWidget {
         if (message.linkPreviewUrl != null)
           Align(
             alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-            child: _buildLinkPreviewCard(context, isDark, textColor),
+            child: _buildLinkPreviewCard(context, isDark, textColor, isMine: isMine),
           ),
         Builder(
           builder: (ctx) {
@@ -489,11 +489,14 @@ class ChatMessageBubble extends StatelessWidget {
     BuildContext context,
     String text,
     Color textColor, {
+    required bool isMine,
     bool textAlignRight = false,
   }) {
     final urlRegex = RegExp(r'https?://[^\s]+', caseSensitive: false);
     final spans = <InlineSpan>[];
     int last = 0;
+    // On sent (blue) bubbles use light link color for contrast; on received use theme primary
+    final linkColor = isMine ? textColor : Theme.of(context).colorScheme.primary;
 
     for (final match in urlRegex.allMatches(text)) {
       if (match.start > last) {
@@ -507,7 +510,7 @@ class ChatMessageBubble extends StatelessWidget {
         text: url,
         style: RpgTheme.bodyFont(
           fontSize: 14,
-          color: Colors.blue.shade300,
+          color: linkColor,
         ).copyWith(decoration: TextDecoration.underline),
         recognizer: TapGestureRecognizer()
           ..onTap = () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
@@ -535,10 +538,12 @@ class ChatMessageBubble extends StatelessWidget {
     );
   }
 
-  Widget _buildLinkPreviewCard(BuildContext context, bool isDark, Color textColor) {
+  Widget _buildLinkPreviewCard(BuildContext context, bool isDark, Color textColor, {required bool isMine}) {
     final cardBg = isDark
         ? Colors.white.withValues(alpha: 0.06)
         : Colors.black.withValues(alpha: 0.04);
+    // URL line: on sent (blue) bubble use textColor for contrast; on received use muted
+    final urlColor = isMine ? textColor : (isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight);
 
     return Padding(
       padding: const EdgeInsets.only(top: 8),
@@ -590,7 +595,7 @@ class ChatMessageBubble extends StatelessWidget {
                       message.linkPreviewUrl!,
                       style: RpgTheme.bodyFont(
                         fontSize: 11,
-                        color: isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight,
+                        color: urlColor,
                       ),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
