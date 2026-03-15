@@ -8,7 +8,6 @@ import { LinkPreviewService } from './link-preview.service';
 import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
 import { validateDto } from '../utils/dto.validator';
 import { SendMessageDto, GetMessagesDto, ClearChatHistoryDto, DeleteMessageDto, AddReactionDto, RemoveReactionDto } from '../dto/chat.dto';
-import { SendPingDto } from '../dto/send-ping.dto';
 import { MessageDeliveredDto } from '../dto/message-delivered.dto';
 import { MarkConversationReadDto } from '../dto/mark-conversation-read.dto';
 import { MessageType, MessageDeliveryStatus } from '../../messages/message.entity';
@@ -208,77 +207,6 @@ export class ChatMessageService {
         messages: [],
       });
     }
-  }
-
-  async handleSendPing(
-    client: Socket,
-    data: any,
-    server: Server,
-    onlineUsers: Map<number, string>,
-  ) {
-    const user = client.data.user;
-    if (!user) return;
-
-    try {
-      const dto = validateDto(SendPingDto, data);
-      data = dto;
-    } catch (error) {
-      client.emit('error', { message: error.message });
-      return;
-    }
-
-    const { recipientId } = data;
-
-    const validation = await this.chatValidationService.validateCanMessage(
-      user.id,
-      recipientId,
-    );
-    if (!validation.valid) {
-      client.emit('error', { message: validation.error });
-      return;
-    }
-
-    // Get sender and recipient User entities
-    const sender = await this.usersService.findById(user.id);
-    const recipient = await this.usersService.findById(recipientId);
-    if (!sender || !recipient) {
-      client.emit('error', { message: 'User not found' });
-      return;
-    }
-
-    // Find or create conversation
-    const conversation = await this.conversationsService.findOrCreate(
-      sender,
-      recipient,
-    );
-
-    // Use conversation's disappearing timer for ping expiration
-    const expiresAt = conversation.disappearingTimer
-      ? new Date(Date.now() + conversation.disappearingTimer * 1000)
-      : null;
-
-    // Create ping message
-    const message = await this.messagesService.create(
-      '', // Empty content for ping
-      sender,
-      conversation,
-      {
-        messageType: MessageType.PING,
-        expiresAt,
-      },
-    );
-
-    const payload = MessageMapper.toPayload(message, {
-      conversationId: conversation.id,
-    });
-
-    client.emit('pingSent', payload);
-
-    const recipientSocketId = onlineUsers.get(recipientId);
-    if (recipientSocketId) {
-      server.to(recipientSocketId).emit('newPing', payload);
-    }
-    this.pushNotificationsService.notify(recipientId).catch(() => {});
   }
 
   async handleMessageDelivered(

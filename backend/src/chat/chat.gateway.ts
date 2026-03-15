@@ -136,20 +136,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return this.chatMessageService.handleGetMessages(client, data);
   }
 
-  @UseGuards(WsThrottlerGuard)
-  @SubscribeMessage('sendPing')
-  async handleSendPing(
-    @ConnectedSocket() client: Socket,
-    @MessageBody() data: any,
-  ) {
-    return this.chatMessageService.handleSendPing(
-      client,
-      data,
-      this.server,
-      this.onlineUsers,
-    );
-  }
-
   @SubscribeMessage('messageDelivered')
   async handleMessageDelivered(
     @ConnectedSocket() client: Socket,

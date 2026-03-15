@@ -7,9 +7,6 @@ import { MessagesService } from './messages.service';
 import { MessageCleanupService } from './message-cleanup.service';
 import { MessagesController } from './messages.controller';
 import { CloudinaryModule } from '../cloudinary/cloudinary.module';
-import { ConversationsModule } from '../conversations/conversations.module';
-import { UsersModule } from '../users/users.module';
-import { ChatValidationModule } from '../chat/chat-validation.module';
 import { LinkPreviewModule } from '../chat/services/link-preview.module';
 
 @Module({
@@ -19,9 +16,6 @@ import { LinkPreviewModule } from '../chat/services/link-preview.module';
       storage: memoryStorage(),
     }),
     CloudinaryModule,
-    ConversationsModule,
-    UsersModule,
-    ChatValidationModule,
     LinkPreviewModule,
   ],
   controllers: [MessagesController],
