@@ -107,7 +107,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get whatIsEncryptedDescription =>
-      'Text messages and link previews are end-to-end encrypted. Media files (images, voice messages, drawings) are not yet encrypted end-to-end.';
+      'Text messages and link previews are end-to-end encrypted. Media files (images, voice messages) are not yet encrypted end-to-end.';
 
   @override
   String get serverStoresMetadata => 'What the server stores (metadata)';
@@ -231,6 +231,18 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get ping => 'Ping';
+
+  @override
+  String get attachment => 'Attachment';
+
+  @override
+  String get actionTileTimer => 'Timer';
+
+  @override
+  String get actionTileGif => 'GIF';
+
+  @override
+  String get actionTileAntiQuantumNote => 'Anti-Quantum Note';
 
   @override
   String get unknown => 'Unknown';

@@ -405,7 +405,6 @@ class _ChatInputBarState extends State<ChatInputBar>
       case MessageType.voice:
         return 'Voice message';
       case MessageType.image:
-      case MessageType.drawing:
         return 'Image';
       case MessageType.ping:
         return 'Ping';

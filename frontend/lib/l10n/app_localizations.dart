@@ -287,7 +287,7 @@ abstract class AppLocalizations {
   /// No description provided for @whatIsEncryptedDescription.
   ///
   /// In pl, this message translates to:
-  /// **'Wiadomości tekstowe i podglądy linków są szyfrowane end-to-end. Pliki multimedialne (zdjęcia, wiadomości głosowe, rysunki) nie są jeszcze szyfrowane end-to-end.'**
+  /// **'Wiadomości tekstowe i podglądy linków są szyfrowane end-to-end. Pliki multimedialne (zdjęcia, wiadomości głosowe) nie są jeszcze szyfrowane end-to-end.'**
   String get whatIsEncryptedDescription;
 
   /// No description provided for @serverStoresMetadata.
@@ -517,6 +517,30 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Ping'**
   String get ping;
+
+  /// No description provided for @attachment.
+  ///
+  /// In pl, this message translates to:
+  /// **'Załącznik'**
+  String get attachment;
+
+  /// No description provided for @actionTileTimer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Timer'**
+  String get actionTileTimer;
+
+  /// No description provided for @actionTileGif.
+  ///
+  /// In pl, this message translates to:
+  /// **'GIF'**
+  String get actionTileGif;
+
+  /// No description provided for @actionTileAntiQuantumNote.
+  ///
+  /// In pl, this message translates to:
+  /// **'Notatka antykwantowa'**
+  String get actionTileAntiQuantumNote;
 
   /// No description provided for @unknown.
   ///

@@ -277,7 +277,6 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
           content = l10n.voiceMessage;
           break;
         case MessageType.image:
-        case MessageType.drawing:
           content = l10n.image;
           break;
         case MessageType.ping:

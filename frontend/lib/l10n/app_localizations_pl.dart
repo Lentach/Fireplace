@@ -107,7 +107,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get whatIsEncryptedDescription =>
-      'Wiadomości tekstowe i podglądy linków są szyfrowane end-to-end. Pliki multimedialne (zdjęcia, wiadomości głosowe, rysunki) nie są jeszcze szyfrowane end-to-end.';
+      'Wiadomości tekstowe i podglądy linków są szyfrowane end-to-end. Pliki multimedialne (zdjęcia, wiadomości głosowe) nie są jeszcze szyfrowane end-to-end.';
 
   @override
   String get serverStoresMetadata => 'Co przechowuje serwer (metadane)';
@@ -230,6 +230,18 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get ping => 'Ping';
+
+  @override
+  String get attachment => 'Załącznik';
+
+  @override
+  String get actionTileTimer => 'Timer';
+
+  @override
+  String get actionTileGif => 'GIF';
+
+  @override
+  String get actionTileAntiQuantumNote => 'Notatka antykwantowa';
 
   @override
   String get unknown => 'Nieznany';

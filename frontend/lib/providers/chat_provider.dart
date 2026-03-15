@@ -735,8 +735,7 @@ class ChatProvider extends ChangeNotifier {
       final rt = _replyingToMessage!;
       final contentPreview = rt.messageType == MessageType.voice
           ? 'Voice message'
-          : rt.messageType == MessageType.image ||
-                  rt.messageType == MessageType.drawing
+          : rt.messageType == MessageType.image
               ? 'Image'
               : rt.messageType == MessageType.ping
                   ? 'Ping'

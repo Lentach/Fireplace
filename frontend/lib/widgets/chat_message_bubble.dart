@@ -79,7 +79,6 @@ class ChatMessageBubble extends StatelessWidget {
       case MessageType.voice:
         return l10n.voiceMessage;
       case MessageType.image:
-      case MessageType.drawing:
         return l10n.image;
       case MessageType.ping:
         return l10n.ping;
@@ -96,7 +95,7 @@ class ChatMessageBubble extends StatelessWidget {
     return l10n.unsupportedMessageType;
   }
 
-  /// Short = time/timer on the right (compact). Long = time/timer below (full-width text).
+  /// Short = time/timer on the right (compact). Long = time/timer below (full-width text or image).
   bool _isShortMessage(String displayContent) {
     if (message.replyTo != null || message.linkPreviewUrl != null) return false;
     switch (message.messageType) {
@@ -105,8 +104,7 @@ class ChatMessageBubble extends StatelessWidget {
       case MessageType.ping:
         return true;
       case MessageType.image:
-      case MessageType.drawing:
-        return true;
+        return false; // timer below image, not on the right
       default:
         return false;
     }
@@ -149,8 +147,7 @@ class ChatMessageBubble extends StatelessWidget {
               ),
             ],
           )
-        else if ((message.messageType == MessageType.image ||
-                 message.messageType == MessageType.drawing) &&
+        else if (message.messageType == MessageType.image &&
                  message.mediaUrl != null)
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 200),

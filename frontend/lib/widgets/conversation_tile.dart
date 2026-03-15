@@ -40,6 +40,9 @@ class ConversationTile extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     if (lastMessage.messageType == MessageType.ping) return l10n.ping;
     if (lastMessage.messageType == MessageType.voice) return l10n.voiceMessage;
+    if (lastMessage.messageType == MessageType.image) {
+      return l10n.attachment;
+    }
     if (lastMessage.displayAsEncryptedPlaceholder ||
         lastMessage.content == 'Encrypted message') {
       return l10n.encryptedMessage;

@@ -6,7 +6,6 @@ import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
-import '../screens/drawing_canvas_screen.dart';
 import 'top_snackbar.dart';
 import 'anti_quantum_note_dialog.dart';
 
@@ -15,6 +14,7 @@ class ChatActionTiles extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final isDark = RpgTheme.isDark(context);
     final borderColor =
         FireplaceColors.of(context).convItemBorder;
@@ -44,42 +44,35 @@ class ChatActionTiles extends StatelessWidget {
           const SizedBox(width: 12),
           _ActionTile(
             icon: Icons.timer_outlined,
-            tooltip: 'Timer',
+            tooltip: l10n.actionTileTimer,
             color: iconColor,
             onTap: () => _showTimerDialog(context),
           ),
           const SizedBox(width: 12),
           _ActionTile(
             icon: Icons.auto_awesome,
-            tooltip: 'Ping',
+            tooltip: l10n.ping,
             color: iconColor,
             onTap: () => _sendPing(context),
           ),
           const SizedBox(width: 12),
           _ActionTile(
             icon: Icons.attach_file,
-            tooltip: 'Attachment',
+            tooltip: l10n.attachment,
             color: iconColor,
             onTap: () => _pickAttachment(context),
           ),
           const SizedBox(width: 12),
           _ActionTile(
-            icon: Icons.brush,
-            tooltip: 'Draw',
-            color: iconColor,
-            onTap: () => _openDrawing(context),
-          ),
-          const SizedBox(width: 12),
-          _ActionTile(
             icon: Icons.gif_box,
-            tooltip: 'GIF',
+            tooltip: l10n.actionTileGif,
             color: iconColor,
-            onTap: () => _showComingSoon(context, 'GIF picker'),
+            onTap: () => _showComingSoon(context, l10n.actionTileGif),
           ),
           const SizedBox(width: 12),
           _ActionTile(
             icon: Icons.science_outlined,
-            tooltip: 'Anti-Quantum Note',
+            tooltip: l10n.actionTileAntiQuantumNote,
             color: iconColor,
             onTap: () => _showAntiQuantumNoteDialog(context),
           ),
@@ -148,17 +141,6 @@ class ChatActionTiles extends StatelessWidget {
       return false;
     }
     return true;
-  }
-
-  void _openDrawing(BuildContext context) {
-    if (!_ensureHasActiveConversation(context)) return;
-
-    Navigator.push(
-      context,
-      MaterialPageRoute(
-        builder: (context) => const DrawingCanvasScreen(),
-      ),
-    );
   }
 
   void _showAntiQuantumNoteDialog(BuildContext context) {
