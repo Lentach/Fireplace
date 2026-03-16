@@ -7,6 +7,7 @@ import { ChatConversationService } from './services/chat-conversation.service';
 import { ChatKeyExchangeService } from './services/chat-key-exchange.service';
 import { ChatPresenceService } from './services/chat-presence.service';
 import { ChatBlockService } from './services/chat-block.service';
+import { ChatSearchService } from './services/chat-search.service';
 import { ChatValidationModule } from './chat-validation.module';
 import { LinkPreviewModule } from './services/link-preview.module';
 import { AuthModule } from '../auth/auth.module';
@@ -39,6 +40,7 @@ import { PushNotificationsModule } from '../push-notifications/push-notification
     ChatKeyExchangeService,
     ChatPresenceService,
     ChatBlockService,
+    ChatSearchService,
     WsThrottlerGuard,
   ],
 })

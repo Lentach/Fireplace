@@ -254,28 +254,4 @@ describe('ChatFriendRequestService', () => {
     });
   });
 
-  describe('handleSearchUsers', () => {
-    it('emits searchUsersResult with user when not already friends', async () => {
-      usersService.findByUsernameAndTag.mockResolvedValue(mockRecipient as any);
-      friendsService.getFriends.mockResolvedValue([]);
-
-      await service.handleSearchUsers(mockClient as any, {
-        handle: 'bob#0002',
-      });
-
-      expect(mockClient.emit).toHaveBeenCalledWith('searchUsersResult', expect.any(Array));
-      expect((mockClient.emit as jest.Mock).mock.calls[0][1]).toHaveLength(1);
-    });
-
-    it('emits empty searchUsersResult when already friends', async () => {
-      usersService.findByUsernameAndTag.mockResolvedValue(mockRecipient as any);
-      friendsService.getFriends.mockResolvedValue([mockRecipient] as any);
-
-      await service.handleSearchUsers(mockClient as any, {
-        handle: 'bob#0002',
-      });
-
-      expect(mockClient.emit).toHaveBeenCalledWith('searchUsersResult', []);
-    });
-  });
 });

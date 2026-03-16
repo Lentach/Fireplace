@@ -18,6 +18,7 @@ import { ChatConversationService } from './services/chat-conversation.service';
 import { ChatKeyExchangeService } from './services/chat-key-exchange.service';
 import { ChatPresenceService } from './services/chat-presence.service';
 import { ChatBlockService } from './services/chat-block.service';
+import { ChatSearchService } from './services/chat-search.service';
 
 // CORS: In production only ALLOWED_ORIGINS. In dev also allow localhost + LAN (phone).
 function buildCorsOrigin() {
@@ -68,6 +69,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private chatKeyExchangeService: ChatKeyExchangeService,
     private chatPresenceService: ChatPresenceService,
     private chatBlockService: ChatBlockService,
+    private chatSearchService: ChatSearchService,
   ) {}
 
   // On WebSocket connection — verify the JWT token.
@@ -316,7 +318,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    return this.chatFriendRequestService.handleSearchUsers(client, data);
+    return this.chatSearchService.handleSearchUsers(client, data);
   }
 
   @SubscribeMessage('sendFriendRequest')
