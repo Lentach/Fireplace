@@ -984,6 +984,7 @@ class ChatProvider extends ChangeNotifier {
       case 'PING': return MessageType.ping;
       case 'VOICE': return MessageType.voice;
       case 'IMAGE': return MessageType.image;
+      case 'GIF': return MessageType.gif;
       default: return null;
     }
   }
