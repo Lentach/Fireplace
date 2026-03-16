@@ -285,6 +285,13 @@ class ConversationsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Increment the unread count for a conversation by 1.
+  void incrementUnreadCount(int conversationId) {
+    _unreadCounts[conversationId] =
+        (_unreadCounts[conversationId] ?? 0) + 1;
+    notifyListeners();
+  }
+
   /// Remove expired messages from lastMessages map.
   void removeExpiredLastMessages() {
     _lastMessages.removeWhere(
