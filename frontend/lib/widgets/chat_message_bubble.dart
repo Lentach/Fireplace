@@ -150,6 +150,18 @@ class ChatMessageBubble extends StatelessWidget {
             ],
           )
         else if (message.messageType == MessageType.image &&
+                 message.mediaUrl == null)
+          const SizedBox(
+            width: 150, height: 150,
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          )
+        else if (message.messageType == MessageType.gif &&
+                 message.mediaUrl == null)
+          const SizedBox(
+            width: 150, height: 150,
+            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+          )
+        else if (message.messageType == MessageType.image &&
                  message.mediaUrl != null)
           ConstrainedBox(
             constraints: const BoxConstraints(maxWidth: 200),
