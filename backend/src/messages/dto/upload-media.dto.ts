@@ -3,8 +3,8 @@ import { Transform } from 'class-transformer';
 
 export class UploadMediaDto {
   @Transform(({ value }) => typeof value === 'string' ? value : String(value))
-  @IsIn(['image', 'voice'])
-  type: 'image' | 'voice';
+  @IsIn(['image', 'voice', 'gif'])
+  type: 'image' | 'voice' | 'gif';
 
   @Transform(({ value }) => (value != null && value !== '' ? parseInt(value, 10) : undefined))
   @IsOptional()
