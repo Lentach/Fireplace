@@ -42,6 +42,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   double _lastKeyboardHeight = 0;
   /// When true, ListView uses large cacheExtent so all items are built and scroll-to-bottom lands at real end.
   bool _expandCacheForScroll = false;
+  double _lastMaxScrollExtent = 0;
+  bool _wasNearBottom = true;
   static const double _scrollToBottomThreshold = 80;
   static const double _largeCacheExtent = 10000;
 
@@ -49,9 +51,25 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     if (!_scrollController.hasClients) return;
     final pos = _scrollController.position;
     final atBottom = pos.pixels >= pos.maxScrollExtent - _scrollToBottomThreshold;
+    _wasNearBottom = atBottom;
+    _lastMaxScrollExtent = pos.maxScrollExtent;
     if (_showScrollToBottomButton != !atBottom && mounted) {
       setState(() => _showScrollToBottomButton = !atBottom);
     }
+  }
+
+  /// Auto-scroll when content height grows (e.g. image/GIF loaded) and user was near bottom.
+  bool _onScrollMetricsNotification(ScrollMetricsNotification notification) {
+    final metrics = notification.metrics;
+    if (metrics.maxScrollExtent > _lastMaxScrollExtent && _wasNearBottom) {
+      _lastMaxScrollExtent = metrics.maxScrollExtent;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_scrollController.hasClients) return;
+        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
+      });
+    }
+    _lastMaxScrollExtent = metrics.maxScrollExtent;
+    return false;
   }
 
   void _onNewMessages(int currentCount, int added) {
@@ -437,7 +455,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                         ),
                       ),
                     )
-                  : ListView.builder(
+                  : NotificationListener<ScrollMetricsNotification>(
+                      onNotification: _onScrollMetricsNotification,
+                      child: ListView.builder(
                       controller: _scrollController,
                       cacheExtent: _expandCacheForScroll ? _largeCacheExtent : null,
                       padding: const EdgeInsets.only(
@@ -465,6 +485,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                           ],
                         );
                       },
+                    ),
                     ),
               ),
             ),
