@@ -364,9 +364,9 @@ erDiagram
 
 ## 8. Key Features & Behaviors
 
-### State Management (ChatProvider)
+### State Management
 
-**Connect flow:** cancel reconnect -> clear ALL state -> dispose old socket + create new with `enableForceNew()` -> on connect: fetch conversations/friendRequests/friends + register listeners -> delayed re-fetch 500ms if empty.
+**Connect flow (ConnectionProvider):** cancel reconnect -> determine isReconnect (`_currentUserId == userId`) -> if not reconnect: clearAll on sub-providers -> call `onConnect(isReconnect)` on each -> set emit callbacks -> create socket with `enableForceNew()` -> `_registerEventListeners()` routes ~35 events to sub-providers -> on socket 'connect': initializeE2E + fetch conversations/friendRequests/friends/blocked.
 
 **Optimistic messaging:** Create temp message (id=-timestamp, SENDING, tempId) -> `notifyListeners` -> encrypt async -> emit `sendMessage` -> backend returns `messageSent` with tempId -> replace temp with real.
 
@@ -434,7 +434,7 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/upl
 
 **Key screens:** AuthScreen (`clearStatus()` on tab switch — DO NOT DELETE), MainShell (consumes `consumePendingFriendAccepted()` for snackbar), ConversationsScreen (swipe-to-delete, `consumePendingOpen()`), ChatDetailScreen (Timer.periodic 1s for expired msgs, `markConversationRead` on open), AddOrInvitationsScreen (searchUsers -> auto-send if 1 result, picker if multiple, `consumeFriendRequestSent()`), ContactsScreen (consumes `pendingOpenConversationId` and navigates to chat when user tapped contact and `startConversation` returned), PrivacySafetyScreen (E2E info: UI states all messages are encrypted; identity fingerprint).
 
-**Key widgets:** ChatInputBar (text+send+mic+action tiles), ChatActionTiles (icons centered in viewport; Camera/Gallery/Ping/Timer/Clear/Anti-Quantum Note; fully localized tooltips + messages), ChatMessageBubble (Telegram-style: intrinsic width so bubble fits content; short messages narrow, long messages expand to 85% of chat width; time + delivery icon + optional timer in one row on the right for sent / left for received; Wire-style rounded corners, no tail; padding 16,10,16,8; margin bottom 10; colors per theme), VoiceMessageBubble (same style), ChatBackgroundPattern (subtle dot pattern in chat area), ConversationTile (Dismissible, unread badge), TopSnackbar (never use ScaffoldMessenger), AvatarCircle, AntiQuantumNoteDialog (bottom sheet for creating one-time “anti‑quantum” secret note with localized copy and TTL presets).
+**Key widgets:** `ChatInputBar` (re-export shim → `widgets/input/chat_input_bar.dart`; orchestrates `RecordingController` + `ReplyPreviewBar` + `AttachmentHandler`; text field + send button + mic hold-to-record). `ChatMessageBubble` (re-export shim → `widgets/message/chat_message_bubble.dart`; wrapper: alignment, gesture (long-press reactions, swipe reply), reply quote, `MessageContentFactory.build()`, `MessageMetadataRow`, reactions overlay; Telegram-style: intrinsic width, short narrow / long up to 85%, Wire-style rounded corners no tail, padding 16,10,16,8, margin bottom 10, colors per theme). `MessageContentFactory` — switch on `MessageType` → `TextMessageContent` (text + link preview card) / `ImageMessageContent` (fullscreen on tap) / `GifMessageContent` (fullscreen on tap) / `FileMessageContent` (icon + filename, opens URL) / `PingMessageContent` / `VoiceMessageContent` (→ `PlaybackController` + `WaveformDisplay`). `ChatActionTiles` (Camera/Gallery/Ping/Timer/Clear/Anti-Quantum Note; localized). `ChatBackgroundPattern` (subtle dot pattern). `ConversationTile` (Dismissible, unread badge). `TopSnackbar` (never use ScaffoldMessenger). `AvatarCircle`. `AntiQuantumNoteDialog` (bottom sheet, one-time secret note, TTL presets).
 
 **Models:** `UserModel` (`displayHandle` getter), `ConversationModel` (immutable), `MessageModel` (`copyWith` for status/content/media), `FriendRequestModel`. Frontend-only: `MessageDeliveryStatus.failed`.
 
@@ -463,7 +463,6 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/upl
 
 - E2E: all types encrypted (text, ping, voice, image, gif). Media files on Cloudinary NOT encrypted (only URLs encrypted in envelope). No multi-device, no key recovery, conversation list shows "Encrypted message". History messages for sender show `[encrypted]` after re-login when browser evicted storage (own messages not re-decryptable by design). Key rotation is handled: `isTrustedIdentity` auto-accepts new identities; broken sessions are reset on live decrypt failure so next send rebuilds via X3DH.
 - No message edit, no fuzzy search, no iOS APNs
-- Image messages: no tap-to-fullscreen viewer yet (research: `docs/superpowers/specs/2026-03-16-image-fullscreen-viewer-research.md`)
 - No unique constraint on `(sender, receiver)` in friend_requests
 - Pagination: simple limit/offset (default 50), N+1 in `_conversationsWithUnread()`
 - Large files: `messaging_provider.dart` (~1759 lines — messaging domain is complex); `chat-friend-request.service.ts` (~477 lines), `chat-message.service.ts` (~435 lines)
