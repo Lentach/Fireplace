@@ -43,7 +43,9 @@ export class MessageMapper {
               ? 'Voice message'
               : rt.messageType === 'IMAGE'
                 ? 'Image'
-                : rt.messageType === 'PING'
+                : rt.messageType === 'GIF'
+                  ? 'GIF'
+                  : rt.messageType === 'PING'
                   ? 'Ping'
                   : '';
       payload.replyTo = {

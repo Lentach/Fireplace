@@ -128,6 +128,7 @@ describe('MessageMapper', () => {
       { messageType: MessageType.VOICE, expected: 'Voice message' },
       { messageType: MessageType.IMAGE, expected: 'Image' },
       { messageType: MessageType.PING, expected: 'Ping' },
+      { messageType: MessageType.GIF, expected: 'GIF' },
     ];
     for (const { messageType, expected } of cases) {
       const replyToMsg = {
@@ -141,6 +142,28 @@ describe('MessageMapper', () => {
       const payload = MessageMapper.toPayload(msg);
       expect((payload.replyTo as any).content).toBe(expected);
     }
+  });
+
+  it('should show GIF label for GIF replyTo', () => {
+    const baseMock = {
+      id: 1,
+      content: '',
+      encryptedContent: null,
+      sender: { username: 'bob' },
+    };
+    const msg = {
+      ...createMockMessage(),
+      messageType: MessageType.GIF,
+      mediaUrl: 'https://res.cloudinary.com/demo/image/upload/v1/gif.gif',
+      replyTo: {
+        ...baseMock,
+        id: 50,
+        messageType: MessageType.GIF,
+        mediaUrl: 'https://res.cloudinary.com/demo/image/upload/v1/gif2.gif',
+      },
+    };
+    const payload = MessageMapper.toPayload(msg as any);
+    expect((payload.replyTo as any).content).toBe('GIF');
   });
 
   it('should include encryptedContent in payload when present', () => {
