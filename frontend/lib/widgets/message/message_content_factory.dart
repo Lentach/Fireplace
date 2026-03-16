@@ -2,8 +2,8 @@ import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../theme/rpg_theme.dart';
-import '../voice_message_bubble.dart';
 import 'file_message_content.dart';
+import 'voice_message_content.dart';
 import 'gif_message_content.dart';
 import 'image_message_content.dart';
 import 'ping_message_content.dart';
@@ -31,7 +31,7 @@ class MessageContentFactory {
   }) {
     // Voice is handled by its own dedicated bubble widget
     if (message.messageType == MessageType.voice) {
-      return VoiceMessageBubble(message: message, isMine: isMine);
+      return VoiceMessageContent(message: message, isMine: isMine);
     }
 
     switch (message.messageType) {

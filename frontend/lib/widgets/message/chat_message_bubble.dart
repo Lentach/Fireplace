@@ -6,8 +6,8 @@ import '../../providers/auth_provider.dart';
 import '../../providers/messaging_provider.dart';
 import '../../theme/rpg_theme.dart';
 import '../message_swipe_wrapper.dart';
-import '../voice_message_bubble.dart';
 import 'message_content_factory.dart';
+import 'voice_message_content.dart';
 import 'message_metadata_row.dart';
 import 'reaction_chips_row.dart';
 
@@ -218,7 +218,7 @@ class ChatMessageBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     // Handle voice messages with dedicated widget
     if (message.messageType == MessageType.voice) {
-      return VoiceMessageBubble(
+      return VoiceMessageContent(
         message: message,
         isMine: isMine,
       );
