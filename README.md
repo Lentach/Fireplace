@@ -1,220 +1,205 @@
-# Fireplace
+﻿# Fireplace
 
-Fireplace – real-time messenger with RPG-themed UI. NestJS backend with WebSocket (Socket.IO), Flutter frontend, JWT authentication, and PostgreSQL. Run everything with Docker Compose.
+End-to-end encrypted messenger built with Flutter and NestJS.
+
+**Production:** https://fireplace.ignorelist.com
+
+---
+
+## Features
+
+- **End-to-end encryption** — Signal Protocol (X3DH + Double Ratchet) for all message types
+- **Real-time messaging** — Socket.IO with delivery receipts (SENDING -> SENT -> DELIVERED -> READ)
+- **Message types** — Text, Voice, Image, GIF (Giphy), File attachments, Ping
+- **Disappearing messages** — configurable timer per conversation (default 24h)
+- **Friend system** — Discord-style username#tag, friend requests, block/unblock
+- **Reactions** — 6-emoji reaction picker, max one per user per message
+- **Link previews** — OG metadata fetch with SSRF protection
+- **Voice messages** — hold-to-record, waveform display, playback speed 1x/1.5x/2x
+- **Anti-Quantum Notes** — one-time self-destructing encrypted notes (shareable link)
+- **3 themes** — Light, Dark (Wire-style), Blue (Telegram-style)
+- **Polish / English** — full localization via Flutter l10n
+- **Push notifications** — Firebase Cloud Messaging (silent payload)
+- **Web + Mobile** — Flutter web + Android/iOS from single codebase
 
 ---
 
 ## Tech Stack
 
-| Layer          | Technology                   |
-|----------------|------------------------------|
-| Backend        | NestJS (Node.js / TypeScript)|
-| Frontend       | Flutter (Dart)               |
-| Database       | PostgreSQL 16                |
-| WebSocket      | Socket.IO                    |
-| Authentication | JWT + Passport + bcrypt      |
-| ORM            | TypeORM                      |
-| Containers     | Docker + Docker Compose      |
+| Layer | Technology |
+|---|---|
+| Frontend | Flutter 3.x (Dart) |
+| Backend | NestJS 11 (Node.js + TypeScript) |
+| Database | PostgreSQL 16 |
+| Real-time | Socket.IO 4 |
+| Auth | JWT (HS256) |
+| Encryption | Signal Protocol (libsignal_protocol_dart 0.7.4) |
+| Media storage | Cloudinary |
+| Push | Firebase Cloud Messaging |
+| Containerization | Docker + Docker Compose |
+| Production | Google Cloud VM + Nginx + Let'\''s Encrypt |
 
 ---
 
-## Quick Start (Mobile Development)
+## Quick Start
 
-> Requirements: [Flutter SDK](https://flutter.dev/docs/get-started/install), [Docker](https://docs.docker.com/get-docker/)
+**Prerequisites:** Docker, Flutter 3.x, Chrome
 
-```bash
-# 1. Clone the repository
-git clone https://github.com/Lentach/fireplace.git
-cd fireplace
+Start backend + database:
 
-# 2. Start backend + database
-docker-compose up
+    docker-compose up
 
-# 3. In another terminal: Run Flutter on your device
-cd frontend
-flutter devices              # List available devices
-flutter run -d <device-id>   # Hot-reload enabled
-```
+Start frontend (separate terminal):
 
-- **Backend API:** http://192.168.1.11:3000 (accessible from phone)
-- **Frontend:** Native Flutter app with instant hot-reload
+    cd frontend
+    flutter run -d chrome
 
-**Optional - Web Preview:**
-```bash
-docker-compose -f docker-compose.web.yml up --build
-```
-- **Frontend (web):** http://localhost:8080
+**Ports:** Backend :3000 | Database :5433 (host) -> :5432 (container)
 
----
+**Before starting:** Kill stale Node processes if backend fails to bind:
 
-## Running Locally (without Docker)
+    taskkill //F //IM node.exe
 
-> Requirements: Node.js 20+, PostgreSQL, Flutter SDK
+### Phone (same WiFi)
 
-### Backend
+    cd frontend
+    .\run_web_for_phone.ps1
 
-```bash
-cd backend
+Or manually:
 
-# 1. Install dependencies
-npm install
-
-# 2. Set environment variables (optional — defaults are provided)
-export DB_HOST=localhost
-export DB_PORT=5432
-export DB_USER=postgres
-export DB_PASS=postgres
-export DB_NAME=chatdb
-export JWT_SECRET=my-secret-key
-
-# 3. Run in development mode (hot-reload)
-npm run start:dev
-```
-
-### Frontend
-
-**Mobile (Recommended):**
-```bash
-cd frontend
-
-# 1. Install dependencies
-flutter pub get
-
-# 2. Connect device via USB or WiFi
-flutter devices
-
-# 3. Run on device
-flutter run -d <device-id> --dart-define=BASE_URL=http://192.168.1.11:3000
-```
-
-**Web (Optional):**
-```bash
-cd frontend
-flutter run -d chrome --dart-define=BASE_URL=http://localhost:3000
-```
-
----
-
-## Project Structure
-
-```
-fireplace/
-├── backend/
-│   ├── src/
-│   │   ├── auth/                # Registration, login, JWT strategy
-│   │   ├── users/               # User entity, service
-│   │   ├── conversations/       # Conversation entity (1-on-1), findOrCreate
-│   │   ├── messages/            # Message entity, CRUD
-│   │   ├── chat/                # WebSocket Gateway (Socket.IO)
-│   │   ├── app.module.ts        # Root module
-│   │   └── main.ts              # Entry point
-│   ├── Dockerfile
-│   └── package.json
-├── frontend/
-│   ├── lib/
-│   │   ├── config/              # App configuration (base URL)
-│   │   ├── models/              # Data models (User, Conversation, Message)
-│   │   ├── services/            # API and Socket.IO services
-│   │   ├── providers/           # State management (Auth, Chat)
-│   │   ├── screens/             # Auth and Chat screens
-│   │   ├── widgets/             # Reusable RPG-themed widgets
-│   │   ├── theme/               # RPG theme constants
-│   │   └── main.dart            # App entry point
-│   ├── Dockerfile
-│   └── nginx.conf
-├── docker-compose.yml
-└── README.md
-```
-
----
-
-## API Endpoints
-
-### Register
-
-```
-POST /auth/register
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "password": "secret123"
-}
-```
-
-### Login
-
-```
-POST /auth/login
-Content-Type: application/json
-
-{
-  "email": "user@example.com",
-  "password": "secret123"
-}
-```
-
-The response returns an `access_token` (JWT) which you use to connect via WebSocket.
-
----
-
-## WebSocket
-
-Connect via Socket.IO with a JWT token:
-
-```js
-const socket = io('http://localhost:3000', {
-  query: { token: 'YOUR_JWT_TOKEN' }
-});
-```
-
-### Events
-
-| Event (client emits)    | Payload                                | Description                       |
-|-------------------------|----------------------------------------|-----------------------------------|
-| `sendMessage`           | `{ recipientId, content }`             | Send a message                    |
-| `startConversation`     | `{ recipientEmail }`                   | Start a conversation by email     |
-| `getMessages`           | `{ conversationId }`                   | Get message history               |
-| `getConversations`      | *(none)*                               | Get conversation list             |
-
-| Event (server emits)    | Description                            |
-|-------------------------|----------------------------------------|
-| `messageSent`           | Confirmation that message was sent     |
-| `newMessage`            | New message from another user          |
-| `messageHistory`        | Message history for a conversation     |
-| `conversationsList`     | User's conversation list               |
-| `openConversation`      | Automatically open a new conversation  |
+    flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000
 
 ---
 
 ## Environment Variables
 
-| Variable     | Default           | Description             |
-|--------------|-------------------|-------------------------|
-| `DB_HOST`    | `localhost`       | PostgreSQL host         |
-| `DB_PORT`    | `5432`            | Database port           |
-| `DB_USER`    | `postgres`        | Database user           |
-| `DB_PASS`    | `postgres`        | Database password       |
-| `DB_NAME`    | `chatdb`          | Database name           |
-| `JWT_SECRET` | *(in code)*       | JWT signing key         |
-| `PORT`       | `3000`            | Application port        |
+Set in docker-compose.yml or a .env file:
+
+    DB_HOST=db
+    DB_PORT=5432
+    DB_USER=postgres
+    DB_PASS=postgres
+    DB_NAME=chatdb
+    JWT_SECRET=your-secret-at-least-32-chars
+
+    # Cloudinary (required for media)
+    CLOUDINARY_CLOUD_NAME=your-cloud
+    CLOUDINARY_API_KEY=your-key
+    CLOUDINARY_API_SECRET=your-secret
+
+    # Optional
+    FIREBASE_SERVICE_ACCOUNT=...             # Push notifications (JSON string)
+    ALLOWED_ORIGINS=https://your-domain.com  # CORS (comma-separated)
+    GIPHY_API_KEY=your-key                   # GIF picker (beta key used in dev)
+
+### Firebase Setup
+
+Copy the example files and fill in your Firebase credentials:
+
+    cp frontend/lib/firebase_secrets.dart.example frontend/lib/firebase_secrets.dart
+    cp frontend/web/firebase-config.js.example frontend/web/firebase-config.js
 
 ---
 
-## npm Scripts (backend)
+## Architecture
 
-```bash
-cd backend
-npm run build          # Compile TypeScript
-npm run start:dev      # Development mode (hot-reload)
-npm run start          # Run compiled version
-npm run lint           # Linting (ESLint)
-npm run test           # Unit tests
-npm run test:e2e       # End-to-end tests
-```
+### Frontend Providers
+
+State management uses 7 ChangeNotifier providers, orchestrated by ConnectionProvider:
+
+| Provider | Responsibility |
+|---|---|
+| ConnectionProvider | Socket lifecycle, event routing to sub-providers |
+| ConversationsProvider | Conversation list, unread counts, pending navigation |
+| MessagingProvider | Message state, send/receive, E2E encrypt/decrypt |
+| FriendsProvider | Friends list, friend requests, block/unblock, search |
+| EncryptionProvider | Signal key management, session establishment |
+| AuthProvider | Login, logout, JWT, current user |
+| SettingsProvider | Theme (light/dark/blue), locale (pl/en) |
+
+### Backend Services
+
+ChatGateway delegates to 9 focused domain services:
+
+| Service | Responsibility |
+|---|---|
+| ChatMessageService | Send, get, delete, deliver, mark read |
+| ChatConversationService | Start, get, delete, disappearing timer |
+| ChatFriendRequestService | Send/accept/reject requests, unfriend |
+| ChatKeyExchangeService | Upload key bundles, fetch pre-keys |
+| ChatPresenceService | Typing indicators, voice recording relay |
+| ChatBlockService | Block, unblock, get blocked list |
+| ChatSearchService | User search |
+| ChatReactionService | Add/remove emoji reactions |
+| ChatLinkPreviewService | OG metadata fetch and emit |
+
+### E2E Encryption
+
+All message content is encrypted client-side before leaving the device. The server stores ciphertext only — it cannot read any message content.
+
+- **Protocol:** Signal (X3DH key agreement + Double Ratchet for forward secrecy)
+- **Scope:** All message types — text, ping, voice URLs, image URLs, GIF URLs, file names
+- **Media files** on Cloudinary are **not** encrypted — only the URLs are hidden inside the E2E envelope
+- **Storage:** Keys in flutter_secure_storage + SharedPreferences (DualStorage for web reliability)
+- **Key exchange:** 20 one-time pre-keys uploaded at login; auto-replenish when < 10 remain
+- **No plaintext fallback:** if encryption fails, message is marked failed
 
 ---
 
-## License
+## Running Tests
 
-UNLICENSED — private project.
+Backend (152 unit tests, no DB required):
+
+    cd backend && npm test
+
+Frontend (61 widget tests):
+
+    cd frontend && flutter test
+
+---
+
+## Project Structure
+
+    fireplace/
+    +-- backend/src/
+    |   +-- auth/              # JWT auth, registration, login
+    |   +-- users/             # User entity, profile, account management
+    |   +-- conversations/     # Conversation entity + service
+    |   +-- messages/          # Message entity, mapper, REST controller
+    |   +-- friends/           # Friend request entity + service
+    |   +-- key-bundles/       # Signal public key storage
+    |   +-- secret-notes/      # Anti-Quantum one-time notes
+    |   +-- chat/
+    |       +-- chat.gateway.ts      # WebSocket entry point (thin delegation)
+    |       +-- services/            # 9 focused domain services
+    |       +-- dto/                 # Validated request DTOs
+    |       +-- mappers/             # Payload serialization
+    +-- frontend/lib/
+        +-- models/            # UserModel, ConversationModel, MessageModel, ...
+        +-- providers/         # 7 ChangeNotifier providers
+        +-- services/          # SocketService, ApiService, EncryptionService, ...
+        +-- screens/           # Auth, MainShell, Conversations, Chat, Contacts, ...
+        +-- widgets/
+        |   +-- message/       # ChatMessageBubble + per-type content widgets
+        |   +-- input/         # ChatInputBar, RecordingController, AttachmentHandler
+        |   +-- audio/         # PlaybackController, WaveformDisplay
+        +-- theme/             # FireplaceColors ThemeExtension (3 themes)
+        +-- l10n/              # Polish + English ARB files
+
+---
+
+## Deployment
+
+Production runs on a Google Cloud e2-medium VM (Warsaw region).
+
+    # SSH to server, then:
+    ~/deploy.sh
+    # git pull + docker build (backend) + flutter build web (frontend) + reload nginx
+
+Stack: Docker + Nginx reverse proxy + Let'\''s Encrypt TLS.
+
+---
+
+## Username Format
+
+Discord-style username#tag — a 4-digit tag (1000-9999) assigned randomly at registration. Usernames are unique (case-insensitive). Login accepts username or username#tag.
