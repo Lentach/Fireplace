@@ -84,6 +84,8 @@
   "image": "Obraz",
   "ping": "Ping",
   "attachment": "Załącznik",
+  "attachmentOptionPhoto": "Zdjęcie",
+  "attachmentOptionDocument": "Dokument",
   "actionTileTimer": "Timer",
   "actionTileGif": "GIF",
   "actionTileAntiQuantumNote": "Notatka antykwantowa",
@@ -120,5 +122,20 @@
   "clearingChat": "Czyszczenie…",
   "gifNoResults": "Nie znaleziono GIFów",
   "gifSearchHint": "Szukaj GIFów...",
-  "gifLoadError": "Nie udało się załadować GIFów"
+  "gifLoadError": "Nie udało się załadować GIFów",
+
+  "antiQuantumNoteTitle": "Notatka antykwantowa",
+  "antiQuantumNoteHint": "Napisz swoją tajną wiadomość...",
+  "antiQuantumNoteTtl2h": "2h",
+  "antiQuantumNoteTtl6h": "6h",
+  "antiQuantumNoteTtl12h": "12h",
+  "antiQuantumNoteGenerateAndSend": "🔗 Wygeneruj i wyślij",
+  "antiQuantumNoteFooter": "Szyfrowanie po stronie klienta · Klucz nigdy nie opuszcza Twojego urządzenia",
+  "antiQuantumNoteSent": "Notatka antykwantowa wysłana",
+  "antiQuantumNoteSendFailed": "Nie udało się wysłać notatki: {error}",
+  "@antiQuantumNoteSendFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  }
 }

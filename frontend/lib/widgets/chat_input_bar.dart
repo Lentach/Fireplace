@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -56,9 +57,38 @@ class _ChatInputBarState extends State<ChatInputBar>
   // Pulsing red dot animation
   late final AnimationController _pulseController;
 
+  // #region agent log
+  void _debugLog(String message, Map<String, dynamic> data, {String? hypothesisId}) {
+    if (!kIsWeb) return;
+    final payload = <String, dynamic>{
+      'sessionId': '5e149c',
+      'message': message,
+      'data': data,
+      'timestamp': DateTime.now().millisecondsSinceEpoch,
+      'location': 'chat_input_bar.dart',
+    };
+    if (hypothesisId != null) payload['hypothesisId'] = hypothesisId;
+    http.post(
+      Uri.parse('http://127.0.0.1:7535/ingest/6567602b-bd9c-4e02-ae37-bc605532cdd7'),
+      headers: {'Content-Type': 'application/json', 'X-Debug-Session-Id': '5e149c'},
+      body: jsonEncode(payload),
+    ).catchError((_) {});
+  }
+  // #endregion
+
   @override
   void initState() {
     super.initState();
+    // #region agent log
+    bool _lastHasFocus = _focusNode.hasFocus;
+    _focusNode.addListener(() {
+      final hasFocus = _focusNode.hasFocus;
+      if (hasFocus != _lastHasFocus) {
+        _lastHasFocus = hasFocus;
+        _debugLog(hasFocus ? 'focus_gained' : 'focus_lost', {'hasFocus': hasFocus}, hypothesisId: 'H1');
+      }
+    });
+    // #endregion
     _controller.addListener(() {
       final has = _controller.text.trim().isNotEmpty;
       if (has != _hasText) {
@@ -98,6 +128,9 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   void _send() {
+    // #region agent log
+    _debugLog('send_called', {}, hypothesisId: 'H2');
+    // #endregion
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
@@ -110,6 +143,9 @@ class _ChatInputBarState extends State<ChatInputBar>
     if (mounted && _focusNode.canRequestFocus) {
       _focusNode.requestFocus();
     }
+    // #region agent log
+    _debugLog('requestFocus_done', {'canRequestFocus': _focusNode.canRequestFocus}, hypothesisId: 'H2');
+    // #endregion
   }
 
   void _toggleActionPanel() {
@@ -406,6 +442,10 @@ class _ChatInputBarState extends State<ChatInputBar>
         return 'Voice message';
       case MessageType.image:
         return 'Image';
+      case MessageType.gif:
+        return 'GIF';
+      case MessageType.file:
+        return msg.content.isNotEmpty ? msg.content : 'Document';
       case MessageType.ping:
         return 'Ping';
       default:
@@ -694,10 +734,13 @@ class _ChatInputBarState extends State<ChatInputBar>
                       shape: BoxShape.circle,
                       color: RpgTheme.primaryColor(context),
                     ),
-                    child: IconButton(
-                      icon: const Icon(Icons.send_rounded, size: 22),
-                      color: Colors.white,
-                      onPressed: _send,
+                    child: Focus(
+                      canRequestFocus: false,
+                      child: IconButton(
+                        icon: const Icon(Icons.send_rounded, size: 22),
+                        color: Colors.white,
+                        onPressed: _send,
+                      ),
                     ),
                   )
                 else

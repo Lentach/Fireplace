@@ -235,6 +235,12 @@ class AppLocalizationsPl extends AppLocalizations {
   String get attachment => 'Załącznik';
 
   @override
+  String get attachmentOptionPhoto => 'Zdjęcie';
+
+  @override
+  String get attachmentOptionDocument => 'Dokument';
+
+  @override
   String get actionTileTimer => 'Timer';
 
   @override
@@ -324,4 +330,34 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get gifLoadError => 'Nie udało się załadować GIFów';
+
+  @override
+  String get antiQuantumNoteTitle => 'Notatka antykwantowa';
+
+  @override
+  String get antiQuantumNoteHint => 'Napisz swoją tajną wiadomość...';
+
+  @override
+  String get antiQuantumNoteTtl2h => '2h';
+
+  @override
+  String get antiQuantumNoteTtl6h => '6h';
+
+  @override
+  String get antiQuantumNoteTtl12h => '12h';
+
+  @override
+  String get antiQuantumNoteGenerateAndSend => '🔗 Wygeneruj i wyślij';
+
+  @override
+  String get antiQuantumNoteFooter =>
+      'Szyfrowanie po stronie klienta · Klucz nigdy nie opuszcza Twojego urządzenia';
+
+  @override
+  String get antiQuantumNoteSent => 'Notatka antykwantowa wysłana';
+
+  @override
+  String antiQuantumNoteSendFailed(String error) {
+    return 'Nie udało się wysłać notatki: $error';
+  }
 }

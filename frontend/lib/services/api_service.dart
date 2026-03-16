@@ -157,16 +157,19 @@ class ApiService {
     }
   }
 
-  /// Upload media (image, voice, or gif) to backend. Returns {mediaUrl, mediaDuration?}.
+  /// Upload media (image, voice, gif, or file) to backend. Returns {mediaUrl, mediaDuration?, fileName?}.
   Future<Map<String, dynamic>> uploadMedia({
     required String token,
-    required String type, // 'image', 'voice', or 'gif'
+    required String type, // 'image', 'voice', 'gif', or 'file'
     int? duration,
     int? expiresIn,
     XFile? imageFile,
     String? audioPath,
     List<int>? audioBytes,
     List<int>? gifBytes,
+    List<int>? fileBytes,
+    String? fileName,
+    String? fileMimeType,
   }) async {
     final request = http.MultipartRequest(
       'POST',
@@ -214,6 +217,14 @@ class ApiService {
         'file', gifBytes,
         filename: 'gif_${DateTime.now().millisecondsSinceEpoch}.gif',
         contentType: MediaType('image', 'gif'),
+      ));
+    } else if (type == 'file' && fileBytes != null && fileName != null) {
+      final mime = fileMimeType ?? 'application/octet-stream';
+      request.files.add(http.MultipartFile.fromBytes(
+        'file',
+        fileBytes,
+        filename: fileName,
+        contentType: MediaType.parse(mime),
       ));
     }
 

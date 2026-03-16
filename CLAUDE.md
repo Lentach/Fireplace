@@ -158,7 +158,7 @@ flowchart TB
 | **Mappers** | `chat/mappers/{conversation,user,friend-request}.mapper.ts`, `messages/message.mapper.ts` |
 | **FCM/Push** | `fcm-tokens/fcm-token.entity.ts`, `fcm-tokens/fcm-tokens.service.ts`, `push-notifications/push-notifications.service.ts` |
 | **Secret Notes** | `secret-notes/secret-note.entity.ts`, `secret-notes/secret-notes.service.ts`, `secret-notes/secret-notes.controller.ts`, `secret-notes/secret-notes.module.ts` |
-| **Utils** | `chat/utils/dto.validator.ts`, `chat/services/chat-validation.service.ts`, `chat/services/link-preview.service.ts`, `cloudinary/cloudinary.service.ts`, `app.module.ts` |
+| **Utils** | `chat/utils/dto.validator.ts`, `chat/services/chat-validation.service.ts`, `chat/services/link-preview.service.ts`, `cloudinary/cloudinary.service.ts` (uploadImage, uploadVoiceMessage, uploadRawFile), `app.module.ts` |
 
 ### Frontend (`frontend/lib/`)
 
@@ -210,7 +210,7 @@ erDiagram
         int sender_id FK "eager: true"
         int conversation_id FK "eager: false"
         enum deliveryStatus "SENDING|SENT|DELIVERED|READ"
-        enum messageType "TEXT|PING|IMAGE|VOICE|GIF"
+        enum messageType "TEXT|PING|IMAGE|VOICE|GIF|FILE"
         text mediaUrl "nullable, Cloudinary URL"
         int mediaDuration "nullable, seconds"
         varchar hiddenByUserIds "comma-separated, delete-for-me"
@@ -350,7 +350,7 @@ erDiagram
 | POST | `/users/profile-picture` | JWT | multipart `file` (JPEG/PNG, 5MB) | `{ profilePictureUrl }` |
 | POST | `/users/reset-password` | JWT | `{ oldPassword, newPassword }` | 200 |
 | DELETE | `/users/account` | JWT | `{ password }` | 200 |
-| POST | `/messages/upload-media` | JWT | multipart `file` (10MB) + `type` ('image'\|'voice'\|'gif') + `duration?` + `expiresIn?` | `{ mediaUrl, mediaDuration? }` |
+| POST | `/messages/upload-media` | JWT | multipart `file` (10MB) + `type` ('image'\|'voice'\|'gif'\|'file') + `duration?` + `expiresIn?` | `{ mediaUrl, mediaDuration? }` or `{ mediaUrl, fileName }` for type=file |
 | POST | `/messages/link-preview` | JWT | `{ text }` | `{ url, title, imageUrl }` or `{}` |
 | POST | `/notes` | JWT | `{ ciphertext, expiresIn }` | `{ token }` |
 | GET | `/note/:token` | None | -- | HTML page (landing/revealed/destroyed) |
@@ -376,9 +376,9 @@ erDiagram
 
 ### E2E Encryption (Signal Protocol)
 
-`libsignal_protocol_dart` v0.7.4 + `flutter_secure_storage`. **All message types encrypted** (text, ping, voice, image, gif). X3DH key agreement -> Double Ratchet. Single-device (deviceId=1). TOFU verification. Media files on Cloudinary are NOT encrypted — only the URL is hidden inside the encrypted envelope.
+`libsignal_protocol_dart` v0.7.4 + `flutter_secure_storage`. **All message types encrypted** (text, ping, voice, image, gif, file). X3DH key agreement -> Double Ratchet. Single-device (deviceId=1). TOFU verification. Media files on Cloudinary are NOT encrypted — only the URL is hidden inside the encrypted envelope.
 
-**E2E Envelope:** `{ content, messageType?, mediaUrl?, mediaDuration?, linkPreview? }` — `messageType` defaults to `TEXT` when absent (backward compat). Server stores all encrypted messages as `messageType=TEXT`, `mediaUrl=null` — blind to real type. GIF uses `messageType: 'GIF'` with `mediaUrl` pointing to Cloudinary.
+**E2E Envelope:** `{ content, messageType?, mediaUrl?, mediaDuration?, linkPreview? }` — `messageType` defaults to `TEXT` when absent (backward compat). Server stores all encrypted messages as `messageType=TEXT`, `mediaUrl=null` — blind to real type. GIF uses `messageType: 'GIF'` with `mediaUrl` pointing to Cloudinary. FILE uses `messageType: 'FILE'`, `content` = filename, `mediaUrl` = Cloudinary raw URL.
 
 **Send (all types):** create optimistic message -> for voice/image: upload to `POST /messages/upload-media` first -> build envelope with all fields -> `_encryptAndSend()` -> `_ensureSession(recipientId)` -> `encrypt()` -> emit `sendMessage` with `encryptedContent` only. Link preview fetched for TEXT only (web: backend proxy; native: direct). **Receive:** decrypt async -> `E2eEnvelope.parse()` -> `copyWith(messageType, mediaUrl, mediaDuration, ...)` to restore real type. Ping effect triggered on decrypt when type is PING. **No fallback:** if E2E not ready or encryption fails, message is marked as failed (no unencrypted sending).
 
@@ -411,15 +411,17 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/upl
 ### Other Features
 
 - **Reactions:** Long-press message -> 6 emoji picker. Max 1 per user. `reactions` column (JSON). `addReaction`/`removeReaction` events.
+- **Tap-to-expand media:** Image and GIF bubbles open a fullscreen dialog on tap (transparent overlay, pinch-zoom via InteractiveViewer). Tap outside to close. Documents (FILE): tap opens mediaUrl in external app.
 - **Typing indicators:** 300ms debounce, 3s auto-clear. Backend relay only (no DB). `typing` -> `partnerTyping`.
 - **Unread badge:** Backend `countUnreadForRecipient()`. Frontend `_unreadCounts` map.
 - **Link preview:** E2E: client fetches OG before encrypting, stores in envelope; recipient decrypts and displays. On web, client uses `POST /messages/link-preview` backend proxy (CORS blocks direct fetch). Unencrypted: server fetches, `linkPreviewReady` event. SSRF: `isSafeImageUrl` on og:image (frontend + backend); frontend validates when restoring from persisted decrypted content.
-- **Image messages:** Optimistic UI -> POST /messages/upload-media (image) -> Cloudinary URL -> `_encryptAndSend` (URL in envelope). Friend validation happens in `handleSendMessage`.
+- **Image messages:** Optimistic UI -> POST /messages/upload-media (image) -> Cloudinary URL -> `_encryptAndSend` (URL in envelope). Friend validation happens in `handleSendMessage`. Tap image in bubble opens fullscreen viewer (same as GIF); tap outside or use pinch to close/zoom.
+- **File (document) messages:** Attachment tile: one tap opens system file picker (gallery or folder). Allowed: images (jpg, png, gif) and documents (PDF, DOC, DOCX, XLS, XLSX, TXT, CSV). User chooses file; app sends as image or document by extension. Documents: upload type=file -> Cloudinary raw -> E2E envelope content=fileName, messageType=FILE, mediaUrl. Bubble: icon + filename; tap opens URL in external app. Backend: `uploadRawFile` in CloudinaryService; MessageType.FILE.
 - **Ping:** Encrypted via `sendMessage` (no dedicated `sendPing` event). Optimistic PING message -> `_encryptAndSend` with `messageType: 'PING'`. Uses conversation's `disappearingTimer`. Recipient sees ping effect after decrypting envelope.
 - **Push (FCM):** Silent payload (no content). Gracefully disabled without `FIREBASE_SERVICE_ACCOUNT`. Firebase config in gitignored `firebase_secrets.dart` / `firebase-config.js`.
 - **3 themes:** Light, Dark (Wire-style gray), Blue (Telegram-style: dark blue background #17212B, blue accent #2AABEE, sent bubble #2481CC, received #2B2B2B). Default for new users: Dark. `FireplaceColors` ThemeExtension.
 - **App language:** Polish (default) or English. Settings tile "Language" (Język) with Polski / English toggle; choice persisted in SharedPreferences (`locale_preference`). Flutter l10n: `lib/l10n/app_pl.arb`, `app_en.arb`; generated `app_localizations.dart`; `MaterialApp` uses `locale` from `SettingsProvider`, `supportedLocales` (pl, en), `localizationsDelegates`. Settings screen and main shell tab labels use `AppLocalizations.of(context)`.
-- **GIF messages:** GIF picker (Giphy API) in action tiles. Trending + search with 500ms debounce. Download from Giphy → upload to Cloudinary → Cloudinary URL encrypted in E2E envelope. `Image.network` for native GIF animation. Tap to expand. API key via `--dart-define=GIPHY_API_KEY=...` (beta key in dev).
+- **GIF messages:** GIF picker (Giphy API) in action tiles. Trending + search with 500ms debounce. Download from Giphy → upload to Cloudinary → Cloudinary URL encrypted in E2E envelope. `Image.network` for native GIF animation. Tap to expand in fullscreen (same as images). API key via `--dart-define=GIPHY_API_KEY=...` (beta key in dev).
 - **Friend auto-accept:** If B has pending request to A when A sends to B -> auto-accept, create conversation, emit `openConversation` to A only (B gets lists, no auto-open).
 
 ---
@@ -430,7 +432,7 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/upl
 
 **Key screens:** AuthScreen (`clearStatus()` on tab switch — DO NOT DELETE), MainShell (consumes `consumePendingFriendAccepted()` for snackbar), ConversationsScreen (swipe-to-delete, `consumePendingOpen()`), ChatDetailScreen (Timer.periodic 1s for expired msgs, `markConversationRead` on open), AddOrInvitationsScreen (searchUsers -> auto-send if 1 result, picker if multiple, `consumeFriendRequestSent()`), ContactsScreen (consumes `pendingOpenConversationId` and navigates to chat when user tapped contact and `startConversation` returned), PrivacySafetyScreen (E2E info: UI states all messages are encrypted; identity fingerprint).
 
-**Key widgets:** ChatInputBar (text+send+mic+action tiles), ChatActionTiles (icons centered in viewport; Camera/Gallery/Ping/Timer/Clear), ChatMessageBubble (Telegram-style: intrinsic width so bubble fits content; short messages narrow, long messages expand to 85% of chat width; time + delivery icon + optional timer in one row on the right for sent / left for received; Wire-style rounded corners, no tail; padding 16,10,16,8; margin bottom 10; colors per theme), VoiceMessageBubble (same style), ChatBackgroundPattern (subtle dot pattern in chat area), ConversationTile (Dismissible, unread badge), TopSnackbar (never use ScaffoldMessenger), AvatarCircle.
+**Key widgets:** ChatInputBar (text+send+mic+action tiles), ChatActionTiles (icons centered in viewport; Camera/Gallery/Ping/Timer/Clear/Anti-Quantum Note; fully localized tooltips + messages), ChatMessageBubble (Telegram-style: intrinsic width so bubble fits content; short messages narrow, long messages expand to 85% of chat width; time + delivery icon + optional timer in one row on the right for sent / left for received; Wire-style rounded corners, no tail; padding 16,10,16,8; margin bottom 10; colors per theme), VoiceMessageBubble (same style), ChatBackgroundPattern (subtle dot pattern in chat area), ConversationTile (Dismissible, unread badge), TopSnackbar (never use ScaffoldMessenger), AvatarCircle, AntiQuantumNoteDialog (bottom sheet for creating one-time “anti‑quantum” secret note with localized copy and TTL presets).
 
 **Models:** `UserModel` (`displayHandle` getter), `ConversationModel` (immutable), `MessageModel` (`copyWith` for status/content/media), `FriendRequestModel`. Frontend-only: `MessageDeliveryStatus.failed`.
 

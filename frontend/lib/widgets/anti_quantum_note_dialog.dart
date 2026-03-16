@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../l10n/app_localizations.dart';
 
 class AntiQuantumNoteDialog extends StatefulWidget {
   final Future<void> Function(String content, int expiresInSeconds) onSend;
@@ -15,9 +16,9 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
   bool _sending = false;
 
   static const _ttlOptions = [
-    (label: '2h', seconds: 7200),
-    (label: '6h', seconds: 21600),
-    (label: '12h', seconds: 43200),
+    (key: '2h', seconds: 7200),
+    (key: '6h', seconds: 21600),
+    (key: '12h', seconds: 43200),
   ];
 
   @override
@@ -39,6 +40,7 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
     final isEmpty = _controller.text.trim().isEmpty;
 
     return Padding(
@@ -57,7 +59,7 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
               const Text('\u26db\ufe0f', style: TextStyle(fontSize: 20)),
               const SizedBox(width: 8),
               Text(
-                'Anti-Quantum Note',
+                l10n.antiQuantumNoteTitle,
                 style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
               ),
               const Spacer(),
@@ -74,7 +76,7 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
             maxLines: 4,
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
-              hintText: 'Write your secret message...',
+              hintText: l10n.antiQuantumNoteHint,
               filled: true,
               fillColor: theme.colorScheme.surface,
               border: OutlineInputBorder(
@@ -91,6 +93,12 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
           Row(
             children: _ttlOptions.map((opt) {
               final selected = _selectedTtl == opt.seconds;
+              final label = switch (opt.key) {
+                '2h' => l10n.antiQuantumNoteTtl2h,
+                '6h' => l10n.antiQuantumNoteTtl6h,
+                '12h' => l10n.antiQuantumNoteTtl12h,
+                _ => opt.key,
+              };
               return Expanded(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 3),
@@ -106,7 +114,7 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
                         ),
                       ),
                       child: Text(
-                        opt.label,
+                        label,
                         textAlign: TextAlign.center,
                         style: TextStyle(
                           fontSize: 13,
@@ -137,14 +145,14 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
                       height: 18,
                       child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
                     )
-                  : const Text('🔗 Generate & Send', style: TextStyle(fontWeight: FontWeight.w700)),
+                  : Text(l10n.antiQuantumNoteGenerateAndSend, style: const TextStyle(fontWeight: FontWeight.w700)),
             ),
           ),
           const SizedBox(height: 8),
-          const Center(
+          Center(
             child: Text(
-              'Encrypted client-side \u00b7 Key never leaves your device',
-              style: TextStyle(fontSize: 10, color: Colors.grey),
+              l10n.antiQuantumNoteFooter,
+              style: const TextStyle(fontSize: 10, color: Colors.grey),
             ),
           ),
         ],

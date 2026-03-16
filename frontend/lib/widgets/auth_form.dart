@@ -59,7 +59,7 @@ class _AuthFormState extends State<AuthForm> {
             controller: _usernameController,
             style: RpgTheme.bodyFont(fontSize: 14, color: colorScheme.onSurface),
             decoration: RpgTheme.rpgInputDecoration(
-              hintText: widget.isLogin ? 'Username or username#tag' : 'Username',
+              hintText: 'Username',
               prefixIcon: Icons.person_outlined,
               context: context,
             ),

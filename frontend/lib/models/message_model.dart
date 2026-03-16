@@ -12,6 +12,7 @@ enum MessageType {
   image,
   voice,
   gif,
+  file,
 }
 
 /// Preview of a message being replied to (sent in payload).
@@ -161,6 +162,8 @@ class MessageModel {
         return MessageType.voice;
       case 'GIF':
         return MessageType.gif;
+      case 'FILE':
+        return MessageType.file;
       default:
         return MessageType.text;
     }

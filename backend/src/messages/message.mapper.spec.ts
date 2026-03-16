@@ -129,6 +129,7 @@ describe('MessageMapper', () => {
       { messageType: MessageType.IMAGE, expected: 'Image' },
       { messageType: MessageType.PING, expected: 'Ping' },
       { messageType: MessageType.GIF, expected: 'GIF' },
+      { messageType: MessageType.FILE, expected: 'File' },
     ];
     for (const { messageType, expected } of cases) {
       const replyToMsg = {

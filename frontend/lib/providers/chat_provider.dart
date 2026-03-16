@@ -747,9 +747,11 @@ class ChatProvider extends ChangeNotifier {
           ? 'Voice message'
           : rt.messageType == MessageType.image
               ? 'Image'
-              : rt.messageType == MessageType.ping
-                  ? 'Ping'
-                  : rt.content.length > 150
+              : rt.messageType == MessageType.file
+                  ? 'File'
+                  : rt.messageType == MessageType.ping
+                      ? 'Ping'
+                      : rt.content.length > 150
                       ? '${rt.content.substring(0, 150)}...'
                       : rt.content;
       replyPreview = ReplyToPreview(
@@ -985,6 +987,7 @@ class ChatProvider extends ChangeNotifier {
       case 'VOICE': return MessageType.voice;
       case 'IMAGE': return MessageType.image;
       case 'GIF': return MessageType.gif;
+      case 'FILE': return MessageType.file;
       default: return null;
     }
   }
@@ -1240,6 +1243,28 @@ class ChatProvider extends ChangeNotifier {
       return;
     }
 
+    if (message.messageType == MessageType.file) {
+      if (message.mediaUrl != null && message.mediaUrl!.contains('cloudinary')) {
+        _messages[index] = _messages[index].copyWith(
+          deliveryStatus: MessageDeliveryStatus.sending,
+        );
+        _pendingSendContent[tempId] = <String, dynamic>{
+          'content': message.content,
+          'messageType': 'FILE',
+          'mediaUrl': message.mediaUrl,
+        };
+        notifyListeners();
+        _encryptAndSend(
+          recipientId: recipientId,
+          content: message.content,
+          tempId: tempId,
+          messageType: 'FILE',
+          mediaUrl: message.mediaUrl,
+        );
+      }
+      return;
+    }
+
     if (message.messageType == MessageType.text) {
       final content = message.content;
       final conversationId = message.conversationId;
@@ -1394,6 +1419,75 @@ class ChatProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('[ChatProvider] GIF send failed: $e');
       _markMessageFailed(tempId, 'GIF send failed: ${e.toString()}');
+    }
+  }
+
+  /// Send a file (document) message. Uploads to backend, then encrypts URL + filename in envelope.
+  Future<void> sendFileMessage(
+    String token,
+    List<int> fileBytes,
+    String fileName,
+    String fileMimeType,
+    int recipientId,
+  ) async {
+    if (_activeConversationId == null || _currentUserId == null) return;
+
+    final effectiveExpiresIn = conversationDisappearingTimer;
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}_$_currentUserId';
+
+    final tempMessage = MessageModel(
+      id: -(++ChatProvider._tempIdSeq),
+      content: fileName,
+      senderId: _currentUserId!,
+      senderUsername: '',
+      conversationId: _activeConversationId!,
+      createdAt: DateTime.now(),
+      deliveryStatus: MessageDeliveryStatus.sending,
+      messageType: MessageType.file,
+      tempId: tempId,
+    );
+
+    _messages.add(tempMessage);
+    _pendingSendContent[tempId] = <String, dynamic>{
+      'content': fileName,
+      'messageType': 'FILE',
+    };
+    notifyListeners();
+
+    try {
+      final responseData = await _api.uploadMedia(
+        token: token,
+        type: 'file',
+        fileBytes: fileBytes,
+        fileName: fileName,
+        fileMimeType: fileMimeType,
+      );
+
+      final mediaUrl = responseData['mediaUrl'] as String;
+
+      final idx = _messages.indexWhere((m) => m.tempId == tempId);
+      if (idx != -1) {
+        _messages[idx] = _messages[idx].copyWith(mediaUrl: mediaUrl);
+        notifyListeners();
+      }
+
+      _pendingSendContent[tempId] = <String, dynamic>{
+        'content': fileName,
+        'messageType': 'FILE',
+        'mediaUrl': mediaUrl,
+      };
+
+      _encryptAndSend(
+        recipientId: recipientId,
+        content: fileName,
+        tempId: tempId,
+        effectiveExpiresIn: effectiveExpiresIn,
+        messageType: 'FILE',
+        mediaUrl: mediaUrl,
+      );
+    } catch (e) {
+      debugPrint('[ChatProvider] File send failed: $e');
+      _markMessageFailed(tempId, 'File send failed: ${e.toString()}');
     }
   }
 

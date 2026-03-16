@@ -45,9 +45,11 @@ export class MessageMapper {
                 ? 'Image'
                 : rt.messageType === 'GIF'
                   ? 'GIF'
-                  : rt.messageType === 'PING'
-                  ? 'Ping'
-                  : '';
+                  : rt.messageType === 'FILE'
+                    ? 'File'
+                    : rt.messageType === 'PING'
+                    ? 'Ping'
+                    : '';
       payload.replyTo = {
         id: rt.id,
         content: contentPreview,

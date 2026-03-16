@@ -59,6 +59,36 @@ export class MessagesController {
       return { mediaUrl: result.secureUrl };
     }
 
+    if (dto.type === 'file') {
+      const allowedMimeTypes = [
+        'application/pdf',
+        'application/msword', // .doc
+        'application/vnd.openxmlformats-officedocument.wordprocessingml.document', // .docx
+        'application/vnd.ms-excel', // .xls
+        'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet', // .xlsx
+        'text/plain',
+        'text/csv',
+      ];
+      if (!allowedMimeTypes.includes(file.mimetype)) {
+        throw new BadRequestException(
+          'Allowed document types: PDF, DOC, DOCX, XLS, XLSX, TXT, CSV',
+        );
+      }
+      if (file.size > 10 * 1024 * 1024) {
+        throw new BadRequestException('File size must not exceed 10 MB');
+      }
+      const result = await this.cloudinaryService.uploadRawFile(
+        req.user.id,
+        file.buffer,
+        file.mimetype,
+        file.originalname,
+      );
+      return {
+        mediaUrl: result.secureUrl,
+        fileName: file.originalname || 'document',
+      };
+    }
+
     // voice
     const allowedAudioMimes = [
       'audio/aac', 'audio/mp4', 'audio/m4a', 'audio/mpeg',

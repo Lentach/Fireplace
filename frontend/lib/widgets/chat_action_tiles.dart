@@ -1,6 +1,11 @@
+import 'dart:typed_data';
+
 import 'package:flutter/material.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
-import 'package:image_picker/image_picker.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:cross_file/cross_file.dart';
+import '../utils/file_utils_stub.dart' if (dart.library.io) '../utils/file_utils_io.dart' as file_utils;
 import '../models/conversation_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
@@ -106,25 +111,53 @@ class ChatActionTiles extends StatelessWidget {
     context.read<ChatProvider>().sendPing(result.$2);
   }
 
+  /// Single tap opens system picker (gallery / folder). User chooses file; we send as image or document by type.
   Future<void> _pickAttachment(BuildContext context) async {
     final result = _requireActiveConversation(context);
     if (result == null) return;
 
+    final pickResult = await FilePicker.platform.pickFiles(
+      type: FileType.custom,
+      allowedExtensions: [
+        'jpg', 'jpeg', 'png', 'gif',
+        'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv',
+      ],
+      withData: true,
+    );
+
+    if (pickResult == null || pickResult.files.isEmpty || !context.mounted) return;
+
+    final file = pickResult.files.single;
+    List<int> bytes;
+    if (file.bytes != null) {
+      bytes = file.bytes!;
+    } else if (!kIsWeb && file.path != null) {
+      bytes = await file_utils.readFileBytes(file.path!);
+    } else {
+      if (context.mounted) {
+        showTopSnackBar(context, 'Could not read file', backgroundColor: Colors.red);
+      }
+      return;
+    }
+
+    if (!context.mounted) return;
+
     final chat = context.read<ChatProvider>();
     final auth = context.read<AuthProvider>();
     final recipientId = result.$2;
+    final fileName = file.name;
+    final ext = fileName.contains('.') ? fileName.split('.').last.toLowerCase() : '';
+    final isImage = ['jpg', 'jpeg', 'png', 'gif'].contains(ext);
 
-    final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.gallery);
-
-    if (image != null) {
-      // Show loading indicator
-      if (context.mounted) {
-        showTopSnackBar(context, 'Uploading image...');
-      }
-
+    if (isImage) {
+      showTopSnackBar(context, 'Uploading image...');
       try {
-        await chat.sendImageMessage(auth.token!, image, recipientId);
+        final xfile = XFile.fromData(
+          Uint8List.fromList(bytes),
+          name: fileName,
+          mimeType: _imageMimeForExtension(ext),
+        );
+        await chat.sendImageMessage(auth.token!, xfile, recipientId);
         if (context.mounted) {
           showTopSnackBar(context, 'Image sent!');
         }
@@ -133,6 +166,47 @@ class ChatActionTiles extends StatelessWidget {
           showTopSnackBar(context, 'Upload failed: $e', backgroundColor: Colors.red);
         }
       }
+    } else {
+      showTopSnackBar(context, 'Uploading document...');
+      try {
+        await chat.sendFileMessage(
+          auth.token!,
+          bytes,
+          fileName,
+          _mimeForExtension(ext),
+          recipientId,
+        );
+        if (context.mounted) {
+          showTopSnackBar(context, 'Document sent!');
+        }
+      } catch (e) {
+        if (context.mounted) {
+          showTopSnackBar(context, 'Upload failed: $e', backgroundColor: Colors.red);
+        }
+      }
+    }
+  }
+
+  static String _imageMimeForExtension(String ext) {
+    switch (ext) {
+      case 'png': return 'image/png';
+      case 'gif': return 'image/gif';
+      case 'jpg':
+      case 'jpeg': return 'image/jpeg';
+      default: return 'image/jpeg';
+    }
+  }
+
+  static String _mimeForExtension(String ext) {
+    switch (ext) {
+      case 'pdf': return 'application/pdf';
+      case 'doc': return 'application/msword';
+      case 'docx': return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'xls': return 'application/vnd.ms-excel';
+      case 'xlsx': return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      case 'txt': return 'text/plain';
+      case 'csv': return 'text/csv';
+      default: return 'application/octet-stream';
     }
   }
 
@@ -149,6 +223,7 @@ class ChatActionTiles extends StatelessWidget {
     if (result == null) return;
 
     final chat = context.read<ChatProvider>();
+    final l10n = AppLocalizations.of(context);
 
     showModalBottomSheet(
       context: context,
@@ -166,11 +241,15 @@ class ChatActionTiles extends StatelessWidget {
             );
             if (context.mounted) {
               Navigator.of(context).pop();
-              showTopSnackBar(context, 'Anti-Quantum Note sent');
+              showTopSnackBar(context, l10n.antiQuantumNoteSent);
             }
           } catch (e) {
             if (context.mounted) {
-              showTopSnackBar(context, 'Failed to send note: $e', backgroundColor: Colors.red);
+              showTopSnackBar(
+                context,
+                l10n.antiQuantumNoteSendFailed(e.toString()),
+                backgroundColor: Colors.red,
+              );
             }
           }
         },

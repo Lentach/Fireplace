@@ -18,6 +18,11 @@ export interface UploadVoiceResult {
   duration: number;
 }
 
+export interface UploadRawFileResult {
+  secureUrl: string;
+  publicId: string;
+}
+
 @Injectable()
 export class CloudinaryService {
   constructor(private configService: ConfigService) {
@@ -110,6 +115,32 @@ export class CloudinaryService {
       secureUrl: result.secure_url,
       publicId: result.public_id,
       duration: result.duration || 0,
+    };
+  }
+
+  async uploadRawFile(
+    userId: number,
+    buffer: Buffer,
+    mimeType: string,
+    originalFilename?: string,
+  ): Promise<UploadRawFileResult> {
+    const ext = originalFilename?.includes('.')
+      ? originalFilename.slice(originalFilename.lastIndexOf('.'))
+      : '';
+    const publicId = `user-${userId}-${Date.now()}${ext ? `-raw${ext}` : ''}`;
+
+    const result = await cloudinary.uploader.upload(
+      `data:${mimeType};base64,${buffer.toString('base64')}`,
+      {
+        folder: 'message-files',
+        public_id: publicId,
+        resource_type: 'raw',
+      },
+    );
+
+    return {
+      secureUrl: result.secure_url,
+      publicId: result.public_id,
     };
   }
 }

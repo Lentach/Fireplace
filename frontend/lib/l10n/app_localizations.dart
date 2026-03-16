@@ -524,6 +524,18 @@ abstract class AppLocalizations {
   /// **'Załącznik'**
   String get attachment;
 
+  /// No description provided for @attachmentOptionPhoto.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zdjęcie'**
+  String get attachmentOptionPhoto;
+
+  /// No description provided for @attachmentOptionDocument.
+  ///
+  /// In pl, this message translates to:
+  /// **'Dokument'**
+  String get attachmentOptionDocument;
+
   /// No description provided for @actionTileTimer.
   ///
   /// In pl, this message translates to:
@@ -697,6 +709,60 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Nie udało się załadować GIFów'**
   String get gifLoadError;
+
+  /// No description provided for @antiQuantumNoteTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Notatka antykwantowa'**
+  String get antiQuantumNoteTitle;
+
+  /// No description provided for @antiQuantumNoteHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Napisz swoją tajną wiadomość...'**
+  String get antiQuantumNoteHint;
+
+  /// No description provided for @antiQuantumNoteTtl2h.
+  ///
+  /// In pl, this message translates to:
+  /// **'2h'**
+  String get antiQuantumNoteTtl2h;
+
+  /// No description provided for @antiQuantumNoteTtl6h.
+  ///
+  /// In pl, this message translates to:
+  /// **'6h'**
+  String get antiQuantumNoteTtl6h;
+
+  /// No description provided for @antiQuantumNoteTtl12h.
+  ///
+  /// In pl, this message translates to:
+  /// **'12h'**
+  String get antiQuantumNoteTtl12h;
+
+  /// No description provided for @antiQuantumNoteGenerateAndSend.
+  ///
+  /// In pl, this message translates to:
+  /// **'🔗 Wygeneruj i wyślij'**
+  String get antiQuantumNoteGenerateAndSend;
+
+  /// No description provided for @antiQuantumNoteFooter.
+  ///
+  /// In pl, this message translates to:
+  /// **'Szyfrowanie po stronie klienta · Klucz nigdy nie opuszcza Twojego urządzenia'**
+  String get antiQuantumNoteFooter;
+
+  /// No description provided for @antiQuantumNoteSent.
+  ///
+  /// In pl, this message translates to:
+  /// **'Notatka antykwantowa wysłana'**
+  String get antiQuantumNoteSent;
+
+  /// No description provided for @antiQuantumNoteSendFailed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się wysłać notatki: {error}'**
+  String antiQuantumNoteSendFailed(String error);
 }
 
 class _AppLocalizationsDelegate

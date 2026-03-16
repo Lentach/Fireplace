@@ -84,6 +84,8 @@
   "image": "Image",
   "ping": "Ping",
   "attachment": "Attachment",
+  "attachmentOptionPhoto": "Photo",
+  "attachmentOptionDocument": "Document",
   "actionTileTimer": "Timer",
   "actionTileGif": "GIF",
   "actionTileAntiQuantumNote": "Anti-Quantum Note",
@@ -120,5 +122,20 @@
   "clearingChat": "Clearing…",
   "gifNoResults": "No GIFs found",
   "gifSearchHint": "Search GIFs...",
-  "gifLoadError": "Could not load GIFs"
+  "gifLoadError": "Could not load GIFs",
+
+  "antiQuantumNoteTitle": "Anti-Quantum Note",
+  "antiQuantumNoteHint": "Write your secret message...",
+  "antiQuantumNoteTtl2h": "2h",
+  "antiQuantumNoteTtl6h": "6h",
+  "antiQuantumNoteTtl12h": "12h",
+  "antiQuantumNoteGenerateAndSend": "🔗 Generate & Send",
+  "antiQuantumNoteFooter": "Encrypted client-side · Key never leaves your device",
+  "antiQuantumNoteSent": "Anti-Quantum Note sent",
+  "antiQuantumNoteSendFailed": "Failed to send note: {error}",
+  "@antiQuantumNoteSendFailed": {
+    "placeholders": {
+      "error": { "type": "String" }
+    }
+  }
 }

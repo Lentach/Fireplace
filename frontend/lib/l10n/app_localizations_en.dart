@@ -236,6 +236,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get attachment => 'Attachment';
 
   @override
+  String get attachmentOptionPhoto => 'Photo';
+
+  @override
+  String get attachmentOptionDocument => 'Document';
+
+  @override
   String get actionTileTimer => 'Timer';
 
   @override
@@ -325,4 +331,34 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gifLoadError => 'Could not load GIFs';
+
+  @override
+  String get antiQuantumNoteTitle => 'Anti-Quantum Note';
+
+  @override
+  String get antiQuantumNoteHint => 'Write your secret message...';
+
+  @override
+  String get antiQuantumNoteTtl2h => '2h';
+
+  @override
+  String get antiQuantumNoteTtl6h => '6h';
+
+  @override
+  String get antiQuantumNoteTtl12h => '12h';
+
+  @override
+  String get antiQuantumNoteGenerateAndSend => '🔗 Generate & Send';
+
+  @override
+  String get antiQuantumNoteFooter =>
+      'Encrypted client-side · Key never leaves your device';
+
+  @override
+  String get antiQuantumNoteSent => 'Anti-Quantum Note sent';
+
+  @override
+  String antiQuantumNoteSendFailed(String error) {
+    return 'Failed to send note: $error';
+  }
 }

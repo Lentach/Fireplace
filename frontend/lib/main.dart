@@ -2,6 +2,7 @@ import 'package:firebase_core/firebase_core.dart';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
+import 'init_file_picker_stub.dart' if (dart.library.html) 'init_file_picker_web.dart' as file_picker_init;
 import 'l10n/app_localizations.dart';
 import 'providers/auth_provider.dart';
 import 'providers/chat_provider.dart';
@@ -12,6 +13,7 @@ import 'theme/rpg_theme.dart';
 
 void main() {
   WidgetsFlutterBinding.ensureInitialized();
+  file_picker_init.initFilePickerWeb();
   runApp(const FireplaceApp());
   // Firebase init in background — app shows immediately; push ready shortly after
   Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform)

@@ -84,6 +84,8 @@ class ChatMessageBubble extends StatelessWidget {
         return l10n.ping;
       case MessageType.gif:
         return l10n.actionTileGif;
+      case MessageType.file:
+        return l10n.attachmentOptionDocument;
       default:
         return '';
     }
@@ -106,7 +108,8 @@ class ChatMessageBubble extends StatelessWidget {
       case MessageType.ping:
         return true;
       case MessageType.image:
-        return false; // timer below image, not on the right
+      case MessageType.file:
+        return false; // timer below content, not on the right
       default:
         return false;
     }
@@ -163,38 +166,41 @@ class ChatMessageBubble extends StatelessWidget {
           )
         else if (message.messageType == MessageType.image &&
                  message.mediaUrl != null)
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 200),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.network(
-                message.mediaUrl!,
-                fit: BoxFit.contain,
-                loadingBuilder: (context, child, loadingProgress) {
-                  if (loadingProgress == null) return child;
-                  return const Center(
-                    child: Padding(
-                      padding: EdgeInsets.all(16.0),
-                      child: CircularProgressIndicator(),
-                    ),
-                  );
-                },
-                errorBuilder: (context, error, stackTrace) {
-                  return Padding(
-                    padding: const EdgeInsets.all(8.0),
-                    child: Text(
-                      AppLocalizations.of(context).imageFailedToLoad,
-                      style: RpgTheme.bodyFont(fontSize: 12, color: Colors.red),
-                    ),
-                  );
-                },
+          GestureDetector(
+            onTap: () => _showMediaFullscreenDialog(context, message.mediaUrl!),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 200),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  message.mediaUrl!,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return const Center(
+                      child: Padding(
+                        padding: EdgeInsets.all(16.0),
+                        child: CircularProgressIndicator(),
+                      ),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) {
+                    return Padding(
+                      padding: const EdgeInsets.all(8.0),
+                      child: Text(
+                        AppLocalizations.of(context).imageFailedToLoad,
+                        style: RpgTheme.bodyFont(fontSize: 12, color: Colors.red),
+                      ),
+                    );
+                  },
+                ),
               ),
             ),
           )
         else if (message.messageType == MessageType.gif &&
                  message.mediaUrl != null)
           GestureDetector(
-            onTap: () => _showGifDialog(context, message.mediaUrl!),
+            onTap: () => _showMediaFullscreenDialog(context, message.mediaUrl!),
             child: ConstrainedBox(
               constraints: const BoxConstraints(maxWidth: 200),
               child: ClipRRect(
@@ -215,6 +221,35 @@ class ChatMessageBubble extends StatelessWidget {
                     child: const Icon(Icons.broken_image, size: 48),
                   ),
                 ),
+              ),
+            ),
+          )
+        else if (message.messageType == MessageType.file &&
+                 message.mediaUrl != null)
+          GestureDetector(
+            onTap: () => launchUrl(
+              Uri.parse(message.mediaUrl!),
+              mode: LaunchMode.externalApplication,
+            ),
+            child: Container(
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+              decoration: BoxDecoration(
+                borderRadius: BorderRadius.circular(8),
+                color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+              ),
+              child: Row(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Icon(Icons.description, color: textColor, size: 24),
+                  const SizedBox(width: 8),
+                  Flexible(
+                    child: Text(
+                      message.content.isNotEmpty ? message.content : 'Document',
+                      style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                ],
               ),
             ),
           )
@@ -313,14 +348,19 @@ class ChatMessageBubble extends StatelessWidget {
     );
   }
 
-  void _showGifDialog(BuildContext context, String url) {
+  /// Fullscreen viewer for image or GIF. Tap anywhere to close.
+  void _showMediaFullscreenDialog(BuildContext context, String url) {
     showDialog(
       context: context,
       builder: (_) => Dialog(
         backgroundColor: Colors.transparent,
         child: GestureDetector(
           onTap: () => Navigator.pop(context),
-          child: Image.network(url, fit: BoxFit.contain),
+          child: InteractiveViewer(
+            minScale: 0.5,
+            maxScale: 4.0,
+            child: Image.network(url, fit: BoxFit.contain),
+          ),
         ),
       ),
     );
