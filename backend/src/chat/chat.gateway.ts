@@ -19,6 +19,7 @@ import { ChatKeyExchangeService } from './services/chat-key-exchange.service';
 import { ChatPresenceService } from './services/chat-presence.service';
 import { ChatBlockService } from './services/chat-block.service';
 import { ChatSearchService } from './services/chat-search.service';
+import { ChatReactionService } from './services/chat-reaction.service';
 
 // CORS: In production only ALLOWED_ORIGINS. In dev also allow localhost + LAN (phone).
 function buildCorsOrigin() {
@@ -70,6 +71,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private chatPresenceService: ChatPresenceService,
     private chatBlockService: ChatBlockService,
     private chatSearchService: ChatSearchService,
+    private chatReactionService: ChatReactionService,
   ) {}
 
   // On WebSocket connection — verify the JWT token.
@@ -202,7 +204,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    return this.chatMessageService.handleAddReaction(client, data, this.server, this.onlineUsers);
+    return this.chatReactionService.handleAddReaction(client, data, this.server, this.onlineUsers);
   }
 
   @SubscribeMessage('removeReaction')
@@ -210,7 +212,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    return this.chatMessageService.handleRemoveReaction(client, data, this.server, this.onlineUsers);
+    return this.chatReactionService.handleRemoveReaction(client, data, this.server, this.onlineUsers);
   }
 
   @SubscribeMessage('recordingVoice')
