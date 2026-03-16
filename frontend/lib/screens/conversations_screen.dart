@@ -1,11 +1,15 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_constants.dart';
+import '../config/app_config.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
+import '../providers/connection_provider.dart';
+import '../providers/conversations_provider.dart';
 import '../providers/encryption_provider.dart';
 import '../providers/friends_provider.dart';
+import '../providers/messaging_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/conversation_tile.dart';
@@ -27,12 +31,36 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final auth = context.read<AuthProvider>();
-      final chat = context.read<ChatProvider>();
-      final encryption = context.read<EncryptionProvider>();
+      final conn = context.read<ConnectionProvider>();
+      final enc = context.read<EncryptionProvider>();
       final friends = context.read<FriendsProvider>();
-      chat.setEncryptionProvider(encryption);
-      chat.setFriendsProvider(friends);
-      chat.connect(token: auth.token!, userId: auth.currentUser!.id);
+      final convs = context.read<ConversationsProvider>();
+      final msg = context.read<MessagingProvider>();
+      final chat = context.read<ChatProvider>();
+
+      // Wire all sub-providers into ConnectionProvider
+      conn.setProviders(
+        encryption: enc,
+        friends: friends,
+        conversations: convs,
+        messaging: msg,
+      );
+
+      // Wire MessagingProvider dependencies
+      msg.setEncryptionProvider(enc);
+      msg.setConversationsProvider(convs);
+
+      // Wire ChatProvider facade so all existing screens keep working
+      chat.setNewProviders(
+        conn: conn,
+        convs: convs,
+        msg: msg,
+        friends: friends,
+        enc: enc,
+      );
+
+      // Start connection via ConnectionProvider (owns socket lifecycle)
+      conn.connect(auth.currentUser!.id, auth.token!, AppConfig.baseUrl);
     });
   }
 

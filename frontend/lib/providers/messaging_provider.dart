@@ -245,6 +245,13 @@ class MessagingProvider extends ChangeNotifier {
     _handlePartnerRecordingVoice(data);
   }
 
+  /// Called by ConnectionProvider when conversationDeleted is received.
+  /// Clears messages for the deleted conversation.
+  void onConversationDeleted(int conversationId) {
+    _messages.removeWhere((m) => m.conversationId == conversationId);
+    notifyListeners();
+  }
+
   // ---------- Internal Handlers ----------
 
   void _handleIncomingMessage(dynamic data) {

@@ -6,8 +6,11 @@ import 'init_file_picker_stub.dart' if (dart.library.html) 'init_file_picker_web
 import 'l10n/app_localizations.dart';
 import 'providers/auth_provider.dart';
 import 'providers/chat_provider.dart';
+import 'providers/connection_provider.dart';
+import 'providers/conversations_provider.dart';
 import 'providers/encryption_provider.dart';
 import 'providers/friends_provider.dart';
+import 'providers/messaging_provider.dart';
 import 'providers/settings_provider.dart';
 import 'screens/auth_screen.dart';
 import 'screens/main_shell.dart';
@@ -30,10 +33,15 @@ class FireplaceApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
+        ChangeNotifierProvider(create: (_) => SettingsProvider()),
         ChangeNotifierProvider(create: (_) => EncryptionProvider()),
         ChangeNotifierProvider(create: (_) => FriendsProvider()),
+        ChangeNotifierProvider(create: (_) => ConversationsProvider()),
+        ChangeNotifierProvider(create: (_) => MessagingProvider()),
+        ChangeNotifierProvider(create: (_) => ConnectionProvider()),
+        // ChatProvider is a thin facade delegating to the new providers.
+        // Kept for backward-compat with existing screens until they migrate.
         ChangeNotifierProvider(create: (_) => ChatProvider()),
-        ChangeNotifierProvider(create: (_) => SettingsProvider()),
       ],
       child: Consumer<SettingsProvider>(
         builder: (context, settings, _) {
