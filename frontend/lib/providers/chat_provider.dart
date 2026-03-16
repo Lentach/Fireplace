@@ -21,6 +21,7 @@ import '../services/socket_service.dart';
 import 'chat_reconnect_manager.dart';
 import 'conversation_helpers.dart' as conv_helpers;
 import 'encryption_provider.dart';
+import 'friends_provider.dart';
 
 class ChatProvider extends ChangeNotifier {
   static void _e2eFlowLog(String step, [Map<String, dynamic>? data]) {
@@ -56,6 +57,59 @@ class ChatProvider extends ChangeNotifier {
     });
   }
 
+  // ---------- FriendsProvider facade ----------
+  FriendsProvider? _friendsProvider;
+
+  /// Wire the FriendsProvider so ChatProvider can delegate friend state.
+  /// Called once from the widget tree after both providers are available.
+  void setFriendsProvider(FriendsProvider fp) {
+    _friendsProvider = fp;
+    // Set up emit callback so FriendsProvider can send socket events
+    fp.setEmitCallback((event, data) {
+      switch (event) {
+        case 'searchUsers':
+          _socketService.searchUsers(data as String);
+        case 'sendFriendRequest':
+          _socketService.sendFriendRequest(data as int);
+        case 'acceptFriendRequest':
+          _socketService.acceptFriendRequest(data as int);
+        case 'rejectFriendRequest':
+          _socketService.rejectFriendRequest(data as int);
+        case 'unfriend':
+          _socketService.unfriend(data as int);
+        case 'blockUser':
+          _socketService.emitBlockUser(data as int);
+        case 'unblockUser':
+          _socketService.emitUnblockUser(data as int);
+        case 'getBlockedList':
+          _socketService.getBlockedList();
+        case 'getFriendRequests':
+          _socketService.getFriendRequests();
+        case 'getFriends':
+          _socketService.getFriends();
+        default:
+          debugPrint('[ChatProvider] Unknown friend emit event: $event');
+      }
+    });
+    // Wire cross-provider callbacks so friend events can update conversations
+    fp.onRemoveConversationsForUser = (userId) {
+      if (userId == -1) {
+        // blockedList: remove convs for all blocked users
+        final blockedIds = fp.blockedUsers.map((u) => u.id).toSet();
+        _conversations.removeWhere((c) =>
+            blockedIds.contains(c.userOne.id) || blockedIds.contains(c.userTwo.id));
+      } else {
+        _conversations.removeWhere((c) =>
+            c.userOne.id == userId || c.userTwo.id == userId);
+      }
+      _clearActiveIfRemoved();
+      notifyListeners();
+    };
+    fp.onClearActiveIfNeeded = (userId) {
+      // Already handled by _clearActiveIfRemoved in onRemoveConversationsForUser
+    };
+  }
+
   // ---------- E2E Encryption ----------
   /// Single delayed retry for a failed text message (e.g. recipient had no key bundle, then came online).
   Timer? _delayedRetryTimer;
@@ -83,18 +137,9 @@ class ChatProvider extends ChangeNotifier {
   String? _errorMessage;
   final Map<int, MessageModel> _lastMessages = {};
   int? _pendingOpenConversationId;
-  List<FriendRequestModel> _friendRequests = [];
-  int _pendingRequestsCount = 0;
-  List<UserModel> _friends = [];
-  List<UserModel> _blockedUsers = [];
-  final Set<int> _blockedByUserIds = {};
-  bool _friendRequestJustSent = false;
-  /// Set when we (sender) receive friendRequestAccepted — acceptor's username for snackbar.
-  String? _pendingFriendAcceptedByName;
   /// True when our active conversation was removed from list (e.g. other user deleted).
   bool _activeConversationDeletedByOther = false;
   bool _showPingEffect = false;
-  List<UserModel>? _searchResults;
   final Map<int, int> _unreadCounts = {}; // conversationId -> count
   final Map<int, bool> _typingStatus = {};
   final Map<int, Timer> _typingTimers = {};
@@ -145,15 +190,14 @@ class ChatProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   Map<int, MessageModel> get lastMessages => _lastMessages;
   int? get pendingOpenConversationId => _pendingOpenConversationId;
-  List<FriendRequestModel> get friendRequests => _friendRequests;
-  int get pendingRequestsCount => _pendingRequestsCount;
-  List<UserModel> get friends => _friends;
-  List<UserModel> get blockedUsers => _blockedUsers;
-  Set<int> get blockedByUserIds => Set<int>.from(_blockedByUserIds);
-  bool get friendRequestJustSent => _friendRequestJustSent;
-  String? get pendingFriendAcceptedByName => _pendingFriendAcceptedByName;
+  List<FriendRequestModel> get friendRequests => _friendsProvider?.friendRequests ?? [];
+  int get pendingRequestsCount => _friendsProvider?.pendingRequestsCount ?? 0;
+  List<UserModel> get friends => _friendsProvider?.friends ?? [];
+  List<UserModel> get blockedUsers => _friendsProvider?.blockedUsers ?? [];
+  Set<int> get blockedByUserIds => _friendsProvider?.blockedByUserIds ?? {};
+  String? get pendingFriendAcceptedByName => _friendsProvider?.pendingFriendAcceptedByName;
   bool get activeConversationDeletedByOther => _activeConversationDeletedByOther;
-  List<UserModel>? get searchResults => _searchResults;
+  List<UserModel>? get searchResults => _friendsProvider?.searchResults;
   SocketService get socket => _socketService;
 
   int? get conversationDisappearingTimer {
@@ -350,16 +394,12 @@ class ChatProvider extends ChangeNotifier {
   }
 
   bool consumeFriendRequestSent() {
-    final sent = _friendRequestJustSent;
-    _friendRequestJustSent = false;
-    return sent;
+    return _friendsProvider?.consumeFriendRequestSent() ?? false;
   }
 
   /// Returns acceptor's username and clears; null if none. Call when showing snackbar.
   String? consumePendingFriendAccepted() {
-    final name = _pendingFriendAcceptedByName;
-    _pendingFriendAcceptedByName = null;
-    return name;
+    return _friendsProvider?.consumePendingFriendAccepted();
   }
 
   /// Call when user navigates back from a chat that was deleted by the other user.
@@ -403,13 +443,7 @@ class ChatProvider extends ChangeNotifier {
       _partnerRecordingVoice.clear();
       _replyingToMessage = null;
       _pendingOpenConversationId = null;
-      _friendRequests = [];
-      _pendingRequestsCount = 0;
-      _friends = [];
-      _friendRequestJustSent = false;
-      _pendingFriendAcceptedByName = null;
       _activeConversationDeletedByOther = false;
-      _searchResults = null;
       _errorMessage = null;
       _pendingSendContent.clear();
       _cancelDelayedRetryIfAny();
@@ -423,9 +457,7 @@ class ChatProvider extends ChangeNotifier {
       _partnerRecordingVoice.clear();
       _replyingToMessage = null;
       _pendingOpenConversationId = null;
-      _pendingFriendAcceptedByName = null;
       _activeConversationDeletedByOther = false;
-      _searchResults = null;
       _errorMessage = null;
       _cancelDelayedRetryIfAny();
     }
@@ -434,6 +466,10 @@ class ChatProvider extends ChangeNotifier {
 
     // Notify EncryptionProvider of connect lifecycle
     _encryptionProvider?.onConnect(isReconnect);
+
+    // Notify FriendsProvider of connect lifecycle
+    _friendsProvider?.setCurrentUserId(userId);
+    _friendsProvider?.onConnect(isReconnect);
 
     // Clean up old socket if it exists
     if (_socketService.socket != null) {
@@ -446,7 +482,6 @@ class ChatProvider extends ChangeNotifier {
       token: token,
       onConnect: () {
         _reconnect.resetAttempts();
-        _blockedByUserIds.clear();
         _socketService.getConversations();
         _socketService.getFriendRequests();
         _socketService.getFriends();
@@ -566,94 +601,22 @@ class ChatProvider extends ChangeNotifier {
         _markSendingMessagesFailed(msg);
         notifyListeners();
       },
-      onFriendRequestsList: (data) {
-        final list = data as List<dynamic>;
-        _friendRequests = list
-            .map((r) => FriendRequestModel.fromJson(r as Map<String, dynamic>))
-            .toList();
-        notifyListeners();
-      },
-      onNewFriendRequest: (data) {
-        final request = FriendRequestModel.fromJson(data as Map<String, dynamic>);
-        _friendRequests.insert(0, request);
-        notifyListeners();
-      },
-      onFriendRequestSent: (data) {
-        _friendRequestJustSent = true;
-        notifyListeners();
-      },
-      onFriendRequestAccepted: (data) {
-        final request = FriendRequestModel.fromJson(data as Map<String, dynamic>);
-        _friendRequests.removeWhere((r) => r.id == request.id);
-        // If we are the sender (we sent the request), show snackbar "X accepted your invitation"
-        if (_currentUserId == request.sender.id) {
-          _pendingFriendAcceptedByName = request.receiver.username;
-        }
-        // Do NOT call getConversations/getFriends here — backend already emits
-        // conversationsList and friendsList; calling get* causes race and overwrites
-        // with stale data (A loses new conversation and contact flickers/disappears).
-        notifyListeners();
-      },
-      onFriendRequestRejected: (data) {
-        final request = FriendRequestModel.fromJson(data as Map<String, dynamic>);
-        _friendRequests.removeWhere((r) => r.id == request.id);
-        notifyListeners();
-      },
-      onPendingRequestsCount: (data) {
-        final count = (data as Map<String, dynamic>)['count'] as int;
-        _pendingRequestsCount = count;
-        notifyListeners();
-      },
-      onFriendsList: (data) {
-        final list = data as List<dynamic>;
-        _friends = list
-            .map((u) => UserModel.fromJson(u as Map<String, dynamic>))
-            .toList();
-        notifyListeners();
-      },
-      onUnfriended: (data) {
-        final unfriendUserId = (data as Map<String, dynamic>)['userId'] as int;
-        _conversations.removeWhere((c) =>
-            c.userOne.id == unfriendUserId || c.userTwo.id == unfriendUserId);
-        _friends.removeWhere((f) => f.id == unfriendUserId);
-        _friendRequests.removeWhere((r) =>
-            r.sender.id == unfriendUserId || r.receiver.id == unfriendUserId);
-        _clearActiveIfRemoved();
-        notifyListeners();
-      },
-      onBlockedList: (data) {
-        final list = data as List<dynamic>;
-        _blockedUsers = list
-            .map((u) => UserModel.fromJson(u as Map<String, dynamic>))
-            .toList();
-        final blockedIds = _blockedUsers.map((u) => u.id).toSet();
-        _friends.removeWhere((f) => blockedIds.contains(f.id));
-        _conversations.removeWhere((c) =>
-            blockedIds.contains(c.userOne.id) || blockedIds.contains(c.userTwo.id));
-        _clearActiveIfRemoved();
-        notifyListeners();
-      },
-      onYouWereBlocked: (data) {
-        final blockerId = (data as Map<String, dynamic>)['userId'] as int;
-        _blockedByUserIds.add(blockerId);
-        _friends.removeWhere((f) => f.id == blockerId);
-        _conversations.removeWhere((c) =>
-            c.userOne.id == blockerId || c.userTwo.id == blockerId);
-        _clearActiveIfRemoved();
-        notifyListeners();
-      },
+      onFriendRequestsList: (data) => _friendsProvider?.onFriendRequestsList(data),
+      onNewFriendRequest: (data) => _friendsProvider?.onNewFriendRequest(data),
+      onFriendRequestSent: (data) => _friendsProvider?.onFriendRequestSent(data),
+      onFriendRequestAccepted: (data) => _friendsProvider?.onFriendRequestAccepted(data),
+      onFriendRequestRejected: (data) => _friendsProvider?.onFriendRequestRejected(data),
+      onPendingRequestsCount: (data) => _friendsProvider?.onPendingRequestsCount(data),
+      onFriendsList: (data) => _friendsProvider?.onFriendsList(data),
+      onUnfriended: (data) => _friendsProvider?.onUnfriended(data),
+      onBlockedList: (data) => _friendsProvider?.onBlockedList(data),
+      onYouWereBlocked: (data) => _friendsProvider?.onYouWereBlocked(data),
       onMessageDelivered: _handleMessageDelivered,
       onChatHistoryCleared: _handleChatHistoryCleared,
       onMessageDeleted: _handleMessageDeleted,
       onDisappearingTimerUpdated: _handleDisappearingTimerUpdated,
       onConversationDeleted: _handleConversationDeleted,
-      onSearchUsersResult: (data) {
-        final list = data as List<dynamic>;
-        _searchResults = list
-            .map((u) => UserModel.fromJson(u as Map<String, dynamic>))
-            .toList();
-        notifyListeners();
-      },
+      onSearchUsersResult: (data) => _friendsProvider?.onSearchUsersResult(data),
       onPartnerTyping: _handlePartnerTyping,
       onPartnerRecordingVoice: _handlePartnerRecordingVoice,
       onReactionUpdated: _handleReactionUpdated,
@@ -1723,14 +1686,11 @@ class ChatProvider extends ChangeNotifier {
   // ---------- Conversation & friend actions (socket) ----------
 
   void searchUsers(String handle) {
-    _searchResults = null;
-    notifyListeners();
-    _socketService.searchUsers(handle);
+    _friendsProvider?.searchUsers(handle);
   }
 
   void clearSearchResults() {
-    _searchResults = null;
-    notifyListeners();
+    _friendsProvider?.clearSearchResults();
   }
 
   void startConversation(int recipientId) {
@@ -1742,44 +1702,43 @@ class ChatProvider extends ChangeNotifier {
   }
 
   void sendFriendRequest(int recipientId) {
-    _socketService.sendFriendRequest(recipientId);
+    _friendsProvider?.sendFriendRequest(recipientId);
   }
 
   void acceptFriendRequest(int requestId) {
-    _socketService.acceptFriendRequest(requestId);
+    _friendsProvider?.acceptFriendRequest(requestId);
   }
 
   void rejectFriendRequest(int requestId) {
-    _socketService.rejectFriendRequest(requestId);
+    _friendsProvider?.rejectFriendRequest(requestId);
   }
 
   void fetchFriendRequests() {
-    _socketService.getFriendRequests();
+    _friendsProvider?.loadFriendRequests();
   }
 
   void fetchFriends() {
-    _socketService.getFriends();
+    _friendsProvider?.loadFriends();
   }
 
   void unfriend(int userId) {
-    _socketService.unfriend(userId);
+    _friendsProvider?.unfriend(userId);
   }
 
   void blockUser(int userId) {
-    _socketService.emitBlockUser(userId);
-    // Server will emit blockedList and unfriended; we may remove from friends/conversations locally after blockedList
+    _friendsProvider?.blockUser(userId);
   }
 
   void unblockUser(int userId) {
-    _socketService.emitUnblockUser(userId);
+    _friendsProvider?.unblockUser(userId);
   }
 
   void loadBlockedList() {
-    _socketService.getBlockedList();
+    _friendsProvider?.loadBlockedList();
   }
 
   bool isFriend(int userId) {
-    return _friends.any((f) => f.id == userId);
+    return _friendsProvider?.isFriend(userId) ?? false;
   }
 
   Future<void> _decryptMessageHistory(int generation) async {
@@ -1996,15 +1955,14 @@ class ChatProvider extends ChangeNotifier {
     _partnerRecordingVoice.clear();
     _replyingToMessage = null;
     _pendingOpenConversationId = null;
-    _friendRequests = [];
-    _pendingRequestsCount = 0;
-    _friends = [];
-    _friendRequestJustSent = false;
     _pushInitialized = false; // Allow re-registration on next login
     // Notify EncryptionProvider of disconnect lifecycle (clears pending fetches,
     // but keys persist in secure storage for next login)
     _encryptionProvider?.onDisconnect();
     _encryptionProvider?.clearAll();
+    // Notify FriendsProvider of disconnect lifecycle
+    _friendsProvider?.onDisconnect();
+    _friendsProvider?.clearAll();
     _pendingSendContent.clear();
     _incomingMessageQueue.clear();
     _decryptingHistory = false;

@@ -48,6 +48,8 @@ class FriendsProvider extends ChangeNotifier {
   Set<int> get blockedByUserIds => _blockedByUserIds;
   List<UserModel>? get searchResults => _searchResults;
   int? get currentUserId => _currentUserId;
+  /// Peek at pending friend-accepted name without clearing it.
+  String? get pendingFriendAcceptedByName => _pendingFriendAcceptedByName;
 
   /// Returns true (and clears) if a friend request was just sent. For snackbar.
   bool consumeFriendRequestSent() {

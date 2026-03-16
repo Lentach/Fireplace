@@ -7,6 +7,7 @@ import 'l10n/app_localizations.dart';
 import 'providers/auth_provider.dart';
 import 'providers/chat_provider.dart';
 import 'providers/encryption_provider.dart';
+import 'providers/friends_provider.dart';
 import 'providers/settings_provider.dart';
 import 'screens/auth_screen.dart';
 import 'screens/main_shell.dart';
@@ -30,6 +31,7 @@ class FireplaceApp extends StatelessWidget {
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
         ChangeNotifierProvider(create: (_) => EncryptionProvider()),
+        ChangeNotifierProvider(create: (_) => FriendsProvider()),
         ChangeNotifierProvider(create: (_) => ChatProvider()),
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
       ],
