@@ -4,6 +4,7 @@ import '../constants/app_constants.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
+import '../providers/encryption_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/conversation_tile.dart';
@@ -26,6 +27,8 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       final auth = context.read<AuthProvider>();
       final chat = context.read<ChatProvider>();
+      final encryption = context.read<EncryptionProvider>();
+      chat.setEncryptionProvider(encryption);
       chat.connect(token: auth.token!, userId: auth.currentUser!.id);
     });
   }

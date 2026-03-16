@@ -21,6 +21,7 @@ import '../services/push_service.dart';
 import '../services/socket_service.dart';
 import 'chat_reconnect_manager.dart';
 import 'conversation_helpers.dart' as conv_helpers;
+import 'encryption_provider.dart';
 
 class ChatProvider extends ChangeNotifier {
   static void _e2eFlowLog(String step, [Map<String, dynamic>? data]) {
@@ -32,6 +33,15 @@ class ChatProvider extends ChangeNotifier {
   late final ApiService _api = ApiService(baseUrl: AppConfig.baseUrl);
   late final PushService _pushService = PushService(_api);
   bool _pushInitialized = false;
+
+  // ---------- EncryptionProvider facade ----------
+  EncryptionProvider? _encryptionProvider;
+
+  /// Wire the EncryptionProvider so ChatProvider can delegate E2E state.
+  /// Called once from the widget tree after both providers are available.
+  void setEncryptionProvider(EncryptionProvider ep) {
+    _encryptionProvider = ep;
+  }
 
   // ---------- E2E Encryption ----------
   final EncryptionService _encryptionService = EncryptionService();
@@ -420,6 +430,9 @@ class ChatProvider extends ChangeNotifier {
     }
 
     notifyListeners();
+
+    // Notify EncryptionProvider of connect lifecycle
+    _encryptionProvider?.onConnect(isReconnect);
 
     // Clean up old socket if it exists
     if (_socketService.socket != null) {
@@ -2117,6 +2130,8 @@ class ChatProvider extends ChangeNotifier {
     _friends = [];
     _friendRequestJustSent = false;
     _pushInitialized = false; // Allow re-registration on next login
+    // Notify EncryptionProvider of disconnect lifecycle
+    _encryptionProvider?.onDisconnect();
     // Clear E2E state (keys persist in secure storage for next login)
     _e2eInitialized = false;
     _pendingPreKeyFetches.clear();
