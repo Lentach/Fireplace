@@ -157,15 +157,16 @@ class ApiService {
     }
   }
 
-  /// Upload media (image or voice) to backend. Returns {mediaUrl, mediaDuration?}.
+  /// Upload media (image, voice, or gif) to backend. Returns {mediaUrl, mediaDuration?}.
   Future<Map<String, dynamic>> uploadMedia({
     required String token,
-    required String type, // 'image' or 'voice'
+    required String type, // 'image', 'voice', or 'gif'
     int? duration,
     int? expiresIn,
     XFile? imageFile,
     String? audioPath,
     List<int>? audioBytes,
+    List<int>? gifBytes,
   }) async {
     final request = http.MultipartRequest(
       'POST',
@@ -207,6 +208,12 @@ class ApiService {
         'file', bytes,
         filename: 'voice_${DateTime.now().millisecondsSinceEpoch}.$ext',
         contentType: MediaType('audio', mime),
+      ));
+    } else if (type == 'gif' && gifBytes != null) {
+      request.files.add(http.MultipartFile.fromBytes(
+        'file', gifBytes,
+        filename: 'gif_${DateTime.now().millisecondsSinceEpoch}.gif',
+        contentType: MediaType('image', 'gif'),
       ));
     }
 
