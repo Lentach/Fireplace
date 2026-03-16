@@ -338,6 +338,39 @@ describe('ChatMessageService', () => {
       expect(opts.mediaUrl).toBeUndefined();
     });
 
+    it('should store [encrypted] for encrypted GIF (no mediaUrl in payload)', async () => {
+      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+      usersService.findById
+        .mockResolvedValueOnce(mockSender as User)
+        .mockResolvedValueOnce(mockRecipient as User);
+      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+      messagesService.create.mockResolvedValue({
+        ...mockMessage,
+        content: '[encrypted]',
+        encryptedContent: '3:base64encryptedGifData',
+        messageType: 'TEXT',
+        mediaUrl: null,
+      } as Message);
+
+      const data = {
+        recipientId: 2,
+        content: '[encrypted]',
+        encryptedContent: '3:base64encryptedGifData',
+      };
+
+      await service.handleSendMessage(
+        mockClient as Socket,
+        data,
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      const opts = messagesService.create.mock.calls[0][3] as Record<string, unknown>;
+      expect(opts.encryptedContent).toBe('3:base64encryptedGifData');
+      expect(opts.messageType).toBeUndefined();
+      expect(opts.mediaUrl).toBeUndefined();
+    });
+
     it('should NOT fetch link preview for any encrypted message', async () => {
       chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
       usersService.findById
