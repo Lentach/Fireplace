@@ -1,5 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
+import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import '../config/app_config.dart';
 
@@ -44,10 +45,15 @@ class GifService {
   }
 
   Future<List<GifModel>> _fetch(String url, {String? query, int limit = 25, int offset = 0}) async {
+    final apiKey = AppConfig.giphyApiKey;
+    if (apiKey.isEmpty) {
+      debugPrint('[GifService] GIPHY_API_KEY not set. Pass --dart-define=GIPHY_API_KEY=your_key');
+      return [];
+    }
     _client?.close();
     _client = http.Client();
     final params = {
-      'api_key': AppConfig.giphyApiKey,
+      'api_key': apiKey,
       'limit': '$limit',
       'offset': '$offset',
       'rating': 'pg-13',
