@@ -11,6 +11,7 @@ enum MessageType {
   ping,
   image,
   voice,
+  gif,
 }
 
 /// Preview of a message being replied to (sent in payload).
@@ -158,6 +159,8 @@ class MessageModel {
         return MessageType.image;
       case 'VOICE':
         return MessageType.voice;
+      case 'GIF':
+        return MessageType.gif;
       default:
         return MessageType.text;
     }
