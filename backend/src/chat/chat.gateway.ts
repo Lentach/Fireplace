@@ -16,11 +16,10 @@ import { ChatMessageService } from './services/chat-message.service';
 import { ChatFriendRequestService } from './services/chat-friend-request.service';
 import { ChatConversationService } from './services/chat-conversation.service';
 import { ChatKeyExchangeService } from './services/chat-key-exchange.service';
+import { ChatPresenceService } from './services/chat-presence.service';
 import { BlockedService } from '../blocked/blocked.service';
 import { validateDto } from './utils/dto.validator';
 import { BlockUserDto } from './dto/chat.dto';
-import { TypingDto } from './dto/typing.dto';
-import { RecordingVoiceDto } from './dto/recording-voice.dto';
 import { UserMapper } from './mappers/user.mapper';
 
 // CORS: In production only ALLOWED_ORIGINS. In dev also allow localhost + LAN (phone).
@@ -70,6 +69,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private chatFriendRequestService: ChatFriendRequestService,
     private chatConversationService: ChatConversationService,
     private chatKeyExchangeService: ChatKeyExchangeService,
+    private chatPresenceService: ChatPresenceService,
     private blockedService: BlockedService,
   ) {}
 
@@ -195,19 +195,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ): void {
-    const senderId: number = client.data.user?.id;
-    if (!senderId) return;
-    try {
-      const dto = validateDto(TypingDto, data);
-      const recipientSocketId = this.onlineUsers.get(dto.recipientId);
-      if (!recipientSocketId) return;
-      this.server.to(recipientSocketId).emit('partnerTyping', {
-        senderId,
-        conversationId: dto.conversationId,
-      });
-    } catch {
-      return; // invalid payload — silent no-op
-    }
+    return this.chatPresenceService.handleTyping(client, data, this.server, this.onlineUsers);
   }
 
   @SubscribeMessage('addReaction')
@@ -231,20 +219,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ): void {
-    const senderId: number = client.data.user?.id;
-    if (!senderId) return;
-    try {
-      const dto = validateDto(RecordingVoiceDto, data);
-      const recipientSocketId = this.onlineUsers.get(dto.recipientId);
-      if (!recipientSocketId) return;
-      this.server.to(recipientSocketId).emit('partnerRecordingVoice', {
-        senderId,
-        conversationId: dto.conversationId,
-        isRecording: dto.isRecording,
-      });
-    } catch {
-      return; // invalid payload — silent no-op
-    }
+    return this.chatPresenceService.handleRecordingVoice(client, data, this.server, this.onlineUsers);
   }
 
   // ========== KEY EXCHANGE HANDLERS (E2E Encryption) ==========
