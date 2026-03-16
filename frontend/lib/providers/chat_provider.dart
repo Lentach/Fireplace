@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
+import 'package:http/http.dart' as http;
 import 'package:pointycastle/export.dart';
 import '../utils/file_utils_stub.dart' if (dart.library.io) '../utils/file_utils_io.dart' as file_utils;
 import 'package:image_picker/image_picker.dart';
@@ -1316,6 +1317,82 @@ class ChatProvider extends ChangeNotifier {
     } catch (e) {
       debugPrint('[ChatProvider] Image upload failed: $e');
       _markMessageFailed(tempId, 'Image upload failed: ${e.toString()}');
+    }
+  }
+
+  /// Send a GIF message. Downloads from Giphy, uploads to Cloudinary, encrypts URL.
+  Future<void> sendGif(
+    String token,
+    String gifUrl,
+    int recipientId,
+  ) async {
+    if (_activeConversationId == null || _currentUserId == null) return;
+
+    final effectiveExpiresIn = conversationDisappearingTimer;
+    final tempId = 'temp_${DateTime.now().millisecondsSinceEpoch}_$_currentUserId';
+
+    // 1. Optimistic message
+    final tempMessage = MessageModel(
+      id: -(++ChatProvider._tempIdSeq),
+      content: '',
+      senderId: _currentUserId!,
+      senderUsername: '',
+      conversationId: _activeConversationId!,
+      createdAt: DateTime.now(),
+      deliveryStatus: MessageDeliveryStatus.sending,
+      messageType: MessageType.gif,
+      expiresAt: effectiveExpiresIn != null
+          ? DateTime.now().add(Duration(seconds: effectiveExpiresIn))
+          : null,
+      tempId: tempId,
+    );
+
+    _messages.add(tempMessage);
+    _pendingSendContent[tempId] = <String, dynamic>{'content': '', 'messageType': 'GIF'};
+    notifyListeners();
+
+    try {
+      // 2. Download GIF bytes from Giphy
+      final response = await http.get(Uri.parse(gifUrl));
+      if (response.statusCode != 200) {
+        throw Exception('Failed to download GIF');
+      }
+      final gifBytes = response.bodyBytes;
+
+      // 3. Size guard
+      if (gifBytes.length > 5 * 1024 * 1024) {
+        throw Exception('GIF too large (max 5 MB)');
+      }
+
+      // 4. Upload to Cloudinary
+      final responseData = await _api.uploadMedia(
+        token: token,
+        type: 'gif',
+        gifBytes: gifBytes,
+        expiresIn: effectiveExpiresIn,
+      );
+
+      final cloudinaryUrl = responseData['mediaUrl'] as String;
+
+      // 5. Update optimistic message with URL
+      final idx = _messages.indexWhere((m) => m.tempId == tempId);
+      if (idx != -1) {
+        _messages[idx] = _messages[idx].copyWith(mediaUrl: cloudinaryUrl);
+        notifyListeners();
+      }
+
+      // 6. Encrypt and send
+      _encryptAndSend(
+        recipientId: recipientId,
+        content: '',
+        tempId: tempId,
+        effectiveExpiresIn: effectiveExpiresIn,
+        messageType: 'GIF',
+        mediaUrl: cloudinaryUrl,
+      );
+    } catch (e) {
+      debugPrint('[ChatProvider] GIF send failed: $e');
+      _markMessageFailed(tempId, 'GIF send failed: ${e.toString()}');
     }
   }
 
