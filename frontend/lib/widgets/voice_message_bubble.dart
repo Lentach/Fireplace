@@ -11,7 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import '../models/message_model.dart';
 import '../theme/rpg_theme.dart';
-import 'chat_message_bubble.dart' show ReactionChipsRow;
+import 'message/reaction_chips_row.dart';
 import 'message_swipe_wrapper.dart';
 import 'top_snackbar.dart';
 
