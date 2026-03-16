@@ -4,6 +4,13 @@ class AppConfig {
     defaultValue: '',
   );
 
+  static String get giphyApiKey {
+    const key = String.fromEnvironment('GIPHY_API_KEY', defaultValue: '');
+    if (key.isNotEmpty) return key;
+    // Beta key for development only
+    return 'dc6zaTOxFJmzC';
+  }
+
   static String get baseUrl {
     // If BASE_URL is explicitly set, use it
     if (_envUrl.isNotEmpty) return _envUrl;
