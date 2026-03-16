@@ -40,10 +40,13 @@ export class MessagesController {
 
     const dto = validateDto(UploadMediaDto, body);
 
-    if (dto.type === 'image') {
-      const allowedMimeTypes = ['image/jpeg', 'image/jpg', 'image/png'];
+    if (dto.type === 'image' || dto.type === 'gif') {
+      const allowedMimeTypes = dto.type === 'gif'
+        ? ['image/gif']
+        : ['image/jpeg', 'image/jpg', 'image/png'];
+      const label = dto.type === 'gif' ? 'GIF' : 'JPEG/PNG';
       if (!allowedMimeTypes.includes(file.mimetype)) {
-        throw new BadRequestException('Only JPEG/PNG images are allowed');
+        throw new BadRequestException(`Only ${label} images are allowed`);
       }
       if (file.size > 5 * 1024 * 1024) {
         throw new BadRequestException('Image size must not exceed 5 MB');
