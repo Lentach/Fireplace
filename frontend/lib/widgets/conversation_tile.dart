@@ -43,6 +43,7 @@ class ConversationTile extends StatelessWidget {
     if (lastMessage.messageType == MessageType.image) {
       return l10n.attachment;
     }
+    if (lastMessage.messageType == MessageType.gif) return 'GIF';
     if (lastMessage.displayAsEncryptedPlaceholder ||
         lastMessage.content == 'Encrypted message') {
       return l10n.encryptedMessage;
