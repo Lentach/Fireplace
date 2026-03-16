@@ -3,7 +3,7 @@ import { MessagesService } from '../../messages/messages.service';
 import { ConversationsService } from '../../conversations/conversations.service';
 import { ChatValidationService } from './chat-validation.service';
 import { UsersService } from '../../users/users.service';
-import { LinkPreviewService } from './link-preview.service';
+import { ChatLinkPreviewService } from './chat-link-preview.service';
 import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
 import { ChatMessageService } from './chat-message.service';
 import { User } from '../../users/user.entity';
@@ -73,8 +73,8 @@ describe('ChatMessageService', () => {
           useValue: { findById: jest.fn() },
         },
         {
-          provide: LinkPreviewService,
-          useValue: { fetchPreview: jest.fn().mockResolvedValue(null) },
+          provide: ChatLinkPreviewService,
+          useValue: { fetchAndEmitIfNeeded: jest.fn() },
         },
         {
           provide: PushNotificationsService,
@@ -190,7 +190,6 @@ describe('ChatMessageService', () => {
     });
 
     it('should skip link preview when encryptedContent is present', async () => {
-      const linkPreviewService = { fetchPreview: jest.fn() };
       chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
       usersService.findById
         .mockResolvedValueOnce(mockSender as User)
@@ -216,8 +215,14 @@ describe('ChatMessageService', () => {
         onlineUsers,
       );
 
-      // Link preview should not be fetched for encrypted messages
-      expect(linkPreviewService.fetchPreview).not.toHaveBeenCalled();
+      // ChatLinkPreviewService.fetchAndEmitIfNeeded is called but with encryptedContent set,
+      // so the service internally skips the preview fetch
+      const chatLinkPreviewService = (service as any).chatLinkPreviewService;
+      expect(chatLinkPreviewService.fetchAndEmitIfNeeded).toHaveBeenCalledWith(
+        expect.objectContaining({
+          encryptedContent: '3:base64ciphertext==',
+        }),
+      );
     });
   });
 
@@ -398,9 +403,13 @@ describe('ChatMessageService', () => {
         onlineUsers,
       );
 
-      // LinkPreviewService is injected but should NOT be called
-      const linkPreviewService = (service as any).linkPreviewService;
-      expect(linkPreviewService.fetchPreview).not.toHaveBeenCalled();
+      // ChatLinkPreviewService is called but with encryptedContent, so it skips internally
+      const chatLinkPreviewService = (service as any).chatLinkPreviewService;
+      expect(chatLinkPreviewService.fetchAndEmitIfNeeded).toHaveBeenCalledWith(
+        expect.objectContaining({
+          encryptedContent: '3:textWithLinkCipher==',
+        }),
+      );
     });
 
     it('should emit messageSent and newMessage with encryptedContent for online recipient', async () => {

@@ -4,13 +4,13 @@ import { MessagesService } from '../../messages/messages.service';
 import { ConversationsService } from '../../conversations/conversations.service';
 import { ChatValidationService } from './chat-validation.service';
 import { UsersService } from '../../users/users.service';
-import { LinkPreviewService } from './link-preview.service';
+import { ChatLinkPreviewService } from './chat-link-preview.service';
 import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
 import { validateDto } from '../utils/dto.validator';
 import { SendMessageDto, GetMessagesDto, ClearChatHistoryDto, DeleteMessageDto } from '../dto/chat.dto';
 import { MessageDeliveredDto } from '../dto/message-delivered.dto';
 import { MarkConversationReadDto } from '../dto/mark-conversation-read.dto';
-import { MessageType, MessageDeliveryStatus } from '../../messages/message.entity';
+import { MessageDeliveryStatus } from '../../messages/message.entity';
 import { MessageMapper } from '../../messages/message.mapper';
 
 @Injectable()
@@ -22,7 +22,7 @@ export class ChatMessageService {
     private readonly conversationsService: ConversationsService,
     private readonly chatValidationService: ChatValidationService,
     private readonly usersService: UsersService,
-    private readonly linkPreviewService: LinkPreviewService,
+    private readonly chatLinkPreviewService: ChatLinkPreviewService,
     private readonly pushNotificationsService: PushNotificationsService,
   ) {}
 
@@ -109,30 +109,16 @@ export class ChatMessageService {
     this.pushNotificationsService.notify(data.recipientId).catch(() => {});
 
     // Async link preview — fire and forget, does not block send
-    // Skip for encrypted messages (server cannot read content)
-    if (!data.encryptedContent && message.messageType === MessageType.TEXT && data.content) {
-      this.linkPreviewService.fetchPreview(data.content).then(async (preview) => {
-        if (!preview) return;
-        const updated = await this.messagesService.updateLinkPreview(
-          message.id,
-          preview.url,
-          preview.title,
-          preview.imageUrl,
-        );
-        if (!updated) return;
-        const previewPayload = {
-          messageId: message.id,
-          conversationId: conversation.id,
-          linkPreviewUrl: preview.url,
-          linkPreviewTitle: preview.title,
-          linkPreviewImageUrl: preview.imageUrl,
-        };
-        client.emit('linkPreviewReady', previewPayload);
-        if (recipientSocketId) {
-          server.to(recipientSocketId).emit('linkPreviewReady', previewPayload);
-        }
-      }).catch(() => { /* swallow — preview is best-effort */ });
-    }
+    this.chatLinkPreviewService.fetchAndEmitIfNeeded({
+      content: data.content,
+      encryptedContent: data.encryptedContent ?? null,
+      messageType: message.messageType,
+      messageId: message.id,
+      conversationId: conversation.id,
+      client,
+      recipientSocketId,
+      server,
+    });
   }
 
   async handleGetMessages(client: Socket, data: any) {
