@@ -21,6 +21,7 @@ export enum MessageType {
   PING = 'PING',
   IMAGE = 'IMAGE',
   VOICE = 'VOICE',
+  GIF = 'GIF',
 }
 
 @Entity('messages')
