@@ -360,4 +360,19 @@ class AppLocalizationsPl extends AppLocalizations {
   String antiQuantumNoteSendFailed(String error) {
     return 'Nie udało się wysłać notatki: $error';
   }
+
+  @override
+  String get documentDownloaded => 'Dokument pobrany';
+
+  @override
+  String get documentDownloadFailed => 'Nie udało się pobrać dokumentu';
+
+  @override
+  String get documentDownloadConfirmTitle => 'Pobrać dokument?';
+
+  @override
+  String get documentDownloadConfirmMessage => 'Czy chcesz pobrać ten plik?';
+
+  @override
+  String get download => 'Pobierz';
 }

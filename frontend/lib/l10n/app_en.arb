@@ -137,5 +137,11 @@
     "placeholders": {
       "error": { "type": "String" }
     }
-  }
+  },
+
+  "documentDownloaded": "Document downloaded",
+  "documentDownloadFailed": "Failed to download document",
+  "documentDownloadConfirmTitle": "Download document?",
+  "documentDownloadConfirmMessage": "Do you want to download this file?",
+  "download": "Download"
 }

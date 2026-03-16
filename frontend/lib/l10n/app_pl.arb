@@ -137,5 +137,11 @@
     "placeholders": {
       "error": { "type": "String" }
     }
-  }
+  },
+
+  "documentDownloaded": "Dokument pobrany",
+  "documentDownloadFailed": "Nie udało się pobrać dokumentu",
+  "documentDownloadConfirmTitle": "Pobrać dokument?",
+  "documentDownloadConfirmMessage": "Czy chcesz pobrać ten plik?",
+  "download": "Pobierz"
 }

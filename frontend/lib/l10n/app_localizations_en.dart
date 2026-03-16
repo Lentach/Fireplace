@@ -361,4 +361,19 @@ class AppLocalizationsEn extends AppLocalizations {
   String antiQuantumNoteSendFailed(String error) {
     return 'Failed to send note: $error';
   }
+
+  @override
+  String get documentDownloaded => 'Document downloaded';
+
+  @override
+  String get documentDownloadFailed => 'Failed to download document';
+
+  @override
+  String get documentDownloadConfirmTitle => 'Download document?';
+
+  @override
+  String get documentDownloadConfirmMessage => 'Do you want to download this file?';
+
+  @override
+  String get download => 'Download';
 }

@@ -763,6 +763,36 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Nie udało się wysłać notatki: {error}'**
   String antiQuantumNoteSendFailed(String error);
+
+  /// No description provided for @documentDownloaded.
+  ///
+  /// In pl, this message translates to:
+  /// **'Dokument pobrany'**
+  String get documentDownloaded;
+
+  /// No description provided for @documentDownloadFailed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się pobrać dokumentu'**
+  String get documentDownloadFailed;
+
+  /// No description provided for @documentDownloadConfirmTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Pobrać dokument?'**
+  String get documentDownloadConfirmTitle;
+
+  /// No description provided for @documentDownloadConfirmMessage.
+  ///
+  /// In pl, this message translates to:
+  /// **'Czy chcesz pobrać ten plik?'**
+  String get documentDownloadConfirmMessage;
+
+  /// No description provided for @download.
+  ///
+  /// In pl, this message translates to:
+  /// **'Pobierz'**
+  String get download;
 }
 
 class _AppLocalizationsDelegate

@@ -8,7 +8,9 @@ import '../models/message_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/chat_provider.dart';
 import '../services/link_preview_service.dart';
+import '../utils/download_utils_web.dart' if (dart.library.io) '../utils/download_utils_io.dart' as download_utils;
 import 'message_swipe_wrapper.dart';
+import 'top_snackbar.dart';
 import 'voice_message_bubble.dart';
 
 class ChatMessageBubble extends StatelessWidget {
@@ -23,6 +25,20 @@ class ChatMessageBubble extends StatelessWidget {
 
   String _formatTime(DateTime dt) {
     return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+  }
+
+  Future<void> _downloadDocument(BuildContext context, String url, String filename) async {
+    final l10n = AppLocalizations.of(context);
+    try {
+      await download_utils.downloadFile(url, filename);
+      if (context.mounted) {
+        showTopSnackBar(context, l10n.documentDownloaded);
+      }
+    } catch (_) {
+      if (context.mounted) {
+        showTopSnackBar(context, l10n.documentDownloadFailed, backgroundColor: Colors.red);
+      }
+    }
   }
 
   Widget _buildReplyQuote(
@@ -227,10 +243,33 @@ class ChatMessageBubble extends StatelessWidget {
         else if (message.messageType == MessageType.file &&
                  message.mediaUrl != null)
           GestureDetector(
-            onTap: () => launchUrl(
-              Uri.parse(message.mediaUrl!),
-              mode: LaunchMode.externalApplication,
-            ),
+            onTap: () {
+              final l10n = AppLocalizations.of(context);
+              showDialog<void>(
+                context: context,
+                builder: (ctx) => AlertDialog(
+                  title: Text(l10n.documentDownloadConfirmTitle),
+                  content: Text(l10n.documentDownloadConfirmMessage),
+                  actions: [
+                    TextButton(
+                      onPressed: () => Navigator.of(ctx).pop(),
+                      child: Text(l10n.cancel),
+                    ),
+                    TextButton(
+                      onPressed: () {
+                        Navigator.of(ctx).pop();
+                        _downloadDocument(
+                          context,
+                          message.mediaUrl!,
+                          message.content.isNotEmpty ? message.content : 'document',
+                        );
+                      },
+                      child: Text(l10n.download),
+                    ),
+                  ],
+                ),
+              );
+            },
             child: Container(
               padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
               decoration: BoxDecoration(
