@@ -32,11 +32,11 @@
   "webKeyStorage": "Web: key storage",
   "webKeyStorageDescription": "On web, keys are stored in the browser (encrypted with WebCrypto). Someone with access to this device could potentially read them. For maximum security, use the mobile app.",
   "whatIsEncrypted": "What is encrypted",
-  "whatIsEncryptedDescription": "Text messages and link previews are end-to-end encrypted. Media files (images, voice messages) are not yet encrypted end-to-end.",
+  "whatIsEncryptedDescription": "All messages are end-to-end encrypted (text, images, voice, links). Only you and the recipient can read them.",
   "serverStoresMetadata": "What the server stores (metadata)",
   "serverStoresMetadataDescription": "To deliver messages, the server stores: who is in each conversation, when messages were sent, and delivery status. Message content is never visible to the server.",
   "yourIdentityFingerprint": "Your identity fingerprint",
-  "shareFingerprintHint": "Share this with your contacts to verify your identity.",
+  "shareFingerprintHint": "This is a unique representation of your encryption key.",
 
   "addInvitations": "Add / Invitations",
   "addUser": "Add user",
@@ -117,5 +117,8 @@
   "deleteAccountWarning": "This action is permanent and cannot be undone. All your messages and conversations will be deleted.",
   "enterPasswordToConfirm": "Enter password to confirm",
 
-  "clearingChat": "Clearing…"
+  "clearingChat": "Clearing…",
+  "gifNoResults": "No GIFs found",
+  "gifSearchHint": "Search GIFs...",
+  "gifLoadError": "Could not load GIFs"
 }

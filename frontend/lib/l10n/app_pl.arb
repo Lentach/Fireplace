@@ -32,11 +32,11 @@
   "webKeyStorage": "Przeglądarka: przechowywanie kluczy",
   "webKeyStorageDescription": "W wersji web klucze są przechowywane w przeglądarce (szyfrowane WebCrypto). Osoba z dostępem do tego urządzenia mogłaby je odczytać. Dla maksymalnego bezpieczeństwa używaj aplikacji mobilnej.",
   "whatIsEncrypted": "Co jest szyfrowane",
-  "whatIsEncryptedDescription": "Wiadomości tekstowe i podglądy linków są szyfrowane end-to-end. Pliki multimedialne (zdjęcia, wiadomości głosowe) nie są jeszcze szyfrowane end-to-end.",
+  "whatIsEncryptedDescription": "Wszystkie wiadomości są szyfrowane end-to-end (tekst, zdjęcia, głos, linki). Tylko Ty i odbiorca możecie je odczytać.",
   "serverStoresMetadata": "Co przechowuje serwer (metadane)",
   "serverStoresMetadataDescription": "Aby dostarczać wiadomości, serwer przechowuje: kto jest w danej rozmowie, kiedy wiadomości zostały wysłane oraz status dostarczenia. Treść wiadomości nigdy nie jest widoczna dla serwera.",
   "yourIdentityFingerprint": "Twój odcisk tożsamości",
-  "shareFingerprintHint": "Udostępnij go kontaktom, aby zweryfikować tożsamość.",
+  "shareFingerprintHint": "To unikalna reprezentacja Twojego klucza szyfrowania.",
 
   "addInvitations": "Dodaj / Zaproszenia",
   "addUser": "Dodaj użytkownika",
@@ -117,5 +117,8 @@
   "deleteAccountWarning": "Ta operacja jest nieodwracalna. Wszystkie Twoje wiadomości i rozmowy zostaną usunięte.",
   "enterPasswordToConfirm": "Wpisz hasło, aby potwierdzić",
 
-  "clearingChat": "Czyszczenie…"
+  "clearingChat": "Czyszczenie…",
+  "gifNoResults": "Nie znaleziono GIFów",
+  "gifSearchHint": "Szukaj GIFów...",
+  "gifLoadError": "Nie udało się załadować GIFów"
 }

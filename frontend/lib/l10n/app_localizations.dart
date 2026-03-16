@@ -287,7 +287,7 @@ abstract class AppLocalizations {
   /// No description provided for @whatIsEncryptedDescription.
   ///
   /// In pl, this message translates to:
-  /// **'Wiadomości tekstowe i podglądy linków są szyfrowane end-to-end. Pliki multimedialne (zdjęcia, wiadomości głosowe) nie są jeszcze szyfrowane end-to-end.'**
+  /// **'Wszystkie wiadomości są szyfrowane end-to-end (tekst, zdjęcia, głos, linki). Tylko Ty i odbiorca możecie je odczytać.'**
   String get whatIsEncryptedDescription;
 
   /// No description provided for @serverStoresMetadata.
@@ -311,7 +311,7 @@ abstract class AppLocalizations {
   /// No description provided for @shareFingerprintHint.
   ///
   /// In pl, this message translates to:
-  /// **'Udostępnij go kontaktom, aby zweryfikować tożsamość.'**
+  /// **'To unikalna reprezentacja Twojego klucza szyfrowania.'**
   String get shareFingerprintHint;
 
   /// No description provided for @addInvitations.
@@ -679,6 +679,24 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Czyszczenie…'**
   String get clearingChat;
+
+  /// No description provided for @gifNoResults.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie znaleziono GIFów'**
+  String get gifNoResults;
+
+  /// No description provided for @gifSearchHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Szukaj GIFów...'**
+  String get gifSearchHint;
+
+  /// No description provided for @gifLoadError.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się załadować GIFów'**
+  String get gifLoadError;
 }
 
 class _AppLocalizationsDelegate

@@ -107,7 +107,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get whatIsEncryptedDescription =>
-      'Text messages and link previews are end-to-end encrypted. Media files (images, voice messages) are not yet encrypted end-to-end.';
+      'All messages are end-to-end encrypted (text, images, voice, links). Only you and the recipient can read them.';
 
   @override
   String get serverStoresMetadata => 'What the server stores (metadata)';
@@ -121,7 +121,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get shareFingerprintHint =>
-      'Share this with your contacts to verify your identity.';
+      'This is a unique representation of your encryption key.';
 
   @override
   String get addInvitations => 'Add / Invitations';
@@ -316,4 +316,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get clearingChat => 'Clearing…';
+
+  @override
+  String get gifNoResults => 'No GIFs found';
+
+  @override
+  String get gifSearchHint => 'Search GIFs...';
+
+  @override
+  String get gifLoadError => 'Could not load GIFs';
 }

@@ -107,7 +107,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get whatIsEncryptedDescription =>
-      'Wiadomości tekstowe i podglądy linków są szyfrowane end-to-end. Pliki multimedialne (zdjęcia, wiadomości głosowe) nie są jeszcze szyfrowane end-to-end.';
+      'Wszystkie wiadomości są szyfrowane end-to-end (tekst, zdjęcia, głos, linki). Tylko Ty i odbiorca możecie je odczytać.';
 
   @override
   String get serverStoresMetadata => 'Co przechowuje serwer (metadane)';
@@ -121,7 +121,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get shareFingerprintHint =>
-      'Udostępnij go kontaktom, aby zweryfikować tożsamość.';
+      'To unikalna reprezentacja Twojego klucza szyfrowania.';
 
   @override
   String get addInvitations => 'Dodaj / Zaproszenia';
@@ -315,4 +315,13 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get clearingChat => 'Czyszczenie…';
+
+  @override
+  String get gifNoResults => 'Nie znaleziono GIFów';
+
+  @override
+  String get gifSearchHint => 'Szukaj GIFów...';
+
+  @override
+  String get gifLoadError => 'Nie udało się załadować GIFów';
 }
