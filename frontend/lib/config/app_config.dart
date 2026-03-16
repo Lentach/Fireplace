@@ -6,7 +6,8 @@ class AppConfig {
 
   static String get giphyApiKey {
     const key = String.fromEnvironment('GIPHY_API_KEY', defaultValue: '');
-    return key;
+    if (key.isNotEmpty) return key;
+    return 'VmCJlGsMqvJvY8fStvCuE8zTETPgTfMN';
   }
 
   static String get baseUrl {
