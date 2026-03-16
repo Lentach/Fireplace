@@ -477,165 +477,179 @@ class ChatProvider extends ChangeNotifier {
     }
 
     _currentUserId = userId;
-    _socketService.connect(
-      baseUrl: AppConfig.baseUrl,
-      token: token,
-      onConnect: () {
-        _reconnect.resetAttempts();
-        _socketService.getConversations();
-        _socketService.getFriendRequests();
-        _socketService.getFriends();
-        _socketService.getBlockedList();
-        if (_activeConversationId != null) {
-          _socketService.getMessages(_activeConversationId!, limit: AppConstants.messagePageSize);
-        }
-        Future.delayed(AppConstants.conversationsRefreshDelay, () {
-          if (_conversations.isEmpty) {
-            _socketService.getConversations();
-          }
-        });
-        // Initialize push notifications once per session (first connect only)
-        if (!_pushInitialized) {
-          _pushInitialized = true;
-          _pushService.initialize(token).catchError((_) {});
-        }
-        // Initialize E2E encryption (delegated to EncryptionProvider)
-        _encryptionProvider?.initializeE2E(userId);
-      },
-      onConversationsList: (data) {
-        final list = data as List<dynamic>;
-        final newConvs = list
-            .map((c) =>
-                ConversationModel.fromJson(c as Map<String, dynamic>))
-            .toList();
-        // If our active conv is no longer in list (e.g. other user deleted), mark it — don't auto-close
-        if (_activeConversationId != null &&
-            !newConvs.any((c) => c.id == _activeConversationId)) {
-          _activeConversationDeletedByOther = true;
-        }
-        _conversations = newConvs;
-        _unreadCounts.clear();
-        for (final c in list) {
-          final m = c as Map<String, dynamic>;
-          final convId = m['id'] as int;
-          final unread = (m['unreadCount'] as num?)?.toInt() ?? 0;
-          _unreadCounts[convId] = unread;
+    _socketService.connect(baseUrl: AppConfig.baseUrl, token: token);
 
-          // Update last message from backend data (fixes preview not showing when user was offline)
-          final lastMsgData = m['lastMessage'];
-          if (lastMsgData != null) {
-            try {
-              var lastMsg = MessageModel.fromJson(lastMsgData as Map<String, dynamic>);
-              if (lastMsg.displayAsEncryptedPlaceholder) {
-                lastMsg = lastMsg.copyWith(content: 'Encrypted message');
-              }
-              _lastMessages[convId] = lastMsg;
-            } catch (e) {
-              debugPrint('[ChatProvider] Failed to parse lastMessage for conversation $convId: $e');
+    // ---------- Register event listeners ----------
+
+    _socketService.onConnect(() {
+      _reconnect.resetAttempts();
+      _socketService.getConversations();
+      _socketService.getFriendRequests();
+      _socketService.getFriends();
+      _socketService.getBlockedList();
+      if (_activeConversationId != null) {
+        _socketService.getMessages(_activeConversationId!, limit: AppConstants.messagePageSize);
+      }
+      Future.delayed(AppConstants.conversationsRefreshDelay, () {
+        if (_conversations.isEmpty) {
+          _socketService.getConversations();
+        }
+      });
+      // Initialize push notifications once per session (first connect only)
+      if (!_pushInitialized) {
+        _pushInitialized = true;
+        _pushService.initialize(token).catchError((_) {});
+      }
+      // Initialize E2E encryption (delegated to EncryptionProvider)
+      _encryptionProvider?.initializeE2E(userId);
+    });
+
+    _socketService.on('conversationsList', (data) {
+      final list = data as List<dynamic>;
+      final newConvs = list
+          .map((c) =>
+              ConversationModel.fromJson(c as Map<String, dynamic>))
+          .toList();
+      // If our active conv is no longer in list (e.g. other user deleted), mark it — don't auto-close
+      if (_activeConversationId != null &&
+          !newConvs.any((c) => c.id == _activeConversationId)) {
+        _activeConversationDeletedByOther = true;
+      }
+      _conversations = newConvs;
+      _unreadCounts.clear();
+      for (final c in list) {
+        final m = c as Map<String, dynamic>;
+        final convId = m['id'] as int;
+        final unread = (m['unreadCount'] as num?)?.toInt() ?? 0;
+        _unreadCounts[convId] = unread;
+
+        // Update last message from backend data (fixes preview not showing when user was offline)
+        final lastMsgData = m['lastMessage'];
+        if (lastMsgData != null) {
+          try {
+            var lastMsg = MessageModel.fromJson(lastMsgData as Map<String, dynamic>);
+            if (lastMsg.displayAsEncryptedPlaceholder) {
+              lastMsg = lastMsg.copyWith(content: 'Encrypted message');
             }
+            _lastMessages[convId] = lastMsg;
+          } catch (e) {
+            debugPrint('[ChatProvider] Failed to parse lastMessage for conversation $convId: $e');
           }
         }
-        notifyListeners();
-      },
-      onMessageHistory: (data) {
-        int? responseConversationId;
-        List<dynamic> list;
-        if (data is Map<String, dynamic> &&
-            data.containsKey('conversationId') &&
-            data.containsKey('messages')) {
-          responseConversationId = (data['conversationId'] as num).toInt();
-          list = data['messages'] as List<dynamic>;
-        } else if (data is List<dynamic>) {
-          list = data;
-        } else {
-          return;
+      }
+      notifyListeners();
+    });
+
+    _socketService.on('messageHistory', (data) {
+      int? responseConversationId;
+      List<dynamic> list;
+      if (data is Map<String, dynamic> &&
+          data.containsKey('conversationId') &&
+          data.containsKey('messages')) {
+        responseConversationId = (data['conversationId'] as num).toInt();
+        list = data['messages'] as List<dynamic>;
+      } else if (data is List<dynamic>) {
+        list = data;
+      } else {
+        return;
+      }
+      if (responseConversationId != null &&
+          _activeConversationId != null &&
+          responseConversationId != _activeConversationId) {
+        return;
+      }
+      _messages = list
+          .map((m) => MessageModel.fromJson(m as Map<String, dynamic>))
+          .toList();
+
+      // Cancel any in-flight decrypt so we process the latest messages
+      _decryptHistoryGeneration++;
+
+      // Don't re-add messages we already received as deleted (e.g. ping deleted by other user; late messageHistory can overwrite)
+      _messages.removeWhere((m) => _deletedMessageIds.contains(m.id));
+
+      // Immediately remove any already-expired messages
+      final now = DateTime.now();
+      _messages.removeWhere(
+        (m) => m.expiresAt != null && m.expiresAt!.isBefore(now),
+      );
+      notifyListeners();
+      if (_activeConversationId != null) {
+        markConversationRead(_activeConversationId!);
+      }
+
+      // Decrypt history first so no live message advances the session before we decrypt in order. Queue any incoming messages until done.
+      final myGeneration = _decryptHistoryGeneration;
+      _decryptingHistory = true;
+      _decryptMessageHistory(myGeneration).whenComplete(() {
+        if (_decryptHistoryGeneration == myGeneration) {
+          _decryptingHistory = false;
         }
-        if (responseConversationId != null &&
-            _activeConversationId != null &&
-            responseConversationId != _activeConversationId) {
-          return;
-        }
-        _messages = list
-            .map((m) => MessageModel.fromJson(m as Map<String, dynamic>))
-            .toList();
+        _processIncomingMessageQueue();
+      });
+    });
 
-        // Cancel any in-flight decrypt so we process the latest messages
-        _decryptHistoryGeneration++;
+    _socketService.on('messageSent', _handleIncomingMessage);
+    _socketService.on('newMessage', _handleIncomingMessage);
 
-        // Don't re-add messages we already received as deleted (e.g. ping deleted by other user; late messageHistory can overwrite)
-        _messages.removeWhere((m) => _deletedMessageIds.contains(m.id));
+    _socketService.on('openConversation', (data) {
+      final convId = (data as Map<String, dynamic>)['conversationId'] as int;
+      _pendingOpenConversationId = convId;
+      notifyListeners();
+    });
 
-        // Immediately remove any already-expired messages
-        final now = DateTime.now();
-        _messages.removeWhere(
-          (m) => m.expiresAt != null && m.expiresAt!.isBefore(now),
-        );
-        notifyListeners();
-        if (_activeConversationId != null) {
-          markConversationRead(_activeConversationId!);
-        }
+    _socketService.on('error', (err) {
+      final String msg = err is Map<String, dynamic> && err['message'] != null
+          ? err['message'] as String
+          : err.toString();
+      _errorMessage = msg;
+      // If server rejected send (e.g. not friends, blocked), mark optimistic message as failed so Retry appears
+      _markSendingMessagesFailed(msg);
+      notifyListeners();
+    });
 
-        // Decrypt history first so no live message advances the session before we decrypt in order. Queue any incoming messages until done.
-        final myGeneration = _decryptHistoryGeneration;
-        _decryptingHistory = true;
-        _decryptMessageHistory(myGeneration).whenComplete(() {
-          if (_decryptHistoryGeneration == myGeneration) {
-            _decryptingHistory = false;
-          }
-          _processIncomingMessageQueue();
-        });
-      },
-      onMessageSent: _handleIncomingMessage,
-      onNewMessage: _handleIncomingMessage,
-      onOpenConversation: (data) {
-        final convId = (data as Map<String, dynamic>)['conversationId'] as int;
-        _pendingOpenConversationId = convId;
-        notifyListeners();
-      },
-      onError: (err) {
-        final String msg = err is Map<String, dynamic> && err['message'] != null
-            ? err['message'] as String
-            : err.toString();
-        _errorMessage = msg;
-        // If server rejected send (e.g. not friends, blocked), mark optimistic message as failed so Retry appears
-        _markSendingMessagesFailed(msg);
-        notifyListeners();
-      },
-      onFriendRequestsList: (data) => _friendsProvider?.onFriendRequestsList(data),
-      onNewFriendRequest: (data) => _friendsProvider?.onNewFriendRequest(data),
-      onFriendRequestSent: (data) => _friendsProvider?.onFriendRequestSent(data),
-      onFriendRequestAccepted: (data) => _friendsProvider?.onFriendRequestAccepted(data),
-      onFriendRequestRejected: (data) => _friendsProvider?.onFriendRequestRejected(data),
-      onPendingRequestsCount: (data) => _friendsProvider?.onPendingRequestsCount(data),
-      onFriendsList: (data) => _friendsProvider?.onFriendsList(data),
-      onUnfriended: (data) => _friendsProvider?.onUnfriended(data),
-      onBlockedList: (data) => _friendsProvider?.onBlockedList(data),
-      onYouWereBlocked: (data) => _friendsProvider?.onYouWereBlocked(data),
-      onMessageDelivered: _handleMessageDelivered,
-      onChatHistoryCleared: _handleChatHistoryCleared,
-      onMessageDeleted: _handleMessageDeleted,
-      onDisappearingTimerUpdated: _handleDisappearingTimerUpdated,
-      onConversationDeleted: _handleConversationDeleted,
-      onSearchUsersResult: (data) => _friendsProvider?.onSearchUsersResult(data),
-      onPartnerTyping: _handlePartnerTyping,
-      onPartnerRecordingVoice: _handlePartnerRecordingVoice,
-      onReactionUpdated: _handleReactionUpdated,
-      onLinkPreviewReady: _handleLinkPreviewReady,
-      onKeyBundleUploaded: _encryptionProvider?.onKeyBundleUploaded ?? (_) {},
-      onOneTimePreKeysUploaded: _encryptionProvider?.onOneTimePreKeysUploaded ?? (_) {},
-      onPreKeyBundleResponse: _encryptionProvider?.onPreKeyBundleResponse ?? (_) {},
-      onPreKeysLow: _encryptionProvider?.onPreKeysLow ?? (_) {},
-      onSessionRebuildNeeded: _encryptionProvider?.onSessionRebuildNeeded ?? (_) {},
-      onDisconnect: (_) {
-        _reconnect.onDisconnect(
-          () => connect(token: _reconnect.tokenForReconnect!, userId: _currentUserId!),
-          (msg) {
-            _errorMessage = msg;
-            notifyListeners();
-          },
-        );
-      },
-    );
+    // Friend events -> FriendsProvider
+    _socketService.on('friendRequestsList', (data) => _friendsProvider?.onFriendRequestsList(data));
+    _socketService.on('newFriendRequest', (data) => _friendsProvider?.onNewFriendRequest(data));
+    _socketService.on('friendRequestSent', (data) => _friendsProvider?.onFriendRequestSent(data));
+    _socketService.on('friendRequestAccepted', (data) => _friendsProvider?.onFriendRequestAccepted(data));
+    _socketService.on('friendRequestRejected', (data) => _friendsProvider?.onFriendRequestRejected(data));
+    _socketService.on('pendingRequestsCount', (data) => _friendsProvider?.onPendingRequestsCount(data));
+    _socketService.on('friendsList', (data) => _friendsProvider?.onFriendsList(data));
+    _socketService.on('unfriended', (data) => _friendsProvider?.onUnfriended(data));
+    _socketService.on('blockedList', (data) => _friendsProvider?.onBlockedList(data));
+    _socketService.on('youWereBlocked', (data) => _friendsProvider?.onYouWereBlocked(data));
+    _socketService.on('searchUsersResult', (data) => _friendsProvider?.onSearchUsersResult(data));
+
+    // Message state events
+    _socketService.on('messageDelivered', _handleMessageDelivered);
+    _socketService.on('chatHistoryCleared', _handleChatHistoryCleared);
+    _socketService.on('messageDeleted', _handleMessageDeleted);
+    _socketService.on('disappearingTimerUpdated', _handleDisappearingTimerUpdated);
+    _socketService.on('conversationDeleted', _handleConversationDeleted);
+
+    // UI events
+    _socketService.on('partnerTyping', _handlePartnerTyping);
+    _socketService.on('partnerRecordingVoice', _handlePartnerRecordingVoice);
+    _socketService.on('reactionUpdated', _handleReactionUpdated);
+    _socketService.on('linkPreviewReady', _handleLinkPreviewReady);
+
+    // Encryption events -> EncryptionProvider
+    _socketService.on('keyBundleUploaded', _encryptionProvider?.onKeyBundleUploaded ?? (_) {});
+    _socketService.on('oneTimePreKeysUploaded', _encryptionProvider?.onOneTimePreKeysUploaded ?? (_) {});
+    _socketService.on('preKeyBundleResponse', _encryptionProvider?.onPreKeyBundleResponse ?? (_) {});
+    _socketService.on('preKeysLow', _encryptionProvider?.onPreKeysLow ?? (_) {});
+    _socketService.on('sessionRebuildNeeded', _encryptionProvider?.onSessionRebuildNeeded ?? (_) {});
+
+    _socketService.onDisconnect((_) {
+      _reconnect.onDisconnect(
+        () => connect(token: _reconnect.tokenForReconnect!, userId: _currentUserId!),
+        (msg) {
+          _errorMessage = msg;
+          notifyListeners();
+        },
+      );
+    });
   }
 
   // ---------- Open conversation & message list ----------

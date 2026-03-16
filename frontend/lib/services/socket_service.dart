@@ -8,43 +8,7 @@ class SocketService {
   /// True if the socket exists and is connected.
   bool get isConnected => _socket?.connected ?? false;
 
-  void connect({
-    required String baseUrl,
-    required String token,
-    required void Function() onConnect,
-    required void Function(dynamic) onConversationsList,
-    required void Function(dynamic) onMessageHistory,
-    required void Function(dynamic) onMessageSent,
-    required void Function(dynamic) onNewMessage,
-    required void Function(dynamic) onOpenConversation,
-    required void Function(dynamic) onError,
-    required void Function(dynamic) onDisconnect,
-    required void Function(dynamic) onFriendRequestsList,
-    required void Function(dynamic) onNewFriendRequest,
-    required void Function(dynamic) onFriendRequestSent,
-    required void Function(dynamic) onFriendRequestAccepted,
-    required void Function(dynamic) onFriendRequestRejected,
-    required void Function(dynamic) onPendingRequestsCount,
-    required void Function(dynamic) onFriendsList,
-    required void Function(dynamic) onUnfriended,
-    required void Function(dynamic) onBlockedList,
-    required void Function(dynamic) onYouWereBlocked,
-    required void Function(dynamic) onMessageDelivered,
-    required void Function(dynamic) onChatHistoryCleared,
-    required void Function(dynamic) onMessageDeleted,
-    required void Function(dynamic) onDisappearingTimerUpdated,
-    required void Function(dynamic) onConversationDeleted,
-    required void Function(dynamic) onSearchUsersResult,
-    void Function(dynamic)? onPartnerTyping,
-    void Function(dynamic)? onPartnerRecordingVoice,
-    void Function(dynamic)? onReactionUpdated,
-    void Function(dynamic)? onLinkPreviewReady,
-    void Function(dynamic)? onKeyBundleUploaded,
-    void Function(dynamic)? onOneTimePreKeysUploaded,
-    void Function(dynamic)? onPreKeyBundleResponse,
-    void Function(dynamic)? onPreKeysLow,
-    void Function(dynamic)? onSessionRebuildNeeded,
-  }) {
+  void connect({required String baseUrl, required String token}) {
     // Defensive cleanup: ensure any previous socket is fully disposed
     // before creating a new one (prevents cache reuse)
     if (_socket != null) {
@@ -64,59 +28,27 @@ class SocketService {
           .build(),
     );
 
-    _socket!.onConnect((_) => onConnect());
-    _socket!.on('conversationsList', onConversationsList);
-    _socket!.on('messageHistory', onMessageHistory);
-    _socket!.on('messageSent', onMessageSent);
-    _socket!.on('newMessage', onNewMessage);
-    _socket!.on('openConversation', onOpenConversation);
-    _socket!.on('error', onError);
-    _socket!.on('friendRequestsList', onFriendRequestsList);
-    _socket!.on('newFriendRequest', onNewFriendRequest);
-    _socket!.on('friendRequestSent', onFriendRequestSent);
-    _socket!.on('friendRequestAccepted', onFriendRequestAccepted);
-    _socket!.on('friendRequestRejected', onFriendRequestRejected);
-    _socket!.on('pendingRequestsCount', onPendingRequestsCount);
-    _socket!.on('friendsList', onFriendsList);
-    _socket!.on('unfriended', onUnfriended);
-    _socket!.on('blockedList', onBlockedList);
-    _socket!.on('youWereBlocked', onYouWereBlocked);
-    _socket!.on('messageDelivered', onMessageDelivered);
-    _socket!.on('chatHistoryCleared', onChatHistoryCleared);
-    _socket!.on('messageDeleted', onMessageDeleted);
-    _socket!.on('disappearingTimerUpdated', onDisappearingTimerUpdated);
-    _socket!.on('conversationDeleted', onConversationDeleted);
-    _socket!.on('searchUsersResult', onSearchUsersResult);
-    if (onPartnerTyping != null) {
-      _socket!.on('partnerTyping', onPartnerTyping);
-    }
-    if (onPartnerRecordingVoice != null) {
-      _socket!.on('partnerRecordingVoice', onPartnerRecordingVoice);
-    }
-    if (onReactionUpdated != null) {
-      _socket!.on('reactionUpdated', onReactionUpdated);
-    }
-    if (onLinkPreviewReady != null) {
-      _socket!.on('linkPreviewReady', onLinkPreviewReady);
-    }
-    if (onKeyBundleUploaded != null) {
-      _socket!.on('keyBundleUploaded', onKeyBundleUploaded);
-    }
-    if (onOneTimePreKeysUploaded != null) {
-      _socket!.on('oneTimePreKeysUploaded', onOneTimePreKeysUploaded);
-    }
-    if (onPreKeyBundleResponse != null) {
-      _socket!.on('preKeyBundleResponse', onPreKeyBundleResponse);
-    }
-    if (onPreKeysLow != null) {
-      _socket!.on('preKeysLow', onPreKeysLow);
-    }
-    if (onSessionRebuildNeeded != null) {
-      _socket!.on('sessionRebuildNeeded', onSessionRebuildNeeded);
-    }
-    _socket!.onDisconnect(onDisconnect);
-
     _socket!.connect();
+  }
+
+  /// Register a listener for a socket event.
+  void on(String event, void Function(dynamic) callback) {
+    _socket?.on(event, callback);
+  }
+
+  /// Remove listener(s) for a socket event.
+  void off(String event) {
+    _socket?.off(event);
+  }
+
+  /// Register a callback for the 'connect' event.
+  void onConnect(void Function() callback) {
+    _socket?.onConnect((_) => callback());
+  }
+
+  /// Register a callback for the 'disconnect' event.
+  void onDisconnect(void Function(dynamic) callback) {
+    _socket?.onDisconnect(callback);
   }
 
   void getConversations() {
