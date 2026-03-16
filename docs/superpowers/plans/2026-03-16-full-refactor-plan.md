@@ -54,7 +54,8 @@ export class ChatPresenceService {
   ): Promise<void> {
     try {
       const dto = await validateDto(TypingDto, payload);
-      const userId = (client as any).userId as number;
+      const userId: number = client.data.user?.id;
+      if (!userId) return;
       const recipientSocketId = onlineUsers.get(dto.recipientId);
       if (recipientSocketId) {
         server.to(recipientSocketId).emit('partnerTyping', {
@@ -75,7 +76,8 @@ export class ChatPresenceService {
   ): Promise<void> {
     try {
       const dto = await validateDto(RecordingVoiceDto, payload);
-      const userId = (client as any).userId as number;
+      const userId: number = client.data.user?.id;
+      if (!userId) return;
       const recipientSocketId = onlineUsers.get(dto.recipientId);
       if (recipientSocketId) {
         server.to(recipientSocketId).emit('partnerRecordingVoice', {
@@ -109,7 +111,7 @@ describe('ChatPresenceService', () => {
       to: jest.fn().mockReturnThis(),
       emit: jest.fn(),
     };
-    mockClient = { userId: 1 };
+    mockClient = { data: { user: { id: 1 } } };
     onlineUsers = new Map([[2, 'socket-2']]);
   });
 
@@ -311,7 +313,7 @@ describe('ChatBlockService', () => {
       to: jest.fn().mockReturnThis(),
       emit: jest.fn(),
     };
-    mockClient = { userId: 1, emit: jest.fn() };
+    mockClient = { data: { user: { id: 1 } }, emit: jest.fn() };
     onlineUsers = new Map([[2, 'socket-2']]);
   });
 
@@ -1103,7 +1105,7 @@ Move from `chat_provider.dart`:
 
 Include:
 - `onConnect(bool isReconnect)` / `onDisconnect()`
-  - `onConnect(false)`: clear all message state + drain `_incomingMessageQueue`
+  - `onConnect(false)`: clear all message state + clear `_incomingMessageQueue` (fresh connect = no buffered messages to preserve)
   - `onConnect(true)`: preserve messages (no flicker), preserve `_incomingMessageQueue` (may have buffered messages during reconnect)
   - `onDisconnect()`: cancel `_delayedRetryTimer`, clear typing timers
 - `_error` field for error handling (per spec: each provider manages own errors)
@@ -1163,7 +1165,8 @@ MultiProvider(
 )
 // Order: ConnectionProvider first, then Encryption, Conversations, Friends, then Messaging
 // MessagingProvider depends on Connection + Encryption (ProxyProvider2)
-// FriendsProvider needs ConversationsProvider for cross-domain calls — resolved via context.read in event handlers
+// FriendsProvider needs ConversationsProvider + MessagingProvider for cross-domain calls (unfriend/block)
+// These are set via FriendsProvider.setCrossProviders(conversations, messaging) called in ConnectionProvider.setProviders()
 ```
 
 Each sub-provider has an `updateConnection(ConnectionProvider conn)` method that stores the reference (no notifyListeners — just saves the ref). MessagingProvider has `updateDependencies(ConnectionProvider conn, EncryptionProvider enc)`.
