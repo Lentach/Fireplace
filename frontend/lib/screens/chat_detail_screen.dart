@@ -4,7 +4,10 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
-import '../providers/chat_provider.dart';
+import '../providers/connection_provider.dart';
+import '../providers/conversations_provider.dart';
+import '../providers/friends_provider.dart';
+import '../providers/messaging_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/chat_message_bubble.dart';
 import '../widgets/chat_input_bar.dart';
@@ -75,8 +78,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void _onNewMessages(int currentCount, int added) {
     if (added <= 0) return;
     _lastMessageCount = currentCount;
-    final chat = context.read<ChatProvider>();
-    _lastLinkPreviewCount = chat.messages.where((m) => m.linkPreviewUrl != null).length;
+    final messaging = context.read<MessagingProvider>();
+    _lastLinkPreviewCount = messaging.messages.where((m) => m.linkPreviewUrl != null).length;
     // When opening conversation, expand cache so ListView builds all items and maxScrollExtent is correct.
     final isInitialLoad = added == currentCount && currentCount > 0;
     if (isInitialLoad) {
@@ -100,7 +103,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       // Always reload messages from server when entering/re-entering chat
       // to ensure timed messages reflect their current state
-      context.read<ChatProvider>().openConversation(widget.conversationId);
+      final convs = context.read<ConversationsProvider>();
+      final conn = context.read<ConnectionProvider>();
+      convs.openConversation(widget.conversationId);
+      conn.socketService.getMessages(widget.conversationId, limit: 50);
     });
 
     // Refresh every second: remove expired and tick countdown. No setState here -
@@ -110,10 +116,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       const Duration(seconds: 1),
       (_) {
         if (!mounted) return;
-        final chat = context.read<ChatProvider>();
-        if (chat.isRecordingVoice) return; // Skip during recording to avoid starving recording timer
-        chat.removeExpiredMessages();
-        chat.countdownTickNotifier.value++;
+        final messaging = context.read<MessagingProvider>();
+        if (messaging.isRecordingVoice) return; // Skip during recording to avoid starving recording timer
+        messaging.removeExpiredMessages();
+        messaging.countdownTickNotifier.value++;
       },
     );
   }
@@ -128,7 +134,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       _lastLinkPreviewCount = 0;
       _newMessagesCount = 0;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        context.read<ChatProvider>().openConversation(widget.conversationId);
+        final convs = context.read<ConversationsProvider>();
+        final conn = context.read<ConnectionProvider>();
+        convs.openConversation(widget.conversationId);
+        conn.socketService.getMessages(widget.conversationId, limit: 50);
       });
     }
   }
@@ -163,7 +172,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       ).then((_) {
         if (mounted) {
           setState(() {
-            _lastMessageCount = context.read<ChatProvider>().messages.length;
+            _lastMessageCount = context.read<MessagingProvider>().messages.length;
             _expandCacheForScroll = false;
           });
         }
@@ -226,19 +235,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   ConversationModel? _getActiveConversation() {
-    return context.read<ChatProvider>().getConversationById(widget.conversationId);
+    return context.read<ConversationsProvider>().getConversationById(widget.conversationId);
   }
 
   String _getContactName() {
     final conv = _getActiveConversation();
     return conv != null
-        ? context.read<ChatProvider>().getOtherUserUsername(conv)
+        ? context.read<ConversationsProvider>().getOtherUserUsername(conv)
         : '';
   }
 
   UserModel? _getOtherUser() {
     final conv = _getActiveConversation();
-    return conv != null ? context.read<ChatProvider>().getOtherUser(conv) : null;
+    return conv != null ? context.read<ConversationsProvider>().getOtherUser(conv) : null;
   }
 
   /// statusText: e.g. "typing..." or "Recording voice..."
@@ -318,11 +327,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     );
   }
 
-  String? _getHeaderStatusText(BuildContext context, ChatProvider chat) {
+  String? _getHeaderStatusText(BuildContext context, MessagingProvider msg) {
     final l10n = AppLocalizations.of(context);
-    if (chat.isRecordingVoice) return l10n.recordingVoice;
-    if (chat.isPartnerRecordingVoice(widget.conversationId)) return l10n.recordingVoice;
-    if (chat.isPartnerTyping(widget.conversationId)) return l10n.typing;
+    if (msg.isRecordingVoice) return l10n.recordingVoice;
+    if (msg.isPartnerRecordingVoice(widget.conversationId)) return l10n.recordingVoice;
+    if (msg.isPartnerTyping(widget.conversationId)) return l10n.typing;
     return null;
   }
 
@@ -332,9 +341,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   @override
   Widget build(BuildContext context) {
-    final chat = context.watch<ChatProvider>();
+    final messaging = context.watch<MessagingProvider>();
+    final convs = context.watch<ConversationsProvider>();
     final auth = context.watch<AuthProvider>();
-    final messages = chat.messages;
+    final messages = messaging.messages;
     final contactName = _getContactName();
     final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
 
@@ -385,10 +395,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final mutedColor =
         isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
     final otherUser = _getOtherUser();
-    final activeConv = chat.getConversationById(widget.conversationId);
-    final deletedByOther = activeConv == null && chat.activeConversationDeletedByOther;
+    final activeConv = convs.getConversationById(widget.conversationId);
+    final deletedByOther = activeConv == null && convs.activeConversationDeletedByOther;
     // Auto-pop only when conv gone and NOT deleted by other (e.g. unfriend/block)
-    if (activeConv == null && chat.conversations.isNotEmpty && !deletedByOther) {
+    if (activeConv == null && convs.conversations.isNotEmpty && !deletedByOther) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         if (Navigator.canPop(context)) {
@@ -434,7 +444,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               backgroundColor: messagesAreaBg,
               child: RefreshIndicator(
                 onRefresh: () async {
-                  context.read<ChatProvider>().openConversation(widget.conversationId);
+                  final c = context.read<ConversationsProvider>();
+                  final conn = context.read<ConnectionProvider>();
+                  c.openConversation(widget.conversationId);
+                  conn.socketService.getMessages(widget.conversationId, limit: 50);
                   await Future.delayed(const Duration(milliseconds: 800));
                 },
                 child: messages.isEmpty
@@ -490,7 +503,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               ),
             ),
           ),
-          if (otherUser != null && chat.blockedByUserIds.contains(otherUser.id))
+          if (otherUser != null && context.read<FriendsProvider>().blockedByUserIds.contains(otherUser.id))
             Container(
               width: double.infinity,
               padding: const EdgeInsets.symmetric(vertical: 16),
@@ -533,7 +546,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 ),
                 Expanded(
                   child: Center(
-                    child: _buildHeaderTitle(context, contactName, otherUser, _getHeaderStatusText(context, chat)),
+                    child: _buildHeaderTitle(context, contactName, otherUser, _getHeaderStatusText(context, messaging)),
                   ),
                 ),
               ],
@@ -545,11 +558,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                 body,
 
                 // Ping effect overlay
-                if (chat.showPingEffect)
+                if (messaging.showPingEffect)
                   Positioned.fill(
                     child: PingEffectOverlay(
                       onComplete: () {
-                        chat.clearPingEffect();
+                        messaging.clearPingEffect();
                       },
                     ),
                   ),
@@ -568,23 +581,25 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
-            final c = context.read<ChatProvider>();
+            final c = context.read<ConversationsProvider>();
+            final m = context.read<MessagingProvider>();
             if (c.activeConversationDeletedByOther) {
               c.clearActiveIfDeletedByOther();
             } else {
-              c.clearActiveConversation();
+              c.closeConversation();
+              m.clearMessages();
             }
             Navigator.of(context).pop();
           },
         ),
-        title: _buildHeaderTitle(context, contactName, otherUser, _getHeaderStatusText(context, chat)),
+        title: _buildHeaderTitle(context, contactName, otherUser, _getHeaderStatusText(context, messaging)),
         actions: [
           if (otherUser != null)
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
               onSelected: (value) {
                 if (value == 'block') {
-                  context.read<ChatProvider>().blockUser(otherUser!.id);
+                  context.read<FriendsProvider>().blockUser(otherUser!.id);
                   Navigator.of(context).pop();
                 }
               },
@@ -613,11 +628,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
           body,
 
           // Ping effect overlay
-          if (chat.showPingEffect)
+          if (messaging.showPingEffect)
             Positioned.fill(
               child: PingEffectOverlay(
                 onComplete: () {
-                  chat.clearPingEffect();
+                  messaging.clearPingEffect();
                 },
               ),
             ),

@@ -4,7 +4,6 @@ import '../constants/app_constants.dart';
 import '../config/app_config.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
-import '../providers/chat_provider.dart';
 import '../providers/connection_provider.dart';
 import '../providers/conversations_provider.dart';
 import '../providers/encryption_provider.dart';
@@ -36,7 +35,6 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       final friends = context.read<FriendsProvider>();
       final convs = context.read<ConversationsProvider>();
       final msg = context.read<MessagingProvider>();
-      final chat = context.read<ChatProvider>();
 
       // Wire all sub-providers into ConnectionProvider
       conn.setProviders(
@@ -50,26 +48,17 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       msg.setEncryptionProvider(enc);
       msg.setConversationsProvider(convs);
 
-      // Wire ChatProvider facade so all existing screens keep working
-      chat.setNewProviders(
-        conn: conn,
-        convs: convs,
-        msg: msg,
-        friends: friends,
-        enc: enc,
-      );
-
       // Start connection via ConnectionProvider (owns socket lifecycle)
       conn.connect(auth.currentUser!.id, auth.token!, AppConfig.baseUrl);
     });
   }
 
   void _openChat(int conversationId) {
-    final chat = context.read<ChatProvider>();
+    final convs = context.read<ConversationsProvider>();
     final width = MediaQuery.of(context).size.width;
     if (width >= AppConstants.layoutBreakpointDesktop) {
       // Desktop: only set active so ChatDetailScreen shows; it will call openConversation (avoids double getMessages)
-      chat.setActiveConversation(conversationId);
+      convs.setActiveConversation(conversationId);
     } else {
       // Mobile: only navigate; ChatDetailScreen initState will call openConversation (avoids double getMessages)
       Navigator.of(context).push(
@@ -92,7 +81,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   void _deleteConversation(int conversationId) {
     // Dialog is handled by Dismissible widget in ConversationTile
     // This method is called after user confirms in swipe-to-delete dialog
-    context.read<ChatProvider>().deleteConversationOnly(conversationId);
+    context.read<ConversationsProvider>().deleteConversation(conversationId);
   }
 
   @override
@@ -174,9 +163,9 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                     onPressed: _startNewChat,
                     tooltip: AppLocalizations.of(context).addInvitations,
                   ),
-                  Consumer<ChatProvider>(
-                    builder: (context, chat, _) {
-                      if (chat.pendingRequestsCount == 0) {
+                  Consumer<FriendsProvider>(
+                    builder: (context, friends, _) {
+                      if (friends.pendingRequestsCount == 0) {
                         return const SizedBox.shrink();
                       }
                       return Positioned(
@@ -189,7 +178,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                             shape: BoxShape.circle,
                           ),
                           child: Text(
-                            '${chat.pendingRequestsCount}',
+                            '${friends.pendingRequestsCount}',
                             style: RpgTheme.bodyFont(
                               fontSize: 10,
                               color: Colors.white,
@@ -210,7 +199,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   }
 
   Widget _buildDesktopLayout() {
-    final chat = context.watch<ChatProvider>();
+    final convs = context.watch<ConversationsProvider>();
     final isDark = RpgTheme.isDark(context);
     final borderColor =
         FireplaceColors.of(context).convItemBorder;
@@ -236,9 +225,9 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           ),
           Container(width: 1, color: borderColor),
           Expanded(
-            child: chat.activeConversationId != null
+            child: convs.activeConversationId != null
                 ? ChatDetailScreen(
-                    conversationId: chat.activeConversationId!,
+                    conversationId: convs.activeConversationId!,
                     isEmbedded: true,
                   )
                 : Center(
@@ -272,8 +261,8 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   }
 
   Widget _buildConversationList() {
-    final chat = context.watch<ChatProvider>();
-    final conversations = chat.sortedConversations;
+    final convs = context.watch<ConversationsProvider>();
+    final conversations = convs.sortedConversations;
     final isDark = RpgTheme.isDark(context);
     final mutedColor =
         isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
@@ -316,18 +305,19 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       ),
       itemBuilder: (context, index) {
         final conv = conversations[index];
-        final otherUser = chat.getOtherUser(conv);
-        final displayName = chat.getOtherUserUsername(conv);
-        final lastMsg = chat.lastMessages[conv.id];
+        final otherUser = convs.getOtherUser(conv);
+        final displayName = convs.getOtherUserUsername(conv);
+        final lastMsg = convs.lastMessages[conv.id];
+        final msg = context.read<MessagingProvider>();
         return ConversationTile(
           displayName: displayName,
           lastMessage: lastMsg,
-          isActive: conv.id == chat.activeConversationId,
-          unreadCount: chat.getUnreadCount(conv.id),
+          isActive: conv.id == convs.activeConversationId,
+          unreadCount: convs.getUnreadCount(conv.id),
           onTap: () => _openChat(conv.id),
           onDelete: () => _deleteConversation(conv.id),
           otherUser: otherUser,
-          isTyping: chat.isPartnerTyping(conv.id),
+          isTyping: msg.isPartnerTyping(conv.id),
         );
       },
     );

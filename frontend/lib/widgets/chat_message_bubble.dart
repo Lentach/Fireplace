@@ -6,7 +6,7 @@ import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
 import '../models/message_model.dart';
 import '../providers/auth_provider.dart';
-import '../providers/chat_provider.dart';
+import '../providers/messaging_provider.dart';
 import '../services/link_preview_service.dart';
 import '../utils/download_utils_web.dart' if (dart.library.io) '../utils/download_utils_io.dart' as download_utils;
 import 'message_swipe_wrapper.dart';
@@ -360,7 +360,7 @@ class ChatMessageBubble extends StatelessWidget {
   /// Time + delivery icon + disappearing timer row (Telegram style: right side of bubble).
   Widget _buildTimeDeliveryTimerRow(BuildContext context, Color timeColor) {
     return ValueListenableBuilder<int>(
-      valueListenable: context.read<ChatProvider>().countdownTickNotifier,
+      valueListenable: context.read<MessagingProvider>().countdownTickNotifier,
       builder: (_, __, ___) {
         final timerText = _getTimerText();
         return Row(
@@ -406,7 +406,7 @@ class ChatMessageBubble extends StatelessWidget {
   }
 
   void _showReactionOptions(BuildContext context) {
-    final chat = context.read<ChatProvider>();
+    final messaging = context.read<MessagingProvider>();
     final currentUserId = context.read<AuthProvider>().currentUser?.id;
 
     showModalBottomSheet<void>(
@@ -423,9 +423,9 @@ class ChatMessageBubble extends StatelessWidget {
                 onTap: () {
                   Navigator.pop(ctx);
                   if (alreadyReacted) {
-                    chat.removeReaction(message.id, emoji);
+                    messaging.removeReaction(message.id, emoji);
                   } else {
-                    chat.addReaction(message.id, emoji);
+                    messaging.addReaction(message.id, emoji);
                   }
                 },
                 child: Container(
@@ -453,9 +453,9 @@ class ChatMessageBubble extends StatelessWidget {
 
     return TextButton.icon(
       onPressed: () {
-        final chat = Provider.of<ChatProvider>(context, listen: false);
+        final messaging = Provider.of<MessagingProvider>(context, listen: false);
         if (message.tempId != null) {
-          chat.retryFailedMessage(message.tempId!);
+          messaging.retryFailedMessage(message.tempId!);
         }
       },
       icon: const Icon(Icons.refresh, size: 16),
@@ -509,12 +509,12 @@ class ChatMessageBubble extends StatelessWidget {
         isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight;
 
     final currentUserId = context.read<AuthProvider>().currentUser?.id;
-    final chat = context.read<ChatProvider>();
+    final messaging = context.read<MessagingProvider>();
 
     return MessageSwipeWrapper(
       isMine: isMine,
-      onSwipeReply: () => chat.setReplyingTo(message),
-      onSwipeDelete: () => chat.deleteMessage(message.id, forEveryone: isMine),
+      onSwipeReply: () => messaging.setReplyingTo(message),
+      onSwipeDelete: () => messaging.deleteMessage(message.id, forEveryone: isMine),
       onLongPress: () => _showReactionOptions(context),
       child: Align(
         alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -599,11 +599,11 @@ class ChatMessageBubble extends StatelessWidget {
             reactions: message.reactions,
             currentUserId: currentUserId ?? -1,
             onTap: (emoji, isMyReaction) {
-              final chat = context.read<ChatProvider>();
+              final messaging = context.read<MessagingProvider>();
               if (isMyReaction) {
-                chat.removeReaction(message.id, emoji);
+                messaging.removeReaction(message.id, emoji);
               } else {
-                chat.addReaction(message.id, emoji);
+                messaging.addReaction(message.id, emoji);
               }
             },
           ),

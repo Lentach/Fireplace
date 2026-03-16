@@ -106,6 +106,12 @@ class MessagingProvider extends ChangeNotifier {
   bool isPartnerRecordingVoice(int conversationId) =>
       _partnerRecordingVoice[conversationId] ?? false;
 
+  /// Update recording state and notify listeners. Called from ChatInputBar widget.
+  void setIsRecordingVoice(bool value) {
+    isRecordingVoice = value;
+    notifyListeners();
+  }
+
   // ---------- Dependency Wiring ----------
 
   /// Wire the EncryptionProvider for E2E operations.

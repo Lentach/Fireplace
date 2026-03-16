@@ -11,7 +11,9 @@ import 'package:record/record.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import '../models/message_model.dart';
-import '../providers/chat_provider.dart';
+import '../providers/connection_provider.dart';
+import '../providers/conversations_provider.dart';
+import '../providers/messaging_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../utils/secure_context_stub.dart'
     if (dart.library.html) '../utils/secure_context_web.dart' as secure_context;
@@ -97,7 +99,7 @@ class _ChatInputBarState extends State<ChatInputBar>
       if (has) {
         _typingDebounceTimer?.cancel();
         _typingDebounceTimer = Timer(const Duration(milliseconds: 300), () {
-          if (mounted) context.read<ChatProvider>().emitTyping();
+          if (mounted) context.read<MessagingProvider>().emitTyping();
         });
       }
     });
@@ -134,9 +136,10 @@ class _ChatInputBarState extends State<ChatInputBar>
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
-    final chat = context.read<ChatProvider>();
-    final expiresIn = chat.conversationDisappearingTimer;
-    chat.sendMessage(text, expiresIn: expiresIn);
+    final messaging = context.read<MessagingProvider>();
+    final convs = context.read<ConversationsProvider>();
+    final expiresIn = convs.conversationDisappearingTimer;
+    messaging.sendMessage(text, expiresIn: expiresIn);
 
     _controller.clear();
     // Keep focus immediately - prevents keyboard from closing on mobile
@@ -209,15 +212,16 @@ class _ChatInputBarState extends State<ChatInputBar>
       );
 
       _recordingStartTime = DateTime.now();
-      final chat = context.read<ChatProvider>();
-      chat.isRecordingVoice = true;
-      chat.notifyListeners();
-      final convId = chat.activeConversationId;
+      final messaging = context.read<MessagingProvider>();
+      final convs = context.read<ConversationsProvider>();
+      final conn = context.read<ConnectionProvider>();
+      messaging.setIsRecordingVoice(true);
+      final convId = convs.activeConversationId;
       if (convId != null) {
-        final conv = chat.getConversationById(convId);
+        final conv = convs.getConversationById(convId);
         if (conv != null) {
-          final recipientId = chat.getOtherUserId(conv);
-          chat.socket.emitRecordingVoice(recipientId, convId, true);
+          final recipientId = convs.getOtherUserId(conv);
+          conn.socketService.emitRecordingVoice(recipientId, convId, true);
         }
       }
       setState(() {
@@ -244,15 +248,16 @@ class _ChatInputBarState extends State<ChatInputBar>
   Future<void> _stopRecording() async {
     if (_audioRecorder == null || !_isRecording) return;
 
-    final chat = context.read<ChatProvider>();
-    chat.isRecordingVoice = false;
-    chat.notifyListeners();
-    final convId = chat.activeConversationId;
+    final messaging = context.read<MessagingProvider>();
+    final convs = context.read<ConversationsProvider>();
+    final conn = context.read<ConnectionProvider>();
+    messaging.setIsRecordingVoice(false);
+    final convId = convs.activeConversationId;
     if (convId != null) {
-      final conv = chat.getConversationById(convId);
+      final conv = convs.getConversationById(convId);
       if (conv != null) {
-        final recipientId = chat.getOtherUserId(conv);
-        chat.socket.emitRecordingVoice(recipientId, convId, false);
+        final recipientId = convs.getOtherUserId(conv);
+        conn.socketService.emitRecordingVoice(recipientId, convId, false);
       }
     }
     _recordingTimer?.cancel();
@@ -323,9 +328,8 @@ class _ChatInputBarState extends State<ChatInputBar>
   Future<void> _cancelRecording() async {
     if (_audioRecorder == null || !_isRecording) return;
 
-    final chat = context.read<ChatProvider>();
-    chat.isRecordingVoice = false;
-    chat.notifyListeners();
+    final messaging = context.read<MessagingProvider>();
+    messaging.setIsRecordingVoice(false);
     _canceledBySlide = true;
     _recordingTimer?.cancel();
     _recordingTimer = null;
@@ -361,8 +365,9 @@ class _ChatInputBarState extends State<ChatInputBar>
     });
 
     try {
-      final chat = Provider.of<ChatProvider>(context, listen: false);
-      final conversationId = chat.activeConversationId;
+      final messaging = Provider.of<MessagingProvider>(context, listen: false);
+      final convs = Provider.of<ConversationsProvider>(context, listen: false);
+      final conversationId = convs.activeConversationId;
 
       if (conversationId == null) {
         if (!mounted) return;
@@ -371,14 +376,14 @@ class _ChatInputBarState extends State<ChatInputBar>
       }
 
       // Get recipientId from conversation
-      final conversation = chat.conversations.firstWhere(
+      final conversation = convs.conversations.firstWhere(
         (c) => c.id == conversationId,
       );
-      final recipientId = conversation.userOne.id == chat.currentUserId
+      final recipientId = conversation.userOne.id == convs.currentUserId
           ? conversation.userTwo.id
           : conversation.userOne.id;
 
-      await chat.sendVoiceMessage(
+      await messaging.sendVoiceMessage(
         recipientId: recipientId,
         duration: duration,
         conversationId: conversationId,
@@ -455,7 +460,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
   }
 
-  Widget _buildReplyPreview(BuildContext context, ChatProvider chat) {
+  Widget _buildReplyPreview(BuildContext context, MessagingProvider chat) {
     final msg = chat.replyingToMessage;
     if (msg == null) return const SizedBox.shrink();
 
@@ -603,8 +608,9 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   @override
   Widget build(BuildContext context) {
-    final chat = context.watch<ChatProvider>();
-    final replyingTo = chat.replyingToMessage;
+    final messaging = context.watch<MessagingProvider>();
+    final convs = context.read<ConversationsProvider>();
+    final replyingTo = messaging.replyingToMessage;
     if (replyingTo != null && _lastReplyingTo != replyingTo) {
       _lastReplyingTo = replyingTo;
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -615,7 +621,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     } else if (replyingTo == null) {
       _lastReplyingTo = null;
     }
-    final activeTimer = chat.conversationDisappearingTimer;
+    final activeTimer = convs.conversationDisappearingTimer;
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
     final fc = FireplaceColors.of(context);
@@ -626,8 +632,8 @@ class _ChatInputBarState extends State<ChatInputBar>
         mainAxisSize: MainAxisSize.min,
         children: [
           // Reply preview
-          if (chat.replyingToMessage != null)
-            _buildReplyPreview(context, chat),
+          if (messaging.replyingToMessage != null)
+            _buildReplyPreview(context, messaging),
           // Active timer indicator
           if (activeTimer != null)
             Container(

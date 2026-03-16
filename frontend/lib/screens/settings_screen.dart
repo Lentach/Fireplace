@@ -4,7 +4,8 @@ import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import '../theme/rpg_theme.dart';
 import '../providers/auth_provider.dart';
-import '../providers/chat_provider.dart';
+import '../providers/connection_provider.dart';
+import '../providers/encryption_provider.dart';
 import '../providers/settings_provider.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/dialogs/reset_password_dialog.dart';
@@ -119,11 +120,12 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     try {
       final auth = context.read<AuthProvider>();
-      final chat = context.read<ChatProvider>();
+      final enc = context.read<EncryptionProvider>();
+      final conn = context.read<ConnectionProvider>();
 
       await auth.deleteAccount(password);
-      await chat.clearEncryptionKeys();
-      chat.disconnect();
+      await enc.clearEncryptionKeys();
+      conn.disconnect(isLogout: true);
 
       if (mounted) {
         Navigator.of(context).popUntil((route) => route.isFirst);
@@ -314,7 +316,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final chat = context.read<ChatProvider>();
+    final conn = context.read<ConnectionProvider>();
     final settings = context.watch<SettingsProvider>();
 
     final theme = Theme.of(context);
@@ -446,7 +448,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
               padding: const EdgeInsets.symmetric(horizontal: 16),
               child: ElevatedButton(
                 onPressed: () {
-                  chat.disconnect();
+                  conn.disconnect(isLogout: true);
                   auth.logout();
                   if (Navigator.of(context).canPop()) {
                     Navigator.pop(context);

@@ -6,7 +6,7 @@ import 'package:just_audio/just_audio.dart';
 import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
-import '../providers/chat_provider.dart';
+import '../providers/messaging_provider.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:http/http.dart' as http;
 import '../models/message_model.dart';
@@ -219,7 +219,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
   }
 
   void _showReactionOptions() {
-    final chat = context.read<ChatProvider>();
+    final messaging = context.read<MessagingProvider>();
     final currentUserId = context.read<AuthProvider>().currentUser?.id;
 
     showModalBottomSheet<void>(
@@ -236,9 +236,9 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
                 onTap: () {
                   Navigator.pop(ctx);
                   if (alreadyReacted) {
-                    chat.removeReaction(widget.message.id, emoji);
+                    messaging.removeReaction(widget.message.id, emoji);
                   } else {
-                    chat.addReaction(widget.message.id, emoji);
+                    messaging.addReaction(widget.message.id, emoji);
                   }
                 },
                 child: Container(
@@ -373,12 +373,12 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
         ? Theme.of(context).colorScheme.primary
         : FireplaceColors.of(context).borderColor;
     final currentUserId = context.read<AuthProvider>().currentUser?.id;
-    final chat = context.read<ChatProvider>();
+    final messaging = context.read<MessagingProvider>();
 
     return MessageSwipeWrapper(
       isMine: widget.isMine,
-      onSwipeReply: () => chat.setReplyingTo(widget.message),
-      onSwipeDelete: () => chat.deleteMessage(widget.message.id, forEveryone: widget.isMine),
+      onSwipeReply: () => messaging.setReplyingTo(widget.message),
+      onSwipeDelete: () => messaging.deleteMessage(widget.message.id, forEveryone: widget.isMine),
       onLongPress: _showReactionOptions,
       child: Align(
         alignment: widget.isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -520,7 +520,7 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
                           ),
                           const SizedBox(width: 2),
                           ValueListenableBuilder<int>(
-                            valueListenable: ctx.read<ChatProvider>().countdownTickNotifier,
+                            valueListenable: ctx.read<MessagingProvider>().countdownTickNotifier,
                             builder: (_, __, ___) => Text(
                               _getTimerText() ?? '',
                               style: RpgTheme.bodyFont(
@@ -548,11 +548,11 @@ class _VoiceMessageBubbleState extends State<VoiceMessageBubble> {
             reactions: widget.message.reactions,
             currentUserId: currentUserId ?? -1,
             onTap: (emoji, isMyReaction) {
-              final chat = context.read<ChatProvider>();
+              final messaging = context.read<MessagingProvider>();
               if (isMyReaction) {
-                chat.removeReaction(widget.message.id, emoji);
+                messaging.removeReaction(widget.message.id, emoji);
               } else {
-                chat.addReaction(widget.message.id, emoji);
+                messaging.addReaction(widget.message.id, emoji);
               }
             },
           ),
