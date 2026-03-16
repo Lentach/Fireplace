@@ -8,6 +8,7 @@ import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
 import 'top_snackbar.dart';
 import 'anti_quantum_note_dialog.dart';
+import 'gif_picker_sheet.dart';
 
 class ChatActionTiles extends StatelessWidget {
   const ChatActionTiles({super.key});
@@ -67,7 +68,7 @@ class ChatActionTiles extends StatelessWidget {
             icon: Icons.gif_box,
             tooltip: l10n.actionTileGif,
             color: iconColor,
-            onTap: () => _showComingSoon(context, l10n.actionTileGif),
+            onTap: () => _openGifPicker(context),
           ),
           const SizedBox(width: 12),
           _ActionTile(
@@ -177,8 +178,19 @@ class ChatActionTiles extends StatelessWidget {
     );
   }
 
-  void _showComingSoon(BuildContext context, String feature) {
-    showTopSnackBar(context, '$feature coming soon');
+  void _openGifPicker(BuildContext context) {
+    final result = _requireActiveConversation(context);
+    if (result == null) return;
+
+    final chat = context.read<ChatProvider>();
+    final auth = context.read<AuthProvider>();
+
+    GifPickerSheet.show(
+      context,
+      onGifSelected: (gifUrl) {
+        chat.sendGif(auth.token!, gifUrl, result.$2);
+      },
+    );
   }
 
   void _handleClearChatHistory(BuildContext context) {
