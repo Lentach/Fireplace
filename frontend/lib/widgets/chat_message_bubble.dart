@@ -82,6 +82,8 @@ class ChatMessageBubble extends StatelessWidget {
         return l10n.image;
       case MessageType.ping:
         return l10n.ping;
+      case MessageType.gif:
+        return l10n.actionTileGif;
       default:
         return '';
     }
@@ -177,6 +179,33 @@ class ChatMessageBubble extends StatelessWidget {
               ),
             ),
           )
+        else if (message.messageType == MessageType.gif &&
+                 message.mediaUrl != null)
+          GestureDetector(
+            onTap: () => _showGifDialog(context, message.mediaUrl!),
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxWidth: 200),
+              child: ClipRRect(
+                borderRadius: BorderRadius.circular(8),
+                child: Image.network(
+                  message.mediaUrl!,
+                  fit: BoxFit.contain,
+                  loadingBuilder: (context, child, loadingProgress) {
+                    if (loadingProgress == null) return child;
+                    return const SizedBox(
+                      width: 150, height: 150,
+                      child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
+                    );
+                  },
+                  errorBuilder: (context, error, stackTrace) => Container(
+                    width: 150, height: 150,
+                    color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                    child: const Icon(Icons.broken_image, size: 48),
+                  ),
+                ),
+              ),
+            ),
+          )
         else
           Align(
             alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
@@ -269,6 +298,19 @@ class ChatMessageBubble extends StatelessWidget {
           ],
         );
       },
+    );
+  }
+
+  void _showGifDialog(BuildContext context, String url) {
+    showDialog(
+      context: context,
+      builder: (_) => Dialog(
+        backgroundColor: Colors.transparent,
+        child: GestureDetector(
+          onTap: () => Navigator.pop(context),
+          child: Image.network(url, fit: BoxFit.contain),
+        ),
+      ),
     );
   }
 
