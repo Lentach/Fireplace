@@ -4,13 +4,13 @@ import { MessagesService } from '../../messages/messages.service';
 import { ConversationsService } from '../../conversations/conversations.service';
 import { ChatValidationService } from './chat-validation.service';
 import { UsersService } from '../../users/users.service';
-import { LinkPreviewService } from './link-preview.service';
+import { ChatLinkPreviewService } from './chat-link-preview.service';
 import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
 import { validateDto } from '../utils/dto.validator';
-import { SendMessageDto, GetMessagesDto, ClearChatHistoryDto, DeleteMessageDto, AddReactionDto, RemoveReactionDto } from '../dto/chat.dto';
+import { SendMessageDto, GetMessagesDto, ClearChatHistoryDto, DeleteMessageDto } from '../dto/chat.dto';
 import { MessageDeliveredDto } from '../dto/message-delivered.dto';
 import { MarkConversationReadDto } from '../dto/mark-conversation-read.dto';
-import { MessageType, MessageDeliveryStatus } from '../../messages/message.entity';
+import { MessageDeliveryStatus } from '../../messages/message.entity';
 import { MessageMapper } from '../../messages/message.mapper';
 
 @Injectable()
@@ -22,7 +22,7 @@ export class ChatMessageService {
     private readonly conversationsService: ConversationsService,
     private readonly chatValidationService: ChatValidationService,
     private readonly usersService: UsersService,
-    private readonly linkPreviewService: LinkPreviewService,
+    private readonly chatLinkPreviewService: ChatLinkPreviewService,
     private readonly pushNotificationsService: PushNotificationsService,
   ) {}
 
@@ -109,30 +109,16 @@ export class ChatMessageService {
     this.pushNotificationsService.notify(data.recipientId).catch(() => {});
 
     // Async link preview — fire and forget, does not block send
-    // Skip for encrypted messages (server cannot read content)
-    if (!data.encryptedContent && message.messageType === MessageType.TEXT && data.content) {
-      this.linkPreviewService.fetchPreview(data.content).then(async (preview) => {
-        if (!preview) return;
-        const updated = await this.messagesService.updateLinkPreview(
-          message.id,
-          preview.url,
-          preview.title,
-          preview.imageUrl,
-        );
-        if (!updated) return;
-        const previewPayload = {
-          messageId: message.id,
-          conversationId: conversation.id,
-          linkPreviewUrl: preview.url,
-          linkPreviewTitle: preview.title,
-          linkPreviewImageUrl: preview.imageUrl,
-        };
-        client.emit('linkPreviewReady', previewPayload);
-        if (recipientSocketId) {
-          server.to(recipientSocketId).emit('linkPreviewReady', previewPayload);
-        }
-      }).catch(() => { /* swallow — preview is best-effort */ });
-    }
+    this.chatLinkPreviewService.fetchAndEmitIfNeeded({
+      content: data.content,
+      encryptedContent: data.encryptedContent ?? null,
+      messageType: message.messageType,
+      messageId: message.id,
+      conversationId: conversation.id,
+      client,
+      recipientSocketId,
+      server,
+    });
   }
 
   async handleGetMessages(client: Socket, data: any) {
@@ -446,77 +432,4 @@ export class ChatMessageService {
     }
   }
 
-  async handleAddReaction(
-    client: Socket,
-    data: any,
-    server: Server,
-    onlineUsers: Map<number, string>,
-  ): Promise<void> {
-    const userId: number = client.data.user?.id;
-    if (!userId) return;
-
-    try {
-      const dto = validateDto(AddReactionDto, data);
-      data = dto;
-    } catch (error) {
-      client.emit('error', { message: error.message });
-      return;
-    }
-
-    const message = await this.messagesService.findByIdWithConversation(data.messageId);
-    if (!message) { client.emit('error', { message: 'Message not found' }); return; }
-
-    const conv = message.conversation;
-    if (conv.userOne.id !== userId && conv.userTwo.id !== userId) {
-      client.emit('error', { message: 'Unauthorized' }); return;
-    }
-
-    const updated = await this.messagesService.addOrUpdateReaction(data.messageId, userId, data.emoji);
-    if (!updated) return;
-
-    const reactions = updated.reactions ? JSON.parse(updated.reactions) : {};
-    const payload = { messageId: updated.id, conversationId: conv.id, reactions };
-
-    client.emit('reactionUpdated', payload);
-    const otherUserId = conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
-    const otherSocketId = onlineUsers.get(otherUserId);
-    if (otherSocketId) server.to(otherSocketId).emit('reactionUpdated', payload);
-  }
-
-  async handleRemoveReaction(
-    client: Socket,
-    data: any,
-    server: Server,
-    onlineUsers: Map<number, string>,
-  ): Promise<void> {
-    const userId: number = client.data.user?.id;
-    if (!userId) return;
-
-    try {
-      const dto = validateDto(RemoveReactionDto, data);
-      data = dto;
-    } catch (error) {
-      client.emit('error', { message: error.message });
-      return;
-    }
-
-    const message = await this.messagesService.findByIdWithConversation(data.messageId);
-    if (!message) { client.emit('error', { message: 'Message not found' }); return; }
-
-    const conv = message.conversation;
-    if (conv.userOne.id !== userId && conv.userTwo.id !== userId) {
-      client.emit('error', { message: 'Unauthorized' }); return;
-    }
-
-    const updated = await this.messagesService.removeReaction(data.messageId, userId, data.emoji);
-    if (!updated) return;
-
-    const reactions = updated.reactions ? JSON.parse(updated.reactions) : {};
-    const payload = { messageId: updated.id, conversationId: conv.id, reactions };
-
-    client.emit('reactionUpdated', payload);
-    const otherUserId = conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
-    const otherSocketId = onlineUsers.get(otherUserId);
-    if (otherSocketId) server.to(otherSocketId).emit('reactionUpdated', payload);
-  }
 }

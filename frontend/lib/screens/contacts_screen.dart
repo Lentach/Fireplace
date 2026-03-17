@@ -3,7 +3,8 @@ import 'package:provider/provider.dart';
 import '../constants/app_constants.dart';
 import '../l10n/app_localizations.dart';
 import '../models/user_model.dart';
-import '../providers/chat_provider.dart';
+import '../providers/conversations_provider.dart';
+import '../providers/friends_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
 import 'chat_detail_screen.dart';
@@ -12,17 +13,17 @@ class ContactsScreen extends StatelessWidget {
   const ContactsScreen({super.key});
 
   void _openChatWithContact(BuildContext context, int userId) {
-    final chat = context.read<ChatProvider>();
+    final convs = context.read<ConversationsProvider>();
 
     // Check if conversation exists for this user
-    final existingConv = chat.conversations.where((conv) {
-      final otherUser = chat.getOtherUser(conv);
+    final existingConv = convs.conversations.where((conv) {
+      final otherUser = convs.getOtherUser(conv);
       return otherUser?.id == userId;
     }).firstOrNull;
 
     if (existingConv != null) {
       // Conversation exists, open it
-      chat.openConversation(existingConv.id);
+      convs.openConversation(existingConv.id);
 
       final width = MediaQuery.of(context).size.width;
       if (width < AppConstants.layoutBreakpointDesktop) {
@@ -34,7 +35,7 @@ class ContactsScreen extends StatelessWidget {
       }
     } else {
       // No conversation, start new one (backend will create)
-      chat.socket.startConversation(userId);
+      convs.startConversation(userId);
       // consumePendingOpen will handle navigation when backend responds
     }
   }
@@ -83,7 +84,7 @@ class ContactsScreen extends StatelessWidget {
                   ),
                   onTap: () {
                     Navigator.pop(sheetContext);
-                    context.read<ChatProvider>().blockUser(user.id);
+                    context.read<FriendsProvider>().blockUser(user.id);
                   },
                 ),
               ],
@@ -130,7 +131,7 @@ class ContactsScreen extends StatelessWidget {
             TextButton(
               onPressed: () {
                 Navigator.pop(dialogContext);
-                context.read<ChatProvider>().unfriend(userId);
+                context.read<FriendsProvider>().unfriend(userId);
               },
               child: Text(
                 l10n.remove,
@@ -149,12 +150,12 @@ class ContactsScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final chat = context.watch<ChatProvider>();
+    final convs = context.watch<ConversationsProvider>();
     // When user tapped a contact and we had no conversation, we called startConversation.
     // Backend emits openConversation; consume it here and open chat (AddOrInvitations only consumes when that screen is open).
-    if (chat.pendingOpenConversationId != null) {
+    if (convs.pendingOpenConversationId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        final id = context.read<ChatProvider>().consumePendingOpen();
+        final id = context.read<ConversationsProvider>().consumePendingOpen();
         if (id != null && context.mounted) {
           Navigator.of(context).push(
             MaterialPageRoute(
@@ -217,8 +218,8 @@ class ContactsScreen extends StatelessWidget {
   }
 
   Widget _buildContactsList(BuildContext context) {
-    final chat = context.watch<ChatProvider>();
-    final friends = List<UserModel>.from(chat.friends)
+    final friendsProvider = context.watch<FriendsProvider>();
+    final friends = List<UserModel>.from(friendsProvider.friends)
       ..sort(_compareByDisplayName);
     final isDark = RpgTheme.isDark(context);
     final mutedColor = FireplaceColors.of(context).mutedText;

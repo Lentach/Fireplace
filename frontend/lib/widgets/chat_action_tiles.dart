@@ -8,7 +8,8 @@ import 'package:cross_file/cross_file.dart';
 import '../utils/file_utils_stub.dart' if (dart.library.io) '../utils/file_utils_io.dart' as file_utils;
 import '../models/conversation_model.dart';
 import '../providers/auth_provider.dart';
-import '../providers/chat_provider.dart';
+import '../providers/conversations_provider.dart';
+import '../providers/messaging_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
 import 'top_snackbar.dart';
@@ -99,16 +100,16 @@ class ChatActionTiles extends StatelessWidget {
   /// Returns (conv, recipientId) if conversation is active; otherwise shows snackbar and returns null.
   (ConversationModel, int)? _requireActiveConversation(BuildContext context) {
     if (!_ensureHasActiveConversation(context)) return null;
-    final chat = context.read<ChatProvider>();
-    final conv = chat.getConversationById(chat.activeConversationId!);
+    final convs = context.read<ConversationsProvider>();
+    final conv = convs.getConversationById(convs.activeConversationId!);
     if (conv == null) return null;
-    return (conv, chat.getOtherUserId(conv));
+    return (conv, convs.getOtherUserId(conv));
   }
 
   void _sendPing(BuildContext context) {
     final result = _requireActiveConversation(context);
     if (result == null) return;
-    context.read<ChatProvider>().sendPing(result.$2);
+    context.read<MessagingProvider>().sendPing(result.$2);
   }
 
   /// Single tap opens system picker (gallery / folder). User chooses file; we send as image or document by type.
@@ -142,7 +143,7 @@ class ChatActionTiles extends StatelessWidget {
 
     if (!context.mounted) return;
 
-    final chat = context.read<ChatProvider>();
+    final messaging = context.read<MessagingProvider>();
     final auth = context.read<AuthProvider>();
     final recipientId = result.$2;
     final fileName = file.name;
@@ -157,7 +158,7 @@ class ChatActionTiles extends StatelessWidget {
           name: fileName,
           mimeType: _imageMimeForExtension(ext),
         );
-        await chat.sendImageMessage(auth.token!, xfile, recipientId);
+        await messaging.sendImageMessage(auth.token!, xfile, recipientId);
         if (context.mounted) {
           showTopSnackBar(context, 'Image sent!');
         }
@@ -169,7 +170,7 @@ class ChatActionTiles extends StatelessWidget {
     } else {
       showTopSnackBar(context, 'Uploading document...');
       try {
-        await chat.sendFileMessage(
+        await messaging.sendFileMessage(
           auth.token!,
           bytes,
           fileName,
@@ -211,7 +212,7 @@ class ChatActionTiles extends StatelessWidget {
   }
 
   bool _ensureHasActiveConversation(BuildContext context) {
-    if (context.read<ChatProvider>().activeConversationId == null) {
+    if (context.read<ConversationsProvider>().activeConversationId == null) {
       showTopSnackBar(context, 'Open a conversation first');
       return false;
     }
@@ -222,7 +223,7 @@ class ChatActionTiles extends StatelessWidget {
     final result = _requireActiveConversation(context);
     if (result == null) return;
 
-    final chat = context.read<ChatProvider>();
+    final messaging = context.read<MessagingProvider>();
     final l10n = AppLocalizations.of(context);
 
     showModalBottomSheet(
@@ -235,7 +236,7 @@ class ChatActionTiles extends StatelessWidget {
       builder: (_) => AntiQuantumNoteDialog(
         onSend: (content, ttl) async {
           try {
-            await chat.sendAntiQuantumNote(
+            await messaging.sendAntiQuantumNote(
               content: content,
               expiresInSeconds: ttl,
             );
@@ -261,13 +262,13 @@ class ChatActionTiles extends StatelessWidget {
     final result = _requireActiveConversation(context);
     if (result == null) return;
 
-    final chat = context.read<ChatProvider>();
+    final messaging = context.read<MessagingProvider>();
     final auth = context.read<AuthProvider>();
 
     GifPickerSheet.show(
       context,
       onGifSelected: (gifUrl) {
-        chat.sendGif(auth.token!, gifUrl, result.$2);
+        messaging.sendGif(auth.token!, gifUrl, result.$2);
       },
     );
   }
@@ -275,11 +276,12 @@ class ChatActionTiles extends StatelessWidget {
   void _handleClearChatHistory(BuildContext context) {
     if (!_ensureHasActiveConversation(context)) return;
 
-    final chat = context.read<ChatProvider>();
-    final conversationId = chat.activeConversationId!;
+    final convs = context.read<ConversationsProvider>();
+    final messaging = context.read<MessagingProvider>();
+    final conversationId = convs.activeConversationId!;
 
     // Clear chat history
-    chat.clearChatHistory(conversationId);
+    messaging.clearChatHistory(conversationId);
 
     // Show success feedback
     if (context.mounted) {
@@ -486,15 +488,16 @@ class _TimerDialog extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final chat = context.read<ChatProvider>();
-    final current = chat.conversationDisappearingTimer;
+    final convs = context.read<ConversationsProvider>();
+    final current = convs.conversationDisappearingTimer;
 
     return AlertDialog(
       title: const Text('Disappearing Messages'),
       content: RadioGroup<int?>(
         groupValue: current,
         onChanged: (value) {
-          chat.setConversationDisappearingTimer(value);
+          final convId = convs.activeConversationId;
+          if (convId != null) convs.setDisappearingTimer(convId, value);
           Navigator.pop(context);
         },
         child: Column(

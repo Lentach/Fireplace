@@ -5,6 +5,11 @@ import { ChatMessageService } from './services/chat-message.service';
 import { ChatFriendRequestService } from './services/chat-friend-request.service';
 import { ChatConversationService } from './services/chat-conversation.service';
 import { ChatKeyExchangeService } from './services/chat-key-exchange.service';
+import { ChatPresenceService } from './services/chat-presence.service';
+import { ChatBlockService } from './services/chat-block.service';
+import { ChatSearchService } from './services/chat-search.service';
+import { ChatReactionService } from './services/chat-reaction.service';
+import { ChatLinkPreviewService } from './services/chat-link-preview.service';
 import { ChatValidationModule } from './chat-validation.module';
 import { LinkPreviewModule } from './services/link-preview.module';
 import { AuthModule } from '../auth/auth.module';
@@ -35,6 +40,11 @@ import { PushNotificationsModule } from '../push-notifications/push-notification
     ChatFriendRequestService,
     ChatConversationService,
     ChatKeyExchangeService,
+    ChatPresenceService,
+    ChatBlockService,
+    ChatSearchService,
+    ChatReactionService,
+    ChatLinkPreviewService,
     WsThrottlerGuard,
   ],
 })

@@ -5,7 +5,11 @@ import 'firebase_options.dart';
 import 'init_file_picker_stub.dart' if (dart.library.html) 'init_file_picker_web.dart' as file_picker_init;
 import 'l10n/app_localizations.dart';
 import 'providers/auth_provider.dart';
-import 'providers/chat_provider.dart';
+import 'providers/connection_provider.dart';
+import 'providers/conversations_provider.dart';
+import 'providers/encryption_provider.dart';
+import 'providers/friends_provider.dart';
+import 'providers/messaging_provider.dart';
 import 'providers/settings_provider.dart';
 import 'screens/auth_screen.dart';
 import 'screens/main_shell.dart';
@@ -28,8 +32,12 @@ class FireplaceApp extends StatelessWidget {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => ChatProvider()),
         ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ChangeNotifierProvider(create: (_) => EncryptionProvider()),
+        ChangeNotifierProvider(create: (_) => FriendsProvider()),
+        ChangeNotifierProvider(create: (_) => ConversationsProvider()),
+        ChangeNotifierProvider(create: (_) => MessagingProvider()),
+        ChangeNotifierProvider(create: (_) => ConnectionProvider()),
       ],
       child: Consumer<SettingsProvider>(
         builder: (context, settings, _) {
@@ -68,12 +76,12 @@ class _AuthGateState extends State<AuthGate> {
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
-    final chat = context.read<ChatProvider>();
+    final conn = context.read<ConnectionProvider>();
 
     // Detect logout transition (true → false) - ensure clean disconnect
     if (!auth.isLoggedIn && _previousLoggedInState) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        chat.disconnect();
+        conn.disconnect(isLogout: true);
       });
     }
 

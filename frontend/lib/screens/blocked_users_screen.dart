@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../models/user_model.dart';
-import '../providers/chat_provider.dart';
+import '../providers/friends_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
 
@@ -11,8 +11,8 @@ class BlockedUsersScreen extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final chat = context.watch<ChatProvider>();
-    final blocked = chat.blockedUsers;
+    final friends = context.watch<FriendsProvider>();
+    final blocked = friends.blockedUsers;
     final theme = Theme.of(context);
     final isDark = RpgTheme.isDark(context);
     final mutedColor =
@@ -75,7 +75,7 @@ class _BlockedUserTile extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final chat = context.read<ChatProvider>();
+    final friendsProvider = context.read<FriendsProvider>();
     final displayHandle = user.displayHandle;
 
     return Padding(
@@ -100,7 +100,7 @@ class _BlockedUserTile extends StatelessWidget {
             ),
           ),
           TextButton(
-            onPressed: () => chat.unblockUser(user.id),
+            onPressed: () => friendsProvider.unblockUser(user.id),
             child: Text(
               AppLocalizations.of(context).unblock,
               style: RpgTheme.bodyFont(

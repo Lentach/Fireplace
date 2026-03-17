@@ -5,7 +5,8 @@ import 'conversations_screen.dart';
 import 'settings_screen.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
-import '../providers/chat_provider.dart';
+import '../providers/connection_provider.dart';
+import '../providers/friends_provider.dart';
 import '../widgets/top_snackbar.dart';
 
 /// Shell after login: bottom nav with Conversations, Contacts, Settings.
@@ -34,21 +35,21 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     if (state != AppLifecycleState.resumed) return;
-    final chat = context.read<ChatProvider>();
+    final conn = context.read<ConnectionProvider>();
     final auth = context.read<AuthProvider>();
     if (auth.currentUser == null || auth.token == null) return;
-    chat.ensureReconnectIfNeeded();
+    conn.ensureReconnectIfNeeded();
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    return Consumer<ChatProvider>(
-      builder: (context, chat, _) {
-        if (chat.pendingFriendAcceptedByName != null) {
+    return Consumer<FriendsProvider>(
+      builder: (context, friends, _) {
+        if (friends.pendingFriendAcceptedByName != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            final name = context.read<ChatProvider>().consumePendingFriendAccepted();
+            final name = context.read<FriendsProvider>().consumePendingFriendAccepted();
             if (name != null && context.mounted) {
               showTopSnackBar(
                 context,

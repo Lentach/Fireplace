@@ -16,12 +16,10 @@ import { ChatMessageService } from './services/chat-message.service';
 import { ChatFriendRequestService } from './services/chat-friend-request.service';
 import { ChatConversationService } from './services/chat-conversation.service';
 import { ChatKeyExchangeService } from './services/chat-key-exchange.service';
-import { BlockedService } from '../blocked/blocked.service';
-import { validateDto } from './utils/dto.validator';
-import { BlockUserDto } from './dto/chat.dto';
-import { TypingDto } from './dto/typing.dto';
-import { RecordingVoiceDto } from './dto/recording-voice.dto';
-import { UserMapper } from './mappers/user.mapper';
+import { ChatPresenceService } from './services/chat-presence.service';
+import { ChatBlockService } from './services/chat-block.service';
+import { ChatSearchService } from './services/chat-search.service';
+import { ChatReactionService } from './services/chat-reaction.service';
 
 // CORS: In production only ALLOWED_ORIGINS. In dev also allow localhost + LAN (phone).
 function buildCorsOrigin() {
@@ -70,7 +68,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private chatFriendRequestService: ChatFriendRequestService,
     private chatConversationService: ChatConversationService,
     private chatKeyExchangeService: ChatKeyExchangeService,
-    private blockedService: BlockedService,
+    private chatPresenceService: ChatPresenceService,
+    private chatBlockService: ChatBlockService,
+    private chatSearchService: ChatSearchService,
+    private chatReactionService: ChatReactionService,
   ) {}
 
   // On WebSocket connection — verify the JWT token.
@@ -195,19 +196,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ): void {
-    const senderId: number = client.data.user?.id;
-    if (!senderId) return;
-    try {
-      const dto = validateDto(TypingDto, data);
-      const recipientSocketId = this.onlineUsers.get(dto.recipientId);
-      if (!recipientSocketId) return;
-      this.server.to(recipientSocketId).emit('partnerTyping', {
-        senderId,
-        conversationId: dto.conversationId,
-      });
-    } catch {
-      return; // invalid payload — silent no-op
-    }
+    return this.chatPresenceService.handleTyping(client, data, this.server, this.onlineUsers);
   }
 
   @SubscribeMessage('addReaction')
@@ -215,7 +204,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    return this.chatMessageService.handleAddReaction(client, data, this.server, this.onlineUsers);
+    return this.chatReactionService.handleAddReaction(client, data, this.server, this.onlineUsers);
   }
 
   @SubscribeMessage('removeReaction')
@@ -223,7 +212,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    return this.chatMessageService.handleRemoveReaction(client, data, this.server, this.onlineUsers);
+    return this.chatReactionService.handleRemoveReaction(client, data, this.server, this.onlineUsers);
   }
 
   @SubscribeMessage('recordingVoice')
@@ -231,20 +220,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ): void {
-    const senderId: number = client.data.user?.id;
-    if (!senderId) return;
-    try {
-      const dto = validateDto(RecordingVoiceDto, data);
-      const recipientSocketId = this.onlineUsers.get(dto.recipientId);
-      if (!recipientSocketId) return;
-      this.server.to(recipientSocketId).emit('partnerRecordingVoice', {
-        senderId,
-        conversationId: dto.conversationId,
-        isRecording: dto.isRecording,
-      });
-    } catch {
-      return; // invalid payload — silent no-op
-    }
+    return this.chatPresenceService.handleRecordingVoice(client, data, this.server, this.onlineUsers);
   }
 
   // ========== KEY EXCHANGE HANDLERS (E2E Encryption) ==========
@@ -344,7 +320,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    return this.chatFriendRequestService.handleSearchUsers(client, data);
+    return this.chatSearchService.handleSearchUsers(client, data);
   }
 
   @SubscribeMessage('sendFriendRequest')
@@ -412,27 +388,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    const userId: number = client.data.user?.id;
-    if (!userId) return;
-    try {
-      const dto = validateDto(BlockUserDto, data);
-      if (dto.userId === userId) {
-        client.emit('error', { message: 'Cannot block yourself' });
-        return;
-      }
-      await this.blockedService.block(userId, dto.userId);
-      const blocked = await this.blockedService.getBlockedUsers(userId);
-      client.emit('blockedList', blocked.map((u) => UserMapper.toPayload(u)));
-      // Notify the blocked user so they can remove blocker from conversations/contacts
-      const blockedUserSocketId = this.onlineUsers.get(dto.userId);
-      if (blockedUserSocketId) {
-        this.server
-          .to(blockedUserSocketId)
-          .emit('youWereBlocked', { userId });
-      }
-    } catch (error) {
-      client.emit('error', { message: error?.message || 'Failed to block user' });
-    }
+    return this.chatBlockService.handleBlockUser(client, data, this.server, this.onlineUsers);
   }
 
   @SubscribeMessage('unblockUser')
@@ -440,23 +396,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    const userId: number = client.data.user?.id;
-    if (!userId) return;
-    try {
-      const dto = validateDto(BlockUserDto, data);
-      await this.blockedService.unblock(userId, dto.userId);
-      const blocked = await this.blockedService.getBlockedUsers(userId);
-      client.emit('blockedList', blocked.map((u) => UserMapper.toPayload(u)));
-    } catch (error) {
-      client.emit('error', { message: error?.message || 'Failed to unblock user' });
-    }
+    return this.chatBlockService.handleUnblockUser(client, data);
   }
 
   @SubscribeMessage('getBlockedList')
   async handleGetBlockedList(@ConnectedSocket() client: Socket) {
-    const userId: number = client.data.user?.id;
-    if (!userId) return;
-    const blocked = await this.blockedService.getBlockedUsers(userId);
-    client.emit('blockedList', blocked.map((u) => UserMapper.toPayload(u)));
+    return this.chatBlockService.handleGetBlockedList(client);
   }
 }

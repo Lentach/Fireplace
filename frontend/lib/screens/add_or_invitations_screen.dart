@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
-import '../providers/chat_provider.dart';
+import '../providers/connection_provider.dart';
+import '../providers/conversations_provider.dart';
+import '../providers/friends_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/top_snackbar.dart';
 
@@ -28,13 +30,13 @@ class AddOrInvitationsScreen extends StatelessWidget {
             tabs: [
               Tab(text: AppLocalizations.of(context).addUser),
               Tab(
-                child: Consumer<ChatProvider>(
-                  builder: (context, chat, _) => Row(
+                child: Consumer<FriendsProvider>(
+                  builder: (context, friends, _) => Row(
                     mainAxisSize: MainAxisSize.min,
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
                       Text(AppLocalizations.of(context).friendRequests),
-                      if (chat.pendingRequestsCount > 0) ...[
+                      if (friends.pendingRequestsCount > 0) ...[
                         const SizedBox(width: 6),
                         Container(
                           padding: const EdgeInsets.symmetric(
@@ -47,9 +49,9 @@ class AddOrInvitationsScreen extends StatelessWidget {
                           ),
                           constraints: const BoxConstraints(minWidth: 18),
                           child: Text(
-                            chat.pendingRequestsCount > 99
+                            friends.pendingRequestsCount > 99
                                 ? '99+'
-                                : '${chat.pendingRequestsCount}',
+                                : '${friends.pendingRequestsCount}',
                             style: RpgTheme.bodyFont(
                               fontSize: 11,
                               color: Colors.white,
@@ -105,13 +107,12 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
       _requestSent = false;
       _loadingResetScheduled = false;
     });
-    context.read<ChatProvider>().clearError();
-    context.read<ChatProvider>().clearSearchResults();
-    context.read<ChatProvider>().searchUsers(handle);
+    context.read<FriendsProvider>().clearSearchResults();
+    context.read<FriendsProvider>().searchUsers(handle);
   }
 
   void _sendRequestTo(int recipientId, String displayHandle) {
-    context.read<ChatProvider>().sendFriendRequest(recipientId);
+    context.read<FriendsProvider>().sendFriendRequest(recipientId);
     showTopSnackBar(
       context,
       AppLocalizations.of(context).friendRequestSentTo(displayHandle),
@@ -122,17 +123,19 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
 
   @override
   Widget build(BuildContext context) {
-    final chat = context.watch<ChatProvider>();
-    final searchResults = chat.searchResults;
+    final friends = context.watch<FriendsProvider>();
+    final convs = context.watch<ConversationsProvider>();
+    final conn = context.watch<ConnectionProvider>();
+    final searchResults = friends.searchResults;
 
-    final pendingId = chat.consumePendingOpen();
+    final pendingId = convs.consumePendingOpen();
     if (pendingId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) Navigator.of(context).pop(pendingId);
       });
     }
 
-    if (chat.consumeFriendRequestSent() && !_requestSent) {
+    if (friends.consumeFriendRequestSent() && !_requestSent) {
       _requestSent = true;
       _loading = false;
       final displayHandle = _handleController.text.trim();
@@ -148,10 +151,11 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
       });
     }
 
+    final errorMessage = conn.errorMessage;
     final showButtonLoading =
-        _loading && chat.errorMessage == null && searchResults == null;
+        _loading && errorMessage == null && searchResults == null;
 
-    if ((chat.errorMessage != null || searchResults != null) &&
+    if ((errorMessage != null || searchResults != null) &&
         _loading &&
         !_loadingResetScheduled) {
       _loadingResetScheduled = true;
@@ -165,8 +169,8 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
           final user = searchResults.first;
-          context.read<ChatProvider>().sendFriendRequest(user.id);
-          context.read<ChatProvider>().clearSearchResults();
+          context.read<FriendsProvider>().sendFriendRequest(user.id);
+          context.read<FriendsProvider>().clearSearchResults();
         }
       });
     }
@@ -226,7 +230,7 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
             if (searchResults != null &&
                 searchResults.isEmpty &&
                 !_loading &&
-                chat.errorMessage == null) ...[
+                errorMessage == null) ...[
               const SizedBox(height: 16),
               Text(
                 AppLocalizations.of(context).userNotFound,
@@ -237,10 +241,10 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
                 textAlign: TextAlign.center,
               ),
             ],
-            if (chat.errorMessage != null) ...[
+            if (errorMessage != null) ...[
               const SizedBox(height: 16),
               Text(
-                chat.errorMessage!,
+                errorMessage,
                 style: RpgTheme.bodyFont(
                   fontSize: 13,
                   color: RpgTheme.errorColor,
@@ -269,13 +273,13 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      context.read<ChatProvider>().fetchFriendRequests();
+      context.read<FriendsProvider>().loadFriendRequests();
     });
   }
 
   @override
   Widget build(BuildContext context) {
-    final chat = context.watch<ChatProvider>();
+    final convs = context.watch<ConversationsProvider>();
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
     final cardBg = FireplaceColors.of(context).convItemBg;
@@ -287,7 +291,7 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
         isDark ? RpgTheme.mutedDarkGray : RpgTheme.textSecondaryLight;
 
     // Listen for pending open conversation to navigate
-    final pendingId = chat.consumePendingOpen();
+    final pendingId = convs.consumePendingOpen();
     if (pendingId != null && !_navigatingToChat) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) {
@@ -297,7 +301,7 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
       });
     }
 
-    return Consumer<ChatProvider>(
+    return Consumer<FriendsProvider>(
       builder: (context, chatConsumer, _) {
         if (chatConsumer.friendRequests.isEmpty) {
           return Center(
@@ -389,7 +393,7 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
                         ElevatedButton.icon(
                           onPressed: () {
                             context
-                                .read<ChatProvider>()
+                                .read<FriendsProvider>()
                                 .acceptFriendRequest(request.id);
                             showTopSnackBar(context, AppLocalizations.of(context).friendAdded(displayName), backgroundColor: Colors.green);
                           },
@@ -403,7 +407,7 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
                         ElevatedButton.icon(
                           onPressed: () {
                             context
-                                .read<ChatProvider>()
+                                .read<FriendsProvider>()
                                 .rejectFriendRequest(request.id);
                             showTopSnackBar(context, AppLocalizations.of(context).requestRejected, backgroundColor: Colors.red);
                           },

@@ -31,7 +31,7 @@ cd frontend && flutter run -d chrome
 
 **Phone (same WiFi):** `cd frontend && .\run_web_for_phone.ps1` or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`
 
-**Tests:** `cd backend && npm test` (152 unit tests, 17 suites, no DB required); `cd frontend && flutter test` (61 tests)
+**Tests:** `cd backend && npm test` (184 unit tests, 22 suites, no DB required); `cd frontend && flutter test` (57 tests)
 
 **Production:** https://fireplace.ignorelist.com — Google Cloud e2-medium VM (Warszawa), Docker + Nginx + Let's Encrypt. Deploy: SSH to server → `~/deploy.sh` (git pull + docker build + flutter web build).
 
@@ -133,9 +133,11 @@ flowchart TB
     Client -->|"Socket.IO auth.token"| WS
 ```
 
-**State Management:** 3 providers (ChangeNotifier): `AuthProvider` (login/logout/token/user), `ChatProvider` (conversations/messages/friends/socket/encryption), `SettingsProvider` (themeMode: light/dark/blue; locale: pl/en, default pl). Services: `SocketService` (Socket.IO), `ApiService` (REST), `EncryptionService` (Signal Protocol), `LinkPreviewService` (OG metadata).
+**State Management:** 7 providers (ChangeNotifier): `AuthProvider` (login/logout/token/user), `ConnectionProvider` (socket lifecycle, connect/disconnect, reconnect), `ConversationsProvider` (conversation list, active chat, unread counts), `MessagingProvider` (messages, send/receive, E2E orchestration, typing), `FriendsProvider` (friends, requests, blocking, search), `EncryptionProvider` (E2E keys, session management), `SettingsProvider` (themeMode: light/dark/blue; locale: pl/en, default pl). Services: `SocketService` (Socket.IO, event-map pattern), `ApiService` (REST), `EncryptionService` (Signal Protocol), `LinkPreviewService` (OG metadata).
 
-**Backend services:** `ChatGateway` (17 handlers) delegates to `ChatMessageService`, `ChatConversationService`, `ChatFriendRequestService`, `ChatKeyExchangeService`. REST: `AuthController`, `UsersController`, `MessagesController`. Mappers: `UserMapper`, `MessageMapper`, `ConversationMapper`, `FriendRequestMapper` — all have `toPayload()`.
+**Provider wiring:** ConnectionProvider orchestrates socket events and routes them to sub-providers via `on()` listeners. Sub-providers receive an `_emit` callback for sending socket events. Cross-provider calls use explicit method interfaces (`removeConversationsForUser`, `updateLastMessage`, etc.). Wired in `conversations_screen.dart` initState.
+
+**Backend services:** `ChatGateway` (thin, ~406 LOC, pure delegation) delegates to `ChatMessageService`, `ChatConversationService`, `ChatFriendRequestService`, `ChatKeyExchangeService`, `ChatPresenceService`, `ChatBlockService`, `ChatSearchService`, `ChatReactionService`, `ChatLinkPreviewService`. REST: `AuthController`, `UsersController`, `MessagesController`. Mappers: `UserMapper`, `MessageMapper`, `ConversationMapper`, `FriendRequestMapper` — all have `toPayload()`.
 
 **DTO validation:** `chat/utils/dto.validator.ts` — runtime validation via `class-transformer` + `class-validator`. DTOs in `chat/dto/`.
 
@@ -152,7 +154,7 @@ flowchart TB
 | **Conversations** | `conversations/conversation.entity.ts`, `conversations/conversations.service.ts` |
 | **Messages** | `messages/message.entity.ts`, `messages/message.mapper.ts`, `messages/messages.service.ts`, `messages/messages.controller.ts`, `messages/dto/upload-media.dto.ts` |
 | **Friends** | `friends/friend-request.entity.ts`, `friends/friends.service.ts` |
-| **Chat** | `chat/chat.gateway.ts`, `chat/services/chat-{message,conversation,friend-request,key-exchange}.service.ts` |
+| **Chat** | `chat/chat.gateway.ts`, `chat/services/chat-{message,conversation,friend-request,key-exchange,presence,block,search,reaction,link-preview}.service.ts` |
 | **DTOs** | `chat/dto/chat.dto.ts` + `{typing,recording-voice,...}.dto.ts` |
 | **Key Bundles** | `key-bundles/key-bundle.entity.ts`, `key-bundles/one-time-pre-key.entity.ts`, `key-bundles/key-bundles.service.ts` |
 | **Mappers** | `chat/mappers/{conversation,user,friend-request}.mapper.ts`, `messages/message.mapper.ts` |
@@ -167,11 +169,11 @@ flowchart TB
 | **Entry** | `main.dart`, `config/app_config.dart`, `constants/app_constants.dart` |
 | **Models** | `models/{user,conversation,message,friend_request}_model.dart` |
 | **L10n** | `l10n/app_pl.arb`, `l10n/app_en.arb`, `l10n/app_localizations.dart` (generated), `l10n.yaml` |
-| **Providers** | `providers/{auth,chat,settings}_provider.dart`, `providers/chat_reconnect_manager.dart`, `providers/conversation_helpers.dart` |
+| **Providers** | `providers/{auth,connection,conversations,messaging,friends,encryption,settings}_provider.dart`, `providers/chat_reconnect_manager.dart`, `providers/conversation_helpers.dart` |
 | **Services** | `services/{socket_service,api_service,encryption_service,link_preview_service,push_service,gif_service}.dart` |
 | **Encryption** | `services/encryption/signal_stores.dart` (4 persistent Signal stores) |
 | **Screens** | `screens/{auth,main_shell,conversations,contacts,settings,chat_detail,add_or_invitations,privacy_safety}_screen.dart` |
-| **Widgets** | `widgets/{chat_input_bar,chat_action_tiles,chat_message_bubble,voice_message_bubble,conversation_tile,top_snackbar,avatar_circle,anti_quantum_note_dialog,gif_picker_sheet}.dart` |
+| **Widgets** | `widgets/{chat_action_tiles,conversation_tile,top_snackbar,avatar_circle,anti_quantum_note_dialog,gif_picker_sheet}.dart`; `widgets/message/{chat_message_bubble,text_message_content,image_message_content,gif_message_content,file_message_content,ping_message_content,voice_message_content,message_content_factory,message_metadata_row,reaction_chips_row}.dart`; `widgets/input/{chat_input_bar,recording_controller,attachment_handler,reply_preview_bar}.dart`; `widgets/audio/{playback_controller,waveform_display}.dart`. Old top-level `chat_message_bubble.dart`, `chat_input_bar.dart`, `voice_message_bubble.dart` are re-export shims. |
 | **Theme** | `theme/rpg_theme.dart` (`FireplaceColors` ThemeExtension) |
 | **Push** | `services/push_service.dart`, `firebase_options.dart` |
 
@@ -278,7 +280,7 @@ erDiagram
 2. Add handler in `chat/services/chat-*.service.ts`
 3. Add `@SubscribeMessage` in `chat/chat.gateway.ts` -> delegate to service
 4. Add emit + listener in `services/socket_service.dart`
-5. Pass handler from `ChatProvider.connect()`, handle state + `notifyListeners()`
+5. Register listener in `ConnectionProvider._registerEventListeners()` (routes to sub-provider), handle state + `notifyListeners()` in the target provider
 
 ### Add a new REST endpoint:
 1. Add method in `*.service.ts`, route in `*.controller.ts` with `@UseGuards(JwtAuthGuard)`
@@ -362,13 +364,13 @@ erDiagram
 
 ## 8. Key Features & Behaviors
 
-### State Management (ChatProvider)
+### State Management
 
-**Connect flow:** cancel reconnect -> clear ALL state -> dispose old socket + create new with `enableForceNew()` -> on connect: fetch conversations/friendRequests/friends + register listeners -> delayed re-fetch 500ms if empty.
+**Connect flow (ConnectionProvider):** cancel reconnect -> determine isReconnect (`_currentUserId == userId`) -> if not reconnect: clearAll on sub-providers -> call `onConnect(isReconnect)` on each -> set emit callbacks -> create socket with `enableForceNew()` -> `_registerEventListeners()` routes ~35 events to sub-providers -> on socket 'connect': initializeE2E + fetch conversations/friendRequests/friends/blocked.
 
 **Optimistic messaging:** Create temp message (id=-timestamp, SENDING, tempId) -> `notifyListeners` -> encrypt async -> emit `sendMessage` -> backend returns `messageSent` with tempId -> replace temp with real.
 
-**Blocking state:** `_blockedUsers` = blocked **by me**. `_blockedByUserIds` (Set) = users who blocked **me** (from `youWereBlocked` push). On `youWereBlocked`: add to set, remove from friends, remove conversations, clear active chat.
+**Blocking state:** `_blockedUsers` = blocked **by me**. `_blockedByUserIds` (Set) = users who blocked **me** (from `youWereBlocked` push). Cleared on every socket connect (fresh and reconnect) — server does not replay `youWereBlocked` on reconnect. Public getter `blockedByUserIds` returns `Set.unmodifiable(_blockedByUserIds)`. On `youWereBlocked`: add to set, remove from friends, remove conversations, clear active chat. When receiving `friendsList`, frontend removes all friend IDs from `_blockedByUserIds` so after unblock + re-add the "can't message" banner disappears. Backend: on block, conversation and messages between blocker and blocked are deleted (fresh chat after unblock + re-add).
 
 **Reconnection:** `ChatReconnectManager`: exponential backoff capped at 30s, max 5 attempts, only when `intentionalDisconnect == false`.
 
@@ -432,7 +434,7 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/upl
 
 **Key screens:** AuthScreen (`clearStatus()` on tab switch — DO NOT DELETE), MainShell (consumes `consumePendingFriendAccepted()` for snackbar), ConversationsScreen (swipe-to-delete, `consumePendingOpen()`), ChatDetailScreen (Timer.periodic 1s for expired msgs, `markConversationRead` on open), AddOrInvitationsScreen (searchUsers -> auto-send if 1 result, picker if multiple, `consumeFriendRequestSent()`), ContactsScreen (consumes `pendingOpenConversationId` and navigates to chat when user tapped contact and `startConversation` returned), PrivacySafetyScreen (E2E info: UI states all messages are encrypted; identity fingerprint).
 
-**Key widgets:** ChatInputBar (text+send+mic+action tiles), ChatActionTiles (icons centered in viewport; Camera/Gallery/Ping/Timer/Clear/Anti-Quantum Note; fully localized tooltips + messages), ChatMessageBubble (Telegram-style: intrinsic width so bubble fits content; short messages narrow, long messages expand to 85% of chat width; time + delivery icon + optional timer in one row on the right for sent / left for received; Wire-style rounded corners, no tail; padding 16,10,16,8; margin bottom 10; colors per theme), VoiceMessageBubble (same style), ChatBackgroundPattern (subtle dot pattern in chat area), ConversationTile (Dismissible, unread badge), TopSnackbar (never use ScaffoldMessenger), AvatarCircle, AntiQuantumNoteDialog (bottom sheet for creating one-time “anti‑quantum” secret note with localized copy and TTL presets).
+**Key widgets:** `ChatInputBar` (re-export shim → `widgets/input/chat_input_bar.dart`; orchestrates `RecordingController` + `ReplyPreviewBar` + `AttachmentHandler`; text field + send button + mic hold-to-record). `ChatMessageBubble` (re-export shim → `widgets/message/chat_message_bubble.dart`; wrapper: alignment, gesture (long-press reactions, swipe reply), reply quote, `MessageContentFactory.build()`, `MessageMetadataRow`, reactions overlay; Telegram-style: intrinsic width, short narrow / long up to 85%, Wire-style rounded corners no tail, padding 16,10,16,8, margin bottom 10, colors per theme). `MessageContentFactory` — switch on `MessageType` → `TextMessageContent` (text + link preview card) / `ImageMessageContent` (fullscreen on tap) / `GifMessageContent` (fullscreen on tap) / `FileMessageContent` (icon + filename, opens URL) / `PingMessageContent` / `VoiceMessageContent` (→ `PlaybackController` + `WaveformDisplay`). `ChatActionTiles` (Camera/Gallery/Ping/Timer/Clear/Anti-Quantum Note; localized). `ChatBackgroundPattern` (subtle dot pattern). `ConversationTile` (Dismissible, unread badge). `TopSnackbar` (never use ScaffoldMessenger). `AvatarCircle`. `AntiQuantumNoteDialog` (bottom sheet, one-time secret note, TTL presets).
 
 **Models:** `UserModel` (`displayHandle` getter), `ConversationModel` (immutable), `MessageModel` (`copyWith` for status/content/media), `FriendRequestModel`. Frontend-only: `MessageDeliveryStatus.failed`.
 
@@ -461,10 +463,9 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> POST /messages/upl
 
 - E2E: all types encrypted (text, ping, voice, image, gif). Media files on Cloudinary NOT encrypted (only URLs encrypted in envelope). No multi-device, no key recovery, conversation list shows "Encrypted message". History messages for sender show `[encrypted]` after re-login when browser evicted storage (own messages not re-decryptable by design). Key rotation is handled: `isTrustedIdentity` auto-accepts new identities; broken sessions are reset on live decrypt failure so next send rebuilds via X3DH.
 - No message edit, no fuzzy search, no iOS APNs
-- Image messages: no tap-to-fullscreen viewer yet (research: `docs/superpowers/specs/2026-03-16-image-fullscreen-viewer-research.md`)
 - No unique constraint on `(sender, receiver)` in friend_requests
 - Pagination: simple limit/offset (default 50), N+1 in `_conversationsWithUnread()`
-- Large files: `chat_provider.dart` (~1970 lines), `chat-friend-request.service.ts` (~428 lines)
+- Large files: `messaging_provider.dart` (~1759 lines — messaging domain is complex); `chat-friend-request.service.ts` (~477 lines), `chat-message.service.ts` (~435 lines)
 - Migration scripts in `backend/scripts/` (manual)
 - Metadata: server stores who, with whom, when, conversation structure (see `docs/METADATA.md`); design for future options in `docs/plans/2026-03-11-metadata-privacy-design.md`
 - `secret_notes` table uses `synchronize: true` auto-creation — fine for dev, requires `NODE_ENV=development` in docker-compose
