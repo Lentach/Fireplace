@@ -30,6 +30,20 @@ void main() {
       expect(result, isNull);
     });
 
+    test('saveDecryptedContent before initializeE2E does not throw', () async {
+      // Provider without initializeE2E — _userId is null.
+      // Documented contract: silent no-op, never throws.
+      FlutterSecureStorage.setMockInitialValues({});
+      SharedPreferences.setMockInitialValues({});
+      final uninitializedProvider = EncryptionProvider();
+      await expectLater(
+        uninitializedProvider.saveDecryptedContent(1, {'content': 'test'}),
+        completes,
+      );
+      final result = await uninitializedProvider.getDecryptedContent(1);
+      expect(result, isNull);
+    });
+
     test('saveDecryptedContent persists all envelope fields', () async {
       await provider.saveDecryptedContent(1002, {
         'content': 'Check this',

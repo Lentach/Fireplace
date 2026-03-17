@@ -389,7 +389,7 @@ class MessagingProvider extends ChangeNotifier {
         };
         _encryptionProvider
             ?.saveDecryptedContent(msg.id, persistData)
-            .catchError((_) {});
+            .ignore();
       }
     }
 
@@ -1358,6 +1358,8 @@ class MessagingProvider extends ChangeNotifier {
           }
           continue;
         }
+        // _encryptionProvider is non-null here: this path is reached only when
+        // isE2EReady is true, which requires the provider to be set.
         final persisted =
             await _encryptionProvider!.getDecryptedContent(msg.id);
         if (persisted != null &&
@@ -1397,6 +1399,7 @@ class MessagingProvider extends ChangeNotifier {
         }
       } else if (msg.senderId == _currentUserId &&
           msg.content == '[encrypted]') {
+        // _encryptionProvider is non-null here: own-message path requires E2E ready.
         final stored = await _encryptionProvider!.getDecryptedContent(msg.id);
         final storedContent = stored?['content'] as String? ?? '';
         if (storedContent.isNotEmpty ||
@@ -1493,6 +1496,8 @@ class MessagingProvider extends ChangeNotifier {
       // DuplicateMessageException: session was already advanced. Use cache.
       final cached = _encryptionProvider?.getCachedDecryption(msg.id);
       if (cached != null) return cached;
+      // _encryptionProvider is non-null here: catch path reached only during
+      // active decryption, which requires E2E to be initialized.
       final persisted =
           await _encryptionProvider!.getDecryptedContent(msg.id);
       final persistedContent = persisted?['content'] as String? ?? '';
