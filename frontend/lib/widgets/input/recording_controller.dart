@@ -121,6 +121,10 @@ class RecordingControllerState extends State<RecordingController>
   Future<void> _startRecording(double startX) async {
     _dragStartX = startX;
     _cancelDragOffset = 0.0;
+    // Capture providers before async gaps to avoid BuildContext-across-async-gap lint.
+    final messaging = context.read<MessagingProvider>();
+    final convs = context.read<ConversationsProvider>();
+    final conn = context.read<ConnectionProvider>();
     try {
       await _checkMicPermission();
 
@@ -160,9 +164,6 @@ class RecordingControllerState extends State<RecordingController>
       );
 
       _recordingStartTime = DateTime.now();
-      final messaging = context.read<MessagingProvider>();
-      final convs = context.read<ConversationsProvider>();
-      final conn = context.read<ConnectionProvider>();
       messaging.setIsRecordingVoice(true);
       final convId = convs.activeConversationId;
       if (convId != null) {

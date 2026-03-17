@@ -22,7 +22,6 @@ class ChatActionTiles extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final isDark = RpgTheme.isDark(context);
     final borderColor =
         FireplaceColors.of(context).convItemBorder;
     final iconColor = Theme.of(context).colorScheme.primary;

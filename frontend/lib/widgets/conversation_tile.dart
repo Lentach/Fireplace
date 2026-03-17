@@ -159,7 +159,7 @@ class ConversationTile extends StatelessWidget {
                     if (isTyping) ...[
                       const SizedBox(height: 3),
                       Text(
-                        AppLocalizations.of(context)!.typing,
+                        AppLocalizations.of(context).typing,
                         style: RpgTheme.bodyFont(
                           fontSize: 13,
                           color: Theme.of(context).colorScheme.primary,

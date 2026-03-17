@@ -42,7 +42,6 @@ class ContactsScreen extends StatelessWidget {
 
   void _showContactContextMenu(BuildContext context, UserModel user) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isDark = RpgTheme.isDark(context);
 
     showModalBottomSheet<void>(
       context: context,
@@ -101,7 +100,6 @@ class ContactsScreen extends StatelessWidget {
       builder: (dialogContext) {
         final l10n = AppLocalizations.of(dialogContext);
         final colorScheme = Theme.of(dialogContext).colorScheme;
-        final isDark = RpgTheme.isDark(dialogContext);
         final mutedColor = FireplaceColors.of(dialogContext).mutedText;
         return AlertDialog(
           backgroundColor: colorScheme.surface,
@@ -177,7 +175,6 @@ class ContactsScreen extends StatelessWidget {
 
   Widget _buildHeader(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    final isDark = RpgTheme.isDark(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(

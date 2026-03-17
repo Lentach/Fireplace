@@ -110,7 +110,6 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     final auth = context.watch<AuthProvider>();
     final colorScheme = Theme.of(context).colorScheme;
     final user = auth.currentUser;
-    final isDark = RpgTheme.isDark(context);
     return Container(
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
       decoration: BoxDecoration(

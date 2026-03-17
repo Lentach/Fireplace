@@ -21,7 +21,7 @@ void main() {
   runApp(const FireplaceApp());
   // Firebase init in background — app shows immediately; push ready shortly after
   Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform)
-      .catchError((_) {});
+      .ignore();
 }
 
 class FireplaceApp extends StatelessWidget {

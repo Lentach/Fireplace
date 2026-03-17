@@ -599,7 +599,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               icon: const Icon(Icons.more_vert),
               onSelected: (value) {
                 if (value == 'block') {
-                  context.read<FriendsProvider>().blockUser(otherUser!.id);
+                  context.read<FriendsProvider>().blockUser(otherUser.id);
                   Navigator.of(context).pop();
                 }
               },

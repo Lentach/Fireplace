@@ -66,8 +66,11 @@ class SettingsProvider extends ChangeNotifier {
     var saved = prefs.getString('theme_preference');
     if (saved == null) {
       final legacy = prefs.getString('dark_mode_preference');
-      if (legacy == 'light') saved = 'light';
-      else if (legacy == 'dark' || legacy == 'system') saved = 'dark';
+      if (legacy == 'light') {
+        saved = 'light';
+      } else if (legacy == 'dark' || legacy == 'system') {
+        saved = 'dark';
+      }
     }
     if (saved == 'light' || saved == 'dark' || saved == 'blue') {
       _themePreference = saved!;

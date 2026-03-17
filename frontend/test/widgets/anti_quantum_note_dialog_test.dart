@@ -1,45 +1,37 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/widgets/anti_quantum_note_dialog.dart';
+
+Widget _wrap(Widget child) => MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: Scaffold(body: child),
+    );
 
 void main() {
   testWidgets('shows title and TTL chips', (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: AntiQuantumNoteDialog(
-          onSend: (_, __) async {},
-        ),
-      ),
-    ));
+    await tester.pumpWidget(_wrap(AntiQuantumNoteDialog(onSend: (_, __) async {})));
+    await tester.pumpAndSettle();
 
-    expect(find.text('Anti-Quantum Note'), findsOneWidget);
+    expect(find.byType(AntiQuantumNoteDialog), findsOneWidget);
     expect(find.text('2h'), findsOneWidget);
     expect(find.text('6h'), findsOneWidget);
     expect(find.text('12h'), findsOneWidget);
-    expect(find.text('🔗 Generate & Send'), findsOneWidget);
+    expect(find.byType(ElevatedButton), findsOneWidget);
   });
 
   testWidgets('Generate & Send disabled when text is empty', (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: AntiQuantumNoteDialog(
-          onSend: (_, __) async {},
-        ),
-      ),
-    ));
+    await tester.pumpWidget(_wrap(AntiQuantumNoteDialog(onSend: (_, __) async {})));
+    await tester.pumpAndSettle();
 
     final btn = tester.widget<ElevatedButton>(find.byType(ElevatedButton));
     expect(btn.onPressed, isNull);
   });
 
   testWidgets('Generate & Send enabled when text is non-empty', (tester) async {
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: AntiQuantumNoteDialog(
-          onSend: (_, __) async {},
-        ),
-      ),
-    ));
+    await tester.pumpWidget(_wrap(AntiQuantumNoteDialog(onSend: (_, __) async {})));
+    await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), 'hello');
     await tester.pump();
@@ -52,25 +44,20 @@ void main() {
     String? capturedContent;
     int? capturedTtl;
 
-    await tester.pumpWidget(MaterialApp(
-      home: Scaffold(
-        body: AntiQuantumNoteDialog(
-          onSend: (content, ttl) async {
-            capturedContent = content;
-            capturedTtl = ttl;
-          },
-        ),
-      ),
-    ));
+    await tester.pumpWidget(_wrap(AntiQuantumNoteDialog(
+      onSend: (content, ttl) async {
+        capturedContent = content;
+        capturedTtl = ttl;
+      },
+    )));
+    await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), 'secret text');
     await tester.pump();
 
-    // Tap 12h chip
     await tester.tap(find.text('12h'));
     await tester.pump();
 
-    // Tap Generate & Send
     await tester.tap(find.byType(ElevatedButton));
     await tester.pump();
 

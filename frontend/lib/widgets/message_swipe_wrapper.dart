@@ -1,5 +1,4 @@
 import 'package:flutter/material.dart';
-import '../theme/rpg_theme.dart';
 
 /// Wraps a message bubble with swipe gestures:
 /// - Swipe left = Reply (icon revealed on right as content slides left)

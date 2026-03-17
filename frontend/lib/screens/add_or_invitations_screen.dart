@@ -111,16 +111,6 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
     context.read<FriendsProvider>().searchUsers(handle);
   }
 
-  void _sendRequestTo(int recipientId, String displayHandle) {
-    context.read<FriendsProvider>().sendFriendRequest(recipientId);
-    showTopSnackBar(
-      context,
-      AppLocalizations.of(context).friendRequestSentTo(displayHandle),
-      backgroundColor: Colors.green,
-    );
-    Navigator.pop(context);
-  }
-
   @override
   Widget build(BuildContext context) {
     final friends = context.watch<FriendsProvider>();
