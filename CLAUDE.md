@@ -31,7 +31,7 @@ cd frontend && flutter run -d chrome
 
 **Phone (same WiFi):** `cd frontend && .\run_web_for_phone.ps1` or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`
 
-**Tests:** `cd backend && npm test` (184 unit tests, 22 suites, no DB required); `cd frontend && flutter test` (57 tests)
+**Tests:** `cd backend && npm test` (184 unit tests, 22 suites, no DB required); `cd frontend && flutter test` (71 tests)
 
 **Production:** https://fireplace.ignorelist.com — Google Cloud e2-medium VM (Warszawa), Docker + Nginx + Let's Encrypt. Deploy: SSH to server → `~/deploy.sh` (git pull + docker build + flutter web build).
 
@@ -59,6 +59,10 @@ cd frontend && flutter run -d chrome
 - Timer via `ValueNotifier<int>` — overlay rebuilds freeze timer
 - `clearStatus()` in AuthProvider appears unused but is called from auth_screen.dart — DO NOT DELETE
 - Always run `flutter analyze` before deleting "unused" methods
+- Widget tests using `AppLocalizations` need delegates: `localizationsDelegates: AppLocalizations.localizationsDelegates, supportedLocales: AppLocalizations.supportedLocales` in `MaterialApp` — without them `AppLocalizations.of(context)` returns null and tests crash
+- `blockedByUserIds` returns `Set.unmodifiable` — tests cannot mutate it directly; use `provider.onYouWereBlocked({'userId': X})` to set state
+- `use_build_context_synchronously`: capture providers via `context.read<>()` before the first `await` in async methods
+- Fire-and-forget futures: use `.ignore()` instead of `.catchError((_){})` — catchError requires callback to return the same type as the Future
 - Multiple backends: if weird data, kill local `node.exe`, use Docker only
 - Mobile _openChat: only Navigator.push; ChatDetailScreen initState calls openConversation (avoids double getMessages and decrypt loop)
 
