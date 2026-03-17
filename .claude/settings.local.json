@@ -183,7 +183,8 @@
       "mcp__plugin_context7_context7__resolve-library-id",
       "WebFetch(domain:github.com)",
       "Bash(flutter pub:*)",
-      "Bash(dart pub:*)"
+      "Bash(dart pub:*)",
+      "Bash(claude:*)"
     ]
   }
 }

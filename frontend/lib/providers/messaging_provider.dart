@@ -345,8 +345,7 @@ class MessagingProvider extends ChangeNotifier {
       if (safeImageUrl != null) 'linkPreviewImageUrl': safeImageUrl,
     };
     try {
-      await _encryptionProvider?.encryptionService
-          .saveDecryptedContent(decrypted.id, data);
+      await _encryptionProvider?.saveDecryptedContent(decrypted.id, data);
     } catch (_) {}
   }
 
@@ -388,8 +387,8 @@ class MessagingProvider extends ChangeNotifier {
           if (savedData?['linkPreviewImageUrl'] != null)
             'linkPreviewImageUrl': savedData!['linkPreviewImageUrl'],
         };
-        _encryptionProvider?.encryptionService
-            .saveDecryptedContent(msg.id, persistData)
+        _encryptionProvider
+            ?.saveDecryptedContent(msg.id, persistData)
             .catchError((_) {});
       }
     }
@@ -1359,8 +1358,8 @@ class MessagingProvider extends ChangeNotifier {
           }
           continue;
         }
-        final persisted = await _encryptionProvider!.encryptionService
-            .getDecryptedContent(msg.id);
+        final persisted =
+            await _encryptionProvider!.getDecryptedContent(msg.id);
         if (persisted != null &&
             (persisted['content'] as String? ?? '').isNotEmpty) {
           final safeImageUrl = persisted['linkPreviewImageUrl'] as String?;
@@ -1398,8 +1397,7 @@ class MessagingProvider extends ChangeNotifier {
         }
       } else if (msg.senderId == _currentUserId &&
           msg.content == '[encrypted]') {
-        final stored = await _encryptionProvider!.encryptionService
-            .getDecryptedContent(msg.id);
+        final stored = await _encryptionProvider!.getDecryptedContent(msg.id);
         final storedContent = stored?['content'] as String? ?? '';
         if (storedContent.isNotEmpty ||
             (stored?['messageType'] as String?) != null) {
@@ -1495,8 +1493,8 @@ class MessagingProvider extends ChangeNotifier {
       // DuplicateMessageException: session was already advanced. Use cache.
       final cached = _encryptionProvider?.getCachedDecryption(msg.id);
       if (cached != null) return cached;
-      final persisted = await _encryptionProvider!.encryptionService
-          .getDecryptedContent(msg.id);
+      final persisted =
+          await _encryptionProvider!.getDecryptedContent(msg.id);
       final persistedContent = persisted?['content'] as String? ?? '';
       if (persisted != null && persistedContent.isNotEmpty) {
         final rawImageUrl = persisted['linkPreviewImageUrl'] as String?;

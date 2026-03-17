@@ -3,7 +3,7 @@ import 'dart:async';
 import '../constants/app_constants.dart';
 
 /// Encapsulates WebSocket reconnection state and exponential backoff scheduling.
-/// Used by [ChatProvider] to reconnect after disconnect (unless intentional or max attempts reached).
+/// Used by [ConnectionProvider] to reconnect after disconnect (unless intentional or max attempts reached).
 class ChatReconnectManager {
   bool intentionalDisconnect = false;
   String? tokenForReconnect;

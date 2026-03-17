@@ -40,10 +40,6 @@ class EncryptionProvider extends ChangeNotifier {
   /// Last error from encryption operations, if any.
   String? get error => _error;
 
-  /// Direct access to the underlying EncryptionService for internals that
-  /// haven't been fully extracted yet.
-  EncryptionService get encryptionService => _encryptionService;
-
   /// Whether more one-time pre-keys are currently being generated.
   bool get isGeneratingMoreKeys => _generatingMoreKeys;
 
@@ -150,6 +146,20 @@ class EncryptionProvider extends ChangeNotifier {
   /// Cache a decrypted message by its ID.
   void cacheDecryption(int messageId, MessageModel msg) {
     _decryptedContentCache[messageId] = msg;
+  }
+
+  /// Persist decrypted message content to local cache.
+  /// Delegates to [EncryptionService.saveDecryptedContent].
+  /// Silent on failure (matches service behavior).
+  Future<void> saveDecryptedContent(
+      int messageId, Map<String, dynamic> data) async {
+    await _encryptionService.saveDecryptedContent(messageId, data);
+  }
+
+  /// Retrieve persisted decrypted message content, or null if not cached.
+  /// Delegates to [EncryptionService.getDecryptedContent].
+  Future<Map<String, dynamic>?> getDecryptedContent(int messageId) async {
+    return _encryptionService.getDecryptedContent(messageId);
   }
 
   /// Clear a pending pre-key fetch for [recipientId] (e.g. on send failure

@@ -372,7 +372,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get documentDownloadConfirmTitle => 'Download document?';
 
   @override
-  String get documentDownloadConfirmMessage => 'Do you want to download this file?';
+  String get documentDownloadConfirmMessage =>
+      'Do you want to download this file?';
 
   @override
   String get download => 'Download';

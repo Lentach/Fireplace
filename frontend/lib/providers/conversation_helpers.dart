@@ -1,7 +1,7 @@
 import '../models/conversation_model.dart';
 import '../models/user_model.dart';
 
-/// Pure helpers for "other user" in a conversation. Used by [ChatProvider] and screens.
+/// Pure helpers for "other user" in a conversation. Used by providers and screens.
 
 int getOtherUserId(ConversationModel conv, int? currentUserId) {
   if (currentUserId == null) return 0;

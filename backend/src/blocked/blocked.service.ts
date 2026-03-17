@@ -4,6 +4,7 @@ import { Repository } from 'typeorm';
 import { BlockedUser } from './blocked-user.entity';
 import { User } from '../users/user.entity';
 import { FriendsService } from '../friends/friends.service';
+import { ConversationsService } from '../conversations/conversations.service';
 
 @Injectable()
 export class BlockedService {
@@ -13,6 +14,7 @@ export class BlockedService {
     @InjectRepository(BlockedUser)
     private readonly blockedRepo: Repository<BlockedUser>,
     private readonly friendsService: FriendsService,
+    private readonly conversationsService: ConversationsService,
   ) {}
 
   async block(blockerId: number, blockedId: number): Promise<BlockedUser> {
@@ -31,6 +33,23 @@ export class BlockedService {
     });
     await this.blockedRepo.save(record);
     await this.friendsService.unfriend(blockerId, blockedId);
+    // Delete the conversation and messages so that after unblock + re-add they get a fresh chat.
+    try {
+      const conv = await this.conversationsService.findByUsers(
+        blockerId,
+        blockedId,
+      );
+      if (conv) {
+        await this.conversationsService.delete(conv.id);
+        this.logger.debug(
+          `Block: deleted conversation id=${conv.id} between ${blockerId} and ${blockedId}`,
+        );
+      }
+    } catch (err) {
+      this.logger.warn(
+        `Block: failed to delete conversation (non-critical): ${(err as Error)?.message}`,
+      );
+    }
     this.logger.debug(`User ${blockerId} blocked user ${blockedId}`);
     return record;
   }
