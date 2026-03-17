@@ -1,7 +1,7 @@
-import 'package:fireplace/providers/encryption_provider.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:fireplace/providers/encryption_provider.dart';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -13,6 +13,8 @@ void main() {
       FlutterSecureStorage.setMockInitialValues({});
       SharedPreferences.setMockInitialValues({});
       provider = EncryptionProvider();
+      // initializeE2E loads keys from storage; emit callback is nullable so
+      // socket events are silently ignored in tests.
       await provider.initializeE2E(42);
     });
 
@@ -42,4 +44,3 @@ void main() {
     });
   });
 }
-
