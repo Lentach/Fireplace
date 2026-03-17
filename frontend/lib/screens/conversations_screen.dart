@@ -308,7 +308,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         final otherUser = convs.getOtherUser(conv);
         final displayName = convs.getOtherUserUsername(conv);
         final lastMsg = convs.lastMessages[conv.id];
-        final msg = context.read<MessagingProvider>();
+        final msg = context.watch<MessagingProvider>();
         return ConversationTile(
           displayName: displayName,
           lastMessage: lastMsg,

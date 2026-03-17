@@ -20,8 +20,7 @@ import 'encryption_provider.dart';
 
 /// MessagingProvider — owns all message state, send/receive handlers,
 /// encryption orchestration, typing/recording indicators, and reactions.
-///
-/// This is a SKELETON extracted from ChatProvider. Will be wired in Task 4.5.
+/// Wired by [ConnectionProvider] and ConversationsScreen (setEncryptionProvider, setConversationsProvider).
 class MessagingProvider extends ChangeNotifier {
   static void _e2eFlowLog(String step, [Map<String, dynamic>? data]) {
     if (kDebugMode) debugPrint('[E2E-FLOW] $step | ${data ?? {}}');
@@ -405,7 +404,7 @@ class MessagingProvider extends ChangeNotifier {
       if (msg.conversationId != activeConversationId) {
         _conversationsProvider?.incrementUnreadCount(msg.conversationId);
       }
-      _emit?.call('messageDelivered', msg.id);
+      _emit?.call('messageDelivered', {'messageId': msg.id});
       if (msg.conversationId == activeConversationId) {
         markConversationRead(msg.conversationId);
       }
@@ -1033,17 +1032,17 @@ class MessagingProvider extends ChangeNotifier {
   // ---------- Message Actions ----------
 
   void markConversationRead(int conversationId) {
-    _emit?.call('markConversationRead', conversationId);
+    _emit?.call('markConversationRead', {'conversationId': conversationId});
   }
 
   void clearChatHistory(int conversationId) {
-    _emit?.call('clearChatHistory', conversationId);
+    _emit?.call('clearChatHistory', {'conversationId': conversationId});
   }
 
   void deleteMessage(int messageId, {required bool forEveryone}) {
     _emit?.call('deleteMessage', {
       'messageId': messageId,
-      'forEveryone': forEveryone,
+      'mode': forEveryone ? 'for_everyone' : 'for_me',
     });
   }
 
@@ -1527,7 +1526,7 @@ class MessagingProvider extends ChangeNotifier {
       // For live incoming messages (not history replay): mark for session rebuild
       if (!_decryptingHistory) {
         _encryptionProvider?.markSessionRebuild(msg.senderId);
-        _emit?.call('requestSessionRebuild', msg.senderId);
+        _emit?.call('requestSessionRebuild', {'recipientId': msg.senderId});
         _e2eFlowLog('SESSION_RESET', {'peerId': msg.senderId});
       }
       return msg.copyWith(content: '[Decryption failed]');

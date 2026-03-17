@@ -1,9 +1,6 @@
 import 'dart:async';
-import 'dart:convert';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:provider/provider.dart';
 import 'dart:typed_data';
 
@@ -42,48 +39,9 @@ class _ChatInputBarState extends State<ChatInputBar>
   // GlobalKey to access RecordingControllerState.buildRecordingBar()
   final _recordingKey = GlobalKey<RecordingControllerState>();
 
-  // #region agent log
-  void _debugLog(String message, Map<String, dynamic> data,
-      {String? hypothesisId}) {
-    if (!kIsWeb) return;
-    final payload = <String, dynamic>{
-      'sessionId': '5e149c',
-      'message': message,
-      'data': data,
-      'timestamp': DateTime.now().millisecondsSinceEpoch,
-      'location': 'chat_input_bar.dart',
-    };
-    if (hypothesisId != null) payload['hypothesisId'] = hypothesisId;
-    http
-        .post(
-      Uri.parse(
-          'http://127.0.0.1:7535/ingest/6567602b-bd9c-4e02-ae37-bc605532cdd7'),
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Debug-Session-Id': '5e149c'
-      },
-      body: jsonEncode(payload),
-    )
-        .catchError((_) {});
-  }
-  // #endregion
-
   @override
   void initState() {
     super.initState();
-    // #region agent log
-    bool lastHasFocus = _focusNode.hasFocus;
-    _focusNode.addListener(() {
-      final hasFocus = _focusNode.hasFocus;
-      if (hasFocus != lastHasFocus) {
-        lastHasFocus = hasFocus;
-        _debugLog(hasFocus ? 'focus_gained' : 'focus_lost',
-            {'hasFocus': hasFocus},
-            hypothesisId: 'H1');
-      }
-    });
-    // #endregion
-
     _controller.addListener(() {
       final has = _controller.text.trim().isNotEmpty;
       if (has != _hasText) {
@@ -117,9 +75,6 @@ class _ChatInputBarState extends State<ChatInputBar>
   }
 
   void _send() {
-    // #region agent log
-    _debugLog('send_called', {}, hypothesisId: 'H2');
-    // #endregion
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
@@ -132,11 +87,6 @@ class _ChatInputBarState extends State<ChatInputBar>
     if (mounted && _focusNode.canRequestFocus) {
       _focusNode.requestFocus();
     }
-    // #region agent log
-    _debugLog('requestFocus_done',
-        {'canRequestFocus': _focusNode.canRequestFocus},
-        hypothesisId: 'H2');
-    // #endregion
   }
 
   void _toggleActionPanel() {

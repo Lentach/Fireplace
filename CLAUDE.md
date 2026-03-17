@@ -370,7 +370,7 @@ erDiagram
 
 **Optimistic messaging:** Create temp message (id=-timestamp, SENDING, tempId) -> `notifyListeners` -> encrypt async -> emit `sendMessage` -> backend returns `messageSent` with tempId -> replace temp with real.
 
-**Blocking state:** `_blockedUsers` = blocked **by me**. `_blockedByUserIds` (Set) = users who blocked **me** (from `youWereBlocked` push). On `youWereBlocked`: add to set, remove from friends, remove conversations, clear active chat.
+**Blocking state:** `_blockedUsers` = blocked **by me**. `_blockedByUserIds` (Set) = users who blocked **me** (from `youWereBlocked` push). Cleared on every socket connect (fresh and reconnect) — server does not replay `youWereBlocked` on reconnect. Public getter `blockedByUserIds` returns `Set.unmodifiable(_blockedByUserIds)`. On `youWereBlocked`: add to set, remove from friends, remove conversations, clear active chat. When receiving `friendsList`, frontend removes all friend IDs from `_blockedByUserIds` so after unblock + re-add the "can't message" banner disappears. Backend: on block, conversation and messages between blocker and blocked are deleted (fresh chat after unblock + re-add).
 
 **Reconnection:** `ChatReconnectManager`: exponential backoff capped at 30s, max 5 attempts, only when `intentionalDisconnect == false`.
 
