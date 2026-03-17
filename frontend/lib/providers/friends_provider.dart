@@ -4,7 +4,7 @@ import '../models/friend_request_model.dart';
 import '../models/user_model.dart';
 
 /// FriendsProvider — owns all friends, friend requests, blocking, and
-/// user search state. ChatProvider delegates to this via facade pattern.
+/// user search state. [ConnectionProvider] coordinates; this provider holds friends/requests/blocked/search.
 class FriendsProvider extends ChangeNotifier {
   // ---------- State ----------
   List<UserModel> _friends = [];
@@ -21,7 +21,7 @@ class FriendsProvider extends ChangeNotifier {
 
   // ---------- Emit Callback ----------
 
-  /// Callback to emit socket events. Set by ChatProvider via [setEmitCallback].
+  /// Callback to emit socket events. Set by [ConnectionProvider] via [setEmitCallback].
   void Function(String event, dynamic data)? _emit;
 
   /// Wire the socket emit callback so FriendsProvider can send events
@@ -33,11 +33,8 @@ class FriendsProvider extends ChangeNotifier {
   // ---------- Cross-Provider Callbacks ----------
 
   /// Called when conversations for a user should be removed (e.g. unfriend, block).
-  /// Wired by ChatProvider when ConversationsProvider exists.
+  /// Wired by the wiring layer (e.g. ConversationsScreen) when [ConversationsProvider] exists.
   void Function(int userId)? onRemoveConversationsForUser;
-
-  /// Called when the active chat should be cleared if it involves a given user.
-  void Function(int userId)? onClearActiveIfNeeded;
 
   // ---------- Public Getters ----------
 
@@ -45,7 +42,7 @@ class FriendsProvider extends ChangeNotifier {
   List<FriendRequestModel> get friendRequests => _friendRequests;
   int get pendingRequestsCount => _pendingRequestsCount;
   List<UserModel> get blockedUsers => _blockedUsers;
-  Set<int> get blockedByUserIds => _blockedByUserIds;
+  Set<int> get blockedByUserIds => Set.unmodifiable(_blockedByUserIds);
   List<UserModel>? get searchResults => _searchResults;
   int? get currentUserId => _currentUserId;
   /// Peek at pending friend-accepted name without clearing it.
@@ -69,7 +66,7 @@ class FriendsProvider extends ChangeNotifier {
     return _friends.any((f) => f.id == userId);
   }
 
-  // ---------- Event Handlers (called by socket events, routed from ChatProvider) ----------
+  // ---------- Event Handlers (called by socket events, routed from ConnectionProvider) ----------
 
   void onFriendRequestsList(dynamic data) {
     final list = data as List<dynamic>;
@@ -123,6 +120,9 @@ class FriendsProvider extends ChangeNotifier {
     _friends = list
         .map((u) => UserModel.fromJson(u as Map<String, dynamic>))
         .toList();
+    // If someone is in our friends list, they cannot be blocking us — clear them from blockedByUserIds
+    // so that after unblock + re-add we can write again (no stale "can't message" state).
+    _blockedByUserIds.removeWhere((id) => _friends.any((f) => f.id == id));
     notifyListeners();
   }
 
@@ -133,7 +133,6 @@ class FriendsProvider extends ChangeNotifier {
     _friendRequests.removeWhere((r) =>
         r.sender.id == unfriendUserId || r.receiver.id == unfriendUserId);
     onRemoveConversationsForUser?.call(unfriendUserId);
-    onClearActiveIfNeeded?.call(unfriendUserId);
     notifyListeners();
   }
 
@@ -153,7 +152,6 @@ class FriendsProvider extends ChangeNotifier {
     _blockedByUserIds.add(blockerId);
     _friends.removeWhere((f) => f.id == blockerId);
     onRemoveConversationsForUser?.call(blockerId);
-    onClearActiveIfNeeded?.call(blockerId);
     notifyListeners();
   }
 
@@ -170,7 +168,7 @@ class FriendsProvider extends ChangeNotifier {
   void searchUsers(String handle) {
     _searchResults = null;
     notifyListeners();
-    _emit?.call('searchUsers', handle);
+    _emit?.call('searchUsers', {'handle': handle});
   }
 
   void clearSearchResults() {
@@ -179,27 +177,27 @@ class FriendsProvider extends ChangeNotifier {
   }
 
   void sendFriendRequest(int userId) {
-    _emit?.call('sendFriendRequest', userId);
+    _emit?.call('sendFriendRequest', {'recipientId': userId});
   }
 
   void acceptFriendRequest(int requestId) {
-    _emit?.call('acceptFriendRequest', requestId);
+    _emit?.call('acceptFriendRequest', {'requestId': requestId});
   }
 
   void rejectFriendRequest(int requestId) {
-    _emit?.call('rejectFriendRequest', requestId);
+    _emit?.call('rejectFriendRequest', {'requestId': requestId});
   }
 
   void unfriend(int userId) {
-    _emit?.call('unfriend', userId);
+    _emit?.call('unfriend', {'userId': userId});
   }
 
   void blockUser(int userId) {
-    _emit?.call('blockUser', userId);
+    _emit?.call('blockUser', {'userId': userId});
   }
 
   void unblockUser(int userId) {
-    _emit?.call('unblockUser', userId);
+    _emit?.call('unblockUser', {'userId': userId});
   }
 
   void loadBlockedList() {
@@ -218,8 +216,10 @@ class FriendsProvider extends ChangeNotifier {
 
   /// Called on socket connect. Fresh connect clears all state;
   /// reconnect preserves friends/blocked to avoid UI flicker.
+  /// _blockedByUserIds is always cleared: server does not replay youWereBlocked on reconnect.
   void onConnect(bool isReconnect) {
     _currentUserId = null; // will be set by setCurrentUserId
+    _blockedByUserIds.clear();
     if (!isReconnect) {
       _friendRequests = [];
       _pendingRequestsCount = 0;
@@ -228,7 +228,6 @@ class FriendsProvider extends ChangeNotifier {
       _pendingFriendAcceptedByName = null;
       _searchResults = null;
       _blockedUsers = [];
-      _blockedByUserIds.clear();
     } else {
       _pendingFriendAcceptedByName = null;
       _searchResults = null;

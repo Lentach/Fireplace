@@ -1,7 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
-import '../../theme/rpg_theme.dart';
 import 'file_message_content.dart';
 import 'voice_message_content.dart';
 import 'gif_message_content.dart';
@@ -13,14 +11,6 @@ import 'text_message_content.dart';
 class MessageContentFactory {
   const MessageContentFactory._();
 
-  static String displayContent(BuildContext context, MessageModel message) {
-    final l10n = AppLocalizations.of(context);
-    if (message.content == '[Decryption failed]') return l10n.decryptionFailed;
-    if (message.content == '[Encryption not initialized]') return l10n.encryptionNotInitialized;
-    if (message.content.isNotEmpty) return message.content;
-    return l10n.unsupportedMessageType;
-  }
-
   static Widget build({
     required BuildContext context,
     required MessageModel message,
@@ -29,12 +19,10 @@ class MessageContentFactory {
     required Color textColor,
     required double contentAreaWidth,
   }) {
-    // Voice is handled by its own dedicated bubble widget
-    if (message.messageType == MessageType.voice) {
-      return VoiceMessageContent(message: message, isMine: isMine);
-    }
-
     switch (message.messageType) {
+      case MessageType.voice:
+        return VoiceMessageContent(message: message, isMine: isMine);
+
       case MessageType.text:
         return TextMessageContent(
           message: message,
@@ -58,18 +46,6 @@ class MessageContentFactory {
           mediaUrl: message.mediaUrl,
           content: message.content,
           textColor: textColor,
-        );
-
-      default:
-        // Fallback for unknown/unsupported types
-        final text = displayContent(context, message);
-        return Align(
-          alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
-          child: Text(
-            text,
-            style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
-            textAlign: isMine ? TextAlign.right : TextAlign.left,
-          ),
         );
     }
   }

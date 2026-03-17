@@ -27,7 +27,7 @@ class EncryptionProvider extends ChangeNotifier {
 
   String? _error;
 
-  /// Callback to emit socket events. Set by ChatProvider via [setEmitCallback].
+  /// Callback to emit socket events. Set by [ConnectionProvider] via [setEmitCallback].
   void Function(String event, dynamic data)? _emit;
 
   int? _currentUserId;
@@ -46,9 +46,6 @@ class EncryptionProvider extends ChangeNotifier {
 
   /// Whether more one-time pre-keys are currently being generated.
   bool get isGeneratingMoreKeys => _generatingMoreKeys;
-  set isGeneratingMoreKeys(bool value) {
-    _generatingMoreKeys = value;
-  }
 
   /// The pending pre-key fetch completers, keyed by recipient user ID.
   Map<int, Completer<Map<String, dynamic>>> get pendingPreKeyFetches =>
@@ -116,7 +113,7 @@ class EncryptionProvider extends ChangeNotifier {
     _pendingPreKeyFetches[recipientId] = completer;
 
     _e2eFlowLog('SESSION_FETCH_EMIT', {'recipientId': recipientId});
-    _emit?.call('fetchPreKeyBundle', recipientId);
+    _emit?.call('fetchPreKeyBundle', {'userId': recipientId});
 
     // Wait for the server response with a timeout
     final bundle = await completer.future

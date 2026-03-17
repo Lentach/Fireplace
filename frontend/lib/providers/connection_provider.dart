@@ -13,7 +13,7 @@ import 'messaging_provider.dart';
 
 /// ConnectionProvider — owns socket lifecycle, reconnection, and coordinates
 /// all sub-providers. This is the central coordinator replacing the socket
-/// management portion of ChatProvider.
+/// management portion previously in the monolithic chat provider.
 class ConnectionProvider extends ChangeNotifier {
   // ---------- Core State ----------
 
@@ -112,10 +112,6 @@ class ConnectionProvider extends ChangeNotifier {
         _conversationsProvider?.removeConversationsForUser(uid);
       }
     };
-    _friendsProvider?.onClearActiveIfNeeded = (uid) {
-      // Already handled by removeConversationsForUser -> _clearActiveIfRemoved
-    };
-
     // 7. Dispose old socket, create new with enableForceNew (avoids cached JWT)
     _socketService.disconnect();
     _socketService.connect(baseUrl: baseUrl, token: token);

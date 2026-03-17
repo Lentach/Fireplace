@@ -7,7 +7,7 @@ import '../models/user_model.dart';
 
 /// ConversationsProvider — owns conversation list state, active conversation,
 /// unread counts, and pending-open navigation pattern.
-/// ChatProvider delegates to this via facade pattern.
+/// [ConnectionProvider] coordinates; this provider holds conversation list and active chat.
 class ConversationsProvider extends ChangeNotifier {
   // ---------- State ----------
   List<ConversationModel> _conversations = [];
@@ -23,7 +23,7 @@ class ConversationsProvider extends ChangeNotifier {
 
   // ---------- Emit Callback ----------
 
-  /// Callback to emit socket events. Set by ChatProvider via [setEmitCallback].
+  /// Callback to emit socket events. Set by [ConnectionProvider] via [setEmitCallback].
   void Function(String event, dynamic data)? _emit;
 
   /// Wire the socket emit callback so ConversationsProvider can send events
@@ -196,12 +196,12 @@ class ConversationsProvider extends ChangeNotifier {
 
   /// Emit startConversation socket event.
   void startConversation(int recipientId) {
-    _emit?.call('startConversation', recipientId);
+    _emit?.call('startConversation', {'recipientId': recipientId});
   }
 
   /// Emit deleteConversationOnly socket event.
   void deleteConversation(int conversationId) {
-    _emit?.call('deleteConversationOnly', conversationId);
+    _emit?.call('deleteConversationOnly', {'conversationId': conversationId});
   }
 
   /// Emit setDisappearingTimer socket event.
@@ -262,11 +262,6 @@ class ConversationsProvider extends ChangeNotifier {
     }
     _clearActiveIfRemoved();
     notifyListeners();
-  }
-
-  /// If active conversation involves this user, clear it.
-  void clearActiveIfNeeded(int userId) {
-    // Already handled by _clearActiveIfRemoved in removeConversationsForUser
   }
 
   /// Update the last message for a conversation (called by MessagingProvider).
