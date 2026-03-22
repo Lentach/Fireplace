@@ -153,5 +153,40 @@ describe('SendMessageDto', () => {
       const errors = await validate(dto);
       expect(errors).toHaveLength(0);
     });
+
+    it('should accept self-hosted media URL', async () => {
+      const base = process.env.MEDIA_BASE_URL ?? 'http://localhost:3000';
+      const dto = createDto({
+        recipientId: 1,
+        content: 'caption',
+        messageType: 'IMAGE',
+        mediaUrl: `${base}/media/msgs/abc.bin`,
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should accept Cloudinary raw/upload URL (FILE backward compat)', async () => {
+      const dto = createDto({
+        recipientId: 1,
+        content: 'file.pdf',
+        messageType: 'FILE',
+        mediaUrl: 'https://res.cloudinary.com/demo/raw/upload/sample.pdf',
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should reject arbitrary non-allowlisted URLs', async () => {
+      const dto = createDto({
+        recipientId: 1,
+        content: '',
+        messageType: 'VOICE',
+        mediaUrl: 'https://evil.com/file.bin',
+      });
+      const errors = await validate(dto);
+      const mediaUrlError = errors.find((e) => e.property === 'mediaUrl');
+      expect(mediaUrlError).toBeDefined();
+    });
   });
 });
