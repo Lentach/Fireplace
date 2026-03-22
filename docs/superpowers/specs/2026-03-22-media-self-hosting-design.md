@@ -1,7 +1,7 @@
 # Media Self-Hosting + AES-256-GCM Encryption Design
 
 **Date:** 2026-03-22
-**Status:** Approved
+**Status:** Approved (v3 — post user review)
 **Scope:** Replace Cloudinary with self-hosted VM storage + implement client-side AES-256-GCM media encryption
 
 ---
@@ -21,6 +21,7 @@ Target state:
 - Avatars stored on VM, **publicly accessible by URL** (no JWT required — profile pictures are not private message content; same model as Signal/WhatsApp)
 - Nginx serves files directly via X-Accel-Redirect — Node.js not involved in file I/O for downloads
 - Cloudinary dependency fully removed
+- CLAUDE.md updated to reflect actual `MediaCryptoService` implementation
 
 ---
 
@@ -32,16 +33,16 @@ Flutter Client
          POST /media/upload (JWT, binary blob) → {mediaUrl}
          key+IV → Signal E2E envelope → sendMessage (server never sees key)
 
-  RECV:  GET /media/msgs/:id (public URL, no auth needed for msgs)
+  RECV:  GET /media/msgs/:id (public URL — ciphertext only, key not here)
          → compute(decrypt, blob, key, iv from Signal envelope)
          → display
 
-  AVATAR FETCH: Image.network(avatarUrl) — no JWT header needed (public)
+  AVATAR FETCH: Image.network(avatarUrl) — no JWT header (public)
 
 Nginx
-  POST /media/upload  → proxy → NestJS :3000 (JWT checked in NestJS)
-  GET  /media/msgs/:filename  → proxy → NestJS → X-Accel-Redirect (no auth, file is ciphertext)
-  GET  /media/avatars/:filename → served directly as public static (or X-Accel-Redirect, no auth)
+  POST /media/upload           → proxy → NestJS :3000 (JWT checked in NestJS)
+  GET  /media/msgs/:filename   → NestJS → X-Accel-Redirect → disk (no auth)
+  GET  /media/avatars/:filename → NestJS → X-Accel-Redirect → disk (no auth)
   location /internal/media/ { internal; alias /app/media/; }
 
 NestJS :3000
@@ -49,18 +50,28 @@ NestJS :3000
   LocalStorageService (replaces CloudinaryService, identical method signatures)
   MediaCleanupService: on-demand + cron daily at 03:00
 
-Docker Volume: media_storage → /app/media (both containers, NestJS rw / Nginx ro)
+Docker Volume: media_storage → /app/media (NestJS rw / Nginx ro)
   ├── avatars/   (unencrypted JPEG/PNG, publicly accessible)
-  └── msgs/      (AES-256-GCM encrypted blobs, also publicly accessible — useless without key)
+  └── msgs/      (AES-256-GCM encrypted blobs, publicly accessible — useless without key)
 ```
 
 ### Why message media can be public URLs
 
-Encrypted blobs are opaque ciphertext. Without the AES key (which lives only inside the Signal E2E envelope), the blob is unreadable. JWT on the GET endpoint adds no real security — it only prevents unauthenticated listing, but each blob has a UUID filename that cannot be guessed. This matches the threat model of Signal's attachment CDN.
+Encrypted blobs are opaque ciphertext. Without the AES key (which lives only inside the Signal E2E envelope), the blob is unreadable. JWT on the GET endpoint adds no real security — each blob has a UUID filename that cannot be guessed. This matches the threat model of Signal's attachment CDN.
+
+**Known limitations (conscious trade-offs):**
+- URL leak (logs, referrer headers, shared link) exposes the ciphertext blob — not the plaintext
+- Traffic analysis: an observer can see who downloads which UUID and when — not the content
+- Retention after deletion: if a URL was leaked before deletion, the file may have already been fetched — same as any CDN model
+- These are acceptable given the threat model (ciphertext without key = no data exposure)
 
 ---
 
 ## Backend Design
+
+### Endpoint Strategy: POST /messages/upload-media → POST /media/upload
+
+The existing `POST /messages/upload-media` endpoint is **replaced** by `POST /media/upload`. No dual-endpoint period — the Flutter client is updated in the same deploy. Old Cloudinary URLs remain valid for backward compat (legacy messages still load from Cloudinary until they expire).
 
 ### LocalStorageService (`backend/src/media/local-storage.service.ts`)
 
@@ -70,15 +81,25 @@ Replaces `CloudinaryService` with **identical method signatures** so call sites 
 |---|---|
 | `uploadAvatar(userId, buffer, mimeType)` | Saves to `/app/media/avatars/{uuid}.{ext}`, returns `{secureUrl, publicId}` |
 | `uploadImage(userId, buffer, mimeType)` | Saves to `/app/media/msgs/{uuid}.bin`, returns `{secureUrl, publicId}` |
-| `uploadVoiceMessage(userId, buffer, mimeType, duration, expiresIn?)` | Saves to `/app/media/msgs/{uuid}.bin`, returns `{secureUrl, publicId, duration}`. **Duration comes from client** — server cannot compute duration from opaque ciphertext. |
+| `uploadVoiceMessage(userId, buffer, mimeType, duration, expiresIn?)` | Saves to `/app/media/msgs/{uuid}.bin`, returns `{secureUrl, publicId, duration}`. Duration comes from client — server cannot compute from opaque ciphertext. |
 | `uploadRawFile(userId, buffer, mimeType, filename?)` | Saves to `/app/media/msgs/{uuid}.bin`, returns `{secureUrl, publicId}` |
 | `deleteAvatar(publicId)` | Deletes `/app/media/{publicId}` from disk |
-| `deleteFile(publicId)` | Deletes `/app/media/{publicId}` from disk. **Uses `publicId` (relative path), not full URL**, to avoid fragile URL parsing and survive `MEDIA_BASE_URL` changes. |
+| `deleteFile(publicId)` | Deletes `/app/media/{publicId}` from disk using relative path |
 
 - Avatar files retain original extension (`.jpg`, `.png`) for browser display
 - Message media files use `.bin` — opaque encrypted blobs
 - `publicId` = relative path within `/app/media/` (e.g. `msgs/abc123.bin`, `avatars/uuid.jpg`)
-- Base URL from `MEDIA_BASE_URL` env var (e.g. `https://fireplace.ignorelist.com`)
+- Base URL from `MEDIA_BASE_URL` env var
+
+### publicId Extraction
+
+`publicId` is derived from `mediaUrl` by stripping the base URL prefix:
+```typescript
+function extractPublicId(mediaUrl: string, baseUrl: string): string {
+  return mediaUrl.replace(`${baseUrl}/media/`, '');
+}
+```
+`MEDIA_BASE_URL` is the single source of truth — no new DB column needed. The cron job uses the same function to match disk filenames against DB references.
 
 ### Voice Duration
 
@@ -86,13 +107,14 @@ Cloudinary previously computed audio duration server-side. After migration, the 
 
 ### MediaController (`backend/src/media/media.controller.ts`)
 
-**Route order matters** — more specific routes must be registered before wildcard routes in NestJS:
-
 ```
-POST /media/upload                  JWT required, accepts binary blob
-                                    + body fields: mediaType, duration?, expiresIn? (seconds, matches existing /messages/upload-media API)
+POST /media/upload                  JWT required, accepts binary blob (application/octet-stream)
+                                    + body fields: mediaType ('image'|'voice'|'gif'|'file'|'avatar'),
+                                      duration? (seconds, client-measured for voice),
+                                      expiresIn? (seconds — consistent with existing /messages/upload-media)
                                     Returns { mediaUrl, mediaDuration? } or { mediaUrl, fileName }
-                                    Rate limit: 20 req/min (same as existing media endpoints)
+                                    NestJS body size limit: 11 MB (matches Nginx client_max_body_size)
+                                    Rate limit: 20 req/min (matches existing media endpoints)
 
 GET  /media/avatars/:filename       No auth — public static
                                     → X-Accel-Redirect: /internal/media/avatars/:filename
@@ -102,52 +124,65 @@ GET  /media/msgs/:filename          No auth — ciphertext is useless without ke
                                     Rate limit: 60 req/min per IP (protect disk I/O)
 ```
 
-**IMPORTANT — Route ordering:** `GET /media/avatars/:filename` MUST be declared before `GET /media/msgs/:filename` in the NestJS controller to prevent the `:filename` wildcard from matching `avatars/...` paths.
+**Note on route ordering:** Routes `GET /media/avatars/:filename` and `GET /media/msgs/:filename` use literal path segments (`avatars`, `msgs`) — there is no wildcard collision between them. NestJS resolves these correctly without special ordering. The `POST /media/upload` literal route takes priority over any dynamic routes automatically.
 
-### DTO Validation — CLOUDINARY_URL_REGEX
+### DTO Validation — mediaUrl regex
 
-`SendMessageDto` in `chat/dto/chat.dto.ts` currently enforces `@Matches(CLOUDINARY_URL_REGEX)` on `mediaUrl`. For E2E messages, `mediaUrl` is **inside the Signal envelope** — the server only receives `encryptedContent` in `sendMessage`, so `mediaUrl` is `null` on the DTO and the regex is never triggered. However, to be safe and future-proof, the regex must be updated to also accept self-hosted URLs:
+`SendMessageDto` in `chat/dto/chat.dto.ts` enforces `@Matches(CLOUDINARY_URL_REGEX)` on `mediaUrl`. For E2E messages, `mediaUrl` is inside the Signal envelope — the server receives only `encryptedContent` in `sendMessage`, so `mediaUrl` is `null` on the DTO and the regex is never triggered.
+
+However, the regex must be updated to:
+1. Accept self-hosted URLs (for any future non-E2E path)
+2. Correctly cover all Cloudinary path types used by the app (image upload, video/audio upload, **and raw/upload for FILE type documents**)
 
 ```typescript
-// Replace CLOUDINARY_URL_REGEX with:
-const MEDIA_URL_REGEX = /^https:\/\/(res\.cloudinary\.com\/|fireplace\.ignorelist\.com\/media\/)/;
+// MEDIA_BASE_URL read from ConfigService — no hardcoded hostname
+// Validated at startup in MediaModule to ensure env var is set
+
+export function buildMediaUrlValidator(mediaBaseUrl: string) {
+  const escapedBase = mediaBaseUrl.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(
+    `^https://(res\\.cloudinary\\.com/.+/(image|video|raw)/upload/|${escapedBase}/media/)`,
+  );
+}
 ```
 
-This also allows legacy Cloudinary URLs (for backward compat with unencrypted historical messages).
+This approach:
+- Covers Cloudinary `image/upload/`, `video/upload/` (voice), and `raw/upload/` (FILE documents)
+- Covers self-hosted `${MEDIA_BASE_URL}/media/` URLs
+- Does not hardcode `fireplace.ignorelist.com` — works on staging, local Docker, domain changes
 
 ### Module changes
 
 - `cloudinary.module.ts` → replaced by `media.module.ts` (exports `LocalStorageService`, `MediaCleanupService`)
 - `app.module.ts`: swap `CloudinaryModule` → `MediaModule`, add `ScheduleModule.forRoot()`
 - `users.controller.ts`: inject `LocalStorageService` instead of `CloudinaryService`
-- `messages.controller.ts`: MIME validation removed for upload (client pre-validates); backend accepts any binary blob. `duration` field passed through from client for voice.
+- `messages.controller.ts`: route `POST /messages/upload-media` removed — replaced by `POST /media/upload`
 
 ### MediaCleanupService (`backend/src/media/media-cleanup.service.ts`)
-
-Uses `publicId` (relative path, stored in message `mediaUrl` after stripping base URL — or stored as a separate column) for all deletion. **Recommendation:** store `publicId` as a separate DB column, or extract it consistently via `url.replace(MEDIA_BASE_URL + '/media/', '')`.
-
-**publicId extraction:** `publicId` is derived from `mediaUrl` by stripping the base URL prefix: `mediaUrl.replace(MEDIA_BASE_URL + '/media/', '')`. No new DB column needed — `mediaUrl` is the single source of truth.
 
 **On-demand triggers:**
 
 | Event | Action |
 |---|---|
 | `deleteMessage` (for_everyone) | `deleteFile(extractPublicId(message.mediaUrl))` |
-| `clearChatHistory` | `deleteFile(extractPublicId(msg.mediaUrl))` for all messages in conversation with non-null `mediaUrl` |
+| `clearChatHistory` | `deleteFile` for all non-null `mediaUrl` values in conversation |
 | `deleteConversationOnly` | Same as clearChatHistory |
 | `unfriend` | Same as clearChatHistory for the removed conversation |
 | `deleteAccount` | All messages where `senderId = userId`, delete each non-null `mediaUrl` |
 
+Only deletes files whose URL starts with `MEDIA_BASE_URL` (i.e. self-hosted). Legacy Cloudinary URLs are skipped — Cloudinary account handles their lifecycle.
+
 **Cron safety net (`@Cron('0 3 * * *')`):**
-1. Scan `/app/media/msgs/` for all filenames on disk
-2. Query DB for all currently valid media references:
+1. Scan `/app/media/msgs/` for all filenames on disk (e.g. `abc123.bin`)
+2. Query DB for all currently valid self-hosted media references:
    ```sql
    SELECT "mediaUrl" FROM messages
    WHERE "mediaUrl" IS NOT NULL
+     AND "mediaUrl" LIKE $1  -- $1 = MEDIA_BASE_URL + '/media/%'
      AND ("expiresAt" IS NULL OR "expiresAt" > NOW())
    ```
-3. Delete files on disk whose filename is NOT in the valid references set (orphaned)
-4. Separately: delete files whose `expiresAt` has passed (cross-check via DB)
+3. Extract `publicId` from each valid URL via `extractPublicId()`
+4. Delete disk files whose `publicId` is NOT in the valid set (orphaned or expired)
 
 ---
 
@@ -155,18 +190,20 @@ Uses `publicId` (relative path, stored in message `mediaUrl` after stripping bas
 
 ### MediaCryptoService (`frontend/lib/services/media_crypto_service.dart`)
 
+**AES-256-GCM blob format:** `blob = ciphertext || authTag` where `authTag` is 128 bits (16 bytes), appended by PointyCastle's GCM implementation. Key is 256 bits (32 bytes), IV is 96 bits (12 bytes). This format must be consistent across any future clients.
+
 ```dart
 class EncryptedMedia {
-  final Uint8List ciphertext;
-  final String keyBase64;  // 256-bit AES key, base64-encoded
-  final String ivBase64;   // 96-bit GCM IV, base64-encoded
+  final Uint8List ciphertext; // encrypted bytes + 16-byte GCM auth tag appended
+  final String keyBase64;     // 32-byte AES-256 key, base64url-encoded
+  final String ivBase64;      // 12-byte GCM IV, base64url-encoded
 }
 
 class MediaCryptoService {
   static const int _maxBytes = 20 * 1024 * 1024; // 20 MB hard cap
 
   /// Encrypts in background isolate via compute().
-  /// Generates fresh random 256-bit key + 96-bit IV per call.
+  /// Generates fresh random key + IV per call.
   /// Throws ArgumentError if bytes.length > 20MB.
   Future<EncryptedMedia> encrypt(Uint8List bytes);
 
@@ -175,8 +212,9 @@ class MediaCryptoService {
 }
 ```
 
-- Uses `pointycastle` package (already available in project) for AES-256-GCM
+- Uses `pointycastle` (^4.0.0, already in pubspec.yaml) for AES-256-GCM
 - `compute()` wraps both operations — UI thread never blocked
+- Must be tested on both Flutter web (PointyCastle is pure Dart — no platform channels, works on web) and native
 - Keys are in-memory only during send/receive — never logged, never stored server-side
 
 ### Progress UX
@@ -199,9 +237,10 @@ sendImage() / sendVoice() / sendGif() / sendFile()
        'content': content, 'messageType': type,
        'mediaKey': key, 'mediaIv': iv
      }
-     ← MUST be written before _encryptAndSend() await
+     ← MUST be written BEFORE _encryptAndSend() await (see CLAUDE.md rule)
   5. POST /media/upload (encrypted blob, JWT) with StreamedRequest → {mediaUrl}
   6. _pendingSendContent[tempId]['mediaUrl'] = mediaUrl
+     ← mediaUrl added BEFORE calling _encryptAndSend()
   7. _encryptAndSend(content, messageType, mediaUrl, mediaKey: key, mediaIv: iv)
      └─ Signal envelope: {content, messageType, mediaUrl, mediaKey, mediaIv}
 ```
@@ -211,15 +250,15 @@ sendImage() / sendVoice() / sendGif() / sendFile()
 ```
 onNewMessage() → Signal decrypt → E2eEnvelope.parse()
   if envelope.mediaKey != null:
-    1. GET /media/msgs/:filename (no auth header needed — public URL)
+    1. GET /media/msgs/:filename (no auth — public URL)
     2. compute(decrypt, responseBytes, mediaKey, mediaIv)
-    3. render decrypted bytes
+    3. render decrypted bytes:
        - image: MemoryImage(bytes)
        - voice: write to temp file → audio player
-       - GIF (web): Uint8List → blob URL via js interop (Image.memory does not animate GIFs on Flutter web)
+       - GIF (web): blob URL via dart:js interop — Image.memory does not animate on Flutter web
        - GIF (native): Image.memory(bytes)
        - file: write to temp file → open with url_launcher
-  else (legacy — no mediaKey in envelope):
+  else (legacy — no mediaKey):
     load mediaUrl directly (Cloudinary URL — backward compat)
 ```
 
@@ -227,38 +266,28 @@ onNewMessage() → Signal decrypt → E2eEnvelope.parse()
 
 `Image.memory` does not animate GIFs on Flutter web. After decryption, on web:
 ```dart
-// Use existing blob URL pattern from the codebase (already present for GIF fetching)
 if (kIsWeb) {
   final blob = html.Blob([decryptedBytes], 'image/gif');
   final url = html.Url.createObjectUrlFromBlob(blob);
   // Image.network(url) — animates correctly
 }
 ```
-This is the same pattern already used in `gif_message_content.dart` for Giphy downloads.
+Same pattern already used in `gif_message_content.dart` for Giphy downloads — reuse existing code.
 
 ### Avatars
 
-Avatars are now public URLs — **no JWT header required**:
-```dart
-// AvatarCircle: no change needed to Image.network() calls
-// avatarUrl already stored in AuthProvider / UserModel
-// Flutter web Image.network works without Authorization header
-```
-No changes needed in `AvatarCircle` — removing the JWT requirement is the simplest solution and matches how Signal/WhatsApp handle profile pictures.
+Avatars are now public URLs — **no JWT header required**. `AvatarCircle` requires no changes — `Image.network(url)` without headers works on Flutter web and native.
 
-### E2eEnvelope Changes
+### E2eEnvelope Changes (`encryption_service.dart`)
 
-The existing `E2eEnvelope` is implemented as a static-method utility class (not a Dart record). Add two nullable fields to `build()` and `parse()`:
+Add two nullable fields. The class uses static methods (`build()`/`parse()`) — this is an additive change, not a structural refactor.
 
 **`build()` — add optional named params:**
 ```dart
-static String build(
-  String content, {
-  String? messageType,
-  String? mediaUrl,
-  int? mediaDuration,
-  String? mediaKey,    // NEW
-  String? mediaIv,     // NEW
+static String build(String content, {
+  String? messageType, String? mediaUrl, int? mediaDuration,
+  String? mediaKey,   // NEW — null for text messages
+  String? mediaIv,    // NEW — null for text messages
   Map<String, dynamic>? linkPreview,
 }) {
   return jsonEncode({
@@ -266,8 +295,8 @@ static String build(
     if (messageType != null) 'messageType': messageType,
     if (mediaUrl != null) 'mediaUrl': mediaUrl,
     if (mediaDuration != null) 'mediaDuration': mediaDuration,
-    if (mediaKey != null) 'mediaKey': mediaKey,   // NEW
-    if (mediaIv != null) 'mediaIv': mediaIv,      // NEW
+    if (mediaKey != null) 'mediaKey': mediaKey,
+    if (mediaIv != null) 'mediaIv': mediaIv,
     if (linkPreview != null) 'linkPreview': linkPreview,
   });
 }
@@ -275,37 +304,33 @@ static String build(
 
 **`parse()` — extract new fields, null if absent:**
 ```dart
-// existing parsed fields unchanged
-final mediaKey = map['mediaKey'] as String?;   // NEW
-final mediaIv = map['mediaIv'] as String?;     // NEW
+final mediaKey = map['mediaKey'] as String?;  // NEW
+final mediaIv  = map['mediaIv']  as String?;  // NEW
 ```
 
-Callers of `parse()` that destructure the result must be updated to include `mediaKey` / `mediaIv`. All existing callers continue to work — old envelopes simply have `mediaKey = null`.
+All existing callers work unchanged — old envelopes have `mediaKey = null`.
 
 ---
 
 ## Nginx Configuration
 
 ```nginx
-# In the server block (nginx.conf or site config)
-
-# Internal location — ONLY reachable via X-Accel-Redirect from NestJS
+# Internal location — ONLY reachable via X-Accel-Redirect
 location /internal/media/ {
     internal;
     alias /app/media/;
-    # File permissions: NestJS writes as node user (UID varies).
-    # Set volume dir permissions: chmod 755 /app/media, chmod 644 on files.
-    # Both containers must agree on UID or use chmod a+r on write.
+    # Permissions: files written by NestJS must be world-readable.
+    # NestJS entrypoint sets umask 022 so written files are 644 by default.
 }
 
-# Upload goes through NestJS (JWT checked there)
-location /media/upload {
+# Upload proxied to NestJS (JWT checked there)
+location = /media/upload {
     proxy_pass http://backend:3000;
     proxy_set_header Authorization $http_authorization;
-    client_max_body_size 11m;
+    client_max_body_size 11m;  # 10MB file + multipart overhead
 }
 
-# All other /media/ requests → NestJS for auth/redirect
+# All other /media/ requests → NestJS for X-Accel-Redirect
 location /media/ {
     proxy_pass http://backend:3000;
     proxy_set_header Host $host;
@@ -326,17 +351,25 @@ services:
       - media_storage:/app/media
     environment:
       - MEDIA_BASE_URL=https://fireplace.ignorelist.com
-    # Ensure files are world-readable for Nginx:
-    # entrypoint sets umask 022 or chmod on /app/media at startup
+    # NestJS Dockerfile entrypoint: set umask 022 so files are world-readable by Nginx
 
   nginx:
     volumes:
-      - media_storage:/app/media:ro  # read-only — Nginx only serves, never writes
+      - media_storage:/app/media:ro  # read-only — Nginx only serves via X-Accel-Redirect
 ```
 
-**File permissions note:** Files written by the NestJS (`node`) user must be readable by the Nginx user. Two options:
-1. Set `umask 022` in the NestJS container entrypoint so written files are world-readable
-2. Add a startup script: `chmod -R 755 /app/media` before NestJS starts
+---
+
+## Implementation Risks
+
+| Area | Risk | Mitigation |
+|---|---|---|
+| AES-GCM blob format | Flutter ↔ other clients diverge on ciphertext+tag layout | Spec defines format explicitly: `blob = ciphertext \|\| 16-byte GCM tag` (PointyCastle default) |
+| compute() on web | PointyCastle is pure Dart — should work on web without platform channels | Add integration tests: encrypt on web, decrypt on native and vice versa |
+| GET 60/min/IP rate limit | Fast scroll in media-heavy chat hits limit | Monitor in production; increase to 120/min or add client-side LRU cache if needed |
+| Endpoint cutover | No dual-endpoint period — Flutter and backend deploy together | Single coordinated deploy; old Cloudinary URLs remain valid for legacy messages |
+| Cron + extractPublicId | URL format change breaks orphan detection | `extractPublicId` function is shared between on-demand and cron — single implementation |
+| NestJS body size | NestJS default body parser rejects >100KB raw bodies | Set `rawBody: true` and `bodyParser: false` in NestJS bootstrap, use raw body middleware for `/media/upload` |
 
 ---
 
@@ -344,12 +377,12 @@ services:
 
 | Scenario | Behaviour |
 |---|---|
-| Old message — Cloudinary URL, no `mediaKey` in envelope | `envelope.mediaKey == null` → load directly from Cloudinary URL (works until Cloudinary decommissioned) |
+| Old message — Cloudinary URL, no `mediaKey` in envelope | `envelope.mediaKey == null` → load directly from Cloudinary URL |
 | Old avatar on Cloudinary | Displayed from Cloudinary URL until user updates avatar |
 | New message with `mediaKey` | Fetch blob from VM, decrypt client-side |
 | New avatar | Fetched from VM as public URL |
 
-`MEDIA_URL_REGEX` in `SendMessageDto` updated to accept both Cloudinary and self-hosted URLs.
+`MEDIA_URL_REGEX` in `SendMessageDto` updated to accept both Cloudinary paths (`image/upload/`, `video/upload/`, `raw/upload/`) and self-hosted URLs — built dynamically from `MEDIA_BASE_URL` env var.
 
 Cloudinary can be decommissioned when: no active user has a Cloudinary avatar AND all Cloudinary-hosted message media has expired or been deleted.
 
@@ -357,15 +390,15 @@ Cloudinary can be decommissioned when: no active user has a Cloudinary avatar AN
 
 ## Security Properties
 
-| Property | Status after implementation |
+| Property | Status |
 |---|---|
-| Message media encrypted at rest | ✅ AES-256-GCM, key never reaches server unencrypted |
+| Message media encrypted at rest | ✅ AES-256-GCM client-side — key never reaches server |
 | Media upload requires auth | ✅ JWT required on POST /media/upload |
-| Media download requires auth | ❌ Public by design — blobs are ciphertext, useless without key |
-| Server is blind to plaintext media | ✅ Never sees plaintext — only opaque AES-256-GCM ciphertext |
-| Key stored server-side | ✅ Never — key lives only in Signal E2E envelope |
-| Avatar encrypted at rest | ❌ Not encrypted (deliberate — profile pictures are not private) |
-| Avatar access requires auth | ❌ Public (deliberate — same model as Signal/WhatsApp; no Flutter web JWT issue) |
+| Media download requires auth | ❌ Public by design — ciphertext without key = no data exposure |
+| Server is blind to plaintext | ✅ Server stores only opaque AES-256-GCM ciphertext |
+| Encryption key stored server-side | ❌ Never — key lives only in Signal E2E envelope |
+| Avatar encrypted at rest | ❌ Deliberate — profile pictures are not private message content |
+| Avatar download requires auth | ❌ Public — same model as Signal/WhatsApp |
 
 ---
 
@@ -376,5 +409,4 @@ Cloudinary can be decommissioned when: no active user has a Cloudinary avatar AN
 - CDN / geographic distribution
 - Resumable uploads
 - Encryption of avatars
-- Migration script for existing Cloudinary media (users keep old messages as-is)
-- Rate limiting beyond what is specified (GET /media/msgs: 60/min per IP)
+- Migration script for existing Cloudinary media (legacy messages load from Cloudinary as-is)
