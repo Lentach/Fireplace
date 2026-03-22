@@ -1,5 +1,11 @@
 import { plainToInstance } from 'class-transformer';
-import { IsEnum, IsNumber, IsString, validateSync } from 'class-validator';
+import {
+  IsEnum,
+  IsNumber,
+  IsOptional,
+  IsString,
+  validateSync,
+} from 'class-validator';
 
 enum Environment {
   Development = 'development',
@@ -35,14 +41,13 @@ export class EnvironmentVariables {
   @IsString()
   ALLOWED_ORIGINS: string = 'http://localhost:3000,http://localhost:8080';
 
+  @IsOptional()
   @IsString()
-  CLOUDINARY_CLOUD_NAME: string;
+  MEDIA_BASE_URL?: string;
 
+  @IsOptional()
   @IsString()
-  CLOUDINARY_API_KEY: string;
-
-  @IsString()
-  CLOUDINARY_API_SECRET: string;
+  MEDIA_DIR?: string;
 }
 
 export function validate(config: Record<string, any>): EnvironmentVariables {

@@ -4,7 +4,7 @@ import { ConfigModule, ConfigService } from '@nestjs/config';
 import { ThrottlerModule } from '@nestjs/throttler';
 import { ScheduleModule } from '@nestjs/schedule';
 import { AuthModule } from './auth/auth.module';
-import { CloudinaryModule } from './cloudinary/cloudinary.module';
+import { MediaModule } from './media/media.module';
 import { UsersModule } from './users/users.module';
 import { ChatModule } from './chat/chat.module';
 import { ConversationsModule } from './conversations/conversations.module';
@@ -59,7 +59,7 @@ import { validate } from './config/env.validation';
         synchronize: configService.get('NODE_ENV') === 'development',
       }),
     }),
-    CloudinaryModule,
+    MediaModule,
     AuthModule,
     UsersModule,
     ConversationsModule,

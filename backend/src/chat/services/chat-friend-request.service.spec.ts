@@ -4,6 +4,8 @@ import { FriendsService } from '../../friends/friends.service';
 import { BlockedService } from '../../blocked/blocked.service';
 import { UsersService } from '../../users/users.service';
 import { ConversationsService } from '../../conversations/conversations.service';
+import { MessagesService } from '../../messages/messages.service';
+import { MediaCleanupService } from '../../media/media-cleanup.service';
 import { Socket, Server } from 'socket.io';
 
 describe('ChatFriendRequestService', () => {
@@ -67,6 +69,18 @@ describe('ChatFriendRequestService', () => {
             findByUser: jest.fn().mockResolvedValue([]),
             findByUsers: jest.fn().mockResolvedValue({ id: 50 }),
             delete: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: MessagesService,
+          useValue: {
+            findMediaUrlsByConversation: jest.fn().mockResolvedValue([]),
+          },
+        },
+        {
+          provide: MediaCleanupService,
+          useValue: {
+            deleteMediaFile: jest.fn().mockResolvedValue(undefined),
           },
         },
       ],

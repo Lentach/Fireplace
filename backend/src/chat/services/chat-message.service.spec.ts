@@ -5,6 +5,7 @@ import { ChatValidationService } from './chat-validation.service';
 import { UsersService } from '../../users/users.service';
 import { ChatLinkPreviewService } from './chat-link-preview.service';
 import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
+import { MediaCleanupService } from '../../media/media-cleanup.service';
 import { ChatMessageService } from './chat-message.service';
 import { User } from '../../users/user.entity';
 import { Conversation } from '../../conversations/conversation.entity';
@@ -55,6 +56,7 @@ describe('ChatMessageService', () => {
           useValue: {
             create: jest.fn(),
             findByConversation: jest.fn(),
+            findMediaUrlsByConversation: jest.fn().mockResolvedValue([]),
           },
         },
         {
@@ -79,6 +81,12 @@ describe('ChatMessageService', () => {
         {
           provide: PushNotificationsService,
           useValue: { notify: jest.fn().mockResolvedValue(undefined) },
+        },
+        {
+          provide: MediaCleanupService,
+          useValue: {
+            deleteMediaFile: jest.fn().mockResolvedValue(undefined),
+          },
         },
       ],
     }).compile();
@@ -111,7 +119,9 @@ describe('ChatMessageService', () => {
       expect(mockClient.emit).toHaveBeenCalledWith(
         'error',
         expect.objectContaining({
-          message: expect.stringMatching(/Validation failed|Cloudinary/i),
+          message: expect.stringMatching(
+            /Validation failed|self-hosted media URL|Cloudinary/i,
+          ),
         }),
       );
       expect(messagesService.create).not.toHaveBeenCalled();

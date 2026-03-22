@@ -5,6 +5,7 @@ import { MessagesService } from '../../messages/messages.service';
 import { UsersService } from '../../users/users.service';
 import { BlockedService } from '../../blocked/blocked.service';
 import { ChatValidationService } from './chat-validation.service';
+import { MediaCleanupService } from '../../media/media-cleanup.service';
 import { Socket, Server } from 'socket.io';
 
 describe('ChatConversationService', () => {
@@ -34,6 +35,7 @@ describe('ChatConversationService', () => {
           useValue: {
             countUnreadForRecipient: jest.fn().mockResolvedValue(0),
             getLastMessage: jest.fn().mockResolvedValue(null),
+            findMediaUrlsByConversation: jest.fn().mockResolvedValue([]),
           },
         },
         { provide: UsersService, useValue: { findById: jest.fn() } },
@@ -47,6 +49,12 @@ describe('ChatConversationService', () => {
         {
           provide: ChatValidationService,
           useValue: { validateCanMessage: jest.fn().mockResolvedValue({ valid: true }) },
+        },
+        {
+          provide: MediaCleanupService,
+          useValue: {
+            deleteMediaFile: jest.fn().mockResolvedValue(undefined),
+          },
         },
       ],
     }).compile();

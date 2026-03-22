@@ -319,6 +319,19 @@ export class MessagesService {
     });
   }
 
+  /** Non-null media URLs in a conversation (for disk cleanup before row delete). */
+  async findMediaUrlsByConversation(conversationId: number): Promise<string[]> {
+    const rows = await this.msgRepo
+      .createQueryBuilder('m')
+      .select('m.mediaUrl', 'mediaUrl')
+      .where('m.conversation_id = :id', { id: conversationId })
+      .andWhere('m.mediaUrl IS NOT NULL')
+      .getRawMany();
+    return rows
+      .map((r: { mediaUrl: string | null }) => r.mediaUrl)
+      .filter((u): u is string => !!u);
+  }
+
   /**
    * Delete all messages in a conversation.
    * Used when clearing chat history.

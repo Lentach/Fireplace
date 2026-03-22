@@ -9,12 +9,14 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './user.entity';
-import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { LocalStorageService } from '../media/local-storage.service';
 import { Conversation } from '../conversations/conversation.entity';
 import { Message } from '../messages/message.entity';
 import { FriendRequest } from '../friends/friend-request.entity';
 import { FcmTokensService } from '../fcm-tokens/fcm-tokens.service';
 import { KeyBundlesService } from '../key-bundles/key-bundles.service';
+import { MessagesService } from '../messages/messages.service';
+import { MediaCleanupService } from '../media/media-cleanup.service';
 
 @Injectable()
 export class UsersService {
@@ -23,10 +25,12 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepo: Repository<User>,
-    private cloudinaryService: CloudinaryService,
+    private storageService: LocalStorageService,
     private fcmTokensService: FcmTokensService,
     private keyBundlesService: KeyBundlesService,
     private dataSource: DataSource,
+    private messagesService: MessagesService,
+    private mediaCleanup: MediaCleanupService,
   ) {}
 
   async create(username: string, password: string): Promise<User> {
@@ -82,9 +86,8 @@ export class UsersService {
       throw new NotFoundException('User not found');
     }
 
-    // Delete old Cloudinary avatar only if different publicId (overwrite uses same id)
     if (user.profilePicturePublicId && user.profilePicturePublicId !== publicId) {
-      await this.cloudinaryService.deleteAvatar(user.profilePicturePublicId);
+      await this.storageService.deleteAvatar(user.profilePicturePublicId);
     }
 
     user.profilePictureUrl = secureUrl;
@@ -128,20 +131,32 @@ export class UsersService {
 
     // External I/O before transaction (non-transactional by nature)
     if (user.profilePicturePublicId) {
-      await this.cloudinaryService.deleteAvatar(user.profilePicturePublicId);
+      await this.storageService.deleteAvatar(user.profilePicturePublicId);
     }
 
     // FCM tokens and key bundles use their own repos — delete outside transaction
     await this.fcmTokensService.removeByUserId(userId);
     await this.keyBundlesService.deleteByUserId(userId);
 
+    const conversations = await this.usersRepo.manager.find(Conversation, {
+      where: [{ userOne: { id: userId } }, { userTwo: { id: userId } }],
+    });
+    for (const conv of conversations) {
+      const urls = await this.messagesService.findMediaUrlsByConversation(
+        conv.id,
+      );
+      await Promise.all(
+        urls.map((url) => this.mediaCleanup.deleteMediaFile(url)),
+      );
+    }
+
     // All DB operations in a single transaction to prevent partial deletion
     await this.dataSource.transaction(async (manager) => {
-      const conversations = await manager.find(Conversation, {
+      const conversationsInTx = await manager.find(Conversation, {
         where: [{ userOne: { id: userId } }, { userTwo: { id: userId } }],
       });
 
-      for (const conv of conversations) {
+      for (const conv of conversationsInTx) {
         await manager.delete(Message, { conversation: { id: conv.id } });
         await manager.delete(Conversation, { id: conv.id });
       }

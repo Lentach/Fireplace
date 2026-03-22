@@ -12,6 +12,7 @@ import { MessageDeliveredDto } from '../dto/message-delivered.dto';
 import { MarkConversationReadDto } from '../dto/mark-conversation-read.dto';
 import { MessageDeliveryStatus } from '../../messages/message.entity';
 import { MessageMapper } from '../../messages/message.mapper';
+import { MediaCleanupService } from '../../media/media-cleanup.service';
 
 @Injectable()
 export class ChatMessageService {
@@ -24,6 +25,7 @@ export class ChatMessageService {
     private readonly usersService: UsersService,
     private readonly chatLinkPreviewService: ChatLinkPreviewService,
     private readonly pushNotificationsService: PushNotificationsService,
+    private readonly mediaCleanup: MediaCleanupService,
   ) {}
 
   async handleSendMessage(
@@ -327,7 +329,12 @@ export class ChatMessageService {
       return;
     }
 
-    // Delete all messages
+    const mediaUrls = await this.messagesService.findMediaUrlsByConversation(
+      data.conversationId,
+    );
+    await Promise.all(
+      mediaUrls.map((url) => this.mediaCleanup.deleteMediaFile(url)),
+    );
     await this.messagesService.deleteAllByConversation(data.conversationId);
 
     // Emit to both users
@@ -408,6 +415,9 @@ export class ChatMessageService {
     }
 
     if (mode === 'for_everyone') {
+      if (message.mediaUrl) {
+        await this.mediaCleanup.deleteMediaFile(message.mediaUrl);
+      }
       const deleted = await this.messagesService.deleteById(messageId, userId);
       if (!deleted) {
         client.emit('error', {

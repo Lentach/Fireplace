@@ -14,7 +14,7 @@ import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
 import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
-import { CloudinaryService } from '../cloudinary/cloudinary.service';
+import { LocalStorageService } from '../media/local-storage.service';
 import { UsersService } from './users.service';
 import { ResetPasswordDto, DeleteAccountDto, RegisterFcmTokenDto, RemoveFcmTokenDto } from './dto/user.dto';
 import { FcmTokensService } from '../fcm-tokens/fcm-tokens.service';
@@ -25,7 +25,7 @@ export class UsersController {
 
   constructor(
     private usersService: UsersService,
-    private cloudinaryService: CloudinaryService,
+    private storageService: LocalStorageService,
     private fcmTokensService: FcmTokensService,
   ) {}
 
@@ -59,13 +59,13 @@ export class UsersController {
 
     const userId = req.user.id;
 
-    const { secureUrl, publicId } = await this.cloudinaryService.uploadAvatar(
+    const { secureUrl, publicId } = await this.storageService.uploadAvatar(
       userId,
       file.buffer,
       file.mimetype,
     );
 
-    this.logger.debug(`User ${userId} uploaded profile picture to Cloudinary`);
+    this.logger.debug(`User ${userId} uploaded profile picture`);
 
     const user = await this.usersService.updateProfilePicture(
       userId,

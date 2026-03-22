@@ -5,6 +5,8 @@ import { BlockedService } from '../../blocked/blocked.service';
 import { UsersService } from '../../users/users.service';
 import { User } from '../../users/user.entity';
 import { ConversationsService } from '../../conversations/conversations.service';
+import { MessagesService } from '../../messages/messages.service';
+import { MediaCleanupService } from '../../media/media-cleanup.service';
 import { validateDto } from '../utils/dto.validator';
 import {
   SendFriendRequestDto,
@@ -25,6 +27,8 @@ export class ChatFriendRequestService {
     private readonly blockedService: BlockedService,
     private readonly usersService: UsersService,
     private readonly conversationsService: ConversationsService,
+    private readonly messagesService: MessagesService,
+    private readonly mediaCleanup: MediaCleanupService,
   ) {}
 
   /** Emit friendsList to client and optionally to another socket. */
@@ -433,6 +437,12 @@ export class ChatFriendRequestService {
         data.userId,
       );
       if (conversation) {
+        const mediaUrls = await this.messagesService.findMediaUrlsByConversation(
+          conversation.id,
+        );
+        await Promise.all(
+          mediaUrls.map((url) => this.mediaCleanup.deleteMediaFile(url)),
+        );
         await this.conversationsService.delete(conversation.id);
         this.logger.debug(
           `handleUnfriend: deleted conversation id=${conversation.id}`,

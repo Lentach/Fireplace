@@ -9,6 +9,7 @@ import { Message } from '../messages/message.entity';
 import { FriendRequest } from '../friends/friend-request.entity';
 import { FcmTokensModule } from '../fcm-tokens/fcm-tokens.module';
 import { KeyBundlesModule } from '../key-bundles/key-bundles.module';
+import { MessagesModule } from '../messages/messages.module';
 
 @Module({
   imports: [
@@ -16,6 +17,7 @@ import { KeyBundlesModule } from '../key-bundles/key-bundles.module';
     MulterModule.register(),
     FcmTokensModule,
     KeyBundlesModule,
+    MessagesModule,
   ],
   controllers: [UsersController],
   providers: [UsersService],

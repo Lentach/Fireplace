@@ -12,6 +12,7 @@ import {
   DeleteConversationOnlyDto,
 } from '../dto/chat.dto';
 import { ConversationMapper } from '../mappers/conversation.mapper';
+import { MediaCleanupService } from '../../media/media-cleanup.service';
 
 @Injectable()
 export class ChatConversationService {
@@ -23,6 +24,7 @@ export class ChatConversationService {
     private readonly usersService: UsersService,
     private readonly blockedService: BlockedService,
     private readonly chatValidationService: ChatValidationService,
+    private readonly mediaCleanup: MediaCleanupService,
   ) {}
 
   async handleStartConversation(
@@ -192,6 +194,12 @@ export class ChatConversationService {
 
     // 5. Delete messages + conversation (wrap in try-catch)
     try {
+      const mediaUrls = await this.messagesService.findMediaUrlsByConversation(
+        dto.conversationId,
+      );
+      await Promise.all(
+        mediaUrls.map((url) => this.mediaCleanup.deleteMediaFile(url)),
+      );
       await this.messagesService.deleteAllByConversation(dto.conversationId);
       await this.conversationsService.delete(dto.conversationId);
     } catch (error) {

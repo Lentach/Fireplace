@@ -1,23 +1,13 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
-import { MulterModule } from '@nestjs/platform-express';
-import { memoryStorage } from 'multer';
 import { Message } from './message.entity';
 import { MessagesService } from './messages.service';
 import { MessageCleanupService } from './message-cleanup.service';
 import { MessagesController } from './messages.controller';
-import { CloudinaryModule } from '../cloudinary/cloudinary.module';
 import { LinkPreviewModule } from '../chat/services/link-preview.module';
 
 @Module({
-  imports: [
-    TypeOrmModule.forFeature([Message]),
-    MulterModule.register({
-      storage: memoryStorage(),
-    }),
-    CloudinaryModule,
-    LinkPreviewModule,
-  ],
+  imports: [TypeOrmModule.forFeature([Message]), LinkPreviewModule],
   controllers: [MessagesController],
   providers: [MessagesService, MessageCleanupService],
   exports: [MessagesService],
