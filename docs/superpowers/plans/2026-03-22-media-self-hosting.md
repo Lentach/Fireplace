@@ -60,7 +60,8 @@
 | `frontend/lib/services/api_service.dart` | Replace `uploadMedia` with `uploadEncryptedMedia` (hits `/media/upload`, sends binary blob with StreamedRequest + progress callback) |
 | `frontend/lib/providers/messaging_provider.dart` | In all send methods: encrypt before upload, write `_pendingSendContent` with mediaKey/mediaIv, pass key+IV to `_encryptAndSend` |
 | `frontend/lib/widgets/message/image_message_content.dart` | Decrypt blob before `MemoryImage` display |
-| `frontend/lib/widgets/message/voice_message_content.dart` | Decrypt blob before audio player |
+| `frontend/lib/widgets/audio/playback_controller.dart` | Decrypt blob in `_loadAndPlayAudio()` before writing to audio cache |
+| `frontend/lib/widgets/message/voice_message_content.dart` | No logic change — delegates to PlaybackController |
 | `frontend/lib/widgets/message/gif_message_content.dart` | Decrypt blob; blob URL on web, `Image.memory` on native |
 | `frontend/lib/widgets/message/file_message_content.dart` | Decrypt blob to temp file |
 
@@ -616,6 +617,7 @@ git commit -m "feat(media): add MediaCleanupService with on-demand delete + cron
 - Create: `backend/src/media/media.module.ts`
 - Modify: `backend/src/chat/dto/chat.dto.ts`
 - Modify: `backend/src/chat/dto/chat.dto.spec.ts`
+- Modify: `backend/src/chat/utils/dto.validator.spec.ts`
 
 - [ ] **Step 1: Update regex test cases**
 
@@ -643,6 +645,12 @@ it('rejects arbitrary URLs', () => {
 ```
 
 Run: `cd backend && npx jest chat.dto.spec.ts --no-coverage` — note which pass/fail before the fix.
+
+- [ ] **Step 1b: Update dto.validator.spec.ts**
+
+Open `backend/src/chat/utils/dto.validator.spec.ts`. Find any test that asserts `raw/upload` Cloudinary URLs are **rejected** and update it to **accept** them (they are now valid for FILE backward compat). Add a test case for self-hosted URLs being accepted.
+
+Run: `cd backend && npx jest dto.validator.spec.ts --no-coverage` — note current state.
 
 - [ ] **Step 2: Fix CLOUDINARY_URL_REGEX in chat.dto.ts**
 
@@ -721,7 +729,8 @@ Expected: 184+ tests pass (existing suite unaffected + new tests).
 - [ ] **Step 5: Commit**
 
 ```bash
-git add backend/src/media/media.module.ts backend/src/chat/dto/chat.dto.ts backend/src/chat/dto/chat.dto.spec.ts
+git add backend/src/media/media.module.ts backend/src/chat/dto/chat.dto.ts \
+        backend/src/chat/dto/chat.dto.spec.ts backend/src/chat/utils/dto.validator.spec.ts
 git commit -m "feat(media): add MediaModule; fix mediaUrl regex to cover raw/upload + self-hosted URLs"
 ```
 
@@ -765,13 +774,16 @@ In `backend/src/messages/messages.controller.ts`:
 - Remove the entire `@Post('upload-media')` method and its decorators
 - Remove `CloudinaryService` from constructor and import
 
-- [ ] **Step 4: Delete Cloudinary files**
+- [ ] **Step 4: Delete Cloudinary files + uninstall npm package**
 
 ```bash
 rm backend/src/cloudinary/cloudinary.service.ts
 rm backend/src/cloudinary/cloudinary.module.ts
 rmdir backend/src/cloudinary 2>/dev/null || true
+cd backend && npm uninstall cloudinary
 ```
+
+Also remove `CLOUDINARY_CLOUD_NAME`, `CLOUDINARY_API_KEY`, `CLOUDINARY_API_SECRET` from any `.env.example` or README docs if present.
 
 - [ ] **Step 5: Run full backend test suite**
 
@@ -800,6 +812,79 @@ Expected: `{"mediaUrl":"http://localhost:3000/media/msgs/...bin"}`
 git add backend/src/app.module.ts backend/src/users/users.controller.ts \
         backend/src/messages/messages.module.ts backend/src/messages/messages.controller.ts
 git commit -m "feat(media): wire MediaModule, remove CloudinaryModule, replace /messages/upload-media"
+```
+
+---
+
+---
+
+### Task 5b: Wire on-demand cleanup to chat events
+
+**Files:**
+- Modify: `backend/src/chat/services/chat-message.service.ts`
+- Modify: `backend/src/chat/services/chat-conversation.service.ts`
+- Modify: `backend/src/users/users.service.ts`
+
+`MediaCleanupService.deleteMediaFile` must be called before rows are deleted — otherwise the `mediaUrl` is gone from DB before the file can be looked up.
+
+- [ ] **Step 1: Inject MediaCleanupService into chat-message.service.ts**
+
+In `chat-message.service.ts` constructor, add `MediaCleanupService` injection. Then in `handleDeleteMessage` (mode `for_everyone`) and `handleClearChatHistory`, call `deleteMediaFile` on affected messages **before** deleting rows:
+
+```typescript
+// deleteMessage for_everyone:
+const msg = await this.messagesService.findById(messageId);
+if (msg?.mediaUrl) await this.mediaCleanup.deleteMediaFile(msg.mediaUrl);
+// then delete the message row
+
+// clearChatHistory:
+const messages = await this.messagesService.findByConversation(conversationId, senderId);
+await Promise.all(
+  messages
+    .filter(m => m.mediaUrl)
+    .map(m => this.mediaCleanup.deleteMediaFile(m.mediaUrl!))
+);
+// then clear history
+```
+
+- [ ] **Step 2: Wire deleteMediaFile in chat-conversation.service.ts**
+
+In `handleDeleteConversationOnly` and `handleUnfriend`, delete media files before deleting the conversation:
+
+```typescript
+// Before deleting conversation:
+const messages = await this.messagesService.findByConversation(conversationId);
+await Promise.all(
+  messages.filter(m => m.mediaUrl).map(m => this.mediaCleanup.deleteMediaFile(m.mediaUrl!))
+);
+```
+
+- [ ] **Step 3: Wire deleteMediaFile in users.service.ts (deleteAccount)**
+
+In `deleteAccount`, before deleting user messages, collect and delete all media files:
+
+```typescript
+const userMessages = await this.messagesService.findAllBySender(userId);
+await Promise.all(
+  userMessages.filter(m => m.mediaUrl).map(m => this.mediaCleanup.deleteMediaFile(m.mediaUrl!))
+);
+// then proceed with existing cascade deletion
+```
+
+- [ ] **Step 4: Run full backend test suite**
+
+```bash
+cd backend && npm test
+```
+Expected: all tests pass. The cron still acts as safety net — on-demand is a best-effort addition.
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add backend/src/chat/services/chat-message.service.ts \
+        backend/src/chat/services/chat-conversation.service.ts \
+        backend/src/users/users.service.ts
+git commit -m "feat(media): wire MediaCleanupService.deleteMediaFile to deleteMessage, clearHistory, unfriend, deleteAccount"
 ```
 
 ---
@@ -1334,8 +1419,9 @@ final responseData = await _api.uploadEncryptedMedia(
   encryptedBytes: encrypted.ciphertext,
   mediaType: 'image',
   expiresIn: effectiveExpiresIn,
-  onProgress: (p) { /* optionally update bubble progress */ },
 );
+// Note: no onProgress — uploadEncryptedMedia does not expose upload progress (MultipartRequest limitation).
+// UX: indeterminate spinner shown during compute(encrypt); after that upload is fast for typical file sizes.
 
 final mediaUrl = responseData['mediaUrl'] as String;
 _pendingSendContent[tempId]!['mediaUrl'] = mediaUrl;
@@ -1585,6 +1671,7 @@ git add frontend/lib/widgets/message/image_message_content.dart \
         frontend/lib/widgets/message/voice_message_content.dart \
         frontend/lib/widgets/message/gif_message_content.dart \
         frontend/lib/widgets/message/file_message_content.dart \
+        frontend/lib/widgets/audio/playback_controller.dart \
         frontend/lib/models/message_model.dart \
         frontend/lib/providers/messaging_provider.dart
 git commit -m "feat(frontend): decrypt media on receive in all message type widgets"
