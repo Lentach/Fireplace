@@ -17,11 +17,14 @@ services:
       context: ./frontend
       dockerfile: Dockerfile
       args:
-        BASE_URL: http://192.168.1.11:3000
+        BASE_URL: ${BASE_URL:-http://localhost:3000}
     ports:
       - '8080:80'
     depends_on:
       - backend
+    volumes:
+      - media_storage:/app/media:ro
 
 volumes:
   pgdata:
+  media_storage:
