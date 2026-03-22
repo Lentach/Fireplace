@@ -1230,7 +1230,8 @@ class MessagingProvider extends ChangeNotifier {
         return;
       }
       if (message.mediaUrl != null &&
-          message.mediaUrl!.contains('cloudinary')) {
+          (message.mediaUrl!.contains('cloudinary') ||
+              message.mediaUrl!.contains('/media/'))) {
         _messages[index] = _messages[index].copyWith(
           deliveryStatus: MessageDeliveryStatus.sending,
         );
@@ -1296,7 +1297,8 @@ class MessagingProvider extends ChangeNotifier {
         return;
       }
       if (message.mediaUrl != null &&
-          message.mediaUrl!.contains('cloudinary')) {
+          (message.mediaUrl!.contains('cloudinary') ||
+              message.mediaUrl!.contains('/media/'))) {
         _messages[index] = _messages[index].copyWith(
           deliveryStatus: MessageDeliveryStatus.sending,
         );
@@ -1380,7 +1382,8 @@ class MessagingProvider extends ChangeNotifier {
         return;
       }
       if (message.mediaUrl != null &&
-          message.mediaUrl!.contains('cloudinary')) {
+          (message.mediaUrl!.contains('cloudinary') ||
+              message.mediaUrl!.contains('/media/'))) {
         _messages[index] = _messages[index].copyWith(
           deliveryStatus: MessageDeliveryStatus.sending,
         );
