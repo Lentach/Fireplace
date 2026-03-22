@@ -36,15 +36,14 @@ class MessageContentFactory {
         return PingMessageContent(isMine: isMine, textColor: textColor);
 
       case MessageType.image:
-        return ImageMessageContent(mediaUrl: message.mediaUrl);
+        return ImageMessageContent(message: message);
 
       case MessageType.gif:
-        return GifMessageContent(mediaUrl: message.mediaUrl);
+        return GifMessageContent(message: message);
 
       case MessageType.file:
         return FileMessageContent(
-          mediaUrl: message.mediaUrl,
-          content: message.content,
+          message: message,
           textColor: textColor,
         );
     }

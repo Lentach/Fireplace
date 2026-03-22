@@ -24,6 +24,22 @@ Future<void> downloadFile(String url, String filename) async {
   });
 }
 
+/// Trigger browser download of decrypted [bytes].
+Future<void> saveBytesAsDownload(List<int> bytes, String filename) async {
+  final blob = html.Blob([bytes]);
+  final objectUrl = html.Url.createObjectUrlFromBlob(blob);
+  final anchor = html.AnchorElement()
+    ..href = objectUrl
+    ..download = _sanitizeFilename(filename)
+    ..style.display = 'none';
+  html.document.body?.append(anchor);
+  anchor.click();
+  anchor.remove();
+  Future.delayed(const Duration(milliseconds: 500), () {
+    html.Url.revokeObjectUrl(objectUrl);
+  });
+}
+
 String _sanitizeFilename(String name) {
   if (name.isEmpty) return 'document';
   final segments = name.replaceAll(RegExp(r'[/\\]'), ' ').split(RegExp(r'\s+'));

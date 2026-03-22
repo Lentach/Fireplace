@@ -1,7 +1,6 @@
 import 'dart:async';
 import 'dart:convert';
 import 'dart:math';
-
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
@@ -12,6 +11,7 @@ import '../utils/file_utils_stub.dart'
 import '../config/app_config.dart';
 import '../models/message_model.dart';
 import '../services/api_service.dart';
+import '../services/media_crypto_service.dart';
 import '../services/link_preview_service.dart';
 import '../utils/e2e_envelope.dart';
 import 'conversation_helpers.dart' as conv_helpers;
@@ -29,6 +29,7 @@ class MessagingProvider extends ChangeNotifier {
   // ---------- Dependencies ----------
 
   late final ApiService _api = ApiService(baseUrl: AppConfig.baseUrl);
+  final MediaCryptoService _mediaCrypto = MediaCryptoService();
 
   /// Callback to emit socket events. Set by the wiring layer.
   void Function(String event, dynamic data)? _emit;
@@ -317,9 +318,13 @@ class MessagingProvider extends ChangeNotifier {
   }
 
   Future<void> _persistDecryptedContent(MessageModel decrypted) async {
-    if (decrypted.content.isEmpty ||
-        decrypted.content == '[Decryption failed]' ||
+    if (decrypted.content == '[Decryption failed]' ||
         decrypted.content == '[Encryption not initialized]') {
+      return;
+    }
+    final hasText = decrypted.content.isNotEmpty;
+    final hasMedia = decrypted.mediaUrl != null;
+    if (!hasText && !hasMedia && decrypted.messageType == MessageType.text) {
       return;
     }
     // Validate linkPreviewImageUrl before persist (SSRF defense in depth)
@@ -338,6 +343,8 @@ class MessagingProvider extends ChangeNotifier {
       if (decrypted.mediaUrl != null) 'mediaUrl': decrypted.mediaUrl!,
       if (decrypted.mediaDuration != null)
         'mediaDuration': decrypted.mediaDuration!,
+      if (decrypted.mediaKey != null) 'mediaKey': decrypted.mediaKey!,
+      if (decrypted.mediaIv != null) 'mediaIv': decrypted.mediaIv!,
       if (decrypted.linkPreviewUrl != null)
         'linkPreviewUrl': decrypted.linkPreviewUrl!,
       if (decrypted.linkPreviewTitle != null)
@@ -369,6 +376,8 @@ class MessagingProvider extends ChangeNotifier {
           messageType: restoredType,
           mediaUrl: savedData?['mediaUrl'] as String?,
           mediaDuration: savedData?['mediaDuration'] as int?,
+          mediaKey: savedData?['mediaKey'] as String?,
+          mediaIv: savedData?['mediaIv'] as String?,
           linkPreviewUrl: savedData?['linkPreviewUrl'] as String?,
           linkPreviewTitle: savedData?['linkPreviewTitle'] as String?,
           linkPreviewImageUrl: savedData?['linkPreviewImageUrl'] as String?,
@@ -380,6 +389,8 @@ class MessagingProvider extends ChangeNotifier {
           if (savedData?['mediaUrl'] != null) 'mediaUrl': savedData!['mediaUrl'],
           if (savedData?['mediaDuration'] != null)
             'mediaDuration': savedData!['mediaDuration'],
+          if (savedData?['mediaKey'] != null) 'mediaKey': savedData!['mediaKey'],
+          if (savedData?['mediaIv'] != null) 'mediaIv': savedData!['mediaIv'],
           if (savedData?['linkPreviewUrl'] != null)
             'linkPreviewUrl': savedData!['linkPreviewUrl'],
           if (savedData?['linkPreviewTitle'] != null)
@@ -696,31 +707,49 @@ class MessagingProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      // Upload to Cloudinary
-      final responseData = await _api.uploadMedia(
+      final rawBytes = await imageFile.readAsBytes();
+      if (rawBytes.length > MediaCryptoService.maxBytes) {
+        _markMessageFailed(tempId, 'Image too large (max 20 MB)');
+        return;
+      }
+      final encrypted =
+          await _mediaCrypto.encrypt(Uint8List.fromList(rawBytes));
+      _pendingSendContent[tempId] = <String, dynamic>{
+        'content': '',
+        'messageType': 'IMAGE',
+        'mediaKey': encrypted.keyBase64,
+        'mediaIv': encrypted.ivBase64,
+      };
+
+      final responseData = await _api.uploadEncryptedMedia(
         token: token,
-        type: 'image',
-        imageFile: imageFile,
+        encryptedBytes: encrypted.ciphertext,
+        mediaType: 'image',
         expiresIn: effectiveExpiresIn,
       );
 
-      final cloudinaryUrl = responseData['mediaUrl'] as String;
+      final mediaUrl = responseData['mediaUrl'] as String;
+      _pendingSendContent[tempId]!['mediaUrl'] = mediaUrl;
 
-      // Update optimistic message with URL
       final idx = _messages.indexWhere((m) => m.tempId == tempId);
       if (idx != -1) {
-        _messages[idx] = _messages[idx].copyWith(mediaUrl: cloudinaryUrl);
+        _messages[idx] = _messages[idx].copyWith(
+          mediaUrl: mediaUrl,
+          mediaKey: encrypted.keyBase64,
+          mediaIv: encrypted.ivBase64,
+        );
         notifyListeners();
       }
 
-      // Encrypt and send
       _encryptAndSend(
         recipientId: recipientId,
         content: '',
         tempId: tempId,
         effectiveExpiresIn: effectiveExpiresIn,
         messageType: 'IMAGE',
-        mediaUrl: cloudinaryUrl,
+        mediaUrl: mediaUrl,
+        mediaKey: encrypted.keyBase64,
+        mediaIv: encrypted.ivBase64,
       );
     } catch (e) {
       debugPrint('[MessagingProvider] Image upload failed: $e');
@@ -778,49 +807,70 @@ class MessagingProvider extends ChangeNotifier {
     _conversationsProvider?.updateLastMessage(effectiveConvId, optimisticMessage);
     notifyListeners();
 
-    // 3. Upload to Cloudinary
     try {
       if (_tokenForReconnect == null) {
         throw Exception('No authentication token available');
       }
 
-      final responseData = await _api.uploadMedia(
+      final List<int> rawBytes;
+      if (localAudioBytes != null) {
+        rawBytes = localAudioBytes;
+      } else if (localAudioPath != null) {
+        rawBytes = await file_utils.readFileBytes(localAudioPath);
+      } else {
+        throw Exception('Either localAudioPath or localAudioBytes required');
+      }
+      if (rawBytes.length > MediaCryptoService.maxBytes) {
+        throw Exception('Voice file too large');
+      }
+      final encrypted =
+          await _mediaCrypto.encrypt(Uint8List.fromList(rawBytes));
+      _pendingSendContent[tempId] = <String, dynamic>{
+        'content': '',
+        'messageType': 'VOICE',
+        'mediaDuration': duration,
+        'mediaKey': encrypted.keyBase64,
+        'mediaIv': encrypted.ivBase64,
+      };
+
+      final responseData = await _api.uploadEncryptedMedia(
         token: _tokenForReconnect!,
-        type: 'voice',
+        encryptedBytes: encrypted.ciphertext,
+        mediaType: 'voice',
         duration: duration,
         expiresIn: effectiveExpiresIn,
-        audioPath: localAudioPath,
-        audioBytes: localAudioBytes,
       );
 
-      final cloudinaryUrl = responseData['mediaUrl'] as String;
+      final mediaUrl = responseData['mediaUrl'] as String;
       final serverDuration =
           (responseData['mediaDuration'] as num?)?.toInt() ?? duration;
+      _pendingSendContent[tempId]!['mediaUrl'] = mediaUrl;
 
-      // 4. Update optimistic message with Cloudinary URL
       final index = _messages.indexWhere((m) => m.tempId == tempId);
       if (index != -1) {
         _messages[index] = _messages[index].copyWith(
-          mediaUrl: cloudinaryUrl,
+          mediaUrl: mediaUrl,
           mediaDuration: serverDuration,
+          mediaKey: encrypted.keyBase64,
+          mediaIv: encrypted.ivBase64,
         );
         notifyListeners();
       }
 
-      // 5. Delete temp file after successful upload (native only; web uses blob)
       if (!kIsWeb && localAudioPath != null) {
         await file_utils.deleteFileIfExists(localAudioPath);
       }
 
-      // 6. Encrypt and send via WebSocket (URL hidden in envelope)
       _encryptAndSend(
         recipientId: recipientId,
         content: '',
         tempId: tempId,
         effectiveExpiresIn: effectiveExpiresIn,
         messageType: 'VOICE',
-        mediaUrl: cloudinaryUrl,
+        mediaUrl: mediaUrl,
         mediaDuration: serverDuration,
+        mediaKey: encrypted.keyBase64,
+        mediaIv: encrypted.ivBase64,
       );
     } catch (e) {
       debugPrint('[MessagingProvider] Voice upload failed: $e');
@@ -876,31 +926,44 @@ class MessagingProvider extends ChangeNotifier {
         throw Exception('GIF too large (max 5 MB)');
       }
 
-      // 4. Upload to Cloudinary
-      final responseData = await _api.uploadMedia(
+      final encrypted =
+          await _mediaCrypto.encrypt(Uint8List.fromList(gifBytes));
+      _pendingSendContent[tempId] = <String, dynamic>{
+        'content': '',
+        'messageType': 'GIF',
+        'mediaKey': encrypted.keyBase64,
+        'mediaIv': encrypted.ivBase64,
+      };
+
+      final responseData = await _api.uploadEncryptedMedia(
         token: token,
-        type: 'gif',
-        gifBytes: gifBytes,
+        encryptedBytes: encrypted.ciphertext,
+        mediaType: 'gif',
         expiresIn: effectiveExpiresIn,
       );
 
-      final cloudinaryUrl = responseData['mediaUrl'] as String;
+      final mediaUrl = responseData['mediaUrl'] as String;
+      _pendingSendContent[tempId]!['mediaUrl'] = mediaUrl;
 
-      // 5. Update optimistic message with URL
       final idx = _messages.indexWhere((m) => m.tempId == tempId);
       if (idx != -1) {
-        _messages[idx] = _messages[idx].copyWith(mediaUrl: cloudinaryUrl);
+        _messages[idx] = _messages[idx].copyWith(
+          mediaUrl: mediaUrl,
+          mediaKey: encrypted.keyBase64,
+          mediaIv: encrypted.ivBase64,
+        );
         notifyListeners();
       }
 
-      // 6. Encrypt and send
       _encryptAndSend(
         recipientId: recipientId,
         content: '',
         tempId: tempId,
         effectiveExpiresIn: effectiveExpiresIn,
         messageType: 'GIF',
-        mediaUrl: cloudinaryUrl,
+        mediaUrl: mediaUrl,
+        mediaKey: encrypted.keyBase64,
+        mediaIv: encrypted.ivBase64,
       );
     } catch (e) {
       debugPrint('[MessagingProvider] GIF send failed: $e');
@@ -944,27 +1007,38 @@ class MessagingProvider extends ChangeNotifier {
     notifyListeners();
 
     try {
-      final responseData = await _api.uploadMedia(
-        token: token,
-        type: 'file',
-        fileBytes: fileBytes,
-        fileName: fileName,
-        fileMimeType: fileMimeType,
-      );
-
-      final mediaUrl = responseData['mediaUrl'] as String;
-
-      final idx = _messages.indexWhere((m) => m.tempId == tempId);
-      if (idx != -1) {
-        _messages[idx] = _messages[idx].copyWith(mediaUrl: mediaUrl);
-        notifyListeners();
+      if (fileBytes.length > MediaCryptoService.maxBytes) {
+        _markMessageFailed(tempId, 'File too large (max 20 MB)');
+        return;
       }
-
+      final encrypted =
+          await _mediaCrypto.encrypt(Uint8List.fromList(fileBytes));
       _pendingSendContent[tempId] = <String, dynamic>{
         'content': fileName,
         'messageType': 'FILE',
-        'mediaUrl': mediaUrl,
+        'mediaKey': encrypted.keyBase64,
+        'mediaIv': encrypted.ivBase64,
       };
+
+      final responseData = await _api.uploadEncryptedMedia(
+        token: token,
+        encryptedBytes: encrypted.ciphertext,
+        mediaType: 'file',
+        fileName: fileName,
+      );
+
+      final mediaUrl = responseData['mediaUrl'] as String;
+      _pendingSendContent[tempId]!['mediaUrl'] = mediaUrl;
+
+      final idx = _messages.indexWhere((m) => m.tempId == tempId);
+      if (idx != -1) {
+        _messages[idx] = _messages[idx].copyWith(
+          mediaUrl: mediaUrl,
+          mediaKey: encrypted.keyBase64,
+          mediaIv: encrypted.ivBase64,
+        );
+        notifyListeners();
+      }
 
       _encryptAndSend(
         recipientId: recipientId,
@@ -973,6 +1047,8 @@ class MessagingProvider extends ChangeNotifier {
         effectiveExpiresIn: effectiveExpiresIn,
         messageType: 'FILE',
         mediaUrl: mediaUrl,
+        mediaKey: encrypted.keyBase64,
+        mediaIv: encrypted.ivBase64,
       );
     } catch (e) {
       debugPrint('[MessagingProvider] File send failed: $e');
@@ -1229,6 +1305,8 @@ class MessagingProvider extends ChangeNotifier {
     String messageType = 'TEXT',
     String? mediaUrl,
     int? mediaDuration,
+    String? mediaKey,
+    String? mediaIv,
   }) async {
     final e2eReady = _encryptionProvider?.isE2EReady ?? false;
     _e2eFlowLog('SEND_START', {
@@ -1268,6 +1346,8 @@ class MessagingProvider extends ChangeNotifier {
         pending['messageType'] = messageType;
         if (mediaUrl != null) pending['mediaUrl'] = mediaUrl;
         if (mediaDuration != null) pending['mediaDuration'] = mediaDuration;
+        if (mediaKey != null) pending['mediaKey'] = mediaKey;
+        if (mediaIv != null) pending['mediaIv'] = mediaIv;
         if (linkPreview != null) {
           if (linkPreview['url'] != null) {
             pending['linkPreviewUrl'] = linkPreview['url'];
@@ -1287,6 +1367,8 @@ class MessagingProvider extends ChangeNotifier {
         messageType: messageType,
         mediaUrl: mediaUrl,
         mediaDuration: mediaDuration,
+        mediaKey: mediaKey,
+        mediaIv: mediaIv,
         linkPreview: linkPreview,
       ));
 
@@ -1362,8 +1444,12 @@ class MessagingProvider extends ChangeNotifier {
         // isE2EReady is true, which requires the provider to be set.
         final persisted =
             await _encryptionProvider!.getDecryptedContent(msg.id);
-        if (persisted != null &&
-            (persisted['content'] as String? ?? '').isNotEmpty) {
+        final pContent = persisted?['content'] as String? ?? '';
+        final hasPersistedPayload = persisted != null &&
+            (pContent.isNotEmpty ||
+                persisted['mediaUrl'] != null ||
+                persisted['messageType'] != null);
+        if (hasPersistedPayload) {
           final safeImageUrl = persisted['linkPreviewImageUrl'] as String?;
           final safePageUrl = persisted['linkPreviewUrl'] as String?;
           final validImage = safeImageUrl != null &&
@@ -1374,10 +1460,12 @@ class MessagingProvider extends ChangeNotifier {
           final restoredType =
               _parseMessageTypeString(persisted['messageType'] as String?);
           final restored = msg.copyWith(
-            content: persisted['content'] as String,
+            content: pContent.isNotEmpty ? pContent : msg.content,
             messageType: restoredType,
             mediaUrl: persisted['mediaUrl'] as String?,
             mediaDuration: persisted['mediaDuration'] as int?,
+            mediaKey: persisted['mediaKey'] as String?,
+            mediaIv: persisted['mediaIv'] as String?,
             linkPreviewUrl: persisted['linkPreviewUrl'] as String?,
             linkPreviewTitle: persisted['linkPreviewTitle'] as String?,
             linkPreviewImageUrl: validImage,
@@ -1403,7 +1491,8 @@ class MessagingProvider extends ChangeNotifier {
         final stored = await _encryptionProvider!.getDecryptedContent(msg.id);
         final storedContent = stored?['content'] as String? ?? '';
         if (storedContent.isNotEmpty ||
-            (stored?['messageType'] as String?) != null) {
+            (stored?['messageType'] as String?) != null ||
+            stored?['mediaUrl'] != null) {
           // Restore all fields from persisted cache (SSRF validated)
           final rawImageUrl = stored?['linkPreviewImageUrl'] as String?;
           final rawPageUrl = stored?['linkPreviewUrl'] as String?;
@@ -1419,6 +1508,8 @@ class MessagingProvider extends ChangeNotifier {
             messageType: restoredType,
             mediaUrl: stored?['mediaUrl'] as String?,
             mediaDuration: stored?['mediaDuration'] as int?,
+            mediaKey: stored?['mediaKey'] as String?,
+            mediaIv: stored?['mediaIv'] as String?,
             linkPreviewUrl: stored?['linkPreviewUrl'] as String?,
             linkPreviewTitle: stored?['linkPreviewTitle'] as String?,
             linkPreviewImageUrl: safeImageUrl,
@@ -1472,6 +1563,8 @@ class MessagingProvider extends ChangeNotifier {
           messageType: parsedType,
           mediaUrl: parsed.mediaUrl,
           mediaDuration: parsed.mediaDuration,
+          mediaKey: parsed.mediaKey,
+          mediaIv: parsed.mediaIv,
           linkPreviewUrl: parsed.linkPreviewUrl,
           linkPreviewTitle: parsed.linkPreviewTitle,
           linkPreviewImageUrl: safeImageUrl,
@@ -1501,7 +1594,11 @@ class MessagingProvider extends ChangeNotifier {
       final persisted =
           await _encryptionProvider!.getDecryptedContent(msg.id);
       final persistedContent = persisted?['content'] as String? ?? '';
-      if (persisted != null && persistedContent.isNotEmpty) {
+      final canRestorePersisted = persisted != null &&
+          (persistedContent.isNotEmpty ||
+              persisted['mediaUrl'] != null ||
+              persisted['messageType'] != null);
+      if (canRestorePersisted) {
         final rawImageUrl = persisted['linkPreviewImageUrl'] as String?;
         final rawPageUrl = persisted['linkPreviewUrl'] as String?;
         final safeImageUrl = rawImageUrl != null &&
@@ -1512,10 +1609,12 @@ class MessagingProvider extends ChangeNotifier {
         final restoredType =
             _parseMessageTypeString(persisted['messageType'] as String?);
         final restored = msg.copyWith(
-          content: persistedContent,
+          content: persistedContent.isNotEmpty ? persistedContent : msg.content,
           messageType: restoredType,
           mediaUrl: persisted['mediaUrl'] as String?,
           mediaDuration: persisted['mediaDuration'] as int?,
+          mediaKey: persisted['mediaKey'] as String?,
+          mediaIv: persisted['mediaIv'] as String?,
           linkPreviewUrl: persisted['linkPreviewUrl'] as String?,
           linkPreviewTitle: persisted['linkPreviewTitle'] as String?,
           linkPreviewImageUrl: safeImageUrl,

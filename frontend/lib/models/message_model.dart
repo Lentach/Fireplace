@@ -59,6 +59,10 @@ class MessageModel {
   final String? linkPreviewTitle;
   final String? linkPreviewImageUrl;
   final String? encryptedContent;
+  /// AES-256-GCM key (base64), from E2E envelope — client-only, not from REST.
+  final String? mediaKey;
+  /// AES-256-GCM IV (base64), from E2E envelope — client-only.
+  final String? mediaIv;
 
   /// True if this message has E2E encrypted content and was sent by another
   /// user (needs decryption before display).
@@ -93,6 +97,8 @@ class MessageModel {
     this.linkPreviewTitle,
     this.linkPreviewImageUrl,
     this.encryptedContent,
+    this.mediaKey,
+    this.mediaIv,
   });
 
   factory MessageModel.fromJson(Map<String, dynamic> json) {
@@ -183,6 +189,8 @@ class MessageModel {
     String? linkPreviewTitle,
     String? linkPreviewImageUrl,
     String? encryptedContent,
+    String? mediaKey,
+    String? mediaIv,
   }) {
     return MessageModel(
       id: id,
@@ -204,6 +212,8 @@ class MessageModel {
       linkPreviewTitle: linkPreviewTitle ?? this.linkPreviewTitle,
       linkPreviewImageUrl: linkPreviewImageUrl ?? this.linkPreviewImageUrl,
       encryptedContent: encryptedContent ?? this.encryptedContent,
+      mediaKey: mediaKey ?? this.mediaKey,
+      mediaIv: mediaIv ?? this.mediaIv,
     );
   }
 }

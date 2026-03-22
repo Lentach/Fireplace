@@ -199,8 +199,9 @@ class EncryptionProvider extends ChangeNotifier {
         final keys = _encryptionService.getKeysForUpload();
         if (keys != null) {
           _emit?.call('uploadKeyBundle', keys['keyBundle'] as Map<String, dynamic>);
-          _emit?.call('uploadOneTimePreKeys',
-              (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>());
+          _emit?.call('uploadOneTimePreKeys', {
+            'keys': (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
+          });
           debugPrint('[E2E] Uploaded key bundle + one-time pre-keys');
           _e2eFlowLog('E2E_KEYS_UPLOADED', {});
         }
@@ -263,7 +264,7 @@ class EncryptionProvider extends ChangeNotifier {
     _generatingMoreKeys = true;
     debugPrint('[E2E] Server reports pre-keys low, generating more...');
     _encryptionService.generateMorePreKeys().then((keys) {
-      _emit?.call('uploadOneTimePreKeys', keys);
+      _emit?.call('uploadOneTimePreKeys', {'keys': keys});
       debugPrint('[E2E] Uploaded ${keys.length} new one-time pre-keys');
     }).catchError((e) {
       debugPrint('[E2E] Failed to generate more pre-keys: $e');

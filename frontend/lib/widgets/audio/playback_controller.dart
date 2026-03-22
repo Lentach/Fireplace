@@ -1,10 +1,16 @@
 import 'dart:io';
+import 'dart:typed_data';
+
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
-import 'package:http/http.dart' as http;
+
 import '../../models/message_model.dart';
+import '../../services/media_crypto_service.dart';
+import '../../utils/audio_blob_url_stub.dart'
+    if (dart.library.html) '../../utils/audio_blob_url_web.dart' as audio_blob;
 import '../top_snackbar.dart';
 
 /// Manages AudioPlayer lifecycle: loading, caching, play/pause, seek, speed.
@@ -46,6 +52,7 @@ class _PlaybackControllerState extends State<PlaybackController> {
   Duration _duration = Duration.zero;
   double _playbackSpeed = 1.0;
   String? _cachedFilePath;
+  String? _webAudioObjectUrl;
 
   /// Duration from message metadata (for display before audio loads).
   Duration get _messageDuration =>
@@ -95,6 +102,9 @@ class _PlaybackControllerState extends State<PlaybackController> {
 
   @override
   void dispose() {
+    if (kIsWeb && _webAudioObjectUrl != null) {
+      audio_blob.revokeAudioObjectUrl(_webAudioObjectUrl);
+    }
     _audioPlayer.dispose();
     super.dispose();
   }
@@ -140,10 +150,34 @@ class _PlaybackControllerState extends State<PlaybackController> {
 
     try {
       if (kIsWeb) {
-        // Web: play directly from URL (no file cache).
-        await _audioPlayer.setUrl(mediaUrl);
+        final mk = widget.message.mediaKey;
+        final mi = widget.message.mediaIv;
+        if (mk != null && mi != null) {
+          final response = await http.get(Uri.parse(mediaUrl));
+          if (response.statusCode != 200) {
+            throw Exception('Failed to download audio');
+          }
+          if (response.bodyBytes.length > MediaCryptoService.maxBytes) {
+            throw Exception('Audio too large');
+          }
+          final plain = await MediaCryptoService().decrypt(
+            Uint8List.fromList(response.bodyBytes),
+            mk,
+            mi,
+          );
+          if (_webAudioObjectUrl != null) {
+            audio_blob.revokeAudioObjectUrl(_webAudioObjectUrl);
+          }
+          _webAudioObjectUrl = audio_blob.createAudioObjectUrl(plain);
+          final blobUrl = _webAudioObjectUrl;
+          if (blobUrl == null || blobUrl.isEmpty) {
+            throw Exception('Could not create audio URL');
+          }
+          await _audioPlayer.setUrl(blobUrl);
+        } else {
+          await _audioPlayer.setUrl(mediaUrl);
+        }
       } else {
-        // Native: check cache, download if needed.
         _cachedFilePath = await _getCachedFilePath();
 
         if (_cachedFilePath != null && File(_cachedFilePath!).existsSync()) {
@@ -173,8 +207,11 @@ class _PlaybackControllerState extends State<PlaybackController> {
   Future<String?> _getCachedFilePath() async {
     final dir = await getApplicationDocumentsDirectory();
     final cachePath = '${dir.path}/audio_cache';
-    final file = File('$cachePath/${widget.message.id}.m4a');
-    return file.existsSync() ? file.path : null;
+    final audioFile = File('$cachePath/${widget.message.id}.audio');
+    if (audioFile.existsSync()) return audioFile.path;
+    final legacy = File('$cachePath/${widget.message.id}.m4a');
+    if (legacy.existsSync()) return legacy.path;
+    return null;
   }
 
   Future<String> _downloadAndCache(String url) async {
@@ -182,15 +219,29 @@ class _PlaybackControllerState extends State<PlaybackController> {
     final cachePath = '${dir.path}/audio_cache';
     await Directory(cachePath).create(recursive: true);
 
-    final file = File('$cachePath/${widget.message.id}.m4a');
+    final file = File('$cachePath/${widget.message.id}.audio');
 
     final response = await http.get(Uri.parse(url));
-    if (response.statusCode == 200) {
-      await file.writeAsBytes(response.bodyBytes);
-      return file.path;
-    } else {
+    if (response.statusCode != 200) {
       throw Exception('Failed to download audio: ${response.statusCode}');
     }
+    if (response.bodyBytes.length > MediaCryptoService.maxBytes) {
+      throw Exception('Audio too large');
+    }
+
+    List<int> bytes = response.bodyBytes;
+    final mk = widget.message.mediaKey;
+    final mi = widget.message.mediaIv;
+    if (mk != null && mi != null) {
+      bytes = await MediaCryptoService().decrypt(
+        Uint8List.fromList(bytes),
+        mk,
+        mi,
+      );
+    }
+
+    await file.writeAsBytes(bytes);
+    return file.path;
   }
 
   void _seekFromWaveformPosition(double localX, double width) {

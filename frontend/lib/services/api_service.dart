@@ -1,5 +1,5 @@
 import 'dart:convert';
-import 'dart:io';
+import 'dart:typed_data';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
@@ -157,76 +157,33 @@ class ApiService {
     }
   }
 
-  /// Upload media (image, voice, gif, or file) to backend. Returns {mediaUrl, mediaDuration?, fileName?}.
-  Future<Map<String, dynamic>> uploadMedia({
+  /// Upload an AES-encrypted media blob to [POST /media/upload].
+  Future<Map<String, dynamic>> uploadEncryptedMedia({
     required String token,
-    required String type, // 'image', 'voice', 'gif', or 'file'
+    required Uint8List encryptedBytes,
+    required String mediaType,
     int? duration,
     int? expiresIn,
-    XFile? imageFile,
-    String? audioPath,
-    List<int>? audioBytes,
-    List<int>? gifBytes,
-    List<int>? fileBytes,
     String? fileName,
-    String? fileMimeType,
   }) async {
     final request = http.MultipartRequest(
       'POST',
-      Uri.parse('$baseUrl/messages/upload-media'),
+      Uri.parse('$baseUrl/media/upload'),
     );
     request.headers['Authorization'] = 'Bearer $token';
-    request.fields['type'] = type;
+    request.fields['mediaType'] = mediaType;
     if (duration != null) request.fields['duration'] = duration.toString();
     if (expiresIn != null) request.fields['expiresIn'] = expiresIn.toString();
+    if (fileName != null) request.fields['fileName'] = fileName;
 
-    if (type == 'image' && imageFile != null) {
-      if (kIsWeb) {
-        final bytes = await imageFile.readAsBytes();
-        final extension = imageFile.name.toLowerCase().split('.').last;
-        final mimeType = extension == 'png' ? 'image/png' : 'image/jpeg';
-        request.files.add(http.MultipartFile.fromBytes(
-          'file', bytes,
-          filename: imageFile.name,
-          contentType: MediaType.parse(mimeType),
-        ));
-      } else {
-        request.files.add(await http.MultipartFile.fromPath('file', imageFile.path));
-      }
-    } else if (type == 'voice') {
-      List<int> bytes;
-      if (audioBytes != null) {
-        bytes = audioBytes;
-      } else if (audioPath != null) {
-        final file = File(audioPath);
-        if (!await file.exists()) throw Exception('Audio file not found: $audioPath');
-        bytes = await file.readAsBytes();
-      } else {
-        throw Exception('Either audioPath or audioBytes required for voice upload');
-      }
-      final isWeb = audioBytes != null;
-      final ext = isWeb ? 'wav' : 'm4a';
-      final mime = isWeb ? 'wav' : 'm4a';
-      request.files.add(http.MultipartFile.fromBytes(
-        'file', bytes,
-        filename: 'voice_${DateTime.now().millisecondsSinceEpoch}.$ext',
-        contentType: MediaType('audio', mime),
-      ));
-    } else if (type == 'gif' && gifBytes != null) {
-      request.files.add(http.MultipartFile.fromBytes(
-        'file', gifBytes,
-        filename: 'gif_${DateTime.now().millisecondsSinceEpoch}.gif',
-        contentType: MediaType('image', 'gif'),
-      ));
-    } else if (type == 'file' && fileBytes != null && fileName != null) {
-      final mime = fileMimeType ?? 'application/octet-stream';
-      request.files.add(http.MultipartFile.fromBytes(
+    request.files.add(
+      http.MultipartFile.fromBytes(
         'file',
-        fileBytes,
-        filename: fileName,
-        contentType: MediaType.parse(mime),
-      ));
-    }
+        encryptedBytes,
+        filename: 'encrypted.bin',
+        contentType: MediaType('application', 'octet-stream'),
+      ),
+    );
 
     final streamedResponse = await request.send();
     final response = await http.Response.fromStream(streamedResponse);
