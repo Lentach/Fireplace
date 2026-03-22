@@ -878,7 +878,7 @@ class MessagingProvider extends ChangeNotifier {
     }
   }
 
-  /// Send a GIF message. Downloads from Giphy, uploads to Cloudinary, encrypts URL.
+  /// Send a GIF message. Downloads from Giphy, encrypts bytes, uploads blob, E2E envelope.
   Future<void> sendGif(
     String token,
     String gifUrl,
@@ -1195,6 +1195,40 @@ class MessagingProvider extends ChangeNotifier {
     }
 
     if (message.messageType == MessageType.voice) {
+      final vUrl = message.mediaUrl;
+      final vKey = message.mediaKey;
+      final vIv = message.mediaIv;
+      // After encrypt+upload, blob URL and keys live on the model — retry E2E send only.
+      if (vUrl != null &&
+          vUrl.isNotEmpty &&
+          vKey != null &&
+          vIv != null &&
+          vUrl.startsWith('http')) {
+        _messages[index] = _messages[index].copyWith(
+          deliveryStatus: MessageDeliveryStatus.sending,
+        );
+        _pendingSendContent[tempId] = <String, dynamic>{
+          'content': '',
+          'messageType': 'VOICE',
+          'mediaUrl': vUrl,
+          'mediaDuration': message.mediaDuration,
+          'mediaKey': vKey,
+          'mediaIv': vIv,
+        };
+        notifyListeners();
+        _encryptAndSend(
+          recipientId: recipientId,
+          content: '',
+          tempId: tempId,
+          effectiveExpiresIn: conv.disappearingTimer,
+          messageType: 'VOICE',
+          mediaUrl: vUrl,
+          mediaDuration: message.mediaDuration,
+          mediaKey: vKey,
+          mediaIv: vIv,
+        );
+        return;
+      }
       if (message.mediaUrl != null &&
           message.mediaUrl!.contains('cloudinary')) {
         _messages[index] = _messages[index].copyWith(
@@ -1231,6 +1265,36 @@ class MessagingProvider extends ChangeNotifier {
     }
 
     if (message.messageType == MessageType.image) {
+      final iUrl = message.mediaUrl;
+      final iKey = message.mediaKey;
+      final iIv = message.mediaIv;
+      if (iUrl != null &&
+          iUrl.isNotEmpty &&
+          iKey != null &&
+          iIv != null) {
+        _messages[index] = _messages[index].copyWith(
+          deliveryStatus: MessageDeliveryStatus.sending,
+        );
+        _pendingSendContent[tempId] = <String, dynamic>{
+          'content': '',
+          'messageType': 'IMAGE',
+          'mediaUrl': iUrl,
+          'mediaKey': iKey,
+          'mediaIv': iIv,
+        };
+        notifyListeners();
+        _encryptAndSend(
+          recipientId: recipientId,
+          content: '',
+          tempId: tempId,
+          effectiveExpiresIn: conv.disappearingTimer,
+          messageType: 'IMAGE',
+          mediaUrl: iUrl,
+          mediaKey: iKey,
+          mediaIv: iIv,
+        );
+        return;
+      }
       if (message.mediaUrl != null &&
           message.mediaUrl!.contains('cloudinary')) {
         _messages[index] = _messages[index].copyWith(
@@ -1250,7 +1314,71 @@ class MessagingProvider extends ChangeNotifier {
       return;
     }
 
+    if (message.messageType == MessageType.gif) {
+      final gUrl = message.mediaUrl;
+      final gKey = message.mediaKey;
+      final gIv = message.mediaIv;
+      if (gUrl != null &&
+          gUrl.isNotEmpty &&
+          gKey != null &&
+          gIv != null) {
+        _messages[index] = _messages[index].copyWith(
+          deliveryStatus: MessageDeliveryStatus.sending,
+        );
+        _pendingSendContent[tempId] = <String, dynamic>{
+          'content': '',
+          'messageType': 'GIF',
+          'mediaUrl': gUrl,
+          'mediaKey': gKey,
+          'mediaIv': gIv,
+        };
+        notifyListeners();
+        _encryptAndSend(
+          recipientId: recipientId,
+          content: '',
+          tempId: tempId,
+          effectiveExpiresIn: conv.disappearingTimer,
+          messageType: 'GIF',
+          mediaUrl: gUrl,
+          mediaKey: gKey,
+          mediaIv: gIv,
+        );
+      }
+      return;
+    }
+
     if (message.messageType == MessageType.file) {
+      final fUrl = message.mediaUrl;
+      final fKey = message.mediaKey;
+      final fIv = message.mediaIv;
+      final fileName = message.content;
+      if (fUrl != null &&
+          fUrl.isNotEmpty &&
+          fKey != null &&
+          fIv != null) {
+        _messages[index] = _messages[index].copyWith(
+          deliveryStatus: MessageDeliveryStatus.sending,
+        );
+        _pendingSendContent[tempId] = <String, dynamic>{
+          'content': fileName,
+          'messageType': 'FILE',
+          'mediaUrl': fUrl,
+          'mediaKey': fKey,
+          'mediaIv': fIv,
+        };
+        notifyListeners();
+        _encryptAndSend(
+          recipientId: recipientId,
+          content: fileName,
+          tempId: tempId,
+          effectiveExpiresIn: conv.disappearingTimer,
+          messageType: 'FILE',
+          mediaUrl: fUrl,
+          mediaKey: fKey,
+          mediaIv: fIv,
+        );
+        return;
+      }
       if (message.mediaUrl != null &&
           message.mediaUrl!.contains('cloudinary')) {
         _messages[index] = _messages[index].copyWith(
