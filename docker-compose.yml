@@ -26,16 +26,17 @@ services:
       DB_NAME: ${DB_NAME:-chatdb}
       JWT_SECRET: ${JWT_SECRET:-my-super-secret-jwt-key-change-in-production}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:-http://localhost:3000}
-      CLOUDINARY_CLOUD_NAME: ${CLOUDINARY_CLOUD_NAME}
-      CLOUDINARY_API_KEY: ${CLOUDINARY_API_KEY}
-      CLOUDINARY_API_SECRET: ${CLOUDINARY_API_SECRET}
+      MEDIA_BASE_URL: ${MEDIA_BASE_URL:-http://localhost:3000}
+      MEDIA_DIR: /app/media
       FIREBASE_SERVICE_ACCOUNT: ${FIREBASE_SERVICE_ACCOUNT}
       NODE_ENV: development
     depends_on:
       - db
     volumes:
       - ./backend:/app
+      - media_storage:/app/media
     command: sh -c "npm install && npm run start:dev"
 
 volumes:
   pgdata:
+  media_storage:
