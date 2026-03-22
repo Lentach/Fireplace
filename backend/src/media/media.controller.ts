@@ -13,11 +13,15 @@ import {
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
+import * as path from 'path';
 import type { Response } from 'express';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LocalStorageService } from './local-storage.service';
 import { UploadMediaDto } from './dto/upload-media.dto';
 import { validateDto } from '../chat/utils/dto.validator';
+
+const isDev = process.env.NODE_ENV !== 'production';
+const mediaDir = process.env.MEDIA_DIR ?? '/app/media';
 
 @Controller('media')
 export class MediaController {
@@ -82,16 +86,19 @@ export class MediaController {
     @Param('filename') filename: string,
     @Res() res: Response,
   ) {
-    res.setHeader(
-      'X-Accel-Redirect',
-      `/internal/media/avatars/${filename}`,
-    );
+    if (isDev) {
+      return res.sendFile(path.join(mediaDir, 'avatars', filename));
+    }
+    res.setHeader('X-Accel-Redirect', `/internal/media/avatars/${filename}`);
     res.status(200).send();
   }
 
   @Get('msgs/:filename')
   @Throttle({ default: { limit: 60, ttl: 60000 } })
   async serveMsgs(@Param('filename') filename: string, @Res() res: Response) {
+    if (isDev) {
+      return res.sendFile(path.join(mediaDir, 'msgs', filename));
+    }
     res.setHeader('X-Accel-Redirect', `/internal/media/msgs/${filename}`);
     res.status(200).send();
   }

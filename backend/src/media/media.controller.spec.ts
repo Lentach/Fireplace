@@ -37,6 +37,7 @@ const fakeRes = {
   setHeader: jest.fn(),
   status: jest.fn().mockReturnThis(),
   send: jest.fn(),
+  sendFile: jest.fn(),
 } as any;
 
 describe('MediaController', () => {
@@ -90,19 +91,18 @@ describe('MediaController', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
-  it('serveMsgs sets X-Accel-Redirect header', async () => {
+  // In test/dev (NODE_ENV != 'production') the controller calls sendFile directly.
+  it('serveMsgs serves file directly in dev mode', async () => {
     await controller.serveMsgs('abc.bin', fakeRes);
-    expect(fakeRes.setHeader).toHaveBeenCalledWith(
-      'X-Accel-Redirect',
-      '/internal/media/msgs/abc.bin',
+    expect(fakeRes.sendFile).toHaveBeenCalledWith(
+      expect.stringMatching(/msgs[/\\]abc\.bin/),
     );
   });
 
-  it('serveAvatars sets X-Accel-Redirect header', async () => {
+  it('serveAvatars serves file directly in dev mode', async () => {
     await controller.serveAvatars('uuid.jpg', fakeRes);
-    expect(fakeRes.setHeader).toHaveBeenCalledWith(
-      'X-Accel-Redirect',
-      '/internal/media/avatars/uuid.jpg',
+    expect(fakeRes.sendFile).toHaveBeenCalledWith(
+      expect.stringMatching(/avatars[/\\]uuid\.jpg/),
     );
   });
 });
