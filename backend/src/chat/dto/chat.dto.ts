@@ -6,6 +6,7 @@ import {
   MaxLength,
   IsOptional,
   Min,
+  Max,
   Matches,
   ValidateIf,
   IsIn,
@@ -40,7 +41,9 @@ export class SendMessageDto {
   @IsOptional()
   @IsNumber()
   @IsPositive()
-  expiresIn?: number; // seconds until message expires
+  @Min(60)
+  @Max(2592000)
+  expiresIn?: number; // seconds until message expires (min 60s, max 30 days)
 
   @IsOptional()
   @IsString()

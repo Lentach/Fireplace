@@ -71,11 +71,6 @@ export class UsersService {
       .getOne();
   }
 
-  async searchByUsername(username: string, limit = 20): Promise<User[]> {
-    const users = await this.findByUsername(username);
-    return users.slice(0, limit);
-  }
-
   async updateProfilePicture(
     userId: number,
     secureUrl: string,

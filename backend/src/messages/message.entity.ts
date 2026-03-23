@@ -62,7 +62,7 @@ export class Message {
   mediaDuration: number | null;
 
   /** Comma-separated user IDs who "deleted for me" — hidden from their view only */
-  @Column({ type: 'varchar', length: 500, default: '' })
+  @Column({ type: 'text', default: '' })
   hiddenByUserIds: string;
 
   /** JSON: {"👍":[1,3],"❤️":[2]} — emoji reactions by userId */

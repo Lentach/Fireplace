@@ -44,7 +44,7 @@ import { validate } from './config/env.validation';
       },
     ]),
     // TypeORM auto-creates tables (synchronize: true).
-    // In production disable synchronize and use migrations!
+    // synchronize is automatically disabled when NODE_ENV=production.
     TypeOrmModule.forRootAsync({
       imports: [ConfigModule],
       inject: [ConfigService],
@@ -56,7 +56,7 @@ import { validate } from './config/env.validation';
         password: configService.get('DB_PASS'),
         database: configService.get('DB_NAME'),
         entities: [User, Conversation, Message, FriendRequest, BlockedUser, FcmToken, KeyBundle, OneTimePreKey, SecretNote],
-        synchronize: configService.get('NODE_ENV') === 'development',
+        synchronize: process.env.NODE_ENV !== 'production',
       }),
     }),
     MediaModule,

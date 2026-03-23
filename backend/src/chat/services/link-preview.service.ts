@@ -96,11 +96,12 @@ export class LinkPreviewService {
       if (!reader) return null;
       let html = '';
       let totalBytes = 0;
+      const decoder = new TextDecoder();
       while (true) {
         const { done, value } = await reader.read();
         if (done) break;
         totalBytes += value.byteLength;
-        html += new TextDecoder().decode(value);
+        html += decoder.decode(value);
         if (html.includes('</head>')) break;
         if (totalBytes > 800_000) break;
       }

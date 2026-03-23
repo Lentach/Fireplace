@@ -66,18 +66,42 @@ export class ChatConversationService {
       otherUser,
     );
 
-    const conversations = await this.conversationsService.findByUser(userId);
-    const list = await this._conversationsWithUnread(conversations, userId);
+    const [rawConversations, blockedIds, blockedByUserIds] = await Promise.all([
+      this.conversationsService.findByUser(userId),
+      this.blockedService.getBlockedUserIds(userId),
+      this.blockedService.getBlockedByUserIds(userId),
+    ]);
+    const excludeSet = new Set([...blockedIds, ...blockedByUserIds]);
+    const conversations = rawConversations.filter((conv) => {
+      const otherId =
+        conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
+      return !excludeSet.has(otherId);
+    });
+    const list = await this.conversationsWithUnread(conversations, userId);
     client.emit('conversationsList', list);
     client.emit('openConversation', { conversationId: conversation.id });
 
     // Emit only conversationsList to the other user (no openConversation — B should not auto-open chat)
     const otherSocketId = onlineUsers.get(data.recipientId);
     if (otherSocketId) {
-      const otherConvs = await this.conversationsService.findByUser(
-        data.recipientId,
-      );
-      const otherList = await this._conversationsWithUnread(
+      const [rawOtherConvs, otherBlockedIds, otherBlockedByUserIds] =
+        await Promise.all([
+          this.conversationsService.findByUser(data.recipientId),
+          this.blockedService.getBlockedUserIds(data.recipientId),
+          this.blockedService.getBlockedByUserIds(data.recipientId),
+        ]);
+      const otherExcludeSet = new Set([
+        ...otherBlockedIds,
+        ...otherBlockedByUserIds,
+      ]);
+      const otherConvs = rawOtherConvs.filter((conv) => {
+        const otherId =
+          conv.userOne.id === data.recipientId
+            ? conv.userTwo.id
+            : conv.userOne.id;
+        return !otherExcludeSet.has(otherId);
+      });
+      const otherList = await this.conversationsWithUnread(
         otherConvs,
         data.recipientId,
       );
@@ -85,7 +109,7 @@ export class ChatConversationService {
     }
   }
 
-  private async _conversationsWithUnread(
+  async conversationsWithUnread(
     conversations: any[],
     userId: number,
   ): Promise<any[]> {
@@ -147,7 +171,7 @@ export class ChatConversationService {
       `handleGetConversations: found ${conversations.length} conversations for userId=${userId}`,
     );
 
-    const list = await this._conversationsWithUnread(conversations, userId);
+    const list = await this.conversationsWithUnread(conversations, userId);
     client.emit('conversationsList', list);
   }
 
@@ -216,12 +240,12 @@ export class ChatConversationService {
 
     // 7. Refresh conversations list for both users
     const userConvs = await this.conversationsService.findByUser(userId);
-    const userList = await this._conversationsWithUnread(userConvs, userId);
+    const userList = await this.conversationsWithUnread(userConvs, userId);
     client.emit('conversationsList', userList);
 
     if (otherSocketId) {
       const otherConvs = await this.conversationsService.findByUser(otherUserId);
-      const otherList = await this._conversationsWithUnread(
+      const otherList = await this.conversationsWithUnread(
         otherConvs,
         otherUserId,
       );

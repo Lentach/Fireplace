@@ -1872,14 +1872,15 @@ class MessagingProvider extends ChangeNotifier {
         .where((m) => m.deliveryStatus == MessageDeliveryStatus.sending)
         .toList();
     if (sending.isEmpty) return;
-    sending.sort((a, b) => b.createdAt.compareTo(a.createdAt));
-    final last = sending.first;
-    final idx = _messages.indexWhere((m) => m.tempId == last.tempId);
-    if (idx != -1) {
-      _messages[idx] = _messages[idx].copyWith(
-        deliveryStatus: MessageDeliveryStatus.failed,
-      );
+    for (final msg in sending) {
+      final idx = _messages.indexWhere((m) => m.tempId == msg.tempId);
+      if (idx != -1) {
+        _messages[idx] = _messages[idx].copyWith(
+          deliveryStatus: MessageDeliveryStatus.failed,
+        );
+      }
     }
+    notifyListeners();
   }
 
   bool _isKeyBundleOrTimeoutError(Object e) {

@@ -26,7 +26,7 @@ export class SecretNotesController {
   async createNote(@Body() dto: CreateNoteDto, @Req() req: any) {
     const validTtls = [7200, 21600, 43200];
     const expiresIn = validTtls.includes(dto.expiresIn) ? dto.expiresIn : 21600;
-    return this.service.create(dto.ciphertext, expiresIn, req.user.userId);
+    return this.service.create(dto.ciphertext, expiresIn, req.user.id);
   }
 
   @Get('note/:token')

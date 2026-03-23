@@ -86,20 +86,24 @@ export class MediaController {
     @Param('filename') filename: string,
     @Res() res: Response,
   ) {
+    const safeFilename = path.basename(filename);
+    if (safeFilename !== filename) throw new BadRequestException('Invalid filename');
     if (isDev) {
-      return res.sendFile(path.join(mediaDir, 'avatars', filename));
+      return res.sendFile(path.join(mediaDir, 'avatars', safeFilename));
     }
-    res.setHeader('X-Accel-Redirect', `/internal/media/avatars/${filename}`);
+    res.setHeader('X-Accel-Redirect', `/internal/media/avatars/${safeFilename}`);
     res.status(200).send();
   }
 
   @Get('msgs/:filename')
   @Throttle({ default: { limit: 60, ttl: 60000 } })
   async serveMsgs(@Param('filename') filename: string, @Res() res: Response) {
+    const safeFilename = path.basename(filename);
+    if (safeFilename !== filename) throw new BadRequestException('Invalid filename');
     if (isDev) {
-      return res.sendFile(path.join(mediaDir, 'msgs', filename));
+      return res.sendFile(path.join(mediaDir, 'msgs', safeFilename));
     }
-    res.setHeader('X-Accel-Redirect', `/internal/media/msgs/${filename}`);
+    res.setHeader('X-Accel-Redirect', `/internal/media/msgs/${safeFilename}`);
     res.status(200).send();
   }
 }

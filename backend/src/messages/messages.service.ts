@@ -1,6 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { In, Repository } from 'typeorm';
+import { In, Not, Repository } from 'typeorm';
 import { Message, MessageDeliveryStatus, MessageType } from './message.entity';
 import { User } from '../users/user.entity';
 import { Conversation } from '../conversations/conversation.entity';
@@ -187,8 +187,8 @@ export class MessagesService {
     );
     qb.andWhere(
       `(m."hiddenByUserIds" IS NULL OR m."hiddenByUserIds" = '' OR ` +
-        `(',' || COALESCE(m."hiddenByUserIds", '') || ',' NOT LIKE :hiddenPattern))`,
-      { hiddenPattern: `%,${recipientUserId},%` },
+        `(',' || COALESCE(m."hiddenByUserIds", '') || ',' NOT LIKE '%,' || :uid::text || ',%'))`,
+      { uid: recipientUserId },
     );
     return qb.getCount();
   }
@@ -204,7 +204,6 @@ export class MessagesService {
     if (conversationIds.length === 0) return new Map();
     const ids = conversationIds.map((id) => Number(id)).filter((id) => !Number.isNaN(id));
     if (ids.length === 0) return new Map();
-    const hiddenPattern = `%,${recipientUserId},%`;
     const rows = await this.msgRepo
       .createQueryBuilder('m')
       .innerJoin('m.sender', 's')
@@ -220,8 +219,8 @@ export class MessagesService {
       )
       .andWhere(
         `(m."hiddenByUserIds" IS NULL OR m."hiddenByUserIds" = '' OR ` +
-          `(',' || COALESCE(m."hiddenByUserIds", '') || ',' NOT LIKE :hiddenPattern))`,
-        { hiddenPattern },
+          `(',' || COALESCE(m."hiddenByUserIds", '') || ',' NOT LIKE '%,' || :uid::text || ',%'))`,
+        { uid: recipientUserId },
       )
       .groupBy('m.conversation_id')
       .getRawMany();
@@ -247,10 +246,13 @@ export class MessagesService {
     const ids = conversationIds.map((id) => Number(id)).filter((id) => !Number.isNaN(id));
     if (ids.length === 0) return new Map();
     let hiddenClause = '';
+    const queryParams: unknown[] = [ids];
     if (hiddenByUserId != null) {
+      queryParams.push(hiddenByUserId);
+      const uidParamIdx = queryParams.length;
       hiddenClause =
         ` AND ("hiddenByUserIds" IS NULL OR "hiddenByUserIds" = '' OR ` +
-        `(',' || COALESCE("hiddenByUserIds", '') || ',' NOT LIKE '%,${hiddenByUserId},%'))`;
+        `(',' || COALESCE("hiddenByUserIds", '') || ',' NOT LIKE '%,' || $${uidParamIdx}::text || ',%'))`;
     }
     const rawRows = await this.msgRepo.query(
       `SELECT id, conversation_id as "conversationId" FROM (
@@ -258,7 +260,7 @@ export class MessagesService {
         FROM messages
         WHERE conversation_id = ANY($1::int[])${hiddenClause}
       ) sub WHERE rn = 1`,
-      [ids],
+      queryParams,
     );
     const msgIds = rawRows.map((r: { id: unknown }) => Number(r.id)).filter((id) => !Number.isNaN(id));
     const convIdByMsgId = new Map<number, number>();
@@ -289,11 +291,23 @@ export class MessagesService {
     return map;
   }
 
-  /** Mark all messages in the conversation that were sent BY senderId (to the other participant) as READ. Returns updated messages with sender. */
+  /** Mark all messages in the conversation that were sent BY senderId (to the other participant) as READ. Returns only the messages that were actually changed (were not already READ). */
   async markConversationAsReadFromSender(
     conversationId: number,
     senderId: number,
   ): Promise<Message[]> {
+    // Fetch messages that will actually be changed (not yet READ) before the update
+    const toUpdate = await this.msgRepo.find({
+      where: {
+        conversation: { id: conversationId },
+        sender: { id: senderId },
+        deliveryStatus: Not(MessageDeliveryStatus.READ),
+      },
+      relations: ['sender'],
+    });
+
+    if (toUpdate.length === 0) return [];
+
     // Batch update — single query instead of N individual saves
     await this.msgRepo
       .createQueryBuilder()
@@ -309,14 +323,8 @@ export class MessagesService {
       )
       .execute();
 
-    // Return all sender messages in conversation for event emission
-    return this.msgRepo.find({
-      where: {
-        conversation: { id: conversationId },
-        sender: { id: senderId },
-      },
-      relations: ['sender'],
-    });
+    // Return only the messages that were just changed (had their status updated to READ)
+    return toUpdate.map((m) => ({ ...m, deliveryStatus: MessageDeliveryStatus.READ })) as Message[];
   }
 
   /** Non-null media URLs in a conversation (for disk cleanup before row delete). */

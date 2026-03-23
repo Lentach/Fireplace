@@ -5,7 +5,7 @@ import {
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { DataSource, Repository } from 'typeorm';
 import { FriendRequest, FriendRequestStatus } from './friend-request.entity';
 import { User } from '../users/user.entity';
 
@@ -16,6 +16,7 @@ export class FriendsService {
   constructor(
     @InjectRepository(FriendRequest)
     private friendRequestRepository: Repository<FriendRequest>,
+    private dataSource: DataSource,
   ) {}
 
   async sendRequest(sender: User, receiver: User): Promise<FriendRequest> {
@@ -56,50 +57,49 @@ export class FriendsService {
       throw new ConflictException('Friend request already sent');
     }
 
-    // Check for reverse pending request (mutual requests = auto-accept both)
-    const reversePending = await this.friendRequestRepository.findOne({
-      where: {
-        sender: { id: receiver.id },
-        receiver: { id: sender.id },
-        status: FriendRequestStatus.PENDING,
-      },
-    });
-
-    // Create the new request
-    const newRequest = this.friendRequestRepository.create({
-      sender,
-      receiver,
-      status: FriendRequestStatus.PENDING,
-    });
-
-    await this.friendRequestRepository.save(newRequest);
-
-    // Auto-accept both if reverse pending exists
-    if (reversePending) {
-      await this.friendRequestRepository.update(
-        { id: reversePending.id },
-        {
-          status: FriendRequestStatus.ACCEPTED,
-          respondedAt: new Date(),
+    // Wrap the check-create-update sequence in a transaction to prevent
+    // duplicate ACCEPTED rows when two users call this simultaneously (race condition).
+    return await this.dataSource.transaction(async (manager) => {
+      // Check for reverse pending request (mutual requests = auto-accept both)
+      const reversePending = await manager.findOne(FriendRequest, {
+        where: {
+          sender: { id: receiver.id },
+          receiver: { id: sender.id },
+          status: FriendRequestStatus.PENDING,
         },
-      );
-
-      await this.friendRequestRepository.update(
-        { id: newRequest.id },
-        {
-          status: FriendRequestStatus.ACCEPTED,
-          respondedAt: new Date(),
-        },
-      );
-
-      const updated = await this.friendRequestRepository.findOne({
-        where: { id: newRequest.id },
-        relations: ['sender', 'receiver'],
       });
-      return updated!;
-    }
 
-    return newRequest;
+      // Create the new request
+      const newRequest = manager.create(FriendRequest, {
+        sender,
+        receiver,
+        status: FriendRequestStatus.PENDING,
+      });
+
+      await manager.save(FriendRequest, newRequest);
+
+      // Auto-accept both if reverse pending exists
+      if (reversePending) {
+        const now = new Date();
+        await manager.update(FriendRequest, { id: reversePending.id }, {
+          status: FriendRequestStatus.ACCEPTED,
+          respondedAt: now,
+        });
+
+        await manager.update(FriendRequest, { id: newRequest.id }, {
+          status: FriendRequestStatus.ACCEPTED,
+          respondedAt: now,
+        });
+
+        const updated = await manager.findOne(FriendRequest, {
+          where: { id: newRequest.id },
+          relations: ['sender', 'receiver'],
+        });
+        return updated!;
+      }
+
+      return newRequest;
+    });
   }
 
   async acceptRequest(

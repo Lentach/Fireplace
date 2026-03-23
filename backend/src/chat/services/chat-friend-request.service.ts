@@ -16,7 +16,8 @@ import {
 } from '../dto/chat.dto';
 import { FriendRequestMapper } from '../mappers/friend-request.mapper';
 import { UserMapper } from '../mappers/user.mapper';
-import { ConversationMapper } from '../mappers/conversation.mapper';
+import { FriendRequestStatus } from '../../friends/friend-request.entity';
+import { ChatConversationService } from './chat-conversation.service';
 
 @Injectable()
 export class ChatFriendRequestService {
@@ -29,6 +30,7 @@ export class ChatFriendRequestService {
     private readonly conversationsService: ConversationsService,
     private readonly messagesService: MessagesService,
     private readonly mediaCleanup: MediaCleanupService,
+    private readonly chatConversationService: ChatConversationService,
   ) {}
 
   /** Emit friendsList to client and optionally to another socket. */
@@ -51,7 +53,8 @@ export class ChatFriendRequestService {
     }
   }
 
-  /** Emit conversationsList to client and optionally to another socket. */
+  /** Emit conversationsList to client and optionally to another socket.
+   *  Uses the same unread-count + blocked-user filtering as handleGetConversations. */
   private async emitConversationsListToBoth(
     client: Socket,
     server: Server,
@@ -60,15 +63,30 @@ export class ChatFriendRequestService {
     otherUserId: number | undefined,
   ): Promise<void> {
     try {
-      const clientConvs = await this.conversationsService.findByUser(clientUserId);
-      client.emit('conversationsList', clientConvs.map((c) => ConversationMapper.toPayload(c)));
+      const clientList = await this._buildConversationsList(clientUserId);
+      client.emit('conversationsList', clientList);
       if (otherSocketId != null && otherUserId != null) {
-        const otherConvs = await this.conversationsService.findByUser(otherUserId);
-        server.to(otherSocketId).emit('conversationsList', otherConvs.map((c) => ConversationMapper.toPayload(c)));
+        const otherList = await this._buildConversationsList(otherUserId);
+        server.to(otherSocketId).emit('conversationsList', otherList);
       }
     } catch (error) {
       this.logger.error('emitConversationsListToBoth (non-critical):', error);
     }
+  }
+
+  /** Build the conversation list payload for a user, including unread counts and blocked-user filtering. */
+  private async _buildConversationsList(userId: number): Promise<any[]> {
+    const [rawConvs, blockedIds, blockedByUserIds] = await Promise.all([
+      this.conversationsService.findByUser(userId),
+      this.blockedService.getBlockedUserIds(userId),
+      this.blockedService.getBlockedByUserIds(userId),
+    ]);
+    const excludeSet = new Set([...blockedIds, ...blockedByUserIds]);
+    const filtered = rawConvs.filter((conv) => {
+      const otherId = conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
+      return !excludeSet.has(otherId);
+    });
+    return this.chatConversationService.conversationsWithUnread(filtered, userId);
   }
 
   /** Emit pendingRequestsCount to client and optionally to another socket. */
@@ -181,7 +199,7 @@ export class ChatFriendRequestService {
     }
 
     // Check if it was auto-accepted (mutual request scenario)
-    if (friendRequest.status === 'accepted') {
+    if (friendRequest.status === FriendRequestStatus.ACCEPTED) {
       this.logger.debug(`Auto-accept: ${sender.username} <-> ${recipient.username}`);
       await this.emitAutoAcceptFlow(client, server, sender, recipient, payload, onlineUsers);
     } else {
