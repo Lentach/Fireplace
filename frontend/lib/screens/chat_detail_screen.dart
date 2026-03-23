@@ -1,10 +1,10 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/auth_provider.dart';
-import '../providers/connection_provider.dart';
 import '../providers/conversations_provider.dart';
 import '../providers/friends_provider.dart';
 import '../providers/messaging_provider.dart';
@@ -47,6 +47,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   bool _expandCacheForScroll = false;
   /// True when [MessagingProvider.loadCachedMessages] warmed this screen — skip expensive initial cacheExtent.
   bool _openedWithWarmMessageCache = false;
+  bool _isLoadingMoreLocal = false;
+  double? _prePaginationScrollOffset;
+  double? _prePaginationScrollExtent;
   double _lastMaxScrollExtent = 0;
   bool _wasNearBottom = true;
   static const double _scrollToBottomThreshold = 80;
@@ -60,6 +63,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _lastMaxScrollExtent = pos.maxScrollExtent;
     if (_showScrollToBottomButton != !atBottom && mounted) {
       setState(() => _showScrollToBottomButton = !atBottom);
+    }
+
+    if (_scrollController.position.pixels <=
+        _scrollController.position.minScrollExtent + 300) {
+      final messaging = context.read<MessagingProvider>();
+      if (!messaging.isLoadingMore && messaging.hasMoreMessages) {
+        _prePaginationScrollOffset = _scrollController.offset;
+        _prePaginationScrollExtent = _scrollController.position.maxScrollExtent;
+        setState(() => _isLoadingMoreLocal = true);
+        messaging.loadOlderMessages(widget.conversationId);
+      }
     }
   }
 
@@ -78,6 +92,35 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   void _onNewMessages(int currentCount, int added) {
+    if (_isLoadingMoreLocal) {
+      final messaging = context.read<MessagingProvider>();
+      if (!messaging.isLoadingMore) {
+        setState(() => _isLoadingMoreLocal = false);
+        final preOffset = _prePaginationScrollOffset;
+        final preExtent = _prePaginationScrollExtent;
+        _prePaginationScrollOffset = null;
+        _prePaginationScrollExtent = null;
+        SchedulerBinding.instance.addPostFrameCallback((_) {
+          if (preOffset == null || preExtent == null) return;
+          if (!_scrollController.hasClients) return;
+          final newExtent = _scrollController.position.maxScrollExtent;
+          _scrollController.jumpTo(preOffset + (newExtent - preExtent));
+        });
+        return;
+      }
+      final preOffset = _prePaginationScrollOffset;
+      final preExtent = _prePaginationScrollExtent;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (preOffset == null || preExtent == null) return;
+        if (!_scrollController.hasClients) return;
+        final newExtent = _scrollController.position.maxScrollExtent;
+        final delta = newExtent - preExtent;
+        _prePaginationScrollOffset = preOffset + delta;
+        _prePaginationScrollExtent = newExtent;
+        _scrollController.jumpTo(preOffset + delta);
+      });
+      return;
+    }
     if (added <= 0) return;
     _lastMessageCount = currentCount;
     final messaging = context.read<MessagingProvider>();
@@ -108,12 +151,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
       final convs = context.read<ConversationsProvider>();
-      final conn = context.read<ConnectionProvider>();
       final messaging = context.read<MessagingProvider>();
       _openedWithWarmMessageCache =
           messaging.loadCachedMessages(widget.conversationId);
       convs.openConversation(widget.conversationId);
-      conn.socketService.getMessages(widget.conversationId, limit: 50);
+      messaging.getMessages(widget.conversationId);
     });
 
     // Refresh every second: remove expired and tick countdown. No setState here -
@@ -144,12 +186,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         final convs = context.read<ConversationsProvider>();
-        final conn = context.read<ConnectionProvider>();
         final messaging = context.read<MessagingProvider>();
         _openedWithWarmMessageCache =
             messaging.loadCachedMessages(widget.conversationId);
         convs.openConversation(widget.conversationId);
-        conn.socketService.getMessages(widget.conversationId, limit: 50);
+        messaging.getMessages(widget.conversationId);
       });
     }
   }
@@ -457,9 +498,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               child: RefreshIndicator(
                 onRefresh: () async {
                   final c = context.read<ConversationsProvider>();
-                  final conn = context.read<ConnectionProvider>();
+                  final messaging = context.read<MessagingProvider>();
                   c.openConversation(widget.conversationId);
-                  conn.socketService.getMessages(widget.conversationId, limit: 50);
+                  messaging.getMessages(widget.conversationId);
                   await Future.delayed(const Duration(milliseconds: 800));
                 },
                 child: messages.isEmpty
@@ -491,12 +532,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                         top: 8,
                         bottom: 8,
                       ),
-                      itemCount: messages.length,
+                      itemCount: messages.length + (_isLoadingMoreLocal ? 1 : 0),
                       itemBuilder: (context, index) {
-                        final msg = messages[index];
-                        final showDate = index == 0 ||
+                        if (_isLoadingMoreLocal && index == 0) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+                        final msgIndex = _isLoadingMoreLocal ? index - 1 : index;
+                        final msg = messages[msgIndex];
+                        final showDate = msgIndex == 0 ||
                             _isDifferentDay(
-                              messages[index - 1].createdAt,
+                              messages[msgIndex - 1].createdAt,
                               msg.createdAt,
                             );
                         return Column(

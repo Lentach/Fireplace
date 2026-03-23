@@ -74,7 +74,13 @@ class MessagingProvider extends ChangeNotifier {
 
   // ---------- Message State ----------
 
+  static const int _pageSize = 50;
   List<MessageModel> _messages = [];
+  bool _isLoadingMore = false;
+  bool _hasMore = false;
+  int _paginationConversationId = -1;
+  int _paginationOffset = 0;
+  bool _isPaginationLoad = false;
 
   /// Per-conversation message cache for the current session.
   /// Populated/updated by onMessageHistory (after decryption) and all mutation handlers.
@@ -112,6 +118,8 @@ class MessagingProvider extends ChangeNotifier {
   bool get showPingEffect => _showPingEffect;
   bool get isDecryptingHistory => _decryptingHistory;
   int? get currentUserId => _currentUserId;
+  bool get isLoadingMore => _isLoadingMore;
+  bool get hasMoreMessages => _hasMore;
 
   /// Whether a warm message cache exists for [conversationId].
   bool hasCachedMessages(int conversationId) =>
@@ -243,11 +251,54 @@ class MessagingProvider extends ChangeNotifier {
     if (responseConversationId != null &&
         effectiveActive != null &&
         responseConversationId != effectiveActive) {
+      if (_isPaginationLoad && responseConversationId == _paginationConversationId) {
+        _isLoadingMore = false;
+        _isPaginationLoad = false;
+        notifyListeners();
+      }
       return;
     }
-    _messages = list
+    final newMessages = list
         .map((m) => MessageModel.fromJson(m as Map<String, dynamic>))
         .toList();
+
+    if (_isPaginationLoad) {
+      if (responseConversationId != null &&
+          responseConversationId != _paginationConversationId) {
+        _isLoadingMore = false;
+        _isPaginationLoad = false;
+        notifyListeners();
+        return;
+      }
+
+      _messages = [...newMessages, ..._messages];
+      _paginationOffset += newMessages.length;
+      _hasMore = newMessages.length == _pageSize;
+      _isLoadingMore = false;
+      _isPaginationLoad = false;
+      notifyListeners();
+
+      _decryptHistoryGeneration++;
+      final myGeneration = _decryptHistoryGeneration;
+      final cacheId = _paginationConversationId;
+      _decryptingHistory = true;
+      _decryptMessageHistory(myGeneration).whenComplete(() {
+        if (_decryptHistoryGeneration == myGeneration) {
+          _decryptingHistory = false;
+        }
+        _updateCache(cacheId);
+      });
+      return;
+    }
+
+    if (responseConversationId != null &&
+        responseConversationId != _paginationConversationId) {
+      return;
+    }
+
+    _messages = newMessages;
+    _hasMore = newMessages.length == _pageSize;
+    _paginationOffset = newMessages.length;
 
     // Cancel any in-flight decrypt so we process the latest messages
     _decryptHistoryGeneration++;
@@ -289,6 +340,30 @@ class MessagingProvider extends ChangeNotifier {
         }
       }
       _processIncomingMessageQueue();
+    });
+  }
+
+  void getMessages(int conversationId) {
+    _paginationConversationId = conversationId;
+    _paginationOffset = 0;
+    _isPaginationLoad = false;
+    _isLoadingMore = false;
+    _hasMore = false;
+    _emit?.call('getMessages', {
+      'conversationId': conversationId,
+      'limit': _pageSize,
+      'offset': 0,
+    });
+  }
+
+  void loadOlderMessages(int conversationId) {
+    if (_isLoadingMore || !_hasMore) return;
+    _isLoadingMore = true;
+    _isPaginationLoad = true;
+    _emit?.call('getMessages', {
+      'conversationId': conversationId,
+      'limit': _pageSize,
+      'offset': _paginationOffset,
     });
   }
 
@@ -2076,6 +2151,11 @@ class MessagingProvider extends ChangeNotifier {
   /// Clear messages for the active conversation (used when clearing active chat).
   void clearMessages() {
     _messages = [];
+    _hasMore = false;
+    _paginationOffset = 0;
+    _isLoadingMore = false;
+    _isPaginationLoad = false;
+    _paginationConversationId = -1;
     notifyListeners();
   }
 }
