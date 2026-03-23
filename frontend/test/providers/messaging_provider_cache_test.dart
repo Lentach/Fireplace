@@ -70,5 +70,41 @@ void main() {
       provider.onConnect(false);
       expect(provider.hasCachedMessages(10), isTrue);
     });
+
+    test('onMessageHistory populates cache for active conversation', () {
+      provider.setActiveConversationIdForTest(10);
+
+      provider.onMessageHistory({
+        'conversationId': 10,
+        'messages': [
+          {
+            'id': 1,
+            'content': 'hello',
+            'senderId': 1,
+            'senderUsername': 'alice',
+            'conversationId': 10,
+            'deliveryStatus': 'READ',
+            'messageType': 'TEXT',
+            'createdAt': '2026-01-01T00:00:00.000Z',
+          }
+        ],
+      });
+
+      // Cache populated synchronously (with encrypted placeholders; decrypted version follows async)
+      expect(provider.hasCachedMessages(10), isTrue);
+      expect(provider.messages.length, 1);
+    });
+
+    test('onMessageHistory for a different conversation is ignored', () {
+      provider.setActiveConversationIdForTest(10);
+
+      provider.onMessageHistory({
+        'conversationId': 99,
+        'messages': [],
+      });
+
+      expect(provider.hasCachedMessages(99), isFalse);
+      expect(provider.hasCachedMessages(10), isFalse);
+    });
   });
 }

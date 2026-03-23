@@ -217,7 +217,7 @@ class MessagingProvider extends ChangeNotifier {
   }
 
   void onMessageHistory(dynamic data) {
-    final activeConversationId = _conversationsProvider?.activeConversationId;
+    final effectiveActive = _effectiveActiveConversationId;
 
     int? responseConversationId;
     List<dynamic> list;
@@ -232,8 +232,8 @@ class MessagingProvider extends ChangeNotifier {
       return;
     }
     if (responseConversationId != null &&
-        activeConversationId != null &&
-        responseConversationId != activeConversationId) {
+        effectiveActive != null &&
+        responseConversationId != effectiveActive) {
       return;
     }
     _messages = list
@@ -252,17 +252,29 @@ class MessagingProvider extends ChangeNotifier {
       (m) => m.expiresAt != null && m.expiresAt!.isBefore(now),
     );
     notifyListeners();
-    if (activeConversationId != null) {
-      markConversationRead(activeConversationId);
+    // Snapshot to cache immediately (may include encrypted placeholders for E2E messages).
+    // A second snapshot runs after _decryptMessageHistory completes with decrypted content.
+    if (responseConversationId != null) {
+      _updateCache(responseConversationId);
+    }
+
+    if (effectiveActive != null) {
+      markConversationRead(effectiveActive);
     }
 
     // Decrypt history first so no live message advances the session before
     // we decrypt in order. Queue any incoming messages until done.
+    final myConversationId =
+        responseConversationId ?? _effectiveActiveConversationId;
     final myGeneration = _decryptHistoryGeneration;
     _decryptingHistory = true;
     _decryptMessageHistory(myGeneration).whenComplete(() {
       if (_decryptHistoryGeneration == myGeneration) {
         _decryptingHistory = false;
+        // Update cache with fully-decrypted content.
+        if (myConversationId != null) {
+          _updateCache(myConversationId);
+        }
       }
       _processIncomingMessageQueue();
     });
