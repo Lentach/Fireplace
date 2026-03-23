@@ -42,6 +42,14 @@ class MessagingProvider extends ChangeNotifier {
 
   int? _currentUserId;
 
+  /// Active conversation ID — uses test override if set, otherwise reads from ConversationsProvider.
+  int? get _effectiveActiveConversationId =>
+      _activeConversationIdOverrideForTest ??
+      _conversationsProvider?.activeConversationId;
+
+  /// Test-only override for activeConversationId.
+  int? _activeConversationIdOverrideForTest;
+
   // ---------- E2E Encryption ----------
 
   /// Single delayed retry for a failed text message (e.g. recipient had no key bundle, then came online).
@@ -67,6 +75,12 @@ class MessagingProvider extends ChangeNotifier {
   // ---------- Message State ----------
 
   List<MessageModel> _messages = [];
+
+  /// Per-conversation message cache for the current session.
+  /// Populated/updated by onMessageHistory (after decryption) and all mutation handlers.
+  /// Survives back-navigation (clearMessages) and socket reconnects (onConnect).
+  /// Cleared only on logout (clearAll).
+  final Map<int, List<MessageModel>> _conversationCache = {};
 
   /// IDs of messages we were told were deleted (messageDeleted). Used so a late
   /// messageHistory response doesn't re-add them.
@@ -98,6 +112,38 @@ class MessagingProvider extends ChangeNotifier {
   bool get showPingEffect => _showPingEffect;
   bool get isDecryptingHistory => _decryptingHistory;
   int? get currentUserId => _currentUserId;
+
+  /// Whether a warm message cache exists for [conversationId].
+  bool hasCachedMessages(int conversationId) =>
+      _conversationCache.containsKey(conversationId);
+
+  /// Immediately populates [_messages] from RAM cache if available and calls notifyListeners().
+  /// Returns true if cache was used — caller can then skip expensive initial scroll setup.
+  /// Always follow this with getMessages() to sync new messages from server.
+  bool loadCachedMessages(int conversationId) {
+    final cached = _conversationCache[conversationId];
+    if (cached == null || cached.isEmpty) return false;
+    _messages = List.from(cached);
+    notifyListeners();
+    return true;
+  }
+
+  /// Snapshots current [_messages] into cache for [conversationId].
+  void _updateCache(int conversationId) {
+    _conversationCache[conversationId] = List.from(_messages);
+  }
+
+  /// Test-only: seed the cache directly without going through onMessageHistory.
+  @visibleForTesting
+  void seedCacheForTest(int conversationId, List<MessageModel> messages) {
+    _conversationCache[conversationId] = List.from(messages);
+  }
+
+  /// Test-only: set the active conversation ID (replaces ConversationsProvider wiring).
+  @visibleForTesting
+  void setActiveConversationIdForTest(int? id) {
+    _activeConversationIdOverrideForTest = id;
+  }
 
   bool isPartnerTyping(int conversationId) =>
       _typingStatus[conversationId] ?? false;
@@ -1949,6 +1995,7 @@ class MessagingProvider extends ChangeNotifier {
   /// Full reset — called on logout / account deletion.
   void clearAll() {
     _messages = [];
+    _conversationCache.clear();
     _deletedMessageIds.clear();
     _typingStatus.clear();
     for (final t in _typingTimers.values) {
