@@ -72,7 +72,6 @@ describe('AuthService', () => {
         sub: 1,
         username: 'testuser',
         tag: '0427',
-        profilePictureUrl: undefined,
       });
     });
 

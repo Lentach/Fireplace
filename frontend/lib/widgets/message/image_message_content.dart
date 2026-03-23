@@ -1,10 +1,13 @@
 import 'dart:typed_data';
 
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 
+import '../../config/app_config.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/api_service.dart';
 import '../../services/media_crypto_service.dart';
 import '../../theme/rpg_theme.dart';
 
@@ -45,11 +48,11 @@ class _ImageMessageContentState extends State<ImageMessageContent> {
     final url = widget.message.mediaUrl;
     if (url == null || url.isEmpty) return null;
 
-    final response = await http.get(Uri.parse(url));
-    if (response.statusCode != 200) {
-      throw Exception('Failed to fetch media');
-    }
-    final raw = response.bodyBytes;
+    final token = context.read<AuthProvider>().token ?? '';
+    final raw = await ApiService(baseUrl: AppConfig.baseUrl).fetchMediaBytes(
+      url,
+      token,
+    );
     if (raw.length > MediaCryptoService.maxBytes) {
       throw Exception('Media too large');
     }

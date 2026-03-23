@@ -233,4 +233,27 @@ class ApiService {
     };
   }
 
+  Future<Uint8List> fetchMediaBytes(String url, String token) async {
+    final headers =
+        url.contains('/media/msgs/')
+            ? {'Authorization': 'Bearer $token'}
+            : <String, String>{};
+    final response = await http.get(Uri.parse(url), headers: headers);
+    if (response.statusCode != 200) {
+      throw Exception('Media fetch failed: ${response.statusCode}');
+    }
+    return response.bodyBytes;
+  }
+
+  Future<Map<String, dynamic>> fetchMe(String token) async {
+    final response = await http.get(
+      Uri.parse('$baseUrl/users/me'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200) {
+      throw Exception('HTTP_${response.statusCode}: fetchMe failed');
+    }
+    return jsonDecode(response.body) as Map<String, dynamic>;
+  }
+
 }

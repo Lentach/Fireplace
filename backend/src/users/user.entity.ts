@@ -30,4 +30,7 @@ export class User {
 
   @CreateDateColumn()
   createdAt: Date;
+
+  @Column({ type: 'timestamp', nullable: true })
+  passwordChangedAt: Date | null;
 }

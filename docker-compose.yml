@@ -32,6 +32,12 @@ services:
       NODE_ENV: development
     depends_on:
       - db
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 60s
     volumes:
       - ./backend:/app
       - media_storage:/app/media

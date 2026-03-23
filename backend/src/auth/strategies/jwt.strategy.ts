@@ -26,11 +26,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     sub: number;
     username: string;
     tag: string;
-    profilePictureUrl: string;
+    iat: number;
   }) {
     const user = await this.usersService.findById(payload.sub);
     if (!user) {
       throw new UnauthorizedException();
+    }
+    if (user.passwordChangedAt) {
+      const changedAtSeconds = Math.floor(user.passwordChangedAt.getTime() / 1000);
+      if (payload.iat <= changedAtSeconds) {
+        throw new UnauthorizedException('Token invalidated by password change');
+      }
     }
     return {
       id: user.id,
