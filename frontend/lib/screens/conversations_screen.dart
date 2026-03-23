@@ -81,7 +81,11 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   void _deleteConversation(int conversationId) {
     // Dialog is handled by Dismissible widget in ConversationTile
     // This method is called after user confirms in swipe-to-delete dialog
-    context.read<ConversationsProvider>().deleteConversation(conversationId);
+    final msg = context.read<MessagingProvider>();
+    final convs = context.read<ConversationsProvider>();
+    // Clear message state in sync with optimistic list removal (see deleteConversation).
+    msg.onConversationDeleted(conversationId);
+    convs.deleteConversation(conversationId);
   }
 
   @override
@@ -309,6 +313,8 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         final lastMsg = convs.lastMessages[conv.id];
         final msg = context.watch<MessagingProvider>();
         return ConversationTile(
+          key: ValueKey<int>(conv.id),
+          conversationId: conv.id,
           displayName: displayName,
           lastMessage: lastMsg,
           isActive: conv.id == convs.activeConversationId,

@@ -162,6 +162,23 @@ void main() {
       expect(provider.conversations.first.id, conv2.id);
       expect(provider.activeConversationId, isNull);
     });
+
+    test('deleteConversation removes conversation optimistically and emits', () {
+      final provider = buildProviderWithSampleData();
+      final emitted = <Map<String, dynamic>>[];
+      provider.setEmitCallback((event, data) {
+        expect(event, 'deleteConversationOnly');
+        emitted.add(Map<String, dynamic>.from(data as Map));
+      });
+
+      provider.deleteConversation(10);
+
+      expect(provider.conversations.length, 1);
+      expect(provider.conversations.first.id, 11);
+      expect(provider.lastMessages.containsKey(10), isFalse);
+      expect(emitted.length, 1);
+      expect(emitted.first['conversationId'], 10);
+    });
   });
 }
 

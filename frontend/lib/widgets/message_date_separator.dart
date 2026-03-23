@@ -1,4 +1,6 @@
 import 'package:flutter/material.dart';
+
+import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
 
 class MessageDateSeparator extends StatelessWidget {
@@ -6,15 +8,16 @@ class MessageDateSeparator extends StatelessWidget {
 
   const MessageDateSeparator({super.key, required this.date});
 
-  String _formatDate() {
+  String _formatDate(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final messageDay = DateTime(date.year, date.month, date.day);
     final diff = today.difference(messageDay).inDays;
 
-    if (diff == 0) return 'Today';
-    if (diff == 1) return 'Yesterday';
-    return '${date.day.toString().padLeft(2, '0')}/${date.month.toString().padLeft(2, '0')}/${date.year}';
+    if (diff == 0) return l10n.chatDateToday;
+    if (diff == 1) return l10n.chatDateYesterday;
+    return MaterialLocalizations.of(context).formatShortDate(date);
   }
 
   @override
@@ -33,7 +36,7 @@ class MessageDateSeparator extends StatelessWidget {
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 12),
             child: Text(
-              _formatDate(),
+              _formatDate(context),
               style: RpgTheme.bodyFont(fontSize: 11, color: textColor),
             ),
           ),

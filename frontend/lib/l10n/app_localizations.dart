@@ -458,6 +458,24 @@ abstract class AppLocalizations {
   /// **'pisze…'**
   String get typing;
 
+  /// No description provided for @chatMessageHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Napisz wiadomość…'**
+  String get chatMessageHint;
+
+  /// No description provided for @chatDateToday.
+  ///
+  /// In pl, this message translates to:
+  /// **'Dziś'**
+  String get chatDateToday;
+
+  /// No description provided for @chatDateYesterday.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wczoraj'**
+  String get chatDateYesterday;
+
   /// No description provided for @selectAConversation.
   ///
   /// In pl, this message translates to:

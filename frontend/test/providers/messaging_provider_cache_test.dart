@@ -73,6 +73,7 @@ void main() {
 
     test('onMessageHistory populates cache for active conversation', () {
       provider.setActiveConversationIdForTest(10);
+      provider.getMessages(10);
 
       provider.onMessageHistory({
         'conversationId': 10,

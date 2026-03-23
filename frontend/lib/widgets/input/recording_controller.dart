@@ -352,72 +352,134 @@ class RecordingControllerState extends State<RecordingController>
       );
     }
 
-    // Send button (text entered, not recording)
-    if (widget.hasText && !_isRecording) {
-      return Container(
-        decoration: BoxDecoration(
-          shape: BoxShape.circle,
-          color: RpgTheme.primaryColor(context),
+    // Recording: mic-only UI with drag-to-cancel (no stacked send).
+    final cancelThreshold = _getCancelThreshold(context);
+    if (_isRecording) {
+      return Transform.translate(
+        offset: Offset(
+          _cancelDragOffset.clamp(-cancelThreshold, 0),
+          0,
         ),
-        child: Focus(
-          canRequestFocus: false,
-          child: IconButton(
-            icon: const Icon(Icons.send_rounded, size: 22),
-            color: Colors.white,
-            onPressed: widget.onSend,
+        child: GestureDetector(
+          onLongPressStart: (details) =>
+              _startRecording(details.globalPosition.dx),
+          onLongPressMoveUpdate: (details) =>
+              _onRecordingDragUpdate(details.globalPosition.dx),
+          onLongPressEnd: (_) {
+            if (_isRecording && !_canceledBySlide) {
+              if (_isOverTrash(context)) {
+                _cancelRecording();
+              } else {
+                _stopRecording();
+              }
+            }
+          },
+          onLongPressCancel: () {
+            if (_isRecording && !_canceledBySlide) {
+              if (_isOverTrash(context)) {
+                _cancelRecording();
+              } else {
+                _stopRecording();
+              }
+            }
+          },
+          child: AnimatedScale(
+            scale: 1.15,
+            duration: const Duration(milliseconds: 150),
+            curve: Curves.easeOut,
+            child: Padding(
+              padding: const EdgeInsets.all(12),
+              child: Icon(
+                Icons.mic,
+                size: 22,
+                color: Colors.red,
+              ),
+            ),
           ),
         ),
       );
     }
 
-    // Mic button — always rendered so GestureDetector stays in tree.
-    // When recording, it moves with the drag offset.
-    final cancelThreshold = _getCancelThreshold(context);
-    return Transform.translate(
-      offset: Offset(
-        _isRecording ? _cancelDragOffset.clamp(-cancelThreshold, 0) : 0,
-        0,
-      ),
-      child: GestureDetector(
-        onLongPressStart: (details) =>
-            _startRecording(details.globalPosition.dx),
-        onLongPressMoveUpdate: (details) =>
-            _onRecordingDragUpdate(details.globalPosition.dx),
-        onLongPressEnd: (_) {
-          if (_isRecording && !_canceledBySlide) {
-            if (_isOverTrash(context)) {
-              _cancelRecording();
-            } else {
-              _stopRecording();
-            }
+    // Idle: stack mic + send — never swap widgets when text clears after send.
+    // Replacing send with mic in the same frame used to unmount the TextField's
+    // sibling and dismiss the soft keyboard (jump). Opacity keeps both mounted.
+    final micIdle = GestureDetector(
+      onLongPressStart: (details) =>
+          _startRecording(details.globalPosition.dx),
+      onLongPressMoveUpdate: (details) =>
+          _onRecordingDragUpdate(details.globalPosition.dx),
+      onLongPressEnd: (_) {
+        if (_isRecording && !_canceledBySlide) {
+          if (_isOverTrash(context)) {
+            _cancelRecording();
+          } else {
+            _stopRecording();
           }
-        },
-        onLongPressCancel: () {
-          if (_isRecording && !_canceledBySlide) {
-            if (_isOverTrash(context)) {
-              _cancelRecording();
-            } else {
-              _stopRecording();
-            }
+        }
+      },
+      onLongPressCancel: () {
+        if (_isRecording && !_canceledBySlide) {
+          if (_isOverTrash(context)) {
+            _cancelRecording();
+          } else {
+            _stopRecording();
           }
-        },
-        child: AnimatedScale(
-          scale: _isRecording ? 1.15 : 1.0,
-          duration: const Duration(milliseconds: 150),
-          curve: Curves.easeOut,
-          child: Padding(
-            padding: const EdgeInsets.all(12),
-            child: Icon(
-              _isRecording ? Icons.mic : Icons.mic_none,
-              size: 22,
-              color: _isRecording
-                  ? Colors.red
-                  : (isDark
-                      ? RpgTheme.mutedDark
-                      : RpgTheme.textSecondaryLight),
-            ),
+        }
+      },
+      child: AnimatedScale(
+        scale: 1.0,
+        duration: const Duration(milliseconds: 150),
+        curve: Curves.easeOut,
+        child: Padding(
+          padding: const EdgeInsets.all(12),
+          child: Icon(
+            Icons.mic_none,
+            size: 22,
+            color: isDark
+                ? RpgTheme.mutedDark
+                : RpgTheme.textSecondaryLight,
           ),
         ),
+      ),
+    );
+
+    final sendButton = Material(
+      color: RpgTheme.primaryColor(context),
+      shape: const CircleBorder(),
+      clipBehavior: Clip.antiAlias,
+      child: InkWell(
+        canRequestFocus: false,
+        customBorder: const CircleBorder(),
+        onTap: widget.onSend,
+        child: const SizedBox(
+          width: 44,
+          height: 44,
+          child: Icon(Icons.send_rounded, size: 22, color: Colors.white),
+        ),
+      ),
+    );
+
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          IgnorePointer(
+            ignoring: widget.hasText,
+            child: Opacity(
+              opacity: widget.hasText ? 0.0 : 1.0,
+              child: micIdle,
+            ),
+          ),
+          IgnorePointer(
+            ignoring: !widget.hasText,
+            child: Opacity(
+              opacity: widget.hasText ? 1.0 : 0.0,
+              child: sendButton,
+            ),
+          ),
+        ],
       ),
     );
   }

@@ -202,6 +202,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get typing => 'typing…';
 
   @override
+  String get chatMessageHint => 'Type a message...';
+
+  @override
+  String get chatDateToday => 'Today';
+
+  @override
+  String get chatDateYesterday => 'Yesterday';
+
+  @override
   String get selectAConversation => 'Select a conversation';
 
   @override

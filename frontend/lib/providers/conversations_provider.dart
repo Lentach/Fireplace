@@ -152,17 +152,7 @@ class ConversationsProvider extends ChangeNotifier {
   /// Handle 'conversationDeleted' event — remove from list, handle active.
   void onConversationDeleted(dynamic data) {
     final convId = data['conversationId'] as int;
-
-    _conversations.removeWhere((c) => c.id == convId);
-    _lastMessages.remove(convId);
-    _unreadCounts.remove(convId);
-
-    // Clear active conversation if it was deleted (we are the initiator)
-    if (_activeConversationId == convId) {
-      _activeConversationId = null;
-      _activeConversationDeletedByOther = false;
-    }
-
+    _removeConversationById(convId);
     notifyListeners();
   }
 
@@ -199,8 +189,14 @@ class ConversationsProvider extends ChangeNotifier {
     _emit?.call('startConversation', {'recipientId': recipientId});
   }
 
-  /// Emit deleteConversationOnly socket event.
+  /// Removes the conversation locally immediately, then emits deleteConversationOnly.
+  ///
+  /// Swipe [Dismissible] must remove the row from the list in the same frame as
+  /// [onDismissed]; otherwise the tile stays in the tree while the dismiss
+  /// animation completes and the widget can rebuild with a stuck red background.
   void deleteConversation(int conversationId) {
+    _removeConversationById(conversationId);
+    notifyListeners();
     _emit?.call('deleteConversationOnly', {'conversationId': conversationId});
   }
 
@@ -335,6 +331,16 @@ class ConversationsProvider extends ChangeNotifier {
   }
 
   // ---------- Private Helpers ----------
+
+  void _removeConversationById(int convId) {
+    _conversations.removeWhere((c) => c.id == convId);
+    _lastMessages.remove(convId);
+    _unreadCounts.remove(convId);
+    if (_activeConversationId == convId) {
+      _activeConversationId = null;
+      _activeConversationDeletedByOther = false;
+    }
+  }
 
   /// Clears active conversation if it was removed from the list.
   void _clearActiveIfRemoved() {

@@ -621,7 +621,7 @@ expect(jwtService.sign).toHaveBeenCalledWith({
 });
 ```
 
-Also check `jwt.strategy.spec.ts` (created in Task 1) — the `validate` payload type there already removes `profilePictureUrl` in Task 1 Step 2, so no additional change is needed there.
+Also check `backend/src/auth/jwt.strategy.spec.ts` (created in Task 1) — after removing `profilePictureUrl` from the `validate` payload type in Task 5 Step 2, update the test payload objects passed to `strategy.validate(...)` to remove the `profilePictureUrl` field.
 
 - [ ] **Step 9: Run both test suites**
 ```bash

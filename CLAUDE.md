@@ -8,6 +8,7 @@ alwaysApply: true
 **Rules:**
 - Always read this file before every code change
 - Update this file after every code change
+- **Before any review or code change:** read ALL files the task touches before writing anything; trace every code path; verify method/field/event names in actual source — never guess
 - Single source of truth for agents — if CLAUDE.md says X, X is correct
 - All code in English (vars, functions, comments, commits). Polish OK in .md files only
 
@@ -49,6 +50,7 @@ cd frontend && flutter run -d chrome
 ### Frontend
 - `file_utils_stub.dart` / `file_utils_io.dart` — conditional import for temp file deletion (web: no-op; native: dart:io)
 - Use `showTopSnackBar()` — ScaffoldMessenger covers chat input bar; pass `AppLocalizations.of(context)` strings (`snackbar*` keys in `app_en.arb` / `app_pl.arb`) — do not hardcode English for top notifications
+- Chat composer hint: `chatMessageHint` in `app_pl.arb` / `app_en.arb` (`ChatInputBar`). Chat date chips: `chatDateToday` / `chatDateYesterday` + `MaterialLocalizations.formatShortDate` for older days (`MessageDateSeparator`)
 - `enableForceNew()` on Socket.IO reconnect — Dart caches socket by URL, old JWT reused
 - Provider can't call Navigator — use `consumePendingOpen()` / `consumeFriendRequestSent()` patterns
 - Do NOT call `getConversations()` or `getFriends()` in `onFriendRequestAccepted` — backend already emits updated lists; extra get* causes race and overwrites with stale data (conversation/contact lost on acceptor)
@@ -56,6 +58,7 @@ cd frontend && flutter run -d chrome
 - Guard `Platform` with `!kIsWeb` — `dart:io` crashes on web
 - `copyWith` must include ALL fields — missing field = data silently lost
 - Voice recording: mic must stay in widget tree — GestureDetector unmounts -> no events
+- Chat send vs mic (idle): `RecordingController` stacks send + mic in a `Stack` (`Opacity` + `IgnorePointer`) so clearing the field after send does **not** swap widgets — swapping used to unmount/remount the input-row sibling and dismiss the soft keyboard on each in-app send (IME send was unaffected)
 - Timer via `ValueNotifier<int>` — overlay rebuilds freeze timer
 - `clearStatus()` in AuthProvider appears unused but is called from auth_screen.dart — DO NOT DELETE
 - Always run `flutter analyze` before deleting "unused" methods
@@ -460,11 +463,11 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> encrypt bytes -> `
 
 **Key screens:** AuthScreen (`clearStatus()` on tab switch — DO NOT DELETE), MainShell (consumes `consumePendingFriendAccepted()` for snackbar), ConversationsScreen (swipe-to-delete, `consumePendingOpen()`), ChatDetailScreen (Timer.periodic 1s for expired msgs, `markConversationRead` on open), AddOrInvitationsScreen (searchUsers -> auto-send if 1 result, picker if multiple, `consumeFriendRequestSent()`), ContactsScreen (consumes `pendingOpenConversationId` and navigates to chat when user tapped contact and `startConversation` returned), PrivacySafetyScreen (E2E info: UI states all messages are encrypted; identity fingerprint).
 
-**Key widgets:** `ChatInputBar` (re-export shim → `widgets/input/chat_input_bar.dart`; orchestrates `RecordingController` + `ReplyPreviewBar` + `AttachmentHandler`; text field + send button + mic hold-to-record). `ChatMessageBubble` (re-export shim → `widgets/message/chat_message_bubble.dart`; wrapper: alignment, gesture (long-press reactions, swipe reply), reply quote, `MessageContentFactory.build()`, `MessageMetadataRow`, reactions overlay; Telegram-style: intrinsic width, short narrow / long up to 85%, Wire-style rounded corners no tail, padding 16,10,16,8, margin bottom 10, colors per theme). `MessageContentFactory` — switch on `MessageType` → `TextMessageContent` (text + link preview card) / `ImageMessageContent` (fullscreen on tap) / `GifMessageContent` (fullscreen on tap) / `FileMessageContent` (icon + filename, opens URL) / `PingMessageContent` / `VoiceMessageContent` (→ `PlaybackController` + `WaveformDisplay`). `ChatActionTiles` (Camera/Gallery/Ping/Timer/Clear/Anti-Quantum Note; localized). `ChatBackgroundPattern` (subtle dot pattern; centers + radius snapped to device pixels so spacing×DPR moiré does not brighten some columns). `ConversationTile` (Dismissible, unread badge). `TopSnackbar` (never use ScaffoldMessenger). `AvatarCircle`. `AntiQuantumNoteDialog` (bottom sheet, one-time secret note, TTL presets).
+**Key widgets:** `ChatInputBar` (re-export shim → `widgets/input/chat_input_bar.dart`; orchestrates `RecordingController` + `ReplyPreviewBar` + `AttachmentHandler`; text field `minLines: 1` / `maxLines: 6` so long drafts scroll inside the field and the chat `Column` does not overflow; + send button + mic hold-to-record). `ChatMessageBubble` (re-export shim → `widgets/message/chat_message_bubble.dart`; wrapper: alignment, gesture (long-press reactions, swipe reply), reply quote, `MessageContentFactory.build()`, `MessageMetadataRow`, reactions overlay; Telegram-style: intrinsic width, short narrow / long up to 85%, Wire-style rounded corners no tail, padding 16,10,16,8, margin bottom 10, colors per theme). `MessageContentFactory` — switch on `MessageType` → `TextMessageContent` (text + link preview card) / `ImageMessageContent` (fullscreen on tap) / `GifMessageContent` (fullscreen on tap) / `FileMessageContent` (icon + filename, opens URL) / `PingMessageContent` / `VoiceMessageContent` (→ `PlaybackController` + `WaveformDisplay`). `ChatActionTiles` (Camera/Gallery/Ping/Timer/Clear/Anti-Quantum Note; localized). `ChatBackgroundPattern` (subtle dot pattern; centers + radius snapped to device pixels so spacing×DPR moiré does not brighten some columns). `ConversationTile` (Dismissible swipe-delete; `ValueKey(conv.id)` on tile; `deleteConversation` removes the row **optimistically** before the socket ack so the list stays in sync with the dismiss animation — otherwise the tile could rebuild with a stuck red `background`; `ConversationsScreen` also calls `MessagingProvider.onConversationDeleted` in the same gesture; unread badge). `TopSnackbar` (never use ScaffoldMessenger). `AvatarCircle`. `AntiQuantumNoteDialog` (bottom sheet, one-time secret note, TTL presets).
 
 **Models:** `UserModel` (`displayHandle` getter), `ConversationModel` (immutable), `MessageModel` (`copyWith` for status/content/media), `FriendRequestModel`. Frontend-only: `MessageDeliveryStatus.failed`.
 
-**Provider tests:** Frontend has unit tests for `ConversationsProvider` (connect lifecycle, removeConversationsForUser, no-flicker reconnect) and `FriendsProvider` (connect lifecycle, blocking flows, `onYouWereBlocked`, `onBlockedList`). See `frontend/test/providers/`.
+**Provider tests:** Frontend has unit tests for `ConversationsProvider` (connect lifecycle, removeConversationsForUser, optimistic `deleteConversation`, no-flicker reconnect) and `FriendsProvider` (connect lifecycle, blocking flows, `onYouWereBlocked`, `onBlockedList`). See `frontend/test/providers/`.
 
 ---
 

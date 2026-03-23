@@ -201,6 +201,15 @@ class AppLocalizationsPl extends AppLocalizations {
   String get typing => 'pisze…';
 
   @override
+  String get chatMessageHint => 'Napisz wiadomość…';
+
+  @override
+  String get chatDateToday => 'Dziś';
+
+  @override
+  String get chatDateYesterday => 'Wczoraj';
+
+  @override
   String get selectAConversation => 'Wybierz rozmowę';
 
   @override

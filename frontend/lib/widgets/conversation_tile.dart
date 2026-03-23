@@ -6,6 +6,7 @@ import '../models/user_model.dart';
 import 'avatar_circle.dart';
 
 class ConversationTile extends StatelessWidget {
+  final int conversationId;
   final String displayName;
   final MessageModel? lastMessage;
   final bool isActive;
@@ -17,6 +18,7 @@ class ConversationTile extends StatelessWidget {
 
   const ConversationTile({
     super.key,
+    required this.conversationId,
     required this.displayName,
     this.lastMessage,
     this.isActive = false,
@@ -60,7 +62,7 @@ class ConversationTile extends StatelessWidget {
     final secondaryColor = isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
 
     return Dismissible(
-      key: Key('conv-tile-$displayName'),
+      key: ValueKey<int>(conversationId),
       direction: DismissDirection.endToStart,
       background: Container(
         alignment: Alignment.centerRight,

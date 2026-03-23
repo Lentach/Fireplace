@@ -265,7 +265,8 @@ class _ChatInputBarState extends State<ChatInputBar>
                             color: colorScheme.onSurface,
                           ),
                           decoration: InputDecoration(
-                            hintText: 'Type a message...',
+                            hintText: AppLocalizations.of(context)
+                                .chatMessageHint,
                             contentPadding: const EdgeInsets.symmetric(
                               horizontal: 16,
                               vertical: 10,
@@ -288,7 +289,10 @@ class _ChatInputBarState extends State<ChatInputBar>
                             filled: true,
                             fillColor: fc.inputBg,
                           ),
-                          maxLines: null,
+                          // Cap height so the composer does not consume the whole screen (matches
+                          // WhatsApp/Telegram-style behavior: grow to a few lines, then scroll inside).
+                          minLines: 1,
+                          maxLines: 6,
                           textInputAction: TextInputAction.send,
                           onSubmitted: (_) => _send(),
                         ),
