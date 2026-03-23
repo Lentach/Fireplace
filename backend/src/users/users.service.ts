@@ -109,6 +109,7 @@ export class UsersService {
     // Hash new password
     const hash = await bcrypt.hash(newPassword, 10);
     user.password = hash;
+    user.passwordChangedAt = new Date();
     await this.usersRepo.save(user);
     this.auditLogger.log(`resetPassword success userId=${userId}`);
   }

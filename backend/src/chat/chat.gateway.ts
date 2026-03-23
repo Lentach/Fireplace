@@ -132,6 +132,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 300, ttl: 900000 } })
   @SubscribeMessage('getMessages')
   async handleGetMessages(
     @ConnectedSocket() client: Socket,
@@ -244,6 +246,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return this.chatKeyExchangeService.handleUploadOneTimePreKeys(client, data);
   }
 
+  @UseGuards(WsThrottlerGuard)
   @SubscribeMessage('fetchPreKeyBundle')
   async handleFetchPreKeyBundle(
     @ConnectedSocket() client: Socket,
@@ -285,6 +288,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 300, ttl: 900000 } })
   @SubscribeMessage('getConversations')
   async handleGetConversations(@ConnectedSocket() client: Socket) {
     return this.chatConversationService.handleGetConversations(client);
@@ -318,6 +323,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // ========== FRIEND REQUEST HANDLERS ==========
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   @SubscribeMessage('searchUsers')
   async handleSearchUsers(
     @ConnectedSocket() client: Socket,
@@ -363,11 +370,15 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 300, ttl: 900000 } })
   @SubscribeMessage('getFriendRequests')
   async handleGetFriendRequests(@ConnectedSocket() client: Socket) {
     return this.chatFriendRequestService.handleGetFriendRequests(client);
   }
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 300, ttl: 900000 } })
   @SubscribeMessage('getFriends')
   async handleGetFriends(@ConnectedSocket() client: Socket) {
     return this.chatFriendRequestService.handleGetFriends(client);
@@ -402,6 +413,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return this.chatBlockService.handleUnblockUser(client, data);
   }
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 300, ttl: 900000 } })
   @SubscribeMessage('getBlockedList')
   async handleGetBlockedList(@ConnectedSocket() client: Socket) {
     return this.chatBlockService.handleGetBlockedList(client);
