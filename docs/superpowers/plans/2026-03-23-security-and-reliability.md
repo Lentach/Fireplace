@@ -717,6 +717,14 @@ bool get isLoadingMore => _isLoadingMore;
 bool get hasMoreMessages => _hasMore;
 ```
 
+**Additional local state fields for `_ChatDetailScreenState`** (NOT in `MessagingProvider`):
+```dart
+bool _isLoadingMoreLocal = false;   // drives spinner immediately on scroll-to-top
+double? _prePaginationScrollOffset; // user's scroll position before pagination was triggered
+double? _prePaginationScrollExtent; // maxScrollExtent before pagination was triggered
+```
+These are documented here for completeness — they are added in Steps 7 and 8. Do NOT declare them again in Step 8.
+
 - [ ] **Step 2: Add `MessagingProvider.getMessages(int conversationId)`**
 
 Add this new public method (wraps `_emit` with pagination state reset):
@@ -740,11 +748,15 @@ void getMessages(int conversationId) {
 
 ```dart
 /// Loads the next page of older messages. No-op if already loading or no more pages.
+/// Intentionally does NOT call notifyListeners() — the loading indicator is managed
+/// by local widget state (_isLoadingMoreLocal) in ChatDetailScreen. The provider
+/// notifies exactly once: when onMessageHistory completes with the pagination result.
+/// Calling notifyListeners() here would trigger _onNewMessages in ChatDetailScreen
+/// before any messages have arrived, causing premature UI state updates.
 void loadOlderMessages(int conversationId) {
   if (_isLoadingMore || !_hasMore) return;
   _isLoadingMore = true;
   _isPaginationLoad = true;
-  notifyListeners();
   _emit('getMessages', {
     'conversationId': conversationId,
     'limit': _pageSize,
@@ -767,9 +779,19 @@ if (_isPaginationLoad) {
   if (responseConversationId != null && responseConversationId != _paginationConversationId) {
     _isLoadingMore = false;
     _isPaginationLoad = false;
+    // Call notifyListeners() so ChatDetailScreen sees isLoadingMore=false and clears its spinner.
+    notifyListeners();
     return;
   }
-  // Prepend older messages (backend returns them oldest-first)
+
+  // **Server sort order:** The backend's `findByConversation` must return messages in
+  // `createdAt ASC` order (oldest-first) for the prepend to produce correct display order.
+  // Verify by checking `messages.service.ts` → `findByConversation` ORDER BY clause.
+  // The initial `getMessages` response also uses the same endpoint — if chat displays
+  // correctly today (oldest at top), the sort is already ASC and no reversal is needed.
+  // If sort is DESC (newest-first), add `.reversed.toList()` before the prepend below.
+
+  // Prepend older messages (backend returns them oldest-first / createdAt ASC)
   _messages = [...newMessages, ..._messages];
   // Advance offset by how many messages actually arrived from the server
   _paginationOffset += newMessages.length;
@@ -782,12 +804,13 @@ if (_isPaginationLoad) {
   // queued rather than processed in parallel while the ratchet is advancing.
   _decryptHistoryGeneration++;
   final myGeneration = _decryptHistoryGeneration;
+  final int cacheId = _paginationConversationId; // capture now — _paginationConversationId may change before .whenComplete fires
   _decryptingHistory = true;
   _decryptMessageHistory(myGeneration).whenComplete(() {
     if (_decryptHistoryGeneration == myGeneration) {
       _decryptingHistory = false;
     }
-    _updateCache(_paginationConversationId);
+    _updateCache(cacheId); // use captured ID — safe if user navigated to another chat
   });
   return;
 }
@@ -806,6 +829,8 @@ _paginationOffset = newMessages.length; // tracks how many messages fetched from
 ```
 
 **Important:** Verify that `_decryptMessageHistory` takes a single `int` generation argument and operates on `_messages` directly. Use the same signature as the existing call in the initial-load path. Do not pass `_messages` as a parameter.
+
+**Safety of decrypting the full list:** After prepending, `_messages` contains `newMessages` at indices `0..newMessages.length-1` followed by the already-decrypted tail. `_decryptMessageHistory` uses cache-first decryption (CLAUDE.md, E2E Encryption section): it checks the persisted `EncryptionProvider` cache before attempting Signal decrypt. Tail messages that were already decrypted will be served from cache without advancing the ratchet — this is safe. However, if you discover that `_decryptMessageHistory` advances the ratchet even when a cache hit exists, the safe fallback is: record `final newCount = newMessages.length` BEFORE the prepend statement, then after prepending scope the decrypt loop to only `_messages.sublist(0, newCount)`. Check the implementation first — if it already guards on non-null content or has a cache hit short-circuit, no change is needed.
 
 - [ ] **Step 5: Update `clearMessages` to reset pagination state**
 
@@ -850,6 +875,11 @@ void _onScroll() {
       _scrollController.position.minScrollExtent + 300) {
     final messaging = context.read<MessagingProvider>();
     if (!messaging.isLoadingMore && messaging.hasMoreMessages) {
+      // Capture pre-pagination scroll metrics BEFORE triggering the load.
+      // Used in _onNewMessages to restore visual position after prepend.
+      _prePaginationScrollOffset = _scrollController.offset;
+      _prePaginationScrollExtent = _scrollController.position.maxScrollExtent;
+      setState(() => _isLoadingMoreLocal = true);
       messaging.loadOlderMessages(widget.conversationId);
     }
   }
@@ -858,30 +888,83 @@ void _onScroll() {
 
 - [ ] **Step 8: Add loading indicator at top of messages list + suppress auto-scroll on pagination**
 
+**Part A — Local state fields:**
+
+The three local state fields (`_isLoadingMoreLocal`, `_prePaginationScrollOffset`, `_prePaginationScrollExtent`) were declared in Step 1. Do NOT re-declare them here — only use them as described below.
+
+**Part B — Loading indicator in `build`:**
+
 `ChatDetailScreen` uses `ListView.builder(itemCount: messages.length, itemBuilder: (ctx, i) => ...)`. To insert a loading indicator at the top without breaking index access:
 
-1. Add `final _isLoadingMore = messaging.isLoadingMore;` near the top of the `build` method.
-2. Change `itemCount: messages.length` to `itemCount: messages.length + (_isLoadingMore ? 1 : 0)`.
-3. In `itemBuilder`, offset indices when `_isLoadingMore`:
+1. Use `_isLoadingMoreLocal` (local field) — NOT `messaging.isLoadingMore`.
+2. Change `itemCount: messages.length` to `itemCount: messages.length + (_isLoadingMoreLocal ? 1 : 0)`.
+3. In `itemBuilder`, offset indices when `_isLoadingMoreLocal`:
 ```dart
 itemBuilder: (ctx, i) {
-  if (_isLoadingMore && i == 0) {
+  if (_isLoadingMoreLocal && i == 0) {
     return const Padding(
       padding: EdgeInsets.symmetric(vertical: 8),
       child: Center(child: CircularProgressIndicator()),
     );
   }
-  final msgIndex = _isLoadingMore ? i - 1 : i;
+  final msgIndex = _isLoadingMoreLocal ? i - 1 : i;
   // existing message rendering using messages[msgIndex]
 },
 ```
 
-4. Suppress the auto-scroll-to-bottom when pagination is in progress. Find `_onNewMessages` (or the block in `build` that calls `_scrollToBottom` / detects `messages.length != _lastMessageCount`). Add a guard:
+**Part C — Restore scroll position + clear spinner when pagination completes:**
+
+Find `_onNewMessages`. This is the method (or listener callback) that detects `messages.length != _lastMessageCount` and triggers auto-scroll-to-bottom. It is registered as a ChangeNotifier listener in `initState` (look for the `addListener` call). Do NOT create a new `_onNewMessages` method — modify the existing one.
+
+Add this block at the top:
 ```dart
-// In _onNewMessages or the build-time scroll trigger:
-if (messaging.isLoadingMore) return; // do not auto-scroll during pagination load
+void _onNewMessages() {
+  if (_isLoadingMoreLocal) {
+    final messaging = context.read<MessagingProvider>();
+    if (!messaging.isLoadingMore) {
+      // Pagination just completed: _isLoadingMore was true, now false.
+      // Clear spinner and restore the user's visual scroll position.
+      setState(() => _isLoadingMoreLocal = false);
+      final preOffset = _prePaginationScrollOffset;
+      final preExtent = _prePaginationScrollExtent;
+      _prePaginationScrollOffset = null;
+      _prePaginationScrollExtent = null;
+      SchedulerBinding.instance.addPostFrameCallback((_) {
+        if (preOffset == null || preExtent == null) return;
+        if (!_scrollController.hasClients) return;
+        final newExtent = _scrollController.position.maxScrollExtent;
+        // Jump by the delta in maxScrollExtent — keeps user's visual position intact.
+        _scrollController.jumpTo(preOffset + (newExtent - preExtent));
+      });
+      return; // do NOT auto-scroll to bottom after prepend
+    }
+    // Live message arrived while pagination is in progress.
+    // Restore position for this notification and update the baseline extent.
+    // Note: if two messages arrive before a single frame renders, the second callback
+    // may compute against a stale baseline — minor positional imprecision, acceptable.
+    final preOffset = _prePaginationScrollOffset;
+    final preExtent = _prePaginationScrollExtent;
+    SchedulerBinding.instance.addPostFrameCallback((_) {
+      if (preOffset == null || preExtent == null) return;
+      if (!_scrollController.hasClients) return;
+      final newExtent = _scrollController.position.maxScrollExtent;
+      final delta = newExtent - preExtent;
+      _prePaginationScrollOffset = preOffset + delta; // update baseline for next notification
+      _prePaginationScrollExtent = newExtent;
+      _scrollController.jumpTo(preOffset + delta);
+    });
+    return; // do NOT auto-scroll to bottom during pagination load
+  }
+  // Normal auto-scroll logic (existing code) ...
+}
 ```
-This prevents the user from being scrolled back to the bottom when older messages are prepended.
+
+**Why this is correct — and handles the live-message race:**
+`loadOlderMessages()` does NOT call `notifyListeners()`. Notifications only fire from `onMessageHistory` (pagination done: sets `_isLoadingMore = false` before notify) or from `_handleIncomingMessage` (live message: does NOT change `_isLoadingMore`). Checking `!messaging.isLoadingMore` inside the guard distinguishes the two cases:
+- Pagination complete → `isLoadingMore == false` → restore position + clear spinner
+- Live message during load → `isLoadingMore == true` → restore position + update baseline extent for the next notification
+
+This sidesteps the boolean-flag race entirely. `SchedulerBinding` is in `package:flutter/scheduler.dart` — import if not already present.
 
 - [ ] **Step 9: Write unit tests**
 
