@@ -6,6 +6,7 @@ import { UsersService } from '../../users/users.service';
 import { ConversationsService } from '../../conversations/conversations.service';
 import { MessagesService } from '../../messages/messages.service';
 import { MediaCleanupService } from '../../media/media-cleanup.service';
+import { ChatConversationService } from './chat-conversation.service';
 import { Socket, Server } from 'socket.io';
 
 describe('ChatFriendRequestService', () => {
@@ -81,6 +82,12 @@ describe('ChatFriendRequestService', () => {
           provide: MediaCleanupService,
           useValue: {
             deleteMediaFile: jest.fn().mockResolvedValue(undefined),
+          },
+        },
+        {
+          provide: ChatConversationService,
+          useValue: {
+            conversationsWithUnread: jest.fn().mockResolvedValue([]),
           },
         },
       ],

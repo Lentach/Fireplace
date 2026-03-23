@@ -9,7 +9,7 @@ const mockService = () => ({
   revealAndDelete: jest.fn(),
 });
 
-const mockUser = { userId: 1 };
+const mockUser = { id: 1 };
 const mockRes = () => {
   const res: any = {};
   res.send = jest.fn().mockReturnValue(res);
