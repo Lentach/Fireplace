@@ -176,28 +176,43 @@ git commit -m "feat(auth): invalidate JWT on password change via passwordChanged
 
 **Why:** Only `sendMessage` has `@UseGuards(WsThrottlerGuard)`. Seven other WS events are unthrottled — an attacker can hammer the database via WebSocket without any limit.
 
-**Pattern:** `sendMessage` uses only `@UseGuards(WsThrottlerGuard)` without a `@Throttle` decorator (relies on global default: 100 req/15min). Apply the same pattern to all 7 new events. `Throttle` is already imported in `chat.gateway.ts` — no import changes needed.
+**Pattern:** `sendMessage` uses only `@UseGuards(WsThrottlerGuard)` without a `@Throttle` decorator (relies on global default: 100 req/15min). However, read-only fetch events (`getMessages`, `getConversations`, `getFriends`, `getFriendRequests`, `getBlockedList`) are called on every reconnect and during pagination — the global 100/15min limit could be reached by legitimate heavy usage. Apply per-event `@Throttle` overrides for read-heavy events:
+
+- **Read-only fetches** (`getMessages`, `getConversations`, `getFriends`, `getFriendRequests`, `getBlockedList`): 300 req/15min (3× global) — high legitimate volume on reconnects/pagination
+- **Search** (`searchUsers`): 30 req/60s (1 per 2s) — user-typed queries, strict is fine
+- **Key exchange** (`fetchPreKeyBundle`): global default (100/15min) — infrequent, per-session
+
+`Throttle` and `WsThrottlerGuard` are already imported in `chat.gateway.ts` — no new imports needed.
 
 **Files:**
 - Modify: `backend/src/chat/chat.gateway.ts`
 
-- [ ] **Step 1: Add `@UseGuards(WsThrottlerGuard)` to 7 handlers**
+- [ ] **Step 1: Add `@UseGuards(WsThrottlerGuard)` + per-event `@Throttle` to 7 handlers**
 
-In `backend/src/chat/chat.gateway.ts`, add `@UseGuards(WsThrottlerGuard)` immediately above each `@SubscribeMessage` decorator for these handlers (same position as on `sendMessage`, no `@Throttle`):
+In `backend/src/chat/chat.gateway.ts`, add the guard and throttle above each `@SubscribeMessage` decorator:
 
-- `handleGetMessages` — `@SubscribeMessage('getMessages')`
-- `handleGetConversations` — `@SubscribeMessage('getConversations')`
-- `handleGetFriends` — `@SubscribeMessage('getFriends')`
-- `handleGetFriendRequests` — `@SubscribeMessage('getFriendRequests')`
-- `handleGetBlockedList` — `@SubscribeMessage('getBlockedList')`
-- `handleSearchUsers` — `@SubscribeMessage('searchUsers')`
-- `handleFetchPreKeyBundle` — `@SubscribeMessage('fetchPreKeyBundle')`
-
-Example:
+**Read-only fetches — 300 req/15min:**
 ```ts
 @UseGuards(WsThrottlerGuard)
+@Throttle({ default: { limit: 300, ttl: 900000 } })
 @SubscribeMessage('getMessages')
 async handleGetMessages(...) { ... }
+```
+Apply the same pattern to: `getConversations`, `getFriends`, `getFriendRequests`, `getBlockedList`.
+
+**Search — 30 req/60s:**
+```ts
+@UseGuards(WsThrottlerGuard)
+@Throttle({ default: { limit: 30, ttl: 60000 } })
+@SubscribeMessage('searchUsers')
+async handleSearchUsers(...) { ... }
+```
+
+**Key exchange — global default (no `@Throttle`, guard only):**
+```ts
+@UseGuards(WsThrottlerGuard)
+@SubscribeMessage('fetchPreKeyBundle')
+async handleFetchPreKeyBundle(...) { ... }
 ```
 
 - [ ] **Step 2: Run backend tests**
@@ -585,16 +600,39 @@ final userData = await _api.fetchMe(_token!);
 _currentUser = UserModel.fromJson(userData);
 ```
 
-- [ ] **Step 8: Run both test suites**
+- [ ] **Step 8: Fix breaking test in `auth.service.spec.ts`**
+
+`backend/src/auth/auth.service.spec.ts` has an assertion that the JWT payload contains `profilePictureUrl`. After Step 1 this assertion will fail. Find the test that calls `jwtService.sign` and remove `profilePictureUrl` from the expected payload:
+
+```ts
+// Before (will fail after Task 5 Step 1):
+expect(jwtService.sign).toHaveBeenCalledWith({
+  sub: 1,
+  username: 'testuser',
+  tag: '0427',
+  profilePictureUrl: undefined,  // ← remove this line
+});
+
+// After:
+expect(jwtService.sign).toHaveBeenCalledWith({
+  sub: 1,
+  username: 'testuser',
+  tag: '0427',
+});
+```
+
+Also check `jwt.strategy.spec.ts` (created in Task 1) — the `validate` payload type there already removes `profilePictureUrl` in Task 1 Step 2, so no additional change is needed there.
+
+- [ ] **Step 9: Run both test suites**
 ```bash
 cd backend && npm test
 cd frontend && flutter test
 ```
 Expected: all tests pass.
 
-- [ ] **Step 9: Commit**
+- [ ] **Step 10: Commit**
 ```bash
-git add backend/src/auth/auth.service.ts backend/src/auth/strategies/jwt.strategy.ts backend/src/users/users.controller.ts frontend/lib/services/api_service.dart frontend/lib/providers/auth_provider.dart
+git add backend/src/auth/auth.service.ts backend/src/auth/strategies/jwt.strategy.ts backend/src/users/users.controller.ts backend/src/auth/auth.service.spec.ts frontend/lib/services/api_service.dart frontend/lib/providers/auth_provider.dart
 git commit -m "feat(auth): remove profilePictureUrl from JWT; add GET /users/me for fresh profile data"
 ```
 
@@ -664,10 +702,12 @@ Under the `backend` service:
 healthcheck:
   test: ["CMD", "wget", "-qO-", "http://localhost:3000/health"]
   interval: 30s
-  timeout: 5s
+  timeout: 10s
   retries: 3
-  start_period: 10s
+  start_period: 60s
 ```
+
+Note: `start_period: 60s` gives `npm install && npm run start:dev` time to finish before Docker starts counting failures. `timeout: 10s` accommodates a slow DB ping on first startup.
 
 - [ ] **Step 5: Verify**
 ```bash
@@ -689,7 +729,7 @@ git commit -m "feat(infra): add GET /health with DB liveness check; 503 on degra
 
 **Architecture decisions:**
 - `MessagingProvider.getMessages(int conversationId)` is introduced as the single entry point for message loading. `ChatDetailScreen` has **3 call sites** that currently call `socketService.getMessages()` directly — all 3 must be redirected.
-- Use `_messageLoadGeneration` (integer counter, not a boolean) to detect stale responses from concurrent loads.
+- Use the existing `_decryptHistoryGeneration` counter (already present in `MessagingProvider`) to detect stale responses from concurrent loads — no new counter needed.
 - Paginated messages are also E2E encrypted — must call `_decryptMessageHistory` for them too.
 - `ChatDetailScreen` already has `_scrollController`, `_onScroll`, and scroll listener wired up — only add load-more logic to the existing `_onScroll`, do NOT create a duplicate controller.
 
@@ -784,12 +824,10 @@ if (_isPaginationLoad) {
     return;
   }
 
-  // **Server sort order:** The backend's `findByConversation` must return messages in
-  // `createdAt ASC` order (oldest-first) for the prepend to produce correct display order.
-  // Verify by checking `messages.service.ts` → `findByConversation` ORDER BY clause.
-  // The initial `getMessages` response also uses the same endpoint — if chat displays
-  // correctly today (oldest at top), the sort is already ASC and no reversal is needed.
-  // If sort is DESC (newest-first), add `.reversed.toList()` before the prepend below.
+  // **Server sort order:** `findByConversation` in `messages.service.ts` fetches with
+  // `ORDER BY createdAt DESC` then calls `.reverse()` before returning — so the payload
+  // arrives at the frontend already in ASC order (oldest-first). No client-side reversal
+  // is needed. The prepend `[...newMessages, ..._messages]` is correct as-is.
 
   // Prepend older messages (backend returns them oldest-first / createdAt ASC)
   _messages = [...newMessages, ..._messages];
