@@ -63,6 +63,14 @@ cd frontend && flutter run -d chrome
 - `blockedByUserIds` returns `Set.unmodifiable` — tests cannot mutate it directly; use `provider.onYouWereBlocked({'userId': X})` to set state
 - `use_build_context_synchronously`: capture providers via `context.read<>()` before the first `await` in async methods
 - Fire-and-forget futures: use `.ignore()` instead of `.catchError((_){})` — catchError requires callback to return the same type as the Future
+- JWT payload no longer carries `profilePictureUrl`; `AuthProvider` loads user profile via `GET /users/me` in `_loadSavedToken`, `login`, and after avatar upload
+- To avoid startup logout flicker, `_loadSavedToken` first decodes minimal user fields (`sub/username/tag`) from JWT for immediate local auth state, then refreshes with `/users/me`
+- `_loadSavedToken`: if `fetchMe` returns 401, clear saved token/session; if network/server fails, keep token and let reconnect flow retry
+- Authenticated media fetch: `/media/msgs/` downloads use `ApiService.fetchMediaBytes(url, token)` (sends `Authorization` only for own-server URLs); legacy external URLs (e.g. Cloudinary) still fetch without auth
+- `PlaybackController` refactor: capture JWT token once in `_loadAndPlayAudio()` and pass it explicitly to `_downloadAndCache(url, token)` (no hidden token read inside helper)
+- `ChatDetailScreen` message loading uses `MessagingProvider.getMessages(conversationId)` (single entry point)
+- Message pagination: `MessagingProvider` tracks `_hasMore/_isLoadingMore/_paginationOffset`, `loadOlderMessages()` is triggered near scroll top, and chat screen preserves visual position when prepending
+- Pagination guard cleanup: if `messageHistory` is ignored due to conversation mismatch while pagination is active, reset `_isLoadingMore`/`_isPaginationLoad` to avoid a stuck loading state
 - Multiple backends: if weird data, kill local `node.exe`, use Docker only
 - Mobile _openChat: only Navigator.push; ChatDetailScreen initState calls openConversation (avoids double getMessages and decrypt loop)
 - `_conversationCache` in MessagingProvider: per-conversation RAM cache (`Map<int, List<MessageModel>>`) for the current session. Populated by `onMessageHistory` (first snapshot after parse/filter, second after `_decryptMessageHistory` completes). Updated by `_handleIncomingMessage` (plain path and encrypted `.then()`), `_handleMessageDelivered` (when `index != -1` in `_messages` so `_messages` snapshot matches that chat), `_handleMessageDeleted`. Entry removed by `_handleChatHistoryCleared`,
@@ -85,6 +93,11 @@ cd frontend && flutter run -d chrome
 - `findByConversation` uses DB-level `skip`/`take` when no hidden messages
 - `og:image` from link preview validated via `isSafeImageUrl` (HTTPS + non-private host only); IPv6 brackets stripped before regex; backend resolves relative og:image URLs using pageUrl
 - WS rate limiting: `WsThrottlerGuard` on `sendMessage` — per-user tracker (user id); `@Throttle({ default: { limit: 300, ttl: 900000 } })` on `handleSendMessage` overrides the global module default (100/15 min) so one active user cannot exhaust the cap and lose all outbound sends until the window expires. Guard provides mock `res` with no-op `header()` (Socket has no such method; ThrottlerGuard expects it)
+- WS throttling also guards read-heavy events: `getMessages/getConversations/getFriends/getFriendRequests/getBlockedList` use `300/15m`; `searchUsers` uses `30/60s`; `fetchPreKeyBundle` uses guard-only with global limits
+- JWT invalidation after password change: `User.passwordChangedAt` is set in `resetPassword`; `JwtStrategy.validate()` rejects when `payload.iat <= passwordChangedAt` (seconds precision)
+- `GET /media/msgs/:filename` is JWT-guarded; avatars remain public
+- Avatar uploads validate actual file bytes (JPEG/PNG magic bytes) in both media upload avatar path and users profile-picture endpoint
+- Health endpoint added: `GET /health` runs `SELECT 1` and returns `503` on DB failure (for Docker healthcheck)
 - Raw SQL in `markConversationAsReadFromSender`: use `"deliveryStatus"` (quoted) — PostgreSQL column is camelCase
 - `_conversationsWithUnread` uses batch `countUnreadForRecipientBatch` + `getLastMessagesBatch` (2 queries total, not 2N)
 - Production: logger level `['error','warn','log']` — no debug
@@ -362,15 +375,16 @@ erDiagram
 | POST | `/users/profile-picture` | JWT | multipart `file` (JPEG/PNG, 5MB) | `{ profilePictureUrl }` |
 | POST | `/users/reset-password` | JWT | `{ oldPassword, newPassword }` | 200 |
 | DELETE | `/users/account` | JWT | `{ password }` | 200 |
+| GET | `/users/me` | JWT | -- | `{ id, username, tag, profilePictureUrl }` |
 | POST | `/media/upload` | JWT | multipart `file` (11MB) + `mediaType` ('image'\|'voice'\|'gif'\|'file'\|'avatar') + `duration?` + `expiresIn?` + `fileName?` | `{ mediaUrl }`, voice adds `mediaDuration`, file adds `fileName` |
-| GET | `/media/msgs/:filename` | -- | Served via Nginx `X-Accel-Redirect` from `MEDIA_DIR/msgs` in production | Encrypted blob |
+| GET | `/media/msgs/:filename` | JWT | Served via Nginx `X-Accel-Redirect` from `MEDIA_DIR/msgs` in production | Encrypted blob |
 | GET | `/media/avatars/:filename` | -- | Public avatar file | JPEG/PNG |
 | POST | `/messages/link-preview` | JWT | `{ text }` | `{ url, title, imageUrl }` or `{}` |
 | POST | `/notes` | JWT | `{ ciphertext, expiresIn }` | `{ token }` |
 | GET | `/note/:token` | None | -- | HTML page (landing/revealed/destroyed) |
 | POST | `/note/:token/reveal` | None | -- | `{ ciphertext }` or 404 |
 
-**Password:** 8+ chars, 1 uppercase, 1 lowercase, 1 number. **Login:** username or `username#tag`. **JWT:** `{ sub: userId, username, tag, profilePictureUrl }`. **Rate limits:** Login 5/15min, Register 3/h, Image 10/min, Voice 10/60s, LinkPreview 30/min.
+**Password:** 8+ chars, 1 uppercase, 1 lowercase, 1 number. **Login:** username or `username#tag`. **JWT:** `{ sub: userId, username, tag }` (no `profilePictureUrl`). **Rate limits:** Login 5/15min, Register 3/h, Image 10/min, Voice 10/60s, LinkPreview 30/min.
 
 ---
 
