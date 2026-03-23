@@ -19,6 +19,7 @@ import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LocalStorageService } from './local-storage.service';
 import { UploadMediaDto } from './dto/upload-media.dto';
 import { validateDto } from '../chat/utils/dto.validator';
+import { validateAvatarMagicBytes } from './magic-bytes.validator';
 
 const isDev = process.env.NODE_ENV !== 'production';
 const mediaDir = process.env.MEDIA_DIR ?? '/app/media';
@@ -65,6 +66,7 @@ export class MediaController {
       };
     }
     if (dto.mediaType === 'avatar') {
+      validateAvatarMagicBytes(file.buffer);
       const result = await this.storage.uploadAvatar(
         userId,
         file.buffer,
@@ -96,6 +98,7 @@ export class MediaController {
   }
 
   @Get('msgs/:filename')
+  @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 60, ttl: 60000 } })
   async serveMsgs(@Param('filename') filename: string, @Res() res: Response) {
     const safeFilename = path.basename(filename);

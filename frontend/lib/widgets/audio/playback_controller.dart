@@ -3,12 +3,15 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
+import 'package:provider/provider.dart';
 
+import '../../config/app_config.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/api_service.dart';
 import '../../services/media_crypto_service.dart';
 import '../../utils/audio_blob_url_stub.dart'
     if (dart.library.html) '../../utils/audio_blob_url_web.dart' as audio_blob;
@@ -146,6 +149,7 @@ class _PlaybackControllerState extends State<PlaybackController> {
     if (mediaUrl == null || mediaUrl.isEmpty) {
       throw Exception('No media URL');
     }
+    final token = context.read<AuthProvider>().token ?? '';
 
     _loadCancelled = false;
     setState(() {
@@ -157,15 +161,14 @@ class _PlaybackControllerState extends State<PlaybackController> {
         final mk = widget.message.mediaKey;
         final mi = widget.message.mediaIv;
         if (mk != null && mi != null) {
-          final response = await http.get(Uri.parse(mediaUrl));
-          if (response.statusCode != 200) {
-            throw Exception('Failed to download audio');
-          }
-          if (response.bodyBytes.length > MediaCryptoService.maxBytes) {
+          final raw = await ApiService(
+            baseUrl: AppConfig.baseUrl,
+          ).fetchMediaBytes(mediaUrl, token);
+          if (raw.length > MediaCryptoService.maxBytes) {
             throw Exception('Audio too large');
           }
           final plain = await MediaCryptoService().decrypt(
-            Uint8List.fromList(response.bodyBytes),
+            Uint8List.fromList(raw),
             mk,
             mi,
           );
@@ -187,7 +190,7 @@ class _PlaybackControllerState extends State<PlaybackController> {
         if (_cachedFilePath != null && File(_cachedFilePath!).existsSync()) {
           await _audioPlayer.setFilePath(_cachedFilePath!);
         } else {
-          final path = await _downloadAndCache(mediaUrl);
+          final path = await _downloadAndCache(mediaUrl, token);
           _cachedFilePath = path;
           await _audioPlayer.setFilePath(path);
         }
@@ -221,22 +224,22 @@ class _PlaybackControllerState extends State<PlaybackController> {
     return null;
   }
 
-  Future<String> _downloadAndCache(String url) async {
+  Future<String> _downloadAndCache(String url, String token) async {
     final dir = await getApplicationDocumentsDirectory();
     final cachePath = '${dir.path}/audio_cache';
     await Directory(cachePath).create(recursive: true);
 
     final file = File('$cachePath/${widget.message.id}.audio');
 
-    final response = await http.get(Uri.parse(url));
-    if (response.statusCode != 200) {
-      throw Exception('Failed to download audio: ${response.statusCode}');
-    }
-    if (response.bodyBytes.length > MediaCryptoService.maxBytes) {
+    final raw = await ApiService(baseUrl: AppConfig.baseUrl).fetchMediaBytes(
+      url,
+      token,
+    );
+    if (raw.length > MediaCryptoService.maxBytes) {
       throw Exception('Audio too large');
     }
 
-    List<int> bytes = response.bodyBytes;
+    List<int> bytes = raw;
     final mk = widget.message.mediaKey;
     final mi = widget.message.mediaIv;
     if (mk != null && mi != null) {

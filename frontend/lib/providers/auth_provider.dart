@@ -29,15 +29,31 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _loadSavedToken() async {
     final prefs = await SharedPreferences.getInstance();
     final savedToken = prefs.getString('jwt_token');
-    if (savedToken != null && !JwtDecoder.isExpired(savedToken)) {
+    if (savedToken != null) {
       _token = savedToken;
-      final payload = JwtDecoder.decode(savedToken);
-      _currentUser = UserModel(
-        id: payload['sub'] as int,
-        username: payload['username'] as String,
-        tag: payload['tag'] as String? ?? '0000',
-        profilePictureUrl: payload['profilePictureUrl'] as String?,
-      );
+      try {
+        final payload = JwtDecoder.decode(savedToken);
+        _currentUser = UserModel(
+          id: payload['sub'] as int,
+          username: payload['username'] as String,
+          tag: payload['tag'] as String? ?? '0000',
+          profilePictureUrl: null,
+        );
+        notifyListeners();
+      } catch (_) {
+        // Keep token and continue with fetchMe fallback.
+      }
+      try {
+        final userData = await _api.fetchMe(_token!);
+        _currentUser = UserModel.fromJson(userData);
+      } on Exception catch (e) {
+        if (e.toString().startsWith('Exception: HTTP_401')) {
+          _token = null;
+          await prefs.remove('jwt_token');
+          notifyListeners();
+          return;
+        }
+      }
       notifyListeners();
     }
   }
@@ -61,14 +77,8 @@ class AuthProvider extends ChangeNotifier {
     try {
       final accessToken = await _api.login(identifier, password);
       _token = accessToken;
-
-      final payload = JwtDecoder.decode(accessToken);
-      _currentUser = UserModel(
-        id: payload['sub'] as int,
-        username: payload['username'] as String,
-        tag: payload['tag'] as String? ?? '0000',
-        profilePictureUrl: payload['profilePictureUrl'] as String?,
-      );
+      final userData = await _api.fetchMe(_token!);
+      _currentUser = UserModel.fromJson(userData);
 
       final prefs = await SharedPreferences.getInstance();
       await prefs.setString('jwt_token', accessToken);
@@ -127,15 +137,11 @@ class AuthProvider extends ChangeNotifier {
     }
 
     try {
-      final profilePictureUrl = await _api.uploadProfilePicture(_token!, imageFile);
+      await _api.uploadProfilePicture(_token!, imageFile);
 
-      // Update current user with new profile picture URL
-      if (_currentUser != null) {
-        _currentUser = _currentUser!.copyWith(
-          profilePictureUrl: profilePictureUrl,
-        );
-        notifyListeners();
-      }
+      final userData = await _api.fetchMe(_token!);
+      _currentUser = UserModel.fromJson(userData);
+      notifyListeners();
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }

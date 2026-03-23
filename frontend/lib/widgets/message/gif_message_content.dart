@@ -2,9 +2,12 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:http/http.dart' as http;
+import 'package:provider/provider.dart';
 
+import '../../config/app_config.dart';
 import '../../models/message_model.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/api_service.dart';
 import '../../services/media_crypto_service.dart';
 import '../../utils/gif_blob_url_stub.dart'
     if (dart.library.html) '../../utils/gif_blob_url_web.dart' as gif_blob;
@@ -60,11 +63,16 @@ class _GifMessageContentState extends State<GifMessageContent> {
       return const _GifDisplay.error();
     }
 
-    final response = await http.get(Uri.parse(url));
-    if (response.statusCode != 200) {
+    final token = context.read<AuthProvider>().token ?? '';
+    Uint8List raw;
+    try {
+      raw = await ApiService(baseUrl: AppConfig.baseUrl).fetchMediaBytes(
+        url,
+        token,
+      );
+    } catch (_) {
       return const _GifDisplay.error();
     }
-    final raw = response.bodyBytes;
     if (raw.length > MediaCryptoService.maxBytes) {
       return const _GifDisplay.error();
     }

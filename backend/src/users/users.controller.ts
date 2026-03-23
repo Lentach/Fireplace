@@ -2,12 +2,14 @@ import {
   Controller,
   Post,
   Delete,
+  Get,
   Body,
   UseGuards,
   Request,
   UseInterceptors,
   UploadedFile,
   BadRequestException,
+  UnauthorizedException,
   Logger,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
@@ -18,6 +20,7 @@ import { LocalStorageService } from '../media/local-storage.service';
 import { UsersService } from './users.service';
 import { ResetPasswordDto, DeleteAccountDto, RegisterFcmTokenDto, RemoveFcmTokenDto } from './dto/user.dto';
 import { FcmTokensService } from '../fcm-tokens/fcm-tokens.service';
+import { validateAvatarMagicBytes } from '../media/magic-bytes.validator';
 
 @Controller('users')
 export class UsersController {
@@ -56,6 +59,7 @@ export class UsersController {
     if (!file) {
       throw new BadRequestException('No file uploaded');
     }
+    validateAvatarMagicBytes(file.buffer);
 
     const userId = req.user.id;
 
@@ -75,6 +79,19 @@ export class UsersController {
 
     return {
       profilePictureUrl: user.profilePictureUrl,
+    };
+  }
+
+  @Get('me')
+  @UseGuards(JwtAuthGuard)
+  async getMe(@Request() req) {
+    const user = await this.usersService.findById(req.user.id);
+    if (!user) throw new UnauthorizedException();
+    return {
+      id: user.id,
+      username: user.username,
+      tag: user.tag,
+      profilePictureUrl: user.profilePictureUrl ?? null,
     };
   }
 
