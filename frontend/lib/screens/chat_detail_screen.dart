@@ -45,6 +45,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   double _lastKeyboardHeight = 0;
   /// When true, ListView uses large cacheExtent so all items are built and scroll-to-bottom lands at real end.
   bool _expandCacheForScroll = false;
+  /// True when [MessagingProvider.loadCachedMessages] warmed this screen — skip expensive initial cacheExtent.
+  bool _openedWithWarmMessageCache = false;
   double _lastMaxScrollExtent = 0;
   bool _wasNearBottom = true;
   static const double _scrollToBottomThreshold = 80;
@@ -81,7 +83,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final messaging = context.read<MessagingProvider>();
     _lastLinkPreviewCount = messaging.messages.where((m) => m.linkPreviewUrl != null).length;
     // When opening conversation, expand cache so ListView builds all items and maxScrollExtent is correct.
-    final isInitialLoad = added == currentCount && currentCount > 0;
+    // Skip when we pre-loaded from RAM cache (re-entry): full list is already in memory without 10kpx extent.
+    final isInitialLoad = !_openedWithWarmMessageCache &&
+        added == currentCount &&
+        currentCount > 0;
     if (isInitialLoad) {
       setState(() => _expandCacheForScroll = true);
       // Defer scroll until after the rebuild with expanded cache has been laid out.
@@ -101,10 +106,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     super.initState();
     _scrollController.addListener(_onScroll);
     WidgetsBinding.instance.addPostFrameCallback((_) {
-      // Always reload messages from server when entering/re-entering chat
-      // to ensure timed messages reflect their current state
+      if (!mounted) return;
       final convs = context.read<ConversationsProvider>();
       final conn = context.read<ConnectionProvider>();
+      final messaging = context.read<MessagingProvider>();
+      _openedWithWarmMessageCache =
+          messaging.loadCachedMessages(widget.conversationId);
       convs.openConversation(widget.conversationId);
       conn.socketService.getMessages(widget.conversationId, limit: 50);
     });
@@ -134,8 +141,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       _lastLinkPreviewCount = 0;
       _newMessagesCount = 0;
       WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
         final convs = context.read<ConversationsProvider>();
         final conn = context.read<ConnectionProvider>();
+        final messaging = context.read<MessagingProvider>();
+        _openedWithWarmMessageCache =
+            messaging.loadCachedMessages(widget.conversationId);
         convs.openConversation(widget.conversationId);
         conn.socketService.getMessages(widget.conversationId, limit: 50);
       });

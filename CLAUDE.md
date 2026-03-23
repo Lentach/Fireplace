@@ -65,6 +65,8 @@ cd frontend && flutter run -d chrome
 - Fire-and-forget futures: use `.ignore()` instead of `.catchError((_){})` — catchError requires callback to return the same type as the Future
 - Multiple backends: if weird data, kill local `node.exe`, use Docker only
 - Mobile _openChat: only Navigator.push; ChatDetailScreen initState calls openConversation (avoids double getMessages and decrypt loop)
+- `_conversationCache` in MessagingProvider: per-conversation RAM cache (`Map<int, List<MessageModel>>`) for the current session. Populated by `onMessageHistory` (first snapshot after parse/filter, second after `_decryptMessageHistory` completes). Updated by `_handleIncomingMessage` (plain path and encrypted `.then()`), `_handleMessageDelivered` (when `index != -1` in `_messages` so `_messages` snapshot matches that chat), `_handleMessageDeleted`. Entry removed by `_handleChatHistoryCleared`,
+  `onConversationDeleted`. Fully cleared by `clearAll()` (logout only). NOT cleared by `clearMessages()` (back navigation) or `onConnect` (socket reconnect). `ChatDetailScreen` calls `loadCachedMessages` before `getMessages`; `_openedWithWarmMessageCache` skips the expensive initial `cacheExtent` expand on re-entry. `loadCachedMessages(id)` returns bool — true when RAM cache was applied. `_effectiveActiveConversationId` (test override OR `ConversationsProvider.activeConversationId`) is used in `onMessageHistory` and incoming-message paths.
 
 ### Backend
 - `ChatValidationService.validateCanMessage(senderId, recipientId)` — shared validation for blocked + friends; used by sendMessage, startConversation
