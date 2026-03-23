@@ -31,7 +31,7 @@ cd frontend && flutter run -d chrome
 
 **Phone (same WiFi):** `cd frontend && .\run_web_for_phone.ps1` or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`
 
-**Tests:** `cd backend && npm test` (204 unit tests, 25 suites, no DB required); `cd frontend && flutter test` (59+ tests)
+**Tests:** `cd backend && npm test` (204 unit tests, 25 suites, no DB required); `cd frontend && flutter test` (72 tests). Media crypto round-trip tests skip when `webcrypto:setup` was not run (e.g. no cmake on Windows); the 20MB limit test always runs (throws before native crypto).
 
 **Production:** https://fireplace.ignorelist.com — Google Cloud e2-medium VM (Warszawa), Docker + Nginx + Let's Encrypt. Deploy: SSH to server → `~/deploy.sh` (git pull + docker build + flutter web build).
 

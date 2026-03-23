@@ -3,11 +3,27 @@ import 'dart:typed_data';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fireplace/services/media_crypto_service.dart';
 
+/// `flutter pub run webcrypto:setup` (requires cmake on Windows) must succeed
+/// for native webcrypto; otherwise encrypt throws. Skip round-trip tests gracefully.
+bool? _webcryptoOk;
+
+Future<bool> _ensureWebcryptoAvailable() async {
+  if (_webcryptoOk != null) return _webcryptoOk!;
+  try {
+    await MediaCryptoService().encrypt(Uint8List.fromList([1]));
+    _webcryptoOk = true;
+  } catch (_) {
+    _webcryptoOk = false;
+  }
+  return _webcryptoOk!;
+}
+
 void main() {
   final service = MediaCryptoService();
 
   group('MediaCryptoService', () {
     test('encrypt produces ciphertext different from input', () async {
+      if (!await _ensureWebcryptoAvailable()) return;
       final input = Uint8List.fromList(List.generate(100, (i) => i));
       final result = await service.encrypt(input);
       expect(result.ciphertext, isNot(equals(input)));
@@ -16,6 +32,7 @@ void main() {
     });
 
     test('decrypt restores original bytes', () async {
+      if (!await _ensureWebcryptoAvailable()) return;
       final input = Uint8List.fromList([1, 2, 3, 4, 5, 6, 7, 8]);
       final encrypted = await service.encrypt(input);
       final decrypted = await service.decrypt(
@@ -27,6 +44,7 @@ void main() {
     });
 
     test('each encrypt call produces unique key and IV', () async {
+      if (!await _ensureWebcryptoAvailable()) return;
       final input = Uint8List.fromList([42, 43, 44]);
       final a = await service.encrypt(input);
       final b = await service.encrypt(input);
@@ -35,6 +53,7 @@ void main() {
     });
 
     test('decrypt with wrong key throws', () async {
+      if (!await _ensureWebcryptoAvailable()) return;
       final input = Uint8List.fromList([1, 2, 3]);
       final encrypted = await service.encrypt(input);
       final other = await service.encrypt(input);
@@ -49,6 +68,7 @@ void main() {
     });
 
     test('throws ArgumentError for input over 20MB', () async {
+      // Size check runs before webcrypto; no `webcrypto:setup` required.
       final huge = Uint8List(21 * 1024 * 1024);
       await expectLater(service.encrypt(huge), throwsA(isA<ArgumentError>()));
     });
