@@ -128,9 +128,13 @@ class MessagingProvider extends ChangeNotifier {
     return true;
   }
 
-  /// Snapshots current [_messages] into cache for [conversationId].
+  /// Snapshots messages for [conversationId] into cache.
+  /// Filters by conversationId so async paths (e.g. decrypt .then()) are safe
+  /// even if the user has navigated away and _messages now holds a different conversation.
   void _updateCache(int conversationId) {
-    _conversationCache[conversationId] = List.from(_messages);
+    _conversationCache[conversationId] = List.from(
+      _messages.where((m) => m.conversationId == conversationId),
+    );
   }
 
   /// Test-only: seed the cache directly without going through onMessageHistory.
@@ -254,6 +258,9 @@ class MessagingProvider extends ChangeNotifier {
     notifyListeners();
     // Snapshot to cache immediately (may include encrypted placeholders for E2E messages).
     // A second snapshot runs after _decryptMessageHistory completes with decrypted content.
+    // Note: legacy bare-array payloads (responseConversationId == null) skip this first snapshot;
+    // only the post-decrypt snapshot via myConversationId runs for them. This is acceptable
+    // because the bare-array path is not used by the current protocol.
     if (responseConversationId != null) {
       _updateCache(responseConversationId);
     }
@@ -359,10 +366,12 @@ class MessagingProvider extends ChangeNotifier {
           'contentLength': decrypted.content.length,
         });
         notifyListeners();
-        // Update cache with decrypted content (encrypted placeholder was stored on _addMessageToState).
-        final activeId = _effectiveActiveConversationId;
-        if (activeId != null && _conversationCache.containsKey(activeId)) {
-          _updateCache(activeId);
+        // Update cache with decrypted content using the message's own conversationId,
+        // not the current active conversation — the user may have navigated away
+        // between message arrival and decrypt completing.
+        final cid = decrypted.conversationId;
+        if (_conversationCache.containsKey(cid)) {
+          _updateCache(cid);
         }
       });
       return;

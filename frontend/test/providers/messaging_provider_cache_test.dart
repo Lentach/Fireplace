@@ -149,5 +149,51 @@ void main() {
       // Empty list → cache entry removed so hasCachedMessages is false
       expect(provider.hasCachedMessages(10), isFalse);
     });
+
+    test('messageDelivered updates delivery status in cache', () {
+      final msg = MessageModel(
+        id: 1,
+        content: 'hello',
+        senderId: 2,
+        senderUsername: 'bob',
+        conversationId: 10,
+        deliveryStatus: MessageDeliveryStatus.sent,
+        createdAt: DateTime.utc(2026, 1, 1),
+      );
+      provider.seedCacheForTest(10, [msg]);
+      provider.setActiveConversationIdForTest(10);
+      provider.loadCachedMessages(10);
+
+      provider.onMessageDelivered({
+        'messageId': 1,
+        'conversationId': 10,
+        'deliveryStatus': 'READ',
+      });
+
+      // Cache entry should still exist and message status should be updated
+      expect(provider.hasCachedMessages(10), isTrue);
+      expect(provider.messages.first.deliveryStatus, MessageDeliveryStatus.read);
+    });
+
+    test('plain incoming message updates cache for active conversation', () {
+      provider.seedCacheForTest(10, [_msg(1, 10)]);
+      provider.setActiveConversationIdForTest(10);
+      provider.loadCachedMessages(10);
+
+      provider.onNewMessage({
+        'id': 2,
+        'content': 'world',
+        'senderId': 2,
+        'senderUsername': 'bob',
+        'conversationId': 10,
+        'deliveryStatus': 'SENT',
+        'messageType': 'TEXT',
+        'createdAt': '2026-01-01T01:00:00.000Z',
+      });
+
+      // Cache should now reflect both messages
+      expect(provider.hasCachedMessages(10), isTrue);
+      expect(provider.messages.length, 2);
+    });
   });
 }

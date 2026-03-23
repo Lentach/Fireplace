@@ -140,6 +140,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       _lastMessageCount = 0;
       _lastLinkPreviewCount = 0;
       _newMessagesCount = 0;
+      _openedWithWarmMessageCache = false; // reset before callback so _onNewMessages sees correct state
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         final convs = context.read<ConversationsProvider>();
