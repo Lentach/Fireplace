@@ -313,6 +313,7 @@ class MessagingProvider extends ChangeNotifier {
   void onConversationDeleted(int conversationId) {
     _messages.removeWhere((m) => m.conversationId == conversationId);
     notifyListeners();
+    _conversationCache.remove(conversationId);
   }
 
   // ---------- Internal Handlers ----------
@@ -320,7 +321,7 @@ class MessagingProvider extends ChangeNotifier {
   void _handleIncomingMessage(dynamic data) {
     final dataMap = data as Map<String, dynamic>;
     final msg = MessageModel.fromJson(dataMap);
-    final activeConversationId = _conversationsProvider?.activeConversationId;
+    final activeConversationId = _effectiveActiveConversationId;
 
     // Queue incoming encrypted messages for active conversation while we're
     // decrypting history (so history decrypt runs first and session order is preserved).
@@ -358,11 +359,22 @@ class MessagingProvider extends ChangeNotifier {
           'contentLength': decrypted.content.length,
         });
         notifyListeners();
+        // Update cache with decrypted content (encrypted placeholder was stored on _addMessageToState).
+        final activeId = _effectiveActiveConversationId;
+        if (activeId != null && _conversationCache.containsKey(activeId)) {
+          _updateCache(activeId);
+        }
       });
       return;
     }
 
     _addMessageToState(msg);
+    // Keep cache current for active conversation.
+    final activeIdAfterPlain = _effectiveActiveConversationId;
+    if (activeIdAfterPlain != null &&
+        _conversationCache.containsKey(activeIdAfterPlain)) {
+      _updateCache(activeIdAfterPlain);
+    }
   }
 
   void _processIncomingMessageQueue() {
@@ -414,7 +426,7 @@ class MessagingProvider extends ChangeNotifier {
   }
 
   void _addMessageToState(MessageModel msg) {
-    final activeConversationId = _conversationsProvider?.activeConversationId;
+    final activeConversationId = _effectiveActiveConversationId;
 
     // If this is our own message (messageSent), replace temp optimistic message
     // and keep plaintext for display (server stores "[encrypted]" as content).
@@ -515,6 +527,13 @@ class MessagingProvider extends ChangeNotifier {
     if (index != -1 || conversationId != null) {
       notifyListeners();
     }
+    // Keep delivery status current in cache (only when this chat's list in memory was updated).
+    if (index != -1) {
+      final cid = _messages[index].conversationId;
+      if (_conversationCache.containsKey(cid)) {
+        _updateCache(cid);
+      }
+    }
   }
 
   void _handleChatHistoryCleared(dynamic data) {
@@ -526,6 +545,7 @@ class MessagingProvider extends ChangeNotifier {
     _conversationsProvider?.updateLastMessage(conversationId, null);
 
     notifyListeners();
+    _conversationCache.remove(conversationId);
   }
 
   void _handleMessageDeleted(dynamic data) {
@@ -557,6 +577,16 @@ class MessagingProvider extends ChangeNotifier {
     }
 
     notifyListeners();
+    // Reflect deletion in cache; remove entry entirely if the conversation is now empty.
+    if (_conversationCache.containsKey(conversationId)) {
+      final remaining =
+          _messages.where((m) => m.conversationId == conversationId).toList();
+      if (remaining.isEmpty) {
+        _conversationCache.remove(conversationId);
+      } else {
+        _updateCache(conversationId);
+      }
+    }
   }
 
   void _handlePartnerTyping(dynamic data) {

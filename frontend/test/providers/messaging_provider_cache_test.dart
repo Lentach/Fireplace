@@ -106,5 +106,48 @@ void main() {
       expect(provider.hasCachedMessages(99), isFalse);
       expect(provider.hasCachedMessages(10), isFalse);
     });
+
+    test('chatHistoryCleared removes cache entry', () {
+      provider.seedCacheForTest(10, [_msg(1, 10)]);
+      provider.onChatHistoryCleared({'conversationId': 10});
+      expect(provider.hasCachedMessages(10), isFalse);
+    });
+
+    test('conversationDeleted removes cache entry', () {
+      provider.seedCacheForTest(10, [_msg(1, 10)]);
+      provider.onConversationDeleted(10);
+      expect(provider.hasCachedMessages(10), isFalse);
+    });
+
+    test('messageDeleted updates cache and reflects removal', () {
+      provider.seedCacheForTest(10, [_msg(1, 10), _msg(2, 10)]);
+      provider.setActiveConversationIdForTest(10);
+      provider.loadCachedMessages(10);
+
+      provider.onMessageDeleted({
+        'messageId': 1,
+        'conversationId': 10,
+        'forEveryone': true,
+      });
+
+      expect(provider.hasCachedMessages(10), isTrue);
+      expect(provider.messages.length, 1);
+      expect(provider.messages.first.id, 2);
+    });
+
+    test('messageDeleted removes cache entry when list becomes empty', () {
+      provider.seedCacheForTest(10, [_msg(1, 10)]);
+      provider.setActiveConversationIdForTest(10);
+      provider.loadCachedMessages(10);
+
+      provider.onMessageDeleted({
+        'messageId': 1,
+        'conversationId': 10,
+        'forEveryone': true,
+      });
+
+      // Empty list → cache entry removed so hasCachedMessages is false
+      expect(provider.hasCachedMessages(10), isFalse);
+    });
   });
 }
