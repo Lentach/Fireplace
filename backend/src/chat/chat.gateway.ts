@@ -10,6 +10,7 @@ import {
 import { Server, Socket } from 'socket.io';
 import { JwtService } from '@nestjs/jwt';
 import { Logger, UseGuards } from '@nestjs/common';
+import { Throttle } from '@nestjs/throttler';
 import { WsThrottlerGuard } from './guards/ws-throttler.guard';
 import { UsersService } from '../users/users.service';
 import { ChatMessageService } from './services/chat-message.service';
@@ -115,6 +116,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // ========== MESSAGE HANDLERS ==========
 
+  /** Per-user cap for outgoing messages; global ThrottlerModule default is 100/15min — too low for active chat. */
+  @Throttle({ default: { limit: 300, ttl: 900000 } })
   @UseGuards(WsThrottlerGuard)
   @SubscribeMessage('sendMessage')
   async handleSendMessage(

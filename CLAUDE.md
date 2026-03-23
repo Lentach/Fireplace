@@ -84,7 +84,7 @@ cd frontend && flutter run -d chrome
 - `_conversationsWithUnread` uses `Promise.all` — parallel, not sequential
 - `findByConversation` uses DB-level `skip`/`take` when no hidden messages
 - `og:image` from link preview validated via `isSafeImageUrl` (HTTPS + non-private host only); IPv6 brackets stripped before regex; backend resolves relative og:image URLs using pageUrl
-- WS rate limiting: `WsThrottlerGuard` on `sendMessage` — provides mock `res` with no-op `header()` (Socket has no such method; ThrottlerGuard expects it)
+- WS rate limiting: `WsThrottlerGuard` on `sendMessage` — per-user tracker (user id); `@Throttle({ default: { limit: 300, ttl: 900000 } })` on `handleSendMessage` overrides the global module default (100/15 min) so one active user cannot exhaust the cap and lose all outbound sends until the window expires. Guard provides mock `res` with no-op `header()` (Socket has no such method; ThrottlerGuard expects it)
 - Raw SQL in `markConversationAsReadFromSender`: use `"deliveryStatus"` (quoted) — PostgreSQL column is camelCase
 - `_conversationsWithUnread` uses batch `countUnreadForRecipientBatch` + `getLastMessagesBatch` (2 queries total, not 2N)
 - Production: logger level `['error','warn','log']` — no debug

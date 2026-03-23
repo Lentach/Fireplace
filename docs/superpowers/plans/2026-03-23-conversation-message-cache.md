@@ -4,7 +4,7 @@
 
 **Goal:** Eliminate re-entry lag in chat by showing cached messages immediately when a user returns to a previously-visited conversation during the same session.
 
-**Architecture:** Add `Map<int, List<MessageModel>> _conversationCache` to `MessagingProvider`. On re-entry, `loadCachedMessages()` populates `_messages` instantly from cache; background `getMessages()` socket call still fires and merges when it arrives. Cache is updated after every mutation (new message, delete, clear history). Cache is NOT cleared on back-navigation — only on logout/clearAll.
+**Architecture:** Add `Map<int, List<MessageModel>> _conversationCache` to `MessagingProvider`. On re-entry, `loadCachedMessages()` populates `_messages` instantly from cache; background `getMessages()` socket call still fires and merges when it arrives. Cache is updated after every mutation (new message, delete, clear history, delivery status). Cache is NOT cleared on back-navigation or on `onConnect` — only on `clearAll()` (logout).
 
 **Tech Stack:** Flutter/Dart, Provider (ChangeNotifier), no new dependencies.
 
@@ -14,7 +14,7 @@
 
 | File | Role |
 |---|---|
-| `frontend/lib/providers/messaging_provider.dart` | Core change: cache field + methods + update cache in all mutation handlers |
+| `frontend/lib/providers/messaging_provider.dart` | Core: cache field + methods + update in all mutation handlers |
 | `frontend/lib/screens/chat_detail_screen.dart` | Call `loadCachedMessages()` before `getMessages()` in initState/didUpdateWidget |
 | `frontend/test/providers/messaging_provider_cache_test.dart` | New: unit tests for cache lifecycle |
 
@@ -23,10 +23,10 @@
 ### Task 1: Add cache infrastructure to MessagingProvider
 
 **Files:**
-- Modify: `frontend/lib/providers/messaging_provider.dart` (around line 69, in the Message State section)
-- Test: `frontend/test/providers/messaging_provider_cache_test.dart` (create)
+- Modify: `frontend/lib/providers/messaging_provider.dart`
+- Create: `frontend/test/providers/messaging_provider_cache_test.dart`
 
-- [ ] **Step 1: Write failing tests for the new cache API**
+- [ ] **Step 1: Write failing tests**
 
 Create `frontend/test/providers/messaging_provider_cache_test.dart`:
 
@@ -50,27 +50,37 @@ void main() {
 
     setUp(() {
       provider = MessagingProvider();
-      provider.onConnect(false, userId: 1, token: 'tok');
+      // onConnect signature is: void onConnect(bool isReconnect)
+      // userId and token are set separately via dedicated setters.
+      provider.onConnect(false);
+      provider.setCurrentUserId(1);
+      provider.setToken('tok');
     });
 
     test('hasCachedMessages returns false when no cache', () {
       expect(provider.hasCachedMessages(42), isFalse);
     });
 
-    test('loadCachedMessages returns false and does not change messages when no cache', () {
+    test('loadCachedMessages returns false when no cache', () {
       final result = provider.loadCachedMessages(42);
       expect(result, isFalse);
       expect(provider.messages, isEmpty);
     });
 
     test('loadCachedMessages returns true and sets messages when cache exists', () {
-      // Simulate cache being populated (via onMessageHistory)
       provider.seedCacheForTest(10, [_msg(1, 10), _msg(2, 10)]);
 
       final result = provider.loadCachedMessages(10);
       expect(result, isTrue);
       expect(provider.messages.length, 2);
       expect(provider.messages.first.id, 1);
+    });
+
+    test('loadCachedMessages returns a copy — provider messages are independent of cache', () {
+      provider.seedCacheForTest(10, [_msg(1, 10)]);
+      provider.loadCachedMessages(10);
+      // Cache must still be intact after loading (List.from copy)
+      expect(provider.hasCachedMessages(10), isTrue);
     });
 
     test('clearAll clears the cache', () {
@@ -82,52 +92,65 @@ void main() {
     test('clearMessages does NOT clear the cache', () {
       provider.seedCacheForTest(10, [_msg(1, 10)]);
       provider.clearMessages();
+      // Cache survives back-navigation (clearMessages is called on back button)
       expect(provider.hasCachedMessages(10), isTrue);
     });
 
-    test('loadCachedMessages returns a copy — mutations do not affect cache', () {
+    test('onConnect does NOT clear the cache', () {
+      // Cache is session-scoped — a fresh socket connect (same session, same user)
+      // must NOT evict cache entries.
       provider.seedCacheForTest(10, [_msg(1, 10)]);
-      provider.loadCachedMessages(10);
-      // Simulating external mutation of the returned list
-      provider.messages; // access getter (returns _messages)
-      // Cache should still have the original entry
+      provider.onConnect(false);
       expect(provider.hasCachedMessages(10), isTrue);
     });
   });
 }
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Run tests — verify they fail**
 
 ```bash
 cd frontend && flutter test test/providers/messaging_provider_cache_test.dart
 ```
 
-Expected: FAIL — `hasCachedMessages`, `loadCachedMessages`, `seedCacheForTest` not found.
+Expected: compilation error — `hasCachedMessages`, `loadCachedMessages`, `seedCacheForTest` not found.
 
 - [ ] **Step 3: Add cache field and core methods to MessagingProvider**
 
 In `frontend/lib/providers/messaging_provider.dart`:
 
-After line 69 (`List<MessageModel> _messages = [];`), add:
+**3a.** After line 69 (`List<MessageModel> _messages = [];`), add:
 
 ```dart
 /// Per-conversation message cache for the current session.
-/// Populated after onMessageHistory completes (including decryption).
-/// Allows instant re-entry into previously-visited conversations.
+/// Populated/updated by onMessageHistory (after decryption) and all mutation handlers.
+/// Survives back-navigation (clearMessages) and socket reconnects (onConnect).
+/// Cleared only on logout (clearAll).
 final Map<int, List<MessageModel>> _conversationCache = {};
 ```
 
-After the `hasCachedMessages` / `loadCachedMessages` getters section (after line 100, within the public getters block), add:
+**3b.** Add a private getter to avoid repeating the override pattern in every handler (add after the `_tokenForReconnect` field, before the E2E section):
+
+```dart
+/// Active conversation ID — uses test override if set, otherwise reads from ConversationsProvider.
+int? get _effectiveActiveConversationId =>
+    _activeConversationIdOverrideForTest ??
+    _conversationsProvider?.activeConversationId;
+
+/// Test-only override for activeConversationId.
+int? _activeConversationIdOverrideForTest;
+```
+
+**3c.** In the public getters section (after line 100), add:
 
 ```dart
 /// Whether a warm message cache exists for [conversationId].
 bool hasCachedMessages(int conversationId) =>
     _conversationCache.containsKey(conversationId);
 
-/// Immediately populates [_messages] from cache if available.
-/// Returns true if cache was used (caller can skip expensive initial scroll setup).
-/// Always call getMessages() afterwards to sync any new messages from server.
+/// Immediately populates [_messages] from RAM cache if available and calls notifyListeners().
+/// Returns true if cache was used — caller can then skip expensive initial scroll setup.
+/// Always follow this with getMessages() to sync new messages from server.
 bool loadCachedMessages(int conversationId) {
   final cached = _conversationCache[conversationId];
   if (cached == null || cached.isEmpty) return false;
@@ -146,17 +169,23 @@ void _updateCache(int conversationId) {
 void seedCacheForTest(int conversationId, List<MessageModel> messages) {
   _conversationCache[conversationId] = List.from(messages);
 }
+
+/// Test-only: set the active conversation ID (replaces ConversationsProvider wiring).
+@visibleForTesting
+void setActiveConversationIdForTest(int? id) {
+  _activeConversationIdOverrideForTest = id;
+}
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 4: Run tests — verify they pass**
 
 ```bash
 cd frontend && flutter test test/providers/messaging_provider_cache_test.dart
 ```
 
-Expected: PASS all 6 tests.
+Expected: PASS all 7 tests.
 
-- [ ] **Step 5: Run full test suite to check for regressions**
+- [ ] **Step 5: Run full test suite — check for regressions**
 
 ```bash
 cd frontend && flutter test
@@ -177,15 +206,14 @@ git commit -m "feat(cache): add per-conversation RAM cache infrastructure to Mes
 
 **Files:**
 - Modify: `frontend/lib/providers/messaging_provider.dart` (lines 173–223)
-- Test: `frontend/test/providers/messaging_provider_cache_test.dart` (add tests)
+- Modify: `frontend/test/providers/messaging_provider_cache_test.dart`
 
-- [ ] **Step 1: Write failing tests for cache population via onMessageHistory**
+- [ ] **Step 1: Write failing tests**
 
-Add to the `'MessagingProvider cache'` group in `messaging_provider_cache_test.dart`:
+Add to the `'MessagingProvider cache'` group:
 
 ```dart
-test('onMessageHistory populates cache after receiving messages', () async {
-  // Seed active conversation
+test('onMessageHistory populates cache for active conversation', () {
   provider.setActiveConversationIdForTest(10);
 
   provider.onMessageHistory({
@@ -204,12 +232,12 @@ test('onMessageHistory populates cache after receiving messages', () async {
     ],
   });
 
-  // Cache is populated synchronously (before decrypt completes)
+  // Cache populated synchronously (with encrypted placeholders; decrypted version follows async)
   expect(provider.hasCachedMessages(10), isTrue);
   expect(provider.messages.length, 1);
 });
 
-test('onMessageHistory for a different conversation is ignored (no cache pollution)', () {
+test('onMessageHistory for a different conversation is ignored', () {
   provider.setActiveConversationIdForTest(10);
 
   provider.onMessageHistory({
@@ -222,9 +250,7 @@ test('onMessageHistory for a different conversation is ignored (no cache polluti
 });
 ```
 
-You will also need a test helper `setActiveConversationIdForTest` — add a stub to MessagingProvider (visibleForTesting).
-
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Run tests — verify they fail**
 
 ```bash
 cd frontend && flutter test test/providers/messaging_provider_cache_test.dart
@@ -232,50 +258,35 @@ cd frontend && flutter test test/providers/messaging_provider_cache_test.dart
 
 Expected: FAIL — `setActiveConversationIdForTest` not found + cache not populated.
 
-- [ ] **Step 3: Add test helper and update onMessageHistory**
+- [ ] **Step 3: Update onMessageHistory to populate cache**
 
-**3a.** Add test helper to MessagingProvider (after `seedCacheForTest`):
+In `onMessageHistory` (line 173), replace every read of `_conversationsProvider?.activeConversationId` with `_effectiveActiveConversationId` (use the new getter from Task 1).
 
-```dart
-/// Test-only: set the active conversation ID as if ConversationsProvider was wired.
-@visibleForTesting
-void setActiveConversationIdForTest(int? id) {
-  // We expose this via a thin wrapper since _conversationsProvider is late-wired.
-  _activeConversationIdOverrideForTest = id;
-}
-int? _activeConversationIdOverrideForTest;
-```
-
-Update the `activeConversationId` read in `onMessageHistory` (line 174):
+After `notifyListeners()` (line 208), add:
 
 ```dart
-final activeConversationId = _activeConversationIdOverrideForTest ??
-    _conversationsProvider?.activeConversationId;
-```
-
-**3b.** In `onMessageHistory`, after `notifyListeners()` (line 208), add:
-
-```dart
-// Snapshot to cache immediately (encrypted placeholders — fast path for re-entry).
-// Will be updated again after decryption completes.
+// Snapshot to cache immediately (may include encrypted placeholders for E2E messages).
+// A second snapshot runs after _decryptMessageHistory completes with decrypted content.
 if (responseConversationId != null) _updateCache(responseConversationId);
 ```
 
-**3c.** Capture `responseConversationId` before the `whenComplete` closure (it's a local already — just pass it):
+Capture the conversationId before the `whenComplete` closure and add a second snapshot after decryption:
 
 ```dart
-final myConversationId = responseConversationId ?? activeConversationId;
+final myConversationId = responseConversationId ?? _effectiveActiveConversationId;
+final myGeneration = _decryptHistoryGeneration;
+_decryptingHistory = true;
 _decryptMessageHistory(myGeneration).whenComplete(() {
   if (_decryptHistoryGeneration == myGeneration) {
     _decryptingHistory = false;
-    // Update cache with fully-decrypted messages.
+    // Update cache with fully-decrypted content.
     if (myConversationId != null) _updateCache(myConversationId);
   }
   _processIncomingMessageQueue();
 });
 ```
 
-- [ ] **Step 4: Run tests to verify they pass**
+- [ ] **Step 4: Run tests — verify they pass**
 
 ```bash
 cd frontend && flutter test test/providers/messaging_provider_cache_test.dart
@@ -300,41 +311,19 @@ git commit -m "feat(cache): populate conversation cache in onMessageHistory"
 
 ---
 
-### Task 3: Keep cache consistent on mutations
+### Task 3: Keep cache consistent on all mutations
 
 **Files:**
 - Modify: `frontend/lib/providers/messaging_provider.dart`
-- Test: `frontend/test/providers/messaging_provider_cache_test.dart`
+- Modify: `frontend/test/providers/messaging_provider_cache_test.dart`
+
+This task covers five handlers: `_handleIncomingMessage` (both plain and encrypted paths), `_handleMessageDelivered`, `_handleMessageDeleted`, `_handleChatHistoryCleared`, `onConversationDeleted`, and `clearAll`.
 
 - [ ] **Step 1: Write failing tests**
 
 Add to the test group:
 
 ```dart
-test('_handleIncomingMessage updates cache for active conversation', () {
-  provider.seedCacheForTest(10, [_msg(1, 10)]);
-  provider.setActiveConversationIdForTest(10);
-  // loadCachedMessages first so _messages is set
-  provider.loadCachedMessages(10);
-
-  provider.onNewMessage({
-    'id': 2,
-    'content': 'world',
-    'senderId': 2,
-    'senderUsername': 'bob',
-    'conversationId': 10,
-    'deliveryStatus': 'SENT',
-    'messageType': 'TEXT',
-    'createdAt': '2026-01-01T01:00:00.000Z',
-  });
-
-  // Cache should now have 2 messages
-  final cacheResult = <MessageModel>[];
-  final p2 = MessagingProvider();
-  p2.seedCacheForTest(10, provider.messages); // use updated messages as proxy
-  expect(provider.messages.length, 2);
-});
-
 test('chatHistoryCleared removes cache entry', () {
   provider.seedCacheForTest(10, [_msg(1, 10)]);
   provider.onChatHistoryCleared({'conversationId': 10});
@@ -346,9 +335,40 @@ test('conversationDeleted removes cache entry', () {
   provider.onConversationDeleted(10);
   expect(provider.hasCachedMessages(10), isFalse);
 });
+
+test('messageDeleted updates cache and reflects removal', () {
+  provider.seedCacheForTest(10, [_msg(1, 10), _msg(2, 10)]);
+  provider.setActiveConversationIdForTest(10);
+  provider.loadCachedMessages(10);
+
+  provider.onMessageDeleted({
+    'messageId': 1,
+    'conversationId': 10,
+    'forEveryone': true,
+  });
+
+  expect(provider.hasCachedMessages(10), isTrue);
+  expect(provider.messages.length, 1);
+  expect(provider.messages.first.id, 2);
+});
+
+test('messageDeleted removes cache entry when list becomes empty', () {
+  provider.seedCacheForTest(10, [_msg(1, 10)]);
+  provider.setActiveConversationIdForTest(10);
+  provider.loadCachedMessages(10);
+
+  provider.onMessageDeleted({
+    'messageId': 1,
+    'conversationId': 10,
+    'forEveryone': true,
+  });
+
+  // Empty list → cache entry removed so hasCachedMessages is false
+  expect(provider.hasCachedMessages(10), isFalse);
+});
 ```
 
-- [ ] **Step 2: Run tests to verify they fail**
+- [ ] **Step 2: Run tests — verify they fail**
 
 ```bash
 cd frontend && flutter test test/providers/messaging_provider_cache_test.dart
@@ -356,51 +376,92 @@ cd frontend && flutter test test/providers/messaging_provider_cache_test.dart
 
 Expected: FAIL.
 
-- [ ] **Step 3: Update mutation handlers**
+- [ ] **Step 3: Update _handleIncomingMessage — plain path**
 
-**3a.** In `_handleIncomingMessage`, find where `notifyListeners()` is called after adding/updating a message. After that call, add:
+In `_handleIncomingMessage` (line 307), after `_addMessageToState(msg);` (the non-encrypted path), add:
 
 ```dart
-// Keep cache consistent for active conversation.
-final activeId = _activeConversationIdOverrideForTest ??
-    _conversationsProvider?.activeConversationId;
+// Keep cache current for active conversation.
+final activeId = _effectiveActiveConversationId;
 if (activeId != null && _conversationCache.containsKey(activeId)) {
   _updateCache(activeId);
 }
 ```
 
-**3b.** In `_handleChatHistoryCleared` (line 462), after `notifyListeners()`, add:
+- [ ] **Step 4: Update _handleIncomingMessage — encrypted async path**
+
+In `_handleIncomingMessage`, inside the `.then()` callback (after line 302, `notifyListeners();`), add:
 
 ```dart
-_conversationCache.remove(conversationId);
+// Update cache with decrypted content (encrypted placeholder was stored on _addMessageToState).
+final activeId = _effectiveActiveConversationId;
+if (activeId != null && _conversationCache.containsKey(activeId)) {
+  _updateCache(activeId);
+}
 ```
 
-**3c.** In `onConversationDeleted` (line 255), after `notifyListeners()`, add:
+- [ ] **Step 5: Update _handleMessageDelivered**
+
+In `_handleMessageDelivered` (line 431), after `notifyListeners()` (line 458), add:
 
 ```dart
-_conversationCache.remove(conversationId);
-```
-
-**3d.** In `_handleMessageDeleted` (line 473), after `notifyListeners()`, add:
-
-```dart
-// Update cache to reflect the deletion.
-if (_conversationCache.containsKey(conversationId)) {
+// Keep delivery status current in cache.
+if (conversationId != null && _conversationCache.containsKey(conversationId)) {
   _updateCache(conversationId);
 }
 ```
 
-**3e.** In `clearAll()` (line 1950), add `_conversationCache.clear();` alongside the other clears.
+- [ ] **Step 6: Update _handleMessageDeleted**
 
-- [ ] **Step 4: Run tests to verify they pass**
+In `_handleMessageDeleted` (line 473), after `notifyListeners()` (line 501), add:
+
+```dart
+// Reflect deletion in cache; remove entry entirely if the conversation is now empty.
+if (_conversationCache.containsKey(conversationId)) {
+  final remaining = _messages.where((m) => m.conversationId == conversationId).toList();
+  if (remaining.isEmpty) {
+    _conversationCache.remove(conversationId);
+  } else {
+    _updateCache(conversationId);
+  }
+}
+```
+
+- [ ] **Step 7: Update _handleChatHistoryCleared**
+
+In `_handleChatHistoryCleared` (line 462), after `notifyListeners()`, add:
+
+```dart
+_conversationCache.remove(conversationId);
+```
+
+- [ ] **Step 8: Update onConversationDeleted**
+
+In `onConversationDeleted` (line 255), after `notifyListeners()`, add:
+
+```dart
+_conversationCache.remove(conversationId);
+```
+
+- [ ] **Step 9: Update clearAll**
+
+In `clearAll()` (line 1950), add alongside the other clears:
+
+```dart
+_conversationCache.clear();
+```
+
+Note: do NOT add `_conversationCache.clear()` to `onConnect`. The cache is session-scoped — a socket reconnect (same session, same user) must preserve the cache. Only `clearAll()` (logout path) should evict it.
+
+- [ ] **Step 10: Run tests — verify they pass**
 
 ```bash
 cd frontend && flutter test test/providers/messaging_provider_cache_test.dart
 ```
 
-Expected: PASS.
+Expected: PASS all tests.
 
-- [ ] **Step 5: Run full test suite**
+- [ ] **Step 11: Run full test suite**
 
 ```bash
 cd frontend && flutter test
@@ -408,11 +469,11 @@ cd frontend && flutter test
 
 Expected: all pass.
 
-- [ ] **Step 6: Commit**
+- [ ] **Step 12: Commit**
 
 ```bash
 git add frontend/lib/providers/messaging_provider.dart frontend/test/providers/messaging_provider_cache_test.dart
-git commit -m "feat(cache): keep conversation cache consistent across message mutations"
+git commit -m "feat(cache): keep conversation cache consistent across all message mutations"
 ```
 
 ---
@@ -422,52 +483,47 @@ git commit -m "feat(cache): keep conversation cache consistent across message mu
 **Files:**
 - Modify: `frontend/lib/screens/chat_detail_screen.dart` (lines 99–143)
 
-> No new tests needed here — ChatDetailScreen is a widget that requires a full widget test harness. The provider-level tests from Tasks 1–3 cover correctness. Manual testing is the verification step.
+- [ ] **Step 1: Update initState**
 
-- [ ] **Step 1: Update initState to load from cache first**
-
-In `chat_detail_screen.dart`, in `initState`, the `addPostFrameCallback` block (lines 103–110) currently reads:
+In `chat_detail_screen.dart`, the `addPostFrameCallback` block in `initState` (lines 103–110):
 
 ```dart
+// BEFORE:
 WidgetsBinding.instance.addPostFrameCallback((_) {
   final convs = context.read<ConversationsProvider>();
   final conn = context.read<ConnectionProvider>();
   convs.openConversation(widget.conversationId);
   conn.socketService.getMessages(widget.conversationId, limit: 50);
 });
-```
 
-Replace with:
-
-```dart
+// AFTER:
 WidgetsBinding.instance.addPostFrameCallback((_) {
   if (!mounted) return;
   final convs = context.read<ConversationsProvider>();
   final conn = context.read<ConnectionProvider>();
   final messaging = context.read<MessagingProvider>();
-  // Show cached messages instantly if available; background sync still runs.
+  // Show cached messages instantly if available (eliminates re-entry lag).
+  // getMessages() always fires afterwards to sync new messages from server.
   messaging.loadCachedMessages(widget.conversationId);
   convs.openConversation(widget.conversationId);
   conn.socketService.getMessages(widget.conversationId, limit: 50);
 });
 ```
 
-- [ ] **Step 2: Update didUpdateWidget to also use cache**
+- [ ] **Step 2: Update didUpdateWidget**
 
 In `didUpdateWidget` (lines 136–141):
 
 ```dart
+// BEFORE:
 WidgetsBinding.instance.addPostFrameCallback((_) {
   final convs = context.read<ConversationsProvider>();
   final conn = context.read<ConnectionProvider>();
   convs.openConversation(widget.conversationId);
   conn.socketService.getMessages(widget.conversationId, limit: 50);
 });
-```
 
-Replace with:
-
-```dart
+// AFTER:
 WidgetsBinding.instance.addPostFrameCallback((_) {
   if (!mounted) return;
   final convs = context.read<ConversationsProvider>();
@@ -479,17 +535,29 @@ WidgetsBinding.instance.addPostFrameCallback((_) {
 });
 ```
 
-- [ ] **Step 3: Verify _expandCacheForScroll behaviour is automatically correct**
+- [ ] **Step 3: Verify _expandCacheForScroll behaviour**
 
-Read `_onNewMessages` (lines 78–97) in `chat_detail_screen.dart`:
+Read `_onNewMessages` (lines 78–97) and confirm how `added` and `currentCount` are computed. Expected logic:
 
 ```dart
 final isInitialLoad = added == currentCount && currentCount > 0;
 ```
 
-When cache is pre-loaded: `added` = (new messages from server response) ≠ `currentCount` (which already has cached messages). So `isInitialLoad` will be `false` → `_expandCacheForScroll` stays `false` → no expensive 10 000px cacheExtent rebuild. **No code change needed here.**
+When cache is pre-loaded: `added` = (new server messages only) ≠ `currentCount` (cache + new). So `isInitialLoad = false` → `_expandCacheForScroll` stays `false` → the expensive 10 000px cacheExtent rebuild is automatically skipped.
 
-If `_messages` was empty before (first ever visit), `added == currentCount` → `isInitialLoad = true` → `_expandCacheForScroll = true` as before. Correct.
+When no cache (first ever visit): `added == currentCount` → `isInitialLoad = true` → `_expandCacheForScroll = true` as before.
+
+**If the first background sync still yields `added == currentCount`** (e.g. because `_lastMessageCount` was reset on screen mount), add an explicit guard:
+
+```dart
+// In _onNewMessages, change:
+final isInitialLoad = added == currentCount && currentCount > 0;
+// To:
+final hasCached = context.read<MessagingProvider>().hasCachedMessages(widget.conversationId);
+final isInitialLoad = !hasCached && added == currentCount && currentCount > 0;
+```
+
+Verify manually in the browser before committing.
 
 - [ ] **Step 4: Run flutter analyze**
 
@@ -501,24 +569,24 @@ Expected: no new warnings or errors.
 
 - [ ] **Step 5: Manual test**
 
-1. `docker-compose up` (backend + DB)
+1. `docker-compose up`
 2. `cd frontend && flutter run -d chrome`
-3. Log in, open conversation A → wait for messages to load
+3. Log in, open conversation A → wait for messages to fully load and decrypt
 4. Press back → open conversation B → press back → open conversation A again
-5. **Expected:** conversation A messages appear instantly with no empty-screen flash
-6. Wait a moment → background sync completes (no visible change if no new messages)
-7. Test with disappearing messages: send a message with 5s timer, wait for it to expire, navigate away, come back → message should NOT reappear (server background sync removes it)
+5. **Expected:** conversation A messages appear instantly (no empty-screen flash, no lag)
+6. Wait 2–3 seconds → background sync completes quietly
+7. Test disappearing messages: send a message in conversation A with 5s timer, wait for it to expire client-side, navigate away, come back → message must NOT reappear (server background sync removes it from `_messages` + cache via `onMessageHistory`)
 
 - [ ] **Step 6: Commit**
 
 ```bash
 git add frontend/lib/screens/chat_detail_screen.dart
-git commit -m "feat(cache): use conversation message cache for instant re-entry in ChatDetailScreen"
+git commit -m "feat(cache): use conversation cache for instant re-entry in ChatDetailScreen"
 ```
 
 ---
 
-### Task 5: Final validation
+### Task 5: Final validation and CLAUDE.md update
 
 - [ ] **Step 1: Run full test suite**
 
@@ -536,13 +604,24 @@ cd frontend && flutter analyze
 
 Expected: no issues.
 
-- [ ] **Step 3: Check CLAUDE.md is up to date**
+- [ ] **Step 3: Update CLAUDE.md**
 
-Add to the `### Frontend` section of `CLAUDE.md` Critical Rules:
+Add to the `### Frontend` Critical Rules section in `CLAUDE.md`:
 
 ```
-- `_conversationCache` in MessagingProvider: per-conversation RAM cache for current session.
-  Populated by onMessageHistory (after decrypt). Cleared on logout/clearAll, conversation delete,
-  chat history clear. NOT cleared by clearMessages() (back navigation).
-  loadCachedMessages() returns bool — true means cache was used, skip expensive scroll setup.
+- `_conversationCache` in MessagingProvider: per-conversation RAM cache (Map<int, List<MessageModel>>) for current session.
+  Populated by `onMessageHistory` (first snapshot synchronously, second after decryption completes).
+  Updated by all mutation handlers: `_handleIncomingMessage` (both plain and encrypted `.then()` paths),
+  `_handleMessageDelivered`, `_handleMessageDeleted`. Cleared (remove entry) by `_handleChatHistoryCleared`,
+  `onConversationDeleted`. Fully cleared by `clearAll()` (logout only).
+  NOT cleared by `clearMessages()` (back navigation) or `onConnect` (socket reconnect).
+  `loadCachedMessages(id)` returns bool — true means cache used, skip expensive scroll setup.
+  `_effectiveActiveConversationId` getter: reads test override OR ConversationsProvider — use everywhere instead of inline `?? _conversationsProvider?.activeConversationId`.
+```
+
+- [ ] **Step 4: Commit**
+
+```bash
+git add CLAUDE.md
+git commit -m "docs: document conversation message cache in CLAUDE.md"
 ```
