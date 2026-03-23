@@ -129,12 +129,17 @@ class MessagingProvider extends ChangeNotifier {
   }
 
   /// Snapshots messages for [conversationId] into cache.
-  /// Filters by conversationId so async paths (e.g. decrypt .then()) are safe
-  /// even if the user has navigated away and _messages now holds a different conversation.
+  /// Filters by conversationId so async paths are safe if _messages holds another conversation.
+  /// Removes the cache entry if the filtered list is empty (keeps hasCachedMessages consistent).
   void _updateCache(int conversationId) {
-    _conversationCache[conversationId] = List.from(
+    final filtered = List<MessageModel>.from(
       _messages.where((m) => m.conversationId == conversationId),
     );
+    if (filtered.isEmpty) {
+      _conversationCache.remove(conversationId);
+    } else {
+      _conversationCache[conversationId] = filtered;
+    }
   }
 
   /// Test-only: seed the cache directly without going through onMessageHistory.
@@ -366,11 +371,12 @@ class MessagingProvider extends ChangeNotifier {
           'contentLength': decrypted.content.length,
         });
         notifyListeners();
-        // Update cache with decrypted content using the message's own conversationId,
-        // not the current active conversation — the user may have navigated away
-        // between message arrival and decrypt completing.
+        // Update cache only when the message was actually updated in _messages (idx != -1).
+        // If the user navigated away, idx == -1 and _messages holds a different conversation —
+        // calling _updateCache would snapshot the wrong data and overwrite the valid cache entry
+        // for this conversation with an empty or foreign list.
         final cid = decrypted.conversationId;
-        if (_conversationCache.containsKey(cid)) {
+        if (idx != -1 && _conversationCache.containsKey(cid)) {
           _updateCache(cid);
         }
       });
