@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'dart:typed_data';
 
+import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/conversations_provider.dart';
 import '../../providers/messaging_provider.dart';
@@ -120,7 +121,8 @@ class _ChatInputBarState extends State<ChatInputBar>
 
       if (conversationId == null) {
         if (!mounted) return;
-        showTopSnackBar(context, 'No active conversation');
+        showTopSnackBar(
+            context, AppLocalizations.of(context).snackbarNoActiveConversation);
         return;
       }
 
@@ -140,7 +142,8 @@ class _ChatInputBarState extends State<ChatInputBar>
       );
     } catch (e) {
       if (!mounted) return;
-      showTopSnackBar(context, 'Failed to send voice message');
+      showTopSnackBar(
+          context, AppLocalizations.of(context).snackbarFailedToSendVoiceMessage);
       debugPrint('Send voice error: $e');
     } finally {
       if (mounted) {

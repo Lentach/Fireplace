@@ -143,5 +143,30 @@
   "documentDownloadFailed": "Nie udało się pobrać dokumentu",
   "documentDownloadConfirmTitle": "Pobrać dokument?",
   "documentDownloadConfirmMessage": "Czy chcesz pobrać ten plik?",
-  "download": "Pobierz"
+  "download": "Pobierz",
+
+  "snackbarCouldNotReadFile": "Nie udało się odczytać pliku",
+  "snackbarUploadingImage": "Wysyłanie zdjęcia…",
+  "snackbarImageSent": "Zdjęcie wysłane!",
+  "snackbarUploadingDocument": "Wysyłanie dokumentu…",
+  "snackbarDocumentSent": "Dokument wysłany!",
+  "snackbarNoActiveConversation": "Brak aktywnej rozmowy",
+  "snackbarOpenConversationFirst": "Najpierw otwórz rozmowę",
+  "snackbarChatHistoryDeleted": "Historia czatu została usunięta",
+  "snackbarFailedToSendImage": "Nie udało się wysłać zdjęcia",
+  "snackbarMicrophonePermissionRequired": "Wymagane jest uprawnienie do mikrofonu",
+  "snackbarMicrophonePermissionDenied": "Odmowa dostępu do mikrofonu",
+  "snackbarVoiceRecordingRequiresSecureContext": "Nagrywanie głosu wymaga HTTPS lub localhost. Użyj https:// lub otwórz z localhost.",
+  "snackbarFailedToStartRecording": "Nie udało się rozpocząć nagrywania",
+  "snackbarHoldLongerForVoiceMessage": "Przytrzymaj dłużej, aby nagrać wiadomość głosową",
+  "snackbarFailedToReadRecording": "Nie udało się odczytać nagrania",
+  "snackbarFailedToSendVoiceMessage": "Nie udało się wysłać wiadomości głosowej",
+  "snackbarAudioNoLongerAvailable": "Dźwięk nie jest już dostępny",
+  "snackbarFailedToLoadAudio": "Nie udało się wczytać dźwięku",
+  "friendAcceptedYourRequest": "{name} zaakceptował(a) zaproszenie do znajomych",
+  "@friendAcceptedYourRequest": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  }
 }

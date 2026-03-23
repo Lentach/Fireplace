@@ -10,6 +10,7 @@ import 'package:provider/provider.dart';
 import 'package:record/record.dart';
 import 'dart:typed_data';
 
+import '../../l10n/app_localizations.dart';
 import '../../providers/connection_provider.dart';
 import '../../providers/conversations_provider.dart';
 import '../../providers/messaging_provider.dart';
@@ -110,7 +111,8 @@ class RecordingControllerState extends State<RecordingController>
       final status = await Permission.microphone.request();
       if (status.isDenied || status.isPermanentlyDenied) {
         if (!mounted) return;
-        showTopSnackBar(context, 'Microphone permission required');
+        showTopSnackBar(
+            context, AppLocalizations.of(context).snackbarMicrophonePermissionRequired);
         throw Exception('Permission denied');
       }
     }
@@ -141,7 +143,7 @@ class RecordingControllerState extends State<RecordingController>
         if (!mounted) return;
         showTopSnackBar(
           context,
-          'Voice recording requires HTTPS or localhost. Use https:// or open from localhost.',
+          AppLocalizations.of(context).snackbarVoiceRecordingRequiresSecureContext,
         );
         return;
       }
@@ -149,7 +151,8 @@ class RecordingControllerState extends State<RecordingController>
       final hasPermission = await _audioRecorder!.hasPermission();
       if (!hasPermission) {
         if (!mounted) return;
-        showTopSnackBar(context, 'Microphone permission denied');
+        showTopSnackBar(
+            context, AppLocalizations.of(context).snackbarMicrophonePermissionDenied);
         return;
       }
 
@@ -191,7 +194,8 @@ class RecordingControllerState extends State<RecordingController>
       });
     } catch (e) {
       if (!mounted) return;
-      showTopSnackBar(context, 'Failed to start recording');
+      showTopSnackBar(
+          context, AppLocalizations.of(context).snackbarFailedToStartRecording);
       debugPrint('Recording error: $e');
     }
   }
@@ -238,7 +242,8 @@ class RecordingControllerState extends State<RecordingController>
         } catch (_) {}
       }
       if (!mounted) return;
-      showTopSnackBar(context, 'Hold longer to record voice message');
+      showTopSnackBar(
+          context, AppLocalizations.of(context).snackbarHoldLongerForVoiceMessage);
       setState(() => _recordingPath = null);
       return;
     }
@@ -254,11 +259,14 @@ class RecordingControllerState extends State<RecordingController>
             );
           } else {
             if (!mounted) return;
-            showTopSnackBar(context, 'Failed to read recording');
+            showTopSnackBar(
+                context, AppLocalizations.of(context).snackbarFailedToReadRecording);
           }
         } catch (e) {
           if (!mounted) return;
-          showTopSnackBar(context, 'Failed to send voice message');
+          showTopSnackBar(
+              context,
+              AppLocalizations.of(context).snackbarFailedToSendVoiceMessage);
           debugPrint('Send voice error: $e');
         }
       } else {

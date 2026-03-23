@@ -143,5 +143,30 @@
   "documentDownloadFailed": "Failed to download document",
   "documentDownloadConfirmTitle": "Download document?",
   "documentDownloadConfirmMessage": "Do you want to download this file?",
-  "download": "Download"
+  "download": "Download",
+
+  "snackbarCouldNotReadFile": "Could not read file",
+  "snackbarUploadingImage": "Uploading image…",
+  "snackbarImageSent": "Image sent!",
+  "snackbarUploadingDocument": "Uploading document…",
+  "snackbarDocumentSent": "Document sent!",
+  "snackbarNoActiveConversation": "No active conversation",
+  "snackbarOpenConversationFirst": "Open a conversation first",
+  "snackbarChatHistoryDeleted": "Chat history deleted",
+  "snackbarFailedToSendImage": "Failed to send image",
+  "snackbarMicrophonePermissionRequired": "Microphone permission required",
+  "snackbarMicrophonePermissionDenied": "Microphone permission denied",
+  "snackbarVoiceRecordingRequiresSecureContext": "Voice recording needs HTTPS or localhost. Use https:// or open from localhost.",
+  "snackbarFailedToStartRecording": "Failed to start recording",
+  "snackbarHoldLongerForVoiceMessage": "Hold longer to record a voice message",
+  "snackbarFailedToReadRecording": "Failed to read recording",
+  "snackbarFailedToSendVoiceMessage": "Failed to send voice message",
+  "snackbarAudioNoLongerAvailable": "Audio no longer available",
+  "snackbarFailedToLoadAudio": "Failed to load audio",
+  "friendAcceptedYourRequest": "{name} accepted your friend request",
+  "@friendAcceptedYourRequest": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  }
 }

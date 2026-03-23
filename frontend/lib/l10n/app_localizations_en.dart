@@ -377,4 +377,67 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get download => 'Download';
+
+  @override
+  String get snackbarCouldNotReadFile => 'Could not read file';
+
+  @override
+  String get snackbarUploadingImage => 'Uploading image…';
+
+  @override
+  String get snackbarImageSent => 'Image sent!';
+
+  @override
+  String get snackbarUploadingDocument => 'Uploading document…';
+
+  @override
+  String get snackbarDocumentSent => 'Document sent!';
+
+  @override
+  String get snackbarNoActiveConversation => 'No active conversation';
+
+  @override
+  String get snackbarOpenConversationFirst => 'Open a conversation first';
+
+  @override
+  String get snackbarChatHistoryDeleted => 'Chat history deleted';
+
+  @override
+  String get snackbarFailedToSendImage => 'Failed to send image';
+
+  @override
+  String get snackbarMicrophonePermissionRequired =>
+      'Microphone permission required';
+
+  @override
+  String get snackbarMicrophonePermissionDenied =>
+      'Microphone permission denied';
+
+  @override
+  String get snackbarVoiceRecordingRequiresSecureContext =>
+      'Voice recording needs HTTPS or localhost. Use https:// or open from localhost.';
+
+  @override
+  String get snackbarFailedToStartRecording => 'Failed to start recording';
+
+  @override
+  String get snackbarHoldLongerForVoiceMessage =>
+      'Hold longer to record a voice message';
+
+  @override
+  String get snackbarFailedToReadRecording => 'Failed to read recording';
+
+  @override
+  String get snackbarFailedToSendVoiceMessage => 'Failed to send voice message';
+
+  @override
+  String get snackbarAudioNoLongerAvailable => 'Audio no longer available';
+
+  @override
+  String get snackbarFailedToLoadAudio => 'Failed to load audio';
+
+  @override
+  String friendAcceptedYourRequest(String name) {
+    return '$name accepted your friend request';
+  }
 }

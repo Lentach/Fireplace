@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/conversations_provider.dart';
 import '../../providers/messaging_provider.dart';
@@ -40,7 +41,8 @@ class AttachmentHandler {
 
     final conversationId = convs.activeConversationId;
     if (conversationId == null) {
-      showTopSnackBar(context, 'No active conversation');
+      showTopSnackBar(
+          context, AppLocalizations.of(context).snackbarNoActiveConversation);
       return;
     }
 
@@ -57,7 +59,8 @@ class AttachmentHandler {
       await messaging.sendImageMessage(auth.token!, xfile, recipientId);
     } catch (e) {
       if (!context.mounted) return;
-      showTopSnackBar(context, 'Failed to send image');
+      showTopSnackBar(
+          context, AppLocalizations.of(context).snackbarFailedToSendImage);
       debugPrint('AttachmentHandler.sendImage error: $e');
     }
   }
@@ -70,7 +73,8 @@ class AttachmentHandler {
     final convs = context.read<ConversationsProvider>();
     final conversationId = convs.activeConversationId;
     if (conversationId == null) {
-      showTopSnackBar(context, 'No active conversation');
+      showTopSnackBar(
+          context, AppLocalizations.of(context).snackbarNoActiveConversation);
       return;
     }
 

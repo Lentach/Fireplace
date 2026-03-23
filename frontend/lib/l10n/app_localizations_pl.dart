@@ -375,4 +375,69 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get download => 'Pobierz';
+
+  @override
+  String get snackbarCouldNotReadFile => 'Nie udało się odczytać pliku';
+
+  @override
+  String get snackbarUploadingImage => 'Wysyłanie zdjęcia…';
+
+  @override
+  String get snackbarImageSent => 'Zdjęcie wysłane!';
+
+  @override
+  String get snackbarUploadingDocument => 'Wysyłanie dokumentu…';
+
+  @override
+  String get snackbarDocumentSent => 'Dokument wysłany!';
+
+  @override
+  String get snackbarNoActiveConversation => 'Brak aktywnej rozmowy';
+
+  @override
+  String get snackbarOpenConversationFirst => 'Najpierw otwórz rozmowę';
+
+  @override
+  String get snackbarChatHistoryDeleted => 'Historia czatu została usunięta';
+
+  @override
+  String get snackbarFailedToSendImage => 'Nie udało się wysłać zdjęcia';
+
+  @override
+  String get snackbarMicrophonePermissionRequired =>
+      'Wymagane jest uprawnienie do mikrofonu';
+
+  @override
+  String get snackbarMicrophonePermissionDenied =>
+      'Odmowa dostępu do mikrofonu';
+
+  @override
+  String get snackbarVoiceRecordingRequiresSecureContext =>
+      'Nagrywanie głosu wymaga HTTPS lub localhost. Użyj https:// lub otwórz z localhost.';
+
+  @override
+  String get snackbarFailedToStartRecording =>
+      'Nie udało się rozpocząć nagrywania';
+
+  @override
+  String get snackbarHoldLongerForVoiceMessage =>
+      'Przytrzymaj dłużej, aby nagrać wiadomość głosową';
+
+  @override
+  String get snackbarFailedToReadRecording => 'Nie udało się odczytać nagrania';
+
+  @override
+  String get snackbarFailedToSendVoiceMessage =>
+      'Nie udało się wysłać wiadomości głosowej';
+
+  @override
+  String get snackbarAudioNoLongerAvailable => 'Dźwięk nie jest już dostępny';
+
+  @override
+  String get snackbarFailedToLoadAudio => 'Nie udało się wczytać dźwięku';
+
+  @override
+  String friendAcceptedYourRequest(String name) {
+    return '$name zaakceptował(a) zaproszenie do znajomych';
+  }
 }

@@ -48,7 +48,7 @@ cd frontend && flutter run -d chrome
 
 ### Frontend
 - `file_utils_stub.dart` / `file_utils_io.dart` — conditional import for temp file deletion (web: no-op; native: dart:io)
-- Use `showTopSnackBar()` — ScaffoldMessenger covers chat input bar
+- Use `showTopSnackBar()` — ScaffoldMessenger covers chat input bar; pass `AppLocalizations.of(context)` strings (`snackbar*` keys in `app_en.arb` / `app_pl.arb`) — do not hardcode English for top notifications
 - `enableForceNew()` on Socket.IO reconnect — Dart caches socket by URL, old JWT reused
 - Provider can't call Navigator — use `consumePendingOpen()` / `consumeFriendRequestSent()` patterns
 - Do NOT call `getConversations()` or `getFriends()` in `onFriendRequestAccepted` — backend already emits updated lists; extra get* causes race and overwrites with stale data (conversation/contact lost on acceptor)

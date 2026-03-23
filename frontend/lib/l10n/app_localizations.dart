@@ -793,6 +793,120 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Pobierz'**
   String get download;
+
+  /// No description provided for @snackbarCouldNotReadFile.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się odczytać pliku'**
+  String get snackbarCouldNotReadFile;
+
+  /// No description provided for @snackbarUploadingImage.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wysyłanie zdjęcia…'**
+  String get snackbarUploadingImage;
+
+  /// No description provided for @snackbarImageSent.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zdjęcie wysłane!'**
+  String get snackbarImageSent;
+
+  /// No description provided for @snackbarUploadingDocument.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wysyłanie dokumentu…'**
+  String get snackbarUploadingDocument;
+
+  /// No description provided for @snackbarDocumentSent.
+  ///
+  /// In pl, this message translates to:
+  /// **'Dokument wysłany!'**
+  String get snackbarDocumentSent;
+
+  /// No description provided for @snackbarNoActiveConversation.
+  ///
+  /// In pl, this message translates to:
+  /// **'Brak aktywnej rozmowy'**
+  String get snackbarNoActiveConversation;
+
+  /// No description provided for @snackbarOpenConversationFirst.
+  ///
+  /// In pl, this message translates to:
+  /// **'Najpierw otwórz rozmowę'**
+  String get snackbarOpenConversationFirst;
+
+  /// No description provided for @snackbarChatHistoryDeleted.
+  ///
+  /// In pl, this message translates to:
+  /// **'Historia czatu została usunięta'**
+  String get snackbarChatHistoryDeleted;
+
+  /// No description provided for @snackbarFailedToSendImage.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się wysłać zdjęcia'**
+  String get snackbarFailedToSendImage;
+
+  /// No description provided for @snackbarMicrophonePermissionRequired.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wymagane jest uprawnienie do mikrofonu'**
+  String get snackbarMicrophonePermissionRequired;
+
+  /// No description provided for @snackbarMicrophonePermissionDenied.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odmowa dostępu do mikrofonu'**
+  String get snackbarMicrophonePermissionDenied;
+
+  /// No description provided for @snackbarVoiceRecordingRequiresSecureContext.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nagrywanie głosu wymaga HTTPS lub localhost. Użyj https:// lub otwórz z localhost.'**
+  String get snackbarVoiceRecordingRequiresSecureContext;
+
+  /// No description provided for @snackbarFailedToStartRecording.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się rozpocząć nagrywania'**
+  String get snackbarFailedToStartRecording;
+
+  /// No description provided for @snackbarHoldLongerForVoiceMessage.
+  ///
+  /// In pl, this message translates to:
+  /// **'Przytrzymaj dłużej, aby nagrać wiadomość głosową'**
+  String get snackbarHoldLongerForVoiceMessage;
+
+  /// No description provided for @snackbarFailedToReadRecording.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się odczytać nagrania'**
+  String get snackbarFailedToReadRecording;
+
+  /// No description provided for @snackbarFailedToSendVoiceMessage.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się wysłać wiadomości głosowej'**
+  String get snackbarFailedToSendVoiceMessage;
+
+  /// No description provided for @snackbarAudioNoLongerAvailable.
+  ///
+  /// In pl, this message translates to:
+  /// **'Dźwięk nie jest już dostępny'**
+  String get snackbarAudioNoLongerAvailable;
+
+  /// No description provided for @snackbarFailedToLoadAudio.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się wczytać dźwięku'**
+  String get snackbarFailedToLoadAudio;
+
+  /// No description provided for @friendAcceptedYourRequest.
+  ///
+  /// In pl, this message translates to:
+  /// **'{name} zaakceptował(a) zaproszenie do znajomych'**
+  String friendAcceptedYourRequest(String name);
 }
 
 class _AppLocalizationsDelegate

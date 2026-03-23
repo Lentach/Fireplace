@@ -1,10 +1,9 @@
 import 'dart:async';
 import 'dart:convert';
-import 'dart:math';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
-import 'package:pointycastle/export.dart';
+import 'package:webcrypto/webcrypto.dart';
 import '../utils/file_utils_stub.dart'
     if (dart.library.io) '../utils/file_utils_io.dart' as file_utils;
 
@@ -1064,25 +1063,19 @@ class MessagingProvider extends ChangeNotifier {
     final token = _tokenForReconnect;
     if (token == null) return;
 
-    // AES-256-GCM client-side encryption using pointycastle
-    final keyBytes = _secureRandomBytes(32);
-    final ivBytes = _secureRandomBytes(12);
+    // AES-256-GCM client-side encryption via WebCrypto / BoringSSL
+    final keyBytes = Uint8List(32);
+    fillRandomBytes(keyBytes);
+    final ivBytes = Uint8List(12);
+    fillRandomBytes(ivBytes);
 
-    final cipher = GCMBlockCipher(AESEngine());
-    final params = AEADParameters(
-      KeyParameter(keyBytes),
-      128, // auth tag length in bits
-      ivBytes,
-      Uint8List(0),
-    );
-    cipher.init(true, params);
-
+    final aesKey = await AesGcmSecretKey.importRawKey(keyBytes);
     final plainBytes = Uint8List.fromList(utf8.encode(content));
-    final ciphertextWithTag = cipher.process(plainBytes);
+    final ciphertextWithTag = await aesKey.encryptBytes(plainBytes, ivBytes);
 
     // Format: base64(iv):base64(ciphertext+tag)
     final ciphertextEncoded =
-        '${base64.encode(ivBytes)}:${base64.encode(ciphertextWithTag)}';
+        '${base64.encode(ivBytes)}:${base64.encode(Uint8List.fromList(ciphertextWithTag))}';
 
     // POST /notes with ciphertext (server never sees key)
     final noteToken =
@@ -1094,14 +1087,6 @@ class MessagingProvider extends ChangeNotifier {
 
     // Send URL as a plain text message in the active conversation
     sendMessage(noteUrl);
-  }
-
-  Uint8List _secureRandomBytes(int length) {
-    final random = FortunaRandom();
-    final seedSource = Random.secure();
-    final seeds = List<int>.generate(32, (_) => seedSource.nextInt(256));
-    random.seed(KeyParameter(Uint8List.fromList(seeds)));
-    return random.nextBytes(length);
   }
 
   // ---------- Message Actions ----------

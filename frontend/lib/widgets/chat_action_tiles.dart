@@ -127,6 +127,7 @@ class ChatActionTiles extends StatelessWidget {
 
     if (pickResult == null || pickResult.files.isEmpty || !context.mounted) return;
 
+    final l10n = AppLocalizations.of(context);
     final file = pickResult.files.single;
     List<int> bytes;
     if (file.bytes != null) {
@@ -135,7 +136,8 @@ class ChatActionTiles extends StatelessWidget {
       bytes = await file_utils.readFileBytes(file.path!);
     } else {
       if (context.mounted) {
-        showTopSnackBar(context, 'Could not read file', backgroundColor: Colors.red);
+        showTopSnackBar(context, l10n.snackbarCouldNotReadFile,
+            backgroundColor: Colors.red);
       }
       return;
     }
@@ -150,7 +152,7 @@ class ChatActionTiles extends StatelessWidget {
     final isImage = ['jpg', 'jpeg', 'png', 'gif'].contains(ext);
 
     if (isImage) {
-      showTopSnackBar(context, 'Uploading image...');
+      showTopSnackBar(context, l10n.snackbarUploadingImage);
       try {
         final xfile = XFile.fromData(
           Uint8List.fromList(bytes),
@@ -159,15 +161,16 @@ class ChatActionTiles extends StatelessWidget {
         );
         await messaging.sendImageMessage(auth.token!, xfile, recipientId);
         if (context.mounted) {
-          showTopSnackBar(context, 'Image sent!');
+          showTopSnackBar(context, l10n.snackbarImageSent);
         }
       } catch (e) {
         if (context.mounted) {
-          showTopSnackBar(context, 'Upload failed: $e', backgroundColor: Colors.red);
+          showTopSnackBar(context, '${l10n.uploadFailed}: $e',
+              backgroundColor: Colors.red);
         }
       }
     } else {
-      showTopSnackBar(context, 'Uploading document...');
+      showTopSnackBar(context, l10n.snackbarUploadingDocument);
       try {
         await messaging.sendFileMessage(
           auth.token!,
@@ -177,11 +180,12 @@ class ChatActionTiles extends StatelessWidget {
           recipientId,
         );
         if (context.mounted) {
-          showTopSnackBar(context, 'Document sent!');
+          showTopSnackBar(context, l10n.snackbarDocumentSent);
         }
       } catch (e) {
         if (context.mounted) {
-          showTopSnackBar(context, 'Upload failed: $e', backgroundColor: Colors.red);
+          showTopSnackBar(context, '${l10n.uploadFailed}: $e',
+              backgroundColor: Colors.red);
         }
       }
     }
@@ -212,7 +216,8 @@ class ChatActionTiles extends StatelessWidget {
 
   bool _ensureHasActiveConversation(BuildContext context) {
     if (context.read<ConversationsProvider>().activeConversationId == null) {
-      showTopSnackBar(context, 'Open a conversation first');
+      showTopSnackBar(
+          context, AppLocalizations.of(context).snackbarOpenConversationFirst);
       return false;
     }
     return true;
@@ -284,7 +289,8 @@ class ChatActionTiles extends StatelessWidget {
 
     // Show success feedback
     if (context.mounted) {
-      showTopSnackBar(context, 'Chat history deleted');
+      showTopSnackBar(
+          context, AppLocalizations.of(context).snackbarChatHistoryDeleted);
     }
 
     // Close action panel (navigate back if possible)

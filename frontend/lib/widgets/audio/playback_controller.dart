@@ -7,6 +7,7 @@ import 'package:http/http.dart' as http;
 import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../services/media_crypto_service.dart';
 import '../../utils/audio_blob_url_stub.dart'
@@ -134,7 +135,10 @@ class _PlaybackControllerState extends State<PlaybackController> {
 
   Future<void> _loadAndPlayAudio() async {
     if (_isExpired()) {
-      if (mounted) showTopSnackBar(context, 'Audio no longer available');
+      if (mounted) {
+        showTopSnackBar(
+            context, AppLocalizations.of(context).snackbarAudioNoLongerAvailable);
+      }
       return;
     }
 
@@ -194,7 +198,10 @@ class _PlaybackControllerState extends State<PlaybackController> {
       await _audioPlayer.play();
     } catch (e) {
       debugPrint('Audio load error: $e');
-      if (mounted) showTopSnackBar(context, 'Failed to load audio');
+      if (mounted) {
+        showTopSnackBar(
+            context, AppLocalizations.of(context).snackbarFailedToLoadAudio);
+      }
     } finally {
       if (mounted) {
         setState(() {

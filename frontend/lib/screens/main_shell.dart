@@ -53,7 +53,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
             if (name != null && context.mounted) {
               showTopSnackBar(
                 context,
-                '$name accepted your friend request',
+                AppLocalizations.of(context).friendAcceptedYourRequest(name),
                 backgroundColor: Colors.green,
               );
             }
