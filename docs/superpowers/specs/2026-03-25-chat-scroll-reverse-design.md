@@ -111,9 +111,13 @@ final msg = messages[msgIndex];
 - `_onNewMessages` — **keep the `_isLoadingMoreLocal` pagination branch unchanged** (the
   `postFrameCallback` that calls `jumpTo(preOffset + delta)` must stay). Only remove the
   cache-expansion block (`isFullSnapshotFirstPaint` / `shouldExpandCacheForInitialScroll`).
-  For non-pagination new messages: if `_wasNearBottom && !_userHasScrolledChat` → `_scrollToBottom()`;
-  else increment `_newMessagesCount`. Initial full snapshot no longer needs explicit scroll (list
-  opens at `pixels = 0` by default with `reverse: true`).
+  For non-pagination new messages, two sub-cases:
+  - **Initial full snapshot** (`_lastMessageCount == 0 && added == currentCount`): sync
+    `_lastMessageCount = currentCount` immediately and do NOT increment `_newMessagesCount` —
+    this is the opening render, not an incoming message. `pixels = 0` already shows the newest
+    message; no explicit scroll call needed.
+  - **Subsequent new messages**: if `_wasNearBottom && !_userHasScrolledChat` → `_scrollToBottom()`;
+    else increment `_newMessagesCount` (badge).
 - `_userHasScrolledChat`: keep — still suppresses auto-scroll when user reads history. Set by the
   new `NotificationListener<UserScrollNotification>` wrapper; cleared when `pixels <= threshold`
   in `_onScroll`.
@@ -160,12 +164,18 @@ This math is unchanged from the current implementation and remains correct.
 ## Testing
 
 - `flutter analyze` — must pass clean.
-- `flutter test` — all 79 tests must pass; update any widget tests that assert scroll direction or
-  message index order in `ChatDetailScreen`.
-- Manual: web on phone — open chat ≥15 messages, scroll up to history, new message arrives (badge
-  shows, no auto-jump), tap badge → `animateTo(0)` lands at newest. Paginate: scroll to visual top,
-  spinner appears, older messages prepend, position preserved.
-- Manual: short thread (<15 msgs) — opens correctly, no jitter.
+- `flutter test` — all 79 tests must pass; no existing `ChatDetailScreen` widget tests found in repo,
+  so no updates needed unless new tests are added.
+- Manual — open chat ≥15 messages: newest visible on open (no explicit scroll needed). Scroll up to
+  history, new message arrives → badge shows, no auto-jump. Tap badge → `animateTo(0)` lands at
+  newest. Scroll to visual top → spinner → older messages load → position preserved.
+- Manual — short thread (<15 msgs): opens correctly, no jitter, no false badge on initial open.
+- Manual — keyboard focus regression: send a message rapidly with keyboard open; verify soft keyboard
+  stays visible and focused after removal of the 200ms `Future.delayed` in `_scrollToBottom`.
+- Manual — mobile web touch: verify `UserScrollNotification` fires correctly when user drags the list;
+  `_userHasScrolledChat` must gate auto-scroll properly on touch platforms.
+- Manual — image/rich bubble at bottom: load a chat where the last message contains an image; verify
+  the list stays at bottom while the image renders (no jump needed with `reverse: true`).
 
 ---
 
