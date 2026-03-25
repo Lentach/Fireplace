@@ -238,35 +238,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   void _scrollToBottom() {
     if (mounted) setState(() => _newMessagesCount = 0);
-    // Delay scroll to give time for message to render and avoid stealing keyboard focus
-    Future.delayed(const Duration(milliseconds: 200), () {
-      if (!mounted || !_scrollController.hasClients) return;
-      _scrollController.animateTo(
-        _scrollController.position.maxScrollExtent,
-        duration: const Duration(milliseconds: 250),
-        curve: Curves.easeOut,
-      ).then((_) {
-        if (!mounted) return;
-        setState(() {
-          _lastMessageCount = context.read<MessagingProvider>().messages.length;
-        });
-        // Shrink cache only after extra frames so late layouts (web / images) do not re-trigger jitter.
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            setState(() => _expandCacheForScroll = false);
-          });
-        });
-      });
-    });
+    if (!mounted || !_scrollController.hasClients) return;
+    _scrollController.animateTo(
+      0,
+      duration: const Duration(milliseconds: 250),
+      curve: Curves.easeOut,
+    );
   }
 
   void _onScrollToBottomButtonTap() {
-    setState(() => _expandCacheForScroll = true);
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      _scrollToBottom();
-    });
+    _scrollToBottom();
   }
 
   Widget _buildScrollToBottomButton() {
