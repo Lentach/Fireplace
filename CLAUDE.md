@@ -102,6 +102,9 @@ cd frontend && flutter run -d chrome
 - Avatar uploads validate actual file bytes (JPEG/PNG magic bytes) in both media upload avatar path and users profile-picture endpoint
 - Health endpoint added: `GET /health` runs `SELECT 1` and returns `503` on DB failure (for Docker healthcheck)
 - Raw SQL in `markConversationAsReadFromSender`: use `"deliveryStatus"` (quoted) — PostgreSQL column is camelCase
+- `messages` table has composite index `idx_messages_conv_created` on `(conversation_id, createdAt DESC)` — auto-created in dev via synchronize; production requires manual: `CREATE INDEX CONCURRENTLY idx_messages_conv_created ON messages (conversation_id, "createdAt" DESC);`
+- WS throttle guards: `@UseGuards(WsThrottlerGuard)` + `@Throttle(...)` must appear on ALL mutating WebSocket events — global ThrottlerModule only covers HTTP
+- SSRF: `PRIVATE_IP_RE` in `link-preview.service.ts` blocks `169.254.x`, `fe80:`, RFC-1918 and loopback — verify coverage when adding new IP range exclusions
 - `_conversationsWithUnread` uses batch `countUnreadForRecipientBatch` + `getLastMessagesBatch` (2 queries total, not 2N)
 - Production: logger level `['error','warn','log']` — no debug
 - friend_requests: unique index on (sender, receiver)
