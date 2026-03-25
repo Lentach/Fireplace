@@ -87,29 +87,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     }
   }
 
-  /// Auto-scroll when content height grows (e.g. image/GIF loaded) and user was near bottom.
-  bool _onScrollMetricsNotification(ScrollMetricsNotification notification) {
-    final metrics = notification.metrics;
-    if (metrics.maxScrollExtent > _lastMaxScrollExtent &&
-        _wasNearBottom &&
-        !_userHasScrolledChat) {
-      _lastMaxScrollExtent = metrics.maxScrollExtent;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_scrollController.hasClients) return;
-        _scrollController.jumpTo(_scrollController.position.maxScrollExtent);
-      });
-    }
-    _lastMaxScrollExtent = metrics.maxScrollExtent;
-    return false;
-  }
-
-  bool _onScrollInteractionNotification(ScrollNotification notification) {
-    if (notification is UserScrollNotification) {
-      _userHasScrolledChat = true;
-    }
-    return false;
-  }
-
   void _onNewMessages(int currentCount, int added) {
     if (_isLoadingMoreLocal) {
       final messaging = context.read<MessagingProvider>();
@@ -530,47 +507,51 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                         ),
                       ),
                     )
-                  : NotificationListener<ScrollNotification>(
-                      onNotification: _onScrollInteractionNotification,
-                      child: NotificationListener<ScrollMetricsNotification>(
-                      onNotification: _onScrollMetricsNotification,
-                      child: ListView.builder(
-                      controller: _scrollController,
-                      cacheExtent: _expandCacheForScroll ? _largeCacheExtent : null,
-                      padding: const EdgeInsets.only(
-                        left: 16,
-                        right: 20,
-                        top: 8,
-                        bottom: 8,
-                      ),
-                      itemCount: messages.length + (_isLoadingMoreLocal ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (_isLoadingMoreLocal && index == 0) {
-                          return const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 8),
-                            child: Center(child: CircularProgressIndicator()),
-                          );
-                        }
-                        final msgIndex = _isLoadingMoreLocal ? index - 1 : index;
-                        final msg = messages[msgIndex];
-                        final showDate = msgIndex == 0 ||
-                            _isDifferentDay(
-                              messages[msgIndex - 1].createdAt,
-                              msg.createdAt,
-                            );
-                        return Column(
-                          children: [
-                            if (showDate) MessageDateSeparator(date: msg.createdAt),
-                            if (showDate) const SizedBox(height: 8),
-                            ChatMessageBubble(
-                              message: msg,
-                              isMine: msg.senderId == auth.currentUser!.id,
-                            ),
-                          ],
-                        );
+                  : NotificationListener<UserScrollNotification>(
+                      onNotification: (notification) {
+                        _userHasScrolledChat = true;
+                        return false;
                       },
-                    ),
-                    ),
+                      child: ListView.builder(
+                        reverse: true,
+                        controller: _scrollController,
+                        padding: const EdgeInsets.only(
+                          left: 16,
+                          right: 20,
+                          top: 8,
+                          bottom: 8,
+                        ),
+                        itemCount: messages.length + (_isLoadingMoreLocal ? 1 : 0),
+                        itemBuilder: (context, index) {
+                          // Spinner at visual top (highest index = last rendered item with reverse:true).
+                          // Check BEFORE the flip so message indices are unaffected.
+                          if (_isLoadingMoreLocal && index == messages.length) {
+                            return const Padding(
+                              padding: EdgeInsets.symmetric(vertical: 8),
+                              child: Center(child: CircularProgressIndicator()),
+                            );
+                          }
+                          // Flip: _messages is oldest-first; index 0 renders at visual bottom (newest).
+                          final msgIndex = messages.length - 1 - index;
+                          final msg = messages[msgIndex];
+                          // Date separator condition unchanged — still correct after flip.
+                          final showDate = msgIndex == 0 ||
+                              _isDifferentDay(
+                                messages[msgIndex - 1].createdAt,
+                                msg.createdAt,
+                              );
+                          return Column(
+                            children: [
+                              if (showDate) MessageDateSeparator(date: msg.createdAt),
+                              if (showDate) const SizedBox(height: 8),
+                              ChatMessageBubble(
+                                message: msg,
+                                isMine: msg.senderId == auth.currentUser!.id,
+                              ),
+                            ],
+                          );
+                        },
+                      ),
                     ),
               ),
             ),
