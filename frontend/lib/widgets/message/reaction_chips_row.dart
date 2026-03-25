@@ -24,6 +24,7 @@ class ReactionChipsRow extends StatelessWidget {
                 ? 'Remove ${e.key} reaction (${e.value.length})'
                 : 'React with ${e.key} (${e.value.length})',
             button: true,
+            excludeSemantics: true,
             child: GestureDetector(
               onTap: () => onTap(e.key, isMine),
               child: Container(
