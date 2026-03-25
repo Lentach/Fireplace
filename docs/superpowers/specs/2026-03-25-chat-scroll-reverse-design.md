@@ -82,17 +82,25 @@ final msg = messages[msgIndex];
 - Keyboard scroll: `animateTo(0, ...)`
 
 #### Remove
-- `_expandCacheForScroll` flag and all write sites
+- `_expandCacheForScroll` flag and **all three write sites**:
+  - `_onNewMessages` cache-expansion block
+  - `_scrollToBottom().then()` cache-shrink block
+  - `_onScrollToBottomButtonTap` — remove the `setState(_expandCacheForScroll = true)` call; the
+    method body simplifies to just `_scrollToBottom()`
 - `_largeCacheExtent` constant
 - `_openedWithWarmMessageCache` flag
 - `_warmCacheExpandMessageThreshold` constant
 - `NotificationListener<ScrollMetricsNotification>` wrapper and `_onScrollMetricsNotification` method
 - `NotificationListener<ScrollNotification>` outer wrapper and `_onScrollInteractionNotification` method
-- `RefreshIndicator` — with `reverse: true` the overscroll edge that triggers it is the visual bottom
-  (newest-message end), which is the wrong end for a "reload" gesture. Pagination via scroll-to-top
-  replaces it.
+- `RefreshIndicator` — with `reverse: true` the overscroll edge is at the visual bottom (newest-message
+  end), which is semantically wrong. The empty-state `LayoutBuilder/SingleChildScrollView` inside it
+  becomes a plain `Center` widget. Pagination via scroll-to-top replaces the reload use case.
 - Double `addPostFrameCallback` cache-expansion block in `_onNewMessages`
 - `isFullSnapshotFirstPaint` / `shouldExpandCacheForInitialScroll` logic in `_onNewMessages`
+- 200ms `Future.delayed` in `_scrollToBottom` — with `pixels = 0` always being the correct target,
+  the delay is unnecessary and can be removed.
+- Keyboard scroll guard `if (maxExtent > 0)` — meaningless after direction flip (target is now `0`,
+  which is always valid); remove together with the `maxExtent` local variable.
 
 #### Add / Replace
 - `NotificationListener<UserScrollNotification>` (narrower) wrapping only the `ListView`, setting
@@ -128,7 +136,7 @@ final msg = messages[msgIndex];
 | New message, user reading history | `_userHasScrolledChat` true → badge increments, no scroll |
 | Load older messages | Spinner at `index == messages.length` (visual top). Scroll math `preOffset + (newExtent - preExtent)` unchanged and still correct. |
 | Keyboard opens | `animateTo(0)` — same intent, simpler |
-| Link preview arrives | Same: count-change path → `_scrollToBottom()` if atBottom |
+| Link preview arrives | Unconditional `_scrollToBottom()` — matches current behavior; expands the bubble the user just sent |
 | Short thread (<15 msgs) | No special path — `_warmCacheExpandMessageThreshold` branch deleted |
 | Pull-to-refresh gesture | `RefreshIndicator` removed; reload available via `getMessages` on reconnect or app resume |
 | `didUpdateWidget` (conversation switch) | Reset `_userHasScrolledChat`; no cache flags to reset |
