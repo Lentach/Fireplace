@@ -66,8 +66,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     }
 
     // Near visual top (oldest messages) = pixels near maxScrollExtent → load older.
-    if (_scrollController.position.pixels >=
-        _scrollController.position.maxScrollExtent - 300) {
+    // Require maxScrollExtent > 0 so short non-scrollable threads do not satisfy
+    // pixels >= maxScrollExtent - 300 while sitting at the bottom.
+    final maxExtent = pos.maxScrollExtent;
+    if (maxExtent > 0 && pos.pixels >= maxExtent - 300) {
       final messaging = context.read<MessagingProvider>();
       if (!messaging.isLoadingMore && messaging.hasMoreMessages) {
         _prePaginationScrollOffset = _scrollController.offset;
@@ -172,6 +174,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       _lastLinkPreviewCount = 0;
       _newMessagesCount = 0;
       _userHasScrolledChat = false;
+      _isLoadingMoreLocal = false;
+      _prePaginationScrollOffset = null;
+      _prePaginationScrollExtent = null;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         final convs = context.read<ConversationsProvider>();
@@ -379,8 +384,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       final added = messages.length - _lastMessageCount;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        // Always scroll to bottom when message count changes (including initial load)
-        // so the user sees the newest message when entering the chat.
         _onNewMessages(messages.length, added);
       });
     }
