@@ -52,14 +52,23 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   double? _prePaginationScrollExtent;
   double _lastMaxScrollExtent = 0;
   bool _wasNearBottom = true;
+  /// After the user drags the list, do not auto [jumpTo] bottom on [ScrollMetricsNotification]
+  /// until they scroll back to the bottom (fixes mobile web fight with lazy layout growth).
+  bool _userHasScrolledChat = false;
   static const double _scrollToBottomThreshold = 80;
   static const double _largeCacheExtent = 10000;
+  /// With warm RAM cache, still expand [cacheExtent] when many rows — otherwise lazy build
+  /// keeps growing [maxScrollExtent] and [ScrollMetricsNotification] repeatedly jumps to "bottom".
+  static const int _warmCacheExpandMessageThreshold = 15;
 
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     final pos = _scrollController.position;
     final atBottom = pos.pixels >= pos.maxScrollExtent - _scrollToBottomThreshold;
     _wasNearBottom = atBottom;
+    if (atBottom) {
+      _userHasScrolledChat = false;
+    }
     _lastMaxScrollExtent = pos.maxScrollExtent;
     if (_showScrollToBottomButton != !atBottom && mounted) {
       setState(() => _showScrollToBottomButton = !atBottom);
@@ -80,7 +89,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   /// Auto-scroll when content height grows (e.g. image/GIF loaded) and user was near bottom.
   bool _onScrollMetricsNotification(ScrollMetricsNotification notification) {
     final metrics = notification.metrics;
-    if (metrics.maxScrollExtent > _lastMaxScrollExtent && _wasNearBottom) {
+    if (metrics.maxScrollExtent > _lastMaxScrollExtent &&
+        _wasNearBottom &&
+        !_userHasScrolledChat) {
       _lastMaxScrollExtent = metrics.maxScrollExtent;
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_scrollController.hasClients) return;
@@ -88,6 +99,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       });
     }
     _lastMaxScrollExtent = metrics.maxScrollExtent;
+    return false;
+  }
+
+  bool _onScrollInteractionNotification(ScrollNotification notification) {
+    if (notification is UserScrollNotification) {
+      _userHasScrolledChat = true;
+    }
     return false;
   }
 
@@ -126,11 +144,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final messaging = context.read<MessagingProvider>();
     _lastLinkPreviewCount = messaging.messages.where((m) => m.linkPreviewUrl != null).length;
     // When opening conversation, expand cache so ListView builds all items and maxScrollExtent is correct.
-    // Skip when we pre-loaded from RAM cache (re-entry): full list is already in memory without 10kpx extent.
-    final isInitialLoad = !_openedWithWarmMessageCache &&
-        added == currentCount &&
-        currentCount > 0;
-    if (isInitialLoad) {
+    // Cold open: always expand on first full snapshot. Warm RAM cache: expand only for long threads
+    // so lazy build does not fight [ScrollMetricsNotification] (jitter on mobile web).
+    final isFullSnapshotFirstPaint =
+        added == currentCount && currentCount > 0;
+    final shouldExpandCacheForInitialScroll = isFullSnapshotFirstPaint &&
+        (!_openedWithWarmMessageCache ||
+            currentCount >= _warmCacheExpandMessageThreshold);
+    if (shouldExpandCacheForInitialScroll) {
       setState(() => _expandCacheForScroll = true);
       // Defer scroll until after the rebuild with expanded cache has been laid out.
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -182,6 +203,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       _lastMessageCount = 0;
       _lastLinkPreviewCount = 0;
       _newMessagesCount = 0;
+      _userHasScrolledChat = false;
       _openedWithWarmMessageCache = false; // reset before callback so _onNewMessages sees correct state
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -223,12 +245,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         duration: const Duration(milliseconds: 250),
         curve: Curves.easeOut,
       ).then((_) {
-        if (mounted) {
-          setState(() {
-            _lastMessageCount = context.read<MessagingProvider>().messages.length;
-            _expandCacheForScroll = false;
+        if (!mounted) return;
+        setState(() {
+          _lastMessageCount = context.read<MessagingProvider>().messages.length;
+        });
+        // Shrink cache only after extra frames so late layouts (web / images) do not re-trigger jitter.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            if (!mounted) return;
+            setState(() => _expandCacheForScroll = false);
           });
-        }
+        });
       });
     });
   }
@@ -521,7 +548,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                         ),
                       ),
                     )
-                  : NotificationListener<ScrollMetricsNotification>(
+                  : NotificationListener<ScrollNotification>(
+                      onNotification: _onScrollInteractionNotification,
+                      child: NotificationListener<ScrollMetricsNotification>(
                       onNotification: _onScrollMetricsNotification,
                       child: ListView.builder(
                       controller: _scrollController,
@@ -558,6 +587,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                           ],
                         );
                       },
+                    ),
                     ),
                     ),
               ),

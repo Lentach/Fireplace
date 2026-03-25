@@ -32,7 +32,7 @@ cd frontend && flutter run -d chrome
 
 **Phone (same WiFi):** `cd frontend && .\run_web_for_phone.ps1` or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`
 
-**Tests:** `cd backend && npm test` (204 unit tests, 25 suites, no DB required); `cd frontend && flutter test` (72 tests). Media crypto round-trip tests skip when `webcrypto:setup` was not run (e.g. no cmake on Windows); the 20MB limit test always runs (throws before native crypto).
+**Tests:** `cd backend && npm test` (214 unit tests, 27 suites, no DB required); `cd frontend && flutter test` (79 tests). Media crypto round-trip tests skip when `webcrypto:setup` was not run (e.g. no cmake on Windows); the 20MB limit test always runs (throws before native crypto).
 
 **Production:** https://fireplace.ignorelist.com — Google Cloud e2-medium VM (Warszawa), Docker + Nginx + Let's Encrypt. Deploy: SSH to server → `~/deploy.sh` (git pull + docker build + flutter web build).
 
@@ -77,7 +77,7 @@ cd frontend && flutter run -d chrome
 - Multiple backends: if weird data, kill local `node.exe`, use Docker only
 - Mobile _openChat: only Navigator.push; ChatDetailScreen initState calls openConversation (avoids double getMessages and decrypt loop)
 - `_conversationCache` in MessagingProvider: per-conversation RAM cache (`Map<int, List<MessageModel>>`) for the current session. Populated by `onMessageHistory` (first snapshot after parse/filter, second after `_decryptMessageHistory` completes). Updated by `_handleIncomingMessage` (plain path and encrypted `.then()`), `_handleMessageDelivered` (when `index != -1` in `_messages` so `_messages` snapshot matches that chat), `_handleMessageDeleted`. Entry removed by `_handleChatHistoryCleared`,
-  `onConversationDeleted`. Fully cleared by `clearAll()` (logout only). NOT cleared by `clearMessages()` (back navigation) or `onConnect` (socket reconnect). `ChatDetailScreen` calls `loadCachedMessages` before `getMessages`; `_openedWithWarmMessageCache` skips the expensive initial `cacheExtent` expand on re-entry. `loadCachedMessages(id)` returns bool — true when RAM cache was applied. `_effectiveActiveConversationId` (test override OR `ConversationsProvider.activeConversationId`) is used in `onMessageHistory` and incoming-message paths.
+  `onConversationDeleted`. Fully cleared by `clearAll()` (logout only). NOT cleared by `clearMessages()` (back navigation) or `onConnect` (socket reconnect). `ChatDetailScreen` calls `loadCachedMessages` before `getMessages`; `_openedWithWarmMessageCache` still uses a large `cacheExtent` on first paint when the thread has many messages (`>= 15`) so lazy `ListView` growth does not fight `ScrollMetricsNotification` (mobile web scroll jitter). Short threads with warm cache skip expand. `UserScrollNotification` sets `_userHasScrolledChat` so metrics-based `jumpTo` bottom does not override the user reading older messages until they scroll back to the bottom. `loadCachedMessages(id)` returns bool — true when RAM cache was applied. `_effectiveActiveConversationId` (test override OR `ConversationsProvider.activeConversationId`) is used in `onMessageHistory` and incoming-message paths.
 
 ### Backend
 - `ChatValidationService.validateCanMessage(senderId, recipientId)` — shared validation for blocked + friends; used by sendMessage, startConversation
@@ -467,7 +467,7 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> encrypt bytes -> `
 
 **Models:** `UserModel` (`displayHandle` getter), `ConversationModel` (immutable), `MessageModel` (`copyWith` for status/content/media), `FriendRequestModel`. Frontend-only: `MessageDeliveryStatus.failed`.
 
-**Provider tests:** Frontend has unit tests for `ConversationsProvider` (connect lifecycle, removeConversationsForUser, optimistic `deleteConversation`, no-flicker reconnect) and `FriendsProvider` (connect lifecycle, blocking flows, `onYouWereBlocked`, `onBlockedList`). See `frontend/test/providers/`.
+**Provider tests:** Frontend has unit tests for `ConversationsProvider` (connect lifecycle, removeConversationsForUser, optimistic `deleteConversation`, no-flicker reconnect), `FriendsProvider` (connect lifecycle, blocking flows, `onYouWereBlocked`, `onBlockedList`), and `MessagingProvider` (`messaging_provider_cache_test.dart` — cache lifecycle; `messaging_provider_test.dart` — `loadOlderMessages` pagination). See `frontend/test/providers/`.
 
 ---
 
@@ -496,7 +496,7 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> encrypt bytes -> `
 - E2E: all types encrypted. **Media:** AES-256-GCM per file + Signal envelope carries key/IV + self-hosted `.bin` URL. Legacy Cloudinary media (no `mediaKey` in envelope) still loads via direct URL. GIFs on web use blob URLs. No multi-device, no key recovery; conversation list shows "Encrypted message". Own history can show `[encrypted]` if storage evicted. Decrypt paths enforce **20 MB** before `MediaCryptoService.decrypt()`.
 - No message edit, no fuzzy search, no iOS APNs
 - No unique constraint on `(sender, receiver)` in friend_requests
-- Pagination: simple limit/offset (default 50), N+1 in `_conversationsWithUnread()`
+- Pagination: message history uses `loadOlderMessages()` / `_hasMore` / `_paginationOffset` in `MessagingProvider`; conversation list still N+1 in `_conversationsWithUnread()` (batch queries planned)
 - Large files: `messaging_provider.dart` (messaging + E2E); `chat-friend-request.service.ts`, `chat-message.service.ts`
 - Migration scripts in `backend/scripts/` (manual)
 - Metadata: server stores who, with whom, when, conversation structure (see `docs/METADATA.md`); design for future options in `docs/plans/2026-03-11-metadata-privacy-design.md`
