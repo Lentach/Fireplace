@@ -64,18 +64,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void _onScroll() {
     if (!_scrollController.hasClients) return;
     final pos = _scrollController.position;
-    final atBottom = pos.pixels >= pos.maxScrollExtent - _scrollToBottomThreshold;
+    // With reverse:true, pixels=0 is the bottom (newest). Near-bottom = pixels <= threshold.
+    final atBottom = pos.pixels <= _scrollToBottomThreshold;
     _wasNearBottom = atBottom;
     if (atBottom) {
       _userHasScrolledChat = false;
     }
-    _lastMaxScrollExtent = pos.maxScrollExtent;
     if (_showScrollToBottomButton != !atBottom && mounted) {
       setState(() => _showScrollToBottomButton = !atBottom);
     }
 
-    if (_scrollController.position.pixels <=
-        _scrollController.position.minScrollExtent + 300) {
+    // Near visual top (oldest messages) = pixels near maxScrollExtent → load older.
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 300) {
       final messaging = context.read<MessagingProvider>();
       if (!messaging.isLoadingMore && messaging.hasMoreMessages) {
         _prePaginationScrollOffset = _scrollController.offset;
