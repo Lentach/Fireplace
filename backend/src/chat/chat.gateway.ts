@@ -168,6 +168,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 900000 } })
   @SubscribeMessage('clearChatHistory')
   handleClearChatHistory(
     @ConnectedSocket() client: Socket,
@@ -181,6 +183,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 900000 } })
   @SubscribeMessage('deleteMessage')
   handleDeleteMessage(
     @ConnectedSocket() client: Socket,
@@ -204,6 +208,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return this.chatPresenceService.handleTyping(client, data, this.server, this.onlineUsers);
   }
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 120, ttl: 900000 } })
   @SubscribeMessage('addReaction')
   async handleAddReaction(
     @ConnectedSocket() client: Socket,
@@ -212,6 +218,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return this.chatReactionService.handleAddReaction(client, data, this.server, this.onlineUsers);
   }
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 120, ttl: 900000 } })
   @SubscribeMessage('removeReaction')
   async handleRemoveReaction(
     @ConnectedSocket() client: Socket,
@@ -238,6 +246,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return this.chatKeyExchangeService.handleUploadKeyBundle(client, data);
   }
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 900000 } })
   @SubscribeMessage('uploadOneTimePreKeys')
   async handleUploadOneTimePreKeys(
     @ConnectedSocket() client: Socket,
@@ -260,6 +270,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 900000 } })
   @SubscribeMessage('requestSessionRebuild')
   async handleRequestSessionRebuild(
     @ConnectedSocket() client: Socket,
@@ -275,6 +287,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   // ========== CONVERSATION HANDLERS ==========
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 900000 } })
   @SubscribeMessage('startConversation')
   async handleStartConversation(
     @ConnectedSocket() client: Socket,
@@ -295,6 +309,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return this.chatConversationService.handleGetConversations(client);
   }
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 900000 } })
   @SubscribeMessage('deleteConversationOnly')
   async handleDeleteConversationOnly(
     @ConnectedSocket() client: Socket,
@@ -333,6 +349,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return this.chatSearchService.handleSearchUsers(client, data);
   }
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 900000 } })
   @SubscribeMessage('sendFriendRequest')
   async handleSendFriendRequest(
     @ConnectedSocket() client: Socket,
@@ -384,6 +402,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return this.chatFriendRequestService.handleGetFriends(client);
   }
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 900000 } })
   @SubscribeMessage('unfriend')
   async handleUnfriend(
     @ConnectedSocket() client: Socket,
@@ -397,6 +417,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 900000 } })
   @SubscribeMessage('blockUser')
   async handleBlockUser(
     @ConnectedSocket() client: Socket,
