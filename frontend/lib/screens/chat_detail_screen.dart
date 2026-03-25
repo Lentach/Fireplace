@@ -403,14 +403,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         // Wait for keyboard animation to finish
         Future.delayed(const Duration(milliseconds: 300), () {
           if (!mounted || !_scrollController.hasClients) return;
-          final maxExtent = _scrollController.position.maxScrollExtent;
-          if (maxExtent > 0) {
-            _scrollController.animateTo(
-              maxExtent,
-              duration: const Duration(milliseconds: 200),
-              curve: Curves.easeOut,
-            );
-          }
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
         });
       });
     }
@@ -469,29 +466,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             child: ChatBackgroundPattern(
               dotColor: mutedColor.withValues(alpha: 0.08),
               backgroundColor: messagesAreaBg,
-              child: RefreshIndicator(
-                onRefresh: () async {
-                  final c = context.read<ConversationsProvider>();
-                  final messaging = context.read<MessagingProvider>();
-                  c.openConversation(widget.conversationId);
-                  messaging.getMessages(widget.conversationId);
-                  await Future.delayed(const Duration(milliseconds: 800));
-                },
-                child: messages.isEmpty
-                  ? LayoutBuilder(
-                      builder: (context, constraints) => SingleChildScrollView(
-                        physics: const AlwaysScrollableScrollPhysics(),
-                        child: SizedBox(
-                          height: constraints.maxHeight,
-                          child: Center(
-                            child: Text(
-                              AppLocalizations.of(context).noMessagesYet,
-                              style: RpgTheme.bodyFont(
-                                fontSize: 14,
-                                color: mutedColor,
-                              ),
-                            ),
-                          ),
+              child: messages.isEmpty
+                  ? Center(
+                      child: Text(
+                        AppLocalizations.of(context).noMessagesYet,
+                        style: RpgTheme.bodyFont(
+                          fontSize: 14,
+                          color: mutedColor,
                         ),
                       ),
                     )
@@ -541,7 +522,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                         },
                       ),
                     ),
-              ),
             ),
           ),
           if (otherUser != null && context.read<FriendsProvider>().blockedByUserIds.contains(otherUser.id))
