@@ -32,7 +32,7 @@ export class MediaController {
   @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 20, ttl: 60000 } })
   @UseInterceptors(
-    FileInterceptor('file', { limits: { fileSize: 11 * 1024 * 1024 } }),
+    FileInterceptor('file', { limits: { fileSize: 21 * 1024 * 1024 } }),
   )
   async upload(
     @UploadedFile() file: Express.Multer.File,
