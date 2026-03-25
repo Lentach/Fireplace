@@ -43,23 +43,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   int _lastMessageCount = 0;
   int _lastLinkPreviewCount = 0;
   double _lastKeyboardHeight = 0;
-  /// When true, ListView uses large cacheExtent so all items are built and scroll-to-bottom lands at real end.
-  bool _expandCacheForScroll = false;
-  /// True when [MessagingProvider.loadCachedMessages] warmed this screen — skip expensive initial cacheExtent.
-  bool _openedWithWarmMessageCache = false;
   bool _isLoadingMoreLocal = false;
   double? _prePaginationScrollOffset;
   double? _prePaginationScrollExtent;
-  double _lastMaxScrollExtent = 0;
   bool _wasNearBottom = true;
   /// After the user drags the list, do not auto-scroll to bottom until they scroll back
   /// (cleared when near bottom in [_onScroll]).
   bool _userHasScrolledChat = false;
   static const double _scrollToBottomThreshold = 80;
-  static const double _largeCacheExtent = 10000;
-  /// With warm RAM cache, still expand [cacheExtent] when many rows — otherwise lazy build
-  /// keeps growing [maxScrollExtent] and [ScrollMetricsNotification] repeatedly jumps to "bottom".
-  static const int _warmCacheExpandMessageThreshold = 15;
 
   void _onScroll() {
     if (!_scrollController.hasClients) return;
@@ -151,8 +142,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       if (!mounted) return;
       final convs = context.read<ConversationsProvider>();
       final messaging = context.read<MessagingProvider>();
-      _openedWithWarmMessageCache =
-          messaging.loadCachedMessages(widget.conversationId);
+      messaging.loadCachedMessages(widget.conversationId);
       convs.openConversation(widget.conversationId);
       messaging.getMessages(widget.conversationId);
     });
@@ -182,13 +172,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       _lastLinkPreviewCount = 0;
       _newMessagesCount = 0;
       _userHasScrolledChat = false;
-      _openedWithWarmMessageCache = false; // reset before callback so _onNewMessages sees correct state
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         final convs = context.read<ConversationsProvider>();
         final messaging = context.read<MessagingProvider>();
-        _openedWithWarmMessageCache =
-            messaging.loadCachedMessages(widget.conversationId);
+        messaging.loadCachedMessages(widget.conversationId);
         convs.openConversation(widget.conversationId);
         messaging.getMessages(widget.conversationId);
       });
