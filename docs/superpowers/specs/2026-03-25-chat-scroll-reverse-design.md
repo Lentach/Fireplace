@@ -41,13 +41,19 @@ E2E decrypt flow are untouched. Only the display layer flips the index.
 ### Index flip in `itemBuilder`
 
 ```dart
-// Loading spinner at visual top (highest index = last rendered item)
+// itemCount: messages.length + (_isLoadingMoreLocal ? 1 : 0)
+//
+// Spinner check BEFORE the flip so message indices are unaffected.
 if (_isLoadingMoreLocal && index == messages.length) {
   return /* CircularProgressIndicator */;
 }
 final msgIndex = messages.length - 1 - index;  // flip
 final msg = messages[msgIndex];
-// Date separator comparison: unchanged (messages[msgIdx-1] vs messages[msgIdx])
+// Date separator: condition UNCHANGED.
+//   showDate = (msgIndex == 0) || isDifferentDay(messages[msgIndex-1], msg)
+// With _messages oldest-first and reverse:true this is still correct:
+//   index n-1 → msgIndex=0 (oldest, visual top) → showDate=true ✓
+//   Tue_1 maps to msgIndex where messages[msgIndex-1] is last Mon msg → fires ✓
 ```
 
 ### Scroll coordinate system
@@ -80,19 +86,29 @@ final msg = messages[msgIndex];
 - `_largeCacheExtent` constant
 - `_openedWithWarmMessageCache` flag
 - `_warmCacheExpandMessageThreshold` constant
-- `NotificationListener<ScrollMetricsNotification>` wrapper
-- `_onScrollMetricsNotification` method
-- `_onScrollInteractionNotification` method (was only needed to gate the metrics handler)
-- `NotificationListener<ScrollNotification>` wrapper for user-scroll (UserScrollNotification guard)
+- `NotificationListener<ScrollMetricsNotification>` wrapper and `_onScrollMetricsNotification` method
+- `NotificationListener<ScrollNotification>` outer wrapper and `_onScrollInteractionNotification` method
+- `RefreshIndicator` — with `reverse: true` the overscroll edge that triggers it is the visual bottom
+  (newest-message end), which is the wrong end for a "reload" gesture. Pagination via scroll-to-top
+  replaces it.
 - Double `addPostFrameCallback` cache-expansion block in `_onNewMessages`
-- `isFullSnapshotFirstPaint` / `shouldExpandCacheForInitialScroll` logic
+- `isFullSnapshotFirstPaint` / `shouldExpandCacheForInitialScroll` logic in `_onNewMessages`
+
+#### Add / Replace
+- `NotificationListener<UserScrollNotification>` (narrower) wrapping only the `ListView`, setting
+  `_userHasScrolledChat = true` inline. This replaces the removed `ScrollNotification` wrapper and
+  preserves the guard against auto-scroll while the user reads history.
 
 #### Simplify
-- `_onNewMessages`: initial full snapshot no longer needs explicit scroll (list opens at 0 by default).
-  Keep only: if `_wasNearBottom && !_userHasScrolledChat` → `_scrollToBottom()`; else increment
-  `_newMessagesCount`.
-- `_userHasScrolledChat`: keep — still suppresses auto-scroll when user reads history and a new
-  message arrives. Now set by any `UserScrollNotification` (direct listener, no nested wrapper needed).
+- `_onNewMessages` — **keep the `_isLoadingMoreLocal` pagination branch unchanged** (the
+  `postFrameCallback` that calls `jumpTo(preOffset + delta)` must stay). Only remove the
+  cache-expansion block (`isFullSnapshotFirstPaint` / `shouldExpandCacheForInitialScroll`).
+  For non-pagination new messages: if `_wasNearBottom && !_userHasScrolledChat` → `_scrollToBottom()`;
+  else increment `_newMessagesCount`. Initial full snapshot no longer needs explicit scroll (list
+  opens at `pixels = 0` by default with `reverse: true`).
+- `_userHasScrolledChat`: keep — still suppresses auto-scroll when user reads history. Set by the
+  new `NotificationListener<UserScrollNotification>` wrapper; cleared when `pixels <= threshold`
+  in `_onScroll`.
 
 ### `messaging_provider.dart` — no changes
 
@@ -114,6 +130,7 @@ final msg = messages[msgIndex];
 | Keyboard opens | `animateTo(0)` — same intent, simpler |
 | Link preview arrives | Same: count-change path → `_scrollToBottom()` if atBottom |
 | Short thread (<15 msgs) | No special path — `_warmCacheExpandMessageThreshold` branch deleted |
+| Pull-to-refresh gesture | `RefreshIndicator` removed; reload available via `getMessages` on reconnect or app resume |
 | `didUpdateWidget` (conversation switch) | Reset `_userHasScrolledChat`; no cache flags to reset |
 
 ---
