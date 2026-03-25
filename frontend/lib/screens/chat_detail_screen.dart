@@ -52,8 +52,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   double? _prePaginationScrollExtent;
   double _lastMaxScrollExtent = 0;
   bool _wasNearBottom = true;
-  /// After the user drags the list, do not auto [jumpTo] bottom on [ScrollMetricsNotification]
-  /// until they scroll back to the bottom (fixes mobile web fight with lazy layout growth).
+  /// After the user drags the list, do not auto-scroll to bottom until they scroll back
+  /// (cleared when near bottom in [_onScroll]).
   bool _userHasScrolledChat = false;
   static const double _scrollToBottomThreshold = 80;
   static const double _largeCacheExtent = 10000;
@@ -117,29 +117,29 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       });
       return;
     }
+    // Non-pagination path.
     if (added <= 0) return;
+
+    // Initial full snapshot: opening the chat. _lastMessageCount was 0 so added == currentCount.
+    // Do NOT badge — this is the open render, not an incoming message.
+    // pixels=0 already shows newest with reverse:true; no explicit scroll needed.
+    if (_lastMessageCount == 0 && added == currentCount) {
+      _lastMessageCount = currentCount;
+      final messaging = context.read<MessagingProvider>();
+      _lastLinkPreviewCount =
+          messaging.messages.where((m) => m.linkPreviewUrl != null).length;
+      return;
+    }
+
+    // Subsequent incoming message.
     _lastMessageCount = currentCount;
     final messaging = context.read<MessagingProvider>();
-    _lastLinkPreviewCount = messaging.messages.where((m) => m.linkPreviewUrl != null).length;
-    // When opening conversation, expand cache so ListView builds all items and maxScrollExtent is correct.
-    // Cold open: always expand on first full snapshot. Warm RAM cache: expand only for long threads
-    // so lazy build does not fight [ScrollMetricsNotification] (jitter on mobile web).
-    final isFullSnapshotFirstPaint =
-        added == currentCount && currentCount > 0;
-    final shouldExpandCacheForInitialScroll = isFullSnapshotFirstPaint &&
-        (!_openedWithWarmMessageCache ||
-            currentCount >= _warmCacheExpandMessageThreshold);
-    if (shouldExpandCacheForInitialScroll) {
-      setState(() => _expandCacheForScroll = true);
-      // Defer scroll until after the rebuild with expanded cache has been laid out.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (!mounted) return;
-          _scrollToBottom();
-        });
-      });
-    } else {
+    _lastLinkPreviewCount =
+        messaging.messages.where((m) => m.linkPreviewUrl != null).length;
+    if (_wasNearBottom && !_userHasScrolledChat) {
       _scrollToBottom();
+    } else {
+      setState(() => _newMessagesCount++);
     }
   }
 
