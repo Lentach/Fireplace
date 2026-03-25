@@ -1,4 +1,4 @@
-import { IsIn, IsNumber, IsOptional, IsString } from 'class-validator';
+import { IsIn, IsNumber, IsOptional, IsString, MaxLength, Matches } from 'class-validator';
 import { Type } from 'class-transformer';
 
 export class UploadMediaDto {
@@ -17,5 +17,7 @@ export class UploadMediaDto {
 
   @IsOptional()
   @IsString()
+  @MaxLength(255)
+  @Matches(/^[^/\\]+$/, { message: 'fileName must not contain path separators' })
   fileName?: string;
 }
