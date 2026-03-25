@@ -77,7 +77,7 @@ cd frontend && flutter run -d chrome
 - Multiple backends: if weird data, kill local `node.exe`, use Docker only
 - Mobile _openChat: only Navigator.push; ChatDetailScreen initState calls openConversation (avoids double getMessages and decrypt loop)
 - `_conversationCache` in MessagingProvider: per-conversation RAM cache (`Map<int, List<MessageModel>>`) for the current session. Populated by `onMessageHistory` (first snapshot after parse/filter, second after `_decryptMessageHistory` completes). Updated by `_handleIncomingMessage` (plain path and encrypted `.then()`), `_handleMessageDelivered` (when `index != -1` in `_messages` so `_messages` snapshot matches that chat), `_handleMessageDeleted`. Entry removed by `_handleChatHistoryCleared`,
-  `onConversationDeleted`. Fully cleared by `clearAll()` (logout only). NOT cleared by `clearMessages()` (back navigation) or `onConnect` (socket reconnect). `ChatDetailScreen` calls `loadCachedMessages` before `getMessages`; `_openedWithWarmMessageCache` still uses a large `cacheExtent` on first paint when the thread has many messages (`>= 15`) so lazy `ListView` growth does not fight `ScrollMetricsNotification` (mobile web scroll jitter). Short threads with warm cache skip expand. `UserScrollNotification` sets `_userHasScrolledChat` so metrics-based `jumpTo` bottom does not override the user reading older messages until they scroll back to the bottom. `loadCachedMessages(id)` returns bool — true when RAM cache was applied. `_effectiveActiveConversationId` (test override OR `ConversationsProvider.activeConversationId`) is used in `onMessageHistory` and incoming-message paths.
+  `onConversationDeleted`. Fully cleared by `clearAll()` (logout only). NOT cleared by `clearMessages()` (back navigation) or `onConnect` (socket reconnect). `ChatDetailScreen` calls `loadCachedMessages` before `getMessages`. `ChatDetailScreen` uses `ListView(reverse: true)`: `pixels = 0` is the visual bottom (newest message), eliminating the need to chase `maxScrollExtent`. `jumpTo(0)` / `animateTo(0)` are always correct regardless of lazy build state. `_userHasScrolledChat` (set by `NotificationListener<UserScrollNotification>`) suppresses auto-scroll-to-bottom while the user reads history; cleared when `pixels <= _scrollToBottomThreshold` in `_onScroll`. Pagination trigger: `pixels >= maxScrollExtent - 300` (near visual top). `loadCachedMessages(id)` returns bool — true when RAM cache was applied. `_effectiveActiveConversationId` (test override OR `ConversationsProvider.activeConversationId`) is used in `onMessageHistory` and incoming-message paths.
 
 ### Backend
 - `ChatValidationService.validateCanMessage(senderId, recipientId)` — shared validation for blocked + friends; used by sendMessage, startConversation
@@ -318,118 +318,17 @@ erDiagram
 
 ---
 
-## 6. WebSocket API
+## 6. Key Behaviors & Gotchas (Runtime)
 
-**Connection:** `io(baseUrl, { auth: { token: JWT } })` — token in auth only (not query). Gateway verifies JWT, tracks `onlineUsers: Map<userId, socketId>`.
+**Optimistic messaging:** temp message (id=-timestamp, SENDING, tempId) → encrypt async → `sendMessage` → backend `messageSent` with tempId → replace temp with real.
 
-### Message Events
+**Blocking state:** `_blockedUsers` = blocked by me. `_blockedByUserIds` (Set) = users who blocked me — cleared on every connect (server doesn't replay `youWereBlocked` on reconnect). On `youWereBlocked`: add to set, remove from friends/conversations, clear active chat. When `friendsList` arrives, remove all friend IDs from `_blockedByUserIds` (clears "can't message" banner after unblock+re-add).
 
-| Client Emit | Server Emit (caller) | Server Emit (recipient) |
-|---|---|---|
-| `sendMessage` | `messageSent` | `newMessage` |
-| `getMessages` | `messageHistory` `{ conversationId, messages }` | -- |
-| `messageDelivered` | -- | `messageDelivered` (to sender) |
-| `markConversationRead` | -- | `messageDelivered` (READ) per msg |
-| `clearChatHistory` | `chatHistoryCleared` | `chatHistoryCleared` |
-| `deleteMessage` | `messageDeleted` | `messageDeleted` (for_everyone only) |
-| `addReaction` / `removeReaction` | `reactionUpdated` | `reactionUpdated` |
-| -- (async) | `linkPreviewReady` | `linkPreviewReady` |
+**consumePendingOpen / consumeFriendRequestSent / consumePendingFriendAccepted:** Provider stores ID/flag from socket event; screen polls and navigates/shows snackbar. Necessary because providers can't call Navigator.
 
-### Conversation Events
+**E2E envelope:** `{ content, messageType?, mediaUrl?, mediaDuration?, mediaKey?, mediaIv?, linkPreview? }` — `messageType` defaults to `TEXT` (backward compat). Server stores `messageType=TEXT`, `mediaUrl=null` (blind to real type). Ciphertext: `"{type}:{base64}"` (type 3 = PreKey, type 1 = Signal). Media keys travel **only** inside the envelope; `.bin` blobs on server are opaque.
 
-| Client Emit | Server Emit (caller) | Server Emit (other) |
-|---|---|---|
-| `startConversation` | `conversationsList` + `openConversation` | `conversationsList` only (no openConversation) |
-| `getConversations` | `conversationsList` | -- |
-| `deleteConversationOnly` | `conversationDeleted` + `conversationsList` | `conversationsList` only (no conversationDeleted — B's chat shows "deleted by other", no auto-close) |
-| `setDisappearingTimer` | `disappearingTimerUpdated` | `disappearingTimerUpdated` |
-
-### Friend Events
-
-| Client Emit | Server Emit (caller) | Server Emit (other) |
-|---|---|---|
-| `searchUsers` | `searchUsersResult` | -- |
-| `sendFriendRequest` | `friendRequestSent` OR auto-accept | `newFriendRequest` OR auto-accept |
-| `acceptFriendRequest` | `friendRequestAccepted` + lists + `openConversation` | `friendRequestAccepted` + lists (no openConversation; snackbar "X accepted your friend request") |
-| `rejectFriendRequest` | `friendRequestRejected` + `friendRequestsList` | -- |
-| `getFriendRequests` | `friendRequestsList` + `pendingRequestsCount` | -- |
-| `getFriends` | `friendsList` | -- |
-| `unfriend` | `unfriended` + `conversationsList` + `friendsList` | same |
-| `blockUser` | `blockedList` | `youWereBlocked` |
-| `unblockUser` | `blockedList` | -- |
-| `getBlockedList` | `blockedList` | -- |
-
-### E2E Key Exchange Events
-
-| Client Emit | Server Emit (caller) | Server Emit (target) |
-|---|---|---|
-| `uploadKeyBundle` | `keyBundleUploaded` | -- |
-| `uploadOneTimePreKeys` | `oneTimePreKeysUploaded` | -- |
-| `fetchPreKeyBundle` | `preKeyBundleResponse` | `preKeysLow` (when < 10) |
-
----
-
-## 7. REST API
-
-| Method | Path | Auth | Body / Params | Response |
-|---|---|---|---|---|
-| POST | `/auth/register` | -- | `{ username, password }` | `{ id, username, tag }` |
-| POST | `/auth/login` | -- | `{ identifier, password }` | `{ access_token }` |
-| POST | `/users/profile-picture` | JWT | multipart `file` (JPEG/PNG, 5MB) | `{ profilePictureUrl }` |
-| POST | `/users/reset-password` | JWT | `{ oldPassword, newPassword }` | 200 |
-| DELETE | `/users/account` | JWT | `{ password }` | 200 |
-| GET | `/users/me` | JWT | -- | `{ id, username, tag, profilePictureUrl }` |
-| POST | `/media/upload` | JWT | multipart `file` (11MB) + `mediaType` ('image'\|'voice'\|'gif'\|'file'\|'avatar') + `duration?` + `expiresIn?` + `fileName?` | `{ mediaUrl }`, voice adds `mediaDuration`, file adds `fileName` |
-| GET | `/media/msgs/:filename` | JWT | Served via Nginx `X-Accel-Redirect` from `MEDIA_DIR/msgs` in production | Encrypted blob |
-| GET | `/media/avatars/:filename` | -- | Public avatar file | JPEG/PNG |
-| POST | `/messages/link-preview` | JWT | `{ text }` | `{ url, title, imageUrl }` or `{}` |
-| POST | `/notes` | JWT | `{ ciphertext, expiresIn }` | `{ token }` |
-| GET | `/note/:token` | None | -- | HTML page (landing/revealed/destroyed) |
-| POST | `/note/:token/reveal` | None | -- | `{ ciphertext }` or 404 |
-
-**Password:** 8+ chars, 1 uppercase, 1 lowercase, 1 number. **Login:** username or `username#tag`. **JWT:** `{ sub: userId, username, tag }` (no `profilePictureUrl`). **Rate limits:** Login 5/15min, Register 3/h, Image 10/min, Voice 10/60s, LinkPreview 30/min.
-
----
-
-## 8. Key Features & Behaviors
-
-### State Management
-
-**Connect flow (ConnectionProvider):** cancel reconnect -> determine isReconnect (`_currentUserId == userId`) -> if not reconnect: clearAll on sub-providers -> call `onConnect(isReconnect)` on each -> set emit callbacks -> create socket with `enableForceNew()` -> `_registerEventListeners()` routes ~35 events to sub-providers -> on socket 'connect': initializeE2E + fetch conversations/friendRequests/friends/blocked.
-
-**Optimistic messaging:** Create temp message (id=-timestamp, SENDING, tempId) -> `notifyListeners` -> encrypt async -> emit `sendMessage` -> backend returns `messageSent` with tempId -> replace temp with real.
-
-**Blocking state:** `_blockedUsers` = blocked **by me**. `_blockedByUserIds` (Set) = users who blocked **me** (from `youWereBlocked` push). Cleared on every socket connect (fresh and reconnect) — server does not replay `youWereBlocked` on reconnect. Public getter `blockedByUserIds` returns `Set.unmodifiable(_blockedByUserIds)`. On `youWereBlocked`: add to set, remove from friends, remove conversations, clear active chat. When receiving `friendsList`, frontend removes all friend IDs from `_blockedByUserIds` so after unblock + re-add the "can't message" banner disappears. Backend: on block, conversation and messages between blocker and blocked are deleted (fresh chat after unblock + re-add).
-
-**Reconnection:** `ChatReconnectManager`: exponential backoff capped at 30s, max 5 attempts, only when `intentionalDisconnect == false`.
-
-**Key patterns:** `consumePendingOpen()` (backend emits `openConversation` -> provider stores ID -> screen consumes + navigates). `consumeFriendRequestSent()` (same for friend request -> snackbar + pop). `consumePendingFriendAccepted()` (when we sent request and other accepts -> MainShell shows snackbar).
-
-### E2E Encryption (Signal Protocol)
-
-`libsignal_protocol_dart` v0.7.4 + `flutter_secure_storage`. **All message types encrypted** (text, ping, voice, image, gif, file). X3DH key agreement -> Double Ratchet. Single-device (deviceId=1). TOFU verification. **Message media** (image/voice/gif/file): plaintext is encrypted with **AES-256-GCM** in a `compute()` isolate (`MediaCryptoService`), uploaded as opaque `.bin` to `POST /media/upload`; **mediaKey** + **mediaIv** (base64) travel only inside the Signal envelope. Avatars are **not** envelope-encrypted (JPEG/PNG on disk, like typical messengers). Legacy Cloudinary URLs without `mediaKey` still load as direct URLs.
-
-**E2E Envelope:** `{ content, messageType?, mediaUrl?, mediaDuration?, mediaKey?, mediaIv?, linkPreview? }` — `messageType` defaults to `TEXT` when absent (backward compat). Server stores encrypted payloads as `messageType=TEXT`, `mediaUrl=null` — blind to real type.
-
-**Send (media):** optimistic message -> `MediaCryptoService.encrypt` -> set `_pendingSendContent` key+IV -> `ApiService.uploadEncryptedMedia` -> `_encryptAndSend` with envelope fields -> Signal encrypt -> `sendMessage` with `encryptedContent` only. **Receive:** Signal decrypt -> `E2eEnvelope.parse()` -> `MessageModel.copyWith` including `mediaKey`/`mediaIv` -> widgets fetch URL and AES-decrypt locally. Link preview for TEXT unchanged. **No fallback:** if E2E not ready or encryption fails, message is marked as failed (no unencrypted sending).
-
-**Ciphertext format:** `"{type}:{base64}"` (type 3 = PreKeySignalMessage, type 1 = SignalMessage). Server stores in `encryptedContent`, stores `"[encrypted]"` as `content` placeholder.
-
-**Keys:** 100 one-time pre-keys per batch. `preKeysLow` when < 10 -> auto-replenish. Backend: zero-knowledge pass-through (stores public material only).
-
-### Username#Tag (Discord-style)
-
-4-digit tag (1000-9999), random at registration. **Username is unique** (case-insensitive). Display: Settings shows `username#tag`, Contacts/Conversations/chat header show username only. Tap avatar in chat -> reveals `username#tag` for 5s (tag in accent color). Login: username or `username#tag`.
-
-### Disappearing Messages
-
-Three-layer: (1) Frontend `removeExpiredMessages()` every 1s, (2) Backend filters on `getMessages`, (3) optional TTL for Cloudinary legacy; self-hosted blobs rely on DB `expiresAt` + `MediaCleanupService` cron/orphan cleanup. Default 86400s (1 day). `null` = disabled. Timer starts on DELIVERY.
-
-### Voice Messages
-
-Hold-to-record mic, drag to trash to cancel. Optimistic UI -> encrypt bytes -> `POST /media/upload` (voice) -> URL in envelope + mediaKey/mediaIv -> WebSocket. Playback: `PlaybackController` fetches URL, decrypts if keys present; native cache file `${messageId}.audio` (legacy `.m4a` still read). Web: object URL from decrypted bytes. Scrubbable waveform, speed 1x/1.5x/2x.
-
-### Delete Actions
+**Delete actions:**
 
 | Action | Deletes | Friend? | Event |
 |---|---|---|---|
@@ -439,39 +338,29 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> encrypt bytes -> `
 | Delete for me (long-press msg) | Hidden for current user | Kept | `deleteMessage` mode=for_me |
 | Delete for everyone (own msg) | Hard-deleted for both | Kept | `deleteMessage` mode=for_everyone |
 
-### Other Features
+---
 
-- **Reactions:** Long-press message -> 6 emoji picker. Max 1 per user. `reactions` column (JSON). `addReaction`/`removeReaction` events.
-- **Tap-to-expand media:** Image and GIF bubbles open a fullscreen dialog on tap (transparent overlay, pinch-zoom via InteractiveViewer). Tap outside to close. Documents (FILE): tap opens mediaUrl in external app.
-- **Typing indicators:** 300ms debounce, 3s auto-clear. Backend relay only (no DB). `typing` -> `partnerTyping`.
-- **Unread badge:** Backend `countUnreadForRecipient()`. Frontend `_unreadCounts` map.
-- **Link preview:** E2E: client fetches OG before encrypting, stores in envelope; recipient decrypts and displays. On web, client uses `POST /messages/link-preview` backend proxy (CORS blocks direct fetch). Unencrypted: server fetches, `linkPreviewReady` event. SSRF: `isSafeImageUrl` on og:image (frontend + backend); frontend validates when restoring from persisted decrypted content.
-- **Image messages:** Optimistic UI -> encrypt -> `POST /media/upload` (image) -> `_encryptAndSend` with URL + mediaKey/mediaIv. `ImageMessageContent` fetches bytes and decrypts for display. Fullscreen `Image.memory`.
-- **File (document) messages:** Picker -> encrypt -> `POST /media/upload` (file) with `fileName`. Encrypted path: fetch + decrypt + `saveBytesAsDownload`; legacy: `downloadFile(url)`.
-- **Ping:** Encrypted via `sendMessage` (no dedicated `sendPing` event). Optimistic PING message -> `_encryptAndSend` with `messageType: 'PING'`. Uses conversation's `disappearingTimer`. Recipient sees ping effect after decrypting envelope.
-- **Push (FCM):** Silent payload (no content). Gracefully disabled without `FIREBASE_SERVICE_ACCOUNT`. Firebase config in gitignored `firebase_secrets.dart` / `firebase-config.js`.
-- **3 themes:** Light, Dark (Wire-style gray), Blue (Telegram-style: dark blue background #17212B, blue accent #2AABEE, sent bubble #2481CC, received #2B2B2B). Default for new users: Dark. `FireplaceColors` ThemeExtension.
-- **App language:** Polish (default) or English. Settings tile "Language" (Język) with Polski / English toggle; choice persisted in SharedPreferences (`locale_preference`). Flutter l10n: `lib/l10n/app_pl.arb`, `app_en.arb`; generated `app_localizations.dart`; `MaterialApp` uses `locale` from `SettingsProvider`, `supportedLocales` (pl, en), `localizationsDelegates`. Settings screen and main shell tab labels use `AppLocalizations.of(context)`.
-- **GIF messages:** Giphy download → encrypt → `POST /media/upload` (gif). Web: blob object URL + `Image.network` for animation; native: `Image.memory`. Tap fullscreen as before. API key via `--dart-define=GIPHY_API_KEY=...`.
-- **Friend auto-accept:** If B has pending request to A when A sends to B -> auto-accept, create conversation, emit `openConversation` to A only (B gets lists, no auto-open).
+## 7. Frontend Screens & Widgets
+
+**Navigation:** AuthGate → AuthScreen OR MainShell (IndexedStack: Conversations, Contacts, Settings). Desktop >600px: sidebar+detail layout.
+
+**Screen gotchas:**
+- `AuthScreen`: `clearStatus()` on tab switch — DO NOT DELETE (called from auth_screen.dart, appears unused in providers)
+- `ConversationsScreen`: `consumePendingOpen()` after `startConversation` resolves
+- `ChatDetailScreen`: Timer.periodic 1s for expired msgs; `markConversationRead` on open
+- `AddOrInvitationsScreen`: auto-send if 1 search result, picker if multiple; `consumeFriendRequestSent()`
+
+**Widget gotchas:**
+- Old top-level `chat_message_bubble.dart`, `chat_input_bar.dart`, `voice_message_bubble.dart` are re-export shims — do not delete
+- `ConversationTile`: calls `MessagingProvider.onConversationDeleted` **and** optimistically removes row before socket ack — both must happen in the same gesture or dismiss animation gets stuck with stuck red background
+- `ChatInputBar`: `minLines:1/maxLines:6` prevents chat `Column` overflow on long drafts
+- `ChatBackgroundPattern`: radius snapped to device pixels to prevent moiré at high DPR
+
+**Models:** `UserModel` (`displayHandle` getter), `ConversationModel` (immutable), `MessageModel` (`copyWith` for status/content/media). Frontend-only: `MessageDeliveryStatus.failed`.
 
 ---
 
-## 9. Frontend Screens & Widgets
-
-**Navigation:** AuthGate -> AuthScreen (login/register) OR MainShell (IndexedStack: Conversations, Contacts, Settings). Desktop >600px: sidebar+detail layout.
-
-**Key screens:** AuthScreen (`clearStatus()` on tab switch — DO NOT DELETE), MainShell (consumes `consumePendingFriendAccepted()` for snackbar), ConversationsScreen (swipe-to-delete, `consumePendingOpen()`), ChatDetailScreen (Timer.periodic 1s for expired msgs, `markConversationRead` on open), AddOrInvitationsScreen (searchUsers -> auto-send if 1 result, picker if multiple, `consumeFriendRequestSent()`), ContactsScreen (consumes `pendingOpenConversationId` and navigates to chat when user tapped contact and `startConversation` returned), PrivacySafetyScreen (E2E info: UI states all messages are encrypted; identity fingerprint).
-
-**Key widgets:** `ChatInputBar` (re-export shim → `widgets/input/chat_input_bar.dart`; orchestrates `RecordingController` + `ReplyPreviewBar` + `AttachmentHandler`; text field `minLines: 1` / `maxLines: 6` so long drafts scroll inside the field and the chat `Column` does not overflow; + send button + mic hold-to-record). `ChatMessageBubble` (re-export shim → `widgets/message/chat_message_bubble.dart`; wrapper: alignment, gesture (long-press reactions, swipe reply), reply quote, `MessageContentFactory.build()`, `MessageMetadataRow`, reactions overlay; Telegram-style: intrinsic width, short narrow / long up to 85%, Wire-style rounded corners no tail, padding 16,10,16,8, margin bottom 10, colors per theme). `MessageContentFactory` — switch on `MessageType` → `TextMessageContent` (text + link preview card) / `ImageMessageContent` (fullscreen on tap) / `GifMessageContent` (fullscreen on tap) / `FileMessageContent` (icon + filename, opens URL) / `PingMessageContent` / `VoiceMessageContent` (→ `PlaybackController` + `WaveformDisplay`). `ChatActionTiles` (Camera/Gallery/Ping/Timer/Clear/Anti-Quantum Note; localized). `ChatBackgroundPattern` (subtle dot pattern; centers + radius snapped to device pixels so spacing×DPR moiré does not brighten some columns). `ConversationTile` (Dismissible swipe-delete; `ValueKey(conv.id)` on tile; `deleteConversation` removes the row **optimistically** before the socket ack so the list stays in sync with the dismiss animation — otherwise the tile could rebuild with a stuck red `background`; `ConversationsScreen` also calls `MessagingProvider.onConversationDeleted` in the same gesture; unread badge). `TopSnackbar` (never use ScaffoldMessenger). `AvatarCircle`. `AntiQuantumNoteDialog` (bottom sheet, one-time secret note, TTL presets).
-
-**Models:** `UserModel` (`displayHandle` getter), `ConversationModel` (immutable), `MessageModel` (`copyWith` for status/content/media), `FriendRequestModel`. Frontend-only: `MessageDeliveryStatus.failed`.
-
-**Provider tests:** Frontend has unit tests for `ConversationsProvider` (connect lifecycle, removeConversationsForUser, optimistic `deleteConversation`, no-flicker reconnect), `FriendsProvider` (connect lifecycle, blocking flows, `onYouWereBlocked`, `onBlockedList`), and `MessagingProvider` (`messaging_provider_cache_test.dart` — cache lifecycle; `messaging_provider_test.dart` — `loadOlderMessages` pagination). See `frontend/test/providers/`.
-
----
-
-## 10. Environment & Config
+## 8. Environment & Config
 
 | Variable | Required | Purpose |
 |---|---|---|
@@ -491,16 +380,15 @@ Hold-to-record mic, drag to trash to cancel. Optimistic UI -> encrypt bytes -> `
 
 ---
 
-## 11. Known Limitations
+## 9. Known Limitations
 
-- E2E: all types encrypted. **Media:** AES-256-GCM per file + Signal envelope carries key/IV + self-hosted `.bin` URL. Legacy Cloudinary media (no `mediaKey` in envelope) still loads via direct URL. GIFs on web use blob URLs. No multi-device, no key recovery; conversation list shows "Encrypted message". Own history can show `[encrypted]` if storage evicted. Decrypt paths enforce **20 MB** before `MediaCryptoService.decrypt()`.
+- E2E: no multi-device, no key recovery. Legacy Cloudinary media (no `mediaKey`) loads via direct URL. 20MB decrypt limit enforced before `MediaCryptoService.decrypt()`. Own history shows `[encrypted]` if storage evicted.
 - No message edit, no fuzzy search, no iOS APNs
 - No unique constraint on `(sender, receiver)` in friend_requests
-- Pagination: message history uses `loadOlderMessages()` / `_hasMore` / `_paginationOffset` in `MessagingProvider`; conversation list still N+1 in `_conversationsWithUnread()` (batch queries planned)
-- Large files: `messaging_provider.dart` (messaging + E2E); `chat-friend-request.service.ts`, `chat-message.service.ts`
+- Large files: `messaging_provider.dart`, `chat-friend-request.service.ts`, `chat-message.service.ts`
 - Migration scripts in `backend/scripts/` (manual)
-- Metadata: server stores who, with whom, when, conversation structure (see `docs/METADATA.md`); design for future options in `docs/plans/2026-03-11-metadata-privacy-design.md`
-- `secret_notes` table uses `synchronize: true` auto-creation — fine for dev, requires `NODE_ENV=development` in docker-compose
+- Metadata: server stores who/with-whom/when (see `docs/METADATA.md`); future privacy options in `docs/plans/2026-03-11-metadata-privacy-design.md`
+- `secret_notes` table: `synchronize: true` auto-creation — requires `NODE_ENV=development` in docker-compose
 
 ---
 
