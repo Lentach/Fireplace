@@ -513,6 +513,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                                 msg.createdAt,
                               );
                           return Column(
+                            key: ValueKey(msg.id),
                             children: [
                               if (showDate) MessageDateSeparator(date: msg.createdAt),
                               if (showDate) const SizedBox(height: 8),
