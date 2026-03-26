@@ -2110,6 +2110,7 @@ class MessagingProvider extends ChangeNotifier {
       _typingTimers.clear();
       _partnerRecordingVoice.clear();
       _replyingToMessage = null;
+      _pendingSendContent.clear(); // retry was cancelled; orphaned entries serve no purpose
       _cancelDelayedRetryIfAny();
     }
 

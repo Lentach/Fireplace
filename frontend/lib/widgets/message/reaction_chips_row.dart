@@ -19,22 +19,29 @@ class ReactionChipsRow extends StatelessWidget {
         .where((e) => e.value.isNotEmpty)
         .map((e) {
           final isMine = e.value.contains(currentUserId);
-          return GestureDetector(
-            onTap: () => onTap(e.key, isMine),
-            child: Container(
-              padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-              decoration: BoxDecoration(
-                color: isMine
-                    ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
-                    : Theme.of(context).colorScheme.surface,
-                borderRadius: BorderRadius.circular(12),
-                border: Border.all(
+          return Semantics(
+            label: isMine
+                ? 'Remove ${e.key} reaction (${e.value.length})'
+                : 'React with ${e.key} (${e.value.length})',
+            button: true,
+            excludeSemantics: true,
+            child: GestureDetector(
+              onTap: () => onTap(e.key, isMine),
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                decoration: BoxDecoration(
                   color: isMine
-                      ? Theme.of(context).colorScheme.primary
-                      : Theme.of(context).colorScheme.outline.withValues(alpha: 0.4),
+                      ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
+                      : Theme.of(context).colorScheme.surface,
+                  borderRadius: BorderRadius.circular(12),
+                  border: Border.all(
+                    color: isMine
+                        ? Theme.of(context).colorScheme.primary
+                        : Theme.of(context).colorScheme.outline.withValues(alpha: 0.4),
+                  ),
                 ),
+                child: Text('${e.key} ${e.value.length}', style: const TextStyle(fontSize: 12)),
               ),
-              child: Text('${e.key} ${e.value.length}', style: const TextStyle(fontSize: 12)),
             ),
           );
         }).toList();

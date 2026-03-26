@@ -1,7 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 
 const PRIVATE_IP_RE =
-  /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|::1|fc00:|fd)/i;
+  /^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|169\.254\.|::1|fc00:|fd|fe80:)/i;
 
 function extractFirstUrl(text: string): string | null {
   const match = text.match(/https?:\/\/[^\s<>"{}|\\^`[\]]+/i);

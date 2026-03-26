@@ -4,6 +4,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  MinLength,
   validateSync,
 } from 'class-validator';
 
@@ -36,6 +37,7 @@ export class EnvironmentVariables {
   DB_NAME: string = 'chatdb';
 
   @IsString()
+  @MinLength(32, { message: 'JWT_SECRET must be at least 32 characters' })
   JWT_SECRET: string;
 
   @IsString()

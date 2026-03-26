@@ -5,6 +5,7 @@ import {
   CreateDateColumn,
   ManyToOne,
   JoinColumn,
+  Index,
 } from 'typeorm';
 import { User } from '../users/user.entity';
 import { Conversation } from '../conversations/conversation.entity';
@@ -25,6 +26,7 @@ export enum MessageType {
   FILE = 'FILE',
 }
 
+@Index('idx_messages_conv_created', ['conversation', 'createdAt'])
 @Entity('messages')
 export class Message {
   @PrimaryGeneratedColumn()
