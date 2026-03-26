@@ -487,6 +487,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                       child: ListView.builder(
                         reverse: true,
                         controller: _scrollController,
+                        // Required alongside ValueKey(msg.id): tells the sliver where
+                        // a keyed child moved after itemCount changes (e.g. new message
+                        // prepended at visual bottom). Without this, Flutter falls back
+                        // to positional matching and remounts all image/GIF widgets.
+                        findChildIndexCallback: (Key key) {
+                          if (key is ValueKey<int>) {
+                            final idx = messages.indexWhere((m) => m.id == key.value);
+                            if (idx == -1) return null;
+                            return messages.length - 1 - idx;
+                          }
+                          return null;
+                        },
                         padding: const EdgeInsets.only(
                           left: 16,
                           right: 20,
