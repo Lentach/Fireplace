@@ -5,6 +5,9 @@ import '../../models/message_model.dart';
 import '../../services/link_preview_service.dart';
 import '../../theme/rpg_theme.dart';
 
+/// Key for the time-overlay [Stack] in [TextMessageContent] (tests / debugging).
+const Key kTextMessageTimeOverlayStackKey = Key('text-message-time-overlay-stack');
+
 /// Content widget for TEXT message type, including link detection and link preview card.
 class TextMessageContent extends StatelessWidget {
   final MessageModel message;
@@ -12,6 +15,7 @@ class TextMessageContent extends StatelessWidget {
   final Color textColor;
   final bool isDark;
   final double maxWidth;
+  final Widget? timeOverlay;
 
   const TextMessageContent({
     super.key,
@@ -20,6 +24,7 @@ class TextMessageContent extends StatelessWidget {
     required this.textColor,
     required this.isDark,
     required this.maxWidth,
+    this.timeOverlay,
   });
 
   Widget _buildTextWithLinks(BuildContext context) {
@@ -27,7 +32,6 @@ class TextMessageContent extends StatelessWidget {
     final urlRegex = RegExp(r'https?://[^\s]+', caseSensitive: false);
     final spans = <InlineSpan>[];
     int last = 0;
-    // On sent (blue) bubbles use light link color for contrast; on received use theme primary
     final linkColor = isMine ? textColor : Theme.of(context).colorScheme.primary;
 
     for (final match in urlRegex.allMatches(text)) {
@@ -40,12 +44,11 @@ class TextMessageContent extends StatelessWidget {
       final url = match.group(0)!;
       spans.add(TextSpan(
         text: url,
-        style: RpgTheme.bodyFont(
-          fontSize: 14,
-          color: linkColor,
-        ).copyWith(decoration: TextDecoration.underline),
+        style: RpgTheme.bodyFont(fontSize: 14, color: linkColor)
+            .copyWith(decoration: TextDecoration.underline),
         recognizer: TapGestureRecognizer()
-          ..onTap = () => launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+          ..onTap = () =>
+              launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
       ));
       last = match.end;
     }
@@ -56,16 +59,9 @@ class TextMessageContent extends StatelessWidget {
       ));
     }
 
-    final textAlign = isMine ? TextAlign.right : TextAlign.left;
-    if (spans.isEmpty) {
-      return Text(
-        text,
-        style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
-        textAlign: textAlign,
-      );
-    }
     return RichText(
-      textAlign: textAlign,
+      textAlign: isMine ? TextAlign.right : TextAlign.left,
+      textWidthBasis: TextWidthBasis.longestLine,
       text: TextSpan(children: spans),
     );
   }
@@ -74,7 +70,6 @@ class TextMessageContent extends StatelessWidget {
     final cardBg = isDark
         ? Colors.white.withValues(alpha: 0.06)
         : Colors.black.withValues(alpha: 0.04);
-    // URL line: on sent (blue) bubble use textColor for contrast; on received use muted
     final urlColor = isMine
         ? textColor
         : (isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight);
@@ -146,19 +141,44 @@ class TextMessageContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Column(
+    final hasOverlay = timeOverlay != null;
+
+    final textWidget = ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: _buildTextWithLinks(context),
+    );
+
+    final content = Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment:
+          isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
       children: [
-        ConstrainedBox(
-          constraints: BoxConstraints(maxWidth: maxWidth),
-          child: _buildTextWithLinks(context),
-        ),
+        textWidget,
         if (message.linkPreviewUrl != null)
           Align(
             alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
             child: _buildLinkPreviewCard(context),
           ),
+      ],
+    );
+
+    if (!hasOverlay) return content;
+
+    return Stack(
+      key: kTextMessageTimeOverlayStackKey,
+      children: [
+        ConstrainedBox(
+          constraints: const BoxConstraints(minWidth: 66),
+          child: Padding(
+            padding: const EdgeInsets.only(bottom: 16),
+            child: content,
+          ),
+        ),
+        Positioned(
+          bottom: 0,
+          right: 0,
+          child: timeOverlay!,
+        ),
       ],
     );
   }

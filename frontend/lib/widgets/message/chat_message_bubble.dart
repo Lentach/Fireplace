@@ -14,6 +14,8 @@ import 'reaction_chips_row.dart';
 export 'reaction_chips_row.dart' show ReactionChipsRow;
 
 class ChatMessageBubble extends StatelessWidget {
+  static const double _kTimeRowWidth = 88.0;
+
   final MessageModel message;
   final bool isMine;
 
@@ -179,6 +181,7 @@ class ChatMessageBubble extends StatelessWidget {
     Color textColor,
     Color borderColor, {
     required double contentAreaWidth,
+    Widget? timeOverlay,
   }) {
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -195,6 +198,7 @@ class ChatMessageBubble extends StatelessWidget {
           isDark: isDark,
           textColor: textColor,
           contentAreaWidth: contentAreaWidth,
+          timeOverlay: timeOverlay,
         ),
         Builder(
           builder: (ctx) {
@@ -256,11 +260,139 @@ class ChatMessageBubble extends StatelessWidget {
                 builder: (context, layoutConstraints) {
                   final maxBubbleWidth = layoutConstraints.maxWidth * 0.85;
                   final contentAreaWidth = maxBubbleWidth - 32;
-                  const timeRowWidth = 88.0;
-                  final maxContentWidthInline = contentAreaWidth - 6 - timeRowWidth;
 
-                  final displayContent = _displayContent(context);
-                  final isShortMessage = _isShortMessage(displayContent);
+                  final isMediaMessage = message.messageType == MessageType.gif ||
+                      message.messageType == MessageType.image;
+                  final useTextOverlay = message.messageType == MessageType.text &&
+                      message.linkPreviewUrl == null;
+
+                  final standardTimeWidget = MessageMetadataRow(
+                    message: message,
+                    isMine: isMine,
+                    timeColor: timeColor,
+                  );
+
+                  final mediaTimeOverlay = Positioned(
+                    bottom: 8,
+                    right: 8,
+                    child: Container(
+                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 3),
+                      decoration: BoxDecoration(
+                        color: Colors.black.withValues(alpha: 0.45),
+                        borderRadius: BorderRadius.circular(10),
+                      ),
+                      child: MessageMetadataRow(
+                        message: message,
+                        isMine: isMine,
+                        timeColor: Colors.white.withValues(alpha: 0.9),
+                      ),
+                    ),
+                  );
+
+                  Widget child;
+
+                  if (isMediaMessage) {
+                    child = Stack(
+                      children: [
+                        _buildContentColumn(
+                          context,
+                          isDark,
+                          textColor,
+                          borderColor,
+                          contentAreaWidth: contentAreaWidth,
+                        ),
+                        mediaTimeOverlay,
+                      ],
+                    );
+                  } else if (useTextOverlay) {
+                    final displayContent = _displayContent(context);
+                    if (_isShortMessage(displayContent)) {
+                      final maxContentWidthInline =
+                          contentAreaWidth - 6 - _kTimeRowWidth;
+                      child = Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Flexible(
+                            fit: FlexFit.loose,
+                            child: ConstrainedBox(
+                              constraints: BoxConstraints(
+                                  maxWidth: maxContentWidthInline),
+                              child: _buildContentColumn(
+                                context,
+                                isDark,
+                                textColor,
+                                borderColor,
+                                contentAreaWidth: maxContentWidthInline,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          standardTimeWidget,
+                        ],
+                      );
+                    } else {
+                      child = _buildContentColumn(
+                        context,
+                        isDark,
+                        textColor,
+                        borderColor,
+                        contentAreaWidth: contentAreaWidth,
+                        timeOverlay: standardTimeWidget,
+                      );
+                    }
+                  } else {
+                    final displayContent = _displayContent(context);
+                    final isShortMessage = _isShortMessage(displayContent);
+
+                    if (isShortMessage) {
+                      final maxContentWidthInline =
+                          contentAreaWidth - 6 - _kTimeRowWidth;
+                      child = Row(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment: CrossAxisAlignment.end,
+                        children: [
+                          Flexible(
+                            fit: FlexFit.loose,
+                            child: ConstrainedBox(
+                              constraints:
+                                  BoxConstraints(maxWidth: maxContentWidthInline),
+                              child: _buildContentColumn(
+                                context,
+                                isDark,
+                                textColor,
+                                borderColor,
+                                contentAreaWidth: maxContentWidthInline,
+                              ),
+                            ),
+                          ),
+                          const SizedBox(width: 6),
+                          standardTimeWidget,
+                        ],
+                      );
+                    } else {
+                      child = Column(
+                        mainAxisSize: MainAxisSize.min,
+                        crossAxisAlignment:
+                            isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+                        children: [
+                          _buildContentColumn(
+                            context,
+                            isDark,
+                            textColor,
+                            borderColor,
+                            contentAreaWidth: contentAreaWidth,
+                          ),
+                          const SizedBox(height: 4),
+                          Align(
+                            alignment:
+                                isMine ? Alignment.centerRight : Alignment.centerLeft,
+                            child: standardTimeWidget,
+                          ),
+                        ],
+                      );
+                    }
+                  }
 
                   return ConstrainedBox(
                     constraints: BoxConstraints(maxWidth: maxBubbleWidth),
@@ -271,60 +403,16 @@ class ChatMessageBubble extends StatelessWidget {
                         bottom: 10,
                       ),
                       decoration: BoxDecoration(
-                        color: bubbleColor,
+                        color: isMediaMessage ? Colors.transparent : bubbleColor,
                         borderRadius: BorderRadius.circular(16),
                       ),
-                      padding: const EdgeInsets.fromLTRB(16, 10, 16, 8),
-                      child: isShortMessage
-                          ? Row(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment: CrossAxisAlignment.end,
-                              children: [
-                                Flexible(
-                                  fit: FlexFit.loose,
-                                  child: ConstrainedBox(
-                                    constraints: BoxConstraints(maxWidth: maxContentWidthInline),
-                                    child: _buildContentColumn(
-                                      context,
-                                      isDark,
-                                      textColor,
-                                      borderColor,
-                                      contentAreaWidth: maxContentWidthInline,
-                                    ),
-                                  ),
-                                ),
-                                const SizedBox(width: 6),
-                                MessageMetadataRow(
-                                  message: message,
-                                  isMine: isMine,
-                                  timeColor: timeColor,
-                                ),
-                              ],
-                            )
-                          : Column(
-                              mainAxisSize: MainAxisSize.min,
-                              crossAxisAlignment:
-                                  isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
-                              children: [
-                                _buildContentColumn(
-                                  context,
-                                  isDark,
-                                  textColor,
-                                  borderColor,
-                                  contentAreaWidth: contentAreaWidth,
-                                ),
-                                const SizedBox(height: 4),
-                                Align(
-                                  alignment:
-                                      isMine ? Alignment.centerRight : Alignment.centerLeft,
-                                  child: MessageMetadataRow(
-                                    message: message,
-                                    isMine: isMine,
-                                    timeColor: timeColor,
-                                  ),
-                                ),
-                              ],
-                            ),
+                      clipBehavior: isMediaMessage ? Clip.hardEdge : Clip.none,
+                      padding: isMediaMessage
+                          ? (message.replyTo != null
+                              ? const EdgeInsets.only(top: 8, left: 12, right: 12)
+                              : EdgeInsets.zero)
+                          : const EdgeInsets.fromLTRB(16, 10, 16, 8),
+                      child: child,
                     ),
                   );
                 },

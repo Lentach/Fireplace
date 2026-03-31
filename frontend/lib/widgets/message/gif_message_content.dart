@@ -81,11 +81,15 @@ class _GifMessageContentState extends State<GifMessageContent> {
     final key = widget.message.mediaKey;
     final iv = widget.message.mediaIv;
     if (key != null && iv != null) {
-      bytes = await MediaCryptoService().decrypt(
-        Uint8List.fromList(raw),
-        key,
-        iv,
-      );
+      try {
+        bytes = await MediaCryptoService().decrypt(
+          Uint8List.fromList(raw),
+          key,
+          iv,
+        );
+      } catch (_) {
+        return const _GifDisplay.error();
+      }
     } else {
       bytes = Uint8List.fromList(raw);
     }
@@ -139,18 +143,20 @@ class _GifMessageContentState extends State<GifMessageContent> {
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
           return const SizedBox(
-            width: 150,
-            height: 150,
+            width: double.infinity,
+            height: 220,
             child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           );
         }
         final d = snap.data;
         if (d == null || d.isError) {
-          return Container(
-            width: 150,
-            height: 150,
-            color: Theme.of(context).colorScheme.surfaceContainerHighest,
-            child: const Icon(Icons.broken_image, size: 48),
+          return SizedBox(
+            width: double.infinity,
+            height: 220,
+            child: ColoredBox(
+              color: Theme.of(context).colorScheme.surfaceContainerHighest,
+              child: const Center(child: Icon(Icons.broken_image, size: 48)),
+            ),
           );
         }
 
@@ -158,38 +164,42 @@ class _GifMessageContentState extends State<GifMessageContent> {
         if (d.networkUrl != null) {
           preview = Image.network(
             d.networkUrl!,
-            fit: BoxFit.contain,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: 220,
             loadingBuilder: (context, child, loadingProgress) {
               if (loadingProgress == null) return child;
               return const SizedBox(
-                width: 150,
-                height: 150,
+                width: double.infinity,
+                height: 220,
                 child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
               );
             },
-            errorBuilder: (context, error, stackTrace) => Container(
-              width: 150,
-              height: 150,
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              child: const Icon(Icons.broken_image, size: 48),
+            errorBuilder: (context, error, stackTrace) => SizedBox(
+              width: double.infinity,
+              height: 220,
+              child: ColoredBox(
+                color: Theme.of(context).colorScheme.surfaceContainerHighest,
+                child: const Center(child: Icon(Icons.broken_image, size: 48)),
+              ),
             ),
           );
         } else {
           preview = Image.memory(
             d.memoryBytes!,
-            fit: BoxFit.contain,
+            fit: BoxFit.cover,
+            width: double.infinity,
+            height: 220,
             gaplessPlayback: true,
           );
         }
 
         return GestureDetector(
           onTap: () => _showFullscreen(context, d),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 200),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: preview,
-            ),
+          child: SizedBox(
+            width: double.infinity,
+            height: 220,
+            child: preview,
           ),
         );
       },

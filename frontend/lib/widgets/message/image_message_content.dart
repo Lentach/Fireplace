@@ -60,8 +60,12 @@ class _ImageMessageContentState extends State<ImageMessageContent> {
     final key = widget.message.mediaKey;
     final iv = widget.message.mediaIv;
     if (key != null && iv != null) {
-      final service = MediaCryptoService();
-      return service.decrypt(Uint8List.fromList(raw), key, iv);
+      try {
+        final service = MediaCryptoService();
+        return service.decrypt(Uint8List.fromList(raw), key, iv);
+      } catch (_) {
+        return null;
+      }
     }
     return Uint8List.fromList(raw);
   }
@@ -90,31 +94,35 @@ class _ImageMessageContentState extends State<ImageMessageContent> {
       builder: (context, snap) {
         if (snap.connectionState != ConnectionState.done) {
           return const SizedBox(
-            width: 200,
-            height: 150,
+            width: double.infinity,
+            height: 220,
             child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
           );
         }
         if (snap.hasError || snap.data == null) {
-          return Padding(
-            padding: const EdgeInsets.all(8.0),
-            child: Text(
-              AppLocalizations.of(context).imageFailedToLoad,
-              style: RpgTheme.bodyFont(fontSize: 12, color: Colors.red),
+          return SizedBox(
+            width: double.infinity,
+            height: 220,
+            child: Padding(
+              padding: const EdgeInsets.all(8.0),
+              child: Text(
+                AppLocalizations.of(context).imageFailedToLoad,
+                style: RpgTheme.bodyFont(fontSize: 12, color: Colors.red),
+              ),
             ),
           );
         }
         final bytes = snap.data!;
         return GestureDetector(
           onTap: () => _showFullscreen(context, bytes),
-          child: ConstrainedBox(
-            constraints: const BoxConstraints(maxWidth: 200),
-            child: ClipRRect(
-              borderRadius: BorderRadius.circular(8),
-              child: Image.memory(
-                bytes,
-                fit: BoxFit.contain,
-              ),
+          child: SizedBox(
+            width: double.infinity,
+            height: 220,
+            child: Image.memory(
+              bytes,
+              fit: BoxFit.cover,
+              width: double.infinity,
+              height: 220,
             ),
           ),
         );

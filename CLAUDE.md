@@ -25,7 +25,7 @@ cd frontend && flutter run -d chrome
 ```
 
 **Before start:** Kill stale node processes: `taskkill //F //IM node.exe`
-**Low C: disk workaround:** `cd frontend && .\run_android_on_x.ps1` (uses Gradle/TEMP on `X:` and ensures `frontend/build` is a junction to `X:\fireplace-build\frontend-build`; keep default Pub cache path).
+**Low C: disk workaround:** `cd frontend && .\run_android_on_x.ps1` (sets `GRADLE_USER_HOME` + `TEMP`/`TMP` on `X:`, junction `frontend/build` → `X:\fireplace-build\frontend-build`; keep default Pub cache on `C:`). **Device:** `.\run_android_on_x.ps1 -DeviceId emulator-5554` (do not use `-d` here — PowerShell/flutter shim can misparse it as “Target file … not found”). Plain `flutter run` for Android still uses `%USERPROFILE%\.gradle` on `C:`; `flutter clean` does **not** clear it — corrupt `metadata.bin` there needs cache delete or using this script / `GRADLE_USER_HOME=X:\gradle-home`.
 
 **Ports:** Backend :3000 | Frontend :random (check terminal) | DB :5433 (host) -> :5432 (container)
 
@@ -33,7 +33,7 @@ cd frontend && flutter run -d chrome
 
 **Phone (same WiFi):** `cd frontend && .\run_web_for_phone.ps1` or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`
 
-**Tests:** `cd backend && npm test` (214 unit tests, 27 suites, no DB required); `cd frontend && flutter test` (79 tests). Media crypto round-trip tests skip when `webcrypto:setup` was not run (e.g. no cmake on Windows); the 20MB limit test always runs (throws before native crypto).
+**Tests:** `cd backend && npm test` (214 unit tests, 27 suites, no DB required); `cd frontend && flutter test` (87 tests; includes `test/widgets/message/bubble_redesign_test.dart`). Media crypto round-trip tests skip when `webcrypto:setup` was not run (e.g. no cmake on Windows); the 20MB limit test always runs (throws before native crypto).
 
 **Production:** https://fireplace.ignorelist.com — Google Cloud e2-medium VM (Warszawa), Docker + Nginx + Let's Encrypt. Deploy: SSH to server → `~/deploy.sh` (git pull + docker build + flutter web build).
 
@@ -57,7 +57,9 @@ cd frontend && flutter run -d chrome
 - Android build outputs should stay at the default `frontend/build` path for Flutter tooling; to use `X:` storage, map `frontend/build` to `X:\fireplace-build\frontend-build` via junction.
 - Do not move `PUB_CACHE` to a different drive than the project root on Windows (`X:` vs `C:`) for Android builds; Kotlin incremental caches can fail with `IllegalArgumentException: this and base files have different roots`.
 - Android/Kotlin workaround for mixed-drive cache paths: `frontend/android/gradle.properties` sets `kotlin.incremental=false` to avoid daemon cache-close failures on Windows.
+- **Gradle “Could not read workspace metadata” under `%USERPROFILE%\.gradle\caches\8.14\transforms\... \metadata.bin`:** Corrupt or locked user Gradle cache on `C:` (often full disk, antivirus, interrupted build). **Fast bypass:** `cd frontend` → `.\run_android_on_x.ps1 -DeviceId emulator-5554` (uses `GRADLE_USER_HOME=X:\gradle-home`). **Or** before plain `flutter run`: `$env:GRADLE_USER_HOME='X:\gradle-home'` (ensure folder exists). **Repair default cache:** set `JAVA_HOME` to Android Studio JBR, `cd frontend/android` → `gradlew.bat --stop`; if deletes fail, close Android Studio and `taskkill /F /IM java.exe`; delete `%USERPROFILE%\.gradle\caches\8.14`; optionally `frontend/android/.gradle`; `flutter clean` → rebuild. **`flutter clean` alone does not fix this** — it does not remove `%USERPROFILE%\.gradle`.
 - Emulator ANR note (Android 17 / ps16k image): `System UI isn't responding` can occur in `com.android.systemui`/launcher independently of app startup; verify with `adb logcat` (`ANR in com.android.systemui`, `Input dispatching timed out`) before blaming app code.
+- **Android overscroll stretch:** Material 3’s `StretchingOverscrollIndicator` (default under `MaterialScrollBehavior`) warps the whole UI when dragging past scroll edges. `MaterialApp` sets `scrollBehavior: AppScrollBehavior()` (`theme/app_scroll_behavior.dart`) — `buildOverscrollIndicator` returns `child` only so lists still scroll but the screen no longer rubber-stretches globally.
 - Use `showTopSnackBar()` — ScaffoldMessenger covers chat input bar; pass `AppLocalizations.of(context)` strings (`snackbar*` keys in `app_en.arb` / `app_pl.arb`) — do not hardcode English for top notifications
 - Chat composer hint: `chatMessageHint` in `app_pl.arb` / `app_en.arb` (`ChatInputBar`). Chat date chips: `chatDateToday` / `chatDateYesterday` + `MaterialLocalizations.formatShortDate` for older days (`MessageDateSeparator`)
 - `enableForceNew()` on Socket.IO reconnect — Dart caches socket by URL, old JWT reused
@@ -79,6 +81,7 @@ cd frontend && flutter run -d chrome
 - To avoid startup logout flicker, `_loadSavedToken` first decodes minimal user fields (`sub/username/tag`) from JWT for immediate local auth state, then refreshes with `/users/me`
 - `_loadSavedToken`: if `fetchMe` returns 401, clear saved token/session; if network/server fails, keep token and let reconnect flow retry
 - Authenticated media fetch: `/media/msgs/` downloads use `ApiService.fetchMediaBytes(url, token)` (sends `Authorization` only for own-server URLs); legacy external URLs (e.g. Cloudinary) still fetch without auth
+- Android emulator media URL fix: backend can emit media URLs with `localhost`; `ApiService.fetchMediaBytes` rewrites loopback `/media/*` URLs to the host from `AppConfig.baseUrl` (e.g. `10.0.2.2`) before GET so GIF/image/file/voice media loads on Android emulator
 - `PlaybackController` refactor: capture JWT token once in `_loadAndPlayAudio()` and pass it explicitly to `_downloadAndCache(url, token)` (no hidden token read inside helper)
 - `ChatDetailScreen` message loading uses `MessagingProvider.getMessages(conversationId)` (single entry point)
 - Message pagination: `MessagingProvider` tracks `_hasMore/_isLoadingMore/_paginationOffset`, `loadOlderMessages()` is triggered near scroll top, and chat screen preserves visual position when prepending
@@ -212,7 +215,7 @@ flowchart TB
 | **Encryption** | `services/encryption/signal_stores.dart` (4 persistent Signal stores) |
 | **Screens** | `screens/{auth,main_shell,conversations,contacts,settings,chat_detail,add_or_invitations,privacy_safety}_screen.dart` |
 | **Widgets** | `widgets/{chat_action_tiles,conversation_tile,top_snackbar,avatar_circle,anti_quantum_note_dialog,gif_picker_sheet}.dart`; `widgets/message/{chat_message_bubble,text_message_content,image_message_content,gif_message_content,file_message_content,ping_message_content,voice_message_content,message_content_factory,message_metadata_row,reaction_chips_row}.dart`; `widgets/input/{chat_input_bar,recording_controller,attachment_handler,reply_preview_bar}.dart`; `widgets/audio/{playback_controller,waveform_display}.dart`. Old top-level `chat_message_bubble.dart`, `chat_input_bar.dart`, `voice_message_bubble.dart` are re-export shims. |
-| **Theme** | `theme/rpg_theme.dart` (`FireplaceColors` ThemeExtension) |
+| **Theme** | `theme/rpg_theme.dart` (`FireplaceColors` ThemeExtension), `theme/app_scroll_behavior.dart` (`MaterialApp` scroll behavior — no stretch overscroll) |
 | **Push** | `services/push_service.dart`, `firebase_options.dart` |
 
 ---
@@ -367,6 +370,7 @@ erDiagram
 - `ConversationTile`: calls `MessagingProvider.onConversationDeleted` **and** optimistically removes row before socket ack — both must happen in the same gesture or dismiss animation gets stuck with stuck red background
 - `ChatInputBar`: `minLines:1/maxLines:6` prevents chat `Column` overflow on long drafts
 - `ChatBackgroundPattern`: radius snapped to device pixels to prevent moiré at high DPR
+- **Chat message bubbles (Telegram-style):** Plain `MessageType.text` without `linkPreviewUrl` uses a bottom-right time overlay inside `TextMessageContent` (ghost `WidgetSpan` width ~66px + `Stack` + `Positioned`; `MessageContentFactory.build` optional `timeOverlay`). Text with link preview, ping, file: unchanged inline/below-row time from `_isShortMessage` + `MessageMetadataRow`. **GIF/image:** `GifMessageContent` / `ImageMessageContent` are full-bleed `SizedBox(width: double.infinity, height: 220)`, `BoxFit.cover`, no inner `ConstrainedBox(200)` / `ClipRRect`; `ChatMessageBubble` uses transparent fill, `EdgeInsets.zero` padding, `Clip.hardEdge`, and a dark pill `Positioned` time overlay on the media `Stack`.
 
 **Models:** `UserModel` (`displayHandle` getter), `ConversationModel` (immutable), `MessageModel` (`copyWith` for status/content/media). Frontend-only: `MessageDeliveryStatus.failed`.
 
@@ -402,7 +406,6 @@ erDiagram
 - Metadata: server stores who/with-whom/when (see `docs/METADATA.md`); future privacy options in `docs/plans/2026-03-11-metadata-privacy-design.md`
 - `secret_notes` table: `synchronize: true` auto-creation — requires `NODE_ENV=development` in docker-compose
 - Android 16KB warning root cause currently points to `webcrypto` 0.6.0 native library alignment (`libwebcrypto.so` `LOAD Align 0x1000`); package has no newer pub release yet.
-
 ---
 
 **Maintain this file.** After every code change, update the relevant section.

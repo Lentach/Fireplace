@@ -18,6 +18,7 @@ class MessageContentFactory {
     required bool isDark,
     required Color textColor,
     required double contentAreaWidth,
+    Widget? timeOverlay,
   }) {
     switch (message.messageType) {
       case MessageType.voice:
@@ -30,6 +31,7 @@ class MessageContentFactory {
           textColor: textColor,
           isDark: isDark,
           maxWidth: contentAreaWidth,
+          timeOverlay: timeOverlay,
         );
 
       case MessageType.ping:
