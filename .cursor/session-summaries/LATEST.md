@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-03-25  
-**Summary:** [2026-03-25-session.md](2026-03-25-session.md) — Security audit plan (Tasks 1–12) on `fix/security-audit-2026-03-25`: SSRF, WS throttles, JWT min length, media DTO/limits, messages index, deleteAccount tests, messaging reconnect + a11y, CLAUDE.md.
+**Date:** 2026-03-31  
+**Summary:** [2026-03-31-session.md](2026-03-31-session.md) — Android 16 KB compatibility investigation completed: `webcrypto` linker patch applied and ELF alignment fixed to 16KB-compatible values; fixed `MainActivity` package mismatch; Android build flow moved to `X:` strategy; emulator `SystemUI` ANR confirmed as device-side issue.
 
-**Previous:** [2026-03-23-session.md](2026-03-23-session.md)
+**Previous:** [2026-03-25-session.md](2026-03-25-session.md)

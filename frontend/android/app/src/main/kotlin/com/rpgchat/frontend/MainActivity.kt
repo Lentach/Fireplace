@@ -1,4 +1,4 @@
-package com.rpgchat.frontend
+package com.fireplace.app
 
 import io.flutter.embedding.android.FlutterActivity
 
