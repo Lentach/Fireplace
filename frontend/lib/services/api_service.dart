@@ -233,12 +233,44 @@ class ApiService {
     };
   }
 
+  /// Media URLs from the server often use `http://localhost:3000/...`. On
+  /// Android/iOS emulators `localhost` is the device itself, not the dev PC.
+  /// Rewrite loopback hosts to [baseUrl]'s host (e.g. `10.0.2.2` on Android
+  /// emulator) so GIF/image/file/voice fetch works. Web keeps the original URL.
+  String _effectiveMediaUrl(String url) {
+    if (kIsWeb) return url;
+    late final Uri u;
+    try {
+      u = Uri.parse(url);
+    } catch (_) {
+      return url;
+    }
+    if (u.host != 'localhost' && u.host != '127.0.0.1') {
+      return url;
+    }
+    late final Uri b;
+    try {
+      b = Uri.parse(baseUrl);
+    } catch (_) {
+      return url;
+    }
+    if (!b.hasScheme || b.host.isEmpty) return url;
+    return u
+        .replace(
+          scheme: b.scheme,
+          host: b.host,
+          port: b.hasPort ? b.port : u.port,
+        )
+        .toString();
+  }
+
   Future<Uint8List> fetchMediaBytes(String url, String token) async {
+    final resolved = _effectiveMediaUrl(url);
     final headers =
-        url.contains('/media/msgs/')
+        resolved.contains('/media/msgs/')
             ? {'Authorization': 'Bearer $token'}
             : <String, String>{};
-    final response = await http.get(Uri.parse(url), headers: headers);
+    final response = await http.get(Uri.parse(resolved), headers: headers);
     if (response.statusCode != 200) {
       throw Exception('Media fetch failed: ${response.statusCode}');
     }

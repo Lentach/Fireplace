@@ -25,7 +25,8 @@ cd frontend && flutter run -d chrome
 ```
 
 **Before start:** Kill stale node processes: `taskkill //F //IM node.exe`
-**Low C: disk workaround:** `cd frontend && .\run_android_on_x.ps1` (sets `GRADLE_USER_HOME` + `TEMP`/`TMP` on `X:`, junction `frontend/build` → `X:\fireplace-build\frontend-build`; keep default Pub cache on `C:`). **Device:** `.\run_android_on_x.ps1 -DeviceId emulator-5554` (do not use `-d` here — PowerShell/flutter shim can misparse it as “Target file … not found”). Plain `flutter run` for Android still uses `%USERPROFILE%\.gradle` on `C:`; `flutter clean` does **not** clear it — corrupt `metadata.bin` there needs cache delete or using this script / `GRADLE_USER_HOME=X:\gradle-home`.
+**Android (emulator or USB):** `cd frontend` → `flutter devices` → `flutter run -d <deviceId>` (emulator + backend on host: often `--dart-define=BASE_URL=http://10.0.2.2:3000`). Uses `%USERPROFILE%\.gradle` on `C:` — enough free space on `C:` after a clean install is the normal case; no extra drive letter required.
+**Optional — low free space on `C:` or broken/locked Gradle cache there:** `frontend/run_android_on_x.ps1` sets `GRADLE_USER_HOME`, `TEMP`/`TMP`, and a junction `frontend/build` → `X:\fireplace-build\frontend-build` using paths **hardcoded to `X:\` in the script**. That only works if **`X:` exists** (second partition, VHD, or change the script to another letter). It also runs `patch_webcrypto_16k.ps1` then `flutter run` (add `-d …` inside the script if you need a specific device when several are connected). If you do not use this script, you can still run `patch_webcrypto_16k.ps1` manually before Android builds when you need the 16KB webcrypto patch. `flutter clean` does **not** clear `%USERPROFILE%\.gradle` — corrupt `metadata.bin` there is fixed by cache repair or pointing `GRADLE_USER_HOME` at any folder on a drive with space (not only `X:`).
 
 **Ports:** Backend :3000 | Frontend :random (check terminal) | DB :5433 (host) -> :5432 (container)
 
@@ -33,7 +34,7 @@ cd frontend && flutter run -d chrome
 
 **Phone (same WiFi):** `cd frontend && .\run_web_for_phone.ps1` or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`
 
-**Tests:** `cd backend && npm test` (214 unit tests, 27 suites, no DB required); `cd frontend && flutter test` (87 tests; includes `test/widgets/message/bubble_redesign_test.dart`). Media crypto round-trip tests skip when `webcrypto:setup` was not run (e.g. no cmake on Windows); the 20MB limit test always runs (throws before native crypto).
+**Tests:** `cd backend && npm test` (233 unit tests, 30 suites, no DB required); `cd frontend && flutter test` (87 tests; includes `test/widgets/message/bubble_redesign_test.dart`). Media crypto round-trip tests skip when `webcrypto:setup` was not run (e.g. no cmake on Windows); the 20MB limit test always runs (throws before native crypto).
 
 **Production:** https://fireplace.ignorelist.com — Google Cloud e2-medium VM (Warszawa), Docker + Nginx + Let's Encrypt. Deploy: SSH to server → `~/deploy.sh` (git pull + docker build + flutter web build).
 
@@ -46,20 +47,20 @@ cd frontend && flutter run -d chrome
 - Use find-then-remove for friend_requests delete — `.delete()` can't use nested relation conditions
 - Always `new Date(val).getTime()` for expiresAt comparisons — TypeORM returns string or Date
 - `deliveryStatus` never downgrades — enforced via `DELIVERY_STATUS_ORDER` map
-- `synchronize: true` — column additions auto-apply on restart. No migrations
+- `synchronize` is enabled only when `NODE_ENV !== 'production'` — column additions auto-apply on restart in non-prod. No migrations
 
 ### Frontend
 - `file_utils_stub.dart` / `file_utils_io.dart` — conditional import for temp file deletion (web: no-op; native: dart:io)
 - Android 16KB page-size compatibility: `zipalign -P 16` can pass while app still shows compatibility warning — verify ELF `LOAD` alignment with `llvm-readelf -l` for `.so` files. In current state `webcrypto` (`libwebcrypto.so`) is built with `Align 0x1000` (arm64 + x86_64), while `libflutter.so` / `libdatastore_shared_counter.so` are 16KB-safe.
 - `flutter pub run webcrypto:setup` is for `flutter test` / scripts only (builds `.dart_tool/webcrypto/...`), not for Flutter app plugin binaries packaged into APK/AAB.
-- `frontend/patch_webcrypto_16k.ps1` patches cached `webcrypto` Android `CMakeLists.txt` with linker flags `-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384` to produce 16KB-compatible `.so` files; `run_android_on_x.ps1` executes it before `flutter run`.
+- `frontend/patch_webcrypto_16k.ps1` patches cached `webcrypto` Android `CMakeLists.txt` with linker flags `-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384` to produce 16KB-compatible `.so` files; `run_android_on_x.ps1` runs it before its bundled `flutter run`, or invoke the patch script yourself before a plain `flutter run`.
 - `MainActivity` package must match Android namespace/applicationId (`com.fireplace.app`); mismatch (`com.rpgchat.frontend`) causes runtime crash `ClassNotFoundException: com.fireplace.app.MainActivity`.
-- Android build outputs should stay at the default `frontend/build` path for Flutter tooling; to use `X:` storage, map `frontend/build` to `X:\fireplace-build\frontend-build` via junction.
+- Android build outputs should stay at the default `frontend/build` path for Flutter tooling; optional low-`C:` layout: map `frontend/build` to a folder on another volume via junction (see `run_android_on_x.ps1`, which expects `X:\` unless you edit it).
 - Do not move `PUB_CACHE` to a different drive than the project root on Windows (`X:` vs `C:`) for Android builds; Kotlin incremental caches can fail with `IllegalArgumentException: this and base files have different roots`.
 - Android/Kotlin workaround for mixed-drive cache paths: `frontend/android/gradle.properties` sets `kotlin.incremental=false` to avoid daemon cache-close failures on Windows.
-- **Gradle “Could not read workspace metadata” under `%USERPROFILE%\.gradle\caches\8.14\transforms\... \metadata.bin`:** Corrupt or locked user Gradle cache on `C:` (often full disk, antivirus, interrupted build). **Fast bypass:** `cd frontend` → `.\run_android_on_x.ps1 -DeviceId emulator-5554` (uses `GRADLE_USER_HOME=X:\gradle-home`). **Or** before plain `flutter run`: `$env:GRADLE_USER_HOME='X:\gradle-home'` (ensure folder exists). **Repair default cache:** set `JAVA_HOME` to Android Studio JBR, `cd frontend/android` → `gradlew.bat --stop`; if deletes fail, close Android Studio and `taskkill /F /IM java.exe`; delete `%USERPROFILE%\.gradle\caches\8.14`; optionally `frontend/android/.gradle`; `flutter clean` → rebuild. **`flutter clean` alone does not fix this** — it does not remove `%USERPROFILE%\.gradle`.
+- **Gradle “Could not read workspace metadata” under `%USERPROFILE%\.gradle\caches\8.14\transforms\... \metadata.bin`:** Corrupt or locked user Gradle cache on `C:` (often full disk, antivirus, interrupted build). **Fast bypass:** point Gradle elsewhere before `flutter run`, e.g. `$env:GRADLE_USER_HOME='D:\gradle-home'` (any folder on a drive with free space; create the directory first). **`run_android_on_x.ps1`** does the same idea but hardcodes `X:\gradle-home` — use it only if you have `X:` (or edit the script). **Repair default cache:** set `JAVA_HOME` to Android Studio JBR, `cd frontend/android` → `gradlew.bat --stop`; if deletes fail, close Android Studio and `taskkill /F /IM java.exe`; delete `%USERPROFILE%\.gradle\caches\8.14`; optionally `frontend/android/.gradle`; `flutter clean` → rebuild. **`flutter clean` alone does not fix this** — it does not remove `%USERPROFILE%\.gradle`.
 - Emulator ANR note (Android 17 / ps16k image): `System UI isn't responding` can occur in `com.android.systemui`/launcher independently of app startup; verify with `adb logcat` (`ANR in com.android.systemui`, `Input dispatching timed out`) before blaming app code.
-- **Android overscroll stretch:** Material 3’s `StretchingOverscrollIndicator` (default under `MaterialScrollBehavior`) warps the whole UI when dragging past scroll edges. `MaterialApp` sets `scrollBehavior: AppScrollBehavior()` (`theme/app_scroll_behavior.dart`) — `buildOverscrollIndicator` returns `child` only so lists still scroll but the screen no longer rubber-stretches globally.
+- **Android overscroll stretch:** Material 3’s `StretchingOverscrollIndicator` (default under `MaterialScrollBehavior`) can warp the whole UI when dragging past scroll edges. Helper `theme/app_scroll_behavior.dart` exists and returns `child` from `buildOverscrollIndicator`; if overscroll stretching reappears, wire it through `MaterialApp.scrollBehavior`.
 - Use `showTopSnackBar()` — ScaffoldMessenger covers chat input bar; pass `AppLocalizations.of(context)` strings (`snackbar*` keys in `app_en.arb` / `app_pl.arb`) — do not hardcode English for top notifications
 - Chat composer hint: `chatMessageHint` in `app_pl.arb` / `app_en.arb` (`ChatInputBar`). Chat date chips: `chatDateToday` / `chatDateYesterday` + `MaterialLocalizations.formatShortDate` for older days (`MessageDateSeparator`)
 - `enableForceNew()` on Socket.IO reconnect — Dart caches socket by URL, old JWT reused
@@ -115,7 +116,7 @@ cd frontend && flutter run -d chrome
 - Health endpoint added: `GET /health` runs `SELECT 1` and returns `503` on DB failure (for Docker healthcheck)
 - Raw SQL in `markConversationAsReadFromSender`: use `"deliveryStatus"` (quoted) — PostgreSQL column is camelCase
 - `messages` table has composite index `idx_messages_conv_created` on `(conversation_id, createdAt DESC)` — auto-created in dev via synchronize; production requires manual: `CREATE INDEX CONCURRENTLY idx_messages_conv_created ON messages (conversation_id, "createdAt" DESC);`
-- WS throttle guards: `@UseGuards(WsThrottlerGuard)` + `@Throttle(...)` must appear on ALL mutating WebSocket events — global ThrottlerModule only covers HTTP
+- WS throttling reminder: global `ThrottlerModule` covers HTTP only; for WebSocket events apply `@UseGuards(WsThrottlerGuard)` (and `@Throttle(...)` where needed), especially on high-frequency or mutating handlers
 - SSRF: `PRIVATE_IP_RE` in `link-preview.service.ts` blocks `169.254.x`, `fe80:`, RFC-1918 and loopback — verify coverage when adding new IP range exclusions
 - `_conversationsWithUnread` uses batch `countUnreadForRecipientBatch` + `getLastMessagesBatch` (2 queries total, not 2N)
 - Production: logger level `['error','warn','log']` — no debug
@@ -176,7 +177,7 @@ flowchart TB
 
 **Provider wiring:** ConnectionProvider orchestrates socket events and routes them to sub-providers via `on()` listeners. Sub-providers receive an `_emit` callback for sending socket events. Cross-provider calls use explicit method interfaces (`removeConversationsForUser`, `updateLastMessage`, etc.). Wired in `conversations_screen.dart` initState.
 
-**Backend services:** `ChatGateway` (thin, ~406 LOC, pure delegation) delegates to `ChatMessageService`, `ChatConversationService`, `ChatFriendRequestService`, `ChatKeyExchangeService`, `ChatPresenceService`, `ChatBlockService`, `ChatSearchService`, `ChatReactionService`, `ChatLinkPreviewService`. REST: `AuthController`, `UsersController`, `MessagesController`. Mappers: `UserMapper`, `MessageMapper`, `ConversationMapper`, `FriendRequestMapper` — all have `toPayload()`.
+**Backend services:** `ChatGateway` (thin, ~446 LOC, pure delegation) delegates to `ChatMessageService`, `ChatConversationService`, `ChatFriendRequestService`, `ChatKeyExchangeService`, `ChatPresenceService`, `ChatBlockService`, `ChatSearchService`, `ChatReactionService`, `ChatLinkPreviewService`. REST: `AuthController`, `UsersController`, `MessagesController`. Mappers: `UserMapper`, `MessageMapper`, `ConversationMapper`, `FriendRequestMapper` — all have `toPayload()`.
 
 **DTO validation:** `chat/utils/dto.validator.ts` — runtime validation via `class-transformer` + `class-validator`. DTOs in `chat/dto/`.
 
@@ -188,18 +189,21 @@ flowchart TB
 
 | Domain | Key Files |
 |---|---|
-| **Auth** | `auth/auth.service.ts`, `auth/auth.controller.ts`, `auth/jwt-auth.guard.ts`, `auth/jwt.strategy.ts`, `auth/password.constants.ts` |
+| **Auth** | `auth/auth.service.ts`, `auth/auth.controller.ts`, `auth/jwt-auth.guard.ts`, `auth/strategies/jwt.strategy.ts`, `auth/password.constants.ts` |
 | **Users** | `users/user.entity.ts`, `users/users.service.ts`, `users/users.controller.ts` |
 | **Conversations** | `conversations/conversation.entity.ts`, `conversations/conversations.service.ts` |
 | **Messages** | `messages/message.entity.ts`, `messages/message.mapper.ts`, `messages/messages.service.ts`, `messages/messages.controller.ts` (link-preview only) |
 | **Media** | `media/local-storage.service.ts`, `media/media.controller.ts`, `media/media-cleanup.service.ts`, `media/media.module.ts`, `media/dto/upload-media.dto.ts` |
 | **Friends** | `friends/friend-request.entity.ts`, `friends/friends.service.ts` |
+| **Blocked** | `blocked/blocked-user.entity.ts`, `blocked/blocked.module.ts`, `blocked/blocked.service.ts` |
 | **Chat** | `chat/chat.gateway.ts`, `chat/services/chat-{message,conversation,friend-request,key-exchange,presence,block,search,reaction,link-preview}.service.ts` |
 | **DTOs** | `chat/dto/chat.dto.ts` + `{typing,recording-voice,...}.dto.ts` |
 | **Key Bundles** | `key-bundles/key-bundle.entity.ts`, `key-bundles/one-time-pre-key.entity.ts`, `key-bundles/key-bundles.service.ts` |
 | **Mappers** | `chat/mappers/{conversation,user,friend-request}.mapper.ts`, `messages/message.mapper.ts` |
 | **FCM/Push** | `fcm-tokens/fcm-token.entity.ts`, `fcm-tokens/fcm-tokens.service.ts`, `push-notifications/push-notifications.service.ts` |
 | **Secret Notes** | `secret-notes/secret-note.entity.ts`, `secret-notes/secret-notes.service.ts`, `secret-notes/secret-notes.controller.ts`, `secret-notes/secret-notes.module.ts` |
+| **Health** | `health/health.controller.ts`, `health/health.module.ts` |
+| **Config** | `config/env.validation.ts` |
 | **Utils** | `chat/utils/dto.validator.ts`, `chat/services/chat-validation.service.ts`, `chat/services/link-preview.service.ts`, `app.module.ts` |
 
 ### Frontend (`frontend/lib/`)
@@ -211,11 +215,11 @@ flowchart TB
 | **L10n** | `l10n/app_pl.arb`, `l10n/app_en.arb`, `l10n/app_localizations.dart` (generated), `l10n.yaml` |
 | **Providers** | `providers/{auth,connection,conversations,messaging,friends,encryption,settings}_provider.dart`, `providers/chat_reconnect_manager.dart`, `providers/conversation_helpers.dart` |
 | **Services** | `services/{socket_service,api_service,encryption_service,media_crypto_service,link_preview_service,push_service,gif_service}.dart` |
-| **Utils** | `utils/e2e_envelope.dart` (Signal plaintext envelope build/parse) |
+| **Utils** | `utils/e2e_envelope.dart` (Signal plaintext envelope build/parse); stub/web conditional-import pairs: `{file_utils,audio_blob_url,gif_blob_url,secure_context}_{stub,io/web}.dart`, `download_utils_{io,web}.dart`; `init_file_picker_{stub,web}.dart` (in `lib/` root) |
 | **Encryption** | `services/encryption/signal_stores.dart` (4 persistent Signal stores) |
-| **Screens** | `screens/{auth,main_shell,conversations,contacts,settings,chat_detail,add_or_invitations,privacy_safety}_screen.dart` |
-| **Widgets** | `widgets/{chat_action_tiles,conversation_tile,top_snackbar,avatar_circle,anti_quantum_note_dialog,gif_picker_sheet}.dart`; `widgets/message/{chat_message_bubble,text_message_content,image_message_content,gif_message_content,file_message_content,ping_message_content,voice_message_content,message_content_factory,message_metadata_row,reaction_chips_row}.dart`; `widgets/input/{chat_input_bar,recording_controller,attachment_handler,reply_preview_bar}.dart`; `widgets/audio/{playback_controller,waveform_display}.dart`. Old top-level `chat_message_bubble.dart`, `chat_input_bar.dart`, `voice_message_bubble.dart` are re-export shims. |
-| **Theme** | `theme/rpg_theme.dart` (`FireplaceColors` ThemeExtension), `theme/app_scroll_behavior.dart` (`MaterialApp` scroll behavior — no stretch overscroll) |
+| **Screens** | `screens/{auth,main_shell,conversations,contacts,settings,chat_detail,add_or_invitations,privacy_safety,blocked_users}_screen.dart` |
+| **Widgets** | `widgets/{chat_action_tiles,conversation_tile,top_snackbar,avatar_circle,anti_quantum_note_dialog,gif_picker_sheet,auth_form,chat_background_pattern,message_date_separator,message_swipe_wrapper,ping_effect_overlay}.dart`; `widgets/message/{chat_message_bubble,text_message_content,image_message_content,gif_message_content,file_message_content,ping_message_content,voice_message_content,message_content_factory,message_metadata_row,reaction_chips_row}.dart`; `widgets/input/{chat_input_bar,recording_controller,attachment_handler,reply_preview_bar}.dart`; `widgets/audio/{playback_controller,waveform_display}.dart`; `widgets/dialogs/{delete_account_dialog,reset_password_dialog}.dart`. Old top-level `chat_message_bubble.dart`, `chat_input_bar.dart`, `voice_message_bubble.dart` are re-export shims. |
+| **Theme** | `theme/rpg_theme.dart` (`FireplaceColors` ThemeExtension), `theme/app_scroll_behavior.dart` (helper for optional no-stretch overscroll behavior) |
 | **Push** | `services/push_service.dart`, `firebase_options.dart` |
 
 ---
@@ -227,6 +231,7 @@ erDiagram
     users ||--o{ conversations : "userOne / userTwo"
     users ||--o{ messages : "sender"
     users ||--o{ friend_requests : "sender / receiver"
+    users ||--o{ blocked_users : "blocker / blocked"
     conversations ||--o{ messages : "conversation"
 
     users {
@@ -308,9 +313,15 @@ erDiagram
         int creator_id FK "nullable"
         timestamp created_at
     }
+
+    blocked_users {
+        int id PK
+        int blocker_id FK "CASCADE"
+        int blocked_id FK "eager: true, CASCADE"
+    }
 ```
 
-**Constraints:** `users` unique on `(username, tag)` — Discord-style `username#tag`. No cascade on User entity — `deleteAccount()` manually cleans dependents. `secret_notes.token` unique — used as the public URL token for one-time reveal.
+**Constraints:** `users` unique on `(username, tag)` — Discord-style `username#tag`. No cascade on User entity — `deleteAccount()` manually cleans dependents. `secret_notes.token` unique — used as the public URL token for one-time reveal. `blocked_users` unique index on `(blocker_id, blocked_id)` — prevents duplicate blocks.
 
 ---
 
@@ -357,7 +368,7 @@ erDiagram
 
 ## 7. Frontend Screens & Widgets
 
-**Navigation:** AuthGate → AuthScreen OR MainShell (IndexedStack: Conversations, Contacts, Settings). Desktop >600px: sidebar+detail layout.
+**Navigation:** AuthGate → AuthScreen OR MainShell (IndexedStack: Conversations, Contacts, Settings). Desktop >=600px: sidebar+detail layout.
 
 **Screen gotchas:**
 - `AuthScreen`: `clearStatus()` on tab switch — DO NOT DELETE (called from auth_screen.dart, appears unused in providers)
@@ -400,11 +411,10 @@ erDiagram
 
 - E2E: no multi-device, no key recovery. Legacy Cloudinary media (no `mediaKey`) loads via direct URL. 20MB decrypt limit enforced before `MediaCryptoService.decrypt()`. Own history shows `[encrypted]` if storage evicted.
 - No message edit, no fuzzy search, no iOS APNs
-- No unique constraint on `(sender, receiver)` in friend_requests
 - Large files: `messaging_provider.dart`, `chat-friend-request.service.ts`, `chat-message.service.ts`
 - Migration scripts in `backend/scripts/` (manual)
 - Metadata: server stores who/with-whom/when (see `docs/METADATA.md`); future privacy options in `docs/plans/2026-03-11-metadata-privacy-design.md`
-- `secret_notes` table: `synchronize: true` auto-creation — requires `NODE_ENV=development` in docker-compose
+- `secret_notes` table auto-creation depends on TypeORM synchronize mode (`NODE_ENV !== 'production'`)
 - Android 16KB warning root cause currently points to `webcrypto` 0.6.0 native library alignment (`libwebcrypto.so` `LOAD Align 0x1000`); package has no newer pub release yet.
 ---
 
