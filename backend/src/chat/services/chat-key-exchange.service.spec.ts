@@ -282,6 +282,51 @@ describe('ChatKeyExchangeService', () => {
       expect(keyBundlesService.fetchPreKeyBundle).not.toHaveBeenCalled();
       expect(noUserClient.emit).not.toHaveBeenCalled();
     });
+
+    it('rate-limits rapid repeated pre-key fetches for same requester-target pair', async () => {
+      keyBundlesService.fetchPreKeyBundle.mockResolvedValue(mockBundle);
+      keyBundlesService.countUnusedPreKeys.mockResolvedValue(20);
+
+      await service.handleFetchPreKeyBundle(
+        mockClient as Socket,
+        validData,
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      await service.handleFetchPreKeyBundle(
+        mockClient as Socket,
+        validData,
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      expect(keyBundlesService.fetchPreKeyBundle).toHaveBeenCalledTimes(1);
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'error',
+        expect.objectContaining({
+          message: 'Pre-key bundle fetch rate limit exceeded. Please retry shortly.',
+        }),
+      );
+    });
+
+    it('removes stale pre-key fetch tracker entries during rate-limit checks', async () => {
+      keyBundlesService.fetchPreKeyBundle.mockResolvedValue(mockBundle);
+      keyBundlesService.countUnusedPreKeys.mockResolvedValue(20);
+      const nowSpy = jest.spyOn(Date, 'now').mockReturnValue(1_000_000);
+      (service as any).lastPreKeyFetchByPair.set('1:9', 1_000_000 - 700_000); // stale
+
+      await service.handleFetchPreKeyBundle(
+        mockClient as Socket,
+        validData,
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      const tracker: Map<string, number> = (service as any).lastPreKeyFetchByPair;
+      expect(tracker.has('1:9')).toBe(false);
+      nowSpy.mockRestore();
+    });
   });
 
   describe('handleRequestSessionRebuild', () => {

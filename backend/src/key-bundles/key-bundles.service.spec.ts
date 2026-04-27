@@ -186,6 +186,25 @@ describe('KeyBundlesService', () => {
       expect(otpRepo.save).not.toHaveBeenCalled();
     });
 
+    it('consumes different OTP rows across repeated fetches', async () => {
+      const bundle = {
+        id: 1,
+        userId: 5,
+        ...mockKeyBundleData,
+      };
+      keyBundleRepo.findOne.mockResolvedValue(bundle);
+      otpRepo.query
+        .mockResolvedValueOnce([{ id: 10, keyId: 101, publicKey: 'otp-101' }])
+        .mockResolvedValueOnce([{ id: 11, keyId: 102, publicKey: 'otp-102' }]);
+
+      const first = await service.fetchPreKeyBundle(5);
+      const second = await service.fetchPreKeyBundle(5);
+
+      expect(first?.oneTimePreKeyId).toBe(101);
+      expect(second?.oneTimePreKeyId).toBe(102);
+      expect(otpRepo.query).toHaveBeenCalledTimes(2);
+    });
+
   });
 
   describe('countUnusedPreKeys', () => {

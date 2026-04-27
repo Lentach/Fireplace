@@ -2,6 +2,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
+import 'dart:async';
 
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
@@ -55,6 +56,49 @@ void main() {
       expect(result!['content'], 'Check this');
       expect(result['linkPreviewUrl'], 'https://example.com');
       expect(result['linkPreviewTitle'], 'Example');
+    });
+  });
+
+  group('EncryptionProvider — race and idempotency guards', () {
+    late EncryptionProvider provider;
+    late List<Map<String, dynamic>> emitted;
+
+    setUp(() async {
+      FlutterSecureStorage.setMockInitialValues({});
+      SharedPreferences.setMockInitialValues({});
+      emitted = <Map<String, dynamic>>[];
+      provider = EncryptionProvider();
+      provider.setEmitCallback((event, data) {
+        emitted.add({'event': event, 'data': data});
+      });
+      await provider.initializeE2E(7);
+    });
+
+    test('duplicate preKeyBundleResponse is ignored after first completion', () async {
+      final future = provider.ensureSession(99);
+      await Future<void>.delayed(Duration.zero);
+      provider.onPreKeyBundleResponse({
+        'userId': 99,
+        'bundle': null,
+      });
+      provider.onPreKeyBundleResponse({
+        'userId': 99,
+        'bundle': null,
+      });
+      await expectLater(future, throwsStateError);
+      expect(provider.pendingPreKeyFetches.containsKey(99), isFalse);
+      final fetchEvents = emitted.where((e) => e['event'] == 'fetchPreKeyBundle');
+      expect(fetchEvents.length, 1);
+    });
+
+    test('preKeysLow handler is reentrant-safe', () async {
+      final initialUploads =
+          emitted.where((e) => e['event'] == 'uploadOneTimePreKeys').length;
+      provider.onPreKeysLow({'remaining': 1});
+      provider.onPreKeysLow({'remaining': 1});
+      await Future<void>.delayed(Duration.zero);
+      final uploads = emitted.where((e) => e['event'] == 'uploadOneTimePreKeys');
+      expect(uploads.length - initialUploads, 1);
     });
   });
 }

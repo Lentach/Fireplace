@@ -8,10 +8,14 @@ import { FetchPreKeyBundleDto } from '../dto/fetch-pre-key-bundle.dto';
 import { RequestSessionRebuildDto } from '../dto/request-session-rebuild.dto';
 
 const PRE_KEY_LOW_THRESHOLD = 10;
+const PRE_KEY_FETCH_MIN_INTERVAL_MS = 750;
+const PRE_KEY_FETCH_MAP_TTL_MS = 10 * 60 * 1000;
+const PRE_KEY_FETCH_MAP_MAX_ENTRIES = 10000;
 
 @Injectable()
 export class ChatKeyExchangeService {
   private readonly logger = new Logger(ChatKeyExchangeService.name);
+  private readonly lastPreKeyFetchByPair = new Map<string, number>();
 
   constructor(private readonly keyBundlesService: KeyBundlesService) {}
 
@@ -71,6 +75,12 @@ export class ChatKeyExchangeService {
 
     try {
       const dto = validateDto(FetchPreKeyBundleDto, data);
+      if (this.isPreKeyFetchRateLimited(requesterId, dto.userId)) {
+        client.emit('error', {
+          message: 'Pre-key bundle fetch rate limit exceeded. Please retry shortly.',
+        });
+        return;
+      }
       const bundle = await this.keyBundlesService.fetchPreKeyBundle(dto.userId);
 
       client.emit('preKeyBundleResponse', {
@@ -99,6 +109,40 @@ export class ChatKeyExchangeService {
       client.emit('error', {
         message: error?.message || 'Failed to fetch pre-key bundle',
       });
+    }
+  }
+
+  private isPreKeyFetchRateLimited(
+    requesterId: number,
+    recipientId: number,
+  ): boolean {
+    const now = Date.now();
+    this.cleanupPreKeyFetchTracker(now);
+    const key = `${requesterId}:${recipientId}`;
+    const lastSeen = this.lastPreKeyFetchByPair.get(key);
+    if (lastSeen !== undefined && now - lastSeen < PRE_KEY_FETCH_MIN_INTERVAL_MS) {
+      return true;
+    }
+    this.lastPreKeyFetchByPair.set(key, now);
+    return false;
+  }
+
+  private cleanupPreKeyFetchTracker(now: number): void {
+    for (const [key, ts] of this.lastPreKeyFetchByPair.entries()) {
+      if (now - ts > PRE_KEY_FETCH_MAP_TTL_MS) {
+        this.lastPreKeyFetchByPair.delete(key);
+      }
+    }
+    if (this.lastPreKeyFetchByPair.size <= PRE_KEY_FETCH_MAP_MAX_ENTRIES) {
+      return;
+    }
+
+    const ordered = [...this.lastPreKeyFetchByPair.entries()].sort(
+      (a, b) => a[1] - b[1],
+    );
+    const toDelete = this.lastPreKeyFetchByPair.size - PRE_KEY_FETCH_MAP_MAX_ENTRIES;
+    for (let i = 0; i < toDelete; i++) {
+      this.lastPreKeyFetchByPair.delete(ordered[i][0]);
     }
   }
 
