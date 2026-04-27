@@ -13,6 +13,7 @@ import 'providers/messaging_provider.dart';
 import 'providers/settings_provider.dart';
 import 'screens/auth_screen.dart';
 import 'screens/main_shell.dart';
+import 'theme/app_scroll_behavior.dart';
 import 'theme/rpg_theme.dart';
 
 void main() {
@@ -44,6 +45,7 @@ class FireplaceApp extends StatelessWidget {
           return MaterialApp(
             title: 'Fireplace',
             debugShowCheckedModeBanner: false,
+            scrollBehavior: const AppScrollBehavior(),
             theme: RpgTheme.themeDataLight,
             darkTheme: settings.darkTheme,
             themeMode: settings.themeMode,
