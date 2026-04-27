@@ -35,6 +35,9 @@
   "whatIsEncryptedDescription": "Wszystkie wiadomości są szyfrowane end-to-end (tekst, zdjęcia, głos, linki). Tylko Ty i odbiorca możecie je odczytać.",
   "serverStoresMetadata": "Co przechowuje serwer (metadane)",
   "serverStoresMetadataDescription": "Aby dostarczać wiadomości, serwer przechowuje: kto jest w danej rozmowie, kiedy wiadomości zostały wysłane oraz status dostarczenia. Treść wiadomości nigdy nie jest widoczna dla serwera.",
+  "localMessageCache": "Lokalna pamięć wiadomości",
+  "localMessageCacheDescription": "Dla niezawodności to urządzenie może lokalnie przechowywać odszyfrowane podglądy wiadomości i pobrane wiadomości głosowe. Wyczyszczenie tej pamięci nie usuwa kluczy szyfrowania ani historii z serwera.",
+  "clearLocalMessageCache": "Wyczyść lokalną pamięć wiadomości",
   "yourIdentityFingerprint": "Twój odcisk tożsamości",
   "shareFingerprintHint": "To unikalna reprezentacja Twojego klucza szyfrowania.",
 
@@ -166,6 +169,8 @@
   "snackbarFailedToSendVoiceMessage": "Nie udało się wysłać wiadomości głosowej",
   "snackbarAudioNoLongerAvailable": "Dźwięk nie jest już dostępny",
   "snackbarFailedToLoadAudio": "Nie udało się wczytać dźwięku",
+  "snackbarLocalMessageCacheCleared": "Lokalna pamięć wiadomości wyczyszczona",
+  "snackbarFailedToClearLocalMessageCache": "Nie udało się wyczyścić lokalnej pamięci wiadomości",
   "friendAcceptedYourRequest": "{name} zaakceptował(a) zaproszenie do znajomych",
   "@friendAcceptedYourRequest": {
     "placeholders": {

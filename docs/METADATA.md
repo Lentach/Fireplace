@@ -11,15 +11,19 @@ This document describes what metadata the Fireplace server stores and why. It is
 
 The server needs certain metadata to deliver messages and manage conversations.
 
-| Data | Stored in | Purpose |
-|------|-----------|---------|
-| User identity | `users` | Account (username, tag, profile picture) |
-| Conversation membership | `conversations` | Who is in each chat (user_one_id, user_two_id) |
-| Message routing | `messages` | sender_id, conversation_id — who sent what, to which conversation |
-| Timestamps | `messages`, `conversations` | createdAt — when messages were sent |
-| Delivery status | `messages` | SENT, DELIVERED, READ — for read receipts |
-| Friend graph | `friend_requests` | Who is friends with whom |
-| Key bundles | `key_bundles`, `one_time_pre_keys` | Public keys for E2E (no private keys) |
+| Data | Stored in | Purpose | Retention / cleanup |
+|------|-----------|---------|---------------------|
+| User identity | `users` | Account (username, tag, profile picture) | Until account deletion |
+| Conversation membership | `conversations` | Who is in each chat (user_one_id, user_two_id) | Until conversation delete, unfriend, block, or account deletion |
+| Message routing | `messages` | sender_id, conversation_id — who sent what, to which conversation | Until message/conversation deletion, disappearing-message expiry, or account deletion |
+| Timestamps | `messages`, `conversations` | createdAt — when messages/conversations were created | Same lifecycle as the row that owns the timestamp |
+| Delivery status | `messages` | SENT, DELIVERED, READ — for read receipts and unread counts | Same lifecycle as message row |
+| Friend graph | `friend_requests` | Who is friends with whom | Until unfriend, account deletion, or request cleanup path |
+| Block graph | `blocked_users` | Who blocked whom | Until unblock or account deletion |
+| Key bundles | `key_bundles`, `one_time_pre_keys` | Public keys for E2E (no private keys) | Until account deletion; used pre-keys are kept for protocol bookkeeping |
+| Push tokens | `fcm_tokens` | Push delivery token and platform | Until logout/token removal, invalid token response, or account deletion |
+| Secret notes | `secret_notes` | Random token, ciphertext, expiry, optional creator id | Deleted on reveal, on expired access, or by daily expired-note cleanup |
+| Message media blobs | disk `msgs/*.bin` | Encrypted image/voice/GIF/file payloads | Deleted on destructive chat paths where possible; orphan/expired blobs are swept daily |
 
 ## Why This Metadata Is Needed
 
@@ -30,8 +34,12 @@ The server needs certain metadata to deliver messages and manage conversations.
 
 ## Retention & Logging
 
-- **Data retention:** Metadata is stored for as long as the account and conversations exist. No automatic purge by default. `METADATA_RETENTION_DAYS` (optional env var) is reserved for future auto-purge.
-- **Logging:** Backend logs may include userId, conversationId for debugging. In production, use appropriate log levels (e.g. `warn`/`error` only) to minimize metadata in logs.
+- **Disappearing messages:** Expired rows are checked every minute. If they reference self-hosted media, the media file is deleted before the message row is removed.
+- **Secret notes:** Notes are one-shot. Expired unread notes are also purged daily so ciphertext is not retained indefinitely.
+- **Media cleanup:** Conversation deletion, clear history, unfriend, block, and account deletion delete known self-hosted message media where possible. A daily media cleanup removes orphaned or expired `msgs/*.bin` files that remain after crashes or legacy paths.
+- **Local plaintext cache:** The client may cache decrypted message fields locally for recovery/performance. The cache is capped per user and can be cleared from Privacy & Safety without deleting Signal keys or server history.
+- **Data retention:** General metadata is stored only while the account, relationship, conversation, or message exists. `METADATA_RETENTION_DAYS` is still reserved for a future global auto-purge policy and is not a broad server-side deletion switch today.
+- **Logging:** Production logs should avoid raw tokens, keys, ciphertext, message content, and unnecessary user/conversation/message identifiers. Use operational error messages and narrow identifiers only when needed for debugging or security investigation.
 
 ## Key Storage (E2E)
 

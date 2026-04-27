@@ -5,6 +5,8 @@ import { BlockedUser } from './blocked-user.entity';
 import { User } from '../users/user.entity';
 import { FriendsService } from '../friends/friends.service';
 import { ConversationsService } from '../conversations/conversations.service';
+import { MessagesService } from '../messages/messages.service';
+import { MediaCleanupService } from '../media/media-cleanup.service';
 
 @Injectable()
 export class BlockedService {
@@ -15,6 +17,8 @@ export class BlockedService {
     private readonly blockedRepo: Repository<BlockedUser>,
     private readonly friendsService: FriendsService,
     private readonly conversationsService: ConversationsService,
+    private readonly messagesService: MessagesService,
+    private readonly mediaCleanupService: MediaCleanupService,
   ) {}
 
   async block(blockerId: number, blockedId: number): Promise<BlockedUser> {
@@ -40,6 +44,10 @@ export class BlockedService {
         blockedId,
       );
       if (conv) {
+        const mediaUrls = await this.messagesService.findMediaUrlsByConversation(conv.id);
+        await Promise.all(
+          mediaUrls.map((mediaUrl) => this.mediaCleanupService.deleteMediaFile(mediaUrl)),
+        );
         await this.conversationsService.delete(conv.id);
         this.logger.debug(
           `Block: deleted conversation id=${conv.id} between ${blockerId} and ${blockedId}`,

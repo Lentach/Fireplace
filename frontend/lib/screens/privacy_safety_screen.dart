@@ -4,6 +4,8 @@ import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/encryption_provider.dart';
 import '../theme/rpg_theme.dart';
+import '../widgets/audio/playback_controller.dart';
+import '../widgets/top_snackbar.dart';
 
 class PrivacySafetyScreen extends StatefulWidget {
   const PrivacySafetyScreen({super.key});
@@ -15,6 +17,7 @@ class PrivacySafetyScreen extends StatefulWidget {
 class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
   String? _fingerprint;
   bool _loading = true;
+  bool _clearingLocalCache = false;
 
   @override
   void initState() {
@@ -133,6 +136,8 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
               title: AppLocalizations.of(context).serverStoresMetadata,
               description: AppLocalizations.of(context).serverStoresMetadataDescription,
             ),
+            const SizedBox(height: 16),
+            _buildLocalCacheCard(context),
             const SizedBox(height: 32),
 
             // Fingerprint section
@@ -233,5 +238,88 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
         ],
       ),
     );
+  }
+
+  Widget _buildLocalCacheCard(BuildContext context) {
+    final theme = Theme.of(context);
+    final l10n = AppLocalizations.of(context);
+    final isDark = RpgTheme.isDark(context);
+    final mutedColor =
+        isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Icon(Icons.cleaning_services_outlined,
+                  size: 24, color: theme.colorScheme.primary),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      l10n.localMessageCache,
+                      style: RpgTheme.bodyFont(
+                        fontSize: 14,
+                        fontWeight: FontWeight.bold,
+                        color: theme.colorScheme.onSurface,
+                      ),
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      l10n.localMessageCacheDescription,
+                      style: RpgTheme.bodyFont(fontSize: 13, color: mutedColor),
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          const SizedBox(height: 12),
+          SizedBox(
+            width: double.infinity,
+            child: OutlinedButton.icon(
+              onPressed: _clearingLocalCache ? null : _clearLocalMessageCache,
+              icon: _clearingLocalCache
+                  ? const SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Icon(Icons.delete_sweep_outlined),
+              label: Text(l10n.clearLocalMessageCache),
+            ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<void> _clearLocalMessageCache() async {
+    final l10n = AppLocalizations.of(context);
+    final encryptionProvider = context.read<EncryptionProvider>();
+    setState(() => _clearingLocalCache = true);
+    try {
+      await encryptionProvider.clearLocalDecryptedContentCache();
+      await PlaybackController.clearAudioCache();
+      if (!mounted) return;
+      showTopSnackBar(context, l10n.snackbarLocalMessageCacheCleared);
+    } catch (_) {
+      if (!mounted) return;
+      showTopSnackBar(context, l10n.snackbarFailedToClearLocalMessageCache);
+    } finally {
+      if (mounted) {
+        setState(() => _clearingLocalCache = false);
+      }
+    }
   }
 }

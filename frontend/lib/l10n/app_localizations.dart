@@ -302,6 +302,24 @@ abstract class AppLocalizations {
   /// **'Aby dostarczać wiadomości, serwer przechowuje: kto jest w danej rozmowie, kiedy wiadomości zostały wysłane oraz status dostarczenia. Treść wiadomości nigdy nie jest widoczna dla serwera.'**
   String get serverStoresMetadataDescription;
 
+  /// No description provided for @localMessageCache.
+  ///
+  /// In pl, this message translates to:
+  /// **'Lokalna pamięć wiadomości'**
+  String get localMessageCache;
+
+  /// No description provided for @localMessageCacheDescription.
+  ///
+  /// In pl, this message translates to:
+  /// **'Dla niezawodności to urządzenie może lokalnie przechowywać odszyfrowane podglądy wiadomości i pobrane wiadomości głosowe. Wyczyszczenie tej pamięci nie usuwa kluczy szyfrowania ani historii z serwera.'**
+  String get localMessageCacheDescription;
+
+  /// No description provided for @clearLocalMessageCache.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wyczyść lokalną pamięć wiadomości'**
+  String get clearLocalMessageCache;
+
   /// No description provided for @yourIdentityFingerprint.
   ///
   /// In pl, this message translates to:
@@ -919,6 +937,18 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Nie udało się wczytać dźwięku'**
   String get snackbarFailedToLoadAudio;
+
+  /// No description provided for @snackbarLocalMessageCacheCleared.
+  ///
+  /// In pl, this message translates to:
+  /// **'Lokalna pamięć wiadomości wyczyszczona'**
+  String get snackbarLocalMessageCacheCleared;
+
+  /// No description provided for @snackbarFailedToClearLocalMessageCache.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się wyczyścić lokalnej pamięci wiadomości'**
+  String get snackbarFailedToClearLocalMessageCache;
 
   /// No description provided for @friendAcceptedYourRequest.
   ///

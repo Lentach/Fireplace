@@ -117,6 +117,16 @@ class AppLocalizationsEn extends AppLocalizations {
       'To deliver messages, the server stores: who is in each conversation, when messages were sent, and delivery status. Message content is never visible to the server.';
 
   @override
+  String get localMessageCache => 'Local message cache';
+
+  @override
+  String get localMessageCacheDescription =>
+      'For reliability, this device may keep decrypted message previews and downloaded voice audio locally. Clearing this cache does not delete your encryption keys or server history.';
+
+  @override
+  String get clearLocalMessageCache => 'Clear local message cache';
+
+  @override
   String get yourIdentityFingerprint => 'Your identity fingerprint';
 
   @override
@@ -444,6 +454,13 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get snackbarFailedToLoadAudio => 'Failed to load audio';
+
+  @override
+  String get snackbarLocalMessageCacheCleared => 'Local message cache cleared';
+
+  @override
+  String get snackbarFailedToClearLocalMessageCache =>
+      'Failed to clear local message cache';
 
   @override
   String friendAcceptedYourRequest(String name) {

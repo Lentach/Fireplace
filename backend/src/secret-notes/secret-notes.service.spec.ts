@@ -79,4 +79,19 @@ describe('SecretNotesService', () => {
       expect(result).toBe(note);
     });
   });
+
+  describe('deleteExpiredNotes', () => {
+    it('deletes expired unread notes in one repository call', async () => {
+      repo.delete.mockResolvedValue({ affected: 3 });
+
+      const deleted = await service.deleteExpiredNotes();
+
+      expect(deleted).toBe(3);
+      expect(repo.delete).toHaveBeenCalledWith({
+        expiresAt: expect.objectContaining({
+          _type: 'lessThan',
+        }),
+      });
+    });
+  });
 });

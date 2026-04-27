@@ -57,6 +57,17 @@ void main() {
       expect(result['linkPreviewUrl'], 'https://example.com');
       expect(result['linkPreviewTitle'], 'Example');
     });
+
+    test('clearLocalDecryptedContentCache removes persisted plaintext cache only', () async {
+      await provider.saveDecryptedContent(1003, {'content': 'Cached message'});
+
+      final removed = await provider.clearLocalDecryptedContentCache();
+
+      expect(removed, 1);
+      expect(await provider.getDecryptedContent(1003), isNull);
+      expect(provider.isE2EReady, isTrue);
+      expect(await provider.getIdentityFingerprint(), isNotNull);
+    });
   });
 
   group('EncryptionProvider — race and idempotency guards', () {

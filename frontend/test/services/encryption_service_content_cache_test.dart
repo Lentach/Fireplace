@@ -61,5 +61,49 @@ void main() {
       final result = await fresh.getDecryptedContent(1004);
       expect(result, isNull);
     });
+
+    test('saveDecryptedContent prunes oldest entries above the cache limit', () async {
+      final limited = EncryptionService(decryptedContentCacheLimit: 2);
+      await limited.initialize(42);
+
+      await limited.saveDecryptedContent(1001, {'content': 'oldest'});
+      await limited.saveDecryptedContent(1002, {'content': 'middle'});
+      await limited.saveDecryptedContent(1003, {'content': 'newest'});
+
+      expect(await limited.getDecryptedContent(1001), isNull);
+      expect((await limited.getDecryptedContent(1002))!['content'], 'middle');
+      expect((await limited.getDecryptedContent(1003))!['content'], 'newest');
+    });
+
+    test('saveDecryptedContent prunes legacy secure-storage decrypted entries', () async {
+      final secureStorage = const FlutterSecureStorage();
+      await secureStorage.write(
+        key: 'e2e_42_decrypted_1001',
+        value: '{"content":"legacy oldest"}',
+      );
+      await secureStorage.write(
+        key: 'e2e_42_decrypted_1002',
+        value: '{"content":"legacy middle"}',
+      );
+
+      final limited = EncryptionService(decryptedContentCacheLimit: 2);
+      await limited.initialize(42);
+      await limited.saveDecryptedContent(1003, {'content': 'newest'});
+
+      expect(await limited.getDecryptedContent(1001), isNull);
+      expect((await limited.getDecryptedContent(1002))!['content'], 'legacy middle');
+      expect((await limited.getDecryptedContent(1003))!['content'], 'newest');
+    });
+
+    test('clearDecryptedContentCache removes plaintext cache without deleting keys', () async {
+      await service.saveDecryptedContent(1005, {'content': 'Local plaintext'});
+
+      final removed = await service.clearDecryptedContentCache();
+
+      expect(removed, 1);
+      expect(await service.getDecryptedContent(1005), isNull);
+      expect(service.isInitialized, isTrue);
+      expect(await service.getIdentityFingerprint(), isNotNull);
+    });
   });
 }

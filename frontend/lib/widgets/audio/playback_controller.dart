@@ -43,6 +43,20 @@ class PlaybackController extends StatefulWidget {
     required this.builder,
   });
 
+  static Future<int> clearAudioCache() async {
+    if (kIsWeb) return 0;
+    final dir = await getApplicationDocumentsDirectory();
+    final cacheDir = Directory('${dir.path}/audio_cache');
+    if (!cacheDir.existsSync()) return 0;
+
+    var deleted = 0;
+    await for (final entity in cacheDir.list(recursive: true)) {
+      if (entity is File) deleted++;
+    }
+    await cacheDir.delete(recursive: true);
+    return deleted;
+  }
+
   @override
   State<PlaybackController> createState() => _PlaybackControllerState();
 }

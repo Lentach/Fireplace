@@ -117,6 +117,16 @@ class AppLocalizationsPl extends AppLocalizations {
       'Aby dostarczać wiadomości, serwer przechowuje: kto jest w danej rozmowie, kiedy wiadomości zostały wysłane oraz status dostarczenia. Treść wiadomości nigdy nie jest widoczna dla serwera.';
 
   @override
+  String get localMessageCache => 'Lokalna pamięć wiadomości';
+
+  @override
+  String get localMessageCacheDescription =>
+      'Dla niezawodności to urządzenie może lokalnie przechowywać odszyfrowane podglądy wiadomości i pobrane wiadomości głosowe. Wyczyszczenie tej pamięci nie usuwa kluczy szyfrowania ani historii z serwera.';
+
+  @override
+  String get clearLocalMessageCache => 'Wyczyść lokalną pamięć wiadomości';
+
+  @override
   String get yourIdentityFingerprint => 'Twój odcisk tożsamości';
 
   @override
@@ -444,6 +454,14 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get snackbarFailedToLoadAudio => 'Nie udało się wczytać dźwięku';
+
+  @override
+  String get snackbarLocalMessageCacheCleared =>
+      'Lokalna pamięć wiadomości wyczyszczona';
+
+  @override
+  String get snackbarFailedToClearLocalMessageCache =>
+      'Nie udało się wyczyścić lokalnej pamięci wiadomości';
 
   @override
   String friendAcceptedYourRequest(String name) {

@@ -1,12 +1,15 @@
 // backend/src/secret-notes/secret-notes.service.ts
-import { Injectable } from '@nestjs/common';
+import { Injectable, Logger } from '@nestjs/common';
+import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository } from 'typeorm';
+import { LessThan, Repository } from 'typeorm';
 import { SecretNote } from './secret-note.entity';
 import * as crypto from 'crypto';
 
 @Injectable()
 export class SecretNotesService {
+  private readonly logger = new Logger(SecretNotesService.name);
+
   constructor(
     @InjectRepository(SecretNote)
     private readonly repo: Repository<SecretNote>,
@@ -37,5 +40,15 @@ export class SecretNotesService {
     );
     if (result.length === 0) return null;
     return { ciphertext: result[0].ciphertext };
+  }
+
+  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  async deleteExpiredNotes(): Promise<number> {
+    const result = await this.repo.delete({ expiresAt: LessThan(new Date()) });
+    const deleted = result.affected ?? 0;
+    if (deleted > 0) {
+      this.logger.log(`Deleted ${deleted} expired secret notes`);
+    }
+    return deleted;
   }
 }

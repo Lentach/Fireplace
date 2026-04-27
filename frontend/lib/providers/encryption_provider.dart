@@ -162,6 +162,14 @@ class EncryptionProvider extends ChangeNotifier {
     return _encryptionService.getDecryptedContent(messageId);
   }
 
+  /// Clear locally cached decrypted plaintext without deleting Signal keys.
+  Future<int> clearLocalDecryptedContentCache() async {
+    final removed = await _encryptionService.clearDecryptedContentCache();
+    _decryptedContentCache.clear();
+    notifyListeners();
+    return removed;
+  }
+
   /// Clear a pending pre-key fetch for [recipientId] (e.g. on send failure
   /// so retry gets a fresh fetch).
   void clearPendingPreKeyFetch(int recipientId) {

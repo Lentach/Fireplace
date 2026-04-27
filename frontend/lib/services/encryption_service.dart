@@ -7,6 +7,9 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'encryption/signal_stores.dart';
 
 class EncryptionService {
+  EncryptionService({int decryptedContentCacheLimit = 500})
+      : _decryptedContentCacheLimit = decryptedContentCacheLimit;
+
   /// Batch size for replenishment (preKeysLow). Server threshold is 10.
   static const int _preKeyBatchSize = 100;
   /// Smaller initial batch for fresh install — faster startup, preKeysLow replenishes when low.
@@ -35,6 +38,7 @@ class EncryptionService {
   SharedPreferences? _prefs;
   Future<SharedPreferences> get _sharedPrefs async =>
       _prefs ??= await SharedPreferences.getInstance();
+  final int _decryptedContentCacheLimit;
 
   /// True if keys were just generated and need to be uploaded to the server.
   bool needsKeyUpload = false;
@@ -286,7 +290,8 @@ class EncryptionService {
     if (userId == null) return;
     try {
       final prefs = await _sharedPrefs;
-      await prefs.setString('e2e_${userId}_decrypted_$id', jsonEncode(data));
+      await prefs.setString(_decryptedContentKey(userId, id), jsonEncode(data));
+      await _pruneDecryptedContentCache(prefs, userId);
     } catch (_) {}
   }
 
@@ -295,7 +300,7 @@ class EncryptionService {
   Future<Map<String, dynamic>?> getDecryptedContent(int id) async {
     final userId = _userId;
     if (userId == null) return null;
-    final key = 'e2e_${userId}_decrypted_$id';
+    final key = _decryptedContentKey(userId, id);
     try {
       // Primary: SharedPreferences (reliable on web — synchronous localStorage)
       final prefs = await _sharedPrefs;
@@ -308,6 +313,31 @@ class EncryptionService {
     } catch (_) {
       return null;
     }
+  }
+
+  Future<int> clearDecryptedContentCache() async {
+    final userId = _userId;
+    if (userId == null) return 0;
+    final prefix = _decryptedContentPrefix(userId);
+    final keysToDelete = <String>{};
+
+    try {
+      final prefs = await _sharedPrefs;
+      keysToDelete.addAll(prefs.getKeys().where((key) => key.startsWith(prefix)));
+      for (final key in keysToDelete) {
+        await prefs.remove(key);
+      }
+    } catch (_) {}
+
+    try {
+      final all = await _storage.readAll();
+      keysToDelete.addAll(all.keys.where((key) => key.startsWith(prefix)));
+      for (final key in all.keys.where((key) => key.startsWith(prefix))) {
+        await _storage.delete(key: key);
+      }
+    } catch (_) {}
+
+    return keysToDelete.length;
   }
 
   /// Clear all E2E encryption keys for this user from storage.
@@ -341,5 +371,39 @@ class EncryptionService {
     _prefs = null;
     _storage.clearPrefsCache();
     debugPrint('[EncryptionService] All encryption keys cleared');
+  }
+
+  String _decryptedContentPrefix(int userId) => 'e2e_${userId}_decrypted_';
+
+  String _decryptedContentKey(int userId, int messageId) =>
+      '${_decryptedContentPrefix(userId)}$messageId';
+
+  Future<void> _pruneDecryptedContentCache(
+    SharedPreferences prefs,
+    int userId,
+  ) async {
+    if (_decryptedContentCacheLimit <= 0) {
+      await clearDecryptedContentCache();
+      return;
+    }
+
+    final prefix = _decryptedContentPrefix(userId);
+    final keys = <String>{
+      ...prefs.getKeys().where((key) => key.startsWith(prefix)),
+      ...(await _storage.readAll()).keys.where((key) => key.startsWith(prefix)),
+    }.toList();
+    if (keys.length <= _decryptedContentCacheLimit) return;
+
+    keys.sort((a, b) {
+      final aId = int.tryParse(a.substring(prefix.length)) ?? 0;
+      final bId = int.tryParse(b.substring(prefix.length)) ?? 0;
+      return aId.compareTo(bId);
+    });
+
+    final overflow = keys.length - _decryptedContentCacheLimit;
+    for (final key in keys.take(overflow)) {
+      await prefs.remove(key);
+      await _storage.delete(key: key);
+    }
   }
 }
