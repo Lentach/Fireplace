@@ -44,7 +44,7 @@ class _PingEffectOverlayState extends State<PingEffectOverlay>
 
   Future<void> _playPingSound() async {
     try {
-      await _audioPlayer.setAsset('assets/sounds/ping.mp3');
+      await _audioPlayer.setAsset('assets/sounds/ping_alert.mp3');
       await _audioPlayer.play();
     } catch (e) {
       debugPrint('Error playing ping sound: $e');

@@ -3,6 +3,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
+import 'package:just_audio/just_audio.dart';
 import 'package:webcrypto/webcrypto.dart';
 import '../utils/file_utils_stub.dart'
     if (dart.library.io) '../utils/file_utils_io.dart' as file_utils;
@@ -21,6 +22,9 @@ import 'encryption_provider.dart';
 /// encryption orchestration, typing/recording indicators, and reactions.
 /// Wired by [ConnectionProvider] and ConversationsScreen (setEncryptionProvider, setConversationsProvider).
 class MessagingProvider extends ChangeNotifier {
+  static const String _incomingMessageSoundAsset =
+      'assets/sounds/incoming_message_long_pop.wav';
+
   static void _e2eFlowLog(String step, [Map<String, dynamic>? data]) {
     if (kDebugMode) debugPrint('[E2E-FLOW] $step | ${data ?? {}}');
   }
@@ -96,6 +100,7 @@ class MessagingProvider extends ChangeNotifier {
   MessageModel? _replyingToMessage;
 
   bool _showPingEffect = false;
+  AudioPlayer? _incomingMessageSoundPlayer;
 
   // ---------- Typing / Recording Indicators ----------
 
@@ -454,11 +459,18 @@ class MessagingProvider extends ChangeNotifier {
         if (idx != -1 && _conversationCache.containsKey(cid)) {
           _updateCache(cid);
         }
+        if (decrypted.senderId != _currentUserId &&
+            decrypted.messageType != MessageType.ping) {
+          _playIncomingMessageSound().ignore();
+        }
       });
       return;
     }
 
     _addMessageToState(msg);
+    if (msg.senderId != _currentUserId && msg.messageType != MessageType.ping) {
+      _playIncomingMessageSound().ignore();
+    }
     // Keep cache current for active conversation.
     final activeIdAfterPlain = _effectiveActiveConversationId;
     if (activeIdAfterPlain != null &&
@@ -508,8 +520,10 @@ class MessagingProvider extends ChangeNotifier {
         'linkPreviewUrl': decrypted.linkPreviewUrl!,
       if (decrypted.linkPreviewTitle != null)
         'linkPreviewTitle': decrypted.linkPreviewTitle!,
-      if (safeImageUrl != null) 'linkPreviewImageUrl': safeImageUrl,
     };
+    if (safeImageUrl != null) {
+      data['linkPreviewImageUrl'] = safeImageUrl;
+    }
     try {
       await _encryptionProvider?.saveDecryptedContent(decrypted.id, data);
     } catch (_) {}
@@ -1931,6 +1945,23 @@ class MessagingProvider extends ChangeNotifier {
 
   // ---------- Internal Helpers ----------
 
+  Future<void> _playIncomingMessageSound() async {
+    if (kIsWeb) return;
+    try {
+      _incomingMessageSoundPlayer ??= AudioPlayer();
+      final player = _incomingMessageSoundPlayer!;
+      if (player.audioSource == null) {
+        await player.setAsset(_incomingMessageSoundAsset);
+      }
+      await player.seek(Duration.zero);
+      await player.play();
+    } catch (e) {
+      if (kDebugMode) {
+        debugPrint('[MessagingProvider] Incoming sound failed: $e');
+      }
+    }
+  }
+
   void _markMessageFailed(String tempId, String errorMsg) {
     final idx = _messages.indexWhere((m) => m.tempId == tempId);
     if (idx != -1) {
@@ -2158,5 +2189,12 @@ class MessagingProvider extends ChangeNotifier {
     _isPaginationLoad = false;
     _paginationConversationId = -1;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _incomingMessageSoundPlayer?.dispose().ignore();
+    countdownTickNotifier.dispose();
+    super.dispose();
   }
 }
