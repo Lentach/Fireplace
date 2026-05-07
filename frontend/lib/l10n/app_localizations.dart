@@ -152,6 +152,54 @@ abstract class AppLocalizations {
   /// **'Urządzenia'**
   String get devices;
 
+  /// No description provided for @webPushEnableTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Włącz powiadomienia push'**
+  String get webPushEnableTitle;
+
+  /// No description provided for @webPushEnableSubtitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Na iOS wymagane po dodaniu aplikacji do ekranu głównego'**
+  String get webPushEnableSubtitle;
+
+  /// No description provided for @webPushEnabled.
+  ///
+  /// In pl, this message translates to:
+  /// **'Powiadomienia push włączone'**
+  String get webPushEnabled;
+
+  /// No description provided for @webPushPermissionDenied.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odrzucono uprawnienie do powiadomień'**
+  String get webPushPermissionDenied;
+
+  /// No description provided for @webPushInstallRequired.
+  ///
+  /// In pl, this message translates to:
+  /// **'Najpierw dodaj Fireplace do ekranu głównego (Safari -> Udostępnij -> Do ekranu początkowego)'**
+  String get webPushInstallRequired;
+
+  /// No description provided for @webPushNotSupported.
+  ///
+  /// In pl, this message translates to:
+  /// **'Powiadomienia push nie są obsługiwane w tej przeglądarce/sesji'**
+  String get webPushNotSupported;
+
+  /// No description provided for @webPushNoChanges.
+  ///
+  /// In pl, this message translates to:
+  /// **'Powiadomienia push są już włączone'**
+  String get webPushNoChanges;
+
+  /// No description provided for @webPushEnableFailed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się włączyć powiadomień push'**
+  String get webPushEnableFailed;
+
   /// No description provided for @resetPassword.
   ///
   /// In pl, this message translates to:

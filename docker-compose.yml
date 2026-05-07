@@ -29,6 +29,9 @@ services:
       MEDIA_BASE_URL: ${MEDIA_BASE_URL:-http://localhost:3000}
       MEDIA_DIR: /app/media
       FIREBASE_SERVICE_ACCOUNT: ${FIREBASE_SERVICE_ACCOUNT}
+      WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY}
+      WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY}
+      WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-mailto:admin@example.com}
       NODE_ENV: development
     depends_on:
       - db

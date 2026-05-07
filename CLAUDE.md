@@ -34,7 +34,7 @@ cd frontend && flutter run -d chrome
 
 **Phone (same WiFi):** `cd frontend && .\run_web_for_phone.ps1` or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`
 
-**Tests:** `cd backend && npm test` (239 unit tests, 32 suites, no DB required); `cd frontend && flutter test` (91 tests; includes `test/widgets/message/bubble_redesign_test.dart`). Media crypto round-trip tests skip when `webcrypto:setup` was not run (e.g. no cmake on Windows); the 20MB limit test always runs (throws before native crypto).
+**Tests:** `cd backend && npm test` (243 unit tests, 34 suites, no DB required); `cd frontend && flutter test` (98 tests; includes `test/widgets/message/bubble_redesign_test.dart`). CI (`.github/workflows/ci.yml`) runs backend `npm ci` + `npm test`, then Flutter `flutter pub get`, `flutter analyze`, and `flutter test` on pushes to `master` and pull requests. Media crypto round-trip tests skip when `webcrypto:setup` was not run (e.g. no cmake on Windows); the 20MB limit test always runs (throws before native crypto).
 
 **Production:** https://fireplace.ignorelist.com — Google Cloud e2-medium VM (Warszawa), Docker + Nginx + Let's Encrypt. Deploy: SSH to server → `~/deploy.sh` (git pull + docker build + flutter web build).
 
@@ -63,6 +63,8 @@ cd frontend && flutter run -d chrome
 - **Android overscroll stretch:** Material 3’s `StretchingOverscrollIndicator` (default under `MaterialScrollBehavior`) can warp the whole UI when dragging past scroll edges. `theme/app_scroll_behavior.dart` returns `child` from `buildOverscrollIndicator` and is wired globally via `MaterialApp(scrollBehavior: const AppScrollBehavior())` in `frontend/lib/main.dart`.
 - Use `showTopSnackBar()` — ScaffoldMessenger covers chat input bar; pass `AppLocalizations.of(context)` strings (`snackbar*` keys in `app_en.arb` / `app_pl.arb`) — do not hardcode English for top notifications
 - Chat composer hint: `chatMessageHint` in `app_pl.arb` / `app_en.arb` (`ChatInputBar`). Chat date chips: `chatDateToday` / `chatDateYesterday` + `MaterialLocalizations.formatShortDate` for older days (`MessageDateSeparator`)
+- Local incoming-message sound (mobile): `MessagingProvider` plays `assets/sounds/incoming_message_long_pop.wav` on incoming non-self messages (plain + decrypted) except `PING`; `PingEffectOverlay` uses `assets/sounds/ping_alert.mp3`
+- `MessagingProvider` has test hook `setIncomingMessageSoundEnabledForTest(false)` used by provider unit tests to avoid `just_audio` plugin channel calls in non-widget test environments.
 - `enableForceNew()` on Socket.IO reconnect — Dart caches socket by URL, old JWT reused
 - Provider can't call Navigator — use `consumePendingOpen()` / `consumeFriendRequestSent()` patterns
 - Do NOT call `getConversations()` or `getFriends()` in `onFriendRequestAccepted` — backend already emits updated lists; extra get* causes race and overwrites with stale data (conversation/contact lost on acceptor)
@@ -74,6 +76,10 @@ cd frontend && flutter run -d chrome
 - Timer via `ValueNotifier<int>` — overlay rebuilds freeze timer
 - `clearStatus()` in AuthProvider appears unused but is called from auth_screen.dart — DO NOT DELETE
 - Always run `flutter analyze` before deleting "unused" methods
+- Web/PWA push now uses standards-based Web Push (VAPID) instead of Firebase Web Messaging. `PushService.initialize()` on web only syncs an existing subscription (no permission prompt). Permission prompt must be triggered by explicit user gesture via `PushService.requestWebPushFromUserGesture()` (wired from `SettingsScreen`).
+- iOS web push rules: requires Home Screen install + standalone mode; permission prompt must originate from direct tap/click; service worker must show a visible notification for push events. Standalone gate is enforced **only on iOS WebKit** (`WebPushBridge.isStandaloneOrNotRequired()` in `web_push_bridge_web.dart`); other engines (Chrome/Edge/Firefox/Comet on desktop and Android) can subscribe from a regular secure-context tab without PWA install. Detection: `iPhone|iPad|iPod` in UA, plus iPadOS-13+ "Mac UA + maxTouchPoints > 1" heuristic; on iOS, considered standalone when `(display-mode: standalone)` matches OR `navigator.standalone === true`.
+- `dart:html` types `PushManager.getSubscription()` as `Future<PushSubscription>` (non-nullable), but the JS API legitimately resolves to `null` when no subscription exists. Awaiting that typed Future then throws `'Null' is not a subtype of FutureOr<PushSubscription>` (visible as red `DartError` from `js_util_patch.dart`), and the failed first-time subscribe leaves the user with `Notification.permission === 'granted'` but no actual `PushSubscription` — the snackbar may still flash success while no `POST /users/web-push-subscription` ever fires. `WebPushBridge` (`web_push_bridge_web.dart`) bypasses this by calling `pushManager.getSubscription()` and `pushManager.subscribe(...)` through `dart:js_util` (`promiseToFuture<dynamic>` + `callMethod`/`getProperty`/`jsify`), which returns nullable `Future<dynamic>` and reads `endpoint`/`getKey`/`expirationTime` off the raw JS object. Do **not** route those calls back through `dart:html` typed wrappers.
+- Web push service worker is `frontend/web/web-push-sw.js` (scope `/web-push-scope/`), registered by `web_push_bridge_web.dart`.
 - Widget tests using `AppLocalizations` need delegates: `localizationsDelegates: AppLocalizations.localizationsDelegates, supportedLocales: AppLocalizations.supportedLocales` in `MaterialApp` — without them `AppLocalizations.of(context)` returns null and tests crash
 - Regression guard: `frontend/test/main/fireplace_app_scroll_behavior_test.dart` verifies `FireplaceApp` keeps `MaterialApp(scrollBehavior: const AppScrollBehavior())` wired, preventing Android overscroll stretch from silently returning
 - `SettingsScreen` regression guard: `frontend/test/screens/settings_screen_scroll_physics_test.dart` verifies `ListView` uses `ClampingScrollPhysics`; test must use `RpgTheme.themeDataLight` because `SettingsScreen` relies on `FireplaceColors` ThemeExtension
@@ -127,6 +133,8 @@ cd frontend && flutter run -d chrome
 - `_conversationsWithUnread` uses batch `countUnreadForRecipientBatch` + `getLastMessagesBatch` (2 queries total, not 2N)
 - Production: logger level `['error','warn','log']` — no debug
 - friend_requests: unique index on (sender, receiver)
+- Push delivery is dual-channel: `PushNotificationsService.notify()` dispatches FCM for `android/ios` tokens and Web Push (VAPID) for PWA subscriptions. Web Push payload is metadata-only (`type`, optional `conversationId`) and removes stale subscriptions on HTTP 404/410.
+- Web Push subscriptions are stored in `web_push_subscription` (`endpoint`, `p256dh`, `auth`, optional `userAgent`, `expirationTime` stringified bigint). REST endpoints: `POST /users/web-push-subscription`, `DELETE /users/web-push-subscription`.
 
 ### E2E Encryption
 - **`uploadOneTimePreKeys` payload:** must be `{ keys: [...] }`, not a bare array. `EncryptionProvider` emits via `_emit` (same as `socket.emit`) and must match `UploadOneTimePreKeysDto`; a raw list fails backend validation (`unknownValue` / non-object root).
@@ -208,7 +216,7 @@ flowchart TB
 | **DTOs** | `chat/dto/chat.dto.ts` + `{typing,recording-voice,...}.dto.ts` |
 | **Key Bundles** | `key-bundles/key-bundle.entity.ts`, `key-bundles/one-time-pre-key.entity.ts`, `key-bundles/key-bundles.service.ts` |
 | **Mappers** | `chat/mappers/{conversation,user,friend-request}.mapper.ts`, `messages/message.mapper.ts` |
-| **FCM/Push** | `fcm-tokens/fcm-token.entity.ts`, `fcm-tokens/fcm-tokens.service.ts`, `push-notifications/push-notifications.service.ts` |
+| **Push** | `fcm-tokens/fcm-token.entity.ts`, `fcm-tokens/fcm-tokens.service.ts`, `web-push-subscriptions/web-push-subscription.entity.ts`, `web-push-subscriptions/web-push-subscriptions.service.ts`, `push-notifications/push-notifications.service.ts` |
 | **Secret Notes** | `secret-notes/secret-note.entity.ts`, `secret-notes/secret-notes.service.ts`, `secret-notes/secret-notes.controller.ts`, `secret-notes/secret-notes.module.ts` |
 | **Health** | `health/health.controller.ts`, `health/health.module.ts` |
 | **Config** | `config/env.validation.ts` |
@@ -228,7 +236,7 @@ flowchart TB
 | **Screens** | `screens/{auth,main_shell,conversations,contacts,settings,chat_detail,add_or_invitations,privacy_safety,blocked_users}_screen.dart` |
 | **Widgets** | `widgets/{chat_action_tiles,conversation_tile,top_snackbar,avatar_circle,anti_quantum_note_dialog,gif_picker_sheet,auth_form,chat_background_pattern,message_date_separator,message_swipe_wrapper,ping_effect_overlay}.dart`; `widgets/message/{chat_message_bubble,text_message_content,image_message_content,gif_message_content,file_message_content,ping_message_content,voice_message_content,message_content_factory,message_metadata_row,reaction_chips_row}.dart`; `widgets/input/{chat_input_bar,recording_controller,attachment_handler,reply_preview_bar}.dart`; `widgets/audio/{playback_controller,waveform_display}.dart`; `widgets/dialogs/{delete_account_dialog,reset_password_dialog}.dart`. Old top-level `chat_message_bubble.dart`, `chat_input_bar.dart`, `voice_message_bubble.dart` are re-export shims. |
 | **Theme** | `theme/rpg_theme.dart` (`FireplaceColors` ThemeExtension), `theme/app_scroll_behavior.dart` (helper for optional no-stretch overscroll behavior) |
-| **Push** | `services/push_service.dart`, `firebase_options.dart` |
+| **Push** | `services/push_service.dart`, `services/web_push_bridge_{stub,web}.dart`, `firebase_options.dart`, `web/web-push-sw.js` |
 
 ---
 
@@ -311,6 +319,18 @@ erDiagram
         int userId
         string token "unique"
         string platform "web|android|ios"
+    }
+
+    web_push_subscription {
+        int id PK
+        int userId
+        text endpoint "unique"
+        text p256dh
+        text auth
+        string userAgent "nullable"
+        bigint expirationTime "nullable, stringified"
+        timestamp createdAt
+        timestamp updatedAt
     }
 
     secret_notes {
@@ -404,6 +424,9 @@ erDiagram
 | `MEDIA_BASE_URL` | No | Public base URL for media links (default `http://localhost:3000`) |
 | `MEDIA_DIR` | No | Backend filesystem root for avatars + `msgs/*.bin` (default `/app/media`) |
 | `FIREBASE_SERVICE_ACCOUNT` | No | FCM push (graceful if missing) |
+| `WEB_PUSH_VAPID_PUBLIC_KEY` | No | Web Push VAPID public key for PWA subscriptions |
+| `WEB_PUSH_VAPID_PRIVATE_KEY` | No | Web Push VAPID private key used by backend sender |
+| `WEB_PUSH_VAPID_SUBJECT` | No | VAPID subject (`mailto:` or URL) |
 | `ALLOWED_ORIGINS` | No | CORS (comma-separated, strict in prod) |
 | `BASE_URL` | No | Frontend dart define, defaults to `http://{host}:3000` |
 | `GIPHY_API_KEY` | No | Frontend dart define for Giphy API (defaults to beta key in dev) |
@@ -411,7 +434,7 @@ erDiagram
 
 **Docker:** `db` postgres:16-alpine (5433->5432), `backend` node:20-alpine (:3000) with named volume `media_storage` mounted at `/app/media`. Frontend runs locally; `frontend/nginx.conf` proxies `/media/*` and internal `X-Accel-Redirect` for production web container.
 
-**Firebase setup:** Copy `.example` files -> fill values: `firebase_secrets.dart`, `firebase-config.js`, `FIREBASE_SERVICE_ACCOUNT` env var.
+**Push setup:** Native push uses `FIREBASE_SERVICE_ACCOUNT` (FCM). Web/PWA push uses VAPID (`WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`, `WEB_PUSH_VAPID_SUBJECT`) and requires allowing outbound traffic to `*.push.apple.com` for iOS web push delivery. Frontend web subscribe flow reads the public key from `--dart-define=WEB_PUSH_VAPID_PUBLIC_KEY`.
 
 ---
 

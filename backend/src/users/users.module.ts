@@ -10,12 +10,14 @@ import { FriendRequest } from '../friends/friend-request.entity';
 import { FcmTokensModule } from '../fcm-tokens/fcm-tokens.module';
 import { KeyBundlesModule } from '../key-bundles/key-bundles.module';
 import { MessagesModule } from '../messages/messages.module';
+import { WebPushSubscriptionsModule } from '../web-push-subscriptions/web-push-subscriptions.module';
 
 @Module({
   imports: [
     TypeOrmModule.forFeature([User, Conversation, Message, FriendRequest]),
     MulterModule.register(),
     FcmTokensModule,
+    WebPushSubscriptionsModule,
     KeyBundlesModule,
     MessagesModule,
   ],

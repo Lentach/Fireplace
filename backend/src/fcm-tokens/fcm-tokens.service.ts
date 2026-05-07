@@ -24,8 +24,39 @@ export class FcmTokensService {
     await this.fcmTokenRepo.delete({ userId });
   }
 
-  async findTokensByUserId(userId: number): Promise<string[]> {
+  async findTokensByUserId(
+    userId: number,
+    platforms?: string[],
+  ): Promise<string[]> {
     const rows = await this.fcmTokenRepo.find({ where: { userId } });
-    return rows.map((r) => r.token);
+    if (!platforms?.length) {
+      return rows.map((r) => r.token);
+    }
+    const allowed = new Set(platforms);
+    return rows.filter((r) => allowed.has(r.platform)).map((r) => r.token);
   }
+
+  async findRowsByUserId(userId: number): Promise<FcmToken[]> {
+    return this.fcmTokenRepo.find({ where: { userId } });
+  }
+
+  async findRowsByUserIdAndPlatforms(
+    userId: number,
+    platforms: string[],
+  ): Promise<FcmToken[]> {
+    const rows = await this.fcmTokenRepo.find({ where: { userId } });
+    const allowed = new Set(platforms);
+    return rows.filter((r) => allowed.has(r.platform));
+  }
+
+  async removeByTokens(tokens: string[]): Promise<void> {
+    if (!tokens.length) return;
+    await this.fcmTokenRepo
+      .createQueryBuilder()
+      .delete()
+      .from(FcmToken)
+      .where('token IN (:...tokens)', { tokens })
+      .execute();
+  }
+
 }

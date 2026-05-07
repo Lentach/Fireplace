@@ -2,6 +2,24 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import 'api_service.dart';
+import 'web_push_bridge_stub.dart'
+    if (dart.library.html) 'web_push_bridge_web.dart';
+
+enum WebPushRequestStatus {
+  subscribed,
+  denied,
+  unsupported,
+  requiresStandalone,
+  noChange,
+  failed,
+}
+
+class WebPushRequestResult {
+  final WebPushRequestStatus status;
+  final String? details;
+
+  const WebPushRequestResult(this.status, {this.details});
+}
 
 /// Handles FCM push notification registration and token lifecycle.
 ///
@@ -10,13 +28,17 @@ import 'api_service.dart';
 /// the message from your own server via WebSocket.
 class PushService {
   final ApiService _api;
+  final WebPushBridge _webPushBridge = createWebPushBridge();
 
   // VAPID key for web push — get from:
   // Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
   // → Generate key pair → copy the public key.
   // TODO: Replace with your real VAPID key.
-  static const String _vapidKey =
-      'BOkbC_6t7ScCiTLyuLyM0wEG3TnXfpQaAMwZUeJHuWhtt7HVr0u3zG60xm4kqqhnNzuHZco-8h0Nt_WRYRZrZHU';
+  static const String _vapidKey = String.fromEnvironment(
+    'WEB_PUSH_VAPID_PUBLIC_KEY',
+    defaultValue:
+        'BOkbC_6t7ScCiTLyuLyM0wEG3TnXfpQaAMwZUeJHuWhtt7HVr0u3zG60xm4kqqhnNzuHZco-8h0Nt_WRYRZrZHU',
+  );
 
   PushService(this._api);
 
@@ -24,6 +46,10 @@ class PushService {
   /// Call after WebSocket connect so the user is authenticated.
   /// [jwtToken] is the current user's JWT for the backend API call.
   Future<void> initialize(String jwtToken) async {
+    if (kIsWeb) {
+      await _registerExistingWebSubscription(jwtToken);
+      return;
+    }
     try {
       // Request permission (Android 13+, iOS always, Web when called)
       final settings = await FirebaseMessaging.instance.requestPermission(
@@ -60,6 +86,10 @@ class PushService {
   /// Unregister FCM token from the server and delete it from Firebase.
   /// Call on logout BEFORE clearing the JWT.
   Future<void> unregister(String jwtToken) async {
+    if (kIsWeb) {
+      await _unregisterWebPush(jwtToken);
+      return;
+    }
     try {
       final fcmToken = await FirebaseMessaging.instance.getToken(
         vapidKey: kIsWeb ? _vapidKey : null,
@@ -70,6 +100,68 @@ class PushService {
       await FirebaseMessaging.instance.deleteToken();
     } catch (_) {
       // Best-effort — don't block logout
+    }
+  }
+
+  Future<WebPushRequestResult> requestWebPushFromUserGesture(
+    String jwtToken,
+  ) async {
+    if (!kIsWeb) {
+      return const WebPushRequestResult(WebPushRequestStatus.unsupported);
+    }
+    if (!_webPushBridge.isSupported) {
+      return const WebPushRequestResult(WebPushRequestStatus.unsupported);
+    }
+    if (!_webPushBridge.isStandaloneOrNotRequired()) {
+      return const WebPushRequestResult(WebPushRequestStatus.requiresStandalone);
+    }
+
+    try {
+      final payload =
+          await _webPushBridge.requestSubscriptionFromUserGesture(
+            vapidPublicKey: _vapidKey,
+          );
+      if (payload == null) {
+        final permission = _webPushBridge.notificationPermission;
+        if (permission == 'denied') {
+          return const WebPushRequestResult(WebPushRequestStatus.denied);
+        }
+        return const WebPushRequestResult(WebPushRequestStatus.noChange);
+      }
+      await _api.registerWebPushSubscription(jwtToken, payload);
+      return const WebPushRequestResult(WebPushRequestStatus.subscribed);
+    } catch (e) {
+      return WebPushRequestResult(
+        WebPushRequestStatus.failed,
+        details: e.toString(),
+      );
+    }
+  }
+
+  Future<void> _registerExistingWebSubscription(String jwtToken) async {
+    if (!_webPushBridge.isSupported) return;
+    if (_webPushBridge.notificationPermission != 'granted') return;
+
+    try {
+      final payload = await _webPushBridge.registerExistingSubscription(
+        vapidPublicKey: _vapidKey,
+      );
+      if (payload == null) return;
+      await _api.registerWebPushSubscription(jwtToken, payload);
+    } catch (_) {
+      // Best-effort only on startup/reconnect.
+    }
+  }
+
+  Future<void> _unregisterWebPush(String jwtToken) async {
+    if (!_webPushBridge.isSupported) return;
+    try {
+      final endpoint = await _webPushBridge.unsubscribe();
+      if (endpoint != null) {
+        await _api.removeWebPushSubscription(jwtToken, endpoint);
+      }
+    } catch (_) {
+      // Best-effort — don't block logout.
     }
   }
 

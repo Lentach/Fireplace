@@ -12,11 +12,14 @@ MessageModel _msg(int id, int convId) => MessageModel(
     );
 
 void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
   group('MessagingProvider cache', () {
     late MessagingProvider provider;
 
     setUp(() {
       provider = MessagingProvider();
+      provider.setIncomingMessageSoundEnabledForTest(false);
       // onConnect signature is: void onConnect(bool isReconnect)
       // userId and token are set separately via dedicated setters.
       provider.onConnect(false);

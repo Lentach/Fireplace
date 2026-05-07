@@ -18,8 +18,16 @@ import { memoryStorage } from 'multer';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { LocalStorageService } from '../media/local-storage.service';
 import { UsersService } from './users.service';
-import { ResetPasswordDto, DeleteAccountDto, RegisterFcmTokenDto, RemoveFcmTokenDto } from './dto/user.dto';
+import {
+  ResetPasswordDto,
+  DeleteAccountDto,
+  RegisterFcmTokenDto,
+  RemoveFcmTokenDto,
+  RegisterWebPushSubscriptionDto,
+  RemoveWebPushSubscriptionDto,
+} from './dto/user.dto';
 import { FcmTokensService } from '../fcm-tokens/fcm-tokens.service';
+import { WebPushSubscriptionsService } from '../web-push-subscriptions/web-push-subscriptions.service';
 import { validateAvatarMagicBytes } from '../media/magic-bytes.validator';
 
 @Controller('users')
@@ -30,6 +38,7 @@ export class UsersController {
     private usersService: UsersService,
     private storageService: LocalStorageService,
     private fcmTokensService: FcmTokensService,
+    private webPushSubscriptionsService: WebPushSubscriptionsService,
   ) {}
 
   @Post('profile-picture')
@@ -138,5 +147,38 @@ export class UsersController {
   async removeFcmToken(@Body() dto: RemoveFcmTokenDto, @Request() req) {
     await this.fcmTokensService.removeByToken(dto.token);
     return { message: 'FCM token removed' };
+  }
+
+  @Post('web-push-subscription')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 30, ttl: 900000 } })
+  async registerWebPushSubscription(
+    @Body() dto: RegisterWebPushSubscriptionDto,
+    @Request() req,
+  ) {
+    const userId = req.user.id;
+    await this.webPushSubscriptionsService.upsert({
+      userId,
+      endpoint: dto.endpoint,
+      p256dh: dto.keys.p256dh,
+      auth: dto.keys.auth,
+      userAgent: dto.userAgent ?? null,
+      expirationTime: dto.expirationTime ?? null,
+    });
+    return { message: 'Web push subscription registered' };
+  }
+
+  @Delete('web-push-subscription')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 30, ttl: 900000 } })
+  async removeWebPushSubscription(
+    @Body() dto: RemoveWebPushSubscriptionDto,
+    @Request() req,
+  ) {
+    await this.webPushSubscriptionsService.removeByEndpointForUser(
+      req.user.id,
+      dto.endpoint,
+    );
+    return { message: 'Web push subscription removed' };
   }
 }

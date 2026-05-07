@@ -108,7 +108,9 @@ export class ChatMessageService {
     // Always send push — when browser is minimized WebSocket stays connected but
     // user won't see the message; FCM delivers to Service Worker which shows system notification.
     // When app is foreground FCM delivers to onMessage, no duplicate notification shown.
-    this.pushNotificationsService.notify(data.recipientId).catch(() => {});
+    this.pushNotificationsService
+      .notify(data.recipientId, { conversationId: conversation.id })
+      .catch(() => {});
 
     // Async link preview — fire and forget, does not block send
     this.chatLinkPreviewService.fetchAndEmitIfNeeded({

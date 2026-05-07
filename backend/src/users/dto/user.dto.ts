@@ -1,4 +1,13 @@
-import { IsString, MinLength, Matches, IsIn } from 'class-validator';
+import {
+  IsIn,
+  IsNumber,
+  IsOptional,
+  IsString,
+  MinLength,
+  Matches,
+  ValidateNested,
+} from 'class-validator';
+import { Type } from 'class-transformer';
 import {
   PASSWORD_MIN_LENGTH,
   PASSWORD_REGEX,
@@ -37,4 +46,38 @@ export class RemoveFcmTokenDto {
   @IsString()
   @MinLength(1)
   token: string;
+}
+
+class WebPushKeysDto {
+  @IsString()
+  @MinLength(1)
+  p256dh: string;
+
+  @IsString()
+  @MinLength(1)
+  auth: string;
+}
+
+export class RegisterWebPushSubscriptionDto {
+  @IsString()
+  @MinLength(1)
+  endpoint: string;
+
+  @ValidateNested()
+  @Type(() => WebPushKeysDto)
+  keys: WebPushKeysDto;
+
+  @IsOptional()
+  @IsNumber()
+  expirationTime?: number | null;
+
+  @IsOptional()
+  @IsString()
+  userAgent?: string;
+}
+
+export class RemoveWebPushSubscriptionDto {
+  @IsString()
+  @MinLength(1)
+  endpoint: string;
 }

@@ -19,7 +19,7 @@ End-to-end encrypted messenger built with Flutter and NestJS.
 - **Anti-Quantum Notes** — one-time self-destructing encrypted notes (shareable link)
 - **3 themes** — Light, Dark (Wire-style), Blue (Telegram-style)
 - **Polish / English** — full localization via Flutter l10n
-- **Push notifications** — Firebase Cloud Messaging (silent payload)
+- **Push notifications** — Dual channel: FCM (native Android/iOS) + standards-based Web Push VAPID (PWA)
 - **Web + Mobile** — Flutter web + Android/iOS from single codebase
 
 ---
@@ -35,7 +35,7 @@ End-to-end encrypted messenger built with Flutter and NestJS.
 | Auth | JWT (HS256) |
 | Encryption | Signal Protocol (libsignal_protocol_dart 0.7.4) |
 | Media storage | Cloudinary |
-| Push | Firebase Cloud Messaging |
+| Push | FCM (native) + Web Push VAPID (PWA) |
 | Containerization | Docker + Docker Compose |
 | Production | Google Cloud VM + Nginx + Let'\''s Encrypt |
 
@@ -88,16 +88,16 @@ Set in docker-compose.yml or a .env file:
     CLOUDINARY_API_SECRET=your-secret
 
     # Optional
-    FIREBASE_SERVICE_ACCOUNT=...             # Push notifications (JSON string)
+    FIREBASE_SERVICE_ACCOUNT=...             # Native push notifications (JSON string)
+    WEB_PUSH_VAPID_PUBLIC_KEY=...            # Web Push (PWA) public key
+    WEB_PUSH_VAPID_PRIVATE_KEY=...           # Web Push private key (backend only)
+    WEB_PUSH_VAPID_SUBJECT=mailto:admin@...  # VAPID subject
     ALLOWED_ORIGINS=https://your-domain.com  # CORS (comma-separated)
     GIPHY_API_KEY=your-key                   # GIF picker (beta key used in dev)
 
-### Firebase Setup
+For web subscribe flow, pass the same public key to Flutter:
 
-Copy the example files and fill in your Firebase credentials:
-
-    cp frontend/lib/firebase_secrets.dart.example frontend/lib/firebase_secrets.dart
-    cp frontend/web/firebase-config.js.example frontend/web/firebase-config.js
+    flutter run -d chrome --dart-define=WEB_PUSH_VAPID_PUBLIC_KEY=YOUR_PUBLIC_KEY
 
 ---
 

@@ -24,6 +24,7 @@ describe('UsersService.deleteAccount – cascade', () => {
   };
   const mockStorage = { deleteAvatar: jest.fn() };
   const mockFcm = { removeByUserId: jest.fn().mockResolvedValue(undefined) };
+  const mockWebPush = { removeByUserId: jest.fn().mockResolvedValue(undefined) };
   const mockKeyBundles = { deleteByUserId: jest.fn().mockResolvedValue(undefined) };
 
   const mockMessagesService = {
@@ -54,6 +55,7 @@ describe('UsersService.deleteAccount – cascade', () => {
       mockRepo as any,
       mockStorage as any,
       mockFcm as any,
+      mockWebPush as any,
       mockKeyBundles as any,
       mockDataSource as any,
       mockMessagesService as any,
@@ -77,6 +79,15 @@ describe('UsersService.deleteAccount – cascade', () => {
     await service.deleteAccount(7, 'correct-password');
 
     expect(mockFcm.removeByUserId).toHaveBeenCalledWith(7);
+  });
+
+  it('calls web push removeByUserId', async () => {
+    (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+    mockRepo.findOne.mockResolvedValue(mockUser);
+
+    await service.deleteAccount(7, 'correct-password');
+
+    expect(mockWebPush.removeByUserId).toHaveBeenCalledWith(7);
   });
 
   it('rejects with UnauthorizedException when password is wrong', async () => {

@@ -36,6 +36,33 @@ class AppLocalizationsPl extends AppLocalizations {
   String get devices => 'Urządzenia';
 
   @override
+  String get webPushEnableTitle => 'Włącz powiadomienia push';
+
+  @override
+  String get webPushEnableSubtitle =>
+      'Na iOS wymagane po dodaniu aplikacji do ekranu głównego';
+
+  @override
+  String get webPushEnabled => 'Powiadomienia push włączone';
+
+  @override
+  String get webPushPermissionDenied => 'Odrzucono uprawnienie do powiadomień';
+
+  @override
+  String get webPushInstallRequired =>
+      'Najpierw dodaj Fireplace do ekranu głównego (Safari -> Udostępnij -> Do ekranu początkowego)';
+
+  @override
+  String get webPushNotSupported =>
+      'Powiadomienia push nie są obsługiwane w tej przeglądarce/sesji';
+
+  @override
+  String get webPushNoChanges => 'Powiadomienia push są już włączone';
+
+  @override
+  String get webPushEnableFailed => 'Nie udało się włączyć powiadomień push';
+
+  @override
   String get resetPassword => 'Zmień hasło';
 
   @override

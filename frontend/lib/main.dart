@@ -1,4 +1,5 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
@@ -20,9 +21,11 @@ void main() {
   WidgetsFlutterBinding.ensureInitialized();
   file_picker_init.initFilePickerWeb();
   runApp(const FireplaceApp());
-  // Firebase init in background — app shows immediately; push ready shortly after
-  Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform)
-      .ignore();
+  // Firebase is still used for native push (Android/iOS). Web uses standards-based Web Push.
+  if (!kIsWeb) {
+    Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform)
+        .ignore();
+  }
 }
 
 class FireplaceApp extends StatelessWidget {

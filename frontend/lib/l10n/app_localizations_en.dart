@@ -36,6 +36,33 @@ class AppLocalizationsEn extends AppLocalizations {
   String get devices => 'Devices';
 
   @override
+  String get webPushEnableTitle => 'Enable push notifications';
+
+  @override
+  String get webPushEnableSubtitle =>
+      'Required on iOS after adding app to Home Screen';
+
+  @override
+  String get webPushEnabled => 'Push notifications enabled';
+
+  @override
+  String get webPushPermissionDenied => 'Push permission denied';
+
+  @override
+  String get webPushInstallRequired =>
+      'Add Fireplace to Home Screen first (Safari -> Share -> Add to Home Screen)';
+
+  @override
+  String get webPushNotSupported =>
+      'Push is not supported in this browser/session';
+
+  @override
+  String get webPushNoChanges => 'Push is already enabled';
+
+  @override
+  String get webPushEnableFailed => 'Failed to enable push';
+
+  @override
   String get resetPassword => 'Reset Password';
 
   @override

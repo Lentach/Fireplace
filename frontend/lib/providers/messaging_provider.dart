@@ -101,6 +101,7 @@ class MessagingProvider extends ChangeNotifier {
 
   bool _showPingEffect = false;
   AudioPlayer? _incomingMessageSoundPlayer;
+  bool _incomingMessageSoundEnabled = true;
 
   // ---------- Typing / Recording Indicators ----------
 
@@ -165,6 +166,11 @@ class MessagingProvider extends ChangeNotifier {
   @visibleForTesting
   void setActiveConversationIdForTest(int? id) {
     _activeConversationIdOverrideForTest = id;
+  }
+
+  @visibleForTesting
+  void setIncomingMessageSoundEnabledForTest(bool enabled) {
+    _incomingMessageSoundEnabled = enabled;
   }
 
   bool isPartnerTyping(int conversationId) =>
@@ -1946,7 +1952,7 @@ class MessagingProvider extends ChangeNotifier {
   // ---------- Internal Helpers ----------
 
   Future<void> _playIncomingMessageSound() async {
-    if (kIsWeb) return;
+    if (kIsWeb || !_incomingMessageSoundEnabled) return;
     try {
       _incomingMessageSoundPlayer ??= AudioPlayer();
       final player = _incomingMessageSoundPlayer!;

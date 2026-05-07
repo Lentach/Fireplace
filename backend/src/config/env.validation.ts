@@ -50,6 +50,18 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsString()
   MEDIA_DIR?: string;
+
+  @IsOptional()
+  @IsString()
+  WEB_PUSH_VAPID_PUBLIC_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  WEB_PUSH_VAPID_PRIVATE_KEY?: string;
+
+  @IsOptional()
+  @IsString()
+  WEB_PUSH_VAPID_SUBJECT?: string;
 }
 
 export function validate(config: Record<string, any>): EnvironmentVariables {

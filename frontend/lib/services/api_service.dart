@@ -157,6 +157,42 @@ class ApiService {
     }
   }
 
+  Future<void> registerWebPushSubscription(
+    String jwtToken,
+    Map<String, dynamic> subscription,
+  ) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/users/web-push-subscription'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $jwtToken',
+      },
+      body: jsonEncode(subscription),
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception('Failed to register Web Push subscription');
+    }
+  }
+
+  Future<void> removeWebPushSubscription(
+    String jwtToken,
+    String endpoint,
+  ) async {
+    final response = await http.delete(
+      Uri.parse('$baseUrl/users/web-push-subscription'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $jwtToken',
+      },
+      body: jsonEncode({'endpoint': endpoint}),
+    );
+
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception('Failed to remove Web Push subscription');
+    }
+  }
+
   /// Upload an AES-encrypted media blob to [POST /media/upload].
   Future<Map<String, dynamic>> uploadEncryptedMedia({
     required String token,

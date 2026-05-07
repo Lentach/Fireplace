@@ -26,6 +26,8 @@ import { SecretNote } from './secret-notes/secret-note.entity';
 import { SecretNotesModule } from './secret-notes/secret-notes.module';
 import { validate } from './config/env.validation';
 import { HealthModule } from './health/health.module';
+import { WebPushSubscription } from './web-push-subscriptions/web-push-subscription.entity';
+import { WebPushSubscriptionsModule } from './web-push-subscriptions/web-push-subscriptions.module';
 
 @Module({
   imports: [
@@ -56,7 +58,18 @@ import { HealthModule } from './health/health.module';
         username: configService.get('DB_USER'),
         password: configService.get('DB_PASS'),
         database: configService.get('DB_NAME'),
-        entities: [User, Conversation, Message, FriendRequest, BlockedUser, FcmToken, KeyBundle, OneTimePreKey, SecretNote],
+        entities: [
+          User,
+          Conversation,
+          Message,
+          FriendRequest,
+          BlockedUser,
+          FcmToken,
+          WebPushSubscription,
+          KeyBundle,
+          OneTimePreKey,
+          SecretNote,
+        ],
         synchronize: process.env.NODE_ENV !== 'production',
       }),
     }),
@@ -68,6 +81,7 @@ import { HealthModule } from './health/health.module';
     FriendsModule,
     BlockedModule,
     FcmTokensModule,
+    WebPushSubscriptionsModule,
     KeyBundlesModule,
     PushNotificationsModule,
     ChatModule,

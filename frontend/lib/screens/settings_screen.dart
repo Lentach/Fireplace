@@ -7,6 +7,9 @@ import '../providers/auth_provider.dart';
 import '../providers/connection_provider.dart';
 import '../providers/encryption_provider.dart';
 import '../providers/settings_provider.dart';
+import '../services/api_service.dart';
+import '../services/push_service.dart';
+import '../config/app_config.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/dialogs/reset_password_dialog.dart';
 import '../widgets/dialogs/delete_account_dialog.dart';
@@ -24,6 +27,8 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   String? _deviceName;
+  late final PushService _pushService =
+      PushService(ApiService(baseUrl: AppConfig.baseUrl));
 
   @override
   void initState() {
@@ -138,6 +143,60 @@ class _SettingsScreenState extends State<SettingsScreen> {
           backgroundColor: const Color(0xFFFF6666),
         );
       }
+    }
+  }
+
+  Future<void> _enableWebPushNotifications() async {
+    final token = context.read<AuthProvider>().token;
+    if (token == null) return;
+
+    final result = await _pushService.requestWebPushFromUserGesture(token);
+    if (!mounted) return;
+
+    final l10n = AppLocalizations.of(context);
+    switch (result.status) {
+      case WebPushRequestStatus.subscribed:
+        showTopSnackBar(
+          context,
+          l10n.webPushEnabled,
+          backgroundColor: Theme.of(context).colorScheme.primary,
+        );
+        break;
+      case WebPushRequestStatus.denied:
+        showTopSnackBar(
+          context,
+          l10n.webPushPermissionDenied,
+          backgroundColor: const Color(0xFFFF6666),
+        );
+        break;
+      case WebPushRequestStatus.requiresStandalone:
+        showTopSnackBar(
+          context,
+          l10n.webPushInstallRequired,
+          backgroundColor: const Color(0xFFFF6666),
+        );
+        break;
+      case WebPushRequestStatus.unsupported:
+        showTopSnackBar(
+          context,
+          l10n.webPushNotSupported,
+          backgroundColor: const Color(0xFFFF6666),
+        );
+        break;
+      case WebPushRequestStatus.noChange:
+        showTopSnackBar(
+          context,
+          l10n.webPushNoChanges,
+          backgroundColor: Theme.of(context).colorScheme.primary,
+        );
+        break;
+      case WebPushRequestStatus.failed:
+        showTopSnackBar(
+          context,
+          '${l10n.webPushEnableFailed}: ${result.details ?? ''}',
+          backgroundColor: const Color(0xFFFF6666),
+        );
+        break;
     }
   }
 
@@ -426,6 +485,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
               subtitle: _deviceName ?? AppLocalizations.of(context).devicesLoading,
               trailing: Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
             ),
+
+            if (kIsWeb)
+              _buildSettingsTile(
+                icon: Icons.notifications_active,
+                title: AppLocalizations.of(context).webPushEnableTitle,
+                subtitle: AppLocalizations.of(context).webPushEnableSubtitle,
+                trailing: Icon(
+                  Icons.chevron_right,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                onTap: _enableWebPushNotifications,
+              ),
 
             _buildSettingsTile(
               icon: Icons.lock_reset,

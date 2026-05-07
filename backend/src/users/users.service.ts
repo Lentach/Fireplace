@@ -17,6 +17,7 @@ import { FcmTokensService } from '../fcm-tokens/fcm-tokens.service';
 import { KeyBundlesService } from '../key-bundles/key-bundles.service';
 import { MessagesService } from '../messages/messages.service';
 import { MediaCleanupService } from '../media/media-cleanup.service';
+import { WebPushSubscriptionsService } from '../web-push-subscriptions/web-push-subscriptions.service';
 
 @Injectable()
 export class UsersService {
@@ -27,6 +28,7 @@ export class UsersService {
     private usersRepo: Repository<User>,
     private storageService: LocalStorageService,
     private fcmTokensService: FcmTokensService,
+    private webPushSubscriptionsService: WebPushSubscriptionsService,
     private keyBundlesService: KeyBundlesService,
     private dataSource: DataSource,
     private messagesService: MessagesService,
@@ -130,8 +132,9 @@ export class UsersService {
       await this.storageService.deleteAvatar(user.profilePicturePublicId);
     }
 
-    // FCM tokens and key bundles use their own repos — delete outside transaction
+    // Push tokens/subscriptions and key bundles use their own repos — delete outside transaction
     await this.fcmTokensService.removeByUserId(userId);
+    await this.webPushSubscriptionsService.removeByUserId(userId);
     await this.keyBundlesService.deleteByUserId(userId);
 
     const conversations = await this.usersRepo.manager.find(Conversation, {
