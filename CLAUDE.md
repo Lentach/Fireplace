@@ -121,6 +121,7 @@ cd frontend && flutter run -d chrome
 - WS throttling also guards read-heavy events: `getMessages/getConversations/getFriends/getFriendRequests/getBlockedList` use `300/15m`; `searchUsers` uses `30/60s`; `fetchPreKeyBundle` uses guard-only with global limits
 - `ChatKeyExchangeService.handleFetchPreKeyBundle` has an additional in-process anti-depletion guard: same `requesterId -> targetUserId` pre-key fetches are rate-limited (minimum 750ms between requests) and return socket `error` when exceeded; tracker map is pruned by TTL (10 min) and capped (10k entries) to avoid unbounded memory growth
 - JWT invalidation after password change: `User.passwordChangedAt` is set in `resetPassword`; `JwtStrategy.validate()` rejects when `payload.iat <= passwordChangedAt` (seconds precision)
+- JWT TTL: `30d` (`auth.module.ts` `signOptions.expiresIn`). Phase 0 hotfix from prior `'24h'` (2026-05-09) so PWA users do not auto-logout daily; will be replaced by short-lived (~2h) session tokens + Ed25519 silent refresh in Phase 1 (see `docs/superpowers/specs/2026-05-09-identity-key-auth-design.md`).
 - `GET /media/msgs/:filename` is JWT-guarded; avatars remain public
 - Expired disappearing-message media is deleted before `MessageCleanupService` removes expired rows. `MediaCleanupService.cleanupOrphanedFiles()` still runs daily as a crash/legacy safety net.
 - Blocking a user deletes known self-hosted media for the conversation before deleting the conversation/messages, so block does not wait for the daily orphan sweep.

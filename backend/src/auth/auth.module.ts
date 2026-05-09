@@ -27,7 +27,12 @@ const DEV_JWT_SECRET = 'super-secret-dev-key';
         }
         return {
           secret,
-          signOptions: { expiresIn: '24h' },
+          // Phase 0 hotfix (2026-05-09): bumped from 24h to 30d so PWA users
+          // are not auto-logged-out daily while Phase 1 (identity-key auth,
+          // see docs/superpowers/specs/2026-05-09-identity-key-auth-design.md)
+          // is being built. Will be replaced by short-lived (~2h) session
+          // tokens + Ed25519 silent refresh in Phase 1.
+          signOptions: { expiresIn: '30d' },
         };
       },
     }),
