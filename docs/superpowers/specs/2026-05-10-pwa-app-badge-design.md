@@ -24,9 +24,11 @@ PWA users (Android Chrome / iOS Safari, installed to Home Screen) expect an **ap
 | Decision | Choice |
 |----------|--------|
 | What the number means | Sum of per-conversation unread counts (same semantics as list tiles). |
-| Display cap | **`min(totalUnread, 19)`** — values greater than 19 still show **19** on the icon (OS APIs typically show a plain integer; no `"+"` suffix in our call). |
+| Display cap | **`min(totalUnread, 19)`** — pass that integer to `setAppBadge`. For 20+ unread, the icon shows **19** (plain digit only; aligns with the Badging API, which accepts a number, not a string like `"19+"`). |
 | Service worker | **No change in v1** — optional v2 could `postMessage` on `push` to nudge the client after focus; not part of this spec. |
 | Throttle | Debounce badge API calls (~100–250 ms) after rapid `notifyListeners` bursts (pattern similar to Session Desktop throttling around `setBadgeCount`). |
+
+**Note (clarification):** A literal `"19+"` glyph on the icon is **not** required; a **single saturated integer** (19) is the chosen product behavior.
 
 ---
 
