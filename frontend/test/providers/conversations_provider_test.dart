@@ -212,6 +212,61 @@ void main() {
       expect(emitted.length, 1);
       expect(emitted.first['conversationId'], 10);
     });
+
+    group('pushClientState (server push suppression)', () {
+      test('setClientVisible false emits pushClientState with clientVisible false', () {
+        final provider = ConversationsProvider();
+        final pushStates = <Map<String, dynamic>>[];
+        provider.setEmitCallback((event, data) {
+          if (event == 'pushClientState') {
+            pushStates.add(Map<String, dynamic>.from(data as Map));
+          }
+        });
+        provider.onConnect(false);
+        provider.openConversation(42);
+        pushStates.clear();
+
+        provider.setClientVisible(false);
+
+        expect(pushStates, hasLength(1));
+        expect(pushStates.single['clientVisible'], isFalse);
+        expect(pushStates.single['activeConversationId'], 42);
+      });
+
+      test('setClientVisible false is idempotent (no duplicate emits)', () {
+        final provider = ConversationsProvider();
+        provider.onConnect(false);
+        provider.openConversation(1);
+        var pushAfterSetup = 0;
+        provider.setEmitCallback((event, _) {
+          if (event == 'pushClientState') pushAfterSetup++;
+        });
+
+        provider.setClientVisible(false);
+        expect(pushAfterSetup, 1);
+        provider.setClientVisible(false);
+        expect(pushAfterSetup, 1);
+      });
+
+      test('closeConversation emits activeConversationId null for pushClientState', () {
+        final provider = ConversationsProvider();
+        final pushStates = <Map<String, dynamic>>[];
+        provider.setEmitCallback((event, data) {
+          if (event == 'pushClientState') {
+            pushStates.add(Map<String, dynamic>.from(data as Map));
+          }
+        });
+        provider.onConnect(false);
+        provider.openConversation(99);
+        pushStates.clear();
+
+        provider.closeConversation();
+
+        expect(pushStates, hasLength(1));
+        expect(pushStates.single['activeConversationId'], isNull);
+        expect(pushStates.single['clientVisible'], isTrue);
+      });
+    });
   });
 }
 

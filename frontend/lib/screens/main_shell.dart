@@ -71,9 +71,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:
       case AppLifecycleState.hidden:
-        context.read<ConversationsProvider>().setClientVisible(false);
-        break;
       case AppLifecycleState.inactive:
+        // Treat inactive as background for push: iOS/Android often enter inactive
+        // (app switcher, home gesture) before paused; leaving it true kept
+        // pushClientState.clientVisible true so the server skipped pushes while
+        // the user was no longer looking at the chat.
+        context.read<ConversationsProvider>().setClientVisible(false);
         break;
     }
   }

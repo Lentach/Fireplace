@@ -1,7 +1,6 @@
 # Latest session summary
 
 **Date:** 2026-05-10  
-**Summary:** [2026-05-10-session.md](2026-05-10-session.md) — Refresh token sessions (365d rolling + rotation, 24h access JWT), `POST /auth/refresh` + `/auth/logout`, password change revokes all refresh rows; Flutter `AuthProvider` + `ConnectionProvider` wiring; `CLAUDE.md` + `graphify update`; backend 254 / frontend 101 tests.
+**Summary:** [2026-05-10-push-client-state-fix.md](2026-05-10-push-client-state-fix.md) — push suppression: `ChatDetailScreen.dispose` clears stale `activeConversationId`; `MainShell` sets `clientVisible` false on **`inactive`** (home / app switcher before `paused`).
 
-**Previous:** [2026-05-09-session-firebase-auth-analysis.md](2026-05-09-session-firebase-auth-analysis.md)  
-**Also:** [2026-05-09-session.md](2026-05-09-session.md)
+**Previous:** [2026-05-10-session.md](2026-05-10-session.md) — refresh tokens + session refresh; [2026-05-09-session.md](2026-05-09-session.md) — ApiService / auth tests.

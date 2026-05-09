@@ -34,6 +34,10 @@ class ChatDetailScreen extends StatefulWidget {
 }
 
 class _ChatDetailScreenState extends State<ChatDetailScreen> {
+  /// Cached in [initState] so [dispose] can sync push state without relying on [context].
+  late final ConversationsProvider _conversations;
+  late final MessagingProvider _messaging;
+
   final _scrollController = ScrollController();
   Timer? _timerCountdownRefresh;
   Timer? _showFullHandleTimer;
@@ -136,21 +140,36 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     }
   }
 
+  /// Clears server push-suppression when this route/widget is torn down without the
+  /// AppBar back handler (Android system back, block menu, auto-pop after conv removed).
+  /// Skips when another conversation is already active (desktop list switch).
+  void _clearActiveConversationIfThisChat() {
+    if (_conversations.activeConversationDeletedByOther) {
+      _conversations.clearActiveIfDeletedByOther();
+      return;
+    }
+    if (_conversations.activeConversationId == widget.conversationId) {
+      _conversations.closeConversation();
+      _messaging.clearMessages();
+    }
+  }
+
   @override
   void initState() {
     super.initState();
+    _conversations = context.read<ConversationsProvider>();
+    _messaging = context.read<MessagingProvider>();
     _scrollController.addListener(_onScroll);
     // Register active conversation before the next frame so notification-driven
     // navigation in MainShell can avoid stacking a duplicate ChatDetailScreen.
     scheduleMicrotask(() {
       if (!mounted) return;
-      context.read<ConversationsProvider>().openConversation(widget.conversationId);
+      _conversations.openConversation(widget.conversationId);
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final messaging = context.read<MessagingProvider>();
-      messaging.loadCachedMessages(widget.conversationId);
-      messaging.getMessages(widget.conversationId);
+      _messaging.loadCachedMessages(widget.conversationId);
+      _messaging.getMessages(widget.conversationId);
     });
 
     // Refresh every second: remove expired and tick countdown. No setState here -
@@ -160,10 +179,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       const Duration(seconds: 1),
       (_) {
         if (!mounted) return;
-        final messaging = context.read<MessagingProvider>();
-        if (messaging.isRecordingVoice) return; // Skip during recording to avoid starving recording timer
-        messaging.removeExpiredMessages();
-        messaging.countdownTickNotifier.value++;
+        if (_messaging.isRecordingVoice) return; // Skip during recording to avoid starving recording timer
+        _messaging.removeExpiredMessages();
+        _messaging.countdownTickNotifier.value++;
       },
     );
   }
@@ -194,6 +212,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
 
   @override
   void dispose() {
+    _clearActiveConversationIfThisChat();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _timerCountdownRefresh?.cancel();
@@ -433,6 +452,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         if (Navigator.canPop(context)) {
+          _clearActiveConversationIfThisChat();
           Navigator.pop(context);
           if (mounted) {
             showTopSnackBar(
@@ -622,14 +642,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
           onPressed: () {
-            final c = context.read<ConversationsProvider>();
-            final m = context.read<MessagingProvider>();
-            if (c.activeConversationDeletedByOther) {
-              c.clearActiveIfDeletedByOther();
-            } else {
-              c.closeConversation();
-              m.clearMessages();
-            }
+            _clearActiveConversationIfThisChat();
             Navigator.of(context).pop();
           },
         ),
@@ -641,6 +654,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               onSelected: (value) {
                 if (value == 'block') {
                   context.read<FriendsProvider>().blockUser(otherUser.id);
+                  _clearActiveConversationIfThisChat();
                   Navigator.of(context).pop();
                 }
               },
