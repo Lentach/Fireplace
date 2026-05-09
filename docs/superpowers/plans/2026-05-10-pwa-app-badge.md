@@ -8,6 +8,18 @@
 
 **Tech stack:** Flutter 3.x, `dart:js_util` on web, `provider`.
 
+**Naming (vs design spec):** The approved spec used placeholder names `AppBadgeBridge` / `applyUnreadTotal`. The implementation uses `BadgingBridge`, `setBadgeCount(int)` for non-zero capped totals, and `clearBadge()` — same behavior as the spec’s apply/clear split.
+
+**Logout / not logged in:** Badge is cleared in `UnreadBadgeSync.dispose()`, called from `MainShell.dispose()`. On logout, `AuthGate` replaces the logged-in tree, so `MainShell` unmounts and the badge clears. No separate `AuthProvider` hook is required unless navigation is refactored to keep `MainShell` mounted while logged out.
+
+---
+
+## Implementation status
+
+**Completed:** 2026-05-10 (see `frontend/lib/utils/app_badge_math.dart`, `frontend/lib/services/badging_bridge_*.dart`, `frontend/lib/services/unread_badge_sync.dart`, `frontend/lib/screens/main_shell.dart`, `frontend/test/utils/app_badge_math_test.dart`; `CLAUDE.md` § Frontend PWA badge).
+
+Re-run **Task 6** after any change to these paths.
+
 ---
 
 ### Task 1: Math helpers + unit tests
@@ -16,8 +28,8 @@
 - Create: `frontend/lib/utils/app_badge_math.dart`
 - Create: `frontend/test/utils/app_badge_math_test.dart`
 
-- [ ] Add `sumUnreadBadgeCounts(Map<int, int>)` and `capUnreadForBadge(int totalUnread)` per spec.
-- [ ] Unit tests for sums, cap at 19, zero edge cases.
+- [x] Add `sumUnreadBadgeCounts(Map<int, int>)` and `capUnreadForBadge(int totalUnread)` per spec.
+- [x] Unit tests for sums, cap at 19, zero edge cases.
 
 ---
 
@@ -27,8 +39,8 @@
 - Create: `frontend/lib/services/badging_bridge_stub.dart`
 - Create: `frontend/lib/services/badging_bridge_web.dart`
 
-- [ ] Shared API: `isSupported`, `setBadgeCount(int)` (non-zero), `clearBadge()`, factory `createBadgingBridge()`.
-- [ ] Web: feature-detect `setAppBadge` / `clearAppBadge`, `promiseToFuture`, swallow errors.
+- [x] Shared API: `isSupported`, `setBadgeCount(int)` (non-zero), `clearBadge()`, factory `createBadgingBridge()`.
+- [x] Web: feature-detect `setAppBadge` / `clearAppBadge`, `promiseToFuture`, swallow errors.
 
 ---
 
@@ -37,9 +49,9 @@
 **Files:**
 - Create: `frontend/lib/services/unread_badge_sync.dart`
 
-- [ ] Constructor takes `ConversationsProvider`, optional `Duration debounce` (~200 ms).
-- [ ] `addListener` → debounced recompute from `unreadCounts`; skip duplicate capped sends.
-- [ ] `dispose()`: remove listener, cancel timer, `clearBadge()`.
+- [x] Constructor takes `ConversationsProvider`, optional `Duration debounce` (~200 ms).
+- [x] `addListener` → debounced recompute from `unreadCounts`; skip duplicate capped sends.
+- [x] `dispose()`: remove listener, cancel timer, `clearBadge()`.
 
 ---
 
@@ -48,8 +60,8 @@
 **Files:**
 - Modify: `frontend/lib/screens/main_shell.dart`
 
-- [ ] Field `UnreadBadgeSync? _unreadBadgeSync`; start in `addPostFrameCallback` when `kIsWeb` (after `mounted`, read `ConversationsProvider`).
-- [ ] `dispose()`: `_unreadBadgeSync?.dispose()`.
+- [x] Field `UnreadBadgeSync? _unreadBadgeSync`; start in `addPostFrameCallback` when `kIsWeb` (after `mounted`, read `ConversationsProvider`).
+- [x] `dispose()`: `_unreadBadgeSync?.dispose()` (async cleanup via `unawaited`).
 
 ---
 
@@ -59,9 +71,12 @@
 - Modify: `CLAUDE.md` (PWA / Web Push section: Badging API, iOS Home Screen caveat)
 - Run: `graphify update .`
 
+- [x] Documented in `CLAUDE.md`.
+- [x] `graphify update .` (re-run after implementation file edits per workspace rule).
+
 ---
 
 ### Task 6: Verification
 
-- [ ] `flutter analyze` on touched paths
-- [ ] `flutter test`
+- [ ] `flutter analyze` — re-run when changing badge code; local runs may still flag `dart:js_util` / web-only imports when the analyzer target is not web (CI uses the standard Flutter toolchain).
+- [x] `flutter test` (passed 2026-05-10).

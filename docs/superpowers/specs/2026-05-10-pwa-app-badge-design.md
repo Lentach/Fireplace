@@ -55,15 +55,16 @@ Encryption does not change the approach: the client already holds **metadata** u
 
 ### Components
 
-1. **`AppBadgeBridge` (abstract API)**  
-   - `void applyUnreadTotal(int cappedTotal)` — `cappedTotal` is **already** `min(raw, 19)` at call site **or** bridge applies cap once (pick one place; spec: **single helper** `int capUnreadForBadge(int total) => total > 19 ? 19 : total` with `0` meaning clear).
+1. **Badging bridge (`BadgingBridge`; stub + web)** — implements the role of the sketch below.  
+   - Spec sketch: `AppBadgeBridge` / `applyUnreadTotal(cappedTotal)` with `cappedTotal` already `min(raw, 19)` from **`capUnreadForBadge`** (single helper; `0` means clear).  
+   - **Implementation:** `BadgingBridge.setBadgeCount(int)` for capped non-zero totals, `clearBadge()`, plus `sumUnreadBadgeCounts` / `capUnreadForBadge` in `app_badge_math.dart`.
 
-2. **`UnreadBadgeSync` (or equivalent small class)**  
-   - Subscribes to `ConversationsProvider` (e.g. `addListener` wired where providers are composed—`ConversationsScreen` init after `setProviders`, or `MainShell` once).  
-   - On notification: compute `raw = sum(_unreadCounts.values)` → `capped = capUnreadForBadge(raw)` → if changed from last applied value, schedule debounced `applyUnreadTotal(capped)`; if `raw == 0`, call `clearAppBadge()`.
+2. **`UnreadBadgeSync`**  
+   - Subscribes to `ConversationsProvider` via `addListener`; wired from **`MainShell`** (post-frame, web only).  
+   - On notification: `raw = sum(unreadCounts)` → `capped = capUnreadForBadge(raw)` → debounced `setBadgeCount` / `clearBadge`; skips duplicate capped values.
 
-3. **Logout**  
-   - `AuthProvider` / `ConversationsProvider.clearAll` path must **clear** badge (listen once globally or call from existing logout flow).
+3. **Logout / not logged in**  
+   - Badge clears when **`UnreadBadgeSync.dispose()`** runs from **`MainShell.dispose()`** (user leaves logged-in shell, including normal logout via `AuthGate`). No extra `AuthProvider` listener unless navigation is refactored to keep `MainShell` mounted while logged out.
 
 ### Data flow
 
@@ -72,7 +73,7 @@ Socket / UI updates
     → ConversationsProvider mutates _unreadCounts + notifyListeners
         → UnreadBadgeSync listener
             → debounce
-                → AppBadgeBridge.apply / clear
+                → BadgingBridge.setBadgeCount / clearBadge
                     → navigator.setAppBadge / clearAppBadge (web)
 ```
 
@@ -107,4 +108,4 @@ Socket / UI updates
 
 ## Implementation Follow-Up
 
-**Done:** `docs/superpowers/plans/2026-05-10-pwa-app-badge.md` — `UnreadBadgeSync`, `BadgingBridge` web/stub, `app_badge_math`, `MainShell` wiring, tests, `CLAUDE.md`.
+**Implemented (2026-05-10):** Code + tests + `CLAUDE.md`; task checklist and verification commands live in [`docs/superpowers/plans/2026-05-10-pwa-app-badge.md`](../plans/2026-05-10-pwa-app-badge.md). Optional provider-level tests from §Testing remain optional.

@@ -7,8 +7,10 @@ import 'package:image_picker/image_picker.dart';
 
 class ApiService {
   final String baseUrl;
+  final http.Client _httpClient;
 
-  ApiService({required this.baseUrl});
+  ApiService({required this.baseUrl, http.Client? httpClient})
+      : _httpClient = httpClient ?? http.Client();
 
   Future<Map<String, dynamic>> register(
     String username,
@@ -16,7 +18,7 @@ class ApiService {
   ) async {
     final body = {'username': username, 'password': password};
 
-    final response = await http.post(
+    final response = await _httpClient.post(
       Uri.parse('$baseUrl/auth/register'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode(body),
@@ -31,7 +33,7 @@ class ApiService {
 
   /// Login returns access + refresh tokens (refresh enables long-lived sessions).
   Future<Map<String, dynamic>> login(String identifier, String password) async {
-    final response = await http.post(
+    final response = await _httpClient.post(
       Uri.parse('$baseUrl/auth/login'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'identifier': identifier, 'password': password}),
@@ -50,7 +52,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> refreshSession(String refreshToken) async {
-    final response = await http.post(
+    final response = await _httpClient.post(
       Uri.parse('$baseUrl/auth/refresh'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'refresh_token': refreshToken}),
@@ -69,7 +71,7 @@ class ApiService {
   }
 
   Future<void> logoutRefresh(String refreshToken) async {
-    final response = await http.post(
+    final response = await _httpClient.post(
       Uri.parse('$baseUrl/auth/logout'),
       headers: {'Content-Type': 'application/json'},
       body: jsonEncode({'refresh_token': refreshToken}),
@@ -114,7 +116,7 @@ class ApiService {
       );
     }
 
-    final streamedResponse = await request.send();
+    final streamedResponse = await _httpClient.send(request);
     final response = await http.Response.fromStream(streamedResponse);
 
     final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -130,7 +132,7 @@ class ApiService {
     String oldPassword,
     String newPassword,
   ) async {
-    final response = await http.post(
+    final response = await _httpClient.post(
       Uri.parse('$baseUrl/users/reset-password'),
       headers: {
         'Content-Type': 'application/json',
@@ -149,7 +151,7 @@ class ApiService {
   }
 
   Future<void> deleteAccount(String token, String password) async {
-    final response = await http.delete(
+    final response = await _httpClient.delete(
       Uri.parse('$baseUrl/users/account'),
       headers: {
         'Content-Type': 'application/json',
@@ -169,7 +171,7 @@ class ApiService {
     String fcmToken,
     String platform,
   ) async {
-    final response = await http.post(
+    final response = await _httpClient.post(
       Uri.parse('$baseUrl/users/fcm-token'),
       headers: {
         'Content-Type': 'application/json',
@@ -184,7 +186,7 @@ class ApiService {
   }
 
   Future<void> removeFcmToken(String jwtToken, String fcmToken) async {
-    final response = await http.delete(
+    final response = await _httpClient.delete(
       Uri.parse('$baseUrl/users/fcm-token'),
       headers: {
         'Content-Type': 'application/json',
@@ -202,7 +204,7 @@ class ApiService {
     String jwtToken,
     Map<String, dynamic> subscription,
   ) async {
-    final response = await http.post(
+    final response = await _httpClient.post(
       Uri.parse('$baseUrl/users/web-push-subscription'),
       headers: {
         'Content-Type': 'application/json',
@@ -220,7 +222,7 @@ class ApiService {
     String jwtToken,
     String endpoint,
   ) async {
-    final response = await http.delete(
+    final response = await _httpClient.delete(
       Uri.parse('$baseUrl/users/web-push-subscription'),
       headers: {
         'Content-Type': 'application/json',
@@ -262,7 +264,7 @@ class ApiService {
       ),
     );
 
-    final streamedResponse = await request.send();
+    final streamedResponse = await _httpClient.send(request);
     final response = await http.Response.fromStream(streamedResponse);
     final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode != 200 && response.statusCode != 201) {
@@ -272,7 +274,7 @@ class ApiService {
   }
 
   Future<String> createSecretNote(String token, String ciphertext, int expiresIn) async {
-    final response = await http.post(
+    final response = await _httpClient.post(
       Uri.parse('$baseUrl/notes'),
       headers: {
         'Content-Type': 'application/json',
@@ -289,7 +291,7 @@ class ApiService {
 
   /// Proxy link preview fetch (for web where CORS blocks direct requests).
   Future<Map<String, String?>?> fetchLinkPreview(String token, String text) async {
-    final response = await http.post(
+    final response = await _httpClient.post(
       Uri.parse('$baseUrl/messages/link-preview'),
       headers: {
         'Content-Type': 'application/json',
@@ -347,7 +349,7 @@ class ApiService {
         resolved.contains('/media/msgs/')
             ? {'Authorization': 'Bearer $token'}
             : <String, String>{};
-    final response = await http.get(Uri.parse(resolved), headers: headers);
+    final response = await _httpClient.get(Uri.parse(resolved), headers: headers);
     if (response.statusCode != 200) {
       throw Exception('Media fetch failed: ${response.statusCode}');
     }
@@ -355,7 +357,7 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> fetchMe(String token) async {
-    final response = await http.get(
+    final response = await _httpClient.get(
       Uri.parse('$baseUrl/users/me'),
       headers: {'Authorization': 'Bearer $token'},
     );

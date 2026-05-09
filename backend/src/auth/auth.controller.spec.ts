@@ -58,4 +58,27 @@ describe('AuthController', () => {
       refresh_token: 'r',
     });
   });
+
+  it('refresh forwards refresh_token to AuthService.refreshWithToken', async () => {
+    authService.refreshWithToken.mockResolvedValue({
+      access_token: 'na',
+      refresh_token: 'nr',
+    });
+
+    const result = await controller.refresh({ refresh_token: 'old_refresh' });
+
+    expect(authService.refreshWithToken).toHaveBeenCalledWith('old_refresh');
+    expect(result).toEqual({
+      access_token: 'na',
+      refresh_token: 'nr',
+    });
+  });
+
+  it('logout forwards refresh_token to AuthService.logoutRefreshToken', async () => {
+    authService.logoutRefreshToken.mockResolvedValue(undefined);
+
+    await controller.logout({ refresh_token: 'to_revoke' });
+
+    expect(authService.logoutRefreshToken).toHaveBeenCalledWith('to_revoke');
+  });
 });

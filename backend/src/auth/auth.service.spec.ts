@@ -16,6 +16,12 @@ describe('AuthService', () => {
   let service: AuthService;
   let usersService: jest.Mocked<UsersService>;
   let jwtService: jest.Mocked<JwtService>;
+  let refreshTokensService: jest.Mocked<
+    Pick<
+      RefreshTokensService,
+      'createToken' | 'consumeAndRotate'
+    >
+  >;
 
   const mockUser: Partial<User> = {
     id: 1,
@@ -34,6 +40,7 @@ describe('AuthService', () => {
             create: jest.fn(),
             findByUsername: jest.fn(),
             findByUsernameAndTag: jest.fn(),
+            findById: jest.fn(),
           },
         },
         {
@@ -46,6 +53,7 @@ describe('AuthService', () => {
           provide: RefreshTokensService,
           useValue: {
             createToken: jest.fn(() => Promise.resolve('mock_refresh_plain')),
+            consumeAndRotate: jest.fn(),
           },
         },
       ],
@@ -54,6 +62,7 @@ describe('AuthService', () => {
     service = module.get<AuthService>(AuthService);
     usersService = module.get(UsersService);
     jwtService = module.get(JwtService);
+    refreshTokensService = module.get(RefreshTokensService);
     jest.clearAllMocks();
   });
 
@@ -104,6 +113,44 @@ describe('AuthService', () => {
       );
       await expect(service.login('testuser', 'WrongPass1')).rejects.toThrow(
         'Invalid credentials',
+      );
+    });
+  });
+
+  describe('refreshWithToken', () => {
+    it('returns new access_token and rotated refresh_token when refresh valid', async () => {
+      refreshTokensService.consumeAndRotate.mockResolvedValue({
+        userId: 1,
+        newPlain: 'rotated_refresh_plain',
+      });
+      usersService.findById.mockResolvedValue(mockUser as User);
+
+      const result = await service.refreshWithToken('incoming_refresh');
+
+      expect(refreshTokensService.consumeAndRotate).toHaveBeenCalledWith(
+        'incoming_refresh',
+      );
+      expect(usersService.findById).toHaveBeenCalledWith(1);
+      expect(result).toEqual({
+        access_token: 'mock_jwt_token',
+        refresh_token: 'rotated_refresh_plain',
+      });
+      expect(jwtService.sign).toHaveBeenCalledWith({
+        sub: 1,
+        username: 'testuser',
+        tag: '0427',
+      });
+    });
+
+    it('throws when user row missing after rotate', async () => {
+      refreshTokensService.consumeAndRotate.mockResolvedValue({
+        userId: 99,
+        newPlain: 'rotated',
+      });
+      usersService.findById.mockResolvedValue(null);
+
+      await expect(service.refreshWithToken('r')).rejects.toThrow(
+        UnauthorizedException,
       );
     });
   });
