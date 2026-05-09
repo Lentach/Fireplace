@@ -14,6 +14,7 @@ import '../providers/conversations_provider.dart';
 import '../providers/friends_provider.dart';
 import 'chat_detail_screen.dart';
 import '../utils/tab_visibility.dart';
+import '../services/unread_badge_sync.dart';
 import '../widgets/top_snackbar.dart';
 
 /// Shell after login: bottom nav with Conversations, Contacts, Settings.
@@ -27,6 +28,7 @@ class MainShell extends StatefulWidget {
 class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   StreamSubscription<dynamic>? _tabVisibilitySub;
+  UnreadBadgeSync? _unreadBadgeSync;
 
   @override
   void initState() {
@@ -36,6 +38,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       final conn = context.read<ConnectionProvider>();
       auth.setOnAccessTokenChanged(conn.applyRefreshedAccessToken);
     });
+    if (kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted) return;
+        _unreadBadgeSync = UnreadBadgeSync(context.read<ConversationsProvider>());
+      });
+    }
     WidgetsBinding.instance.addObserver(this);
     if (kIsWeb) {
       _tabVisibilitySub = registerTabVisibilityListener((visible) {
@@ -49,6 +57,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
   @override
   void dispose() {
+    final badge = _unreadBadgeSync;
+    _unreadBadgeSync = null;
+    if (badge != null) {
+      unawaited(badge.dispose());
+    }
     _tabVisibilitySub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();

@@ -107,4 +107,4 @@ Socket / UI updates
 
 ## Implementation Follow-Up
 
-After this spec: use **writing-plans** skill to produce `docs/superpowers/plans/2026-05-10-pwa-app-badge.md`, then implement in a focused PR (bridge + listener + `CLAUDE.md` + tests).
+**Done:** `docs/superpowers/plans/2026-05-10-pwa-app-badge.md` — `UnreadBadgeSync`, `BadgingBridge` web/stub, `app_badge_math`, `MainShell` wiring, tests, `CLAUDE.md`.
