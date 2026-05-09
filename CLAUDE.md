@@ -436,7 +436,7 @@ erDiagram
 | `GIPHY_API_KEY` | No | Frontend dart define for Giphy API (defaults to beta key in dev) |
 | `METADATA_RETENTION_DAYS` | No | Reserved for future auto-purge of old metadata |
 
-**Docker:** `db` postgres:16-alpine (5433->5432), `backend` node:20-alpine (:3000) with named volume `media_storage` mounted at `/app/media`. Frontend runs locally; `frontend/nginx.conf` proxies `/media/*` and internal `X-Accel-Redirect` for production web container.
+**Docker:** `db` postgres:16-alpine (5433->5432), `backend` node:20-alpine (:3000) with named volume `media_storage` mounted at `/app/media`. Frontend runs locally; `frontend/nginx.conf` proxies `/media/*`, **`/health`** (exact match — avoids SPA `try_files` returning `index.html`), and internal `X-Accel-Redirect` for production web container.
 
 **Push setup:** Native push uses `FIREBASE_SERVICE_ACCOUNT` (FCM). Web/PWA push uses VAPID (`WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`, `WEB_PUSH_VAPID_SUBJECT`) and requires allowing outbound traffic to `*.push.apple.com` for iOS web push delivery. Frontend web subscribe flow reads the public key from `--dart-define=WEB_PUSH_VAPID_PUBLIC_KEY`.
 
