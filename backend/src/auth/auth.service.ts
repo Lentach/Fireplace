@@ -7,6 +7,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { User } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
+import { RefreshTokensService } from './refresh-tokens.service';
 
 @Injectable()
 export class AuthService {
@@ -15,6 +16,7 @@ export class AuthService {
   constructor(
     private usersService: UsersService,
     private jwtService: JwtService,
+    private refreshTokensService: RefreshTokensService,
   ) {}
 
   async register(username: string, password: string) {
@@ -54,8 +56,32 @@ export class AuthService {
       username: user.username,
       tag: user.tag,
     };
+    const refresh_token = await this.refreshTokensService.createToken(user.id);
     return {
       access_token: this.jwtService.sign(payload),
+      refresh_token,
     };
+  }
+
+  async refreshWithToken(refreshTokenPlain: string) {
+    const { userId, newPlain } =
+      await this.refreshTokensService.consumeAndRotate(refreshTokenPlain);
+    const user = await this.usersService.findById(userId);
+    if (!user) {
+      throw new UnauthorizedException();
+    }
+    const payload = {
+      sub: user.id,
+      username: user.username,
+      tag: user.tag,
+    };
+    return {
+      access_token: this.jwtService.sign(payload),
+      refresh_token: newPlain,
+    };
+  }
+
+  async logoutRefreshToken(refreshTokenPlain: string): Promise<void> {
+    await this.refreshTokensService.revokeByPlain(refreshTokenPlain);
   }
 }

@@ -29,7 +29,8 @@ class ApiService {
     return data;
   }
 
-  Future<String> login(String identifier, String password) async {
+  /// Login returns access + refresh tokens (refresh enables long-lived sessions).
+  Future<Map<String, dynamic>> login(String identifier, String password) async {
     final response = await http.post(
       Uri.parse('$baseUrl/auth/login'),
       headers: {'Content-Type': 'application/json'},
@@ -40,7 +41,47 @@ class ApiService {
     if (response.statusCode != 201 && response.statusCode != 200) {
       throw Exception(data['message'] ?? 'Login failed');
     }
-    return data['access_token'] as String;
+    final access = data['access_token'] as String?;
+    final refresh = data['refresh_token'] as String?;
+    if (access == null || refresh == null) {
+      throw Exception('Login response missing tokens');
+    }
+    return data;
+  }
+
+  Future<Map<String, dynamic>> refreshSession(String refreshToken) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/refresh'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'refresh_token': refreshToken}),
+    );
+
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception(data['message'] ?? 'Session refresh failed');
+    }
+    final access = data['access_token'] as String?;
+    final refresh = data['refresh_token'] as String?;
+    if (access == null || refresh == null) {
+      throw Exception('Refresh response missing tokens');
+    }
+    return data;
+  }
+
+  Future<void> logoutRefresh(String refreshToken) async {
+    final response = await http.post(
+      Uri.parse('$baseUrl/auth/logout'),
+      headers: {'Content-Type': 'application/json'},
+      body: jsonEncode({'refresh_token': refreshToken}),
+    );
+    if (response.statusCode != 204 && response.statusCode != 200) {
+      try {
+        final data = jsonDecode(response.body) as Map<String, dynamic>;
+        throw Exception(data['message'] ?? 'Logout failed');
+      } catch (_) {
+        throw Exception('Logout failed: ${response.statusCode}');
+      }
+    }
   }
 
   Future<String> uploadProfilePicture(String token, XFile imageFile) async {

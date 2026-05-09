@@ -28,7 +28,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   @override
   void initState() {
     super.initState();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
+    WidgetsBinding.instance.addPostFrameCallback((_) async {
       final auth = context.read<AuthProvider>();
       final conn = context.read<ConnectionProvider>();
       final enc = context.read<EncryptionProvider>();
@@ -49,6 +49,8 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       msg.setConversationsProvider(convs);
 
       // Start connection via ConnectionProvider (owns socket lifecycle)
+      await auth.ensureSessionReady();
+      if (!mounted) return;
       conn.connect(auth.currentUser!.id, auth.token!, AppConfig.baseUrl);
     });
   }

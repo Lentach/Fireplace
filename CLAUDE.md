@@ -34,7 +34,7 @@ cd frontend && flutter run -d chrome
 
 **Phone (same WiFi):** `cd frontend && .\run_web_for_phone.ps1` or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`
 
-**Tests:** `cd backend && npm test` (251 unit tests, 35 suites, no DB required); `cd frontend && flutter test` (101 tests; includes `test/widgets/message/bubble_redesign_test.dart`, conversations notification-navigation guards). CI (`.github/workflows/ci.yml`) runs backend `npm ci` + `npm test`, then Flutter `flutter pub get`, `flutter analyze`, and `flutter test` on pushes to `master` and pull requests. Media crypto round-trip tests skip when `webcrypto:setup` was not run (e.g. no cmake on Windows); the 20MB limit test always runs (throws before native crypto).
+**Tests:** `cd backend && npm test` (254 unit tests, 36 suites, no DB required); `cd frontend && flutter test` (101 tests; includes `test/widgets/message/bubble_redesign_test.dart`, conversations notification-navigation guards). CI (`.github/workflows/ci.yml`) runs backend `npm ci` + `npm test`, then Flutter `flutter pub get`, `flutter analyze`, and `flutter test` on pushes to `master` and pull requests. Media crypto round-trip tests skip when `webcrypto:setup` was not run (e.g. no cmake on Windows); the 20MB limit test always runs (throws before native crypto).
 
 **Production:** https://fireplace.ignorelist.com — Google Cloud e2-medium VM (Warszawa), Docker + Nginx + Let's Encrypt. Deploy: SSH to server → `~/deploy.sh` (git pull + docker build + flutter web build).
 
@@ -88,7 +88,7 @@ cd frontend && flutter run -d chrome
 - `use_build_context_synchronously`: capture providers via `context.read<>()` before the first `await` in async methods
 - Fire-and-forget futures: use `.ignore()` instead of `.catchError((_){})` — catchError requires callback to return the same type as the Future
 - JWT payload no longer carries `profilePictureUrl`; `AuthProvider` loads user profile via `GET /users/me` in `_loadSavedToken`, `login`, and after avatar upload
-- To avoid startup logout flicker, `_loadSavedToken` first decodes minimal user fields (`sub/username/tag`) from JWT for immediate local auth state, then refreshes with `/users/me`
+- To avoid startup logout flicker, `_loadSavedToken` first decodes minimal user fields (`sub/username/tag`) from JWT for immediate local auth state, then refreshes with `/users/me`. If the access JWT is expired but `refresh_token` exists in `SharedPreferences`, `AuthProvider` calls `POST /auth/refresh` first (silent rotation). `ensureSessionReady()` runs before socket connect, on app resume, and on a 15-minute timer while logged in.
 - `_loadSavedToken`: if `fetchMe` returns 401, clear saved token/session; if network/server fails, keep token and let reconnect flow retry
 - Authenticated media fetch: `/media/msgs/` downloads use `ApiService.fetchMediaBytes(url, token)` (sends `Authorization` only for own-server URLs); legacy external URLs (e.g. Cloudinary) still fetch without auth
 - Android emulator media URL fix: backend can emit media URLs with `localhost`; `ApiService.fetchMediaBytes` rewrites loopback `/media/*` URLs to the host from `AppConfig.baseUrl` (e.g. `10.0.2.2`) before GET so GIF/image/file/voice media loads on Android emulator
@@ -120,8 +120,8 @@ cd frontend && flutter run -d chrome
 - WS rate limiting: `WsThrottlerGuard` on `sendMessage` — per-user tracker (user id); `@Throttle({ default: { limit: 300, ttl: 900000 } })` on `handleSendMessage` overrides the global module default (100/15 min) so one active user cannot exhaust the cap and lose all outbound sends until the window expires. Guard provides mock `res` with no-op `header()` (Socket has no such method; ThrottlerGuard expects it)
 - WS throttling also guards read-heavy events: `getMessages/getConversations/getFriends/getFriendRequests/getBlockedList` use `300/15m`; `searchUsers` uses `30/60s`; `fetchPreKeyBundle` uses guard-only with global limits
 - `ChatKeyExchangeService.handleFetchPreKeyBundle` has an additional in-process anti-depletion guard: same `requesterId -> targetUserId` pre-key fetches are rate-limited (minimum 750ms between requests) and return socket `error` when exceeded; tracker map is pruned by TTL (10 min) and capped (10k entries) to avoid unbounded memory growth
-- JWT invalidation after password change: `User.passwordChangedAt` is set in `resetPassword`; `JwtStrategy.validate()` rejects when `payload.iat <= passwordChangedAt` (seconds precision)
-- JWT TTL: `30d` (`auth.module.ts` `signOptions.expiresIn`). Phase 0 hotfix from prior `'24h'` (2026-05-09) so PWA users do not auto-logout daily; will be replaced by short-lived (~2h) session tokens + Ed25519 silent refresh in Phase 1 (see `docs/superpowers/specs/2026-05-09-identity-key-auth-design.md`).
+- JWT invalidation after password change: `User.passwordChangedAt` is set in `resetPassword`; `JwtStrategy.validate()` rejects when `payload.iat <= passwordChangedAt` (seconds precision). `resetPassword` also revokes **all** refresh tokens for that user (`RefreshTokensService.revokeAllForUser`).
+- **Session model:** Access JWT TTL **`24h`** (`auth.module.ts` `signOptions.expiresIn`). Long-lived sessions use opaque **refresh tokens** (table `refresh_tokens`, SHA-256 of token stored, **365-day** rolling expiry, **rotation** on each `POST /auth/refresh`). Login returns `{ access_token, refresh_token }`. `POST /auth/logout` revokes the submitted refresh token. Optional Phase 1 identity-key auth (`docs/superpowers/specs/2026-05-09-identity-key-auth-design.md`) remains a future upgrade.
 - `GET /media/msgs/:filename` is JWT-guarded; avatars remain public
 - Expired disappearing-message media is deleted before `MessageCleanupService` removes expired rows. `MediaCleanupService.cleanupOrphanedFiles()` still runs daily as a crash/legacy safety net.
 - Blocking a user deletes known self-hosted media for the conversation before deleting the conversation/messages, so block does not wait for the daily orphan sweep.
@@ -209,7 +209,7 @@ flowchart TB
 
 | Domain | Key Files |
 |---|---|
-| **Auth** | `auth/auth.service.ts`, `auth/auth.controller.ts`, `auth/jwt-auth.guard.ts`, `auth/strategies/jwt.strategy.ts`, `auth/password.constants.ts` |
+| **Auth** | `auth/auth.service.ts`, `auth/auth.controller.ts`, `auth/refresh-token.entity.ts`, `auth/refresh-tokens.service.ts`, `auth/refresh-tokens.module.ts`, `auth/dto/refresh-body.dto.ts`, `auth/jwt-auth.guard.ts`, `auth/strategies/jwt.strategy.ts`, `auth/password.constants.ts` |
 | **Users** | `users/user.entity.ts`, `users/users.service.ts`, `users/users.controller.ts` |
 | **Conversations** | `conversations/conversation.entity.ts`, `conversations/conversations.service.ts` |
 | **Messages** | `messages/message.entity.ts`, `messages/message.mapper.ts`, `messages/messages.service.ts`, `messages/messages.controller.ts` (link-preview only) |
@@ -353,7 +353,7 @@ erDiagram
     }
 ```
 
-**Constraints:** `users` unique on `(username, tag)` — Discord-style `username#tag`. No cascade on User entity — `deleteAccount()` manually cleans dependents. `secret_notes.token` unique — used as the public URL token for one-time reveal. `blocked_users` unique index on `(blocker_id, blocked_id)` — prevents duplicate blocks.
+**Constraints:** `users` unique on `(username, tag)` — Discord-style `username#tag`. No cascade on User entity — `deleteAccount()` manually cleans dependents. `secret_notes.token` unique — used as the public URL token for one-time reveal. `blocked_users` unique index on `(blocker_id, blocked_id)` — prevents duplicate blocks. **`refresh_tokens`:** unique `token_hash`; FK `user_id` → `users` ON DELETE CASCADE. With `synchronize: false` in production, create the table manually (mirror `refresh-token.entity.ts`) before deploying this feature.
 
 ---
 

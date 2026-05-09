@@ -31,6 +31,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      final auth = context.read<AuthProvider>();
+      final conn = context.read<ConnectionProvider>();
+      auth.setOnAccessTokenChanged(conn.applyRefreshedAccessToken);
+    });
     WidgetsBinding.instance.addObserver(this);
     if (kIsWeb) {
       _tabVisibilitySub = registerTabVisibilityListener((visible) {
@@ -56,8 +61,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
     switch (state) {
       case AppLifecycleState.resumed:
-        context.read<ConnectionProvider>().ensureReconnectIfNeeded();
-        context.read<ConversationsProvider>().setClientVisible(true);
+        unawaited(() async {
+          await auth.ensureSessionReady();
+          if (!mounted) return;
+          context.read<ConnectionProvider>().ensureReconnectIfNeeded();
+          context.read<ConversationsProvider>().setClientVisible(true);
+        }());
         break;
       case AppLifecycleState.paused:
       case AppLifecycleState.detached:

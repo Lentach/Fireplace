@@ -28,6 +28,7 @@ import { validate } from './config/env.validation';
 import { HealthModule } from './health/health.module';
 import { WebPushSubscription } from './web-push-subscriptions/web-push-subscription.entity';
 import { WebPushSubscriptionsModule } from './web-push-subscriptions/web-push-subscriptions.module';
+import { RefreshToken } from './auth/refresh-token.entity';
 
 @Module({
   imports: [
@@ -66,6 +67,7 @@ import { WebPushSubscriptionsModule } from './web-push-subscriptions/web-push-su
           BlockedUser,
           FcmToken,
           WebPushSubscription,
+          RefreshToken,
           KeyBundle,
           OneTimePreKey,
           SecretNote,

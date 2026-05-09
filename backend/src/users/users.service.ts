@@ -18,6 +18,7 @@ import { KeyBundlesService } from '../key-bundles/key-bundles.service';
 import { MessagesService } from '../messages/messages.service';
 import { MediaCleanupService } from '../media/media-cleanup.service';
 import { WebPushSubscriptionsService } from '../web-push-subscriptions/web-push-subscriptions.service';
+import { RefreshTokensService } from '../auth/refresh-tokens.service';
 
 @Injectable()
 export class UsersService {
@@ -33,6 +34,7 @@ export class UsersService {
     private dataSource: DataSource,
     private messagesService: MessagesService,
     private mediaCleanup: MediaCleanupService,
+    private refreshTokensService: RefreshTokensService,
   ) {}
 
   async create(username: string, password: string): Promise<User> {
@@ -113,6 +115,7 @@ export class UsersService {
     user.password = hash;
     user.passwordChangedAt = new Date();
     await this.usersRepo.save(user);
+    await this.refreshTokensService.revokeAllForUser(userId);
     this.auditLogger.log(`resetPassword success userId=${userId}`);
   }
 

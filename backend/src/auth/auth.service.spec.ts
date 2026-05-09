@@ -4,6 +4,7 @@ import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { AuthService } from './auth.service';
 import { UsersService } from '../users/users.service';
+import { RefreshTokensService } from './refresh-tokens.service';
 import { User } from '../users/user.entity';
 
 jest.mock('bcrypt', () => ({
@@ -41,6 +42,12 @@ describe('AuthService', () => {
             sign: jest.fn(() => 'mock_jwt_token'),
           },
         },
+        {
+          provide: RefreshTokensService,
+          useValue: {
+            createToken: jest.fn(() => Promise.resolve('mock_refresh_plain')),
+          },
+        },
       ],
     }).compile();
 
@@ -67,7 +74,10 @@ describe('AuthService', () => {
       usersService.findByUsername.mockResolvedValue([mockUser as User]);
       (bcrypt.compare as jest.Mock).mockResolvedValue(true);
       const result = await service.login('testuser', 'ValidPass1');
-      expect(result).toEqual({ access_token: 'mock_jwt_token' });
+      expect(result).toEqual({
+        access_token: 'mock_jwt_token',
+        refresh_token: 'mock_refresh_plain',
+      });
       expect(jwtService.sign).toHaveBeenCalledWith({
         sub: 1,
         username: 'testuser',

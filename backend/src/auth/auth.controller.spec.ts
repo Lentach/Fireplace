@@ -5,6 +5,8 @@ import { AuthService } from './auth.service';
 const createAuthServiceMock = () => ({
   register: jest.fn(),
   login: jest.fn(),
+  refreshWithToken: jest.fn(),
+  logoutRefreshToken: jest.fn(),
 });
 
 describe('AuthController', () => {
@@ -37,7 +39,10 @@ describe('AuthController', () => {
   });
 
   it('login forwards identifier and password to AuthService', async () => {
-    authService.login.mockResolvedValue({ token: 'login-token' });
+    authService.login.mockResolvedValue({
+      access_token: 'a',
+      refresh_token: 'r',
+    });
 
     const result = await controller.login({
       identifier: 'alice#1234',
@@ -48,6 +53,9 @@ describe('AuthController', () => {
       'alice#1234',
       'StrongPass123!',
     );
-    expect(result).toEqual({ token: 'login-token' });
+    expect(result).toEqual({
+      access_token: 'a',
+      refresh_token: 'r',
+    });
   });
 });

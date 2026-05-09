@@ -6,12 +6,14 @@ import { AuthService } from './auth.service';
 import { AuthController } from './auth.controller';
 import { JwtStrategy } from './strategies/jwt.strategy';
 import { UsersModule } from '../users/users.module';
+import { RefreshTokensModule } from './refresh-tokens.module';
 
 const DEV_JWT_SECRET = 'super-secret-dev-key';
 
 @Module({
   imports: [
     UsersModule,
+    RefreshTokensModule,
     PassportModule,
     ConfigModule,
     JwtModule.registerAsync({
@@ -27,18 +29,14 @@ const DEV_JWT_SECRET = 'super-secret-dev-key';
         }
         return {
           secret,
-          // Phase 0 hotfix (2026-05-09): bumped from 24h to 30d so PWA users
-          // are not auto-logged-out daily while Phase 1 (identity-key auth,
-          // see docs/superpowers/specs/2026-05-09-identity-key-auth-design.md)
-          // is being built. Will be replaced by short-lived (~2h) session
-          // tokens + Ed25519 silent refresh in Phase 1.
-          signOptions: { expiresIn: '30d' },
+          // Short-lived access JWT; long sessions use opaque refresh tokens (auth.service).
+          signOptions: { expiresIn: '24h' },
         };
       },
     }),
   ],
   controllers: [AuthController],
   providers: [AuthService, JwtStrategy],
-  exports: [AuthService, JwtModule],
+  exports: [AuthService, JwtModule, RefreshTokensModule],
 })
 export class AuthModule {}

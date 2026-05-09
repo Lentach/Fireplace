@@ -177,6 +177,12 @@ class ConnectionProvider extends ChangeNotifier {
     });
   }
 
+  /// Updates reconnect + messaging token after AuthProvider refreshes JWT (no socket reconnect).
+  void applyRefreshedAccessToken(String newAccessToken) {
+    _reconnectManager.tokenForReconnect = newAccessToken;
+    _messagingProvider?.setToken(newAccessToken);
+  }
+
   // ---------- Disconnect ----------
 
   void disconnect({bool isLogout = false}) {

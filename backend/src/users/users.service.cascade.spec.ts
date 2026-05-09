@@ -31,6 +31,7 @@ describe('UsersService.deleteAccount – cascade', () => {
     findMediaUrlsByConversation: jest.fn().mockResolvedValue([]),
   };
   const mockMediaCleanup = { deleteMediaFile: jest.fn().mockResolvedValue(undefined) };
+  const mockRefreshTokens = { revokeAllForUser: jest.fn().mockResolvedValue(undefined) };
 
   const mockManager = {
     find: jest.fn().mockResolvedValue([]),
@@ -60,6 +61,7 @@ describe('UsersService.deleteAccount – cascade', () => {
       mockDataSource as any,
       mockMessagesService as any,
       mockMediaCleanup as any,
+      mockRefreshTokens as any,
     );
   });
 

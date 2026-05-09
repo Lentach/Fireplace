@@ -1,6 +1,7 @@
 # Latest session summary
 
-**Date:** 2026-05-09  
-**Summary:** [2026-05-09-session.md](2026-05-09-session.md) — PWA auto-logout investigated. **Phase 0 deployed:** JWT TTL `24h → 30d` in `backend/src/auth/auth.module.ts` (commit `b851b42`) — stops daily auto-logout. **Phase 1 designed and DEFERRED:** full Signal-style identity-key auth design in `docs/superpowers/specs/2026-05-09-identity-key-auth-design.md` and 30-task implementation plan in `docs/superpowers/plans/2026-05-09-identity-key-auth.md` are complete but **not** scheduled for execution. After honest re-evaluation, the marginal security gain on web was judged modest (web localStorage exposure remains, XSS gets both token and key) while refactor risk is high. Both files have "deferred" status headers; re-open when going native or when product needs Active Devices UI. Cheaper higher-ROI alternatives identified: 2FA/TOTP, RS256 JWT, audit log, per-username brute-force throttle.
+**Date:** 2026-05-10  
+**Summary:** [2026-05-10-session.md](2026-05-10-session.md) — Refresh token sessions (365d rolling + rotation, 24h access JWT), `POST /auth/refresh` + `/auth/logout`, password change revokes all refresh rows; Flutter `AuthProvider` + `ConnectionProvider` wiring; `CLAUDE.md` + `graphify update`; backend 254 / frontend 101 tests.
 
-**Previous:** [2026-05-07-session.md](2026-05-07-session.md)
+**Previous:** [2026-05-09-session-firebase-auth-analysis.md](2026-05-09-session-firebase-auth-analysis.md)  
+**Also:** [2026-05-09-session.md](2026-05-09-session.md)
