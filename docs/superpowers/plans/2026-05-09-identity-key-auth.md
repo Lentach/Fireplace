@@ -1,5 +1,10 @@
 # Identity-Key Auth — Implementation Plan
 
+> **STATUS: DEFERRED (2026-05-09).** Plan complete and ready to
+> execute, but execution was deferred. See spec status header in
+> `docs/superpowers/specs/2026-05-09-identity-key-auth-design.md` for
+> rationale. Phase 0 hotfix (`b851b42`) is the only piece that landed.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Replace bare 24h JWT with Signal/Telegram-grade identity-key auth — per-device Ed25519 keypairs, silent challenge-response refresh, `device_sessions` table for instant per-device revocation, sliding 90-day session expiry. Reference spec: `docs/superpowers/specs/2026-05-09-identity-key-auth-design.md`.

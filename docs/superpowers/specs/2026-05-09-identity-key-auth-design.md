@@ -1,7 +1,28 @@
 # Identity-Key Auth — Design Spec
 
 **Date:** 2026-05-09
-**Status:** Approved (pending user review)
+**Status:** Approved, **deferred** (2026-05-09)
+
+> **Status note:** The design and the implementation plan
+> (`docs/superpowers/plans/2026-05-09-identity-key-auth.md`) are
+> complete and ready to execute. They were intentionally **deferred**
+> after a pragmatic review:
+> - The user-facing problem (PWA auto-logout every 24h) was solved by
+>   the Phase 0 hotfix (commit `b851b42`, JWT TTL `24h → 30d`).
+> - For the current threat model (small user base, primarily PWA, no
+>   high-risk users), the marginal security gain on web is modest
+>   (2h vs 30d stolen-token window + per-device revoke), while the
+>   refactor cost is high (~30 tasks across 8 PRs, breaking change,
+>   single-pod constraint, real production risk).
+> - Cheaper higher-ROI security improvements (2FA/TOTP, RS256 JWT
+>   signing, audit log with "new login from new device" alert,
+>   per-username brute-force throttling) were identified as better
+>   next steps for similar effort.
+>
+> **Re-open this spec when:** native iOS/Android app is launched
+> (cryptographic device binding becomes materially valuable),
+> "Active Devices" UI is wanted as a product feature, or the threat
+> model changes (specific attacker concerns surface).
 
 ---
 
