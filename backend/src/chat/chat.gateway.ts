@@ -236,6 +236,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return this.chatPresenceService.handleRecordingVoice(client, data, this.server, this.onlineUsers);
   }
 
+  /** Lets client suppress push when already viewing this conversation (foreground + active chat). */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 120, ttl: 900000 } })
+  @SubscribeMessage('pushClientState')
+  handlePushClientState(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
+  ): void {
+    return this.chatPresenceService.handlePushClientState(client, data);
+  }
+
   // ========== KEY EXCHANGE HANDLERS (E2E Encryption) ==========
 
   @SubscribeMessage('uploadKeyBundle')

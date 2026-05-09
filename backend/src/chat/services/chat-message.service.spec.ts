@@ -4,7 +4,7 @@ import { ConversationsService } from '../../conversations/conversations.service'
 import { ChatValidationService } from './chat-validation.service';
 import { UsersService } from '../../users/users.service';
 import { ChatLinkPreviewService } from './chat-link-preview.service';
-import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
+import { PushNotificationCoalescingService } from '../../push-notifications/push-notification-coalescing.service';
 import { MediaCleanupService } from '../../media/media-cleanup.service';
 import { ChatMessageService } from './chat-message.service';
 import { User } from '../../users/user.entity';
@@ -79,8 +79,10 @@ describe('ChatMessageService', () => {
           useValue: { fetchAndEmitIfNeeded: jest.fn() },
         },
         {
-          provide: PushNotificationsService,
-          useValue: { notify: jest.fn().mockResolvedValue(undefined) },
+          provide: PushNotificationCoalescingService,
+          useValue: {
+            scheduleMessagePush: jest.fn().mockResolvedValue(undefined),
+          },
         },
         {
           provide: MediaCleanupService,

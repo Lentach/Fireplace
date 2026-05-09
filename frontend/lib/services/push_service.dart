@@ -1,6 +1,10 @@
+import 'dart:async';
+
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
+import '../push_android_stub.dart'
+    if (dart.library.io) 'android_fcm_local_notifications.dart' as push_android;
 import 'api_service.dart';
 import 'web_push_bridge_stub.dart'
     if (dart.library.html) 'web_push_bridge_web.dart';
@@ -26,9 +30,14 @@ class WebPushRequestResult {
 /// Privacy strategy (Signal/Wire-style): FCM only receives { type: 'new_message' }.
 /// Message content is NEVER sent through FCM — the app wakes up and fetches
 /// the message from your own server via WebSocket.
+///
+/// Android: data messages show a grouped local notification (see
+/// [android_fcm_local_notifications.dart]); tap routes via [onAndroidNavigateToConversation].
 class PushService {
   final ApiService _api;
   final WebPushBridge _webPushBridge = createWebPushBridge();
+
+  StreamSubscription<RemoteMessage>? _androidFcmOpenedSubscription;
 
   // VAPID key for web push — get from:
   // Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
@@ -45,7 +54,12 @@ class PushService {
   /// Initialize push notifications and register the FCM token with the server.
   /// Call after WebSocket connect so the user is authenticated.
   /// [jwtToken] is the current user's JWT for the backend API call.
-  Future<void> initialize(String jwtToken) async {
+  ///
+  /// [onAndroidNavigateToConversation]: notification / FCM open routing (Android only).
+  Future<void> initialize(
+    String jwtToken, {
+    void Function(int conversationId)? onAndroidNavigateToConversation,
+  }) async {
     if (kIsWeb) {
       await _registerExistingWebSubscription(jwtToken);
       return;
@@ -76,8 +90,37 @@ class PushService {
         _api.registerFcmToken(jwtToken, newToken, platform).catchError((_) {});
       });
 
-      // Foreground: do not show notification — user has active tab, WebSocket already delivered the message
-      FirebaseMessaging.onMessage.listen((_) {});
+      if (defaultTargetPlatform == TargetPlatform.android) {
+        await push_android.initAndroidFcmLocalNotificationsOnMainIsolate();
+        push_android.setAndroidNotificationConversationTapHandler(
+          onAndroidNavigateToConversation,
+        );
+
+        await push_android.deliverPendingLocalNotificationTapIfAny(
+          onConversationId: (id) {
+            onAndroidNavigateToConversation?.call(id);
+          },
+        );
+
+        final initial = await FirebaseMessaging.instance.getInitialMessage();
+        if (initial != null) {
+          push_android.handleFcmRemoteMessageOpen(
+            initial,
+            onConversationId: (id) =>
+                onAndroidNavigateToConversation?.call(id),
+          );
+        }
+
+        await _androidFcmOpenedSubscription?.cancel();
+        _androidFcmOpenedSubscription =
+            FirebaseMessaging.onMessageOpenedApp.listen((message) {
+          push_android.handleFcmRemoteMessageOpen(
+            message,
+            onConversationId: (id) =>
+                onAndroidNavigateToConversation?.call(id),
+          );
+        });
+      }
     } catch (_) {
       // Push setup failed (Firebase not configured, no permission, etc.) — silently ignored
     }
@@ -91,6 +134,10 @@ class PushService {
       return;
     }
     try {
+      await _androidFcmOpenedSubscription?.cancel();
+      _androidFcmOpenedSubscription = null;
+      push_android.setAndroidNotificationConversationTapHandler(null);
+
       final fcmToken = await FirebaseMessaging.instance.getToken(
         vapidKey: kIsWeb ? _vapidKey : null,
       );

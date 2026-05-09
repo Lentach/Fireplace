@@ -4,8 +4,10 @@ import { FcmTokensService } from '../fcm-tokens/fcm-tokens.service';
 import * as webPush from 'web-push';
 import { WebPushSubscriptionsService } from '../web-push-subscriptions/web-push-subscriptions.service';
 
-interface NotifyOptions {
+export interface NotifyOptions {
   conversationId?: number;
+  /** Aggregated count when coalescing bursts (optional; omitted when 1). */
+  messageCount?: number;
 }
 
 @Injectable()
@@ -70,12 +72,12 @@ export class PushNotificationsService implements OnModuleInit {
 
   async notify(userId: number, options: NotifyOptions = {}): Promise<void> {
     await Promise.all([
-      this.notifyFcm(userId),
+      this.notifyFcm(userId, options),
       this.notifyWebPush(userId, options),
     ]);
   }
 
-  private async notifyFcm(userId: number): Promise<void> {
+  private async notifyFcm(userId: number, options: NotifyOptions): Promise<void> {
     if (!this.fcmInitialized) return;
 
     // Web clients are moving to standards-based Web Push.
@@ -85,10 +87,18 @@ export class PushNotificationsService implements OnModuleInit {
     ]);
     if (!tokens.length) return;
 
+    const data: Record<string, string> = { type: 'new_message' };
+    if (options.conversationId != null) {
+      data.conversationId = String(options.conversationId);
+    }
+    if (options.messageCount != null && options.messageCount > 1) {
+      data.messageCount = String(options.messageCount);
+    }
+
     try {
       const result = await admin.messaging().sendEachForMulticast({
         tokens,
-        data: { type: 'new_message' }, // empty payload — privacy like Signal
+        data, // metadata only — no message body
         android: { priority: 'high' },
         apns: { payload: { aps: { contentAvailable: true } } }, // silent push iOS
       });
@@ -128,10 +138,14 @@ export class PushNotificationsService implements OnModuleInit {
     );
     if (!subscriptions.length) return;
 
-    const payload = JSON.stringify({
+    const body: Record<string, unknown> = {
       type: 'new_message',
       conversationId: options.conversationId ?? null,
-    });
+    };
+    if (options.messageCount != null && options.messageCount > 1) {
+      body.messageCount = options.messageCount;
+    }
+    const payload = JSON.stringify(body);
     const topic = options.conversationId
       ? `conv-${options.conversationId}`.slice(0, 32)
       : 'new-message';

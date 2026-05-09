@@ -140,12 +140,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   void initState() {
     super.initState();
     _scrollController.addListener(_onScroll);
+    // Register active conversation before the next frame so notification-driven
+    // navigation in MainShell can avoid stacking a duplicate ChatDetailScreen.
+    scheduleMicrotask(() {
+      if (!mounted) return;
+      context.read<ConversationsProvider>().openConversation(widget.conversationId);
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final convs = context.read<ConversationsProvider>();
       final messaging = context.read<MessagingProvider>();
       messaging.loadCachedMessages(widget.conversationId);
-      convs.openConversation(widget.conversationId);
       messaging.getMessages(widget.conversationId);
     });
 

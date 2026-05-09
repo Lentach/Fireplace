@@ -151,7 +151,16 @@ class ConnectionProvider extends ChangeNotifier {
       // Initialize push notifications once per session
       if (!_pushInitialized) {
         _pushInitialized = true;
-        _pushService.initialize(token).catchError((_) {});
+        _pushService
+            .initialize(
+              token,
+              onAndroidNavigateToConversation: (conversationId) {
+                _conversationsProvider?.requestNavigateToConversationFromNotification(
+                  conversationId,
+                );
+              },
+            )
+            .catchError((_) {});
       }
     });
 

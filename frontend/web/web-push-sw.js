@@ -7,8 +7,14 @@ self.addEventListener('push', (event) => {
   }
 
   const title = 'Fireplace';
+  const count =
+    typeof payload.messageCount === 'number' && payload.messageCount > 1
+      ? payload.messageCount
+      : null;
+  const body =
+    count != null ? `You have ${count} new messages` : 'You have a new message';
   const notificationOptions = {
-    body: 'You have a new message',
+    body,
     icon: '/icons/Icon-192.png',
     badge: '/icons/Icon-192.png',
     tag: payload.conversationId

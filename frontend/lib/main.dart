@@ -1,8 +1,12 @@
 import 'package:firebase_core/firebase_core.dart';
+import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'firebase_options.dart';
+import 'fcm_background_stub.dart'
+    if (dart.library.io) 'services/android_fcm_local_notifications.dart'
+    as fcm_background;
 import 'init_file_picker_stub.dart' if (dart.library.html) 'init_file_picker_web.dart' as file_picker_init;
 import 'l10n/app_localizations.dart';
 import 'providers/auth_provider.dart';
@@ -17,15 +21,17 @@ import 'screens/main_shell.dart';
 import 'theme/app_scroll_behavior.dart';
 import 'theme/rpg_theme.dart';
 
-void main() {
+Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   file_picker_init.initFilePickerWeb();
-  runApp(const FireplaceApp());
-  // Firebase is still used for native push (Android/iOS). Web uses standards-based Web Push.
+  // Firebase + FCM background handler must be ready before [runApp] (native only).
   if (!kIsWeb) {
-    Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform)
-        .ignore();
+    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    FirebaseMessaging.onBackgroundMessage(
+      fcm_background.firebaseMessagingBackgroundHandler,
+    );
   }
+  runApp(const FireplaceApp());
 }
 
 class FireplaceApp extends StatelessWidget {

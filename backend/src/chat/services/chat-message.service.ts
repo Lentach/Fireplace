@@ -5,7 +5,7 @@ import { ConversationsService } from '../../conversations/conversations.service'
 import { ChatValidationService } from './chat-validation.service';
 import { UsersService } from '../../users/users.service';
 import { ChatLinkPreviewService } from './chat-link-preview.service';
-import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
+import { PushNotificationCoalescingService } from '../../push-notifications/push-notification-coalescing.service';
 import { validateDto } from '../utils/dto.validator';
 import { SendMessageDto, GetMessagesDto, ClearChatHistoryDto, DeleteMessageDto } from '../dto/chat.dto';
 import { MessageDeliveredDto } from '../dto/message-delivered.dto';
@@ -24,7 +24,7 @@ export class ChatMessageService {
     private readonly chatValidationService: ChatValidationService,
     private readonly usersService: UsersService,
     private readonly chatLinkPreviewService: ChatLinkPreviewService,
-    private readonly pushNotificationsService: PushNotificationsService,
+    private readonly pushCoalescingService: PushNotificationCoalescingService,
     private readonly mediaCleanup: MediaCleanupService,
   ) {}
 
@@ -105,12 +105,20 @@ export class ChatMessageService {
       );
     }
 
-    // Always send push — when browser is minimized WebSocket stays connected but
-    // user won't see the message; FCM delivers to Service Worker which shows system notification.
-    // When app is foreground FCM delivers to onMessage, no duplicate notification shown.
-    this.pushNotificationsService
-      .notify(data.recipientId, { conversationId: conversation.id })
-      .catch(() => {});
+    // Coalesced push: minimized tabs stay connected via WS but still need a wake-up;
+    // skip scheduling when recipient reports foreground + same active conversation.
+    if (
+      !this.shouldSkipPushForFocusedRecipient(
+        server,
+        onlineUsers,
+        data.recipientId,
+        conversation.id,
+      )
+    ) {
+      this.pushCoalescingService
+        .scheduleMessagePush(data.recipientId, conversation.id)
+        .catch(() => {});
+    }
 
     // Async link preview — fire and forget, does not block send
     this.chatLinkPreviewService.fetchAndEmitIfNeeded({
@@ -444,4 +452,23 @@ export class ChatMessageService {
     }
   }
 
+  /**
+   * When recipient socket reports foreground + this conversation active, WS already delivers newMessage.
+   */
+  private shouldSkipPushForFocusedRecipient(
+    server: Server,
+    onlineUsers: Map<number, string>,
+    recipientId: number,
+    conversationId: number,
+  ): boolean {
+    const recipientSocketId = onlineUsers.get(recipientId);
+    if (!recipientSocketId) return false;
+    const recipientSocket =
+      server.sockets?.sockets?.get(recipientSocketId) ?? undefined;
+    const state = recipientSocket?.data?.pushClientState as
+      | { activeConversationId?: number | null; clientVisible?: boolean }
+      | undefined;
+    if (!state?.clientVisible) return false;
+    return state.activeConversationId === conversationId;
+  }
 }

@@ -88,8 +88,40 @@ void main() {
       expect(provider.lastMessages, isEmpty);
       expect(provider.unreadCounts, isEmpty);
       expect(provider.pendingOpenConversationId, isNull);
+      expect(provider.pendingNotificationConversationId, isNull);
       expect(provider.activeConversationDeletedByOther, isFalse);
       expect(provider.errorMessage, isNull);
+    });
+
+    test(
+        'requestNavigateToConversationFromNotification pending is consumed and cleared',
+        () {
+      final provider = ConversationsProvider();
+      provider.requestNavigateToConversationFromNotification(42);
+      expect(provider.pendingNotificationConversationId, 42);
+      expect(provider.consumePendingNotificationConversationId(), 42);
+      expect(provider.pendingNotificationConversationId, isNull);
+      expect(provider.consumePendingNotificationConversationId(), isNull);
+    });
+
+    test(
+        'requestNavigateToConversationFromNotification ignores duplicate same id',
+        () {
+      final provider = ConversationsProvider();
+      var notifies = 0;
+      provider.addListener(() => notifies++);
+      provider.requestNavigateToConversationFromNotification(7);
+      expect(notifies, 1);
+      provider.requestNavigateToConversationFromNotification(7);
+      expect(notifies, 1);
+      expect(provider.pendingNotificationConversationId, 7);
+    });
+
+    test('onConnect(false) clears pending notification conversation id', () {
+      final provider = ConversationsProvider();
+      provider.requestNavigateToConversationFromNotification(99);
+      provider.onConnect(false);
+      expect(provider.pendingNotificationConversationId, isNull);
     });
 
     test('onConnect(true) preserves conversations and active chat (no flicker)', () {
@@ -167,8 +199,9 @@ void main() {
       final provider = buildProviderWithSampleData();
       final emitted = <Map<String, dynamic>>[];
       provider.setEmitCallback((event, data) {
-        expect(event, 'deleteConversationOnly');
-        emitted.add(Map<String, dynamic>.from(data as Map));
+        if (event == 'deleteConversationOnly') {
+          emitted.add(Map<String, dynamic>.from(data as Map));
+        }
       });
 
       provider.deleteConversation(10);

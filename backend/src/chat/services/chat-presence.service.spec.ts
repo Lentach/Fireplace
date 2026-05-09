@@ -115,4 +115,49 @@ describe('ChatPresenceService', () => {
       expect(mockServer.to).not.toHaveBeenCalled();
     });
   });
+
+  describe('handlePushClientState', () => {
+    it('stores push prefs on client.data when valid', () => {
+      service.handlePushClientState(mockClient, {
+        activeConversationId: 7,
+        clientVisible: true,
+      });
+
+      expect(mockClient.data.pushClientState).toEqual({
+        activeConversationId: 7,
+        clientVisible: true,
+      });
+    });
+
+    it('allows null activeConversationId', () => {
+      service.handlePushClientState(mockClient, {
+        activeConversationId: null,
+        clientVisible: false,
+      });
+
+      expect(mockClient.data.pushClientState).toEqual({
+        activeConversationId: null,
+        clientVisible: false,
+      });
+    });
+
+    it('no-op when payload invalid', () => {
+      service.handlePushClientState(mockClient, {
+        activeConversationId: -1,
+        clientVisible: true,
+      });
+
+      expect(mockClient.data.pushClientState).toBeUndefined();
+    });
+
+    it('no-op when no user id', () => {
+      const bare = { data: {} };
+      service.handlePushClientState(bare as any, {
+        activeConversationId: 1,
+        clientVisible: true,
+      });
+
+      expect((bare as any).data.pushClientState).toBeUndefined();
+    });
+  });
 });

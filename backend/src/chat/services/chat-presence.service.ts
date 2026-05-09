@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { validateDto } from '../utils/dto.validator';
+import { PushClientStateDto } from '../dto/push-client-state.dto';
 import { TypingDto } from '../dto/typing.dto';
 import { RecordingVoiceDto } from '../dto/recording-voice.dto';
 
@@ -24,6 +25,20 @@ export class ChatPresenceService {
       });
     } catch {
       return; // invalid payload — silent no-op
+    }
+  }
+
+  handlePushClientState(client: Socket, data: any): void {
+    const userId: number = client.data.user?.id;
+    if (!userId) return;
+    try {
+      const dto = validateDto(PushClientStateDto, data);
+      client.data.pushClientState = {
+        activeConversationId: dto.activeConversationId ?? null,
+        clientVisible: dto.clientVisible,
+      };
+    } catch {
+      return;
     }
   }
 

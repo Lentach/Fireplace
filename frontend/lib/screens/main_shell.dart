@@ -1,12 +1,19 @@
+import 'dart:async';
+
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'contacts_screen.dart';
 import 'conversations_screen.dart';
 import 'settings_screen.dart';
 import '../l10n/app_localizations.dart';
+import '../constants/app_constants.dart';
 import '../providers/auth_provider.dart';
 import '../providers/connection_provider.dart';
+import '../providers/conversations_provider.dart';
 import '../providers/friends_provider.dart';
+import 'chat_detail_screen.dart';
+import '../utils/tab_visibility.dart';
 import '../widgets/top_snackbar.dart';
 
 /// Shell after login: bottom nav with Conversations, Contacts, Settings.
@@ -19,34 +26,55 @@ class MainShell extends StatefulWidget {
 
 class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   int _selectedIndex = 0;
+  StreamSubscription<dynamic>? _tabVisibilitySub;
 
   @override
   void initState() {
     super.initState();
     WidgetsBinding.instance.addObserver(this);
+    if (kIsWeb) {
+      _tabVisibilitySub = registerTabVisibilityListener((visible) {
+        if (!mounted) return;
+        final auth = context.read<AuthProvider>();
+        if (auth.currentUser == null || auth.token == null) return;
+        context.read<ConversationsProvider>().setClientVisible(visible);
+      });
+    }
   }
 
   @override
   void dispose() {
+    _tabVisibilitySub?.cancel();
     WidgetsBinding.instance.removeObserver(this);
     super.dispose();
   }
 
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
-    if (state != AppLifecycleState.resumed) return;
-    final conn = context.read<ConnectionProvider>();
     final auth = context.read<AuthProvider>();
     if (auth.currentUser == null || auth.token == null) return;
-    conn.ensureReconnectIfNeeded();
+
+    switch (state) {
+      case AppLifecycleState.resumed:
+        context.read<ConnectionProvider>().ensureReconnectIfNeeded();
+        context.read<ConversationsProvider>().setClientVisible(true);
+        break;
+      case AppLifecycleState.paused:
+      case AppLifecycleState.detached:
+      case AppLifecycleState.hidden:
+        context.read<ConversationsProvider>().setClientVisible(false);
+        break;
+      case AppLifecycleState.inactive:
+        break;
+    }
   }
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    return Consumer<FriendsProvider>(
-      builder: (context, friends, _) {
+    return Consumer2<FriendsProvider, ConversationsProvider>(
+      builder: (context, friends, convs, _) {
         if (friends.pendingFriendAcceptedByName != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             final name = context.read<FriendsProvider>().consumePendingFriendAccepted();
@@ -55,6 +83,28 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
                 context,
                 AppLocalizations.of(context).friendAcceptedYourRequest(name),
                 backgroundColor: Colors.green,
+              );
+            }
+          });
+        }
+        if (convs.pendingNotificationConversationId != null) {
+          WidgetsBinding.instance.addPostFrameCallback((_) {
+            final id = context
+                .read<ConversationsProvider>()
+                .consumePendingNotificationConversationId();
+            if (id == null || !mounted) return;
+            setState(() => _selectedIndex = 0);
+            final width = MediaQuery.of(context).size.width;
+            if (width >= AppConstants.layoutBreakpointDesktop) {
+              context.read<ConversationsProvider>().setActiveConversation(id);
+            } else {
+              final active =
+                  context.read<ConversationsProvider>().activeConversationId;
+              if (active == id) return;
+              Navigator.of(context).push(
+                MaterialPageRoute<void>(
+                  builder: (_) => ChatDetailScreen(conversationId: id),
+                ),
               );
             }
           });

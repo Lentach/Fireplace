@@ -15,9 +15,15 @@ class ConversationsProvider extends ChangeNotifier {
   final Map<int, int> _unreadCounts = {}; // conversationId -> count
   final Map<int, MessageModel> _lastMessages = {};
   int? _pendingOpenConversationId;
+  /// Open this conversation from a notification tap (consumed by [MainShell], not socket flows).
+  int? _pendingNotificationConversationId;
+
   /// True when our active conversation was removed from list (e.g. other user deleted).
   bool _activeConversationDeletedByOther = false;
   String? _errorMessage;
+
+  /// App/window foreground — server skips push when this chat is already open.
+  bool _clientVisible = true;
 
   int? _currentUserId;
 
@@ -30,6 +36,20 @@ class ConversationsProvider extends ChangeNotifier {
   /// without depending on SocketService directly.
   void setEmitCallback(void Function(String event, dynamic data) emit) {
     _emit = emit;
+  }
+
+  /// Called from [MainShell] lifecycle / tab visibility so backend can suppress redundant pushes.
+  void setClientVisible(bool visible) {
+    if (_clientVisible == visible) return;
+    _clientVisible = visible;
+    _emitPushClientState();
+  }
+
+  void _emitPushClientState() {
+    _emit?.call('pushClientState', {
+      'activeConversationId': _activeConversationId,
+      'clientVisible': _clientVisible,
+    });
   }
 
   // ---------- Public Getters ----------
@@ -52,6 +72,8 @@ class ConversationsProvider extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   Map<int, MessageModel> get lastMessages => _lastMessages;
   int? get pendingOpenConversationId => _pendingOpenConversationId;
+  int? get pendingNotificationConversationId =>
+      _pendingNotificationConversationId;
   bool get activeConversationDeletedByOther => _activeConversationDeletedByOther;
   Map<int, int> get unreadCounts => _unreadCounts;
 
@@ -79,12 +101,26 @@ class ConversationsProvider extends ChangeNotifier {
     return id;
   }
 
+  /// Queue navigation from Android notification tap / FCM open — [MainShell] consumes.
+  void requestNavigateToConversationFromNotification(int conversationId) {
+    if (_pendingNotificationConversationId == conversationId) return;
+    _pendingNotificationConversationId = conversationId;
+    notifyListeners();
+  }
+
+  int? consumePendingNotificationConversationId() {
+    final id = _pendingNotificationConversationId;
+    _pendingNotificationConversationId = null;
+    return id;
+  }
+
   /// Call when user navigates back from a chat that was deleted by the other user.
   void clearActiveIfDeletedByOther() {
     if (_activeConversationDeletedByOther) {
       _activeConversationDeletedByOther = false;
       _activeConversationId = null;
       notifyListeners();
+      _emitPushClientState();
     }
   }
 
@@ -216,6 +252,7 @@ class ConversationsProvider extends ChangeNotifier {
       _unreadCounts[conversationId] = 0;
     }
     notifyListeners();
+    _emitPushClientState();
   }
 
   /// Sets active conversation without fetching messages. Use when ChatDetailScreen
@@ -225,12 +262,14 @@ class ConversationsProvider extends ChangeNotifier {
     _activeConversationDeletedByOther = false;
     _unreadCounts[conversationId] = 0;
     notifyListeners();
+    _emitPushClientState();
   }
 
   /// Clears the active conversation.
   void closeConversation() {
     _activeConversationId = null;
     notifyListeners();
+    _emitPushClientState();
   }
 
   void clearError() {
@@ -258,6 +297,7 @@ class ConversationsProvider extends ChangeNotifier {
     }
     _clearActiveIfRemoved();
     notifyListeners();
+    _emitPushClientState();
   }
 
   /// Update the last message for a conversation (called by MessagingProvider).
@@ -301,8 +341,10 @@ class ConversationsProvider extends ChangeNotifier {
       _lastMessages.clear();
       _unreadCounts.clear();
       _pendingOpenConversationId = null;
+      _pendingNotificationConversationId = null;
       _activeConversationDeletedByOther = false;
       _errorMessage = null;
+      _clientVisible = true;
     } else {
       // Reconnect (same user): keep conversations and active chat to avoid flicker.
       _pendingOpenConversationId = null;
@@ -310,6 +352,7 @@ class ConversationsProvider extends ChangeNotifier {
       _errorMessage = null;
     }
     notifyListeners();
+    _emitPushClientState();
   }
 
   /// Called on socket disconnect. Minimal cleanup.
@@ -325,9 +368,12 @@ class ConversationsProvider extends ChangeNotifier {
     _lastMessages.clear();
     _unreadCounts.clear();
     _pendingOpenConversationId = null;
+    _pendingNotificationConversationId = null;
     _activeConversationDeletedByOther = false;
     _errorMessage = null;
+    _clientVisible = true;
     notifyListeners();
+    _emitPushClientState();
   }
 
   // ---------- Private Helpers ----------
@@ -340,6 +386,7 @@ class ConversationsProvider extends ChangeNotifier {
       _activeConversationId = null;
       _activeConversationDeletedByOther = false;
     }
+    _emitPushClientState();
   }
 
   /// Clears active conversation if it was removed from the list.
