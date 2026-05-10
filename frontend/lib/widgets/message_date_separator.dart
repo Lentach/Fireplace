@@ -12,12 +12,14 @@ class MessageDateSeparator extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
-    final messageDay = DateTime(date.year, date.month, date.day);
+    final localDate = date.toLocal();
+    final messageDay =
+        DateTime(localDate.year, localDate.month, localDate.day);
     final diff = today.difference(messageDay).inDays;
 
     if (diff == 0) return l10n.chatDateToday;
     if (diff == 1) return l10n.chatDateYesterday;
-    return MaterialLocalizations.of(context).formatShortDate(date);
+    return MaterialLocalizations.of(context).formatShortDate(localDate);
   }
 
   @override

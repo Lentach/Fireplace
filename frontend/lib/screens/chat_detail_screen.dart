@@ -391,7 +391,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   bool _isDifferentDay(DateTime a, DateTime b) {
-    return a.year != b.year || a.month != b.month || a.day != b.day;
+    final la = a.toLocal();
+    final lb = b.toLocal();
+    return la.year != lb.year || la.month != lb.month || la.day != lb.day;
   }
 
   @override
