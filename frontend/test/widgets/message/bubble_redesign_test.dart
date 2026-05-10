@@ -2,6 +2,7 @@ import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/models/message_model.dart';
 import 'package:fireplace/providers/auth_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
+import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/message/chat_message_bubble.dart';
 import 'package:fireplace/widgets/message/gif_message_content.dart';
@@ -44,6 +45,8 @@ Widget _wrapBubble(Widget child) => MaterialApp(
             ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
             ChangeNotifierProvider<MessagingProvider>(
                 create: (_) => MessagingProvider()),
+            ChangeNotifierProvider<SettingsProvider>(
+                create: (_) => SettingsProvider()),
           ],
           child: child,
         ),

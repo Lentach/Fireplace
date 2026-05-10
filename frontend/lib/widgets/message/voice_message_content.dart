@@ -4,6 +4,7 @@ import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/messaging_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../theme/rpg_theme.dart';
 import '../audio/playback_controller.dart';
 import '../audio/waveform_display.dart';
@@ -30,10 +31,6 @@ class VoiceMessageContent extends StatelessWidget {
     final minutes = d.inMinutes;
     final seconds = d.inSeconds % 60;
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
-  }
-
-  String _formatTime(DateTime dt) {
-    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
   }
 
   bool _isExpired() {
@@ -202,6 +199,12 @@ class VoiceMessageContent extends StatelessWidget {
     final borderColor = isMine
         ? Theme.of(context).colorScheme.primary
         : FireplaceColors.of(context).borderColor;
+    final themePreference = context.read<SettingsProvider>().themePreference;
+    final metaColor = RpgTheme.messageBubbleMetaColor(
+      context,
+      isMine: isMine,
+      themePreference: themePreference,
+    );
     final currentUserId = context.read<AuthProvider>().currentUser?.id;
     final messaging = context.read<MessagingProvider>();
 
@@ -320,10 +323,10 @@ class VoiceMessageContent extends StatelessWidget {
                             mainAxisSize: MainAxisSize.min,
                             children: [
                               Text(
-                                _formatTime(message.createdAt),
+                                RpgTheme.formatMessageClock(message.createdAt),
                                 style: RpgTheme.bodyFont(
                                   fontSize: 10,
-                                  color: isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight,
+                                  color: metaColor,
                                 ),
                               ),
                               const SizedBox(width: 4),
@@ -339,7 +342,7 @@ class VoiceMessageContent extends StatelessWidget {
                                       Icon(
                                         Icons.timer_outlined,
                                         size: 10,
-                                        color: isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight,
+                                        color: metaColor,
                                       ),
                                       const SizedBox(width: 2),
                                       ValueListenableBuilder<int>(
@@ -348,7 +351,7 @@ class VoiceMessageContent extends StatelessWidget {
                                           _getTimerText() ?? '',
                                           style: RpgTheme.bodyFont(
                                             fontSize: 10,
-                                            color: isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight,
+                                            color: metaColor,
                                           ),
                                         ),
                                       ),

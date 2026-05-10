@@ -4,6 +4,7 @@ import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/messaging_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../theme/rpg_theme.dart';
 import '../message_swipe_wrapper.dart';
 import 'message_content_factory.dart';
@@ -238,8 +239,12 @@ class ChatMessageBubble extends StatelessWidget {
     final textColor = isMine
         ? (isDark ? RpgTheme.textColor : Colors.white)
         : (isDark ? RpgTheme.textColor : RpgTheme.textColorLight);
-    final timeColor =
-        isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight;
+    final themePreference = context.read<SettingsProvider>().themePreference;
+    final timeColor = RpgTheme.messageBubbleMetaColor(
+      context,
+      isMine: isMine,
+      themePreference: themePreference,
+    );
 
     final currentUserId = context.read<AuthProvider>().currentUser?.id;
     final messaging = context.read<MessagingProvider>();

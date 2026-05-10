@@ -133,6 +133,32 @@ class RpgTheme {
   static bool isDark(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark;
 
+  /// Clock label for message bubbles (server sends UTC; show device-local).
+  static String formatMessageClock(DateTime dt) {
+    final local = dt.toLocal();
+    return '${local.hour.toString().padLeft(2, '0')}:${local.minute.toString().padLeft(2, '0')}';
+  }
+
+  /// Time + disappearing-message countdown on bubbles.
+  /// Blue (Telegram) theme only: light meta on sent bubbles; `mutedText` on received.
+  /// Dark gray / light themes keep the legacy single meta color (unchanged).
+  static Color messageBubbleMetaColor(
+    BuildContext context, {
+    required bool isMine,
+    required String themePreference,
+  }) {
+    if (themePreference == 'blue') {
+      if (isMine) {
+        return isDark(context)
+            ? Colors.white.withValues(alpha: 0.86)
+            : Colors.white.withValues(alpha: 0.9);
+      }
+      return FireplaceColors.of(context).mutedText;
+    }
+    final dark = isDark(context);
+    return dark ? timeColorDark : textSecondaryLight;
+  }
+
   static Color primaryColor(BuildContext context) =>
       Theme.of(context).colorScheme.primary;
 

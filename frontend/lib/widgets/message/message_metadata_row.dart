@@ -17,10 +17,6 @@ class MessageMetadataRow extends StatelessWidget {
     required this.timeColor,
   });
 
-  String _formatTime(DateTime dt) {
-    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
-  }
-
   String? _getTimerText() {
     if (message.expiresAt == null) return null;
     final now = DateTime.now();
@@ -78,7 +74,7 @@ class MessageMetadataRow extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             Text(
-              _formatTime(message.createdAt),
+              RpgTheme.formatMessageClock(message.createdAt),
               style: RpgTheme.bodyFont(fontSize: 10, color: timeColor),
             ),
             const SizedBox(width: 4),

@@ -32,10 +32,11 @@ class ConversationTile extends StatelessWidget {
   String _formatTime(DateTime dt) {
     final now = DateTime.now();
     final diff = now.difference(dt);
+    final local = dt.toLocal();
     if (diff.inDays > 0) {
-      return '${dt.day}/${dt.month}';
+      return '${local.day}/${local.month}';
     }
-    return '${dt.hour.toString().padLeft(2, '0')}:${dt.minute.toString().padLeft(2, '0')}';
+    return RpgTheme.formatMessageClock(dt);
   }
 
   String _lastMessagePreview(BuildContext context, MessageModel lastMessage) {
