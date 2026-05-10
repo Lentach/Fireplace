@@ -6,6 +6,7 @@ import 'package:jwt_decoder/jwt_decoder.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
 import '../services/api_service.dart';
+import '../services/pwa_app_badge_clear.dart';
 import '../services/push_service.dart';
 import '../config/app_config.dart';
 
@@ -86,6 +87,7 @@ class AuthProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.remove('jwt_token');
     await prefs.remove('refresh_token');
+    await clearPwaAppBadgeOnLogout();
     notifyListeners();
   }
 

@@ -1,13 +1,16 @@
 /**
- * Best-effort generic app-icon badge (Badging API, no numeric count).
- * Supported in Chromium PWAs; iOS WebKit may expose this only in some contexts —
- * failures are ignored so push + tray notification always proceed.
+ * Sets app icon badge from push using a positive integer (cap 19).
+ * WebKit / iOS PWA often ignores setAppBadge() when called with no arguments.
  */
-function trySetAppBadgeIndicatorFromServiceWorker() {
+function trySetAppBadgeFromServiceWorker(payload) {
   try {
     const nav = self.navigator;
     if (nav && typeof nav.setAppBadge === 'function') {
-      const result = nav.setAppBadge();
+      let n = 1;
+      if (typeof payload.messageCount === 'number' && payload.messageCount > 0) {
+        n = payload.messageCount > 19 ? 19 : payload.messageCount;
+      }
+      const result = nav.setAppBadge(n);
       return result && typeof result.then === 'function'
         ? result.catch(function () {})
         : Promise.resolve();
@@ -47,7 +50,7 @@ self.addEventListener('push', (event) => {
   event.waitUntil(
     Promise.all([
       self.registration.showNotification(title, notificationOptions),
-      trySetAppBadgeIndicatorFromServiceWorker(),
+      trySetAppBadgeFromServiceWorker(payload),
     ]),
   );
 });

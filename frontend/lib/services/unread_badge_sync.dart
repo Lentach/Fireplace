@@ -24,8 +24,8 @@ class UnreadBadgeSync {
   final Duration _debounce;
 
   Timer? _debounceTimer;
-  /// Whether we already applied the generic OS badge for the current non-zero unread sum.
-  bool _indicatorShown = false;
+  /// Last capped value sent to the OS (`null` after clear). Integer badge is required for iOS WebKit.
+  int? _lastSentCapped;
 
   void _onConversationsChanged() {
     _scheduleFlush();
@@ -41,26 +41,28 @@ class UnreadBadgeSync {
     if (!_bridge.isSupported) return;
 
     final raw = sumUnreadBadgeCounts(_conversations.unreadCounts);
+    final capped = capUnreadForBadge(raw);
 
-    if (raw <= 0) {
-      if (_indicatorShown) {
-        _indicatorShown = false;
+    if (capped == 0) {
+      if (_lastSentCapped != null) {
+        _lastSentCapped = null;
         await _bridge.clearBadge();
       }
       return;
     }
 
-    if (_indicatorShown) return;
-    _indicatorShown = true;
-    await _bridge.setBadgeIndicator();
+    if (_lastSentCapped == capped) return;
+    _lastSentCapped = capped;
+    await _bridge.setBadgeCount(capped);
   }
 
-  /// Stops listening and clears the badge (e.g. when leaving [MainShell]).
+  /// Stops listening. Does **not** clear the OS badge — closing the PWA (recents swipe)
+  /// must not wipe the icon badge while unread remain; badge clears via [_flush] when
+  /// unread hits zero, or [clearPwaAppBadgeOnLogout] on logout.
   Future<void> dispose() async {
     _conversations.removeListener(_onConversationsChanged);
     _debounceTimer?.cancel();
     _debounceTimer = null;
-    _indicatorShown = false;
-    await _bridge.clearBadge();
+    _lastSentCapped = null;
   }
 }

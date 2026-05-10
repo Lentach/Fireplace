@@ -2,7 +2,7 @@
 class BadgingBridge {
   bool get isSupported => false;
 
-  Future<void> setBadgeIndicator() async {}
+  Future<void> setBadgeCount(int cappedNonZero) async {}
 
   Future<void> clearBadge() async {}
 }
