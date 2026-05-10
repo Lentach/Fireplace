@@ -1,5 +1,6 @@
 import 'package:flutter_test/flutter_test.dart';
-import 'package:fireplace/utils/app_badge_math.dart';
+import 'package:fireplace/utils/app_badge_math.dart'
+    show capUnreadForBadge, kAppBadgeMaxDisplayCount, sumUnreadBadgeCounts;
 
 void main() {
   group('app_badge_math', () {
@@ -14,14 +15,14 @@ void main() {
       expect(capUnreadForBadge(-1), 0);
     });
 
-    test('capUnreadForBadge passes through 1..19', () {
+    test('capUnreadForBadge passes through 1..max', () {
       expect(capUnreadForBadge(1), 1);
-      expect(capUnreadForBadge(19), 19);
+      expect(capUnreadForBadge(kAppBadgeMaxDisplayCount), kAppBadgeMaxDisplayCount);
     });
 
-    test('capUnreadForBadge saturates at 19', () {
-      expect(capUnreadForBadge(20), 19);
-      expect(capUnreadForBadge(999), 19);
+    test('capUnreadForBadge saturates at max', () {
+      expect(capUnreadForBadge(kAppBadgeMaxDisplayCount + 1), kAppBadgeMaxDisplayCount);
+      expect(capUnreadForBadge(999), kAppBadgeMaxDisplayCount);
     });
   });
 }
