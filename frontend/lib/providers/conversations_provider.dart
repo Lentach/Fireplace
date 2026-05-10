@@ -140,6 +140,7 @@ class ConversationsProvider extends ChangeNotifier {
   /// Handle 'conversationsList' event from backend.
   void onConversationsList(dynamic data) {
     final list = data as List<dynamic>;
+    final previousUnread = Map<int, int>.from(_unreadCounts);
     final newConvs = list
         .map((c) => ConversationModel.fromJson(c as Map<String, dynamic>))
         .toList();
@@ -156,8 +157,13 @@ class ConversationsProvider extends ChangeNotifier {
     for (final c in list) {
       final m = c as Map<String, dynamic>;
       final convId = m['id'] as int;
-      final unread = (m['unreadCount'] as num?)?.toInt() ?? 0;
-      _unreadCounts[convId] = unread;
+      final serverUnread = (m['unreadCount'] as num?)?.toInt() ?? 0;
+      final prev = previousUnread[convId] ?? 0;
+      // [newMessage] + incrementUnreadCount may run before this snapshot includes the
+      // latest DB counts (reconnect, delayed getConversations, friend flows). Prefer the
+      // higher of local vs server so we do not wipe badge/UI unread.
+      final merged = prev > serverUnread ? prev : serverUnread;
+      _unreadCounts[convId] = merged;
 
       // Update last message from backend data
       final lastMsgData = m['lastMessage'];
@@ -175,6 +181,11 @@ class ConversationsProvider extends ChangeNotifier {
         }
       }
     }
+
+    if (_activeConversationId != null) {
+      _unreadCounts[_activeConversationId!] = 0;
+    }
+
     notifyListeners();
   }
 

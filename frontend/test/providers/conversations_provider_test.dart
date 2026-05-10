@@ -213,6 +213,86 @@ void main() {
       expect(emitted.first['conversationId'], 10);
     });
 
+    test(
+        'onConversationsList keeps higher local unread when ahead of stale snapshot',
+        () {
+      final provider = ConversationsProvider();
+      final userA = UserModel(id: 1, username: 'alice', tag: '0001');
+      final userB = UserModel(id: 2, username: 'bob', tag: '0002');
+
+      provider.onConnect(false);
+      provider.onConversationsList([
+        {
+          'id': 10,
+          'userOne': {
+            'id': userA.id,
+            'username': userA.username,
+            'tag': userA.tag,
+          },
+          'userTwo': {
+            'id': userB.id,
+            'username': userB.username,
+            'tag': userB.tag,
+          },
+          'createdAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+          'unreadCount': 0,
+        },
+      ]);
+
+      provider.incrementUnreadCount(10);
+      provider.incrementUnreadCount(10);
+      expect(provider.getUnreadCount(10), 2);
+
+      provider.onConversationsList([
+        {
+          'id': 10,
+          'userOne': {
+            'id': userA.id,
+            'username': userA.username,
+            'tag': userA.tag,
+          },
+          'userTwo': {
+            'id': userB.id,
+            'username': userB.username,
+            'tag': userB.tag,
+          },
+          'createdAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+          'unreadCount': 1,
+        },
+      ]);
+
+      expect(provider.getUnreadCount(10), 2);
+    });
+
+    test('onConversationsList forces zero unread for active conversation', () {
+      final provider = ConversationsProvider();
+      final userA = UserModel(id: 1, username: 'alice', tag: '0001');
+      final userB = UserModel(id: 2, username: 'bob', tag: '0002');
+
+      provider.onConnect(false);
+      provider.setActiveConversation(10);
+
+      provider.onConversationsList([
+        {
+          'id': 10,
+          'userOne': {
+            'id': userA.id,
+            'username': userA.username,
+            'tag': userA.tag,
+          },
+          'userTwo': {
+            'id': userB.id,
+            'username': userB.username,
+            'tag': userB.tag,
+          },
+          'createdAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+          'unreadCount': 3,
+        },
+      ]);
+
+      expect(provider.getUnreadCount(10), 0);
+    });
+
     group('pushClientState (server push suppression)', () {
       test('setClientVisible false emits pushClientState with clientVisible false', () {
         final provider = ConversationsProvider();
