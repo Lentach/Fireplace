@@ -108,27 +108,27 @@ class RpgTheme {
   static const Color timeColorDarkGray = Color(0xFF949798);
   static const Color settingsTileBorderDarkGray = Color(0xFF5C9EAD);
 
-  // Light theme palette - modern neutral (Slack-inspired)
-  static const Color primaryLight = Color(0xFF4A154B);
-  static const Color primaryLightHover = Color(0xFF611F69);
-  static const Color backgroundLight = Color(0xFFF4F5F7);
+  // Light theme — warm paper neutrals + ember accent (Fireplace brand, not Slack purple)
+  static const Color primaryLight = Color(0xFFC2410C); // orange-700, white onPrimary
+  static const Color primaryLightHover = Color(0xFF9A3412); // orange-800
+  static const Color backgroundLight = Color(0xFFF7F4F0);
   static const Color boxBgLight = Color(0xFFFFFFFF);
-  static const Color chatAreaBgLight = Color(0xFFFAFBFC);
-  static const Color textColorLight = Color(0xFF1D1C1D);
-  static const Color textSecondaryLight = Color(0xFF616061);
-  static const Color mutedTextLight = Color(0xFF8B8A8B);
-  static const Color labelTextLight = Color(0xFF4A4A6A);
-  static const Color inputBgLight = Color(0xFFEEEEF2);
-  static const Color tabBorderLight = Color(0xFFE8EAED);
-  static const Color activeTabBgLight = Color(0xFFE8E4EC);
-  static const Color buttonBgLight = Color(0xFF4A154B);
-  static const Color convItemBgLight = Color(0xFFF0F0F5);
-  static const Color convItemBorderLight = Color(0xFFE8EAED);
-  static const Color messagesAreaBgLight = Color(0xFFFAFBFC);
-  // Light theme: purple primary -> sent = primary, received = light gray
-  static const Color mineMsgBgLight = Color(0xFF4A154B);
-  static const Color theirsMsgBgLight = Color(0xFFE8E4EC);
-  static const Color timeColorLight = Color(0xFF616061);
+  static const Color chatAreaBgLight = Color(0xFFFAF8F5);
+  static const Color textColorLight = Color(0xFF1C1917); // warm near-black
+  static const Color textSecondaryLight = Color(0xFF57534E); // stone-600
+  static const Color mutedTextLight = Color(0xFF78716C); // stone-500
+  static const Color labelTextLight = Color(0xFF57534E);
+  static const Color inputBgLight = Color(0xFFF5F0EB);
+  static const Color tabBorderLight = Color(0xFFE8E3DC);
+  static const Color activeTabBgLight = Color(0xFFF0E8E0);
+  static const Color buttonBgLight = primaryLight;
+  static const Color convItemBgLight = Color(0xFFFAF6F2);
+  static const Color convItemBorderLight = Color(0xFFE8E3DC);
+  static const Color messagesAreaBgLight = Color(0xFFFAF8F5);
+  // Sent = ember; received = neutral warm gray (no purple tint)
+  static const Color mineMsgBgLight = primaryLight;
+  static const Color theirsMsgBgLight = Color(0xFFE7E5E4);
+  static const Color timeColorLight = Color(0xFF57534E);
 
   static bool isDark(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark;
