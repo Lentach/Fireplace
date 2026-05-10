@@ -264,7 +264,9 @@ void main() {
       expect(provider.getUnreadCount(10), 2);
     });
 
-    test('onConversationsList forces zero unread for active conversation', () {
+    test(
+        'onConversationsList applies server unread when local is not ahead of snapshot',
+        () {
       final provider = ConversationsProvider();
       final userA = UserModel(id: 1, username: 'alice', tag: '0001');
       final userB = UserModel(id: 2, username: 'bob', tag: '0002');
@@ -290,7 +292,7 @@ void main() {
         },
       ]);
 
-      expect(provider.getUnreadCount(10), 0);
+      expect(provider.getUnreadCount(10), 3);
     });
 
     group('pushClientState (server push suppression)', () {

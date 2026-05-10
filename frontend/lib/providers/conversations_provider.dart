@@ -182,10 +182,6 @@ class ConversationsProvider extends ChangeNotifier {
       }
     }
 
-    if (_activeConversationId != null) {
-      _unreadCounts[_activeConversationId!] = 0;
-    }
-
     notifyListeners();
   }
 
