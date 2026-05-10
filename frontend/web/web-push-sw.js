@@ -1,3 +1,21 @@
+/**
+ * Best-effort generic app-icon badge (Badging API, no numeric count).
+ * Supported in Chromium PWAs; iOS WebKit may expose this only in some contexts —
+ * failures are ignored so push + tray notification always proceed.
+ */
+function trySetAppBadgeIndicatorFromServiceWorker() {
+  try {
+    const nav = self.navigator;
+    if (nav && typeof nav.setAppBadge === 'function') {
+      const result = nav.setAppBadge();
+      return result && typeof result.then === 'function'
+        ? result.catch(function () {})
+        : Promise.resolve();
+    }
+  } catch (_) {}
+  return Promise.resolve();
+}
+
 self.addEventListener('push', (event) => {
   let payload = {};
   try {
@@ -25,7 +43,13 @@ self.addEventListener('push', (event) => {
   };
 
   // Safari/iOS requires user-visible notifications for push events.
-  event.waitUntil(self.registration.showNotification(title, notificationOptions));
+  // Run badge update in parallel so the icon can show a dot before the app opens (where supported).
+  event.waitUntil(
+    Promise.all([
+      self.registration.showNotification(title, notificationOptions),
+      trySetAppBadgeIndicatorFromServiceWorker(),
+    ]),
+  );
 });
 
 self.addEventListener('notificationclick', (event) => {

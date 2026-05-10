@@ -8,20 +8,5 @@ void main() {
       expect(sumUnreadBadgeCounts({}), 0);
       expect(sumUnreadBadgeCounts({10: 0, 11: 7}), 7);
     });
-
-    test('capUnreadForBadge returns 0 for non-positive', () {
-      expect(capUnreadForBadge(0), 0);
-      expect(capUnreadForBadge(-1), 0);
-    });
-
-    test('capUnreadForBadge passes through 1..19', () {
-      expect(capUnreadForBadge(1), 1);
-      expect(capUnreadForBadge(19), 19);
-    });
-
-    test('capUnreadForBadge saturates at 19', () {
-      expect(capUnreadForBadge(20), 19);
-      expect(capUnreadForBadge(999), 19);
-    });
   });
 }

@@ -24,8 +24,8 @@ class UnreadBadgeSync {
   final Duration _debounce;
 
   Timer? _debounceTimer;
-  /// Last capped value applied to the OS (`null` after clear).
-  int? _lastSentCapped;
+  /// Whether we already applied the generic OS badge for the current non-zero unread sum.
+  bool _indicatorShown = false;
 
   void _onConversationsChanged() {
     _scheduleFlush();
@@ -41,19 +41,18 @@ class UnreadBadgeSync {
     if (!_bridge.isSupported) return;
 
     final raw = sumUnreadBadgeCounts(_conversations.unreadCounts);
-    final capped = capUnreadForBadge(raw);
 
-    if (capped == 0) {
-      if (_lastSentCapped != null) {
-        _lastSentCapped = null;
+    if (raw <= 0) {
+      if (_indicatorShown) {
+        _indicatorShown = false;
         await _bridge.clearBadge();
       }
       return;
     }
 
-    if (_lastSentCapped == capped) return;
-    _lastSentCapped = capped;
-    await _bridge.setBadgeCount(capped);
+    if (_indicatorShown) return;
+    _indicatorShown = true;
+    await _bridge.setBadgeIndicator();
   }
 
   /// Stops listening and clears the badge (e.g. when leaving [MainShell]).
@@ -61,7 +60,7 @@ class UnreadBadgeSync {
     _conversations.removeListener(_onConversationsChanged);
     _debounceTimer?.cancel();
     _debounceTimer = null;
-    _lastSentCapped = null;
+    _indicatorShown = false;
     await _bridge.clearBadge();
   }
 }

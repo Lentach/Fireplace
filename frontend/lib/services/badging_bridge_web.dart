@@ -11,11 +11,12 @@ class BadgingBridge {
         js_util.hasProperty(nav, 'clearAppBadge');
   }
 
-  Future<void> setBadgeCount(int cappedNonZero) async {
-    if (!isSupported || cappedNonZero <= 0) return;
+  /// Sets a generic app icon badge (no numeric count). Uses `setAppBadge()` with no arguments (MDN).
+  Future<void> setBadgeIndicator() async {
+    if (!isSupported) return;
     try {
       final nav = _navigator();
-      final result = js_util.callMethod(nav, 'setAppBadge', [cappedNonZero]);
+      final result = js_util.callMethod(nav, 'setAppBadge', []);
       await js_util.promiseToFuture(result);
     } catch (_) {
       // Permission / inactive document / platform policy — ignore.
@@ -29,7 +30,7 @@ class BadgingBridge {
       final result = js_util.callMethod(nav, 'clearAppBadge', []);
       await js_util.promiseToFuture(result);
     } catch (_) {
-      // Ignore — same as setBadgeCount.
+      // Ignore — same as setBadgeIndicator.
     }
   }
 }
