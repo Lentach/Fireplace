@@ -45,13 +45,12 @@ self.addEventListener('push', (event) => {
     renotify: false,
   };
 
-  // Safari/iOS requires user-visible notifications for push events.
-  // Run badge update in parallel so the icon can show a dot before the app opens (where supported).
+  // Safari/iOS requires user-visible notifications for push events — complete that first,
+  // then best-effort badge. Parallel Promise.all caused flaky failures if either branch rejected.
   event.waitUntil(
-    Promise.all([
-      self.registration.showNotification(title, notificationOptions),
-      trySetAppBadgeFromServiceWorker(payload),
-    ]),
+    self.registration
+      .showNotification(title, notificationOptions)
+      .then(() => trySetAppBadgeFromServiceWorker(payload)),
   );
 });
 
