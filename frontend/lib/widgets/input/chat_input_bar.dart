@@ -1,4 +1,5 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
@@ -180,12 +181,20 @@ class _ChatInputBarState extends State<ChatInputBar>
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
     final fc = FireplaceColors.of(context);
+    final mediaQuery = MediaQuery.of(context);
+    final keyboardVisible = mediaQuery.viewInsets.bottom > 0;
+    final bottomSystemInset =
+        math.max(mediaQuery.viewPadding.bottom, mediaQuery.padding.bottom);
+    const additionalBottomSpacing = 8.0;
+    final needsErgonomicBuffer = bottomSystemInset > 0;
+    final bottomInteractivePadding = keyboardVisible
+        ? 0.0
+        : bottomSystemInset +
+            (needsErgonomicBuffer ? additionalBottomSpacing : 0.0);
 
-    return SafeArea(
-      top: false,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      children: [
           // Reply preview
           if (replyingTo != null)
             ReplyPreviewBar(
@@ -315,14 +324,19 @@ class _ChatInputBarState extends State<ChatInputBar>
             ),
           ),
 
-          // Action tiles with slide animation
-          SizeTransition(
-            sizeFactor: _actionPanelAnimation,
-            axisAlignment: -1.0,
-            child: const ChatActionTiles(),
+        if (!_showActionPanel && bottomInteractivePadding > 0)
+          Container(
+            height: bottomInteractivePadding,
+            color: colorScheme.surface,
           ),
-        ],
-      ),
+
+        // Action tiles with slide animation
+        SizeTransition(
+          sizeFactor: _actionPanelAnimation,
+          axisAlignment: -1.0,
+          child: ChatActionTiles(bottomPadding: bottomInteractivePadding),
+        ),
+      ],
     );
   }
 }

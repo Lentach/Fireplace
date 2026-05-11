@@ -140,6 +140,33 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   }
 
   Widget _buildScaffold(BuildContext context, ThemeData theme, ColorScheme colorScheme) {
+    final isDesktop =
+        MediaQuery.sizeOf(context).width >= AppConstants.layoutBreakpointDesktop;
+    final bottomNavigation = BottomNavigationBar(
+      backgroundColor: theme.colorScheme.surface,
+      currentIndex: _selectedIndex,
+      onTap: (index) => setState(() => _selectedIndex = index),
+      items: [
+        BottomNavigationBarItem(
+          icon: Icon(Icons.chat_bubble_outline, size: 24),
+          activeIcon: _FilledChatBubbleWithLines(
+            iconColor: colorScheme.primary,
+            lineColor: colorScheme.onPrimary,
+          ),
+          label: AppLocalizations.of(context).chat,
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.people_outline),
+          activeIcon: Icon(Icons.people),
+          label: AppLocalizations.of(context).contacts,
+        ),
+        BottomNavigationBarItem(
+          icon: Icon(Icons.settings_outlined),
+          label: AppLocalizations.of(context).settings,
+        ),
+      ],
+    );
+
     return Scaffold(
       body: IndexedStack(
         index: _selectedIndex,
@@ -151,29 +178,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           const SettingsScreen(),
         ],
       ),
-      bottomNavigationBar: BottomNavigationBar(
-        backgroundColor: theme.colorScheme.surface,
-        currentIndex: _selectedIndex,
-        onTap: (index) => setState(() => _selectedIndex = index),
-        items: [
-          BottomNavigationBarItem(
-            icon: Icon(Icons.chat_bubble_outline, size: 24),
-            activeIcon: _FilledChatBubbleWithLines(
-              iconColor: colorScheme.primary,
-              lineColor: colorScheme.onPrimary,
-            ),
-            label: AppLocalizations.of(context).chat,
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.people_outline),
-            activeIcon: Icon(Icons.people),
-            label: AppLocalizations.of(context).contacts,
-          ),
-          BottomNavigationBarItem(
-            icon: Icon(Icons.settings_outlined),
-            label: AppLocalizations.of(context).settings,
-          ),
-        ],
+      bottomNavigationBar: SafeArea(
+        top: false,
+        minimum:
+            isDesktop ? EdgeInsets.zero : const EdgeInsets.only(bottom: 6),
+        child: bottomNavigation,
       ),
     );
   }

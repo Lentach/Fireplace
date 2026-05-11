@@ -17,7 +17,12 @@ import 'anti_quantum_note_dialog.dart';
 import 'gif_picker_sheet.dart';
 
 class ChatActionTiles extends StatelessWidget {
-  const ChatActionTiles({super.key});
+  final double bottomPadding;
+
+  const ChatActionTiles({
+    super.key,
+    this.bottomPadding = 0,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -27,8 +32,10 @@ class ChatActionTiles extends StatelessWidget {
     final iconColor = Theme.of(context).colorScheme.primary;
 
     return Container(
-      height: 48,
+      height: 48 + bottomPadding,
+      padding: EdgeInsets.only(bottom: bottomPadding),
       decoration: BoxDecoration(
+        color: Theme.of(context).colorScheme.surface,
         border: Border(top: BorderSide(color: borderColor)),
       ),
       child: SingleChildScrollView(

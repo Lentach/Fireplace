@@ -489,6 +489,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
             ),
           )
         : SafeArea(
+      bottom: false,
       child: Column(
         children: [
           Expanded(
@@ -566,18 +567,22 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                     ),
             ),
           ),
-          if (otherUser != null && context.read<FriendsProvider>().blockedByUserIds.contains(otherUser.id))
-            Container(
-              width: double.infinity,
-              padding: const EdgeInsets.symmetric(vertical: 16),
-              color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-              child: Center(
-                child: Text(
-                  AppLocalizations.of(context).cantTypeToThisUser,
-                  style: RpgTheme.bodyFont(
-                    fontSize: 13,
-                    color: mutedColor,
-                  ).copyWith(fontStyle: FontStyle.italic),
+          if (otherUser != null &&
+              context.read<FriendsProvider>().blockedByUserIds.contains(otherUser.id))
+            SafeArea(
+              top: false,
+              child: Container(
+                width: double.infinity,
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                child: Center(
+                  child: Text(
+                    AppLocalizations.of(context).cantTypeToThisUser,
+                    style: RpgTheme.bodyFont(
+                      fontSize: 13,
+                      color: mutedColor,
+                    ).copyWith(fontStyle: FontStyle.italic),
+                  ),
                 ),
               ),
             )
