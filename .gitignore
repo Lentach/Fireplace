@@ -28,3 +28,6 @@ frontend/web/firebase-config.js
 # Android release keystore — never commit these
 frontend/keystore/
 frontend/android/key.properties
+
+# Kiro IDE
+.kiro/settings/mcp.json
