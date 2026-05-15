@@ -504,4 +504,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String friendAcceptedYourRequest(String name) {
     return '$name accepted your friend request';
   }
+
+  @override
+  String get themeOptionLight => 'Warm paper (light)';
+
+  @override
+  String get themeOptionDark => 'Dark gray + teal accent';
+
+  @override
+  String get themeOptionBlue => 'Telegram-style blue (dark)';
+
+  @override
+  String get themeOptionTealStone => 'Teal + stone (modern light)';
 }

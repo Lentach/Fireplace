@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../../models/message_model.dart';
 import '../../providers/messaging_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../theme/rpg_theme.dart';
 
 /// Timestamp + delivery icon + countdown timer row (Telegram style).
@@ -32,8 +33,8 @@ class MessageMetadataRow extends StatelessWidget {
   }
 
   /// One check = delivered. Two checks = read.
-  /// Light colors so icon is visible on dark "mine" bubble.
-  Widget _buildDeliveryIcon() {
+  /// Icon colors follow bubble luminance (see [RpgTheme.messageBubbleDeliveryTickColors]).
+  Widget _buildDeliveryIcon(BuildContext context) {
     if (!isMine) return const SizedBox.shrink();
 
     if (message.deliveryStatus == MessageDeliveryStatus.failed) {
@@ -57,10 +58,15 @@ class MessageMetadataRow extends StatelessWidget {
         break;
     }
 
-    const Color sendingSentColor = Color(0xFFE0E0E0);
-    const Color readColor = Color(0xFF64B5F6);
-
-    final color = message.deliveryStatus == MessageDeliveryStatus.read ? readColor : sendingSentColor;
+    final tickPref = context.read<SettingsProvider>().themePreference;
+    final ticks = RpgTheme.messageBubbleDeliveryTickColors(
+      context,
+      isMine: isMine,
+      themePreference: tickPref,
+    );
+    final color = message.deliveryStatus == MessageDeliveryStatus.read
+        ? ticks.$2
+        : ticks.$1;
     return Icon(icon, size: 12, color: color);
   }
 
@@ -78,7 +84,7 @@ class MessageMetadataRow extends StatelessWidget {
               style: RpgTheme.bodyFont(fontSize: 10, color: timeColor),
             ),
             const SizedBox(width: 4),
-            _buildDeliveryIcon(),
+            _buildDeliveryIcon(ctx),
             if (timerText != null) ...[
               const SizedBox(width: 6),
               Icon(Icons.timer_outlined, size: 10, color: timeColor),

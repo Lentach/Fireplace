@@ -1,8 +1,10 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
 import '../models/message_model.dart';
 import '../models/user_model.dart';
+import '../providers/settings_provider.dart';
 import 'avatar_circle.dart';
 
 class ConversationTile extends StatelessWidget {
@@ -59,7 +61,12 @@ class ConversationTile extends StatelessWidget {
   Widget build(BuildContext context) {
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
-    final activeBg = isDark ? RpgTheme.activeTabBgDark : RpgTheme.activeTabBgLight;
+    final themePref = context.watch<SettingsProvider>().themePreference;
+    final activeBg = isDark
+        ? RpgTheme.activeTabBgDark
+        : (themePref == 'teal'
+            ? RpgTheme.activeTabBgTealStone
+            : RpgTheme.activeTabBgLight);
     final secondaryColor = isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
 
     return Dismissible(

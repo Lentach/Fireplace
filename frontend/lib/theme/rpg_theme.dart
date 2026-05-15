@@ -125,10 +125,27 @@ class RpgTheme {
   static const Color convItemBgLight = Color(0xFFFAF6F2);
   static const Color convItemBorderLight = Color(0xFFE8E3DC);
   static const Color messagesAreaBgLight = Color(0xFFFAF8F5);
-  // Sent = ember; received = neutral warm gray (no purple tint)
-  static const Color mineMsgBgLight = primaryLight;
+  // Sent = warm tint (not solid primary): dark text + delivery ticks stay visible.
+  // Received = neutral warm gray (no purple tint).
+  static const Color mineMsgBgLight = Color(0xFFFFE4D6); // orange-100
   static const Color theirsMsgBgLight = Color(0xFFE7E5E4);
   static const Color timeColorLight = Color(0xFF57534E);
+
+  // Teal + stone (modern light): same accent family as dark-gray #5C9EAD, deeper teal on UI chrome.
+  static const Color primaryTealStone = Color(0xFF0F766E); // teal-700
+  static const Color secondaryTealStone = Color(0xFF0D9488); // teal-600
+  static const Color backgroundTealStone = Color(0xFFFAFAF9); // stone-50
+  static const Color surfaceTealStone = Color(0xFFFFFFFF);
+  static const Color textColorTealStone = Color(0xFF1C1917); // stone-900
+  static const Color borderTealStone = Color(0xFFE7E5E4); // stone-200
+  static const Color mutedTealStone = Color(0xFF78716C); // stone-500
+  static const Color inputBgTealStone = Color(0xFFF5F5F4); // stone-100
+  static const Color convItemBgTealStone = Color(0xFFFAFAF9);
+  static const Color messagesAreaTealStone = Color(0xFFFAFAF9);
+  static const Color mineMsgBgTealStone = secondaryTealStone;
+  static const Color theirsMsgBgTealStone = borderTealStone;
+  static const Color activeTabBgTealStone = Color(0xFFF0FDFA); // teal-50
+  static const Color settingsTileBorderTealStone = borderTealStone;
 
   static bool isDark(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark;
@@ -147,7 +164,7 @@ class RpgTheme {
     required bool isMine,
     required String themePreference,
   }) {
-    if (themePreference == 'blue') {
+    if (themePreference == 'blue' || themePreference == 'teal') {
       if (isMine) {
         return isDark(context)
             ? Colors.white.withValues(alpha: 0.86)
@@ -157,6 +174,30 @@ class RpgTheme {
     }
     final dark = isDark(context);
     return dark ? timeColorDark : textSecondaryLight;
+  }
+
+  /// Delivery checkmarks: pale icons on dark sent bubbles (dark/blue + teal);
+  /// light (ember) sent tint uses stone + ember read via [themePreference] `light`.
+  static (Color pendingOrSent, Color read) messageBubbleDeliveryTickColors(
+    BuildContext context, {
+    required bool isMine,
+    required String themePreference,
+  }) {
+    if (isMine &&
+        themePreference == 'light' &&
+        Theme.of(context).brightness == Brightness.light) {
+      return (textSecondaryLight, primaryLight);
+    }
+    if (isMine && themePreference == 'teal') {
+      return (
+        Colors.white.withValues(alpha: 0.88),
+        const Color(0xFFCCFBF1), // teal-100, read state on teal bubble
+      );
+    }
+    return (
+      const Color(0xFFE0E0E0),
+      const Color(0xFF64B5F6),
+    );
   }
 
   static Color primaryColor(BuildContext context) =>
@@ -539,6 +580,134 @@ class RpgTheme {
           tabBorder: tabBorderLight,
           borderColor: primaryLight,
           mutedText: textSecondaryLight,
+        ),
+      ],
+    );
+  }
+
+  /// Teal + stone — light modern messenger (stone neutrals, teal accent, solid teal sent bubble + white text).
+  static ThemeData get themeDataTealStone {
+    return ThemeData.light().copyWith(
+      scaffoldBackgroundColor: backgroundTealStone,
+      colorScheme: const ColorScheme.light(
+        primary: primaryTealStone,
+        secondary: secondaryTealStone,
+        surface: surfaceTealStone,
+        error: errorColor,
+        onPrimary: Colors.white,
+        onSecondary: Colors.white,
+        onSurface: textColorTealStone,
+        onError: Colors.white,
+      ),
+      appBarTheme: AppBarTheme(
+        backgroundColor: surfaceTealStone,
+        elevation: 0,
+        centerTitle: false,
+        titleTextStyle: GoogleFonts.inter(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
+          color: primaryTealStone,
+          letterSpacing: -0.25,
+        ),
+        iconTheme: const IconThemeData(color: textColorTealStone),
+      ),
+      inputDecorationTheme: InputDecorationTheme(
+        filled: true,
+        fillColor: inputBgTealStone,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        border: OutlineInputBorder(
+          borderSide: const BorderSide(color: borderTealStone, width: 1.5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        enabledBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: borderTealStone, width: 1.5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        focusedBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: primaryTealStone, width: 2),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        errorBorder: OutlineInputBorder(
+          borderSide: const BorderSide(color: errorColor, width: 1.5),
+          borderRadius: BorderRadius.circular(8),
+        ),
+        hintStyle: GoogleFonts.inter(color: mutedTealStone, fontSize: 14),
+        labelStyle: GoogleFonts.inter(color: mutedTealStone, fontSize: 14),
+      ),
+      elevatedButtonTheme: ElevatedButtonThemeData(
+        style: ElevatedButton.styleFrom(
+          backgroundColor: secondaryTealStone,
+          foregroundColor: Colors.white,
+          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(8),
+            side: const BorderSide(color: secondaryTealStone, width: 2),
+          ),
+          textStyle: GoogleFonts.inter(
+            fontSize: 16,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
+      ),
+      textButtonTheme: TextButtonThemeData(
+        style: TextButton.styleFrom(
+          foregroundColor: primaryTealStone,
+          textStyle: GoogleFonts.inter(fontSize: 14),
+        ),
+      ),
+      floatingActionButtonTheme: const FloatingActionButtonThemeData(
+        backgroundColor: secondaryTealStone,
+        foregroundColor: Colors.white,
+      ),
+      listTileTheme: ListTileThemeData(
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
+        tileColor: Colors.transparent,
+        selectedTileColor: activeTabBgTealStone,
+      ),
+      dividerTheme: const DividerThemeData(
+        color: borderTealStone,
+        thickness: 1,
+      ),
+      textTheme: TextTheme(
+        bodyLarge: GoogleFonts.inter(color: textColorTealStone, fontSize: 16),
+        bodyMedium: GoogleFonts.inter(color: textColorTealStone, fontSize: 14),
+        bodySmall: GoogleFonts.inter(color: mutedTealStone, fontSize: 12),
+        titleLarge: GoogleFonts.inter(
+          color: primaryTealStone,
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.25,
+        ),
+        titleMedium: GoogleFonts.inter(
+          color: textColorTealStone,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+        titleSmall: GoogleFonts.inter(
+          color: textColorTealStone,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+        labelLarge: GoogleFonts.inter(
+          color: textColorTealStone,
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
+      ),
+      extensions: [
+        FireplaceColors(
+          inputBg: inputBgTealStone,
+          convItemBorder: borderTealStone,
+          convItemBg: convItemBgTealStone,
+          messagesAreaBg: messagesAreaTealStone,
+          mineMsgBg: mineMsgBgTealStone,
+          theirsMsgBg: theirsMsgBgTealStone,
+          settingsTileBg: surfaceTealStone,
+          settingsTileBorder: settingsTileBorderTealStone,
+          tabBorder: borderTealStone,
+          borderColor: primaryTealStone,
+          mutedText: mutedTealStone,
         ),
       ],
     );

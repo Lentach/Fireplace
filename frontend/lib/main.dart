@@ -19,7 +19,6 @@ import 'providers/settings_provider.dart';
 import 'screens/auth_screen.dart';
 import 'screens/main_shell.dart';
 import 'theme/app_scroll_behavior.dart';
-import 'theme/rpg_theme.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
@@ -55,7 +54,7 @@ class FireplaceApp extends StatelessWidget {
             title: 'Fireplace',
             debugShowCheckedModeBanner: false,
             scrollBehavior: const AppScrollBehavior(),
-            theme: RpgTheme.themeDataLight,
+            theme: settings.lightTheme,
             darkTheme: settings.darkTheme,
             themeMode: settings.themeMode,
             locale: settings.locale,

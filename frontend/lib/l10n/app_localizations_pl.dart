@@ -505,4 +505,16 @@ class AppLocalizationsPl extends AppLocalizations {
   String friendAcceptedYourRequest(String name) {
     return '$name zaakceptował(a) zaproszenie do znajomych';
   }
+
+  @override
+  String get themeOptionLight => 'Ciepły papier (jasny)';
+
+  @override
+  String get themeOptionDark => 'Ciemny szary z turkusowym akcentem';
+
+  @override
+  String get themeOptionBlue => 'Niebieski w stylu Telegram (ciemny)';
+
+  @override
+  String get themeOptionTealStone => 'Turkus i kamień (nowoczesny jasny)';
 }

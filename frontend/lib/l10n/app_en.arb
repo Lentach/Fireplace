@@ -192,5 +192,9 @@
     "placeholders": {
       "name": { "type": "String" }
     }
-  }
+  },
+  "themeOptionLight": "Warm paper (light)",
+  "themeOptionDark": "Dark gray + teal accent",
+  "themeOptionBlue": "Telegram-style blue (dark)",
+  "themeOptionTealStone": "Teal + stone (modern light)"
 }

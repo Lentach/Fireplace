@@ -205,27 +205,31 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final colorScheme = theme.colorScheme;
     final fc = FireplaceColors.of(context);
     final current = settings.themePreference;
+    final l10n = AppLocalizations.of(context);
 
-    Widget themeIconBtn(String value, IconData icon) {
+    Widget themeIconBtn(String value, IconData icon, String tooltip) {
       final isSelected = current == value;
-      return InkWell(
-        onTap: () => settings.setThemePreference(value),
-        customBorder: const CircleBorder(),
-        child: Container(
-          width: 44,
-          height: 44,
-          decoration: BoxDecoration(
-            color: isSelected ? colorScheme.primary.withValues(alpha: 0.2) : Colors.transparent,
-            shape: BoxShape.circle,
-            border: Border.all(
-              color: isSelected ? colorScheme.primary : fc.settingsTileBorder,
-              width: isSelected ? 2 : 1,
+      return Tooltip(
+        message: tooltip,
+        child: InkWell(
+          onTap: () => settings.setThemePreference(value),
+          customBorder: const CircleBorder(),
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: isSelected ? colorScheme.primary.withValues(alpha: 0.2) : Colors.transparent,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isSelected ? colorScheme.primary : fc.settingsTileBorder,
+                width: isSelected ? 2 : 1,
+              ),
             ),
-          ),
-          child: Icon(
-            icon,
-            size: 24,
-            color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+            child: Icon(
+              icon,
+              size: 24,
+              color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+            ),
           ),
         ),
       );
@@ -251,11 +255,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         trailing: Row(
           mainAxisSize: MainAxisSize.min,
           children: [
-            themeIconBtn('light', Icons.light_mode),
+            themeIconBtn('light', Icons.light_mode, l10n.themeOptionLight),
             const SizedBox(width: 8),
-            themeIconBtn('dark', Icons.dark_mode),
+            themeIconBtn('teal', Icons.eco, l10n.themeOptionTealStone),
             const SizedBox(width: 8),
-            themeIconBtn('blue', Icons.water_drop),
+            themeIconBtn('dark', Icons.dark_mode, l10n.themeOptionDark),
+            const SizedBox(width: 8),
+            themeIconBtn('blue', Icons.water_drop, l10n.themeOptionBlue),
           ],
         ),
       ),

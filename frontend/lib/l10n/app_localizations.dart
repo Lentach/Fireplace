@@ -1021,6 +1021,30 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'{name} zaakceptował(a) zaproszenie do znajomych'**
   String friendAcceptedYourRequest(String name);
+
+  /// No description provided for @themeOptionLight.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ciepły papier (jasny)'**
+  String get themeOptionLight;
+
+  /// No description provided for @themeOptionDark.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ciemny szary z turkusowym akcentem'**
+  String get themeOptionDark;
+
+  /// No description provided for @themeOptionBlue.
+  ///
+  /// In pl, this message translates to:
+  /// **'Niebieski w stylu Telegram (ciemny)'**
+  String get themeOptionBlue;
+
+  /// No description provided for @themeOptionTealStone.
+  ///
+  /// In pl, this message translates to:
+  /// **'Turkus i kamień (nowoczesny jasny)'**
+  String get themeOptionTealStone;
 }
 
 class _AppLocalizationsDelegate

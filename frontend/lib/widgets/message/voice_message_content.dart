@@ -160,7 +160,7 @@ class VoiceMessageContent extends StatelessWidget {
 
   // ── delivery icon ─────────────────────────────────────────────────────────
 
-  Widget _buildDeliveryIcon() {
+  Widget _buildDeliveryIcon(BuildContext context) {
     if (!isMine) return const SizedBox.shrink();
     if (message.deliveryStatus == MessageDeliveryStatus.failed) {
       return const Icon(Icons.error, size: 12, color: Colors.red);
@@ -180,11 +180,15 @@ class VoiceMessageContent extends StatelessWidget {
       default:
         icon = Icons.check;
     }
-    const Color sendingSentColor = Color(0xFFE0E0E0);
-    const Color readColor = Color(0xFF64B5F6);
+    final pref = context.read<SettingsProvider>().themePreference;
+    final ticks = RpgTheme.messageBubbleDeliveryTickColors(
+      context,
+      isMine: isMine,
+      themePreference: pref,
+    );
     final color = message.deliveryStatus == MessageDeliveryStatus.read
-        ? readColor
-        : sendingSentColor;
+        ? ticks.$2
+        : ticks.$1;
     return Icon(icon, size: 12, color: color);
   }
 
@@ -196,10 +200,15 @@ class VoiceMessageContent extends StatelessWidget {
     final bubbleColor = isMine
         ? FireplaceColors.of(context).mineMsgBg
         : FireplaceColors.of(context).theirsMsgBg;
+    final themePreference = context.read<SettingsProvider>().themePreference;
     final borderColor = isMine
         ? Theme.of(context).colorScheme.primary
         : FireplaceColors.of(context).borderColor;
-    final themePreference = context.read<SettingsProvider>().themePreference;
+    final waveformColor = isMine && !isDark && themePreference == 'light'
+        ? RpgTheme.textSecondaryLight
+        : (isMine && themePreference == 'teal'
+            ? Colors.white.withValues(alpha: 0.82)
+            : borderColor);
     final metaColor = RpgTheme.messageBubbleMetaColor(
       context,
       isMine: isMine,
@@ -262,17 +271,30 @@ class VoiceMessageContent extends StatelessWidget {
                             isLoading
                                 ? GestureDetector(
                                     onTap: togglePlayPause,
-                                    child: const SizedBox(
+                                    child: SizedBox(
                                       width: 32,
                                       height: 32,
-                                      child: CircularProgressIndicator(strokeWidth: 2),
+                                      child: CircularProgressIndicator(
+                                        strokeWidth: 2,
+                                        color: isMine && !isDark && themePreference == 'light'
+                                            ? RpgTheme.textSecondaryLight
+                                            : (isMine && themePreference == 'teal'
+                                                ? Colors.white.withValues(alpha: 0.85)
+                                                : null),
+                                      ),
                                     ),
                                   )
                                 : IconButton(
                                     icon: Icon(isPlaying ? Icons.pause : Icons.play_arrow),
                                     onPressed: _isExpired() ? null : togglePlayPause,
                                     iconSize: 32,
-                                    color: _isExpired() ? Colors.grey : null,
+                                    color: _isExpired()
+                                        ? Colors.grey
+                                        : (isMine && !isDark && themePreference == 'light'
+                                            ? RpgTheme.textColorLight
+                                            : (isMine && themePreference == 'teal'
+                                                ? Colors.white
+                                                : null)),
                                   ),
 
                             const SizedBox(width: 8),
@@ -283,7 +305,7 @@ class VoiceMessageContent extends StatelessWidget {
                                 messageId: message.id,
                                 position: position,
                                 duration: duration,
-                                color: borderColor,
+                                color: waveformColor,
                                 onSeek: seekFromWaveform,
                               ),
                             ),
@@ -293,7 +315,7 @@ class VoiceMessageContent extends StatelessWidget {
                             // Position / total duration
                             Text(
                               '${_formatDuration(position)}/${_formatDuration(duration)}',
-                              style: const TextStyle(fontSize: 10),
+                              style: RpgTheme.bodyFont(fontSize: 10, color: metaColor),
                             ),
 
                             const SizedBox(width: 6),
@@ -304,12 +326,12 @@ class VoiceMessageContent extends StatelessWidget {
                               child: Container(
                                 padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
                                 decoration: BoxDecoration(
-                                  border: Border.all(color: borderColor),
+                                  border: Border.all(color: waveformColor),
                                   borderRadius: BorderRadius.circular(12),
                                 ),
                                 child: Text(
                                   '${speed}x',
-                                  style: const TextStyle(fontSize: 11),
+                                  style: RpgTheme.bodyFont(fontSize: 11, color: metaColor),
                                 ),
                               ),
                             ),
@@ -330,7 +352,7 @@ class VoiceMessageContent extends StatelessWidget {
                                 ),
                               ),
                               const SizedBox(width: 4),
-                              _buildDeliveryIcon(),
+                              _buildDeliveryIcon(context),
                               Builder(
                                 builder: (ctx) {
                                   final timerText = _getTimerText();

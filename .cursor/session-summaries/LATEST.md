@@ -1,7 +1,11 @@
 # Latest session summary
 
 **Date:** 2026-05-15  
-**Summary:** [2026-05-15-session.md](2026-05-15-session.md) — chat composer newline: IME flicker fix (conditional `requestFocus` + `Focus` around trailing mic/newline), long-press layout glitch fix (replace Material `Tooltip` with `Semantics`); tests + graphify + `CLAUDE.md`.
+**Summary:** [2026-05-15-session-teal-stone-theme.md](2026-05-15-session-teal-stone-theme.md) — fourth theme **Teal + stone** (`themeDataTealStone`), settings eco icon + tooltips, `lightTheme` / bubble tick alignment; l10n + CLAUDE + graphify + tests.
+
+**Previous:** [2026-05-15-session-light-sent-bubble.md](2026-05-15-session-light-sent-bubble.md) — light theme: sent bubble warm tint instead of solid orange; dark text + delivery tick colors + voice controls for contrast; CLAUDE + graphify + bubble tests.
+
+**Previous:** [2026-05-15-session.md](2026-05-15-session.md) — chat composer newline: IME flicker fix (conditional `requestFocus` + `Focus` around trailing mic/newline), long-press layout glitch fix (replace Material `Tooltip` with `Semantics`); tests + graphify + `CLAUDE.md`.
 
 **Previous:** [2026-05-15-session-mic-offset-tweak.md](2026-05-15-session-mic-offset-tweak.md) — tiny right shift for composer mic hit target to reduce edge-adjacent tap misses; behavior preserved; CLAUDE + graphify + lint checks.
 

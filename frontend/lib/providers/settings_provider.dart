@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/rpg_theme.dart';
 
 class SettingsProvider extends ChangeNotifier {
-  /// 'light' | 'dark' (Wire gray) | 'blue' (red-blue accent)
+  /// 'light' | 'teal' (Teal + stone, light) | 'dark' (Wire gray) | 'blue' (Telegram-style dark)
   String _themePreference = 'dark';
 
   /// 'pl' | 'en' — app UI language (default Polish)
@@ -16,14 +16,26 @@ class SettingsProvider extends ChangeNotifier {
   Locale get locale => Locale(_localeCode);
 
   ThemeMode get themeMode {
-    if (_themePreference == 'light') return ThemeMode.light;
+    if (_themePreference == 'light' || _themePreference == 'teal') {
+      return ThemeMode.light;
+    }
     return ThemeMode.dark;
+  }
+
+  /// Active [ThemeData] when [themeMode] is light (`light` or `teal`).
+  ThemeData get lightTheme {
+    if (_themePreference == 'teal') {
+      return RpgTheme.themeDataTealStone;
+    }
+    return RpgTheme.themeDataLight;
   }
 
   ThemeData get themeData {
     switch (_themePreference) {
       case 'light':
         return RpgTheme.themeDataLight;
+      case 'teal':
+        return RpgTheme.themeDataTealStone;
       case 'dark':
         return RpgTheme.themeDataDarkGray;
       case 'blue':
@@ -72,7 +84,10 @@ class SettingsProvider extends ChangeNotifier {
         saved = 'dark';
       }
     }
-    if (saved == 'light' || saved == 'dark' || saved == 'blue') {
+    if (saved == 'light' ||
+        saved == 'teal' ||
+        saved == 'dark' ||
+        saved == 'blue') {
       _themePreference = saved!;
     } else {
       _themePreference = 'dark';
@@ -81,7 +96,10 @@ class SettingsProvider extends ChangeNotifier {
   }
 
   Future<void> setThemePreference(String preference) async {
-    if (preference != 'light' && preference != 'dark' && preference != 'blue') {
+    if (preference != 'light' &&
+        preference != 'teal' &&
+        preference != 'dark' &&
+        preference != 'blue') {
       return;
     }
     _themePreference = preference;

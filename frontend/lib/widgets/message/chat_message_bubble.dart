@@ -236,10 +236,12 @@ class ChatMessageBubble extends StatelessWidget {
     final borderColor = isMine
         ? Theme.of(context).colorScheme.primary
         : FireplaceColors.of(context).borderColor;
-    final textColor = isMine
-        ? (isDark ? RpgTheme.textColor : Colors.white)
-        : (isDark ? RpgTheme.textColor : RpgTheme.textColorLight);
     final themePreference = context.read<SettingsProvider>().themePreference;
+    final textColor = isMine
+        ? (themePreference == 'teal'
+            ? Colors.white
+            : (isDark ? RpgTheme.textColor : RpgTheme.textColorLight))
+        : (isDark ? RpgTheme.textColor : RpgTheme.textColorLight);
     final timeColor = RpgTheme.messageBubbleMetaColor(
       context,
       isMine: isMine,
