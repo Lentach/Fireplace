@@ -62,7 +62,9 @@ class RecordingController extends StatefulWidget {
 
 class RecordingControllerState extends State<RecordingController>
     with SingleTickerProviderStateMixin {
-  static const double _kMicRestingOffsetX = 3.0;
+  /// Negative: nudge mic left within the hit target so it sits away from the screen’s
+  /// right edge (OS / PWA edge-back gestures). Drag-to-cancel still uses global coords.
+  static const double _kMicRestingOffsetX = -6.0;
 
   // ── recording state ──────────────────────────────────────────────────────
   bool _isRecording = false;
@@ -500,6 +502,9 @@ class RecordingControllerState extends State<RecordingController>
         clipBehavior: Clip.antiAlias,
         child: InkWell(
           canRequestFocus: false,
+          splashFactory: NoSplash.splashFactory,
+          highlightColor: Colors.transparent,
+          splashColor: Colors.transparent,
           customBorder: const CircleBorder(),
           onTap: widget.onInsertNewline,
           child: SizedBox(
@@ -517,12 +522,9 @@ class RecordingControllerState extends State<RecordingController>
       ),
     );
 
-    // Keep mic + newline out of focus traversal so taps never steal focus from the
+    // Keep mic + newline out of the focus subtree so taps never steal focus from the
     // multiline field (avoids keyboard flicker vs the trailing sibling).
-    return Focus(
-      canRequestFocus: false,
-      skipTraversal: true,
-      descendantsAreFocusable: false,
+    return ExcludeFocus(
       child: SizedBox(
         width: 48,
         height: 48,
@@ -540,7 +542,10 @@ class RecordingControllerState extends State<RecordingController>
               ignoring: !widget.hasText,
               child: Opacity(
                 opacity: widget.hasText ? 1.0 : 0.0,
-                child: newlineButton,
+                child: Transform.translate(
+                  offset: const Offset(_kMicRestingOffsetX, 0),
+                  child: newlineButton,
+                ),
               ),
             ),
           ],

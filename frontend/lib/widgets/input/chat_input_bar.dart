@@ -88,11 +88,14 @@ class _ChatInputBarState extends State<ChatInputBar>
     messaging.sendMessage(text, expiresIn: expiresIn);
 
     _controller.clear();
-    // Re-requesting focus while already focused can dismiss/re-show the keyboard
-    // (trailing controls use Focus-excluded hit targets; field usually stays focused).
-    if (mounted && !_focusNode.hasFocus && _focusNode.canRequestFocus) {
-      _focusNode.requestFocus();
-    }
+    // IME "Send" on multiline can unfocus on the next frame even while the node still
+    // reports hasFocus synchronously; schedule a refocus only when focus is actually lost.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_focusNode.canRequestFocus) return;
+      if (!_focusNode.hasFocus) {
+        _focusNode.requestFocus();
+      }
+    });
   }
 
   /// Explicit newline at the caret (IME Send stays the single “send” affordance).
@@ -107,9 +110,14 @@ class _ChatInputBarState extends State<ChatInputBar>
       text: newText,
       selection: TextSelection.collapsed(offset: offset),
     );
-    if (mounted && !_focusNode.hasFocus && _focusNode.canRequestFocus) {
-      _focusNode.requestFocus();
-    }
+    // Trailing tap can drop focus asynchronously on some devices; one post-frame refocus
+    // avoids redundant synchronous requestFocus (IME flicker) while still recovering.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_focusNode.canRequestFocus) return;
+      if (!_focusNode.hasFocus) {
+        _focusNode.requestFocus();
+      }
+    });
   }
 
   void _toggleActionPanel() {
@@ -203,8 +211,22 @@ class _ChatInputBarState extends State<ChatInputBar>
     final colorScheme = Theme.of(context).colorScheme;
     final fc = FireplaceColors.of(context);
     final mediaQuery = MediaQuery.of(context);
+    final pad = mediaQuery.padding;
     final isCompactLayout =
         mediaQuery.size.width < AppConstants.layoutBreakpointDesktop;
+    // Phone / narrow PWA: keep trailing mic off the physical right edge so OS back-swipe
+    // and browser edge gestures are less likely to steal the long-press.
+    const trailingGestureBufferDp = 14.0;
+    final trailingGestureBuffer =
+        isCompactLayout ? trailingGestureBufferDp : 0.0;
+    // Insets for notches / home indicator: chat body no longer applies horizontal SafeArea
+    // around the composer (see ChatDetailScreen), so we pad here instead.
+    final composerHorizontalPadding = EdgeInsets.fromLTRB(
+      8.0 + pad.left,
+      8.0,
+      4.0 + pad.right + trailingGestureBuffer,
+      8.0,
+    );
     final keyboardVisible = mediaQuery.viewInsets.bottom > 0;
     final bottomSystemInset =
         math.max(mediaQuery.viewPadding.bottom, mediaQuery.padding.bottom);
@@ -221,6 +243,12 @@ class _ChatInputBarState extends State<ChatInputBar>
         : (needsErgonomicBuffer
             ? bottomSystemInset + additionalBottomSpacing
             : webMobileFallbackInset);
+
+    // Cap multiline growth: Row/Expanded can still pass a tall maxHeight; keep the
+    // composer Telegram-like even under large text scale or IME quirks.
+    final textScaler = MediaQuery.textScalerOf(context);
+    final maxComposerHeight =
+        (textScaler.scale(22.0) * 6 + 36).clamp(120.0, 400.0);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -268,7 +296,7 @@ class _ChatInputBarState extends State<ChatInputBar>
 
           // Input row
           Container(
-            padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 8),
+            padding: composerHorizontalPadding,
             decoration: BoxDecoration(
               color: colorScheme.surface,
               border: Border(top: BorderSide(color: fc.convItemBorder)),
@@ -308,51 +336,59 @@ class _ChatInputBarState extends State<ChatInputBar>
                               meta: true,
                             ): _send,
                           },
-                          child: TextField(
-                            controller: _controller,
-                            focusNode: _focusNode,
-                            style: RpgTheme.bodyFont(
-                              fontSize: 14,
-                              color: colorScheme.onSurface,
+                          child: ConstrainedBox(
+                            constraints: BoxConstraints(
+                              maxHeight: maxComposerHeight,
                             ),
-                            decoration: InputDecoration(
-                              hintText: AppLocalizations.of(context)
-                                  .chatMessageHint,
-                              contentPadding: const EdgeInsets.symmetric(
-                                horizontal: 16,
-                                vertical: 10,
+                            child: TextField(
+                              controller: _controller,
+                              focusNode: _focusNode,
+                              style: RpgTheme.bodyFont(
+                                fontSize: 14,
+                                color: colorScheme.onSurface,
                               ),
-                              border: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(24),
-                                borderSide: BorderSide(color: fc.tabBorder),
-                              ),
-                              enabledBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(24),
-                                borderSide: BorderSide(color: fc.tabBorder),
-                              ),
-                              focusedBorder: OutlineInputBorder(
-                                borderRadius: BorderRadius.circular(24),
-                                borderSide: BorderSide(
-                                  color: RpgTheme.primaryColor(context),
-                                  width: 1.5,
+                              decoration: InputDecoration(
+                                hintText: AppLocalizations.of(context)
+                                    .chatMessageHint,
+                                contentPadding: const EdgeInsets.symmetric(
+                                  horizontal: 16,
+                                  vertical: 10,
                                 ),
+                                border: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(24),
+                                  borderSide: BorderSide(color: fc.tabBorder),
+                                ),
+                                enabledBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(24),
+                                  borderSide: BorderSide(color: fc.tabBorder),
+                                ),
+                                focusedBorder: OutlineInputBorder(
+                                  borderRadius: BorderRadius.circular(24),
+                                  borderSide: BorderSide(
+                                    color: RpgTheme.primaryColor(context),
+                                    width: 1.5,
+                                  ),
+                                ),
+                                filled: true,
+                                fillColor: fc.inputBg,
                               ),
-                              filled: true,
-                              fillColor: fc.inputBg,
+                              // Cap height so the composer does not consume the whole screen (matches
+                              // WhatsApp/Telegram-style behavior: grow to a few lines, then scroll inside).
+                              minLines: 1,
+                              maxLines: 6,
+                              // Single send affordance: IME action (mobile). Plain Enter inserts '\n'
+                              // in a multiline field; trailing control is newline-only (RecordingController).
+                              textInputAction: TextInputAction.send,
+                              // Default [onEditingComplete] unfocuses after "Send", which dismisses
+                              // the keyboard while the node can still report focused in the same sync turn.
+                              onEditingComplete: () {},
+                              onSubmitted: (_) => _send(),
                             ),
-                            // Cap height so the composer does not consume the whole screen (matches
-                            // WhatsApp/Telegram-style behavior: grow to a few lines, then scroll inside).
-                            minLines: 1,
-                            maxLines: 6,
-                            // Single send affordance: IME action (mobile). Plain Enter inserts '\n'
-                            // in a multiline field; trailing control is newline-only (RecordingController).
-                            textInputAction: TextInputAction.send,
-                            onSubmitted: (_) => _send(),
                           ),
                         ),
                 ),
 
-                const SizedBox(width: 4),
+                const SizedBox(width: 2),
 
                 // RecordingController is ALWAYS in the widget tree here.
                 // CLAUDE.md: "mic must stay in widget tree — GestureDetector unmounts -> no events."

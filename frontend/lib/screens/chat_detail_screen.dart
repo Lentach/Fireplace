@@ -488,109 +488,115 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
               ),
             ),
           )
-        : SafeArea(
-      bottom: false,
-      child: Column(
-        children: [
-          Expanded(
-            child: ChatBackgroundPattern(
-              dotColor: mutedColor.withValues(alpha: 0.08),
-              backgroundColor: messagesAreaBg,
-              child: messages.isEmpty
-                  ? Center(
-                      child: Text(
-                        AppLocalizations.of(context).noMessagesYet,
-                        style: RpgTheme.bodyFont(
-                          fontSize: 14,
-                          color: mutedColor,
-                        ),
-                      ),
-                    )
-                  : NotificationListener<UserScrollNotification>(
-                      onNotification: (notification) {
-                        _userHasScrolledChat = true;
-                        return false;
-                      },
-                      child: ListView.builder(
-                        reverse: true,
-                        controller: _scrollController,
-                        // Required alongside ValueKey(msg.id): tells the sliver where
-                        // a keyed child moved after itemCount changes (e.g. new message
-                        // prepended at visual bottom). Without this, Flutter falls back
-                        // to positional matching and remounts all image/GIF widgets.
-                        findChildIndexCallback: (Key key) {
-                          if (key is ValueKey<int>) {
-                            final idx = messages.indexWhere((m) => m.id == key.value);
-                            if (idx == -1) return null;
-                            return messages.length - 1 - idx;
-                          }
-                          return null;
-                        },
-                        padding: const EdgeInsets.only(
-                          left: 16,
-                          right: 20,
-                          top: 8,
-                          bottom: 8,
-                        ),
-                        itemCount: messages.length + (_isLoadingMoreLocal ? 1 : 0),
-                        itemBuilder: (context, index) {
-                          // Spinner at visual top (highest index = last rendered item with reverse:true).
-                          // Check BEFORE the flip so message indices are unaffected.
-                          if (_isLoadingMoreLocal && index == messages.length) {
-                            return const Padding(
-                              padding: EdgeInsets.symmetric(vertical: 8),
-                              child: Center(child: CircularProgressIndicator()),
-                            );
-                          }
-                          // Flip: _messages is oldest-first; index 0 renders at visual bottom (newest).
-                          final msgIndex = messages.length - 1 - index;
-                          final msg = messages[msgIndex];
-                          // Date separator condition unchanged — still correct after flip.
-                          final showDate = msgIndex == 0 ||
-                              _isDifferentDay(
-                                messages[msgIndex - 1].createdAt,
-                                msg.createdAt,
-                              );
-                          return Column(
-                            key: ValueKey(msg.id),
-                            children: [
-                              if (showDate) MessageDateSeparator(date: msg.createdAt),
-                              if (showDate) const SizedBox(height: 8),
-                              ChatMessageBubble(
-                                message: msg,
-                                isMine: msg.senderId == auth.currentUser!.id,
+        : Column(
+            children: [
+              Expanded(
+                // Horizontal safe area for the scrollable list only. Wrapping the whole
+                // column (including ChatInputBar) used to shrink the composer width and left
+                // an uncovered strip (Scaffold background) on the sides — especially visible
+                // on mobile Web/PWA with non-zero horizontal insets.
+                child: SafeArea(
+                  bottom: false,
+                  child: ChatBackgroundPattern(
+                    dotColor: mutedColor.withValues(alpha: 0.08),
+                    backgroundColor: messagesAreaBg,
+                    child: messages.isEmpty
+                        ? Center(
+                            child: Text(
+                              AppLocalizations.of(context).noMessagesYet,
+                              style: RpgTheme.bodyFont(
+                                fontSize: 14,
+                                color: mutedColor,
                               ),
-                            ],
-                          );
-                        },
-                      ),
-                    ),
-            ),
-          ),
-          if (otherUser != null &&
-              context.read<FriendsProvider>().blockedByUserIds.contains(otherUser.id))
-            SafeArea(
-              top: false,
-              child: Container(
-                width: double.infinity,
-                padding: const EdgeInsets.symmetric(vertical: 16),
-                color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                child: Center(
-                  child: Text(
-                    AppLocalizations.of(context).cantTypeToThisUser,
-                    style: RpgTheme.bodyFont(
-                      fontSize: 13,
-                      color: mutedColor,
-                    ).copyWith(fontStyle: FontStyle.italic),
+                            ),
+                          )
+                        : NotificationListener<UserScrollNotification>(
+                            onNotification: (notification) {
+                              _userHasScrolledChat = true;
+                              return false;
+                            },
+                            child: ListView.builder(
+                              reverse: true,
+                              controller: _scrollController,
+                              // Required alongside ValueKey(msg.id): tells the sliver where
+                              // a keyed child moved after itemCount changes (e.g. new message
+                              // prepended at visual bottom). Without this, Flutter falls back
+                              // to positional matching and remounts all image/GIF widgets.
+                              findChildIndexCallback: (Key key) {
+                                if (key is ValueKey<int>) {
+                                  final idx = messages.indexWhere((m) => m.id == key.value);
+                                  if (idx == -1) return null;
+                                  return messages.length - 1 - idx;
+                                }
+                                return null;
+                              },
+                              padding: const EdgeInsets.only(
+                                left: 16,
+                                right: 20,
+                                top: 8,
+                                bottom: 8,
+                              ),
+                              itemCount: messages.length + (_isLoadingMoreLocal ? 1 : 0),
+                              itemBuilder: (context, index) {
+                                // Spinner at visual top (highest index = last rendered item with reverse:true).
+                                // Check BEFORE the flip so message indices are unaffected.
+                                if (_isLoadingMoreLocal && index == messages.length) {
+                                  return const Padding(
+                                    padding: EdgeInsets.symmetric(vertical: 8),
+                                    child: Center(child: CircularProgressIndicator()),
+                                  );
+                                }
+                                // Flip: _messages is oldest-first; index 0 renders at visual bottom (newest).
+                                final msgIndex = messages.length - 1 - index;
+                                final msg = messages[msgIndex];
+                                // Date separator condition unchanged — still correct after flip.
+                                final showDate = msgIndex == 0 ||
+                                    _isDifferentDay(
+                                      messages[msgIndex - 1].createdAt,
+                                      msg.createdAt,
+                                    );
+                                return Column(
+                                  key: ValueKey(msg.id),
+                                  children: [
+                                    if (showDate) MessageDateSeparator(date: msg.createdAt),
+                                    if (showDate) const SizedBox(height: 8),
+                                    ChatMessageBubble(
+                                      message: msg,
+                                      isMine: msg.senderId == auth.currentUser!.id,
+                                    ),
+                                  ],
+                                );
+                              },
+                            ),
+                          ),
                   ),
                 ),
               ),
-            )
-          else
-            const ChatInputBar(),
-        ],
-      ),
-    );
+              if (otherUser != null &&
+                  context.read<FriendsProvider>().blockedByUserIds.contains(otherUser.id))
+                SafeArea(
+                  top: false,
+                  left: true,
+                  right: true,
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(vertical: 16),
+                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+                    child: Center(
+                      child: Text(
+                        AppLocalizations.of(context).cantTypeToThisUser,
+                        style: RpgTheme.bodyFont(
+                          fontSize: 13,
+                          color: mutedColor,
+                        ).copyWith(fontStyle: FontStyle.italic),
+                      ),
+                    ),
+                  ),
+                )
+              else
+                const ChatInputBar(),
+            ],
+          );
 
     if (widget.isEmbedded) {
       final borderColor = FireplaceColors.of(context).convItemBorder;

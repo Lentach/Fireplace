@@ -596,15 +596,15 @@
     "hash": "d53cd6ad8c71e8c57f93f94cf4747a29"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\l10n\\app_localizations.dart": {
-    "mtime": 1778807825.9627426,
+    "mtime": 1778808271.234325,
     "hash": "82ba9201922694a55d12d6e47eec6767"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\l10n\\app_localizations_en.dart": {
-    "mtime": 1778807825.9396675,
+    "mtime": 1778808271.196732,
     "hash": "2bd2a8a9dd7ba5331d8b5718cf878578"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\l10n\\app_localizations_pl.dart": {
-    "mtime": 1778807825.9489458,
+    "mtime": 1778808271.2140703,
     "hash": "d9fa3565dddc15e4d27b8592a4036d0f"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\models\\conversation_model.dart": {
@@ -672,8 +672,8 @@
     "hash": "8fe3172a5c101b545472becf7a0a04bf"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\screens\\chat_detail_screen.dart": {
-    "mtime": 1778462005.2830102,
-    "hash": "9cd556025a135974e4f18d886eae8f82"
+    "mtime": 1778808552.8048244,
+    "hash": "b668d46b3f21fe17638b89469dcd27dc"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\screens\\contacts_screen.dart": {
     "mtime": 1778806921.5925317,
@@ -900,12 +900,12 @@
     "hash": "78d971916213eba774c1fddb6618e6bf"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\input\\chat_input_bar.dart": {
-    "mtime": 1778806855.8370583,
-    "hash": "ee609c584ac80c552a6d25d9c8f35a47"
+    "mtime": 1778808754.1708133,
+    "hash": "2963838a358d62a6045e65ddebff373b"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\input\\recording_controller.dart": {
-    "mtime": 1778806852.553953,
-    "hash": "17d27c4ce11904381f24de9a55dc4f6c"
+    "mtime": 1778808764.38527,
+    "hash": "a0a1685a7b375c50348d4c412be0e1b6"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\input\\reply_preview_bar.dart": {
     "mtime": 1776738665.385285,
@@ -1068,8 +1068,8 @@
     "hash": "c62517b2d7937bbe5f23487fe22e035f"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\CLAUDE.md": {
-    "mtime": 1778807858.5853958,
-    "hash": "0325df10897bdd5e72b0d9c1c564615e"
+    "mtime": 1778808773.4926598,
+    "hash": "8caa91d5b7fdd4469bee822ca9fdce4c"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\docker-compose.web.yml": {
     "mtime": 1776738665.2256248,

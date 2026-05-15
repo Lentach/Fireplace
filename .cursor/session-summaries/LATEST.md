@@ -1,7 +1,13 @@
 # Latest session summary
 
 **Date:** 2026-05-15  
-**Summary:** [2026-05-15-session-teal-stone-theme.md](2026-05-15-session-teal-stone-theme.md) — fourth theme **Teal + stone** (`themeDataTealStone`), settings eco icon + tooltips, `lightTheme` / bubble tick alignment; l10n + CLAUDE + graphify + tests.
+**Summary:** [2026-05-15-session-composer-mic-left-gesture-buffer.md](2026-05-15-session-composer-mic-left-gesture-buffer.md) — composer: **+14dp right padding** on compact layouts + **negative** `_kMicRestingOffsetX` (-6) to move mic/newline **left** away from edge gestures; tests **115** + graphify + CLAUDE.
+
+**Previous:** [2026-05-15-session-composer-horizontal-safe-area.md](2026-05-15-session-composer-horizontal-safe-area.md) — composer: horizontal `SafeArea` only on message list; full-bleed input bar + `MediaQuery.padding` in `ChatInputBar`; tests **115** + graphify + CLAUDE.
+
+**Previous:** [2026-05-15-session.md](2026-05-15-session.md) — **composer IME follow-up:** `onEditingComplete` prevents keyboard dismiss on Send; post-frame refocus; `ConstrainedBox` max height; newline `NoSplash` + `ExcludeFocus`; tests 115 + graphify + CLAUDE.
+
+**Previous:** [2026-05-15-session-teal-stone-theme.md](2026-05-15-session-teal-stone-theme.md) — fourth theme **Teal + stone** (`themeDataTealStone`), settings eco icon + tooltips, `lightTheme` / bubble tick alignment; l10n + CLAUDE + graphify + tests.
 
 **Previous:** [2026-05-15-session-light-sent-bubble.md](2026-05-15-session-light-sent-bubble.md) — light theme: sent bubble warm tint instead of solid orange; dark text + delivery tick colors + voice controls for contrast; CLAUDE + graphify + bubble tests.
 
