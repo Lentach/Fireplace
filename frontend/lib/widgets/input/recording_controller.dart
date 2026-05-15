@@ -62,6 +62,8 @@ class RecordingController extends StatefulWidget {
 
 class RecordingControllerState extends State<RecordingController>
     with SingleTickerProviderStateMixin {
+  static const double _kMicRestingOffsetX = 3.0;
+
   // ── recording state ──────────────────────────────────────────────────────
   bool _isRecording = false;
   AudioRecorder? _audioRecorder;
@@ -463,7 +465,8 @@ class RecordingControllerState extends State<RecordingController>
 
     final micHitTarget = Transform.translate(
       offset: Offset(
-        _isRecording ? _cancelDragOffset.clamp(-cancelThreshold, 0) : 0.0,
+        (_isRecording ? _cancelDragOffset.clamp(-cancelThreshold, 0) : 0.0) +
+            _kMicRestingOffsetX,
         0,
       ),
       child: GestureDetector(
