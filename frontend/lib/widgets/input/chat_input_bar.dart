@@ -88,7 +88,9 @@ class _ChatInputBarState extends State<ChatInputBar>
     messaging.sendMessage(text, expiresIn: expiresIn);
 
     _controller.clear();
-    if (mounted && _focusNode.canRequestFocus) {
+    // Re-requesting focus while already focused can dismiss/re-show the keyboard
+    // (trailing controls use Focus-excluded hit targets; field usually stays focused).
+    if (mounted && !_focusNode.hasFocus && _focusNode.canRequestFocus) {
       _focusNode.requestFocus();
     }
   }
@@ -105,7 +107,7 @@ class _ChatInputBarState extends State<ChatInputBar>
       text: newText,
       selection: TextSelection.collapsed(offset: offset),
     );
-    if (mounted && _focusNode.canRequestFocus) {
+    if (mounted && !_focusNode.hasFocus && _focusNode.canRequestFocus) {
       _focusNode.requestFocus();
     }
   }
@@ -188,7 +190,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     if (replyingTo != null && _lastReplyingTo != replyingTo) {
       _lastReplyingTo = replyingTo;
       WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && _focusNode.canRequestFocus) {
+        if (mounted && !_focusNode.hasFocus && _focusNode.canRequestFocus) {
           _focusNode.requestFocus();
         }
       });

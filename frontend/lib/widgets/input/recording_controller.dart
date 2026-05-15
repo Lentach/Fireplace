@@ -489,8 +489,11 @@ class RecordingControllerState extends State<RecordingController>
       ),
     );
 
-    final newlineButton = Tooltip(
-      message: AppLocalizations.of(context).chatComposerNewlineTooltip,
+    // Avoid Material [Tooltip]: its long-press overlay fights the IME/scaffold and
+    // caused an unconstrained-height composer glitch. Use [Semantics] for a11y only.
+    final newlineButton = Semantics(
+      button: true,
+      label: AppLocalizations.of(context).chatComposerNewlineTooltip,
       child: Material(
         color: Colors.transparent,
         shape: const CircleBorder(),
@@ -514,27 +517,34 @@ class RecordingControllerState extends State<RecordingController>
       ),
     );
 
-    return SizedBox(
-      width: 48,
-      height: 48,
-      child: Stack(
-        alignment: Alignment.center,
-        children: [
-          IgnorePointer(
-            ignoring: widget.hasText,
-            child: Opacity(
-              opacity: widget.hasText ? 0.0 : 1.0,
-              child: micHitTarget,
+    // Keep mic + newline out of focus traversal so taps never steal focus from the
+    // multiline field (avoids keyboard flicker vs the trailing sibling).
+    return Focus(
+      canRequestFocus: false,
+      skipTraversal: true,
+      descendantsAreFocusable: false,
+      child: SizedBox(
+        width: 48,
+        height: 48,
+        child: Stack(
+          alignment: Alignment.center,
+          children: [
+            IgnorePointer(
+              ignoring: widget.hasText,
+              child: Opacity(
+                opacity: widget.hasText ? 0.0 : 1.0,
+                child: micHitTarget,
+              ),
             ),
-          ),
-          IgnorePointer(
-            ignoring: !widget.hasText,
-            child: Opacity(
-              opacity: widget.hasText ? 1.0 : 0.0,
-              child: newlineButton,
+            IgnorePointer(
+              ignoring: !widget.hasText,
+              child: Opacity(
+                opacity: widget.hasText ? 1.0 : 0.0,
+                child: newlineButton,
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
