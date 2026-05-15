@@ -190,8 +190,7 @@ class ContactsScreen extends StatelessWidget {
         child: Center(
           child: Text(
             AppLocalizations.of(context).contacts,
-            style: RpgTheme.pressStart2P(
-              fontSize: 12,
+            style: RpgTheme.screenHeaderTitle(
               color: colorScheme.primary,
             ),
           ),

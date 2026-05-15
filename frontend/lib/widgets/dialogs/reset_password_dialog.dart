@@ -74,8 +74,8 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
             children: [
               Text(
                 l10n.resetPasswordDialogTitle,
-                style: RpgTheme.pressStart2P(
-                  fontSize: 16,
+                style: RpgTheme.screenHeaderTitle(
+                  fontSize: 18,
                   color: colorScheme.primary,
                 ),
                 textAlign: TextAlign.center,

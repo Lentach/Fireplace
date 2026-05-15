@@ -135,8 +135,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
             Center(
               child: Text(
                 AppLocalizations.of(context).chat,
-                style: RpgTheme.pressStart2P(
-                  fontSize: 12,
+                style: RpgTheme.screenHeaderTitle(
                   color: colorScheme.primary,
                 ),
               ),

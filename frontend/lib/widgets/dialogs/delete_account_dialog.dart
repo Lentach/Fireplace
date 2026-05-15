@@ -54,8 +54,8 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
             children: [
               Text(
                 l10n.deleteAccountDialogTitle,
-                style: RpgTheme.pressStart2P(
-                  fontSize: 16,
+                style: RpgTheme.screenHeaderTitle(
+                  fontSize: 18,
                   color: colorScheme.primary,
                 ),
                 textAlign: TextAlign.center,

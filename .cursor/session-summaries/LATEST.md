@@ -1,11 +1,11 @@
 # Latest session summary
 
 **Date:** 2026-05-15  
-**Summary:** [2026-05-15-session-mic-offset-tweak.md](2026-05-15-session-mic-offset-tweak.md) — tiny right shift for composer mic hit target to reduce edge-adjacent tap misses; behavior preserved; CLAUDE + graphify + lint checks.
+**Summary:** [2026-05-15-session.md](2026-05-15-session.md) — chat composer newline: IME flicker fix (conditional `requestFocus` + `Focus` around trailing mic/newline), long-press layout glitch fix (replace Material `Tooltip` with `Semantics`); tests + graphify + `CLAUDE.md`.
+
+**Previous:** [2026-05-15-session-mic-offset-tweak.md](2026-05-15-session-mic-offset-tweak.md) — tiny right shift for composer mic hit target to reduce edge-adjacent tap misses; behavior preserved; CLAUDE + graphify + lint checks.
 
 **Previous:** [2026-05-15-session-voice-recording-followups.md](2026-05-15-session-voice-recording-followups.md) — voice recording bar l10n, abort in-flight start on long-press cancel, 500 ms min clip + recorder cleanup on early exit; analyze + tests + graphify.
-
-**Previous:** [2026-05-15-session.md](2026-05-15-session.md) — chat composer: single IME send path, trailing newline control, Ctrl/Cmd+Enter for web/desktop; l10n + CLAUDE + graphify.
 
 **Previous:** [2026-05-15-session-voice-recording-gesture-fix.md](2026-05-15-session-voice-recording-gesture-fix.md) — voice hold-to-record: single `GestureDetector` + pending stop after async start; analyzer + graphify.
 

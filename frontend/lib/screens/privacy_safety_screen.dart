@@ -46,13 +46,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         centerTitle: true,
-        title: Text(
-          AppLocalizations.of(context).privacySafetyTitle,
-          style: RpgTheme.pressStart2P(
-            fontSize: 12,
-            color: theme.colorScheme.primary,
-          ),
-        ),
+        title: Text(AppLocalizations.of(context).privacySafetyTitle),
         backgroundColor: theme.colorScheme.surface,
         elevation: 0,
         iconTheme: IconThemeData(color: theme.colorScheme.primary),

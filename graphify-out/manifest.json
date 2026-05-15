@@ -668,32 +668,32 @@
     "hash": "6f4c7d45dcd9d52ba68c277307b81001"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\screens\\blocked_users_screen.dart": {
-    "mtime": 1776738665.3518727,
-    "hash": "450bf19cfbb2c0476241ad9df3eb175a"
+    "mtime": 1778806922.728696,
+    "hash": "8fe3172a5c101b545472becf7a0a04bf"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\screens\\chat_detail_screen.dart": {
     "mtime": 1778462005.2830102,
     "hash": "9cd556025a135974e4f18d886eae8f82"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\screens\\contacts_screen.dart": {
-    "mtime": 1776738665.3518727,
-    "hash": "8ae0222420e6d1dec4f2fd4b011d9162"
+    "mtime": 1778806921.5925317,
+    "hash": "e924ee1a5a6403160faf6e822ebbeda9"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\screens\\conversations_screen.dart": {
-    "mtime": 1778365109.808395,
-    "hash": "2cd52671350c7965b2d367b146880fd6"
+    "mtime": 1778806920.9131095,
+    "hash": "dece984c460c2ff4bae6a5dd989ed856"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\screens\\main_shell.dart": {
     "mtime": 1778803008.8241875,
     "hash": "3d6fdce9d344558bf1c5de42d0925053"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\screens\\privacy_safety_screen.dart": {
-    "mtime": 1777259116.1790242,
-    "hash": "9c16a66472e97064386a44d0ad98dff1"
+    "mtime": 1778806923.2629225,
+    "hash": "2d8d318ebbba700ccf0525ffa5755e09"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\screens\\settings_screen.dart": {
-    "mtime": 1778384546.4807503,
-    "hash": "67cf39f29a155bb4d52ec38bf2a3bdb1"
+    "mtime": 1778806922.1488388,
+    "hash": "803e0d682f4bb1e257048bca2014b42a"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\services\\android_fcm_local_notifications.dart": {
     "mtime": 1778350366.2589345,
@@ -760,8 +760,8 @@
     "hash": "74f71fec2155d0002da1ad5916e625eb"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\theme\\rpg_theme.dart": {
-    "mtime": 1778384546.482765,
-    "hash": "eae111d59a58e4a635a21fdbdda11ca7"
+    "mtime": 1778806918.9460907,
+    "hash": "49831550e8999b24f9917b84b206b41d"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\utils\\app_badge_math.dart": {
     "mtime": 1778379425.4490378,
@@ -888,24 +888,24 @@
     "hash": "ad0848b7a962d4cb09a6dcbd21ea9b8c"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\dialogs\\delete_account_dialog.dart": {
-    "mtime": 1776738665.380558,
-    "hash": "e82cbb95402eea928cbcdb5bfa73c90e"
+    "mtime": 1778806924.057476,
+    "hash": "1bb9544015da357eba4158eab3223de5"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\dialogs\\reset_password_dialog.dart": {
-    "mtime": 1776738665.380558,
-    "hash": "047d7760f686b4db08d2c78f97488763"
+    "mtime": 1778806924.8654559,
+    "hash": "521c54c691d7472c2712a42b4a3b7886"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\input\\attachment_handler.dart": {
     "mtime": 1776738665.385285,
     "hash": "78d971916213eba774c1fddb6618e6bf"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\input\\chat_input_bar.dart": {
-    "mtime": 1778805052.0707679,
-    "hash": "b166ba7f2afb4493a969a577a949cd35"
+    "mtime": 1778806855.8370583,
+    "hash": "ee609c584ac80c552a6d25d9c8f35a47"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\input\\recording_controller.dart": {
-    "mtime": 1778806195.332931,
-    "hash": "f9ca7adfcd40687a625670da17294dd6"
+    "mtime": 1778806852.553953,
+    "hash": "17d27c4ce11904381f24de9a55dc4f6c"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\input\\reply_preview_bar.dart": {
     "mtime": 1776738665.385285,
@@ -1068,8 +1068,8 @@
     "hash": "c62517b2d7937bbe5f23487fe22e035f"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\CLAUDE.md": {
-    "mtime": 1778806203.0864332,
-    "hash": "e3f62499f4a321b3465de28c5a9b40fc"
+    "mtime": 1778806963.2942712,
+    "hash": "7df974b43913ac888c4664edf45bec5c"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\docker-compose.web.yml": {
     "mtime": 1776738665.2256248,

@@ -383,13 +383,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         centerTitle: true,
-        title: Text(
-          AppLocalizations.of(context).settings,
-          style: RpgTheme.pressStart2P(
-            fontSize: 12,
-            color: theme.colorScheme.primary,
-          ),
-        ),
+        title: Text(AppLocalizations.of(context).settings),
         backgroundColor: theme.colorScheme.surface,
         elevation: 0,
         iconTheme: IconThemeData(color: theme.colorScheme.primary),

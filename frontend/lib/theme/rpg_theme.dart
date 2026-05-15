@@ -172,6 +172,20 @@ class RpgTheme {
     );
   }
 
+  /// App chrome (AppBar, main tab headers): matches `bodyFont` / list typography (Inter).
+  static TextStyle screenHeaderTitle({
+    required Color color,
+    double fontSize = 18,
+    FontWeight fontWeight = FontWeight.w600,
+  }) {
+    return GoogleFonts.inter(
+      fontSize: fontSize,
+      fontWeight: fontWeight,
+      color: color,
+      letterSpacing: -0.25,
+    );
+  }
+
   static TextStyle bodyFont({double fontSize = 14, Color color = textColor, FontWeight fontWeight = FontWeight.normal}) {
     return GoogleFonts.inter(
       fontSize: fontSize,
@@ -198,9 +212,11 @@ class RpgTheme {
         backgroundColor: boxBgBlue,
         elevation: 0,
         centerTitle: false,
-        titleTextStyle: GoogleFonts.pressStart2p(
-          fontSize: 14,
+        titleTextStyle: GoogleFonts.inter(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
           color: accentBlue,
+          letterSpacing: -0.25,
         ),
         iconTheme: const IconThemeData(color: textColorBlue),
       ),
@@ -266,7 +282,12 @@ class RpgTheme {
         bodyLarge: GoogleFonts.inter(color: textColorBlue, fontSize: 16),
         bodyMedium: GoogleFonts.inter(color: textColorBlue, fontSize: 14),
         bodySmall: GoogleFonts.inter(color: mutedTextBlue, fontSize: 12),
-        titleLarge: GoogleFonts.pressStart2p(color: accentBlue, fontSize: 16),
+        titleLarge: GoogleFonts.inter(
+          color: accentBlue,
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.25,
+        ),
         titleMedium: GoogleFonts.inter(color: textColorBlue, fontSize: 16, fontWeight: FontWeight.w600),
         titleSmall: GoogleFonts.inter(color: textColorBlue, fontSize: 14, fontWeight: FontWeight.w600),
         labelLarge: GoogleFonts.inter(color: textColorBlue, fontSize: 14, fontWeight: FontWeight.w500),
@@ -307,9 +328,11 @@ class RpgTheme {
         backgroundColor: boxBgDarkGray,
         elevation: 0,
         centerTitle: false,
-        titleTextStyle: GoogleFonts.pressStart2p(
-          fontSize: 14,
+        titleTextStyle: GoogleFonts.inter(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
           color: accentDarkGray,
+          letterSpacing: -0.25,
         ),
         iconTheme: const IconThemeData(color: textColorDarkGray),
       ),
@@ -375,7 +398,12 @@ class RpgTheme {
         bodyLarge: GoogleFonts.inter(color: textColorDarkGray, fontSize: 16),
         bodyMedium: GoogleFonts.inter(color: textColorDarkGray, fontSize: 14),
         bodySmall: GoogleFonts.inter(color: mutedDarkGray, fontSize: 12),
-        titleLarge: GoogleFonts.pressStart2p(color: accentDarkGray, fontSize: 16),
+        titleLarge: GoogleFonts.inter(
+          color: accentDarkGray,
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.25,
+        ),
         titleMedium: GoogleFonts.inter(color: textColorDarkGray, fontSize: 16, fontWeight: FontWeight.w600),
         titleSmall: GoogleFonts.inter(color: textColorDarkGray, fontSize: 14, fontWeight: FontWeight.w600),
         labelLarge: GoogleFonts.inter(color: textColorDarkGray, fontSize: 14, fontWeight: FontWeight.w500),
@@ -418,9 +446,11 @@ class RpgTheme {
         backgroundColor: boxBgLight,
         elevation: 0,
         centerTitle: false,
-        titleTextStyle: GoogleFonts.pressStart2p(
-          fontSize: 14,
+        titleTextStyle: GoogleFonts.inter(
+          fontSize: 18,
+          fontWeight: FontWeight.w600,
           color: primaryLight,
+          letterSpacing: -0.25,
         ),
         iconTheme: const IconThemeData(color: textColorLight),
       ),
@@ -486,7 +516,12 @@ class RpgTheme {
         bodyLarge: GoogleFonts.inter(color: textColorLight, fontSize: 16),
         bodyMedium: GoogleFonts.inter(color: textColorLight, fontSize: 14),
         bodySmall: GoogleFonts.inter(color: textSecondaryLight, fontSize: 12),
-        titleLarge: GoogleFonts.pressStart2p(color: primaryLight, fontSize: 16),
+        titleLarge: GoogleFonts.inter(
+          color: primaryLight,
+          fontSize: 20,
+          fontWeight: FontWeight.w600,
+          letterSpacing: -0.25,
+        ),
         titleMedium: GoogleFonts.inter(color: textColorLight, fontSize: 16, fontWeight: FontWeight.w600),
         titleSmall: GoogleFonts.inter(color: textColorLight, fontSize: 14, fontWeight: FontWeight.w600),
         labelLarge: GoogleFonts.inter(color: textColorLight, fontSize: 14, fontWeight: FontWeight.w500),
