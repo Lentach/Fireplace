@@ -85,6 +85,7 @@
   "recordingVoice": "Nagrywanie głosu…",
   "typing": "pisze…",
   "chatMessageHint": "Napisz wiadomość…",
+  "chatComposerNewlineTooltip": "Nowa linia",
   "chatDateToday": "Dziś",
   "chatDateYesterday": "Wczoraj",
   "selectAConversation": "Wybierz rozmowę",
@@ -173,6 +174,13 @@
   "snackbarVoiceRecordingRequiresSecureContext": "Nagrywanie głosu wymaga HTTPS lub localhost. Użyj https:// lub otwórz z localhost.",
   "snackbarFailedToStartRecording": "Nie udało się rozpocząć nagrywania",
   "snackbarHoldLongerForVoiceMessage": "Przytrzymaj dłużej, aby nagrać wiadomość głosową",
+  "voiceRecordingSlideToCancel": "← Przesuń, aby anulować",
+  "voiceRecordingSemanticsLabel": "Nagrywanie wiadomości głosowej, {time}. Przesuń w lewo, aby anulować.",
+  "@voiceRecordingSemanticsLabel": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "snackbarFailedToReadRecording": "Nie udało się odczytać nagrania",
   "snackbarFailedToSendVoiceMessage": "Nie udało się wysłać wiadomości głosowej",
   "snackbarAudioNoLongerAvailable": "Dźwięk nie jest już dostępny",

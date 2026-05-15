@@ -596,16 +596,16 @@
     "hash": "d53cd6ad8c71e8c57f93f94cf4747a29"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\l10n\\app_localizations.dart": {
-    "mtime": 1778803315.3740416,
-    "hash": "6406ec787f3131492aba610b4ed68e29"
+    "mtime": 1778804989.2670474,
+    "hash": "398c8bf5a63ed86125b0d135185fa60b"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\l10n\\app_localizations_en.dart": {
-    "mtime": 1778803315.3560796,
-    "hash": "8680d1e2d6d0e82f68415eeac435757a"
+    "mtime": 1778804989.2324579,
+    "hash": "40529abc8cdeff7d7aed71e9d9868016"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\l10n\\app_localizations_pl.dart": {
-    "mtime": 1778803315.3662796,
-    "hash": "453d3d6a3ea1a45a33f81a30c52cb16c"
+    "mtime": 1778804989.2525322,
+    "hash": "74ee01fca9eaea1257c95b29cd8f6331"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\models\\conversation_model.dart": {
     "mtime": 1776738665.3403053,
@@ -900,12 +900,12 @@
     "hash": "78d971916213eba774c1fddb6618e6bf"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\input\\chat_input_bar.dart": {
-    "mtime": 1778804136.328765,
-    "hash": "1939007857eb191a843304c0633de877"
+    "mtime": 1778805052.0707679,
+    "hash": "b166ba7f2afb4493a969a577a949cd35"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\input\\recording_controller.dart": {
-    "mtime": 1778384546.4851716,
-    "hash": "4d465b9464eb6847000558af029f1591"
+    "mtime": 1778805052.6596317,
+    "hash": "f0f218c33aa22064054164664f4ff523"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\input\\reply_preview_bar.dart": {
     "mtime": 1776738665.385285,
@@ -1068,8 +1068,8 @@
     "hash": "c62517b2d7937bbe5f23487fe22e035f"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\CLAUDE.md": {
-    "mtime": 1778804144.79312,
-    "hash": "2865761beb50bd4b6410647ffa6d80ec"
+    "mtime": 1778805057.9327853,
+    "hash": "075752088fd57263f873961541b67057"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\docker-compose.web.yml": {
     "mtime": 1776738665.2256248,

@@ -1,7 +1,13 @@
 # Latest session summary
 
 **Date:** 2026-05-15  
-**Summary:** [2026-05-15-session-bottom-padding-tuning.md](2026-05-15-session-bottom-padding-tuning.md) — increased chat/nav bottom gesture-safe spacing after real-device tests.
+**Summary:** [2026-05-15-session-voice-recording-followups.md](2026-05-15-session-voice-recording-followups.md) — voice recording bar l10n, abort in-flight start on long-press cancel, 500 ms min clip + recorder cleanup on early exit; analyze + tests + graphify.
+
+**Previous:** [2026-05-15-session.md](2026-05-15-session.md) — chat composer: single IME send path, trailing newline control, Ctrl/Cmd+Enter for web/desktop; l10n + CLAUDE + graphify.
+
+**Previous:** [2026-05-15-session-voice-recording-gesture-fix.md](2026-05-15-session-voice-recording-gesture-fix.md) — voice hold-to-record: single `GestureDetector` + pending stop after async start; analyzer + graphify.
+
+**Previous:** [2026-05-15-session-bottom-padding-tuning.md](2026-05-15-session-bottom-padding-tuning.md) — increased chat/nav bottom gesture-safe spacing after real-device tests.
 
 **Previous:** [2026-05-11-session-android-desugar.md](2026-05-11-session-android-desugar.md) — Android: enable core library desugaring for `flutter_local_notifications` (`build.gradle.kts`); `assembleDebug` verified.
 

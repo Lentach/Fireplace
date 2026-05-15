@@ -85,6 +85,7 @@
   "recordingVoice": "Recording voice…",
   "typing": "typing…",
   "chatMessageHint": "Type a message...",
+  "chatComposerNewlineTooltip": "New line",
   "chatDateToday": "Today",
   "chatDateYesterday": "Yesterday",
   "selectAConversation": "Select a conversation",
@@ -173,6 +174,13 @@
   "snackbarVoiceRecordingRequiresSecureContext": "Voice recording needs HTTPS or localhost. Use https:// or open from localhost.",
   "snackbarFailedToStartRecording": "Failed to start recording",
   "snackbarHoldLongerForVoiceMessage": "Hold longer to record a voice message",
+  "voiceRecordingSlideToCancel": "← Slide to cancel",
+  "voiceRecordingSemanticsLabel": "Recording voice message, {time}. Swipe left to cancel.",
+  "@voiceRecordingSemanticsLabel": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "snackbarFailedToReadRecording": "Failed to read recording",
   "snackbarFailedToSendVoiceMessage": "Failed to send voice message",
   "snackbarAudioNoLongerAvailable": "Audio no longer available",

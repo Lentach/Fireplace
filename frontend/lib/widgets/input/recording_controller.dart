@@ -22,7 +22,7 @@ import '../top_snackbar.dart';
 
 /// CRITICAL (CLAUDE.md): Voice recording mic MUST stay in the widget tree.
 /// GestureDetector unmounts -> no events. This widget always renders the mic
-/// GestureDetector. It shows the send button or spinner instead when
+/// GestureDetector. It shows a newline helper or spinner instead when
 /// [hasText] / [isSendingVoice] override the display.
 ///
 /// Owns all recording state: AudioRecorder lifecycle, drag-to-cancel logic,
@@ -34,7 +34,7 @@ class RecordingController extends StatefulWidget {
     required this.onRecordingStateChanged,
     required this.hasText,
     required this.isSendingVoice,
-    required this.onSend,
+    required this.onInsertNewline,
   });
 
   /// Called when a voice message has been recorded and is ready to send.
@@ -53,8 +53,8 @@ class RecordingController extends StatefulWidget {
   /// Whether a voice message is currently being uploaded/sent.
   final bool isSendingVoice;
 
-  /// Callback to send the text message (used by send button).
-  final VoidCallback onSend;
+  /// Inserts a newline in the composer (when [hasText] shows the trailing control).
+  final VoidCallback onInsertNewline;
 
   @override
   State<RecordingController> createState() => RecordingControllerState();
@@ -79,6 +79,17 @@ class RecordingControllerState extends State<RecordingController>
   double _dragStartX = 0.0;
   bool _showTrashIcon = false;
   bool _canceledBySlide = false;
+
+  /// True from first line of [_startRecording] until recording UI is active or start failed.
+  /// If the user releases during async mic startup, [onLongPressEnd] must not drop the stop.
+  bool _isStartingRecording = false;
+
+  /// User lifted finger while [_isStartingRecording] — stop as soon as [_isRecording] is true.
+  bool _pendingStopAfterStart = false;
+
+  /// Set when [onLongPressCancel] fires during async [_startRecording] (e.g. scroll away).
+  /// Checked after awaits so recording does not become active after the gesture was canceled.
+  bool _abortInFlightStart = false;
 
   // ── pulse animation ──────────────────────────────────────────────────────
   late final AnimationController _pulseController;
@@ -120,7 +131,36 @@ class RecordingControllerState extends State<RecordingController>
 
   // ── recording lifecycle ───────────────────────────────────────────────────
 
+  /// Discards clips shorter than this (UX: very short taps are usually accidental).
+  static const int _kMinVoiceRecordingMs = 500;
+
+  Future<void> _releaseRecorderSilently() async {
+    _recordingTimer?.cancel();
+    _recordingTimer = null;
+    _recordingStartTime = null;
+    final recorder = _audioRecorder;
+    _audioRecorder = null;
+    if (recorder != null) {
+      try {
+        await recorder.stop();
+      } catch (_) {}
+      try {
+        await recorder.dispose();
+      } catch (_) {}
+    }
+    final path = _recordingPath;
+    _recordingPath = null;
+    if (!kIsWeb && path != null) {
+      try {
+        final file = File(path);
+        if (await file.exists()) await file.delete();
+      } catch (_) {}
+    }
+  }
+
   Future<void> _startRecording(double startX) async {
+    _isStartingRecording = true;
+    _pendingStopAfterStart = false;
     _dragStartX = startX;
     _cancelDragOffset = 0.0;
     // Capture providers before async gaps to avoid BuildContext-across-async-gap lint.
@@ -129,6 +169,7 @@ class RecordingControllerState extends State<RecordingController>
     final conn = context.read<ConnectionProvider>();
     try {
       await _checkMicPermission();
+      if (_abortInFlightStart || !mounted) return;
 
       _audioRecorder = AudioRecorder();
       if (kIsWeb) {
@@ -139,20 +180,37 @@ class RecordingControllerState extends State<RecordingController>
             '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
       }
 
+      if (_abortInFlightStart || !mounted) {
+        await _releaseRecorderSilently();
+        return;
+      }
+
       if (kIsWeb && !secure_context.isWebSecureContext()) {
-        if (!mounted) return;
+        if (!mounted) {
+          await _releaseRecorderSilently();
+          return;
+        }
         showTopSnackBar(
           context,
           AppLocalizations.of(context).snackbarVoiceRecordingRequiresSecureContext,
         );
+        await _releaseRecorderSilently();
         return;
       }
 
       final hasPermission = await _audioRecorder!.hasPermission();
+      if (_abortInFlightStart || !mounted) {
+        await _releaseRecorderSilently();
+        return;
+      }
       if (!hasPermission) {
-        if (!mounted) return;
+        if (!mounted) {
+          await _releaseRecorderSilently();
+          return;
+        }
         showTopSnackBar(
             context, AppLocalizations.of(context).snackbarMicrophonePermissionDenied);
+        await _releaseRecorderSilently();
         return;
       }
 
@@ -165,6 +223,11 @@ class RecordingControllerState extends State<RecordingController>
         ),
         path: _recordingPath!,
       );
+
+      if (_abortInFlightStart || !mounted) {
+        await _releaseRecorderSilently();
+        return;
+      }
 
       _recordingStartTime = DateTime.now();
       messaging.setIsRecordingVoice(true);
@@ -193,10 +256,23 @@ class RecordingControllerState extends State<RecordingController>
         if (elapsed >= 120) _stopRecording();
       });
     } catch (e) {
+      await _releaseRecorderSilently();
       if (!mounted) return;
       showTopSnackBar(
           context, AppLocalizations.of(context).snackbarFailedToStartRecording);
       debugPrint('Recording error: $e');
+    } finally {
+      _isStartingRecording = false;
+      if (mounted && _pendingStopAfterStart && _isRecording && !_canceledBySlide) {
+        _pendingStopAfterStart = false;
+        if (_isOverTrash(context)) {
+          _cancelRecording();
+        } else {
+          _stopRecording();
+        }
+      } else {
+        _pendingStopAfterStart = false;
+      }
     }
   }
 
@@ -229,12 +305,13 @@ class RecordingControllerState extends State<RecordingController>
     });
     widget.onRecordingStateChanged(false);
 
-    final durationSeconds = _recordingStartTime != null
-        ? DateTime.now().difference(_recordingStartTime!).inSeconds
+    final durationMs = _recordingStartTime != null
+        ? DateTime.now().difference(_recordingStartTime!).inMilliseconds
         : 0;
+    final durationSeconds = (durationMs + 999) ~/ 1000;
     _recordingStartTime = null;
 
-    if (durationSeconds < 1) {
+    if (durationMs < _kMinVoiceRecordingMs) {
       if (!kIsWeb && path != null) {
         try {
           final file = File(path);
@@ -336,11 +413,24 @@ class RecordingControllerState extends State<RecordingController>
 
   // ── build ────────────────────────────────────────────────────────────────
 
+  void _onLongPressFinished() {
+    if (_canceledBySlide) return;
+    if (_isRecording) {
+      if (_isOverTrash(context)) {
+        _cancelRecording();
+      } else {
+        _stopRecording();
+      }
+    } else if (_isStartingRecording) {
+      _pendingStopAfterStart = true;
+    }
+  }
+
   @override
   Widget build(BuildContext context) {
-    final isDark = RpgTheme.isDark(context);
-
-    // Sending spinner
+    // Single GestureDetector for hold-to-record: swapping detectors when
+    // [_isRecording] flips used to dispose the long-press recognizer mid-gesture,
+    // so release often never called [_stopRecording].
     if (widget.isSendingVoice) {
       return const Padding(
         padding: EdgeInsets.all(12.0),
@@ -352,109 +442,71 @@ class RecordingControllerState extends State<RecordingController>
       );
     }
 
-    // Recording: mic-only UI with drag-to-cancel (no stacked send).
+    final isDark = RpgTheme.isDark(context);
     final cancelThreshold = _getCancelThreshold(context);
-    if (_isRecording) {
-      return Transform.translate(
-        offset: Offset(
-          _cancelDragOffset.clamp(-cancelThreshold, 0),
-          0,
-        ),
-        child: GestureDetector(
-          onLongPressStart: (details) =>
-              _startRecording(details.globalPosition.dx),
-          onLongPressMoveUpdate: (details) =>
-              _onRecordingDragUpdate(details.globalPosition.dx),
-          onLongPressEnd: (_) {
-            if (_isRecording && !_canceledBySlide) {
-              if (_isOverTrash(context)) {
-                _cancelRecording();
-              } else {
-                _stopRecording();
-              }
-            }
-          },
-          onLongPressCancel: () {
-            if (_isRecording && !_canceledBySlide) {
-              if (_isOverTrash(context)) {
-                _cancelRecording();
-              } else {
-                _stopRecording();
-              }
-            }
-          },
-          child: AnimatedScale(
-            scale: 1.15,
-            duration: const Duration(milliseconds: 150),
-            curve: Curves.easeOut,
-            child: Padding(
-              padding: const EdgeInsets.all(12),
-              child: Icon(
-                Icons.mic,
-                size: 22,
-                color: Colors.red,
-              ),
-            ),
-          ),
-        ),
-      );
-    }
 
-    // Idle: stack mic + send — never swap widgets when text clears after send.
-    // Replacing send with mic in the same frame used to unmount the TextField's
-    // sibling and dismiss the soft keyboard (jump). Opacity keeps both mounted.
-    final micIdle = GestureDetector(
-      onLongPressStart: (details) =>
-          _startRecording(details.globalPosition.dx),
-      onLongPressMoveUpdate: (details) =>
-          _onRecordingDragUpdate(details.globalPosition.dx),
-      onLongPressEnd: (_) {
-        if (_isRecording && !_canceledBySlide) {
-          if (_isOverTrash(context)) {
-            _cancelRecording();
-          } else {
-            _stopRecording();
-          }
-        }
-      },
-      onLongPressCancel: () {
-        if (_isRecording && !_canceledBySlide) {
-          if (_isOverTrash(context)) {
-            _cancelRecording();
-          } else {
-            _stopRecording();
-          }
-        }
-      },
-      child: AnimatedScale(
-        scale: 1.0,
-        duration: const Duration(milliseconds: 150),
-        curve: Curves.easeOut,
-        child: Padding(
-          padding: const EdgeInsets.all(12),
-          child: Icon(
-            Icons.mic_none,
-            size: 22,
-            color: isDark
-                ? RpgTheme.mutedDark
-                : RpgTheme.textSecondaryLight,
-          ),
+    final micVisual = AnimatedScale(
+      scale: _isRecording ? 1.15 : 1.0,
+      duration: const Duration(milliseconds: 150),
+      curve: Curves.easeOut,
+      child: Padding(
+        padding: const EdgeInsets.all(12),
+        child: Icon(
+          _isRecording ? Icons.mic : Icons.mic_none,
+          size: 22,
+          color: _isRecording
+              ? Colors.red
+              : (isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight),
         ),
       ),
     );
 
-    final sendButton = Material(
-      color: RpgTheme.primaryColor(context),
-      shape: const CircleBorder(),
-      clipBehavior: Clip.antiAlias,
-      child: InkWell(
-        canRequestFocus: false,
-        customBorder: const CircleBorder(),
-        onTap: widget.onSend,
-        child: const SizedBox(
-          width: 44,
-          height: 44,
-          child: Icon(Icons.send_rounded, size: 22, color: Colors.white),
+    final micHitTarget = Transform.translate(
+      offset: Offset(
+        _isRecording ? _cancelDragOffset.clamp(-cancelThreshold, 0) : 0.0,
+        0,
+      ),
+      child: GestureDetector(
+        onLongPressStart: (details) {
+          _abortInFlightStart = false;
+          _startRecording(details.globalPosition.dx);
+        },
+        onLongPressMoveUpdate: (details) =>
+            _onRecordingDragUpdate(details.globalPosition.dx),
+        onLongPressEnd: (_) => _onLongPressFinished(),
+        onLongPressCancel: () {
+          if (_isStartingRecording) {
+            _abortInFlightStart = true;
+            _pendingStopAfterStart = false;
+            return;
+          }
+          _onLongPressFinished();
+        },
+        child: micVisual,
+      ),
+    );
+
+    final newlineButton = Tooltip(
+      message: AppLocalizations.of(context).chatComposerNewlineTooltip,
+      child: Material(
+        color: Colors.transparent,
+        shape: const CircleBorder(),
+        clipBehavior: Clip.antiAlias,
+        child: InkWell(
+          canRequestFocus: false,
+          customBorder: const CircleBorder(),
+          onTap: widget.onInsertNewline,
+          child: SizedBox(
+            width: 44,
+            height: 44,
+            child: Icon(
+              Icons.keyboard_return,
+              size: 22,
+              color: isDark
+                  ? RpgTheme.mutedDark
+                  : RpgTheme.textSecondaryLight,
+            ),
+          ),
         ),
       ),
     );
@@ -469,14 +521,14 @@ class RecordingControllerState extends State<RecordingController>
             ignoring: widget.hasText,
             child: Opacity(
               opacity: widget.hasText ? 0.0 : 1.0,
-              child: micIdle,
+              child: micHitTarget,
             ),
           ),
           IgnorePointer(
             ignoring: !widget.hasText,
             child: Opacity(
               opacity: widget.hasText ? 1.0 : 0.0,
-              child: sendButton,
+              child: newlineButton,
             ),
           ),
         ],
@@ -489,13 +541,16 @@ class RecordingControllerState extends State<RecordingController>
   Widget buildRecordingBar(BuildContext context) {
     final isDark = RpgTheme.isDark(context);
     final fc = FireplaceColors.of(context);
+    final l10n = AppLocalizations.of(context);
 
     return Semantics(
       label: () {
         final elapsedSec = _recordingStartTime != null
             ? DateTime.now().difference(_recordingStartTime!).inSeconds
             : 0;
-        return 'Recording voice message, ${_formatRecordingDuration(elapsedSec)}. Swipe left to cancel.';
+        return l10n.voiceRecordingSemanticsLabel(
+          _formatRecordingDuration(elapsedSec),
+        );
       }(),
       child: Container(
         height: 48,
@@ -563,7 +618,7 @@ class RecordingControllerState extends State<RecordingController>
               child: Opacity(
                 opacity: _showTrashIcon ? 0.0 : 1.0,
                 child: Text(
-                  '⬅ Slide to cancel',
+                  l10n.voiceRecordingSlideToCancel,
                   style: RpgTheme.bodyFont(
                     fontSize: 14,
                     color: isDark ? Colors.white60 : Colors.black54,

@@ -530,6 +530,12 @@ abstract class AppLocalizations {
   /// **'Napisz wiadomość…'**
   String get chatMessageHint;
 
+  /// No description provided for @chatComposerNewlineTooltip.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nowa linia'**
+  String get chatComposerNewlineTooltip;
+
   /// No description provided for @chatDateToday.
   ///
   /// In pl, this message translates to:
@@ -961,6 +967,18 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Przytrzymaj dłużej, aby nagrać wiadomość głosową'**
   String get snackbarHoldLongerForVoiceMessage;
+
+  /// No description provided for @voiceRecordingSlideToCancel.
+  ///
+  /// In pl, this message translates to:
+  /// **'← Przesuń, aby anulować'**
+  String get voiceRecordingSlideToCancel;
+
+  /// No description provided for @voiceRecordingSemanticsLabel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nagrywanie wiadomości głosowej, {time}. Przesuń w lewo, aby anulować.'**
+  String voiceRecordingSemanticsLabel(String time);
 
   /// No description provided for @snackbarFailedToReadRecording.
   ///

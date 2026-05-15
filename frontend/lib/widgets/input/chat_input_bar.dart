@@ -1,10 +1,12 @@
 import 'dart:async';
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
-import 'dart:typed_data';
 
+import '../../constants/app_constants.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/conversations_provider.dart';
@@ -86,6 +88,23 @@ class _ChatInputBarState extends State<ChatInputBar>
     messaging.sendMessage(text, expiresIn: expiresIn);
 
     _controller.clear();
+    if (mounted && _focusNode.canRequestFocus) {
+      _focusNode.requestFocus();
+    }
+  }
+
+  /// Explicit newline at the caret (IME Send stays the single “send” affordance).
+  void _insertNewline() {
+    final text = _controller.text;
+    final sel = _controller.selection;
+    final start = sel.start >= 0 ? sel.start : text.length;
+    final end = sel.end >= 0 ? sel.end : text.length;
+    final newText = text.replaceRange(start, end, '\n');
+    final offset = start + 1;
+    _controller.value = TextEditingValue(
+      text: newText,
+      selection: TextSelection.collapsed(offset: offset),
+    );
     if (mounted && _focusNode.canRequestFocus) {
       _focusNode.requestFocus();
     }
@@ -182,15 +201,24 @@ class _ChatInputBarState extends State<ChatInputBar>
     final colorScheme = Theme.of(context).colorScheme;
     final fc = FireplaceColors.of(context);
     final mediaQuery = MediaQuery.of(context);
+    final isCompactLayout =
+        mediaQuery.size.width < AppConstants.layoutBreakpointDesktop;
     final keyboardVisible = mediaQuery.viewInsets.bottom > 0;
     final bottomSystemInset =
         math.max(mediaQuery.viewPadding.bottom, mediaQuery.padding.bottom);
     const additionalBottomSpacing = 16.0;
     final needsErgonomicBuffer = bottomSystemInset > 0;
+    final webMobileFallbackInset = !needsErgonomicBuffer &&
+            kIsWeb &&
+            isCompactLayout &&
+            !keyboardVisible
+        ? 16.0
+        : 0.0;
     final bottomInteractivePadding = keyboardVisible
         ? 0.0
-        : bottomSystemInset +
-            (needsErgonomicBuffer ? additionalBottomSpacing : 0.0);
+        : (needsErgonomicBuffer
+            ? bottomSystemInset + additionalBottomSpacing
+            : webMobileFallbackInset);
 
     return Column(
       mainAxisSize: MainAxisSize.min,
@@ -266,44 +294,59 @@ class _ChatInputBarState extends State<ChatInputBar>
                       ? (_recordingKey.currentState
                               ?.buildRecordingBar(context) ??
                           const SizedBox.shrink())
-                      : TextField(
-                          controller: _controller,
-                          focusNode: _focusNode,
-                          style: RpgTheme.bodyFont(
-                            fontSize: 14,
-                            color: colorScheme.onSurface,
-                          ),
-                          decoration: InputDecoration(
-                            hintText: AppLocalizations.of(context)
-                                .chatMessageHint,
-                            contentPadding: const EdgeInsets.symmetric(
-                              horizontal: 16,
-                              vertical: 10,
+                      : CallbackShortcuts(
+                          bindings: <ShortcutActivator, VoidCallback>{
+                            // Web/desktop: multiline fields often lack an IME “Send”; keep one send path.
+                            const SingleActivator(
+                              LogicalKeyboardKey.enter,
+                              control: true,
+                            ): _send,
+                            const SingleActivator(
+                              LogicalKeyboardKey.enter,
+                              meta: true,
+                            ): _send,
+                          },
+                          child: TextField(
+                            controller: _controller,
+                            focusNode: _focusNode,
+                            style: RpgTheme.bodyFont(
+                              fontSize: 14,
+                              color: colorScheme.onSurface,
                             ),
-                            border: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide(color: fc.tabBorder),
-                            ),
-                            enabledBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide(color: fc.tabBorder),
-                            ),
-                            focusedBorder: OutlineInputBorder(
-                              borderRadius: BorderRadius.circular(24),
-                              borderSide: BorderSide(
-                                color: RpgTheme.primaryColor(context),
-                                width: 1.5,
+                            decoration: InputDecoration(
+                              hintText: AppLocalizations.of(context)
+                                  .chatMessageHint,
+                              contentPadding: const EdgeInsets.symmetric(
+                                horizontal: 16,
+                                vertical: 10,
                               ),
+                              border: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide(color: fc.tabBorder),
+                              ),
+                              enabledBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide(color: fc.tabBorder),
+                              ),
+                              focusedBorder: OutlineInputBorder(
+                                borderRadius: BorderRadius.circular(24),
+                                borderSide: BorderSide(
+                                  color: RpgTheme.primaryColor(context),
+                                  width: 1.5,
+                                ),
+                              ),
+                              filled: true,
+                              fillColor: fc.inputBg,
                             ),
-                            filled: true,
-                            fillColor: fc.inputBg,
+                            // Cap height so the composer does not consume the whole screen (matches
+                            // WhatsApp/Telegram-style behavior: grow to a few lines, then scroll inside).
+                            minLines: 1,
+                            maxLines: 6,
+                            // Single send affordance: IME action (mobile). Plain Enter inserts '\n'
+                            // in a multiline field; trailing control is newline-only (RecordingController).
+                            textInputAction: TextInputAction.send,
+                            onSubmitted: (_) => _send(),
                           ),
-                          // Cap height so the composer does not consume the whole screen (matches
-                          // WhatsApp/Telegram-style behavior: grow to a few lines, then scroll inside).
-                          minLines: 1,
-                          maxLines: 6,
-                          textInputAction: TextInputAction.send,
-                          onSubmitted: (_) => _send(),
                         ),
                 ),
 
@@ -318,7 +361,7 @@ class _ChatInputBarState extends State<ChatInputBar>
                   onRecordingStateChanged: _onRecordingStateChanged,
                   hasText: _hasText,
                   isSendingVoice: _isSendingVoice,
-                  onSend: _send,
+                  onInsertNewline: _insertNewline,
                 ),
               ],
             ),

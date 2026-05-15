@@ -242,6 +242,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatMessageHint => 'Type a message...';
 
   @override
+  String get chatComposerNewlineTooltip => 'New line';
+
+  @override
   String get chatDateToday => 'Today';
 
   @override
@@ -469,6 +472,14 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get snackbarHoldLongerForVoiceMessage =>
       'Hold longer to record a voice message';
+
+  @override
+  String get voiceRecordingSlideToCancel => '← Slide to cancel';
+
+  @override
+  String voiceRecordingSemanticsLabel(String time) {
+    return 'Recording voice message, $time. Swipe left to cancel.';
+  }
 
   @override
   String get snackbarFailedToReadRecording => 'Failed to read recording';

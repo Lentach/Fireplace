@@ -3,7 +3,8 @@
 ## What was accomplished
 
 - Increased bottom gesture-safe spacing after user testing still reported accidental swipe-up while tapping bottom icons.
-- Tuned chat composer ergonomic buffer from `+8` to `+12`, then to `+16` after additional device feedback (applies only when bottom inset exists and keyboard is hidden).
+- Tuned chat composer ergonomic buffer from `+8` to `+12`, then to `+16` after additional device feedback (applies when bottom inset exists and keyboard is hidden).
+- Added a mobile web/PWA fallback for cases where bottom system inset is reported as `0` on physical devices despite gesture area; compact web layout now still gets a 16px bottom safety spacer.
 - Tuned bottom navigation minimum safe-area padding from `6` to `10`.
 
 ## Key files modified
@@ -20,4 +21,4 @@
 
 ## Project status / notes
 
-- Bottom controls now sit further above gesture areas across mobile/PWA; chat mic/composer were lifted again to reduce swipe-gesture conflicts while preserving zero-inset behavior on desktop-like layouts.
+- Bottom controls now sit further above gesture areas across mobile/PWA; chat mic/composer were lifted again, and physical-phone PWA now has a fallback spacer even when WebKit reports no inset.
