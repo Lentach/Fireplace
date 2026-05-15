@@ -181,7 +181,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       bottomNavigationBar: SafeArea(
         top: false,
         minimum:
-            isDesktop ? EdgeInsets.zero : const EdgeInsets.only(bottom: 6),
+            isDesktop ? EdgeInsets.zero : const EdgeInsets.only(bottom: 10),
         child: bottomNavigation,
       ),
     );

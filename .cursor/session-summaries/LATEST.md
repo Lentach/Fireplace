@@ -1,7 +1,9 @@
 # Latest session summary
 
-**Date:** 2026-05-11  
-**Summary:** [2026-05-11-session-bottom-insets-review-fixes.md](2026-05-11-session-bottom-insets-review-fixes.md) — follow-up fixes: no zero-inset extra gap, no transparent seam, blocked-state safe-area restored.
+**Date:** 2026-05-15  
+**Summary:** [2026-05-15-session-bottom-padding-tuning.md](2026-05-15-session-bottom-padding-tuning.md) — increased chat/nav bottom gesture-safe spacing after real-device tests.
+
+**Previous:** [2026-05-11-session-android-desugar.md](2026-05-11-session-android-desugar.md) — Android: enable core library desugaring for `flutter_local_notifications` (`build.gradle.kts`); `assembleDebug` verified.
 
 **Previous:** [2026-05-11-session-bottom-insets-fix.md](2026-05-11-session-bottom-insets-fix.md) — cross-device bottom inset fix for chat/action bars and bottom navigation, plus web viewport safe-area update.
 

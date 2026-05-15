@@ -185,7 +185,7 @@ class _ChatInputBarState extends State<ChatInputBar>
     final keyboardVisible = mediaQuery.viewInsets.bottom > 0;
     final bottomSystemInset =
         math.max(mediaQuery.viewPadding.bottom, mediaQuery.padding.bottom);
-    const additionalBottomSpacing = 8.0;
+    const additionalBottomSpacing = 16.0;
     final needsErgonomicBuffer = bottomSystemInset > 0;
     final bottomInteractivePadding = keyboardVisible
         ? 0.0
