@@ -626,11 +626,77 @@ abstract class AppLocalizations {
   /// **'Timer'**
   String get actionTileTimer;
 
+  /// No description provided for @actionTileDisappearingMessages.
+  ///
+  /// In pl, this message translates to:
+  /// **'Znikające wiadomości'**
+  String get actionTileDisappearingMessages;
+
   /// No description provided for @disappearingTimerTitle.
   ///
   /// In pl, this message translates to:
   /// **'Znikające wiadomości'**
   String get disappearingTimerTitle;
+
+  /// No description provided for @disappearingTimerExplainerLine1.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wiadomości znikają po odczytaniu.'**
+  String get disappearingTimerExplainerLine1;
+
+  /// No description provided for @disappearingTimerExplainerLine2.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odliczanie startuje, gdy ktoś otworzy czat.'**
+  String get disappearingTimerExplainerLine2;
+
+  /// No description provided for @disappearingTimerExplainerLine3.
+  ///
+  /// In pl, this message translates to:
+  /// **'Tylko nowe wiadomości używają ustawionego tu czasu.'**
+  String get disappearingTimerExplainerLine3;
+
+  /// No description provided for @disappearingTimerRangeHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Od 5 sekund do 30 dni; same zera = wyłączone'**
+  String get disappearingTimerRangeHint;
+
+  /// No description provided for @disappearingTimerSetTimer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ustaw timer'**
+  String get disappearingTimerSetTimer;
+
+  /// No description provided for @disappearingTimerTurnOff.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wyłącz'**
+  String get disappearingTimerTurnOff;
+
+  /// No description provided for @disappearingTimerSummarySemantics.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wybrany czas: {summary}'**
+  String disappearingTimerSummarySemantics(String summary);
+
+  /// No description provided for @disappearingComposerBanner.
+  ///
+  /// In pl, this message translates to:
+  /// **'Znikające · {duration}'**
+  String disappearingComposerBanner(String duration);
+
+  /// No description provided for @disappearingComposerBannerSemantics.
+  ///
+  /// In pl, this message translates to:
+  /// **'Znikające wiadomości, {duration}'**
+  String disappearingComposerBannerSemantics(String duration);
+
+  /// No description provided for @conversationDisappearingTimerHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Znikające wiadomości: {duration}'**
+  String conversationDisappearingTimerHint(String duration);
 
   /// No description provided for @disappearingTimerDaysLabel.
   ///

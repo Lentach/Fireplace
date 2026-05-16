@@ -12,7 +12,9 @@ import '../../models/message_model.dart';
 import '../../providers/conversations_provider.dart';
 import '../../providers/messaging_provider.dart';
 import '../../theme/rpg_theme.dart';
+import '../../utils/message_expiry.dart';
 import '../chat_action_tiles.dart';
+import '../hearth_fade_arc.dart';
 import '../top_snackbar.dart' show showTopSnackBar;
 import 'recording_controller.dart';
 import 'reply_preview_bar.dart';
@@ -114,17 +116,18 @@ class _ChatInputBarState extends State<ChatInputBar>
     String? localAudioPath,
     Uint8List? audioBytes,
   }) async {
+    final messaging = context.read<MessagingProvider>();
+    final convs = context.read<ConversationsProvider>();
+    final l10n = AppLocalizations.of(context);
+    final conversationId = convs.activeConversationId;
+    final failedToSendMessage = l10n.snackbarFailedToSendVoiceMessage;
+    final noActiveConversationMessage = l10n.snackbarNoActiveConversation;
+
     setState(() => _isSendingVoice = true);
     try {
-      final messaging =
-          Provider.of<MessagingProvider>(context, listen: false);
-      final convs = Provider.of<ConversationsProvider>(context, listen: false);
-      final conversationId = convs.activeConversationId;
-
       if (conversationId == null) {
         if (!mounted) return;
-        showTopSnackBar(
-            context, AppLocalizations.of(context).snackbarNoActiveConversation);
+        showTopSnackBar(context, noActiveConversationMessage);
         return;
       }
 
@@ -144,8 +147,7 @@ class _ChatInputBarState extends State<ChatInputBar>
       );
     } catch (e) {
       if (!mounted) return;
-      showTopSnackBar(
-          context, AppLocalizations.of(context).snackbarFailedToSendVoiceMessage);
+      showTopSnackBar(context, failedToSendMessage);
       debugPrint('Send voice error: $e');
     } finally {
       if (mounted) {
@@ -154,17 +156,28 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
   }
 
-  String _formatTimer(int seconds) {
-    if (seconds >= 86400) return '${seconds ~/ 86400}d';
-    if (seconds >= 3600) return '${seconds ~/ 3600}h';
-    if (seconds >= 60) return '${seconds ~/ 60}m';
-    return '${seconds}s';
+  String _bannerDurationLabel(AppLocalizations l10n, int seconds) {
+    final parts = splitDisappearingSeconds(seconds);
+    final summaryParts = <String>[];
+    if (parts.days > 0) {
+      summaryParts.add(l10n.disappearingTimerDays(parts.days));
+    }
+    if (parts.hours > 0) {
+      summaryParts.add(l10n.disappearingTimerHours(parts.hours));
+    }
+    if (parts.minutes > 0) {
+      summaryParts.add(l10n.disappearingTimerMinutes(parts.minutes));
+    }
+    if (parts.seconds > 0) {
+      summaryParts.add(l10n.disappearingTimerSeconds(parts.seconds));
+    }
+    return summaryParts.join(' ');
   }
 
   @override
   Widget build(BuildContext context) {
     final messaging = context.watch<MessagingProvider>();
-    final convs = context.read<ConversationsProvider>();
+    final convs = context.watch<ConversationsProvider>();
     final replyingTo = messaging.replyingToMessage;
 
     if (replyingTo != null && _lastReplyingTo != replyingTo) {
@@ -179,9 +192,14 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
 
     final activeTimer = convs.conversationDisappearingTimer;
+    final l10n = AppLocalizations.of(context);
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
     final fc = FireplaceColors.of(context);
+    final accent = colorScheme.primary;
+    final ember = Theme.of(context).brightness == Brightness.light
+        ? RpgTheme.primaryLight
+        : accent;
     final mediaQuery = MediaQuery.of(context);
     final pad = mediaQuery.padding;
     final isCompactLayout =
@@ -232,37 +250,49 @@ class _ChatInputBarState extends State<ChatInputBar>
               onDismiss: () => messaging.clearReplyingTo(),
             ),
 
-          // Active timer indicator
           if (activeTimer != null)
-            Container(
-              width: double.infinity,
-              padding:
-                  const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-              color: isDark
-                  ? Colors.orange.withValues(alpha: 0.15)
-                  : Colors.orange.withValues(alpha: 0.1),
-              child: Row(
-                mainAxisSize: MainAxisSize.min,
-                mainAxisAlignment: MainAxisAlignment.center,
-                children: [
-                  Icon(
-                    Icons.timer_outlined,
-                    size: 14,
-                    color: isDark
-                        ? Colors.orange.shade300
-                        : Colors.orange.shade700,
+            Material(
+              color: ember.withValues(alpha: 0.12),
+              child: Semantics(
+                label: l10n.disappearingComposerBannerSemantics(
+                  _bannerDurationLabel(l10n, activeTimer),
+                ),
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 6,
                   ),
-                  const SizedBox(width: 4),
-                  Text(
-                    'Disappearing messages: ${_formatTimer(activeTimer)}',
-                    style: RpgTheme.bodyFont(
-                      fontSize: 11,
-                      color: isDark
-                          ? Colors.orange.shade300
-                          : Colors.orange.shade700,
-                    ),
+                  child: Row(
+                    mainAxisAlignment: MainAxisAlignment.center,
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      CustomPaint(
+                        size: const Size(14, 14),
+                        painter: HearthFadeArcPainter(
+                          color: ember,
+                          trackColor: ember.withValues(alpha: 0.35),
+                          dotted: true,
+                        ),
+                      ),
+                      const SizedBox(width: 8),
+                      Flexible(
+                        child: Text(
+                          l10n.disappearingComposerBanner(
+                            _bannerDurationLabel(l10n, activeTimer),
+                          ),
+                          textAlign: TextAlign.center,
+                          maxLines: 2,
+                          overflow: TextOverflow.ellipsis,
+                          style: RpgTheme.bodyFont(
+                            fontSize: 11,
+                            color: ember,
+                            fontWeight: FontWeight.w500,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
-                ],
+                ),
               ),
             ),
 

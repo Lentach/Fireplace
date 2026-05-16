@@ -291,7 +291,52 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actionTileTimer => 'Timer';
 
   @override
+  String get actionTileDisappearingMessages => 'Disappearing messages';
+
+  @override
   String get disappearingTimerTitle => 'Disappearing messages';
+
+  @override
+  String get disappearingTimerExplainerLine1 =>
+      'Messages are removed after they are read.';
+
+  @override
+  String get disappearingTimerExplainerLine2 =>
+      'The countdown starts when someone opens the chat.';
+
+  @override
+  String get disappearingTimerExplainerLine3 =>
+      'Only new messages use the timer you set here.';
+
+  @override
+  String get disappearingTimerRangeHint =>
+      '5 seconds to 30 days, or all zeros to turn off';
+
+  @override
+  String get disappearingTimerSetTimer => 'Set timer';
+
+  @override
+  String get disappearingTimerTurnOff => 'Turn off';
+
+  @override
+  String disappearingTimerSummarySemantics(String summary) {
+    return 'Selected duration: $summary';
+  }
+
+  @override
+  String disappearingComposerBanner(String duration) {
+    return 'Disappearing · $duration';
+  }
+
+  @override
+  String disappearingComposerBannerSemantics(String duration) {
+    return 'Disappearing messages, $duration';
+  }
+
+  @override
+  String conversationDisappearingTimerHint(String duration) {
+    return 'Disappearing messages: $duration';
+  }
 
   @override
   String get disappearingTimerDaysLabel => 'Days';

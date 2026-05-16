@@ -243,8 +243,20 @@ class ConversationsProvider extends ChangeNotifier {
     _emit?.call('deleteConversationOnly', {'conversationId': conversationId});
   }
 
-  /// Emit setDisappearingTimer socket event.
+  /// Emit setDisappearingTimer socket event (optimistic local update).
   void setDisappearingTimer(int conversationId, int? timer) {
+    final index = _conversations.indexWhere((c) => c.id == conversationId);
+    if (index != -1) {
+      final oldConv = _conversations[index];
+      _conversations[index] = ConversationModel(
+        id: oldConv.id,
+        userOne: oldConv.userOne,
+        userTwo: oldConv.userTwo,
+        createdAt: oldConv.createdAt,
+        disappearingTimer: timer,
+      );
+      notifyListeners();
+    }
     _emit?.call('setDisappearingTimer', {
       'conversationId': conversationId,
       'seconds': timer,

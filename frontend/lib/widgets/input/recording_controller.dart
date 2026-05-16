@@ -3,12 +3,12 @@ import 'dart:io';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
 import 'package:path_provider/path_provider.dart';
 import 'package:permission_handler/permission_handler.dart';
 import 'package:provider/provider.dart';
 import 'package:record/record.dart';
-import 'dart:typed_data';
 
 import '../../l10n/app_localizations.dart';
 import '../../providers/connection_provider.dart';
@@ -19,6 +19,12 @@ import '../../utils/secure_context_stub.dart'
     if (dart.library.html) '../../utils/secure_context_web.dart'
     as secure_context;
 import '../top_snackbar.dart';
+
+/// Thrown by [_RecordingControllerState._checkMicPermission] after showing the
+/// permission snackbar so [_startRecording] does not show a second generic error.
+class MicRecordingPermissionDenied implements Exception {
+  const MicRecordingPermissionDenied();
+}
 
 /// CRITICAL (CLAUDE.md): Voice recording mic MUST stay in the widget tree.
 /// GestureDetector unmounts -> no events. This widget always renders the mic
@@ -86,6 +92,12 @@ class RecordingControllerState extends State<RecordingController>
   /// Checked after awaits so recording does not become active after the gesture was canceled.
   bool _abortInFlightStart = false;
 
+  /// Prevents [onLongPressEnd] and [Listener] pointer release from both finishing the gesture.
+  bool _gestureFinishHandled = false;
+
+  /// Guards parallel [_stopRecording] (120s timer + finger release).
+  bool _isStopping = false;
+
   // ── pulse animation ──────────────────────────────────────────────────────
   late final AnimationController _pulseController;
 
@@ -119,7 +131,7 @@ class RecordingControllerState extends State<RecordingController>
         if (!mounted) return;
         showTopSnackBar(
             context, AppLocalizations.of(context).snackbarMicrophonePermissionRequired);
-        throw Exception('Permission denied');
+        throw const MicRecordingPermissionDenied();
       }
     }
   }
@@ -127,7 +139,9 @@ class RecordingControllerState extends State<RecordingController>
   // ── recording lifecycle ───────────────────────────────────────────────────
 
   /// Discards clips shorter than this (UX: very short taps are usually accidental).
-  static const int _kMinVoiceRecordingMs = 500;
+  /// Duration is measured from [_recordingStartTime] (when the recorder actually started),
+  /// not from the long-press down event.
+  static const int kMinVoiceRecordingMs = 500;
 
   Future<void> _releaseRecorderSilently() async {
     _recordingTimer?.cancel();
@@ -153,15 +167,19 @@ class RecordingControllerState extends State<RecordingController>
     }
   }
 
+  void _showNotSentSnackBar(String message) {
+    if (!mounted) return;
+    showTopSnackBar(context, message);
+  }
+
   Future<void> _startRecording(double startX) async {
+    _gestureFinishHandled = false;
     _isStartingRecording = true;
     _pendingStopAfterStart = false;
     _dragStartX = startX;
     _cancelDragOffset = 0.0;
     // Capture providers before async gaps to avoid BuildContext-across-async-gap lint.
     final messaging = context.read<MessagingProvider>();
-    final convs = context.read<ConversationsProvider>();
-    final conn = context.read<ConnectionProvider>();
     try {
       await _checkMicPermission();
       if (_abortInFlightStart || !mounted) return;
@@ -226,14 +244,7 @@ class RecordingControllerState extends State<RecordingController>
 
       _recordingStartTime = DateTime.now();
       messaging.setIsRecordingVoice(true);
-      final convId = convs.activeConversationId;
-      if (convId != null) {
-        final conv = convs.getConversationById(convId);
-        if (conv != null) {
-          final recipientId = convs.getOtherUserId(conv);
-          conn.socketService.emitRecordingVoice(recipientId, convId, true);
-        }
-      }
+      _emitRecordingVoiceToRecipient(true);
 
       setState(() {
         _isRecording = true;
@@ -242,6 +253,9 @@ class RecordingControllerState extends State<RecordingController>
         _canceledBySlide = false;
       });
       widget.onRecordingStateChanged(true);
+      if (!kIsWeb) {
+        HapticFeedback.lightImpact();
+      }
 
       // Auto-stop at 120s. Periodic timer only checks elapsed — display driven by pulse AnimatedBuilder.
       _recordingTimer = Timer.periodic(const Duration(seconds: 1), (timer) {
@@ -250,6 +264,8 @@ class RecordingControllerState extends State<RecordingController>
             DateTime.now().difference(_recordingStartTime!).inSeconds;
         if (elapsed >= 120) _stopRecording();
       });
+    } on MicRecordingPermissionDenied {
+      await _releaseRecorderSilently();
     } catch (e) {
       await _releaseRecorderSilently();
       if (!mounted) return;
@@ -271,21 +287,25 @@ class RecordingControllerState extends State<RecordingController>
     }
   }
 
-  Future<void> _stopRecording() async {
-    if (_audioRecorder == null || !_isRecording) return;
-
-    final messaging = context.read<MessagingProvider>();
+  void _emitRecordingVoiceToRecipient(bool isRecording) {
     final convs = context.read<ConversationsProvider>();
     final conn = context.read<ConnectionProvider>();
-    messaging.setIsRecordingVoice(false);
     final convId = convs.activeConversationId;
-    if (convId != null) {
-      final conv = convs.getConversationById(convId);
-      if (conv != null) {
-        final recipientId = convs.getOtherUserId(conv);
-        conn.socketService.emitRecordingVoice(recipientId, convId, false);
-      }
-    }
+    if (convId == null) return;
+    final conv = convs.getConversationById(convId);
+    if (conv == null) return;
+    final recipientId = convs.getOtherUserId(conv);
+    conn.socketService.emitRecordingVoice(recipientId, convId, isRecording);
+  }
+
+  Future<void> _stopRecording() async {
+    if (_audioRecorder == null || !_isRecording || _isStopping) return;
+    _isStopping = true;
+
+    final l10n = AppLocalizations.of(context);
+    final messaging = context.read<MessagingProvider>();
+    messaging.setIsRecordingVoice(false);
+    _emitRecordingVoiceToRecipient(false);
     _recordingTimer?.cancel();
     _recordingTimer = null;
 
@@ -306,40 +326,40 @@ class RecordingControllerState extends State<RecordingController>
     final durationSeconds = (durationMs + 999) ~/ 1000;
     _recordingStartTime = null;
 
-    if (durationMs < _kMinVoiceRecordingMs) {
-      if (!kIsWeb && path != null) {
-        try {
-          final file = File(path);
-          if (await file.exists()) await file.delete();
-        } catch (_) {}
+    try {
+      if (durationMs < kMinVoiceRecordingMs) {
+        if (!kIsWeb && path != null) {
+          try {
+            final file = File(path);
+            if (await file.exists()) await file.delete();
+          } catch (_) {}
+        }
+        _showNotSentSnackBar(l10n.snackbarHoldLongerForVoiceMessage);
+        setState(() => _recordingPath = null);
+        return;
       }
-      if (!mounted) return;
-      showTopSnackBar(
-          context, AppLocalizations.of(context).snackbarHoldLongerForVoiceMessage);
-      setState(() => _recordingPath = null);
-      return;
-    }
 
-    if (path != null) {
+      if (path == null) {
+        _showNotSentSnackBar(l10n.snackbarFailedToReadRecording);
+        setState(() => _recordingPath = null);
+        return;
+      }
+
       if (kIsWeb) {
         try {
           final response = await http.get(Uri.parse(path));
           if (response.statusCode == 200) {
+            // Send errors: snackbar in ChatInputBar._handleVoiceSent only.
             await widget.onVoiceSent(
               duration: durationSeconds,
               audioBytes: response.bodyBytes,
             );
           } else {
-            if (!mounted) return;
-            showTopSnackBar(
-                context, AppLocalizations.of(context).snackbarFailedToReadRecording);
+            _showNotSentSnackBar(l10n.snackbarFailedToReadRecording);
           }
         } catch (e) {
-          if (!mounted) return;
-          showTopSnackBar(
-              context,
-              AppLocalizations.of(context).snackbarFailedToSendVoiceMessage);
-          debugPrint('Send voice error: $e');
+          _showNotSentSnackBar(l10n.snackbarFailedToReadRecording);
+          debugPrint('Read voice blob error: $e');
         }
       } else {
         final file = File(path);
@@ -348,18 +368,25 @@ class RecordingControllerState extends State<RecordingController>
             duration: durationSeconds,
             localAudioPath: path,
           );
+        } else {
+          _showNotSentSnackBar(l10n.snackbarFailedToReadRecording);
         }
       }
-    }
 
-    setState(() => _recordingPath = null);
+      setState(() => _recordingPath = null);
+    } finally {
+      _isStopping = false;
+    }
   }
 
   Future<void> _cancelRecording() async {
     if (_audioRecorder == null || !_isRecording) return;
 
+    final canceledMessage =
+        AppLocalizations.of(context).snackbarVoiceRecordingCanceled;
     final messaging = context.read<MessagingProvider>();
     messaging.setIsRecordingVoice(false);
+    _emitRecordingVoiceToRecipient(false);
     _canceledBySlide = true;
     _recordingTimer?.cancel();
     _recordingTimer = null;
@@ -383,6 +410,7 @@ class RecordingControllerState extends State<RecordingController>
       _showTrashIcon = false;
     });
     widget.onRecordingStateChanged(false);
+    _showNotSentSnackBar(canceledMessage);
   }
 
   // ── drag logic ───────────────────────────────────────────────────────────
@@ -407,6 +435,17 @@ class RecordingControllerState extends State<RecordingController>
   }
 
   // ── build ────────────────────────────────────────────────────────────────
+
+  void _finishRecordingGesture() {
+    if (_gestureFinishHandled) return;
+    _gestureFinishHandled = true;
+    _onLongPressFinished();
+  }
+
+  void _onPointerRelease() {
+    if (!_isRecording && !_isStartingRecording) return;
+    _finishRecordingGesture();
+  }
 
   void _onLongPressFinished() {
     if (_canceledBySlide) return;
@@ -462,23 +501,28 @@ class RecordingControllerState extends State<RecordingController>
             _kMicRestingOffsetX,
         0,
       ),
-      child: GestureDetector(
-        onLongPressStart: (details) {
-          _abortInFlightStart = false;
-          _startRecording(details.globalPosition.dx);
-        },
-        onLongPressMoveUpdate: (details) =>
-            _onRecordingDragUpdate(details.globalPosition.dx),
-        onLongPressEnd: (_) => _onLongPressFinished(),
-        onLongPressCancel: () {
-          if (_isStartingRecording) {
-            _abortInFlightStart = true;
-            _pendingStopAfterStart = false;
-            return;
-          }
-          _onLongPressFinished();
-        },
-        child: micVisual,
+      child: Listener(
+        behavior: HitTestBehavior.opaque,
+        onPointerUp: (_) => _onPointerRelease(),
+        onPointerCancel: (_) => _onPointerRelease(),
+        child: GestureDetector(
+          onLongPressStart: (details) {
+            _abortInFlightStart = false;
+            _startRecording(details.globalPosition.dx);
+          },
+          onLongPressMoveUpdate: (details) =>
+              _onRecordingDragUpdate(details.globalPosition.dx),
+          onLongPressEnd: (_) => _finishRecordingGesture(),
+          onLongPressCancel: () {
+            if (_isStartingRecording) {
+              _abortInFlightStart = true;
+              _pendingStopAfterStart = false;
+              return;
+            }
+            _finishRecordingGesture();
+          },
+          child: micVisual,
+        ),
       ),
     );
 

@@ -1,7 +1,8 @@
 import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
-import 'package:fireplace/widgets/chat_action_tiles.dart';
+import 'package:fireplace/widgets/disappearing_timer_sheet.dart';
+import 'package:fireplace/widgets/hearth_fade_arc.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -56,14 +57,25 @@ Future<ConversationsProvider> _openSheet(
   return convs;
 }
 
+Future<void> _tapSheetButton(WidgetTester tester, String label) async {
+  final finder = find.text(label);
+  await tester.ensureVisible(finder);
+  await tester.pumpAndSettle();
+  await tester.tap(finder);
+  await tester.pumpAndSettle();
+}
+
 void main() {
   group('DisappearingTimerSheet', () {
-    testWidgets('shows four Cupertino pickers and live summary', (tester) async {
+    testWidgets('shows Hearth Fade hero, explainer, and pickers', (tester) async {
       await _openSheet(tester, initialSeconds: 300);
 
+      expect(find.byType(HearthFadeArcHero), findsOneWidget);
+      expect(find.textContaining('after they are read'), findsOneWidget);
       expect(find.byType(CupertinoPicker), findsNWidgets(4));
       expect(find.text('5 minutes'), findsOneWidget);
-      expect(find.text('Disappearing messages'), findsOneWidget);
+      expect(find.text('Set timer'), findsOneWidget);
+      expect(find.text('Turn off'), findsOneWidget);
     });
 
     testWidgets('null timer shows all zeros and Off summary', (tester) async {
@@ -86,20 +98,19 @@ void main() {
       expect(find.text('2 days 3 minutes'), findsOneWidget);
     });
 
-    testWidgets('apply valid duration closes sheet', (tester) async {
+    testWidgets('set timer applies valid duration and closes sheet', (tester) async {
       await _openSheet(tester, initialSeconds: 300);
 
-      await tester.tap(find.text('Apply'));
-      await tester.pumpAndSettle();
+      await _tapSheetButton(tester, 'Set timer');
 
       expect(find.byType(DisappearingTimerSheet), findsNothing);
     });
 
-    testWidgets('apply all zeros emits null seconds', (tester) async {
+    testWidgets('turn off emits null seconds', (tester) async {
       Map<String, dynamic>? emitted;
       await _openSheet(
         tester,
-        initialSeconds: null,
+        initialSeconds: 86400,
         onEmit: (event, data) {
           if (event == 'setDisappearingTimer') {
             emitted = data as Map<String, dynamic>;
@@ -107,15 +118,14 @@ void main() {
         },
       );
 
-      await tester.tap(find.text('Apply'));
-      await tester.pumpAndSettle();
+      await _tapSheetButton(tester, 'Turn off');
 
       expect(emitted, isNotNull);
       expect(emitted!['conversationId'], 1);
       expect(emitted!['seconds'], isNull);
     });
 
-    testWidgets('apply keeps selected seconds', (tester) async {
+    testWidgets('set timer keeps selected seconds', (tester) async {
       Map<String, dynamic>? emitted;
       await _openSheet(
         tester,
@@ -127,8 +137,7 @@ void main() {
         },
       );
 
-      await tester.tap(find.text('Apply'));
-      await tester.pumpAndSettle();
+      await _tapSheetButton(tester, 'Set timer');
 
       expect(emitted!['seconds'], 300);
     });
@@ -147,8 +156,7 @@ void main() {
 
       expect(find.text('30 days'), findsOneWidget);
 
-      await tester.tap(find.text('Apply'));
-      await tester.pumpAndSettle();
+      await _tapSheetButton(tester, 'Set timer');
 
       expect(emitted!['seconds'], 2592000);
       expect(find.byType(DisappearingTimerSheet), findsNothing);
@@ -157,8 +165,7 @@ void main() {
     testWidgets('out-of-range selection shows validation error', (tester) async {
       await _openSheet(tester, initialSeconds: 3);
 
-      await tester.tap(find.text('Apply'));
-      await tester.pumpAndSettle();
+      await _tapSheetButton(tester, 'Set timer');
 
       expect(
         find.textContaining('between 5 seconds and 30 days'),

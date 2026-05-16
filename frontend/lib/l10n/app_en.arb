@@ -101,7 +101,30 @@
   "attachmentOptionPhoto": "Photo",
   "attachmentOptionDocument": "Document",
   "actionTileTimer": "Timer",
+  "actionTileDisappearingMessages": "Disappearing messages",
   "disappearingTimerTitle": "Disappearing messages",
+  "disappearingTimerExplainerLine1": "Messages are removed after they are read.",
+  "disappearingTimerExplainerLine2": "The countdown starts when someone opens the chat.",
+  "disappearingTimerExplainerLine3": "Only new messages use the timer you set here.",
+  "disappearingTimerRangeHint": "5 seconds to 30 days, or all zeros to turn off",
+  "disappearingTimerSetTimer": "Set timer",
+  "disappearingTimerTurnOff": "Turn off",
+  "disappearingTimerSummarySemantics": "Selected duration: {summary}",
+  "@disappearingTimerSummarySemantics": {
+    "placeholders": { "summary": { "type": "String" } }
+  },
+  "disappearingComposerBanner": "Disappearing · {duration}",
+  "@disappearingComposerBanner": {
+    "placeholders": { "duration": { "type": "String" } }
+  },
+  "disappearingComposerBannerSemantics": "Disappearing messages, {duration}",
+  "@disappearingComposerBannerSemantics": {
+    "placeholders": { "duration": { "type": "String" } }
+  },
+  "conversationDisappearingTimerHint": "Disappearing messages: {duration}",
+  "@conversationDisappearingTimerHint": {
+    "placeholders": { "duration": { "type": "String" } }
+  },
   "disappearingTimerDaysLabel": "Days",
   "disappearingTimerHoursLabel": "Hours",
   "disappearingTimerMinutesLabel": "Minutes",

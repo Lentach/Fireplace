@@ -1,6 +1,5 @@
 import 'dart:typed_data';
 
-import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
@@ -13,7 +12,8 @@ import '../providers/conversations_provider.dart';
 import '../providers/messaging_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
-import '../utils/message_expiry.dart';
+export 'disappearing_timer_sheet.dart';
+import 'disappearing_timer_sheet.dart';
 import 'top_snackbar.dart';
 import 'anti_quantum_note_dialog.dart';
 import 'gif_picker_sheet.dart';
@@ -32,6 +32,8 @@ class ChatActionTiles extends StatelessWidget {
     final borderColor =
         FireplaceColors.of(context).convItemBorder;
     final iconColor = Theme.of(context).colorScheme.primary;
+    final convs = context.watch<ConversationsProvider>();
+    final timerActive = convs.conversationDisappearingTimer != null;
 
     return Container(
       height: 48 + bottomPadding,
@@ -58,9 +60,10 @@ class ChatActionTiles extends StatelessWidget {
           ),
           const SizedBox(width: 12),
           _ActionTile(
-            icon: Icons.timer_outlined,
-            tooltip: l10n.actionTileTimer,
+            icon: Icons.hourglass_bottom_outlined,
+            tooltip: l10n.actionTileDisappearingMessages,
             color: iconColor,
+            showBadge: timerActive,
             onTap: () => _showTimerDialog(context),
           ),
           const SizedBox(width: 12),
@@ -99,17 +102,7 @@ class ChatActionTiles extends StatelessWidget {
   }
 
   void _showTimerDialog(BuildContext context) {
-    final convs = context.read<ConversationsProvider>();
-    final initialSeconds = convs.conversationDisappearingTimer;
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: Colors.transparent,
-      isScrollControlled: true,
-      builder: (ctx) => ChangeNotifierProvider<ConversationsProvider>.value(
-        value: convs,
-        child: DisappearingTimerSheet(initialSeconds: initialSeconds),
-      ),
-    );
+    showDisappearingTimerSheet(context);
   }
 
   /// Returns (conv, recipientId) if conversation is active; otherwise shows snackbar and returns null.
@@ -321,30 +314,54 @@ class _ActionTile extends StatelessWidget {
   final String tooltip;
   final Color color;
   final VoidCallback onTap;
+  final bool showBadge;
 
   const _ActionTile({
     required this.icon,
     required this.tooltip,
     required this.color,
     required this.onTap,
+    this.showBadge = false,
   });
 
   @override
   Widget build(BuildContext context) {
+    final badgeColor = Theme.of(context).colorScheme.primary;
     return Tooltip(
       message: tooltip,
       child: InkWell(
         onTap: onTap,
         customBorder: const CircleBorder(),
-        child: Container(
+        child: SizedBox(
           width: 40,
           height: 40,
-          padding: const EdgeInsets.all(8),
-          decoration: const BoxDecoration(
-            color: Colors.transparent,
-            shape: BoxShape.circle,
+          child: Stack(
+            clipBehavior: Clip.none,
+            alignment: Alignment.center,
+            children: [
+              Padding(
+                padding: const EdgeInsets.all(8),
+                child: Icon(icon, size: 24, color: color),
+              ),
+              if (showBadge)
+                Positioned(
+                  top: 6,
+                  right: 6,
+                  child: Container(
+                    width: 8,
+                    height: 8,
+                    decoration: BoxDecoration(
+                      color: badgeColor,
+                      shape: BoxShape.circle,
+                      border: Border.all(
+                        color: Theme.of(context).colorScheme.surface,
+                        width: 1.5,
+                      ),
+                    ),
+                  ),
+                ),
+            ],
           ),
-          child: Icon(icon, size: 24, color: color),
         ),
       ),
     );
@@ -491,329 +508,6 @@ class _CenterProgressOverlay extends StatelessWidget {
               ),
             ),
           ],
-        ),
-      ),
-    );
-  }
-}
-
-const double _kDisappearingPickerHeight = 216;
-const double _kDisappearingPickerItemExtent = 32;
-const int _kDisappearingPickerMaxDays = 30;
-
-/// iOS-style D/H/M/S scroll wheels for conversation disappearing timer.
-class DisappearingTimerSheet extends StatefulWidget {
-  final int? initialSeconds;
-
-  const DisappearingTimerSheet({super.key, this.initialSeconds});
-
-  @override
-  State<DisappearingTimerSheet> createState() => _DisappearingTimerSheetState();
-}
-
-class _DisappearingTimerSheetState extends State<DisappearingTimerSheet> {
-  late int _days;
-  late int _hours;
-  late int _minutes;
-  late int _seconds;
-  late final FixedExtentScrollController _daysController;
-  late final FixedExtentScrollController _hoursController;
-  late final FixedExtentScrollController _minutesController;
-  late final FixedExtentScrollController _secondsController;
-  String? _errorText;
-
-  @override
-  void initState() {
-    super.initState();
-    final parts = splitDisappearingSeconds(widget.initialSeconds ?? 0);
-    _days = parts.days.clamp(0, _kDisappearingPickerMaxDays);
-    _hours = parts.hours.clamp(0, 23);
-    _minutes = parts.minutes.clamp(0, 59);
-    _seconds = parts.seconds.clamp(0, 59);
-    _daysController = FixedExtentScrollController(initialItem: _days);
-    _hoursController = FixedExtentScrollController(initialItem: _hours);
-    _minutesController = FixedExtentScrollController(initialItem: _minutes);
-    _secondsController = FixedExtentScrollController(initialItem: _seconds);
-  }
-
-  @override
-  void dispose() {
-    _daysController.dispose();
-    _hoursController.dispose();
-    _minutesController.dispose();
-    _secondsController.dispose();
-    super.dispose();
-  }
-
-  int get _totalSeconds => combineDisappearingSeconds(
-        days: _days,
-        hours: _hours,
-        minutes: _minutes,
-        seconds: _seconds,
-      );
-
-  void _apply() {
-    final l10n = AppLocalizations.of(context);
-    final total = _totalSeconds;
-    if (total == 0) {
-      _submit(null);
-      return;
-    }
-    if (total < kDisappearingMinSeconds || total > kDisappearingMaxSeconds) {
-      setState(() => _errorText = l10n.disappearingTimerOutOfRange);
-      return;
-    }
-    _submit(total);
-  }
-
-  void _submit(int? seconds) {
-    final convs = context.read<ConversationsProvider>();
-    final convId = convs.activeConversationId;
-    if (convId != null) {
-      convs.setDisappearingTimer(convId, seconds);
-    }
-    Navigator.pop(context);
-  }
-
-  String _summary(AppLocalizations l10n) {
-    final total = _totalSeconds;
-    if (total == 0) return l10n.disappearingTimerOff;
-    final parts = <String>[];
-    if (_days > 0) parts.add(l10n.disappearingTimerDays(_days));
-    if (_hours > 0) parts.add(l10n.disappearingTimerHours(_hours));
-    if (_minutes > 0) parts.add(l10n.disappearingTimerMinutes(_minutes));
-    if (_seconds > 0) parts.add(l10n.disappearingTimerSeconds(_seconds));
-    return parts.join(' ');
-  }
-
-  void _onDaysChanged(int index) {
-    setState(() {
-      _days = index;
-      _errorText = null;
-    });
-  }
-
-  void _onHoursChanged(int index) {
-    setState(() {
-      _hours = index;
-      _errorText = null;
-    });
-  }
-
-  void _onMinutesChanged(int index) {
-    setState(() {
-      _minutes = index;
-      _errorText = null;
-    });
-  }
-
-  void _onSecondsChanged(int index) {
-    setState(() {
-      _seconds = index;
-      _errorText = null;
-    });
-  }
-
-  Widget _columnLabel(String label, Color color) {
-    return Expanded(
-      child: Text(
-        label,
-        textAlign: TextAlign.center,
-        maxLines: 1,
-        overflow: TextOverflow.ellipsis,
-        style: TextStyle(
-          fontSize: 13,
-          fontWeight: FontWeight.w500,
-          color: color,
-        ),
-      ),
-    );
-  }
-
-  Widget _durationPicker({
-    required String semanticsLabel,
-    required int maxValue,
-    required FixedExtentScrollController controller,
-    required ValueChanged<int> onSelectedItemChanged,
-  }) {
-    return Expanded(
-      child: Semantics(
-        label: semanticsLabel,
-        child: CupertinoPicker(
-          scrollController: controller,
-          itemExtent: _kDisappearingPickerItemExtent,
-          magnification: 1.1,
-          squeeze: 1.1,
-          useMagnifier: true,
-          onSelectedItemChanged: onSelectedItemChanged,
-          children: List<Widget>.generate(
-            maxValue + 1,
-            (i) => Center(child: Text('$i')),
-          ),
-        ),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final fc = FireplaceColors.of(context);
-    final sheetColor = colorScheme.surface;
-    final titleColor = colorScheme.onSurface;
-    final labelColor = fc.mutedText;
-    final summaryColor = fc.mutedText;
-    final actionColor = colorScheme.primary;
-
-    return CupertinoTheme(
-      data: CupertinoTheme.of(context).copyWith(
-        brightness: theme.brightness,
-        primaryColor: actionColor,
-        textTheme: CupertinoTextThemeData(
-          pickerTextStyle: TextStyle(
-            fontSize: 22,
-            color: titleColor,
-          ),
-        ),
-      ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: sheetColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: SingleChildScrollView(
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  SizedBox(
-                    height: 44,
-                    child: Row(
-                      children: [
-                        CupertinoButton(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 16),
-                          onPressed: () => Navigator.pop(context),
-                          child: Text(
-                            l10n.cancel,
-                            style: TextStyle(color: actionColor),
-                          ),
-                        ),
-                        Expanded(
-                          child: Text(
-                            l10n.disappearingTimerTitle,
-                            textAlign: TextAlign.center,
-                            maxLines: 2,
-                            overflow: TextOverflow.ellipsis,
-                            style: TextStyle(
-                              fontSize: 17,
-                              fontWeight: FontWeight.w600,
-                              color: titleColor,
-                            ),
-                          ),
-                        ),
-                        CupertinoButton(
-                          padding:
-                              const EdgeInsets.symmetric(horizontal: 16),
-                          onPressed: _apply,
-                          child: Text(
-                            l10n.disappearingTimerApply,
-                            style: TextStyle(
-                              color: actionColor,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: Semantics(
-                      liveRegion: true,
-                      child: Text(
-                        _summary(l10n),
-                        textAlign: TextAlign.center,
-                        style: TextStyle(fontSize: 15, color: summaryColor),
-                      ),
-                    ),
-                  ),
-                  if (_errorText != null) ...[
-                    const SizedBox(height: 8),
-                    Padding(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      child: Text(
-                        _errorText!,
-                        textAlign: TextAlign.center,
-                        style: TextStyle(
-                          color: Theme.of(context).colorScheme.error,
-                          fontSize: 14,
-                        ),
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 4),
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: Row(
-                      children: [
-                        _columnLabel(
-                          l10n.disappearingTimerDaysLabel,
-                          labelColor,
-                        ),
-                        _columnLabel(
-                          l10n.disappearingTimerHoursLabel,
-                          labelColor,
-                        ),
-                        _columnLabel(
-                          l10n.disappearingTimerMinutesLabel,
-                          labelColor,
-                        ),
-                        _columnLabel(
-                          l10n.disappearingTimerSecondsLabel,
-                          labelColor,
-                        ),
-                      ],
-                    ),
-                  ),
-                  SizedBox(
-                    height: _kDisappearingPickerHeight,
-                    child: Row(
-                      children: [
-                        _durationPicker(
-                          semanticsLabel: l10n.disappearingTimerDaysLabel,
-                          maxValue: _kDisappearingPickerMaxDays,
-                          controller: _daysController,
-                          onSelectedItemChanged: _onDaysChanged,
-                        ),
-                        _durationPicker(
-                          semanticsLabel: l10n.disappearingTimerHoursLabel,
-                          maxValue: 23,
-                          controller: _hoursController,
-                          onSelectedItemChanged: _onHoursChanged,
-                        ),
-                        _durationPicker(
-                          semanticsLabel: l10n.disappearingTimerMinutesLabel,
-                          maxValue: 59,
-                          controller: _minutesController,
-                          onSelectedItemChanged: _onMinutesChanged,
-                        ),
-                        _durationPicker(
-                          semanticsLabel: l10n.disappearingTimerSecondsLabel,
-                          maxValue: 59,
-                          controller: _secondsController,
-                          onSelectedItemChanged: _onSecondsChanged,
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                ],
-              ),
-            ),
         ),
       ),
     );

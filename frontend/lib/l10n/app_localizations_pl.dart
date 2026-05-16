@@ -290,7 +290,52 @@ class AppLocalizationsPl extends AppLocalizations {
   String get actionTileTimer => 'Timer';
 
   @override
+  String get actionTileDisappearingMessages => 'Znikające wiadomości';
+
+  @override
   String get disappearingTimerTitle => 'Znikające wiadomości';
+
+  @override
+  String get disappearingTimerExplainerLine1 =>
+      'Wiadomości znikają po odczytaniu.';
+
+  @override
+  String get disappearingTimerExplainerLine2 =>
+      'Odliczanie startuje, gdy ktoś otworzy czat.';
+
+  @override
+  String get disappearingTimerExplainerLine3 =>
+      'Tylko nowe wiadomości używają ustawionego tu czasu.';
+
+  @override
+  String get disappearingTimerRangeHint =>
+      'Od 5 sekund do 30 dni; same zera = wyłączone';
+
+  @override
+  String get disappearingTimerSetTimer => 'Ustaw timer';
+
+  @override
+  String get disappearingTimerTurnOff => 'Wyłącz';
+
+  @override
+  String disappearingTimerSummarySemantics(String summary) {
+    return 'Wybrany czas: $summary';
+  }
+
+  @override
+  String disappearingComposerBanner(String duration) {
+    return 'Znikające · $duration';
+  }
+
+  @override
+  String disappearingComposerBannerSemantics(String duration) {
+    return 'Znikające wiadomości, $duration';
+  }
+
+  @override
+  String conversationDisappearingTimerHint(String duration) {
+    return 'Znikające wiadomości: $duration';
+  }
 
   @override
   String get disappearingTimerDaysLabel => 'Dni';

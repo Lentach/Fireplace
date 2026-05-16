@@ -6,8 +6,10 @@ import '../../providers/auth_provider.dart';
 import '../../providers/messaging_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/rpg_theme.dart';
+import '../../utils/message_expiry.dart';
 import '../audio/playback_controller.dart';
 import '../audio/waveform_display.dart';
+import '../hearth_fade_arc.dart';
 import '../message_swipe_wrapper.dart';
 import 'reaction_chips_row.dart';
 
@@ -33,25 +35,32 @@ class VoiceMessageContent extends StatelessWidget {
     return '$minutes:${seconds.toString().padLeft(2, '0')}';
   }
 
-  bool _isExpired() {
-    if (message.expiresAt == null) return false;
-    return message.expiresAt!.isBefore(DateTime.now());
-  }
+  bool _isExpired() => isMessageExpired(message);
 
-  String? _getTimerText() {
-    if (message.expiresAt == null) return null;
-    final now = DateTime.now();
-    final remaining = message.expiresAt!.difference(now);
-    if (remaining.isNegative) return null;
-    if (remaining.inHours > 0) {
-      final mins = remaining.inMinutes % 60;
-      return mins > 0 ? '${remaining.inHours}h ${mins}m' : '${remaining.inHours}h';
+  Widget _buildEphemeralMeta(Color metaColor) {
+    if (!HearthFadeArcIndicator.showsEphemeralState(message)) {
+      return const SizedBox.shrink();
     }
-    if (remaining.inMinutes > 0) {
-      final secs = remaining.inSeconds % 60;
-      return secs > 0 ? '${remaining.inMinutes}m ${secs}s' : '${remaining.inMinutes}m';
-    }
-    return '${remaining.inSeconds}s';
+    final countdown = HearthFadeArcIndicator.countdownLabel(message);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(width: 6),
+        HearthFadeArcIndicator(
+          message: message,
+          color: metaColor,
+          trackColor: metaColor.withValues(alpha: 0.28),
+          size: 12,
+        ),
+        if (countdown != null) ...[
+          const SizedBox(width: 3),
+          Text(
+            countdown,
+            style: RpgTheme.bodyFont(fontSize: 10, color: metaColor),
+          ),
+        ],
+      ],
+    );
   }
 
   // ── reaction bottom sheet ─────────────────────────────────────────────────
@@ -353,33 +362,12 @@ class VoiceMessageContent extends StatelessWidget {
                               ),
                               const SizedBox(width: 4),
                               _buildDeliveryIcon(context),
-                              Builder(
-                                builder: (ctx) {
-                                  final timerText = _getTimerText();
-                                  if (timerText == null) return const SizedBox.shrink();
-                                  return Row(
-                                    mainAxisSize: MainAxisSize.min,
-                                    children: [
-                                      const SizedBox(width: 6),
-                                      Icon(
-                                        Icons.timer_outlined,
-                                        size: 10,
-                                        color: metaColor,
-                                      ),
-                                      const SizedBox(width: 2),
-                                      ValueListenableBuilder<int>(
-                                        valueListenable: ctx.read<MessagingProvider>().countdownTickNotifier,
-                                        builder: (context, value, child) => Text(
-                                          _getTimerText() ?? '',
-                                          style: RpgTheme.bodyFont(
-                                            fontSize: 10,
-                                            color: metaColor,
-                                          ),
-                                        ),
-                                      ),
-                                    ],
-                                  );
-                                },
+                              ValueListenableBuilder<int>(
+                                valueListenable: context
+                                    .read<MessagingProvider>()
+                                    .countdownTickNotifier,
+                                builder: (context, tick, child) =>
+                                    _buildEphemeralMeta(metaColor),
                               ),
                             ],
                           ),

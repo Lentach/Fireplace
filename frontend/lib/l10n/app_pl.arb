@@ -101,7 +101,30 @@
   "attachmentOptionPhoto": "Zdjęcie",
   "attachmentOptionDocument": "Dokument",
   "actionTileTimer": "Timer",
+  "actionTileDisappearingMessages": "Znikające wiadomości",
   "disappearingTimerTitle": "Znikające wiadomości",
+  "disappearingTimerExplainerLine1": "Wiadomości znikają po odczytaniu.",
+  "disappearingTimerExplainerLine2": "Odliczanie startuje, gdy ktoś otworzy czat.",
+  "disappearingTimerExplainerLine3": "Tylko nowe wiadomości używają ustawionego tu czasu.",
+  "disappearingTimerRangeHint": "Od 5 sekund do 30 dni; same zera = wyłączone",
+  "disappearingTimerSetTimer": "Ustaw timer",
+  "disappearingTimerTurnOff": "Wyłącz",
+  "disappearingTimerSummarySemantics": "Wybrany czas: {summary}",
+  "@disappearingTimerSummarySemantics": {
+    "placeholders": { "summary": { "type": "String" } }
+  },
+  "disappearingComposerBanner": "Znikające · {duration}",
+  "@disappearingComposerBanner": {
+    "placeholders": { "duration": { "type": "String" } }
+  },
+  "disappearingComposerBannerSemantics": "Znikające wiadomości, {duration}",
+  "@disappearingComposerBannerSemantics": {
+    "placeholders": { "duration": { "type": "String" } }
+  },
+  "conversationDisappearingTimerHint": "Znikające wiadomości: {duration}",
+  "@conversationDisappearingTimerHint": {
+    "placeholders": { "duration": { "type": "String" } }
+  },
   "disappearingTimerDaysLabel": "Dni",
   "disappearingTimerHoursLabel": "Godziny",
   "disappearingTimerMinutesLabel": "Minuty",

@@ -4,8 +4,9 @@ import '../../models/message_model.dart';
 import '../../providers/messaging_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/rpg_theme.dart';
+import '../hearth_fade_arc.dart';
 
-/// Timestamp + delivery icon + countdown timer row (Telegram style).
+/// Timestamp + delivery icon + Hearth Fade ephemeral indicator (Telegram style).
 class MessageMetadataRow extends StatelessWidget {
   final MessageModel message;
   final bool isMine;
@@ -17,20 +18,6 @@ class MessageMetadataRow extends StatelessWidget {
     required this.isMine,
     required this.timeColor,
   });
-
-  String? _getTimerText() {
-    if (message.expiresAt == null) return null;
-    final now = DateTime.now();
-    final remaining = message.expiresAt!.difference(now);
-    if (remaining.isNegative) return null;
-    if (remaining.inHours > 0) {
-      return '${remaining.inHours}h';
-    } else if (remaining.inMinutes > 0) {
-      return '${remaining.inMinutes}m';
-    } else {
-      return '${remaining.inSeconds}s';
-    }
-  }
 
   /// One check = delivered. Two checks = read.
   /// Icon colors follow bubble luminance (see [RpgTheme.messageBubbleDeliveryTickColors]).
@@ -70,12 +57,38 @@ class MessageMetadataRow extends StatelessWidget {
     return Icon(icon, size: 12, color: color);
   }
 
+  Widget _buildEphemeralIndicator() {
+    if (!HearthFadeArcIndicator.showsEphemeralState(message)) {
+      return const SizedBox.shrink();
+    }
+
+    final countdown = HearthFadeArcIndicator.countdownLabel(message);
+    return Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        const SizedBox(width: 6),
+        HearthFadeArcIndicator(
+          message: message,
+          color: timeColor,
+          trackColor: timeColor.withValues(alpha: 0.28),
+          size: 12,
+        ),
+        if (countdown != null) ...[
+          const SizedBox(width: 3),
+          Text(
+            countdown,
+            style: RpgTheme.bodyFont(fontSize: 10, color: timeColor),
+          ),
+        ],
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     return ValueListenableBuilder<int>(
       valueListenable: context.read<MessagingProvider>().countdownTickNotifier,
       builder: (ctx, tick, child) {
-        final timerText = _getTimerText();
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -85,15 +98,7 @@ class MessageMetadataRow extends StatelessWidget {
             ),
             const SizedBox(width: 4),
             _buildDeliveryIcon(ctx),
-            if (timerText != null) ...[
-              const SizedBox(width: 6),
-              Icon(Icons.timer_outlined, size: 10, color: timeColor),
-              const SizedBox(width: 2),
-              Text(
-                timerText,
-                style: RpgTheme.bodyFont(fontSize: 10, color: timeColor),
-              ),
-            ],
+            _buildEphemeralIndicator(),
           ],
         );
       },

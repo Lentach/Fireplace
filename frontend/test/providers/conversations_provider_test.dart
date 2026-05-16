@@ -295,6 +295,27 @@ void main() {
       expect(provider.getUnreadCount(10), 3);
     });
 
+    test('setDisappearingTimer updates conversationDisappearingTimer immediately', () {
+      final provider = buildProviderWithSampleData();
+      provider.openConversation(10);
+
+      provider.setDisappearingTimer(10, 86400);
+
+      expect(provider.conversationDisappearingTimer, 86400);
+    });
+
+    test('onDisappearingTimerUpdated updates conversationDisappearingTimer', () {
+      final provider = buildProviderWithSampleData();
+      provider.openConversation(10);
+
+      provider.onDisappearingTimerUpdated({
+        'conversationId': 10,
+        'seconds': 300,
+      });
+
+      expect(provider.conversationDisappearingTimer, 300);
+    });
+
     group('pushClientState (server push suppression)', () {
       test('setClientVisible false emits pushClientState with clientVisible false', () {
         final provider = ConversationsProvider();

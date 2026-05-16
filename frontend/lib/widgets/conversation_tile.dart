@@ -6,6 +6,7 @@ import '../models/message_model.dart';
 import '../models/user_model.dart';
 import '../providers/settings_provider.dart';
 import 'avatar_circle.dart';
+import 'hearth_fade_arc.dart';
 
 class ConversationTile extends StatelessWidget {
   final int conversationId;
@@ -17,6 +18,7 @@ class ConversationTile extends StatelessWidget {
   final VoidCallback onDelete;
   final UserModel? otherUser;
   final bool isTyping;
+  final int? disappearingTimerSeconds;
 
   const ConversationTile({
     super.key,
@@ -29,6 +31,7 @@ class ConversationTile extends StatelessWidget {
     required this.onDelete,
     this.otherUser,
     this.isTyping = false,
+    this.disappearingTimerSeconds,
   });
 
   String _formatTime(DateTime dt) {
@@ -199,6 +202,30 @@ class ConversationTile extends StatelessWidget {
                   Row(
                     mainAxisSize: MainAxisSize.min,
                     children: [
+                      if (disappearingTimerSeconds != null) ...[
+                        Tooltip(
+                          message: AppLocalizations.of(context)
+                              .conversationDisappearingTimerHint(
+                            formatCompactDisappearingSeconds(
+                              disappearingTimerSeconds!,
+                            ),
+                          ),
+                          child: Padding(
+                            padding: const EdgeInsets.only(right: 6),
+                            child: CustomPaint(
+                              size: const Size(12, 12),
+                              painter: HearthFadeArcPainter(
+                                color: Theme.of(context).colorScheme.primary,
+                                trackColor: secondaryColor.withValues(
+                                  alpha: 0.35,
+                                ),
+                                dotted: true,
+                                strokeWidth: 1.8,
+                              ),
+                            ),
+                          ),
+                        ),
+                      ],
                       if (unreadCount > 0)
                         Container(
                           margin: const EdgeInsets.only(right: 6),
