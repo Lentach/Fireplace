@@ -25,7 +25,7 @@ Fireplace disappearing messages today use a **fixed preset list** (30s … 1 day
 | Per-message TTL | **`disappearAfterSeconds`** frozen at **send** from conversation `disappearingTimer`. |
 | Conversation timer change | Updates `conversations.disappearingTimer` only; **new sends** copy it; old rows unchanged. |
 | Grandfathering | Messages already in DB keep existing **send-time** `expiresAt`; no migration to read-based. |
-| Timer UI | **D / H / M / S** numeric fields only (no preset chips). |
+| Timer UI | **D / H / M / S** Cupertino scroll wheels in a modal bottom sheet (no preset chips). |
 | Default timer | **1 day** (`1` / `0` / `0` / `0`) for new conversations. |
 | Off | **All fields zero** → `disappearingTimer = null`. |
 | User TTL range | **5 seconds** – **30 days** total (inclusive). |
@@ -56,12 +56,13 @@ Fireplace disappearing messages today use a **fixed preset list** (30s … 1 day
 
 ## Timer UI (Same Entry Point)
 
-- Keep **Timer** action tile → dialog (`_TimerDialog` in `chat_action_tiles.dart`).
-- Replace `RadioListTile` presets with four inputs: **Days, Hours, Minutes, Seconds**.
-- Show localized summary (e.g. “2 days 3 minutes”).
-- **Apply:** `totalSeconds = d*86400 + h*3600 + m*60 + s`; if `totalSeconds == 0` → `setDisappearingTimer(convId, null)`; else validate range and emit socket event.
+- Keep **Timer** action tile → **`DisappearingTimerSheet`** modal bottom sheet (`chat_action_tiles.dart`).
+- Four **Cupertino** scroll wheels: **Days** (0–30), **Hours** (0–23), **Minutes** (0–59), **Seconds** (0–59).
+- Show localized live summary (e.g. “2 days 3 minutes”; all zeros → “Off”).
+- **Apply:** `totalSeconds = d*86400 + h*3600 + m*60 + s`; if `totalSeconds == 0` → `setDisappearingTimer(convId, null)`; else validate 5s–30d and emit socket event.
 - **Reopen:** split `conversation.disappearingTimer` into D/H/M/S; if null, show all zeros.
-- Localize title, labels, validation errors (dialog is English-only today).
+- Sheet uses app `ThemeData` (`colorScheme.surface` / `onSurface`, `FireplaceColors.mutedText`, `colorScheme.primary` for actions) so **teal** and **blue** themes match the rest of the app.
+- Localize title, column labels, summary plurals, and validation errors (`app_en.arb` / `app_pl.arb`).
 
 ---
 
@@ -143,9 +144,9 @@ Fireplace disappearing messages today use a **fixed preset list** (30s … 1 day
 
 - When `expiresAt` present, `copyWith` on message in list + cache.
 
-### Timer dialog
+### Timer sheet
 
-- D/H/M/S widget + validation + l10n keys in `app_en.arb` / `app_pl.arb`.
+- `DisappearingTimerSheet` (Cupertino pickers) + validation + l10n keys in `app_en.arb` / `app_pl.arb`.
 
 ### `CLAUDE.md`
 
@@ -174,7 +175,7 @@ Fireplace disappearing messages today use a **fixed preset list** (30s … 1 day
 
 ### Frontend
 
-- D/H/M/S dialog: default 1d, all zero → off, 2d 3m → correct seconds.
+- `DisappearingTimerSheet`: default 1d, all zero → off, 2d 3m → correct seconds; renders on teal/blue themes.
 - Expiry sweep: never-read past 1 day removed; read message uses `expiresAt`.
 - Grandfathered fixture: send-time expiry unchanged.
 
@@ -188,6 +189,6 @@ None for v1 — all product choices locked in chat.
 
 ## References
 
-- Current UI: `frontend/lib/widgets/chat_action_tiles.dart` (`_TimerDialog`)
+- Current UI: `frontend/lib/widgets/chat_action_tiles.dart` (`DisappearingTimerSheet`)
 - Read hook: `markConversationRead` → `chat-message.service.ts` → `markConversationAsReadFromSender`
 - Entity default: `conversation.entity.ts` `disappearingTimer` default 86400

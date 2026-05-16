@@ -109,7 +109,6 @@
   "disappearingTimerApply": "Zastosuj",
   "disappearingTimerOff": "Wyłączone",
   "disappearingTimerOutOfRange": "Timer: od 5 sekund do 30 dni albo same zera, aby wyłączyć.",
-  "disappearingTimerInvalidFields": "Podaj poprawne liczby (godziny 0–23, minuty i sekundy 0–59).",
   "disappearingTimerDays": "{count, plural, one{1 dzień} few{{count} dni} many{{count} dni} other{{count} dnia}}",
   "disappearingTimerHours": "{count, plural, one{1 godzina} few{{count} godziny} many{{count} godzin} other{{count} godziny}}",
   "disappearingTimerMinutes": "{count, plural, one{1 minuta} few{{count} minuty} many{{count} minut} other{{count} minuty}}",

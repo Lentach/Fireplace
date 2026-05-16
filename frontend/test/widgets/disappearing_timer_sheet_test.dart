@@ -1,5 +1,6 @@
 import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
+import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/chat_action_tiles.dart';
 import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
@@ -23,7 +24,7 @@ Future<ConversationsProvider> _openSheet(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       locale: locale,
-      theme: theme,
+      theme: theme ?? RpgTheme.themeDataLight,
       home: Scaffold(
         body: ChangeNotifierProvider<ConversationsProvider>.value(
           value: convs,
@@ -187,11 +188,59 @@ void main() {
       await _openSheet(
         tester,
         initialSeconds: 86400,
-        theme: ThemeData.dark(),
+        theme: RpgTheme.themeDataDarkGray,
       );
 
       expect(find.byType(DisappearingTimerSheet), findsOneWidget);
       expect(find.text('1 day'), findsOneWidget);
+    });
+
+    testWidgets('renders on teal theme with themed surface', (tester) async {
+      await _openSheet(
+        tester,
+        initialSeconds: 86400,
+        theme: RpgTheme.themeDataTealStone,
+      );
+
+      expect(find.byType(DisappearingTimerSheet), findsOneWidget);
+      expect(find.text('1 day'), findsOneWidget);
+
+      final sheet = tester.widget<Container>(
+        find
+            .descendant(
+              of: find.byType(DisappearingTimerSheet),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      expect(
+        (sheet.decoration! as BoxDecoration).color,
+        RpgTheme.themeDataTealStone.colorScheme.surface,
+      );
+    });
+
+    testWidgets('renders on blue theme with themed surface', (tester) async {
+      await _openSheet(
+        tester,
+        initialSeconds: 300,
+        theme: RpgTheme.themeDataBlue,
+      );
+
+      expect(find.byType(DisappearingTimerSheet), findsOneWidget);
+      expect(find.text('5 minutes'), findsOneWidget);
+
+      final sheet = tester.widget<Container>(
+        find
+            .descendant(
+              of: find.byType(DisappearingTimerSheet),
+              matching: find.byType(Container),
+            )
+            .first,
+      );
+      expect(
+        (sheet.decoration! as BoxDecoration).color,
+        RpgTheme.themeDataBlue.colorScheme.surface,
+      );
     });
 
     testWidgets('Polish plural summary for 2 days', (tester) async {

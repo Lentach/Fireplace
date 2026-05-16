@@ -674,12 +674,6 @@ abstract class AppLocalizations {
   /// **'Timer: od 5 sekund do 30 dni albo same zera, aby wyłączyć.'**
   String get disappearingTimerOutOfRange;
 
-  /// No description provided for @disappearingTimerInvalidFields.
-  ///
-  /// In pl, this message translates to:
-  /// **'Podaj poprawne liczby (godziny 0–23, minuty i sekundy 0–59).'**
-  String get disappearingTimerInvalidFields;
-
   /// No description provided for @disappearingTimerDays.
   ///
   /// In pl, this message translates to:

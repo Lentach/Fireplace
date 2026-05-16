@@ -316,10 +316,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Timer must be between 5 seconds and 30 days, or all zeros to turn off.';
 
   @override
-  String get disappearingTimerInvalidFields =>
-      'Enter valid non-negative numbers (hours 0–23, minutes and seconds 0–59).';
-
-  @override
   String disappearingTimerDays(num count) {
     String _temp0 = intl.Intl.pluralLogic(
       count,

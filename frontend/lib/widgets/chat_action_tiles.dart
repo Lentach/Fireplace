@@ -658,22 +658,19 @@ class _DisappearingTimerSheetState extends State<DisappearingTimerSheet> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final brightness = Theme.of(context).brightness;
-    final isDark = brightness == Brightness.dark;
-    final sheetColor = isDark
-        ? const Color(0xFF1C1C1E)
-        : CupertinoColors.systemBackground.resolveFrom(context);
-    final labelColor = isDark
-        ? CupertinoColors.secondaryLabel.darkColor
-        : CupertinoColors.secondaryLabel.color;
-    final titleColor = isDark ? CupertinoColors.white : CupertinoColors.black;
-    final summaryColor = isDark
-        ? CupertinoColors.secondaryLabel.darkColor
-        : CupertinoColors.secondaryLabel.color;
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final fc = FireplaceColors.of(context);
+    final sheetColor = colorScheme.surface;
+    final titleColor = colorScheme.onSurface;
+    final labelColor = fc.mutedText;
+    final summaryColor = fc.mutedText;
+    final actionColor = colorScheme.primary;
 
     return CupertinoTheme(
       data: CupertinoTheme.of(context).copyWith(
-        brightness: brightness,
+        brightness: theme.brightness,
+        primaryColor: actionColor,
         textTheme: CupertinoTextThemeData(
           pickerTextStyle: TextStyle(
             fontSize: 22,
@@ -700,7 +697,10 @@ class _DisappearingTimerSheetState extends State<DisappearingTimerSheet> {
                           padding:
                               const EdgeInsets.symmetric(horizontal: 16),
                           onPressed: () => Navigator.pop(context),
-                          child: Text(l10n.cancel),
+                          child: Text(
+                            l10n.cancel,
+                            style: TextStyle(color: actionColor),
+                          ),
                         ),
                         Expanded(
                           child: Text(
@@ -719,7 +719,13 @@ class _DisappearingTimerSheetState extends State<DisappearingTimerSheet> {
                           padding:
                               const EdgeInsets.symmetric(horizontal: 16),
                           onPressed: _apply,
-                          child: Text(l10n.disappearingTimerApply),
+                          child: Text(
+                            l10n.disappearingTimerApply,
+                            style: TextStyle(
+                              color: actionColor,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
                         ),
                       ],
                     ),

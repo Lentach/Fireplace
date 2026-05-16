@@ -109,7 +109,6 @@
   "disappearingTimerApply": "Apply",
   "disappearingTimerOff": "Off",
   "disappearingTimerOutOfRange": "Timer must be between 5 seconds and 30 days, or all zeros to turn off.",
-  "disappearingTimerInvalidFields": "Enter valid non-negative numbers (hours 0–23, minutes and seconds 0–59).",
   "disappearingTimerDays": "{count, plural, one{1 day} other{{count} days}}",
   "@disappearingTimerDays": {
     "placeholders": { "count": { "type": "num" } }
