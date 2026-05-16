@@ -1,5 +1,6 @@
 import 'dart:typed_data';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
@@ -98,11 +99,16 @@ class ChatActionTiles extends StatelessWidget {
   }
 
   void _showTimerDialog(BuildContext context) {
-    final initialSeconds =
-        context.read<ConversationsProvider>().conversationDisappearingTimer;
-    showDialog(
+    final convs = context.read<ConversationsProvider>();
+    final initialSeconds = convs.conversationDisappearingTimer;
+    showModalBottomSheet<void>(
       context: context,
-      builder: (ctx) => _TimerDialog(initialSeconds: initialSeconds),
+      backgroundColor: Colors.transparent,
+      isScrollControlled: true,
+      builder: (ctx) => ChangeNotifierProvider<ConversationsProvider>.value(
+        value: convs,
+        child: DisappearingTimerSheet(initialSeconds: initialSeconds),
+      ),
     );
   }
 
@@ -491,60 +497,64 @@ class _CenterProgressOverlay extends StatelessWidget {
   }
 }
 
-class _TimerDialog extends StatefulWidget {
+const double _kDisappearingPickerHeight = 216;
+const double _kDisappearingPickerItemExtent = 32;
+const int _kDisappearingPickerMaxDays = 30;
+
+/// iOS-style D/H/M/S scroll wheels for conversation disappearing timer.
+class DisappearingTimerSheet extends StatefulWidget {
   final int? initialSeconds;
 
-  const _TimerDialog({this.initialSeconds});
+  const DisappearingTimerSheet({super.key, this.initialSeconds});
 
   @override
-  State<_TimerDialog> createState() => _TimerDialogState();
+  State<DisappearingTimerSheet> createState() => _DisappearingTimerSheetState();
 }
 
-class _TimerDialogState extends State<_TimerDialog> {
-  late final TextEditingController _daysCtrl;
-  late final TextEditingController _hoursCtrl;
-  late final TextEditingController _minutesCtrl;
-  late final TextEditingController _secondsCtrl;
+class _DisappearingTimerSheetState extends State<DisappearingTimerSheet> {
+  late int _days;
+  late int _hours;
+  late int _minutes;
+  late int _seconds;
+  late final FixedExtentScrollController _daysController;
+  late final FixedExtentScrollController _hoursController;
+  late final FixedExtentScrollController _minutesController;
+  late final FixedExtentScrollController _secondsController;
   String? _errorText;
 
   @override
   void initState() {
     super.initState();
     final parts = splitDisappearingSeconds(widget.initialSeconds ?? 0);
-    _daysCtrl = TextEditingController(text: '${parts.days}');
-    _hoursCtrl = TextEditingController(text: '${parts.hours}');
-    _minutesCtrl = TextEditingController(text: '${parts.minutes}');
-    _secondsCtrl = TextEditingController(text: '${parts.seconds}');
+    _days = parts.days.clamp(0, _kDisappearingPickerMaxDays);
+    _hours = parts.hours.clamp(0, 23);
+    _minutes = parts.minutes.clamp(0, 59);
+    _seconds = parts.seconds.clamp(0, 59);
+    _daysController = FixedExtentScrollController(initialItem: _days);
+    _hoursController = FixedExtentScrollController(initialItem: _hours);
+    _minutesController = FixedExtentScrollController(initialItem: _minutes);
+    _secondsController = FixedExtentScrollController(initialItem: _seconds);
   }
 
   @override
   void dispose() {
-    _daysCtrl.dispose();
-    _hoursCtrl.dispose();
-    _minutesCtrl.dispose();
-    _secondsCtrl.dispose();
+    _daysController.dispose();
+    _hoursController.dispose();
+    _minutesController.dispose();
+    _secondsController.dispose();
     super.dispose();
   }
 
-  int _parseField(TextEditingController c) =>
-      int.tryParse(c.text.trim()) ?? 0;
+  int get _totalSeconds => combineDisappearingSeconds(
+        days: _days,
+        hours: _hours,
+        minutes: _minutes,
+        seconds: _seconds,
+      );
 
   void _apply() {
     final l10n = AppLocalizations.of(context);
-    final d = _parseField(_daysCtrl);
-    final h = _parseField(_hoursCtrl);
-    final m = _parseField(_minutesCtrl);
-    final s = _parseField(_secondsCtrl);
-    if (d < 0 || h < 0 || m < 0 || s < 0 || h > 23 || m > 59 || s > 59) {
-      setState(() => _errorText = l10n.disappearingTimerInvalidFields);
-      return;
-    }
-    final total = combineDisappearingSeconds(
-      days: d,
-      hours: h,
-      minutes: m,
-      seconds: s,
-    );
+    final total = _totalSeconds;
     if (total == 0) {
       _submit(null);
       return;
@@ -554,12 +564,6 @@ class _TimerDialogState extends State<_TimerDialog> {
       return;
     }
     _submit(total);
-  }
-
-  void _clearError() {
-    if (_errorText != null) {
-      setState(() => _errorText = null);
-    }
   }
 
   void _submit(int? seconds) {
@@ -572,108 +576,220 @@ class _TimerDialogState extends State<_TimerDialog> {
   }
 
   String _summary(AppLocalizations l10n) {
-    final d = _parseField(_daysCtrl);
-    final h = _parseField(_hoursCtrl);
-    final m = _parseField(_minutesCtrl);
-    final s = _parseField(_secondsCtrl);
-    final total = combineDisappearingSeconds(
-      days: d,
-      hours: h,
-      minutes: m,
-      seconds: s,
-    );
+    final total = _totalSeconds;
     if (total == 0) return l10n.disappearingTimerOff;
     final parts = <String>[];
-    if (d > 0) parts.add(l10n.disappearingTimerDays(d));
-    if (h > 0) parts.add(l10n.disappearingTimerHours(h));
-    if (m > 0) parts.add(l10n.disappearingTimerMinutes(m));
-    if (s > 0) parts.add(l10n.disappearingTimerSeconds(s));
+    if (_days > 0) parts.add(l10n.disappearingTimerDays(_days));
+    if (_hours > 0) parts.add(l10n.disappearingTimerHours(_hours));
+    if (_minutes > 0) parts.add(l10n.disappearingTimerMinutes(_minutes));
+    if (_seconds > 0) parts.add(l10n.disappearingTimerSeconds(_seconds));
     return parts.join(' ');
+  }
+
+  void _onDaysChanged(int index) {
+    setState(() {
+      _days = index;
+      _errorText = null;
+    });
+  }
+
+  void _onHoursChanged(int index) {
+    setState(() {
+      _hours = index;
+      _errorText = null;
+    });
+  }
+
+  void _onMinutesChanged(int index) {
+    setState(() {
+      _minutes = index;
+      _errorText = null;
+    });
+  }
+
+  void _onSecondsChanged(int index) {
+    setState(() {
+      _seconds = index;
+      _errorText = null;
+    });
+  }
+
+  Widget _columnLabel(String label, Color color) {
+    return Expanded(
+      child: Text(
+        label,
+        textAlign: TextAlign.center,
+        maxLines: 1,
+        overflow: TextOverflow.ellipsis,
+        style: TextStyle(
+          fontSize: 13,
+          fontWeight: FontWeight.w500,
+          color: color,
+        ),
+      ),
+    );
+  }
+
+  Widget _durationPicker({
+    required int maxValue,
+    required FixedExtentScrollController controller,
+    required ValueChanged<int> onSelectedItemChanged,
+  }) {
+    return Expanded(
+      child: CupertinoPicker(
+        scrollController: controller,
+        itemExtent: _kDisappearingPickerItemExtent,
+        magnification: 1.1,
+        squeeze: 1.1,
+        useMagnifier: true,
+        onSelectedItemChanged: onSelectedItemChanged,
+        children: List<Widget>.generate(
+          maxValue + 1,
+          (i) => Center(child: Text('$i')),
+        ),
+      ),
+    );
   }
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final brightness = Theme.of(context).brightness;
+    final isDark = brightness == Brightness.dark;
+    final sheetColor = isDark
+        ? const Color(0xFF1C1C1E)
+        : CupertinoColors.systemBackground.resolveFrom(context);
+    final labelColor = isDark
+        ? CupertinoColors.secondaryLabel.darkColor
+        : CupertinoColors.secondaryLabel.color;
+    final titleColor = isDark ? CupertinoColors.white : CupertinoColors.black;
+    final summaryColor = isDark
+        ? CupertinoColors.secondaryLabel.darkColor
+        : CupertinoColors.secondaryLabel.color;
 
-    return AlertDialog(
-      title: Text(l10n.disappearingTimerTitle),
-      content: SingleChildScrollView(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          crossAxisAlignment: CrossAxisAlignment.stretch,
-          children: [
-            _DurationField(
-              label: l10n.disappearingTimerDaysLabel,
-              controller: _daysCtrl,
-              onChanged: _clearError,
-            ),
-            _DurationField(
-              label: l10n.disappearingTimerHoursLabel,
-              controller: _hoursCtrl,
-              onChanged: _clearError,
-            ),
-            _DurationField(
-              label: l10n.disappearingTimerMinutesLabel,
-              controller: _minutesCtrl,
-              onChanged: _clearError,
-            ),
-            _DurationField(
-              label: l10n.disappearingTimerSecondsLabel,
-              controller: _secondsCtrl,
-              onChanged: _clearError,
-            ),
-            const SizedBox(height: 12),
-            Text(
-              _summary(l10n),
-              style: Theme.of(context).textTheme.bodyMedium,
-            ),
-            if (_errorText != null) ...[
-              const SizedBox(height: 8),
-              Text(
-                _errorText!,
-                style: TextStyle(color: Theme.of(context).colorScheme.error),
-              ),
-            ],
-          ],
+    return CupertinoTheme(
+      data: CupertinoTheme.of(context).copyWith(
+        brightness: brightness,
+        textTheme: CupertinoTextThemeData(
+          pickerTextStyle: TextStyle(
+            fontSize: 22,
+            color: titleColor,
+          ),
         ),
       ),
-      actions: [
-        TextButton(
-          onPressed: () => Navigator.pop(context),
-          child: Text(l10n.cancel),
+      child: Container(
+        decoration: BoxDecoration(
+          color: sheetColor,
+          borderRadius: const BorderRadius.vertical(top: Radius.circular(12)),
         ),
-        FilledButton(
-          onPressed: _apply,
-          child: Text(l10n.disappearingTimerApply),
+        child: SafeArea(
+          top: false,
+          child: SingleChildScrollView(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+              SizedBox(
+                height: 44,
+                child: Row(
+                  children: [
+                    CupertinoButton(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      onPressed: () => Navigator.pop(context),
+                      child: Text(l10n.cancel),
+                    ),
+                    Expanded(
+                      child: Text(
+                        l10n.disappearingTimerTitle,
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(
+                          fontSize: 17,
+                          fontWeight: FontWeight.w600,
+                          color: titleColor,
+                        ),
+                      ),
+                    ),
+                    CupertinoButton(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      onPressed: _apply,
+                      child: Text(l10n.disappearingTimerApply),
+                    ),
+                  ],
+                ),
+              ),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 16),
+                child: Text(
+                  _summary(l10n),
+                  textAlign: TextAlign.center,
+                  style: TextStyle(fontSize: 15, color: summaryColor),
+                ),
+              ),
+              if (_errorText != null) ...[
+                const SizedBox(height: 8),
+                Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 16),
+                  child: Text(
+                    _errorText!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(
+                      color: Theme.of(context).colorScheme.error,
+                      fontSize: 14,
+                    ),
+                  ),
+                ),
+              ],
+              const SizedBox(height: 4),
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: Row(
+                  children: [
+                    _columnLabel(l10n.disappearingTimerDaysLabel, labelColor),
+                    _columnLabel(l10n.disappearingTimerHoursLabel, labelColor),
+                    _columnLabel(
+                      l10n.disappearingTimerMinutesLabel,
+                      labelColor,
+                    ),
+                    _columnLabel(
+                      l10n.disappearingTimerSecondsLabel,
+                      labelColor,
+                    ),
+                  ],
+                ),
+              ),
+              SizedBox(
+                height: _kDisappearingPickerHeight,
+                child: Row(
+                  children: [
+                    _durationPicker(
+                      maxValue: _kDisappearingPickerMaxDays,
+                      controller: _daysController,
+                      onSelectedItemChanged: _onDaysChanged,
+                    ),
+                    _durationPicker(
+                      maxValue: 23,
+                      controller: _hoursController,
+                      onSelectedItemChanged: _onHoursChanged,
+                    ),
+                    _durationPicker(
+                      maxValue: 59,
+                      controller: _minutesController,
+                      onSelectedItemChanged: _onMinutesChanged,
+                    ),
+                    _durationPicker(
+                      maxValue: 59,
+                      controller: _secondsController,
+                      onSelectedItemChanged: _onSecondsChanged,
+                    ),
+                  ],
+                ),
+              ),
+              const SizedBox(height: 8),
+              ],
+            ),
+          ),
         ),
-      ],
-    );
-  }
-}
-
-class _DurationField extends StatelessWidget {
-  final String label;
-  final TextEditingController controller;
-  final VoidCallback onChanged;
-
-  const _DurationField({
-    required this.label,
-    required this.controller,
-    required this.onChanged,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.only(bottom: 8),
-      child: TextField(
-        controller: controller,
-        keyboardType: TextInputType.number,
-        decoration: InputDecoration(
-          labelText: label,
-          isDense: true,
-        ),
-        onChanged: (_) => onChanged(),
       ),
     );
   }
