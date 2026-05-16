@@ -50,6 +50,10 @@ export class Message {
   @Column({ type: 'timestamp', nullable: true })
   expiresAt: Date | null;
 
+  /** TTL frozen at send (seconds); countdown starts on read. Null = grandfathered or non-disappearing. */
+  @Column({ type: 'int', nullable: true })
+  disappearAfterSeconds: number | null;
+
   @Column({
     type: 'enum',
     enum: MessageType,

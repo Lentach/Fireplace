@@ -6,6 +6,7 @@ import * as fs from 'fs/promises';
 import * as path from 'path';
 import { LocalStorageService } from './local-storage.service';
 import { Message } from '../messages/message.entity';
+import { MESSAGE_NOT_EXPIRED_SQL } from '../messages/message-expiry.util';
 
 @Injectable()
 export class MediaCleanupService {
@@ -51,7 +52,9 @@ export class MediaCleanupService {
       .andWhere('msg.mediaUrl LIKE :prefix', {
         prefix: `${this.mediaBaseUrl}/media/%`,
       })
-      .andWhere('(msg.expiresAt IS NULL OR msg.expiresAt > NOW())')
+      .andWhere(MESSAGE_NOT_EXPIRED_SQL.replace(/\bm\./g, 'msg.'), {
+        now: new Date(),
+      })
       .getRawMany();
 
     const validFilenames = new Set(

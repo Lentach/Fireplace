@@ -22,6 +22,7 @@ export class MessageMapper {
       expiresAt: message.expiresAt
         ? new Date(message.expiresAt as Date).toISOString()
         : null,
+      disappearAfterSeconds: message.disappearAfterSeconds ?? null,
       tempId: options?.tempId ?? null,
       reactions: message.reactions ? JSON.parse(message.reactions) : {},
       encryptedContent: message.encryptedContent ?? null,

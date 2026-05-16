@@ -626,6 +626,84 @@ abstract class AppLocalizations {
   /// **'Timer'**
   String get actionTileTimer;
 
+  /// No description provided for @disappearingTimerTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Znikające wiadomości'**
+  String get disappearingTimerTitle;
+
+  /// No description provided for @disappearingTimerDaysLabel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Dni'**
+  String get disappearingTimerDaysLabel;
+
+  /// No description provided for @disappearingTimerHoursLabel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Godziny'**
+  String get disappearingTimerHoursLabel;
+
+  /// No description provided for @disappearingTimerMinutesLabel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Minuty'**
+  String get disappearingTimerMinutesLabel;
+
+  /// No description provided for @disappearingTimerSecondsLabel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Sekundy'**
+  String get disappearingTimerSecondsLabel;
+
+  /// No description provided for @disappearingTimerApply.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zastosuj'**
+  String get disappearingTimerApply;
+
+  /// No description provided for @disappearingTimerOff.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wyłączone'**
+  String get disappearingTimerOff;
+
+  /// No description provided for @disappearingTimerOutOfRange.
+  ///
+  /// In pl, this message translates to:
+  /// **'Timer: od 5 sekund do 30 dni albo same zera, aby wyłączyć.'**
+  String get disappearingTimerOutOfRange;
+
+  /// No description provided for @disappearingTimerInvalidFields.
+  ///
+  /// In pl, this message translates to:
+  /// **'Podaj poprawne liczby (godziny 0–23, minuty i sekundy 0–59).'**
+  String get disappearingTimerInvalidFields;
+
+  /// No description provided for @disappearingTimerDays.
+  ///
+  /// In pl, this message translates to:
+  /// **'{count, plural, one{1 dzień} few{{count} dni} many{{count} dni} other{{count} dnia}}'**
+  String disappearingTimerDays(num count);
+
+  /// No description provided for @disappearingTimerHours.
+  ///
+  /// In pl, this message translates to:
+  /// **'{count, plural, one{1 godzina} few{{count} godziny} many{{count} godzin} other{{count} godziny}}'**
+  String disappearingTimerHours(num count);
+
+  /// No description provided for @disappearingTimerMinutes.
+  ///
+  /// In pl, this message translates to:
+  /// **'{count, plural, one{1 minuta} few{{count} minuty} many{{count} minut} other{{count} minuty}}'**
+  String disappearingTimerMinutes(num count);
+
+  /// No description provided for @disappearingTimerSeconds.
+  ///
+  /// In pl, this message translates to:
+  /// **'{count, plural, one{1 sekunda} few{{count} sekundy} many{{count} sekund} other{{count} sekundy}}'**
+  String disappearingTimerSeconds(num count);
+
   /// No description provided for @actionTileGif.
   ///
   /// In pl, this message translates to:
@@ -961,6 +1039,12 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Przytrzymaj dłużej, aby nagrać wiadomość głosową'**
   String get snackbarHoldLongerForVoiceMessage;
+
+  /// No description provided for @snackbarVoiceRecordingCanceled.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nagrywanie głosu anulowane'**
+  String get snackbarVoiceRecordingCanceled;
 
   /// No description provided for @voiceRecordingSlideToCancel.
   ///

@@ -1,9 +1,11 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Cron, CronExpression } from '@nestjs/schedule';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan } from 'typeorm';
+import { Repository } from 'typeorm';
 import { MediaCleanupService } from '../media/media-cleanup.service';
 import { Message } from './message.entity';
+import { DISAPPEARING_MAX_UNREAD_SECONDS } from './disappearing.constants';
+import { isMessageExpired } from './message-expiry.util';
 
 @Injectable()
 export class MessageCleanupService {
@@ -18,12 +20,22 @@ export class MessageCleanupService {
   @Cron(CronExpression.EVERY_MINUTE)
   async deleteExpiredMessages() {
     const now = new Date();
+    const unreadCutoff = new Date(
+      now.getTime() - DISAPPEARING_MAX_UNREAD_SECONDS * 1000,
+    );
 
-    const expiredMessages = await this.messagesRepo.find({
-      where: {
-        expiresAt: LessThan(now),
-      },
-    });
+    const candidates = await this.messagesRepo
+      .createQueryBuilder('m')
+      .where('m."expiresAt" IS NOT NULL AND m."expiresAt" < :now', { now })
+      .orWhere(
+        `m."disappearAfterSeconds" IS NOT NULL AND m."expiresAt" IS NULL AND m."createdAt" < :unreadCutoff`,
+        { unreadCutoff },
+      )
+      .getMany();
+
+    const expiredMessages = candidates.filter((m) =>
+      isMessageExpired(m, now),
+    );
 
     if (expiredMessages.length > 0) {
       await Promise.all(

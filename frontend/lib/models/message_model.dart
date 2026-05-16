@@ -48,6 +48,8 @@ class MessageModel {
   final DateTime createdAt;
   final MessageDeliveryStatus deliveryStatus;
   final DateTime? expiresAt;
+  /// TTL frozen at send; countdown starts when recipient reads.
+  final int? disappearAfterSeconds;
   final MessageType messageType;
   final String? mediaUrl;
   final int? mediaDuration;
@@ -86,6 +88,7 @@ class MessageModel {
     required this.createdAt,
     this.deliveryStatus = MessageDeliveryStatus.sent,
     this.expiresAt,
+    this.disappearAfterSeconds,
     this.messageType = MessageType.text,
     this.mediaUrl,
     this.mediaDuration,
@@ -112,6 +115,9 @@ class MessageModel {
       deliveryStatus: parseDeliveryStatus(json['deliveryStatus'] as String?),
       expiresAt: json['expiresAt'] != null
           ? DateTime.parse(json['expiresAt'] as String)
+          : null,
+      disappearAfterSeconds: json['disappearAfterSeconds'] != null
+          ? (json['disappearAfterSeconds'] as num).toInt()
           : null,
       messageType: _parseMessageType(json['messageType'] as String?),
       mediaUrl: json['mediaUrl'] as String?,
@@ -180,6 +186,7 @@ class MessageModel {
     String? content,
     MessageDeliveryStatus? deliveryStatus,
     DateTime? expiresAt,
+    int? disappearAfterSeconds,
     String? mediaUrl,
     int? mediaDuration,
     Map<String, List<int>>? reactions,
@@ -201,6 +208,8 @@ class MessageModel {
       createdAt: createdAt,
       deliveryStatus: deliveryStatus ?? this.deliveryStatus,
       expiresAt: expiresAt ?? this.expiresAt,
+      disappearAfterSeconds:
+          disappearAfterSeconds ?? this.disappearAfterSeconds,
       messageType: messageType ?? this.messageType,
       mediaUrl: mediaUrl ?? this.mediaUrl,
       mediaDuration: mediaDuration ?? this.mediaDuration,

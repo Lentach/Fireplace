@@ -11,6 +11,10 @@ import {
   ValidateIf,
   IsIn,
 } from 'class-validator';
+import {
+  DISAPPEARING_MAX_SECONDS,
+  DISAPPEARING_MIN_SECONDS,
+} from '../../messages/disappearing.constants';
 
 /** Cloudinary (https only) or self-hosted media under MEDIA_BASE_URL — prevents SSRF */
 const _mediaOriginEscaped = (process.env.MEDIA_BASE_URL ?? 'http://localhost:3000').replace(
@@ -41,9 +45,9 @@ export class SendMessageDto {
   @IsOptional()
   @IsNumber()
   @IsPositive()
-  @Min(60)
-  @Max(2592000)
-  expiresIn?: number; // seconds until message expires (min 60s, max 30 days)
+  @Min(DISAPPEARING_MIN_SECONDS)
+  @Max(DISAPPEARING_MAX_SECONDS)
+  expiresIn?: number; // disappearing TTL frozen at send (read-based countdown)
 
   @IsOptional()
   @IsString()

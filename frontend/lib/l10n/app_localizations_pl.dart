@@ -290,6 +290,87 @@ class AppLocalizationsPl extends AppLocalizations {
   String get actionTileTimer => 'Timer';
 
   @override
+  String get disappearingTimerTitle => 'Znikające wiadomości';
+
+  @override
+  String get disappearingTimerDaysLabel => 'Dni';
+
+  @override
+  String get disappearingTimerHoursLabel => 'Godziny';
+
+  @override
+  String get disappearingTimerMinutesLabel => 'Minuty';
+
+  @override
+  String get disappearingTimerSecondsLabel => 'Sekundy';
+
+  @override
+  String get disappearingTimerApply => 'Zastosuj';
+
+  @override
+  String get disappearingTimerOff => 'Wyłączone';
+
+  @override
+  String get disappearingTimerOutOfRange =>
+      'Timer: od 5 sekund do 30 dni albo same zera, aby wyłączyć.';
+
+  @override
+  String get disappearingTimerInvalidFields =>
+      'Podaj poprawne liczby (godziny 0–23, minuty i sekundy 0–59).';
+
+  @override
+  String disappearingTimerDays(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count dnia',
+      many: '$count dni',
+      few: '$count dni',
+      one: '1 dzień',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String disappearingTimerHours(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count godziny',
+      many: '$count godzin',
+      few: '$count godziny',
+      one: '1 godzina',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String disappearingTimerMinutes(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count minuty',
+      many: '$count minut',
+      few: '$count minuty',
+      one: '1 minuta',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String disappearingTimerSeconds(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count sekundy',
+      many: '$count sekund',
+      few: '$count sekundy',
+      one: '1 sekunda',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get actionTileGif => 'GIF';
 
   @override
@@ -468,6 +549,9 @@ class AppLocalizationsPl extends AppLocalizations {
   @override
   String get snackbarHoldLongerForVoiceMessage =>
       'Przytrzymaj dłużej, aby nagrać wiadomość głosową';
+
+  @override
+  String get snackbarVoiceRecordingCanceled => 'Nagrywanie głosu anulowane';
 
   @override
   String get voiceRecordingSlideToCancel => '← Przesuń, aby anulować';

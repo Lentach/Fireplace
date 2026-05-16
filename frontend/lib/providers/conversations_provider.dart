@@ -332,9 +332,16 @@ class ConversationsProvider extends ChangeNotifier {
 
   /// Remove expired messages from lastMessages map.
   void removeExpiredLastMessages() {
-    _lastMessages.removeWhere(
-      (_, m) => m.expiresAt != null && m.expiresAt!.isBefore(DateTime.now()),
-    );
+    final now = DateTime.now();
+    _lastMessages.removeWhere((_, m) {
+      if (m.expiresAt != null && m.expiresAt!.isBefore(now)) return true;
+      if (m.disappearAfterSeconds != null && m.expiresAt == null) {
+        return now.isAfter(
+          m.createdAt.add(const Duration(seconds: 86400)),
+        );
+      }
+      return false;
+    });
     // No notifyListeners — caller decides when to notify.
   }
 

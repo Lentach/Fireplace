@@ -13,6 +13,7 @@ import { MarkConversationReadDto } from '../dto/mark-conversation-read.dto';
 import { MessageDeliveryStatus } from '../../messages/message.entity';
 import { MessageMapper } from '../../messages/message.mapper';
 import { MediaCleanupService } from '../../media/media-cleanup.service';
+import { isMessageExpired } from '../../messages/message-expiry.util';
 
 @Injectable()
 export class ChatMessageService {
@@ -66,16 +67,18 @@ export class ChatMessageService {
       recipient,
     );
 
-    const expiresAt = data.expiresIn
-      ? new Date(Date.now() + data.expiresIn * 1000)
-      : null;
+    const ttlSeconds: number | null =
+      data.expiresIn ?? conversation.disappearingTimer ?? null;
+    const disappearAfterSeconds =
+      ttlSeconds != null && ttlSeconds > 0 ? ttlSeconds : null;
 
     const message = await this.messagesService.create(
       data.encryptedContent ? '[encrypted]' : data.content,
       sender,
       conversation,
       {
-        expiresAt,
+        expiresAt: null,
+        disappearAfterSeconds,
         messageType: data.messageType,
         mediaUrl: data.mediaUrl,
         mediaDuration: data.mediaDuration,
@@ -153,39 +156,8 @@ export class ChatMessageService {
         userId,
       );
 
-      // Filter out expired messages (cron cleans DB every minute, but messages
-      // may still be in DB between cron runs).
-      // Use getTime() because TypeORM may return expiresAt as string or Date
-      // depending on pg driver — direct comparison (string > Date) yields NaN.
-      const nowMs = Date.now();
-
-      // Debug: log raw message data for disappearing messages diagnostics
-      const withExpiry = messages.filter((m) => m.expiresAt);
-      if (withExpiry.length > 0) {
-        this.logger.debug(
-          `[getMessages] conv=${data.conversationId}: ${messages.length} total, ` +
-          `${withExpiry.length} with expiresAt. now=${new Date(nowMs).toISOString()}`,
-        );
-        for (const m of withExpiry) {
-          const raw = m.expiresAt;
-          const parsed = new Date(raw as any).getTime();
-          const diff = parsed - nowMs;
-          this.logger.debug(
-            `  msg#${m.id}: expiresAt raw=${raw} (type=${typeof raw}), ` +
-            `parsed=${parsed}, diff=${diff}ms, keep=${!isNaN(parsed) && parsed > nowMs}`,
-          );
-        }
-      }
-
-      const active = messages.filter(
-        (m) => !m.expiresAt || new Date(m.expiresAt as any).getTime() > nowMs,
-      );
-
-      if (withExpiry.length > 0) {
-        this.logger.debug(
-          `[getMessages] After filter: ${active.length} active (was ${messages.length})`,
-        );
-      }
+      const now = new Date();
+      const active = messages.filter((m) => !isMessageExpired(m, now));
 
       const mapped = active.map((m) =>
         MessageMapper.toPayload(m, { conversationId: data.conversationId }),
@@ -293,14 +265,24 @@ export class ChatMessageService {
       otherUserId,
     );
 
+    const readerSocketId = onlineUsers.get(readerId);
+
     for (const message of updated) {
+      const payload: Record<string, unknown> = {
+        messageId: message.id,
+        conversationId: Number(conversationId),
+        deliveryStatus: MessageDeliveryStatus.READ,
+      };
+      if (message.expiresAt) {
+        payload.expiresAt = new Date(message.expiresAt as Date).toISOString();
+      }
+
       const senderSocketId = onlineUsers.get(message.sender.id);
       if (senderSocketId) {
-        server.to(senderSocketId).emit('messageDelivered', {
-          messageId: message.id,
-          conversationId: Number(conversationId),
-          deliveryStatus: MessageDeliveryStatus.READ,
-        });
+        server.to(senderSocketId).emit('messageDelivered', payload);
+      }
+      if (readerSocketId && readerSocketId !== senderSocketId) {
+        server.to(readerSocketId).emit('messageDelivered', payload);
       }
     }
   }

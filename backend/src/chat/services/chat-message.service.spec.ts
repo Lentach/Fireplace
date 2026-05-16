@@ -22,7 +22,10 @@ describe('ChatMessageService', () => {
 
   const mockSender: Partial<User> = { id: 1, username: 'alice' };
   const mockRecipient: Partial<User> = { id: 2, username: 'bob' };
-  const mockConversation: Partial<Conversation> = { id: 10 };
+  const mockConversation: Partial<Conversation> = {
+    id: 10,
+    disappearingTimer: 86400,
+  };
   const mockMessage = {
     id: 100,
     content: '',
@@ -57,6 +60,7 @@ describe('ChatMessageService', () => {
             create: jest.fn(),
             findByConversation: jest.fn(),
             findMediaUrlsByConversation: jest.fn().mockResolvedValue([]),
+            markConversationAsReadFromSender: jest.fn(),
           },
         },
         {
@@ -480,6 +484,87 @@ describe('ChatMessageService', () => {
           encryptedContent: '3:cipher==',
         }),
       );
+    });
+  });
+
+  describe('read-based disappearing messages', () => {
+    it('stores disappearAfterSeconds with null expiresAt on send', async () => {
+      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+      usersService.findById
+        .mockResolvedValueOnce(mockSender as User)
+        .mockResolvedValueOnce(mockRecipient as User);
+      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+      messagesService.create.mockResolvedValue({
+        ...mockMessage,
+        disappearAfterSeconds: 300,
+        expiresAt: null,
+      } as Message);
+
+      await service.handleSendMessage(
+        mockClient as Socket,
+        { recipientId: 2, content: 'hi', expiresIn: 300 },
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      expect(messagesService.create).toHaveBeenCalledWith(
+        'hi',
+        mockSender,
+        mockConversation,
+        expect.objectContaining({
+          disappearAfterSeconds: 300,
+          expiresAt: null,
+        }),
+      );
+    });
+
+    it('handleMarkConversationRead emits expiresAt to sender and reader', async () => {
+      const conv = {
+        id: 10,
+        userOne: { id: 1 },
+        userTwo: { id: 2 },
+      };
+      const expiresAt = new Date('2026-05-17T13:00:00Z');
+      const updatedMsg = {
+        id: 50,
+        sender: { id: 2 },
+        deliveryStatus: MessageDeliveryStatus.READ,
+        expiresAt,
+        disappearAfterSeconds: 3600,
+      } as Message;
+
+      conversationsService.findById.mockResolvedValue(conv as Conversation);
+      messagesService.markConversationAsReadFromSender.mockResolvedValue([
+        updatedMsg,
+      ]);
+      onlineUsers.set(1, 'sock-reader');
+      onlineUsers.set(2, 'sock-sender');
+      const toMock = jest.fn().mockReturnValue({ emit: jest.fn() });
+      mockServer.to = toMock;
+
+      mockClient.data = { user: { id: 1 } };
+
+      await service.handleMarkConversationRead(
+        mockClient as Socket,
+        { conversationId: 10 },
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      expect(messagesService.markConversationAsReadFromSender).toHaveBeenCalledWith(
+        10,
+        2,
+      );
+      expect(toMock).toHaveBeenCalledWith('sock-sender');
+      expect(toMock).toHaveBeenCalledWith('sock-reader');
+      const emitCalls = toMock.mock.results.map((r) => r.value.emit.mock.calls);
+      expect(emitCalls.some((calls) =>
+        calls.some(
+          (c) =>
+            c[0] === 'messageDelivered' &&
+            c[1].expiresAt === expiresAt.toISOString(),
+        ),
+      )).toBe(true);
     });
   });
 

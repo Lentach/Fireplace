@@ -37,6 +37,7 @@ describe('MessageMapper', () => {
       mediaUrl: null,
       mediaDuration: null,
       expiresAt: null,
+      disappearAfterSeconds: null,
       tempId: null,
     });
     expect(payload.createdAt).toBeDefined();
@@ -181,5 +182,11 @@ describe('MessageMapper', () => {
     const msg = createMockMessage();
     const payload = MessageMapper.toPayload(msg);
     expect(payload.encryptedContent).toBeNull();
+  });
+
+  it('should include disappearAfterSeconds in payload', () => {
+    const msg = createMockMessage({ disappearAfterSeconds: 3600 });
+    const payload = MessageMapper.toPayload(msg);
+    expect(payload.disappearAfterSeconds).toBe(3600);
   });
 });

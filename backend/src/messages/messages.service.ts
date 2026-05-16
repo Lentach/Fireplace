@@ -4,6 +4,7 @@ import { In, Not, Repository } from 'typeorm';
 import { Message, MessageDeliveryStatus, MessageType } from './message.entity';
 import { User } from '../users/user.entity';
 import { Conversation } from '../conversations/conversation.entity';
+import { MESSAGE_NOT_EXPIRED_SQL } from './message-expiry.util';
 
 @Injectable()
 export class MessagesService {
@@ -19,6 +20,7 @@ export class MessagesService {
     options?: {
       deliveryStatus?: MessageDeliveryStatus;
       expiresAt?: Date | null;
+      disappearAfterSeconds?: number | null;
       messageType?: MessageType;
       mediaUrl?: string | null;
       mediaDuration?: number | null;
@@ -42,7 +44,8 @@ export class MessagesService {
       sender,
       conversation,
       deliveryStatus: options?.deliveryStatus || MessageDeliveryStatus.SENT,
-      expiresAt: options?.expiresAt || null,
+      expiresAt: options?.expiresAt ?? null,
+      disappearAfterSeconds: options?.disappearAfterSeconds ?? null,
       messageType: options?.messageType || MessageType.TEXT,
       mediaUrl: options?.mediaUrl || null,
       mediaDuration: options?.mediaDuration || null,
@@ -182,9 +185,7 @@ export class MessagesService {
       .andWhere('m."deliveryStatus" != :status', {
         status: MessageDeliveryStatus.READ,
       });
-    qb.andWhere(
-      '(m."expiresAt" IS NULL OR m."expiresAt" > CURRENT_TIMESTAMP)',
-    );
+    qb.andWhere(MESSAGE_NOT_EXPIRED_SQL, { now: new Date() });
     qb.andWhere(
       `(m."hiddenByUserIds" IS NULL OR m."hiddenByUserIds" = '' OR ` +
         `(',' || COALESCE(m."hiddenByUserIds", '') || ',' NOT LIKE '%,' || :uid::text || ',%'))`,
@@ -214,9 +215,7 @@ export class MessagesService {
       .andWhere('m."deliveryStatus" != :status', {
         status: MessageDeliveryStatus.READ,
       })
-      .andWhere(
-        '(m."expiresAt" IS NULL OR m."expiresAt" > CURRENT_TIMESTAMP)',
-      )
+      .andWhere(MESSAGE_NOT_EXPIRED_SQL, { now: new Date() })
       .andWhere(
         `(m."hiddenByUserIds" IS NULL OR m."hiddenByUserIds" = '' OR ` +
           `(',' || COALESCE(m."hiddenByUserIds", '') || ',' NOT LIKE '%,' || :uid::text || ',%'))`,
@@ -323,8 +322,28 @@ export class MessagesService {
       )
       .execute();
 
-    // Return only the messages that were just changed (had their status updated to READ)
-    return toUpdate.map((m) => ({ ...m, deliveryStatus: MessageDeliveryStatus.READ })) as Message[];
+    const readMessages = toUpdate.map(
+      (m) => ({ ...m, deliveryStatus: MessageDeliveryStatus.READ }) as Message,
+    );
+
+    const now = new Date();
+    const expiryUpdates: Message[] = [];
+    for (const msg of readMessages) {
+      if (
+        msg.disappearAfterSeconds != null &&
+        msg.expiresAt == null
+      ) {
+        msg.expiresAt = new Date(
+          now.getTime() + msg.disappearAfterSeconds * 1000,
+        );
+        expiryUpdates.push(msg);
+      }
+    }
+    if (expiryUpdates.length > 0) {
+      await this.msgRepo.save(expiryUpdates);
+    }
+
+    return readMessages;
   }
 
   /** Non-null media URLs in a conversation (for disk cleanup before row delete). */

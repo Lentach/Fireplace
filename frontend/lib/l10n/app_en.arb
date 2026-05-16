@@ -101,6 +101,31 @@
   "attachmentOptionPhoto": "Photo",
   "attachmentOptionDocument": "Document",
   "actionTileTimer": "Timer",
+  "disappearingTimerTitle": "Disappearing messages",
+  "disappearingTimerDaysLabel": "Days",
+  "disappearingTimerHoursLabel": "Hours",
+  "disappearingTimerMinutesLabel": "Minutes",
+  "disappearingTimerSecondsLabel": "Seconds",
+  "disappearingTimerApply": "Apply",
+  "disappearingTimerOff": "Off",
+  "disappearingTimerOutOfRange": "Timer must be between 5 seconds and 30 days, or all zeros to turn off.",
+  "disappearingTimerInvalidFields": "Enter valid non-negative numbers (hours 0–23, minutes and seconds 0–59).",
+  "disappearingTimerDays": "{count, plural, one{1 day} other{{count} days}}",
+  "@disappearingTimerDays": {
+    "placeholders": { "count": { "type": "num" } }
+  },
+  "disappearingTimerHours": "{count, plural, one{1 hour} other{{count} hours}}",
+  "@disappearingTimerHours": {
+    "placeholders": { "count": { "type": "num" } }
+  },
+  "disappearingTimerMinutes": "{count, plural, one{1 minute} other{{count} minutes}}",
+  "@disappearingTimerMinutes": {
+    "placeholders": { "count": { "type": "num" } }
+  },
+  "disappearingTimerSeconds": "{count, plural, one{1 second} other{{count} seconds}}",
+  "@disappearingTimerSeconds": {
+    "placeholders": { "count": { "type": "num" } }
+  },
   "actionTileGif": "GIF",
   "actionTileAntiQuantumNote": "Anti-Quantum Note",
   "unknown": "Unknown",
@@ -173,6 +198,7 @@
   "snackbarVoiceRecordingRequiresSecureContext": "Voice recording needs HTTPS or localhost. Use https:// or open from localhost.",
   "snackbarFailedToStartRecording": "Failed to start recording",
   "snackbarHoldLongerForVoiceMessage": "Hold longer to record a voice message",
+  "snackbarVoiceRecordingCanceled": "Voice recording canceled",
   "voiceRecordingSlideToCancel": "← Slide to cancel",
   "voiceRecordingSemanticsLabel": "Recording voice message, {time}. Swipe left to cancel.",
   "@voiceRecordingSemanticsLabel": {

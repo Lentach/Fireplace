@@ -14,6 +14,7 @@ import '../services/api_service.dart';
 import '../services/media_crypto_service.dart';
 import '../services/link_preview_service.dart';
 import '../utils/e2e_envelope.dart';
+import '../utils/message_expiry.dart';
 import 'conversation_helpers.dart' as conv_helpers;
 import 'conversations_provider.dart';
 import 'encryption_provider.dart';
@@ -319,9 +320,7 @@ class MessagingProvider extends ChangeNotifier {
 
     // Immediately remove any already-expired messages
     final now = DateTime.now();
-    _messages.removeWhere(
-      (m) => m.expiresAt != null && m.expiresAt!.isBefore(now),
-    );
+    _messages.removeWhere((m) => isMessageExpired(m, now));
     notifyListeners();
     // Snapshot to cache immediately (may include encrypted placeholders for E2E messages).
     // A second snapshot runs after _decryptMessageHistory completes with decrypted content.
@@ -617,9 +616,16 @@ class MessagingProvider extends ChangeNotifier {
 
     // Update message in _messages list (current chat)
     final index = _messages.indexWhere((m) => m.id == messageId);
+    DateTime? newExpiresAt;
+    final expiresAtRaw = map['expiresAt'];
+    if (expiresAtRaw is String) {
+      newExpiresAt = DateTime.parse(expiresAtRaw);
+    }
+
     if (index != -1) {
       _messages[index] = _messages[index].copyWith(
         deliveryStatus: newStatus,
+        expiresAt: newExpiresAt ?? _messages[index].expiresAt,
       );
     }
 
@@ -629,7 +635,10 @@ class MessagingProvider extends ChangeNotifier {
       if (lastMessages != null && lastMessages[conversationId]?.id == messageId) {
         _conversationsProvider?.updateLastMessage(
           conversationId,
-          lastMessages[conversationId]!.copyWith(deliveryStatus: newStatus),
+          lastMessages[conversationId]!.copyWith(
+            deliveryStatus: newStatus,
+            expiresAt: newExpiresAt ?? lastMessages[conversationId]!.expiresAt,
+          ),
         );
       }
     }
@@ -802,9 +811,8 @@ class MessagingProvider extends ChangeNotifier {
       conversationId: activeConversationId,
       createdAt: DateTime.now(),
       deliveryStatus: MessageDeliveryStatus.sending,
-      expiresAt: effectiveExpiresIn != null
-          ? DateTime.now().add(Duration(seconds: effectiveExpiresIn))
-          : null,
+      disappearAfterSeconds: effectiveExpiresIn,
+      expiresAt: null,
       tempId: tempId,
       replyToMessageId: effectiveReplyToId,
       replyTo: replyPreview,
@@ -848,9 +856,8 @@ class MessagingProvider extends ChangeNotifier {
       createdAt: DateTime.now(),
       deliveryStatus: MessageDeliveryStatus.sending,
       messageType: MessageType.ping,
-      expiresAt: effectiveExpiresIn != null
-          ? DateTime.now().add(Duration(seconds: effectiveExpiresIn))
-          : null,
+      disappearAfterSeconds: effectiveExpiresIn,
+      expiresAt: null,
       tempId: tempId,
     );
 
@@ -892,9 +899,8 @@ class MessagingProvider extends ChangeNotifier {
       createdAt: DateTime.now(),
       deliveryStatus: MessageDeliveryStatus.sending,
       messageType: MessageType.image,
-      expiresAt: effectiveExpiresIn != null
-          ? DateTime.now().add(Duration(seconds: effectiveExpiresIn))
-          : null,
+      disappearAfterSeconds: effectiveExpiresIn,
+      expiresAt: null,
       tempId: tempId,
     );
 
@@ -964,12 +970,16 @@ class MessagingProvider extends ChangeNotifier {
     if (localAudioPath == null && localAudioBytes == null) {
       throw Exception('Either localAudioPath or localAudioBytes required');
     }
-    if (_currentUserId == null) return;
+    if (_currentUserId == null) {
+      throw StateError('Cannot send voice message: not authenticated');
+    }
 
     // Use provided conversationId or active one
     final effectiveConvId =
         conversationId ?? _conversationsProvider?.activeConversationId;
-    if (effectiveConvId == null) return;
+    if (effectiveConvId == null) {
+      throw StateError('Cannot send voice message: no active conversation');
+    }
 
     final tempId =
         'temp_${DateTime.now().millisecondsSinceEpoch}_$_currentUserId';
@@ -992,9 +1002,8 @@ class MessagingProvider extends ChangeNotifier {
       mediaUrl: localAudioPath ?? '',
       mediaDuration: duration,
       tempId: tempId,
-      expiresAt: effectiveExpiresIn != null
-          ? DateTime.now().add(Duration(seconds: effectiveExpiresIn))
-          : null,
+      disappearAfterSeconds: effectiveExpiresIn,
+      expiresAt: null,
     );
 
     // 2. Add to messages immediately (optimistic)
@@ -1099,9 +1108,8 @@ class MessagingProvider extends ChangeNotifier {
       createdAt: DateTime.now(),
       deliveryStatus: MessageDeliveryStatus.sending,
       messageType: MessageType.gif,
-      expiresAt: effectiveExpiresIn != null
-          ? DateTime.now().add(Duration(seconds: effectiveExpiresIn))
-          : null,
+      disappearAfterSeconds: effectiveExpiresIn,
+      expiresAt: null,
       tempId: tempId,
     );
 
@@ -1193,6 +1201,8 @@ class MessagingProvider extends ChangeNotifier {
       createdAt: DateTime.now(),
       deliveryStatus: MessageDeliveryStatus.sending,
       messageType: MessageType.file,
+      disappearAfterSeconds: effectiveExpiresIn,
+      expiresAt: null,
       tempId: tempId,
     );
 
@@ -1334,14 +1344,10 @@ class MessagingProvider extends ChangeNotifier {
   /// Remove messages whose expiresAt has passed. Called every second by ChatDetailScreen timer.
   void removeExpiredMessages() {
     final now = DateTime.now();
-    final hadExpired = _messages.any(
-      (m) => m.expiresAt != null && m.expiresAt!.isBefore(now),
-    );
+    final hadExpired = _messages.any((m) => isMessageExpired(m, now));
     if (!hadExpired) return;
 
-    _messages.removeWhere(
-      (m) => m.expiresAt != null && m.expiresAt!.isBefore(now),
-    );
+    _messages.removeWhere((m) => isMessageExpired(m, now));
     // Also tell ConversationsProvider to clean expired lastMessages
     _conversationsProvider?.removeExpiredLastMessages();
     notifyListeners();
@@ -2052,9 +2058,11 @@ class MessagingProvider extends ChangeNotifier {
     final conv = convList.first;
     final recipientId = conv_helpers.getOtherUserId(conv, _currentUserId);
     int? effectiveExpiresIn;
-    if (message.expiresAt != null) {
+    if (message.disappearAfterSeconds != null) {
+      effectiveExpiresIn = message.disappearAfterSeconds;
+    } else if (message.expiresAt != null) {
       final secs = message.expiresAt!.difference(DateTime.now()).inSeconds;
-      effectiveExpiresIn = secs.clamp(1, 86400 * 30);
+      effectiveExpiresIn = secs.clamp(1, kDisappearingMaxSeconds);
     } else {
       effectiveExpiresIn = conv.disappearingTimer;
     }

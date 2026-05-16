@@ -291,6 +291,79 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actionTileTimer => 'Timer';
 
   @override
+  String get disappearingTimerTitle => 'Disappearing messages';
+
+  @override
+  String get disappearingTimerDaysLabel => 'Days';
+
+  @override
+  String get disappearingTimerHoursLabel => 'Hours';
+
+  @override
+  String get disappearingTimerMinutesLabel => 'Minutes';
+
+  @override
+  String get disappearingTimerSecondsLabel => 'Seconds';
+
+  @override
+  String get disappearingTimerApply => 'Apply';
+
+  @override
+  String get disappearingTimerOff => 'Off';
+
+  @override
+  String get disappearingTimerOutOfRange =>
+      'Timer must be between 5 seconds and 30 days, or all zeros to turn off.';
+
+  @override
+  String get disappearingTimerInvalidFields =>
+      'Enter valid non-negative numbers (hours 0–23, minutes and seconds 0–59).';
+
+  @override
+  String disappearingTimerDays(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count days',
+      one: '1 day',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String disappearingTimerHours(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count hours',
+      one: '1 hour',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String disappearingTimerMinutes(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count minutes',
+      one: '1 minute',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String disappearingTimerSeconds(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count seconds',
+      one: '1 second',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get actionTileGif => 'GIF';
 
   @override
@@ -469,6 +542,9 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get snackbarHoldLongerForVoiceMessage =>
       'Hold longer to record a voice message';
+
+  @override
+  String get snackbarVoiceRecordingCanceled => 'Voice recording canceled';
 
   @override
   String get voiceRecordingSlideToCancel => '← Slide to cancel';

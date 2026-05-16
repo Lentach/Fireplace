@@ -12,6 +12,7 @@ import '../providers/conversations_provider.dart';
 import '../providers/messaging_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
+import '../utils/message_expiry.dart';
 import 'top_snackbar.dart';
 import 'anti_quantum_note_dialog.dart';
 import 'gif_picker_sheet.dart';
@@ -97,9 +98,11 @@ class ChatActionTiles extends StatelessWidget {
   }
 
   void _showTimerDialog(BuildContext context) {
+    final initialSeconds =
+        context.read<ConversationsProvider>().conversationDisappearingTimer;
     showDialog(
       context: context,
-      builder: (ctx) => _TimerDialog(),
+      builder: (ctx) => _TimerDialog(initialSeconds: initialSeconds),
     );
   }
 
@@ -488,40 +491,189 @@ class _CenterProgressOverlay extends StatelessWidget {
   }
 }
 
-class _TimerDialog extends StatelessWidget {
-  final _options = const [
-    {'label': '30 seconds', 'value': 30},
-    {'label': '1 minute', 'value': 60},
-    {'label': '5 minutes', 'value': 300},
-    {'label': '1 hour', 'value': 3600},
-    {'label': '1 day', 'value': 86400},
-    {'label': 'Off', 'value': null},
-  ];
+class _TimerDialog extends StatefulWidget {
+  final int? initialSeconds;
+
+  const _TimerDialog({this.initialSeconds});
+
+  @override
+  State<_TimerDialog> createState() => _TimerDialogState();
+}
+
+class _TimerDialogState extends State<_TimerDialog> {
+  late final TextEditingController _daysCtrl;
+  late final TextEditingController _hoursCtrl;
+  late final TextEditingController _minutesCtrl;
+  late final TextEditingController _secondsCtrl;
+  String? _errorText;
+
+  @override
+  void initState() {
+    super.initState();
+    final parts = splitDisappearingSeconds(widget.initialSeconds ?? 0);
+    _daysCtrl = TextEditingController(text: '${parts.days}');
+    _hoursCtrl = TextEditingController(text: '${parts.hours}');
+    _minutesCtrl = TextEditingController(text: '${parts.minutes}');
+    _secondsCtrl = TextEditingController(text: '${parts.seconds}');
+  }
+
+  @override
+  void dispose() {
+    _daysCtrl.dispose();
+    _hoursCtrl.dispose();
+    _minutesCtrl.dispose();
+    _secondsCtrl.dispose();
+    super.dispose();
+  }
+
+  int _parseField(TextEditingController c) =>
+      int.tryParse(c.text.trim()) ?? 0;
+
+  void _apply() {
+    final l10n = AppLocalizations.of(context);
+    final d = _parseField(_daysCtrl);
+    final h = _parseField(_hoursCtrl);
+    final m = _parseField(_minutesCtrl);
+    final s = _parseField(_secondsCtrl);
+    if (d < 0 || h < 0 || m < 0 || s < 0 || h > 23 || m > 59 || s > 59) {
+      setState(() => _errorText = l10n.disappearingTimerInvalidFields);
+      return;
+    }
+    final total = combineDisappearingSeconds(
+      days: d,
+      hours: h,
+      minutes: m,
+      seconds: s,
+    );
+    if (total == 0) {
+      _submit(null);
+      return;
+    }
+    if (total < kDisappearingMinSeconds || total > kDisappearingMaxSeconds) {
+      setState(() => _errorText = l10n.disappearingTimerOutOfRange);
+      return;
+    }
+    _submit(total);
+  }
+
+  void _clearError() {
+    if (_errorText != null) {
+      setState(() => _errorText = null);
+    }
+  }
+
+  void _submit(int? seconds) {
+    final convs = context.read<ConversationsProvider>();
+    final convId = convs.activeConversationId;
+    if (convId != null) {
+      convs.setDisappearingTimer(convId, seconds);
+    }
+    Navigator.pop(context);
+  }
+
+  String _summary(AppLocalizations l10n) {
+    final d = _parseField(_daysCtrl);
+    final h = _parseField(_hoursCtrl);
+    final m = _parseField(_minutesCtrl);
+    final s = _parseField(_secondsCtrl);
+    final total = combineDisappearingSeconds(
+      days: d,
+      hours: h,
+      minutes: m,
+      seconds: s,
+    );
+    if (total == 0) return l10n.disappearingTimerOff;
+    final parts = <String>[];
+    if (d > 0) parts.add(l10n.disappearingTimerDays(d));
+    if (h > 0) parts.add(l10n.disappearingTimerHours(h));
+    if (m > 0) parts.add(l10n.disappearingTimerMinutes(m));
+    if (s > 0) parts.add(l10n.disappearingTimerSeconds(s));
+    return parts.join(' ');
+  }
 
   @override
   Widget build(BuildContext context) {
-    final convs = context.read<ConversationsProvider>();
-    final current = convs.conversationDisappearingTimer;
+    final l10n = AppLocalizations.of(context);
 
     return AlertDialog(
-      title: const Text('Disappearing Messages'),
-      content: RadioGroup<int?>(
-        groupValue: current,
-        onChanged: (value) {
-          final convId = convs.activeConversationId;
-          if (convId != null) convs.setDisappearingTimer(convId, value);
-          Navigator.pop(context);
-        },
+      title: Text(l10n.disappearingTimerTitle),
+      content: SingleChildScrollView(
         child: Column(
           mainAxisSize: MainAxisSize.min,
-          children: _options.map((opt) {
-            final value = opt['value'] as int?;
-            return RadioListTile<int?>(
-              title: Text(opt['label'] as String),
-              value: value,
-            );
-          }).toList(),
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            _DurationField(
+              label: l10n.disappearingTimerDaysLabel,
+              controller: _daysCtrl,
+              onChanged: _clearError,
+            ),
+            _DurationField(
+              label: l10n.disappearingTimerHoursLabel,
+              controller: _hoursCtrl,
+              onChanged: _clearError,
+            ),
+            _DurationField(
+              label: l10n.disappearingTimerMinutesLabel,
+              controller: _minutesCtrl,
+              onChanged: _clearError,
+            ),
+            _DurationField(
+              label: l10n.disappearingTimerSecondsLabel,
+              controller: _secondsCtrl,
+              onChanged: _clearError,
+            ),
+            const SizedBox(height: 12),
+            Text(
+              _summary(l10n),
+              style: Theme.of(context).textTheme.bodyMedium,
+            ),
+            if (_errorText != null) ...[
+              const SizedBox(height: 8),
+              Text(
+                _errorText!,
+                style: TextStyle(color: Theme.of(context).colorScheme.error),
+              ),
+            ],
+          ],
         ),
+      ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.pop(context),
+          child: Text(l10n.cancel),
+        ),
+        FilledButton(
+          onPressed: _apply,
+          child: Text(l10n.disappearingTimerApply),
+        ),
+      ],
+    );
+  }
+}
+
+class _DurationField extends StatelessWidget {
+  final String label;
+  final TextEditingController controller;
+  final VoidCallback onChanged;
+
+  const _DurationField({
+    required this.label,
+    required this.controller,
+    required this.onChanged,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Padding(
+      padding: const EdgeInsets.only(bottom: 8),
+      child: TextField(
+        controller: controller,
+        keyboardType: TextInputType.number,
+        decoration: InputDecoration(
+          labelText: label,
+          isDense: true,
+        ),
+        onChanged: (_) => onChanged(),
       ),
     );
   }
