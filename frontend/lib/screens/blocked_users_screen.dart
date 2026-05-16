@@ -48,7 +48,7 @@ class BlockedUsersScreen extends StatelessWidget {
           : ListView.separated(
               padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
               itemCount: blocked.length,
-              separatorBuilder: (_, __) => Divider(
+              separatorBuilder: (_, _) => Divider(
                 height: 1,
                 color: FireplaceColors.of(context).convItemBorder,
               ),

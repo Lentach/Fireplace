@@ -1,6 +1,8 @@
-import 'dart:html' as html;
+import 'dart:js_interop';
+import 'dart:typed_data';
 
 import 'package:http/http.dart' as http;
+import 'package:web/web.dart' as web;
 
 /// Downloads a file from [url] and triggers browser save with [filename].
 /// Web-only implementation (blob + anchor download).
@@ -9,35 +11,32 @@ Future<void> downloadFile(String url, String filename) async {
   if (response.statusCode != 200) {
     throw Exception('Download failed: ${response.statusCode}');
   }
-  final blob = html.Blob([response.bodyBytes]);
-  final objectUrl = html.Url.createObjectUrlFromBlob(blob);
-  final anchor = html.AnchorElement()
-    ..href = objectUrl
-    ..download = _sanitizeFilename(filename)
-    ..style.display = 'none';
-  html.document.body?.append(anchor);
-  anchor.click();
-  anchor.remove();
-  // Revoke after a short delay so the browser can start the download
-  Future.delayed(const Duration(milliseconds: 500), () {
-    html.Url.revokeObjectUrl(objectUrl);
-  });
+  await _saveBytesAsDownload(response.bodyBytes, filename);
 }
 
 /// Trigger browser download of decrypted [bytes].
 Future<void> saveBytesAsDownload(List<int> bytes, String filename) async {
-  final blob = html.Blob([bytes]);
-  final objectUrl = html.Url.createObjectUrlFromBlob(blob);
-  final anchor = html.AnchorElement()
+  await _saveBytesAsDownload(bytes, filename);
+}
+
+Future<void> _saveBytesAsDownload(List<int> bytes, String filename) async {
+  final u8 = bytes is Uint8List ? bytes : Uint8List.fromList(bytes);
+  final blob = web.Blob([u8.toJS].toJS);
+  final objectUrl = web.URL.createObjectURL(blob);
+  _triggerAnchorDownload(objectUrl, filename);
+  Future.delayed(const Duration(milliseconds: 500), () {
+    web.URL.revokeObjectURL(objectUrl);
+  });
+}
+
+void _triggerAnchorDownload(String objectUrl, String filename) {
+  final anchor = web.HTMLAnchorElement()
     ..href = objectUrl
     ..download = _sanitizeFilename(filename)
     ..style.display = 'none';
-  html.document.body?.append(anchor);
+  web.document.body?.append(anchor);
   anchor.click();
   anchor.remove();
-  Future.delayed(const Duration(milliseconds: 500), () {
-    html.Url.revokeObjectUrl(objectUrl);
-  });
 }
 
 String _sanitizeFilename(String name) {

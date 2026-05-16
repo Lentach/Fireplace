@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 
-/// Theme-specific colors for chat UI. Use via Theme.of(context).extension<FireplaceColors>()!
+/// Theme-specific colors for chat UI. Use via `Theme.of(context).extension<FireplaceColors>()!`
 class FireplaceColors extends ThemeExtension<FireplaceColors> {
   final Color inputBg;
   final Color convItemBorder;

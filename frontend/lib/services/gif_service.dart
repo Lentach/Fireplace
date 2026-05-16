@@ -57,7 +57,7 @@ class GifService {
       'limit': '$limit',
       'offset': '$offset',
       'rating': 'pg-13',
-      if (query != null) 'q': query,
+      'q': ?query,
     };
     final uri = Uri.parse(url).replace(queryParameters: params);
     try {

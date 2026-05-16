@@ -1,13 +1,15 @@
-import 'dart:html' as html;
+import 'dart:js_interop';
 import 'dart:typed_data';
 
+import 'package:web/web.dart' as web;
+
 String? createAudioObjectUrl(Uint8List bytes) {
-  final blob = html.Blob([bytes]);
-  return html.Url.createObjectUrlFromBlob(blob);
+  final blob = web.Blob([bytes.toJS].toJS);
+  return web.URL.createObjectURL(blob);
 }
 
 void revokeAudioObjectUrl(String? url) {
   if (url != null && url.isNotEmpty) {
-    html.Url.revokeObjectUrl(url);
+    web.URL.revokeObjectURL(url);
   }
 }

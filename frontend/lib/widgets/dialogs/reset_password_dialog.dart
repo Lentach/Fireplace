@@ -13,7 +13,7 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
   final _formKey = GlobalKey<FormState>();
   final _oldPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
-  bool _isLoading = false;
+  final bool _isLoading = false;
 
   @override
   void dispose() {

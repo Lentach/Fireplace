@@ -1,24 +1,23 @@
-import 'dart:js_util' as js_util;
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 
-Object _navigator() =>
-    js_util.getProperty(js_util.globalThis, 'navigator') as Object;
+import 'package:web/web.dart' as web;
+
+bool _navigatorHasBadgingApi(String property) =>
+    (web.window.navigator as JSObject).hasProperty(property.toJS).toDart;
 
 /// Web implementation of the [Badging API](https://developer.mozilla.org/en-US/docs/Web/API/Badging_API).
 class BadgingBridge {
-  bool get isSupported {
-    final nav = _navigator();
-    return js_util.hasProperty(nav, 'setAppBadge') &&
-        js_util.hasProperty(nav, 'clearAppBadge');
-  }
+  bool get isSupported =>
+      _navigatorHasBadgingApi('setAppBadge') &&
+      _navigatorHasBadgingApi('clearAppBadge');
 
   /// Sets the app icon badge to [cappedNonZero] (must be > 0). Uses `setAppBadge(n)` — required
   /// for **Safari / iOS PWA**, which often ignore `setAppBadge()` with no arguments.
   Future<void> setBadgeCount(int cappedNonZero) async {
     if (!isSupported || cappedNonZero <= 0) return;
     try {
-      final nav = _navigator();
-      final result = js_util.callMethod(nav, 'setAppBadge', [cappedNonZero]);
-      await js_util.promiseToFuture(result);
+      await web.window.navigator.setAppBadge(cappedNonZero).toDart;
     } catch (_) {
       // Permission / inactive document / platform policy — ignore.
     }
@@ -27,9 +26,7 @@ class BadgingBridge {
   Future<void> clearBadge() async {
     if (!isSupported) return;
     try {
-      final nav = _navigator();
-      final result = js_util.callMethod(nav, 'clearAppBadge', []);
-      await js_util.promiseToFuture(result);
+      await web.window.navigator.clearAppBadge().toDart;
     } catch (_) {
       // Ignore — same as setBadgeCount.
     }

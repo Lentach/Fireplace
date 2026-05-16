@@ -11,7 +11,7 @@ Widget _wrap(Widget child) => MaterialApp(
 
 void main() {
   testWidgets('shows title and TTL chips', (tester) async {
-    await tester.pumpWidget(_wrap(AntiQuantumNoteDialog(onSend: (_, __) async {})));
+    await tester.pumpWidget(_wrap(AntiQuantumNoteDialog(onSend: (_, _) async {})));
     await tester.pumpAndSettle();
 
     expect(find.byType(AntiQuantumNoteDialog), findsOneWidget);
@@ -22,7 +22,7 @@ void main() {
   });
 
   testWidgets('Generate & Send disabled when text is empty', (tester) async {
-    await tester.pumpWidget(_wrap(AntiQuantumNoteDialog(onSend: (_, __) async {})));
+    await tester.pumpWidget(_wrap(AntiQuantumNoteDialog(onSend: (_, _) async {})));
     await tester.pumpAndSettle();
 
     final btn = tester.widget<ElevatedButton>(find.byType(ElevatedButton));
@@ -30,7 +30,7 @@ void main() {
   });
 
   testWidgets('Generate & Send enabled when text is non-empty', (tester) async {
-    await tester.pumpWidget(_wrap(AntiQuantumNoteDialog(onSend: (_, __) async {})));
+    await tester.pumpWidget(_wrap(AntiQuantumNoteDialog(onSend: (_, _) async {})));
     await tester.pumpAndSettle();
 
     await tester.enterText(find.byType(TextField), 'hello');

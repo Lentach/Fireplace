@@ -1,16 +1,23 @@
 import 'dart:convert';
-import 'dart:html' as html;
-import 'dart:js_util' as js_util;
+import 'dart:js_interop';
+import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
+
+import 'package:web/web.dart' as web;
+
+@JS()
+extension type _NavigatorStandalone(JSObject _) {
+  external bool? get standalone;
+}
 
 class WebPushBridge {
   static const String _serviceWorkerPath = '/web-push-sw.js';
   static const String _serviceWorkerScope = '/web-push-scope/';
 
   bool get isSupported {
-    return html.window.isSecureContext == true &&
-        html.window.navigator.serviceWorker != null &&
-        html.Notification.supported;
+    return web.window.isSecureContext &&
+        _navigatorHas('serviceWorker') &&
+        _windowHas('Notification');
   }
 
   /// Whether the platform's "must be standalone PWA" requirement for Web Push
@@ -23,12 +30,14 @@ class WebPushBridge {
   /// secure context, so we let them through.
   bool isStandaloneOrNotRequired() {
     if (!_isIOSWebKit()) return true;
-    if (html.window.matchMedia('(display-mode: standalone)').matches) {
+    if (web.window.matchMedia('(display-mode: standalone)').matches) {
       return true;
     }
     try {
-      final dynamic nav = html.window.navigator;
-      if (nav.standalone == true) return true;
+      if (_NavigatorStandalone(web.window.navigator as JSObject).standalone ==
+          true) {
+        return true;
+      }
     } catch (_) {
       // navigator.standalone is iOS Safari–only; ignore on engines that lack it.
     }
@@ -36,26 +45,18 @@ class WebPushBridge {
   }
 
   bool _isIOSWebKit() {
-    final ua = html.window.navigator.userAgent.toLowerCase();
+    final ua = web.window.navigator.userAgent.toLowerCase();
     if (ua.contains('iphone') || ua.contains('ipad') || ua.contains('ipod')) {
       return true;
     }
     // iPadOS 13+ reports a Mac UA but exposes touch points > 1.
-    if (ua.contains('macintosh')) {
-      try {
-        final dynamic nav = html.window.navigator;
-        final mtp = nav.maxTouchPoints;
-        if (mtp is int && mtp > 1) return true;
-      } catch (_) {
-        // Older Safari without maxTouchPoints — fall through.
-      }
+    if (ua.contains('macintosh') && web.window.navigator.maxTouchPoints > 1) {
+      return true;
     }
     return false;
   }
 
-  String get notificationPermission {
-    return html.Notification.permission ?? 'default';
-  }
+  String get notificationPermission => web.Notification.permission;
 
   Future<Map<String, dynamic>?> registerExistingSubscription({
     required String vapidPublicKey,
@@ -63,7 +64,8 @@ class WebPushBridge {
   }) async {
     if (!isSupported || notificationPermission != 'granted') return null;
     final registration = await _registerServiceWorker();
-    final subscription = await _getExistingSubscription(registration);
+    final subscription =
+        await registration.pushManager.getSubscription().toDart;
     return _toPayload(subscription, userAgent);
   }
 
@@ -72,87 +74,82 @@ class WebPushBridge {
     String? userAgent,
   }) async {
     if (!isSupported) return null;
-    final permission = await html.Notification.requestPermission();
+    final permission = (await web.Notification.requestPermission().toDart).toDart;
     if (permission != 'granted') return null;
 
     final registration = await _registerServiceWorker();
-    Object? subscription = await _getExistingSubscription(registration);
-    subscription ??= await _subscribe(registration, vapidPublicKey);
+    var subscription =
+        await registration.pushManager.getSubscription().toDart;
+    subscription ??=
+        await _subscribe(registration, vapidPublicKey);
     return _toPayload(subscription, userAgent);
   }
 
   Future<String?> unsubscribe() async {
     if (!isSupported) return null;
     final registration = await _registerServiceWorker();
-    final subscription = await _getExistingSubscription(registration);
+    final subscription =
+        await registration.pushManager.getSubscription().toDart;
     if (subscription == null) return null;
-    final endpoint = js_util.getProperty(subscription, 'endpoint') as String?;
-    await js_util.promiseToFuture<dynamic>(
-      js_util.callMethod(subscription, 'unsubscribe', const []),
-    );
+    final endpoint = subscription.endpoint;
+    await subscription.unsubscribe().toDart;
     return endpoint;
   }
 
-  Future<html.ServiceWorkerRegistration> _registerServiceWorker() {
-    return html.window.navigator.serviceWorker!
-        .register(_serviceWorkerPath, {'scope': _serviceWorkerScope});
+  Future<web.ServiceWorkerRegistration> _registerServiceWorker() {
+    return web.window.navigator.serviceWorker
+        .register(
+          _serviceWorkerPath.toJS,
+          web.RegistrationOptions(scope: _serviceWorkerScope),
+        )
+        .toDart;
   }
 
-  /// Reads an existing PushSubscription via raw js_util.
-  ///
-  /// `dart:html` types `PushManager.getSubscription()` as
-  /// `Future<PushSubscription>` (non-nullable), but the underlying JS API
-  /// legitimately resolves to `null` when no subscription exists. Awaiting
-  /// the typed Future then throws `'Null' is not a subtype of FutureOr<PushSubscription>`.
-  /// Calling through `js_util.promiseToFuture<dynamic>` returns a
-  /// `Future<dynamic>` that can hold null safely.
-  Future<Object?> _getExistingSubscription(
-    html.ServiceWorkerRegistration registration,
-  ) async {
-    final pushManager = js_util.getProperty(registration, 'pushManager');
-    final result = await js_util.promiseToFuture<dynamic>(
-      js_util.callMethod(pushManager, 'getSubscription', const []),
-    );
-    return result as Object?;
-  }
-
-  Future<Object?> _subscribe(
-    html.ServiceWorkerRegistration registration,
+  Future<web.PushSubscription> _subscribe(
+    web.ServiceWorkerRegistration registration,
     String vapidPublicKey,
-  ) async {
-    final pushManager = js_util.getProperty(registration, 'pushManager');
-    final options = js_util.jsify({
-      'userVisibleOnly': true,
-      'applicationServerKey': _base64UrlToUint8List(vapidPublicKey),
-    });
-    final result = await js_util.promiseToFuture<dynamic>(
-      js_util.callMethod(pushManager, 'subscribe', [options]),
-    );
-    return result as Object?;
+  ) {
+    final keyBytes = _base64UrlToUint8List(vapidPublicKey);
+    return registration.pushManager
+        .subscribe(
+          web.PushSubscriptionOptionsInit(
+            userVisibleOnly: true,
+            applicationServerKey: keyBytes.toJS,
+          ),
+        )
+        .toDart;
   }
 
-  Map<String, dynamic>? _toPayload(Object? subscription, String? userAgent) {
+  Map<String, dynamic>? _toPayload(
+    web.PushSubscription? subscription,
+    String? userAgent,
+  ) {
     if (subscription == null) return null;
-    final endpoint = js_util.getProperty(subscription, 'endpoint') as String?;
-    final p256dhBuffer =
-        js_util.callMethod(subscription, 'getKey', ['p256dh']) as ByteBuffer?;
-    final authBuffer =
-        js_util.callMethod(subscription, 'getKey', ['auth']) as ByteBuffer?;
-    if (endpoint == null || p256dhBuffer == null || authBuffer == null) {
+    final p256dhBuffer = subscription.getKey('p256dh');
+    final authBuffer = subscription.getKey('auth');
+    if (p256dhBuffer == null || authBuffer == null) {
       return null;
     }
-    final expirationTime = js_util.getProperty(subscription, 'expirationTime');
 
     return {
-      'endpoint': endpoint,
+      'endpoint': subscription.endpoint,
       'keys': {
-        'p256dh': _toBase64Url(Uint8List.view(p256dhBuffer)),
-        'auth': _toBase64Url(Uint8List.view(authBuffer)),
+        'p256dh': _toBase64Url(_bytesFromArrayBuffer(p256dhBuffer)),
+        'auth': _toBase64Url(_bytesFromArrayBuffer(authBuffer)),
       },
-      'expirationTime': expirationTime,
-      'userAgent': userAgent ?? html.window.navigator.userAgent,
+      'expirationTime': subscription.expirationTime,
+      'userAgent': userAgent ?? web.window.navigator.userAgent,
     };
   }
+
+  bool _navigatorHas(String property) =>
+      (web.window.navigator as JSObject).hasProperty(property.toJS).toDart;
+
+  bool _windowHas(String property) =>
+      (web.window as JSObject).hasProperty(property.toJS).toDart;
+
+  Uint8List _bytesFromArrayBuffer(JSArrayBuffer buffer) =>
+      Uint8List.view(buffer.toDart);
 
   Uint8List _base64UrlToUint8List(String value) {
     final output = base64Url.normalize(value);
