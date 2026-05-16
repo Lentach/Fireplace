@@ -631,21 +631,25 @@ class _DisappearingTimerSheetState extends State<DisappearingTimerSheet> {
   }
 
   Widget _durationPicker({
+    required String semanticsLabel,
     required int maxValue,
     required FixedExtentScrollController controller,
     required ValueChanged<int> onSelectedItemChanged,
   }) {
     return Expanded(
-      child: CupertinoPicker(
-        scrollController: controller,
-        itemExtent: _kDisappearingPickerItemExtent,
-        magnification: 1.1,
-        squeeze: 1.1,
-        useMagnifier: true,
-        onSelectedItemChanged: onSelectedItemChanged,
-        children: List<Widget>.generate(
-          maxValue + 1,
-          (i) => Center(child: Text('$i')),
+      child: Semantics(
+        label: semanticsLabel,
+        child: CupertinoPicker(
+          scrollController: controller,
+          itemExtent: _kDisappearingPickerItemExtent,
+          magnification: 1.1,
+          squeeze: 1.1,
+          useMagnifier: true,
+          onSelectedItemChanged: onSelectedItemChanged,
+          children: List<Widget>.generate(
+            maxValue + 1,
+            (i) => Center(child: Text('$i')),
+          ),
         ),
       ),
     );
@@ -685,110 +689,125 @@ class _DisappearingTimerSheetState extends State<DisappearingTimerSheet> {
         child: SafeArea(
           top: false,
           child: SingleChildScrollView(
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-              SizedBox(
-                height: 44,
-                child: Row(
-                  children: [
-                    CupertinoButton(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      onPressed: () => Navigator.pop(context),
-                      child: Text(l10n.cancel),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    height: 44,
+                    child: Row(
+                      children: [
+                        CupertinoButton(
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 16),
+                          onPressed: () => Navigator.pop(context),
+                          child: Text(l10n.cancel),
+                        ),
+                        Expanded(
+                          child: Text(
+                            l10n.disappearingTimerTitle,
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: TextStyle(
+                              fontSize: 17,
+                              fontWeight: FontWeight.w600,
+                              color: titleColor,
+                            ),
+                          ),
+                        ),
+                        CupertinoButton(
+                          padding:
+                              const EdgeInsets.symmetric(horizontal: 16),
+                          onPressed: _apply,
+                          child: Text(l10n.disappearingTimerApply),
+                        ),
+                      ],
                     ),
-                    Expanded(
+                  ),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: Semantics(
+                      liveRegion: true,
                       child: Text(
-                        l10n.disappearingTimerTitle,
+                        _summary(l10n),
                         textAlign: TextAlign.center,
-                        maxLines: 2,
-                        overflow: TextOverflow.ellipsis,
+                        style: TextStyle(fontSize: 15, color: summaryColor),
+                      ),
+                    ),
+                  ),
+                  if (_errorText != null) ...[
+                    const SizedBox(height: 8),
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 16),
+                      child: Text(
+                        _errorText!,
+                        textAlign: TextAlign.center,
                         style: TextStyle(
-                          fontSize: 17,
-                          fontWeight: FontWeight.w600,
-                          color: titleColor,
+                          color: Theme.of(context).colorScheme.error,
+                          fontSize: 14,
                         ),
                       ),
                     ),
-                    CupertinoButton(
-                      padding: const EdgeInsets.symmetric(horizontal: 16),
-                      onPressed: _apply,
-                      child: Text(l10n.disappearingTimerApply),
-                    ),
                   ],
-                ),
-              ),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 16),
-                child: Text(
-                  _summary(l10n),
-                  textAlign: TextAlign.center,
-                  style: TextStyle(fontSize: 15, color: summaryColor),
-                ),
-              ),
-              if (_errorText != null) ...[
-                const SizedBox(height: 8),
-                Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 16),
-                  child: Text(
-                    _errorText!,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      color: Theme.of(context).colorScheme.error,
-                      fontSize: 14,
+                  const SizedBox(height: 4),
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 4),
+                    child: Row(
+                      children: [
+                        _columnLabel(
+                          l10n.disappearingTimerDaysLabel,
+                          labelColor,
+                        ),
+                        _columnLabel(
+                          l10n.disappearingTimerHoursLabel,
+                          labelColor,
+                        ),
+                        _columnLabel(
+                          l10n.disappearingTimerMinutesLabel,
+                          labelColor,
+                        ),
+                        _columnLabel(
+                          l10n.disappearingTimerSecondsLabel,
+                          labelColor,
+                        ),
+                      ],
                     ),
                   ),
-                ),
-              ],
-              const SizedBox(height: 4),
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Row(
-                  children: [
-                    _columnLabel(l10n.disappearingTimerDaysLabel, labelColor),
-                    _columnLabel(l10n.disappearingTimerHoursLabel, labelColor),
-                    _columnLabel(
-                      l10n.disappearingTimerMinutesLabel,
-                      labelColor,
+                  SizedBox(
+                    height: _kDisappearingPickerHeight,
+                    child: Row(
+                      children: [
+                        _durationPicker(
+                          semanticsLabel: l10n.disappearingTimerDaysLabel,
+                          maxValue: _kDisappearingPickerMaxDays,
+                          controller: _daysController,
+                          onSelectedItemChanged: _onDaysChanged,
+                        ),
+                        _durationPicker(
+                          semanticsLabel: l10n.disappearingTimerHoursLabel,
+                          maxValue: 23,
+                          controller: _hoursController,
+                          onSelectedItemChanged: _onHoursChanged,
+                        ),
+                        _durationPicker(
+                          semanticsLabel: l10n.disappearingTimerMinutesLabel,
+                          maxValue: 59,
+                          controller: _minutesController,
+                          onSelectedItemChanged: _onMinutesChanged,
+                        ),
+                        _durationPicker(
+                          semanticsLabel: l10n.disappearingTimerSecondsLabel,
+                          maxValue: 59,
+                          controller: _secondsController,
+                          onSelectedItemChanged: _onSecondsChanged,
+                        ),
+                      ],
                     ),
-                    _columnLabel(
-                      l10n.disappearingTimerSecondsLabel,
-                      labelColor,
-                    ),
-                  ],
-                ),
+                  ),
+                  const SizedBox(height: 8),
+                ],
               ),
-              SizedBox(
-                height: _kDisappearingPickerHeight,
-                child: Row(
-                  children: [
-                    _durationPicker(
-                      maxValue: _kDisappearingPickerMaxDays,
-                      controller: _daysController,
-                      onSelectedItemChanged: _onDaysChanged,
-                    ),
-                    _durationPicker(
-                      maxValue: 23,
-                      controller: _hoursController,
-                      onSelectedItemChanged: _onHoursChanged,
-                    ),
-                    _durationPicker(
-                      maxValue: 59,
-                      controller: _minutesController,
-                      onSelectedItemChanged: _onMinutesChanged,
-                    ),
-                    _durationPicker(
-                      maxValue: 59,
-                      controller: _secondsController,
-                      onSelectedItemChanged: _onSecondsChanged,
-                    ),
-                  ],
-                ),
-              ),
-              const SizedBox(height: 8),
-              ],
             ),
-          ),
         ),
       ),
     );

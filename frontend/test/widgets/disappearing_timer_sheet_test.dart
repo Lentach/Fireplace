@@ -6,40 +6,45 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-Widget _wrap(Widget child) => MaterialApp(
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      locale: const Locale('en'),
-      home: Scaffold(body: child),
-    );
-
-Future<void> _openSheet(
+Future<ConversationsProvider> _openSheet(
   WidgetTester tester, {
   int? initialSeconds,
   int activeConversationId = 1,
+  Locale locale = const Locale('en'),
+  ThemeData? theme,
+  void Function(String event, dynamic data)? onEmit,
 }) async {
   final convs = ConversationsProvider()..openConversation(activeConversationId);
+  if (onEmit != null) {
+    convs.setEmitCallback(onEmit);
+  }
   await tester.pumpWidget(
-    ChangeNotifierProvider<ConversationsProvider>.value(
-      value: convs,
-      child: _wrap(
-        Builder(
-          builder: (context) => ElevatedButton(
-            onPressed: () {
-              final provider = context.read<ConversationsProvider>();
-              showModalBottomSheet<void>(
-                context: context,
-                backgroundColor: Colors.transparent,
-                builder: (_) =>
-                    ChangeNotifierProvider<ConversationsProvider>.value(
-                  value: provider,
-                  child: DisappearingTimerSheet(
-                    initialSeconds: initialSeconds,
+    MaterialApp(
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: locale,
+      theme: theme,
+      home: Scaffold(
+        body: ChangeNotifierProvider<ConversationsProvider>.value(
+          value: convs,
+          child: Builder(
+            builder: (context) => ElevatedButton(
+              onPressed: () {
+                final provider = context.read<ConversationsProvider>();
+                showModalBottomSheet<void>(
+                  context: context,
+                  backgroundColor: Colors.transparent,
+                  builder: (_) =>
+                      ChangeNotifierProvider<ConversationsProvider>.value(
+                    value: provider,
+                    child: DisappearingTimerSheet(
+                      initialSeconds: initialSeconds,
+                    ),
                   ),
-                ),
-              );
-            },
-            child: const Text('Open timer'),
+                );
+              },
+              child: const Text('Open timer'),
+            ),
           ),
         ),
       ),
@@ -47,6 +52,7 @@ Future<void> _openSheet(
   );
   await tester.tap(find.text('Open timer'));
   await tester.pumpAndSettle();
+  return convs;
 }
 
 void main() {
@@ -72,12 +78,78 @@ void main() {
       expect(find.text('1 day'), findsOneWidget);
     });
 
+    testWidgets('shows composite summary for multi-part duration', (tester) async {
+      const twoDaysThreeMinutes = 2 * 86400 + 3 * 60;
+      await _openSheet(tester, initialSeconds: twoDaysThreeMinutes);
+
+      expect(find.text('2 days 3 minutes'), findsOneWidget);
+    });
+
     testWidgets('apply valid duration closes sheet', (tester) async {
       await _openSheet(tester, initialSeconds: 300);
 
       await tester.tap(find.text('Apply'));
       await tester.pumpAndSettle();
 
+      expect(find.byType(DisappearingTimerSheet), findsNothing);
+    });
+
+    testWidgets('apply all zeros emits null seconds', (tester) async {
+      Map<String, dynamic>? emitted;
+      await _openSheet(
+        tester,
+        initialSeconds: null,
+        onEmit: (event, data) {
+          if (event == 'setDisappearingTimer') {
+            emitted = data as Map<String, dynamic>;
+          }
+        },
+      );
+
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+
+      expect(emitted, isNotNull);
+      expect(emitted!['conversationId'], 1);
+      expect(emitted!['seconds'], isNull);
+    });
+
+    testWidgets('apply keeps selected seconds', (tester) async {
+      Map<String, dynamic>? emitted;
+      await _openSheet(
+        tester,
+        initialSeconds: 300,
+        onEmit: (event, data) {
+          if (event == 'setDisappearingTimer') {
+            emitted = data as Map<String, dynamic>;
+          }
+        },
+      );
+
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+
+      expect(emitted!['seconds'], 300);
+    });
+
+    testWidgets('30 days exactly is valid and applies', (tester) async {
+      Map<String, dynamic>? emitted;
+      await _openSheet(
+        tester,
+        initialSeconds: 2592000,
+        onEmit: (event, data) {
+          if (event == 'setDisappearingTimer') {
+            emitted = data as Map<String, dynamic>;
+          }
+        },
+      );
+
+      expect(find.text('30 days'), findsOneWidget);
+
+      await tester.tap(find.text('Apply'));
+      await tester.pumpAndSettle();
+
+      expect(emitted!['seconds'], 2592000);
       expect(find.byType(DisappearingTimerSheet), findsNothing);
     });
 
@@ -92,6 +164,44 @@ void main() {
         findsOneWidget,
       );
       expect(find.byType(DisappearingTimerSheet), findsOneWidget);
+    });
+
+    testWidgets('picker columns expose semantics labels', (tester) async {
+      await _openSheet(tester, initialSeconds: 60);
+
+      final pickers = find.byType(CupertinoPicker);
+      expect(pickers, findsNWidgets(4));
+      final labels = ['Days', 'Hours', 'Minutes', 'Seconds'];
+      for (var i = 0; i < labels.length; i++) {
+        expect(
+          find.ancestor(
+            of: pickers.at(i),
+            matching: find.bySemanticsLabel(labels[i]),
+          ),
+          findsOneWidget,
+        );
+      }
+    });
+
+    testWidgets('renders on dark theme', (tester) async {
+      await _openSheet(
+        tester,
+        initialSeconds: 86400,
+        theme: ThemeData.dark(),
+      );
+
+      expect(find.byType(DisappearingTimerSheet), findsOneWidget);
+      expect(find.text('1 day'), findsOneWidget);
+    });
+
+    testWidgets('Polish plural summary for 2 days', (tester) async {
+      await _openSheet(
+        tester,
+        initialSeconds: 2 * 86400,
+        locale: const Locale('pl'),
+      );
+
+      expect(find.textContaining('2 dni'), findsOneWidget);
     });
   });
 }
