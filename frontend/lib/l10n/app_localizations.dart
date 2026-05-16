@@ -530,12 +530,6 @@ abstract class AppLocalizations {
   /// **'Napisz wiadomość…'**
   String get chatMessageHint;
 
-  /// No description provided for @chatComposerNewlineTooltip.
-  ///
-  /// In pl, this message translates to:
-  /// **'Nowa linia'**
-  String get chatComposerNewlineTooltip;
-
   /// No description provided for @chatDateToday.
   ///
   /// In pl, this message translates to:

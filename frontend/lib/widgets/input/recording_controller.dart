@@ -22,8 +22,7 @@ import '../top_snackbar.dart';
 
 /// CRITICAL (CLAUDE.md): Voice recording mic MUST stay in the widget tree.
 /// GestureDetector unmounts -> no events. This widget always renders the mic
-/// GestureDetector. It shows a newline helper or spinner instead when
-/// [hasText] / [isSendingVoice] override the display.
+/// GestureDetector when idle; a spinner replaces it while [isSendingVoice].
 ///
 /// Owns all recording state: AudioRecorder lifecycle, drag-to-cancel logic,
 /// and the pulse animation for the red recording dot.
@@ -32,9 +31,7 @@ class RecordingController extends StatefulWidget {
     super.key,
     required this.onVoiceSent,
     required this.onRecordingStateChanged,
-    required this.hasText,
     required this.isSendingVoice,
-    required this.onInsertNewline,
   });
 
   /// Called when a voice message has been recorded and is ready to send.
@@ -47,14 +44,8 @@ class RecordingController extends StatefulWidget {
   /// Notifies parent of [isRecording] changes so the parent can toggle UI.
   final void Function(bool isRecording) onRecordingStateChanged;
 
-  /// Whether the text field has text — used to show the send button instead of mic.
-  final bool hasText;
-
   /// Whether a voice message is currently being uploaded/sent.
   final bool isSendingVoice;
-
-  /// Inserts a newline in the composer (when [hasText] shows the trailing control).
-  final VoidCallback onInsertNewline;
 
   @override
   State<RecordingController> createState() => RecordingControllerState();
@@ -491,65 +482,12 @@ class RecordingControllerState extends State<RecordingController>
       ),
     );
 
-    // Avoid Material [Tooltip]: its long-press overlay fights the IME/scaffold and
-    // caused an unconstrained-height composer glitch. Use [Semantics] for a11y only.
-    final newlineButton = Semantics(
-      button: true,
-      label: AppLocalizations.of(context).chatComposerNewlineTooltip,
-      child: Material(
-        color: Colors.transparent,
-        shape: const CircleBorder(),
-        clipBehavior: Clip.antiAlias,
-        child: InkWell(
-          canRequestFocus: false,
-          splashFactory: NoSplash.splashFactory,
-          highlightColor: Colors.transparent,
-          splashColor: Colors.transparent,
-          customBorder: const CircleBorder(),
-          onTap: widget.onInsertNewline,
-          child: SizedBox(
-            width: 44,
-            height: 44,
-            child: Icon(
-              Icons.keyboard_return,
-              size: 22,
-              color: isDark
-                  ? RpgTheme.mutedDark
-                  : RpgTheme.textSecondaryLight,
-            ),
-          ),
-        ),
-      ),
-    );
-
-    // Keep mic + newline out of the focus subtree so taps never steal focus from the
-    // multiline field (avoids keyboard flicker vs the trailing sibling).
+    // Keep mic out of the focus subtree so long-press never steals focus from the field.
     return ExcludeFocus(
       child: SizedBox(
         width: 48,
         height: 48,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            IgnorePointer(
-              ignoring: widget.hasText,
-              child: Opacity(
-                opacity: widget.hasText ? 0.0 : 1.0,
-                child: micHitTarget,
-              ),
-            ),
-            IgnorePointer(
-              ignoring: !widget.hasText,
-              child: Opacity(
-                opacity: widget.hasText ? 1.0 : 0.0,
-                child: Transform.translate(
-                  offset: const Offset(_kMicRestingOffsetX, 0),
-                  child: newlineButton,
-                ),
-              ),
-            ),
-          ],
-        ),
+        child: micHitTarget,
       ),
     );
   }

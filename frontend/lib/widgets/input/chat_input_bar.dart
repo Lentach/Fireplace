@@ -28,7 +28,6 @@ class _ChatInputBarState extends State<ChatInputBar>
     with SingleTickerProviderStateMixin {
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
-  bool _hasText = false;
   MessageModel? _lastReplyingTo;
   bool _showActionPanel = false;
   late final AnimationController _actionPanelController;
@@ -47,16 +46,11 @@ class _ChatInputBarState extends State<ChatInputBar>
   void initState() {
     super.initState();
     _controller.addListener(() {
-      final has = _controller.text.trim().isNotEmpty;
-      if (has != _hasText) {
-        setState(() => _hasText = has);
-      }
-      if (has) {
-        _typingDebounceTimer?.cancel();
-        _typingDebounceTimer = Timer(const Duration(milliseconds: 300), () {
-          if (mounted) context.read<MessagingProvider>().emitTyping();
-        });
-      }
+      if (_controller.text.trim().isEmpty) return;
+      _typingDebounceTimer?.cancel();
+      _typingDebounceTimer = Timer(const Duration(milliseconds: 300), () {
+        if (mounted) context.read<MessagingProvider>().emitTyping();
+      });
     });
 
     _actionPanelController = AnimationController(
@@ -90,28 +84,6 @@ class _ChatInputBarState extends State<ChatInputBar>
     _controller.clear();
     // IME "Send" on multiline can unfocus on the next frame even while the node still
     // reports hasFocus synchronously; schedule a refocus only when focus is actually lost.
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_focusNode.canRequestFocus) return;
-      if (!_focusNode.hasFocus) {
-        _focusNode.requestFocus();
-      }
-    });
-  }
-
-  /// Explicit newline at the caret (IME Send stays the single “send” affordance).
-  void _insertNewline() {
-    final text = _controller.text;
-    final sel = _controller.selection;
-    final start = sel.start >= 0 ? sel.start : text.length;
-    final end = sel.end >= 0 ? sel.end : text.length;
-    final newText = text.replaceRange(start, end, '\n');
-    final offset = start + 1;
-    _controller.value = TextEditingValue(
-      text: newText,
-      selection: TextSelection.collapsed(offset: offset),
-    );
-    // Trailing tap can drop focus asynchronously on some devices; one post-frame refocus
-    // avoids redundant synchronous requestFocus (IME flicker) while still recovering.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_focusNode.canRequestFocus) return;
       if (!_focusNode.hasFocus) {
@@ -376,8 +348,8 @@ class _ChatInputBarState extends State<ChatInputBar>
                               // WhatsApp/Telegram-style behavior: grow to a few lines, then scroll inside).
                               minLines: 1,
                               maxLines: 6,
-                              // Single send affordance: IME action (mobile). Plain Enter inserts '\n'
-                              // in a multiline field; trailing control is newline-only (RecordingController).
+                              // Send via IME action (mobile) or Ctrl/Cmd+Enter (web/desktop).
+                              // Plain Enter still inserts '\n' in this multiline field.
                               textInputAction: TextInputAction.send,
                               // Default [onEditingComplete] unfocuses after "Send", which dismisses
                               // the keyboard while the node can still report focused in the same sync turn.
@@ -392,14 +364,11 @@ class _ChatInputBarState extends State<ChatInputBar>
 
                 // RecordingController is ALWAYS in the widget tree here.
                 // CLAUDE.md: "mic must stay in widget tree — GestureDetector unmounts -> no events."
-                // It renders: spinner | send button | mic button — based on its props.
                 RecordingController(
                   key: _recordingKey,
                   onVoiceSent: _handleVoiceSent,
                   onRecordingStateChanged: _onRecordingStateChanged,
-                  hasText: _hasText,
                   isSendingVoice: _isSendingVoice,
-                  onInsertNewline: _insertNewline,
                 ),
               ],
             ),

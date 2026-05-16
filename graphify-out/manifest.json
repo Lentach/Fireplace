@@ -572,7 +572,7 @@
     "hash": "c8628e9a45d9fa91a4853271c3bef2bf"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\main.dart": {
-    "mtime": 1778807845.8707368,
+    "mtime": 1778962274.5562892,
     "hash": "c8ae6cf703bc665a2468455c5c19fb25"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\push_android_stub.dart": {
@@ -588,24 +588,24 @@
     "hash": "1c19ca17667fc38b479bb9836ff13d53"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\config\\app_config_web.dart": {
-    "mtime": 1776738665.336206,
-    "hash": "aa5cb177f6a4c33056b15834db3d14fc"
+    "mtime": 1778962274.5497813,
+    "hash": "7f97d9b8c66222b2e4e70e52834fb532"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\constants\\app_constants.dart": {
     "mtime": 1778384546.4752457,
     "hash": "d53cd6ad8c71e8c57f93f94cf4747a29"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\l10n\\app_localizations.dart": {
-    "mtime": 1778808271.234325,
-    "hash": "82ba9201922694a55d12d6e47eec6767"
+    "mtime": 1778966585.4587371,
+    "hash": "749fe41922b835ed1abacb734d78ce53"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\l10n\\app_localizations_en.dart": {
-    "mtime": 1778808271.196732,
-    "hash": "2bd2a8a9dd7ba5331d8b5718cf878578"
+    "mtime": 1778966585.4082258,
+    "hash": "2ab2ac9fc7c16454d9af04e1b97bada7"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\l10n\\app_localizations_pl.dart": {
-    "mtime": 1778808271.2140703,
-    "hash": "d9fa3565dddc15e4d27b8592a4036d0f"
+    "mtime": 1778966585.4312236,
+    "hash": "7e5818c93d221dd0be1cf8d845ebf326"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\models\\conversation_model.dart": {
     "mtime": 1776738665.3403053,
@@ -668,11 +668,11 @@
     "hash": "6f4c7d45dcd9d52ba68c277307b81001"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\screens\\blocked_users_screen.dart": {
-    "mtime": 1778806922.728696,
-    "hash": "8fe3172a5c101b545472becf7a0a04bf"
+    "mtime": 1778962274.5549524,
+    "hash": "f46c6b004ad2f2941212a5fe32f9054e"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\screens\\chat_detail_screen.dart": {
-    "mtime": 1778808552.8048244,
+    "mtime": 1778820854.6065452,
     "hash": "b668d46b3f21fe17638b89469dcd27dc"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\screens\\contacts_screen.dart": {
@@ -708,16 +708,16 @@
     "hash": "3d802f9227808703660673ee317d4caa"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\services\\badging_bridge_web.dart": {
-    "mtime": 1778376815.3704383,
-    "hash": "794259fbc17fcf73c461753ed15c12dd"
+    "mtime": 1778962274.5457158,
+    "hash": "57f6e405f6d12cc8a397ec4245abda1b"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\services\\encryption_service.dart": {
     "mtime": 1777259573.4805388,
     "hash": "adb501010c03bfec6d4f18d5d519203a"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\services\\gif_service.dart": {
-    "mtime": 1776738665.3518727,
-    "hash": "786971795a177949a17fc5bab82a8ab4"
+    "mtime": 1778962274.5562892,
+    "hash": "a49404827ef0cc5f66063e5d7765a51f"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\services\\link_preview_service.dart": {
     "mtime": 1776738665.3518727,
@@ -748,8 +748,8 @@
     "hash": "3f8f0ec83b1399f760cd80da345dc3a4"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\services\\web_push_bridge_web.dart": {
-    "mtime": 1778120652.2796352,
-    "hash": "88b5ca9204f861fbfed9e23eb18f768e"
+    "mtime": 1778962274.5562892,
+    "hash": "d0c106f9a4a95bc0d055fd02fdcc9755"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\services\\encryption\\signal_stores.dart": {
     "mtime": 1776738665.3518727,
@@ -760,8 +760,8 @@
     "hash": "74f71fec2155d0002da1ad5916e625eb"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\theme\\rpg_theme.dart": {
-    "mtime": 1778807865.4855602,
-    "hash": "55e5234c503a1fb5960d994e646e1a31"
+    "mtime": 1778962274.5562892,
+    "hash": "f77e7851da6cf8f524c4193fec68b5c4"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\utils\\app_badge_math.dart": {
     "mtime": 1778379425.4490378,
@@ -772,16 +772,16 @@
     "hash": "7e1eff1a638a30a913d7ecff9b6d97e0"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\utils\\audio_blob_url_web.dart": {
-    "mtime": 1776738665.3696446,
-    "hash": "a7d9c12c3f4f54f0e14263edeb50d0f2"
+    "mtime": 1778962274.5477147,
+    "hash": "a9bc4c136d954b17f5c28162518a7c7c"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\utils\\download_utils_io.dart": {
     "mtime": 1776738665.3696446,
     "hash": "c34d66d95c13fa6bfe22d5619631d10b"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\utils\\download_utils_web.dart": {
-    "mtime": 1776738665.3696446,
-    "hash": "a84a6d8c6b3bd94e79f0fc757a0257f7"
+    "mtime": 1778962274.5477147,
+    "hash": "b93ed52643e31b830b9089d561baffcc"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\utils\\e2e_envelope.dart": {
     "mtime": 1776738665.3696446,
@@ -800,8 +800,8 @@
     "hash": "7e0bd3cb6138e7f8b17f10c0977233a5"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\utils\\gif_blob_url_web.dart": {
-    "mtime": 1776738665.3696446,
-    "hash": "d252c932556807291d2d7141746431e6"
+    "mtime": 1778962274.5497813,
+    "hash": "81d66a00fe467385dac95497990684e7"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\utils\\secure_context_stub.dart": {
     "mtime": 1776738665.3696446,
@@ -820,8 +820,8 @@
     "hash": "2e6185fd3357ac160cdda5cba1f77e10"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\utils\\tab_visibility_web.dart": {
-    "mtime": 1778349587.891878,
-    "hash": "59181b262cdcd710b4e45df05a1c0676"
+    "mtime": 1778962274.5562892,
+    "hash": "0d9e2bf93ae2015472e36e73b52d72fa"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\anti_quantum_note_dialog.dart": {
     "mtime": 1776738665.3696446,
@@ -888,24 +888,24 @@
     "hash": "ad0848b7a962d4cb09a6dcbd21ea9b8c"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\dialogs\\delete_account_dialog.dart": {
-    "mtime": 1778806924.057476,
-    "hash": "1bb9544015da357eba4158eab3223de5"
+    "mtime": 1778962274.5549524,
+    "hash": "bdde001011c1ca47c7e9c74f16542110"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\dialogs\\reset_password_dialog.dart": {
-    "mtime": 1778806924.8654559,
-    "hash": "521c54c691d7472c2712a42b4a3b7886"
+    "mtime": 1778962274.5497813,
+    "hash": "49d4e3aa3807b484e0843eb64c217e7c"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\input\\attachment_handler.dart": {
     "mtime": 1776738665.385285,
     "hash": "78d971916213eba774c1fddb6618e6bf"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\input\\chat_input_bar.dart": {
-    "mtime": 1778808754.1708133,
-    "hash": "2963838a358d62a6045e65ddebff373b"
+    "mtime": 1778966546.9148586,
+    "hash": "1898d66d51a9d82a579c48dfa4a7db40"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\input\\recording_controller.dart": {
-    "mtime": 1778808764.38527,
-    "hash": "a0a1685a7b375c50348d4c412be0e1b6"
+    "mtime": 1778966536.841679,
+    "hash": "79ac0b2a3d9265a6c282c6745b8916f3"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\input\\reply_preview_bar.dart": {
     "mtime": 1776738665.385285,
@@ -980,8 +980,8 @@
     "hash": "9e627265620ba35c11f5e7dfeb834e90"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\test\\providers\\encryption_provider_test.dart": {
-    "mtime": 1777258948.7761843,
-    "hash": "58bdaeccd9bcf69a607a8819bf846a73"
+    "mtime": 1778962274.5457158,
+    "hash": "3a4de73c130c49f4e54d5a3a64b705c0"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\test\\providers\\friends_provider_test.dart": {
     "mtime": 1776738665.406722,
@@ -1036,8 +1036,8 @@
     "hash": "a353f4a0e63cd6d3f8a784740e937c7d"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\test\\widgets\\anti_quantum_note_dialog_test.dart": {
-    "mtime": 1776738665.4146428,
-    "hash": "88f868abda888dd09ce87877c571367f"
+    "mtime": 1778962274.5487683,
+    "hash": "73dbbb5db9781b8a831b2b48b7793ab1"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\test\\widgets\\message\\bubble_redesign_test.dart": {
     "mtime": 1778372354.9156559,
@@ -1068,8 +1068,8 @@
     "hash": "c62517b2d7937bbe5f23487fe22e035f"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\CLAUDE.md": {
-    "mtime": 1778808773.4926598,
-    "hash": "8caa91d5b7fdd4469bee822ca9fdce4c"
+    "mtime": 1778966560.7606928,
+    "hash": "12a4adb17b0db9f7c4f6412f19bb66fd"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\docker-compose.web.yml": {
     "mtime": 1776738665.2256248,
@@ -1728,8 +1728,8 @@
     "hash": "ddbd8c58979af6df3c6d483e3cd4014b"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\pubspec.yaml": {
-    "mtime": 1778350178.8476102,
-    "hash": "f828b277ad61018228a12684d20a5728"
+    "mtime": 1778962274.5579274,
+    "hash": "9765103ed432db3b2c331baf172f822f"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\README.md": {
     "mtime": 1776738665.2729647,

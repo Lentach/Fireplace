@@ -242,9 +242,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatMessageHint => 'Type a message...';
 
   @override
-  String get chatComposerNewlineTooltip => 'New line';
-
-  @override
   String get chatDateToday => 'Today';
 
   @override
