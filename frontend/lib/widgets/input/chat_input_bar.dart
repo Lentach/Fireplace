@@ -13,6 +13,8 @@ import '../../providers/conversations_provider.dart';
 import '../../providers/messaging_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/rpg_theme.dart';
+import '../../utils/android_chrome_web.dart';
+import '../../utils/keyboard_inset_math.dart';
 import '../../utils/message_expiry.dart';
 import '../chat_action_tiles.dart';
 import '../hearth_fade_arc.dart';
@@ -64,10 +66,18 @@ class _ChatInputBarState extends State<ChatInputBar>
       parent: _actionPanelController,
       curve: Curves.easeInOut,
     );
+
+    _focusNode.addListener(_onComposerFocusChanged);
+  }
+
+  void _onComposerFocusChanged() {
+    if (!_focusNode.hasFocus) return;
+    resetBrowserViewportScroll();
   }
 
   @override
   void dispose() {
+    _focusNode.removeListener(_onComposerFocusChanged);
     _controller.dispose();
     _focusNode.dispose();
     _actionPanelController.dispose();
@@ -179,6 +189,21 @@ class _ChatInputBarState extends State<ChatInputBar>
   Widget build(BuildContext context) {
     final messaging = context.watch<MessagingProvider>();
     final convs = context.watch<ConversationsProvider>();
+
+    if (shouldDisableScaffoldResizeForKeyboard) {
+      return ListenableBuilder(
+        listenable: androidChromeWebViewportListenable,
+        builder: (context, _) => _buildComposer(context, messaging, convs),
+      );
+    }
+    return _buildComposer(context, messaging, convs);
+  }
+
+  Widget _buildComposer(
+    BuildContext context,
+    MessagingProvider messaging,
+    ConversationsProvider convs,
+  ) {
     final replyingTo = messaging.replyingToMessage;
 
     if (replyingTo != null && _lastReplyingTo != replyingTo) {
@@ -219,10 +244,12 @@ class _ChatInputBarState extends State<ChatInputBar>
       4.0 + pad.right + trailingGestureBuffer,
       8.0,
     );
-    final keyboardVisible = mediaQuery.viewInsets.bottom > 0;
+    final viewInsetsBottom = mediaQuery.viewInsets.bottom;
+    final keyboardVisible = viewInsetsBottom > 0 ||
+        (shouldDisableScaffoldResizeForKeyboard &&
+            (visualViewportKeyboardInset ?? 0) > 0);
     final bottomSystemInset =
         math.max(mediaQuery.viewPadding.bottom, mediaQuery.padding.bottom);
-    const additionalBottomSpacing = 16.0;
     final needsErgonomicBuffer = bottomSystemInset > 0;
     final webMobileFallbackInset = !needsErgonomicBuffer &&
             kIsWeb &&
@@ -230,11 +257,17 @@ class _ChatInputBarState extends State<ChatInputBar>
             !keyboardVisible
         ? 16.0
         : 0.0;
-    final bottomInteractivePadding = keyboardVisible
-        ? 0.0
-        : (needsErgonomicBuffer
-            ? bottomSystemInset + additionalBottomSpacing
-            : webMobileFallbackInset);
+    final bottomInteractivePadding = composerBottomInteractivePadding(
+      androidChromeWebComposerLift: shouldDisableScaffoldResizeForKeyboard,
+      keyboardVisible: keyboardVisible,
+      viewInsetsBottom: viewInsetsBottom,
+      layoutHeight: mediaQuery.size.height,
+      visualViewportKeyboardInset: visualViewportKeyboardInset,
+      bottomSystemInset: bottomSystemInset,
+      webMobileFallbackNeeded:
+          kIsWeb && isCompactLayout && !keyboardVisible && !needsErgonomicBuffer,
+      webMobileFallbackInset: webMobileFallbackInset,
+    );
 
     // Cap multiline growth: Row/Expanded can still pass a tall maxHeight; keep the
     // composer Telegram-like even under large text scale or IME quirks.

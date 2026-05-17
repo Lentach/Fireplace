@@ -18,6 +18,7 @@ import '../widgets/avatar_circle.dart';
 import '../widgets/chat_background_pattern.dart';
 import '../widgets/ping_effect_overlay.dart';
 import '../widgets/top_snackbar.dart';
+import '../utils/android_chrome_web.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final int conversationId;
@@ -388,7 +389,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final auth = context.watch<AuthProvider>();
     final messages = messaging.messages;
     final contactName = _getContactName();
-    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
+    final keyboardHeight = resolvedKeyboardInsetForContext(context);
 
     if (messages.isNotEmpty && messages.length != _lastMessageCount) {
       final added = messages.length - _lastMessageCount;
@@ -634,7 +635,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     }
 
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: !shouldDisableScaffoldResizeForKeyboard,
       appBar: AppBar(
         centerTitle: true,
         leading: IconButton(

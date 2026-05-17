@@ -19,10 +19,14 @@ import 'providers/settings_provider.dart';
 import 'screens/auth_screen.dart';
 import 'screens/main_shell.dart';
 import 'theme/app_scroll_behavior.dart';
+import 'utils/android_chrome_web.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   file_picker_init.initFilePickerWeb();
+  if (kIsWeb) {
+    installAndroidChromeWebKeyboardGuards();
+  }
   // Firebase + FCM background handler must be ready before [runApp] (native only).
   if (!kIsWeb) {
     await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
