@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/conversation_model.dart';
 import '../models/message_model.dart';
+import '../utils/message_expiry.dart';
 import 'conversation_helpers.dart' as conv_helpers;
 import '../models/user_model.dart';
 
@@ -342,19 +343,19 @@ class ConversationsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
-  /// Remove expired messages from lastMessages map.
+  /// Remove expired messages from [lastMessages]. Does not notify listeners.
   void removeExpiredLastMessages() {
     final now = DateTime.now();
-    _lastMessages.removeWhere((_, m) {
-      if (m.expiresAt != null && m.expiresAt!.isBefore(now)) return true;
-      if (m.disappearAfterSeconds != null && m.expiresAt == null) {
-        return now.isAfter(
-          m.createdAt.add(const Duration(seconds: 86400)),
-        );
-      }
-      return false;
-    });
-    // No notifyListeners — caller decides when to notify.
+    _lastMessages.removeWhere((_, m) => isMessageExpired(m, now));
+  }
+
+  /// Prunes expired [lastMessages] and notifies listeners when the map changes.
+  void pruneExpiredLastMessages() {
+    final before = _lastMessages.length;
+    removeExpiredLastMessages();
+    if (_lastMessages.length != before) {
+      notifyListeners();
+    }
   }
 
   // ---------- Lifecycle ----------

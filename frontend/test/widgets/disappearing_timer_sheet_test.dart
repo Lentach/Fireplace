@@ -1,5 +1,6 @@
 import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
+import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/disappearing_timer_sheet.dart';
 import 'package:fireplace/widgets/hearth_fade_arc.dart';
@@ -14,6 +15,7 @@ Future<ConversationsProvider> _openSheet(
   int activeConversationId = 1,
   Locale locale = const Locale('en'),
   ThemeData? theme,
+  String? themePreference,
   void Function(String event, dynamic data)? onEmit,
 }) async {
   final convs = ConversationsProvider()..openConversation(activeConversationId);
@@ -27,18 +29,32 @@ Future<ConversationsProvider> _openSheet(
       locale: locale,
       theme: theme ?? RpgTheme.themeDataLight,
       home: Scaffold(
-        body: ChangeNotifierProvider<ConversationsProvider>.value(
-          value: convs,
+        body: MultiProvider(
+          providers: [
+            ChangeNotifierProvider<SettingsProvider>(
+              create: (_) => SettingsProvider(
+                initialThemePreference: themePreference ?? 'light',
+              ),
+            ),
+            ChangeNotifierProvider<ConversationsProvider>.value(value: convs),
+          ],
           child: Builder(
             builder: (context) => ElevatedButton(
               onPressed: () {
                 final provider = context.read<ConversationsProvider>();
+                final settings = context.read<SettingsProvider>();
                 showModalBottomSheet<void>(
                   context: context,
                   backgroundColor: Colors.transparent,
-                  builder: (_) =>
+                  builder: (_) => MultiProvider(
+                    providers: [
                       ChangeNotifierProvider<ConversationsProvider>.value(
-                    value: provider,
+                        value: provider,
+                      ),
+                      ChangeNotifierProvider<SettingsProvider>.value(
+                        value: settings,
+                      ),
+                    ],
                     child: DisappearingTimerSheet(
                       initialSeconds: initialSeconds,
                     ),
@@ -196,6 +212,7 @@ void main() {
         tester,
         initialSeconds: 86400,
         theme: RpgTheme.themeDataDarkGray,
+        themePreference: 'dark',
       );
 
       expect(find.byType(DisappearingTimerSheet), findsOneWidget);
@@ -207,10 +224,17 @@ void main() {
         tester,
         initialSeconds: 86400,
         theme: RpgTheme.themeDataTealStone,
+        themePreference: 'teal',
       );
 
       expect(find.byType(DisappearingTimerSheet), findsOneWidget);
       expect(find.text('1 day'), findsOneWidget);
+
+      final hero = tester.widget<HearthFadeArcHero>(
+        find.byType(HearthFadeArcHero),
+      );
+      expect(hero.color, RpgTheme.primaryTealStone);
+      expect(hero.color, isNot(RpgTheme.primaryLight));
 
       final sheet = tester.widget<Container>(
         find
@@ -231,6 +255,7 @@ void main() {
         tester,
         initialSeconds: 300,
         theme: RpgTheme.themeDataBlue,
+        themePreference: 'blue',
       );
 
       expect(find.byType(DisappearingTimerSheet), findsOneWidget);

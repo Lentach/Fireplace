@@ -125,6 +125,11 @@
   "@conversationDisappearingTimerHint": {
     "placeholders": { "duration": { "type": "String" } }
   },
+  "conversationLastMessageEphemeralPreRead": "Znika po odczytaniu",
+  "conversationLastMessageEphemeralRemaining": "Znika za {duration}",
+  "@conversationLastMessageEphemeralRemaining": {
+    "placeholders": { "duration": { "type": "String" } }
+  },
   "disappearingTimerDaysLabel": "Dni",
   "disappearingTimerHoursLabel": "Godziny",
   "disappearingTimerMinutesLabel": "Minuty",

@@ -1,0 +1,185 @@
+import 'package:fireplace/l10n/app_localizations.dart';
+import 'package:fireplace/models/message_model.dart';
+import 'package:fireplace/providers/messaging_provider.dart';
+import 'package:fireplace/providers/settings_provider.dart';
+import 'package:fireplace/theme/rpg_theme.dart';
+import 'package:fireplace/widgets/conversation_tile.dart';
+import 'package:fireplace/widgets/hearth_fade_arc.dart';
+import 'package:flutter/material.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:provider/provider.dart';
+
+MessageModel _lastMessage({
+  int? disappearAfterSeconds,
+  DateTime? expiresAt,
+  DateTime? createdAt,
+}) {
+  return MessageModel(
+    id: 1,
+    content: 'hello',
+    senderId: 2,
+    senderUsername: 'alice',
+    conversationId: 10,
+    createdAt: createdAt ?? DateTime.now().subtract(const Duration(minutes: 2)),
+    disappearAfterSeconds: disappearAfterSeconds,
+    expiresAt: expiresAt,
+  );
+}
+
+Widget _wrap(Widget child) {
+  return MaterialApp(
+    theme: RpgTheme.themeDataLight,
+    localizationsDelegates: AppLocalizations.localizationsDelegates,
+    supportedLocales: AppLocalizations.supportedLocales,
+    home: Scaffold(
+      body: MultiProvider(
+        providers: [
+          ChangeNotifierProvider(create: (_) => MessagingProvider()),
+          ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ],
+        child: child,
+      ),
+    ),
+  );
+}
+
+void main() {
+  group('ConversationTile ephemeral arc (Option B)', () {
+    testWidgets('shows dotted arc for pre-read last message', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          ConversationTile(
+            conversationId: 10,
+            displayName: 'Alice',
+            lastMessage: _lastMessage(disappearAfterSeconds: 3600),
+            onTap: () {},
+            onDelete: () {},
+          ),
+        ),
+      );
+
+      expect(find.byType(HearthFadeArcIndicator), findsOneWidget);
+      expect(find.text('1h'), findsNothing);
+      expect(find.text('1m'), findsNothing);
+    });
+
+    testWidgets('shows filled arc for post-read last message', (tester) async {
+      final expiresAt =
+          DateTime.now().add(const Duration(hours: 2, minutes: 10));
+      await tester.pumpWidget(
+        _wrap(
+          ConversationTile(
+            conversationId: 10,
+            displayName: 'Alice',
+            lastMessage: _lastMessage(
+              disappearAfterSeconds: 7200,
+              expiresAt: expiresAt,
+            ),
+            onTap: () {},
+            onDelete: () {},
+          ),
+        ),
+      );
+
+      expect(find.byType(HearthFadeArcIndicator), findsOneWidget);
+      expect(find.text('2h'), findsNothing);
+    });
+
+    testWidgets('hides arc when conversation timer on but last message plain',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          ConversationTile(
+            conversationId: 10,
+            displayName: 'Alice',
+            lastMessage: _lastMessage(),
+            onTap: () {},
+            onDelete: () {},
+          ),
+        ),
+      );
+
+      expect(find.byType(HearthFadeArcIndicator), findsNothing);
+    });
+
+    testWidgets('hides arc when last message expired', (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          ConversationTile(
+            conversationId: 10,
+            displayName: 'Alice',
+            lastMessage: _lastMessage(
+              disappearAfterSeconds: 60,
+              expiresAt: DateTime.now().subtract(const Duration(seconds: 5)),
+            ),
+            onTap: () {},
+            onDelete: () {},
+          ),
+        ),
+      );
+
+      expect(find.byType(HearthFadeArcIndicator), findsNothing);
+    });
+
+    testWidgets('shows arc for grandfathered send-time expiresAt only',
+        (tester) async {
+      final expiresAt = DateTime.now().add(const Duration(hours: 3));
+      final message = _lastMessage(expiresAt: expiresAt);
+      expect(HearthFadeArcIndicator.showsEphemeralState(message), isTrue);
+      final countdown = HearthFadeArcIndicator.countdownLabel(message);
+      expect(countdown, isNotNull);
+
+      await tester.pumpWidget(
+        _wrap(
+          ConversationTile(
+            conversationId: 10,
+            displayName: 'Alice',
+            lastMessage: message,
+            onTap: () {},
+            onDelete: () {},
+          ),
+        ),
+      );
+
+      expect(find.byType(HearthFadeArcIndicator), findsOneWidget);
+      expect(find.text(countdown!), findsNothing);
+    });
+
+    testWidgets('rebuilds arc when tick notifier updates', (tester) async {
+      final messaging = MessagingProvider();
+      final expiresAt = DateTime.now().add(const Duration(seconds: 90));
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: RpgTheme.themeDataLight,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          home: Scaffold(
+            body: MultiProvider(
+              providers: [
+                ChangeNotifierProvider.value(value: messaging),
+                ChangeNotifierProvider(create: (_) => SettingsProvider()),
+              ],
+              child: ConversationTile(
+                conversationId: 10,
+                displayName: 'Alice',
+                lastMessage: _lastMessage(
+                  disappearAfterSeconds: 120,
+                  expiresAt: expiresAt,
+                ),
+                onTap: () {},
+                onDelete: () {},
+              ),
+            ),
+          ),
+        ),
+      );
+
+      expect(find.byType(HearthFadeArcIndicator), findsOneWidget);
+      expect(find.text('1m'), findsNothing);
+      messaging.countdownTickNotifier.value++;
+      await tester.pump();
+      expect(find.byType(HearthFadeArcIndicator), findsOneWidget);
+    });
+  });
+}

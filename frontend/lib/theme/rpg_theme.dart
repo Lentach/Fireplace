@@ -176,6 +176,26 @@ class RpgTheme {
     return dark ? timeColorDark : textSecondaryLight;
   }
 
+  /// Hearth Fade / disappearing-messages accent (composer banner, timer sheet hero,
+  /// list arc). Light = ember orange; teal = [primaryTealStone]; dark/blue per theme.
+  static Color ephemeralAccent(
+    BuildContext context, {
+    required String themePreference,
+  }) {
+    switch (themePreference) {
+      case 'teal':
+        return primaryTealStone;
+      case 'light':
+        return primaryLight;
+      case 'blue':
+        return accentBlue;
+      case 'dark':
+        return accentDarkGray;
+      default:
+        return Theme.of(context).colorScheme.primary;
+    }
+  }
+
   /// Delivery checkmarks: pale icons on dark sent bubbles (dark/blue + teal);
   /// light (ember) sent tint uses stone + ember read via [themePreference] `light`.
   static (Color pendingOrSent, Color read) messageBubbleDeliveryTickColors(

@@ -108,7 +108,7 @@
     "hash": "31fd7b1e0b8d99aa728fb8938bb079ce"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\chat\\dto\\chat.dto.ts": {
-    "mtime": 1778969880.6191866,
+    "mtime": 1778974632.6325014,
     "hash": "b9a0f00a3f56a24640f265d20ec08176"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\chat\\dto\\clear-chat-history.dto.ts": {
@@ -148,7 +148,7 @@
     "hash": "4a7aa3b1ac5e9987b5f5495463680dd5"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\chat\\dto\\set-disappearing-timer.dto.ts": {
-    "mtime": 1778969875.0260065,
+    "mtime": 1778974632.6345108,
     "hash": "09067735740e9ce118beee76865a7e7c"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\chat\\dto\\typing.dto.ts": {
@@ -236,11 +236,11 @@
     "hash": "90e55c47b7a4b7ecb32e0fb554492b43"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\chat\\services\\chat-message.service.spec.ts": {
-    "mtime": 1778969994.820011,
+    "mtime": 1778974632.6365116,
     "hash": "53992dd56ebc51645022e38dc16fb322"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\chat\\services\\chat-message.service.ts": {
-    "mtime": 1778969916.41627,
+    "mtime": 1778974632.639018,
     "hash": "1c2c82feccb50c223c23f65335c6edbf"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\chat\\services\\chat-presence.service.spec.ts": {
@@ -300,8 +300,8 @@
     "hash": "94ce2f0118e8181835141e0c448dd220"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\conversations\\conversation.entity.ts": {
-    "mtime": 1776738665.1723008,
-    "hash": "a8788ccf691cf5b758824bea805347df"
+    "mtime": 1778988981.881732,
+    "hash": "4c62308bf054835085e9054fbd82c552"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\conversations\\conversations.module.ts": {
     "mtime": 1776738665.1723008,
@@ -376,7 +376,7 @@
     "hash": "3b2549e3d1c95a8dfa9f940571115e65"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\media\\media-cleanup.service.ts": {
-    "mtime": 1778969901.2881439,
+    "mtime": 1778974632.6410265,
     "hash": "3a2b47e549e67c0480ded3e423712bab"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\media\\media.controller.spec.ts": {
@@ -396,35 +396,35 @@
     "hash": "056811abf5599c688a913b06924c7d8a"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\messages\\disappearing.constants.ts": {
-    "mtime": 1778969868.4683063,
+    "mtime": 1778974632.6425405,
     "hash": "a3aa79bdf848bebc3e94f2882b5adb86"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\messages\\message-cleanup.service.spec.ts": {
-    "mtime": 1778969928.2719724,
+    "mtime": 1778974632.6435535,
     "hash": "8042cd667da16ab01a5356fc659aecbe"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\messages\\message-cleanup.service.ts": {
-    "mtime": 1778969920.7673614,
+    "mtime": 1778974632.6474023,
     "hash": "959ff62a9817b187a82d919ebcf363bd"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\messages\\message-expiry.util.spec.ts": {
-    "mtime": 1778970098.176111,
+    "mtime": 1778974632.6492248,
     "hash": "e9bcd71fe1a2d3f17120e6f0315c562a"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\messages\\message-expiry.util.ts": {
-    "mtime": 1778969903.6316068,
+    "mtime": 1778974632.6512642,
     "hash": "076bd309f02535aa2218ff1ae247b8b3"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\messages\\message.entity.ts": {
-    "mtime": 1778969873.6752403,
+    "mtime": 1778974632.6532605,
     "hash": "9a55311c5cdd4ab3bc9b5f71385b2284"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\messages\\message.mapper.spec.ts": {
-    "mtime": 1778969985.4624238,
+    "mtime": 1778974632.655497,
     "hash": "827d1b9b02d2eeb84eaa85fbdd799aaf"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\messages\\message.mapper.ts": {
-    "mtime": 1778969895.587288,
+    "mtime": 1778974632.6564977,
     "hash": "9459c74526bd33b191345edfdcc03e0c"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\messages\\messages.controller.ts": {
@@ -440,7 +440,7 @@
     "hash": "b8bb5c94ab58e9e9675d7e70b91be3e3"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\messages\\messages.service.ts": {
-    "mtime": 1778969890.5686252,
+    "mtime": 1778974632.6593094,
     "hash": "2366a3cd44476acbb6891ac67c3e0b88"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\backend\\src\\push-notifications\\push-notification-coalescing.service.spec.ts": {
@@ -584,7 +584,7 @@
     "hash": "c8628e9a45d9fa91a4853271c3bef2bf"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\main.dart": {
-    "mtime": 1778962274.5562892,
+    "mtime": 1778987940.9949453,
     "hash": "c8ae6cf703bc665a2468455c5c19fb25"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\push_android_stub.dart": {
@@ -608,16 +608,16 @@
     "hash": "d53cd6ad8c71e8c57f93f94cf4747a29"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\l10n\\app_localizations.dart": {
-    "mtime": 1778970111.2521906,
-    "hash": "54c6424bb4385183261f1e82db62f794"
+    "mtime": 1778989150.2687445,
+    "hash": "214a45301cd5f56ed804efbe89b8343b"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\l10n\\app_localizations_en.dart": {
-    "mtime": 1778970111.2101574,
-    "hash": "16686c0c3e26c6d2b76dd77cd5d04a8c"
+    "mtime": 1778989150.2428834,
+    "hash": "9ae84b45cbba160d31f072a9c047fd49"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\l10n\\app_localizations_pl.dart": {
-    "mtime": 1778970111.2331734,
-    "hash": "0ab127b5979bef1931d732520f889da1"
+    "mtime": 1778989150.2577338,
+    "hash": "328ed8265ad22fd86d2b1cd212bae6c2"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\models\\conversation_model.dart": {
     "mtime": 1776738665.3403053,
@@ -628,7 +628,7 @@
     "hash": "0f069372c0fd51dad0cf9154f741cedd"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\models\\message_model.dart": {
-    "mtime": 1778969908.968719,
+    "mtime": 1778974632.6772466,
     "hash": "93934c6c24db7834127215beb04d9866"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\models\\user_model.dart": {
@@ -648,8 +648,8 @@
     "hash": "c04944be5cbb5c81654930b4b30adedf"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\providers\\conversations_provider.dart": {
-    "mtime": 1778969930.0782828,
-    "hash": "6dcbe5a5a6bd6c9f1b810ec9d567afa4"
+    "mtime": 1778989352.1942718,
+    "hash": "5517c5e58236c1d5326b8fb653202df2"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\providers\\conversation_helpers.dart": {
     "mtime": 1776738665.3403053,
@@ -664,12 +664,12 @@
     "hash": "818a7352584668870f74dbe941804e80"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\providers\\messaging_provider.dart": {
-    "mtime": 1778969935.336135,
-    "hash": "7a46d0816a2af19f4397b13d72aaddaf"
+    "mtime": 1778989353.2277875,
+    "hash": "4f3c977b7ea3c37ae060efc7b9ab3b48"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\providers\\settings_provider.dart": {
-    "mtime": 1778807755.6647694,
-    "hash": "3b8d6d6c1eb86caa02adbc6e2848bd0b"
+    "mtime": 1778987940.9814706,
+    "hash": "ad639772d9ff4868ef8a94db7729e522"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\screens\\add_or_invitations_screen.dart": {
     "mtime": 1776738665.3518727,
@@ -684,16 +684,16 @@
     "hash": "f46c6b004ad2f2941212a5fe32f9054e"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\screens\\chat_detail_screen.dart": {
-    "mtime": 1778820854.6065452,
-    "hash": "b668d46b3f21fe17638b89469dcd27dc"
+    "mtime": 1778989357.8514843,
+    "hash": "4c0b6ba7a415b0f7168cd3b445bc4994"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\screens\\contacts_screen.dart": {
     "mtime": 1778806921.5925317,
     "hash": "e924ee1a5a6403160faf6e822ebbeda9"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\screens\\conversations_screen.dart": {
-    "mtime": 1778806920.9131095,
-    "hash": "dece984c460c2ff4bae6a5dd989ed856"
+    "mtime": 1778989579.3539853,
+    "hash": "955d2b728851d89c804cbb3cdaa1ac3a"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\screens\\main_shell.dart": {
     "mtime": 1778803008.8241875,
@@ -772,8 +772,8 @@
     "hash": "74f71fec2155d0002da1ad5916e625eb"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\theme\\rpg_theme.dart": {
-    "mtime": 1778962274.5562892,
-    "hash": "f77e7851da6cf8f524c4193fec68b5c4"
+    "mtime": 1778987940.9907827,
+    "hash": "dbe3cfdded9d3e6ea67c026988789261"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\utils\\app_badge_math.dart": {
     "mtime": 1778379425.4490378,
@@ -816,7 +816,7 @@
     "hash": "81d66a00fe467385dac95497990684e7"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\utils\\message_expiry.dart": {
-    "mtime": 1778969905.7288442,
+    "mtime": 1778974632.6861496,
     "hash": "78fd8d31c7582e802187c06bbbbc249a"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\utils\\secure_context_stub.dart": {
@@ -852,8 +852,8 @@
     "hash": "07678f124bd3b5a75f6f0a8a298fb15b"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\chat_action_tiles.dart": {
-    "mtime": 1778970209.9796417,
-    "hash": "5f9f12555f524847dd1f6b6c812c24c2"
+    "mtime": 1778974632.690342,
+    "hash": "685f14db87fdf3b393a1c5068c68aa6c"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\chat_background_pattern.dart": {
     "mtime": 1776738665.3696446,
@@ -868,12 +868,20 @@
     "hash": "2dd33e46597f1b0440764c09bcd4ee05"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\conversation_tile.dart": {
-    "mtime": 1778807811.2250638,
-    "hash": "4997e7979048ec13d28f71731ea0175d"
+    "mtime": 1778990273.4597747,
+    "hash": "27ef7f0831f0ff0afa90156a61a4e7c5"
+  },
+  "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\disappearing_timer_sheet.dart": {
+    "mtime": 1778987940.985489,
+    "hash": "7d68fc24afbeb55fc4c82054b5c737fa"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\gif_picker_sheet.dart": {
     "mtime": 1776738665.383278,
     "hash": "7fccb0d88579113170ee0941deaacd41"
+  },
+  "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\hearth_fade_arc.dart": {
+    "mtime": 1778974632.6952775,
+    "hash": "c626dff191df235eaff81252b41ee714"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\message_date_separator.dart": {
     "mtime": 1778372495.7254682,
@@ -916,11 +924,11 @@
     "hash": "78d971916213eba774c1fddb6618e6bf"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\input\\chat_input_bar.dart": {
-    "mtime": 1778967500.4084241,
-    "hash": "4dead6b0613ced868f202c83747f8cb7"
+    "mtime": 1778987940.9969444,
+    "hash": "f29c8245588da42eeb194e29a38c2207"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\input\\recording_controller.dart": {
-    "mtime": 1778968238.1599946,
+    "mtime": 1778974632.6989346,
     "hash": "54f7a4e5c1fb21ba347da4f8d3dfd940"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\input\\reply_preview_bar.dart": {
@@ -948,8 +956,8 @@
     "hash": "880c9764d54667821bddd43fcae8080c"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\message\\message_metadata_row.dart": {
-    "mtime": 1778807786.06356,
-    "hash": "c55178100cfec7f62210138b13bb82f9"
+    "mtime": 1778974632.7019353,
+    "hash": "e59bec24e517f6bd1034ec2b50ce8755"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\message\\ping_message_content.dart": {
     "mtime": 1776738665.385285,
@@ -964,8 +972,8 @@
     "hash": "419dc7e97a86992f5bc29dd14656a5c0"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\lib\\widgets\\message\\voice_message_content.dart": {
-    "mtime": 1778807800.384597,
-    "hash": "bb3b8fcbbfce1a80e2626dae34c06781"
+    "mtime": 1778974632.70435,
+    "hash": "b9af5fa5a50492ec9d11a4517a333834"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\test\\widget_test.dart": {
     "mtime": 1776738665.4146428,
@@ -992,8 +1000,8 @@
     "hash": "d2675f6f1536fae0d51c7fc6a4296ddc"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\test\\providers\\conversations_provider_test.dart": {
-    "mtime": 1778374496.191041,
-    "hash": "9e627265620ba35c11f5e7dfeb834e90"
+    "mtime": 1778974632.7065938,
+    "hash": "e68fc53be538dbcd780d40871064aa4a"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\test\\providers\\encryption_provider_test.dart": {
     "mtime": 1778962274.5457158,
@@ -1016,7 +1024,7 @@
     "hash": "bb34ec414cfc85ebd43735049c044bf6"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\test\\providers\\messaging_provider_voice_test.dart": {
-    "mtime": 1778967515.243038,
+    "mtime": 1778974632.7085376,
     "hash": "25615bc5ea27febaf9a342f133012e66"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\test\\screens\\settings_screen_scroll_physics_test.dart": {
@@ -1056,15 +1064,31 @@
     "hash": "a353f4a0e63cd6d3f8a784740e937c7d"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\test\\utils\\message_expiry_test.dart": {
-    "mtime": 1778970005.2855005,
+    "mtime": 1778974632.7095327,
     "hash": "e9f605fa8d8fbda2b423c4bea14aaa5d"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\test\\widgets\\anti_quantum_note_dialog_test.dart": {
     "mtime": 1778962274.5487683,
     "hash": "73dbbb5db9781b8a831b2b48b7793ab1"
   },
+  "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\test\\widgets\\conversation_tile_ephemeral_test.dart": {
+    "mtime": 1778990278.4757857,
+    "hash": "3328f4a668477e45df1d5166a41d9773"
+  },
+  "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\test\\widgets\\disappearing_timer_sheet_test.dart": {
+    "mtime": 1778987940.9969444,
+    "hash": "a3db52a570b238bb903e5786c09da2db"
+  },
+  "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\test\\widgets\\message_metadata_row_test.dart": {
+    "mtime": 1778974632.7157483,
+    "hash": "4138c6651727163083455372f6838e4d"
+  },
+  "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\test\\widgets\\input\\chat_input_bar_disappearing_banner_test.dart": {
+    "mtime": 1778987940.9845273,
+    "hash": "8163c71c63fe7e9741bce36140785b7b"
+  },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\test\\widgets\\input\\recording_controller_test.dart": {
-    "mtime": 1778968239.884057,
+    "mtime": 1778974632.7137456,
     "hash": "9b2cf980eb8c9edb73fc1077e492696a"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\test\\widgets\\message\\bubble_redesign_test.dart": {
@@ -1096,8 +1120,8 @@
     "hash": "c62517b2d7937bbe5f23487fe22e035f"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\CLAUDE.md": {
-    "mtime": 1778970313.8920865,
-    "hash": "6c6125c7dc1de281f19604b8ea5d8901"
+    "mtime": 1778990281.1251214,
+    "hash": "9a85bd4962c2f008253d885ebca71261"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\docker-compose.web.yml": {
     "mtime": 1776738665.2256248,
@@ -1696,7 +1720,7 @@
     "hash": "537ced845b3016e3e6573122015863d6"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\docs\\superpowers\\plans\\2026-05-16-read-based-disappearing-messages.md": {
-    "mtime": 1778969861.081058,
+    "mtime": 1778974632.6616704,
     "hash": "ab8665a3dca68ae1a4d8fc4e3ec470df"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\docs\\superpowers\\specs\\2026-03-12-anti-quantum-note-design.md": {
@@ -1748,8 +1772,8 @@
     "hash": "d2c175b4957aaf74f0aa0678af4004a2"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\docs\\superpowers\\specs\\2026-05-16-read-based-disappearing-messages-design.md": {
-    "mtime": 1778969840.0770328,
-    "hash": "e8a3353da2e7b3901023f0e0041c41eb"
+    "mtime": 1778974632.663678,
+    "hash": "75fc090e4709c166b31694388e7588df"
   },
   "C:\\Users\\Lentach\\Desktop\\Fireplace\\frontend\\analysis_options.yaml": {
     "mtime": 1776738665.2729647,

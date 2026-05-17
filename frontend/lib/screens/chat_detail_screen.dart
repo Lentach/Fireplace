@@ -39,7 +39,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   late final MessagingProvider _messaging;
 
   final _scrollController = ScrollController();
-  Timer? _timerCountdownRefresh;
   Timer? _showFullHandleTimer;
   bool _showScrollToBottomButton = false;
   bool _showingFullHandle = false;
@@ -172,18 +171,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
       _messaging.getMessages(widget.conversationId);
     });
 
-    // Refresh every second: remove expired and tick countdown. No setState here -
-    // countdownTickNotifier triggers only bubble rebuilds via ValueListenableBuilder,
-    // avoiding full-screen rebuild that blocked the recording timer.
-    _timerCountdownRefresh = Timer.periodic(
-      const Duration(seconds: 1),
-      (_) {
-        if (!mounted) return;
-        if (_messaging.isRecordingVoice) return; // Skip during recording to avoid starving recording timer
-        _messaging.removeExpiredMessages();
-        _messaging.countdownTickNotifier.value++;
-      },
-    );
+    // Countdown tick + expiry prune run on [ConversationsScreen] (always mounted in
+    // [MainShell] IndexedStack) so we avoid duplicate 1 Hz timers when chat is open.
   }
 
   @override
@@ -215,7 +204,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     _clearActiveConversationIfThisChat();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-    _timerCountdownRefresh?.cancel();
     _showFullHandleTimer?.cancel();
     super.dispose();
   }

@@ -1348,8 +1348,7 @@ class MessagingProvider extends ChangeNotifier {
     if (!hadExpired) return;
 
     _messages.removeWhere((m) => isMessageExpired(m, now));
-    // Also tell ConversationsProvider to clean expired lastMessages
-    _conversationsProvider?.removeExpiredLastMessages();
+    _conversationsProvider?.pruneExpiredLastMessages();
     notifyListeners();
   }
 

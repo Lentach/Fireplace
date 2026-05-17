@@ -11,6 +11,7 @@ import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/conversations_provider.dart';
 import '../../providers/messaging_provider.dart';
+import '../../providers/settings_provider.dart';
 import '../../theme/rpg_theme.dart';
 import '../../utils/message_expiry.dart';
 import '../chat_action_tiles.dart';
@@ -196,10 +197,11 @@ class _ChatInputBarState extends State<ChatInputBar>
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
     final fc = FireplaceColors.of(context);
-    final accent = colorScheme.primary;
-    final ember = Theme.of(context).brightness == Brightness.light
-        ? RpgTheme.primaryLight
-        : accent;
+    final themePref = context.watch<SettingsProvider>().themePreference;
+    final ephemeral = RpgTheme.ephemeralAccent(
+      context,
+      themePreference: themePref,
+    );
     final mediaQuery = MediaQuery.of(context);
     final pad = mediaQuery.padding;
     final isCompactLayout =
@@ -252,7 +254,7 @@ class _ChatInputBarState extends State<ChatInputBar>
 
           if (activeTimer != null)
             Material(
-              color: ember.withValues(alpha: 0.12),
+              color: ephemeral.withValues(alpha: 0.12),
               child: Semantics(
                 label: l10n.disappearingComposerBannerSemantics(
                   _bannerDurationLabel(l10n, activeTimer),
@@ -269,8 +271,8 @@ class _ChatInputBarState extends State<ChatInputBar>
                       CustomPaint(
                         size: const Size(14, 14),
                         painter: HearthFadeArcPainter(
-                          color: ember,
-                          trackColor: ember.withValues(alpha: 0.35),
+                          color: ephemeral,
+                          trackColor: ephemeral.withValues(alpha: 0.35),
                           dotted: true,
                         ),
                       ),
@@ -285,7 +287,7 @@ class _ChatInputBarState extends State<ChatInputBar>
                           overflow: TextOverflow.ellipsis,
                           style: RpgTheme.bodyFont(
                             fontSize: 11,
-                            color: ember,
+                            color: ephemeral,
                             fontWeight: FontWeight.w500,
                           ),
                         ),

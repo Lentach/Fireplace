@@ -698,6 +698,18 @@ abstract class AppLocalizations {
   /// **'Znikające wiadomości: {duration}'**
   String conversationDisappearingTimerHint(String duration);
 
+  /// No description provided for @conversationLastMessageEphemeralPreRead.
+  ///
+  /// In pl, this message translates to:
+  /// **'Znika po odczytaniu'**
+  String get conversationLastMessageEphemeralPreRead;
+
+  /// No description provided for @conversationLastMessageEphemeralRemaining.
+  ///
+  /// In pl, this message translates to:
+  /// **'Znika za {duration}'**
+  String conversationLastMessageEphemeralRemaining(String duration);
+
   /// No description provided for @disappearingTimerDaysLabel.
   ///
   /// In pl, this message translates to:

@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_constants.dart';
@@ -25,9 +27,19 @@ class ConversationsScreen extends StatefulWidget {
 }
 
 class _ConversationsScreenState extends State<ConversationsScreen> {
+  Timer? _listCountdownTimer;
+
   @override
   void initState() {
     super.initState();
+    final messaging = context.read<MessagingProvider>();
+    _listCountdownTimer = Timer.periodic(const Duration(seconds: 1), (_) {
+      if (!mounted) return;
+      if (messaging.isRecordingVoice) return;
+      messaging.removeExpiredMessages();
+      context.read<ConversationsProvider>().pruneExpiredLastMessages();
+      messaging.countdownTickNotifier.value++;
+    });
     WidgetsBinding.instance.addPostFrameCallback((_) async {
       final auth = context.read<AuthProvider>();
       final conn = context.read<ConnectionProvider>();
@@ -53,6 +65,12 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       if (!mounted) return;
       conn.connect(auth.currentUser!.id, auth.token!, AppConfig.baseUrl);
     });
+  }
+
+  @override
+  void dispose() {
+    _listCountdownTimer?.cancel();
+    super.dispose();
   }
 
   void _openChat(int conversationId) {
@@ -312,19 +330,22 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         final otherUser = convs.getOtherUser(conv);
         final displayName = convs.getOtherUserUsername(conv);
         final lastMsg = convs.lastMessages[conv.id];
-        final msg = context.watch<MessagingProvider>();
-        return ConversationTile(
-          key: ValueKey<int>(conv.id),
-          conversationId: conv.id,
-          displayName: displayName,
-          lastMessage: lastMsg,
-          isActive: conv.id == convs.activeConversationId,
-          unreadCount: convs.getUnreadCount(conv.id),
-          disappearingTimerSeconds: conv.disappearingTimer,
-          onTap: () => _openChat(conv.id),
-          onDelete: () => _deleteConversation(conv.id),
-          otherUser: otherUser,
-          isTyping: msg.isPartnerTyping(conv.id),
+        return Selector<MessagingProvider, bool>(
+          selector: (_, messaging) => messaging.isPartnerTyping(conv.id),
+          builder: (context, isTyping, _) {
+            return ConversationTile(
+              key: ValueKey<int>(conv.id),
+              conversationId: conv.id,
+              displayName: displayName,
+              lastMessage: lastMsg,
+              isActive: conv.id == convs.activeConversationId,
+              unreadCount: convs.getUnreadCount(conv.id),
+              onTap: () => _openChat(conv.id),
+              onDelete: () => _deleteConversation(conv.id),
+              otherUser: otherUser,
+              isTyping: isTyping,
+            );
+          },
         );
       },
     );

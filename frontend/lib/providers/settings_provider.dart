@@ -49,8 +49,16 @@ class SettingsProvider extends ChangeNotifier {
           ? RpgTheme.themeDataDarkGray
           : RpgTheme.themeDataBlue;
 
-  SettingsProvider() {
-    _loadThemePreference();
+  /// [initialThemePreference] sets theme synchronously (widget tests); otherwise loads from prefs.
+  SettingsProvider({String? initialThemePreference}) {
+    if (initialThemePreference == 'light' ||
+        initialThemePreference == 'teal' ||
+        initialThemePreference == 'dark' ||
+        initialThemePreference == 'blue') {
+      _themePreference = initialThemePreference!;
+    } else {
+      _loadThemePreference();
+    }
     _loadLocalePreference();
   }
 

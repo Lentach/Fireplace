@@ -338,6 +338,14 @@ class AppLocalizationsPl extends AppLocalizations {
   }
 
   @override
+  String get conversationLastMessageEphemeralPreRead => 'Znika po odczytaniu';
+
+  @override
+  String conversationLastMessageEphemeralRemaining(String duration) {
+    return 'Znika za $duration';
+  }
+
+  @override
   String get disappearingTimerDaysLabel => 'Dni';
 
   @override

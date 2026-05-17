@@ -4,6 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
 import '../models/message_model.dart';
 import '../models/user_model.dart';
+import '../providers/messaging_provider.dart';
 import '../providers/settings_provider.dart';
 import 'avatar_circle.dart';
 import 'hearth_fade_arc.dart';
@@ -18,7 +19,6 @@ class ConversationTile extends StatelessWidget {
   final VoidCallback onDelete;
   final UserModel? otherUser;
   final bool isTyping;
-  final int? disappearingTimerSeconds;
 
   const ConversationTile({
     super.key,
@@ -31,7 +31,6 @@ class ConversationTile extends StatelessWidget {
     required this.onDelete,
     this.otherUser,
     this.isTyping = false,
-    this.disappearingTimerSeconds,
   });
 
   String _formatTime(DateTime dt) {
@@ -60,11 +59,114 @@ class ConversationTile extends StatelessWidget {
     return lastMessage.content;
   }
 
+  String _ephemeralTooltip(BuildContext context, MessageModel message) {
+    final l10n = AppLocalizations.of(context);
+    final countdown = HearthFadeArcIndicator.countdownLabel(message);
+    if (countdown != null) {
+      return l10n.conversationLastMessageEphemeralRemaining(countdown);
+    }
+    return l10n.conversationLastMessageEphemeralPreRead;
+  }
+
+  Widget _buildEphemeralPrefix(
+    BuildContext context,
+    MessageModel message,
+    Color ephemeralColor,
+    Color secondaryColor,
+  ) {
+    return Tooltip(
+      message: _ephemeralTooltip(context, message),
+      child: Padding(
+        padding: const EdgeInsets.only(right: 6),
+        child: HearthFadeArcIndicator(
+          message: message,
+          color: ephemeralColor,
+          trackColor: secondaryColor.withValues(alpha: 0.35),
+          size: 12,
+        ),
+      ),
+    );
+  }
+
+  Widget _buildTrailingMetaRow(
+    BuildContext context,
+    Color ephemeralColor,
+    Color secondaryColor,
+  ) {
+    final staticTrailing = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (unreadCount > 0)
+          Container(
+            margin: const EdgeInsets.only(right: 6),
+            padding: const EdgeInsets.symmetric(
+              horizontal: 6,
+              vertical: 2,
+            ),
+            decoration: BoxDecoration(
+              color: Theme.of(context).colorScheme.primary,
+              borderRadius: BorderRadius.circular(10),
+            ),
+            constraints: const BoxConstraints(minWidth: 18),
+            child: Text(
+              unreadCount > 99 ? '99+' : '$unreadCount',
+              style: RpgTheme.bodyFont(
+                fontSize: 11,
+                color: Colors.white,
+                fontWeight: FontWeight.w600,
+              ),
+              textAlign: TextAlign.center,
+            ),
+          ),
+        if (lastMessage != null)
+          Text(
+            _formatTime(lastMessage!.createdAt),
+            style: RpgTheme.bodyFont(
+              fontSize: 11,
+              color: secondaryColor,
+            ),
+          ),
+      ],
+    );
+
+    final message = lastMessage;
+    if (message == null ||
+        !HearthFadeArcIndicator.showsEphemeralState(message)) {
+      return staticTrailing;
+    }
+
+    return ValueListenableBuilder<int>(
+      valueListenable: context.read<MessagingProvider>().countdownTickNotifier,
+      child: staticTrailing,
+      builder: (context, _, child) {
+        if (!HearthFadeArcIndicator.showsEphemeralState(message)) {
+          return child!;
+        }
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _buildEphemeralPrefix(
+              context,
+              message,
+              ephemeralColor,
+              secondaryColor,
+            ),
+            child!,
+          ],
+        );
+      },
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
     final themePref = context.watch<SettingsProvider>().themePreference;
+    final ephemeralColor = RpgTheme.ephemeralAccent(
+      context,
+      themePreference: themePref,
+    );
     final activeBg = isDark
         ? RpgTheme.activeTabBgDark
         : (themePref == 'teal'
@@ -199,64 +301,10 @@ class ConversationTile extends StatelessWidget {
                 crossAxisAlignment: CrossAxisAlignment.end,
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  Row(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      if (disappearingTimerSeconds != null) ...[
-                        Tooltip(
-                          message: AppLocalizations.of(context)
-                              .conversationDisappearingTimerHint(
-                            formatCompactDisappearingSeconds(
-                              disappearingTimerSeconds!,
-                            ),
-                          ),
-                          child: Padding(
-                            padding: const EdgeInsets.only(right: 6),
-                            child: CustomPaint(
-                              size: const Size(12, 12),
-                              painter: HearthFadeArcPainter(
-                                color: Theme.of(context).colorScheme.primary,
-                                trackColor: secondaryColor.withValues(
-                                  alpha: 0.35,
-                                ),
-                                dotted: true,
-                                strokeWidth: 1.8,
-                              ),
-                            ),
-                          ),
-                        ),
-                      ],
-                      if (unreadCount > 0)
-                        Container(
-                          margin: const EdgeInsets.only(right: 6),
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
-                          ),
-                          decoration: BoxDecoration(
-                            color: Theme.of(context).colorScheme.primary,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          constraints: const BoxConstraints(minWidth: 18),
-                          child: Text(
-                            unreadCount > 99 ? '99+' : '$unreadCount',
-                            style: RpgTheme.bodyFont(
-                              fontSize: 11,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
-                            textAlign: TextAlign.center,
-                          ),
-                        ),
-                      if (lastMessage != null)
-                        Text(
-                          _formatTime(lastMessage!.createdAt),
-                          style: RpgTheme.bodyFont(
-                            fontSize: 11,
-                            color: secondaryColor,
-                          ),
-                        ),
-                    ],
+                  _buildTrailingMetaRow(
+                    context,
+                    ephemeralColor,
+                    secondaryColor,
                   ),
                 ],
               ),

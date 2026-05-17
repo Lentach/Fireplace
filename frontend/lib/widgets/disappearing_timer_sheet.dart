@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
 import '../providers/conversations_provider.dart';
+import '../providers/settings_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../utils/message_expiry.dart';
 import 'hearth_fade_arc.dart';
@@ -15,13 +16,17 @@ const int kDisappearingPickerMaxDays = 30;
 /// Opens the Hearth Fade disappearing-messages timer sheet.
 void showDisappearingTimerSheet(BuildContext context) {
   final convs = context.read<ConversationsProvider>();
+  final settings = context.read<SettingsProvider>();
   final initialSeconds = convs.conversationDisappearingTimer;
   showModalBottomSheet<void>(
     context: context,
     backgroundColor: Colors.transparent,
     isScrollControlled: true,
-    builder: (ctx) => ChangeNotifierProvider<ConversationsProvider>.value(
-      value: convs,
+    builder: (ctx) => MultiProvider(
+      providers: [
+        ChangeNotifierProvider<ConversationsProvider>.value(value: convs),
+        ChangeNotifierProvider<SettingsProvider>.value(value: settings),
+      ],
       child: DisappearingTimerSheet(initialSeconds: initialSeconds),
     ),
   );
@@ -201,9 +206,11 @@ class _DisappearingTimerSheetState extends State<DisappearingTimerSheet> {
     final titleColor = colorScheme.onSurface;
     final labelColor = fc.mutedText;
     final accent = colorScheme.primary;
-    final ember = theme.brightness == Brightness.light
-        ? RpgTheme.primaryLight
-        : accent;
+    final themePref = context.watch<SettingsProvider>().themePreference;
+    final ephemeral = RpgTheme.ephemeralAccent(
+      context,
+      themePreference: themePref,
+    );
     final summary = _summary(l10n);
 
     return CupertinoTheme(
@@ -244,8 +251,8 @@ class _DisappearingTimerSheetState extends State<DisappearingTimerSheet> {
                   ),
                   Center(
                     child: HearthFadeArcHero(
-                      color: ember,
-                      trackColor: ember.withValues(alpha: 0.22),
+                      color: ephemeral,
+                      trackColor: ephemeral.withValues(alpha: 0.22),
                       progress: _heroProgress(),
                     ),
                   ),
