@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fireplace/utils/web_keyboard_inset.dart'
-    show capKeyboardInset, isChatKeyboardVisible, kWebPhantomKeyboardInsetFraction;
+    show capKeyboardInset, effectiveChatKeyboardInset, kWebPhantomKeyboardInsetFraction;
 
 void main() {
   group('capKeyboardInset', () {
@@ -18,21 +18,21 @@ void main() {
     });
   });
 
-  group('isChatKeyboardVisible', () {
-    test('false when inset is zero', () {
+  group('effectiveChatKeyboardInset', () {
+    test('returns zero when viewInsets.bottom is zero', () {
       final data = MediaQueryData(
         size: const Size(400, 800),
         viewInsets: EdgeInsets.zero,
       );
-      expect(isChatKeyboardVisible(data), isFalse);
+      expect(effectiveChatKeyboardInset(data), 0);
     });
 
-    test('true when capped inset is positive', () {
+    test('passes through raw inset on non-web (test VM)', () {
       final data = MediaQueryData(
         size: const Size(400, 800),
         viewInsets: const EdgeInsets.only(bottom: 200),
       );
-      expect(isChatKeyboardVisible(data), isTrue);
+      expect(effectiveChatKeyboardInset(data), 200);
     });
   });
 }

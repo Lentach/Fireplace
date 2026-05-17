@@ -12,13 +12,9 @@ double capKeyboardInset(double inset, double layoutHeight) {
   return inset > cap ? cap : inset;
 }
 
-/// Keyboard inset for chat when [Scaffold.resizeToAvoidBottomInset] is false on web.
+/// Bottom inset for chat when [Scaffold.resizeToAvoidBottomInset] is false on web.
 double effectiveChatKeyboardInset(MediaQueryData mediaQuery) {
   final raw = mediaQuery.viewInsets.bottom;
   if (!kIsWeb || raw <= 0) return raw;
   return capKeyboardInset(raw, mediaQuery.size.height);
-}
-
-bool isChatKeyboardVisible(MediaQueryData mediaQuery) {
-  return effectiveChatKeyboardInset(mediaQuery) > 0;
 }
