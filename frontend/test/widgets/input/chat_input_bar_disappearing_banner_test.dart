@@ -1,5 +1,4 @@
 import 'package:fireplace/l10n/app_localizations.dart';
-import 'package:fireplace/models/conversation_model.dart';
 import 'package:fireplace/models/user_model.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';

@@ -113,7 +113,7 @@ void main() {
       });
     });
 
-    Map<String, dynamic> _incomingJson({
+    Map<String, dynamic> incomingJson({
       required int id,
       required String createdAt,
       bool includeTtl = true,
@@ -138,7 +138,7 @@ void main() {
 
         for (var id = 1; id <= 3; id++) {
           provider.onNewMessage(
-            _incomingJson(
+            incomingJson(
               id: id,
               createdAt:
                   '2026-01-01T00:00:${id.toString().padLeft(2, '0')}.000Z',
@@ -150,7 +150,7 @@ void main() {
           'conversationId': 10,
           'messages': List.generate(
             3,
-            (i) => _incomingJson(
+            (i) => incomingJson(
               id: i + 1,
               createdAt:
                   '2026-01-01T00:00:${(i + 1).toString().padLeft(2, '0')}.000Z',
@@ -180,11 +180,11 @@ void main() {
           for (var id = 1; id <= 3; id++) {
             final createdAt =
                 '2026-01-01T00:00:${id.toString().padLeft(2, '0')}.000Z';
-            provider.onNewMessage(_incomingJson(id: id, createdAt: createdAt));
+            provider.onNewMessage(incomingJson(id: id, createdAt: createdAt));
             encryption.cacheDecryption(
               id,
               MessageModel.fromJson(
-                _incomingJson(
+                incomingJson(
                   id: id,
                   createdAt: createdAt,
                   includeTtl: false,
@@ -197,7 +197,7 @@ void main() {
             'conversationId': 10,
             'messages': List.generate(
               3,
-              (i) => _incomingJson(
+              (i) => incomingJson(
                 id: i + 1,
                 createdAt:
                     '2026-01-01T00:00:${(i + 1).toString().padLeft(2, '0')}.000Z',

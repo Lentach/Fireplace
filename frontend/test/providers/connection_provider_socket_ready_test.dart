@@ -6,7 +6,6 @@ import 'package:flutter_test/flutter_test.dart';
 class FakeSocketService extends SocketService {
   final Map<String, List<void Function(dynamic)>> _handlers = {};
   void Function()? _onConnectCallback;
-  void Function(dynamic)? _onDisconnectCallback;
 
   int getConversationsCalls = 0;
   int getFriendRequestsCalls = 0;
@@ -33,9 +32,7 @@ class FakeSocketService extends SocketService {
   }
 
   @override
-  void onDisconnect(void Function(dynamic) callback) {
-    _onDisconnectCallback = callback;
-  }
+  void onDisconnect(void Function(dynamic) callback) {}
 
   void simulateTransportConnect() {
     _onConnectCallback?.call();
