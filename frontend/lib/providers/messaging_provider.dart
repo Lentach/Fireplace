@@ -87,6 +87,10 @@ class MessagingProvider extends ChangeNotifier {
   int _paginationOffset = 0;
   bool _isPaginationLoad = false;
 
+  /// Monotonic id per [getMessages] emit; paired FIFO in [_pendingHistoryFetchSeq].
+  int _historyFetchSeq = 0;
+  final Map<int, List<int>> _pendingHistoryFetchSeq = {};
+
   /// Per-conversation message cache for the current session.
   /// Populated/updated by onMessageHistory (after decryption) and all mutation handlers.
   /// Survives back-navigation (clearMessages) and socket reconnects (onConnect).
@@ -161,6 +165,163 @@ class MessagingProvider extends ChangeNotifier {
   @visibleForTesting
   void seedCacheForTest(int conversationId, List<MessageModel> messages) {
     _conversationCache[conversationId] = List.from(messages);
+  }
+
+  @visibleForTesting
+  MessageModel? cacheMessageForTest(int conversationId, int messageId) {
+    final list = _conversationCache[conversationId];
+    if (list == null) return null;
+    for (final m in list) {
+      if (m.id == messageId) return m;
+    }
+    return null;
+  }
+
+  void _trackHistoryFetch(int conversationId) {
+    final seq = ++_historyFetchSeq;
+    _pendingHistoryFetchSeq
+        .putIfAbsent(conversationId, () => <int>[])
+        .add(seq);
+  }
+
+  void _acknowledgeHistoryFetch(int? conversationId) {
+    if (conversationId == null) return;
+    final pending = _pendingHistoryFetchSeq[conversationId];
+    if (pending != null && pending.isNotEmpty) {
+      pending.removeAt(0);
+      if (pending.isEmpty) {
+        _pendingHistoryFetchSeq.remove(conversationId);
+      }
+    }
+  }
+
+  /// True when a newer [getMessages] was issued before this response arrived.
+  bool _isStaleHistoryFetch(int conversationId) {
+    final pending = _pendingHistoryFetchSeq[conversationId];
+    return pending != null && pending.length > 1;
+  }
+
+  static int _deliveryStatusRank(MessageDeliveryStatus status) {
+    switch (status) {
+      case MessageDeliveryStatus.sending:
+      case MessageDeliveryStatus.failed:
+        return 0;
+      case MessageDeliveryStatus.sent:
+        return 1;
+      case MessageDeliveryStatus.delivered:
+        return 2;
+      case MessageDeliveryStatus.read:
+        return 3;
+    }
+  }
+
+  /// Prefer higher delivery status, non-null expiry fields, and local decrypted text.
+  MessageModel _mergeMessagePreferNewer(MessageModel local, MessageModel server) {
+    final localRank = _deliveryStatusRank(local.deliveryStatus);
+    final serverRank = _deliveryStatusRank(server.deliveryStatus);
+    final deliveryStatus =
+        serverRank >= localRank ? server.deliveryStatus : local.deliveryStatus;
+
+    DateTime? expiresAt = server.expiresAt ?? local.expiresAt;
+    if (server.expiresAt != null && local.expiresAt != null) {
+      expiresAt = server.expiresAt!.isAfter(local.expiresAt!)
+          ? server.expiresAt
+          : local.expiresAt;
+    }
+
+    final disappearAfterSeconds =
+        server.disappearAfterSeconds ?? local.disappearAfterSeconds;
+
+    var content = local.content;
+    if (server.content.isNotEmpty &&
+        !server.displayAsEncryptedPlaceholder &&
+        (local.displayAsEncryptedPlaceholder || local.content.isEmpty)) {
+      content = server.content;
+    } else if (server.content.isNotEmpty &&
+        !server.displayAsEncryptedPlaceholder &&
+        local.content == '[encrypted]') {
+      content = server.content;
+    }
+
+    return server.copyWith(
+      deliveryStatus: deliveryStatus,
+      expiresAt: expiresAt,
+      disappearAfterSeconds: disappearAfterSeconds,
+      content: content,
+      mediaKey: local.mediaKey ?? server.mediaKey,
+      mediaIv: local.mediaIv ?? server.mediaIv,
+      linkPreviewUrl: local.linkPreviewUrl ?? server.linkPreviewUrl,
+      linkPreviewTitle: local.linkPreviewTitle ?? server.linkPreviewTitle,
+      linkPreviewImageUrl:
+          local.linkPreviewImageUrl ?? server.linkPreviewImageUrl,
+    );
+  }
+
+  List<MessageModel> _mergeHistorySnapshot({
+    required List<MessageModel> existingForConv,
+    required List<MessageModel> serverSnapshot,
+  }) {
+    final serverIds = <int>{
+      for (final m in serverSnapshot)
+        if (m.id > 0) m.id,
+    };
+    final serverTempIds = <String>{
+      for (final m in serverSnapshot)
+        if (m.tempId != null) m.tempId!,
+    };
+
+    final mergedById = <int, MessageModel>{};
+
+    for (final m in existingForConv) {
+      if (m.id > 0 && !serverIds.contains(m.id)) {
+        mergedById[m.id] = m;
+      }
+    }
+
+    for (final m in serverSnapshot) {
+      if (m.id <= 0) continue;
+      final prev = mergedById[m.id];
+      mergedById[m.id] =
+          prev != null ? _mergeMessagePreferNewer(prev, m) : m;
+    }
+
+    final optimistic = <MessageModel>[];
+    for (final m in existingForConv) {
+      if (m.id > 0) continue;
+      if (m.tempId != null && serverTempIds.contains(m.tempId)) continue;
+      optimistic.add(m);
+    }
+
+    final merged = <MessageModel>[...mergedById.values, ...optimistic];
+    merged.sort((a, b) {
+      final byTime = a.createdAt.compareTo(b.createdAt);
+      if (byTime != 0) return byTime;
+      return a.id.compareTo(b.id);
+    });
+    return merged;
+  }
+
+  void _mergeServerSnapshotIntoCache(
+    int conversationId,
+    List<MessageModel> serverSnapshot,
+  ) {
+    final existing = _conversationCache[conversationId] ?? [];
+    _conversationCache[conversationId] = _mergeHistorySnapshot(
+      existingForConv: existing,
+      serverSnapshot: serverSnapshot,
+    );
+  }
+
+  void _patchMessageInCache(
+    int conversationId,
+    int messageId,
+    MessageModel Function(MessageModel current) patch,
+  ) {
+    final cache = _conversationCache[conversationId];
+    if (cache == null) return;
+    final idx = cache.indexWhere((m) => m.id == messageId);
+    if (idx == -1) return;
+    cache[idx] = patch(cache[idx]);
   }
 
   /// Test-only: set the active conversation ID (replaces ConversationsProvider wiring).
@@ -308,7 +469,27 @@ class MessagingProvider extends ChangeNotifier {
       return;
     }
 
-    _messages = newMessages;
+    final convIdForMerge =
+        responseConversationId ?? _effectiveActiveConversationId;
+    final staleHistory = convIdForMerge != null &&
+        _isStaleHistoryFetch(convIdForMerge);
+    _acknowledgeHistoryFetch(convIdForMerge);
+
+    if (staleHistory) {
+      _mergeServerSnapshotIntoCache(convIdForMerge, newMessages);
+      return;
+    }
+
+    final existingForConv = List<MessageModel>.from(
+      _messages.where(
+        (m) =>
+            convIdForMerge == null || m.conversationId == convIdForMerge,
+      ),
+    );
+    _messages = _mergeHistorySnapshot(
+      existingForConv: existingForConv,
+      serverSnapshot: newMessages,
+    );
     _hasMore = newMessages.length == _pageSize;
     _paginationOffset = newMessages.length;
 
@@ -359,6 +540,7 @@ class MessagingProvider extends ChangeNotifier {
     _isPaginationLoad = false;
     _isLoadingMore = false;
     _hasMore = false;
+    _trackHistoryFetch(conversationId);
     _emit?.call('getMessages', {
       'conversationId': conversationId,
       'limit': _pageSize,
@@ -582,9 +764,24 @@ class MessagingProvider extends ChangeNotifier {
       }
     }
 
-    // Add confirmed message
-    if (msg.conversationId == activeConversationId) {
-      _messages.add(msg);
+    // Add or update in the open chat (active id may lag openConversation briefly).
+    final viewingConversationId =
+        activeConversationId ?? _paginationConversationId;
+    if (msg.conversationId == viewingConversationId) {
+      final existingById = _messages.indexWhere((m) => m.id == msg.id && msg.id > 0);
+      if (existingById != -1) {
+        _messages[existingById] =
+            _mergeMessagePreferNewer(_messages[existingById], msg);
+      } else if (msg.tempId != null) {
+        final tempIdx = _messages.indexWhere((m) => m.tempId == msg.tempId);
+        if (tempIdx != -1) {
+          _messages[tempIdx] = msg;
+        } else {
+          _messages.add(msg);
+        }
+      } else {
+        _messages.add(msg);
+      }
     }
 
     _conversationsProvider?.updateLastMessage(msg.conversationId, msg);
@@ -627,6 +824,11 @@ class MessagingProvider extends ChangeNotifier {
         deliveryStatus: newStatus,
         expiresAt: newExpiresAt ?? _messages[index].expiresAt,
       );
+    } else if (conversationId != null) {
+      _patchMessageInCache(conversationId, messageId, (m) => m.copyWith(
+            deliveryStatus: newStatus,
+            expiresAt: newExpiresAt ?? m.expiresAt,
+          ));
     }
 
     // Update _lastMessages so list and re-opened chat show correct status
@@ -646,7 +848,6 @@ class MessagingProvider extends ChangeNotifier {
     if (index != -1 || conversationId != null) {
       notifyListeners();
     }
-    // Keep delivery status current in cache (only when this chat's list in memory was updated).
     if (index != -1) {
       final cid = _messages[index].conversationId;
       if (_conversationCache.containsKey(cid)) {
@@ -2129,6 +2330,7 @@ class MessagingProvider extends ChangeNotifier {
   /// preserves for reconnect (same user).
   void onConnect(bool isReconnect) {
     _decryptHistoryGeneration++; // cancel any in-flight history decrypt
+    _pendingHistoryFetchSeq.clear();
 
     if (!isReconnect) {
       // Fresh connect or switch user: clear ALL message state
@@ -2174,6 +2376,7 @@ class MessagingProvider extends ChangeNotifier {
   void clearAll() {
     _messages = [];
     _conversationCache.clear();
+    _pendingHistoryFetchSeq.clear();
     _deletedMessageIds.clear();
     _typingStatus.clear();
     for (final t in _typingTimers.values) {

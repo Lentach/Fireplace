@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:fake_async/fake_async.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
+import 'package:fireplace/models/message_model.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -67,6 +68,7 @@ void main() {
       provider.setEncryptionProvider(encryption);
       provider.setCurrentUserId(1);
       provider.setToken('tok');
+      provider.setIncomingMessageSoundEnabledForTest(false);
       provider.onConnect(false);
       provider.setEmitCallback((event, data) {
         emitted.add({'event': event, 'data': data});
@@ -98,6 +100,77 @@ void main() {
 
         expect(encryption.ensureSessionCalls, 1);
       });
+    });
+
+    test('messageHistory after newMessage does not drop the live message', () {
+      provider.setActiveConversationIdForTest(10);
+      provider.getMessages(10);
+
+      final serverPage = List.generate(
+        3,
+        (i) => {
+          'id': i + 1,
+          'content': 'history-$i',
+          'senderId': 2,
+          'senderUsername': 'bob',
+          'conversationId': 10,
+          'deliveryStatus': 'DELIVERED',
+          'messageType': 'TEXT',
+          'createdAt': '2026-01-01T00:00:00.000Z',
+        },
+      );
+
+      provider.onNewMessage({
+        'id': 99,
+        'content': 'live',
+        'senderId': 2,
+        'senderUsername': 'bob',
+        'conversationId': 10,
+        'deliveryStatus': 'DELIVERED',
+        'messageType': 'TEXT',
+        'createdAt': '2026-01-02T00:00:00.000Z',
+      });
+
+      expect(provider.messages.any((m) => m.id == 99), isTrue);
+
+      provider.onMessageHistory({
+        'conversationId': 10,
+        'messages': serverPage,
+      });
+
+      expect(provider.messages.any((m) => m.id == 99), isTrue);
+      expect(provider.messages.length, 4);
+    });
+
+    test('messageDelivered updates cache when message not in _messages', () {
+      final msg = {
+        'id': 42,
+        'content': 'cached',
+        'senderId': 2,
+        'senderUsername': 'bob',
+        'conversationId': 10,
+        'deliveryStatus': 'DELIVERED',
+        'messageType': 'TEXT',
+        'disappearAfterSeconds': 60,
+        'createdAt': '2026-01-01T00:00:00.000Z',
+      };
+      provider.seedCacheForTest(
+        10,
+        [MessageModel.fromJson(msg)],
+      );
+      provider.setActiveConversationIdForTest(99);
+
+      provider.onMessageDelivered({
+        'messageId': 42,
+        'conversationId': 10,
+        'deliveryStatus': 'READ',
+        'expiresAt': '2026-01-01T01:00:00.000Z',
+      });
+
+      final cached = provider.cacheMessageForTest(10, 42);
+      expect(cached, isNotNull);
+      expect(cached!.deliveryStatus, MessageDeliveryStatus.read);
+      expect(cached.expiresAt, DateTime.parse('2026-01-01T01:00:00.000Z'));
     });
 
     test('deterministic interleaving: reconnect + messageHistory + retry keeps encrypted send path', () {
