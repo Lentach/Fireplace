@@ -53,6 +53,9 @@ jobs:
       - name: Install Flutter dependencies
         run: flutter pub get
 
+      - name: Create Firebase secrets stub for CI
+        run: cp lib/firebase_secrets.dart.example lib/firebase_secrets.dart
+
       - name: Analyze Flutter code
         run: flutter analyze
 
