@@ -146,6 +146,14 @@ class ConversationsProvider extends ChangeNotifier {
         .map((c) => ConversationModel.fromJson(c as Map<String, dynamic>))
         .toList();
 
+    // Reconnect / network handoff: ignore empty snapshots that would wipe a populated
+    // local list (stale response, throttled handler, or race before auth was ready).
+    if (newConvs.isEmpty && _conversations.isNotEmpty) {
+      debugPrint(
+          '[ConversationsProvider] Ignoring empty conversationsList (${_conversations.length} local conversations preserved)');
+      return;
+    }
+
     // If our active conv is no longer in list (e.g. other user deleted), mark it
     if (_activeConversationId != null &&
         !newConvs.any((c) => c.id == _activeConversationId)) {

@@ -52,6 +52,21 @@ void main() {
       expect(provider.friends, isEmpty);
     });
 
+    test('onFriendsList ignores empty snapshot when local friends exist', () {
+      final provider = FriendsProvider();
+      final alice = UserModel(id: 1, username: 'alice', tag: '0001');
+
+      provider.onFriendsList([
+        {'id': alice.id, 'username': alice.username, 'tag': alice.tag},
+      ]);
+      expect(provider.friends.length, 1);
+
+      provider.onFriendsList([]);
+
+      expect(provider.friends.length, 1);
+      expect(provider.friends.first.id, alice.id);
+    });
+
     test('onBlockedList removes blocked friends from friends list', () {
       final provider = FriendsProvider();
 

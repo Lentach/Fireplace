@@ -134,7 +134,10 @@ class ConnectionProvider extends ChangeNotifier {
         _conversationsProvider?.removeConversationsForUser(uid);
       }
     };
-    // 7. Dispose old socket, create new with enableForceNew (avoids cached JWT)
+    // 7. Replace socket (enableForceNew). Suppress reconnect from the old socket's
+    // disconnect event — otherwise WiFi/cellular handoff + connect() races schedule
+    // extra connect() calls that can clear lists (non-reconnect) or use a stale JWT.
+    _intentionalDisconnect = true;
     _socketService.disconnect();
     _socketService.connect(baseUrl: baseUrl, token: token);
 
@@ -152,7 +155,7 @@ class ConnectionProvider extends ChangeNotifier {
 
       if (!_intentionalDisconnect) {
         _reconnectManager.onDisconnect(
-          () => connect(userId, token, baseUrl),
+          _scheduleReconnect,
           (msg) {
             _errorMessage = msg;
             notifyListeners();
@@ -162,7 +165,15 @@ class ConnectionProvider extends ChangeNotifier {
     });
   }
 
+  void _scheduleReconnect() {
+    final userId = _currentUserId;
+    final token = _reconnectManager.tokenForReconnect;
+    if (userId == null || token == null) return;
+    connect(userId, token, AppConfig.baseUrl);
+  }
+
   void _onSocketTransportConnect(int userId, String token) {
+    _intentionalDisconnect = false;
     _isConnected = true;
     notifyListeners();
 
@@ -201,6 +212,9 @@ class ConnectionProvider extends ChangeNotifier {
     Future.delayed(AppConstants.conversationsRefreshDelay, () {
       if (_conversationsProvider?.conversations.isEmpty == true) {
         _socketService.getConversations();
+      }
+      if (_friendsProvider?.friends.isEmpty == true) {
+        _socketService.getFriends();
       }
     });
   }

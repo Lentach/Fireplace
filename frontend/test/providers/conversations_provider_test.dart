@@ -213,6 +213,17 @@ void main() {
       expect(emitted.first['conversationId'], 10);
     });
 
+    test('onConversationsList ignores empty snapshot when local list is populated',
+        () {
+      final provider = buildProviderWithSampleData();
+      expect(provider.conversations, isNotEmpty);
+
+      provider.onConversationsList([]);
+
+      expect(provider.conversations, isNotEmpty);
+      expect(provider.conversations.length, 2);
+    });
+
     test(
         'onConversationsList keeps higher local unread when ahead of stale snapshot',
         () {

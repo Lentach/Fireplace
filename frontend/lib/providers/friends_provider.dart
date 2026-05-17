@@ -117,9 +117,15 @@ class FriendsProvider extends ChangeNotifier {
 
   void onFriendsList(dynamic data) {
     final list = data as List<dynamic>;
-    _friends = list
+    final incoming = list
         .map((u) => UserModel.fromJson(u as Map<String, dynamic>))
         .toList();
+    if (incoming.isEmpty && _friends.isNotEmpty) {
+      debugPrint(
+          '[FriendsProvider] Ignoring empty friendsList (${_friends.length} local friends preserved)');
+      return;
+    }
+    _friends = incoming;
     // If someone is in our friends list, they cannot be blocking us — clear them from blockedByUserIds
     // so that after unblock + re-add we can write again (no stale "can't message" state).
     _blockedByUserIds.removeWhere((id) => _friends.any((f) => f.id == id));
