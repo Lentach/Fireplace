@@ -14,6 +14,7 @@ import '../../providers/messaging_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/rpg_theme.dart';
 import '../../utils/message_expiry.dart';
+import '../../utils/web_keyboard_inset.dart';
 import '../chat_action_tiles.dart';
 import '../hearth_fade_arc.dart';
 import '../top_snackbar.dart' show showTopSnackBar;
@@ -219,7 +220,8 @@ class _ChatInputBarState extends State<ChatInputBar>
       4.0 + pad.right + trailingGestureBuffer,
       8.0,
     );
-    final keyboardVisible = mediaQuery.viewInsets.bottom > 0;
+    final keyboardInset = effectiveChatKeyboardInset(mediaQuery);
+    final keyboardVisible = keyboardInset > 0;
     final bottomSystemInset =
         math.max(mediaQuery.viewPadding.bottom, mediaQuery.padding.bottom);
     const additionalBottomSpacing = 16.0;
@@ -231,7 +233,7 @@ class _ChatInputBarState extends State<ChatInputBar>
         ? 16.0
         : 0.0;
     final bottomInteractivePadding = keyboardVisible
-        ? 0.0
+        ? (kIsWeb ? keyboardInset : 0.0)
         : (needsErgonomicBuffer
             ? bottomSystemInset + additionalBottomSpacing
             : webMobileFallbackInset);
