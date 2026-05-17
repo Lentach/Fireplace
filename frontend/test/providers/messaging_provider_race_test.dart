@@ -1,10 +1,12 @@
 import 'dart:async';
+import 'dart:convert';
 
 import 'package:fake_async/fake_async.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/models/message_model.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
+import 'package:fireplace/utils/e2e_envelope.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 class _FakeEncryptionProvider extends EncryptionProvider {
@@ -27,6 +29,15 @@ class _FakeEncryptionProvider extends EncryptionProvider {
   Future<String> encrypt(int recipientId, String plaintext) async {
     return 'ciphertext';
   }
+
+  @override
+  Future<String> decrypt(int senderId, String ciphertext) async {
+    return jsonEncode(E2eEnvelope.build('decrypted'));
+  }
+
+  @override
+  Future<Map<String, dynamic>?> getDecryptedContent(int messageId) async =>
+      null;
 }
 
 Map<String, dynamic> _convJson() => {
@@ -101,6 +112,109 @@ void main() {
         expect(encryption.ensureSessionCalls, 1);
       });
     });
+
+    Map<String, dynamic> _incomingJson({
+      required int id,
+      required String createdAt,
+      bool includeTtl = true,
+    }) =>
+        {
+          'id': id,
+          'content': '[encrypted]',
+          'encryptedContent': 'cipher-$id',
+          'senderId': 2,
+          'senderUsername': 'bob',
+          'conversationId': 10,
+          'deliveryStatus': 'DELIVERED',
+          'messageType': 'TEXT',
+          if (includeTtl) 'disappearAfterSeconds': 60,
+          'createdAt': createdAt,
+        };
+
+    test(
+      'recipient burst: stale messageHistory null TTL keeps disappearAfterSeconds from newMessage',
+      () async {
+        provider.setActiveConversationIdForTest(10);
+
+        for (var id = 1; id <= 3; id++) {
+          provider.onNewMessage(
+            _incomingJson(
+              id: id,
+              createdAt:
+                  '2026-01-01T00:00:${id.toString().padLeft(2, '0')}.000Z',
+            ),
+          );
+        }
+
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': List.generate(
+            3,
+            (i) => _incomingJson(
+              id: i + 1,
+              createdAt:
+                  '2026-01-01T00:00:${(i + 1).toString().padLeft(2, '0')}.000Z',
+              includeTtl: false,
+            ),
+          ),
+        });
+
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(provider.messages.length, 3);
+        expect(
+          provider.messages.every((m) => m.disappearAfterSeconds == 60),
+          isTrue,
+          reason: 'merge + decrypt must not let null history wipe TTL',
+        );
+      },
+    );
+
+    test(
+      'history decrypt from stale memory cache keeps disappearAfterSeconds on row',
+      () {
+        fakeAsync((async) {
+          provider.setActiveConversationIdForTest(10);
+
+          for (var id = 1; id <= 3; id++) {
+            final createdAt =
+                '2026-01-01T00:00:${id.toString().padLeft(2, '0')}.000Z';
+            provider.onNewMessage(_incomingJson(id: id, createdAt: createdAt));
+            encryption.cacheDecryption(
+              id,
+              MessageModel.fromJson(
+                _incomingJson(
+                  id: id,
+                  createdAt: createdAt,
+                  includeTtl: false,
+                ),
+              ).copyWith(content: 'cached-plain'),
+            );
+          }
+
+          provider.onMessageHistory({
+            'conversationId': 10,
+            'messages': List.generate(
+              3,
+              (i) => _incomingJson(
+                id: i + 1,
+                createdAt:
+                    '2026-01-01T00:00:${(i + 1).toString().padLeft(2, '0')}.000Z',
+                includeTtl: false,
+              ),
+            ),
+          });
+
+          async.flushMicrotasks();
+
+          expect(
+            provider.messages.every((m) => m.disappearAfterSeconds == 60),
+            isTrue,
+          );
+        });
+      },
+    );
 
     test('messageHistory after newMessage does not drop the live message', () {
       provider.setActiveConversationIdForTest(10);

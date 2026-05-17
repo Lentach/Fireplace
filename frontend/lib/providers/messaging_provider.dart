@@ -257,6 +257,15 @@ class MessagingProvider extends ChangeNotifier {
     );
   }
 
+  /// Merges [decrypted] into the open chat row when present; returns the row used.
+  MessageModel _mergeDecryptedIntoState(MessageModel decrypted) {
+    final idx = _messages.indexWhere((m) => m.id == decrypted.id);
+    if (idx == -1) return decrypted;
+    final merged = _mergeMessagePreferNewer(_messages[idx], decrypted);
+    _messages[idx] = merged;
+    return merged;
+  }
+
   List<MessageModel> _mergeHistorySnapshot({
     required List<MessageModel> existingForConv,
     required List<MessageModel> serverSnapshot,
@@ -621,33 +630,31 @@ class MessagingProvider extends ChangeNotifier {
     if (msg.needsDecryption(_currentUserId)) {
       _addMessageToState(msg);
       _decryptMessageAsync(msg).then((decrypted) async {
-        _encryptionProvider?.cacheDecryption(decrypted.id, decrypted);
-        await _persistDecryptedContent(decrypted);
-        final idx = _messages.indexWhere((m) => m.id == decrypted.id);
-        if (idx != -1) {
-          _messages[idx] = decrypted;
-        }
+        final merged = _mergeDecryptedIntoState(decrypted);
+        _encryptionProvider?.cacheDecryption(merged.id, merged);
+        await _persistDecryptedContent(merged);
+        final idx = _messages.indexWhere((m) => m.id == merged.id);
         final lastMessages = _conversationsProvider?.lastMessages;
         if (lastMessages != null &&
-            lastMessages[decrypted.conversationId]?.id == decrypted.id) {
+            lastMessages[merged.conversationId]?.id == merged.id) {
           _conversationsProvider?.updateLastMessage(
-              decrypted.conversationId, decrypted);
+              merged.conversationId, merged);
         }
         _e2eFlowLog('RECV_DECRYPT_DONE', {
-          'msgId': decrypted.id,
-          'contentLength': decrypted.content.length,
+          'msgId': merged.id,
+          'contentLength': merged.content.length,
         });
         notifyListeners();
         // Update cache only when the message was actually updated in _messages (idx != -1).
         // If the user navigated away, idx == -1 and _messages holds a different conversation —
         // calling _updateCache would snapshot the wrong data and overwrite the valid cache entry
         // for this conversation with an empty or foreign list.
-        final cid = decrypted.conversationId;
+        final cid = merged.conversationId;
         if (idx != -1 && _conversationCache.containsKey(cid)) {
           _updateCache(cid);
         }
-        if (decrypted.senderId != _currentUserId &&
-            decrypted.messageType != MessageType.ping) {
+        if (merged.senderId != _currentUserId &&
+            merged.messageType != MessageType.ping) {
           _playIncomingMessageSound().ignore();
         }
       });
@@ -1955,7 +1962,9 @@ class MessagingProvider extends ChangeNotifier {
         if (cached != null) {
           final idx = _messages.indexWhere((m) => m.id == msg.id);
           if (idx != -1) {
-            _messages[idx] = cached;
+            final merged = _mergeMessagePreferNewer(_messages[idx], cached);
+            _messages[idx] = merged;
+            _encryptionProvider?.cacheDecryption(msg.id, merged);
             changed = true;
           }
           continue;
@@ -1990,10 +1999,13 @@ class MessagingProvider extends ChangeNotifier {
             linkPreviewTitle: persisted['linkPreviewTitle'] as String?,
             linkPreviewImageUrl: validImage,
           );
-          _encryptionProvider?.cacheDecryption(msg.id, restored);
           final idx = _messages.indexWhere((m) => m.id == msg.id);
+          final merged = idx != -1
+              ? _mergeMessagePreferNewer(_messages[idx], restored)
+              : restored;
+          _encryptionProvider?.cacheDecryption(msg.id, merged);
           if (idx != -1) {
-            _messages[idx] = restored;
+            _messages[idx] = merged;
             changed = true;
           }
           continue;
@@ -2002,7 +2014,11 @@ class MessagingProvider extends ChangeNotifier {
         final decrypted = await _decryptMessageAsync(msg);
         final idx = _messages.indexWhere((m) => m.id == msg.id);
         if (idx != -1) {
-          _messages[idx] = decrypted;
+          _messages[idx] = _mergeMessagePreferNewer(_messages[idx], decrypted);
+          _encryptionProvider?.cacheDecryption(
+            msg.id,
+            _messages[idx],
+          );
           changed = true;
         }
       } else if (msg.senderId == _currentUserId &&
@@ -2036,7 +2052,9 @@ class MessagingProvider extends ChangeNotifier {
           );
           final idx = _messages.indexWhere((m) => m.id == msg.id);
           if (idx != -1) {
-            _messages[idx] = restored;
+            final merged = _mergeMessagePreferNewer(_messages[idx], restored);
+            _messages[idx] = merged;
+            _encryptionProvider?.cacheDecryption(msg.id, merged);
             changed = true;
           }
         }
