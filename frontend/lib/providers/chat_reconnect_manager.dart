@@ -10,14 +10,37 @@ class ChatReconnectManager {
   int reconnectAttempts = 0;
   Timer? _timer;
 
-  /// Schedules a reconnect after exponential backoff. Calls [onConnect] when timer fires.
-  void scheduleReconnect(void Function() onConnect) {
-    reconnectAttempts++;
-    final delay = _reconnectDelay;
+  DateTime? _lastReconnectFireAt;
+
+  /// Schedules [onConnect] after [delay] (respects intentional disconnect / missing token).
+  void scheduleReconnectAfter(Duration delay, void Function() onConnect) {
+    _timer?.cancel();
     _timer = Timer(delay, () {
       if (intentionalDisconnect || tokenForReconnect == null) return;
+      _lastReconnectFireAt = DateTime.now();
       onConnect();
     });
+  }
+
+  /// Backoff delay for the current [reconnectAttempts], plus minimum spacing since last fire.
+  Duration delayUntilNextReconnect() {
+    final exponential = AppConstants.reconnectInitialDelay.inMilliseconds *
+        (1 << (reconnectAttempts - 1).clamp(0, 31));
+    final capped =
+        exponential.clamp(0, AppConstants.reconnectMaxDelay.inMilliseconds);
+    var wait = Duration(milliseconds: capped);
+    final last = _lastReconnectFireAt;
+    if (last != null) {
+      final since = DateTime.now().difference(last);
+      final minGap = AppConstants.reconnectConnectCooldown - since;
+      if (minGap > wait) wait = minGap;
+    }
+    return wait;
+  }
+
+  void scheduleReconnect(void Function() onConnect) {
+    reconnectAttempts++;
+    scheduleReconnectAfter(delayUntilNextReconnect(), onConnect);
   }
 
   void cancel() {
@@ -38,11 +61,5 @@ class ChatReconnectManager {
 
   void resetAttempts() {
     reconnectAttempts = 0;
-  }
-
-  Duration get _reconnectDelay {
-    final exponential = AppConstants.reconnectInitialDelay.inMilliseconds * (1 << (reconnectAttempts - 1));
-    final capped = exponential.clamp(0, AppConstants.reconnectMaxDelay.inMilliseconds);
-    return Duration(milliseconds: capped);
   }
 }

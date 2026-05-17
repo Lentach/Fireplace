@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../config/app_config.dart';
@@ -17,11 +19,16 @@ import 'messaging_provider.dart';
 class ConnectionProvider extends ChangeNotifier {
   // ---------- Core State ----------
 
-  final SocketService _socketService = SocketService();
+  final SocketService _socketService;
+
+  ConnectionProvider({SocketService? socketService})
+      : _socketService = socketService ?? SocketService();
   final ChatReconnectManager _reconnectManager = ChatReconnectManager();
   late final ApiService _api = ApiService(baseUrl: AppConfig.baseUrl);
   late final PushService _pushService = PushService(_api);
   bool _pushInitialized = false;
+  DateTime? _lastConnectStartedAt;
+  Timer? _debouncedConnectTimer;
 
   int? _currentUserId;
   bool _isConnected = false;
@@ -67,6 +74,21 @@ class ConnectionProvider extends ChangeNotifier {
   // ---------- Connect ----------
 
   Future<void> connect(int userId, String token, String baseUrl) async {
+    final now = DateTime.now();
+    if (_lastConnectStartedAt != null) {
+      final since = now.difference(_lastConnectStartedAt!);
+      if (since < AppConstants.reconnectConnectCooldown) {
+        final wait = AppConstants.reconnectConnectCooldown - since;
+        _debouncedConnectTimer?.cancel();
+        _debouncedConnectTimer = Timer(wait, () {
+          connect(userId, token, baseUrl);
+        });
+        return;
+      }
+    }
+    _debouncedConnectTimer?.cancel();
+    _lastConnectStartedAt = now;
+
     // 1. Cancel any pending reconnect timer
     _reconnectManager.cancel();
     _intentionalDisconnect = false;
@@ -119,50 +141,9 @@ class ConnectionProvider extends ChangeNotifier {
     // 8. Register socket event listeners (routed to sub-providers)
     _registerEventListeners();
 
-    // 9. On 'connect': fetch initial data, init E2E, push
-    _socketService.onConnect(() {
-      _isConnected = true;
-      _reconnectManager.resetAttempts();
-      notifyListeners();
-
-      // Fetch initial data
-      _socketService.getConversations();
-      _socketService.getFriendRequests();
-      _socketService.getFriends();
-      _socketService.getBlockedList();
-
-      // Re-fetch messages for active conversation on reconnect (preserves open chat)
-      final activeConvId = _conversationsProvider?.activeConversationId;
-      if (activeConvId != null) {
-        _socketService.getMessages(activeConvId,
-            limit: AppConstants.messagePageSize);
-      }
-
-      // Delayed re-fetch if conversations empty (handles slow first response)
-      Future.delayed(AppConstants.conversationsRefreshDelay, () {
-        if (_conversationsProvider?.conversations.isEmpty == true) {
-          _socketService.getConversations();
-        }
-      });
-
-      // Initialize E2E encryption (skips if already initialized on reconnect)
-      _encryptionProvider?.initializeE2E(userId);
-
-      // Initialize push notifications once per session
-      if (!_pushInitialized) {
-        _pushInitialized = true;
-        _pushService
-            .initialize(
-              token,
-              onAndroidNavigateToConversation: (conversationId) {
-                _conversationsProvider?.requestNavigateToConversationFromNotification(
-                  conversationId,
-                );
-              },
-            )
-            .catchError((_) {});
-      }
-    });
+    // 9. Transport connect + socketReady (authenticated fetches only on ready)
+    _socketService.onConnect(() => _onSocketTransportConnect(userId, token));
+    _socketService.on('socketReady', (_) => _onSocketReady());
 
     // 10. On 'disconnect': handle reconnect
     _socketService.onDisconnect((_) {
@@ -170,9 +151,56 @@ class ConnectionProvider extends ChangeNotifier {
       notifyListeners();
 
       if (!_intentionalDisconnect) {
-        _reconnectManager.scheduleReconnect(
+        _reconnectManager.onDisconnect(
           () => connect(userId, token, baseUrl),
+          (msg) {
+            _errorMessage = msg;
+            notifyListeners();
+          },
         );
+      }
+    });
+  }
+
+  void _onSocketTransportConnect(int userId, String token) {
+    _isConnected = true;
+    notifyListeners();
+
+    _encryptionProvider?.initializeE2E(userId);
+
+    if (!_pushInitialized) {
+      _pushInitialized = true;
+      _pushService
+          .initialize(
+            token,
+            onAndroidNavigateToConversation: (conversationId) {
+              _conversationsProvider
+                  ?.requestNavigateToConversationFromNotification(
+                conversationId,
+              );
+            },
+          )
+          .catchError((_) {});
+    }
+  }
+
+  /// After JWT auth completes on the server (`socketReady` event).
+  void _onSocketReady() {
+    _reconnectManager.resetAttempts();
+    _socketService.getConversations();
+    _socketService.getFriendRequests();
+    _socketService.getFriends();
+    _socketService.getBlockedList();
+
+    final activeConvId = _conversationsProvider?.activeConversationId;
+    if (activeConvId != null) {
+      _socketService.getMessages(activeConvId,
+          limit: AppConstants.messagePageSize);
+    }
+
+    Future.delayed(AppConstants.conversationsRefreshDelay, () {
+      if (_conversationsProvider?.conversations.isEmpty == true) {
+        _socketService.getConversations();
       }
     });
   }
@@ -187,6 +215,7 @@ class ConnectionProvider extends ChangeNotifier {
 
   void disconnect({bool isLogout = false}) {
     _intentionalDisconnect = true;
+    _debouncedConnectTimer?.cancel();
     _reconnectManager.cancel();
 
     // Notify sub-providers
@@ -342,6 +371,7 @@ class ConnectionProvider extends ChangeNotifier {
 
   @override
   void dispose() {
+    _debouncedConnectTimer?.cancel();
     _reconnectManager.cancel();
     _socketService.disconnect();
     super.dispose();

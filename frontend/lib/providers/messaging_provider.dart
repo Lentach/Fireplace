@@ -67,6 +67,9 @@ class MessagingProvider extends ChangeNotifier {
   int _decryptHistoryGeneration = 0;
   final List<Map<String, dynamic>> _incomingMessageQueue = [];
 
+  /// Serializes live decrypt per sender so Signal ratchet order is preserved.
+  final Map<int, Future<void>> _decryptChainBySender = {};
+
   /// Plaintext content + link preview + type/media keyed by tempId — survives
   /// _messages list overwrites (e.g. when messageHistory arrives before messageSent).
   /// Value: {'content': String, 'messageType'?: String, 'mediaUrl'?: String,
@@ -321,6 +324,35 @@ class MessagingProvider extends ChangeNotifier {
     );
   }
 
+  void _finishHistoryDecryptPass(
+    int generation, {
+    required int? conversationId,
+    required bool updateCache,
+  }) {
+    if (_decryptHistoryGeneration != generation) return;
+    _decryptingHistory = false;
+    if (updateCache && conversationId != null) {
+      _updateCache(conversationId);
+    }
+    notifyListeners();
+    _processIncomingMessageQueue();
+  }
+
+  Future<void> _waitForE2EReady({int maxAttempts = 50}) async {
+    for (var i = 0; i < maxAttempts; i++) {
+      if (_encryptionProvider?.isE2EReady ?? false) return;
+      await Future.delayed(const Duration(milliseconds: 100));
+    }
+  }
+
+  Future<T> _runDecryptSerialized<T>(int senderId, Future<T> Function() action) {
+    final previous = _decryptChainBySender[senderId] ?? Future<void>.value();
+    final result = previous.then((_) => action());
+    _decryptChainBySender[senderId] =
+        result.then<void>((_) {}, onError: (_) {});
+    return result;
+  }
+
   void _patchMessageInCache(
     int conversationId,
     int messageId,
@@ -465,17 +497,25 @@ class MessagingProvider extends ChangeNotifier {
       final cacheId = _paginationConversationId;
       _decryptingHistory = true;
       _decryptMessageHistory(myGeneration).whenComplete(() {
-        if (_decryptHistoryGeneration == myGeneration) {
-          _decryptingHistory = false;
-        }
-        _updateCache(cacheId);
+        _finishHistoryDecryptPass(
+          myGeneration,
+          conversationId: cacheId,
+          updateCache: true,
+        );
       });
       return;
     }
 
     if (responseConversationId != null &&
         responseConversationId != _paginationConversationId) {
-      return;
+      final matchesActive = effectiveActive != null &&
+          responseConversationId == effectiveActive;
+      final paginationUnset = _paginationConversationId < 0;
+      if (!matchesActive && !paginationUnset) {
+        return;
+      }
+      _paginationConversationId = responseConversationId;
+      _paginationOffset = 0;
     }
 
     final convIdForMerge =
@@ -486,6 +526,7 @@ class MessagingProvider extends ChangeNotifier {
 
     if (staleHistory) {
       _mergeServerSnapshotIntoCache(convIdForMerge, newMessages);
+      // A newer getMessages owns _decryptingHistory — do not release the hold here.
       return;
     }
 
@@ -532,14 +573,11 @@ class MessagingProvider extends ChangeNotifier {
     final myGeneration = _decryptHistoryGeneration;
     _decryptingHistory = true;
     _decryptMessageHistory(myGeneration).whenComplete(() {
-      if (_decryptHistoryGeneration == myGeneration) {
-        _decryptingHistory = false;
-        // Update cache with fully-decrypted content.
-        if (myConversationId != null) {
-          _updateCache(myConversationId);
-        }
-      }
-      _processIncomingMessageQueue();
+      _finishHistoryDecryptPass(
+        myGeneration,
+        conversationId: myConversationId,
+        updateCache: true,
+      );
     });
   }
 
@@ -629,7 +667,7 @@ class MessagingProvider extends ChangeNotifier {
     // If encrypted, decrypt async and update in-place
     if (msg.needsDecryption(_currentUserId)) {
       _addMessageToState(msg);
-      _decryptMessageAsync(msg).then((decrypted) async {
+      _decryptMessageAsyncQueued(msg).then((decrypted) async {
         final merged = _mergeDecryptedIntoState(decrypted);
         _encryptionProvider?.cacheDecryption(merged.id, merged);
         await _persistDecryptedContent(merged);
@@ -1953,9 +1991,11 @@ class MessagingProvider extends ChangeNotifier {
     bool changed = false;
     for (var i = 0; i < sorted.length; i++) {
       if (_decryptHistoryGeneration != generation) break;
-      final msg = sorted[i];
-      // Skip messages we already failed to decrypt
-      if (msg.content == '[Decryption failed]') continue;
+      var msg = sorted[i];
+      if (msg.content == '[Decryption failed]' &&
+          msg.needsDecryption(_currentUserId)) {
+        msg = msg.copyWith(content: '[encrypted]');
+      }
       if (msg.needsDecryption(_currentUserId)) {
         // Cache-first: check persisted cache before attempting live decryption.
         final cached = _encryptionProvider?.getCachedDecryption(msg.id);
@@ -2011,7 +2051,7 @@ class MessagingProvider extends ChangeNotifier {
           continue;
         }
         // No cache — live decrypt (advances session ratchet)
-        final decrypted = await _decryptMessageAsync(msg);
+        final decrypted = await _decryptMessageAsyncQueued(msg);
         final idx = _messages.indexWhere((m) => m.id == msg.id);
         if (idx != -1) {
           _messages[idx] = _mergeMessagePreferNewer(_messages[idx], decrypted);
@@ -2064,11 +2104,22 @@ class MessagingProvider extends ChangeNotifier {
     if (changed) notifyListeners();
   }
 
+  Future<MessageModel> _decryptMessageAsyncQueued(MessageModel msg) {
+    if (msg.senderId == _currentUserId) {
+      return Future.value(msg);
+    }
+    return _runDecryptSerialized(
+      msg.senderId,
+      () => _decryptMessageAsync(msg),
+    );
+  }
+
   Future<MessageModel> _decryptMessageAsync(MessageModel msg) async {
     // Own messages: server stored "[encrypted]" as content but we already
     // showed plaintext optimistically, so skip decryption for our own messages.
     if (msg.senderId == _currentUserId) return msg;
 
+    await _waitForE2EReady();
     if (!(_encryptionProvider?.isE2EReady ?? false)) {
       return msg.copyWith(content: '[Encryption not initialized]');
     }
@@ -2406,6 +2457,7 @@ class MessagingProvider extends ChangeNotifier {
     _showPingEffect = false;
     _pendingSendContent.clear();
     _incomingMessageQueue.clear();
+    _decryptChainBySender.clear();
     _decryptingHistory = false;
     _decryptHistoryGeneration++;
     _cancelDelayedRetryIfAny();

@@ -15,4 +15,7 @@ class AppConstants {
   static const int reconnectMaxAttempts = 5;
   static const Duration reconnectInitialDelay = Duration(seconds: 1);
   static const Duration reconnectMaxDelay = Duration(seconds: 30);
+
+  /// Minimum spacing between full [ConnectionProvider.connect] calls (PWA reconnect storms).
+  static const Duration reconnectConnectCooldown = Duration(seconds: 2);
 }

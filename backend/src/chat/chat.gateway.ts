@@ -101,6 +101,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       this.onlineUsers.set(user.id, client.id);
 
       this.logger.debug(`User connected: ${user.username} (socket: ${client.id})`);
+      // Auth is complete — client may safely emit authenticated WS events.
+      client.emit('socketReady', {});
     } catch (error) {
       this.logger.error(`handleConnection failed: ${error.message}`);
       client.disconnect();
