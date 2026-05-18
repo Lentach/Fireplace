@@ -1,6 +1,5 @@
 import 'dart:async';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
@@ -18,7 +17,6 @@ import '../models/user_model.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/chat_background_pattern.dart';
 import '../widgets/ping_effect_overlay.dart';
-import '../utils/web_keyboard_inset.dart';
 import '../widgets/top_snackbar.dart';
 
 class ChatDetailScreen extends StatefulWidget {
@@ -47,7 +45,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   int _newMessagesCount = 0;
   int _lastMessageCount = 0;
   int _lastLinkPreviewCount = 0;
-  double _lastKeyboardInset = 0;
+  double _lastKeyboardHeight = 0;
   bool _isLoadingMoreLocal = false;
   double? _prePaginationScrollOffset;
   double? _prePaginationScrollExtent;
@@ -390,7 +388,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     final auth = context.watch<AuthProvider>();
     final messages = messaging.messages;
     final contactName = _getContactName();
-    final keyboardInset = effectiveChatKeyboardInset(MediaQuery.of(context));
+    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
 
     if (messages.isNotEmpty && messages.length != _lastMessageCount) {
       final added = messages.length - _lastMessageCount;
@@ -412,7 +410,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     }
 
     // Auto-scroll when keyboard opens to keep newest message visible
-    if (keyboardInset > 0 && _lastKeyboardInset == 0 && messages.isNotEmpty) {
+    if (keyboardHeight > 0 && _lastKeyboardHeight == 0 && messages.isNotEmpty) {
       // Keyboard just opened - scroll to bottom after layout settles
       WidgetsBinding.instance.addPostFrameCallback((_) {
         // Wait for keyboard animation to finish
@@ -426,7 +424,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
         });
       });
     }
-    _lastKeyboardInset = keyboardInset;
+    _lastKeyboardHeight = keyboardHeight;
 
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
@@ -636,7 +634,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
     }
 
     return Scaffold(
-      resizeToAvoidBottomInset: !kIsWeb,
+      resizeToAvoidBottomInset: true,
       appBar: AppBar(
         centerTitle: true,
         leading: IconButton(
