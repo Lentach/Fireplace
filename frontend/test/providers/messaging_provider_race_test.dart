@@ -17,6 +17,9 @@ class _FakeEncryptionProvider extends EncryptionProvider {
   bool get isE2EReady => true;
 
   @override
+  Future<void> deleteSessionWithPeer(int peerUserId) async {}
+
+  @override
   Future<void> ensureSession(int recipientId) async {
     ensureSessionCalls++;
     if (failEnsureSession) {
@@ -38,6 +41,26 @@ class _FakeEncryptionProvider extends EncryptionProvider {
   @override
   Future<Map<String, dynamic>?> getDecryptedContent(int messageId) async =>
       null;
+}
+
+/// Fails the first live decrypt per history pass, then succeeds after session reset.
+class _HistoryDecryptRetryEncryption extends _FakeEncryptionProvider {
+  int decryptAttempts = 0;
+  int deleteSessionCalls = 0;
+
+  @override
+  Future<void> deleteSessionWithPeer(int peerUserId) async {
+    deleteSessionCalls++;
+  }
+
+  @override
+  Future<String> decrypt(int senderId, String ciphertext) async {
+    decryptAttempts++;
+    if (decryptAttempts <= 1) {
+      throw Exception('simulate ratchet mismatch');
+    }
+    return jsonEncode(E2eEnvelope.build('recovered-after-retry'));
+  }
 }
 
 Map<String, dynamic> _convJson() => {
@@ -213,6 +236,43 @@ void main() {
             isTrue,
           );
         });
+      },
+    );
+
+    test(
+      'history decrypt failure resets session and retries instead of permanent [Decryption failed]',
+      () async {
+        final retryEncryption = _HistoryDecryptRetryEncryption();
+        provider.setEncryptionProvider(retryEncryption);
+        provider.setActiveConversationIdForTest(10);
+
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 1,
+              createdAt: DateTime.now().toUtc().toIso8601String(),
+              includeTtl: false,
+            ),
+          ],
+        });
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(retryEncryption.deleteSessionCalls, 1);
+        expect(
+          emitted.any(
+            (e) =>
+                e['event'] == 'requestSessionRebuild' &&
+                (e['data'] as Map)['recipientId'] == 2,
+          ),
+          isTrue,
+        );
+        expect(provider.messages.single.content, 'recovered-after-retry');
+        expect(
+          provider.messages.any((m) => m.content == '[Decryption failed]'),
+          isFalse,
+        );
       },
     );
 

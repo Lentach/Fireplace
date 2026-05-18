@@ -138,6 +138,13 @@ class EncryptionProvider extends ChangeNotifier {
     _forceSessionRebuild.add(recipientId);
   }
 
+  /// Delete the local Signal session with [peerUserId] (sender or recipient).
+  /// Used when inbound history decrypt fails and the ratchet must be replayed.
+  Future<void> deleteSessionWithPeer(int peerUserId) async {
+    if (!_e2eInitialized) return;
+    await _encryptionService.deleteSession(peerUserId);
+  }
+
   /// Get a previously cached decrypted message by message ID.
   MessageModel? getCachedDecryption(int messageId) {
     return _decryptedContentCache[messageId];

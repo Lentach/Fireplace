@@ -61,6 +61,10 @@ class MessagingProvider extends ChangeNotifier {
   Timer? _delayedRetryTimer;
   String? _delayedRetryTempId;
   bool _decryptingHistory = false;
+  /// Peers whose messages failed during the current history decrypt pass.
+  Set<int>? _historyDecryptFailedPeers;
+  /// Dedupes session-rebuild emits within one history decrypt pass.
+  Set<int>? _historySessionRebuildRequested;
 
   /// Incremented on each new messageHistory to cancel stale in-flight decrypt loops.
   /// Each loop captures its generation at start and exits when the counter changes.
@@ -1975,7 +1979,15 @@ class MessagingProvider extends ChangeNotifier {
 
   // ---------- Decrypt ----------
 
+  void _requestSessionRebuildForPeer(int peerId) {
+    _encryptionProvider?.markSessionRebuild(peerId);
+    _emit?.call('requestSessionRebuild', {'recipientId': peerId});
+    _e2eFlowLog('SESSION_RESET', {'peerId': peerId});
+  }
+
   Future<void> _decryptMessageHistory(int generation) async {
+    _historyDecryptFailedPeers = <int>{};
+    _historySessionRebuildRequested = <int>{};
     final toDecrypt =
         _messages.where((m) => m.needsDecryption(_currentUserId)).length;
     if (toDecrypt > 0) {
@@ -2100,8 +2112,73 @@ class MessagingProvider extends ChangeNotifier {
         }
       }
     }
+    if (_decryptHistoryGeneration == generation &&
+        (_historyDecryptFailedPeers?.isNotEmpty ?? false)) {
+      final retried = await _retryHistoryDecryptForFailedPeers(
+        generation,
+        _historyDecryptFailedPeers!,
+      );
+      if (retried) changed = true;
+    }
+    _historyDecryptFailedPeers = null;
+    _historySessionRebuildRequested = null;
     if (changed) _e2eFlowLog('HISTORY_DECRYPT_DONE', {'changed': true});
     if (changed) notifyListeners();
+  }
+
+  /// After history decrypt failures, reset the local session with each peer
+  /// and replay decrypt in chronological order (overnight / wake-up path).
+  Future<bool> _retryHistoryDecryptForFailedPeers(
+    int generation,
+    Set<int> peerIds,
+  ) async {
+    bool changed = false;
+    for (final peerId in peerIds) {
+      if (_decryptHistoryGeneration != generation) return changed;
+      if (_historySessionRebuildRequested?.add(peerId) ?? false) {
+        _requestSessionRebuildForPeer(peerId);
+      }
+      try {
+        await _encryptionProvider?.deleteSessionWithPeer(peerId);
+      } catch (e) {
+        debugPrint('[E2E] deleteSessionWithPeer($peerId) failed: $e');
+      }
+      for (var i = 0; i < _messages.length; i++) {
+        final m = _messages[i];
+        if (m.senderId == peerId && m.content == '[Decryption failed]') {
+          _messages[i] = m.copyWith(content: '[encrypted]');
+          changed = true;
+        }
+      }
+    }
+    if (!changed) return false;
+
+    final sorted = _messages
+        .where(
+          (m) =>
+              peerIds.contains(m.senderId) &&
+              m.needsDecryption(_currentUserId),
+        )
+        .toList()
+      ..sort((a, b) {
+        final byTime = a.createdAt.compareTo(b.createdAt);
+        if (byTime != 0) return byTime;
+        return a.id.compareTo(b.id);
+      });
+
+    for (final msg in sorted) {
+      if (_decryptHistoryGeneration != generation) break;
+      final decrypted = await _decryptMessageAsyncQueued(msg);
+      final idx = _messages.indexWhere((m) => m.id == msg.id);
+      if (idx != -1 &&
+          decrypted.content != '[Decryption failed]' &&
+          decrypted.content != '[Encryption not initialized]') {
+        _messages[idx] = _mergeMessagePreferNewer(_messages[idx], decrypted);
+        _encryptionProvider?.cacheDecryption(msg.id, _messages[idx]);
+        changed = true;
+      }
+    }
+    return changed;
   }
 
   Future<MessageModel> _decryptMessageAsyncQueued(MessageModel msg) {
@@ -2214,11 +2291,10 @@ class MessagingProvider extends ChangeNotifier {
       debugPrint('[E2E] Decrypt failed for msg ${msg.id}: $e');
       _e2eFlowLog(
           'DECRYPT_FAIL', {'msgId': msg.id, 'error': e.toString()});
-      // For live incoming messages (not history replay): mark for session rebuild
-      if (!_decryptingHistory) {
-        _encryptionProvider?.markSessionRebuild(msg.senderId);
-        _emit?.call('requestSessionRebuild', {'recipientId': msg.senderId});
-        _e2eFlowLog('SESSION_RESET', {'peerId': msg.senderId});
+      if (_decryptingHistory) {
+        _historyDecryptFailedPeers?.add(msg.senderId);
+      } else {
+        _requestSessionRebuildForPeer(msg.senderId);
       }
       return msg.copyWith(content: '[Decryption failed]');
     }
