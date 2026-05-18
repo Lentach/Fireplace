@@ -15,6 +15,7 @@ import '../../providers/settings_provider.dart';
 import '../../theme/rpg_theme.dart';
 import '../../utils/message_expiry.dart';
 import '../../utils/web_keyboard_inset.dart';
+import '../../utils/web_viewport_scroll.dart';
 import '../chat_action_tiles.dart';
 import '../hearth_fade_arc.dart';
 import '../top_snackbar.dart' show showTopSnackBar;
@@ -65,10 +66,26 @@ class _ChatInputBarState extends State<ChatInputBar>
       parent: _actionPanelController,
       curve: Curves.easeInOut,
     );
+
+    if (kIsWeb) {
+      _focusNode.addListener(_onComposerFocusForWebScroll);
+    }
+  }
+
+  void _onComposerFocusForWebScroll() {
+    if (!_focusNode.hasFocus) return;
+    resetWebDocumentScroll();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_focusNode.hasFocus) return;
+      resetWebDocumentScroll();
+    });
   }
 
   @override
   void dispose() {
+    if (kIsWeb) {
+      _focusNode.removeListener(_onComposerFocusForWebScroll);
+    }
     _controller.dispose();
     _focusNode.dispose();
     _actionPanelController.dispose();
