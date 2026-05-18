@@ -2,6 +2,6 @@
 
 **Date:** 2026-05-18
 
-**Summary:** [2026-05-18-session-web-keyboard-revert-and-fix.md](2026-05-18-session-web-keyboard-revert-and-fix.md) — Reverted layered Android Chrome keyboard fix; replaced with simpler web-only scaffold resize off + capped viewInsets lift.
+**Summary:** [2026-05-18-session-revert-web-keyboard-fixes.md](2026-05-18-session-revert-web-keyboard-fixes.md) — Reverted all web chat keyboard layout fix attempts; documented open Android Chrome bug in CLAUDE.md Known Limitations.
 
-**Previous:** [2026-05-17-session-e2e-deploy-log-diagnostics.md](2026-05-17-session-e2e-deploy-log-diagnostics.md)
+**Previous:** [2026-05-18-session-web-keyboard-host-scroll.md](2026-05-18-session-web-keyboard-host-scroll.md)
