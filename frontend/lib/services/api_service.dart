@@ -61,6 +61,17 @@ class ApiService {
         body: jsonEncode({'refresh_token': refreshToken}),
       );
 
+      final status = response.statusCode;
+      if (status == 401 || status == 403) {
+        throw SessionRefreshInvalidException('Session refresh unauthorized');
+      }
+      if (status == 429 || status == 408) {
+        throw SessionRefreshTransientException('Session refresh rate limited');
+      }
+      if (status >= 500) {
+        throw SessionRefreshTransientException('Session refresh server error');
+      }
+
       Map<String, dynamic> data;
       try {
         data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -68,15 +79,8 @@ class ApiService {
         throw SessionRefreshTransientException('Invalid refresh response body');
       }
 
-      final status = response.statusCode;
       final message = data['message'] as String? ?? 'Session refresh failed';
 
-      if (status == 401 || status == 403) {
-        throw SessionRefreshInvalidException(message);
-      }
-      if (status >= 500) {
-        throw SessionRefreshTransientException(message);
-      }
       if (status != 200 && status != 201) {
         if (status >= 400 && status < 500) {
           throw SessionRefreshInvalidException(message);

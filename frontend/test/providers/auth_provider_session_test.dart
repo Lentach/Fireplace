@@ -145,5 +145,52 @@ void main() {
       expect(refreshCalls, 1);
       expect(auth.isLoggedIn, isTrue);
     });
+
+    test('startup load and ensureSessionReady share single refresh call', () async {
+      SharedPreferences.setMockInitialValues({
+        'jwt_token': _expiredAccessJwt,
+        'refresh_token': 'opaque_refresh',
+      });
+
+      var refreshCalls = 0;
+      final mock = MockClient((request) async {
+        if (request.url.path == '/auth/refresh') {
+          refreshCalls++;
+          await Future<void>.delayed(const Duration(milliseconds: 120));
+          return http.Response(
+            jsonEncode({
+              'access_token': _validAccessJwt,
+              'refresh_token': 'rotated_refresh',
+            }),
+            200,
+            headers: {'Content-Type': 'application/json'},
+          );
+        }
+        if (request.url.path == '/users/me') {
+          return http.Response(
+            jsonEncode({
+              'id': 1,
+              'username': 'test',
+              'tag': '0000',
+              'profilePictureUrl': null,
+            }),
+            200,
+            headers: {'Content-Type': 'application/json'},
+          );
+        }
+        throw Exception('Unexpected ${request.url.path}');
+      });
+
+      final api = ApiService(baseUrl: base, httpClient: mock);
+      final auth = AuthProvider(api: api);
+      await Future<void>.delayed(Duration.zero);
+      await Future.wait([
+        auth.ensureSessionReady(),
+        auth.ensureSessionReady(),
+      ]);
+      await _waitForAuthSettled(auth, expectLoggedIn: true);
+
+      expect(refreshCalls, 1);
+    });
   });
 }

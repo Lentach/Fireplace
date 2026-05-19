@@ -118,6 +118,23 @@ class AuthProvider extends ChangeNotifier {
     );
   }
 
+  /// Single in-flight refresh for startup, resume, and parallel [ensureSessionReady].
+  Future<void> _refreshSessionLocked() async {
+    if (_sessionRefreshInFlight != null) {
+      return _sessionRefreshInFlight!;
+    }
+
+    final future = _silentRefresh();
+    _sessionRefreshInFlight = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_sessionRefreshInFlight, future)) {
+        _sessionRefreshInFlight = null;
+      }
+    }
+  }
+
   Future<void> _clearLocalAuthState() async {
     _cancelSessionRefreshTimer();
     _token = null;
@@ -134,19 +151,7 @@ class AuthProvider extends ChangeNotifier {
 
   /// Keeps access JWT valid using the opaque refresh token (messenger-style session).
   Future<void> ensureSessionReady() async {
-    if (_sessionRefreshInFlight != null) {
-      return _sessionRefreshInFlight!;
-    }
-
-    final future = _ensureSessionReadyBody();
-    _sessionRefreshInFlight = future;
-    try {
-      await future;
-    } finally {
-      if (identical(_sessionRefreshInFlight, future)) {
-        _sessionRefreshInFlight = null;
-      }
-    }
+    await _ensureSessionReadyBody();
   }
 
   Future<void> _ensureSessionReadyBody() async {
@@ -159,7 +164,7 @@ class AuthProvider extends ChangeNotifier {
     if (_token != null && !_isAccessExpired(_token!)) return;
 
     try {
-      await _silentRefresh();
+      await _refreshSessionLocked();
     } on SessionRefreshInvalidException {
       await _clearLocalAuthState();
     } on SessionRefreshTransientException {
@@ -193,7 +198,7 @@ class AuthProvider extends ChangeNotifier {
     if (savedRefresh != null &&
         (savedToken == null || _isAccessExpired(savedToken))) {
       try {
-        await _silentRefresh();
+        await _refreshSessionLocked();
       } on SessionRefreshInvalidException {
         await _clearLocalAuthState();
         return;
@@ -225,7 +230,7 @@ class AuthProvider extends ChangeNotifier {
       if (e.toString().startsWith('Exception: HTTP_401')) {
         if (_refreshToken != null) {
           try {
-            await _silentRefresh();
+            await _refreshSessionLocked();
             if (_token != null) {
               final userData = await _api.fetchMe(_token!);
               _currentUser = UserModel.fromJson(userData);

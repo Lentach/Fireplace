@@ -121,5 +121,33 @@ void main() {
         throwsA(isA<SessionRefreshTransientException>()),
       );
     });
+
+    test('refreshSession 401 with non-JSON body is invalid session', () async {
+      final mock = MockClient((request) async {
+        return http.Response('<html>Unauthorized</html>', 401);
+      });
+
+      final api = ApiService(baseUrl: base, httpClient: mock);
+      expect(
+        () => api.refreshSession('rt'),
+        throwsA(isA<SessionRefreshInvalidException>()),
+      );
+    });
+
+    test('refreshSession 429 is transient', () async {
+      final mock = MockClient((request) async {
+        return http.Response(
+          jsonEncode({'message': 'Too many requests'}),
+          429,
+          headers: {'Content-Type': 'application/json'},
+        );
+      });
+
+      final api = ApiService(baseUrl: base, httpClient: mock);
+      expect(
+        () => api.refreshSession('rt'),
+        throwsA(isA<SessionRefreshTransientException>()),
+      );
+    });
   });
 }
