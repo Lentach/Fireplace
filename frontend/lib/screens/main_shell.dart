@@ -49,8 +49,19 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       _tabVisibilitySub = registerTabVisibilityListener((visible) {
         if (!mounted) return;
         final auth = context.read<AuthProvider>();
-        if (auth.currentUser == null || auth.token == null) return;
-        context.read<ConversationsProvider>().setClientVisible(visible);
+        if (!visible) {
+          if (auth.currentUser != null && auth.token != null) {
+            context.read<ConversationsProvider>().setClientVisible(false);
+          }
+          return;
+        }
+        unawaited(() async {
+          await auth.ensureSessionReady();
+          if (!mounted) return;
+          if (!auth.isLoggedIn) return;
+          context.read<ConversationsProvider>().setClientVisible(true);
+          context.read<ConnectionProvider>().ensureReconnectIfNeeded();
+        }());
       });
     }
   }

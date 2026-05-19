@@ -5,6 +5,8 @@ import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 
+import 'session_refresh_exception.dart';
+
 class ApiService {
   final String baseUrl;
   final http.Client _httpClient;
@@ -52,22 +54,49 @@ class ApiService {
   }
 
   Future<Map<String, dynamic>> refreshSession(String refreshToken) async {
-    final response = await _httpClient.post(
-      Uri.parse('$baseUrl/auth/refresh'),
-      headers: {'Content-Type': 'application/json'},
-      body: jsonEncode({'refresh_token': refreshToken}),
-    );
+    try {
+      final response = await _httpClient.post(
+        Uri.parse('$baseUrl/auth/refresh'),
+        headers: {'Content-Type': 'application/json'},
+        body: jsonEncode({'refresh_token': refreshToken}),
+      );
 
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
-    if (response.statusCode != 200 && response.statusCode != 201) {
-      throw Exception(data['message'] ?? 'Session refresh failed');
+      Map<String, dynamic> data;
+      try {
+        data = jsonDecode(response.body) as Map<String, dynamic>;
+      } catch (_) {
+        throw SessionRefreshTransientException('Invalid refresh response body');
+      }
+
+      final status = response.statusCode;
+      final message = data['message'] as String? ?? 'Session refresh failed';
+
+      if (status == 401 || status == 403) {
+        throw SessionRefreshInvalidException(message);
+      }
+      if (status >= 500) {
+        throw SessionRefreshTransientException(message);
+      }
+      if (status != 200 && status != 201) {
+        if (status >= 400 && status < 500) {
+          throw SessionRefreshInvalidException(message);
+        }
+        throw SessionRefreshTransientException(message);
+      }
+
+      final access = data['access_token'] as String?;
+      final refresh = data['refresh_token'] as String?;
+      if (access == null || refresh == null) {
+        throw SessionRefreshTransientException('Refresh response missing tokens');
+      }
+      return data;
+    } on SessionRefreshInvalidException {
+      rethrow;
+    } on SessionRefreshTransientException {
+      rethrow;
+    } on http.ClientException catch (e) {
+      throw SessionRefreshTransientException(e.message);
     }
-    final access = data['access_token'] as String?;
-    final refresh = data['refresh_token'] as String?;
-    if (access == null || refresh == null) {
-      throw Exception('Refresh response missing tokens');
-    }
-    return data;
   }
 
   Future<void> logoutRefresh(String refreshToken) async {

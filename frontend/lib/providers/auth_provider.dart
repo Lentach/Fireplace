@@ -8,11 +8,18 @@ import '../models/user_model.dart';
 import '../services/api_service.dart';
 import '../services/pwa_app_badge_clear.dart';
 import '../services/push_service.dart';
+import '../services/session_refresh_exception.dart';
 import '../config/app_config.dart';
 
 class AuthProvider extends ChangeNotifier {
-  final ApiService _api = ApiService(baseUrl: AppConfig.baseUrl);
-  late final PushService _pushService = PushService(_api);
+  AuthProvider({ApiService? api})
+      : _api = api ?? ApiService(baseUrl: AppConfig.baseUrl) {
+    _pushService = PushService(_api);
+    _loadSavedToken();
+  }
+
+  final ApiService _api;
+  late final PushService _pushService;
 
   String? _token;
   String? _refreshToken;
@@ -20,6 +27,10 @@ class AuthProvider extends ChangeNotifier {
   String? _statusMessage;
   bool _isError = false;
   Timer? _sessionRefreshTimer;
+  Future<void>? _sessionRefreshInFlight;
+
+  static const int _refreshMaxAttempts = 3;
+  static const Duration _refreshRetryBaseDelay = Duration(milliseconds: 250);
 
   /// Wired from [MainShell] so socket/media use refreshed JWT without restart.
   void Function(String accessToken)? onAccessTokenChanged;
@@ -30,12 +41,16 @@ class AuthProvider extends ChangeNotifier {
   bool get isError => _isError;
   bool get isLoggedIn => _token != null && _currentUser != null;
 
-  AuthProvider() {
-    _loadSavedToken();
-  }
-
   void setOnAccessTokenChanged(void Function(String)? cb) {
     onAccessTokenChanged = cb;
+  }
+
+  /// Test-only: force an expired access JWT while keeping refresh token in memory.
+  @visibleForTesting
+  void setAccessTokenForTest(String token) {
+    _token = token;
+    _restoreUserFromAccessJwt(token);
+    notifyListeners();
   }
 
   bool _isAccessExpired(String jwt) {
@@ -44,6 +59,18 @@ class AuthProvider extends ChangeNotifier {
     } catch (_) {
       return true;
     }
+  }
+
+  void _restoreUserFromAccessJwt(String accessJwt) {
+    try {
+      final payload = JwtDecoder.decode(accessJwt);
+      _currentUser = UserModel(
+        id: (payload['sub'] as num).toInt(),
+        username: payload['username'] as String,
+        tag: payload['tag'] as String? ?? '0000',
+        profilePictureUrl: _currentUser?.profilePictureUrl,
+      );
+    } catch (_) {}
   }
 
   Future<void> _persistTokens(Map<String, dynamic> body) async {
@@ -57,24 +84,38 @@ class AuthProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('jwt_token', access);
     await prefs.setString('refresh_token', refresh);
-    try {
-      final payload = JwtDecoder.decode(access);
-      _currentUser = UserModel(
-        id: (payload['sub'] as num).toInt(),
-        username: payload['username'] as String,
-        tag: payload['tag'] as String? ?? '0000',
-        profilePictureUrl: _currentUser?.profilePictureUrl,
-      );
-    } catch (_) {}
+    _restoreUserFromAccessJwt(access);
     onAccessTokenChanged?.call(access);
     notifyListeners();
   }
 
   Future<void> _silentRefresh() async {
     final r = _refreshToken;
-    if (r == null) throw StateError('No refresh token');
-    final body = await _api.refreshSession(r);
-    await _persistTokens(body);
+    if (r == null) {
+      throw SessionRefreshInvalidException('No refresh token');
+    }
+
+    Object? lastTransient;
+    for (var attempt = 0; attempt < _refreshMaxAttempts; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(_refreshRetryBaseDelay * attempt);
+      }
+      try {
+        final body = await _api.refreshSession(r);
+        await _persistTokens(body);
+        return;
+      } on SessionRefreshInvalidException {
+        rethrow;
+      } on SessionRefreshTransientException catch (e) {
+        lastTransient = e;
+      } catch (e) {
+        lastTransient = e;
+      }
+    }
+
+    throw SessionRefreshTransientException(
+      lastTransient?.toString() ?? 'Session refresh failed after retries',
+    );
   }
 
   Future<void> _clearLocalAuthState() async {
@@ -93,6 +134,22 @@ class AuthProvider extends ChangeNotifier {
 
   /// Keeps access JWT valid using the opaque refresh token (messenger-style session).
   Future<void> ensureSessionReady() async {
+    if (_sessionRefreshInFlight != null) {
+      return _sessionRefreshInFlight!;
+    }
+
+    final future = _ensureSessionReadyBody();
+    _sessionRefreshInFlight = future;
+    try {
+      await future;
+    } finally {
+      if (identical(_sessionRefreshInFlight, future)) {
+        _sessionRefreshInFlight = null;
+      }
+    }
+  }
+
+  Future<void> _ensureSessionReadyBody() async {
     if (_refreshToken == null) {
       if (_token != null && _isAccessExpired(_token!)) {
         await _clearLocalAuthState();
@@ -100,10 +157,16 @@ class AuthProvider extends ChangeNotifier {
       return;
     }
     if (_token != null && !_isAccessExpired(_token!)) return;
+
     try {
       await _silentRefresh();
-    } catch (_) {
+    } on SessionRefreshInvalidException {
       await _clearLocalAuthState();
+    } on SessionRefreshTransientException {
+      if (_token != null) {
+        _restoreUserFromAccessJwt(_token!);
+      }
+      notifyListeners();
     }
   }
 
@@ -130,24 +193,27 @@ class AuthProvider extends ChangeNotifier {
     if (savedRefresh != null &&
         (savedToken == null || _isAccessExpired(savedToken))) {
       try {
-        final body = await _api.refreshSession(savedRefresh);
-        await _persistTokens(body);
-      } catch (_) {
+        await _silentRefresh();
+      } on SessionRefreshInvalidException {
         await _clearLocalAuthState();
         return;
+      } on SessionRefreshTransientException {
+        if (savedToken != null) {
+          _token = savedToken;
+          _restoreUserFromAccessJwt(savedToken);
+          notifyListeners();
+        }
+      } catch (_) {
+        if (savedToken != null) {
+          _token = savedToken;
+          _restoreUserFromAccessJwt(savedToken);
+          notifyListeners();
+        }
       }
     } else if (savedToken != null) {
       _token = savedToken;
-      try {
-        final payload = JwtDecoder.decode(savedToken);
-        _currentUser = UserModel(
-          id: (payload['sub'] as num).toInt(),
-          username: payload['username'] as String,
-          tag: payload['tag'] as String? ?? '0000',
-          profilePictureUrl: null,
-        );
-        notifyListeners();
-      } catch (_) {}
+      _restoreUserFromAccessJwt(savedToken);
+      notifyListeners();
     }
 
     if (_token == null) return;
@@ -164,9 +230,17 @@ class AuthProvider extends ChangeNotifier {
               final userData = await _api.fetchMe(_token!);
               _currentUser = UserModel.fromJson(userData);
             }
-          } catch (_) {
+          } on SessionRefreshInvalidException {
             await _clearLocalAuthState();
             return;
+          } on SessionRefreshTransientException {
+            if (_token != null) {
+              _restoreUserFromAccessJwt(_token!);
+            }
+          } catch (_) {
+            if (_token != null) {
+              _restoreUserFromAccessJwt(_token!);
+            }
           }
         } else {
           await _clearLocalAuthState();

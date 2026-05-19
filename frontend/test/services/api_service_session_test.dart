@@ -5,6 +5,7 @@ import 'package:http/http.dart' as http;
 import 'package:http/testing.dart';
 
 import 'package:fireplace/services/api_service.dart';
+import 'package:fireplace/services/session_refresh_exception.dart';
 
 void main() {
   group('ApiService session / refresh contract', () {
@@ -89,7 +90,7 @@ void main() {
       expect(data['refresh_token'], 'new_refresh_rotated');
     });
 
-    test('refreshSession fails on 401 from server', () async {
+    test('refreshSession throws SessionRefreshInvalidException on 401', () async {
       final mock = MockClient((request) async {
         return http.Response(
           jsonEncode({'message': 'Invalid refresh token'}),
@@ -101,10 +102,23 @@ void main() {
       final api = ApiService(baseUrl: base, httpClient: mock);
       expect(
         () => api.refreshSession('bad'),
-        throwsA(
-          predicate((e) =>
-              e.toString().contains('Invalid refresh token')),
-        ),
+        throwsA(isA<SessionRefreshInvalidException>()),
+      );
+    });
+
+    test('refreshSession throws SessionRefreshTransientException on 503', () async {
+      final mock = MockClient((request) async {
+        return http.Response(
+          jsonEncode({'message': 'Service unavailable'}),
+          503,
+          headers: {'Content-Type': 'application/json'},
+        );
+      });
+
+      final api = ApiService(baseUrl: base, httpClient: mock);
+      expect(
+        () => api.refreshSession('rt'),
+        throwsA(isA<SessionRefreshTransientException>()),
       );
     });
   });

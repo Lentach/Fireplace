@@ -1,0 +1,19 @@
+/// Refresh failed because the opaque refresh token is invalid, expired, or revoked.
+class SessionRefreshInvalidException implements Exception {
+  SessionRefreshInvalidException([this.message = 'Invalid or expired refresh token']);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
+
+/// Refresh failed due to network, timeout, or server errors — session may still be valid.
+class SessionRefreshTransientException implements Exception {
+  SessionRefreshTransientException([this.message = 'Transient session refresh failure']);
+
+  final String message;
+
+  @override
+  String toString() => message;
+}
