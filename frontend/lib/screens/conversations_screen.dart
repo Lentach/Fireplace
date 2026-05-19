@@ -14,6 +14,7 @@ import '../providers/messaging_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/conversation_tile.dart';
+import '../widgets/main_tab_screen_header.dart';
 import 'add_or_invitations_screen.dart';
 import 'chat_detail_screen.dart';
 
@@ -123,6 +124,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 
   Widget _buildMobileLayout() {
     return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         _buildCustomHeader(),
         Expanded(child: _buildConversationList()),
@@ -134,88 +136,56 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     final auth = context.watch<AuthProvider>();
     final colorScheme = Theme.of(context).colorScheme;
     final user = auth.currentUser;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: FireplaceColors.of(context).convItemBorder,
-          ),
+    final l10n = AppLocalizations.of(context);
+    return MainTabScreenHeader(
+      title: l10n.chat,
+      leading: GestureDetector(
+        onTap: widget.onAvatarTap,
+        child: AvatarCircle(
+          displayName: user?.username ?? '',
+          radius: 22,
+          profilePictureUrl: user?.profilePictureUrl,
         ),
       ),
-      child: SafeArea(
-        bottom: false,
-        child: Stack(
-          alignment: Alignment.center,
-          children: [
-            // Centered title (always in the middle of the header)
-            Center(
-              child: Text(
-                AppLocalizations.of(context).chat,
-                style: RpgTheme.screenHeaderTitle(
-                  color: colorScheme.primary,
-                ),
-              ),
+      trailing: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          IconButton(
+            icon: Icon(
+              Icons.add_circle_outline,
+              color: colorScheme.primary,
+              size: 28,
             ),
-            // Left: avatar (tap to go to Settings)
-            Align(
-              alignment: Alignment.centerLeft,
-              child: GestureDetector(
-                onTap: widget.onAvatarTap,
-                child: AvatarCircle(
-                  displayName: user?.username ?? '',
-                  radius: 22,
-                  profilePictureUrl: user?.profilePictureUrl,
-                ),
-              ),
-            ),
-            // Right: plus in circle with badge (badge only on plus, not on avatar)
-            Align(
-              alignment: Alignment.centerRight,
-              child: Stack(
-                clipBehavior: Clip.none,
-                children: [
-                  IconButton(
-                    icon: Icon(
-                      Icons.add_circle_outline,
-                      color: colorScheme.primary,
-                      size: 28,
+            onPressed: _startNewChat,
+            tooltip: l10n.addInvitations,
+          ),
+          Consumer<FriendsProvider>(
+            builder: (context, friends, _) {
+              if (friends.pendingRequestsCount == 0) {
+                return const SizedBox.shrink();
+              }
+              return Positioned(
+                right: 4,
+                top: 4,
+                child: Container(
+                  padding: const EdgeInsets.all(4),
+                  decoration: const BoxDecoration(
+                    color: Colors.red,
+                    shape: BoxShape.circle,
+                  ),
+                  child: Text(
+                    '${friends.pendingRequestsCount}',
+                    style: RpgTheme.bodyFont(
+                      fontSize: 10,
+                      color: Colors.white,
+                      fontWeight: FontWeight.bold,
                     ),
-                    onPressed: _startNewChat,
-                    tooltip: AppLocalizations.of(context).addInvitations,
                   ),
-                  Consumer<FriendsProvider>(
-                    builder: (context, friends, _) {
-                      if (friends.pendingRequestsCount == 0) {
-                        return const SizedBox.shrink();
-                      }
-                      return Positioned(
-                        right: 4,
-                        top: 4,
-                        child: Container(
-                          padding: const EdgeInsets.all(4),
-                          decoration: const BoxDecoration(
-                            color: Colors.red,
-                            shape: BoxShape.circle,
-                          ),
-                          child: Text(
-                            '${friends.pendingRequestsCount}',
-                            style: RpgTheme.bodyFont(
-                              fontSize: 10,
-                              color: Colors.white,
-                              fontWeight: FontWeight.bold,
-                            ),
-                          ),
-                        ),
-                      );
-                    },
-                  ),
-                ],
-              ),
-            ),
-          ],
-        ),
+                ),
+              );
+            },
+          ),
+        ],
       ),
     );
   }
@@ -232,15 +202,9 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
           SizedBox(
             width: 320,
             child: Column(
+              crossAxisAlignment: CrossAxisAlignment.stretch,
               children: [
-                Container(
-                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-                  decoration: BoxDecoration(
-                    color: Theme.of(context).colorScheme.surface,
-                    border: Border(bottom: BorderSide(color: borderColor)),
-                  ),
-                  child: _buildCustomHeader(),
-                ),
+                _buildCustomHeader(),
                 Expanded(child: _buildConversationList()),
               ],
             ),

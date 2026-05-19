@@ -7,6 +7,7 @@ import '../providers/conversations_provider.dart';
 import '../providers/friends_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
+import '../widgets/main_tab_screen_header.dart';
 import 'chat_detail_screen.dart';
 
 class ContactsScreen extends StatelessWidget {
@@ -165,6 +166,7 @@ class ContactsScreen extends StatelessWidget {
     }
     return Scaffold(
       body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
           _buildHeader(context),
           Expanded(child: _buildContactsList(context)),
@@ -174,28 +176,8 @@ class ContactsScreen extends StatelessWidget {
   }
 
   Widget _buildHeader(BuildContext context) {
-    final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
-      decoration: BoxDecoration(
-        color: colorScheme.surface,
-        border: Border(
-          bottom: BorderSide(
-            color: FireplaceColors.of(context).convItemBorder,
-          ),
-        ),
-      ),
-      child: SafeArea(
-        bottom: false,
-        child: Center(
-          child: Text(
-            AppLocalizations.of(context).contacts,
-            style: RpgTheme.screenHeaderTitle(
-              color: colorScheme.primary,
-            ),
-          ),
-        ),
-      ),
+    return MainTabScreenHeader(
+      title: AppLocalizations.of(context).contacts,
     );
   }
 

@@ -12,6 +12,7 @@ import '../services/push_service.dart';
 import '../config/app_config.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/dialogs/reset_password_dialog.dart';
+import '../widgets/main_tab_screen_header.dart';
 import '../widgets/dialogs/delete_account_dialog.dart';
 import '../widgets/top_snackbar.dart';
 import '../l10n/app_localizations.dart';
@@ -387,18 +388,19 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final theme = Theme.of(context);
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        centerTitle: true,
-        title: Text(AppLocalizations.of(context).settings),
-        backgroundColor: theme.colorScheme.surface,
-        elevation: 0,
-        iconTheme: IconThemeData(color: theme.colorScheme.primary),
-      ),
-      body: SafeArea(
-        child: ListView(
-          physics: const ClampingScrollPhysics(),
-          padding: const EdgeInsets.symmetric(vertical: 16),
-          children: [
+      body: Column(
+        crossAxisAlignment: CrossAxisAlignment.stretch,
+        children: [
+          MainTabScreenHeader(
+            title: AppLocalizations.of(context).settings,
+          ),
+          Expanded(
+            child: SafeArea(
+              top: false,
+              child: ListView(
+                physics: const ClampingScrollPhysics(),
+                padding: const EdgeInsets.symmetric(vertical: 16),
+                children: [
             // Header Section
             Column(
               children: [
@@ -551,8 +553,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
                 ),
               ),
             ),
-          ],
-        ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }
