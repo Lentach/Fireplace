@@ -201,6 +201,23 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
+  /// ListTile ink needs a [Material] ancestor; border/background live on Material, not an outer DecoratedBox.
+  Widget _settingsTileShell(Widget child) {
+    final fc = FireplaceColors.of(context);
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 3),
+      child: Material(
+        color: fc.settingsTileBg,
+        shape: RoundedRectangleBorder(
+          borderRadius: BorderRadius.circular(10),
+          side: BorderSide(color: fc.settingsTileBorder, width: 1.2),
+        ),
+        clipBehavior: Clip.antiAlias,
+        child: child,
+      ),
+    );
+  }
+
   Widget _buildThemeTile(BuildContext context, SettingsProvider settings) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -236,14 +253,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     }
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 13, vertical: 3),
-      decoration: BoxDecoration(
-        color: fc.settingsTileBg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: fc.settingsTileBorder, width: 1.2),
-      ),
-      child: ListTile(
+    return _settingsTileShell(
+      ListTile(
         leading: Icon(Icons.palette_outlined, color: colorScheme.primary, size: 24),
         title: Text(
           AppLocalizations.of(context).theme,
@@ -303,14 +314,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
       );
     }
 
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 13, vertical: 3),
-      decoration: BoxDecoration(
-        color: fc.settingsTileBg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(color: fc.settingsTileBorder, width: 1.2),
-      ),
-      child: ListTile(
+    return _settingsTileShell(
+      ListTile(
         leading: Icon(Icons.language, color: colorScheme.primary, size: 24),
         title: Text(
           l10n.language,
@@ -342,18 +347,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
   }) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final fc = FireplaceColors.of(context);
-    return Container(
-      margin: const EdgeInsets.symmetric(horizontal: 13, vertical: 3),
-      decoration: BoxDecoration(
-        color: fc.settingsTileBg,
-        borderRadius: BorderRadius.circular(10),
-        border: Border.all(
-          color: fc.settingsTileBorder,
-          width: 1.2,
-        ),
-      ),
-      child: ListTile(
+    return _settingsTileShell(
+      ListTile(
         leading: Icon(icon, color: colorScheme.primary, size: 24),
         title: Text(
           title,
