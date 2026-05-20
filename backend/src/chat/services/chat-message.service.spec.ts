@@ -286,7 +286,7 @@ describe('ChatMessageService', () => {
       expect(opts.messageType).toBeUndefined();
     });
 
-    it('should store [encrypted] for encrypted VOICE (no mediaUrl in payload)', async () => {
+    it('should persist mediaUrl and messageType for encrypted VOICE', async () => {
       chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
       usersService.findById
         .mockResolvedValueOnce(mockSender as User)
@@ -296,15 +296,18 @@ describe('ChatMessageService', () => {
         ...mockMessage,
         content: '[encrypted]',
         encryptedContent: '3:voiceCiphertext==',
-        messageType: 'TEXT',
-        mediaUrl: null,
+        messageType: 'VOICE',
+        mediaUrl: 'http://localhost:3000/media/msgs/voice.bin',
       } as Message);
 
+      const mediaUrl = 'http://localhost:3000/media/msgs/voice.bin';
       const data = {
         recipientId: 2,
         content: '[encrypted]',
         encryptedContent: '3:voiceCiphertext==',
-        // mediaUrl is inside the encrypted envelope, not in WS payload
+        messageType: 'VOICE',
+        mediaUrl,
+        mediaDuration: 12,
       };
 
       await service.handleSendMessage(
@@ -320,14 +323,14 @@ describe('ChatMessageService', () => {
         mockConversation,
         expect.objectContaining({
           encryptedContent: '3:voiceCiphertext==',
+          messageType: 'VOICE',
+          mediaUrl,
+          mediaDuration: 12,
         }),
       );
-      const opts = messagesService.create.mock.calls[0][3] as Record<string, unknown>;
-      expect(opts.mediaUrl).toBeUndefined();
-      expect(opts.mediaDuration).toBeUndefined();
     });
 
-    it('should store [encrypted] for encrypted IMAGE (no mediaUrl in payload)', async () => {
+    it('should persist mediaUrl and messageType for encrypted IMAGE', async () => {
       chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
       usersService.findById
         .mockResolvedValueOnce(mockSender as User)
@@ -337,14 +340,17 @@ describe('ChatMessageService', () => {
         ...mockMessage,
         content: '[encrypted]',
         encryptedContent: '3:imageCiphertext==',
-        messageType: 'TEXT',
-        mediaUrl: null,
+        messageType: 'IMAGE',
+        mediaUrl: 'http://localhost:3000/media/msgs/image.bin',
       } as Message);
 
+      const mediaUrl = 'http://localhost:3000/media/msgs/image.bin';
       const data = {
         recipientId: 2,
         content: '[encrypted]',
         encryptedContent: '3:imageCiphertext==',
+        messageType: 'IMAGE',
+        mediaUrl,
       };
 
       await service.handleSendMessage(
@@ -356,10 +362,11 @@ describe('ChatMessageService', () => {
 
       const opts = messagesService.create.mock.calls[0][3] as Record<string, unknown>;
       expect(opts.encryptedContent).toBe('3:imageCiphertext==');
-      expect(opts.mediaUrl).toBeUndefined();
+      expect(opts.messageType).toBe('IMAGE');
+      expect(opts.mediaUrl).toBe(mediaUrl);
     });
 
-    it('should store [encrypted] for encrypted GIF (no mediaUrl in payload)', async () => {
+    it('should persist mediaUrl and messageType for encrypted GIF', async () => {
       chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
       usersService.findById
         .mockResolvedValueOnce(mockSender as User)
@@ -369,14 +376,17 @@ describe('ChatMessageService', () => {
         ...mockMessage,
         content: '[encrypted]',
         encryptedContent: '3:base64encryptedGifData',
-        messageType: 'TEXT',
-        mediaUrl: null,
+        messageType: 'GIF',
+        mediaUrl: 'http://localhost:3000/media/msgs/gif.bin',
       } as Message);
 
+      const mediaUrl = 'http://localhost:3000/media/msgs/gif.bin';
       const data = {
         recipientId: 2,
         content: '[encrypted]',
         encryptedContent: '3:base64encryptedGifData',
+        messageType: 'GIF',
+        mediaUrl,
       };
 
       await service.handleSendMessage(
@@ -388,8 +398,44 @@ describe('ChatMessageService', () => {
 
       const opts = messagesService.create.mock.calls[0][3] as Record<string, unknown>;
       expect(opts.encryptedContent).toBe('3:base64encryptedGifData');
-      expect(opts.messageType).toBeUndefined();
-      expect(opts.mediaUrl).toBeUndefined();
+      expect(opts.messageType).toBe('GIF');
+      expect(opts.mediaUrl).toBe(mediaUrl);
+    });
+
+    it('should persist mediaUrl and messageType for encrypted FILE', async () => {
+      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+      usersService.findById
+        .mockResolvedValueOnce(mockSender as User)
+        .mockResolvedValueOnce(mockRecipient as User);
+      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+      messagesService.create.mockResolvedValue({
+        ...mockMessage,
+        content: '[encrypted]',
+        encryptedContent: '3:base64encryptedFileData',
+        messageType: 'FILE',
+        mediaUrl: 'http://localhost:3000/media/msgs/file.bin',
+      } as Message);
+
+      const mediaUrl = 'http://localhost:3000/media/msgs/file.bin';
+      const data = {
+        recipientId: 2,
+        content: '[encrypted]',
+        encryptedContent: '3:base64encryptedFileData',
+        messageType: 'FILE',
+        mediaUrl,
+      };
+
+      await service.handleSendMessage(
+        mockClient as Socket,
+        data,
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      const opts = messagesService.create.mock.calls[0][3] as Record<string, unknown>;
+      expect(opts.encryptedContent).toBe('3:base64encryptedFileData');
+      expect(opts.messageType).toBe('FILE');
+      expect(opts.mediaUrl).toBe(mediaUrl);
     });
 
     it('should NOT fetch link preview for any encrypted message', async () => {

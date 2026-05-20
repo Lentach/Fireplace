@@ -1,7 +1,7 @@
 # Latest session summary
 
-**Date:** 2026-05-18
+**Date:** 2026-05-20
 
-**Summary:** [2026-05-18-session-revert-web-keyboard-fixes.md](2026-05-18-session-revert-web-keyboard-fixes.md) — Reverted all web chat keyboard layout fix attempts; documented open Android Chrome bug in CLAUDE.md Known Limitations.
+**Summary:** [2026-05-20-session-e2e-review-followups.md](2026-05-20-session-e2e-review-followups.md) — Review follow-ups: encrypted FILE specs, I1 upload-without-DB-row docs, orphan cron integration tests.
 
-**Previous:** [2026-05-18-session-web-keyboard-host-scroll.md](2026-05-18-session-web-keyboard-host-scroll.md)
+**Previous:** [2026-05-20-session-e2e-mediaurl-cleanup.md](2026-05-20-session-e2e-mediaurl-cleanup.md)

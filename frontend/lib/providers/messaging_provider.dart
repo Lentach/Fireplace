@@ -149,7 +149,10 @@ class MessagingProvider extends ChangeNotifier {
   bool loadCachedMessages(int conversationId) {
     final cached = _conversationCache[conversationId];
     if (cached == null || cached.isEmpty) return false;
-    _messages = List.from(cached);
+    final now = DateTime.now();
+    _messages = List.from(
+      cached.where((m) => !isMessageExpired(m, now)),
+    );
     notifyListeners();
     return true;
   }
@@ -158,8 +161,12 @@ class MessagingProvider extends ChangeNotifier {
   /// Filters by conversationId so async paths are safe if _messages holds another conversation.
   /// Removes the cache entry if the filtered list is empty (keeps hasCachedMessages consistent).
   void _updateCache(int conversationId) {
+    final now = DateTime.now();
     final filtered = List<MessageModel>.from(
-      _messages.where((m) => m.conversationId == conversationId),
+      _messages.where(
+        (m) =>
+            m.conversationId == conversationId && !isMessageExpired(m, now),
+      ),
     );
     if (filtered.isEmpty) {
       _conversationCache.remove(conversationId);
@@ -1594,8 +1601,17 @@ class MessagingProvider extends ChangeNotifier {
   /// Remove messages whose expiresAt has passed. Called every second by ChatDetailScreen timer.
   void removeExpiredMessages() {
     final now = DateTime.now();
-    final hadExpired = _messages.any((m) => isMessageExpired(m, now));
-    if (!hadExpired) return;
+    final hadExpiredInList = _messages.any((m) => isMessageExpired(m, now));
+    var hadExpiredInCache = false;
+    for (final cid in _conversationCache.keys.toList()) {
+      final list = _conversationCache[cid];
+      if (list == null) continue;
+      final before = list.length;
+      list.removeWhere((m) => isMessageExpired(m, now));
+      if (list.length != before) hadExpiredInCache = true;
+      if (list.isEmpty) _conversationCache.remove(cid);
+    }
+    if (!hadExpiredInList && !hadExpiredInCache) return;
 
     _messages.removeWhere((m) => isMessageExpired(m, now));
     _conversationsProvider?.pruneExpiredLastMessages();
@@ -1952,16 +1968,27 @@ class MessagingProvider extends ChangeNotifier {
         'ciphertextLength': ciphertext.length,
       });
 
-      // 6. Send with encrypted content — server is blind to type/media
+      // 6. Send encrypted payload; include type/media metadata so the server
+      // can reference self-hosted blobs (orphan media cleanup, expiry deletes).
       _e2eFlowLog('SEND_EMIT', {'recipientId': recipientId});
-      _emit?.call('sendMessage', {
+      final emitPayload = <String, dynamic>{
         'recipientId': recipientId,
         'content': '[encrypted]',
         'encryptedContent': ciphertext,
         'expiresIn': effectiveExpiresIn,
         'tempId': tempId,
         'replyToMessageId': effectiveReplyToId,
-      });
+      };
+      if (messageType != 'TEXT') {
+        emitPayload['messageType'] = messageType;
+      }
+      if (mediaUrl != null && mediaUrl.isNotEmpty) {
+        emitPayload['mediaUrl'] = mediaUrl;
+      }
+      if (mediaDuration != null) {
+        emitPayload['mediaDuration'] = mediaDuration;
+      }
+      _emit?.call('sendMessage', emitPayload);
     } catch (e) {
       _encryptionProvider?.clearPendingPreKeyFetch(recipientId);
       debugPrint('[E2E] Encryption failed: $e');
@@ -1976,6 +2003,32 @@ class MessagingProvider extends ChangeNotifier {
       }
     }
   }
+
+  @visibleForTesting
+  Future<void> encryptAndSendForTest({
+    required int recipientId,
+    required String content,
+    required String tempId,
+    int? effectiveExpiresIn,
+    int? effectiveReplyToId,
+    String messageType = 'TEXT',
+    String? mediaUrl,
+    int? mediaDuration,
+    String? mediaKey,
+    String? mediaIv,
+  }) =>
+      _encryptAndSend(
+        recipientId: recipientId,
+        content: content,
+        tempId: tempId,
+        effectiveExpiresIn: effectiveExpiresIn,
+        effectiveReplyToId: effectiveReplyToId,
+        messageType: messageType,
+        mediaUrl: mediaUrl,
+        mediaDuration: mediaDuration,
+        mediaKey: mediaKey,
+        mediaIv: mediaIv,
+      );
 
   // ---------- Decrypt ----------
 

@@ -75,22 +75,38 @@ describe('SendMessageDto', () => {
       expect(errors).toHaveLength(0);
     });
 
-    it('should accept encrypted VOICE (no mediaUrl in payload)', async () => {
+    it('should accept encrypted VOICE with self-hosted mediaUrl', async () => {
       const dto = createDto({
         recipientId: 1,
         content: '[encrypted]',
         encryptedContent: '3:voiceCipher==',
-        // mediaUrl is inside the encrypted envelope, not in WS payload
+        messageType: 'VOICE',
+        mediaUrl: 'http://localhost:3000/media/msgs/voice.bin',
+        mediaDuration: 5,
       });
       const errors = await validate(dto);
       expect(errors).toHaveLength(0);
     });
 
-    it('should accept encrypted IMAGE (no mediaUrl in payload)', async () => {
+    it('should accept encrypted IMAGE with self-hosted mediaUrl', async () => {
       const dto = createDto({
         recipientId: 1,
         content: '[encrypted]',
         encryptedContent: '3:imageCipher==',
+        messageType: 'IMAGE',
+        mediaUrl: 'http://localhost:3000/media/msgs/image.bin',
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should accept encrypted FILE with self-hosted mediaUrl', async () => {
+      const dto = createDto({
+        recipientId: 1,
+        content: '[encrypted]',
+        encryptedContent: '3:fileCipher==',
+        messageType: 'FILE',
+        mediaUrl: 'http://localhost:3000/media/msgs/file.bin',
       });
       const errors = await validate(dto);
       expect(errors).toHaveLength(0);

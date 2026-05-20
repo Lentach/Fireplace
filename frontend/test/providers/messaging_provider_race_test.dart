@@ -388,5 +388,47 @@ void main() {
         expect(payload['content'], isNot('hello'));
       });
     });
+
+    test(
+      'encrypted sendMessage includes messageType and mediaUrl for IMAGE',
+      () async {
+        encryption.failEnsureSession = false;
+        await provider.encryptAndSendForTest(
+          recipientId: 2,
+          content: '',
+          tempId: 'temp_image_1',
+          messageType: 'IMAGE',
+          mediaUrl: 'http://localhost:3000/media/msgs/test-image.bin',
+        );
+        await Future<void>.delayed(Duration.zero);
+
+        final sendEvents =
+            emitted.where((e) => e['event'] == 'sendMessage').toList();
+        expect(sendEvents.length, 1);
+        final payload = sendEvents.first['data'] as Map<String, dynamic>;
+        expect(payload['messageType'], 'IMAGE');
+        expect(
+          payload['mediaUrl'],
+          'http://localhost:3000/media/msgs/test-image.bin',
+        );
+        expect(payload['encryptedContent'], isNotEmpty);
+      },
+    );
+
+    test('encrypted sendMessage omits messageType for TEXT', () async {
+      encryption.failEnsureSession = false;
+      await provider.encryptAndSendForTest(
+        recipientId: 2,
+        content: 'hello',
+        tempId: 'temp_text_1',
+      );
+      await Future<void>.delayed(Duration.zero);
+
+      final payload = emitted
+          .firstWhere((e) => e['event'] == 'sendMessage')['data']
+          as Map<String, dynamic>;
+      expect(payload.containsKey('messageType'), isFalse);
+      expect(payload.containsKey('mediaUrl'), isFalse);
+    });
   });
 }
