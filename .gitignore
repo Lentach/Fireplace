@@ -26,8 +26,7 @@ frontend/.flutter-plugins-dependencies
 # Jacques AI (exclude from project)
 .jacques/
 
-# Firebase secrets — never commit these
-frontend/lib/firebase_secrets.dart
+# Firebase — firebase_secrets.dart is committed with TODO placeholders; do not commit real keys
 frontend/lib/firebase-config.js
 frontend/web/firebase-config.js
 

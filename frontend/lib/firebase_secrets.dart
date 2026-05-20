@@ -1,5 +1,6 @@
-// Template for local setup. The repo ships lib/firebase_secrets.dart with TODO placeholders.
-// Replace values from Firebase Console → Project Settings — never commit real production keys.
+// Placeholder Firebase config for CI and local dev without real keys.
+// Copy from firebase_secrets.dart.example or replace values from Firebase Console.
+// Do not commit real production keys.
 
 const String kFirebaseWebApiKey = 'TODO_REPLACE';
 const String kFirebaseAndroidApiKey = 'TODO_REPLACE';
