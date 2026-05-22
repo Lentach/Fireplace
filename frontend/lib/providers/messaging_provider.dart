@@ -2032,6 +2032,19 @@ class MessagingProvider extends ChangeNotifier {
 
   // ---------- Decrypt ----------
 
+  /// True when [msg] has displayable plaintext (or decrypted media), not an E2E placeholder.
+  bool _hasUsableDecryptedContent(MessageModel msg) {
+    if (msg.content == '[Decryption failed]' ||
+        msg.content == '[Encryption not initialized]') {
+      return false;
+    }
+    if (msg.displayAsEncryptedPlaceholder) return false;
+    if (!msg.needsDecryption(_currentUserId)) return true;
+    return msg.content.isNotEmpty ||
+        msg.mediaUrl != null ||
+        msg.messageType != MessageType.text;
+  }
+
   void _requestSessionRebuildForPeer(int peerId) {
     _encryptionProvider?.markSessionRebuild(peerId);
     _emit?.call('requestSessionRebuild', {'recipientId': peerId});
@@ -2041,6 +2054,11 @@ class MessagingProvider extends ChangeNotifier {
   Future<void> _decryptMessageHistory(int generation) async {
     _historyDecryptFailedPeers = <int>{};
     _historySessionRebuildRequested = <int>{};
+    await _waitForE2EReady(maxAttempts: 100);
+    if (!(_encryptionProvider?.isE2EReady ?? false)) {
+      _e2eFlowLog('HISTORY_DECRYPT_SKIP_E2E_NOT_READY', {});
+      return;
+    }
     final toDecrypt =
         _messages.where((m) => m.needsDecryption(_currentUserId)).length;
     if (toDecrypt > 0) {
@@ -2062,9 +2080,9 @@ class MessagingProvider extends ChangeNotifier {
         msg = msg.copyWith(content: '[encrypted]');
       }
       if (msg.needsDecryption(_currentUserId)) {
-        // Cache-first: check persisted cache before attempting live decryption.
+        // Cache-first: only skip live decrypt when cache holds real plaintext.
         final cached = _encryptionProvider?.getCachedDecryption(msg.id);
-        if (cached != null) {
+        if (cached != null && _hasUsableDecryptedContent(cached)) {
           final idx = _messages.indexWhere((m) => m.id == msg.id);
           if (idx != -1) {
             final merged = _mergeMessagePreferNewer(_messages[idx], cached);
@@ -2108,12 +2126,14 @@ class MessagingProvider extends ChangeNotifier {
           final merged = idx != -1
               ? _mergeMessagePreferNewer(_messages[idx], restored)
               : restored;
-          _encryptionProvider?.cacheDecryption(msg.id, merged);
-          if (idx != -1) {
-            _messages[idx] = merged;
-            changed = true;
+          if (_hasUsableDecryptedContent(merged)) {
+            _encryptionProvider?.cacheDecryption(msg.id, merged);
+            if (idx != -1) {
+              _messages[idx] = merged;
+              changed = true;
+            }
+            continue;
           }
-          continue;
         }
         // No cache — live decrypt (advances session ratchet)
         final decrypted = await _decryptMessageAsyncQueued(msg);
@@ -2165,13 +2185,22 @@ class MessagingProvider extends ChangeNotifier {
         }
       }
     }
-    if (_decryptHistoryGeneration == generation &&
-        (_historyDecryptFailedPeers?.isNotEmpty ?? false)) {
-      final retried = await _retryHistoryDecryptForFailedPeers(
-        generation,
-        _historyDecryptFailedPeers!,
-      );
-      if (retried) changed = true;
+    if (_decryptHistoryGeneration == generation) {
+      final peersNeedingRetry = <int>{
+        ...?_historyDecryptFailedPeers,
+        for (final m in _messages)
+          if (m.needsDecryption(_currentUserId) &&
+              (m.displayAsEncryptedPlaceholder ||
+                  m.content == '[Decryption failed]'))
+            m.senderId,
+      };
+      if (peersNeedingRetry.isNotEmpty) {
+        final retried = await _retryHistoryDecryptForPeers(
+          generation,
+          peersNeedingRetry,
+        );
+        if (retried) changed = true;
+      }
     }
     _historyDecryptFailedPeers = null;
     _historySessionRebuildRequested = null;
@@ -2179,9 +2208,9 @@ class MessagingProvider extends ChangeNotifier {
     if (changed) notifyListeners();
   }
 
-  /// After history decrypt failures, reset the local session with each peer
-  /// and replay decrypt in chronological order (overnight / wake-up path).
-  Future<bool> _retryHistoryDecryptForFailedPeers(
+  /// After history decrypt failures or leftover [encrypted] placeholders, reset
+  /// the local session with each peer and replay decrypt in chronological order.
+  Future<bool> _retryHistoryDecryptForPeers(
     int generation,
     Set<int> peerIds,
   ) async {
@@ -2198,13 +2227,14 @@ class MessagingProvider extends ChangeNotifier {
       }
       for (var i = 0; i < _messages.length; i++) {
         final m = _messages[i];
-        if (m.senderId == peerId && m.content == '[Decryption failed]') {
+        if (m.senderId == peerId &&
+            m.needsDecryption(_currentUserId) &&
+            m.content == '[Decryption failed]') {
           _messages[i] = m.copyWith(content: '[encrypted]');
           changed = true;
         }
       }
     }
-    if (!changed) return false;
 
     final sorted = _messages
         .where(
@@ -2307,7 +2337,7 @@ class MessagingProvider extends ChangeNotifier {
     } catch (e) {
       // DuplicateMessageException: session was already advanced. Use cache.
       final cached = _encryptionProvider?.getCachedDecryption(msg.id);
-      if (cached != null) return cached;
+      if (cached != null && _hasUsableDecryptedContent(cached)) return cached;
       // _encryptionProvider is non-null here: catch path reached only during
       // active decryption, which requires E2E to be initialized.
       final persisted =
@@ -2338,8 +2368,10 @@ class MessagingProvider extends ChangeNotifier {
           linkPreviewTitle: persisted['linkPreviewTitle'] as String?,
           linkPreviewImageUrl: safeImageUrl,
         );
-        _encryptionProvider?.cacheDecryption(msg.id, restored);
-        return restored;
+        if (_hasUsableDecryptedContent(restored)) {
+          _encryptionProvider?.cacheDecryption(msg.id, restored);
+          return restored;
+        }
       }
       debugPrint('[E2E] Decrypt failed for msg ${msg.id}: $e');
       _e2eFlowLog(

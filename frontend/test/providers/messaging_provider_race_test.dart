@@ -195,6 +195,43 @@ void main() {
     );
 
     test(
+      'history decrypt ignores memory cache that still has [encrypted] placeholder',
+      () async {
+        final createdAt = DateTime.now().toUtc().toIso8601String();
+        provider.setActiveConversationIdForTest(10);
+        encryption.cacheDecryption(
+          1,
+          MessageModel.fromJson(
+            incomingJson(
+              id: 1,
+              createdAt: createdAt,
+              includeTtl: false,
+            ),
+          ),
+        );
+
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 1,
+              createdAt: createdAt,
+              includeTtl: false,
+            ),
+          ],
+        });
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(provider.messages.single.content, 'decrypted');
+        expect(
+          provider.messages.single.displayAsEncryptedPlaceholder,
+          isFalse,
+        );
+      },
+    );
+
+    test(
       'history decrypt from stale memory cache keeps disappearAfterSeconds on row',
       () {
         fakeAsync((async) {
