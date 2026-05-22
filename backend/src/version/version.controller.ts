@@ -14,7 +14,7 @@ export class VersionController {
   @Get()
   getVersion(): VersionPayload {
     return {
-      version: this.configService.get<string>('APP_VERSION') ?? '0.0.1',
+      version: this.configService.get<string>('APP_VERSION') ?? '0.0.2',
       gitCommit: this.configService.get<string>('GIT_COMMIT') ?? 'unknown',
       buildTime: this.configService.get<string>('BUILD_TIME') ?? '',
     };

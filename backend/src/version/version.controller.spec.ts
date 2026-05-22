@@ -39,7 +39,7 @@ describe('VersionController', () => {
     controller = module.get(VersionController);
 
     expect(controller.getVersion()).toEqual({
-      version: '0.0.1',
+      version: '0.0.2',
       gitCommit: 'unknown',
       buildTime: '',
     });

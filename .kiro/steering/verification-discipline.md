@@ -24,7 +24,7 @@ In the final message that closes the task, include a short `Verification` block:
 
 ```
 Verification
-- cd backend && npm test — 258 passed, 36 suites
+- cd backend && npm test — 277 passed, 39 suites (CI: `node scripts/verify-claude-backend-test-counts.mjs`)
 - cd frontend && flutter analyze — no issues
 - cd frontend && flutter test — 115 passed
 ```

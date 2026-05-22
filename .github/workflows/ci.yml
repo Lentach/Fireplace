@@ -30,7 +30,11 @@ jobs:
         run: npm ci
 
       - name: Run backend tests
-        run: npm test
+        run: npm test 2>&1 | tee test-output.txt
+
+      - name: Verify CLAUDE.md backend test counts
+        working-directory: .
+        run: node scripts/verify-claude-backend-test-counts.mjs --log backend/test-output.txt
 
   frontend:
     name: Flutter analyze and tests
