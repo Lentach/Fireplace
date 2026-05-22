@@ -51,7 +51,7 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.textContaining('0.0.2'), findsOneWidget);
-    expect(find.textContaining('0.0.2+42'), findsNothing);
+    expect(find.textContaining('+'), findsNothing);
     expect(find.textContaining('dev'), findsOneWidget);
   });
 }

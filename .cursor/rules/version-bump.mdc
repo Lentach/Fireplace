@@ -1,0 +1,33 @@
+---
+description: Bump app version in pubspec when shipping changes to production
+alwaysApply: true
+---
+
+# App version bump (Fireplace)
+
+**User-visible version** is **only** three numbers: `0.0.1`, then `0.0.2`, then `0.0.3`, …  
+There is **no** `+1`, `+2`, or `1.0.0+1` shown anywhere (Settings, API, commits).
+
+When the user or workflow says “bump version by +1”, that means **increment the PATCH (third) segment by 1**, not append `+1` to the string.
+
+## On each production-worthy commit / release
+
+1. Edit `frontend/pubspec.yaml` → `version:` **semver only** (no `+build` suffix).
+2. **Increment PATCH by 1:**
+   - `0.0.1` → `0.0.2` → `0.0.3`
+3. **Do not** change only a hidden build counter; **do not** use `0.0.1+2` style in pubspec.
+4. **First version** in this project: **`0.0.1`** (not `1.0.0`).
+5. **Minor/major** bumps (`0.1.0`, `1.0.0`) only when the user asks or for a clear milestone.
+6. Skip bump for trivial edits (typos, session summaries only) unless the user asks.
+7. State the new version (e.g. `0.0.2`) in the commit message or summary.
+
+## Display & deploy
+
+- Settings footer and `GET /version` field `version` show the same semver from pubspec (`app_version_info.dart`, `deploy.sh`).
+- Git commit + build time stay separate (`GIT_COMMIT`, `BUILD_TIME` at deploy).
+
+## Android note (internal)
+
+Flutter may still use an internal build counter for `versionCode` when packaging store builds; that is **not** the user-facing `0.0.x` string. Do not put `+N` in `pubspec.yaml` for Fireplace releases.
+
+**Deploy on VM:** `.cursor/rules/production-vm-deploy.mdc` when deploy/production topics apply.

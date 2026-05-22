@@ -1,0 +1,70 @@
+---
+description: Use when deploying to production GCP VM, SSH/fireplace-server, ~/fireplace paths, deploy.sh, nginx frontend-build, curl /version or /health, PWA prod verification, or fireplace.ignorelist.com ops.
+---
+
+# Production VM deploy (GCP)
+
+**URL:** https://fireplace.ignorelist.com  
+**Typical SSH user:** `olek292` (adjust if docs differ).
+
+## Paths (do not guess `~/Fireplace`)
+
+| What | Path |
+|------|------|
+| Git repo | `~/fireplace` (lowercase) |
+| Flutter build output | `~/fireplace/frontend/build/web/` |
+| Nginx static root (what users load) | `~/fireplace/frontend-build/` |
+| Deploy script (use this one) | `~/fireplace/deploy.sh` |
+| Host nginx config | `/etc/nginx/sites-enabled/fireplace` |
+| Docker compose project | `~/fireplace/docker-compose.yml` → containers `fireplace-backend-1`, `fireplace-db-1` |
+
+**Wrong:** `cd ~/Fireplace`, running only `~/deploy.sh` from `$HOME` without `cd ~/fireplace` (old 446-byte `~/deploy.sh` copy may lack version dart-defines).
+
+## What `./deploy.sh` does vs does not
+
+**Does:** `git pull` → rebuild **backend** Docker image (with `GIT_COMMIT`, `BUILD_TIME`, `APP_VERSION`) → `flutter build web` into `frontend/build/web/`.
+
+**Does not:** copy web files to `frontend-build/`, reload host nginx, or edit `/etc/nginx/`. Those are separate manual steps on this VM layout.
+
+## Standard deploy (tell user or document after push to `master`)
+
+```bash
+cd ~/fireplace
+./deploy.sh
+cp -a ~/fireplace/frontend/build/web/. ~/fireplace/frontend-build/
+curl -sS https://fireplace.ignorelist.com/version
+```
+
+Optional: `rsync -a --delete …` if `rsync` installed; `cp -a` is enough.
+
+## Verify production
+
+| Check | Expected |
+|-------|----------|
+| `curl https://fireplace.ignorelist.com/health` | `{"status":"ok","db":"ok"}` |
+| `curl https://fireplace.ignorelist.com/version` | JSON `{ version, gitCommit, buildTime }` — **not** Flutter HTML |
+| `curl http://127.0.0.1:3000/version` on VM | Same JSON (backend OK even if nginx broken) |
+| App **Settings** footer | `semver · shortSha · buildTime` (e.g. `0.0.2 · 6a560ec · …`; label: App version / Wersja aplikacji) |
+
+If `/version` returns HTML → nginx missing `location = /version` proxy to `127.0.0.1:3000`; fix config, then `sudo nginx -t && sudo systemctl reload nginx`. Template block lives in repo `frontend/nginx.conf` (host uses `127.0.0.1`, not `backend:`).
+
+If Settings shows `· dev` after deploy → PWA/browser cache; hard refresh. Build must use `--dart-define=GIT_COMMIT` (see `deploy.sh`).
+
+## Version fields (do not confuse)
+
+- **Semver in UI/API `version`:** from `frontend/pubspec.yaml` (`0.0.1`, `0.0.2`, … — increment PATCH by 1 per release; never show `+N` suffix).
+- **`gitCommit`:** short SHA at deploy time from `git rev-parse` in `deploy.sh`.
+- **`buildTime`:** UTC ISO timestamp when deploy ran.
+
+## Nginx / env caveats
+
+- Changing **only** app code: deploy + `cp` enough; no nginx reload.
+- Changing **nginx** routes (e.g. new `location`): edit `/etc/nginx/sites-enabled/fireplace`, test, reload.
+- **`.env`** in `~/fireplace/.env` is not overwritten by `git pull`; restart backend after env edits.
+
+## Agent checklist after production-related PR
+
+1. User pushed `master` (agent does not SSH unless user asks).
+2. Remind full deploy block above if they deploy to VM.
+3. Mention new `pubspec` version if bumped.
+4. Do not claim prod is updated until user confirms `curl /version` or Settings line.
