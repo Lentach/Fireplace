@@ -650,4 +650,10 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get themeOptionTealStone => 'Turkus i kamień (nowoczesny jasny)';
+
+  @override
+  String get rotateDeviceTitle => 'Obróć urządzenie';
+
+  @override
+  String get rotateDeviceMessage => 'Fireplace działa tylko w trybie pionowym.';
 }

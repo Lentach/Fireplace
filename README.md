@@ -192,9 +192,11 @@ Frontend (61 widget tests):
 
 Production runs on a Google Cloud e2-medium VM (Warsaw region).
 
-    # SSH to server, then:
-    ~/deploy.sh
-    # git pull + docker build (backend) + flutter build web (frontend) + reload nginx
+    # SSH to server (repo at ~/fireplace), then:
+    cd ~/fireplace && ./deploy.sh
+    cp -a frontend/build/web/. frontend-build/
+    curl -sS https://fireplace.ignorelist.com/version
+    # deploy.sh does NOT copy web to nginx root; reload nginx only if config changed
 
 Stack: Docker + Nginx reverse proxy + Let'\''s Encrypt TLS.
 

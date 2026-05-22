@@ -237,5 +237,8 @@
   "themeOptionLight": "Ciepły papier (jasny)",
   "themeOptionDark": "Ciemny szary z turkusowym akcentem",
   "themeOptionBlue": "Niebieski w stylu Telegram (ciemny)",
-  "themeOptionTealStone": "Turkus i kamień (nowoczesny jasny)"
+  "themeOptionTealStone": "Turkus i kamień (nowoczesny jasny)",
+
+  "rotateDeviceTitle": "Obróć urządzenie",
+  "rotateDeviceMessage": "Fireplace działa tylko w trybie pionowym."
 }

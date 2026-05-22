@@ -9,7 +9,8 @@ cd "$REPO_DIR"
 
 GIT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 BUILD_TIME="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-APP_VERSION="$(grep '^version:' frontend/pubspec.yaml | sed 's/version: //' | tr -d ' ')"
+# Semver only for API/UI (strip +build from pubspec)
+APP_VERSION="$(grep '^version:' frontend/pubspec.yaml | sed 's/version: //' | tr -d ' ' | cut -d'+' -f1)"
 
 export GIT_COMMIT
 export BUILD_TIME

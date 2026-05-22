@@ -641,4 +641,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get themeOptionTealStone => 'Teal + stone (modern light)';
+
+  @override
+  String get rotateDeviceTitle => 'Rotate your device';
+
+  @override
+  String get rotateDeviceMessage => 'Fireplace works in portrait mode only.';
 }

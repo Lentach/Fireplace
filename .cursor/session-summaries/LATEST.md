@@ -1,7 +1,7 @@
 # Latest session summary
 
-**Date:** 2026-05-20
+**Date:** 2026-05-22
 
-**Summary:** [2026-05-20-session-ci-firebase-secrets.md](2026-05-20-session-ci-firebase-secrets.md) — Fix CI Flutter analyze: commit `firebase_secrets.dart` placeholders (runs 61–63 were failing).
+**Summary:** [2026-05-22-session-portrait-only-orientation.md](2026-05-22-session-portrait-only-orientation.md) — Portrait-only lock (native + web overlay), version 0.0.2.
 
-**Previous:** [2026-05-20-session-e2e-review-followups.md](2026-05-20-session-e2e-review-followups.md)
+**Previous:** [2026-05-22-session-app-version-marker.md](2026-05-22-session-app-version-marker.md)

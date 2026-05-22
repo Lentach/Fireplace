@@ -249,5 +249,14 @@
   "themeOptionLight": "Warm paper (light)",
   "themeOptionDark": "Dark gray + teal accent",
   "themeOptionBlue": "Telegram-style blue (dark)",
-  "themeOptionTealStone": "Teal + stone (modern light)"
+  "themeOptionTealStone": "Teal + stone (modern light)",
+
+  "rotateDeviceTitle": "Rotate your device",
+  "@rotateDeviceTitle": {
+    "description": "Shown when app is used in landscape on phones/tablets"
+  },
+  "rotateDeviceMessage": "Fireplace works in portrait mode only.",
+  "@rotateDeviceMessage": {
+    "description": "Body under rotateDeviceTitle"
+  }
 }

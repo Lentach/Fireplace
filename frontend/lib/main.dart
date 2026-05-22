@@ -18,14 +18,26 @@ import 'providers/messaging_provider.dart';
 import 'providers/settings_provider.dart';
 import 'screens/auth_screen.dart';
 import 'screens/main_shell.dart';
+import 'services/portrait_lock_service.dart';
 import 'theme/app_scroll_behavior.dart';
+import 'widgets/portrait_lock_shell.dart';
 
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
+  await PortraitLockService.initialize();
   file_picker_init.initFilePickerWeb();
   // Firebase + FCM background handler must be ready before [runApp] (native only).
+  // Android auto-init from google-services can exist before Dart sees Firebase.apps.
   if (!kIsWeb) {
-    await Firebase.initializeApp(options: DefaultFirebaseOptions.currentPlatform);
+    try {
+      if (Firebase.apps.isEmpty) {
+        await Firebase.initializeApp(
+          options: DefaultFirebaseOptions.currentPlatform,
+        );
+      }
+    } on FirebaseException catch (e) {
+      if (e.code != 'duplicate-app') rethrow;
+    }
     FirebaseMessaging.onBackgroundMessage(
       fcm_background.firebaseMessagingBackgroundHandler,
     );
@@ -54,6 +66,11 @@ class FireplaceApp extends StatelessWidget {
             title: 'Fireplace',
             debugShowCheckedModeBanner: false,
             scrollBehavior: const AppScrollBehavior(),
+            builder: (context, child) {
+              return PortraitLockShell(
+                child: child ?? const SizedBox.shrink(),
+              );
+            },
             theme: settings.lightTheme,
             darkTheme: settings.darkTheme,
             themeMode: settings.themeMode,

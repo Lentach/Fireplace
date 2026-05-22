@@ -1201,6 +1201,18 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Turkus i kamień (nowoczesny jasny)'**
   String get themeOptionTealStone;
+
+  /// No description provided for @rotateDeviceTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Obróć urządzenie'**
+  String get rotateDeviceTitle;
+
+  /// No description provided for @rotateDeviceMessage.
+  ///
+  /// In pl, this message translates to:
+  /// **'Fireplace działa tylko w trybie pionowym.'**
+  String get rotateDeviceMessage;
 }
 
 class _AppLocalizationsDelegate

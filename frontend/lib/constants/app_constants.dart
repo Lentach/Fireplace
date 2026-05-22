@@ -5,6 +5,9 @@ class AppConstants {
   /// Layout breakpoint: width >= this = desktop (master-detail), below = mobile (stacked)
   static const double layoutBreakpointDesktop = 600;
 
+  /// Shortest logical side below this → show rotate overlay in landscape (phones/tablets).
+  static const double portraitLockMaxShortestSide = 900;
+
   /// Delay before re-fetching conversations on connect (handles slow initial response)
   static const Duration conversationsRefreshDelay = Duration(milliseconds: 500);
 

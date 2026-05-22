@@ -45,9 +45,9 @@ class AppVersionInfo {
     return _cached!;
   }
 
-  /// Human-readable line for Settings footer.
+  /// Human-readable line for Settings footer (semver only — no +build suffix).
   String get displayLine {
-    final parts = <String>['$version+$buildNumber', gitCommit];
+    final parts = <String>[version, gitCommit];
     if (buildTime.isNotEmpty) {
       parts.add(buildTime);
     }

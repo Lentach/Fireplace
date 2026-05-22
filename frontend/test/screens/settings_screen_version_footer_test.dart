@@ -20,7 +20,7 @@ void main() {
     PackageInfo.setMockInitialValues(
       appName: 'fireplace',
       packageName: 'com.fireplace.app',
-      version: '1.0.0',
+      version: '0.0.2',
       buildNumber: '42',
       buildSignature: '',
     );
@@ -50,7 +50,8 @@ void main() {
     await tester.drag(listView, const Offset(0, -800));
     await tester.pumpAndSettle();
 
-    expect(find.textContaining('1.0.0+42'), findsOneWidget);
+    expect(find.textContaining('0.0.2'), findsOneWidget);
+    expect(find.textContaining('0.0.2+42'), findsNothing);
     expect(find.textContaining('dev'), findsOneWidget);
   });
 }
