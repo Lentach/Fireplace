@@ -7,9 +7,11 @@ set -euo pipefail
 REPO_DIR="${REPO_DIR:-$(cd "$(dirname "$0")" && pwd)}"
 cd "$REPO_DIR"
 
+git pull
+
 GIT_COMMIT="$(git rev-parse --short HEAD 2>/dev/null || echo unknown)"
 BUILD_TIME="$(date -u +"%Y-%m-%dT%H:%M:%SZ")"
-# Semver only for API/UI (strip +build from pubspec)
+# Semver only for API/UI (strip +build from pubspec if present)
 APP_VERSION="$(grep '^version:' frontend/pubspec.yaml | sed 's/version: //' | tr -d ' ' | cut -d'+' -f1)"
 
 export GIT_COMMIT
@@ -17,8 +19,6 @@ export BUILD_TIME
 export APP_VERSION
 
 echo "Deploying Fireplace: version=${APP_VERSION} commit=${GIT_COMMIT} built=${BUILD_TIME}"
-
-git pull
 
 docker compose build --build-arg GIT_COMMIT="$GIT_COMMIT" \
   --build-arg BUILD_TIME="$BUILD_TIME" \
