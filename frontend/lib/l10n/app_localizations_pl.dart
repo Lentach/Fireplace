@@ -99,6 +99,9 @@ class AppLocalizationsPl extends AppLocalizations {
   String get devicesLoading => 'Ładowanie…';
 
   @override
+  String get settingsAppVersion => 'Wersja aplikacji';
+
+  @override
   String get privacySafetyTitle => 'Prywatność i bezpieczeństwo';
 
   @override

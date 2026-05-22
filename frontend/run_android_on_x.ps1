@@ -1,4 +1,4 @@
-$ErrorActionPreference = "Stop"
+﻿$ErrorActionPreference = "Stop"
 
 $xBuildRoot = "X:\fireplace-build"
 $xFrontendBuild = Join-Path $xBuildRoot "frontend-build"
@@ -25,4 +25,6 @@ if (-not (Test-Path $projectBuildPath)) {
 }
 
 & (Join-Path $PSScriptRoot "patch_webcrypto_16k.ps1")
-flutter run --dart-define=BASE_URL=http://10.0.2.2:3000
+. (Join-Path $PSScriptRoot "scripts\version_dart_defines.ps1")
+$versionDefines = Get-VersionDartDefineArgs
+flutter run --dart-define=BASE_URL=http://10.0.2.2:3000 @versionDefines

@@ -272,6 +272,12 @@ abstract class AppLocalizations {
   /// **'Ładowanie…'**
   String get devicesLoading;
 
+  /// No description provided for @settingsAppVersion.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wersja aplikacji'**
+  String get settingsAppVersion;
+
   /// No description provided for @privacySafetyTitle.
   ///
   /// In pl, this message translates to:

@@ -29,6 +29,7 @@
   "accountDeletionFailed": "Account deletion failed",
   "loading": "Loading…",
   "devicesLoading": "Loading…",
+  "settingsAppVersion": "App version",
 
   "privacySafetyTitle": "Privacy & Safety",
   "e2eEncryptionEnabled": "End-to-end encryption is enabled",

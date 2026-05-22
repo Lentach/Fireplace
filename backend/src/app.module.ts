@@ -26,6 +26,7 @@ import { SecretNote } from './secret-notes/secret-note.entity';
 import { SecretNotesModule } from './secret-notes/secret-notes.module';
 import { validate } from './config/env.validation';
 import { HealthModule } from './health/health.module';
+import { VersionModule } from './version/version.module';
 import { WebPushSubscription } from './web-push-subscriptions/web-push-subscription.entity';
 import { WebPushSubscriptionsModule } from './web-push-subscriptions/web-push-subscriptions.module';
 import { RefreshToken } from './auth/refresh-token.entity';
@@ -89,6 +90,7 @@ import { RefreshToken } from './auth/refresh-token.entity';
     ChatModule,
     SecretNotesModule,
     HealthModule,
+    VersionModule,
   ],
 })
 export class AppModule {}

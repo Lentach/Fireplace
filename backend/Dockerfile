@@ -17,6 +17,13 @@ RUN npm install --only=development && \
 # Stage 2: Production
 FROM node:20-alpine
 
+ARG APP_VERSION=0.0.1
+ARG GIT_COMMIT=unknown
+ARG BUILD_TIME=
+ENV APP_VERSION=${APP_VERSION}
+ENV GIT_COMMIT=${GIT_COMMIT}
+ENV BUILD_TIME=${BUILD_TIME}
+
 WORKDIR /app
 
 # Copy only production dependencies and built app

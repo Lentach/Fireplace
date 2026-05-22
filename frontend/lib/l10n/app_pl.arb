@@ -29,6 +29,7 @@
   "accountDeletionFailed": "Nie udało się usunąć konta",
   "loading": "Ładowanie…",
   "devicesLoading": "Ładowanie…",
+  "settingsAppVersion": "Wersja aplikacji",
 
   "privacySafetyTitle": "Prywatność i bezpieczeństwo",
   "e2eEncryptionEnabled": "Szyfrowanie end-to-end jest włączone",

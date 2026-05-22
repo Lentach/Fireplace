@@ -10,6 +10,7 @@ import '../providers/settings_provider.dart';
 import '../services/api_service.dart';
 import '../services/push_service.dart';
 import '../config/app_config.dart';
+import '../config/app_version_info.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/dialogs/reset_password_dialog.dart';
 import '../widgets/main_tab_screen_header.dart';
@@ -28,6 +29,7 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   String? _deviceName;
+  String? _appVersionLine;
   late final PushService _pushService =
       PushService(ApiService(baseUrl: AppConfig.baseUrl));
 
@@ -35,6 +37,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
   void initState() {
     super.initState();
     _loadDeviceName();
+    _loadAppVersion();
+  }
+
+  Future<void> _loadAppVersion() async {
+    try {
+      final info = await AppVersionInfo.load();
+      if (mounted) {
+        setState(() => _appVersionLine = info.displayLine);
+      }
+    } catch (e) {
+      debugPrint('Error loading app version: $e');
+    }
   }
 
   Future<void> _loadDeviceName() async {
@@ -511,6 +525,37 @@ class _SettingsScreenState extends State<SettingsScreen> {
             ),
 
             const SizedBox(height: 24),
+
+            if (_appVersionLine != null)
+              Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 24),
+                child: Column(
+                  children: [
+                    Text(
+                      AppLocalizations.of(context).settingsAppVersion,
+                      style: RpgTheme.bodyFont(
+                        fontSize: 11,
+                        color: theme.colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w500,
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      _appVersionLine!,
+                      style: RpgTheme.bodyFont(
+                        fontSize: 11,
+                        color: theme.colorScheme.onSurfaceVariant.withValues(
+                          alpha: 0.85,
+                        ),
+                      ),
+                      textAlign: TextAlign.center,
+                    ),
+                  ],
+                ),
+              ),
+
+            if (_appVersionLine != null) const SizedBox(height: 16),
 
             // Logout Button
             Padding(

@@ -18,6 +18,8 @@ services:
       dockerfile: Dockerfile
       args:
         BASE_URL: ${BASE_URL:-http://localhost:3000}
+        GIT_COMMIT: ${GIT_COMMIT:-dev}
+        BUILD_TIME: ${BUILD_TIME:-}
     ports:
       - '8080:80'
     depends_on:

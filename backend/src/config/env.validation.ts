@@ -62,6 +62,18 @@ export class EnvironmentVariables {
   @IsOptional()
   @IsString()
   WEB_PUSH_VAPID_SUBJECT?: string;
+
+  @IsOptional()
+  @IsString()
+  APP_VERSION?: string;
+
+  @IsOptional()
+  @IsString()
+  GIT_COMMIT?: string;
+
+  @IsOptional()
+  @IsString()
+  BUILD_TIME?: string;
 }
 
 export function validate(config: Record<string, any>): EnvironmentVariables {

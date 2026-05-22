@@ -10,9 +10,14 @@ RUN flutter pub get
 # Copy source code
 COPY . .
 
-# Build for web with BASE_URL from build arg
+# Build for web with BASE_URL and version metadata from build args
 ARG BASE_URL=http://localhost:3000
-RUN flutter build web --dart-define=BASE_URL=${BASE_URL} --release && \
+ARG GIT_COMMIT=unknown
+ARG BUILD_TIME=
+RUN flutter build web --release \
+    --dart-define=BASE_URL=${BASE_URL} \
+    --dart-define=GIT_COMMIT=${GIT_COMMIT} \
+    --dart-define=BUILD_TIME=${BUILD_TIME} && \
     flutter pub cache clean --force
 
 # Stage 2: Serve with nginx
