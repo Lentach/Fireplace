@@ -1,0 +1,94 @@
+import 'package:flutter/material.dart';
+import '../../l10n/app_localizations.dart';
+import '../../theme/rpg_theme.dart';
+
+class MessageActionPanel extends StatelessWidget {
+  const MessageActionPanel({
+    super.key,
+    required this.isMine,
+    required this.canPinOrDeleteForEveryone,
+    required this.onReply,
+    required this.onEdit,
+    required this.onPin,
+    required this.onDelete,
+  });
+
+  final bool isMine;
+  final bool canPinOrDeleteForEveryone;
+  final VoidCallback onReply;
+  final VoidCallback onEdit;
+  final VoidCallback onPin;
+  final VoidCallback onDelete;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return Material(
+      elevation: 8,
+      borderRadius: BorderRadius.circular(12),
+      color: Theme.of(context).colorScheme.surface,
+      child: IntrinsicWidth(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            _row(context, l10n.messageActionReply, Icons.reply, onReply, enabled: true),
+            _row(
+              context,
+              l10n.messageActionEdit,
+              Icons.edit_outlined,
+              onEdit,
+              enabled: true,
+              muted: true,
+            ),
+            _row(
+              context,
+              l10n.messageActionPin,
+              Icons.push_pin_outlined,
+              onPin,
+              enabled: canPinOrDeleteForEveryone,
+            ),
+            _row(
+              context,
+              l10n.messageActionDelete,
+              Icons.delete_outline,
+              onDelete,
+              enabled: true,
+              destructive: true,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
+  Widget _row(
+    BuildContext context,
+    String label,
+    IconData icon,
+    VoidCallback onTap, {
+    required bool enabled,
+    bool destructive = false,
+    bool muted = false,
+  }) {
+    final color = muted
+        ? Theme.of(context).disabledColor
+        : !enabled
+            ? Theme.of(context).disabledColor
+            : destructive
+                ? Colors.red.shade700
+                : Theme.of(context).colorScheme.onSurface;
+    return InkWell(
+      onTap: enabled ? onTap : null,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+        child: Row(
+          children: [
+            Icon(icon, size: 20, color: color),
+            const SizedBox(width: 12),
+            Text(label, style: RpgTheme.bodyFont(fontSize: 14, color: color)),
+          ],
+        ),
+      ),
+    );
+  }
+}
