@@ -68,6 +68,7 @@ describe('ChatMessageService', () => {
           useValue: {
             findOrCreate: jest.fn(),
             findById: jest.fn(),
+            clearPinnedMessage: jest.fn().mockResolvedValue(undefined),
           },
         },
         {
@@ -655,6 +656,40 @@ describe('ChatMessageService', () => {
       expect((messagesService as any).updateDeliveryStatus).toHaveBeenCalledWith(
         99,
         MessageDeliveryStatus.DELIVERED,
+      );
+    });
+  });
+
+  describe('handleDeleteMessage', () => {
+    it('clears pin and emits messageUnpinned when deleting pinned message for everyone', async () => {
+      const conv = {
+        id: 10,
+        userOne: { id: 1 },
+        userTwo: { id: 2 },
+        pinnedMessageId: 55,
+      };
+      const msg = {
+        id: 55,
+        sender: { id: 1 },
+        conversation: conv,
+        mediaUrl: null,
+      };
+      (messagesService as any).findByIdWithConversation = jest
+        .fn()
+        .mockResolvedValue(msg);
+      (messagesService as any).deleteById = jest.fn().mockResolvedValue(true);
+
+      await service.handleDeleteMessage(
+        mockClient as any,
+        { messageId: 55, mode: 'for_everyone' },
+        mockServer as any,
+        onlineUsers,
+      );
+
+      expect(conversationsService.clearPinnedMessage).toHaveBeenCalledWith(10);
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'messageUnpinned',
+        { conversationId: 10 },
       );
     });
   });

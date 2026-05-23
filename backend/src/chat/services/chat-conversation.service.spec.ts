@@ -13,6 +13,7 @@ describe('ChatConversationService', () => {
   let chatValidationService: jest.Mocked<ChatValidationService>;
   let usersService: jest.Mocked<UsersService>;
   let conversationsService: jest.Mocked<ConversationsService>;
+  let messagesService: jest.Mocked<MessagesService>;
   let mockClient: Partial<Socket>;
   let mockServer: Partial<Server>;
 
@@ -28,6 +29,9 @@ describe('ChatConversationService', () => {
           useValue: {
             findOrCreate: jest.fn(),
             findByUser: jest.fn().mockResolvedValue([]),
+            findById: jest.fn(),
+            setPinnedMessage: jest.fn(),
+            clearPinnedMessage: jest.fn(),
           },
         },
         {
@@ -36,6 +40,7 @@ describe('ChatConversationService', () => {
             countUnreadForRecipient: jest.fn().mockResolvedValue(0),
             getLastMessage: jest.fn().mockResolvedValue(null),
             findMediaUrlsByConversation: jest.fn().mockResolvedValue([]),
+            findByIdWithConversation: jest.fn(),
           },
         },
         { provide: UsersService, useValue: { findById: jest.fn() } },
@@ -63,6 +68,7 @@ describe('ChatConversationService', () => {
     chatValidationService = module.get(ChatValidationService) as jest.Mocked<ChatValidationService>;
     usersService = module.get(UsersService) as jest.Mocked<UsersService>;
     conversationsService = module.get(ConversationsService) as jest.Mocked<ConversationsService>;
+    messagesService = module.get(MessagesService) as jest.Mocked<MessagesService>;
   });
 
   describe('handleStartConversation', () => {
@@ -105,6 +111,90 @@ describe('ChatConversationService', () => {
       );
 
       expect(conversationsService.findOrCreate).toHaveBeenCalled();
+    });
+  });
+
+  describe('handlePinMessage', () => {
+    const conv = {
+      id: 10,
+      userOne: { id: 1 },
+      userTwo: { id: 2 },
+    };
+    const msgA = {
+      id: 100,
+      content: 'a',
+      conversation: conv,
+      createdAt: new Date(),
+      expiresAt: null,
+      disappearAfterSeconds: null,
+    };
+    const msgB = {
+      id: 101,
+      content: 'b',
+      conversation: conv,
+      createdAt: new Date(),
+      expiresAt: null,
+      disappearAfterSeconds: null,
+    };
+
+    beforeEach(() => {
+      conversationsService.findById.mockResolvedValue(conv as any);
+      conversationsService.setPinnedMessage.mockImplementation(
+        async (_cid, messageId, userId) =>
+          ({
+            id: 10,
+            pinnedMessageId: messageId,
+            pinnedAt: new Date(),
+            pinnedByUserId: userId,
+          }) as any,
+      );
+    });
+
+    it('pins message B after message A (replace pin)', async () => {
+      messagesService.findByIdWithConversation
+        .mockResolvedValueOnce(msgA as any)
+        .mockResolvedValueOnce(msgB as any);
+
+      await service.handlePinMessage(
+        mockClient as any,
+        { conversationId: 10, messageId: 100 },
+        mockServer as any,
+        new Map(),
+      );
+      await service.handlePinMessage(
+        mockClient as any,
+        { conversationId: 10, messageId: 101 },
+        mockServer as any,
+        new Map(),
+      );
+
+      expect(conversationsService.setPinnedMessage).toHaveBeenLastCalledWith(
+        10,
+        101,
+        1,
+      );
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'messagePinned',
+        expect.objectContaining({ pinnedMessageId: 101 }),
+      );
+    });
+
+    it('rejects pin from non-member', async () => {
+      mockClient = { data: { user: { id: 99 } }, emit: jest.fn() };
+      conversationsService.findById.mockResolvedValue(conv as any);
+
+      await service.handlePinMessage(
+        mockClient as any,
+        { conversationId: 10, messageId: 100 },
+        mockServer as any,
+        new Map(),
+      );
+
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'error',
+        { message: 'Unauthorized' },
+      );
+      expect(conversationsService.setPinnedMessage).not.toHaveBeenCalled();
     });
   });
 });
