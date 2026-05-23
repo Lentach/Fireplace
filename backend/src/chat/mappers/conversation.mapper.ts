@@ -6,7 +6,11 @@ import { MessageMapper } from '../../messages/message.mapper';
 export class ConversationMapper {
   static toPayload(
     conversation: Conversation,
-    options?: { unreadCount?: number; lastMessage?: Message | null },
+    options?: {
+      unreadCount?: number;
+      lastMessage?: Message | null;
+      pinnedMessage?: Message | null;
+    },
   ) {
     return {
       id: conversation.id,
@@ -14,9 +18,17 @@ export class ConversationMapper {
       userTwo: UserMapper.toPayload(conversation.userTwo),
       createdAt: conversation.createdAt,
       disappearingTimer: conversation.disappearingTimer,
+      pinnedMessageId: conversation.pinnedMessageId ?? null,
+      pinnedAt: conversation.pinnedAt ?? null,
+      pinnedByUserId: conversation.pinnedByUserId ?? null,
       unreadCount: options?.unreadCount ?? 0,
       lastMessage: options?.lastMessage
         ? MessageMapper.toPayload(options.lastMessage, {
+            conversationId: conversation.id,
+          })
+        : null,
+      pinnedMessage: options?.pinnedMessage
+        ? MessageMapper.toPayload(options.pinnedMessage, {
             conversationId: conversation.id,
           })
         : null,

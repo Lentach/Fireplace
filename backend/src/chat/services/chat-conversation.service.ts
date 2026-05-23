@@ -11,8 +11,11 @@ import {
   SetDisappearingTimerDto,
   DeleteConversationOnlyDto,
 } from '../dto/chat.dto';
+import { PinMessageDto, UnpinMessageDto } from '../dto/pin-message.dto';
 import { ConversationMapper } from '../mappers/conversation.mapper';
 import { MediaCleanupService } from '../../media/media-cleanup.service';
+import { MessageMapper } from '../../messages/message.mapper';
+import { isMessageExpired } from '../../messages/message-expiry.util';
 
 @Injectable()
 export class ChatConversationService {
@@ -118,9 +121,16 @@ export class ChatConversationService {
     const convIds = conversations
       .map((c) => Number(c.id))
       .filter((id) => !Number.isNaN(id));
-    const [unreadMap, lastMsgMap] = await Promise.all([
+    const [unreadMap, lastMsgMap, pinnedMsgMap] = await Promise.all([
       this.messagesService.countUnreadForRecipientBatch(convIds, userId),
       this.messagesService.getLastMessagesBatch(convIds, userId),
+      this.messagesService.getPinnedMessagesBatch(
+        conversations.map((c) => ({
+          conversationId: Number(c.id),
+          pinnedMessageId: c.pinnedMessageId ?? null,
+        })),
+        userId,
+      ),
     ]);
 
     const results = conversations.map((conv) => {
@@ -128,6 +138,7 @@ export class ChatConversationService {
       return ConversationMapper.toPayload(conv, {
         unreadCount: unreadMap.get(convId) ?? 0,
         lastMessage: lastMsgMap.get(convId) ?? null,
+        pinnedMessage: pinnedMsgMap.get(convId) ?? null,
       });
     });
 
@@ -319,6 +330,139 @@ export class ChatConversationService {
 
     this.logger.debug(
       `User ${userId} set disappearing timer to ${data.seconds}s for conversation ${data.conversationId}`,
+    );
+  }
+
+  async handlePinMessage(
+    client: Socket,
+    data: any,
+    server: Server,
+    onlineUsers: Map<number, string>,
+  ) {
+    const userId: number = client.data.user?.id;
+    if (!userId) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+
+    let dto: PinMessageDto;
+    try {
+      dto = validateDto(PinMessageDto, data);
+    } catch (error) {
+      client.emit('error', { message: error.message });
+      return;
+    }
+
+    const conversation = await this.conversationsService.findById(
+      dto.conversationId,
+    );
+    if (!conversation) {
+      client.emit('error', { message: 'Conversation not found' });
+      return;
+    }
+
+    const userBelongs =
+      conversation.userOne.id === userId ||
+      conversation.userTwo.id === userId;
+    if (!userBelongs) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+
+    const message = await this.messagesService.findByIdWithConversation(
+      dto.messageId,
+    );
+    if (!message || message.conversation.id !== dto.conversationId) {
+      client.emit('error', { message: 'Message not in conversation' });
+      return;
+    }
+    if (isMessageExpired(message, new Date())) {
+      client.emit('error', { message: 'Cannot pin expired message' });
+      return;
+    }
+
+    const conv = await this.conversationsService.setPinnedMessage(
+      dto.conversationId,
+      dto.messageId,
+      userId,
+    );
+    const snapshot = MessageMapper.toPayload(message, {
+      conversationId: dto.conversationId,
+    });
+    const payload = {
+      conversationId: dto.conversationId,
+      pinnedMessageId: dto.messageId,
+      pinnedMessage: snapshot,
+      pinnedByUserId: userId,
+      pinnedAt: conv.pinnedAt,
+    };
+    client.emit('messagePinned', payload);
+
+    const otherUserId =
+      conversation.userOne.id === userId
+        ? conversation.userTwo.id
+        : conversation.userOne.id;
+    const otherUserSocketId = onlineUsers.get(otherUserId);
+    if (otherUserSocketId) {
+      server.to(otherUserSocketId).emit('messagePinned', payload);
+    }
+
+    this.logger.debug(
+      `User ${userId} pinned message ${dto.messageId} in conversation ${dto.conversationId}`,
+    );
+  }
+
+  async handleUnpinMessage(
+    client: Socket,
+    data: any,
+    server: Server,
+    onlineUsers: Map<number, string>,
+  ) {
+    const userId: number = client.data.user?.id;
+    if (!userId) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+
+    let dto: UnpinMessageDto;
+    try {
+      dto = validateDto(UnpinMessageDto, data);
+    } catch (error) {
+      client.emit('error', { message: error.message });
+      return;
+    }
+
+    const conversation = await this.conversationsService.findById(
+      dto.conversationId,
+    );
+    if (!conversation) {
+      client.emit('error', { message: 'Conversation not found' });
+      return;
+    }
+
+    const userBelongs =
+      conversation.userOne.id === userId ||
+      conversation.userTwo.id === userId;
+    if (!userBelongs) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+
+    await this.conversationsService.clearPinnedMessage(dto.conversationId);
+    const payload = { conversationId: dto.conversationId };
+    client.emit('messageUnpinned', payload);
+
+    const otherUserId =
+      conversation.userOne.id === userId
+        ? conversation.userTwo.id
+        : conversation.userOne.id;
+    const otherUserSocketId = onlineUsers.get(otherUserId);
+    if (otherUserSocketId) {
+      server.to(otherUserSocketId).emit('messageUnpinned', payload);
+    }
+
+    this.logger.debug(
+      `User ${userId} unpinned conversation ${dto.conversationId}`,
     );
   }
 }

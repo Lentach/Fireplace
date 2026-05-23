@@ -417,6 +417,15 @@ export class ChatMessageService {
         });
         return;
       }
+      if (conv.pinnedMessageId === messageId) {
+        await this.conversationsService.clearPinnedMessage(conversationId);
+        const unpinPayload = { conversationId };
+        client.emit('messageUnpinned', unpinPayload);
+        const otherSocketId = onlineUsers.get(otherUserId);
+        if (otherSocketId) {
+          server.to(otherSocketId).emit('messageUnpinned', unpinPayload);
+        }
+      }
       client.emit('messageDeleted', {
         messageId,
         conversationId,

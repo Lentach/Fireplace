@@ -290,6 +290,52 @@ export class MessagesService {
     return map;
   }
 
+  /**
+   * Batch fetch pinned message rows for conversation list snapshots.
+   * Returns Map<conversationId, Message | null>.
+   */
+  async getPinnedMessagesBatch(
+    entries: Array<{ conversationId: number; pinnedMessageId: number | null }>,
+    hiddenByUserId?: number,
+  ): Promise<Map<number, Message | null>> {
+    const map = new Map<number, Message | null>();
+    const pinnedIds: number[] = [];
+    const convIdByMsgId = new Map<number, number>();
+    for (const entry of entries) {
+      const convId = Number(entry.conversationId);
+      map.set(convId, null);
+      const pinnedId = entry.pinnedMessageId;
+      if (pinnedId != null && !Number.isNaN(Number(pinnedId))) {
+        const msgId = Number(pinnedId);
+        pinnedIds.push(msgId);
+        convIdByMsgId.set(msgId, convId);
+      }
+    }
+    if (pinnedIds.length === 0) return map;
+
+    const messages = await this.msgRepo.find({
+      where: { id: In(pinnedIds) },
+      relations: ['sender', 'conversation'],
+    });
+
+    for (const m of messages) {
+      const convId = convIdByMsgId.get(m.id);
+      if (convId == null) continue;
+      if (hiddenByUserId != null) {
+        const hidden = m.hiddenByUserIds ?? '';
+        if (hidden.length > 0) {
+          const padded = `,${hidden},`;
+          if (padded.includes(`,${hiddenByUserId},`)) {
+            map.set(convId, null);
+            continue;
+          }
+        }
+      }
+      map.set(convId, m);
+    }
+    return map;
+  }
+
   /** Mark all messages in the conversation that were sent BY senderId (to the other participant) as READ. Returns only the messages that were actually changed (were not already READ). */
   async markConversationAsReadFromSender(
     conversationId: number,

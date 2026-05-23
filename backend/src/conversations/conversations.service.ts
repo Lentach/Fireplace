@@ -85,4 +85,35 @@ export class ConversationsService {
     conversation.disappearingTimer = seconds;
     return this.convRepo.save(conversation);
   }
+
+  async setPinnedMessage(
+    conversationId: number,
+    messageId: number,
+    userId: number,
+  ): Promise<Conversation> {
+    const conv = await this.findById(conversationId);
+    if (!conv) throw new Error('Conversation not found');
+    const userBelongs =
+      conv.userOne.id === userId || conv.userTwo.id === userId;
+    if (!userBelongs) throw new Error('Unauthorized');
+    const message = await this.messageRepo.findOne({
+      where: { id: messageId },
+      relations: ['conversation'],
+    });
+    if (!message || message.conversation.id !== conversationId) {
+      throw new Error('Message not in conversation');
+    }
+    conv.pinnedMessageId = messageId;
+    conv.pinnedAt = new Date();
+    conv.pinnedByUserId = userId;
+    return this.convRepo.save(conv);
+  }
+
+  async clearPinnedMessage(conversationId: number): Promise<void> {
+    await this.convRepo.update(conversationId, {
+      pinnedMessageId: null,
+      pinnedAt: null,
+      pinnedByUserId: null,
+    });
+  }
 }

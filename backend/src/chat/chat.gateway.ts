@@ -352,6 +352,36 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 900000 } })
+  @SubscribeMessage('pinMessage')
+  async handlePinMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
+  ) {
+    return this.chatConversationService.handlePinMessage(
+      client,
+      data,
+      this.server,
+      this.onlineUsers,
+    );
+  }
+
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 900000 } })
+  @SubscribeMessage('unpinMessage')
+  async handleUnpinMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
+  ) {
+    return this.chatConversationService.handleUnpinMessage(
+      client,
+      data,
+      this.server,
+      this.onlineUsers,
+    );
+  }
+
   // ========== FRIEND REQUEST HANDLERS ==========
 
   @UseGuards(WsThrottlerGuard)

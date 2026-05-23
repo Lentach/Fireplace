@@ -28,4 +28,13 @@ export class Conversation {
 
   @Column({ type: 'int', nullable: true, default: null })
   disappearingTimer: number | null; // Timer in seconds, null = off until user enables
+
+  @Column({ type: 'int', nullable: true, default: null })
+  pinnedMessageId: number | null;
+
+  @Column({ type: 'timestamp', nullable: true, default: null })
+  pinnedAt: Date | null;
+
+  @Column({ type: 'int', nullable: true, default: null })
+  pinnedByUserId: number | null;
 }
