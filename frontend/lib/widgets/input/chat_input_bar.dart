@@ -14,6 +14,8 @@ import '../../providers/messaging_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/rpg_theme.dart';
 import '../../utils/message_expiry.dart';
+import '../../utils/reply_preview_helper.dart';
+import '../../utils/soft_keyboard.dart';
 import '../chat_action_tiles.dart';
 import '../hearth_fade_arc.dart';
 import '../top_snackbar.dart' show showTopSnackBar;
@@ -37,6 +39,7 @@ class _ChatInputBarState extends State<ChatInputBar>
   late final Animation<double> _actionPanelAnimation;
 
   Timer? _typingDebounceTimer;
+  MessagingProvider? _messagingProvider;
 
   // Recording state mirrored from RecordingController via callback
   bool _isRecording = false;
@@ -48,6 +51,7 @@ class _ChatInputBarState extends State<ChatInputBar>
   @override
   void initState() {
     super.initState();
+    _focusNode.addListener(_onComposerFocusChanged);
     _controller.addListener(() {
       if (_controller.text.trim().isEmpty) return;
       _typingDebounceTimer?.cancel();
@@ -66,8 +70,50 @@ class _ChatInputBarState extends State<ChatInputBar>
     );
   }
 
+  void _onMessagingProviderChanged() {
+    final replyingTo = _messagingProvider?.replyingToMessage;
+    _onReplyTargetChanged(replyingTo);
+  }
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final messaging = context.read<MessagingProvider>();
+    if (_messagingProvider != messaging) {
+      _messagingProvider?.removeListener(_onMessagingProviderChanged);
+      _messagingProvider = messaging;
+      messaging.addListener(_onMessagingProviderChanged);
+      _onReplyTargetChanged(messaging.replyingToMessage);
+    }
+  }
+
+  void _onComposerFocusChanged() {
+    if (!_focusNode.hasFocus) return;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      showSoftKeyboardIfHidden(context: context, hasFocus: _focusNode.hasFocus);
+    });
+  }
+
+  void _onReplyTargetChanged(MessageModel? replyingTo) {
+    if (replyingTo != null && _lastReplyingTo != replyingTo) {
+      _lastReplyingTo = replyingTo;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_focusNode.canRequestFocus) return;
+        if (!_focusNode.hasFocus) {
+          _focusNode.requestFocus();
+        }
+        showSoftKeyboardIfHidden(context: context, hasFocus: true);
+      });
+    } else if (replyingTo == null) {
+      _lastReplyingTo = null;
+    }
+  }
+
   @override
   void dispose() {
+    _messagingProvider?.removeListener(_onMessagingProviderChanged);
+    _focusNode.removeListener(_onComposerFocusChanged);
     _controller.dispose();
     _focusNode.dispose();
     _actionPanelController.dispose();
@@ -92,6 +138,7 @@ class _ChatInputBarState extends State<ChatInputBar>
       if (!_focusNode.hasFocus) {
         _focusNode.requestFocus();
       }
+      showSoftKeyboardIfHidden(context: context, hasFocus: true);
     });
   }
 
@@ -177,27 +224,22 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   @override
   Widget build(BuildContext context) {
-    final messaging = context.watch<MessagingProvider>();
-    final convs = context.watch<ConversationsProvider>();
-    final replyingTo = messaging.replyingToMessage;
+  // Rebuild only for composer-relevant provider slices so message list / decrypt
+  // updates do not dismiss the Android soft keyboard while typing.
+    final replyingTo = context.select<MessagingProvider, MessageModel?>(
+      (m) => m.replyingToMessage,
+    );
 
-    if (replyingTo != null && _lastReplyingTo != replyingTo) {
-      _lastReplyingTo = replyingTo;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted && !_focusNode.hasFocus && _focusNode.canRequestFocus) {
-          _focusNode.requestFocus();
-        }
-      });
-    } else if (replyingTo == null) {
-      _lastReplyingTo = null;
-    }
-
-    final activeTimer = convs.conversationDisappearingTimer;
+    final activeTimer = context.select<ConversationsProvider, int?>(
+      (c) => c.conversationDisappearingTimer,
+    );
     final l10n = AppLocalizations.of(context);
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
     final fc = FireplaceColors.of(context);
-    final themePref = context.watch<SettingsProvider>().themePreference;
+    final themePref = context.select<SettingsProvider, String>(
+      (s) => s.themePreference,
+    );
     final ephemeral = RpgTheme.ephemeralAccent(
       context,
       themePreference: themePref,
@@ -247,9 +289,18 @@ class _ChatInputBarState extends State<ChatInputBar>
       children: [
           // Reply preview
           if (replyingTo != null)
-            ReplyPreviewBar(
-              message: replyingTo,
-              onDismiss: () => messaging.clearReplyingTo(),
+            Selector<MessagingProvider, MessageModel>(
+              selector: (_, messaging) {
+                return findMessageById(replyingTo.id, messaging.messages) ??
+                    replyingTo;
+              },
+              builder: (context, resolvedReply, _) {
+                return ReplyPreviewBar(
+                  message: resolvedReply,
+                  onDismiss: () =>
+                      context.read<MessagingProvider>().clearReplyingTo(),
+                );
+              },
             ),
 
           if (activeTimer != null)

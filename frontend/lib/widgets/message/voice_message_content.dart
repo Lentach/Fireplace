@@ -116,12 +116,14 @@ class VoiceMessageContent extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final mutedColor = isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight;
     final encryption = context.read<EncryptionProvider>();
+    final messaging = context.read<MessagingProvider>();
     final content = replyDisplayContentForQuote(
       l10n,
       replyTo,
       encryption: encryption,
       conversationId: message.conversationId,
       createdAt: message.createdAt,
+      messagesForLookup: messaging.messages,
     );
     return Container(
       padding: const EdgeInsets.only(left: 10, top: 6, bottom: 6, right: 8),

@@ -338,7 +338,12 @@ class ConnectionProvider extends ChangeNotifier {
       _conversationsProvider?.onDisappearingTimerUpdated(data);
     });
     _socketService.on('messagePinned', (data) {
-      _conversationsProvider?.onMessagePinned(data);
+      final m = data as Map<String, dynamic>;
+      final pinnedId = m['pinnedMessageId'] as int?;
+      final local = pinnedId != null
+          ? _messagingProvider?.messageById(pinnedId)
+          : null;
+      _conversationsProvider?.onMessagePinned(data, localPinnedMessage: local);
     });
     _socketService.on('messageUnpinned', (data) {
       _conversationsProvider?.onMessageUnpinned(data);

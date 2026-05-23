@@ -48,7 +48,8 @@ class _GifMessageContentState extends State<GifMessageContent> {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.message.id != widget.message.id ||
         oldWidget.message.mediaUrl != widget.message.mediaUrl ||
-        oldWidget.message.mediaKey != widget.message.mediaKey) {
+        oldWidget.message.mediaKey != widget.message.mediaKey ||
+        oldWidget.message.mediaIv != widget.message.mediaIv) {
       if (_objectUrl != null) {
         gif_blob.revokeGifObjectUrl(_objectUrl);
         _objectUrl = null;

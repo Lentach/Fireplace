@@ -16,6 +16,7 @@ class ReplyPreviewBar extends StatelessWidget {
     required this.onDismiss,
   });
 
+  /// Already resolved from the open message list when possible (parent owns lookup).
   final MessageModel message;
   final VoidCallback onDismiss;
 
@@ -23,7 +24,8 @@ class ReplyPreviewBar extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final encryption = context.read<EncryptionProvider>();
-    final previewText = replyPreviewForMessage(l10n, message, encryption: encryption);
+    final previewText =
+        replyPreviewForMessage(l10n, message, encryption: encryption);
     final isDark = RpgTheme.isDark(context);
     final fc = FireplaceColors.of(context);
     final borderColor = Theme.of(context).colorScheme.primary;

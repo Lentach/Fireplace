@@ -60,6 +60,33 @@ void main() {
     expect(shouldShowPinnedMessageBanner(conv), isFalse);
   });
 
+  test('resolvePinnedPreviewMessage fixes pinner own E2E snapshot', () {
+    const pinnedMessageId = 42;
+    final server = MessageModel(
+      id: pinnedMessageId,
+      content: '[encrypted]',
+      senderId: 1,
+      senderUsername: 'alice',
+      conversationId: 10,
+      createdAt: DateTime.utc(2026, 1, 2),
+      encryptedContent: 'ciphertext',
+    );
+    final local = MessageModel(
+      id: pinnedMessageId,
+      content: 'Visible to pinner',
+      senderId: 1,
+      senderUsername: 'alice',
+      conversationId: 10,
+      createdAt: DateTime.utc(2026, 1, 2),
+      encryptedContent: 'ciphertext',
+    );
+    final resolved = resolvePinnedPreviewMessage(
+      serverPreview: server,
+      localMessage: local,
+    );
+    expect(resolved.content, 'Visible to pinner');
+  });
+
   testWidgets('pinned banner renders from conversation preview only', (tester) async {
     const conversationId = 10;
     const pinnedMessageId = 999;
@@ -103,5 +130,67 @@ void main() {
 
     expect(find.byType(PinnedMessageBanner), findsOneWidget);
     expect(find.text('Pinned preview text'), findsOneWidget);
+  });
+
+  testWidgets('pinned banner shows local plaintext over server [encrypted]', (tester) async {
+    const pinnedMessageId = 999;
+    final conv = _conversationWithPinnedPreview(
+      conversationId: 10,
+      pinnedMessageId: pinnedMessageId,
+      preview: MessageModel(
+        id: pinnedMessageId,
+        content: '[encrypted]',
+        senderId: 1,
+        senderUsername: 'alice',
+        conversationId: 10,
+        createdAt: DateTime.utc(2026, 1, 2),
+        encryptedContent: 'blob',
+      ),
+    );
+    final localPlain = MessageModel(
+      id: pinnedMessageId,
+      content: 'Pinner sees this',
+      senderId: 1,
+      senderUsername: 'alice',
+      conversationId: 10,
+      createdAt: DateTime.utc(2026, 1, 2),
+    );
+    final previewModel = resolvePinnedPreviewMessage(
+      serverPreview: conv.pinnedMessagePreview!,
+      localMessage: localPlain,
+    );
+
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: RpgTheme.themeDataLight,
+        locale: const Locale('en'),
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        home: Scaffold(
+          body: ChangeNotifierProvider(
+            create: (_) => EncryptionProvider(),
+            child: Builder(
+              builder: (context) {
+                final l10n = AppLocalizations.of(context)!;
+                final encryption = context.read<EncryptionProvider>();
+                return PinnedMessageBanner(
+                  previewText: replyPreviewForMessage(
+                    l10n,
+                    previewModel,
+                    encryption: encryption,
+                  ),
+                  senderLabel: previewModel.senderUsername,
+                  onTap: () {},
+                  onUnpin: () {},
+                );
+              },
+            ),
+          ),
+        ),
+      ),
+    );
+
+    expect(find.text('Pinner sees this'), findsOneWidget);
+    expect(find.text('Encrypted message'), findsNothing);
   });
 }

@@ -97,30 +97,14 @@ class ChatMessageBubble extends StatelessWidget {
   String _replyDisplayContent(BuildContext context, ReplyToPreview replyTo) {
     final l10n = AppLocalizations.of(context);
     final encryption = context.read<EncryptionProvider>();
-    if (replyTo.content == '[encrypted]' ||
-        replyTo.content == l10n.encryptedMessage) {
-      final decrypted = encryption.getCachedDecryption(replyTo.id)?.content;
-      if (decrypted != null &&
-          decrypted.isNotEmpty &&
-          decrypted != '[encrypted]' &&
-          decrypted != '[Decryption failed]') {
-        return decrypted.length > 150
-            ? '${decrypted.substring(0, 150)}...'
-            : decrypted;
-      }
-    }
-    return replyPreviewForMessage(
+    final messaging = context.read<MessagingProvider>();
+    return replyDisplayContentForQuote(
       l10n,
-      MessageModel(
-        id: replyTo.id,
-        content: replyTo.content,
-        senderId: 0,
-        senderUsername: replyTo.senderUsername,
-        conversationId: message.conversationId,
-        createdAt: message.createdAt,
-        messageType: replyTo.messageType,
-      ),
+      replyTo,
       encryption: encryption,
+      conversationId: message.conversationId,
+      createdAt: message.createdAt,
+      messagesForLookup: messaging.messages,
     );
   }
 

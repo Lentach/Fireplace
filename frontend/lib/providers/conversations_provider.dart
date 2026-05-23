@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import '../models/conversation_model.dart';
 import '../models/message_model.dart';
 import '../utils/message_expiry.dart';
+import '../utils/reply_preview_helper.dart';
 import 'conversation_helpers.dart' as conv_helpers;
 import '../models/user_model.dart';
 
@@ -231,15 +232,46 @@ class ConversationsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Optimistic pin preview from the open chat row (keeps pinner plaintext for own E2E).
+  void setPinnedPreviewOptimistic(
+    int conversationId,
+    int messageId,
+    MessageModel localPreview,
+  ) {
+    final index = _conversations.indexWhere((c) => c.id == conversationId);
+    if (index == -1) return;
+    final oldConv = _conversations[index];
+    _conversations[index] = ConversationModel(
+      id: oldConv.id,
+      userOne: oldConv.userOne,
+      userTwo: oldConv.userTwo,
+      createdAt: oldConv.createdAt,
+      disappearingTimer: oldConv.disappearingTimer,
+      pinnedMessageId: messageId,
+      pinnedMessagePreview: localPreview,
+    );
+    notifyListeners();
+  }
+
   /// Handle 'messagePinned' event — update pin id and preview snapshot.
-  void onMessagePinned(dynamic data) {
+  void onMessagePinned(
+    dynamic data, {
+    MessageModel? localPinnedMessage,
+  }) {
     final m = data as Map<String, dynamic>;
     final conversationId = m['conversationId'] as int;
     final pinnedMessageId = m['pinnedMessageId'] as int?;
     MessageModel? preview;
     final previewData = m['pinnedMessage'];
     if (previewData != null) {
-      preview = MessageModel.fromJson(previewData as Map<String, dynamic>);
+      final serverPreview =
+          MessageModel.fromJson(previewData as Map<String, dynamic>);
+      preview = resolvePinnedPreviewMessage(
+        serverPreview: serverPreview,
+        localMessage: localPinnedMessage,
+      );
+    } else if (localPinnedMessage != null && pinnedMessageId != null) {
+      preview = localPinnedMessage;
     }
 
     final index = _conversations.indexWhere((c) => c.id == conversationId);
@@ -323,14 +355,26 @@ class ConversationsProvider extends ChangeNotifier {
   }
 
   /// Sets active conversation ID and clears unread count.
-  void openConversation(int? conversationId) {
+  ///
+  /// [notify] defaults to true. Pass `notify: false` when called from
+  /// [Widget.initState] (e.g. [ChatDetailScreen]) and call
+  /// [notifyActiveConversationChanged] in a post-frame callback — synchronous
+  /// [notifyListeners] during build throws and can race [messageHistory].
+  void openConversation(int? conversationId, {bool notify = true}) {
     _activeConversationId = conversationId;
     _activeConversationDeletedByOther = false;
     if (conversationId != null) {
       _unreadCounts[conversationId] = 0;
     }
-    notifyListeners();
     _emitPushClientState();
+    if (notify) {
+      notifyListeners();
+    }
+  }
+
+  /// Rebuilds UI after [openConversation] with `notify: false` (active id already set).
+  void notifyActiveConversationChanged() {
+    notifyListeners();
   }
 
   /// Sets active conversation without fetching messages. Use when ChatDetailScreen
@@ -344,10 +388,16 @@ class ConversationsProvider extends ChangeNotifier {
   }
 
   /// Clears the active conversation.
-  void closeConversation() {
+  ///
+  /// [notify] defaults to true. Pass `notify: false` from [Widget.dispose] and call
+  /// [notifyActiveConversationChanged] in a post-frame callback (same pattern as
+  /// [openConversation]).
+  void closeConversation({bool notify = true}) {
     _activeConversationId = null;
-    notifyListeners();
     _emitPushClientState();
+    if (notify) {
+      notifyListeners();
+    }
   }
 
   void clearError() {

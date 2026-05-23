@@ -88,18 +88,35 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       _scrollTargetKey = GlobalKey();
     });
 
-    await WidgetsBinding.instance.endOfFrame;
-    if (!mounted) return;
-
-    final targetContext = _scrollTargetKey?.currentContext;
-    if (targetContext != null) {
-      await Scrollable.ensureVisible(
-        targetContext,
-        alignment: 0.5,
-        duration: const Duration(milliseconds: 300),
-      );
+    var revealed = false;
+    const maxRevealAttempts = 12;
+    final itemCount = messaging.messages.length +
+        (_isLoadingMoreLocal ? 1 : 0);
+    for (var attempt = 0; attempt < maxRevealAttempts; attempt++) {
+      if (attempt > 0 &&
+          _scrollController.hasClients &&
+          itemCount > 1) {
+        final maxExtent = _scrollController.position.maxScrollExtent;
+        final fraction = listIndex / (itemCount - 1);
+        _scrollController.jumpTo(
+          (maxExtent * fraction).clamp(0.0, maxExtent),
+        );
+      }
+      await WidgetsBinding.instance.endOfFrame;
       if (!mounted) return;
-    } else {
+      final targetContext = _scrollTargetKey?.currentContext;
+      if (targetContext != null) {
+        await Scrollable.ensureVisible(
+          targetContext,
+          alignment: 0.5,
+          duration: const Duration(milliseconds: 300),
+        );
+        revealed = true;
+        break;
+      }
+    }
+
+    if (!revealed && mounted) {
       showTopSnackBar(context, l10n.snackbarPinnedMessageUnavailable);
     }
 
@@ -146,15 +163,21 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final preview = conv.pinnedMessagePreview;
     if (preview == null) return null;
     final encryption = context.read<EncryptionProvider>();
+    final pinnedId = conv.pinnedMessageId!;
+    final localRow = messaging.messageById(pinnedId);
+    final previewModel = resolvePinnedPreviewMessage(
+      serverPreview: preview,
+      localMessage: localRow,
+    );
     final previewText = replyPreviewForMessage(
       l10n,
-      preview,
+      previewModel,
       encryption: encryption,
     );
     return PinnedMessageBanner(
       previewText: previewText,
-      senderLabel: preview.senderUsername.isNotEmpty
-          ? preview.senderUsername
+      senderLabel: previewModel.senderUsername.isNotEmpty
+          ? previewModel.senderUsername
           : convs.getOtherUserUsername(conv),
       onTap: () => _scrollToMessageId(conv.pinnedMessageId!),
       onUnpin: () => messaging.unpinMessage(conv.id),
@@ -254,8 +277,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       return;
     }
     if (_conversations.activeConversationId == widget.conversationId) {
-      _conversations.closeConversation();
+      _conversations.closeConversation(notify: false);
       _messaging.clearMessages();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        _conversations.notifyActiveConversationChanged();
+      });
     }
   }
 
@@ -266,11 +292,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     _conversations = context.read<ConversationsProvider>();
     _messaging = context.read<MessagingProvider>();
     _scrollController.addListener(_onScroll);
-    // Register active conversation immediately so incoming messages and
-    // messageHistory merge target the open chat before post-frame getMessages.
-    _conversations.openConversation(widget.conversationId);
+    // Active id + pushClientState immediately; listener notify deferred (initState).
+    _conversations.openConversation(widget.conversationId, notify: false);
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
+      _conversations.notifyActiveConversationChanged();
       _messaging.loadCachedMessages(widget.conversationId);
       _messaging.getMessages(widget.conversationId);
     });

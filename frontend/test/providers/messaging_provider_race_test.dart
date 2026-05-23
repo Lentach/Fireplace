@@ -43,6 +43,69 @@ class _FakeEncryptionProvider extends EncryptionProvider {
       null;
 }
 
+/// Tracks decrypt calls — used to assert history does not re-decrypt plaintext rows.
+class _DecryptCountingEncryption extends _FakeEncryptionProvider {
+  int decryptCalls = 0;
+
+  @override
+  Future<String> decrypt(int senderId, String ciphertext) async {
+    decryptCalls++;
+    return jsonEncode(E2eEnvelope.build('plain-$decryptCalls'));
+  }
+}
+
+/// Always fails decrypt (simulates cross-device ratchet mismatch).
+class _AlwaysFailDecryptEncryption extends _FakeEncryptionProvider {
+  @override
+  Future<String> decrypt(int senderId, String ciphertext) async {
+    throw Exception('Bad Mac');
+  }
+}
+
+/// Simulates stale localStorage row: mediaUrl/type without AES keys (pre-re-enter bug).
+class _PersistedGifWithoutKeysEncryption extends _FakeEncryptionProvider {
+  int decryptCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>?> getDecryptedContent(int messageId) async {
+    return {
+      'content': '',
+      'messageType': 'GIF',
+      'mediaUrl': 'http://localhost:3000/media/msgs/test.bin',
+    };
+  }
+
+  @override
+  Future<String> decrypt(int senderId, String ciphertext) async {
+    decryptCalls++;
+    return jsonEncode(
+      E2eEnvelope.build(
+        '',
+        messageType: 'GIF',
+        mediaUrl: 'http://localhost:3000/media/msgs/test.bin',
+        mediaKey: 'keyBase64',
+        mediaIv: 'ivBase64',
+      ),
+    );
+  }
+}
+
+/// Second decrypt throws DuplicateMessageException (live decrypt already advanced ratchet).
+class _DuplicateDecryptEncryption extends _FakeEncryptionProvider {
+  int decryptCalls = 0;
+
+  @override
+  Future<String> decrypt(int senderId, String ciphertext) async {
+    decryptCalls++;
+    if (decryptCalls > 1) {
+      throw Exception(
+        'DuplicateMessageException - Received message with old counter',
+      );
+    }
+    return jsonEncode(E2eEnvelope.build('', messageType: 'PING'));
+  }
+}
+
 /// Fails the first live decrypt per history pass, then succeeds after session reset.
 class _HistoryDecryptRetryEncryption extends _FakeEncryptionProvider {
   int decryptAttempts = 0;
@@ -140,6 +203,7 @@ void main() {
       required int id,
       required String createdAt,
       bool includeTtl = true,
+      String messageType = 'TEXT',
     }) =>
         {
           'id': id,
@@ -149,7 +213,7 @@ void main() {
           'senderUsername': 'bob',
           'conversationId': 10,
           'deliveryStatus': 'DELIVERED',
-          'messageType': 'TEXT',
+          'messageType': messageType,
           if (includeTtl) 'disappearAfterSeconds': 60,
           'createdAt': createdAt,
         };
@@ -273,6 +337,93 @@ void main() {
             isTrue,
           );
         });
+      },
+    );
+
+    test(
+      'messageHistory keeps decrypted PING when duplicate decrypt would fire',
+      () async {
+        final dupEncryption = _DuplicateDecryptEncryption();
+        provider.setEncryptionProvider(dupEncryption);
+        provider.setActiveConversationIdForTest(10);
+
+        provider.onNewMessage(incomingJson(
+          id: 8,
+          createdAt: '2026-01-01T00:00:08.000Z',
+          messageType: 'PING',
+          includeTtl: false,
+        ));
+        for (var i = 0; i < 30; i++) {
+          await Future<void>.delayed(Duration.zero);
+          if (provider.messages.any((m) => m.id == 8)) break;
+        }
+        expect(dupEncryption.decryptCalls, 1);
+        expect(
+          provider.messages.singleWhere((m) => m.id == 8).messageType,
+          MessageType.ping,
+        );
+
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 8,
+              createdAt: '2026-01-01T00:00:08.000Z',
+              messageType: 'PING',
+              includeTtl: false,
+            ),
+          ],
+        });
+        for (var i = 0; i < 30; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+
+        expect(dupEncryption.decryptCalls, 1);
+        final row = provider.messages.singleWhere((m) => m.id == 8);
+        expect(row.messageType, MessageType.ping);
+        expect(row.content, isNot('[Decryption failed]'));
+      },
+    );
+
+    test(
+      'messageHistory does not re-decrypt rows already plaintext in _messages',
+      () async {
+        final counting = _DecryptCountingEncryption();
+        provider.setEncryptionProvider(counting);
+        provider.setActiveConversationIdForTest(10);
+        provider.getMessages(10);
+
+        provider.onNewMessage(incomingJson(
+          id: 7,
+          createdAt: '2026-01-01T00:00:07.000Z',
+          includeTtl: false,
+        ));
+        for (var i = 0; i < 30; i++) {
+          await Future<void>.delayed(Duration.zero);
+          if (provider.messages.any((m) => m.id == 7 && m.content == 'plain-1')) {
+            break;
+          }
+        }
+        expect(counting.decryptCalls, 1);
+
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 7,
+              createdAt: '2026-01-01T00:00:07.000Z',
+              includeTtl: false,
+            ),
+          ],
+        });
+        for (var i = 0; i < 30; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+
+        expect(counting.decryptCalls, 1);
+        final row = provider.messages.where((m) => m.id == 7).toList();
+        expect(row.length, 1);
+        expect(row.first.content, 'plain-1');
       },
     );
 
@@ -467,5 +618,115 @@ void main() {
       expect(payload.containsKey('messageType'), isFalse);
       expect(payload.containsKey('mediaUrl'), isFalse);
     });
+
+    test(
+      're-enter chat: GIF with mediaUrl but no keys still runs history decrypt',
+      () async {
+        final enc = _PersistedGifWithoutKeysEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        final row = {
+          'id': 88,
+          'content': '',
+          'encryptedContent': 'cipher-gif',
+          'senderId': 2,
+          'senderUsername': 'bob',
+          'conversationId': 10,
+          'deliveryStatus': 'DELIVERED',
+          'messageType': 'GIF',
+          'mediaUrl': 'http://localhost:3000/media/msgs/test.bin',
+          'createdAt': '2026-01-01T00:01:00.000Z',
+        };
+
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [row],
+        });
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(enc.decryptCalls, greaterThan(0));
+        final m = provider.messages.single;
+        expect(m.mediaKey, 'keyBase64');
+        expect(m.mediaIv, 'ivBase64');
+        expect(m.messageType, MessageType.gif);
+      },
+    );
+
+    test(
+      'messageHistory merge preserves [Decryption failed] over server [encrypted]',
+      () async {
+        final failEncryption = _AlwaysFailDecryptEncryption();
+        provider.setEncryptionProvider(failEncryption);
+        provider.setActiveConversationIdForTest(10);
+
+        final row = incomingJson(
+          id: 55,
+          createdAt: DateTime.now().toUtc().toIso8601String(),
+          includeTtl: false,
+        );
+        provider.seedCacheForTest(
+          10,
+          [
+            MessageModel.fromJson(row)
+                .copyWith(content: '[Decryption failed]'),
+          ],
+        );
+        provider.loadCachedMessages(10);
+
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [row],
+        });
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 900));
+
+        expect(provider.messages.single.content, '[Decryption failed]');
+        expect(
+          provider.messages.single.displayAsEncryptedPlaceholder,
+          isFalse,
+        );
+      },
+    );
+
+    test(
+      'live decrypt fail debounces requestSessionRebuild until batched retry',
+      () {
+        fakeAsync((async) {
+          final failEncryption = _AlwaysFailDecryptEncryption();
+          provider.setEncryptionProvider(failEncryption);
+          provider.setActiveConversationIdForTest(10);
+          emitted.clear();
+
+          provider.onNewMessage(
+            incomingJson(
+              id: 77,
+              createdAt: '2026-01-01T00:00:77.000Z',
+            ),
+          );
+          async.flushMicrotasks();
+
+          expect(
+            emitted.where((e) => e['event'] == 'requestSessionRebuild'),
+            isEmpty,
+          );
+          expect(
+            provider.messages.single.content,
+            '[Decryption failed]',
+          );
+
+          async.elapse(const Duration(milliseconds: 800));
+          async.flushMicrotasks();
+
+          expect(
+            emitted.where((e) => e['event'] == 'requestSessionRebuild'),
+            isNotEmpty,
+          );
+        });
+      },
+    );
   });
 }

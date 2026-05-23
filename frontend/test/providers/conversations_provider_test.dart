@@ -306,6 +306,21 @@ void main() {
       expect(provider.getUnreadCount(10), 3);
     });
 
+    test('openConversation(notify: false) sets active id without notifying listeners', () {
+      final provider = ConversationsProvider();
+      var listenerCalls = 0;
+      provider.addListener(() => listenerCalls++);
+
+      provider.openConversation(10, notify: false);
+
+      expect(listenerCalls, 0);
+      expect(provider.activeConversationId, 10);
+      expect(provider.getUnreadCount(10), 0);
+
+      provider.notifyActiveConversationChanged();
+      expect(listenerCalls, 1);
+    });
+
     test('setDisappearingTimer updates conversationDisappearingTimer immediately', () {
       final provider = buildProviderWithSampleData();
       provider.openConversation(10);
@@ -379,6 +394,23 @@ void main() {
         expect(pushStates, hasLength(1));
         expect(pushStates.single['activeConversationId'], isNull);
         expect(pushStates.single['clientVisible'], isTrue);
+      });
+
+      test('closeConversation(notify: false) clears active id without notifying', () {
+        final provider = ConversationsProvider();
+        var listenerCalls = 0;
+        provider.addListener(() => listenerCalls++);
+        provider.onConnect(false);
+        provider.openConversation(42);
+        listenerCalls = 0;
+
+        provider.closeConversation(notify: false);
+
+        expect(listenerCalls, 0);
+        expect(provider.activeConversationId, isNull);
+
+        provider.notifyActiveConversationChanged();
+        expect(listenerCalls, 1);
       });
     });
   });

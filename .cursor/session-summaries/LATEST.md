@@ -2,6 +2,6 @@
 
 **Date:** 2026-05-23
 
-**Summary:** [2026-05-23-session-claude-followups.md](2026-05-23-session-claude-followups.md) — CLAUDE.md follow-ups: AGENT-GOTCHAS split, UTF-8 editorconfig, version 0.0.2, CI test-count verify.
+**Summary:** [2026-05-23-session-gif-media-reenter-fix.md](2026-05-23-session-gif-media-reenter-fix.md) — E2E GIF/image gray broken tiles after re-entering chat; require mediaKey/IV before skipping history decrypt.
 
-**Previous:** [2026-05-22-session-portrait-only-orientation.md](2026-05-22-session-portrait-only-orientation.md)
+**Previous:** [2026-05-23-session-android-soft-keyboard-composer.md](2026-05-23-session-android-soft-keyboard-composer.md)

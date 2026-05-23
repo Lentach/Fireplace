@@ -15,7 +15,7 @@ class _PingEffectOverlayState extends State<PingEffectOverlay>
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _opacityAnimation;
-  final _audioPlayer = AudioPlayer();
+  AudioPlayer? _audioPlayer;
 
   @override
   void initState() {
@@ -43,18 +43,34 @@ class _PingEffectOverlayState extends State<PingEffectOverlay>
   }
 
   Future<void> _playPingSound() async {
+    final player = AudioPlayer();
+    _audioPlayer = player;
     try {
-      await _audioPlayer.setAsset('assets/sounds/ping_alert.mp3');
-      await _audioPlayer.play();
+      await player.setAsset('assets/sounds/ping_alert.mp3');
+      await player.play();
+      await player.processingStateStream.firstWhere(
+        (s) => s == ProcessingState.completed,
+      );
     } catch (e) {
       debugPrint('Error playing ping sound: $e');
+    } finally {
+      if (identical(_audioPlayer, player)) {
+        _audioPlayer = null;
+      }
+      try {
+        await player.dispose();
+      } catch (_) {}
     }
   }
 
   @override
   void dispose() {
     _controller.dispose();
-    _audioPlayer.dispose();
+    final player = _audioPlayer;
+    _audioPlayer = null;
+    if (player != null) {
+      player.dispose().catchError((_) {});
+    }
     super.dispose();
   }
 

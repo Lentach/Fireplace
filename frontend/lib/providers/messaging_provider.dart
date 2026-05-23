@@ -67,6 +67,10 @@ class MessagingProvider extends ChangeNotifier {
   /// Dedupes session-rebuild emits within one history decrypt pass.
   Set<int>? _historySessionRebuildRequested;
 
+  /// Peers whose live decrypt failed; retried after a short debounce (no per-message SESSION_RESET).
+  final Set<int> _liveDecryptFailedPeers = {};
+  Timer? _liveDecryptRetryTimer;
+
   /// Incremented on each new messageHistory to cancel stale in-flight decrypt loops.
   /// Each loop captures its generation at start and exits when the counter changes.
   int _decryptHistoryGeneration = 0;
@@ -172,8 +176,16 @@ class MessagingProvider extends ChangeNotifier {
     );
     if (filtered.isEmpty) {
       _conversationCache.remove(conversationId);
-    } else {
+      return;
+    }
+    final existing = _conversationCache[conversationId];
+    if (existing == null || existing.isEmpty) {
       _conversationCache[conversationId] = filtered;
+    } else {
+      _conversationCache[conversationId] = _mergeHistorySnapshot(
+        existingForConv: existing,
+        serverSnapshot: filtered,
+      );
     }
   }
 
@@ -231,6 +243,30 @@ class MessagingProvider extends ChangeNotifier {
     }
   }
 
+  static const String _kDecryptionFailedLabel = '[Decryption failed]';
+  static const String _kEncryptedPlaceholderLabel = '[encrypted]';
+
+  /// Self-hosted `/media/msgs/*.bin` blobs are AES-GCM encrypted; keys live only in the E2E envelope.
+  bool _requiresEncryptedMediaKeys(MessageModel msg) {
+    final url = msg.mediaUrl;
+    if (url == null || url.isEmpty || !url.contains('/media/msgs/')) {
+      return false;
+    }
+    switch (msg.messageType) {
+      case MessageType.image:
+      case MessageType.gif:
+      case MessageType.voice:
+      case MessageType.file:
+        return true;
+      default:
+        return false;
+    }
+  }
+
+  bool _missingEncryptedMediaKeys(MessageModel msg) =>
+      _requiresEncryptedMediaKeys(msg) &&
+      (msg.mediaKey == null || msg.mediaIv == null);
+
   /// Prefer higher delivery status, non-null expiry fields, and local decrypted text.
   MessageModel _mergeMessagePreferNewer(MessageModel local, MessageModel server) {
     final localRank = _deliveryStatusRank(local.deliveryStatus);
@@ -249,21 +285,43 @@ class MessagingProvider extends ChangeNotifier {
         server.disappearAfterSeconds ?? local.disappearAfterSeconds;
 
     var content = local.content;
-    if (server.content.isNotEmpty &&
-        !server.displayAsEncryptedPlaceholder &&
-        (local.displayAsEncryptedPlaceholder || local.content.isEmpty)) {
+    // Keep failure label over server "[encrypted]" on reload; successful decrypt wins.
+    if (local.content == _kDecryptionFailedLabel) {
+      if (!server.displayAsEncryptedPlaceholder &&
+          server.content.isNotEmpty &&
+          server.content != _kDecryptionFailedLabel) {
+        content = server.content;
+      } else {
+        content = _kDecryptionFailedLabel;
+      }
+    } else if (!server.displayAsEncryptedPlaceholder &&
+        (local.displayAsEncryptedPlaceholder ||
+            local.content == _kEncryptedPlaceholderLabel ||
+            local.content.isEmpty) &&
+        (server.content.isNotEmpty ||
+            server.messageType != MessageType.text ||
+            server.mediaUrl != null ||
+            server.mediaKey != null)) {
       content = server.content;
     } else if (server.content.isNotEmpty &&
         !server.displayAsEncryptedPlaceholder &&
-        local.content == '[encrypted]') {
+        local.content == _kEncryptedPlaceholderLabel) {
       content = server.content;
     }
+
+    final messageType = local.messageType != MessageType.text &&
+            server.messageType == MessageType.text
+        ? local.messageType
+        : server.messageType;
 
     return server.copyWith(
       deliveryStatus: deliveryStatus,
       expiresAt: expiresAt,
       disappearAfterSeconds: disappearAfterSeconds,
       content: content,
+      messageType: messageType,
+      mediaUrl: local.mediaUrl ?? server.mediaUrl,
+      mediaDuration: local.mediaDuration ?? server.mediaDuration,
       mediaKey: local.mediaKey ?? server.mediaKey,
       mediaIv: local.mediaIv ?? server.mediaIv,
       linkPreviewUrl: local.linkPreviewUrl ?? server.linkPreviewUrl,
@@ -272,6 +330,12 @@ class MessagingProvider extends ChangeNotifier {
           local.linkPreviewImageUrl ?? server.linkPreviewImageUrl,
     );
   }
+
+  bool _isDuplicateDecryptError(Object e) =>
+      e.toString().contains('DuplicateMessageException');
+
+  bool _isNoSessionDecryptError(Object e) =>
+      e.toString().contains('NoSessionException');
 
   /// Merges [decrypted] into the open chat row when present; returns the row used.
   MessageModel _mergeDecryptedIntoState(MessageModel decrypted) {
@@ -352,8 +416,20 @@ class MessagingProvider extends ChangeNotifier {
     _processIncomingMessageQueue();
   }
 
+  /// Loaded row for the open chat (oldest-first), if present.
+  MessageModel? messageById(int messageId) {
+    for (final m in _messages) {
+      if (m.id == messageId) return m;
+    }
+    return null;
+  }
+
   MessageModel _enrichReplyPreview(MessageModel msg) {
-    return enrichMessageReplyPreview(msg, encryption: _encryptionProvider);
+    return enrichMessageReplyPreview(
+      msg,
+      encryption: _encryptionProvider,
+      messagesForLookup: _messages,
+    );
   }
 
   void _reEnrichAllReplyQuotes() {
@@ -738,6 +814,9 @@ class MessagingProvider extends ChangeNotifier {
         final merged = _mergeDecryptedIntoState(decrypted);
         _encryptionProvider?.cacheDecryption(merged.id, merged);
         await _persistDecryptedContent(merged);
+        if (_hasUsableDecryptedContent(merged)) {
+          _reEnrichAllReplyQuotes();
+        }
         final idx = _messages.indexWhere((m) => m.id == merged.id);
         final lastMessages = _conversationsProvider?.lastMessages;
         if (lastMessages != null &&
@@ -1631,6 +1710,14 @@ class MessagingProvider extends ChangeNotifier {
   }
 
   void pinMessage(int conversationId, int messageId) {
+    final local = messageById(messageId);
+    if (local != null) {
+      _conversationsProvider?.setPinnedPreviewOptimistic(
+        conversationId,
+        messageId,
+        local,
+      );
+    }
     _emit?.call('pinMessage', {
       'conversationId': conversationId,
       'messageId': messageId,
@@ -2104,12 +2191,21 @@ class MessagingProvider extends ChangeNotifier {
 
   /// True when [msg] has displayable plaintext (or decrypted media), not an E2E placeholder.
   bool _hasUsableDecryptedContent(MessageModel msg) {
-    if (msg.content == '[Decryption failed]' ||
+    if (msg.content == _kDecryptionFailedLabel ||
         msg.content == '[Encryption not initialized]') {
       return false;
     }
+    if (_missingEncryptedMediaKeys(msg)) {
+      return false;
+    }
+    if (!msg.needsDecryption(_currentUserId)) {
+      if (msg.content == _kEncryptedPlaceholderLabel ||
+          msg.displayAsEncryptedPlaceholder) {
+        return false;
+      }
+      return true;
+    }
     if (msg.displayAsEncryptedPlaceholder) return false;
-    if (!msg.needsDecryption(_currentUserId)) return true;
     return msg.content.isNotEmpty ||
         msg.mediaUrl != null ||
         msg.messageType != MessageType.text;
@@ -2144,11 +2240,7 @@ class MessagingProvider extends ChangeNotifier {
     bool changed = false;
     for (var i = 0; i < sorted.length; i++) {
       if (_decryptHistoryGeneration != generation) break;
-      var msg = sorted[i];
-      if (msg.content == '[Decryption failed]' &&
-          msg.needsDecryption(_currentUserId)) {
-        msg = msg.copyWith(content: '[encrypted]');
-      }
+      final msg = sorted[i];
       if (msg.needsDecryption(_currentUserId)) {
         // Cache-first: only skip live decrypt when cache holds real plaintext.
         final cached = _encryptionProvider?.getCachedDecryption(msg.id);
@@ -2204,10 +2296,16 @@ class MessagingProvider extends ChangeNotifier {
             }
             continue;
           }
+          // Stale persisted row (mediaUrl without keys) — fall through to live decrypt.
+        }
+        final idx = _messages.indexWhere((m) => m.id == msg.id);
+        final rowForDecrypt = idx != -1 ? _messages[idx] : msg;
+        if (_hasUsableDecryptedContent(rowForDecrypt)) {
+          _encryptionProvider?.cacheDecryption(msg.id, rowForDecrypt);
+          continue;
         }
         // No cache — live decrypt (advances session ratchet)
-        final decrypted = await _decryptMessageAsyncQueued(msg);
-        final idx = _messages.indexWhere((m) => m.id == msg.id);
+        final decrypted = await _decryptMessageAsyncQueued(rowForDecrypt);
         if (idx != -1) {
           _messages[idx] = _mergeMessagePreferNewer(_messages[idx], decrypted);
           _encryptionProvider?.cacheDecryption(
@@ -2217,7 +2315,8 @@ class MessagingProvider extends ChangeNotifier {
           changed = true;
         }
       } else if (msg.senderId == _currentUserId &&
-          msg.content == '[encrypted]') {
+          (msg.content == _kEncryptedPlaceholderLabel ||
+              _missingEncryptedMediaKeys(msg))) {
         // _encryptionProvider is non-null here: own-message path requires E2E ready.
         final stored = await _encryptionProvider!.getDecryptedContent(msg.id);
         final storedContent = stored?['content'] as String? ?? '';
@@ -2258,14 +2357,15 @@ class MessagingProvider extends ChangeNotifier {
     if (_decryptHistoryGeneration == generation) {
       final peersNeedingRetry = <int>{
         ...?_historyDecryptFailedPeers,
+        ..._liveDecryptFailedPeers,
         for (final m in _messages)
           if (m.needsDecryption(_currentUserId) &&
               (m.displayAsEncryptedPlaceholder ||
-                  m.content == '[Decryption failed]'))
+                  m.content == _kDecryptionFailedLabel))
             m.senderId,
       };
       if (peersNeedingRetry.isNotEmpty) {
-        final retried = await _retryHistoryDecryptForPeers(
+        final retried = await _retryDecryptForPeers(
           generation,
           peersNeedingRetry,
         );
@@ -2278,31 +2378,24 @@ class MessagingProvider extends ChangeNotifier {
     if (changed) notifyListeners();
   }
 
-  /// After history decrypt failures or leftover [encrypted] placeholders, reset
-  /// the local session with each peer and replay decrypt in chronological order.
-  Future<bool> _retryHistoryDecryptForPeers(
+  /// After history/live decrypt failures, reset the local session with each peer
+  /// (once per pass) and replay decrypt oldest-first. Does not downgrade
+  /// [Decryption failed] to [encrypted] — failed rows stay failed until decrypt succeeds.
+  Future<bool> _retryDecryptForPeers(
     int generation,
     Set<int> peerIds,
   ) async {
     bool changed = false;
+    final rebuildRequested = _historySessionRebuildRequested ??= <int>{};
     for (final peerId in peerIds) {
       if (_decryptHistoryGeneration != generation) return changed;
-      if (_historySessionRebuildRequested?.add(peerId) ?? false) {
+      if (rebuildRequested.add(peerId)) {
         _requestSessionRebuildForPeer(peerId);
       }
       try {
         await _encryptionProvider?.deleteSessionWithPeer(peerId);
       } catch (e) {
         debugPrint('[E2E] deleteSessionWithPeer($peerId) failed: $e');
-      }
-      for (var i = 0; i < _messages.length; i++) {
-        final m = _messages[i];
-        if (m.senderId == peerId &&
-            m.needsDecryption(_currentUserId) &&
-            m.content == '[Decryption failed]') {
-          _messages[i] = m.copyWith(content: '[encrypted]');
-          changed = true;
-        }
       }
     }
 
@@ -2321,17 +2414,47 @@ class MessagingProvider extends ChangeNotifier {
 
     for (final msg in sorted) {
       if (_decryptHistoryGeneration != generation) break;
-      final decrypted = await _decryptMessageAsyncQueued(msg);
       final idx = _messages.indexWhere((m) => m.id == msg.id);
-      if (idx != -1 &&
-          decrypted.content != '[Decryption failed]' &&
+      final row = idx != -1 ? _messages[idx] : msg;
+      if (_hasUsableDecryptedContent(row)) {
+        _encryptionProvider?.cacheDecryption(msg.id, row);
+        continue;
+      }
+      final decrypted = await _decryptMessageAsyncQueued(row);
+      if (idx == -1) continue;
+      _messages[idx] = _mergeMessagePreferNewer(_messages[idx], decrypted);
+      changed = true;
+      if (decrypted.content != _kDecryptionFailedLabel &&
           decrypted.content != '[Encryption not initialized]') {
-        _messages[idx] = _mergeMessagePreferNewer(_messages[idx], decrypted);
         _encryptionProvider?.cacheDecryption(msg.id, _messages[idx]);
-        changed = true;
+        _liveDecryptFailedPeers.remove(msg.senderId);
+        _encryptionProvider?.clearSessionRebuild(msg.senderId);
       }
     }
     return changed;
+  }
+
+  /// Debounced retry after live decrypt failure (no per-message SESSION_RESET).
+  void _scheduleLiveDecryptRetry(int peerId) {
+    _liveDecryptFailedPeers.add(peerId);
+    _liveDecryptRetryTimer?.cancel();
+    _liveDecryptRetryTimer = Timer(const Duration(milliseconds: 800), () {
+      _liveDecryptRetryTimer = null;
+      _runLiveDecryptRetries().ignore();
+    });
+  }
+
+  Future<void> _runLiveDecryptRetries() async {
+    if (_decryptingHistory || _liveDecryptFailedPeers.isEmpty) return;
+    final peers = Set<int>.from(_liveDecryptFailedPeers);
+    final gen = _decryptHistoryGeneration;
+    final changed = await _retryDecryptForPeers(gen, peers);
+    if (_decryptHistoryGeneration != gen) return;
+    if (changed) {
+      final cid = _effectiveActiveConversationId;
+      if (cid != null) _updateCache(cid);
+      notifyListeners();
+    }
   }
 
   Future<MessageModel> _decryptMessageAsyncQueued(MessageModel msg) {
@@ -2348,6 +2471,10 @@ class MessagingProvider extends ChangeNotifier {
     // Own messages: server stored "[encrypted]" as content but we already
     // showed plaintext optimistically, so skip decryption for our own messages.
     if (msg.senderId == _currentUserId) return msg;
+
+    // Already decrypted (e.g. live path) — never re-run ratchet decrypt on the
+    // same ciphertext; that advances the session and causes Bad Mac on retry.
+    if (_hasUsableDecryptedContent(msg)) return msg;
 
     await _waitForE2EReady();
     if (!(_encryptionProvider?.isE2EReady ?? false)) {
@@ -2405,11 +2532,10 @@ class MessagingProvider extends ChangeNotifier {
         return fallback;
       }
     } catch (e) {
-      // DuplicateMessageException: session was already advanced. Use cache.
       final cached = _encryptionProvider?.getCachedDecryption(msg.id);
       if (cached != null && _hasUsableDecryptedContent(cached)) return cached;
-      // _encryptionProvider is non-null here: catch path reached only during
-      // active decryption, which requires E2E to be initialized.
+      if (_hasUsableDecryptedContent(msg)) return msg;
+
       final persisted =
           await _encryptionProvider!.getDecryptedContent(msg.id);
       final persistedContent = persisted?['content'] as String? ?? '';
@@ -2443,15 +2569,24 @@ class MessagingProvider extends ChangeNotifier {
           return restored;
         }
       }
+
+      if (_isDuplicateDecryptError(e) || _isNoSessionDecryptError(e)) {
+        _e2eFlowLog('DECRYPT_SKIP', {
+          'msgId': msg.id,
+          'reason': e.toString(),
+        });
+        return msg;
+      }
+
       debugPrint('[E2E] Decrypt failed for msg ${msg.id}: $e');
       _e2eFlowLog(
           'DECRYPT_FAIL', {'msgId': msg.id, 'error': e.toString()});
       if (_decryptingHistory) {
         _historyDecryptFailedPeers?.add(msg.senderId);
       } else {
-        _requestSessionRebuildForPeer(msg.senderId);
+        _scheduleLiveDecryptRetry(msg.senderId);
       }
-      return msg.copyWith(content: '[Decryption failed]');
+      return msg.copyWith(content: _kDecryptionFailedLabel);
     }
   }
 
@@ -2666,6 +2801,8 @@ class MessagingProvider extends ChangeNotifier {
   /// Called on socket disconnect. Cancels timers.
   void onDisconnect() {
     _cancelDelayedRetryIfAny();
+    _liveDecryptRetryTimer?.cancel();
+    _liveDecryptRetryTimer = null;
     for (final t in _typingTimers.values) {
       t.cancel();
     }
@@ -2691,6 +2828,9 @@ class MessagingProvider extends ChangeNotifier {
     _decryptChainBySender.clear();
     _decryptingHistory = false;
     _decryptHistoryGeneration++;
+    _liveDecryptRetryTimer?.cancel();
+    _liveDecryptRetryTimer = null;
+    _liveDecryptFailedPeers.clear();
     _cancelDelayedRetryIfAny();
     _currentUserId = null;
     _tokenForReconnect = null;

@@ -2,6 +2,69 @@ import '../l10n/app_localizations.dart';
 import '../models/message_model.dart';
 import '../providers/encryption_provider.dart';
 
+/// Server and client placeholders for E2E ciphertext rows.
+bool isEncryptedPreviewContent(
+  String content, {
+  required String encryptedMessageLabel,
+}) {
+  if (content.isEmpty) return false;
+  return content == '[encrypted]' ||
+      content == encryptedMessageLabel ||
+      content == kReplyPreviewLabels.encryptedMessageLabel;
+}
+
+bool hasUsablePlaintextContent(MessageModel message) {
+  if (message.content.isEmpty) return false;
+  if (message.content == '[encrypted]' ||
+      message.content == '[Decryption failed]' ||
+      message.content == '[Encryption not initialized]') {
+    return false;
+  }
+  if (message.content == kReplyPreviewLabels.encryptedMessageLabel) {
+    return false;
+  }
+  return true;
+}
+
+MessageModel? findMessageById(int id, Iterable<MessageModel>? messages) {
+  if (messages == null) return null;
+  for (final m in messages) {
+    if (m.id == id) return m;
+  }
+  return null;
+}
+
+bool _serverPreviewNeedsLocalMerge(MessageModel server, MessageModel local) {
+  if (hasUsablePlaintextContent(local) &&
+      !hasUsablePlaintextContent(server)) {
+    return true;
+  }
+  if (local.messageType != MessageType.text &&
+      server.messageType == MessageType.text) {
+    return true;
+  }
+  if ((local.mediaKey != null || local.mediaIv != null) &&
+      local.mediaUrl != null &&
+      (server.mediaKey == null || server.mediaUrl == null)) {
+    return true;
+  }
+  return false;
+}
+
+/// Prefer a loaded chat row over a server pin/reply snapshot when it has readable text.
+MessageModel resolvePinnedPreviewMessage({
+  required MessageModel serverPreview,
+  MessageModel? localMessage,
+}) {
+  if (localMessage == null || localMessage.id != serverPreview.id) {
+    return serverPreview;
+  }
+  if (_serverPreviewNeedsLocalMerge(serverPreview, localMessage)) {
+    return localMessage;
+  }
+  return serverPreview;
+}
+
 String? _decryptedPreviewText(EncryptionProvider? encryption, int messageId) {
   final cached = encryption?.getCachedDecryption(messageId);
   if (cached == null) return null;
@@ -15,6 +78,18 @@ String? _decryptedPreviewText(EncryptionProvider? encryption, int messageId) {
   return text;
 }
 
+String _truncatePreview(String text) =>
+    text.length > 150 ? '${text.substring(0, 150)}...' : text;
+
+bool _isEncryptedRow(MessageModel message, String encryptedMessageLabel) =>
+    message.content == '[encrypted]' ||
+    (message.encryptedContent != null &&
+        message.encryptedContent!.isNotEmpty &&
+        isEncryptedPreviewContent(
+          message.content,
+          encryptedMessageLabel: encryptedMessageLabel,
+        ));
+
 /// Context-free helper for provider/tests — required for media sends.
 String replyPreviewForMessageModel(
   MessageModel message, {
@@ -26,28 +101,36 @@ String replyPreviewForMessageModel(
   required String documentLabel,
   required String pingLabel,
 }) {
-  if (message.content == '[encrypted]') {
-    final decrypted = _decryptedPreviewText(encryption, message.id);
-    if (decrypted != null && decrypted.isNotEmpty) {
-      return decrypted.length > 150
-          ? '${decrypted.substring(0, 150)}...'
-          : decrypted;
-    }
-    return encryptedMessageLabel;
+  final decrypted = _decryptedPreviewText(encryption, message.id);
+  if (decrypted != null && decrypted.isNotEmpty) {
+    return _truncatePreview(decrypted);
   }
-  if (message.content.isNotEmpty) {
-    return message.content.length > 150
-        ? '${message.content.substring(0, 150)}...'
-        : message.content;
-  }
-  return replyTypeLabel(
+
+  final typeLabel = replyTypeLabel(
     message.messageType,
     voiceMessageLabel: voiceMessageLabel,
     imageLabel: imageLabel,
     gifLabel: gifLabel,
     documentLabel: documentLabel,
     pingLabel: pingLabel,
+    encryptedMessageLabel: encryptedMessageLabel,
   );
+
+  if (_isEncryptedRow(message, encryptedMessageLabel) ||
+      isEncryptedPreviewContent(
+        message.content,
+        encryptedMessageLabel: encryptedMessageLabel,
+      )) {
+    if (message.messageType != MessageType.text) {
+      return typeLabel;
+    }
+    return encryptedMessageLabel;
+  }
+
+  if (message.content.isNotEmpty) {
+    return _truncatePreview(message.content);
+  }
+  return typeLabel;
 }
 
 String replyTypeLabel(
@@ -57,6 +140,7 @@ String replyTypeLabel(
   required String gifLabel,
   required String documentLabel,
   required String pingLabel,
+  required String encryptedMessageLabel,
 }) {
   switch (type) {
     case MessageType.voice:
@@ -69,8 +153,8 @@ String replyTypeLabel(
       return documentLabel;
     case MessageType.ping:
       return pingLabel;
-    default:
-      return '';
+    case MessageType.text:
+      return encryptedMessageLabel;
   }
 }
 
@@ -106,9 +190,18 @@ String replyDisplayContentForQuote(
   EncryptionProvider? encryption,
   required int conversationId,
   required DateTime createdAt,
+  Iterable<MessageModel>? messagesForLookup,
 }) {
+  final quoted = findMessageById(replyTo.id, messagesForLookup);
+  if (quoted != null) {
+    final fromList = replyPreviewForMessage(l10n, quoted, encryption: encryption);
+    if (fromList.isNotEmpty && fromList != l10n.encryptedMessage) {
+      return fromList;
+    }
+  }
   if (replyTo.content == '[encrypted]' ||
-      replyTo.content == l10n.encryptedMessage) {
+      replyTo.content == l10n.encryptedMessage ||
+      replyTo.content == kReplyPreviewLabels.encryptedMessageLabel) {
     final decrypted = encryption?.getCachedDecryption(replyTo.id)?.content;
     if (decrypted != null &&
         decrypted.isNotEmpty &&
@@ -143,9 +236,34 @@ ReplyToPreview enrichReplyToPreview(
   required String gifLabel,
   required String documentLabel,
   required String pingLabel,
+  Iterable<MessageModel>? messagesForLookup,
 }) {
-  if (replyTo.content != '[encrypted]' &&
-      replyTo.content != encryptedMessageLabel) {
+  final quoted = findMessageById(replyTo.id, messagesForLookup);
+  if (quoted != null) {
+    final fromList = replyPreviewForMessageModel(
+      quoted,
+      encryption: encryption,
+      encryptedMessageLabel: encryptedMessageLabel,
+      voiceMessageLabel: voiceMessageLabel,
+      imageLabel: imageLabel,
+      gifLabel: gifLabel,
+      documentLabel: documentLabel,
+      pingLabel: pingLabel,
+    );
+    if (fromList.isNotEmpty && fromList != encryptedMessageLabel) {
+      return ReplyToPreview(
+        id: replyTo.id,
+        content: fromList,
+        senderUsername: replyTo.senderUsername,
+        messageType: quoted.messageType,
+      );
+    }
+  }
+
+  if (!isEncryptedPreviewContent(
+    replyTo.content,
+    encryptedMessageLabel: encryptedMessageLabel,
+  )) {
     return replyTo;
   }
   final decrypted = _decryptedPreviewText(encryption, replyTo.id);
@@ -168,6 +286,7 @@ ReplyToPreview enrichReplyToPreview(
       gifLabel: gifLabel,
       documentLabel: documentLabel,
       pingLabel: pingLabel,
+      encryptedMessageLabel: encryptedMessageLabel,
     ),
     senderUsername: replyTo.senderUsername,
     messageType: replyTo.messageType,
@@ -177,6 +296,7 @@ ReplyToPreview enrichReplyToPreview(
 MessageModel enrichMessageReplyPreview(
   MessageModel message, {
   required EncryptionProvider? encryption,
+  Iterable<MessageModel>? messagesForLookup,
 }) {
   final replyTo = message.replyTo;
   if (replyTo == null) return message;
@@ -190,6 +310,7 @@ MessageModel enrichMessageReplyPreview(
     gifLabel: labels.gifLabel,
     documentLabel: labels.documentLabel,
     pingLabel: labels.pingLabel,
+    messagesForLookup: messagesForLookup,
   );
   if (identical(enriched, replyTo) || enriched.content == replyTo.content) {
     return message;
