@@ -762,7 +762,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     } else {
       body = Column(
         children: [
-          if (pinnedBanner != null) pinnedBanner,
+          ?pinnedBanner,
           Expanded(
             child: ChatComposerViewport(
               messageListBuilder: (listBottomPadding) => _buildMessagesArea(
@@ -807,7 +807,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
               ],
             ),
           ),
-          if (pinnedBanner != null) pinnedBanner,
+          ?pinnedBanner,
           Expanded(
             child: Stack(
               children: [

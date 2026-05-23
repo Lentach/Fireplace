@@ -48,12 +48,15 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
     }
   }
 
+  bool _onComposerSizeChanged(SizeChangedLayoutNotification notification) {
+    WidgetsBinding.instance.addPostFrameCallback(_measureComposer);
+    return false;
+  }
+
   @override
   Widget build(BuildContext context) {
     final keyboardInset = MediaQuery.viewInsetsOf(context).bottom;
     final listBottomPadding = _composerHeight + keyboardInset;
-
-    WidgetsBinding.instance.addPostFrameCallback(_measureComposer);
 
     return Stack(
       clipBehavior: Clip.none,
@@ -66,9 +69,14 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
           left: 0,
           right: 0,
           bottom: keyboardInset,
-          child: KeyedSubtree(
-            key: _composerKey,
-            child: widget.composer,
+          child: NotificationListener<SizeChangedLayoutNotification>(
+            onNotification: _onComposerSizeChanged,
+            child: KeyedSubtree(
+              key: _composerKey,
+              child: SizeChangedLayoutNotifier(
+                child: widget.composer,
+              ),
+            ),
           ),
         ),
       ],

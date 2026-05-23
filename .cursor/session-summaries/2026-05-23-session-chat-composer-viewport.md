@@ -21,6 +21,12 @@
 - `frontend/lib/widgets/input/chat_input_bar.dart`
 - `frontend/test/widgets/input/chat_composer_viewport_test.dart`
 
+## Pre-merge review nits (same day)
+
+- Removed per-`build()` `addPostFrameCallback` in `ChatComposerViewport`; composer resize now via `SizeChangedLayoutNotifier` + `NotificationListener<SizeChangedLayoutNotification>`.
+- `chat_detail_screen.dart`: `?pinnedBanner` null-aware collection elements (analyze clean on touched files except pre-existing `use_build_context_synchronously`).
+- Scroll-to-bottom FAB `bottom: 140` left unchanged (needs composer-height wiring — follow-up).
+
 ## Status / next session
 
 - **Manual QA** on Android emulator (`flutter run -d emulator-5554`): composer tap, reply preview, keyboard, send, rotation.
