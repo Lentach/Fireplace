@@ -15,7 +15,6 @@ import '../../providers/settings_provider.dart';
 import '../../theme/rpg_theme.dart';
 import '../../utils/message_expiry.dart';
 import '../../utils/reply_preview_helper.dart';
-import '../../utils/soft_keyboard.dart';
 import '../chat_action_tiles.dart';
 import '../hearth_fade_arc.dart';
 import '../top_snackbar.dart' show showTopSnackBar;
@@ -51,7 +50,6 @@ class _ChatInputBarState extends State<ChatInputBar>
   @override
   void initState() {
     super.initState();
-    _focusNode.addListener(_onComposerFocusChanged);
     _controller.addListener(() {
       if (_controller.text.trim().isEmpty) return;
       _typingDebounceTimer?.cancel();
@@ -87,14 +85,6 @@ class _ChatInputBarState extends State<ChatInputBar>
     }
   }
 
-  void _onComposerFocusChanged() {
-    if (!_focusNode.hasFocus) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      showSoftKeyboardIfHidden(context: context, hasFocus: _focusNode.hasFocus);
-    });
-  }
-
   void _onReplyTargetChanged(MessageModel? replyingTo) {
     if (replyingTo != null && _lastReplyingTo != replyingTo) {
       _lastReplyingTo = replyingTo;
@@ -103,7 +93,6 @@ class _ChatInputBarState extends State<ChatInputBar>
         if (!_focusNode.hasFocus) {
           _focusNode.requestFocus();
         }
-        showSoftKeyboardIfHidden(context: context, hasFocus: true);
       });
     } else if (replyingTo == null) {
       _lastReplyingTo = null;
@@ -113,7 +102,6 @@ class _ChatInputBarState extends State<ChatInputBar>
   @override
   void dispose() {
     _messagingProvider?.removeListener(_onMessagingProviderChanged);
-    _focusNode.removeListener(_onComposerFocusChanged);
     _controller.dispose();
     _focusNode.dispose();
     _actionPanelController.dispose();
@@ -138,7 +126,6 @@ class _ChatInputBarState extends State<ChatInputBar>
       if (!_focusNode.hasFocus) {
         _focusNode.requestFocus();
       }
-      showSoftKeyboardIfHidden(context: context, hasFocus: true);
     });
   }
 

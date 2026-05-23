@@ -11,6 +11,7 @@ import '../providers/messaging_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/chat_message_bubble.dart';
 import '../widgets/chat_input_bar.dart';
+import '../widgets/input/chat_composer_viewport.dart';
 import '../widgets/message_date_separator.dart';
 import '../models/conversation_model.dart';
 import '../models/message_model.dart';
@@ -334,6 +335,23 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     super.didChangeMetrics();
     if (!mounted) return;
     dismissMessageContextMenu();
+
+    final bottom = View.of(context).viewInsets.bottom;
+    if (bottom > 0 &&
+        _lastKeyboardHeight == 0 &&
+        _messaging.messages.isNotEmpty) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        Future.delayed(const Duration(milliseconds: 300), () {
+          if (!mounted || !_scrollController.hasClients) return;
+          _scrollController.animateTo(
+            0,
+            duration: const Duration(milliseconds: 200),
+            curve: Curves.easeOut,
+          );
+        });
+      });
+    }
+    _lastKeyboardHeight = bottom;
   }
 
   @override
@@ -523,6 +541,116 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     return la.year != lb.year || la.month != lb.month || la.day != lb.day;
   }
 
+  Widget _buildMessagesArea({
+    required double listBottomPadding,
+    required List<MessageModel> messages,
+    required Color mutedColor,
+    required Color messagesAreaBg,
+    required int currentUserId,
+  }) {
+    return SafeArea(
+      bottom: false,
+      child: ChatBackgroundPattern(
+        dotColor: mutedColor.withValues(alpha: 0.08),
+        backgroundColor: messagesAreaBg,
+        child: messages.isEmpty
+            ? Center(
+                child: Text(
+                  AppLocalizations.of(context).noMessagesYet,
+                  style: RpgTheme.bodyFont(
+                    fontSize: 14,
+                    color: mutedColor,
+                  ),
+                ),
+              )
+            : NotificationListener<ScrollStartNotification>(
+                onNotification: (notification) {
+                  dismissMessageContextMenu();
+                  return false;
+                },
+                child: NotificationListener<UserScrollNotification>(
+                  onNotification: (notification) {
+                    _userHasScrolledChat = true;
+                    return false;
+                  },
+                  child: ListView.builder(
+                    reverse: true,
+                    controller: _scrollController,
+                    findChildIndexCallback: (Key key) {
+                      if (key is ValueKey<int>) {
+                        final idx =
+                            messages.indexWhere((m) => m.id == key.value);
+                        if (idx == -1) return null;
+                        return messages.length - 1 - idx;
+                      }
+                      return null;
+                    },
+                    padding: EdgeInsets.only(
+                      left: 16,
+                      right: 20,
+                      top: 8,
+                      bottom: 8 + listBottomPadding,
+                    ),
+                    itemCount:
+                        messages.length + (_isLoadingMoreLocal ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (_isLoadingMoreLocal && index == messages.length) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      final msgIndex = messages.length - 1 - index;
+                      final msg = messages[msgIndex];
+                      final showDate = msgIndex == 0 ||
+                          _isDifferentDay(
+                            messages[msgIndex - 1].createdAt,
+                            msg.createdAt,
+                          );
+                      return _buildMessageListItem(
+                        listIndex: index,
+                        msg: msg,
+                        showDate: showDate,
+                        isMine: msg.senderId == currentUserId,
+                      );
+                    },
+                  ),
+                ),
+              ),
+      ),
+    );
+  }
+
+  Widget _buildComposerFooter({
+    required UserModel? otherUser,
+    required Color mutedColor,
+    required ColorScheme colorScheme,
+  }) {
+    if (otherUser != null &&
+        context.read<FriendsProvider>().blockedByUserIds.contains(otherUser.id)) {
+      return SafeArea(
+        top: false,
+        left: true,
+        right: true,
+        child: Container(
+          width: double.infinity,
+          padding: const EdgeInsets.symmetric(vertical: 16),
+          color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+          child: Center(
+            child: Text(
+              AppLocalizations.of(context).cantTypeToThisUser,
+              style: RpgTheme.bodyFont(
+                fontSize: 13,
+                color: mutedColor,
+              ).copyWith(fontStyle: FontStyle.italic),
+            ),
+          ),
+        ),
+      );
+    }
+    return const ChatInputBar();
+  }
+
   @override
   Widget build(BuildContext context) {
     final messaging = context.watch<MessagingProvider>();
@@ -530,7 +658,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final auth = context.watch<AuthProvider>();
     final messages = messaging.messages;
     final contactName = _getContactName();
-    final keyboardHeight = MediaQuery.of(context).viewInsets.bottom;
 
     if (messages.isNotEmpty && messages.length != _lastMessageCount) {
       final added = messages.length - _lastMessageCount;
@@ -550,23 +677,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         _scrollToBottom();
       });
     }
-
-    // Auto-scroll when keyboard opens to keep newest message visible
-    if (keyboardHeight > 0 && _lastKeyboardHeight == 0 && messages.isNotEmpty) {
-      // Keyboard just opened - scroll to bottom after layout settles
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        // Wait for keyboard animation to finish
-        Future.delayed(const Duration(milliseconds: 300), () {
-          if (!mounted || !_scrollController.hasClients) return;
-          _scrollController.animateTo(
-            0,
-            duration: const Duration(milliseconds: 200),
-            curve: Curves.easeOut,
-          );
-        });
-      });
-    }
-    _lastKeyboardHeight = keyboardHeight;
 
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
@@ -604,138 +714,70 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       });
     }
 
+    final currentUserId = auth.currentUser!.id;
+    final composerFooter = _buildComposerFooter(
+      otherUser: otherUser,
+      mutedColor: mutedColor,
+      colorScheme: colorScheme,
+    );
+
     // When other user deleted the conversation, show message instead of auto-close
-    final body = deletedByOther
-        ? SafeArea(
-            child: Center(
-              child: Padding(
-                padding: const EdgeInsets.all(24),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.delete_outline, size: 48, color: mutedColor),
-                    const SizedBox(height: 16),
-                    Text(
-                      AppLocalizations.of(context).conversationDeletedByOther,
-                      textAlign: TextAlign.center,
-                      style: RpgTheme.bodyFont(fontSize: 14, color: mutedColor),
-                    ),
-                  ],
+    final Widget body;
+    if (deletedByOther) {
+      body = SafeArea(
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.delete_outline, size: 48, color: mutedColor),
+                const SizedBox(height: 16),
+                Text(
+                  AppLocalizations.of(context).conversationDeletedByOther,
+                  textAlign: TextAlign.center,
+                  style: RpgTheme.bodyFont(fontSize: 14, color: mutedColor),
                 ),
-              ),
+              ],
             ),
-          )
-        : Column(
-            children: [
-              if (pinnedBanner != null) pinnedBanner,
-              Expanded(
-                // Horizontal safe area for the scrollable list only. Wrapping the whole
-                // column (including ChatInputBar) used to shrink the composer width and left
-                // an uncovered strip (Scaffold background) on the sides — especially visible
-                // on mobile Web/PWA with non-zero horizontal insets.
-                child: SafeArea(
-                  bottom: false,
-                  child: ChatBackgroundPattern(
-                    dotColor: mutedColor.withValues(alpha: 0.08),
-                    backgroundColor: messagesAreaBg,
-                    child: messages.isEmpty
-                        ? Center(
-                            child: Text(
-                              AppLocalizations.of(context).noMessagesYet,
-                              style: RpgTheme.bodyFont(
-                                fontSize: 14,
-                                color: mutedColor,
-                              ),
-                            ),
-                          )
-                        : NotificationListener<ScrollStartNotification>(
-                            onNotification: (notification) {
-                              dismissMessageContextMenu();
-                              return false;
-                            },
-                            child: NotificationListener<UserScrollNotification>(
-                            onNotification: (notification) {
-                              _userHasScrolledChat = true;
-                              return false;
-                            },
-                            child: ListView.builder(
-                              reverse: true,
-                              controller: _scrollController,
-                              // Required alongside ValueKey(msg.id): tells the sliver where
-                              // a keyed child moved after itemCount changes (e.g. new message
-                              // prepended at visual bottom). Without this, Flutter falls back
-                              // to positional matching and remounts all image/GIF widgets.
-                              findChildIndexCallback: (Key key) {
-                                if (key is ValueKey<int>) {
-                                  final idx = messages.indexWhere((m) => m.id == key.value);
-                                  if (idx == -1) return null;
-                                  return messages.length - 1 - idx;
-                                }
-                                return null;
-                              },
-                              padding: const EdgeInsets.only(
-                                left: 16,
-                                right: 20,
-                                top: 8,
-                                bottom: 8,
-                              ),
-                              itemCount: messages.length + (_isLoadingMoreLocal ? 1 : 0),
-                              itemBuilder: (context, index) {
-                                // Spinner at visual top (highest index = last rendered item with reverse:true).
-                                // Check BEFORE the flip so message indices are unaffected.
-                                if (_isLoadingMoreLocal && index == messages.length) {
-                                  return const Padding(
-                                    padding: EdgeInsets.symmetric(vertical: 8),
-                                    child: Center(child: CircularProgressIndicator()),
-                                  );
-                                }
-                                // Flip: _messages is oldest-first; index 0 renders at visual bottom (newest).
-                                final msgIndex = messages.length - 1 - index;
-                                final msg = messages[msgIndex];
-                                // Date separator condition unchanged — still correct after flip.
-                                final showDate = msgIndex == 0 ||
-                                    _isDifferentDay(
-                                      messages[msgIndex - 1].createdAt,
-                                      msg.createdAt,
-                                    );
-                                return _buildMessageListItem(
-                                  listIndex: index,
-                                  msg: msg,
-                                  showDate: showDate,
-                                  isMine: msg.senderId == auth.currentUser!.id,
-                                );
-                              },
-                            ),
-                          ),
-                          ),
-                  ),
-                ),
+          ),
+        ),
+      );
+    } else if (widget.isEmbedded) {
+      // Pinned banner is rendered by the embedded shell above this [body].
+      body = Column(
+        children: [
+          Expanded(
+            child: _buildMessagesArea(
+              listBottomPadding: 0,
+              messages: messages,
+              mutedColor: mutedColor,
+              messagesAreaBg: messagesAreaBg,
+              currentUserId: currentUserId,
+            ),
+          ),
+          composerFooter,
+        ],
+      );
+    } else {
+      body = Column(
+        children: [
+          if (pinnedBanner != null) pinnedBanner,
+          Expanded(
+            child: ChatComposerViewport(
+              messageListBuilder: (listBottomPadding) => _buildMessagesArea(
+                listBottomPadding: listBottomPadding,
+                messages: messages,
+                mutedColor: mutedColor,
+                messagesAreaBg: messagesAreaBg,
+                currentUserId: currentUserId,
               ),
-              if (otherUser != null &&
-                  context.read<FriendsProvider>().blockedByUserIds.contains(otherUser.id))
-                SafeArea(
-                  top: false,
-                  left: true,
-                  right: true,
-                  child: Container(
-                    width: double.infinity,
-                    padding: const EdgeInsets.symmetric(vertical: 16),
-                    color: colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                    child: Center(
-                      child: Text(
-                        AppLocalizations.of(context).cantTypeToThisUser,
-                        style: RpgTheme.bodyFont(
-                          fontSize: 13,
-                          color: mutedColor,
-                        ).copyWith(fontStyle: FontStyle.italic),
-                      ),
-                    ),
-                  ),
-                )
-              else
-                const ChatInputBar(),
-            ],
-          );
+              composer: composerFooter,
+            ),
+          ),
+        ],
+      );
+    }
 
     if (widget.isEmbedded) {
       final borderColor = FireplaceColors.of(context).convItemBorder;
@@ -789,7 +831,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     }
 
     return Scaffold(
-      resizeToAvoidBottomInset: true,
+      resizeToAvoidBottomInset: false,
       appBar: AppBar(
         centerTitle: true,
         leading: IconButton(
