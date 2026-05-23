@@ -78,7 +78,9 @@ class VoiceMessageContent extends StatelessWidget {
       currentUserId: auth.currentUser?.id,
       onReply: () => messaging.setReplyingTo(message),
       onPin: () {
-        // Phase 1b: messaging.pinMessage(...)
+        if (message.id > 0) {
+          messaging.pinMessage(message.conversationId, message.id);
+        }
       },
       onDelete: () {
         showMessageDeleteDialog(

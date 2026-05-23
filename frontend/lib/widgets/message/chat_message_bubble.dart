@@ -3,9 +3,11 @@ import 'package:provider/provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/encryption_provider.dart';
 import '../../providers/messaging_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/rpg_theme.dart';
+import '../../utils/reply_preview_helper.dart';
 import '../message_swipe_wrapper.dart';
 import '../dialogs/message_delete_dialog.dart';
 import 'message_context_menu_overlay.dart';
@@ -94,27 +96,32 @@ class ChatMessageBubble extends StatelessWidget {
 
   String _replyDisplayContent(BuildContext context, ReplyToPreview replyTo) {
     final l10n = AppLocalizations.of(context);
-    if (replyTo.content == '[encrypted]') return l10n.encryptedMessage;
-    if (replyTo.content.isNotEmpty) return replyTo.content;
-    return _replyTypeLabel(context, replyTo.messageType);
-  }
-
-  String _replyTypeLabel(BuildContext context, MessageType type) {
-    final l10n = AppLocalizations.of(context);
-    switch (type) {
-      case MessageType.voice:
-        return l10n.voiceMessage;
-      case MessageType.image:
-        return l10n.image;
-      case MessageType.ping:
-        return l10n.ping;
-      case MessageType.gif:
-        return l10n.actionTileGif;
-      case MessageType.file:
-        return l10n.attachmentOptionDocument;
-      default:
-        return '';
+    final encryption = context.read<EncryptionProvider>();
+    if (replyTo.content == '[encrypted]' ||
+        replyTo.content == l10n.encryptedMessage) {
+      final decrypted = encryption.getCachedDecryption(replyTo.id)?.content;
+      if (decrypted != null &&
+          decrypted.isNotEmpty &&
+          decrypted != '[encrypted]' &&
+          decrypted != '[Decryption failed]') {
+        return decrypted.length > 150
+            ? '${decrypted.substring(0, 150)}...'
+            : decrypted;
+      }
     }
+    return replyPreviewForMessage(
+      l10n,
+      MessageModel(
+        id: replyTo.id,
+        content: replyTo.content,
+        senderId: 0,
+        senderUsername: replyTo.senderUsername,
+        conversationId: message.conversationId,
+        createdAt: message.createdAt,
+        messageType: replyTo.messageType,
+      ),
+      encryption: encryption,
+    );
   }
 
   Widget? _buildRetryButton(BuildContext context) {
@@ -150,7 +157,9 @@ class ChatMessageBubble extends StatelessWidget {
       currentUserId: auth.currentUser?.id,
       onReply: () => messaging.setReplyingTo(message),
       onPin: () {
-        // Phase 1b: messaging.pinMessage(...)
+        if (message.id > 0) {
+          messaging.pinMessage(message.conversationId, message.id);
+        }
       },
       onDelete: () {
         showMessageDeleteDialog(

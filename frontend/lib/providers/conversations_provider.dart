@@ -223,9 +223,57 @@ class ConversationsProvider extends ChangeNotifier {
         userTwo: oldConv.userTwo,
         createdAt: oldConv.createdAt,
         disappearingTimer: seconds,
+        pinnedMessageId: oldConv.pinnedMessageId,
+        pinnedMessagePreview: oldConv.pinnedMessagePreview,
       );
     }
 
+    notifyListeners();
+  }
+
+  /// Handle 'messagePinned' event — update pin id and preview snapshot.
+  void onMessagePinned(dynamic data) {
+    final m = data as Map<String, dynamic>;
+    final conversationId = m['conversationId'] as int;
+    final pinnedMessageId = m['pinnedMessageId'] as int?;
+    MessageModel? preview;
+    final previewData = m['pinnedMessage'];
+    if (previewData != null) {
+      preview = MessageModel.fromJson(previewData as Map<String, dynamic>);
+    }
+
+    final index = _conversations.indexWhere((c) => c.id == conversationId);
+    if (index != -1) {
+      final oldConv = _conversations[index];
+      _conversations[index] = ConversationModel(
+        id: oldConv.id,
+        userOne: oldConv.userOne,
+        userTwo: oldConv.userTwo,
+        createdAt: oldConv.createdAt,
+        disappearingTimer: oldConv.disappearingTimer,
+        pinnedMessageId: pinnedMessageId,
+        pinnedMessagePreview: preview,
+      );
+    }
+    notifyListeners();
+  }
+
+  /// Handle 'messageUnpinned' event — clear pin fields.
+  void onMessageUnpinned(dynamic data) {
+    final conversationId = (data as Map<String, dynamic>)['conversationId'] as int;
+    final index = _conversations.indexWhere((c) => c.id == conversationId);
+    if (index != -1) {
+      final oldConv = _conversations[index];
+      _conversations[index] = ConversationModel(
+        id: oldConv.id,
+        userOne: oldConv.userOne,
+        userTwo: oldConv.userTwo,
+        createdAt: oldConv.createdAt,
+        disappearingTimer: oldConv.disappearingTimer,
+        pinnedMessageId: null,
+        pinnedMessagePreview: null,
+      );
+    }
     notifyListeners();
   }
 
@@ -263,6 +311,8 @@ class ConversationsProvider extends ChangeNotifier {
         userTwo: oldConv.userTwo,
         createdAt: oldConv.createdAt,
         disappearingTimer: timer,
+        pinnedMessageId: oldConv.pinnedMessageId,
+        pinnedMessagePreview: oldConv.pinnedMessagePreview,
       );
       notifyListeners();
     }

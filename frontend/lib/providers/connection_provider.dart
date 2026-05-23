@@ -337,6 +337,12 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.on('disappearingTimerUpdated', (data) {
       _conversationsProvider?.onDisappearingTimerUpdated(data);
     });
+    _socketService.on('messagePinned', (data) {
+      _conversationsProvider?.onMessagePinned(data);
+    });
+    _socketService.on('messageUnpinned', (data) {
+      _conversationsProvider?.onMessageUnpinned(data);
+    });
     _socketService.on('chatHistoryCleared', (data) {
       _messagingProvider?.onChatHistoryCleared(data);
     });

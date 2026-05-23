@@ -15,6 +15,7 @@ import '../services/media_crypto_service.dart';
 import '../services/link_preview_service.dart';
 import '../utils/e2e_envelope.dart';
 import '../utils/message_expiry.dart';
+import '../utils/reply_preview_helper.dart';
 import 'conversation_helpers.dart' as conv_helpers;
 import 'conversations_provider.dart';
 import 'encryption_provider.dart';
@@ -345,8 +346,50 @@ class MessagingProvider extends ChangeNotifier {
     if (updateCache && conversationId != null) {
       _updateCache(conversationId);
     }
+    _reEnrichAllReplyQuotes();
     notifyListeners();
     _processIncomingMessageQueue();
+  }
+
+  MessageModel _enrichReplyPreview(MessageModel msg) {
+    return enrichMessageReplyPreview(msg, encryption: _encryptionProvider);
+  }
+
+  void _reEnrichAllReplyQuotes() {
+    for (var i = 0; i < _messages.length; i++) {
+      final enriched = _enrichReplyPreview(_messages[i]);
+      if (enriched != _messages[i]) {
+        _messages[i] = enriched;
+      }
+    }
+  }
+
+  ReplyToPreview? _buildReplyPreviewFromReplyingTo() {
+    final rt = _replyingToMessage;
+    if (rt == null) return null;
+    const labels = kReplyPreviewLabels;
+    return ReplyToPreview(
+      id: rt.id,
+      content: replyPreviewForMessageModel(
+        rt,
+        encryption: _encryptionProvider,
+        encryptedMessageLabel: labels.encryptedMessageLabel,
+        voiceMessageLabel: labels.voiceMessageLabel,
+        imageLabel: labels.imageLabel,
+        gifLabel: labels.gifLabel,
+        documentLabel: labels.documentLabel,
+        pingLabel: labels.pingLabel,
+      ),
+      senderUsername: rt.senderUsername,
+      messageType: rt.messageType,
+    );
+  }
+
+  void _clearReplyingToAfterSendStart() {
+    if (_replyingToMessage != null) {
+      _replyingToMessage = null;
+      notifyListeners();
+    }
   }
 
   Future<void> _waitForE2EReady({int maxAttempts = 50}) async {
@@ -484,7 +527,8 @@ class MessagingProvider extends ChangeNotifier {
       return;
     }
     final newMessages = list
-        .map((m) => MessageModel.fromJson(m as Map<String, dynamic>))
+        .map((m) => _enrichReplyPreview(
+            MessageModel.fromJson(m as Map<String, dynamic>)))
         .toList();
 
     if (_isPaginationLoad) {
@@ -657,7 +701,7 @@ class MessagingProvider extends ChangeNotifier {
 
   void _handleIncomingMessage(dynamic data) {
     final dataMap = data as Map<String, dynamic>;
-    final msg = MessageModel.fromJson(dataMap);
+    var msg = _enrichReplyPreview(MessageModel.fromJson(dataMap));
     final activeConversationId = _effectiveActiveConversationId;
 
     // Queue incoming encrypted messages for active conversation while we're
@@ -1032,32 +1076,11 @@ class MessagingProvider extends ChangeNotifier {
     final effectiveExpiresIn =
         expiresIn ?? _conversationsProvider!.conversationDisappearingTimer;
     final effectiveReplyToId = replyToMessageId ?? _replyingToMessage?.id;
+    final replyPreview = _buildReplyPreviewFromReplyingTo();
 
     // Generate unique tempId for optimistic message matching
     final tempId =
         'temp_${DateTime.now().millisecondsSinceEpoch}_$_currentUserId';
-
-    ReplyToPreview? replyPreview;
-    if (_replyingToMessage != null) {
-      final rt = _replyingToMessage!;
-      final contentPreview = rt.messageType == MessageType.voice
-          ? 'Voice message'
-          : rt.messageType == MessageType.image
-              ? 'Image'
-              : rt.messageType == MessageType.file
-                  ? 'File'
-                  : rt.messageType == MessageType.ping
-                      ? 'Ping'
-                      : rt.content.length > 150
-                          ? '${rt.content.substring(0, 150)}...'
-                          : rt.content;
-      replyPreview = ReplyToPreview(
-        id: rt.id,
-        content: contentPreview,
-        senderUsername: rt.senderUsername,
-        messageType: rt.messageType,
-      );
-    }
 
     // Create optimistic message with SENDING status
     final tempMessage = MessageModel(
@@ -1145,6 +1168,8 @@ class MessagingProvider extends ChangeNotifier {
         _conversationsProvider!.conversationDisappearingTimer;
     final tempId =
         'temp_${DateTime.now().millisecondsSinceEpoch}_$_currentUserId';
+    final effectiveReplyToId = _replyingToMessage?.id;
+    final replyPreview = _buildReplyPreviewFromReplyingTo();
 
     // Create optimistic message
     final tempMessage = MessageModel(
@@ -1159,11 +1184,14 @@ class MessagingProvider extends ChangeNotifier {
       disappearAfterSeconds: effectiveExpiresIn,
       expiresAt: null,
       tempId: tempId,
+      replyToMessageId: effectiveReplyToId,
+      replyTo: replyPreview,
     );
 
     _messages.add(tempMessage);
     _pendingSendContent[tempId] =
         <String, dynamic>{'content': '', 'messageType': 'IMAGE'};
+    _clearReplyingToAfterSendStart();
     notifyListeners();
 
     try {
@@ -1206,6 +1234,7 @@ class MessagingProvider extends ChangeNotifier {
         content: '',
         tempId: tempId,
         effectiveExpiresIn: effectiveExpiresIn,
+        effectiveReplyToId: effectiveReplyToId,
         messageType: 'IMAGE',
         mediaUrl: mediaUrl,
         mediaKey: encrypted.keyBase64,
@@ -1240,6 +1269,8 @@ class MessagingProvider extends ChangeNotifier {
 
     final tempId =
         'temp_${DateTime.now().millisecondsSinceEpoch}_$_currentUserId';
+    final effectiveReplyToId = _replyingToMessage?.id;
+    final replyPreview = _buildReplyPreviewFromReplyingTo();
 
     // Get disappearing timer from conversation
     final conversations = _conversationsProvider!.conversations;
@@ -1261,6 +1292,8 @@ class MessagingProvider extends ChangeNotifier {
       tempId: tempId,
       disappearAfterSeconds: effectiveExpiresIn,
       expiresAt: null,
+      replyToMessageId: effectiveReplyToId,
+      replyTo: replyPreview,
     );
 
     // 2. Add to messages immediately (optimistic)
@@ -1268,6 +1301,7 @@ class MessagingProvider extends ChangeNotifier {
     _pendingSendContent[tempId] =
         <String, dynamic>{'content': '', 'messageType': 'VOICE'};
     _conversationsProvider?.updateLastMessage(effectiveConvId, optimisticMessage);
+    _clearReplyingToAfterSendStart();
     notifyListeners();
 
     try {
@@ -1329,6 +1363,7 @@ class MessagingProvider extends ChangeNotifier {
         content: '',
         tempId: tempId,
         effectiveExpiresIn: effectiveExpiresIn,
+        effectiveReplyToId: effectiveReplyToId,
         messageType: 'VOICE',
         mediaUrl: mediaUrl,
         mediaDuration: serverDuration,
@@ -1354,6 +1389,8 @@ class MessagingProvider extends ChangeNotifier {
         _conversationsProvider!.conversationDisappearingTimer;
     final tempId =
         'temp_${DateTime.now().millisecondsSinceEpoch}_$_currentUserId';
+    final effectiveReplyToId = _replyingToMessage?.id;
+    final replyPreview = _buildReplyPreviewFromReplyingTo();
 
     // 1. Optimistic message
     final tempMessage = MessageModel(
@@ -1368,11 +1405,14 @@ class MessagingProvider extends ChangeNotifier {
       disappearAfterSeconds: effectiveExpiresIn,
       expiresAt: null,
       tempId: tempId,
+      replyToMessageId: effectiveReplyToId,
+      replyTo: replyPreview,
     );
 
     _messages.add(tempMessage);
     _pendingSendContent[tempId] =
         <String, dynamic>{'content': '', 'messageType': 'GIF'};
+    _clearReplyingToAfterSendStart();
     notifyListeners();
 
     try {
@@ -1422,6 +1462,7 @@ class MessagingProvider extends ChangeNotifier {
         content: '',
         tempId: tempId,
         effectiveExpiresIn: effectiveExpiresIn,
+        effectiveReplyToId: effectiveReplyToId,
         messageType: 'GIF',
         mediaUrl: mediaUrl,
         mediaKey: encrypted.keyBase64,
@@ -1448,6 +1489,8 @@ class MessagingProvider extends ChangeNotifier {
         _conversationsProvider!.conversationDisappearingTimer;
     final tempId =
         'temp_${DateTime.now().millisecondsSinceEpoch}_$_currentUserId';
+    final effectiveReplyToId = _replyingToMessage?.id;
+    final replyPreview = _buildReplyPreviewFromReplyingTo();
 
     final tempMessage = MessageModel(
       id: -(++MessagingProvider._tempIdSeq),
@@ -1461,6 +1504,8 @@ class MessagingProvider extends ChangeNotifier {
       disappearAfterSeconds: effectiveExpiresIn,
       expiresAt: null,
       tempId: tempId,
+      replyToMessageId: effectiveReplyToId,
+      replyTo: replyPreview,
     );
 
     _messages.add(tempMessage);
@@ -1468,6 +1513,7 @@ class MessagingProvider extends ChangeNotifier {
       'content': fileName,
       'messageType': 'FILE',
     };
+    _clearReplyingToAfterSendStart();
     notifyListeners();
 
     try {
@@ -1509,6 +1555,7 @@ class MessagingProvider extends ChangeNotifier {
         content: fileName,
         tempId: tempId,
         effectiveExpiresIn: effectiveExpiresIn,
+        effectiveReplyToId: effectiveReplyToId,
         messageType: 'FILE',
         mediaUrl: mediaUrl,
         mediaKey: encrypted.keyBase64,
@@ -1569,6 +1616,17 @@ class MessagingProvider extends ChangeNotifier {
       'messageId': messageId,
       'mode': forEveryone ? 'for_everyone' : 'for_me',
     });
+  }
+
+  void pinMessage(int conversationId, int messageId) {
+    _emit?.call('pinMessage', {
+      'conversationId': conversationId,
+      'messageId': messageId,
+    });
+  }
+
+  void unpinMessage(int conversationId) {
+    _emit?.call('unpinMessage', {'conversationId': conversationId});
   }
 
   void addReaction(int messageId, String emoji) {
