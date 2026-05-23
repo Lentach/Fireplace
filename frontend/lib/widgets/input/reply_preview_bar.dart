@@ -1,7 +1,11 @@
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 
+import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
+import '../../providers/encryption_provider.dart';
 import '../../theme/rpg_theme.dart';
+import '../../utils/reply_preview_helper.dart';
 
 /// Displays the quoted reply preview above the input bar.
 /// Shows sender name, content preview, and a dismiss button.
@@ -15,27 +19,11 @@ class ReplyPreviewBar extends StatelessWidget {
   final MessageModel message;
   final VoidCallback onDismiss;
 
-  String _contentPreview() {
-    switch (message.messageType) {
-      case MessageType.voice:
-        return 'Voice message';
-      case MessageType.image:
-        return 'Image';
-      case MessageType.gif:
-        return 'GIF';
-      case MessageType.file:
-        return message.content.isNotEmpty ? message.content : 'Document';
-      case MessageType.ping:
-        return 'Ping';
-      default:
-        return message.content.length > 80
-            ? '${message.content.substring(0, 80)}...'
-            : message.content;
-    }
-  }
-
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final encryption = context.read<EncryptionProvider>();
+    final previewText = replyPreviewForMessage(l10n, message, encryption: encryption);
     final isDark = RpgTheme.isDark(context);
     final fc = FireplaceColors.of(context);
     final borderColor = Theme.of(context).colorScheme.primary;
@@ -70,7 +58,7 @@ class ReplyPreviewBar extends StatelessWidget {
                 ),
                 const SizedBox(height: 2),
                 Text(
-                  _contentPreview(),
+                  previewText,
                   style: RpgTheme.bodyFont(fontSize: 12, color: mutedColor),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,

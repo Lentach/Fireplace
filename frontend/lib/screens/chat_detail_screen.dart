@@ -13,12 +13,18 @@ import '../widgets/chat_message_bubble.dart';
 import '../widgets/chat_input_bar.dart';
 import '../widgets/message_date_separator.dart';
 import '../models/conversation_model.dart';
+import '../models/message_model.dart';
 import '../models/user_model.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/chat_background_pattern.dart';
 import '../widgets/ping_effect_overlay.dart';
 import '../widgets/top_snackbar.dart';
+import '../widgets/message/pinned_message_banner.dart';
 import '../widgets/message/message_context_menu_overlay.dart';
+import '../utils/scroll_to_message_helper.dart';
+import '../utils/reply_preview_helper.dart';
+import '../utils/message_expiry.dart';
+import '../providers/encryption_provider.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final int conversationId;
@@ -55,6 +61,117 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   /// (cleared when near bottom in [_onScroll]).
   bool _userHasScrolledChat = false;
   static const double _scrollToBottomThreshold = 80;
+  int? _scrollTargetListIndex;
+  GlobalKey? _scrollTargetKey;
+
+  Future<void> _scrollToMessageId(int messageId) async {
+    final messaging = context.read<MessagingProvider>();
+    final l10n = AppLocalizations.of(context);
+
+    final listIndex = await loadListIndexForMessageId(
+      messageId: messageId,
+      getMessages: () => messaging.messages,
+      hasMoreMessages: () => messaging.hasMoreMessages,
+      loadOlderPage: () async {
+        messaging.loadOlderMessages(widget.conversationId);
+      },
+    );
+
+    if (listIndex == null) {
+      if (mounted) {
+        showTopSnackBar(context, l10n.snackbarPinnedMessageUnavailable);
+      }
+      return;
+    }
+
+    setState(() {
+      _scrollTargetListIndex = listIndex;
+      _scrollTargetKey = GlobalKey();
+    });
+
+    await WidgetsBinding.instance.endOfFrame;
+    if (!mounted) return;
+
+    final targetContext = _scrollTargetKey?.currentContext;
+    if (targetContext != null) {
+      await Scrollable.ensureVisible(
+        targetContext,
+        alignment: 0.5,
+        duration: const Duration(milliseconds: 300),
+      );
+    }
+
+    if (mounted) {
+      setState(() {
+        _scrollTargetListIndex = null;
+        _scrollTargetKey = null;
+      });
+    }
+  }
+
+  Widget _buildMessageListItem({
+    required int listIndex,
+    required MessageModel msg,
+    required bool showDate,
+    required bool isMine,
+  }) {
+    final scrollKey = listIndex == _scrollTargetListIndex
+        ? (_scrollTargetKey ??= GlobalKey())
+        : null;
+    final bubble = Column(
+      key: ValueKey(msg.id),
+      children: [
+        if (showDate) MessageDateSeparator(date: msg.createdAt),
+        if (showDate) const SizedBox(height: 8),
+        ChatMessageBubble(
+          message: msg,
+          isMine: isMine,
+        ),
+      ],
+    );
+    if (scrollKey == null) return bubble;
+    return KeyedSubtree(key: scrollKey, child: bubble);
+  }
+
+  bool _shouldShowPinnedBanner(
+    ConversationModel? conv,
+    List<MessageModel> messages,
+  ) {
+    if (conv == null || conv.pinnedMessageId == null) return false;
+    final preview = conv.pinnedMessagePreview;
+    if (preview != null && isMessageExpired(preview)) return false;
+    if (messages.every((m) => m.id != conv.pinnedMessageId)) {
+      return false;
+    }
+    return true;
+  }
+
+  Widget? _buildPinnedMessageBanner(
+    BuildContext context,
+    ConversationModel conv,
+    List<MessageModel> messages,
+    MessagingProvider messaging,
+    ConversationsProvider convs,
+  ) {
+    if (!_shouldShowPinnedBanner(conv, messages)) return null;
+    final l10n = AppLocalizations.of(context);
+    final preview = conv.pinnedMessagePreview;
+    if (preview == null) return null;
+    final encryption = context.read<EncryptionProvider>();
+    final previewText = replyPreviewForMessage(
+      l10n,
+      preview,
+      encryption: encryption,
+    );
+    return PinnedMessageBanner(
+      previewText: previewText,
+      senderLabel: preview.senderUsername.isNotEmpty
+          ? preview.senderUsername
+          : convs.getOtherUserUsername(conv),
+      onTap: () => _scrollToMessageId(conv.pinnedMessageId!),
+      onUnpin: () => messaging.unpinMessage(conv.id),
+    );
+  }
 
   void _onScroll() {
     if (!_scrollController.hasClients) return;
@@ -443,6 +560,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
     final otherUser = _getOtherUser();
     final activeConv = convs.getConversationById(widget.conversationId);
+    final statusText = _getHeaderStatusText(context, messaging);
+    final headerTitle = _buildHeaderTitle(context, contactName, otherUser, statusText);
+    final pinnedBanner = activeConv != null
+        ? _buildPinnedMessageBanner(
+            context,
+            activeConv,
+            messages,
+            messaging,
+            convs,
+          )
+        : null;
     final deletedByOther = activeConv == null && convs.activeConversationDeletedByOther;
     // Auto-pop only when conv gone and NOT deleted by other (e.g. unfriend/block)
     if (activeConv == null && convs.conversations.isNotEmpty && !deletedByOther) {
@@ -485,6 +613,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
           )
         : Column(
             children: [
+              if (pinnedBanner != null) pinnedBanner,
               Expanded(
                 // Horizontal safe area for the scrollable list only. Wrapping the whole
                 // column (including ChatInputBar) used to shrink the composer width and left
@@ -555,16 +684,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                                       messages[msgIndex - 1].createdAt,
                                       msg.createdAt,
                                     );
-                                return Column(
-                                  key: ValueKey(msg.id),
-                                  children: [
-                                    if (showDate) MessageDateSeparator(date: msg.createdAt),
-                                    if (showDate) const SizedBox(height: 8),
-                                    ChatMessageBubble(
-                                      message: msg,
-                                      isMine: msg.senderId == auth.currentUser!.id,
-                                    ),
-                                  ],
+                                return _buildMessageListItem(
+                                  listIndex: index,
+                                  msg: msg,
+                                  showDate: showDate,
+                                  isMine: msg.senderId == auth.currentUser!.id,
                                 );
                               },
                             ),
@@ -621,12 +745,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                 ),
                 Expanded(
                   child: Center(
-                    child: _buildHeaderTitle(context, contactName, otherUser, _getHeaderStatusText(context, messaging)),
+                    child: headerTitle,
                   ),
                 ),
               ],
             ),
           ),
+          if (pinnedBanner != null) pinnedBanner,
           Expanded(
             child: Stack(
               children: [
@@ -660,7 +785,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
             Navigator.of(context).pop();
           },
         ),
-        title: _buildHeaderTitle(context, contactName, otherUser, _getHeaderStatusText(context, messaging)),
+        title: headerTitle,
         actions: [
           if (otherUser != null)
             PopupMenuButton<String>(
