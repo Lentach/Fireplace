@@ -1,0 +1,43 @@
+import 'package:flutter/material.dart';
+import '../../l10n/app_localizations.dart';
+
+Future<void> showMessageDeleteDialog({
+  required BuildContext context,
+  required bool isMine,
+  required int messageId,
+  required VoidCallback onDeleteForMe,
+  required VoidCallback onDeleteForEveryone,
+}) {
+  final l10n = AppLocalizations.of(context);
+  final showForEveryone = isMine && messageId > 0;
+  return showDialog<void>(
+    context: context,
+    builder: (ctx) => AlertDialog(
+      title: Text(l10n.messageDeleteDialogTitle),
+      actions: [
+        TextButton(
+          onPressed: () {
+            Navigator.pop(ctx);
+            onDeleteForMe();
+          },
+          child: Text(l10n.messageDeleteForMe),
+        ),
+        if (showForEveryone)
+          TextButton(
+            onPressed: () {
+              Navigator.pop(ctx);
+              onDeleteForEveryone();
+            },
+            child: Text(
+              l10n.messageDeleteForEveryone,
+              style: TextStyle(color: Theme.of(ctx).colorScheme.error),
+            ),
+          ),
+        TextButton(
+          onPressed: () => Navigator.pop(ctx),
+          child: Text(MaterialLocalizations.of(ctx).cancelButtonLabel),
+        ),
+      ],
+    ),
+  );
+}
