@@ -1213,6 +1213,84 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Fireplace działa tylko w trybie pionowym.'**
   String get rotateDeviceMessage;
+
+  /// No description provided for @messageActionReply.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odpowiedz'**
+  String get messageActionReply;
+
+  /// No description provided for @messageActionEdit.
+  ///
+  /// In pl, this message translates to:
+  /// **'Edytuj'**
+  String get messageActionEdit;
+
+  /// No description provided for @messageActionPin.
+  ///
+  /// In pl, this message translates to:
+  /// **'Przypnij'**
+  String get messageActionPin;
+
+  /// No description provided for @messageActionDelete.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń'**
+  String get messageActionDelete;
+
+  /// No description provided for @messageDeleteDialogTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usunąć wiadomość?'**
+  String get messageDeleteDialogTitle;
+
+  /// No description provided for @messageDeleteForMe.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń u mnie'**
+  String get messageDeleteForMe;
+
+  /// No description provided for @messageDeleteForEveryone.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń dla wszystkich'**
+  String get messageDeleteForEveryone;
+
+  /// No description provided for @messageEditComingSoon.
+  ///
+  /// In pl, this message translates to:
+  /// **'Edycja wkrótce'**
+  String get messageEditComingSoon;
+
+  /// No description provided for @messagePinRequiresSentMessage.
+  ///
+  /// In pl, this message translates to:
+  /// **'Poczekaj na wysłanie wiadomości, aby ją przypiąć'**
+  String get messagePinRequiresSentMessage;
+
+  /// No description provided for @messageDeleteRequiresSentMessage.
+  ///
+  /// In pl, this message translates to:
+  /// **'Poczekaj na wysłanie wiadomości, aby usunąć dla wszystkich'**
+  String get messageDeleteRequiresSentMessage;
+
+  /// No description provided for @snackbarPinnedMessageUnavailable.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wiadomość jest niedostępna'**
+  String get snackbarPinnedMessageUnavailable;
+
+  /// No description provided for @pinnedMessageUnpinTooltip.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odepnij'**
+  String get pinnedMessageUnpinTooltip;
+
+  /// No description provided for @pinnedMessageBannerSemantics.
+  ///
+  /// In pl, this message translates to:
+  /// **'Przypięta wiadomość'**
+  String get pinnedMessageBannerSemantics;
 }
 
 class _AppLocalizationsDelegate

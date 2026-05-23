@@ -656,4 +656,45 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get rotateDeviceMessage => 'Fireplace działa tylko w trybie pionowym.';
+
+  @override
+  String get messageActionReply => 'Odpowiedz';
+
+  @override
+  String get messageActionEdit => 'Edytuj';
+
+  @override
+  String get messageActionPin => 'Przypnij';
+
+  @override
+  String get messageActionDelete => 'Usuń';
+
+  @override
+  String get messageDeleteDialogTitle => 'Usunąć wiadomość?';
+
+  @override
+  String get messageDeleteForMe => 'Usuń u mnie';
+
+  @override
+  String get messageDeleteForEveryone => 'Usuń dla wszystkich';
+
+  @override
+  String get messageEditComingSoon => 'Edycja wkrótce';
+
+  @override
+  String get messagePinRequiresSentMessage =>
+      'Poczekaj na wysłanie wiadomości, aby ją przypiąć';
+
+  @override
+  String get messageDeleteRequiresSentMessage =>
+      'Poczekaj na wysłanie wiadomości, aby usunąć dla wszystkich';
+
+  @override
+  String get snackbarPinnedMessageUnavailable => 'Wiadomość jest niedostępna';
+
+  @override
+  String get pinnedMessageUnpinTooltip => 'Odepnij';
+
+  @override
+  String get pinnedMessageBannerSemantics => 'Przypięta wiadomość';
 }

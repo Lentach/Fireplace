@@ -240,5 +240,19 @@
   "themeOptionTealStone": "Turkus i kamień (nowoczesny jasny)",
 
   "rotateDeviceTitle": "Obróć urządzenie",
-  "rotateDeviceMessage": "Fireplace działa tylko w trybie pionowym."
+  "rotateDeviceMessage": "Fireplace działa tylko w trybie pionowym.",
+
+  "messageActionReply": "Odpowiedz",
+  "messageActionEdit": "Edytuj",
+  "messageActionPin": "Przypnij",
+  "messageActionDelete": "Usuń",
+  "messageDeleteDialogTitle": "Usunąć wiadomość?",
+  "messageDeleteForMe": "Usuń u mnie",
+  "messageDeleteForEveryone": "Usuń dla wszystkich",
+  "messageEditComingSoon": "Edycja wkrótce",
+  "messagePinRequiresSentMessage": "Poczekaj na wysłanie wiadomości, aby ją przypiąć",
+  "messageDeleteRequiresSentMessage": "Poczekaj na wysłanie wiadomości, aby usunąć dla wszystkich",
+  "snackbarPinnedMessageUnavailable": "Wiadomość jest niedostępna",
+  "pinnedMessageUnpinTooltip": "Odepnij",
+  "pinnedMessageBannerSemantics": "Przypięta wiadomość"
 }

@@ -647,4 +647,46 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get rotateDeviceMessage => 'Fireplace works in portrait mode only.';
+
+  @override
+  String get messageActionReply => 'Reply';
+
+  @override
+  String get messageActionEdit => 'Edit';
+
+  @override
+  String get messageActionPin => 'Pin';
+
+  @override
+  String get messageActionDelete => 'Delete';
+
+  @override
+  String get messageDeleteDialogTitle => 'Delete message?';
+
+  @override
+  String get messageDeleteForMe => 'Delete for me';
+
+  @override
+  String get messageDeleteForEveryone => 'Delete for everyone';
+
+  @override
+  String get messageEditComingSoon => 'Edit is coming soon';
+
+  @override
+  String get messagePinRequiresSentMessage =>
+      'Wait until the message is sent before pinning';
+
+  @override
+  String get messageDeleteRequiresSentMessage =>
+      'Wait until the message is sent before deleting for everyone';
+
+  @override
+  String get snackbarPinnedMessageUnavailable =>
+      'Message is no longer available';
+
+  @override
+  String get pinnedMessageUnpinTooltip => 'Unpin';
+
+  @override
+  String get pinnedMessageBannerSemantics => 'Pinned message';
 }

@@ -258,5 +258,19 @@
   "rotateDeviceMessage": "Fireplace works in portrait mode only.",
   "@rotateDeviceMessage": {
     "description": "Body under rotateDeviceTitle"
-  }
+  },
+
+  "messageActionReply": "Reply",
+  "messageActionEdit": "Edit",
+  "messageActionPin": "Pin",
+  "messageActionDelete": "Delete",
+  "messageDeleteDialogTitle": "Delete message?",
+  "messageDeleteForMe": "Delete for me",
+  "messageDeleteForEveryone": "Delete for everyone",
+  "messageEditComingSoon": "Edit is coming soon",
+  "messagePinRequiresSentMessage": "Wait until the message is sent before pinning",
+  "messageDeleteRequiresSentMessage": "Wait until the message is sent before deleting for everyone",
+  "snackbarPinnedMessageUnavailable": "Message is no longer available",
+  "pinnedMessageUnpinTooltip": "Unpin",
+  "pinnedMessageBannerSemantics": "Pinned message"
 }
