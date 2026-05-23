@@ -36,7 +36,7 @@ void main() {
       provider.setToken('tok');
     });
 
-    test('loadOlderMessages prepends messages and updates hasMoreMessages', () {
+    test('loadOlderMessages prepends messages and updates hasMoreMessages', () async {
       provider.setActiveConversationIdForTest(10);
 
       // Initial load: full page of 50 → _hasMore = true, _paginationOffset = 50.
@@ -48,9 +48,11 @@ void main() {
       expect(provider.messages.length, 50);
 
       // Load older: only 3 messages come back (< pageSize) → _hasMore = false.
-      provider.loadOlderMessages(10);
+      final loadFuture = provider.loadOlderMessages(10);
+      expect(provider.isLoadingMore, isTrue);
       final olderMsgs = List.generate(3, (i) => _msgJson(100 + i, 10));
       provider.onMessageHistory(_history(10, olderMsgs));
+      await loadFuture;
 
       // Older messages are prepended, loading flag cleared, no more pages.
       expect(provider.isLoadingMore, isFalse);
@@ -60,7 +62,7 @@ void main() {
       expect(provider.messages.last.id, 50);   // newest at back
     });
 
-    test('loadOlderMessages is no-op when hasMoreMessages is false', () {
+    test('loadOlderMessages is no-op when hasMoreMessages is false', () async {
       provider.setActiveConversationIdForTest(10);
 
       // Initial load with fewer than a full page → _hasMore = false.
@@ -70,7 +72,7 @@ void main() {
       expect(provider.hasMoreMessages, isFalse);
 
       // Call should return immediately without changing state.
-      provider.loadOlderMessages(10);
+      await provider.loadOlderMessages(10);
 
       expect(provider.isLoadingMore, isFalse);
       expect(provider.messages.length, 2);

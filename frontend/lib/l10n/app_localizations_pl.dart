@@ -686,10 +686,6 @@ class AppLocalizationsPl extends AppLocalizations {
       'Poczekaj na wysłanie wiadomości, aby ją przypiąć';
 
   @override
-  String get messageDeleteRequiresSentMessage =>
-      'Poczekaj na wysłanie wiadomości, aby usunąć dla wszystkich';
-
-  @override
   String get snackbarPinnedMessageUnavailable => 'Wiadomość jest niedostępna';
 
   @override

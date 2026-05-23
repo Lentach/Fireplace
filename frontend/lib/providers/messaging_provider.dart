@@ -94,6 +94,7 @@ class MessagingProvider extends ChangeNotifier {
   int _paginationConversationId = -1;
   int _paginationOffset = 0;
   bool _isPaginationLoad = false;
+  Completer<void>? _paginationCompleter;
 
   /// Monotonic id per [getMessages] emit; paired FIFO in [_pendingHistoryFetchSeq].
   int _historyFetchSeq = 0;
@@ -520,8 +521,7 @@ class MessagingProvider extends ChangeNotifier {
         effectiveActive != null &&
         responseConversationId != effectiveActive) {
       if (_isPaginationLoad && responseConversationId == _paginationConversationId) {
-        _isLoadingMore = false;
-        _isPaginationLoad = false;
+        _finishPaginationLoad();
         notifyListeners();
       }
       return;
@@ -534,8 +534,7 @@ class MessagingProvider extends ChangeNotifier {
     if (_isPaginationLoad) {
       if (responseConversationId != null &&
           responseConversationId != _paginationConversationId) {
-        _isLoadingMore = false;
-        _isPaginationLoad = false;
+        _finishPaginationLoad();
         notifyListeners();
         return;
       }
@@ -543,8 +542,7 @@ class MessagingProvider extends ChangeNotifier {
       _messages = [...newMessages, ..._messages];
       _paginationOffset += newMessages.length;
       _hasMore = newMessages.length == _pageSize;
-      _isLoadingMore = false;
-      _isPaginationLoad = false;
+      _finishPaginationLoad();
       notifyListeners();
 
       _decryptHistoryGeneration++;
@@ -637,10 +635,9 @@ class MessagingProvider extends ChangeNotifier {
   }
 
   void getMessages(int conversationId) {
+    _finishPaginationLoad();
     _paginationConversationId = conversationId;
     _paginationOffset = 0;
-    _isPaginationLoad = false;
-    _isLoadingMore = false;
     _hasMore = false;
     _trackHistoryFetch(conversationId);
     _emit?.call('getMessages', {
@@ -650,15 +647,30 @@ class MessagingProvider extends ChangeNotifier {
     });
   }
 
-  void loadOlderMessages(int conversationId) {
-    if (_isLoadingMore || !_hasMore) return;
+  Future<void> loadOlderMessages(int conversationId) {
+    if (!_hasMore) return Future<void>.value();
+    if (_isLoadingMore) {
+      return _paginationCompleter?.future ?? Future<void>.value();
+    }
     _isLoadingMore = true;
     _isPaginationLoad = true;
+    _paginationCompleter = Completer<void>();
     _emit?.call('getMessages', {
       'conversationId': conversationId,
       'limit': _pageSize,
       'offset': _paginationOffset,
     });
+    return _paginationCompleter!.future;
+  }
+
+  void _finishPaginationLoad() {
+    _isLoadingMore = false;
+    _isPaginationLoad = false;
+    final completer = _paginationCompleter;
+    _paginationCompleter = null;
+    if (completer != null && !completer.isCompleted) {
+      completer.complete();
+    }
   }
 
   void onMessageDelivered(dynamic data) {
@@ -2687,11 +2699,10 @@ class MessagingProvider extends ChangeNotifier {
 
   /// Clear messages for the active conversation (used when clearing active chat).
   void clearMessages() {
+    _finishPaginationLoad();
     _messages = [];
     _hasMore = false;
     _paginationOffset = 0;
-    _isLoadingMore = false;
-    _isPaginationLoad = false;
     _paginationConversationId = -1;
     notifyListeners();
   }

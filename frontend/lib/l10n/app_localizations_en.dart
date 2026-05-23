@@ -677,10 +677,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'Wait until the message is sent before pinning';
 
   @override
-  String get messageDeleteRequiresSentMessage =>
-      'Wait until the message is sent before deleting for everyone';
-
-  @override
   String get snackbarPinnedMessageUnavailable =>
       'Message is no longer available';
 

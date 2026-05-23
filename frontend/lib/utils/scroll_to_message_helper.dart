@@ -32,7 +32,6 @@ Future<int?> loadListIndexForMessageId({
     if (listIndex != null) return listIndex;
     if (!hasMoreMessages()) break;
     await loadOlderPage();
-    await Future<void>.delayed(const Duration(milliseconds: 50));
   }
   return null;
 }

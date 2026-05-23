@@ -269,7 +269,6 @@
   "messageDeleteForEveryone": "Delete for everyone",
   "messageEditComingSoon": "Edit is coming soon",
   "messagePinRequiresSentMessage": "Wait until the message is sent before pinning",
-  "messageDeleteRequiresSentMessage": "Wait until the message is sent before deleting for everyone",
   "snackbarPinnedMessageUnavailable": "Message is no longer available",
   "pinnedMessageUnpinTooltip": "Unpin",
   "pinnedMessageBannerSemantics": "Pinned message"

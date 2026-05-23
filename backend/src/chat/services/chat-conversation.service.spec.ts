@@ -196,5 +196,32 @@ describe('ChatConversationService', () => {
       );
       expect(conversationsService.setPinnedMessage).not.toHaveBeenCalled();
     });
+
+    it('rejects pin on expired message', async () => {
+      const expiredMsg = {
+        id: 100,
+        content: 'expired',
+        conversation: conv,
+        createdAt: new Date('2020-01-01'),
+        expiresAt: new Date('2020-01-02'),
+        disappearAfterSeconds: null,
+      };
+      messagesService.findByIdWithConversation.mockResolvedValue(
+        expiredMsg as any,
+      );
+
+      await service.handlePinMessage(
+        mockClient as any,
+        { conversationId: 10, messageId: 100 },
+        mockServer as any,
+        new Map(),
+      );
+
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'error',
+        { message: 'Cannot pin expired message' },
+      );
+      expect(conversationsService.setPinnedMessage).not.toHaveBeenCalled();
+    });
   });
 });

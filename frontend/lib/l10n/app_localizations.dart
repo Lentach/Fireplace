@@ -1268,12 +1268,6 @@ abstract class AppLocalizations {
   /// **'Poczekaj na wysłanie wiadomości, aby ją przypiąć'**
   String get messagePinRequiresSentMessage;
 
-  /// No description provided for @messageDeleteRequiresSentMessage.
-  ///
-  /// In pl, this message translates to:
-  /// **'Poczekaj na wysłanie wiadomości, aby usunąć dla wszystkich'**
-  String get messageDeleteRequiresSentMessage;
-
   /// No description provided for @snackbarPinnedMessageUnavailable.
   ///
   /// In pl, this message translates to:

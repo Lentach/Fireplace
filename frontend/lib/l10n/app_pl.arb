@@ -251,7 +251,6 @@
   "messageDeleteForEveryone": "Usuń dla wszystkich",
   "messageEditComingSoon": "Edycja wkrótce",
   "messagePinRequiresSentMessage": "Poczekaj na wysłanie wiadomości, aby ją przypiąć",
-  "messageDeleteRequiresSentMessage": "Poczekaj na wysłanie wiadomości, aby usunąć dla wszystkich",
   "snackbarPinnedMessageUnavailable": "Wiadomość jest niedostępna",
   "pinnedMessageUnpinTooltip": "Odepnij",
   "pinnedMessageBannerSemantics": "Przypięta wiadomość"

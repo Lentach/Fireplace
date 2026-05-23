@@ -22,8 +22,8 @@ import '../widgets/top_snackbar.dart';
 import '../widgets/message/pinned_message_banner.dart';
 import '../widgets/message/message_context_menu_overlay.dart';
 import '../utils/scroll_to_message_helper.dart';
+import '../utils/pinned_banner_visibility.dart';
 import '../utils/reply_preview_helper.dart';
-import '../utils/message_expiry.dart';
 import '../providers/encryption_provider.dart';
 
 class ChatDetailScreen extends StatefulWidget {
@@ -72,9 +72,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       messageId: messageId,
       getMessages: () => messaging.messages,
       hasMoreMessages: () => messaging.hasMoreMessages,
-      loadOlderPage: () async {
-        messaging.loadOlderMessages(widget.conversationId);
-      },
+      loadOlderPage: () =>
+          messaging.loadOlderMessages(widget.conversationId),
     );
 
     if (listIndex == null) {
@@ -99,6 +98,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         alignment: 0.5,
         duration: const Duration(milliseconds: 300),
       );
+      if (!mounted) return;
+    } else {
+      showTopSnackBar(context, l10n.snackbarPinnedMessageUnavailable);
     }
 
     if (mounted) {
@@ -133,27 +135,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     return KeyedSubtree(key: scrollKey, child: bubble);
   }
 
-  bool _shouldShowPinnedBanner(
-    ConversationModel? conv,
-    List<MessageModel> messages,
-  ) {
-    if (conv == null || conv.pinnedMessageId == null) return false;
-    final preview = conv.pinnedMessagePreview;
-    if (preview != null && isMessageExpired(preview)) return false;
-    if (messages.every((m) => m.id != conv.pinnedMessageId)) {
-      return false;
-    }
-    return true;
-  }
-
   Widget? _buildPinnedMessageBanner(
     BuildContext context,
     ConversationModel conv,
-    List<MessageModel> messages,
     MessagingProvider messaging,
     ConversationsProvider convs,
   ) {
-    if (!_shouldShowPinnedBanner(conv, messages)) return null;
+    if (!shouldShowPinnedMessageBanner(conv)) return null;
     final l10n = AppLocalizations.of(context);
     final preview = conv.pinnedMessagePreview;
     if (preview == null) return null;
@@ -324,6 +312,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
   @override
   void dispose() {
+    dismissMessageContextMenu();
     WidgetsBinding.instance.removeObserver(this);
     _clearActiveConversationIfThisChat();
     _scrollController.removeListener(_onScroll);
@@ -566,7 +555,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         ? _buildPinnedMessageBanner(
             context,
             activeConv,
-            messages,
             messaging,
             convs,
           )

@@ -5,6 +5,8 @@ import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../providers/messaging_provider.dart';
 import '../../providers/settings_provider.dart';
+import '../../providers/encryption_provider.dart';
+import '../../utils/reply_preview_helper.dart';
 import '../../theme/rpg_theme.dart';
 import '../../utils/message_expiry.dart';
 import '../audio/playback_controller.dart';
@@ -113,24 +115,14 @@ class VoiceMessageContent extends StatelessWidget {
   ) {
     final l10n = AppLocalizations.of(context);
     final mutedColor = isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight;
-    String content = replyTo.content == '[encrypted]'
-        ? l10n.encryptedMessage
-        : replyTo.content;
-    if (content.isEmpty) {
-      switch (replyTo.messageType) {
-        case MessageType.voice:
-          content = l10n.voiceMessage;
-          break;
-        case MessageType.image:
-          content = l10n.image;
-          break;
-        case MessageType.ping:
-          content = l10n.ping;
-          break;
-        default:
-          content = '';
-      }
-    }
+    final encryption = context.read<EncryptionProvider>();
+    final content = replyDisplayContentForQuote(
+      l10n,
+      replyTo,
+      encryption: encryption,
+      conversationId: message.conversationId,
+      createdAt: message.createdAt,
+    );
     return Container(
       padding: const EdgeInsets.only(left: 10, top: 6, bottom: 6, right: 8),
       decoration: BoxDecoration(
@@ -150,15 +142,13 @@ class VoiceMessageContent extends StatelessWidget {
               fontWeight: FontWeight.w600,
             ),
           ),
-          if (content.isNotEmpty) ...[
-            const SizedBox(height: 2),
-            Text(
-              content,
-              style: RpgTheme.bodyFont(fontSize: 12, color: mutedColor),
-              maxLines: 2,
-              overflow: TextOverflow.ellipsis,
-            ),
-          ],
+          const SizedBox(height: 2),
+          Text(
+            content,
+            style: RpgTheme.bodyFont(fontSize: 12, color: mutedColor),
+            maxLines: 2,
+            overflow: TextOverflow.ellipsis,
+          ),
         ],
       ),
     );

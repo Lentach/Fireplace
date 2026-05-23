@@ -100,6 +100,40 @@ const kReplyPreviewLabels = (
   pingLabel: 'Ping',
 );
 
+String replyDisplayContentForQuote(
+  AppLocalizations l10n,
+  ReplyToPreview replyTo, {
+  EncryptionProvider? encryption,
+  required int conversationId,
+  required DateTime createdAt,
+}) {
+  if (replyTo.content == '[encrypted]' ||
+      replyTo.content == l10n.encryptedMessage) {
+    final decrypted = encryption?.getCachedDecryption(replyTo.id)?.content;
+    if (decrypted != null &&
+        decrypted.isNotEmpty &&
+        decrypted != '[encrypted]' &&
+        decrypted != '[Decryption failed]') {
+      return decrypted.length > 150
+          ? '${decrypted.substring(0, 150)}...'
+          : decrypted;
+    }
+  }
+  return replyPreviewForMessage(
+    l10n,
+    MessageModel(
+      id: replyTo.id,
+      content: replyTo.content,
+      senderId: 0,
+      senderUsername: replyTo.senderUsername,
+      conversationId: conversationId,
+      createdAt: createdAt,
+      messageType: replyTo.messageType,
+    ),
+    encryption: encryption,
+  );
+}
+
 ReplyToPreview enrichReplyToPreview(
   ReplyToPreview replyTo, {
   required EncryptionProvider? encryption,
