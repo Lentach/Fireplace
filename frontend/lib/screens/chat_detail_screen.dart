@@ -18,6 +18,7 @@ import '../widgets/avatar_circle.dart';
 import '../widgets/chat_background_pattern.dart';
 import '../widgets/ping_effect_overlay.dart';
 import '../widgets/top_snackbar.dart';
+import '../widgets/message/message_context_menu_overlay.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final int conversationId;
@@ -33,7 +34,7 @@ class ChatDetailScreen extends StatefulWidget {
   State<ChatDetailScreen> createState() => _ChatDetailScreenState();
 }
 
-class _ChatDetailScreenState extends State<ChatDetailScreen> {
+class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBindingObserver {
   /// Cached in [initState] so [dispose] can sync push state without relying on [context].
   late final ConversationsProvider _conversations;
   late final MessagingProvider _messaging;
@@ -156,6 +157,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   @override
   void initState() {
     super.initState();
+    WidgetsBinding.instance.addObserver(this);
     _conversations = context.read<ConversationsProvider>();
     _messaging = context.read<MessagingProvider>();
     _scrollController.addListener(_onScroll);
@@ -197,7 +199,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
   }
 
   @override
+  void didChangeMetrics() {
+    super.didChangeMetrics();
+    if (!mounted) return;
+    dismissMessageContextMenu();
+  }
+
+  @override
   void dispose() {
+    WidgetsBinding.instance.removeObserver(this);
     _clearActiveConversationIfThisChat();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
@@ -495,7 +505,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                               ),
                             ),
                           )
-                        : NotificationListener<UserScrollNotification>(
+                        : NotificationListener<ScrollStartNotification>(
+                            onNotification: (notification) {
+                              dismissMessageContextMenu();
+                              return false;
+                            },
+                            child: NotificationListener<UserScrollNotification>(
                             onNotification: (notification) {
                               _userHasScrolledChat = true;
                               return false;
@@ -553,6 +568,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> {
                                 );
                               },
                             ),
+                          ),
                           ),
                   ),
                 ),

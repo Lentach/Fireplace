@@ -7,6 +7,8 @@ import '../../providers/messaging_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/rpg_theme.dart';
 import '../message_swipe_wrapper.dart';
+import '../dialogs/message_delete_dialog.dart';
+import 'message_context_menu_overlay.dart';
 import 'message_content_factory.dart';
 import 'voice_message_content.dart';
 import 'message_metadata_row.dart';
@@ -135,44 +137,39 @@ class ChatMessageBubble extends StatelessWidget {
     );
   }
 
-  void _showReactionOptions(BuildContext context) {
+  void _openContextMenu(BuildContext context) {
     final messaging = context.read<MessagingProvider>();
-    final currentUserId = context.read<AuthProvider>().currentUser?.id;
-
-    showModalBottomSheet<void>(
+    final auth = context.read<AuthProvider>();
+    final renderBox = context.findRenderObject() as RenderBox?;
+    if (renderBox == null) return;
+    openMessageContextMenu(
       context: context,
-      builder: (ctx) => SafeArea(
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.spaceEvenly,
-            children: ['👍', '❤️', '😂', '😮', '😢', '🔥'].map((emoji) {
-              final alreadyReacted = currentUserId != null &&
-                  (message.reactions[emoji]?.contains(currentUserId) ?? false);
-              return GestureDetector(
-                onTap: () {
-                  Navigator.pop(ctx);
-                  if (alreadyReacted) {
-                    messaging.removeReaction(message.id, emoji);
-                  } else {
-                    messaging.addReaction(message.id, emoji);
-                  }
-                },
-                child: Container(
-                  padding: const EdgeInsets.all(8),
-                  decoration: BoxDecoration(
-                    color: alreadyReacted
-                        ? Theme.of(context).colorScheme.primary.withValues(alpha: 0.15)
-                        : Colors.transparent,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Text(emoji, style: const TextStyle(fontSize: 24)),
-                ),
-              );
-            }).toList(),
-          ),
-        ),
-      ),
+      message: message,
+      bubbleRenderBox: renderBox,
+      isMine: isMine,
+      currentUserId: auth.currentUser?.id,
+      onReply: () => messaging.setReplyingTo(message),
+      onPin: () {
+        // Phase 1b: messaging.pinMessage(...)
+      },
+      onDelete: () {
+        showMessageDeleteDialog(
+          context: context,
+          isMine: isMine,
+          messageId: message.id,
+          onDeleteForMe: () =>
+              messaging.deleteMessage(message.id, forEveryone: false),
+          onDeleteForEveryone: () =>
+              messaging.deleteMessage(message.id, forEveryone: true),
+        );
+      },
+      onReaction: (emoji, alreadyReacted) {
+        if (alreadyReacted) {
+          messaging.removeReaction(message.id, emoji);
+        } else {
+          messaging.addReaction(message.id, emoji);
+        }
+      },
     );
   }
 
@@ -254,8 +251,7 @@ class ChatMessageBubble extends StatelessWidget {
     return MessageSwipeWrapper(
       isMine: isMine,
       onSwipeReply: () => messaging.setReplyingTo(message),
-      onSwipeDelete: () => messaging.deleteMessage(message.id, forEveryone: isMine),
-      onLongPress: () => _showReactionOptions(context),
+      onLongPress: () => _openContextMenu(context),
       child: Align(
         alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
         child: Padding(
