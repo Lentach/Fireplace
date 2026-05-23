@@ -2,12 +2,11 @@ import 'package:flutter/material.dart';
 
 /// Wraps a message bubble with swipe gestures:
 /// - Swipe left = Reply (icon revealed on right as content slides left)
-/// - Swipe right = Delete (icon revealed on left as content slides right)
-/// - Long-press = onLongPress (e.g. emoji reactions)
+/// - Swipe right = no action
+/// - Long-press = onLongPress (e.g. context menu)
 class MessageSwipeWrapper extends StatefulWidget {
   final Widget child;
   final VoidCallback onSwipeReply;
-  final VoidCallback onSwipeDelete;
   final VoidCallback onLongPress;
   final bool isMine;
 
@@ -15,7 +14,6 @@ class MessageSwipeWrapper extends StatefulWidget {
     super.key,
     required this.child,
     required this.onSwipeReply,
-    required this.onSwipeDelete,
     required this.onLongPress,
     required this.isMine,
   });
@@ -34,8 +32,7 @@ class _MessageSwipeWrapperState extends State<MessageSwipeWrapper> {
     if (!mounted) return;
     setState(() {
       _dragOffset += details.delta.dx;
-      // Clamp to prevent over-drag
-      _dragOffset = _dragOffset.clamp(-_iconRevealPx * 1.5, _iconRevealPx * 1.5);
+      _dragOffset = _dragOffset.clamp(-_iconRevealPx * 1.5, 0.0);
     });
   }
 
@@ -43,8 +40,6 @@ class _MessageSwipeWrapperState extends State<MessageSwipeWrapper> {
     if (!mounted) return;
     if (_dragOffset <= -_thresholdPx) {
       widget.onSwipeReply();
-    } else if (_dragOffset >= _thresholdPx) {
-      widget.onSwipeDelete();
     }
     setState(() => _dragOffset = 0);
   }
@@ -53,7 +48,6 @@ class _MessageSwipeWrapperState extends State<MessageSwipeWrapper> {
   Widget build(BuildContext context) {
     final accentColor = Theme.of(context).colorScheme.primary;
     final replyBg = accentColor.withValues(alpha: 0.15);
-    final deleteBg = Colors.red.withValues(alpha: 0.15);
 
     return LayoutBuilder(
       builder: (context, constraints) {
@@ -71,29 +65,12 @@ class _MessageSwipeWrapperState extends State<MessageSwipeWrapper> {
               child: Stack(
                 alignment: widget.isMine ? Alignment.centerRight : Alignment.centerLeft,
                 children: [
-                  // Background icons (visible ONLY during swipe; Offstage when idle)
                   Positioned.fill(
                     child: Offstage(
                       offstage: _dragOffset == 0,
                       child: Row(
                         children: [
-                          // Delete zone (left) - revealed when swiping right
-                          AnimatedContainer(
-                            duration: const Duration(milliseconds: 150),
-                            width: _dragOffset > 0 ? _dragOffset.clamp(0, _iconRevealPx) : 0,
-                            color: deleteBg,
-                            child: Center(
-                              child: Icon(
-                                Icons.delete_outline,
-                                color: _dragOffset >= _thresholdPx
-                                    ? Colors.red
-                                    : Colors.red.withValues(alpha: 0.6),
-                                size: 24,
-                              ),
-                            ),
-                          ),
                           const Spacer(),
-                          // Reply zone (right) - revealed when swiping left
                           AnimatedContainer(
                             duration: const Duration(milliseconds: 150),
                             width: _dragOffset < 0 ? (-_dragOffset).clamp(0, _iconRevealPx) : 0,
@@ -112,7 +89,6 @@ class _MessageSwipeWrapperState extends State<MessageSwipeWrapper> {
                       ),
                     ),
                   ),
-                  // Sliding child
                   Transform.translate(
                     offset: Offset(_dragOffset, 0),
                     child: widget.child,
