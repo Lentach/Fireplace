@@ -107,6 +107,16 @@ class _DuplicateDecryptEncryption extends _FakeEncryptionProvider {
 }
 
 /// Fails the first live decrypt per history pass, then succeeds after session reset.
+/// E2E becomes ready only after [markReady] (simulates iOS PWA init lag).
+class _DelayedE2EReadyEncryption extends _FakeEncryptionProvider {
+  bool _ready = false;
+
+  @override
+  bool get isE2EReady => _ready;
+
+  void markReady() => _ready = true;
+}
+
 class _HistoryDecryptRetryEncryption extends _FakeEncryptionProvider {
   int decryptAttempts = 0;
   int deleteSessionCalls = 0;
@@ -424,6 +434,41 @@ void main() {
         final row = provider.messages.where((m) => m.id == 7).toList();
         expect(row.length, 1);
         expect(row.first.content, 'plain-1');
+      },
+    );
+
+    test(
+      'retryDecryptActiveConversation decrypts after E2E becomes ready',
+      () async {
+        final delayed = _DelayedE2EReadyEncryption();
+        provider.setEncryptionProvider(delayed);
+        provider.setActiveConversationIdForTest(10);
+
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 1,
+              createdAt: DateTime.now().toUtc().toIso8601String(),
+              includeTtl: false,
+            ),
+          ],
+        });
+        await Future<void>.delayed(Duration.zero);
+        expect(
+          provider.messages.single.displayAsEncryptedPlaceholder,
+          isTrue,
+        );
+
+        delayed.markReady();
+        await provider.retryDecryptActiveConversation();
+        await Future<void>.delayed(Duration.zero);
+
+        expect(provider.messages.single.content, isNot('[encrypted]'));
+        expect(
+          provider.messages.single.displayAsEncryptedPlaceholder,
+          isFalse,
+        );
       },
     );
 

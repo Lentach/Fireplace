@@ -122,6 +122,8 @@ class ConnectionProvider extends ChangeNotifier {
     _friendsProvider?.setEmitCallback((event, data) => emit(event, data));
     _conversationsProvider?.setEmitCallback((event, data) => emit(event, data));
     _messagingProvider?.setEmitCallback((event, data) => emit(event, data));
+    _encryptionProvider?.onE2EReady =
+        () => _messagingProvider?.retryDecryptActiveConversation();
 
     // 6. Wire cross-provider callbacks (friends -> conversations)
     _friendsProvider?.onRemoveConversationsForUser = (uid) {

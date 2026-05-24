@@ -32,6 +32,9 @@ class EncryptionProvider extends ChangeNotifier {
 
   int? _currentUserId;
 
+  /// Called after E2E init/re-upload completes so [MessagingProvider] can retry history decrypt.
+  void Function()? onE2EReady;
+
   // ---------- Public Getters ----------
 
   /// Whether the E2E encryption layer has been initialized for the current user.
@@ -237,6 +240,10 @@ class EncryptionProvider extends ChangeNotifier {
       // reconnect just because the re-upload attempt threw.
       if (!_e2eInitialized) _e2eInitialized = false;
       _e2eFlowLog('E2E_INIT_FAIL', {'error': e.toString()});
+    } finally {
+      if (_e2eInitialized) {
+        onE2EReady?.call();
+      }
     }
   }
 

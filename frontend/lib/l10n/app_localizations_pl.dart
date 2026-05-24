@@ -689,6 +689,10 @@ class AppLocalizationsPl extends AppLocalizations {
   String get snackbarPinnedMessageUnavailable => 'Wiadomość jest niedostępna';
 
   @override
+  String get snackbarE2eAskSenderResend =>
+      'Nie udało się odszyfrować części wiadomości. Poproś rozmówcę o wysłanie nowej wiadomości.';
+
+  @override
   String get pinnedMessageUnpinTooltip => 'Odepnij';
 
   @override

@@ -681,6 +681,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'Message is no longer available';
 
   @override
+  String get snackbarE2eAskSenderResend =>
+      'Some messages could not be unlocked. Ask your contact to send a new message.';
+
+  @override
   String get pinnedMessageUnpinTooltip => 'Unpin';
 
   @override
