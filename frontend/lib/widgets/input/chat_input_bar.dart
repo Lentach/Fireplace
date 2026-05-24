@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -28,11 +28,15 @@ class ChatInputBar extends StatefulWidget {
   const ChatInputBar({super.key});
 
   @override
-  State<ChatInputBar> createState() => _ChatInputBarState();
+  State<ChatInputBar> createState() => ChatInputBarState();
 }
 
-class _ChatInputBarState extends State<ChatInputBar>
+class ChatInputBarState extends State<ChatInputBar>
     with SingleTickerProviderStateMixin {
+  /// Matches [RecordingControllerState._kMicRestingOffsetX] — send icon aligns with mic.
+  static const double _kTrailingControlRestingOffsetX = -6.0;
+  static const Duration _kTrailingSendFadeDuration = Duration(milliseconds: 175);
+
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   MessageModel? _lastReplyingTo;
@@ -45,6 +49,7 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   // Recording state mirrored from RecordingController via callback
   bool _isRecording = false;
+  bool _isRecordingLocked = false;
   bool _isSendingVoice = false;
 
   // GlobalKey to access RecordingControllerState.buildRecordingBar()
@@ -191,7 +196,29 @@ class _ChatInputBarState extends State<ChatInputBar>
 
   /// Called by [RecordingController] when recording state changes.
   void _onRecordingStateChanged(bool isRecording) {
+    setState(() {
+      _isRecording = isRecording;
+      if (!isRecording) {
+        _isRecordingLocked = false;
+      }
+    });
+  }
+
+  /// Called by [RecordingController] when slide-up lock is entered or cleared.
+  void _onRecordingLockChanged(bool isLocked) {
+    setState(() => _isRecordingLocked = isLocked);
+  }
+
+  /// Widget tests: mirror [RecordingController.onRecordingStateChanged] without mic hardware.
+  @visibleForTesting
+  void setRecordingForTest(bool isRecording) {
     setState(() => _isRecording = isRecording);
+  }
+
+  /// Widget tests: exercise trailing spinner / send precedence without upload pipeline.
+  @visibleForTesting
+  void setSendingVoiceForTest(bool isSendingVoice) {
+    setState(() => _isSendingVoice = isSendingVoice);
   }
 
   /// Called by [RecordingController] when a voice message is ready.
@@ -238,6 +265,83 @@ class _ChatInputBarState extends State<ChatInputBar>
         setState(() => _isSendingVoice = false);
       }
     }
+  }
+
+  /// Trailing mic + text-send overlay. [ValueListenableBuilder] limits rebuilds to this slot.
+  Widget _buildTrailingSlot(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+
+    return ValueListenableBuilder<TextEditingValue>(
+      valueListenable: _controller,
+      builder: (context, value, _) {
+        final showSend = !_isRecording &&
+            !_isSendingVoice &&
+            value.text.trim().isNotEmpty;
+
+        // ExcludeFocus on the whole trailing slot (mic + send overlay) so long-press
+        // never steals focus from the text field. RecordingController does not add a
+        // second ExcludeFocus — one ancestor is enough.
+        return ExcludeFocus(
+          child: SizedBox(
+            width: 48,
+            height: 48,
+            child: Stack(
+              alignment: Alignment.center,
+              children: [
+                ExcludeSemantics(
+                  excluding: showSend,
+                  child: RecordingController(
+                    key: _recordingKey,
+                    onVoiceSent: _handleVoiceSent,
+                    onRecordingStateChanged: _onRecordingStateChanged,
+                    onRecordingLockChanged: _onRecordingLockChanged,
+                    isSendingVoice: _isSendingVoice,
+                  ),
+                ),
+                Positioned.fill(
+                  child: ExcludeSemantics(
+                    excluding: !showSend,
+                    child: IgnorePointer(
+                      ignoring: !showSend,
+                      child: AnimatedOpacity(
+                        opacity: showSend ? 1 : 0,
+                        duration: _kTrailingSendFadeDuration,
+                        curve: Curves.easeInOut,
+                        child: Transform.translate(
+                          offset:
+                              const Offset(_kTrailingControlRestingOffsetX, 0),
+                          child: Tooltip(
+                            message: l10n.chatComposerSendTooltip,
+                            child: Semantics(
+                              button: true,
+                              label: l10n.chatComposerSendSemantics,
+                              excludeSemantics: true,
+                              child: IconButton(
+                                onPressed: showSend ? _send : null,
+                                padding: const EdgeInsets.all(12),
+                                constraints: const BoxConstraints(
+                                  minWidth: 48,
+                                  minHeight: 48,
+                                ),
+                                icon: Icon(
+                                  Icons.send_rounded,
+                                  size: 22,
+                                  color: RpgTheme.primaryColor(context),
+                                ),
+                              ),
+                            ),
+                          ),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        );
+      },
+    );
   }
 
   String _bannerDurationLabel(AppLocalizations l10n, int seconds) {
@@ -415,9 +519,13 @@ class _ChatInputBarState extends State<ChatInputBar>
                 // Text field or recording bar
                 Expanded(
                   child: _isRecording
-                      ? (_recordingKey.currentState
-                              ?.buildRecordingBar(context) ??
-                          const SizedBox.shrink())
+                      ? (_isRecordingLocked
+                          ? (_recordingKey.currentState
+                                  ?.buildRecordingBarLocked(context) ??
+                              const SizedBox.shrink())
+                          : (_recordingKey.currentState
+                                  ?.buildRecordingBar(context) ??
+                              const SizedBox.shrink()))
                       : CallbackShortcuts(
                           bindings: <ShortcutActivator, VoidCallback>{
                             // Web/desktop: multiline fields often lack an IME “Send”; keep one send path.
@@ -484,14 +592,9 @@ class _ChatInputBarState extends State<ChatInputBar>
 
                 const SizedBox(width: 2),
 
-                // RecordingController is ALWAYS in the widget tree here.
-                // CLAUDE.md: "mic must stay in widget tree — GestureDetector unmounts -> no events."
-                RecordingController(
-                  key: _recordingKey,
-                  onVoiceSent: _handleVoiceSent,
-                  onRecordingStateChanged: _onRecordingStateChanged,
-                  isSendingVoice: _isSendingVoice,
-                ),
+                // Trailing 48×48 stack: mic always mounted; text send fades on top (Phase 0).
+                // CLAUDE.md: never swap mic/send as Row siblings — unmount dismisses keyboard.
+                _buildTrailingSlot(context),
               ],
             ),
           ),

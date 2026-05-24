@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -37,6 +37,7 @@ class RecordingController extends StatefulWidget {
     super.key,
     required this.onVoiceSent,
     required this.onRecordingStateChanged,
+    this.onRecordingLockChanged,
     required this.isSendingVoice,
   });
 
@@ -49,6 +50,9 @@ class RecordingController extends StatefulWidget {
 
   /// Notifies parent of [isRecording] changes so the parent can toggle UI.
   final void Function(bool isRecording) onRecordingStateChanged;
+
+  /// Notifies parent when slide-up lock is entered or cleared (recording bar variant).
+  final void Function(bool isLocked)? onRecordingLockChanged;
 
   /// Whether a voice message is currently being uploaded/sent.
   final bool isSendingVoice;
@@ -73,11 +77,18 @@ class RecordingControllerState extends State<RecordingController>
   // ── drag-to-cancel ───────────────────────────────────────────────────────
   static const double _trashOpenThresholdPx = 60.0;
 
+  // ── slide-up lock (Phase 1) ──────────────────────────────────────────────
+  static const double lockUpThresholdPx = 72.0;
+  static const double lockUpHintShowPx = 36.0;
+
   double _getCancelThreshold(BuildContext context) =>
       MediaQuery.of(context).size.width * 0.5;
 
   double _cancelDragOffset = 0.0;
   double _dragStartX = 0.0;
+  double _dragStartY = 0.0;
+  double _lockDragOffset = 0.0;
+  bool _isLocked = false;
   bool _showTrashIcon = false;
   bool _canceledBySlide = false;
 
@@ -103,7 +114,9 @@ class RecordingControllerState extends State<RecordingController>
 
   // ── public getters ───────────────────────────────────────────────────────
   bool get isRecording => _isRecording;
+  bool get isLocked => _isLocked;
   double get cancelDragOffset => _cancelDragOffset;
+  double get lockDragOffset => _lockDragOffset;
 
   @override
   void initState() {
@@ -172,12 +185,15 @@ class RecordingControllerState extends State<RecordingController>
     showTopSnackBar(context, message);
   }
 
-  Future<void> _startRecording(double startX) async {
+  Future<void> _startRecording(double startX, double startY) async {
     _gestureFinishHandled = false;
     _isStartingRecording = true;
     _pendingStopAfterStart = false;
     _dragStartX = startX;
+    _dragStartY = startY;
     _cancelDragOffset = 0.0;
+    _lockDragOffset = 0.0;
+    _isLocked = false;
     // Capture providers before async gaps to avoid BuildContext-across-async-gap lint.
     final messaging = context.read<MessagingProvider>();
     try {
@@ -249,6 +265,8 @@ class RecordingControllerState extends State<RecordingController>
       setState(() {
         _isRecording = true;
         _cancelDragOffset = 0.0;
+        _lockDragOffset = 0.0;
+        _isLocked = false;
         _showTrashIcon = false;
         _canceledBySlide = false;
       });
@@ -274,7 +292,11 @@ class RecordingControllerState extends State<RecordingController>
       debugPrint('Recording error: $e');
     } finally {
       _isStartingRecording = false;
-      if (mounted && _pendingStopAfterStart && _isRecording && !_canceledBySlide) {
+      if (mounted &&
+          _pendingStopAfterStart &&
+          _isRecording &&
+          !_canceledBySlide &&
+          !_isLocked) {
         _pendingStopAfterStart = false;
         if (_isOverTrash(context)) {
           _cancelRecording();
@@ -313,12 +335,18 @@ class RecordingControllerState extends State<RecordingController>
     await _audioRecorder!.dispose();
     _audioRecorder = null;
 
+    final wasLocked = _isLocked;
     setState(() {
       _isRecording = false;
       _cancelDragOffset = 0.0;
+      _lockDragOffset = 0.0;
+      _isLocked = false;
       _showTrashIcon = false;
     });
     widget.onRecordingStateChanged(false);
+    if (wasLocked) {
+      _notifyLockChanged(false);
+    }
 
     final durationMs = _recordingStartTime != null
         ? DateTime.now().difference(_recordingStartTime!).inMilliseconds
@@ -403,24 +431,53 @@ class RecordingControllerState extends State<RecordingController>
       } catch (_) {}
     }
 
+    final wasLocked = _isLocked;
     setState(() {
       _isRecording = false;
       _recordingPath = null;
       _cancelDragOffset = 0.0;
+      _lockDragOffset = 0.0;
+      _isLocked = false;
       _showTrashIcon = false;
     });
     widget.onRecordingStateChanged(false);
+    if (wasLocked) {
+      _notifyLockChanged(false);
+    }
     _showNotSentSnackBar(canceledMessage);
   }
 
   // ── drag logic ───────────────────────────────────────────────────────────
 
-  void _onRecordingDragUpdate(double currentX) {
-    if (!_isRecording) return;
+  void _notifyLockChanged(bool locked) {
+    widget.onRecordingLockChanged?.call(locked);
+  }
+
+  void _enterLockedMode() {
+    if (_isLocked || !_isRecording) return;
+    setState(() {
+      _isLocked = true;
+      _cancelDragOffset = 0.0;
+      _showTrashIcon = false;
+      _lockDragOffset = lockUpThresholdPx;
+    });
+    _notifyLockChanged(true);
+    if (!kIsWeb) {
+      HapticFeedback.mediumImpact();
+    }
+  }
+
+  void _onRecordingDragUpdate(double currentX, double currentY) {
+    if (!_isRecording || _isLocked) return;
+    final upwardPx = (_dragStartY - currentY).clamp(0.0, double.infinity);
     setState(() {
       _cancelDragOffset = currentX - _dragStartX;
       _showTrashIcon = _cancelDragOffset < -20;
+      _lockDragOffset = upwardPx;
     });
+    if (upwardPx >= lockUpThresholdPx) {
+      _enterLockedMode();
+    }
   }
 
   bool _isOverTrash(BuildContext context) =>
@@ -444,11 +501,13 @@ class RecordingControllerState extends State<RecordingController>
 
   void _onPointerRelease() {
     if (!_isRecording && !_isStartingRecording) return;
+    if (_isLocked) return;
     _finishRecordingGesture();
   }
 
   void _onLongPressFinished() {
     if (_canceledBySlide) return;
+    if (_isLocked) return;
     if (_isRecording) {
       if (_isOverTrash(context)) {
         _cancelRecording();
@@ -497,7 +556,9 @@ class RecordingControllerState extends State<RecordingController>
 
     final micHitTarget = Transform.translate(
       offset: Offset(
-        (_isRecording ? _cancelDragOffset.clamp(-cancelThreshold, 0) : 0.0) +
+        (_isRecording && !_isLocked
+                ? _cancelDragOffset.clamp(-cancelThreshold, 0)
+                : 0.0) +
             _kMicRestingOffsetX,
         0,
       ),
@@ -507,11 +568,17 @@ class RecordingControllerState extends State<RecordingController>
         onPointerCancel: (_) => _onPointerRelease(),
         child: GestureDetector(
           onLongPressStart: (details) {
+            if (_isRecording || _isStartingRecording || _isLocked) return;
             _abortInFlightStart = false;
-            _startRecording(details.globalPosition.dx);
+            _startRecording(
+              details.globalPosition.dx,
+              details.globalPosition.dy,
+            );
           },
-          onLongPressMoveUpdate: (details) =>
-              _onRecordingDragUpdate(details.globalPosition.dx),
+          onLongPressMoveUpdate: (details) => _onRecordingDragUpdate(
+            details.globalPosition.dx,
+            details.globalPosition.dy,
+          ),
           onLongPressEnd: (_) => _finishRecordingGesture(),
           onLongPressCancel: () {
             if (_isStartingRecording) {
@@ -526,17 +593,168 @@ class RecordingControllerState extends State<RecordingController>
       ),
     );
 
-    // Keep mic out of the focus subtree so long-press never steals focus from the field.
-    return ExcludeFocus(
-      child: SizedBox(
-        width: 48,
-        height: 48,
-        child: micHitTarget,
-      ),
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: micHitTarget,
     );
   }
 
+  /// Widget tests: active recording without mic permission / hardware.
+  @visibleForTesting
+  void simulateActiveRecordingForTest({
+    double startX = 100,
+    double startY = 200,
+  }) {
+    _dragStartX = startX;
+    _dragStartY = startY;
+    _recordingStartTime = DateTime.now();
+    setState(() {
+      _isRecording = true;
+      _isLocked = false;
+      _cancelDragOffset = 0.0;
+      _lockDragOffset = 0.0;
+      _showTrashIcon = false;
+      _canceledBySlide = false;
+    });
+    widget.onRecordingStateChanged(true);
+  }
+
+  /// Widget tests: drive slide-up / slide-left gesture math.
+  @visibleForTesting
+  void simulateDragUpdateForTest(double globalX, double globalY) {
+    _onRecordingDragUpdate(globalX, globalY);
+  }
+
+  /// Widget tests: finish gesture as if finger released (unlocked path only).
+  @visibleForTesting
+  void simulateGestureFinishForTest() {
+    _gestureFinishHandled = false;
+    _onLongPressFinished();
+  }
+
+  /// Widget tests: [Listener] pointer release path while locked.
+  @visibleForTesting
+  void simulatePointerReleaseForTest() {
+    _onPointerRelease();
+  }
+
+  /// Widget tests: long-press start guard (mirrors [GestureDetector.onLongPressStart]).
+  @visibleForTesting
+  void simulateLongPressStartForTest(double globalX, double globalY) {
+    if (_isRecording || _isStartingRecording || _isLocked) return;
+    _abortInFlightStart = false;
+    _startRecording(globalX, globalY);
+  }
+
+  /// Discards the current locked recording session (locked bar Cancel).
+  void cancelLockedRecording() {
+    if (_isRecording && _isLocked) {
+      _cancelRecording();
+    }
+  }
+
   // ── recording bar (called by parent ChatInputBar) ────────────────────────
+
+  Widget _buildRecordingTimerRow(BuildContext context) {
+    final isDark = RpgTheme.isDark(context);
+
+    return AnimatedBuilder(
+      animation: _pulseController,
+      builder: (context, child) {
+        final sec = _recordingStartTime != null
+            ? DateTime.now().difference(_recordingStartTime!).inSeconds
+            : 0;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.red.withValues(
+                  alpha: 0.7 + (_pulseController.value * 0.3),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              _formatRecordingDuration(sec),
+              style: RpgTheme.bodyFont(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget buildRecordingBarLocked(BuildContext context) {
+    final isDark = RpgTheme.isDark(context);
+    final fc = FireplaceColors.of(context);
+    final l10n = AppLocalizations.of(context);
+    final elapsedSec = _recordingStartTime != null
+        ? DateTime.now().difference(_recordingStartTime!).inSeconds
+        : 0;
+    final timeLabel = _formatRecordingDuration(elapsedSec);
+
+    return Semantics(
+      label: l10n.voiceRecordingLockedSemantics(timeLabel),
+      child: Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: fc.tabBorder),
+          color: fc.inputBg,
+        ),
+        child: Row(
+          children: [
+            Semantics(
+              button: true,
+              label: l10n.voiceRecordingCancelLocked,
+              child: IconButton(
+                onPressed: cancelLockedRecording,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 44,
+                  minHeight: 44,
+                ),
+                icon: const Icon(
+                  Icons.close,
+                  color: Colors.red,
+                  size: 24,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.lock,
+              size: 16,
+              color: isDark ? Colors.white70 : Colors.black54,
+            ),
+            const SizedBox(width: 8),
+            _buildRecordingTimerRow(context),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                l10n.voiceRecordingLocked,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: RpgTheme.bodyFont(
+                  fontSize: 14,
+                  color: isDark ? Colors.white60 : Colors.black54,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget buildRecordingBar(BuildContext context) {
     final isDark = RpgTheme.isDark(context);
@@ -579,51 +797,35 @@ class RecordingControllerState extends State<RecordingController>
               ),
 
             // Pulsing red dot + timer (both driven by pulse animation)
-            AnimatedBuilder(
-              animation: _pulseController,
-              builder: (context, child) {
-                final sec = _recordingStartTime != null
-                    ? DateTime.now().difference(_recordingStartTime!).inSeconds
-                    : 0;
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.red.withValues(
-                          alpha: 0.7 + (_pulseController.value * 0.3),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      _formatRecordingDuration(sec),
-                      style: RpgTheme.bodyFont(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
+            _buildRecordingTimerRow(context),
 
             const SizedBox(width: 16),
 
             Expanded(
               child: Opacity(
                 opacity: _showTrashIcon ? 0.0 : 1.0,
-                child: Text(
-                  l10n.voiceRecordingSlideToCancel,
-                  style: RpgTheme.bodyFont(
-                    fontSize: 14,
-                    color: isDark ? Colors.white60 : Colors.black54,
-                  ),
-                ),
+                child: _lockDragOffset >= lockUpHintShowPx
+                    ? Opacity(
+                        opacity: ((_lockDragOffset - lockUpHintShowPx) /
+                                (lockUpThresholdPx - lockUpHintShowPx))
+                            .clamp(0.0, 1.0),
+                        child: Text(
+                          l10n.voiceRecordingSlideUpToLock,
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                          style: RpgTheme.bodyFont(
+                            fontSize: 14,
+                            color: isDark ? Colors.white60 : Colors.black54,
+                          ),
+                        ),
+                      )
+                    : Text(
+                        l10n.voiceRecordingSlideToCancel,
+                        style: RpgTheme.bodyFont(
+                          fontSize: 14,
+                          color: isDark ? Colors.white60 : Colors.black54,
+                        ),
+                      ),
               ),
             ),
           ],

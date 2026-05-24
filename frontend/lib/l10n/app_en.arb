@@ -86,6 +86,8 @@
   "recordingVoice": "Recording voice…",
   "typing": "typing…",
   "chatMessageHint": "Type a message...",
+  "chatComposerSendTooltip": "Send",
+  "chatComposerSendSemantics": "Send message",
   "chatDateToday": "Today",
   "chatDateYesterday": "Yesterday",
   "selectAConversation": "Select a conversation",
@@ -228,7 +230,16 @@
   "snackbarHoldLongerForVoiceMessage": "Hold longer to record a voice message",
   "snackbarVoiceRecordingCanceled": "Voice recording canceled",
   "voiceRecordingSlideToCancel": "← Slide to cancel",
+  "voiceRecordingSlideUpToLock": "↑ Slide up to lock",
+  "voiceRecordingLocked": "Locked — tap Send when done",
+  "voiceRecordingCancelLocked": "Cancel recording",
   "voiceRecordingSemanticsLabel": "Recording voice message, {time}. Swipe left to cancel.",
+  "voiceRecordingLockedSemantics": "Locked voice recording, {time}. Tap Send to send or Cancel to discard.",
+  "@voiceRecordingLockedSemantics": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "@voiceRecordingSemanticsLabel": {
     "placeholders": {
       "time": { "type": "String" }

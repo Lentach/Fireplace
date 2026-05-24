@@ -244,6 +244,12 @@ class AppLocalizationsPl extends AppLocalizations {
   String get chatMessageHint => 'Napisz wiadomość…';
 
   @override
+  String get chatComposerSendTooltip => 'Wyślij';
+
+  @override
+  String get chatComposerSendSemantics => 'Wyślij wiadomość';
+
+  @override
   String get chatDateToday => 'Dziś';
 
   @override
@@ -609,8 +615,23 @@ class AppLocalizationsPl extends AppLocalizations {
   String get voiceRecordingSlideToCancel => '← Przesuń, aby anulować';
 
   @override
+  String get voiceRecordingSlideUpToLock => '↑ Przesuń w górę, aby zablokować';
+
+  @override
+  String get voiceRecordingLocked =>
+      'Zablokowano — dotknij Wyślij, gdy skończysz';
+
+  @override
+  String get voiceRecordingCancelLocked => 'Anuluj nagrywanie';
+
+  @override
   String voiceRecordingSemanticsLabel(String time) {
     return 'Nagrywanie wiadomości głosowej, $time. Przesuń w lewo, aby anulować.';
+  }
+
+  @override
+  String voiceRecordingLockedSemantics(String time) {
+    return 'Zablokowane nagrywanie, $time. Dotknij Wyślij, aby wysłać, lub Anuluj, aby odrzucić.';
   }
 
   @override

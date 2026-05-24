@@ -86,6 +86,8 @@
   "recordingVoice": "Nagrywanie głosu…",
   "typing": "pisze…",
   "chatMessageHint": "Napisz wiadomość…",
+  "chatComposerSendTooltip": "Wyślij",
+  "chatComposerSendSemantics": "Wyślij wiadomość",
   "chatDateToday": "Dziś",
   "chatDateYesterday": "Wczoraj",
   "selectAConversation": "Wybierz rozmowę",
@@ -216,7 +218,16 @@
   "snackbarHoldLongerForVoiceMessage": "Przytrzymaj dłużej, aby nagrać wiadomość głosową",
   "snackbarVoiceRecordingCanceled": "Nagrywanie głosu anulowane",
   "voiceRecordingSlideToCancel": "← Przesuń, aby anulować",
+  "voiceRecordingSlideUpToLock": "↑ Przesuń w górę, aby zablokować",
+  "voiceRecordingLocked": "Zablokowano — dotknij Wyślij, gdy skończysz",
+  "voiceRecordingCancelLocked": "Anuluj nagrywanie",
   "voiceRecordingSemanticsLabel": "Nagrywanie wiadomości głosowej, {time}. Przesuń w lewo, aby anulować.",
+  "voiceRecordingLockedSemantics": "Zablokowane nagrywanie, {time}. Dotknij Wyślij, aby wysłać, lub Anuluj, aby odrzucić.",
+  "@voiceRecordingLockedSemantics": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
   "@voiceRecordingSemanticsLabel": {
     "placeholders": {
       "time": { "type": "String" }
