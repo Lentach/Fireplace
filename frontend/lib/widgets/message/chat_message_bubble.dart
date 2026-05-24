@@ -11,6 +11,9 @@ import '../../utils/reply_preview_helper.dart';
 import '../message_swipe_wrapper.dart';
 import '../dialogs/message_delete_dialog.dart';
 import 'message_context_menu_overlay.dart';
+import 'message_context_menu_bubble_highlight.dart';
+import 'context_menu_bubble_anchor.dart';
+import 'message_bubble_inline_time.dart';
 import 'message_content_factory.dart';
 import 'voice_message_content.dart';
 import 'message_metadata_row.dart';
@@ -36,22 +39,6 @@ class ChatMessageBubble extends StatelessWidget {
     if (message.content == '[Encryption not initialized]') return l10n.encryptionNotInitialized;
     if (message.content.isNotEmpty) return message.content;
     return l10n.unsupportedMessageType;
-  }
-
-  /// Short = time/timer on the right (compact). Long = time/timer below.
-  bool _isShortMessage(String displayContent) {
-    if (message.replyTo != null || message.linkPreviewUrl != null) return false;
-    switch (message.messageType) {
-      case MessageType.text:
-        return displayContent.length <= 25 && !displayContent.contains('\n');
-      case MessageType.ping:
-        return true;
-      case MessageType.image:
-      case MessageType.file:
-        return false;
-      default:
-        return false;
-    }
   }
 
   Widget _buildReplyQuote(
@@ -131,14 +118,22 @@ class ChatMessageBubble extends StatelessWidget {
   void _openContextMenu(BuildContext context) {
     final messaging = context.read<MessagingProvider>();
     final auth = context.read<AuthProvider>();
-    final renderBox = context.findRenderObject() as RenderBox?;
+    final renderBox = ContextMenuBubbleAnchor.renderBoxOf(context);
     if (renderBox == null) return;
+    final bubbleSize = renderBox.size;
+    final themePreference = context.read<SettingsProvider>().themePreference;
     openMessageContextMenu(
       context: context,
       message: message,
       bubbleRenderBox: renderBox,
       isMine: isMine,
       currentUserId: auth.currentUser?.id,
+      bubblePreviewBuilder: (_) => MessageContextMenuBubbleHighlight(
+        message: message,
+        isMine: isMine,
+        maxWidth: bubbleSize.width,
+        themePreference: themePreference,
+      ),
       onReply: () => messaging.setReplyingTo(message),
       onPin: () {
         if (message.id > 0) {
@@ -302,7 +297,10 @@ class ChatMessageBubble extends StatelessWidget {
                     );
                   } else if (useTextOverlay) {
                     final displayContent = _displayContent(context);
-                    if (_isShortMessage(displayContent)) {
+                    if (messageBubbleUsesInlineTime(
+                      message: message,
+                      displayContent: displayContent,
+                    )) {
                       final maxContentWidthInline =
                           contentAreaWidth - 6 - _kTimeRowWidth;
                       child = Row(
@@ -339,7 +337,10 @@ class ChatMessageBubble extends StatelessWidget {
                     }
                   } else {
                     final displayContent = _displayContent(context);
-                    final isShortMessage = _isShortMessage(displayContent);
+                    final isShortMessage = messageBubbleUsesInlineTime(
+                      message: message,
+                      displayContent: displayContent,
+                    );
 
                     if (isShortMessage) {
                       final maxContentWidthInline =
@@ -390,13 +391,14 @@ class ChatMessageBubble extends StatelessWidget {
                     }
                   }
 
-                  return ConstrainedBox(
-                    constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-                    child: Container(
+                  return ContextMenuBubbleAnchor(
+                    child: ConstrainedBox(
+                      constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+                      child: Container(
                       margin: EdgeInsets.only(
                         left: isMine ? 48 : 0,
                         right: isMine ? 0 : 48,
-                        bottom: 10,
+                        bottom: kContextMenuAnchorBottomMargin,
                       ),
                       decoration: BoxDecoration(
                         color: isMediaMessage ? Colors.transparent : bubbleColor,
@@ -410,6 +412,7 @@ class ChatMessageBubble extends StatelessWidget {
                           : const EdgeInsets.fromLTRB(16, 10, 16, 8),
                       child: child,
                     ),
+                  ),
                   );
                 },
               ),

@@ -1,12 +1,12 @@
-name: fireplace
+﻿name: fireplace
 description: "Fireplace - real-time messenger."
 # The following line prevents the package from being accidentally published to
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
-# App version: semver only (0.0.1, 0.0.2, 0.0.3, …). Bump PATCH by +1 on each release (see .cursor/rules/version-bump.mdc).
-# Do not add a +suffix here — that is Flutter build metadata, not our user-visible version.
-version: 0.0.11
+# App version: semver only (0.0.1, 0.0.2, 0.0.3, â€¦). Bump PATCH by +1 on each release (see .cursor/rules/version-bump.mdc).
+# Do not add a +suffix here â€” that is Flutter build metadata, not our user-visible version.
+version: 0.0.12
 
 environment:
   sdk: ^3.10.7

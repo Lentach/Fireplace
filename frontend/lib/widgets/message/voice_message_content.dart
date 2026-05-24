@@ -15,6 +15,8 @@ import '../hearth_fade_arc.dart';
 import '../message_swipe_wrapper.dart';
 import '../dialogs/message_delete_dialog.dart';
 import 'message_context_menu_overlay.dart';
+import 'message_context_menu_bubble_highlight.dart';
+import 'context_menu_bubble_anchor.dart';
 import 'reaction_chips_row.dart';
 
 /// Full voice-message bubble: outer bubble shell + PlaybackController + WaveformDisplay.
@@ -70,14 +72,22 @@ class VoiceMessageContent extends StatelessWidget {
   void _openContextMenu(BuildContext context) {
     final messaging = context.read<MessagingProvider>();
     final auth = context.read<AuthProvider>();
-    final renderBox = context.findRenderObject() as RenderBox?;
+    final renderBox = ContextMenuBubbleAnchor.renderBoxOf(context);
     if (renderBox == null) return;
+    final bubbleSize = renderBox.size;
+    final themePreference = context.read<SettingsProvider>().themePreference;
     openMessageContextMenu(
       context: context,
       message: message,
       bubbleRenderBox: renderBox,
       isMine: isMine,
       currentUserId: auth.currentUser?.id,
+      bubblePreviewBuilder: (_) => MessageContextMenuBubbleHighlight(
+        message: message,
+        isMine: isMine,
+        maxWidth: bubbleSize.width,
+        themePreference: themePreference,
+      ),
       onReply: () => messaging.setReplyingTo(message),
       onPin: () {
         if (message.id > 0) {
@@ -226,14 +236,15 @@ class VoiceMessageContent extends StatelessWidget {
           child: Stack(
             clipBehavior: Clip.none,
             children: [
-              Container(
+              ContextMenuBubbleAnchor(
+                child: Container(
                 constraints: BoxConstraints(
                   maxWidth: MediaQuery.of(context).size.width * 0.6,
                 ),
                 margin: EdgeInsets.only(
                   left: isMine ? 48 : 0,
                   right: isMine ? 0 : 48,
-                  bottom: 10,
+                  bottom: kContextMenuAnchorBottomMargin,
                 ),
                 padding: const EdgeInsets.all(8),
                 decoration: BoxDecoration(
@@ -364,6 +375,7 @@ class VoiceMessageContent extends StatelessWidget {
                     );
                   },
                 ),
+              ),
               ),
               if (message.reactions.isNotEmpty)
                 Positioned(
