@@ -170,8 +170,14 @@ export class PushNotificationsService implements OnModuleInit {
         );
       } catch (err: any) {
         const statusCode = Number(err?.statusCode);
-        if (statusCode === 404 || statusCode === 410) {
+        // 404/410 = gone; 400 often = VAPID/crypto mismatch or permanently invalid sub.
+        if (statusCode === 400 || statusCode === 404 || statusCode === 410) {
           staleEndpoints.push(subscription.endpoint);
+          if (statusCode === 400) {
+            this.logger.warn(
+              `Web Push subscription rejected (400) for userId=${userId} — removing; client must re-enable push in Settings`,
+            );
+          }
           continue;
         }
         this.logger.warn(

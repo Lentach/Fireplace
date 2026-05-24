@@ -22,7 +22,7 @@ description: Use when deploying to production GCP VM, SSH/fireplace-server, ~/fi
 
 ## What `./deploy.sh` does vs does not
 
-**Does:** `git pull` → rebuild **backend** Docker image (with `GIT_COMMIT`, `BUILD_TIME`, `APP_VERSION`) → `flutter build web` into `frontend/build/web/`.
+**Does:** `git pull` → rebuild **backend** Docker image (with `GIT_COMMIT`, `BUILD_TIME`, `APP_VERSION`) → `flutter build web` into `frontend/build/web/` with **`WEB_PUSH_VAPID_PUBLIC_KEY`** from `~/fireplace/.env` (must match backend VAPID or PWA push subscribe fails with `push service error` / delivery `400`).
 
 **Does not:** copy web files to `frontend-build/`, reload host nginx, or edit `/etc/nginx/`. Those are separate manual steps on this VM layout.
 
@@ -60,7 +60,8 @@ If Settings shows `· dev` after deploy → PWA/browser cache; hard refresh. Bui
 
 - Changing **only** app code: deploy + `cp` enough; no nginx reload.
 - Changing **nginx** routes (e.g. new `location`): edit `/etc/nginx/sites-enabled/fireplace`, test, reload.
-- **`.env`** in `~/fireplace/.env` is not overwritten by `git pull`; restart backend after env edits.
+- **`.env`** in `~/fireplace/.env` is not overwritten by `git pull`; restart backend after env edits. **`WEB_PUSH_VAPID_PUBLIC_KEY`** in `.env` must match what `deploy.sh` passes to `flutter build web` (script reads it automatically).
+- **Postgres on VM:** DB name is **`chatdb`** (not `fireplace`): `docker compose exec db psql -U postgres -d chatdb`.
 
 ## Agent checklist after production-related PR
 
