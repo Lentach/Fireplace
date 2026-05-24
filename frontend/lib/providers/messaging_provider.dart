@@ -596,8 +596,19 @@ class MessagingProvider extends ChangeNotifier {
 
   // ---------- Reply-To ----------
 
+  VoidCallback? _composerFocusRequest;
+
+  /// Registered by [ChatInputBar] so reply gestures can focus the composer in the
+  /// same user-gesture turn (required for iOS Safari PWA keyboard).
+  void setComposerFocusRequest(VoidCallback? request) {
+    _composerFocusRequest = request;
+  }
+
   void setReplyingTo(MessageModel? msg) {
     _replyingToMessage = msg;
+    if (msg != null) {
+      _composerFocusRequest?.call();
+    }
     notifyListeners();
   }
 
