@@ -219,6 +219,12 @@ class ConnectionProvider extends ChangeNotifier {
         _socketService.getFriends();
       }
     });
+
+    // Morning PWA resume: messageHistory may finish before or after E2E init;
+    // re-run ordered decrypt for the open chat once the socket is authenticated.
+    Future.delayed(const Duration(milliseconds: 900), () {
+      _messagingProvider?.retryDecryptActiveConversation();
+    });
   }
 
   /// Updates reconnect + messaging token after AuthProvider refreshes JWT (no socket reconnect).

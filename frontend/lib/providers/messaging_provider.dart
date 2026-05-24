@@ -67,9 +67,6 @@ class MessagingProvider extends ChangeNotifier {
   /// Dedupes session-rebuild emits within one history decrypt pass.
   Set<int>? _historySessionRebuildRequested;
 
-  /// Sender peer IDs still showing [encrypted] after history decrypt — UI snackbar + SESSION_RESET.
-  Set<int>? _pendingE2eRecoveryPeerIds;
-
   /// History arrived before E2E finished initializing (common on iOS PWA cold open).
   bool _pendingHistoryDecryptAfterE2EReady = false;
 
@@ -150,13 +147,6 @@ class MessagingProvider extends ChangeNotifier {
   int? get currentUserId => _currentUserId;
   bool get isLoadingMore => _isLoadingMore;
   bool get hasMoreMessages => _hasMore;
-
-  /// Peers with undecryptable inbound messages after the last history pass (for snackbar).
-  Set<int>? consumePendingE2eRecoveryPeerIds() {
-    final pending = _pendingE2eRecoveryPeerIds;
-    _pendingE2eRecoveryPeerIds = null;
-    return pending;
-  }
 
   /// Whether a warm message cache exists for [conversationId].
   bool hasCachedMessages(int conversationId) =>
@@ -868,6 +858,14 @@ class MessagingProvider extends ChangeNotifier {
     // If encrypted, decrypt async and update in-place
     if (msg.needsDecryption(_currentUserId)) {
       _addMessageToState(msg);
+      final viewingConversationId =
+          activeConversationId ?? _paginationConversationId;
+      // Background decrypt for chats the user is not viewing breaks Signal ordering
+      // (PWA push / morning resume) — decrypt only in ordered history when chat opens.
+      if (viewingConversationId < 0 ||
+          msg.conversationId != viewingConversationId) {
+        return;
+      }
       _decryptMessageAsyncQueued(msg).then((decrypted) async {
         final merged = _mergeDecryptedIntoState(decrypted);
         _encryptionProvider?.cacheDecryption(merged.id, merged);
@@ -2434,6 +2432,9 @@ class MessagingProvider extends ChangeNotifier {
       if (_recoverUnresolvedEncryptedInbound(generation)) {
         changed = true;
       }
+      if (_markHistoryDecryptFailuresAfterRetry(generation)) {
+        changed = true;
+      }
     }
     _historyDecryptFailedPeers = null;
     _historySessionRebuildRequested = null;
@@ -2441,7 +2442,7 @@ class MessagingProvider extends ChangeNotifier {
     if (changed) notifyListeners();
   }
 
-  /// When inbound rows still show [encrypted] after decrypt+retry, ask senders to rebuild session.
+  /// When inbound rows still show [encrypted] after decrypt+retry, request session rebuild (silent).
   bool _recoverUnresolvedEncryptedInbound(int generation) {
     if (_decryptHistoryGeneration != generation) return false;
     final unresolvedPeers = <int>{};
@@ -2456,9 +2457,26 @@ class MessagingProvider extends ChangeNotifier {
     for (final peerId in unresolvedPeers) {
       _requestSessionRebuildForPeer(peerId);
     }
-    _pendingE2eRecoveryPeerIds = unresolvedPeers;
-    _e2eFlowLog('E2E_RECOVERY_HINT', {'peerIds': unresolvedPeers.toList()});
+    _e2eFlowLog('E2E_RECOVERY_SESSION_RESET', {'peerIds': unresolvedPeers.toList()});
     return true;
+  }
+
+  /// After ordered history decrypt + session retry, mark rows that are still locked.
+  bool _markHistoryDecryptFailuresAfterRetry(int generation) {
+    if (_decryptHistoryGeneration != generation) return false;
+    var changed = false;
+    for (var i = 0; i < _messages.length; i++) {
+      final m = _messages[i];
+      if (!m.needsDecryption(_currentUserId)) continue;
+      if (!_hasUsableDecryptedContent(m) &&
+          m.content != _kDecryptionFailedLabel &&
+          (m.displayAsEncryptedPlaceholder ||
+              m.content == _kEncryptedPlaceholderLabel)) {
+        _messages[i] = m.copyWith(content: _kDecryptionFailedLabel);
+        changed = true;
+      }
+    }
+    return changed;
   }
 
   /// After history/live decrypt failures, reset the local session with each peer
@@ -2671,9 +2689,11 @@ class MessagingProvider extends ChangeNotifier {
           'DECRYPT_FAIL', {'msgId': msg.id, 'error': e.toString()});
       if (_decryptingHistory) {
         _historyDecryptFailedPeers?.add(msg.senderId);
-      } else {
-        _scheduleLiveDecryptRetry(msg.senderId);
+        // Keep [encrypted] until retry + session reset finish (see
+        // [_markHistoryDecryptFailuresAfterRetry]).
+        return msg;
       }
+      _scheduleLiveDecryptRetry(msg.senderId);
       return msg.copyWith(content: _kDecryptionFailedLabel);
     }
   }
@@ -2854,7 +2874,6 @@ class MessagingProvider extends ChangeNotifier {
   void onConnect(bool isReconnect) {
     _decryptHistoryGeneration++; // cancel any in-flight history decrypt
     _pendingHistoryFetchSeq.clear();
-    _pendingE2eRecoveryPeerIds = null;
     _pendingHistoryDecryptAfterE2EReady = false;
 
     if (!isReconnect) {
@@ -2921,7 +2940,6 @@ class MessagingProvider extends ChangeNotifier {
     _liveDecryptRetryTimer?.cancel();
     _liveDecryptRetryTimer = null;
     _liveDecryptFailedPeers.clear();
-    _pendingE2eRecoveryPeerIds = null;
     _pendingHistoryDecryptAfterE2EReady = false;
     _cancelDelayedRetryIfAny();
     _currentUserId = null;

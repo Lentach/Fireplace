@@ -270,7 +270,6 @@
   "messageEditComingSoon": "Edit is coming soon",
   "messagePinRequiresSentMessage": "Wait until the message is sent before pinning",
   "snackbarPinnedMessageUnavailable": "Message is no longer available",
-  "snackbarE2eAskSenderResend": "Some messages could not be unlocked. Ask your contact to send a new message.",
   "pinnedMessageUnpinTooltip": "Unpin",
   "pinnedMessageBannerSemantics": "Pinned message"
 }

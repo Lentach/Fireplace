@@ -269,6 +269,68 @@ void main() {
     );
 
     test(
+      'defers live decrypt until the conversation is open (ordered history path)',
+      () async {
+        final counting = _DecryptCountingEncryption();
+        provider.setEncryptionProvider(counting);
+        conversations.closeConversation(notify: false);
+        provider.clearMessages();
+
+        provider.onNewMessage(
+          incomingJson(
+            id: 91,
+            createdAt: '2026-01-01T00:00:91.000Z',
+            includeTtl: false,
+          ),
+        );
+        await Future<void>.delayed(Duration.zero);
+        expect(counting.decryptCalls, 0);
+
+        provider.setActiveConversationIdForTest(10);
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 91,
+              createdAt: '2026-01-01T00:00:91.000Z',
+              includeTtl: false,
+            ),
+          ],
+        });
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+
+        expect(counting.decryptCalls, 1);
+        expect(provider.messages.single.content, isNot('[encrypted]'));
+      },
+    );
+
+    test(
+      'history decrypt keeps [encrypted] until retry fails then marks failed',
+      () async {
+        final failEncryption = _AlwaysFailDecryptEncryption();
+        provider.setEncryptionProvider(failEncryption);
+        provider.setActiveConversationIdForTest(10);
+
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 92,
+              createdAt: DateTime.now().toUtc().toIso8601String(),
+              includeTtl: false,
+            ),
+          ],
+        });
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(provider.messages.single.content, '[Decryption failed]');
+      },
+    );
+
+    test(
       'history decrypt ignores memory cache that still has [encrypted] placeholder',
       () async {
         final createdAt = DateTime.now().toUtc().toIso8601String();

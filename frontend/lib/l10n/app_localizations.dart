@@ -1274,12 +1274,6 @@ abstract class AppLocalizations {
   /// **'Wiadomość jest niedostępna'**
   String get snackbarPinnedMessageUnavailable;
 
-  /// No description provided for @snackbarE2eAskSenderResend.
-  ///
-  /// In pl, this message translates to:
-  /// **'Nie udało się odszyfrować części wiadomości. Poproś rozmówcę o wysłanie nowej wiadomości.'**
-  String get snackbarE2eAskSenderResend;
-
   /// No description provided for @pinnedMessageUnpinTooltip.
   ///
   /// In pl, this message translates to:

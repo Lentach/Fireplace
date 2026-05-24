@@ -292,7 +292,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     WidgetsBinding.instance.addObserver(this);
     _conversations = context.read<ConversationsProvider>();
     _messaging = context.read<MessagingProvider>();
-    _messaging.addListener(_onMessagingE2eRecoveryHint);
     _scrollController.addListener(_onScroll);
     // Active id + pushClientState immediately; listener notify deferred (initState).
     _conversations.openConversation(widget.conversationId, notify: false);
@@ -355,20 +354,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     _lastKeyboardHeight = bottom;
   }
 
-  void _onMessagingE2eRecoveryHint() {
-    final peers = _messaging.consumePendingE2eRecoveryPeerIds();
-    if (peers == null || peers.isEmpty || !mounted) return;
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted) return;
-      final l10n = AppLocalizations.of(context);
-      showTopSnackBar(context, l10n.snackbarE2eAskSenderResend);
-    });
-  }
-
   @override
   void dispose() {
     dismissMessageContextMenu();
-    _messaging.removeListener(_onMessagingE2eRecoveryHint);
     WidgetsBinding.instance.removeObserver(this);
     _clearActiveConversationIfThisChat();
     _scrollController.removeListener(_onScroll);

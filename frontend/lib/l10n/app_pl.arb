@@ -252,7 +252,6 @@
   "messageEditComingSoon": "Edycja wkrótce",
   "messagePinRequiresSentMessage": "Poczekaj na wysłanie wiadomości, aby ją przypiąć",
   "snackbarPinnedMessageUnavailable": "Wiadomość jest niedostępna",
-  "snackbarE2eAskSenderResend": "Nie udało się odszyfrować części wiadomości. Poproś rozmówcę o wysłanie nowej wiadomości.",
   "pinnedMessageUnpinTooltip": "Odepnij",
   "pinnedMessageBannerSemantics": "Przypięta wiadomość"
 }
