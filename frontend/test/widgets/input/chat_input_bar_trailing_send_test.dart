@@ -76,22 +76,31 @@ Future<void> _pumpChatInputBar(
   await tester.pump();
 }
 
-Finder _sendOpacityFinder() {
+Finder _textSendOpacityFinder() {
   return find.descendant(
-    of: find.ancestor(
-      of: find.byType(RecordingController),
-      matching: find.byType(Stack),
-    ),
+    of: find.byKey(const ValueKey('composer_text_send_layer')),
     matching: find.byType(AnimatedOpacity),
   );
 }
 
-Finder _sendIgnorePointerFinder() {
+IgnorePointer _outerTextSendIgnorePointer(WidgetTester tester) {
+  final layer = find.byKey(const ValueKey('composer_text_send_layer'));
+  final pointers = tester.widgetList<IgnorePointer>(
+    find.descendant(of: layer, matching: find.byType(IgnorePointer)),
+  );
+  return pointers.first;
+}
+
+Finder _voiceSendOpacityFinder() {
   return find.descendant(
-    of: find.ancestor(
-      of: find.byType(RecordingController),
-      matching: find.byType(Stack),
-    ),
+    of: find.byKey(const ValueKey('composer_voice_send_layer')),
+    matching: find.byType(AnimatedOpacity),
+  );
+}
+
+Finder _voiceSendIgnorePointerFinder() {
+  return find.descendant(
+    of: find.byKey(const ValueKey('composer_voice_send_layer')),
     matching: find.byType(IgnorePointer),
   );
 }
@@ -112,12 +121,10 @@ void main() {
       expect(find.byIcon(Icons.mic_none), findsOneWidget);
       expect(find.byType(RecordingController), findsOneWidget);
 
-      final opacity = tester.widget<AnimatedOpacity>(_sendOpacityFinder());
+      final opacity = tester.widget<AnimatedOpacity>(_textSendOpacityFinder());
       expect(opacity.opacity, 0);
 
-      final ignorePointer =
-          tester.widget<IgnorePointer>(_sendIgnorePointerFinder());
-      expect(ignorePointer.ignoring, isTrue);
+      expect(_outerTextSendIgnorePointer(tester).ignoring, isTrue);
     });
 
     testWidgets('composable text shows send overlay', (tester) async {
@@ -127,12 +134,10 @@ void main() {
       await tester.pump();
       await tester.pump(const Duration(milliseconds: 175));
 
-      final opacity = tester.widget<AnimatedOpacity>(_sendOpacityFinder());
+      final opacity = tester.widget<AnimatedOpacity>(_textSendOpacityFinder());
       expect(opacity.opacity, 1);
 
-      final ignorePointer =
-          tester.widget<IgnorePointer>(_sendIgnorePointerFinder());
-      expect(ignorePointer.ignoring, isFalse);
+      expect(_outerTextSendIgnorePointer(tester).ignoring, isFalse);
     });
 
     testWidgets('whitespace-only field keeps send hidden', (tester) async {
@@ -141,8 +146,40 @@ void main() {
       await tester.enterText(find.byType(TextField), '   ');
       await tester.pump();
 
-      final opacity = tester.widget<AnimatedOpacity>(_sendOpacityFinder());
+      final opacity = tester.widget<AnimatedOpacity>(_textSendOpacityFinder());
       expect(opacity.opacity, 0);
+    });
+
+    testWidgets('text send overlay is tap-only so mic long-press is not blocked',
+        (tester) async {
+      await _pumpChatInputBar(tester, convs: convs, messaging: messaging);
+
+      await tester.enterText(find.byType(TextField), 'draft');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 175));
+
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('composer_text_send_layer')),
+          matching: find.byType(IconButton),
+        ),
+        findsNothing,
+      );
+      expect(
+        find.descendant(
+          of: find.byKey(const ValueKey('composer_text_send_layer')),
+          matching: find.byType(Listener),
+        ),
+        findsWidgets,
+      );
+
+      final recordingState = tester.state<RecordingControllerState>(
+        find.byType(RecordingController),
+      );
+      recordingState.simulateActiveRecordingForTest();
+      await tester.pump();
+      expect(recordingState.isRecording, isTrue);
+      expect(find.byType(TextField), findsNothing);
     });
 
     testWidgets('tap send calls sendMessage and clears field', (tester) async {
@@ -153,7 +190,7 @@ void main() {
 
       expect(messaging.messages, isEmpty);
 
-      await tester.tap(find.byIcon(Icons.send_rounded));
+      await tester.tap(find.byTooltip('Send'));
       await tester.pump();
 
       expect(messaging.messages.length, 1);
@@ -200,7 +237,7 @@ void main() {
       await tester.enterText(textField, 'hi');
       await tester.pump();
 
-      await tester.tap(find.byIcon(Icons.send_rounded));
+      await tester.tap(find.byTooltip('Send'));
       await tester.pump();
       await tester.pump();
 
@@ -228,7 +265,7 @@ void main() {
       barState.setRecordingForTest(true);
       await tester.pump();
 
-      final opacity = tester.widget<AnimatedOpacity>(_sendOpacityFinder());
+      final opacity = tester.widget<AnimatedOpacity>(_textSendOpacityFinder());
       expect(opacity.opacity, 0);
       expect(find.byType(TextField), findsNothing);
     });
@@ -248,7 +285,7 @@ void main() {
       await tester.enterText(find.byType(TextField), 'draft');
       await tester.pump();
 
-      final opacity = tester.widget<AnimatedOpacity>(_sendOpacityFinder());
+      final opacity = tester.widget<AnimatedOpacity>(_textSendOpacityFinder());
       expect(opacity.opacity, 0);
     });
 
@@ -269,6 +306,109 @@ void main() {
         ),
         findsOneWidget,
       );
+    });
+  });
+
+  group('ChatInputBar voice lock trailing send (chunk 1.3)', () {
+    late ConversationsProvider convs;
+    late MessagingProvider messaging;
+
+    setUp(() {
+      convs = _providerWithConversation(conversationId: 10);
+      messaging = _messagingLinkedTo(convs);
+    });
+
+    testWidgets('locked recording shows voice send and hides text send with draft',
+        (tester) async {
+      await _pumpChatInputBar(tester, convs: convs, messaging: messaging);
+
+      await tester.enterText(find.byType(TextField), 'draft text');
+      await tester.pump();
+
+      final barState =
+          tester.state<ChatInputBarState>(find.byType(ChatInputBar));
+      barState.setRecordingForTest(true);
+      barState.setRecordingLockedForTest(true);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 175));
+
+      final textOpacity =
+          tester.widget<AnimatedOpacity>(_textSendOpacityFinder());
+      expect(textOpacity.opacity, 0);
+
+      final voiceOpacity =
+          tester.widget<AnimatedOpacity>(_voiceSendOpacityFinder());
+      expect(voiceOpacity.opacity, 1);
+
+      final voiceIgnore =
+          tester.widget<IgnorePointer>(_voiceSendIgnorePointerFinder());
+      expect(voiceIgnore.ignoring, isFalse);
+
+      expect(find.text('draft text'), findsNothing);
+    });
+
+    testWidgets('voice send has localized tooltip and semantics when locked',
+        (tester) async {
+      await _pumpChatInputBar(tester, convs: convs, messaging: messaging);
+
+      final barState =
+          tester.state<ChatInputBarState>(find.byType(ChatInputBar));
+      barState.setRecordingForTest(true);
+      barState.setRecordingLockedForTest(true);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 175));
+
+      expect(find.byTooltip('Send voice message'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is Semantics &&
+              widget.properties.label == 'Send voice message' &&
+              widget.properties.button == true,
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('tap voice send invokes sendLockedRecording without crashing',
+        (tester) async {
+      await _pumpChatInputBar(tester, convs: convs, messaging: messaging);
+
+      final barState =
+          tester.state<ChatInputBarState>(find.byType(ChatInputBar));
+      barState.setRecordingForTest(true);
+      barState.setRecordingLockedForTest(true);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 175));
+
+      await tester.tap(find.byTooltip('Send voice message'));
+      await tester.pump();
+
+      expect(find.byType(ChatInputBar), findsOneWidget);
+    });
+
+    testWidgets('after recording ends draft text send returns', (tester) async {
+      await _pumpChatInputBar(tester, convs: convs, messaging: messaging);
+
+      await tester.enterText(find.byType(TextField), 'kept draft');
+      await tester.pump();
+
+      final barState =
+          tester.state<ChatInputBarState>(find.byType(ChatInputBar));
+      barState.setRecordingForTest(true);
+      barState.setRecordingLockedForTest(true);
+      await tester.pump();
+
+      barState.setRecordingForTest(false);
+      barState.setRecordingLockedForTest(false);
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 175));
+
+      expect(find.text('kept draft'), findsOneWidget);
+
+      final textOpacity =
+          tester.widget<AnimatedOpacity>(_textSendOpacityFinder());
+      expect(textOpacity.opacity, 1);
     });
   });
 

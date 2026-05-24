@@ -617,6 +617,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get voiceRecordingCancelLocked => 'Cancel recording';
 
   @override
+  String get voiceRecordingSendVoiceTooltip => 'Send voice message';
+
+  @override
+  String get voiceRecordingSendVoiceSemantics => 'Send voice message';
+
+  @override
   String voiceRecordingSemanticsLabel(String time) {
     return 'Recording voice message, $time. Swipe left to cancel.';
   }

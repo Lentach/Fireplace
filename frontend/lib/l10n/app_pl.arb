@@ -221,6 +221,8 @@
   "voiceRecordingSlideUpToLock": "↑ Przesuń w górę, aby zablokować",
   "voiceRecordingLocked": "Zablokowano — dotknij Wyślij, gdy skończysz",
   "voiceRecordingCancelLocked": "Anuluj nagrywanie",
+  "voiceRecordingSendVoiceTooltip": "Wyślij wiadomość głosową",
+  "voiceRecordingSendVoiceSemantics": "Wyślij wiadomość głosową",
   "voiceRecordingSemanticsLabel": "Nagrywanie wiadomości głosowej, {time}. Przesuń w lewo, aby anulować.",
   "voiceRecordingLockedSemantics": "Zablokowane nagrywanie, {time}. Dotknij Wyślij, aby wysłać, lub Anuluj, aby odrzucić.",
   "@voiceRecordingLockedSemantics": {

@@ -625,6 +625,12 @@ class AppLocalizationsPl extends AppLocalizations {
   String get voiceRecordingCancelLocked => 'Anuluj nagrywanie';
 
   @override
+  String get voiceRecordingSendVoiceTooltip => 'Wyślij wiadomość głosową';
+
+  @override
+  String get voiceRecordingSendVoiceSemantics => 'Wyślij wiadomość głosową';
+
+  @override
   String voiceRecordingSemanticsLabel(String time) {
     return 'Nagrywanie wiadomości głosowej, $time. Przesuń w lewo, aby anulować.';
   }

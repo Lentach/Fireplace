@@ -1160,6 +1160,18 @@ abstract class AppLocalizations {
   /// **'Anuluj nagrywanie'**
   String get voiceRecordingCancelLocked;
 
+  /// No description provided for @voiceRecordingSendVoiceTooltip.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wyślij wiadomość głosową'**
+  String get voiceRecordingSendVoiceTooltip;
+
+  /// No description provided for @voiceRecordingSendVoiceSemantics.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wyślij wiadomość głosową'**
+  String get voiceRecordingSendVoiceSemantics;
+
   /// No description provided for @voiceRecordingSemanticsLabel.
   ///
   /// In pl, this message translates to:

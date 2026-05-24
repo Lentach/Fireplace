@@ -202,11 +202,11 @@ cd frontend && flutter analyze lib/widgets/input/recording_controller.dart
 
 ### Chunk 1.2 — Locked recording bar UI
 
-**Status:** NOT STARTED
+**Status:** COMPLETE
 
-**Files:** `recording_controller.dart`, `chat_input_bar.dart`
+**Files:** `recording_controller.dart`, `chat_input_bar.dart`, `app_en.arb`, `app_pl.arb`
 
-**Goal:** `buildRecordingBarLocked` (Cancel + lock label + timer); slide-up hint in unlocked bar; `onRecordingLockChanged` callback.
+**Goal:** `buildRecordingBarLocked` (Cancel + lock label + timer); slide-up hint in unlocked bar; `onRecordingLockChanged` callback; `onRecordingBarChanged` for live drag hint rebuild.
 
 **Acceptance criteria:**
 - [ ] Locked bar shows Cancel (44×44 min), lock icon, timer, hint text.
@@ -221,7 +221,7 @@ cd frontend && flutter analyze
 
 ### Chunk 1.3 — Voice Send trailing layer + public API
 
-**Status:** NOT STARTED
+**Status:** COMPLETE
 
 **Files:** `chat_input_bar.dart`, `recording_controller.dart`
 
@@ -241,7 +241,7 @@ cd frontend && flutter test test/widgets/input/chat_input_bar_trailing_send_test
 
 ### Chunk 1.4 — ARB + accessibility (voice lock)
 
-**Status:** NOT STARTED
+**Status:** COMPLETE
 
 **Files:** `app_en.arb`, `app_pl.arb`, `recording_controller.dart`, `chat_input_bar.dart`
 
@@ -256,7 +256,7 @@ cd frontend && flutter gen-l10n && flutter analyze
 
 ### Chunk 1.5 — Widget tests (lock)
 
-**Status:** NOT STARTED
+**Status:** COMPLETE
 
 **Files:** Create `recording_controller_lock_test.dart`; extend `chat_input_bar_trailing_send_test.dart`
 
@@ -271,7 +271,7 @@ cd frontend && flutter test test/widgets/input/recording_controller_test.dart
 
 ### Chunk 1.6 — CLAUDE.md, version 0.0.13, manual QA gate
 
-**Status:** NOT STARTED
+**Status:** COMPLETE
 
 **Files:** `CLAUDE.md`, `frontend/pubspec.yaml` → `0.0.13`, graphify
 
