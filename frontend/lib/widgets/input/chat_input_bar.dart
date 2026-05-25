@@ -33,7 +33,9 @@ class ChatInputBar extends StatefulWidget {
 
 class ChatInputBarState extends State<ChatInputBar>
     with SingleTickerProviderStateMixin {
-  static const Duration _kTrailingSendFadeDuration = Duration(milliseconds: 175);
+  static const Duration _kTrailingSendFadeDuration = Duration(
+    milliseconds: 175,
+  );
 
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
@@ -297,126 +299,86 @@ class ChatInputBarState extends State<ChatInputBar>
     }
   }
 
-  /// Trailing mic + text-send overlay. [ValueListenableBuilder] limits rebuilds to this slot.
-  Widget _buildTrailingSlot(BuildContext context) {
+  /// Trailing dual actions row (mic left, send right).
+  /// [ValueListenableBuilder] limits rebuilds to this row.
+  Widget _buildTrailingActionsRow(BuildContext context) {
     final l10n = AppLocalizations.of(context);
 
     return ValueListenableBuilder<TextEditingValue>(
       valueListenable: _controller,
       builder: (context, value, _) {
-        final showTextSend = !_isRecording &&
-            !_isSendingVoice &&
-            value.text.trim().isNotEmpty;
-        final showVoiceSend =
-            _isRecording && _isRecordingLocked && !_isSendingVoice;
-        final hideMicForOverlay = showTextSend || showVoiceSend;
+        final hasDraft = value.text.trim().isNotEmpty;
+        final disableMic = hasDraft || _isSendingVoice;
+        final showSendingSpinner = _isSendingVoice;
+        final showLockedVoiceSend = _isRecording && _isRecordingLocked;
 
-        // ExcludeFocus on the whole trailing slot (mic + send overlay) so long-press
+        // ExcludeFocus on the whole trailing actions row so long-press
         // never steals focus from the text field. RecordingController does not add a
         // second ExcludeFocus — one ancestor is enough.
         return ExcludeFocus(
           child: SizedBox(
-            width: 48,
+            width: 96,
             height: 48,
-            child: Stack(
-              alignment: Alignment.center,
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
               children: [
-                // Mic stays mounted for gesture stability; fade out when send overlays show.
-                ExcludeSemantics(
-                  excluding: hideMicForOverlay,
-                  child: IgnorePointer(
-                    ignoring: hideMicForOverlay,
-                    child: AnimatedOpacity(
-                      key: const ValueKey('composer_mic_layer'),
-                      opacity: hideMicForOverlay ? 0 : 1,
-                      duration: _kTrailingSendFadeDuration,
-                      curve: Curves.easeInOut,
-                      child: RecordingController(
-                        key: _recordingKey,
-                        onVoiceSent: _handleVoiceSent,
-                        onRecordingStateChanged: _onRecordingStateChanged,
-                        onRecordingLockChanged: _onRecordingLockChanged,
-                        onRecordingBarChanged: _onRecordingBarVisualChanged,
-                        isSendingVoice: _isSendingVoice,
-                      ),
-                    ),
-                  ),
-                ),
-                Positioned.fill(
-                  key: const ValueKey('composer_text_send_layer'),
+                // Mic stays mounted for gesture stability, but is disabled while draft exists.
+                SizedBox(
+                  key: const ValueKey('composer_mic_slot'),
+                  width: 48,
+                  height: 48,
                   child: ExcludeSemantics(
-                    excluding: !showTextSend,
+                    excluding: disableMic,
                     child: IgnorePointer(
-                      ignoring: !showTextSend,
+                      ignoring: disableMic,
                       child: AnimatedOpacity(
-                        opacity: showTextSend ? 1 : 0,
+                        key: const ValueKey('composer_mic_layer'),
+                        opacity: disableMic ? 0.45 : 1,
                         duration: _kTrailingSendFadeDuration,
                         curve: Curves.easeInOut,
-                        child: Stack(
-                          alignment: Alignment.center,
-                          children: [
-                            // Send icon paint only — no hit test (long-press uses mic below).
-                            IgnorePointer(
-                              child: Transform.translate(
-                                offset: const Offset(
-                                  RecordingControllerState
-                                      .kMicTrailingRestingOffsetX,
-                                  0,
-                                ),
-                                child: Icon(
-                                  Icons.send_rounded,
-                                  size: 22,
-                                  color: RpgTheme.primaryColor(context),
-                                ),
-                              ),
-                            ),
-                            Transform.translate(
-                              offset: const Offset(
-                                RecordingControllerState
-                                    .kMicTrailingRestingOffsetX,
-                                0,
-                              ),
-                              child: _ComposerTapSendOverlay(
-                                enabled: showTextSend,
-                                onTap: _send,
-                                onPointerDownRetainFocus:
-                                    _retainComposerFocusOnTrailingSendPointerDown,
-                                tooltip: l10n.chatComposerSendTooltip,
-                                semanticsLabel: l10n.chatComposerSendSemantics,
-                              ),
-                            ),
-                          ],
+                        child: RecordingController(
+                          key: _recordingKey,
+                          onVoiceSent: _handleVoiceSent,
+                          onRecordingStateChanged: _onRecordingStateChanged,
+                          onRecordingLockChanged: _onRecordingLockChanged,
+                          onRecordingBarChanged: _onRecordingBarVisualChanged,
+                          // Right slot owns the send spinner priority.
+                          isSendingVoice: false,
                         ),
                       ),
                     ),
                   ),
                 ),
-                Positioned.fill(
-                  key: const ValueKey('composer_voice_send_layer'),
-                  child: ExcludeSemantics(
-                    excluding: !showVoiceSend,
-                    child: IgnorePointer(
-                      ignoring: !showVoiceSend,
-                      child: AnimatedOpacity(
-                        opacity: showVoiceSend ? 1 : 0,
-                        duration: _kTrailingSendFadeDuration,
-                        curve: Curves.easeInOut,
-                        child: Transform.translate(
-                          offset: const Offset(
-                            RecordingControllerState.kMicTrailingRestingOffsetX,
-                            0,
-                          ),
-                          child: Tooltip(
+                SizedBox(
+                  key: const ValueKey('composer_send_slot'),
+                  width: 48,
+                  height: 48,
+                  child: AnimatedSwitcher(
+                    duration: _kTrailingSendFadeDuration,
+                    switchInCurve: Curves.easeInOut,
+                    switchOutCurve: Curves.easeInOut,
+                    child: showSendingSpinner
+                        ? const Center(
+                            key: ValueKey('composer_send_spinner'),
+                            child: SizedBox(
+                              width: 22,
+                              height: 22,
+                              child: CircularProgressIndicator(strokeWidth: 2),
+                            ),
+                          )
+                        : showLockedVoiceSend
+                        ? Tooltip(
+                            key: const ValueKey('composer_voice_send_action'),
                             message: l10n.voiceRecordingSendVoiceTooltip,
                             child: Semantics(
                               button: true,
                               label: l10n.voiceRecordingSendVoiceSemantics,
+                              onTap: () => _recordingKey.currentState
+                                  ?.sendLockedRecording(),
                               excludeSemantics: true,
                               child: IconButton(
-                                onPressed: showVoiceSend
-                                    ? () => _recordingKey.currentState
-                                        ?.sendLockedRecording()
-                                    : null,
+                                onPressed: () => _recordingKey.currentState
+                                    ?.sendLockedRecording(),
                                 padding: const EdgeInsets.all(12),
                                 constraints: const BoxConstraints(
                                   minWidth: 48,
@@ -429,10 +391,28 @@ class ChatInputBarState extends State<ChatInputBar>
                                 ),
                               ),
                             ),
+                          )
+                        : Stack(
+                            key: const ValueKey('composer_text_send_action'),
+                            alignment: Alignment.center,
+                            children: [
+                              IgnorePointer(
+                                child: Icon(
+                                  Icons.send_rounded,
+                                  size: 22,
+                                  color: RpgTheme.primaryColor(context),
+                                ),
+                              ),
+                              _ComposerTapSendOverlay(
+                                enabled: true,
+                                onTap: _send,
+                                onPointerDownRetainFocus:
+                                    _retainComposerFocusOnTrailingSendPointerDown,
+                                tooltip: l10n.chatComposerSendTooltip,
+                                semanticsLabel: l10n.chatComposerSendSemantics,
+                              ),
+                            ],
                           ),
-                        ),
-                      ),
-                    ),
                   ),
                 ),
               ],
@@ -463,8 +443,8 @@ class ChatInputBarState extends State<ChatInputBar>
 
   @override
   Widget build(BuildContext context) {
-  // Rebuild only for composer-relevant provider slices so message list / decrypt
-  // updates do not dismiss the Android soft keyboard while typing.
+    // Rebuild only for composer-relevant provider slices so message list / decrypt
+    // updates do not dismiss the Android soft keyboard while typing.
     final replyingTo = context.select<MessagingProvider, MessageModel?>(
       (m) => m.replyingToMessage,
     );
@@ -490,8 +470,9 @@ class ChatInputBarState extends State<ChatInputBar>
     // Phone / narrow PWA: keep trailing mic off the physical right edge so OS back-swipe
     // and browser edge gestures are less likely to steal the long-press.
     const trailingGestureBufferDp = 14.0;
-    final trailingGestureBuffer =
-        isCompactLayout ? trailingGestureBufferDp : 0.0;
+    final trailingGestureBuffer = isCompactLayout
+        ? trailingGestureBufferDp
+        : 0.0;
     // Insets for notches / home indicator: chat body no longer applies horizontal SafeArea
     // around the composer (see ChatDetailScreen), so we pad here instead.
     final composerHorizontalPadding = EdgeInsets.fromLTRB(
@@ -501,124 +482,126 @@ class ChatInputBarState extends State<ChatInputBar>
       8.0,
     );
     final keyboardVisible = mediaQuery.viewInsets.bottom > 0;
-    final bottomSystemInset =
-        math.max(mediaQuery.viewPadding.bottom, mediaQuery.padding.bottom);
+    final bottomSystemInset = math.max(
+      mediaQuery.viewPadding.bottom,
+      mediaQuery.padding.bottom,
+    );
     const additionalBottomSpacing = 16.0;
     final needsErgonomicBuffer = bottomSystemInset > 0;
-    final webMobileFallbackInset = !needsErgonomicBuffer &&
-            kIsWeb &&
-            isCompactLayout &&
-            !keyboardVisible
+    final webMobileFallbackInset =
+        !needsErgonomicBuffer && kIsWeb && isCompactLayout && !keyboardVisible
         ? 16.0
         : 0.0;
     final bottomInteractivePadding = keyboardVisible
         ? 0.0
         : (needsErgonomicBuffer
-            ? bottomSystemInset + additionalBottomSpacing
-            : webMobileFallbackInset);
+              ? bottomSystemInset + additionalBottomSpacing
+              : webMobileFallbackInset);
 
     // Cap multiline growth: Row/Expanded can still pass a tall maxHeight; keep the
     // composer Telegram-like even under large text scale or IME quirks.
     final textScaler = MediaQuery.textScalerOf(context);
-    final maxComposerHeight =
-        (textScaler.scale(22.0) * 6 + 36).clamp(120.0, 400.0);
+    final maxComposerHeight = (textScaler.scale(22.0) * 6 + 36).clamp(
+      120.0,
+      400.0,
+    );
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-          // Reply preview
-          if (replyingTo != null)
-            Selector<MessagingProvider, MessageModel>(
-              selector: (_, messaging) {
-                return findMessageById(replyingTo.id, messaging.messages) ??
-                    replyingTo;
-              },
-              builder: (context, resolvedReply, _) {
-                return ReplyPreviewBar(
-                  message: resolvedReply,
-                  onDismiss: () =>
-                      context.read<MessagingProvider>().clearReplyingTo(),
-                );
-              },
-            ),
+        // Reply preview
+        if (replyingTo != null)
+          Selector<MessagingProvider, MessageModel>(
+            selector: (_, messaging) {
+              return findMessageById(replyingTo.id, messaging.messages) ??
+                  replyingTo;
+            },
+            builder: (context, resolvedReply, _) {
+              return ReplyPreviewBar(
+                message: resolvedReply,
+                onDismiss: () =>
+                    context.read<MessagingProvider>().clearReplyingTo(),
+              );
+            },
+          ),
 
-          if (activeTimer != null)
-            Material(
-              color: ephemeral.withValues(alpha: 0.12),
-              child: Semantics(
-                label: l10n.disappearingComposerBannerSemantics(
-                  _bannerDurationLabel(l10n, activeTimer),
+        if (activeTimer != null)
+          Material(
+            color: ephemeral.withValues(alpha: 0.12),
+            child: Semantics(
+              label: l10n.disappearingComposerBannerSemantics(
+                _bannerDurationLabel(l10n, activeTimer),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 6,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CustomPaint(
-                        size: const Size(14, 14),
-                        painter: HearthFadeArcPainter(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CustomPaint(
+                      size: const Size(14, 14),
+                      painter: HearthFadeArcPainter(
+                        color: ephemeral,
+                        trackColor: ephemeral.withValues(alpha: 0.35),
+                        dotted: true,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        l10n.disappearingComposerBanner(
+                          _bannerDurationLabel(l10n, activeTimer),
+                        ),
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: RpgTheme.bodyFont(
+                          fontSize: 11,
                           color: ephemeral,
-                          trackColor: ephemeral.withValues(alpha: 0.35),
-                          dotted: true,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          l10n.disappearingComposerBanner(
-                            _bannerDurationLabel(l10n, activeTimer),
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: RpgTheme.bodyFont(
-                            fontSize: 11,
-                            color: ephemeral,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
+          ),
 
-          // Input row
-          Container(
-            padding: composerHorizontalPadding,
-            decoration: BoxDecoration(
-              color: colorScheme.surface,
-              border: Border(top: BorderSide(color: fc.convItemBorder)),
-            ),
-            child: TapRegion(
-              groupId: _composerTapRegionGroup,
-              child: Row(
-                children: [
-                  // Action panel toggle (hidden during recording)
-                  if (!_isRecording)
-                    Focus(
-                      canRequestFocus: false,
-                      child: IconButton(
-                        icon: Icon(
-                          _showActionPanel
-                              ? Icons.keyboard_arrow_up
-                              : Icons.keyboard_arrow_down,
-                        ),
-                        iconSize: 24,
-                        color: isDark
-                            ? RpgTheme.mutedDark
-                            : RpgTheme.textSecondaryLight,
-                        onPressed: _toggleActionPanel,
+        // Input row
+        Container(
+          padding: composerHorizontalPadding,
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            border: Border(top: BorderSide(color: fc.convItemBorder)),
+          ),
+          child: TapRegion(
+            groupId: _composerTapRegionGroup,
+            child: Row(
+              children: [
+                // Action panel toggle (hidden during recording)
+                if (!_isRecording)
+                  Focus(
+                    canRequestFocus: false,
+                    child: IconButton(
+                      icon: Icon(
+                        _showActionPanel
+                            ? Icons.keyboard_arrow_up
+                            : Icons.keyboard_arrow_down,
                       ),
+                      iconSize: 24,
+                      color: isDark
+                          ? RpgTheme.mutedDark
+                          : RpgTheme.textSecondaryLight,
+                      onPressed: _toggleActionPanel,
                     ),
+                  ),
 
-                  // Text field or recording bar
-                  Expanded(
+                // Text field or recording bar
+                Expanded(
                   child: _isRecording
                       ? ValueListenableBuilder<int>(
                           valueListenable: _recordingBarVisualTick,
@@ -662,8 +645,9 @@ class ChatInputBarState extends State<ChatInputBar>
                                 color: colorScheme.onSurface,
                               ),
                               decoration: InputDecoration(
-                                hintText: AppLocalizations.of(context)
-                                    .chatMessageHint,
+                                hintText: AppLocalizations.of(
+                                  context,
+                                ).chatMessageHint,
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 16,
                                   vertical: 10,
@@ -704,13 +688,12 @@ class ChatInputBarState extends State<ChatInputBar>
 
                 const SizedBox(width: 2),
 
-                  // Trailing 48×48 stack: mic always mounted; text send fades on top (Phase 0).
-                  // CLAUDE.md: never swap mic/send as Row siblings — unmount dismisses keyboard.
-                  _buildTrailingSlot(context),
-                ],
-              ),
+                // Trailing dual actions row: mic left, send right.
+                _buildTrailingActionsRow(context),
+              ],
             ),
           ),
+        ),
 
         if (!_showActionPanel && bottomInteractivePadding > 0)
           Container(
@@ -729,8 +712,7 @@ class ChatInputBarState extends State<ChatInputBar>
   }
 }
 
-/// Tap-only trailing send so [RecordingController]'s long-press reaches the mic below.
-/// [IconButton] would win the gesture arena and block hold-to-record when draft text is visible.
+/// Tap-only trailing send with pointerDown focus retention for iOS keyboard stability.
 class _ComposerTapSendOverlay extends StatefulWidget {
   const _ComposerTapSendOverlay({
     required this.enabled,
@@ -747,43 +729,37 @@ class _ComposerTapSendOverlay extends StatefulWidget {
   final String semanticsLabel;
 
   @override
-  State<_ComposerTapSendOverlay> createState() => _ComposerTapSendOverlayState();
+  State<_ComposerTapSendOverlay> createState() =>
+      _ComposerTapSendOverlayState();
 }
 
 class _ComposerTapSendOverlayState extends State<_ComposerTapSendOverlay> {
-  static const Duration _kTapMaxDuration = Duration(milliseconds: 300);
   static const double _kTapMaxMovement = 18.0;
 
-  DateTime? _downTime;
   Offset? _downPosition;
 
   void _onPointerDown(PointerDownEvent event) {
     if (!widget.enabled) return;
-    _downTime = DateTime.now();
     _downPosition = event.position;
     // Retain focus in the same user-gesture turn (before WebKit blur on pointerUp).
     widget.onPointerDownRetainFocus?.call();
   }
 
   void _onPointerUp(PointerUpEvent event) {
-    if (!widget.enabled || _downTime == null || _downPosition == null) return;
-    final duration = DateTime.now().difference(_downTime!);
+    if (!widget.enabled || _downPosition == null) return;
     final moved = (event.position - _downPosition!).distance;
-    _downTime = null;
     _downPosition = null;
-    if (duration <= _kTapMaxDuration && moved <= _kTapMaxMovement) {
+    if (moved <= _kTapMaxMovement) {
       widget.onTap();
     }
   }
 
   void _onPointerCancel(PointerCancelEvent event) {
-    _downTime = null;
     _downPosition = null;
   }
 
   @override
   Widget build(BuildContext context) {
-    const size = 22.0;
     return Listener(
       behavior: HitTestBehavior.opaque,
       onPointerDown: _onPointerDown,
@@ -794,8 +770,9 @@ class _ComposerTapSendOverlayState extends State<_ComposerTapSendOverlay> {
         child: Semantics(
           button: true,
           label: widget.semanticsLabel,
+          onTap: widget.enabled ? widget.onTap : null,
           excludeSemantics: true,
-          child: SizedBox(width: size, height: size),
+          child: const SizedBox(width: 48, height: 48),
         ),
       ),
     );
