@@ -107,11 +107,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       if (!mounted) return;
       final targetContext = _scrollTargetKey?.currentContext;
       if (targetContext != null) {
+        if (!targetContext.mounted) {
+          continue;
+        }
         await Scrollable.ensureVisible(
           targetContext,
           alignment: 0.5,
           duration: const Duration(milliseconds: 300),
         );
+        if (!mounted) return;
         revealed = true;
         break;
       }

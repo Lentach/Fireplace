@@ -2,8 +2,8 @@
 
 **Date:** 2026-05-25  
 
-**Topic:** Composer dual-button layout review fixes (accessibility + tap handling)
+**Topic:** Composer in-field mic + semantic send parity
 
 → [2026-05-25-session.md](./2026-05-25-session.md)
 
-**Status:** Review findings implemented on **`feat/composer-dual-button-layout`**; targeted composer test passes (28), `flutter analyze` reports 6 pre-existing issues outside edited files. Commit + push completed in this session.
+**Status:** In-field mic + external send-only composer layout is implemented on **`feat/composer-dual-button-layout`**, and semantic send activation now follows the same focus-retention path as pointer send. Targeted composer test passes (29), `flutter analyze` still reports 6 pre-existing issues outside edited files. No commit created in this update.

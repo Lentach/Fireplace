@@ -299,127 +299,119 @@ class ChatInputBarState extends State<ChatInputBar>
     }
   }
 
-  /// Trailing dual actions row (mic left, send right).
-  /// [ValueListenableBuilder] limits rebuilds to this row.
-  Widget _buildTrailingActionsRow(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-
+  /// Mic affordance rendered inside the text field trailing area.
+  /// It stays mounted for gesture stability and is dimmed/disabled on draft.
+  Widget _buildInFieldMicAffordance() {
     return ValueListenableBuilder<TextEditingValue>(
       valueListenable: _controller,
       builder: (context, value, _) {
         final hasDraft = value.text.trim().isNotEmpty;
         final disableMic = hasDraft || _isSendingVoice;
-        final showSendingSpinner = _isSendingVoice;
-        final showLockedVoiceSend = _isRecording && _isRecordingLocked;
 
-        // ExcludeFocus on the whole trailing actions row so long-press
-        // never steals focus from the text field. RecordingController does not add a
-        // second ExcludeFocus — one ancestor is enough.
+        // Keep the mic out of focus order so pointer interactions do not steal
+        // focus from the composer text field.
         return ExcludeFocus(
           child: SizedBox(
-            width: 96,
+            key: const ValueKey('composer_mic_slot'),
+            width: 48,
             height: 48,
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                // Mic stays mounted for gesture stability, but is disabled while draft exists.
-                SizedBox(
-                  key: const ValueKey('composer_mic_slot'),
-                  width: 48,
-                  height: 48,
-                  child: ExcludeSemantics(
-                    excluding: disableMic,
-                    child: IgnorePointer(
-                      ignoring: disableMic,
-                      child: AnimatedOpacity(
-                        key: const ValueKey('composer_mic_layer'),
-                        opacity: disableMic ? 0.45 : 1,
-                        duration: _kTrailingSendFadeDuration,
-                        curve: Curves.easeInOut,
-                        child: RecordingController(
-                          key: _recordingKey,
-                          onVoiceSent: _handleVoiceSent,
-                          onRecordingStateChanged: _onRecordingStateChanged,
-                          onRecordingLockChanged: _onRecordingLockChanged,
-                          onRecordingBarChanged: _onRecordingBarVisualChanged,
-                          // Right slot owns the send spinner priority.
-                          isSendingVoice: false,
-                        ),
-                      ),
-                    ),
+            child: ExcludeSemantics(
+              excluding: disableMic,
+              child: IgnorePointer(
+                ignoring: disableMic,
+                child: AnimatedOpacity(
+                  key: const ValueKey('composer_mic_layer'),
+                  opacity: disableMic ? 0.45 : 1,
+                  duration: _kTrailingSendFadeDuration,
+                  curve: Curves.easeInOut,
+                  child: RecordingController(
+                    key: _recordingKey,
+                    onVoiceSent: _handleVoiceSent,
+                    onRecordingStateChanged: _onRecordingStateChanged,
+                    onRecordingLockChanged: _onRecordingLockChanged,
+                    onRecordingBarChanged: _onRecordingBarVisualChanged,
+                    // External send slot owns spinner / lock-send priority.
+                    isSendingVoice: false,
                   ),
                 ),
-                SizedBox(
-                  key: const ValueKey('composer_send_slot'),
-                  width: 48,
-                  height: 48,
-                  child: AnimatedSwitcher(
-                    duration: _kTrailingSendFadeDuration,
-                    switchInCurve: Curves.easeInOut,
-                    switchOutCurve: Curves.easeInOut,
-                    child: showSendingSpinner
-                        ? const Center(
-                            key: ValueKey('composer_send_spinner'),
-                            child: SizedBox(
-                              width: 22,
-                              height: 22,
-                              child: CircularProgressIndicator(strokeWidth: 2),
-                            ),
-                          )
-                        : showLockedVoiceSend
-                        ? Tooltip(
-                            key: const ValueKey('composer_voice_send_action'),
-                            message: l10n.voiceRecordingSendVoiceTooltip,
-                            child: Semantics(
-                              button: true,
-                              label: l10n.voiceRecordingSendVoiceSemantics,
-                              onTap: () => _recordingKey.currentState
-                                  ?.sendLockedRecording(),
-                              excludeSemantics: true,
-                              child: IconButton(
-                                onPressed: () => _recordingKey.currentState
-                                    ?.sendLockedRecording(),
-                                padding: const EdgeInsets.all(12),
-                                constraints: const BoxConstraints(
-                                  minWidth: 48,
-                                  minHeight: 48,
-                                ),
-                                icon: Icon(
-                                  Icons.send_rounded,
-                                  size: 22,
-                                  color: RpgTheme.primaryColor(context),
-                                ),
-                              ),
-                            ),
-                          )
-                        : Stack(
-                            key: const ValueKey('composer_text_send_action'),
-                            alignment: Alignment.center,
-                            children: [
-                              IgnorePointer(
-                                child: Icon(
-                                  Icons.send_rounded,
-                                  size: 22,
-                                  color: RpgTheme.primaryColor(context),
-                                ),
-                              ),
-                              _ComposerTapSendOverlay(
-                                enabled: true,
-                                onTap: _send,
-                                onPointerDownRetainFocus:
-                                    _retainComposerFocusOnTrailingSendPointerDown,
-                                tooltip: l10n.chatComposerSendTooltip,
-                                semanticsLabel: l10n.chatComposerSendSemantics,
-                              ),
-                            ],
-                          ),
-                  ),
-                ),
-              ],
+              ),
             ),
           ),
         );
       },
+    );
+  }
+
+  /// External (right side) send slot; remains visible in all draft states.
+  Widget _buildExternalSendAction(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final showSendingSpinner = _isSendingVoice;
+    final showLockedVoiceSend = _isRecording && _isRecordingLocked;
+
+    return SizedBox(
+      key: const ValueKey('composer_send_slot'),
+      width: 48,
+      height: 48,
+      child: AnimatedSwitcher(
+        duration: _kTrailingSendFadeDuration,
+        switchInCurve: Curves.easeInOut,
+        switchOutCurve: Curves.easeInOut,
+        child: showSendingSpinner
+            ? const Center(
+                key: ValueKey('composer_send_spinner'),
+                child: SizedBox(
+                  width: 22,
+                  height: 22,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                ),
+              )
+            : showLockedVoiceSend
+            ? Tooltip(
+                key: const ValueKey('composer_voice_send_action'),
+                message: l10n.voiceRecordingSendVoiceTooltip,
+                child: Semantics(
+                  button: true,
+                  label: l10n.voiceRecordingSendVoiceSemantics,
+                  onTap: () => _recordingKey.currentState?.sendLockedRecording(),
+                  excludeSemantics: true,
+                  child: IconButton(
+                    onPressed: () => _recordingKey.currentState
+                        ?.sendLockedRecording(),
+                    padding: const EdgeInsets.all(12),
+                    constraints: const BoxConstraints(
+                      minWidth: 48,
+                      minHeight: 48,
+                    ),
+                    icon: Icon(
+                      Icons.send_rounded,
+                      size: 22,
+                      color: RpgTheme.primaryColor(context),
+                    ),
+                  ),
+                ),
+              )
+            : Stack(
+                key: const ValueKey('composer_text_send_action'),
+                alignment: Alignment.center,
+                children: [
+                  IgnorePointer(
+                    child: Icon(
+                      Icons.send_rounded,
+                      size: 22,
+                      color: RpgTheme.primaryColor(context),
+                    ),
+                  ),
+                  _ComposerTapSendOverlay(
+                    enabled: true,
+                    onTap: _send,
+                    onPointerDownRetainFocus:
+                        _retainComposerFocusOnTrailingSendPointerDown,
+                    tooltip: l10n.chatComposerSendTooltip,
+                    semanticsLabel: l10n.chatComposerSendSemantics,
+                  ),
+                ],
+              ),
+      ),
     );
   }
 
@@ -652,6 +644,16 @@ class ChatInputBarState extends State<ChatInputBar>
                                   horizontal: 16,
                                   vertical: 10,
                                 ),
+                                suffixIconConstraints: const BoxConstraints(
+                                  minWidth: 48,
+                                  minHeight: 48,
+                                ),
+                                suffixIcon: Padding(
+                                  padding: const EdgeInsetsDirectional.only(
+                                    end: 4,
+                                  ),
+                                  child: _buildInFieldMicAffordance(),
+                                ),
                                 border: OutlineInputBorder(
                                   borderRadius: BorderRadius.circular(24),
                                   borderSide: BorderSide(color: fc.tabBorder),
@@ -686,10 +688,13 @@ class ChatInputBarState extends State<ChatInputBar>
                         ),
                 ),
 
-                const SizedBox(width: 2),
+                const SizedBox(
+                  key: ValueKey('composer_send_gap'),
+                  width: 8,
+                ),
 
-                // Trailing dual actions row: mic left, send right.
-                _buildTrailingActionsRow(context),
+                // External send-only slot. Mic remains in-field.
+                _buildExternalSendAction(context),
               ],
             ),
           ),
@@ -758,6 +763,14 @@ class _ComposerTapSendOverlayState extends State<_ComposerTapSendOverlay> {
     _downPosition = null;
   }
 
+  void _onSemanticTap() {
+    if (!widget.enabled) return;
+    // Keep semantic activation aligned with pointer flow on iOS WebKit:
+    // retain focus before sending so keyboard behavior stays consistent.
+    widget.onPointerDownRetainFocus?.call();
+    widget.onTap();
+  }
+
   @override
   Widget build(BuildContext context) {
     return Listener(
@@ -770,7 +783,7 @@ class _ComposerTapSendOverlayState extends State<_ComposerTapSendOverlay> {
         child: Semantics(
           button: true,
           label: widget.semanticsLabel,
-          onTap: widget.enabled ? widget.onTap : null,
+          onTap: widget.enabled ? _onSemanticTap : null,
           excludeSemantics: true,
           child: const SizedBox(width: 48, height: 48),
         ),

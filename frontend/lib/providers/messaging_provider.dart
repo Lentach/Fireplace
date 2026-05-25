@@ -68,9 +68,6 @@ class MessagingProvider extends ChangeNotifier {
   /// Dedupes session-rebuild emits within one history decrypt pass.
   Set<int>? _historySessionRebuildRequested;
 
-  /// History arrived before E2E finished initializing (common on iOS PWA cold open).
-  bool _pendingHistoryDecryptAfterE2EReady = false;
-
   /// Peers whose live decrypt failed; retried after a short debounce (no per-message SESSION_RESET).
   final Set<int> _liveDecryptFailedPeers = {};
   Timer? _liveDecryptRetryTimer;
@@ -495,14 +492,11 @@ class MessagingProvider extends ChangeNotifier {
     final convId = _effectiveActiveConversationId;
     if (convId == null) return;
     if (!(_encryptionProvider?.isE2EReady ?? false)) {
-      _pendingHistoryDecryptAfterE2EReady = true;
       return;
     }
     if (!_conversationHasUndecryptedInbound(convId)) {
-      _pendingHistoryDecryptAfterE2EReady = false;
       return;
     }
-    _pendingHistoryDecryptAfterE2EReady = false;
     _decryptHistoryGeneration++;
     final generation = _decryptHistoryGeneration;
     _decryptingHistory = true;
@@ -2282,10 +2276,8 @@ class MessagingProvider extends ChangeNotifier {
     await _waitForE2EReady(maxAttempts: 100);
     if (!(_encryptionProvider?.isE2EReady ?? false)) {
       _e2eFlowLog('HISTORY_DECRYPT_SKIP_E2E_NOT_READY', {});
-      _pendingHistoryDecryptAfterE2EReady = true;
       return;
     }
-    _pendingHistoryDecryptAfterE2EReady = false;
     final toDecrypt =
         _messages.where((m) => m.needsDecryption(_currentUserId)).length;
     if (toDecrypt > 0) {
@@ -2891,7 +2883,6 @@ class MessagingProvider extends ChangeNotifier {
   void onConnect(bool isReconnect) {
     _decryptHistoryGeneration++; // cancel any in-flight history decrypt
     _pendingHistoryFetchSeq.clear();
-    _pendingHistoryDecryptAfterE2EReady = false;
 
     if (!isReconnect) {
       // Fresh connect or switch user: clear ALL message state
@@ -2957,7 +2948,6 @@ class MessagingProvider extends ChangeNotifier {
     _liveDecryptRetryTimer?.cancel();
     _liveDecryptRetryTimer = null;
     _liveDecryptFailedPeers.clear();
-    _pendingHistoryDecryptAfterE2EReady = false;
     _cancelDelayedRetryIfAny();
     _currentUserId = null;
     _tokenForReconnect = null;

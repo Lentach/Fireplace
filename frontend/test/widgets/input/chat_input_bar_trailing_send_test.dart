@@ -73,6 +73,7 @@ Future<void> _pumpChatInputBar(
 
 Finder _micSlotFinder() => find.byKey(const ValueKey('composer_mic_slot'));
 Finder _sendSlotFinder() => find.byKey(const ValueKey('composer_send_slot'));
+Finder _sendGapFinder() => find.byKey(const ValueKey('composer_send_gap'));
 Finder _micOpacityFinder() => find.byKey(const ValueKey('composer_mic_layer'));
 Finder _textSendActionFinder() =>
     find.byKey(const ValueKey('composer_text_send_action'));
@@ -142,14 +143,34 @@ void main() {
       expect(_micIgnorePointer(tester).ignoring, isFalse);
     });
 
-    testWidgets('trailing actions keep mic left and send right', (
+    testWidgets('mic affordance is inside text field; send stays external', (
       tester,
     ) async {
       await _pumpChatInputBar(tester, convs: convs, messaging: messaging);
 
-      final micCenter = tester.getCenter(_micSlotFinder());
-      final sendCenter = tester.getCenter(_sendSlotFinder());
-      expect(micCenter.dx, lessThan(sendCenter.dx));
+      expect(
+        find.descendant(
+          of: find.byType(TextField),
+          matching: _micSlotFinder(),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: find.byType(TextField),
+          matching: _sendSlotFinder(),
+        ),
+        findsNothing,
+      );
+    });
+
+    testWidgets('text field to send slot gap is medium (8dp)', (tester) async {
+      await _pumpChatInputBar(tester, convs: convs, messaging: messaging);
+
+      final fieldRect = tester.getRect(find.byType(TextField));
+      final sendRect = tester.getRect(_sendSlotFinder());
+      expect(sendRect.left - fieldRect.right, closeTo(8, 0.01));
+      expect(tester.widget<SizedBox>(_sendGapFinder()).width, 8);
     });
 
     testWidgets('send icon is centered in right 48x48 slot', (tester) async {
@@ -215,14 +236,19 @@ void main() {
       expect(find.text('hello'), findsNothing);
     });
 
-    testWidgets('text send exposes semantic tap action and can send', (
-      tester,
-    ) async {
+    testWidgets(
+      'text send semantic tap keeps focus and sends message',
+      (tester) async {
       final semantics = tester.ensureSemantics();
       try {
         await _pumpChatInputBar(tester, convs: convs, messaging: messaging);
+        final textField = find.byType(TextField);
+        await tester.tap(textField);
+        await tester.pump();
         await tester.enterText(find.byType(TextField), 'semantic send');
         await tester.pump();
+        final focusNode = tester.widget<TextField>(textField).focusNode!;
+        expect(focusNode.hasFocus, isTrue);
 
         final semanticsFinder = find.bySemanticsLabel('Send message');
         expect(semanticsFinder, findsOneWidget);
@@ -236,13 +262,16 @@ void main() {
 
         await tester.tap(semanticsFinder);
         await tester.pump();
+        await tester.pump();
 
         expect(messaging.messages.length, 1);
         expect(messaging.messages.first.content, 'semantic send');
+        expect(focusNode.hasFocus, isTrue);
       } finally {
         semantics.dispose();
       }
-    });
+      },
+    );
 
     testWidgets('IME TextInputAction.send calls sendMessage', (tester) async {
       await _pumpChatInputBar(tester, convs: convs, messaging: messaging);
