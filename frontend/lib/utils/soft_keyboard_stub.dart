@@ -5,13 +5,14 @@ import 'package:flutter/widgets.dart';
 Future<void> showSoftKeyboardIfHidden({
   required BuildContext context,
   required bool hasFocus,
+  bool force = false,
 }) async {
   if (kIsWeb || !hasFocus) return;
   if (defaultTargetPlatform != TargetPlatform.android &&
       defaultTargetPlatform != TargetPlatform.iOS) {
     return;
   }
-  if (MediaQuery.viewInsetsOf(context).bottom > 0) return;
+  if (!force && MediaQuery.viewInsetsOf(context).bottom > 0) return;
   try {
     await SystemChannels.textInput.invokeMethod<void>('TextInput.show');
   } catch (_) {

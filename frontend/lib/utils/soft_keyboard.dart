@@ -8,5 +8,10 @@ import 'soft_keyboard_stub.dart'
 Future<void> showSoftKeyboardIfHidden({
   required BuildContext context,
   required bool hasFocus,
+  bool force = false,
 }) =>
-    impl.showSoftKeyboardIfHidden(context: context, hasFocus: hasFocus);
+    impl.showSoftKeyboardIfHidden(
+      context: context,
+      hasFocus: hasFocus,
+      force: force,
+    );

@@ -37,6 +37,10 @@ class ChatInputBarState extends State<ChatInputBar>
 
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
+
+  /// Stable identity for [TapRegion]; must NOT be created in [build].
+  final Object _composerTapRegionGroup = Object();
+
   MessageModel? _lastReplyingTo;
   bool _showActionPanel = false;
   late final AnimationController _actionPanelController;
@@ -86,7 +90,7 @@ class ChatInputBarState extends State<ChatInputBar>
     if (!_focusNode.hasFocus) {
       _focusNode.requestFocus();
     }
-    showSoftKeyboardIfHidden(context: context, hasFocus: true);
+    showSoftKeyboardIfHidden(context: context, hasFocus: true, force: true);
   }
 
   void _onComposerFocusForWebViewport() {
@@ -131,7 +135,7 @@ class ChatInputBarState extends State<ChatInputBar>
         if (!_focusNode.hasFocus) {
           _focusNode.requestFocus();
         }
-        showSoftKeyboardIfHidden(context: context, hasFocus: true);
+        showSoftKeyboardIfHidden(context: context, hasFocus: true, force: true);
       });
     } else if (replyingTo == null) {
       _lastReplyingTo = null;
@@ -168,6 +172,7 @@ class ChatInputBarState extends State<ChatInputBar>
     messaging.sendMessage(text, expiresIn: expiresIn);
 
     _controller.clear();
+    final hadFocusBeforeSend = _focusNode.hasFocus;
     // IME "Send" on multiline can unfocus on the next frame even while the node still
     // reports hasFocus synchronously; schedule a refocus only when focus is actually lost.
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -175,8 +180,17 @@ class ChatInputBarState extends State<ChatInputBar>
       if (!_focusNode.hasFocus) {
         _focusNode.requestFocus();
       }
-      showSoftKeyboardIfHidden(context: context, hasFocus: true);
+      // Trailing send with focus held: skip TextInput.show to avoid iOS WebKit hide/show.
+      if (!hadFocusBeforeSend || !_focusNode.hasFocus) {
+        showSoftKeyboardIfHidden(context: context, hasFocus: true);
+      }
     });
+  }
+
+  void _retainComposerFocusOnTrailingSendPointerDown() {
+    if (_focusNode.canRequestFocus && !_focusNode.hasFocus) {
+      _focusNode.requestFocus();
+    }
   }
 
   void _toggleActionPanel() {
@@ -195,7 +209,7 @@ class ChatInputBarState extends State<ChatInputBar>
         if (!_focusNode.hasFocus) {
           _focusNode.requestFocus();
         }
-        showSoftKeyboardIfHidden(context: context, hasFocus: true);
+        showSoftKeyboardIfHidden(context: context, hasFocus: true, force: true);
       });
     }
   }
@@ -232,6 +246,10 @@ class ChatInputBarState extends State<ChatInputBar>
   void setRecordingLockedForTest(bool isLocked) {
     setState(() => _isRecordingLocked = isLocked);
   }
+
+  /// Widget tests: invoke [_send] without trailing overlay pointerDown retention.
+  @visibleForTesting
+  void sendMessageForTest() => _send();
 
   /// Called by [RecordingController] when a voice message is ready.
   Future<void> _handleVoiceSent({
@@ -361,6 +379,8 @@ class ChatInputBarState extends State<ChatInputBar>
                               child: _ComposerTapSendOverlay(
                                 enabled: showTextSend,
                                 onTap: _send,
+                                onPointerDownRetainFocus:
+                                    _retainComposerFocusOnTrailingSendPointerDown,
                                 tooltip: l10n.chatComposerSendTooltip,
                                 semanticsLabel: l10n.chatComposerSendSemantics,
                               ),
@@ -575,28 +595,30 @@ class ChatInputBarState extends State<ChatInputBar>
               color: colorScheme.surface,
               border: Border(top: BorderSide(color: fc.convItemBorder)),
             ),
-            child: Row(
-              children: [
-                // Action panel toggle (hidden during recording)
-                if (!_isRecording)
-                  Focus(
-                    canRequestFocus: false,
-                    child: IconButton(
-                      icon: Icon(
-                        _showActionPanel
-                            ? Icons.keyboard_arrow_up
-                            : Icons.keyboard_arrow_down,
+            child: TapRegion(
+              groupId: _composerTapRegionGroup,
+              child: Row(
+                children: [
+                  // Action panel toggle (hidden during recording)
+                  if (!_isRecording)
+                    Focus(
+                      canRequestFocus: false,
+                      child: IconButton(
+                        icon: Icon(
+                          _showActionPanel
+                              ? Icons.keyboard_arrow_up
+                              : Icons.keyboard_arrow_down,
+                        ),
+                        iconSize: 24,
+                        color: isDark
+                            ? RpgTheme.mutedDark
+                            : RpgTheme.textSecondaryLight,
+                        onPressed: _toggleActionPanel,
                       ),
-                      iconSize: 24,
-                      color: isDark
-                          ? RpgTheme.mutedDark
-                          : RpgTheme.textSecondaryLight,
-                      onPressed: _toggleActionPanel,
                     ),
-                  ),
 
-                // Text field or recording bar
-                Expanded(
+                  // Text field or recording bar
+                  Expanded(
                   child: _isRecording
                       ? ValueListenableBuilder<int>(
                           valueListenable: _recordingBarVisualTick,
@@ -682,10 +704,11 @@ class ChatInputBarState extends State<ChatInputBar>
 
                 const SizedBox(width: 2),
 
-                // Trailing 48×48 stack: mic always mounted; text send fades on top (Phase 0).
-                // CLAUDE.md: never swap mic/send as Row siblings — unmount dismisses keyboard.
-                _buildTrailingSlot(context),
-              ],
+                  // Trailing 48×48 stack: mic always mounted; text send fades on top (Phase 0).
+                  // CLAUDE.md: never swap mic/send as Row siblings — unmount dismisses keyboard.
+                  _buildTrailingSlot(context),
+                ],
+              ),
             ),
           ),
 
@@ -712,12 +735,14 @@ class _ComposerTapSendOverlay extends StatefulWidget {
   const _ComposerTapSendOverlay({
     required this.enabled,
     required this.onTap,
+    this.onPointerDownRetainFocus,
     required this.tooltip,
     required this.semanticsLabel,
   });
 
   final bool enabled;
   final VoidCallback onTap;
+  final VoidCallback? onPointerDownRetainFocus;
   final String tooltip;
   final String semanticsLabel;
 
@@ -736,6 +761,8 @@ class _ComposerTapSendOverlayState extends State<_ComposerTapSendOverlay> {
     if (!widget.enabled) return;
     _downTime = DateTime.now();
     _downPosition = event.position;
+    // Retain focus in the same user-gesture turn (before WebKit blur on pointerUp).
+    widget.onPointerDownRetainFocus?.call();
   }
 
   void _onPointerUp(PointerUpEvent event) {

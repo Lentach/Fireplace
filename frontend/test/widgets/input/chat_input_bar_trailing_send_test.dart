@@ -7,6 +7,7 @@ import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/input/chat_input_bar.dart';
 import 'package:fireplace/widgets/input/recording_controller.dart';
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -111,7 +112,6 @@ void main() {
   group('ChatInputBar trailing send', () {
     late ConversationsProvider convs;
     late MessagingProvider messaging;
-
     setUp(() {
       convs = _providerWithConversation(conversationId: 10);
       messaging = _messagingLinkedTo(convs);
@@ -243,6 +243,74 @@ void main() {
       expect(messaging.messages.first.content, 'shortcut send');
     });
 
+    testWidgets('TapRegion wraps TextField and trailing stack', (tester) async {
+      await _pumpChatInputBar(tester, convs: convs, messaging: messaging);
+
+      final tapRegion = find.descendant(
+        of: find.byType(ChatInputBar),
+        matching: find.byType(TapRegion),
+      );
+      expect(tapRegion, findsOneWidget);
+
+      expect(
+        find.descendant(
+          of: tapRegion,
+          matching: find.byType(TextField),
+        ),
+        findsOneWidget,
+      );
+      expect(
+        find.descendant(
+          of: tapRegion,
+          matching: find.byType(RecordingController),
+        ),
+        findsOneWidget,
+      );
+    });
+
+    testWidgets('composer TapRegion groupId is stable across rebuilds',
+        (tester) async {
+      await _pumpChatInputBar(tester, convs: convs, messaging: messaging);
+
+      final tapRegion = find.descendant(
+        of: find.byType(ChatInputBar),
+        matching: find.byType(TapRegion),
+      );
+
+      final groupBefore = tester.widget<TapRegion>(tapRegion).groupId;
+
+      await tester.enterText(find.byType(TextField), 'rebuild');
+      await tester.pump();
+
+      final groupAfter = tester.widget<TapRegion>(tapRegion).groupId;
+      expect(identical(groupBefore, groupAfter), isTrue);
+    });
+
+    testWidgets('pointerDown on send overlay retains focus before pointerUp',
+        (tester) async {
+      await _pumpChatInputBar(tester, convs: convs, messaging: messaging);
+
+      final textField = find.byType(TextField);
+      await tester.tap(textField);
+      await tester.pump();
+      await tester.enterText(textField, 'hi');
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 175));
+
+      final focusNode = tester.widget<TextField>(textField).focusNode!;
+      focusNode.unfocus();
+      await tester.pump();
+      expect(focusNode.hasFocus, isFalse);
+
+      final sendCenter = tester.getCenter(find.byTooltip('Send'));
+      final gesture = await tester.startGesture(sendCenter);
+      await tester.pump();
+      expect(focusNode.hasFocus, isTrue);
+
+      await gesture.up();
+      await tester.pump();
+    });
+
     testWidgets('after send focus is retained or restored post-frame',
         (tester) async {
       await _pumpChatInputBar(tester, convs: convs, messaging: messaging);
@@ -322,6 +390,79 @@ void main() {
         ),
         findsOneWidget,
       );
+    });
+
+    group('TextInput.show gating', () {
+      var textInputShowInvocationCount = 0;
+
+      Future<void> withTextInputShowMock(
+        WidgetTester tester,
+        Future<void> Function() body,
+      ) async {
+        textInputShowInvocationCount = 0;
+        debugDefaultTargetPlatformOverride = TargetPlatform.iOS;
+        TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
+            .setMockMethodCallHandler(SystemChannels.textInput, (call) async {
+          if (call.method == 'TextInput.show') {
+            textInputShowInvocationCount++;
+          }
+          return null;
+        });
+        try {
+          await body();
+        } finally {
+          TestWidgetsFlutterBinding.instance.defaultBinaryMessenger
+              .setMockMethodCallHandler(SystemChannels.textInput, null);
+          debugDefaultTargetPlatformOverride = null;
+        }
+      }
+
+      testWidgets(
+          'trailing send with focus held does not invoke TextInput.show',
+          (tester) async {
+        await withTextInputShowMock(tester, () async {
+          await _pumpChatInputBar(tester, convs: convs, messaging: messaging);
+
+          final textField = find.byType(TextField);
+          await tester.tap(textField);
+          await tester.pump();
+          await tester.enterText(textField, 'hi');
+          await tester.pump();
+
+          textInputShowInvocationCount = 0;
+          await tester.tap(find.byTooltip('Send'));
+          await tester.pump();
+          await tester.pump();
+
+          expect(textInputShowInvocationCount, 0);
+        });
+      });
+
+      testWidgets(
+          '_send after focus lost may invoke TextInput.show',
+          (tester) async {
+        await withTextInputShowMock(tester, () async {
+          await _pumpChatInputBar(tester, convs: convs, messaging: messaging);
+
+          final textField = find.byType(TextField);
+          await tester.enterText(textField, 'hi');
+          await tester.pump();
+
+          final barState =
+              tester.state<ChatInputBarState>(find.byType(ChatInputBar));
+          final focusNode = tester.widget<TextField>(textField).focusNode!;
+          focusNode.unfocus();
+          await tester.pump();
+          expect(focusNode.hasFocus, isFalse);
+
+          textInputShowInvocationCount = 0;
+          barState.sendMessageForTest();
+          await tester.pump();
+          await tester.pump();
+
+          expect(textInputShowInvocationCount, greaterThan(0));
+        });
+      });
     });
   });
 
