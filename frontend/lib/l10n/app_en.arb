@@ -86,8 +86,6 @@
   "recordingVoice": "Recording voice…",
   "typing": "typing…",
   "chatMessageHint": "Type a message...",
-  "chatComposerSendTooltip": "Send",
-  "chatComposerSendSemantics": "Send message",
   "chatDateToday": "Today",
   "chatDateYesterday": "Yesterday",
   "selectAConversation": "Select a conversation",

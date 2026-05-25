@@ -1,7 +1,7 @@
 # Latest session summary
 
-**Date:** 2026-05-24  
+**Date:** 2026-05-25  
 
-**Topic:** Trailing send review fixes + voice lock-up chunk 1.1
+**Topic:** Rollback of trailing send next to mic
 
-→ [2026-05-24-session-trailing-send-review-voice-lock-1-1.md](./2026-05-24-session-trailing-send-review-voice-lock-1-1.md)
+→ [2026-05-25-session.md](./2026-05-25-session.md)

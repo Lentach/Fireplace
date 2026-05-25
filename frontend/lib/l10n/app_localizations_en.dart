@@ -245,12 +245,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatMessageHint => 'Type a message...';
 
   @override
-  String get chatComposerSendTooltip => 'Send';
-
-  @override
-  String get chatComposerSendSemantics => 'Send message';
-
-  @override
   String get chatDateToday => 'Today';
 
   @override

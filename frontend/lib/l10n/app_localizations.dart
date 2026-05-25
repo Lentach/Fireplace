@@ -536,18 +536,6 @@ abstract class AppLocalizations {
   /// **'Napisz wiadomość…'**
   String get chatMessageHint;
 
-  /// No description provided for @chatComposerSendTooltip.
-  ///
-  /// In pl, this message translates to:
-  /// **'Wyślij'**
-  String get chatComposerSendTooltip;
-
-  /// No description provided for @chatComposerSendSemantics.
-  ///
-  /// In pl, this message translates to:
-  /// **'Wyślij wiadomość'**
-  String get chatComposerSendSemantics;
-
   /// No description provided for @chatDateToday.
   ///
   /// In pl, this message translates to:
