@@ -39,11 +39,11 @@ ConversationsProvider _providerWithConversation({required int conversationId}) {
 }
 
 MessagingProvider _messagingLinkedTo(ConversationsProvider convs) {
-  final messaging = MessagingProvider();
+  final messaging = MessagingProvider()
+    ..setIncomingMessageSoundEnabledForTest(false);
   messaging.setConversationsProvider(convs);
   messaging.setCurrentUserId(1);
   messaging.onConnect(false);
-  messaging.setIncomingMessageSoundEnabledForTest(false);
   return messaging;
 }
 

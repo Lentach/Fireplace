@@ -18,8 +18,8 @@ void main() {
     late MessagingProvider provider;
 
     setUp(() {
-      provider = MessagingProvider();
-      provider.setIncomingMessageSoundEnabledForTest(false);
+      provider = MessagingProvider()
+        ..setIncomingMessageSoundEnabledForTest(false);
       // onConnect signature is: void onConnect(bool isReconnect)
       // userId and token are set separately via dedicated setters.
       provider.onConnect(false);

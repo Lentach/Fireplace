@@ -174,8 +174,8 @@ void main() {
       provider.setConversationsProvider(conversations);
       provider.setEncryptionProvider(encryption);
       provider.setCurrentUserId(1);
-      provider.setToken('tok');
       provider.setIncomingMessageSoundEnabledForTest(false);
+      provider.setToken('tok');
       provider.onConnect(false);
       provider.setEmitCallback((event, data) {
         emitted.add({'event': event, 'data': data});

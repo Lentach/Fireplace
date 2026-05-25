@@ -2,7 +2,11 @@ node_modules/
 dist/
 .env
 *.log
+flutter-test-full.log
 mcp.json
+
+# JetBrains IDE (module metadata may stay local only)
+.idea/
 
 # User uploads (profile pictures)
 backend/uploads/

@@ -70,6 +70,8 @@ class ConversationsProvider extends ChangeNotifier {
   }
 
   int? get activeConversationId => _activeConversationId;
+  /// Whether the app window/tab is treated as foreground for push suppression.
+  bool get clientVisible => _clientVisible;
   int? get currentUserId => _currentUserId;
   String? get errorMessage => _errorMessage;
   Map<int, MessageModel> get lastMessages => _lastMessages;

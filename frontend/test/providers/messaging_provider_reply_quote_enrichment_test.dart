@@ -6,8 +6,8 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('MessagingProvider reply quote enrichment', () {
     test('incoming message enriches encrypted reply quote from decrypt cache', () {
-      final provider = MessagingProvider();
-      provider.setIncomingMessageSoundEnabledForTest(false);
+      final provider = MessagingProvider()
+        ..setIncomingMessageSoundEnabledForTest(false);
       final encryption = EncryptionProvider();
       provider.setEncryptionProvider(encryption);
       provider.setCurrentUserId(1);

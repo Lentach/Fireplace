@@ -1,9 +1,10 @@
 import 'dart:async';
 import 'dart:convert';
 import 'package:flutter/foundation.dart';
+import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
-import 'package:image_picker/image_picker.dart';
 import 'package:just_audio/just_audio.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:webcrypto/webcrypto.dart';
 import '../utils/file_utils_stub.dart'
     if (dart.library.io) '../utils/file_utils_io.dart' as file_utils;
@@ -24,8 +25,8 @@ import 'encryption_provider.dart';
 /// encryption orchestration, typing/recording indicators, and reactions.
 /// Wired by [ConnectionProvider] and ConversationsScreen (setEncryptionProvider, setConversationsProvider).
 class MessagingProvider extends ChangeNotifier {
-  static const String _incomingMessageSoundAsset =
-      'assets/sounds/incoming_message_long_pop.wav';
+  static const String _incomingNotificationAsset =
+      'assets/sounds/incoming_notification.mp3';
 
   static void _e2eFlowLog(String step, [Map<String, dynamic>? data]) {
     if (kDebugMode) debugPrint('[E2E-FLOW] $step | ${data ?? {}}');
@@ -864,6 +865,9 @@ class MessagingProvider extends ChangeNotifier {
       // (PWA push / morning resume) — decrypt only in ordered history when chat opens.
       if (viewingConversationId < 0 ||
           msg.conversationId != viewingConversationId) {
+        if (_shouldPlayIncomingMessageSound(msg)) {
+          _playIncomingMessageSound().ignore();
+        }
         return;
       }
       _decryptMessageAsyncQueued(msg).then((decrypted) async {
@@ -893,8 +897,7 @@ class MessagingProvider extends ChangeNotifier {
         if (idx != -1 && _conversationCache.containsKey(cid)) {
           _updateCache(cid);
         }
-        if (merged.senderId != _currentUserId &&
-            merged.messageType != MessageType.ping) {
+        if (_shouldPlayIncomingMessageSound(merged)) {
           _playIncomingMessageSound().ignore();
         }
       });
@@ -902,7 +905,7 @@ class MessagingProvider extends ChangeNotifier {
     }
 
     _addMessageToState(msg);
-    if (msg.senderId != _currentUserId && msg.messageType != MessageType.ping) {
+    if (_shouldPlayIncomingMessageSound(msg)) {
       _playIncomingMessageSound().ignore();
     }
     // Keep cache current for active conversation.
@@ -2700,13 +2703,27 @@ class MessagingProvider extends ChangeNotifier {
 
   // ---------- Internal Helpers ----------
 
+  /// Messenger-style: play in-app sound only when the app is foreground and the
+  /// user is not already viewing this thread (push handles background sound).
+  bool _shouldPlayIncomingMessageSound(MessageModel msg) {
+    if (msg.senderId == _currentUserId) return false;
+    if (msg.messageType == MessageType.ping) return false;
+    final cp = _conversationsProvider;
+    if (cp == null || !cp.clientVisible) return false;
+    return _effectiveActiveConversationId != msg.conversationId;
+  }
+
   Future<void> _playIncomingMessageSound() async {
-    if (kIsWeb || !_incomingMessageSoundEnabled) return;
+    if (!_incomingMessageSoundEnabled) return;
     try {
+      if (!kIsWeb) {
+        await SystemSound.play(SystemSoundType.alert);
+        return;
+      }
       _incomingMessageSoundPlayer ??= AudioPlayer();
       final player = _incomingMessageSoundPlayer!;
       if (player.audioSource == null) {
-        await player.setAsset(_incomingMessageSoundAsset);
+        await player.setAsset(_incomingNotificationAsset);
       }
       await player.seek(Duration.zero);
       await player.play();

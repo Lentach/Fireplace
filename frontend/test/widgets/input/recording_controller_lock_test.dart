@@ -39,8 +39,8 @@ Widget _wrapWithMessagingProviders(Widget child) {
   final messaging = MessagingProvider()
     ..setConversationsProvider(convs)
     ..setCurrentUserId(1)
-    ..onConnect(false)
-    ..setIncomingMessageSoundEnabledForTest(false);
+    ..setIncomingMessageSoundEnabledForTest(false)
+    ..onConnect(false);
   return MaterialApp(
     theme: RpgTheme.themeDataLight,
     localizationsDelegates: AppLocalizations.localizationsDelegates,
