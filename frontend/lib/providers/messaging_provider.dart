@@ -2442,14 +2442,13 @@ class MessagingProvider extends ChangeNotifier {
     if (changed) notifyListeners();
   }
 
-  /// When inbound rows still show [encrypted] after decrypt+retry, request session rebuild (silent).
+  /// When inbound rows still show [encrypted] (not [Decryption failed]) after decrypt+retry, request session rebuild (silent).
+  /// [Decryption failed] is terminal — excluded here to avoid markSessionRebuild on every history pass.
   bool _recoverUnresolvedEncryptedInbound(int generation) {
     if (_decryptHistoryGeneration != generation) return false;
     final unresolvedPeers = <int>{};
     for (final m in _messages) {
-      if (m.needsDecryption(_currentUserId) &&
-          (m.displayAsEncryptedPlaceholder ||
-              m.content == _kDecryptionFailedLabel)) {
+      if (m.needsDecryption(_currentUserId) && m.displayAsEncryptedPlaceholder) {
         unresolvedPeers.add(m.senderId);
       }
     }
