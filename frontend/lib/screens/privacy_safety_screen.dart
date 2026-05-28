@@ -1,9 +1,11 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/encryption_provider.dart';
 import '../theme/rpg_theme.dart';
+import '../utils/e2e_diag_log.dart';
 import '../widgets/audio/playback_controller.dart';
 import '../widgets/top_snackbar.dart';
 
@@ -18,6 +20,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
   String? _fingerprint;
   bool _loading = true;
   bool _clearingLocalCache = false;
+  bool _diagLogUnlocked = false;
 
   @override
   void initState() {
@@ -56,12 +59,15 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // Shield icon
+            // Shield icon — long-press unlocks E2E diagnostic log
             Center(
-              child: Icon(
-                Icons.verified_user,
-                size: 64,
-                color: theme.colorScheme.primary,
+              child: GestureDetector(
+                onLongPress: () => setState(() => _diagLogUnlocked = true),
+                child: Icon(
+                  Icons.verified_user,
+                  size: 64,
+                  color: theme.colorScheme.primary,
+                ),
               ),
             ),
             const SizedBox(height: 24),
@@ -178,6 +184,10 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
                   child: CircularProgressIndicator(),
                 ),
               ),
+            if (_diagLogUnlocked) ...[
+              const SizedBox(height: 24),
+              _buildDiagLogPanel(context),
+            ],
           ],
         ),
       ),
@@ -292,6 +302,80 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
                   : const Icon(Icons.delete_sweep_outlined),
               label: Text(l10n.clearLocalMessageCache),
             ),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildDiagLogPanel(BuildContext context) {
+    final theme = Theme.of(context);
+    final isDark = RpgTheme.isDark(context);
+    final mutedColor = isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
+    final entries = E2eDiagLog.entries.reversed.toList();
+
+    return Container(
+      padding: const EdgeInsets.all(16),
+      decoration: BoxDecoration(
+        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        borderRadius: BorderRadius.circular(12),
+      ),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Row(
+            children: [
+              Icon(Icons.terminal, size: 20, color: theme.colorScheme.primary),
+              const SizedBox(width: 8),
+              Expanded(
+                child: Text(
+                  'E2E Diagnostic Log',
+                  style: RpgTheme.bodyFont(
+                    fontSize: 14,
+                    fontWeight: FontWeight.bold,
+                    color: theme.colorScheme.onSurface,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: () async {
+                  final all = E2eDiagLog.entries.join('\n');
+                  await Clipboard.setData(ClipboardData(text: all));
+                  if (!mounted) return;
+                  // ignore: use_build_context_synchronously
+                  showTopSnackBar(context, 'Log copied to clipboard');
+                },
+                child: const Text('Copy'),
+              ),
+              TextButton(
+                onPressed: () {
+                  E2eDiagLog.clear();
+                  setState(() {});
+                },
+                child: const Text('Clear'),
+              ),
+            ],
+          ),
+          const SizedBox(height: 8),
+          ConstrainedBox(
+            constraints: const BoxConstraints(maxHeight: 220),
+            child: entries.isEmpty
+                ? Text(
+                    'No events recorded',
+                    style: RpgTheme.bodyFont(fontSize: 12, color: mutedColor),
+                  )
+                : ListView.builder(
+                    shrinkWrap: true,
+                    itemCount: entries.length,
+                    itemBuilder: (context, index) => SelectableText(
+                      entries[index],
+                      style: TextStyle(
+                        fontSize: 11,
+                        color: mutedColor,
+                        fontFamily: 'monospace',
+                      ),
+                    ),
+                  ),
           ),
         ],
       ),
