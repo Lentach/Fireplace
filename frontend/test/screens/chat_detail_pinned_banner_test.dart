@@ -109,7 +109,7 @@ void main() {
             create: (_) => EncryptionProvider(),
             child: Builder(
               builder: (context) {
-                final l10n = AppLocalizations.of(context)!;
+                final l10n = AppLocalizations.of(context);
                 final encryption = context.read<EncryptionProvider>();
                 return PinnedMessageBanner(
                   previewText: replyPreviewForMessage(
@@ -171,7 +171,7 @@ void main() {
             create: (_) => EncryptionProvider(),
             child: Builder(
               builder: (context) {
-                final l10n = AppLocalizations.of(context)!;
+                final l10n = AppLocalizations.of(context);
                 final encryption = context.read<EncryptionProvider>();
                 return PinnedMessageBanner(
                   previewText: replyPreviewForMessage(

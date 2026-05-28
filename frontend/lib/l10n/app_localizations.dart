@@ -1130,47 +1130,11 @@ abstract class AppLocalizations {
   /// **'← Przesuń, aby anulować'**
   String get voiceRecordingSlideToCancel;
 
-  /// No description provided for @voiceRecordingSlideUpToLock.
-  ///
-  /// In pl, this message translates to:
-  /// **'↑ Przesuń w górę, aby zablokować'**
-  String get voiceRecordingSlideUpToLock;
-
-  /// No description provided for @voiceRecordingLocked.
-  ///
-  /// In pl, this message translates to:
-  /// **'Zablokowano — dotknij Wyślij, gdy skończysz'**
-  String get voiceRecordingLocked;
-
-  /// No description provided for @voiceRecordingCancelLocked.
-  ///
-  /// In pl, this message translates to:
-  /// **'Anuluj nagrywanie'**
-  String get voiceRecordingCancelLocked;
-
-  /// No description provided for @voiceRecordingSendVoiceTooltip.
-  ///
-  /// In pl, this message translates to:
-  /// **'Wyślij wiadomość głosową'**
-  String get voiceRecordingSendVoiceTooltip;
-
-  /// No description provided for @voiceRecordingSendVoiceSemantics.
-  ///
-  /// In pl, this message translates to:
-  /// **'Wyślij wiadomość głosową'**
-  String get voiceRecordingSendVoiceSemantics;
-
   /// No description provided for @voiceRecordingSemanticsLabel.
   ///
   /// In pl, this message translates to:
   /// **'Nagrywanie wiadomości głosowej, {time}. Przesuń w lewo, aby anulować.'**
   String voiceRecordingSemanticsLabel(String time);
-
-  /// No description provided for @voiceRecordingLockedSemantics.
-  ///
-  /// In pl, this message translates to:
-  /// **'Zablokowane nagrywanie, {time}. Dotknij Wyślij, aby wysłać, lub Anuluj, aby odrzucić.'**
-  String voiceRecordingLockedSemantics(String time);
 
   /// No description provided for @snackbarFailedToReadRecording.
   ///
@@ -1309,12 +1273,6 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Wiadomość jest niedostępna'**
   String get snackbarPinnedMessageUnavailable;
-
-  /// No description provided for @snackbarE2eAskSenderResend.
-  ///
-  /// In pl, this message translates to:
-  /// **'Nie udało się odszyfrować części wiadomości. Poproś rozmówcę o wysłanie nowej wiadomości.'**
-  String get snackbarE2eAskSenderResend;
 
   /// No description provided for @pinnedMessageUnpinTooltip.
   ///

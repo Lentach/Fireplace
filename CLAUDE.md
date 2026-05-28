@@ -1,4 +1,4 @@
-﻿---
+---
 description:
 alwaysApply: true
 ---
@@ -6,181 +6,135 @@ alwaysApply: true
 # CLAUDE.md — Fireplace
 
 **Rules:**
-- Always read this file before every code change
-- Update this file after every code change
-- **Before any review or code change:** read ALL files the task touches before writing anything; trace every code path; verify method/field/event names in actual source — never guess
-- Single source of truth for agents — verify against source code; when code contradicts this file, code wins and update this file
-- All code in English (vars, functions, comments, commits). Polish OK in .md files only
+- Always read this file before every code change; update it after
+- **At session start:** read `.cursor/session-summaries/LATEST.md`
+- **At task end:** write/update `.cursor/session-summaries/YYYY-MM-DD-session.md` + `LATEST.md` — format in `.kiro/steering/session-summaries.md`
+- **Before any change:** read ALL files the task touches; trace code paths; verify names in source — never guess
+- Code wins over this file — update when they conflict
+- All code in English; Polish OK in .md only
+- **Scope:** change only what was asked; flag extras; don't add unrequested features/refactors
 
 ---
 
 ## 0. Quick Start
 
 ```bash
-# Terminal 1: Backend + DB (auto hot-reload)
-docker-compose up
-
-# Terminal 2: Flutter web (press 'r' for hot-reload)
-cd frontend && flutter run -d chrome
+docker-compose up                             # Terminal 1: Backend + DB
+cd frontend && flutter run -d chrome          # Terminal 2: Flutter web
 ```
 
-**Before start:** Kill stale node processes: `taskkill //F //IM node.exe`
-**Android (emulator or USB):** `cd frontend` → `flutter devices` → `flutter run -d <deviceId>` (emulator + backend on host: often `--dart-define=BASE_URL=http://10.0.2.2:3000`). Uses `%USERPROFILE%\.gradle` on `C:` — enough free space on `C:` after a clean install is the normal case; no extra drive letter required.
-**Optional — low free space on `C:` or broken/locked Gradle cache there:** `frontend/run_android_on_x.ps1` sets `GRADLE_USER_HOME`, `TEMP`/`TMP`, and a junction `frontend/build` → `X:\fireplace-build\frontend-build` using paths **hardcoded to `X:\` in the script**. That only works if **`X:` exists** (second partition, VHD, or change the script to another letter). It also runs `patch_webcrypto_16k.ps1` then `flutter run` (add `-d …` inside the script if you need a specific device when several are connected). If you do not use this script, you can still run `patch_webcrypto_16k.ps1` manually before Android builds when you need the 16KB webcrypto patch. `flutter clean` does **not** clear `%USERPROFILE%\.gradle` — corrupt `metadata.bin` there is fixed by cache repair or pointing `GRADLE_USER_HOME` at any folder on a drive with space (not only `X:`).
-
-**Ports:** Backend :3000 | Frontend :random (check terminal) | DB :5433 (host) -> :5432 (container)
-
-**Stack:** NestJS 11 + Flutter 3.x + PostgreSQL 16 + Socket.IO 4 + JWT + self-hosted media (`MEDIA_BASE_URL` / disk volume; Nginx `X-Accel-Redirect` in prod)
-
-**Phone (same WiFi):** `cd frontend && .\run_web_for_phone.ps1` or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`
-
-**Tests:** `cd backend && npm test` (281 unit tests, 39 suites, no DB required; counts checked in CI via `node scripts/verify-claude-backend-test-counts.mjs`); `cd frontend && flutter test` (includes `test/services/api_service_session_test.dart` for login/refresh HTTP contract, `test/providers/auth_provider_session_test.dart` for refresh 401 vs transient + parallel `ensureSessionReady` mutex, `test/providers/conversations_provider_test.dart` for `pushClientState` / active-chat emission / `conversationsList` unread merge, `test/utils/app_badge_math_test.dart` for PWA badge cap/sum, `test/widgets/message/bubble_redesign_test.dart`, conversations notification-navigation guards). `ApiService` accepts optional `http.Client` for tests (`MockClient`). CI (`.github/workflows/ci.yml`) runs backend `npm ci` + `npm test`, then Flutter `flutter pub get`, `flutter analyze`, and `flutter test` on pushes to `master` and pull requests. Media crypto round-trip tests skip when `webcrypto:setup` was not run (e.g. no cmake on Windows); the 20MB limit test always runs (throws before native crypto).
-
-**Production:** https://fireplace.ignorelist.com — GCP VM (Warszawa), user `olek292`, repo **`~/fireplace`** (lowercase), nginx serves **`~/fireplace/frontend-build/`**. `deploy.sh` at repo root: `git pull` + Docker backend rebuild (`GIT_COMMIT`, `BUILD_TIME`, `APP_VERSION`) + `flutter build web` with **`WEB_PUSH_VAPID_PUBLIC_KEY` from `.env`** (must match backend or PWA subscribe fails) → `frontend/build/web/` only — **not** copied to nginx automatically. **Full VM deploy:** `cd ~/fireplace && ./deploy.sh && cp -a frontend/build/web/. frontend-build/` then `curl -sS https://fireplace.ignorelist.com/version` (JSON, not HTML). Reload `/etc/nginx/sites-enabled/fireplace` only when nginx routes change (`location = /version` must proxy `127.0.0.1:3000`). Verify: Settings footer (version line) + `GET /version`. Agent rules: `.cursor/rules/version-bump.mdc` (always); `.cursor/rules/production-vm-deploy.mdc` (attached when deploy/production/VM topics).
+**Before start:** `taskkill //F //IM node.exe`
+**Android:** `cd frontend && flutter devices && flutter run -d <deviceId>` (`--dart-define=BASE_URL=http://10.0.2.2:3000` for emulator)
+**Gradle cache broken:** Set `$env:GRADLE_USER_HOME='D:\gradle-home'` before `flutter run`. Repair: `gradlew.bat --stop`, delete `%USERPROFILE%\.gradle\caches\8.14`, then `flutter clean` + rebuild. `flutter clean` alone does NOT fix gradle cache.
+**Low-space Android:** `frontend/run_android_on_x.ps1` (requires `X:` drive). Runs `patch_webcrypto_16k.ps1` before build.
+**Ports:** Backend :3000 | Frontend :random | DB :5433→:5432
+**Stack:** NestJS 11 + Flutter 3.x + PostgreSQL 16 + Socket.IO 4 + JWT + self-hosted media
+**Phone (WiFi):** `.\run_web_for_phone.ps1` or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`
+**Tests:** `cd backend && npm test` (281 unit tests, 39 suites; verified by `node scripts/verify-claude-backend-test-counts.mjs`). `cd frontend && flutter test`. CI: `.github/workflows/ci.yml`.
+**Production:** https://fireplace.ignorelist.com — GCP VM (Warszawa), user `olek292`, repo `~/fireplace`. Deploy: `cd ~/fireplace && ./deploy.sh && cp -a frontend/build/web/. frontend-build/`. Verify: `curl -sS https://fireplace.ignorelist.com/version`. Rules: `.cursor/rules/version-bump.mdc`, `.cursor/rules/production-vm-deploy.mdc`.
 
 ---
 
 ## 1. Critical Rules & Gotchas
 
 ### TypeORM
-- Always `relations: ['sender', 'receiver']` on friendRequestRepository queries — without: empty objects/crash
+- Always `relations: ['sender', 'receiver']` on friendRequestRepository — without: empty objects/crash
 - Use find-then-remove for friend_requests delete — `.delete()` can't use nested relation conditions
 - Always `new Date(val).getTime()` for expiresAt comparisons — TypeORM returns string or Date
-- **Read-based disappearing messages:** New sends store `disappearAfterSeconds` (from `expiresIn` or conversation `disappearingTimer`) with `expiresAt = null` at send. On `markConversationRead`, backend sets `expiresAt = now + disappearAfterSeconds` and emits it on `messageDelivered` to sender and reader. **Never-read fallback:** read-mode rows with null `expiresAt` expire after `createdAt + DISAPPEARING_MAX_UNREAD_SECONDS` (86400). **Grandfathered** rows keep send-time `expiresAt` only (no `disappearAfterSeconds`). Shared expiry: `backend/src/messages/message-expiry.util.ts` (`isMessageExpired`, `MESSAGE_NOT_EXPIRED_SQL`); frontend `lib/utils/message_expiry.dart`. **Hearth Fade UI:** `disappearing_timer_sheet.dart` (hero arc, read explainer, **Set timer** / **Turn off**), `hearth_fade_arc.dart` (bubble/list arcs), composer banner + `ConversationTile` indicator. Ephemeral accent: `RpgTheme.ephemeralAccent(context, themePreference: …)` — ember on `light`, `primaryTealStone` on `teal`, theme accents on dark/blue. Production: `ALTER TABLE messages ADD COLUMN "disappearAfterSeconds" integer NULL;`
+- **Read-based disappearing messages:** Sends store `disappearAfterSeconds` with `expiresAt = null`. On `markConversationRead`, backend sets `expiresAt = now + disappearAfterSeconds` and emits on `messageDelivered`. Never-read fallback: expire after `createdAt + 86400s`. Grandfathered rows: send-time `expiresAt` only. Shared expiry: `backend/src/messages/message-expiry.util.ts`, frontend `lib/utils/message_expiry.dart`. Hearth Fade UI: `disappearing_timer_sheet.dart`, `hearth_fade_arc.dart`. Ephemeral accent: `RpgTheme.ephemeralAccent` (ember/light, teal/teal). Prod SQL: `ALTER TABLE messages ADD COLUMN "disappearAfterSeconds" integer NULL;`
 - `deliveryStatus` never downgrades — enforced via `DELIVERY_STATUS_ORDER` map
-- `synchronize` is enabled only when `NODE_ENV !== 'production'` — column additions auto-apply on restart in non-prod. No migrations
+- `synchronize` enabled only when `NODE_ENV !== 'production'` — no migrations
 
 ### Frontend
 - `file_utils_stub.dart` / `file_utils_io.dart` — conditional import for temp file deletion (web: no-op; native: dart:io)
-- Android 16KB page-size compatibility: `zipalign -P 16` can pass while app still shows compatibility warning — verify ELF `LOAD` alignment with `llvm-readelf -l` for `.so` files. In current state `webcrypto` (`libwebcrypto.so`) is built with `Align 0x1000` (arm64 + x86_64), while `libflutter.so` / `libdatastore_shared_counter.so` are 16KB-safe.
-- `flutter pub run webcrypto:setup` is for `flutter test` / scripts only (builds `.dart_tool/webcrypto/...`), not for Flutter app plugin binaries packaged into APK/AAB.
-- `frontend/patch_webcrypto_16k.ps1` patches cached `webcrypto` Android `CMakeLists.txt` with linker flags `-Wl,-z,max-page-size=16384 -Wl,-z,common-page-size=16384` to produce 16KB-compatible `.so` files; `run_android_on_x.ps1` runs it before its bundled `flutter run`, or invoke the patch script yourself before a plain `flutter run`.
-- `MainActivity` package must match Android namespace/applicationId (`com.fireplace.app`); mismatch (`com.rpgchat.frontend`) causes runtime crash `ClassNotFoundException: com.fireplace.app.MainActivity`.
-- Android build outputs should stay at the default `frontend/build` path for Flutter tooling; optional low-`C:` layout: map `frontend/build` to a folder on another volume via junction (see `run_android_on_x.ps1`, which expects `X:\` unless you edit it).
-- Do not move `PUB_CACHE` to a different drive than the project root on Windows (`X:` vs `C:`) for Android builds; Kotlin incremental caches can fail with `IllegalArgumentException: this and base files have different roots`.
-- Android/Kotlin workaround for mixed-drive cache paths: `frontend/android/gradle.properties` sets `kotlin.incremental=false` to avoid daemon cache-close failures on Windows.
-- **Gradle "Could not read workspace metadata" under `%USERPROFILE%\.gradle\caches\8.14\transforms\... \metadata.bin`:** Corrupt or locked user Gradle cache on `C:` (often full disk, antivirus, interrupted build). **Fast bypass:** point Gradle elsewhere before `flutter run`, e.g. `$env:GRADLE_USER_HOME='D:\gradle-home'` (any folder on a drive with free space; create the directory first). **`run_android_on_x.ps1`** does the same idea but hardcodes `X:\gradle-home` — use it only if you have `X:` (or edit the script). **Repair default cache:** set `JAVA_HOME` to Android Studio JBR, `cd frontend/android` → `gradlew.bat --stop`; if deletes fail, close Android Studio and `taskkill /F /IM java.exe`; delete `%USERPROFILE%\.gradle\caches\8.14`; optionally `frontend/android/.gradle`; `flutter clean` → rebuild. **`flutter clean` alone does not fix this** — it does not remove `%USERPROFILE%\.gradle`.
-- Emulator ANR note (Android 17 / ps16k image): `System UI isn't responding` can occur in `com.android.systemui`/launcher independently of app startup; verify with `adb logcat` (`ANR in com.android.systemui`, `Input dispatching timed out`) before blaming app code.
-- **Portrait-only (phones/tablets):** `PortraitLockService.initialize()` in `main()` — native `SystemChrome` (`portraitUp` only) + Android `android:screenOrientation="portrait"` on `MainActivity` + iOS `Info.plist` portrait-only; web best-effort `Screen Orientation API` via `web_orientation_lock_web.dart` (`package:web` + `dart:js_interop`, `hasProperty('lock')` guard). PWA `manifest.json` `portrait-primary` is a hint only — browsers ignore it in tabs. Fallback: `PortraitLockShell` in `MaterialApp.builder` shows `PortraitRequiredOverlay` when `orientation == landscape` and `shortestSide < AppConstants.portraitLockMaxShortestSide` (900) — overlay uses `AbsorbPointer` so touches do not reach the app. Desktop web at 1920×1080 landscape: no overlay. Policy: `utils/portrait_lock_policy.dart`. Regression: `test/utils/portrait_lock_policy_test.dart`, `test/widgets/portrait_required_overlay_test.dart`, `test/main/fireplace_app_portrait_lock_test.dart`.
-- **Android overscroll stretch:** Material 3's `StretchingOverscrollIndicator` (default under `MaterialScrollBehavior`) can warp the whole UI when dragging past scroll edges. `theme/app_scroll_behavior.dart` returns `child` from `buildOverscrollIndicator` and is wired globally via `MaterialApp(scrollBehavior: const AppScrollBehavior())` in `frontend/lib/main.dart`.
-- Use `showTopSnackBar()` — ScaffoldMessenger covers chat input bar; pass `AppLocalizations.of(context)` strings (`snackbar*` keys in `app_en.arb` / `app_pl.arb`) — do not hardcode English for top notifications
-- Chat composer hint: `chatMessageHint` in `app_pl.arb` / `app_en.arb`. Chat date chips: `chatDateToday` / `chatDateYesterday` + `MaterialLocalizations.formatShortDate` for older days (`MessageDateSeparator`) — use **`date.toLocal()`** for calendar-day logic and labels (`ChatDetailScreen._isDifferentDay`, `MessageDateSeparator`).
-- Bottom interactive bars (chat composer / action tiles / bottom tabs): keep controls above system gesture area on all platforms using bottom inset + small ergonomic buffer (not fixed-only padding). Current approach: chat screen `SafeArea(bottom: false)` delegates bottom spacing to `ChatInputBar`/`ChatActionTiles`; composer uses `max(viewPadding.bottom, padding.bottom)` and adds +16 only when inset > 0 and keyboard is hidden (avoids desktop/zero-inset gaps). Because some mobile Web/PWA environments report zero bottom inset despite gesture area, `ChatInputBar` applies a web-mobile fallback bottom inset (16) on compact layouts when keyboard is hidden. Spacer uses surface color (no transparent seam). Blocked-state banner is wrapped in `SafeArea(top: false)`. `MainShell` wraps `BottomNavigationBar` in `SafeArea(top: false, minimum: EdgeInsets.only(bottom: 10))`. Web shell keeps `<meta name="viewport" content="... viewport-fit=cover">` so iOS/Android PWA expose safe-area insets correctly.
-- Chat composer horizontal: `ChatDetailScreen` applies horizontal `SafeArea` only around the **message list** (`Expanded`), not the whole column — `ChatInputBar` is full-width so its `surface` fill reaches the screen edge (avoids a dead strip of `Scaffold` background beside the composer on PWA/notched insets). `ChatInputBar` adds `MediaQuery.padding.left/right` to its row `Container` padding (plus inner 8 / 4 dp) so trailing controls stay off cutouts while the field can use the reclaimed width. On **compact** layouts (`width < layoutBreakpointDesktop`), add **+14dp** to the **right** padding so the mic sits left of the OS/browser **right-edge back gesture** strip.
-- **Chat composer viewport (native full-screen chat):** Non-embedded `ChatDetailScreen` uses `widgets/input/chat_composer_viewport.dart` — `Stack` overlays `ChatInputBar` on the message list; `ListView` bottom padding = measured composer height + `viewInsets.bottom`; `Scaffold(resizeToAvoidBottomInset: false)`. Reply/action-panel height changes no longer shrink `Expanded` list. Keyboard open auto-scroll runs in `didChangeMetrics` (not `build()`). **Embedded** desktop sidebar chat keeps the legacy `Column` + `Expanded` list. Spec: `docs/superpowers/specs/2026-05-23-chat-composer-viewport-design.md`.
-- **Disappearing messages (read-based):** Conversation timer via Hearth Fade `DisappearingTimerSheet` (`disappearing_timer_sheet.dart`; 5s–30d; **Turn off** / **Set timer**; entity default **null** — timer off until user enables). Hearth Fade chrome uses `RpgTheme.ephemeralAccent` (teal theme = teal, light = ember orange). New sends store `disappearAfterSeconds` only when conversation `disappearingTimer != null` (or explicit `expiresIn`). `HearthFadeArcIndicator` on bubbles (with countdown label) and **conversation list** (Option B: arc only when `lastMessage` has active ephemeral state via `showsEphemeralState`, not when `conv.disappearingTimer` alone; dotted pre-read, filled arc after read — no list countdown text; remaining time in tooltip only; `ConversationsScreen` owns the sole 1 Hz tick (`countdownTickNotifier` + `pruneExpiredLastMessages`; `ChatDetailScreen` does not start a second timer). List perf: `itemBuilder` uses `Selector<MessagingProvider, bool>` per tile for `isPartnerTyping` only (not `context.watch<MessagingProvider>()`); `ConversationTile` passes unread/time via `ValueListenableBuilder` `child` so only the arc rebuilds each tick. Composer banner is **display-only** (no tap — timer via action tile only); `ChatInputBar` **`build` must `context.watch<ConversationsProvider>()`** for the banner (not `read` — otherwise the label only refreshes when `MessagingProvider` notifies, e.g. after sending a message); `setDisappearingTimer` optimistically updates local `disappearingTimer`. Regression: `test/widgets/input/chat_input_bar_disappearing_banner_test.dart`, `test/widgets/conversation_tile_ephemeral_test.dart`. Client expiry: `utils/message_expiry.dart` (`isMessageExpired`, `kNeverReadRetentionSeconds` 86400). Optimistic sends must not set send-time `expiresAt`. Grandfathered messages (send-time `expiresAt` only) unchanged.
-- Local incoming-message sound (mobile): `MessagingProvider` plays `assets/sounds/incoming_message_long_pop.wav` on incoming non-self messages (plain + decrypted) except `PING`; `PingEffectOverlay` uses `assets/sounds/ping_alert.mp3`
-- `MessagingProvider` has test hook `setIncomingMessageSoundEnabledForTest(false)` used by provider unit tests to avoid `just_audio` plugin channel calls in non-widget test environments.
-- `enableForceNew()` on Socket.IO reconnect — Dart caches socket by URL, old JWT reused
+- Android 16KB: `libwebcrypto.so` built with `Align 0x1000` (arm64+x86_64) — not 16KB-safe. `patch_webcrypto_16k.ps1` adds `-Wl,-z,max-page-size=16384` linker flags. `flutter pub run webcrypto:setup` is for tests only, not APK/AAB.
+- `MainActivity` package must be `com.fireplace.app` — mismatch causes `ClassNotFoundException`
+- `kotlin.incremental=false` in `frontend/android/gradle.properties` (mixed-drive cache workaround)
+- **Portrait-only:** `PortraitLockService.initialize()` in `main()`. Fallback: `PortraitLockShell` shows `PortraitRequiredOverlay` when landscape + `shortestSide < 900`. Policy: `utils/portrait_lock_policy.dart`. Regression: `portrait_lock_policy_test.dart`, `portrait_required_overlay_test.dart`, `fireplace_app_portrait_lock_test.dart`.
+- **Android overscroll:** `theme/app_scroll_behavior.dart` disables `StretchingOverscrollIndicator`. Wired via `MaterialApp(scrollBehavior: const AppScrollBehavior())`. Regression: `fireplace_app_scroll_behavior_test.dart`.
+- Use `showTopSnackBar()` — ScaffoldMessenger covers chat input. Use ARB keys, no hardcoded English.
+- Chat dates: `chatDateToday`/`chatDateYesterday` + `MaterialLocalizations.formatShortDate`. Always `date.toLocal()` for calendar-day logic.
+- Chat composer bottom inset: `SafeArea(bottom: false)` on chat screen; `ChatInputBar` uses `max(viewPadding.bottom, padding.bottom)` +16 when inset>0 + keyboard hidden. Web-mobile fallback: 16dp on compact + keyboard hidden. `MainShell` wraps navbar in `SafeArea(top: false, minimum: EdgeInsets.only(bottom: 10))`.
+- Chat composer horizontal: `SafeArea` only around message list, not whole column. `ChatInputBar` adds `MediaQuery.padding.left/right` + inner 8/4dp. Compact: +14dp right padding for OS gesture strip.
+- **Chat composer viewport (non-embedded):** `widgets/input/chat_composer_viewport.dart` — Stack overlay; `ListView` bottom padding = composer height + `viewInsets.bottom`; `Scaffold(resizeToAvoidBottomInset: false)`. Keyboard scroll in `didChangeMetrics`. Spec: `docs/superpowers/specs/2026-05-23-chat-composer-viewport-design.md`.
+- **Disappearing messages UI:** `DisappearingTimerSheet` (5s–30d, Turn off/Set timer). `HearthFadeArcIndicator` on bubbles + list. `ConversationsScreen` owns the 1Hz tick (`countdownTickNotifier`). `ChatInputBar.build` must `context.watch<ConversationsProvider>()` for banner (not `read`). Regression: `chat_input_bar_disappearing_banner_test.dart`, `conversation_tile_ephemeral_test.dart`.
+- Local incoming sound: `assets/sounds/incoming_message_long_pop.wav` (non-self, non-PING). `PingEffectOverlay`: `assets/sounds/ping_alert.mp3`. Test hook: `setIncomingMessageSoundEnabledForTest(false)`.
+- `enableForceNew()` on Socket.IO reconnect — Dart caches socket by URL
 - Provider can't call Navigator — use `consumePendingOpen()` / `consumeFriendRequestSent()` patterns
-- Do NOT call `getConversations()` or `getFriends()` in `onFriendRequestAccepted` — backend already emits updated lists; extra get* causes race and overwrites with stale data (conversation/contact lost on acceptor)
-- **`conversationsList` unread merge:** `ConversationsProvider.onConversationsList` sets each conversation's unread to **`prev > server ? prev : server`** (snapshot from before clear vs payload `unreadCount`) so local `incrementUnreadCount` from a newer `newMessage` is not wiped by a slightly older list snapshot (fixes PWA icon badge / tiles dropping). No extra overwrite for "active" chat — forcing zero after merge had cleared real server unread after push/refetch while `activeConversationId` still pointed at the last-open conversation.
-- On reconnect (same user), `connect()` must NOT clear `_conversations`/`_friends` so the UI does not flicker (empty → full) when socket reconnects after screen wake; use `isReconnect = (_currentUserId == userId)` (no `_conversations.isNotEmpty` check so slow first response does not cause clear). **`connect()` sets `_intentionalDisconnect` while replacing the socket** so the old socket's `disconnect` does not schedule a spurious reconnect (WiFi↔LTE / wake-up handoff). **`ChatReconnectManager` reconnect uses `tokenForReconnect`** (updated by `applyRefreshedAccessToken`), not the JWT captured when the disconnect listener was registered. **`onConversationsList` / `onFriendsList` ignore an empty payload when the local list is already populated** (stale/raced snapshot must not wipe Chat + Contacts). `_onSocketReady` delayed retry refetches **both** conversations and friends when still empty after `conversationsRefreshDelay`. Preserve `_activeConversationId` on reconnect and in `onConnect` call `getMessages(_activeConversationId!)` so the open chat refetches and is not left empty. Backend `messageHistory` payload is `{ conversationId, messages }`; frontend ignores response when `conversationId != _activeConversationId` (avoids overwriting wrong chat).
+- Do NOT call `getConversations()`/`getFriends()` in `onFriendRequestAccepted` — causes race, overwrites with stale data
+- **`conversationsList` unread merge:** `onConversationsList` sets unread to `max(prev, server)` — prevents local `incrementUnreadCount` being wiped by stale snapshot
+- On reconnect (same user): don't clear `_conversations`/`_friends`. Use `isReconnect = (_currentUserId == userId)`. `connect()` sets `_intentionalDisconnect` while replacing socket. `onConversationsList`/`onFriendsList` ignore empty payload when list already populated. Preserve `_activeConversationId` on reconnect; call `getMessages` for active chat. `messageHistory` payload `{ conversationId, messages }`; ignore when `conversationId != _activeConversationId`.
 - Guard `Platform` with `!kIsWeb` — `dart:io` crashes on web
 - `copyWith` must include ALL fields — missing field = data silently lost
-- Voice recording: mic must stay in widget tree — GestureDetector unmounts -> no events
-- Hold-to-record: use **one** `GestureDetector` for idle + active recording (same subtree); swapping to a second detector when `_isRecording` flips disposed the long-press recognizer mid-gesture so release often skipped `_stopRecording`. Mic area also wraps a `Listener` (`onPointerUp` / `onPointerCancel`) so PWA/web release is reliable; `_finishRecordingGesture()` + `_gestureFinishHandled` dedupe pointer vs `onLongPressEnd`. If the user releases during async mic startup, `_pendingStopAfterStart` stops right after recording becomes active. `onLongPressCancel` while `_isStartingRecording` sets `_abortInFlightStart` so `_startRecording` exits after awaits without activating the mic; `_releaseRecorderSilently()` also covers early-return leaks (insecure web / denied permission). Minimum kept clip: `RecordingControllerState.kMinVoiceRecordingMs` (500) — duration measured from `_recordingStartTime` (recorder actually started), not long-press down; shorter clips show `snackbarHoldLongerForVoiceMessage`. Slide-to-cancel shows `snackbarVoiceRecordingCanceled`; `path == null` or missing native file shows `snackbarFailedToReadRecording`. `HapticFeedback.lightImpact()` when `_isRecording` becomes true (native only, skip web). `MessagingProvider.sendVoiceMessage` throws `StateError` when not authenticated or no conversation (caller snackbar). Recording bar hint + semantics: `voiceRecordingSlideToCancel` / `voiceRecordingSemanticsLabel` in ARB. **Voice lock-up (Phase 1, chunk 1.1):** `_isLocked`, `_dragStartY`, `_lockDragOffset`; public `lockUpThresholdPx` **72** / `lockUpHintShowPx` **36**; slide up past threshold → `_enterLockedMode()` (snap horizontal drag, `HapticFeedback.mediumImpact` native); `_onLongPressFinished` / `_onPointerRelease` **no-op when locked**; horizontal slide-left cancel unchanged while unlocked. Locked UI / voice Send layer / ARB hints = chunks 1.2–1.4. Spec: `docs/superpowers/specs/2026-05-24-voice-lock-up-spec.md`. Regression: `test/widgets/input/recording_controller_lock_test.dart`.
-- Composer trailing mic hit target uses a small **negative** resting X offset (`_kMicRestingOffsetX = -6.0` in `recording_controller.dart`) so the mic icon sits **left** within the 48×48 slot, away from the screen's right edge; drag-to-cancel still uses **global** coordinates (`_dragStartX` / `globalPosition.dx`) — the visual translate does not break cancel thresholds.
-- Chat composer send (text): multiline `TextField` uses **`TextInputAction.send`** + `onSubmitted` → shared **`_send()`**. Plain **Enter** inserts `\n`; **`onEditingComplete: () {}`** prevents IME send blur. After send, `WidgetsBinding.instance.addPostFrameCallback` restores focus/soft keyboard when needed. Trailing control is mic-only (`RecordingController`) in a fixed 48×48 slot (no text-send overlay next to mic). `CallbackShortcuts` maps **Ctrl/Cmd+Enter** → `_send()`. Unused trailing-send l10n keys (`chatComposerSendTooltip`, `chatComposerSendSemantics`) were removed from ARB/generated localizations. **Android native:** `ChatInputBar` uses `context.select` for composer slices (not full `watch`); layout owned by `ChatComposerViewport`. Voice lock-up remains in `RecordingController` (`2026-05-24-voice-lock-up-spec.md`, `recording_controller_lock_test.dart`).
+- **Hold-to-record (voice):** Use **one** `GestureDetector` for idle + recording. Wrap mic in `Listener` (`onPointerUp`/`onPointerCancel`) for PWA release. `_finishRecordingGesture()` + `_gestureFinishHandled` dedupes pointer vs `onLongPressEnd`. `_pendingStopAfterStart` if user releases during async start. `_abortInFlightStart` on `onLongPressCancel` while starting. Minimum clip: `kMinVoiceRecordingMs` (500ms) from `_recordingStartTime`. `HapticFeedback.lightImpact()` on start (native only). **Lock-up:** `lockUpThresholdPx=72`, `lockUpHintShowPx=36`; slide up → `_enterLockedMode()` (medium haptic); release no-op when locked. Spec: `docs/superpowers/specs/2026-05-24-voice-lock-up-spec.md`. Regression: `recording_controller_lock_test.dart`.
+- Mic resting offset: `_kMicRestingOffsetX = -6.0` — sits left in 48×48 slot. Cancel uses global coords (`_dragStartX`).
+- Chat composer send: `TextInputAction.send` + `onSubmitted` → `_send()`. Enter inserts `\n`. `onEditingComplete: () {}` prevents IME blur. `CallbackShortcuts` maps Ctrl/Cmd+Enter → `_send()`. Mic-only trailing control (48×48).
 - Timer via `ValueNotifier<int>` — overlay rebuilds freeze timer
-- `clearStatus()` in AuthProvider appears unused but is called from auth_screen.dart — DO NOT DELETE
+- `clearStatus()` in AuthProvider — DO NOT DELETE (called from auth_screen.dart)
 - Always run `flutter analyze` before deleting "unused" methods
-- Web/PWA push now uses standards-based Web Push (VAPID) instead of Firebase Web Messaging. `PushService.initialize()` on web only syncs an existing subscription (no permission prompt). Permission prompt must be triggered by explicit user gesture via `PushService.requestWebPushFromUserGesture()` (wired from `SettingsScreen`).
-- **PWA app icon badge (Badging API):** `UnreadBadgeSync` (`services/unread_badge_sync.dart`) listens to `ConversationsProvider` debounced (~200 ms) on **web** and calls `BadgingBridge` → **`navigator.setAppBadge(capped)`** with **`capped = min(sum(unreadCounts), kAppBadgeMaxDisplayCount)`** (`capUnreadForBadge` in `utils/app_badge_math.dart`, **`kAppBadgeMaxDisplayCount`** must stay in sync with **`APP_BADGE_MAX`** in `web/web-push-sw.js`); **`clearAppBadge`** when capped is 0. Skips duplicate **`setAppBadge`** when capped unchanged. **Safari / iOS PWA:** WebKit often **does not show** a badge when **`setAppBadge()`** is called **with no arguments** — the **integer overload** is required for the icon badge there (regression note 2026). **Closing the PWA** (swipe from recents / process kill) must **not** clear the icon badge while unread remain — `UnreadBadgeSync.dispose()` only removes the listener; **`clearAppBadge`** when unread hits zero **or** via **`clearPwaAppBadgeOnLogout()`** (`services/pwa_app_badge_clear.dart`) from **`AuthProvider._clearLocalAuthState()`**. **`BadgingBridge`** (`badging_bridge_web.dart`) uses **`package:web`** (`web.window.navigator`) and **`JSObject.hasProperty`** for **`setAppBadge`** / **`clearAppBadge`** feature detection. Wired from `MainShell` post-frame. **`web/web-push-sw.js`:** on **`push`**, **`showNotification`** completes **first**, then **`setAppBadge(n)`** with **`n`** from **`messageCount`** (cap **`APP_BADGE_MAX`**, same as **`kAppBadgeMaxDisplayCount`**, else 1) — sequential so WebKit push handlers are not aborted by `Promise.all` rejection. SW **`postMessage`** (`push-notification-click`, `push-subscription-change`) is optional for future Dart listeners; tap flow today uses window **focus** only.
-- iOS web push rules: requires Home Screen install + standalone mode; permission prompt must originate from direct tap/click; service worker must show a visible notification for push events. Standalone gate is enforced **only on iOS WebKit** (`WebPushBridge.isStandaloneOrNotRequired()` in `web_push_bridge_web.dart`); other engines (Chrome/Edge/Firefox/Comet on desktop and Android) can subscribe from a regular secure-context tab without PWA install. Detection: `iPhone|iPad|iPod` in UA, plus iPadOS-13+ "Mac UA + maxTouchPoints > 1" heuristic; on iOS, considered standalone when `(display-mode: standalone)` matches OR `navigator.standalone === true`.
-- `WebPushBridge` (`web_push_bridge_web.dart`) uses **`package:web`** + **`dart:js_interop`** (not `dart:html` / `dart:js_util`). `PushManager.getSubscription()` is typed as `JSPromise<PushSubscription?>` so a missing subscription resolves to `null` safely. iOS-only `navigator.standalone` is read via a small `@JS` extension type. Feature detection uses `JSObject.hasProperty` for `serviceWorker` / `Notification` / Badging API methods.
-- Web push service worker is `frontend/web/web-push-sw.js` (scope `/web-push-scope/`); registered by `web_push_bridge_web.dart`.
-- **Android native:** FCM **data-only** messages show grouped tray notifications via `flutter_local_notifications` in `services/android_fcm_local_notifications.dart`: `firebaseMessagingBackgroundHandler` runs in a background isolate (registered from `main.dart` after Firebase init). **`main.dart` and the FCM background handler must call `Firebase.initializeApp` only when `Firebase.apps.isEmpty`** — Android auto-init from `google-services` otherwise throws `[core/duplicate-app]` and `runApp` never runs (stuck on native splash). Notifications use Android `tag` `conversation-<id>` (same grouping idea as PWA). `PushService.initialize(token, onAndroidNavigateToConversation: …)` initializes the plugin, handles cold/warm opens (`getNotificationAppLaunchDetails`, `getInitialMessage`, `onMessageOpenedApp`), cancels tap subscription on logout; taps call `ConversationsProvider.requestNavigateToConversationFromNotification`, consumed by `MainShell` (desktop: `setActiveConversation`, mobile: push `ChatDetailScreen` unless `activeConversationId` already matches — avoids duplicate route stack). `ChatDetailScreen` calls `openConversation` via `scheduleMicrotask` in `initState` so that id is registered before `MainShell` post-frame notification navigation. Conditional imports `push_android_stub.dart` / `fcm_background_stub.dart` keep **web** builds free of `flutter_local_notifications`. Foreground FCM still does **not** post a tray notification (socket delivers messages); no `onMessage` listener required for that policy.
-- Widget tests using `AppLocalizations` need delegates: `localizationsDelegates: AppLocalizations.localizationsDelegates, supportedLocales: AppLocalizations.supportedLocales` in `MaterialApp` — without them `AppLocalizations.of(context)` returns null and tests crash
-- Regression guard: `frontend/test/main/fireplace_app_scroll_behavior_test.dart` verifies `FireplaceApp` keeps `MaterialApp(scrollBehavior: const AppScrollBehavior())` wired, preventing Android overscroll stretch from silently returning; `fireplace_app_portrait_lock_test.dart` verifies `PortraitLockShell` in `MaterialApp.builder`
-- `SettingsScreen` regression guard: `frontend/test/screens/settings_screen_scroll_physics_test.dart` verifies `ListView` uses `ClampingScrollPhysics`; test must use `RpgTheme.themeDataLight` because `SettingsScreen` relies on `FireplaceColors` ThemeExtension
-- **App version marker:** Settings footer shows pubspec semver only (`0.0.1`, `0.0.2`, … — **never** `+build` suffix) via `package_info_plus` + `GIT_COMMIT` / `BUILD_TIME` (`lib/config/app_version_info.dart`). Bump: increment PATCH by 1 per `.cursor/rules/version-bump.mdc` (`0.0.1` → `0.0.2` → `0.0.3`). Baseline **`0.0.1`**, not `1.0.0`. Local `flutter run` without defines shows commit `dev`; `frontend/run_web_for_phone.ps1` and `run_android_on_x.ps1` dot-source `frontend/scripts/version_dart_defines.ps1` (short SHA + UTC `BUILD_TIME`, fallback `dev` / empty). Production build must pass defines (see `deploy.sh`). Regression: `frontend/test/screens/settings_screen_version_footer_test.dart`.
-- `blockedByUserIds` returns `Set.unmodifiable` — tests cannot mutate it directly; use `provider.onYouWereBlocked({'userId': X})` to set state
-- `use_build_context_synchronously`: capture providers via `context.read<>()` before the first `await` in async methods
-- Fire-and-forget futures: use `.ignore()` instead of `.catchError((_){})` — catchError requires callback to return the same type as the Future
-- JWT payload no longer carries `profilePictureUrl`; `AuthProvider` loads user profile via `GET /users/me` in `_loadSavedToken`, `login`, and after avatar upload
-- To avoid startup logout flicker, `_loadSavedToken` first decodes minimal user fields (`sub/username/tag`) from JWT for immediate local auth state, then refreshes with `/users/me`. If the access JWT is expired but `refresh_token` exists in `SharedPreferences`, `AuthProvider` calls `POST /auth/refresh` first (silent rotation). `ensureSessionReady()` runs before socket connect, on app **resume**, on **web `visibilitychange` → visible** (`MainShell` + `tab_visibility_web.dart`), and on a 15-minute timer while logged in.
-- **Refresh error handling:** `ApiService.refreshSession` classifies status before JSON parse (401/403 → invalid even on HTML body; 429/408/5xx → transient). `AuthProvider` clears local auth **only** on invalid refresh; transient failures keep tokens + `isLoggedIn` via JWT decode. `_silentRefresh` retries transient errors up to 3× with short backoff. **`_refreshSessionLocked` mutex:** all refresh paths (`_loadSavedToken`, `fetchMe` 401 recovery, `ensureSessionReady`) share one in-flight refresh (avoids rotation race on PWA cold start + tab visible).
-- `_loadSavedToken`: `fetchMe` 401 → try refresh; clear only on invalid refresh. Network/`fetchMe` failure keeps saved tokens and JWT user.
-- Authenticated media fetch: `/media/msgs/` downloads use `ApiService.fetchMediaBytes(url, token)` (sends `Authorization` only for own-server URLs); legacy external URLs (e.g. Cloudinary) still fetch without auth
-- Android emulator media URL fix: backend can emit media URLs with `localhost`; `ApiService.fetchMediaBytes` rewrites loopback `/media/*` URLs to the host from `AppConfig.baseUrl` (e.g. `10.0.2.2`) before GET so GIF/image/file/voice media loads on Android emulator
-- `PlaybackController` refactor: capture JWT token once in `_loadAndPlayAudio()` and pass it explicitly to `_downloadAndCache(url, token)` (no hidden token read inside helper)
-- `ChatDetailScreen` message loading uses `MessagingProvider.getMessages(conversationId)` (single entry point)
-- Message pagination: `MessagingProvider` tracks `_hasMore/_isLoadingMore/_paginationOffset`, `loadOlderMessages()` is triggered near scroll top, and chat screen preserves visual position when prepending
-- Pagination guard cleanup: if `messageHistory` is ignored due to conversation mismatch while pagination is active, reset `_isLoadingMore`/`_isPaginationLoad` to avoid a stuck loading state
-- Multiple backends: if weird data, kill local `node.exe`, use Docker only
-- Mobile _openChat: only Navigator.push; ChatDetailScreen initState calls `openConversation(..., notify: false)` then `notifyActiveConversationChanged()` post-frame (avoids double getMessages and `notifyListeners` during build)
-- `_conversationCache` in MessagingProvider: per-conversation RAM cache (`Map<int, List<MessageModel>>`) for the current session. Populated by `onMessageHistory` (first snapshot after parse/filter, second after `_decryptMessageHistory` completes). Updated by `_handleIncomingMessage` (plain path and encrypted `.then()`), `_handleMessageDelivered` (in `_messages` or via `_patchMessageInCache` when the open list was clobbered), `_handleMessageDeleted`. Entry removed by `_handleChatHistoryCleared`,
-  `onConversationDeleted`. Fully cleared by `clearAll()` (logout only). NOT cleared by `clearMessages()` (back navigation) or `onConnect` (socket reconnect). `ChatDetailScreen` calls `loadCachedMessages` before `getMessages`. **`onMessageHistory` (initial load):** merge-by-`id` into `_messages` (keep local rows missing from a stale page; prefer higher `deliveryStatus` / non-null `expiresAt` / non-null `disappearAfterSeconds` via `_mergeMessagePreferNewer`); FIFO `_pendingHistoryFetchSeq` skips superseded full applies when a newer `getMessages` was issued (stale responses still patch cache). **`_decryptMessageHistory` / live incoming decrypt:** apply decrypted or in-memory cache rows with `_mergeMessagePreferNewer` on the open row — never blind-assign cache/decrypted `MessageModel` or a stale history snapshot can wipe `disappearAfterSeconds` on the recipient burst path. `_addMessageToState` dedupes by `id`/`tempId` and uses `activeConversationId ?? _paginationConversationId`. `ChatDetailScreen` sets active conversation in `initState` via `openConversation(notify: false)` (active id + `pushClientState` immediate; UI notify post-frame) before post-frame `getMessages`. `ChatDetailScreen` uses `ListView(reverse: true)`: `pixels = 0` is the visual bottom (newest message), eliminating the need to chase `maxScrollExtent`. `jumpTo(0)` / `animateTo(0)` are always correct regardless of lazy build state. `_userHasScrolledChat` (set by `NotificationListener<UserScrollNotification>`) suppresses auto-scroll-to-bottom while the user reads history; cleared when `pixels <= _scrollToBottomThreshold` in `_onScroll`. Pagination trigger: `maxScrollExtent > 0 && pixels >= maxScrollExtent - 300` (near visual top; guards short non-scrollable lists). `loadCachedMessages(id)` returns bool — true when RAM cache was applied. `_effectiveActiveConversationId` (test override OR `ConversationsProvider.activeConversationId`) is used in `onMessageHistory` and incoming-message paths.
+- **Web Push (VAPID):** `PushService.initialize()` on web only syncs existing subscription. Permission via `PushService.requestWebPushFromUserGesture()`. SW: `frontend/web/web-push-sw.js` (scope `/web-push-scope/`). `WebPushBridge` uses `package:web` + `dart:js_interop`.
+- **PWA badge:** `UnreadBadgeSync` debounced ~200ms → `BadgingBridge` → `navigator.setAppBadge(min(sum, kAppBadgeMaxDisplayCount))`. iOS Safari requires integer overload (not no-arg). `clearAppBadge` on unread=0 or logout (`clearPwaAppBadgeOnLogout()`). SW: `showNotification` first, then `setAppBadge(n)` — sequential, not `Promise.all`. `kAppBadgeMaxDisplayCount` must match `APP_BADGE_MAX` in `web-push-sw.js`.
+- **iOS web push:** Requires Home Screen install + standalone. Gate enforced only on iOS WebKit (`isStandaloneOrNotRequired()`). iPadOS-13+: `Mac UA + maxTouchPoints > 1` heuristic.
+- **Android FCM:** Data-only → `flutter_local_notifications` in `android_fcm_local_notifications.dart`. Background handler in isolate. `Firebase.initializeApp` only when `Firebase.apps.isEmpty` — duplicate-app blocks `runApp`. Tag: `conversation-<id>`. Taps → `requestNavigateToConversationFromNotification` → consumed by `MainShell`. `ChatDetailScreen` calls `openConversation` via `scheduleMicrotask` in `initState`. Conditional imports keep web builds clean.
+- Widget tests with `AppLocalizations` need `localizationsDelegates` + `supportedLocales` in `MaterialApp`
+- `SettingsScreen` tests must use `RpgTheme.themeDataLight` (requires `FireplaceColors` ThemeExtension)
+- **App version:** Settings footer semver only (no `+build`). Bump PATCH per `.cursor/rules/version-bump.mdc`. Baseline `0.0.1`. Regression: `settings_screen_version_footer_test.dart`.
+- `blockedByUserIds` returns `Set.unmodifiable` — use `provider.onYouWereBlocked(...)` in tests
+- `use_build_context_synchronously`: capture providers via `context.read<>()` before first `await`
+- Fire-and-forget futures: `.ignore()` not `.catchError((_){})`
+- JWT no longer carries `profilePictureUrl` — load via `GET /users/me`
+- **Auth token flow:** `_loadSavedToken` decodes minimal JWT fields first, then `/users/me`. Silent refresh on expired access + existing refresh token. `ensureSessionReady()` on socket connect, app resume, web visibilitychange, 15-min timer. `_refreshSessionLocked` mutex prevents rotation race. Transient refresh failures keep tokens; 401/403 → clear auth.
+- Authenticated media: `ApiService.fetchMediaBytes(url, token)` for own-server URLs. Android emulator: rewrites `localhost` media URLs to `AppConfig.baseUrl` host.
+- Message pagination: `_hasMore/_isLoadingMore/_paginationOffset`; `loadOlderMessages()` near scroll top. Reset `_isLoadingMore` on mismatch to avoid stuck state.
+- `_conversationCache`: per-conversation RAM cache. Populated by `onMessageHistory`; updated by incoming messages; cleared on logout only (not back-nav or reconnect). `loadCachedMessages` before `getMessages`. `onMessageHistory` merge-by-id via `_mergeMessagePreferNewer` (prefer higher deliveryStatus / non-null expiresAt / non-null disappearAfterSeconds). FIFO `_pendingHistoryFetchSeq` skips superseded responses. `ListView(reverse: true)`: `pixels=0` = visual bottom; `jumpTo(0)` always correct.
 
 ### Backend
-- `ChatValidationService.validateCanMessage(senderId, recipientId)` — shared validation for blocked + friends; used by sendMessage, startConversation
-- mediaUrl (non-E2E / legacy) must match `MEDIA_URL_REGEX` in `chat.dto.ts` — Cloudinary `https://res.cloudinary.com/.../(video|image|raw)/upload/...` or self-hosted `${MEDIA_BASE_URL}/media/...` (prevents SSRF)
-- Delete account cascade: key bundles -> OTPs -> msgs -> convs -> friend_reqs -> user (no cascade on User entity)
+- `ChatValidationService.validateCanMessage(senderId, recipientId)` — shared blocked+friends check
+- `mediaUrl` must match `MEDIA_URL_REGEX` in `chat.dto.ts` (Cloudinary or `${MEDIA_BASE_URL}/media/...`) — prevents SSRF
+- Delete account cascade: key bundles → OTPs → msgs → convs → friend_reqs → user (no entity cascade)
 - `conversationsService.delete()` deletes msgs first (no cascade)
-- Chat services: critical failures stop execution; non-critical (emit lists) log and continue
-- Skip server-side link preview when `encryptedContent` present (server can't read content)
-- Reply-to preview: MessageMapper uses "Encrypted message" when replyTo has encryptedContent; frontend fallback for `[encrypted]`
-- `handleMessageDelivered` verifies caller is recipient (not sender) — ownership enforced
-- `handleStartConversation` requires friendship — blocks strangers from opening DMs
-- `handleStartConversation` emits `conversationsList` + `openConversation` to caller only; recipient gets only `conversationsList` (B does not auto-open chat; B sees unread badge when A sends first message)
-- OTP claim is atomic: `UPDATE ... WHERE id = (SELECT ... LIMIT 1) RETURNING *` in `key-bundles.service.ts`
-- `isBlockedByEither` uses single OR query (one DB round-trip, not two)
-- `_conversationsWithUnread` uses `Promise.all` — parallel, not sequential
-- `findByConversation` uses DB-level `skip`/`take` when no hidden messages
-- `og:image` from link preview validated via `isSafeImageUrl` (HTTPS + non-private host only); IPv6 brackets stripped before regex; backend resolves relative og:image URLs using pageUrl
-- WS rate limiting: `WsThrottlerGuard` on `sendMessage` — per-user tracker (user id); `@Throttle({ default: { limit: 300, ttl: 900000 } })` on `handleSendMessage` overrides the global module default (100/15 min) so one active user cannot exhaust the cap and lose all outbound sends until the window expires. Guard provides mock `res` with no-op `header()` (Socket has no such method; ThrottlerGuard expects it)
-- WS throttling also guards read-heavy events: `getMessages/getConversations/getFriends/getFriendRequests/getBlockedList` use `300/15m`; `searchUsers` uses `30/60s`; `fetchPreKeyBundle` uses guard-only with global limits
-- `ChatKeyExchangeService.handleFetchPreKeyBundle` has an additional in-process anti-depletion guard: same `requesterId -> targetUserId` pre-key fetches are rate-limited (minimum 750ms between requests) and return socket `error` when exceeded; tracker map is pruned by TTL (10 min) and capped (10k entries) to avoid unbounded memory growth
-- JWT invalidation after password change: `User.passwordChangedAt` is set in `resetPassword`; `JwtStrategy.validate()` rejects when `payload.iat <= passwordChangedAt` (seconds precision). `resetPassword` also revokes **all** refresh tokens for that user (`RefreshTokensService.revokeAllForUser`).
-- **Pinned message (one per conversation):** `conversations.pinnedMessageId` / `pinnedAt` / `pinnedByUserId`. WS `pinMessage` / `unpinMessage` → `messagePinned` / `messageUnpinned` with `pinnedMessage` snapshot; `MessagesService.getPinnedMessagesBatch` for list payloads. Delete-for-everyone on pinned id clears pin + emits `messageUnpinned`. Production SQL: `ALTER TABLE conversations ADD COLUMN "pinnedMessageId" integer NULL;` / `"pinnedAt" timestamp NULL;` / `"pinnedByUserId" integer NULL;`
-- **Session model:** Access JWT TTL **`24h`** (`auth.module.ts` `signOptions.expiresIn`). Long-lived sessions use opaque **refresh tokens** (table `refresh_tokens`, SHA-256 of token stored, **365-day** rolling expiry, **rotation** on each `POST /auth/refresh`). Login returns `{ access_token, refresh_token }`. `POST /auth/logout` revokes the submitted refresh token. Optional Phase 1 identity-key auth (`docs/superpowers/specs/2026-05-09-identity-key-auth-design.md`) remains a future upgrade.
-- `GET /media/msgs/:filename` is JWT-guarded; avatars remain public
-- Expired disappearing-message media is deleted before `MessageCleanupService` removes expired rows. `MediaCleanupService.cleanupOrphanedFiles()` still runs daily as a crash/legacy safety net.
-- **E2E upload without DB row (I1):** If encrypted media upload succeeds but `sendMessage` fails (network, validation, session error), the `.bin` is on disk with no `messages.mediaUrl` reference. Daily `cleanupOrphanedFiles()` deletes it on the next cron run (~03:00). Retry after upload reuses optimistic `mediaUrl` on the failed message; failure before upload still requires re-pick. Documented gap — no metric/alert.
-- Blocking a user deletes known self-hosted media for the conversation before deleting the conversation/messages, so block does not wait for the daily orphan sweep.
-- Secret notes are one-shot and expired unread notes are purged daily by `SecretNotesService.deleteExpiredNotes()`.
-- Avatar uploads validate actual file bytes (JPEG/PNG magic bytes) in both media upload avatar path and users profile-picture endpoint
-- Health endpoint: `GET /health` runs `SELECT 1` and returns `503` on DB failure (for Docker healthcheck) — do not add version fields here (healthcheck contract).
-- Version endpoint: `GET /version` (no auth) returns `{ version, gitCommit, buildTime }` from env `APP_VERSION`, `GIT_COMMIT`, `BUILD_TIME` (defaults `0.0.2` / `unknown` / `""` when unset). Set at deploy/Docker build (`deploy.sh` reads `frontend/pubspec.yaml`); local docker-compose uses `APP_VERSION` from env or `0.0.2`.
-- Raw SQL in `markConversationAsReadFromSender`: use `"deliveryStatus"` (quoted) — PostgreSQL column is camelCase
-- `messages` table has composite index `idx_messages_conv_created` on `(conversation_id, createdAt DESC)` — auto-created in dev via synchronize; production requires manual: `CREATE INDEX CONCURRENTLY idx_messages_conv_created ON messages (conversation_id, "createdAt" DESC);`
-- WS throttling reminder: global `ThrottlerModule` covers HTTP only; for WebSocket events apply `@UseGuards(WsThrottlerGuard)` (and `@Throttle(...)` where needed), especially on high-frequency or mutating handlers
-- SSRF: `PRIVATE_IP_RE` in `link-preview.service.ts` blocks `169.254.x`, `fe80:`, RFC-1918 and loopback — verify coverage when adding new IP range exclusions
-- `_conversationsWithUnread` uses batch `countUnreadForRecipientBatch` + `getLastMessagesBatch` (2 queries total, not 2N)
-- Production: logger level `['error','warn','log']` — no debug
-- friend_requests: unique index on (sender, receiver)
-- Push delivery is dual-channel: `PushNotificationsService.notify()` dispatches FCM for `android/ios` tokens and Web Push (VAPID) for PWA subscriptions. Payload is metadata-only (`type`, optional `conversationId`, optional `messageCount` when coalesced bursts); no message body. Web Push removes stale subscriptions on HTTP 404/410.
-- Outbound message pushes are **coalesced** per `(recipientUserId, conversationId)` via `PushNotificationCoalescingService` (~2.5s debounce, ~10s max wait) so bursts become one notification with aggregated `messageCount`.
-- Clients emit **`pushClientState`** `{ activeConversationId, clientVisible }` over the socket (`ChatGateway` → `ChatPresenceService`); when `clientVisible && activeConversationId` matches the incoming message's conversation, `ChatMessageService` skips scheduling push (WS still delivers `newMessage`). `ConversationsProvider` syncs state on chat open/close and tab/app visibility (`MainShell`: lifecycle + web `visibilitychange` via `tab_visibility.dart`). **`MainShell`:** set `clientVisible` false on **`AppLifecycleState.inactive`** too (not only paused/hidden) — home / app switcher often hits inactive first; otherwise users expect pushes after leaving the app while still "in" a conversation. **`ChatDetailScreen.dispose`** must clear active when this chat still owns `activeConversationId` (system back / block / auto-pop); otherwise push stays suppressed until reconnect. Desktop chat switch sets a new active id first, so dispose skips when the id no longer matches.
-- Web Push subscriptions are stored in `web_push_subscription` (`endpoint`, `p256dh`, `auth`, optional `userAgent`, `expirationTime` stringified bigint). REST endpoints: `POST /users/web-push-subscription`, `DELETE /users/web-push-subscription`.
+- Skip server-side link preview when `encryptedContent` present
+- `handleMessageDelivered` verifies caller is recipient (not sender)
+- `handleStartConversation` requires friendship; emits `conversationsList` + `openConversation` to caller only
+- OTP claim atomic: `UPDATE ... WHERE id = (SELECT ... LIMIT 1) RETURNING *`
+- `isBlockedByEither` uses single OR query
+- `_conversationsWithUnread` uses batch (2 queries total, not 2N)
+- `og:image` validated via `isSafeImageUrl` (HTTPS + non-private); IPv6 brackets stripped; relative URLs resolved
+- WS rate limiting: `WsThrottlerGuard`; `sendMessage` 300/15min; read events 300/15min; `searchUsers` 30/60s. Mock `res` with no-op `header()` for Socket.
+- Pre-key anti-depletion: same requester→target limited to 750ms min interval; tracker pruned TTL 10min + capped 10k entries
+- JWT invalidation after password change: `passwordChangedAt` in `resetPassword`; `JwtStrategy.validate()` rejects `iat <= passwordChangedAt`. Also revokes all refresh tokens.
+- **Pinned message:** `conversations.pinnedMessageId/pinnedAt/pinnedByUserId`. WS `pinMessage/unpinMessage` → `messagePinned/messageUnpinned`. Delete-for-everyone clears pin. Prod SQL: `ALTER TABLE conversations ADD COLUMN "pinnedMessageId" integer NULL;` / `"pinnedAt" timestamp NULL;` / `"pinnedByUserId" integer NULL;`
+- **Sessions:** JWT TTL 24h. Refresh tokens: 365-day rolling, rotation on each refresh, SHA-256 stored. `POST /auth/logout` revokes token.
+- `GET /media/msgs/:filename` JWT-guarded; avatars public
+- Daily cleanup: expired media deleted before rows removed. `cleanupOrphanedFiles()` daily safety net.
+- **E2E upload gap (I1):** upload success + sendMessage failure → orphaned `.bin` until daily cron. No metric/alert.
+- Block user: deletes self-hosted media before conversation/messages (no wait for daily sweep)
+- `GET /health`: `SELECT 1`, returns 503 on failure — no version fields (healthcheck contract)
+- `GET /version` (no auth): `{ version, gitCommit, buildTime }` from env
+- Raw SQL: use `"deliveryStatus"` quoted — PostgreSQL column is camelCase
+- Composite index `idx_messages_conv_created` on `(conversation_id, createdAt DESC)` — manual in prod: `CREATE INDEX CONCURRENTLY idx_messages_conv_created ON messages (conversation_id, "createdAt" DESC);`
+- SSRF: `PRIVATE_IP_RE` blocks 169.254.x, fe80:, RFC-1918, loopback
+- Push: dual-channel FCM + Web Push. Coalesced per `(recipientUserId, conversationId)` ~2.5s debounce, ~10s max. Metadata-only payload.
+- `pushClientState` `{ activeConversationId, clientVisible }` — skip push when client visible + active matches. Set `clientVisible=false` on `AppLifecycleState.inactive` (not just paused). `ChatDetailScreen.dispose` clears active id.
+- Web Push subscriptions in `web_push_subscription`. REST: `POST /users/web-push-subscription`, `DELETE /users/web-push-subscription`.
 
 ### E2E Encryption
-- **`uploadOneTimePreKeys` payload:** must be `{ keys: [...] }`, not a bare array. `EncryptionProvider` emits via `_emit` (same as `socket.emit`) and must match `UploadOneTimePreKeysDto`; a raw list fails backend validation (`unknownValue` / non-object root).
-- Fresh install: 20 one-time pre-keys (not 100) for fast startup; preKeysLow replenishes when < 10
-- Pre-key storage: parallel writes (Future.wait); replenishment uses chunked parallel (25 at a time)
-- `EncryptionService.decrypt()` returns `Future` — must use async patterns
-- Message history decrypts async: renders immediately, then decrypts in-place with `notifyListeners()`
-- Own messages skip decryption (sender has plaintext from optimistic display)
-- Conversation list shows "Encrypted message" for encrypted lastMessage (not decrypted at list level)
-- Session establishment uses Completer with 10s timeout — on failure, message marked as failed (no unencrypted fallback)
-- Send when recipient offline: on encrypt/session failure we clear `_pendingPreKeyFetches[recipientId]` so retry gets a fresh pre-key fetch. If failure is key-bundle or timeout, we schedule a single delayed retry (4s) so when recipient logs in and uploads keys, the message can send without user tapping Retry. Manual Retry cancels the delayed retry; connect/logout cancels it via `_cancelDelayedRetryIfAny()`.
-- Keys NOT cleared on logout (persist for re-login). Only cleared on account deletion via `clearEncryptionKeys()`
-- All Signal store keys use `e2e_${userId}_` prefix — multi-account isolation in same browser
-- `clearAllKeys()` uses selective deletion (reads all, deletes by prefix) — never wipes other data
-- **DualStorage**: All Signal stores use `DualStorage` (writes to both `flutter_secure_storage` AND `SharedPreferences`). On web, IndexedDB+WebCrypto can lose data when all tabs are closed; localStorage (SharedPreferences) is the reliable fallback. Reads try flutter_secure_storage first, then SharedPreferences.
-- Web: WebOptions(dbName: 'FireplaceE2E') for app-specific storage; Privacy & Safety shows web key-storage warning
-- **Cache-first history decryption**: `_decryptMessageHistory` checks persisted cache (SharedPreferences/localStorage) BEFORE attempting live decryption. Avoids unnecessary session ratchet advancement and recovers messages when keys are lost. `EncryptionProvider` owns this cache via `saveDecryptedContent()` / `getDecryptedContent()` and an in-memory `_decryptedContentCache`; `MessagingProvider` no longer accesses `EncryptionService` directly and uses only `EncryptionProvider`'s delegation methods for decrypted-content persistence.
-- Persisted decrypted-content cache is capped at 500 entries per user (`EncryptionService(decryptedContentCacheLimit: 500)` default) and oldest message IDs are pruned on save. `PrivacySafetyScreen` exposes "Clear local message cache", which calls `EncryptionProvider.clearLocalDecryptedContentCache()` and `PlaybackController.clearAudioCache()`; this removes local plaintext/message audio cache only and must NOT clear Signal keys or server history.
-- `_pendingSendContent: Map<String, Map<String, dynamic>>` stores tempId→{content, messageType?, mediaUrl?, mediaDuration?, mediaKey?, mediaIv?, linkPreviewUrl?, ...} when any send method creates the optimistic message; extra fields added in `_encryptAndSend()`. Survives `_messages` list overwrites (e.g. `messageHistory` arriving before `messageSent`). Cleared on both fresh connect and reconnect in `onConnect`. Drained in `_addMessageToState`. CRITICAL: for image/voice/GIF/file, write `mediaKey`/`mediaIv` immediately after `MediaCryptoService.encrypt()` and **before** `uploadEncryptedMedia` / further awaits — if `messageHistory` interleaves, `_addMessageToState` must already see key+IV or they are lost.
-- `retryFailedMessage`: if upload already succeeded, the optimistic `MessageModel` holds `mediaUrl` + `mediaKey` + `mediaIv`; retry calls `_encryptAndSend` again (image/GIF/file always; voice when `mediaUrl` is `http…` and keys present). Legacy Cloudinary media retries omit keys. GIF failures after upload are retriable; GIF failures before upload still cannot retry without re-picking.
-- **Upload without DB row (I1):** Same as backend note — upload-then-send-fail leaves an unreferenced `.bin` until orphan cron; no server row means `cleanupOrphanedFiles` treats it as orphan.
-- `_initializeE2E()` skips `_encryptionService.initialize()` when `_e2eInitialized = true` (reconnect path) — prevents transient mobile storage errors from setting `_e2eInitialized = false` and causing all history messages to become permanently `[Decryption failed]`. Key bundle re-upload still runs on every connect.
-- **Socket auth race:** Backend emits `socketReady` after JWT + `client.data.user`; `ConnectionProvider` fetches conversations/friends only on `socketReady`, not raw `connect` (fixes `handleGetConversations: no userId in client.data`). E2E `initializeE2E` still runs on transport `connect`. Deploy backend + frontend together with full restart.
-- **Decrypt ordering:** Live `newMessage` decrypt is serialized per `senderId` (`_runDecryptSerialized`); **do not live-decrypt** when the message's `conversationId` is not the open chat (`activeConversationId` / `_paginationConversationId`) — background decrypt on PWA push/morning resume breaks Signal order; decrypt in `_decryptMessageHistory` when the user opens the thread. History/live decrypt **skip** when the open row already has usable plaintext (`_hasUsableDecryptedContent`) — never re-run ratchet decrypt on the same ciphertext (avoids Bad Mac after live decrypt + `messageHistory` merge). If `messageHistory` arrives before `EncryptionProvider.initializeE2E` finishes (common on iOS PWA), history decrypt sets `_pendingHistoryDecryptAfterE2EReady` and `EncryptionProvider.onE2EReady` → `MessagingProvider.retryDecryptActiveConversation()`; `ConnectionProvider._onSocketReady` also schedules `retryDecryptActiveConversation()` after 900ms. History decrypt keeps `[encrypted]` until `_retryDecryptForPeers` finishes, then `_markHistoryDecryptFailuresAfterRetry` sets `[Decryption failed]` only for still-locked rows; unresolved peers get silent `requestSessionRebuild` (no “ask sender to resend” snackbar). `_hasUsableDecryptedContent` treats **decrypted non-TEXT** (PING/GIF/voice/image with empty `content` but no `[encrypted]` placeholder) as usable **only when** self-hosted `/media/msgs/*.bin` rows also have `mediaKey`+`mediaIv` (server history sends `mediaUrl` without keys — skipping decrypt on URL alone caused gray `broken_image` tiles after leaving/re-entering chat). Stale persisted rows with `mediaUrl` but no keys fall through to live decrypt. Own messages with `[encrypted]` or missing media keys restore from persisted cache on history pass. **`DuplicateMessageException` / `NoSessionException`:** return cache/persisted/current row — do **not** mark `[Decryption failed]` or schedule SESSION_RESET retry. After successful live decrypt, `_reEnrichAllReplyQuotes()` refreshes reply strips that quoted the newly readable parent; `_waitForE2EReady()` before decrypt; history pass retries `[Decryption failed]` rows (do not skip permanently); `_finishHistoryDecryptPass` drains `_incomingMessageQueue` after history. Stale `messageHistory` responses only merge cache — they must not clear `_decryptingHistory` while a newer `getMessages` is in flight. **`_mergeMessagePreferNewer` / `_updateCache`:** preserve local `[Decryption failed]` over server `[encrypted]` on reload, but successful decrypt still wins — including **empty `content`** for PING/media when `messageType` / `mediaUrl` / keys came from the envelope; also preserve local `messageType`, `mediaUrl`, `mediaDuration` over server TEXT-only snapshots. `_updateCache` merges into existing RAM cache (avoids pre-decrypt `[encrypted]` snapshot overwriting a later failed label). **Live decrypt fail:** no immediate `requestSessionRebuild` per message — `_scheduleLiveDecryptRetry` (800ms debounce) batches peers into `_retryDecryptForPeers` (once per pass: `deleteSessionWithPeer` + `requestSessionRebuild`; skips rows already usable). `MessagingProvider.onDisconnect` cancels the debounce timer (peers stay queued for the next history pass on reconnect); `clearAll` clears timer + peer set. **History/live retry:** `_retryDecryptForPeers` never downgrades `[Decryption failed]` → `[encrypted]`; failed rows stay failed until decrypt succeeds. **Cross-device testing pitfall:** Web “fresh install” (`Generating new keys`) vs stable Android/desktop keys for the same account → Bad Mac for all inbound from that peer until both sides rebuild session (sender must send after receiver’s `requestSessionRebuild` / new pre-key fetch). Regression: `test/providers/messaging_provider_race_test.dart` (`history decrypt failure…`, `messageHistory merge preserves [Decryption failed]…`, `messageHistory keeps decrypted PING when duplicate…`, `live decrypt fail debounces requestSessionRebuild…`).
-- **`closeConversation` / dispose:** `ConversationsProvider.closeConversation({notify})` mirrors `openConversation` — `ChatDetailScreen.dispose` calls `closeConversation(notify: false)` then `notifyActiveConversationChanged()` post-frame (avoids `notifyListeners` while widget tree locked).
-- **Reconnect storm guard:** `ConnectionProvider.connect` enforces `AppConstants.reconnectConnectCooldown` (2s) between full connects; `ChatReconnectManager.onDisconnect` uses `reconnectMaxAttempts` + exponential backoff; `resetAttempts()` runs on `socketReady` (not raw transport `connect`) so brief connect/disconnect loops do not wipe backoff. Intentional socket replacement during `connect()` must not count as a user-visible disconnect.
-- Regression tests for crypto race paths: `frontend/test/providers/messaging_provider_race_test.dart` verifies no plaintext fallback emit on failed session bootstrap, confirms reconnect cancels delayed retry timers, and covers deterministic `reconnect + messageHistory + retry` interleaving with encrypted-only re-send; `frontend/test/providers/encryption_provider_test.dart` also covers duplicate `preKeyBundleResponse` handling and `preKeysLow` reentrancy guard
+- `uploadOneTimePreKeys` payload must be `{ keys: [...] }` not bare array
+- Fresh install: 20 OTPs; replenish when <10 (chunked parallel, 25 at a time)
+- `EncryptionService.decrypt()` returns `Future` — use async
+- Own messages skip decryption (sender has plaintext)
+- Session Completer: 10s timeout — failure marks message failed (no plaintext fallback)
+- Offline send: clear `_pendingPreKeyFetches[recipientId]` on failure; schedule 4s retry for key-bundle/timeout failures. `_cancelDelayedRetryIfAny()` on manual retry/connect/logout.
+- Keys persist through logout; cleared only on account deletion (`clearEncryptionKeys()`)
+- All Signal store keys: `e2e_${userId}_` prefix. `clearAllKeys()` uses selective deletion.
+- **DualStorage:** writes to both `flutter_secure_storage` AND `SharedPreferences`. Reads: secure first, then SP fallback. Web: `WebOptions(dbName: 'FireplaceE2E')`.
+- **Cache-first history decrypt:** check persisted cache before live decrypt. `EncryptionProvider` owns cache via `saveDecryptedContent()`/`getDecryptedContent()`. Cap: 500 entries per user. "Clear local message cache" in `PrivacySafetyScreen` — clears plaintext cache + audio only, NOT Signal keys.
+- `_pendingSendContent: Map<String, Map<String, dynamic>>` (tempId → {content, mediaKey, mediaIv, ...}). Write `mediaKey`/`mediaIv` **immediately** after `MediaCryptoService.encrypt()`, before any awaits. Cleared on connect/reconnect. Drained in `_addMessageToState`.
+- `_initializeE2E()` skips `_encryptionService.initialize()` when `_e2eInitialized = true` (reconnect)
+- **Socket auth race:** `ConnectionProvider` fetches conversations/friends on `socketReady`, not raw `connect`. E2E `initializeE2E` runs on transport `connect`.
+- **Decrypt ordering:** Live decrypt serialized per senderId (`_runDecryptSerialized`). Don't live-decrypt outside active conversation — breaks Signal order. Skip when row has usable plaintext (`_hasUsableDecryptedContent`). `_hasUsableDecryptedContent` for non-TEXT media requires `mediaKey`+`mediaIv` (URL alone insufficient). `DuplicateMessageException`/`NoSessionException`: return cached row, don't mark `[Decryption failed]`. If `messageHistory` arrives before E2E ready: `_pendingHistoryDecryptAfterE2EReady` → `retryDecryptActiveConversation()`. Live decrypt fail: 800ms debounce → `_retryDecryptForPeers` (`deleteSessionWithPeer` + `requestSessionRebuild`). Never downgrades `[Decryption failed]` → `[encrypted]`. After live decrypt: `_reEnrichAllReplyQuotes()`. `_mergeMessagePreferNewer`: preserve local `[Decryption failed]` over server `[encrypted]`; successful decrypt wins; preserve local `messageType`/`mediaUrl`/`mediaDuration` over server TEXT-only snapshots. Regression: `messaging_provider_race_test.dart`.
+- **Reconnect storm guard:** 2s cooldown between connects. Exponential backoff; `resetAttempts()` on `socketReady`.
+- Regression: `messaging_provider_race_test.dart`, `encryption_provider_test.dart`
 
 ---
 
@@ -213,13 +167,10 @@ flowchart TB
     Client -->|"Socket.IO auth.token"| WS
 ```
 
-**State Management:** 7 providers (ChangeNotifier): `AuthProvider` (login/logout/token/user), `ConnectionProvider` (socket lifecycle, connect/disconnect, reconnect), `ConversationsProvider` (conversation list, active chat, unread counts), `MessagingProvider` (messages, send/receive, E2E orchestration, typing), `FriendsProvider` (friends, requests, blocking, search), `EncryptionProvider` (E2E keys, session management), `SettingsProvider` (`themePreference`: `light` | `teal` | `dark` | `blue`; `themeMode` light for `light`+`teal`; `MaterialApp.theme` = `lightTheme` → `RpgTheme.themeDataLight` or `themeDataTealStone`; locale: pl/en, default pl). Services: `SocketService` (Socket.IO, event-map pattern), `ApiService` (REST), `EncryptionService` (Signal Protocol), `MediaCryptoService` (AES-256-GCM for message media blobs in isolate), `LinkPreviewService` (OG metadata).
-
-**Provider wiring:** ConnectionProvider orchestrates socket events and routes them to sub-providers via `on()` listeners. Sub-providers receive an `_emit` callback for sending socket events. Cross-provider calls use explicit method interfaces (`removeConversationsForUser`, `updateLastMessage`, etc.). Wired in `conversations_screen.dart` initState.
-
-**Backend services:** `ChatGateway` (thin, ~459 LOC, pure delegation) delegates to `ChatMessageService`, `ChatConversationService`, `ChatFriendRequestService`, `ChatKeyExchangeService`, `ChatPresenceService`, `ChatBlockService`, `ChatSearchService`, `ChatReactionService`, `ChatLinkPreviewService`. REST: `AuthController`, `UsersController`, `MessagesController`. Mappers: `UserMapper`, `MessageMapper`, `ConversationMapper`, `FriendRequestMapper` — all have `toPayload()`.
-
-**DTO validation:** `chat/utils/dto.validator.ts` — runtime validation via `class-transformer` + `class-validator`. DTOs in `chat/dto/`.
+**7 Providers (ChangeNotifier):** `AuthProvider`, `ConnectionProvider` (socket lifecycle), `ConversationsProvider` (list/active/unread), `MessagingProvider` (messages/E2E/typing), `FriendsProvider`, `EncryptionProvider` (Signal), `SettingsProvider` (theme: light|teal|dark|blue; locale: pl/en default pl).
+**Services:** `SocketService` (event-map), `ApiService` (REST), `EncryptionService` (Signal Protocol), `MediaCryptoService` (AES-256-GCM in isolate), `LinkPreviewService`.
+**Provider wiring:** `ConnectionProvider` routes socket events to sub-providers via `on()`. Sub-providers receive `_emit` callback. Wired in `conversations_screen.dart` initState.
+**Backend:** `ChatGateway` (~459 LOC, pure delegation) → 9 chat services. Mappers: `UserMapper`, `MessageMapper`, `ConversationMapper`, `FriendRequestMapper` (all `toPayload()`). DTOs validated by `chat/utils/dto.validator.ts`.
 
 ---
 
@@ -229,23 +180,19 @@ flowchart TB
 
 | Domain | Key Files |
 |---|---|
-| **Auth** | `auth/auth.service.ts`, `auth/auth.controller.ts`, `auth/refresh-token.entity.ts`, `auth/refresh-tokens.service.ts`, `auth/refresh-tokens.module.ts`, `auth/dto/refresh-body.dto.ts`, `auth/jwt-auth.guard.ts`, `auth/strategies/jwt.strategy.ts`, `auth/password.constants.ts` |
-| **Users** | `users/user.entity.ts`, `users/users.service.ts`, `users/users.controller.ts` |
-| **Conversations** | `conversations/conversation.entity.ts`, `conversations/conversations.service.ts` |
-| **Messages** | `messages/message.entity.ts`, `messages/message.mapper.ts`, `messages/messages.service.ts`, `messages/messages.controller.ts` (link-preview only) |
-| **Media** | `media/local-storage.service.ts`, `media/media.controller.ts`, `media/media-cleanup.service.ts`, `media/media.module.ts`, `media/dto/upload-media.dto.ts` |
-| **Friends** | `friends/friend-request.entity.ts`, `friends/friends.service.ts` |
-| **Blocked** | `blocked/blocked-user.entity.ts`, `blocked/blocked.module.ts`, `blocked/blocked.service.ts` |
+| **Auth** | `auth/auth.service.ts`, `auth.controller.ts`, `refresh-token.entity.ts`, `refresh-tokens.service.ts`, `jwt-auth.guard.ts`, `strategies/jwt.strategy.ts`, `password.constants.ts` |
+| **Users** | `users/user.entity.ts`, `users.service.ts`, `users.controller.ts` |
+| **Conversations** | `conversations/conversation.entity.ts`, `conversations.service.ts` |
+| **Messages** | `messages/message.entity.ts`, `message.mapper.ts`, `messages.service.ts`, `messages.controller.ts` |
+| **Media** | `media/local-storage.service.ts`, `media.controller.ts`, `media-cleanup.service.ts` |
+| **Friends** | `friends/friend-request.entity.ts`, `friends.service.ts` |
+| **Blocked** | `blocked/blocked-user.entity.ts`, `blocked.service.ts` |
 | **Chat** | `chat/chat.gateway.ts`, `chat/services/chat-{message,conversation,friend-request,key-exchange,presence,block,search,reaction,link-preview}.service.ts` |
-| **DTOs** | `chat/dto/chat.dto.ts` + `{typing,recording-voice,...}.dto.ts` |
-| **Key Bundles** | `key-bundles/key-bundle.entity.ts`, `key-bundles/one-time-pre-key.entity.ts`, `key-bundles/key-bundles.service.ts` |
-| **Mappers** | `chat/mappers/{conversation,user,friend-request}.mapper.ts`, `messages/message.mapper.ts` |
-| **Push** | `fcm-tokens/fcm-token.entity.ts`, `fcm-tokens/fcm-tokens.service.ts`, `web-push-subscriptions/web-push-subscription.entity.ts`, `web-push-subscriptions/web-push-subscriptions.service.ts`, `push-notifications/push-notifications.service.ts` |
-| **Secret Notes** | `secret-notes/secret-note.entity.ts`, `secret-notes/secret-notes.service.ts`, `secret-notes/secret-notes.controller.ts`, `secret-notes/secret-notes.module.ts` |
-| **Health** | `health/health.controller.ts`, `health/health.module.ts` |
-| **Version** | `version/version.controller.ts`, `version/version.module.ts` |
-| **Config** | `config/env.validation.ts` |
-| **Utils** | `chat/utils/dto.validator.ts`, `chat/services/chat-validation.service.ts`, `chat/services/link-preview.service.ts`, `app.module.ts` |
+| **DTOs** | `chat/dto/chat.dto.ts` + typing/recording-voice DTOs |
+| **Key Bundles** | `key-bundles/key-bundle.entity.ts`, `one-time-pre-key.entity.ts`, `key-bundles.service.ts` |
+| **Push** | `fcm-tokens/fcm-token.entity.ts`, `fcm-tokens.service.ts`, `web-push-subscriptions/web-push-subscription.entity.ts`, `push-notifications/push-notifications.service.ts` |
+| **Secret Notes** | `secret-notes/secret-note.entity.ts`, `secret-notes.service.ts`, `secret-notes.controller.ts` |
+| **Utils** | `chat/utils/dto.validator.ts`, `chat/services/chat-validation.service.ts`, `link-preview.service.ts`, `app.module.ts` |
 
 ### Frontend (`frontend/lib/`)
 
@@ -253,16 +200,16 @@ flowchart TB
 |---|---|
 | **Entry** | `main.dart`, `config/app_config.dart`, `config/app_version_info.dart`, `constants/app_constants.dart` |
 | **Models** | `models/{user,conversation,message,friend_request}_model.dart` |
-| **L10n** | `l10n/app_pl.arb`, `l10n/app_en.arb`, `l10n/app_localizations.dart` (generated), `l10n.yaml` |
-| **Providers** | `providers/{auth,connection,conversations,messaging,friends,encryption,settings}_provider.dart`, `providers/chat_reconnect_manager.dart`, `providers/conversation_helpers.dart` |
+| **L10n** | `l10n/app_pl.arb`, `l10n/app_en.arb`, `l10n/app_localizations.dart` (generated) |
+| **Providers** | `providers/{auth,connection,conversations,messaging,friends,encryption,settings}_provider.dart`, `chat_reconnect_manager.dart` |
 | **Services** | `services/{socket_service,api_service,encryption_service,media_crypto_service,link_preview_service,push_service,gif_service}.dart` |
-| **Utils** | `utils/e2e_envelope.dart` (Signal plaintext envelope build/parse); `utils/portrait_lock_policy.dart` (landscape overlay threshold); stub/web conditional-import pairs: `{file_utils,audio_blob_url,gif_blob_url,secure_context}_{stub,io/web}.dart`, `download_utils_{io,web}.dart`; `init_file_picker_{stub,web}.dart` (in `lib/` root) |
-| **Portrait lock** | `services/portrait_lock_service.dart`, `services/web_orientation_lock_{stub,web}.dart`, `widgets/portrait_lock_shell.dart`, `widgets/portrait_required_overlay.dart` |
+| **Utils** | `utils/e2e_envelope.dart`, `portrait_lock_policy.dart`; stub/io/web pairs: `file_utils`, `audio_blob_url`, `gif_blob_url`, `secure_context`, `download_utils`; `init_file_picker_{stub,web}.dart` |
+| **Portrait lock** | `services/portrait_lock_service.dart`, `web_orientation_lock_{stub,web}.dart`, `widgets/portrait_lock_shell.dart`, `widgets/portrait_required_overlay.dart` |
 | **Encryption** | `services/encryption/signal_stores.dart` (4 persistent Signal stores) |
 | **Screens** | `screens/{auth,main_shell,conversations,contacts,settings,chat_detail,add_or_invitations,privacy_safety,blocked_users}_screen.dart` |
-| **Widgets** | `widgets/{main_tab_screen_header,chat_action_tiles,conversation_tile,top_snackbar,avatar_circle,anti_quantum_note_dialog,gif_picker_sheet,auth_form,chat_background_pattern,message_date_separator,message_swipe_wrapper,ping_effect_overlay}.dart`; `widgets/message/{chat_message_bubble,text_message_content,image_message_content,gif_message_content,file_message_content,ping_message_content,voice_message_content,message_content_factory,message_metadata_row,reaction_chips_row,message_bubble_inline_time,message_context_menu_overlay,message_context_menu_bubble_highlight,context_menu_bubble_anchor,message_action_panel}.dart`; `widgets/input/{chat_composer_viewport,chat_input_bar,recording_controller,attachment_handler,reply_preview_bar}.dart`; `widgets/audio/{playback_controller,waveform_display}.dart`; `widgets/dialogs/{delete_account_dialog,reset_password_dialog,message_delete_dialog}.dart`. Old top-level `chat_message_bubble.dart`, `chat_input_bar.dart`, `voice_message_bubble.dart` are re-export shims. |
-| **Theme** | `theme/rpg_theme.dart` (`FireplaceColors` ThemeExtension; themes: **light** warm paper + ember, **teal** stone + teal (`themeDataTealStone`), **dark** gray + `#5C9EAD`, **blue** Telegram; app chrome uses Inter + `screenHeaderTitle`; `pressStart2P` auth only), `theme/app_scroll_behavior.dart` |
-| **Push** | `services/push_service.dart`, `services/android_fcm_local_notifications.dart`, `push_android_stub.dart`, `fcm_background_stub.dart`, `services/web_push_bridge_{stub,web}.dart`, `services/badging_bridge_{stub,web}.dart`, `services/pwa_app_badge_clear.dart`, `services/unread_badge_sync.dart`, `utils/app_badge_math.dart`, `firebase_options.dart`, `web/web-push-sw.js` |
+| **Widgets** | `widgets/{main_tab_screen_header,chat_action_tiles,conversation_tile,top_snackbar,avatar_circle,gif_picker_sheet,chat_background_pattern,message_date_separator,message_swipe_wrapper,ping_effect_overlay}.dart`; `widgets/message/{chat_message_bubble,text_message_content,image_message_content,gif_message_content,file_message_content,voice_message_content,message_content_factory,message_metadata_row,reaction_chips_row,message_bubble_inline_time,message_context_menu_overlay,message_context_menu_bubble_highlight,context_menu_bubble_anchor,message_action_panel}.dart`; `widgets/input/{chat_composer_viewport,chat_input_bar,recording_controller,attachment_handler,reply_preview_bar}.dart`; `widgets/audio/{playback_controller,waveform_display}.dart` |
+| **Theme** | `theme/rpg_theme.dart` (`FireplaceColors` ThemeExtension; light/teal/dark/blue themes), `theme/app_scroll_behavior.dart` |
+| **Push** | `services/push_service.dart`, `android_fcm_local_notifications.dart`, `web_push_bridge_{stub,web}.dart`, `badging_bridge_{stub,web}.dart`, `pwa_app_badge_clear.dart`, `unread_badge_sync.dart`, `utils/app_badge_math.dart`, `web/web-push-sw.js` |
 
 ---
 
@@ -282,7 +229,7 @@ erDiagram
         string tag "4-digit, unique with username"
         string password "bcrypt hash, 10 rounds"
         string profilePictureUrl "nullable"
-        string profilePicturePublicId "nullable, relative path e.g. avatars/uuid.jpg"
+        string profilePicturePublicId "nullable"
         timestamp createdAt
     }
 
@@ -290,7 +237,7 @@ erDiagram
         int id PK
         int user_one_id FK "eager: true"
         int user_two_id FK "eager: true"
-        int disappearingTimer "nullable, default null (off)"
+        int disappearingTimer "nullable, default null"
         int pinnedMessageId "nullable"
         timestamp pinnedAt "nullable"
         int pinnedByUserId "nullable"
@@ -304,16 +251,16 @@ erDiagram
         int conversation_id FK "eager: false"
         enum deliveryStatus "SENDING|SENT|DELIVERED|READ"
         enum messageType "TEXT|PING|IMAGE|VOICE|GIF|FILE"
-        text mediaUrl "nullable, self-hosted or legacy Cloudinary URL"
+        text mediaUrl "nullable"
         int mediaDuration "nullable, seconds"
-        varchar hiddenByUserIds "comma-separated, delete-for-me"
-        text reactions "nullable JSON {emoji:[userId]}"
+        varchar hiddenByUserIds "comma-separated"
+        text reactions "nullable JSON"
         text linkPreviewUrl "nullable"
         text linkPreviewTitle "nullable"
         text linkPreviewImageUrl "nullable"
-        text encryptedContent "nullable, E2E ciphertext"
+        text encryptedContent "nullable"
         timestamp expiresAt "nullable"
-        int disappearAfterSeconds "nullable, TTL frozen at send"
+        int disappearAfterSeconds "nullable"
         timestamp createdAt
     }
 
@@ -379,71 +326,72 @@ erDiagram
     }
 ```
 
-**Constraints:** `users` unique on `(username, tag)` — Discord-style `username#tag`. No cascade on User entity — `deleteAccount()` manually cleans dependents. `secret_notes.token` unique — used as the public URL token for one-time reveal. `blocked_users` unique index on `(blocker_id, blocked_id)` — prevents duplicate blocks. **`refresh_tokens`:** unique `token_hash`; FK `user_id` → `users` ON DELETE CASCADE. With `synchronize: false` in production, create the table manually (mirror `refresh-token.entity.ts`) before deploying this feature.
+**Constraints:** `users` unique on `(username, tag)`. No cascade on User entity. `secret_notes.token` unique. `blocked_users` unique on `(blocker_id, blocked_id)`. `refresh_tokens`: unique `token_hash`, FK `user_id` CASCADE.
 
 ---
 
 ## 5. How-To: Adding New Features
 
-### Add a new WebSocket event:
-1. Define DTO in `chat/dto/` with class-validator decorators
-2. Add handler in `chat/services/chat-*.service.ts`
-3. Add `@SubscribeMessage` in `chat/chat.gateway.ts` -> delegate to service
-4. Add emit + listener in `services/socket_service.dart`
-5. Register listener in `ConnectionProvider._registerEventListeners()` (routes to sub-provider), handle state + `notifyListeners()` in the target provider
+**New WebSocket event:**
+1. DTO in `chat/dto/` with class-validator decorators
+2. Handler in `chat/services/chat-*.service.ts`
+3. `@SubscribeMessage` in `chat.gateway.ts` → delegate
+4. Emit + listener in `services/socket_service.dart`
+5. Register in `ConnectionProvider._registerEventListeners()` → target provider state + `notifyListeners()`
 
-### Add a new REST endpoint:
-1. Add method in `*.service.ts`, route in `*.controller.ts` with `@UseGuards(JwtAuthGuard)`
-2. Add API call in `services/api_service.dart`, call from provider/screen
+**New REST endpoint:**
+1. `*.service.ts` + `*.controller.ts` with `@UseGuards(JwtAuthGuard)`
+2. `services/api_service.dart` call from provider/screen
 
-### Add a new DB column:
-1. Add to `*.entity.ts` (@Column) -> restart backend (auto-sync)
-2. Update mapper if WebSocket payload, update frontend model (constructor, `fromJson()`, `copyWith()`)
+**New DB column:**
+1. `*.entity.ts` @Column → restart backend (auto-sync in dev)
+2. Update mapper + frontend model (`fromJson()`, `copyWith()`)
 
 ---
 
 ## 6. Key Behaviors & Gotchas (Runtime)
 
-**Optimistic messaging:** temp message (id=-timestamp, SENDING, tempId) → encrypt async → `sendMessage` → backend `messageSent` with tempId → replace temp with real.
+**Optimistic messaging:** temp (id=-timestamp, SENDING, tempId) → encrypt → `sendMessage` → `messageSent` with tempId → replace with real.
 
-**Blocking state:** `_blockedUsers` = blocked by me. `_blockedByUserIds` (Set) = users who blocked me — cleared on every connect (server doesn't replay `youWereBlocked` on reconnect). On `youWereBlocked`: add to set, remove from friends/conversations, clear active chat. When `friendsList` arrives, remove all friend IDs from `_blockedByUserIds` (clears "can't message" banner after unblock+re-add).
+**Blocking state:** `_blockedUsers` = blocked by me. `_blockedByUserIds` = blocked me — cleared on connect. On `youWereBlocked`: add, remove from friends/convs, clear active. `friendsList` clears `_blockedByUserIds` entries for incoming friends.
 
-**consumePendingOpen / consumeFriendRequestSent / consumePendingFriendAccepted:** Provider stores ID/flag from socket event; screen polls and navigates/shows snackbar. Necessary because providers can't call Navigator.
+**Navigation patterns:** `consumePendingOpen()` / `consumeFriendRequestSent()` / `consumePendingFriendAccepted` — providers store ID/flag; screens poll. Required because providers can't call Navigator.
 
-**E2E envelope:** `{ content, messageType?, mediaUrl?, mediaDuration?, mediaKey?, mediaIv?, linkPreview? }` — `messageType` defaults to `TEXT` (backward compat). Ciphertext: `"{type}:{base64}"` (type 3 = PreKey, type 1 = Signal). Media keys travel **only** inside the envelope; `.bin` blobs on server are opaque. **`sendMessage` WS payload** still sends `content: '[encrypted]'` + `encryptedContent`, but also includes **`messageType`** (when not `TEXT`), **`mediaUrl`**, and **`mediaDuration`** when present so the DB row references self-hosted `/media/msgs/*.bin` for orphan cleanup and expiry deletes — server does not learn plaintext or keys.
+**E2E envelope:** `{ content, messageType?, mediaUrl?, mediaDuration?, mediaKey?, mediaIv?, linkPreview? }`. `messageType` defaults `TEXT`. Ciphertext: `"{type}:{base64}"` (3=PreKey, 1=Signal). `sendMessage` payload includes `messageType`/`mediaUrl`/`mediaDuration` for DB orphan/expiry tracking — server doesn't see plaintext or keys.
 
 **Delete actions:**
 
-| Action | Deletes | Friend? | Event |
+| Action | Deletes | Friend? | WS Event |
 |---|---|---|---|
-| Delete Conversation (swipe) | Messages + Conversation | Kept | `deleteConversationOnly` |
-| Unfriend (long-press contacts) | FriendRequest + Conv + Messages | Removed | `unfriend` |
-| Clear History (action tile) | Messages only | Kept | `clearChatHistory` |
-| Delete for me (context menu → dialog) | Hidden for current user | Kept | `deleteMessage` mode=for_me |
-| Delete for everyone (own msg, dialog) | Hard-deleted for both; clears pin if pinned | Kept | `deleteMessage` mode=for_everyone` + `messageUnpinned` when applicable |
+| Delete Conversation | Messages + Conversation | Kept | `deleteConversationOnly` |
+| Unfriend | FriendRequest + Conv + Messages | Removed | `unfriend` |
+| Clear History | Messages only | Kept | `clearChatHistory` |
+| Delete for me | Hidden for user | Kept | `deleteMessage` mode=for_me |
+| Delete for everyone | Hard-delete both; clears pin | Kept | `deleteMessage` mode=for_everyone |
 
 ---
 
 ## 7. Frontend Screens & Widgets
 
-**Navigation:** AuthGate → AuthScreen OR MainShell (IndexedStack: Conversations, Contacts, Settings). Desktop >=600px: sidebar+detail layout.
+**Navigation:** AuthGate → AuthScreen OR MainShell (IndexedStack: Conversations, Contacts, Settings). Desktop ≥600px: sidebar+detail.
 
 **Screen gotchas:**
-- Main tabs (Chat / Contacts / Settings) share `widgets/main_tab_screen_header.dart` (`MainTabScreenHeader`): `width: double.infinity`, fixed `kToolbarHeight` below top `SafeArea`, `Row` + `Expanded` centered title. Parent `Column`s use `crossAxisAlignment: CrossAxisAlignment.stretch`. Chat passes optional `leading` (avatar) / `trailing` (+ badge); Contacts and Settings title-only. Settings uses `Column` + header (not `AppBar`).
-- `AuthScreen`: `clearStatus()` on tab switch — DO NOT DELETE (called from auth_screen.dart, appears unused in providers)
-- `ConversationsScreen`: `consumePendingOpen()` after `startConversation` resolves
-- `ChatDetailScreen`: Timer.periodic 1s for expired msgs; `markConversationRead` on open
-- `AddOrInvitationsScreen`: auto-send if 1 search result, picker if multiple; `consumeFriendRequestSent()`
-- `SettingsScreen`: footer **App version** line (`settingsAppVersion` ARB) — `0.0.x · <git> · <UTC time>` (semver only); compare with `GET /version` on prod vs local
+- Tabs share `MainTabScreenHeader`: `width: double.infinity`, `kToolbarHeight`, `Row+Expanded` title. Settings uses `Column` + header (not `AppBar`).
+- `AuthScreen`: `clearStatus()` on tab switch — DO NOT DELETE
+- `ChatDetailScreen`: `Timer.periodic` 1s for expired msgs; `markConversationRead` on open
+- `AddOrInvitationsScreen`: auto-send if 1 result, picker if multiple; `consumeFriendRequestSent()`
+- `SettingsScreen`: footer semver `0.0.x · <git> · <UTC time>` via `settingsAppVersion` ARB
 
 **Widget gotchas:**
-- Old top-level `chat_message_bubble.dart`, `chat_input_bar.dart`, `voice_message_bubble.dart` are re-export shims — do not delete
-- `ConversationTile`: calls `MessagingProvider.onConversationDeleted` **and** optimistically removes row before socket ack — both must happen in the same gesture or dismiss animation gets stuck with stuck red background
-- `ChatInputBar`: `minLines:1/maxLines:6` prevents chat `Column` overflow on long drafts; trailing control is mic-only 48×48 `RecordingController` (always mounted for stable long-press recording). Text sending uses IME Send and Ctrl|Cmd+Enter (`_send()` path).
-- `ChatBackgroundPattern`: radius snapped to device pixels to prevent moiré at high DPR
-- **Chat message bubbles (Telegram-style):** Plain `MessageType.text` without `linkPreviewUrl` uses a bottom-right time overlay inside `TextMessageContent` (ghost `WidgetSpan` width ~66px + `Stack` + `Positioned`; `MessageContentFactory.build` optional `timeOverlay`). Text with link preview, ping, file: unchanged inline/below-row time from `messageBubbleUsesInlineTime()` in `message_bubble_inline_time.dart` (shared by `ChatMessageBubble` + `MessageContextMenuBubbleHighlight`) + `MessageMetadataRow`. **GIF/image:** `GifMessageContent` / `ImageMessageContent` are full-bleed `SizedBox(width: double.infinity, height: 220)` (`kMessageMediaBubbleHeight`), `BoxFit.cover`, no inner `ConstrainedBox(200)` / `ClipRRect`; `ChatMessageBubble` uses transparent fill, `EdgeInsets.zero` padding, `Clip.hardEdge`, and a dark pill `Positioned` time overlay on the media `Stack`. **Timestamps:** API sends UTC (`createdAt`); UI uses **`toLocal()`** everywhere time/calendar matters: `RpgTheme.formatMessageClock` in bubbles and list (`MessageMetadataRow`, `VoiceMessageContent`, `ConversationTile`), `MessageDateSeparator` + `ChatDetailScreen._isDifferentDay` for day boundaries and chip labels. **Meta row color (blue / teal):** `RpgTheme.messageBubbleMetaColor(context, isMine, SettingsProvider.themePreference)` — near-white on own bubbles + `mutedText` on received when preference is `blue` or `teal`; dark gray / light (ember) themes keep `timeColorDark` / `textSecondaryLight` for both bubble sides. **Light theme sent bubble:** `mineMsgBgLight` warm tint `#FFE4D6` (not solid primary); own text `textColorLight`; delivery ticks via `RpgTheme.messageBubbleDeliveryTickColors`; `VoiceMessageContent` waveform/play/speed use `textSecondaryLight` / `textColorLight` on that background so controls visible. **Message actions (Zangi panel):** `MessageSwipeWrapper` — swipe **left** → `setReplyingTo` only; swipe **right** clamped to zero (no delete). Long-press → `openMessageContextMenu()` (`message_context_menu_overlay.dart`): full-screen **`BackdropFilter` blur + dim scrim** (Telegram focus); sharp elevated bubble replica via **`MessageContextMenuBubbleHighlight`** (`bubblePreviewBuilder`, scale ~1.02 + Material elevation; **must mirror `messageBubbleUsesInlineTime`** — inline time on the right for short text/ping, not always a stacked metadata row, or highlight height exceeds anchor and the action panel looks flush; image/GIF highlight uses fixed **`kMessageMediaBubbleHeight` (220dp)** + overlaid time pill like live bubbles, not width-scaled height); overlay highlight slot uses **`SizedBox(width/height: layoutRect)`** so scale/gap math matches anchor footprint; compact emoji pill **above** bubble (`_ContextMenuReactionEmojiBar`: fixed **`kMessageContextMenuEmojiRowHeight` (44dp)**, emojis vertically centered in 36×36 cells); **`MessageActionPanel`** (Reply / Edit stub / Pin / Delete) **below** bubble by default (`computeMessageContextMenuLayout` on **`bubbleRectForContextMenuLayout`** — anchor [RenderBox] minus **`kContextMenuAnchorBottomMargin` (10dp)** on `ContextMenuBubbleAnchor` container so gaps use painted bubble height, not margin slab; unified stack anchor with **`kMessageContextMenuOverlayGap` (12dp)** between emoji row / bubble / panel; gaps use **`bubbleHighlightVisualTop` / `bubbleHighlightVisualBottom` / `messageContextMenuPanelTop`** (scale overflow from 1.02 highlight); near composer shifts whole stack up via `bubbleHighlightTop`; falls back to emoji → panel → bubble when emoji would clip top); **horizontal alignment:** emoji bar uses **`Positioned` left/right** to bubble edges (intrinsic width — no 248dp estimate); panel uses **`Align`** in bubble-width slot (`computeEmojiBarLeft` / `computePanelLeft` kept for unit tests); anchor via `ContextMenuBubbleAnchor` on the bubble container (not full-width swipe row); `ContextMenuBubbleAnchor.renderBoxOf(context)` walks the **descendant** subtree from the bubble widget context (anchor is below `MessageSwipeWrapper`, not an ancestor). Regression: `test/widgets/message/message_context_menu_overlay_test.dart` (gap math, pixel top/bottom gap equality + trailing emoji alignment, `ChatMessageBubble` short-text + image equal gaps + long-press → overlay, `messageBubbleUsesInlineTime` parity). **Context-menu highlight gaps:** reply strip not replicated in highlight (known — can affect reply+media height parity); image/GIF uses 220dp + overlay time. Reactions from overlay dismiss after tap (no bottom sheet). Delete only via `MessageDeleteDialog` (`showMessageDeleteDialog`); **Delete for everyone** shown only when `isMine && messageId > 0`. Edit row is **muted but tappable** → `showTopSnackBar(..., messageEditComingSoon)`. Pin calls `MessagingProvider.pinMessage` when `message.id > 0`. **`PinnedMessageBanner`** under chat header; tap → `scroll_to_message_helper.dart` + caller-owned `GlobalKey` + `Scrollable.ensureVisible` (snackbar `snackbarPinnedMessageUnavailable` when target not built); banner shown when `pinnedMessageId` + server `pinnedMessagePreview` exist and preview not expired — **not** gated on pinned id appearing in local `messages` (supports older pins + load race); hidden when preview is null (delete-for-me / server batch omit) or pin expired/unpinned. Scroll-to-pinned pagination awaits `MessagingProvider.loadOlderMessages()` Future (completes when `messageHistory` applied). `ChatDetailScreen.dispose` calls `dismissMessageContextMenu()`. Overlay also dismissed on scroll start (`ScrollStartNotification`) and keyboard inset change (`WidgetsBindingObserver.didChangeMetrics`). **`reply_preview_helper.dart`** shared preview for composer, bubbles, pinned banner, voice reply quotes, media sends; **`replyPreviewForMessageModel`** shows **type labels** (Ping / GIF / Voice / Image) for E2E rows when `messageType != TEXT` even if `content` is `[encrypted]` / `Encrypted message` and decrypt cache is empty; TEXT-only stays encrypted label. **`ReplyPreviewBar`** resolves live row via `findMessageById` + `context.watch<MessagingProvider>().messages` (not stale snapshot). Backend `MessageMapper` reply/pin snapshots use `Encrypted message` / type labels for E2E — never plaintext. **`enrichReplyToPreview` / `enrichMessageReplyPreview`** resolve quotes from open-chat `_messages` by `replyTo.id`, then decrypt cache, then type label (TEXT → encrypted label, not empty). **`ChatMessageBubble` / `VoiceMessageContent`** pass `messagesForLookup: messaging.messages` into `replyDisplayContentForQuote` for the same lookup at render time. **`resolvePinnedPreviewMessage`** + `MessagingProvider.messageById` + optimistic `setPinnedPreviewOptimistic` on pin fix **pinner asymmetry** (own E2E rows stay `[encrypted]` server-side but local list may still have plaintext). `messagePinned` handler merges server snapshot with local row via `ConnectionProvider`. Scroll-to-pinned: pagination + scroll jump + multi-frame `ensureVisible` (lazy `ListView` off-screen rows). Regression: `test/utils/reply_preview_helper_test.dart`, `test/screens/chat_detail_pinned_banner_test.dart`. Media sends thread `replyToMessageId`.
+- `chat_message_bubble.dart`, `chat_input_bar.dart`, `voice_message_bubble.dart` at top-level are re-export shims — do not delete
+- `ConversationTile`: call `onConversationDeleted` AND optimistically remove row in same gesture
+- `ChatInputBar`: `minLines:1/maxLines:6`; mic-only 48×48 trailing (always mounted)
+- **Chat bubbles:** Plain text (no link preview) → bottom-right time overlay via ghost `WidgetSpan` (~66px) + `Stack/Positioned`. GIF/image: full-bleed `SizedBox(width: infinity, height: 220)` (`kMessageMediaBubbleHeight`) + dark pill time overlay. All times use `toLocal()`. Meta color: `RpgTheme.messageBubbleMetaColor(context, isMine, themePreference)`. Light theme sent: `mineMsgBgLight` `#FFE4D6`. `messageBubbleUsesInlineTime()` shared by `ChatMessageBubble` + `MessageContextMenuBubbleHighlight`.
+- **Context menu (long-press):** Full-screen `BackdropFilter` blur + `MessageContextMenuBubbleHighlight` (scale 1.02). Emoji bar above bubble (`kMessageContextMenuEmojiRowHeight=44dp`). `MessageActionPanel` below. Gap: `kMessageContextMenuOverlayGap=12dp`. Near-composer shifts stack up. Emoji bar uses `Positioned left/right` (intrinsic width). `ContextMenuBubbleAnchor.renderBoxOf` walks descendant subtree. Edit row muted → `showTopSnackBar(messageEditComingSoon)`. Delete only via `MessageDeleteDialog`. Regression: `message_context_menu_overlay_test.dart`.
+- **Pinned banner:** Shown when `pinnedMessageId` + `pinnedMessagePreview` exist — not gated on local messages. Tap → `scroll_to_message_helper.dart` + `Scrollable.ensureVisible`. Pagination awaits `loadOlderMessages()` Future. Regression: `chat_detail_pinned_banner_test.dart`.
+- **Reply preview:** `reply_preview_helper.dart` — `replyPreviewForMessageModel` shows type labels (Ping/GIF/Voice/Image) for E2E rows. `ReplyPreviewBar` resolves via `findMessageById` + `context.watch<MessagingProvider>()`. Backend snapshots use `Encrypted message` / type labels — never plaintext.
 
-**Models:** `UserModel` (`displayHandle` getter), `ConversationModel` (immutable), `MessageModel` (`copyWith` for status/content/media). Frontend-only: `MessageDeliveryStatus.failed`.
+**Models:** `UserModel.displayHandle`, `ConversationModel` (immutable), `MessageModel.copyWith`. `MessageDeliveryStatus.failed` frontend-only.
 
 ---
 
@@ -452,41 +400,36 @@ erDiagram
 | Variable | Required | Purpose |
 |---|---|---|
 | `DB_HOST/PORT/USER/PASS/NAME` | Yes | PostgreSQL |
-| `JWT_SECRET` | Yes | JWT signing (>=32 chars in prod) |
-| `MEDIA_BASE_URL` | No | Public base URL for media links (default `http://localhost:3000`) |
-| `MEDIA_DIR` | No | Backend filesystem root for avatars + `msgs/*.bin` (default `/app/media`) |
-| `FIREBASE_SERVICE_ACCOUNT` | No | FCM push (graceful if missing) |
-| `WEB_PUSH_VAPID_PUBLIC_KEY` | No | Web Push VAPID public key for PWA subscriptions |
-| `WEB_PUSH_VAPID_PRIVATE_KEY` | No | Web Push VAPID private key used by backend sender |
+| `JWT_SECRET` | Yes | JWT signing (≥32 chars prod) |
+| `MEDIA_BASE_URL` | No | Public base URL for media (default `http://localhost:3000`) |
+| `MEDIA_DIR` | No | Filesystem root for media (default `/app/media`) |
+| `FIREBASE_SERVICE_ACCOUNT` | No | FCM push |
+| `WEB_PUSH_VAPID_PUBLIC_KEY` | No | VAPID public key |
+| `WEB_PUSH_VAPID_PRIVATE_KEY` | No | VAPID private key |
 | `WEB_PUSH_VAPID_SUBJECT` | No | VAPID subject (`mailto:` or URL) |
-| `ALLOWED_ORIGINS` | No | CORS (comma-separated, strict in prod) |
-| `BASE_URL` | No | Frontend dart define, defaults to `http://{host}:3000` |
-| `GIPHY_API_KEY` | No | Frontend dart define for Giphy API (defaults to beta key in dev) |
-| `GIT_COMMIT` | No | Backend env + frontend `--dart-define` (short SHA; local default `dev`) |
-| `BUILD_TIME` | No | Backend env + frontend `--dart-define` (UTC ISO timestamp; optional) |
-| `APP_VERSION` | No | Backend env — semver from pubspec (e.g. `0.0.2`; no `+` in pubspec; fallback `0.0.2` when unset) |
-| `METADATA_RETENTION_DAYS` | No | Reserved for future auto-purge of old metadata |
+| `ALLOWED_ORIGINS` | No | CORS comma-separated |
+| `BASE_URL` | No | Frontend dart define (default `http://{host}:3000`) |
+| `GIPHY_API_KEY` | No | Frontend dart define |
+| `GIT_COMMIT` | No | Short SHA; local default `dev` |
+| `BUILD_TIME` | No | UTC ISO timestamp |
+| `APP_VERSION` | No | Semver from pubspec; fallback `0.0.2` |
 
-**Docker:** `db` postgres:16-alpine (5433->5432), `backend` node:20-alpine (:3000) with named volume `media_storage` mounted at `/app/media`. Frontend runs locally; `frontend/nginx.conf` proxies `/media/*`, **`/health`** and **`/version`** (exact match — avoids SPA `try_files` returning `index.html`), and internal `X-Accel-Redirect` for production web container.
-
-**Push setup:** Native push uses `FIREBASE_SERVICE_ACCOUNT` (FCM). Web/PWA push uses VAPID (`WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`, `WEB_PUSH_VAPID_SUBJECT`) and requires allowing outbound traffic to `*.push.apple.com` for iOS web push delivery. Frontend web subscribe flow reads the public key from `--dart-define=WEB_PUSH_VAPID_PUBLIC_KEY`; **`deploy.sh` loads it from repo `.env`** — without it, Flutter web falls back to a dev default key and prod PWA gets `Registration failed - push service error` while backend delivery returns HTTP **400** for Apple/FCM endpoints signed with the wrong key.
+**Docker:** `db` postgres:16-alpine (5433→5432), `backend` node:20-alpine (:3000), volume `media_storage` → `/app/media`. `frontend/nginx.conf` proxies `/media/*`, `/health`, `/version` (exact match).
+**Push:** VAPID keys must match frontend dart-define and backend env — mismatch → `Registration failed`. iOS web push requires outbound to `*.push.apple.com`. `deploy.sh` loads `WEB_PUSH_VAPID_PUBLIC_KEY` from repo `.env`.
 
 ---
 
 ## 9. Known Limitations
 
-- **Android native chat composer layout jump (0.0.8):** Addressed for **non-embedded** `ChatDetailScreen` via `ChatComposerViewport` + `resizeToAvoidBottomInset: false` (see §1 viewport bullet). **Manual QA on Android emulator/device still required** (composer focus, reply bar, keyboard, rotation). **Embedded** desktop pane unchanged.
-- **Android Chrome / PWA — chat composer layout jump (web, unfixed):** On **Android** in **Chrome** (normal tab and installed PWA), tapping the message field **often but not always** shifts the whole UI upward (same symptom class as native pre-0.0.8). Reverted May 2026 global web scroll-lock stack must not be reintroduced wholesale; Android may still need `ChatComposerViewport` on mobile web or `visualViewport` inset capping.
-- **iOS Safari PWA — composer keyboard / viewport (partial fix):** After swipe/context **Reply**, focus could land on the composer without showing the virtual keyboard; tapping the field then caused a viewport jump (host scroll + Flutter `viewInsets`). Mitigations: synchronous `requestFocus` + iOS-gated `TextInput.show` via reply gesture (`MessagingProvider.setComposerFocusRequest`), `interactive-widget=overlays-content` in `web/index.html`, iOS-only dynamic host scroll lock + `resetWebDocumentScroll` on composer focus (`web_viewport_scroll.dart`). Manual iPhone PWA QA still required; if jump persists try `visualViewport`-based inset in `ChatComposerViewport`.
-- E2E: no multi-device, no key recovery. Legacy Cloudinary media (no `mediaKey`) loads via direct URL. 20MB decrypt limit enforced before `MediaCryptoService.decrypt()`. Own history shows `[encrypted]` if storage evicted.
+- **Android native composer layout jump:** Fixed for non-embedded via `ChatComposerViewport`. Embedded desktop unchanged. Manual QA required.
+- **Android Chrome/PWA composer jump (unfixed):** Tapping field shifts UI. Do not reintroduce May 2026 global scroll-lock.
+- **iOS Safari PWA keyboard (partial):** Mitigations: `setComposerFocusRequest`, `interactive-widget=overlays-content`, `web_viewport_scroll.dart`. Manual iPhone QA required.
+- **E2E limits:** No multi-device, no key recovery. 20MB decrypt limit. Legacy Cloudinary media loads direct URL (no keys).
 - No message edit, no fuzzy search, no iOS APNs
-- Large files: `messaging_provider.dart`, `chat-friend-request.service.ts`, `chat-message.service.ts`
-- Migration scripts in `backend/scripts/` (manual)
-- Metadata: server stores who/with-whom/when (see `docs/METADATA.md`); future privacy options in `docs/plans/2026-03-11-metadata-privacy-design.md`
-- `secret_notes` table auto-creation depends on TypeORM synchronize mode (`NODE_ENV !== 'production'`)
-- Android 16KB warning root cause currently points to `webcrypto` 0.6.0 native library alignment (`libwebcrypto.so` `LOAD Align 0x1000`); package has no newer pub release yet.
+- Large files: `messaging_provider.dart`, `chat-message.service.ts`, `chat-friend-request.service.ts`
+- `secret_notes` table auto-creation requires `NODE_ENV !== 'production'`
+- Android 16KB: `libwebcrypto.so` `LOAD Align 0x1000` — no fix in pub yet
+
 ---
 
-**Maintain this file.** After every code change, update the relevant section. After adding/removing backend unit tests, update the Tests count in §0 and ensure `node scripts/verify-claude-backend-test-counts.mjs` passes.
-
-
+**Maintain this file.** Update relevant section after every code change. Update backend test count after adding/removing tests; ensure `node scripts/verify-claude-backend-test-counts.mjs` passes.

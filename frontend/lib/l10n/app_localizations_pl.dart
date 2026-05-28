@@ -609,29 +609,8 @@ class AppLocalizationsPl extends AppLocalizations {
   String get voiceRecordingSlideToCancel => '← Przesuń, aby anulować';
 
   @override
-  String get voiceRecordingSlideUpToLock => '↑ Przesuń w górę, aby zablokować';
-
-  @override
-  String get voiceRecordingLocked =>
-      'Zablokowano — dotknij Wyślij, gdy skończysz';
-
-  @override
-  String get voiceRecordingCancelLocked => 'Anuluj nagrywanie';
-
-  @override
-  String get voiceRecordingSendVoiceTooltip => 'Wyślij wiadomość głosową';
-
-  @override
-  String get voiceRecordingSendVoiceSemantics => 'Wyślij wiadomość głosową';
-
-  @override
   String voiceRecordingSemanticsLabel(String time) {
     return 'Nagrywanie wiadomości głosowej, $time. Przesuń w lewo, aby anulować.';
-  }
-
-  @override
-  String voiceRecordingLockedSemantics(String time) {
-    return 'Zablokowane nagrywanie, $time. Dotknij Wyślij, aby wysłać, lub Anuluj, aby odrzucić.';
   }
 
   @override
@@ -708,10 +687,6 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get snackbarPinnedMessageUnavailable => 'Wiadomość jest niedostępna';
-
-  @override
-  String get snackbarE2eAskSenderResend =>
-      'Nie udało się odszyfrować części wiadomości. Poproś rozmówcę o wysłanie nowej wiadomości.';
 
   @override
   String get pinnedMessageUnpinTooltip => 'Odepnij';

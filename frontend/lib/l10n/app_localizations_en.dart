@@ -602,28 +602,8 @@ class AppLocalizationsEn extends AppLocalizations {
   String get voiceRecordingSlideToCancel => '← Slide to cancel';
 
   @override
-  String get voiceRecordingSlideUpToLock => '↑ Slide up to lock';
-
-  @override
-  String get voiceRecordingLocked => 'Locked — tap Send when done';
-
-  @override
-  String get voiceRecordingCancelLocked => 'Cancel recording';
-
-  @override
-  String get voiceRecordingSendVoiceTooltip => 'Send voice message';
-
-  @override
-  String get voiceRecordingSendVoiceSemantics => 'Send voice message';
-
-  @override
   String voiceRecordingSemanticsLabel(String time) {
     return 'Recording voice message, $time. Swipe left to cancel.';
-  }
-
-  @override
-  String voiceRecordingLockedSemantics(String time) {
-    return 'Locked voice recording, $time. Tap Send to send or Cancel to discard.';
   }
 
   @override
@@ -699,10 +679,6 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get snackbarPinnedMessageUnavailable =>
       'Message is no longer available';
-
-  @override
-  String get snackbarE2eAskSenderResend =>
-      'Some messages could not be unlocked. Ask your contact to send a new message.';
 
   @override
   String get pinnedMessageUnpinTooltip => 'Unpin';

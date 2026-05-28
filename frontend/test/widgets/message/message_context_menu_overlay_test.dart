@@ -562,7 +562,7 @@ void main() {
                     onReply: () {},
                     onPin: () {},
                     onDelete: () {},
-                    onReaction: (_, __) {},
+                    onReaction: (_, _) {},
                     bubblePreviewBuilder: (_) =>
                         MessageContextMenuBubbleHighlight(
                       message: msg,
@@ -598,7 +598,6 @@ void main() {
     ) as RenderBox;
 
     final layoutHeight = 58 - kContextMenuAnchorBottomMargin;
-    final scalePad = bubbleHighlightScaleOverflow(layoutHeight);
     final highlightTop = highlight.localToGlobal(Offset.zero).dy;
     final highlightVisualBottom = bubbleHighlightVisualBottom(
       bubbleHighlightTop: highlightTop,
