@@ -336,6 +336,10 @@ class MessagingProvider extends ChangeNotifier {
   bool _isDuplicateDecryptError(Object e) =>
       e.toString().contains('DuplicateMessageException');
 
+  // Bad Mac = message encrypted for a different/old session key.
+  // Session itself is valid — treat as terminal like DuplicateMessageException.
+  bool _isBadMacDecryptError(Object e) => e.toString().contains('Bad Mac');
+
   bool _isNoSessionDecryptError(Object e) =>
       e.toString().contains('NoSessionException');
 
@@ -2671,6 +2675,12 @@ class MessagingProvider extends ChangeNotifier {
         // Ratchet already consumed this key (message was live-decrypted earlier).
         // Session is valid — do NOT delete it or schedule retry. Mark terminal now.
         _e2eFlowLog('DECRYPT_DUPLICATE', {'msgId': msg.id});
+        return msg.copyWith(content: _kDecryptionFailedLabel);
+      }
+      if (_isBadMacDecryptError(e)) {
+        // MAC mismatch: message was encrypted for a different/old session key.
+        // Session is valid — do NOT delete it or add to historyDecryptFailedPeers.
+        _e2eFlowLog('DECRYPT_BAD_MAC', {'msgId': msg.id});
         return msg.copyWith(content: _kDecryptionFailedLabel);
       }
       if (_encryptionProvider?.hadIdentityReset == true) {

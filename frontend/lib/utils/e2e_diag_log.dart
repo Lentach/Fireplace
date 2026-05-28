@@ -1,5 +1,5 @@
 class E2eDiagLog {
-  static const int kMaxEntries = 30;
+  static const int kMaxEntries = 500;
 
   E2eDiagLog._();
 
