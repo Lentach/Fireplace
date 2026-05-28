@@ -4,11 +4,13 @@ import 'package:flutter/foundation.dart';
 
 import '../models/message_model.dart';
 import '../services/encryption_service.dart';
+import '../utils/e2e_diag_log.dart';
 
 /// EncryptionProvider — owns all E2E encryption state, initialization,
 /// key exchange, and session management.
 class EncryptionProvider extends ChangeNotifier {
   static void _e2eFlowLog(String step, [Map<String, dynamic>? data]) {
+    E2eDiagLog.add(step, data ?? {});
     if (kDebugMode) debugPrint('[E2E-FLOW] $step | ${data ?? {}}');
   }
 
@@ -45,6 +47,10 @@ class EncryptionProvider extends ChangeNotifier {
 
   /// Whether more one-time pre-keys are currently being generated.
   bool get isGeneratingMoreKeys => _generatingMoreKeys;
+
+  /// True when this session generated a brand-new Signal identity (fresh install or
+  /// storage loss). All messages encrypted for the old identity are unrecoverable.
+  bool get hadIdentityReset => _encryptionService.needsKeyUpload;
 
   /// The pending pre-key fetch completers, keyed by recipient user ID.
   Map<int, Completer<Map<String, dynamic>>> get pendingPreKeyFetches =>

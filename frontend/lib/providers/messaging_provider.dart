@@ -13,6 +13,7 @@ import '../models/message_model.dart';
 import '../services/api_service.dart';
 import '../services/media_crypto_service.dart';
 import '../services/link_preview_service.dart';
+import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_envelope.dart';
 import '../utils/message_expiry.dart';
 import '../utils/reply_preview_helper.dart';
@@ -28,6 +29,7 @@ class MessagingProvider extends ChangeNotifier {
       'assets/sounds/incoming_message_long_pop.wav';
 
   static void _e2eFlowLog(String step, [Map<String, dynamic>? data]) {
+    E2eDiagLog.add(step, data ?? {});
     if (kDebugMode) debugPrint('[E2E-FLOW] $step | ${data ?? {}}');
   }
 
@@ -2665,7 +2667,21 @@ class MessagingProvider extends ChangeNotifier {
         }
       }
 
-      if (_isDuplicateDecryptError(e) || _isNoSessionDecryptError(e)) {
+      if (_isDuplicateDecryptError(e)) {
+        // Ratchet already consumed this key (message was live-decrypted earlier).
+        // Session is valid — do NOT delete it or schedule retry. Mark terminal now.
+        _e2eFlowLog('DECRYPT_DUPLICATE', {'msgId': msg.id});
+        return msg.copyWith(content: _kDecryptionFailedLabel);
+      }
+      if (_encryptionProvider?.hadIdentityReset == true) {
+        // Identity was just regenerated (reinstall / storage loss).
+        // All messages encrypted for the old identity are permanently unrecoverable.
+        // Do NOT delete sessions or schedule retries — a fresh session will be built
+        // by the next PreKey message the peer sends.
+        _e2eFlowLog('DECRYPT_IDENTITY_RESET', {'msgId': msg.id});
+        return msg.copyWith(content: _kDecryptionFailedLabel);
+      }
+      if (_isNoSessionDecryptError(e)) {
         _e2eFlowLog('DECRYPT_SKIP', {
           'msgId': msg.id,
           'reason': e.toString(),
