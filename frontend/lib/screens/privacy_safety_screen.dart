@@ -49,7 +49,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         centerTitle: true,
-        title: Text(AppLocalizations.of(context).privacySafetyTitle),
+        title: Text(_diagLogUnlocked ? '🔓 hacker mode' : AppLocalizations.of(context).privacySafetyTitle),
         backgroundColor: theme.colorScheme.surface,
         elevation: 0,
         iconTheme: IconThemeData(color: theme.colorScheme.primary),
@@ -63,10 +63,25 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
             Center(
               child: GestureDetector(
                 onLongPress: () => setState(() => _diagLogUnlocked = true),
-                child: Icon(
-                  Icons.verified_user,
-                  size: 64,
-                  color: theme.colorScheme.primary,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Icon(
+                      Icons.verified_user,
+                      size: 64,
+                      color: theme.colorScheme.primary,
+                    ),
+                    if (_diagLogUnlocked) ...[
+                      const SizedBox(height: 6),
+                      Text(
+                        '🔓 hacker mode',
+                        style: theme.textTheme.labelSmall?.copyWith(
+                          color: theme.colorScheme.primary,
+                          letterSpacing: 1.2,
+                        ),
+                      ),
+                    ],
+                  ],
                 ),
               ),
             ),
