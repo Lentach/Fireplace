@@ -17,6 +17,9 @@ class _FakeEncryptionProvider extends EncryptionProvider {
   bool get isE2EReady => true;
 
   @override
+  bool get hadIdentityReset => false;
+
+  @override
   Future<void> deleteSessionWithPeer(int peerUserId) async {}
 
   @override
@@ -104,6 +107,43 @@ class _PersistedGifWithoutKeysEncryption extends _FakeEncryptionProvider {
         mediaIv: 'ivBase64',
       ),
     );
+  }
+}
+
+/// Always throws DuplicateMessageException — simulates cache eviction causing
+/// history re-decrypt of a message whose ratchet key was already consumed.
+class _AlwaysDuplicateDecryptEncryption extends _FakeEncryptionProvider {
+  int deleteSessionCalls = 0;
+
+  @override
+  Future<void> deleteSessionWithPeer(int peerUserId) async {
+    deleteSessionCalls++;
+  }
+
+  @override
+  Future<String> decrypt(int senderId, String ciphertext) async {
+    throw Exception(
+      'DuplicateMessageException - Received message with old counter',
+    );
+  }
+}
+
+/// Simulates fresh install / storage loss: new identity was generated, all
+/// existing messages are encrypted for the old identity and unrecoverable.
+class _IdentityResetEncryption extends _FakeEncryptionProvider {
+  int deleteSessionCalls = 0;
+
+  @override
+  bool get hadIdentityReset => true;
+
+  @override
+  Future<void> deleteSessionWithPeer(int peerUserId) async {
+    deleteSessionCalls++;
+  }
+
+  @override
+  Future<String> decrypt(int senderId, String ciphertext) async {
+    throw Exception('NoSessionException - no session for this peer');
   }
 }
 
@@ -850,6 +890,74 @@ void main() {
             isNotEmpty,
           );
         });
+      },
+    );
+
+    test(
+      'DuplicateMessageException marks message [Decryption failed] without deleting session',
+      () async {
+        final enc = _AlwaysDuplicateDecryptEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 201,
+              createdAt: DateTime.now().toUtc().toIso8601String(),
+              includeTtl: false,
+            ),
+          ],
+        });
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(
+          provider.messages.single.content,
+          '[Decryption failed]',
+          reason: 'duplicate key means message is unrecoverable',
+        );
+        expect(
+          enc.deleteSessionCalls,
+          0,
+          reason: 'session must NOT be deleted — DuplicateMessageException means session is valid',
+        );
+      },
+    );
+
+    test(
+      'identity reset marks messages [Decryption failed] without deleting session or retrying',
+      () async {
+        final enc = _IdentityResetEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 301,
+              createdAt: DateTime.now().toUtc().toIso8601String(),
+              includeTtl: false,
+            ),
+          ],
+        });
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(
+          provider.messages.single.content,
+          '[Decryption failed]',
+          reason: 'message encrypted for old identity is unrecoverable',
+        );
+        expect(
+          enc.deleteSessionCalls,
+          0,
+          reason: 'session must NOT be deleted — a fresh session will be built by the next PreKey message',
+        );
       },
     );
 

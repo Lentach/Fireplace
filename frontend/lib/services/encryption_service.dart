@@ -7,7 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import 'encryption/signal_stores.dart';
 
 class EncryptionService {
-  EncryptionService({int decryptedContentCacheLimit = 500})
+  EncryptionService({int decryptedContentCacheLimit = 2000})
       : _decryptedContentCacheLimit = decryptedContentCacheLimit;
 
   /// Batch size for replenishment (preKeysLow). Server threshold is 10.
