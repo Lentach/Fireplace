@@ -23,12 +23,13 @@
 
 ## 2. Composer state table
 
-| ID | State | Text field area | Trailing 48×48 | Send paths |
-|----|--------|-----------------|----------------|------------|
+| ID | State | Text field area | Trailing 48×48 | Send triggers / Exit gestures |
+|----|--------|-----------------|----------------|-------------------------------|
 | V0 | **Idle, empty** | `TextField` | Mic (hold) | — |
-| V1 | **Has draft text** | `TextField` | Text Send (primary) + mic underlay | Tap send / IME / Ctrl+Enter |
-| V3 | **Recording unlocked** | Recording bar | Mic red, draggable H+V | Release → auto-send; slide left → cancel |
-| V4 | **Recording locked** | Recording bar (locked) | Voice Send (purple) | Tap Send button |
+| V1 | **Has draft text** | `TextField` | Text Send (primary) + mic underlay | Tap Send / IME / Ctrl+Enter |
+| ~~V2~~ | *(removed — not applicable in merged spec)* | — | — | — |
+| V3 | **Recording unlocked** | Recording bar | Mic red, draggable H+V | Release → auto-send; slide left → cancel; slide up → lock |
+| V4 | **Recording locked** | Recording bar (locked) | Voice Send (purple) | Tap Send; tap Cancel |
 | V5 | **Sending voice** | `TextField` | Spinner | — |
 
 **Precedence:** V5 > V4 > V3 > V1 > V0.
@@ -42,22 +43,25 @@
 
 ### 3.1 `chat_composer_viewport.dart` — iOS scroll watchdog
 
-**New field:**
+**New fields:**
 ```dart
-double _prevKeyboardInset = 0;
+double _prevKeyboardInset = 0;  // tracking field, no setState — intentional
+bool _scrollResetScheduled = false;
 ```
 
 **In `build()`, before existing stack:**
 ```dart
-if (kIsWeb && keyboardInset > 0 && _prevKeyboardInset == 0) {
+if (kIsWeb && isIOSWebKit() && keyboardInset > 0 && _prevKeyboardInset == 0 && !_scrollResetScheduled) {
+  _scrollResetScheduled = true;
   WidgetsBinding.instance.addPostFrameCallback((_) {
+    _scrollResetScheduled = false;
     if (mounted) resetWebDocumentScroll();
   });
 }
-_prevKeyboardInset = keyboardInset;
+_prevKeyboardInset = keyboardInset;  // tracking field, no setState — intentional
 ```
 
-Import `web_viewport_scroll.dart` and `web_ios_webkit.dart`.
+Import `web_viewport_scroll.dart` and `web_ios_webkit.dart`. The `_scrollResetScheduled` flag prevents duplicate callbacks if `build()` runs twice in the same frame.
 
 **Why:** The existing `resetWebDocumentScroll()` in `ChatInputBar` only fires on `_focusNode` changes. When the field already has focus and the keyboard opens (user taps after keyboard was dismissed), no focus event fires → Safari scrolls the WebView → black screen. This watchdog catches every `0 → > 0` keyboard inset transition.
 
@@ -128,7 +132,12 @@ static const double _lockUpHintShowPx = 36.0;
 
 **`onLongPressStart`:** also capture `details.globalPosition.dy → _dragStartY`.
 
-**`onLongPressMoveUpdate`:** compute vertical delta `= _dragStartY - details.globalPosition.dy` (positive = upward). When `_isRecording && !_isLocked && verticalDelta >= _lockUpThresholdPx`: call `_enterLockedMode()`. Continue tracking horizontal delta as before (unlocked cancel drag unaffected until lock triggers).
+**`onLongPressMoveUpdate`:** compute both deltas:
+```dart
+final verticalDelta = _dragStartY - details.globalPosition.dy; // positive = upward
+_lockDragOffset = verticalDelta.clamp(0.0, _lockUpThresholdPx);
+```
+Then update horizontal cancel offset as existing (`_cancelDragOffset = currentX - _dragStartX`). When `_isRecording && !_isLocked && verticalDelta >= _lockUpThresholdPx`: call `_enterLockedMode()`. Horizontal and vertical tracking are independent — horizontal cancel drag is unaffected until lock triggers, at which point it is cleared.
 
 **`_enterLockedMode()`:**
 ```dart
@@ -142,10 +151,19 @@ void _enterLockedMode() {
 }
 ```
 
-**`_finishRecordingGesture()` / `_onLongPressFinished()`:** add guard at top:
+**`_finishRecordingGesture()`:** add locked guard before the existing `_gestureFinishHandled` dedupe:
 ```dart
-if (_isLocked) return;  // locked mode: explicit Send/Cancel required
+void _finishRecordingGesture() {
+  if (_isLocked) {
+    _gestureFinishHandled = true;  // consume the event — C5: no auto-send in locked mode
+    return;
+  }
+  if (_gestureFinishHandled) return;
+  _gestureFinishHandled = true;
+  _onLongPressFinished();
+}
 ```
+Setting `_gestureFinishHandled = true` in the locked path prevents the subsequent `onLongPressEnd` / `onPointerUp` from both trying to act (satisfies C5).
 
 **`_onPointerRelease()`:** same guard:
 ```dart
@@ -156,10 +174,14 @@ void _onPointerRelease() {
 }
 ```
 
-**`_stopRecording()` and `_cancelRecording()`:** both reset lock state in their finally/cleanup:
+**`_stopRecording()` and `_cancelRecording()`:** both reset lock state in their finally/cleanup, but only notify parent if we were actually locked (avoids spurious `onRecordingLockChanged(false)` after every normal voice send):
 ```dart
-_isLocked = false;
-widget.onRecordingLockChanged?.call(false);
+if (_isLocked) {
+  _isLocked = false;
+  widget.onRecordingLockChanged?.call(false);
+} else {
+  _isLocked = false;
+}
 ```
 
 #### Public methods for locked mode
@@ -195,11 +217,14 @@ Animation: `AnimatedOpacity` + `AnimatedScale` 150ms `Curves.easeOut` for both S
 
 #### `buildRecordingBarLocked(BuildContext context)` — new method
 
+Called from `ChatInputBar` via `_recordingKey.currentState?.buildRecordingBarLocked(context)` — same GlobalKey pattern as the existing `buildRecordingBar()`. This pattern is chosen because the recording state lives inside `RecordingControllerState`; lifting it to a callback or `InheritedWidget` would require restructuring both files. The pattern is already established in this codebase, so keep it.
+
 ```
 Container(height:48, decoration: rounded border same as buildRecordingBar)
 └── Row
-    ├── GestureDetector(onTap: cancelLockedRecording)
-    │     Icon(Icons.close, red, size:22) — min 44×44 hit target
+    ├── Semantics(label: l10n.voiceRecordingCancelLocked)
+    │     GestureDetector(onTap: cancelLockedRecording)
+    │       SizedBox(44×44) → Icon(Icons.close, red, size:22) — min 44×44 tap target
     ├── SizedBox(width:12)
     ├── Icon(Icons.lock, size:14, color:purple)
     ├── SizedBox(width:8)
@@ -207,6 +232,8 @@ Container(height:48, decoration: rounded border same as buildRecordingBar)
     ├── SizedBox(width:8)
     └── Flexible → Text(l10n.voiceRecordingLocked, ellipsis, color:purple)
 ```
+
+`voiceRecordingCancelLocked` is used as the `Semantics.label` on the cancel icon button (screen reader announces "Cancel recording" for the close icon).
 
 #### `buildRecordingBar()` additions (unlocked)
 
@@ -222,6 +249,7 @@ Wrap the **entire body** in try-finally:
 Future<void> _stopRecording() async {
   if (_audioRecorder == null || !_isRecording || _isStopping) return;
   _isStopping = true;
+  final wasLocked = _isLocked;
   try {
     // ... all existing code ...
   } catch (e) {
@@ -229,12 +257,12 @@ Future<void> _stopRecording() async {
   } finally {
     _isStopping = false;
     _isLocked = false;
-    widget.onRecordingLockChanged?.call(false);
+    if (wasLocked) widget.onRecordingLockChanged?.call(false);
   }
 }
 ```
 
-**Also fix `dispose()`** — call `_releaseRecorderSilently()` if still recording:
+**Also fix `dispose()`** — `_releaseRecorderSilently()` already exists in the codebase (stops the audio recorder and deletes the temp file without triggering send/cancel callbacks). Extend `dispose()` to call it when still recording:
 ```dart
 @override
 void dispose() {
@@ -244,7 +272,7 @@ void dispose() {
     _isLocked = false;
     _isRecording = false;
     _isStopping = false;
-    _releaseRecorderSilently();
+    _releaseRecorderSilently();  // existing method — stops recorder, deletes temp file, no callbacks
   } else {
     _audioRecorder?.dispose();
   }
@@ -304,7 +332,8 @@ Run `flutter gen-l10n` after adding keys.
 | Slide up but under threshold | `_lockUpHintShowPx` hint fades in; release still auto-sends |
 | Slide left while recording (cancel) | Works only while unlocked; locked mode ignores horizontal drag |
 | `showTextSend` true + long-press mic | Mic underlay receives gesture (IgnorePointer on text Send only, not mic); voice starts, recording bar replaces field, text Send disappears |
-| `_stopRecording()` throws | `finally` always resets `_isStopping`; `_isLocked` reset; parent notified |
+| `_stopRecording()` throws | `finally` always resets `_isStopping`; `_isLocked` reset; parent notified only if was locked |
+| OS audio interruption mid-recording (call, alarm, permission revoked) | The `record` package does not expose a stream for external interruptions. When the interruption stops the underlying audio capture, `_audioRecorder!.stop()` will either return a truncated path or throw. Both cases are covered: the try-finally resets all flags; if the throw path fires, `_isStopping` is cleared. The recording UI will remain until the user taps Send/Cancel or navigates away — acceptable given no reliable interruption signal. |
 
 ---
 
@@ -336,6 +365,7 @@ Run `flutter gen-l10n` after adding keys.
 ### CI commands
 
 ```bash
+cd frontend && flutter gen-l10n
 cd frontend && flutter analyze
 cd frontend && flutter test test/widgets/input/recording_controller_lock_test.dart
 cd frontend && flutter test test/widgets/input/
