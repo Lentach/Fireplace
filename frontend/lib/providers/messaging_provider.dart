@@ -481,8 +481,7 @@ class MessagingProvider extends ChangeNotifier {
       (m) =>
           m.conversationId == conversationId &&
           m.needsDecryption(_currentUserId) &&
-          (m.displayAsEncryptedPlaceholder ||
-              m.content == _kDecryptionFailedLabel),
+          m.displayAsEncryptedPlaceholder,
     );
   }
 
@@ -2354,6 +2353,10 @@ class MessagingProvider extends ChangeNotifier {
           _encryptionProvider?.cacheDecryption(msg.id, rowForDecrypt);
           continue;
         }
+        // [Decryption failed] is a terminal state from a prior retry — skipping
+        // prevents re-triggering deleteSessionWithPeer on every reconnect, which
+        // would cascade to break decryption of all subsequent messages from this peer.
+        if (rowForDecrypt.content == _kDecryptionFailedLabel) continue;
         // No cache — live decrypt (advances session ratchet)
         final decrypted = await _decryptMessageAsyncQueued(rowForDecrypt);
         if (idx != -1) {
@@ -2410,8 +2413,7 @@ class MessagingProvider extends ChangeNotifier {
         ..._liveDecryptFailedPeers,
         for (final m in _messages)
           if (m.needsDecryption(_currentUserId) &&
-              (m.displayAsEncryptedPlaceholder ||
-                  m.content == _kDecryptionFailedLabel))
+              m.displayAsEncryptedPlaceholder)
             m.senderId,
       };
       if (peersNeedingRetry.isNotEmpty) {

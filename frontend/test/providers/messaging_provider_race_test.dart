@@ -62,6 +62,23 @@ class _AlwaysFailDecryptEncryption extends _FakeEncryptionProvider {
   }
 }
 
+/// Always fails decrypt AND counts deleteSessionWithPeer calls — used to verify
+/// that a second retryDecryptActiveConversation call does NOT delete the session
+/// again when messages are already permanently [Decryption failed].
+class _AlwaysFailWithSessionCountEncryption extends _FakeEncryptionProvider {
+  int deleteSessionCalls = 0;
+
+  @override
+  Future<void> deleteSessionWithPeer(int peerUserId) async {
+    deleteSessionCalls++;
+  }
+
+  @override
+  Future<String> decrypt(int senderId, String ciphertext) async {
+    throw Exception('Bad Mac');
+  }
+}
+
 /// Simulates stale localStorage row: mediaUrl/type without AES keys (pre-re-enter bug).
 class _PersistedGifWithoutKeysEncryption extends _FakeEncryptionProvider {
   int decryptCalls = 0;
@@ -833,6 +850,43 @@ void main() {
             isNotEmpty,
           );
         });
+      },
+    );
+
+    test(
+      'retryDecryptActiveConversation does NOT delete session when messages are already [Decryption failed]',
+      () async {
+        final enc = _AlwaysFailWithSessionCountEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        // First history load — decrypt fails → [Decryption failed] after retry
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 101,
+              createdAt: DateTime.now().toUtc().toIso8601String(),
+              includeTtl: false,
+            ),
+          ],
+        });
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(provider.messages.single.content, '[Decryption failed]');
+        final deletesAfterFirstPass = enc.deleteSessionCalls;
+        expect(deletesAfterFirstPass, greaterThan(0));
+
+        // Simulate 900ms timer firing (retryDecryptActiveConversation).
+        // With the fix, [Decryption failed] is terminal — no second session delete.
+        await provider.retryDecryptActiveConversation();
+        await Future<void>.delayed(Duration.zero);
+
+        expect(enc.deleteSessionCalls, deletesAfterFirstPass,
+            reason: 'session must not be deleted again for [Decryption failed] messages');
+        expect(provider.messages.single.content, '[Decryption failed]');
       },
     );
   });
