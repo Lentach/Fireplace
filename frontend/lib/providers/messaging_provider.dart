@@ -2299,15 +2299,26 @@ class MessagingProvider extends ChangeNotifier {
       if (msg.needsDecryption(_currentUserId)) {
         // Cache-first: only skip live decrypt when cache holds real plaintext.
         final cached = _encryptionProvider?.getCachedDecryption(msg.id);
-        if (cached != null && _hasUsableDecryptedContent(cached)) {
-          final idx = _messages.indexWhere((m) => m.id == msg.id);
-          if (idx != -1) {
-            final merged = _mergeMessagePreferNewer(_messages[idx], cached);
-            _messages[idx] = merged;
-            _encryptionProvider?.cacheDecryption(msg.id, merged);
-            changed = true;
+        if (cached != null) {
+          if (cached.content == _kDecryptionFailedLabel) {
+            // Terminal failure cached — restore and skip without live decrypt.
+            final idx = _messages.indexWhere((m) => m.id == msg.id);
+            if (idx != -1 && _messages[idx].content != _kDecryptionFailedLabel) {
+              _messages[idx] = _messages[idx].copyWith(content: _kDecryptionFailedLabel);
+              changed = true;
+            }
+            continue;
           }
-          continue;
+          if (_hasUsableDecryptedContent(cached)) {
+            final idx = _messages.indexWhere((m) => m.id == msg.id);
+            if (idx != -1) {
+              final merged = _mergeMessagePreferNewer(_messages[idx], cached);
+              _messages[idx] = merged;
+              _encryptionProvider?.cacheDecryption(msg.id, merged);
+              changed = true;
+            }
+            continue;
+          }
         }
         // _encryptionProvider is non-null here: this path is reached only when
         // isE2EReady is true, which requires the provider to be set.
@@ -2319,6 +2330,15 @@ class MessagingProvider extends ChangeNotifier {
                 persisted['mediaUrl'] != null ||
                 persisted['messageType'] != null);
         if (hasPersistedPayload) {
+          if (pContent == _kDecryptionFailedLabel) {
+            // Terminal failure persisted — restore and skip without live decrypt.
+            final idx = _messages.indexWhere((m) => m.id == msg.id);
+            if (idx != -1 && _messages[idx].content != _kDecryptionFailedLabel) {
+              _messages[idx] = _messages[idx].copyWith(content: _kDecryptionFailedLabel);
+              changed = true;
+            }
+            continue;
+          }
           final safeImageUrl = persisted['linkPreviewImageUrl'] as String?;
           final safePageUrl = persisted['linkPreviewUrl'] as String?;
           final validImage = safeImageUrl != null &&
@@ -2673,13 +2693,19 @@ class MessagingProvider extends ChangeNotifier {
       if (_isDuplicateDecryptError(e)) {
         // Ratchet already consumed this key (message was live-decrypted earlier).
         // Session is valid — do NOT delete it or schedule retry. Mark terminal now.
+        // Persist so future app starts skip this message without re-attempting.
         _e2eFlowLog('DECRYPT_DUPLICATE', {'msgId': msg.id});
+        await _encryptionProvider?.saveDecryptedContent(
+            msg.id, {'content': _kDecryptionFailedLabel});
         return msg.copyWith(content: _kDecryptionFailedLabel);
       }
       if (_isBadMacDecryptError(e)) {
         // MAC mismatch: message was encrypted for a different/old session key.
         // Session is valid — do NOT delete it or add to historyDecryptFailedPeers.
+        // Persist so future app starts skip this message without re-attempting.
         _e2eFlowLog('DECRYPT_BAD_MAC', {'msgId': msg.id});
+        await _encryptionProvider?.saveDecryptedContent(
+            msg.id, {'content': _kDecryptionFailedLabel});
         return msg.copyWith(content: _kDecryptionFailedLabel);
       }
       if (_encryptionProvider?.hadIdentityReset == true) {
