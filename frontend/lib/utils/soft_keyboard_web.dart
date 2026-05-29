@@ -8,7 +8,8 @@ Future<void> showSoftKeyboardIfHidden({
   required bool hasFocus,
 }) async {
   if (!hasFocus || !isIOSWebKit()) return;
-  if (MediaQuery.viewInsetsOf(context).bottom > 0) return;
+  // No viewInsets guard: call is idempotent when keyboard is already visible,
+  // and omitting the check ensures we fire even mid-dismiss-animation.
   try {
     await SystemChannels.textInput.invokeMethod<void>('TextInput.show');
   } catch (_) {

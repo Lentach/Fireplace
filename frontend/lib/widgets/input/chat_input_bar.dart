@@ -47,6 +47,12 @@ class ChatInputBarState extends State<ChatInputBar>
   Timer? _typingDebounceTimer;
   MessagingProvider? _messagingProvider;
 
+  // Set in _send(); cleared after 500ms. While true the FocusNode listener
+  // fires a microtask restore the instant iOS blur reaches Flutter — much
+  // faster than waiting for the next postFrameCallback.
+  bool _sendJustFired = false;
+  Timer? _sendJustFiredTimer;
+
   // Recording state mirrored from RecordingController via callback
   bool _isRecording = false;
   bool _isRecordingLocked = false;
@@ -80,6 +86,7 @@ class ChatInputBarState extends State<ChatInputBar>
 
     if (kIsWeb) {
       _focusNode.addListener(_onComposerFocusForWebViewport);
+      _focusNode.addListener(_onFocusLostAfterSend);
       ensureFocusGuardListenerInstalled();
     }
   }
@@ -145,8 +152,10 @@ class ChatInputBarState extends State<ChatInputBar>
   void dispose() {
     if (kIsWeb) {
       _focusNode.removeListener(_onComposerFocusForWebViewport);
+      _focusNode.removeListener(_onFocusLostAfterSend);
       setIOSWebViewportScrollLocked(false);
     }
+    _sendJustFiredTimer?.cancel();
     _messagingProvider?.setComposerFocusRequest(null);
     _messagingProvider?.removeListener(_onMessagingProviderChanged);
     _controller.dispose();
@@ -155,6 +164,21 @@ class ChatInputBarState extends State<ChatInputBar>
     _recordingBarVisualTick.dispose();
     _typingDebounceTimer?.cancel();
     super.dispose();
+  }
+
+  // Fires the moment Flutter learns the composer lost focus. If a send just
+  // happened we restore immediately in a microtask — faster than waiting for
+  // the next postFrameCallback, so the keyboard barely dips before coming back.
+  void _onFocusLostAfterSend() {
+    if (!isIOSWebKit()) return;
+    if (_focusNode.hasFocus || !_sendJustFired) return;
+    _sendJustFired = false;
+    _sendJustFiredTimer?.cancel();
+    Future.microtask(() {
+      if (!mounted || !_focusNode.canRequestFocus) return;
+      _focusNode.requestFocus();
+      showSoftKeyboardIfHidden(context: context, hasFocus: true).ignore();
+    });
   }
 
   void _onRecordingBarVisualChanged() {
@@ -170,14 +194,21 @@ class ChatInputBarState extends State<ChatInputBar>
     final expiresIn = convs.conversationDisappearingTimer;
     messaging.sendMessage(text, expiresIn: expiresIn);
 
+    // Arm the fast-restore listener for iOS before clearing text.
+    if (kIsWeb && isIOSWebKit()) {
+      _sendJustFired = true;
+      _sendJustFiredTimer?.cancel();
+      // Disarm after 500ms so an intentional blur right after send is respected.
+      _sendJustFiredTimer = Timer(const Duration(milliseconds: 500), () {
+        _sendJustFired = false;
+      });
+    }
+
     _controller.clear();
-    // IME "Send" on multiline can unfocus on the next frame even while the node still
-    // reports hasFocus synchronously; schedule a refocus only when focus is actually lost.
+    // Fallback for non-iOS or when FocusNode listener fires before the blur.
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_focusNode.canRequestFocus) return;
-      if (!_focusNode.hasFocus) {
-        _focusNode.requestFocus();
-      }
+      if (!_focusNode.hasFocus) _focusNode.requestFocus();
       showSoftKeyboardIfHidden(context: context, hasFocus: true);
     });
   }
