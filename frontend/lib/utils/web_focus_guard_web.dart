@@ -7,17 +7,24 @@ import 'web_ios_webkit.dart';
 
 final Map<String, Rect> _rects = <String, Rect>{};
 bool _installed = false;
-JSFunction? _listener;
+JSFunction? _downListener;
+JSFunction? _endListener;
+
+// Active element saved on touchstart so touchend can restore focus inside the
+// user-gesture context — the only place iOS Safari accepts .focus() calls.
+web.Element? _savedElement;
 
 void ensureFocusGuardListenerInstalled() {
   if (_installed) return;
   if (!isIOSWebKit()) return;
   _installed = true;
-  _listener = _onPointerDownCapture.toJS;
-  // passive: false is required so preventDefault() is allowed on touchstart.
-  final options = web.AddEventListenerOptions(capture: true, passive: false);
-  web.window.addEventListener('touchstart', _listener, options);
-  web.window.addEventListener('mousedown', _listener, options);
+  _downListener = _onPointerDownCapture.toJS;
+  _endListener = _onTouchEndCapture.toJS;
+  // passive: false is required so preventDefault() is allowed.
+  final opts = web.AddEventListenerOptions(capture: true, passive: false);
+  web.window.addEventListener('touchstart', _downListener, opts);
+  web.window.addEventListener('mousedown', _downListener, opts);
+  web.window.addEventListener('touchend', _endListener, opts);
 }
 
 void registerFocusGuardRect(String id, Rect rect) {
@@ -30,18 +37,35 @@ void unregisterFocusGuardRect(String id) {
 }
 
 void _onPointerDownCapture(web.Event event) {
-  // Only protect an active editing session; otherwise let the tap behave normally
-  // (e.g. first focus on the field must still work).
-  if (!_isEditable(web.document.activeElement)) return;
+  // Reset saved element — only set it when we confirm a guarded-area tap below.
+  _savedElement = null;
+
+  // Only protect an active editing session; first-focus taps must work normally.
+  final active = web.document.activeElement;
+  if (!_isEditable(active)) return;
   final point = _eventPoint(event);
   if (point == null) return;
   for (final rect in _rects.values) {
     if (rect.contains(point)) {
-      // Cancel WebKit's focus-steal so the input keeps focus and the keyboard
-      // stays up. We do NOT stopPropagation, so Flutter still receives the tap.
+      // Save the focused element so touchend can restore it in user-gesture context.
+      _savedElement = active;
+      // preventDefault stops iOS from synthesising mouse events; it does NOT
+      // prevent the blur — that is handled by the touchend restore below.
       event.preventDefault();
       return;
     }
+  }
+}
+
+// Called in capture phase so it fires before Flutter's own touchend handlers.
+// iOS Safari accepts .focus() calls made from touchend (user-gesture context),
+// which re-shows the keyboard even if the element was already blurred.
+void _onTouchEndCapture(web.Event event) {
+  final el = _savedElement;
+  _savedElement = null;
+  if (el == null) return;
+  if (el.isA<web.HTMLElement>()) {
+    (el as web.HTMLElement).focus();
   }
 }
 
