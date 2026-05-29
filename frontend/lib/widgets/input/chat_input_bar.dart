@@ -16,11 +16,13 @@ import '../../theme/rpg_theme.dart';
 import '../../utils/message_expiry.dart';
 import '../../utils/reply_preview_helper.dart';
 import '../../utils/soft_keyboard.dart';
+import '../../utils/web_focus_guard.dart';
 import '../../utils/web_ios_webkit.dart';
 import '../../utils/web_viewport_scroll.dart';
 import '../chat_action_tiles.dart';
 import '../hearth_fade_arc.dart';
 import '../top_snackbar.dart' show showTopSnackBar;
+import 'focus_guard_area.dart';
 import 'recording_controller.dart';
 import 'reply_preview_bar.dart';
 
@@ -78,6 +80,7 @@ class ChatInputBarState extends State<ChatInputBar>
 
     if (kIsWeb) {
       _focusNode.addListener(_onComposerFocusForWebViewport);
+      ensureFocusGuardListenerInstalled();
     }
   }
 
@@ -573,19 +576,22 @@ class ChatInputBarState extends State<ChatInputBar>
               children: [
                 // Action panel toggle (hidden during recording)
                 if (!_isRecording)
-                  Focus(
-                    canRequestFocus: false,
-                    child: IconButton(
-                      icon: Icon(
-                        _showActionPanel
-                            ? Icons.keyboard_arrow_up
-                            : Icons.keyboard_arrow_down,
+                  FocusGuardArea(
+                    id: 'composer_action_toggle',
+                    child: Focus(
+                      canRequestFocus: false,
+                      child: IconButton(
+                        icon: Icon(
+                          _showActionPanel
+                              ? Icons.keyboard_arrow_up
+                              : Icons.keyboard_arrow_down,
+                        ),
+                        iconSize: 24,
+                        color: isDark
+                            ? RpgTheme.mutedDark
+                            : RpgTheme.textSecondaryLight,
+                        onPressed: _toggleActionPanel,
                       ),
-                      iconSize: 24,
-                      color: isDark
-                          ? RpgTheme.mutedDark
-                          : RpgTheme.textSecondaryLight,
-                      onPressed: _toggleActionPanel,
                     ),
                   ),
 
@@ -678,7 +684,10 @@ class ChatInputBarState extends State<ChatInputBar>
 
                 // Trailing 48×48 stack: mic always mounted; text send fades on top (Phase 0).
                 // CLAUDE.md: never swap mic/send as Row siblings — unmount dismisses keyboard.
-                _buildTrailingSlot(context),
+                FocusGuardArea(
+                  id: 'composer_trailing',
+                  child: _buildTrailingSlot(context),
+                ),
               ],
             ),
           ),
