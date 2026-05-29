@@ -16,11 +16,13 @@ import '../../theme/rpg_theme.dart';
 import '../../utils/message_expiry.dart';
 import '../../utils/reply_preview_helper.dart';
 import '../../utils/soft_keyboard.dart';
+import '../../utils/web_focus_guard.dart';
 import '../../utils/web_ios_webkit.dart';
 import '../../utils/web_viewport_scroll.dart';
 import '../chat_action_tiles.dart';
 import '../hearth_fade_arc.dart';
 import '../top_snackbar.dart' show showTopSnackBar;
+import 'focus_guard_area.dart';
 import 'recording_controller.dart';
 import 'reply_preview_bar.dart';
 
@@ -78,6 +80,7 @@ class ChatInputBarState extends State<ChatInputBar>
 
     if (kIsWeb) {
       _focusNode.addListener(_onComposerFocusForWebViewport);
+      ensureFocusGuardListenerInstalled();
     }
   }
 
@@ -331,27 +334,18 @@ class ChatInputBarState extends State<ChatInputBar>
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            // Send icon paint only — no hit test (long-press uses mic below).
+                            // Centered send icon, paint only — no hit test (the mic
+                            // GestureDetector below handles hold-to-record).
                             IgnorePointer(
-                              child: Transform.translate(
-                                offset: const Offset(
-                                  RecordingControllerState
-                                      .kMicTrailingRestingOffsetX,
-                                  0,
-                                ),
-                                child: Icon(
-                                  Icons.send_rounded,
-                                  size: 22,
-                                  color: RpgTheme.primaryColor(context),
-                                ),
+                              child: Icon(
+                                Icons.send_rounded,
+                                size: 26,
+                                color: RpgTheme.primaryColor(context),
                               ),
                             ),
-                            Transform.translate(
-                              offset: const Offset(
-                                RecordingControllerState
-                                    .kMicTrailingRestingOffsetX,
-                                0,
-                              ),
+                            // Full 48×48 opaque tap target (was a left-nudged 22×22,
+                            // easy to miss + leaked outer-ring taps to the mic).
+                            Positioned.fill(
                               child: _ComposerTapSendOverlay(
                                 enabled: showTextSend,
                                 onTap: _send,
@@ -573,19 +567,22 @@ class ChatInputBarState extends State<ChatInputBar>
               children: [
                 // Action panel toggle (hidden during recording)
                 if (!_isRecording)
-                  Focus(
-                    canRequestFocus: false,
-                    child: IconButton(
-                      icon: Icon(
-                        _showActionPanel
-                            ? Icons.keyboard_arrow_up
-                            : Icons.keyboard_arrow_down,
+                  FocusGuardArea(
+                    id: 'composer_action_toggle',
+                    child: Focus(
+                      canRequestFocus: false,
+                      child: IconButton(
+                        icon: Icon(
+                          _showActionPanel
+                              ? Icons.keyboard_arrow_up
+                              : Icons.keyboard_arrow_down,
+                        ),
+                        iconSize: 24,
+                        color: isDark
+                            ? RpgTheme.mutedDark
+                            : RpgTheme.textSecondaryLight,
+                        onPressed: _toggleActionPanel,
                       ),
-                      iconSize: 24,
-                      color: isDark
-                          ? RpgTheme.mutedDark
-                          : RpgTheme.textSecondaryLight,
-                      onPressed: _toggleActionPanel,
                     ),
                   ),
 
@@ -678,7 +675,10 @@ class ChatInputBarState extends State<ChatInputBar>
 
                 // Trailing 48×48 stack: mic always mounted; text send fades on top (Phase 0).
                 // CLAUDE.md: never swap mic/send as Row siblings — unmount dismisses keyboard.
-                _buildTrailingSlot(context),
+                FocusGuardArea(
+                  id: 'composer_trailing',
+                  child: _buildTrailingSlot(context),
+                ),
               ],
             ),
           ),
@@ -750,7 +750,6 @@ class _ComposerTapSendOverlayState extends State<_ComposerTapSendOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    const size = 22.0;
     return Listener(
       behavior: HitTestBehavior.opaque,
       onPointerDown: _onPointerDown,
@@ -762,7 +761,7 @@ class _ComposerTapSendOverlayState extends State<_ComposerTapSendOverlay> {
           button: true,
           label: widget.semanticsLabel,
           excludeSemantics: true,
-          child: SizedBox(width: size, height: size),
+          child: const SizedBox.expand(),
         ),
       ),
     );
