@@ -11,13 +11,13 @@ void main() {
       expect(E2eDiagLog.entries.first, contains('STEP_A'));
     });
 
-    test('cap enforcement: 31st entry drops the oldest', () {
-      for (var i = 0; i < 31; i++) {
+    test('cap enforcement: 201st entry drops the oldest', () {
+      for (var i = 0; i < 201; i++) {
         E2eDiagLog.add('STEP_$i', {});
       }
-      expect(E2eDiagLog.entries.length, 30);
+      expect(E2eDiagLog.entries.length, 200);
       expect(E2eDiagLog.entries.first, contains('STEP_1'));
-      expect(E2eDiagLog.entries.last, contains('STEP_30'));
+      expect(E2eDiagLog.entries.last, contains('STEP_200'));
     });
 
     test('clear() empties the list', () {
