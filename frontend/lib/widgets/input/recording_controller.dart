@@ -1,7 +1,7 @@
 import 'dart:async';
 import 'dart:io';
 
-import 'package:flutter/foundation.dart' show kIsWeb;
+import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:http/http.dart' as http;
@@ -37,6 +37,8 @@ class RecordingController extends StatefulWidget {
     super.key,
     required this.onVoiceSent,
     required this.onRecordingStateChanged,
+    this.onRecordingLockChanged,
+    this.onRecordingBarChanged,
     required this.isSendingVoice,
   });
 
@@ -50,6 +52,12 @@ class RecordingController extends StatefulWidget {
   /// Notifies parent of [isRecording] changes so the parent can toggle UI.
   final void Function(bool isRecording) onRecordingStateChanged;
 
+  /// Notifies parent when slide-up lock is entered or cleared (recording bar variant).
+  final void Function(bool isLocked)? onRecordingLockChanged;
+
+  /// Notifies parent when recording-bar visuals change during drag (slide-up hint, trash).
+  final VoidCallback? onRecordingBarChanged;
+
   /// Whether a voice message is currently being uploaded/sent.
   final bool isSendingVoice;
 
@@ -61,7 +69,16 @@ class RecordingControllerState extends State<RecordingController>
     with SingleTickerProviderStateMixin {
   /// Negative: nudge mic left within the hit target so it sits away from the screen’s
   /// right edge (OS / PWA edge-back gestures). Drag-to-cancel still uses global coords.
-  static const double _kMicRestingOffsetX = -6.0;
+  /// Shared with [ChatInputBar] trailing send icon alignment.
+  static const double kMicTrailingRestingOffsetX = -6.0;
+
+  MessagingProvider? _messagingProvider;
+  ConnectionProvider? _connectionProvider;
+  ConversationsProvider? _conversationsProvider;
+
+  /// Widget tests: [_stopRecording] / [_cancelRecording] without [AudioRecorder].
+  @visibleForTesting
+  bool testSkipHardware = false;
 
   // ── recording state ──────────────────────────────────────────────────────
   bool _isRecording = false;
@@ -73,11 +90,18 @@ class RecordingControllerState extends State<RecordingController>
   // ── drag-to-cancel ───────────────────────────────────────────────────────
   static const double _trashOpenThresholdPx = 60.0;
 
+  // ── slide-up lock (Phase 1) ──────────────────────────────────────────────
+  static const double lockUpThresholdPx = 72.0;
+  static const double lockUpHintShowPx = 36.0;
+
   double _getCancelThreshold(BuildContext context) =>
       MediaQuery.of(context).size.width * 0.5;
 
   double _cancelDragOffset = 0.0;
   double _dragStartX = 0.0;
+  double _dragStartY = 0.0;
+  double _lockDragOffset = 0.0;
+  bool _isLocked = false;
   bool _showTrashIcon = false;
   bool _canceledBySlide = false;
 
@@ -103,7 +127,27 @@ class RecordingControllerState extends State<RecordingController>
 
   // ── public getters ───────────────────────────────────────────────────────
   bool get isRecording => _isRecording;
+  bool get isLocked => _isLocked;
+  @visibleForTesting
+  bool get isStartingRecording => _isStartingRecording;
   double get cancelDragOffset => _cancelDragOffset;
+  double get lockDragOffset => _lockDragOffset;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    _cacheProvidersFromContext();
+  }
+
+  void _cacheProvidersFromContext() {
+    try {
+      _messagingProvider ??= context.read<MessagingProvider>();
+      _connectionProvider ??= context.read<ConnectionProvider>();
+      _conversationsProvider ??= context.read<ConversationsProvider>();
+    } on ProviderNotFoundException {
+      // RecordingController unit tests may omit the provider tree.
+    }
+  }
 
   @override
   void initState() {
@@ -118,7 +162,17 @@ class RecordingControllerState extends State<RecordingController>
   void dispose() {
     _pulseController.dispose();
     _recordingTimer?.cancel();
-    _audioRecorder?.dispose();
+    if (_isRecording || _isStartingRecording) {
+      _abortInFlightStart = true;
+      _pendingStopAfterStart = false;
+      _messagingProvider?.setIsRecordingVoice(false);
+      _emitRecordingVoiceToRecipient(false);
+      unawaited(_releaseRecorderSilently());
+    } else {
+      final recorder = _audioRecorder;
+      _audioRecorder = null;
+      recorder?.dispose();
+    }
     super.dispose();
   }
 
@@ -172,12 +226,15 @@ class RecordingControllerState extends State<RecordingController>
     showTopSnackBar(context, message);
   }
 
-  Future<void> _startRecording(double startX) async {
+  Future<void> _startRecording(double startX, double startY) async {
     _gestureFinishHandled = false;
     _isStartingRecording = true;
     _pendingStopAfterStart = false;
     _dragStartX = startX;
+    _dragStartY = startY;
     _cancelDragOffset = 0.0;
+    _lockDragOffset = 0.0;
+    _isLocked = false;
     // Capture providers before async gaps to avoid BuildContext-across-async-gap lint.
     final messaging = context.read<MessagingProvider>();
     try {
@@ -249,6 +306,8 @@ class RecordingControllerState extends State<RecordingController>
       setState(() {
         _isRecording = true;
         _cancelDragOffset = 0.0;
+        _lockDragOffset = 0.0;
+        _isLocked = false;
         _showTrashIcon = false;
         _canceledBySlide = false;
       });
@@ -274,7 +333,11 @@ class RecordingControllerState extends State<RecordingController>
       debugPrint('Recording error: $e');
     } finally {
       _isStartingRecording = false;
-      if (mounted && _pendingStopAfterStart && _isRecording && !_canceledBySlide) {
+      if (mounted &&
+          _pendingStopAfterStart &&
+          _isRecording &&
+          !_canceledBySlide &&
+          !_isLocked) {
         _pendingStopAfterStart = false;
         if (_isOverTrash(context)) {
           _cancelRecording();
@@ -288,8 +351,9 @@ class RecordingControllerState extends State<RecordingController>
   }
 
   void _emitRecordingVoiceToRecipient(bool isRecording) {
-    final convs = context.read<ConversationsProvider>();
-    final conn = context.read<ConnectionProvider>();
+    final convs = _conversationsProvider;
+    final conn = _connectionProvider;
+    if (convs == null || conn == null) return;
     final convId = convs.activeConversationId;
     if (convId == null) return;
     final conv = convs.getConversationById(convId);
@@ -299,26 +363,38 @@ class RecordingControllerState extends State<RecordingController>
   }
 
   Future<void> _stopRecording() async {
-    if (_audioRecorder == null || !_isRecording || _isStopping) return;
+    if (!_isRecording || _isStopping) return;
+    if (_audioRecorder == null && !testSkipHardware) return;
     _isStopping = true;
 
     final l10n = AppLocalizations.of(context);
-    final messaging = context.read<MessagingProvider>();
+    final messaging =
+        _messagingProvider ?? context.read<MessagingProvider>();
     messaging.setIsRecordingVoice(false);
     _emitRecordingVoiceToRecipient(false);
     _recordingTimer?.cancel();
     _recordingTimer = null;
 
-    final path = await _audioRecorder!.stop();
-    await _audioRecorder!.dispose();
+    String? path;
+    final recorder = _audioRecorder;
+    if (recorder != null) {
+      path = await recorder.stop();
+      await recorder.dispose();
+    }
     _audioRecorder = null;
 
+    final wasLocked = _isLocked;
     setState(() {
       _isRecording = false;
       _cancelDragOffset = 0.0;
+      _lockDragOffset = 0.0;
+      _isLocked = false;
       _showTrashIcon = false;
     });
     widget.onRecordingStateChanged(false);
+    if (wasLocked) {
+      _notifyLockChanged(false);
+    }
 
     final durationMs = _recordingStartTime != null
         ? DateTime.now().difference(_recordingStartTime!).inMilliseconds
@@ -335,6 +411,12 @@ class RecordingControllerState extends State<RecordingController>
           } catch (_) {}
         }
         _showNotSentSnackBar(l10n.snackbarHoldLongerForVoiceMessage);
+        setState(() => _recordingPath = null);
+        return;
+      }
+
+      if (testSkipHardware) {
+        await widget.onVoiceSent(duration: durationSeconds);
         setState(() => _recordingPath = null);
         return;
       }
@@ -380,11 +462,13 @@ class RecordingControllerState extends State<RecordingController>
   }
 
   Future<void> _cancelRecording() async {
-    if (_audioRecorder == null || !_isRecording) return;
+    if (!_isRecording) return;
+    if (_audioRecorder == null && !testSkipHardware) return;
 
     final canceledMessage =
         AppLocalizations.of(context).snackbarVoiceRecordingCanceled;
-    final messaging = context.read<MessagingProvider>();
+    final messaging =
+        _messagingProvider ?? context.read<MessagingProvider>();
     messaging.setIsRecordingVoice(false);
     _emitRecordingVoiceToRecipient(false);
     _canceledBySlide = true;
@@ -392,8 +476,11 @@ class RecordingControllerState extends State<RecordingController>
     _recordingTimer = null;
     _recordingStartTime = null;
 
-    await _audioRecorder!.stop();
-    await _audioRecorder!.dispose();
+    final recorder = _audioRecorder;
+    if (recorder != null) {
+      await recorder.stop();
+      await recorder.dispose();
+    }
     _audioRecorder = null;
 
     if (!kIsWeb && _recordingPath != null) {
@@ -403,24 +490,54 @@ class RecordingControllerState extends State<RecordingController>
       } catch (_) {}
     }
 
+    final wasLocked = _isLocked;
     setState(() {
       _isRecording = false;
       _recordingPath = null;
       _cancelDragOffset = 0.0;
+      _lockDragOffset = 0.0;
+      _isLocked = false;
       _showTrashIcon = false;
     });
     widget.onRecordingStateChanged(false);
+    if (wasLocked) {
+      _notifyLockChanged(false);
+    }
     _showNotSentSnackBar(canceledMessage);
   }
 
   // ── drag logic ───────────────────────────────────────────────────────────
 
-  void _onRecordingDragUpdate(double currentX) {
-    if (!_isRecording) return;
+  void _notifyLockChanged(bool locked) {
+    widget.onRecordingLockChanged?.call(locked);
+  }
+
+  void _enterLockedMode() {
+    if (_isLocked || !_isRecording) return;
+    setState(() {
+      _isLocked = true;
+      _cancelDragOffset = 0.0;
+      _showTrashIcon = false;
+      _lockDragOffset = lockUpThresholdPx;
+    });
+    _notifyLockChanged(true);
+    if (!kIsWeb) {
+      HapticFeedback.mediumImpact();
+    }
+  }
+
+  void _onRecordingDragUpdate(double currentX, double currentY) {
+    if (!_isRecording || _isLocked) return;
+    final upwardPx = (_dragStartY - currentY).clamp(0.0, double.infinity);
     setState(() {
       _cancelDragOffset = currentX - _dragStartX;
       _showTrashIcon = _cancelDragOffset < -20;
+      _lockDragOffset = upwardPx;
     });
+    widget.onRecordingBarChanged?.call();
+    if (upwardPx >= lockUpThresholdPx) {
+      _enterLockedMode();
+    }
   }
 
   bool _isOverTrash(BuildContext context) =>
@@ -444,11 +561,13 @@ class RecordingControllerState extends State<RecordingController>
 
   void _onPointerRelease() {
     if (!_isRecording && !_isStartingRecording) return;
+    if (_isLocked) return;
     _finishRecordingGesture();
   }
 
   void _onLongPressFinished() {
     if (_canceledBySlide) return;
+    if (_isLocked) return;
     if (_isRecording) {
       if (_isOverTrash(context)) {
         _cancelRecording();
@@ -497,8 +616,10 @@ class RecordingControllerState extends State<RecordingController>
 
     final micHitTarget = Transform.translate(
       offset: Offset(
-        (_isRecording ? _cancelDragOffset.clamp(-cancelThreshold, 0) : 0.0) +
-            _kMicRestingOffsetX,
+        (_isRecording && !_isLocked
+                ? _cancelDragOffset.clamp(-cancelThreshold, 0)
+                : 0.0) +
+            kMicTrailingRestingOffsetX,
         0,
       ),
       child: Listener(
@@ -507,11 +628,17 @@ class RecordingControllerState extends State<RecordingController>
         onPointerCancel: (_) => _onPointerRelease(),
         child: GestureDetector(
           onLongPressStart: (details) {
+            if (_isRecording || _isStartingRecording || _isLocked) return;
             _abortInFlightStart = false;
-            _startRecording(details.globalPosition.dx);
+            _startRecording(
+              details.globalPosition.dx,
+              details.globalPosition.dy,
+            );
           },
-          onLongPressMoveUpdate: (details) =>
-              _onRecordingDragUpdate(details.globalPosition.dx),
+          onLongPressMoveUpdate: (details) => _onRecordingDragUpdate(
+            details.globalPosition.dx,
+            details.globalPosition.dy,
+          ),
           onLongPressEnd: (_) => _finishRecordingGesture(),
           onLongPressCancel: () {
             if (_isStartingRecording) {
@@ -526,17 +653,186 @@ class RecordingControllerState extends State<RecordingController>
       ),
     );
 
-    // Keep mic out of the focus subtree so long-press never steals focus from the field.
-    return ExcludeFocus(
-      child: SizedBox(
-        width: 48,
-        height: 48,
-        child: micHitTarget,
-      ),
+    return SizedBox(
+      width: 48,
+      height: 48,
+      child: micHitTarget,
     );
   }
 
+  /// Widget tests: active recording without mic permission / hardware.
+  @visibleForTesting
+  void simulateActiveRecordingForTest({
+    double startX = 100,
+    double startY = 200,
+    Duration elapsed = Duration.zero,
+  }) {
+    _dragStartX = startX;
+    _dragStartY = startY;
+    _recordingStartTime = DateTime.now().subtract(elapsed);
+    setState(() {
+      _isRecording = true;
+      _isLocked = false;
+      _cancelDragOffset = 0.0;
+      _lockDragOffset = 0.0;
+      _showTrashIcon = false;
+      _canceledBySlide = false;
+    });
+    widget.onRecordingStateChanged(true);
+  }
+
+  /// Widget tests: drive slide-up / slide-left gesture math.
+  @visibleForTesting
+  void simulateDragUpdateForTest(double globalX, double globalY) {
+    _onRecordingDragUpdate(globalX, globalY);
+  }
+
+  /// Widget tests: finish gesture as if finger released (unlocked path only).
+  @visibleForTesting
+  void simulateGestureFinishForTest() {
+    _gestureFinishHandled = false;
+    _onLongPressFinished();
+  }
+
+  /// Widget tests: [Listener] pointer release path while locked.
+  @visibleForTesting
+  void simulatePointerReleaseForTest() {
+    _onPointerRelease();
+  }
+
+  /// Widget tests: long-press start guard (mirrors [GestureDetector.onLongPressStart]).
+  @visibleForTesting
+  void simulateLongPressStartForTest(double globalX, double globalY) {
+    if (_isRecording || _isStartingRecording || _isLocked) return;
+    _abortInFlightStart = false;
+    _startRecording(globalX, globalY);
+  }
+
+  /// Sends the current locked recording session (trailing voice Send).
+  void sendLockedRecording() {
+    if (_isRecording && _isLocked && !_isStopping) {
+      _stopRecording();
+    }
+  }
+
+  /// Discards the current locked recording session (locked bar Cancel).
+  void cancelLockedRecording() {
+    if (_isRecording && _isLocked) {
+      _cancelRecording();
+    }
+  }
+
+  /// Widget tests: enter locked recording without mic hardware.
+  @visibleForTesting
+  void simulateLockedRecordingForTest({
+    double startX = 100,
+    double startY = 200,
+  }) {
+    simulateActiveRecordingForTest(startX: startX, startY: startY);
+    _enterLockedMode();
+  }
+
   // ── recording bar (called by parent ChatInputBar) ────────────────────────
+
+  Widget _buildRecordingTimerRow(BuildContext context) {
+    final isDark = RpgTheme.isDark(context);
+
+    return AnimatedBuilder(
+      animation: _pulseController,
+      builder: (context, child) {
+        final sec = _recordingStartTime != null
+            ? DateTime.now().difference(_recordingStartTime!).inSeconds
+            : 0;
+        return Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 12,
+              height: 12,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                color: Colors.red.withValues(
+                  alpha: 0.7 + (_pulseController.value * 0.3),
+                ),
+              ),
+            ),
+            const SizedBox(width: 12),
+            Text(
+              _formatRecordingDuration(sec),
+              style: RpgTheme.bodyFont(
+                fontSize: 16,
+                fontWeight: FontWeight.w600,
+                color: isDark ? Colors.white : Colors.black87,
+              ),
+            ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget buildRecordingBarLocked(BuildContext context) {
+    final isDark = RpgTheme.isDark(context);
+    final fc = FireplaceColors.of(context);
+    final l10n = AppLocalizations.of(context);
+    final elapsedSec = _recordingStartTime != null
+        ? DateTime.now().difference(_recordingStartTime!).inSeconds
+        : 0;
+    final timeLabel = _formatRecordingDuration(elapsedSec);
+
+    return Semantics(
+      label: l10n.voiceRecordingLockedSemantics(timeLabel),
+      child: Container(
+        height: 48,
+        padding: const EdgeInsets.symmetric(horizontal: 8),
+        decoration: BoxDecoration(
+          borderRadius: BorderRadius.circular(24),
+          border: Border.all(color: fc.tabBorder),
+          color: fc.inputBg,
+        ),
+        child: Row(
+          children: [
+            Semantics(
+              button: true,
+              label: l10n.voiceRecordingCancelLocked,
+              child: IconButton(
+                onPressed: cancelLockedRecording,
+                padding: EdgeInsets.zero,
+                constraints: const BoxConstraints(
+                  minWidth: 44,
+                  minHeight: 44,
+                ),
+                icon: const Icon(
+                  Icons.close,
+                  color: Colors.red,
+                  size: 24,
+                ),
+              ),
+            ),
+            Icon(
+              Icons.lock,
+              size: 16,
+              color: isDark ? Colors.white70 : Colors.black54,
+            ),
+            const SizedBox(width: 8),
+            _buildRecordingTimerRow(context),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Text(
+                l10n.voiceRecordingLocked,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                style: RpgTheme.bodyFont(
+                  fontSize: 14,
+                  color: isDark ? Colors.white60 : Colors.black54,
+                ),
+              ),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 
   Widget buildRecordingBar(BuildContext context) {
     final isDark = RpgTheme.isDark(context);
@@ -579,51 +875,38 @@ class RecordingControllerState extends State<RecordingController>
               ),
 
             // Pulsing red dot + timer (both driven by pulse animation)
-            AnimatedBuilder(
-              animation: _pulseController,
-              builder: (context, child) {
-                final sec = _recordingStartTime != null
-                    ? DateTime.now().difference(_recordingStartTime!).inSeconds
-                    : 0;
-                return Row(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Container(
-                      width: 12,
-                      height: 12,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.red.withValues(
-                          alpha: 0.7 + (_pulseController.value * 0.3),
-                        ),
-                      ),
-                    ),
-                    const SizedBox(width: 12),
-                    Text(
-                      _formatRecordingDuration(sec),
-                      style: RpgTheme.bodyFont(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w600,
-                        color: isDark ? Colors.white : Colors.black87,
-                      ),
-                    ),
-                  ],
-                );
-              },
-            ),
+            _buildRecordingTimerRow(context),
 
             const SizedBox(width: 16),
 
             Expanded(
               child: Opacity(
                 opacity: _showTrashIcon ? 0.0 : 1.0,
-                child: Text(
-                  l10n.voiceRecordingSlideToCancel,
-                  style: RpgTheme.bodyFont(
-                    fontSize: 14,
-                    color: isDark ? Colors.white60 : Colors.black54,
-                  ),
-                ),
+                child: _lockDragOffset >= lockUpHintShowPx
+                    ? Opacity(
+                        opacity: ((_lockDragOffset - lockUpHintShowPx) /
+                                (lockUpThresholdPx - lockUpHintShowPx))
+                            .clamp(0.0, 1.0),
+                        child: Semantics(
+                          label: l10n.voiceRecordingSlideUpToLock,
+                          child: Text(
+                            l10n.voiceRecordingSlideUpToLock,
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                            style: RpgTheme.bodyFont(
+                              fontSize: 14,
+                              color: isDark ? Colors.white60 : Colors.black54,
+                            ),
+                          ),
+                        ),
+                      )
+                    : Text(
+                        l10n.voiceRecordingSlideToCancel,
+                        style: RpgTheme.bodyFont(
+                          fontSize: 14,
+                          color: isDark ? Colors.white60 : Colors.black54,
+                        ),
+                      ),
               ),
             ),
           ],
