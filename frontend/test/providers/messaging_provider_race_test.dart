@@ -57,11 +57,13 @@ class _DecryptCountingEncryption extends _FakeEncryptionProvider {
   }
 }
 
-/// Always fails decrypt (simulates cross-device ratchet mismatch).
+/// Always fails decrypt with a generic error (triggers retry path: debounce +
+/// requestSessionRebuild). Use Bad Mac / DuplicateMessageException for terminal
+/// failure scenarios where no retry should happen.
 class _AlwaysFailDecryptEncryption extends _FakeEncryptionProvider {
   @override
   Future<String> decrypt(int senderId, String ciphertext) async {
-    throw Exception('Bad Mac');
+    throw Exception('Generic crypto failure');
   }
 }
 
@@ -78,7 +80,7 @@ class _AlwaysFailWithSessionCountEncryption extends _FakeEncryptionProvider {
 
   @override
   Future<String> decrypt(int senderId, String ciphertext) async {
-    throw Exception('Bad Mac');
+    throw Exception('Generic crypto failure');
   }
 }
 
