@@ -223,14 +223,28 @@ class ChatInputBarState extends State<ChatInputBar>
         _actionPanelController.reverse();
       }
     });
-    if (kIsWeb && isIOSWebKit() && hadComposerFocus) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_focusNode.canRequestFocus) return;
-        if (!_focusNode.hasFocus) {
-          _focusNode.requestFocus();
-        }
-        showSoftKeyboardIfHidden(context: context, hasFocus: true);
-      });
+    if (kIsWeb && isIOSWebKit()) {
+      if (hadComposerFocus) {
+        // Keyboard was open: keep it open and reset any iOS document scroll.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_focusNode.canRequestFocus) return;
+          if (!_focusNode.hasFocus) {
+            _focusNode.requestFocus();
+          }
+          showSoftKeyboardIfHidden(context: context, hasFocus: true);
+          resetWebDocumentScroll();
+        });
+      } else if (_showActionPanel) {
+        // Panel just opened from keyboard-hidden state. iOS may auto-focus the
+        // textarea on any canvas tap (no active editable → guard does not fire).
+        // Dismiss the auto-focus so the keyboard does not appear unexpectedly,
+        // and reset any document scroll iOS may have applied.
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_showActionPanel) return;
+          if (_focusNode.hasFocus) _focusNode.unfocus();
+          resetWebDocumentScroll();
+        });
+      }
     }
   }
 
