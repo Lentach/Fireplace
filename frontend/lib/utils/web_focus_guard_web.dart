@@ -58,12 +58,15 @@ void _onPointerDownCapture(web.Event event) {
 }
 
 // Called in capture phase so it fires before Flutter's own touchend handlers.
-// iOS Safari accepts .focus() calls made from touchend (user-gesture context),
-// which re-shows the keyboard even if the element was already blurred.
+// preventDefault stops iOS from treating this touchend as a tap-focus-change
+// (which would fire blur and animate the keyboard down). touchstart only
+// prevents scroll/zoom — touchend is required to prevent the focus change.
+// .focus() is the explicit restore; both are needed for a flicker-free result.
 void _onTouchEndCapture(web.Event event) {
   final el = _savedElement;
   _savedElement = null;
   if (el == null) return;
+  event.preventDefault();
   if (el.isA<web.HTMLElement>()) {
     (el as web.HTMLElement).focus();
   }
