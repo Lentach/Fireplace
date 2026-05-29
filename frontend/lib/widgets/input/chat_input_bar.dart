@@ -334,27 +334,18 @@ class ChatInputBarState extends State<ChatInputBar>
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            // Send icon paint only — no hit test (long-press uses mic below).
+                            // Centered send icon, paint only — no hit test (the mic
+                            // GestureDetector below handles hold-to-record).
                             IgnorePointer(
-                              child: Transform.translate(
-                                offset: const Offset(
-                                  RecordingControllerState
-                                      .kMicTrailingRestingOffsetX,
-                                  0,
-                                ),
-                                child: Icon(
-                                  Icons.send_rounded,
-                                  size: 22,
-                                  color: RpgTheme.primaryColor(context),
-                                ),
+                              child: Icon(
+                                Icons.send_rounded,
+                                size: 26,
+                                color: RpgTheme.primaryColor(context),
                               ),
                             ),
-                            Transform.translate(
-                              offset: const Offset(
-                                RecordingControllerState
-                                    .kMicTrailingRestingOffsetX,
-                                0,
-                              ),
+                            // Full 48×48 opaque tap target (was a left-nudged 22×22,
+                            // easy to miss + leaked outer-ring taps to the mic).
+                            Positioned.fill(
                               child: _ComposerTapSendOverlay(
                                 enabled: showTextSend,
                                 onTap: _send,
@@ -759,7 +750,6 @@ class _ComposerTapSendOverlayState extends State<_ComposerTapSendOverlay> {
 
   @override
   Widget build(BuildContext context) {
-    const size = 22.0;
     return Listener(
       behavior: HitTestBehavior.opaque,
       onPointerDown: _onPointerDown,
@@ -771,7 +761,7 @@ class _ComposerTapSendOverlayState extends State<_ComposerTapSendOverlay> {
           button: true,
           label: widget.semanticsLabel,
           excludeSemantics: true,
-          child: SizedBox(width: size, height: size),
+          child: const SizedBox.expand(),
         ),
       ),
     );
