@@ -426,7 +426,7 @@ erDiagram
 
 - **Android native composer layout jump:** Fixed for non-embedded via `ChatComposerViewport`. Embedded desktop unchanged. Manual QA required.
 - **Android Chrome/PWA composer jump (unfixed):** Tapping field shifts UI. Do not reintroduce May 2026 global scroll-lock.
-- **iOS Safari PWA keyboard (partial):** Mitigations: `setComposerFocusRequest`, `interactive-widget=overlays-content`, `web_viewport_scroll.dart`. Manual iPhone QA required.
+- **iOS PWA keyboard bounce (send button tap):** OS-level `resignFirstResponder` fires on any non-input tap — cannot be prevented from JS or Flutter web APIs. Affects iOS Safari and Chrome PWA equally. Layout is stable (`ChatComposerViewport` 450ms debounce prevents black-screen flash). Keyboard returns via `TextInput.show` native channel. Only fix is a native iOS app build. Do not iterate further on this.
 - **E2E limits:** No multi-device, no key recovery. 20MB decrypt limit. Legacy Cloudinary media loads direct URL (no keys).
 - No message edit, no fuzzy search, no iOS APNs
 - Large files: `messaging_provider.dart`, `chat-message.service.ts`, `chat-friend-request.service.ts`
