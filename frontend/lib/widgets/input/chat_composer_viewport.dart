@@ -2,8 +2,6 @@ import 'dart:async';
 
 import 'package:flutter/material.dart';
 
-import 'composer_diagnostics_overlay.dart';
-
 /// Builds the scrollable message list with [listBottomPadding] clearance for the
 /// overlaid composer and keyboard inset.
 typedef MessageListBuilder = Widget Function(double listBottomPadding);
@@ -112,12 +110,6 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
             ),
           ),
         ),
-        if (ComposerDiagnosticsOverlay.isEnabled)
-          Positioned(
-            top: MediaQuery.paddingOf(context).top + 4,
-            left: 8,
-            child: ComposerDiagnosticsOverlay(debouncedInset: _keyboardInset),
-          ),
       ],
     );
   }
