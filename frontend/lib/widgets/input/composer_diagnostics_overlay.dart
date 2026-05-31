@@ -4,7 +4,7 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../utils/web_diag_probe.dart';
-import '../../utils/web_ios_webkit.dart' show isIOSWebKit;
+import '../../utils/web_ios_webkit.dart';
 
 /// TEMPORARY on-screen diagnostics for the iOS-WebKit composer keyboard bug
 /// (composer floats mid-screen when the action panel is toggled with the
@@ -23,10 +23,8 @@ class ComposerDiagnosticsOverlay extends StatefulWidget {
   /// composer is actually `Positioned(bottom:)` at.
   final double debouncedInset;
 
-  /// Renders on any web build while the flag is on. (The iOS-only gate was
-  /// dropped while diagnosing why the overlay never appeared — showing it on
-  /// all web tells us whether iOS detection was the culprit.)
-  static bool get isEnabled => kComposerDiagOverlay && kIsWeb;
+  /// Only renders on iOS WebKit (web) while the flag is on.
+  static bool get isEnabled => kComposerDiagOverlay && kIsWeb && isIOSWebKit();
 
   @override
   State<ComposerDiagnosticsOverlay> createState() =>
@@ -56,7 +54,6 @@ class _ComposerDiagnosticsOverlayState
     final viewInsets = MediaQuery.viewInsetsOf(context).bottom;
     final probe = readWebDiagProbe();
     final lines = <String>[
-      'DIAG v0.0.27  iOSWebKit:${isIOSWebKit()}',
       'viewInsets.bottom: ${viewInsets.round()}',
       'debouncedInset:    ${widget.debouncedInset.round()}',
       'active: ${probe['active'] ?? '-'}',
@@ -67,14 +64,11 @@ class _ComposerDiagnosticsOverlayState
     return IgnorePointer(
       child: Container(
         padding: const EdgeInsets.all(6),
-        decoration: BoxDecoration(
-          color: const Color(0xE6000000),
-          border: Border.all(color: const Color(0xFFFF2D9B), width: 2),
-        ),
+        color: const Color(0xB8000000),
         child: DefaultTextStyle(
           style: const TextStyle(
             color: Color(0xFF7CFFB2),
-            fontSize: 11,
+            fontSize: 10,
             fontFamily: 'monospace',
             height: 1.35,
           ),
