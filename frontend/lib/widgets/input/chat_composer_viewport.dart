@@ -3,7 +3,6 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
-import '../../utils/composer_diag_log.dart';
 import '../../utils/web_keyboard_inset.dart';
 import 'composer_diagnostics_overlay.dart';
 
@@ -101,17 +100,13 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
       // Keyboard growing or appearing: apply immediately, cancel any pending collapse.
       _insetCollapseTimer?.cancel();
       _insetCollapseTimer = null;
-      ComposerDiagLog.add('inset.grow', {'raw': raw.round()});
       _keyboardInset = raw;
     } else if (raw < _keyboardInset && _insetCollapseTimer == null) {
       // Keyboard shrinking: wait 450ms before collapsing layout.
       // If the keyboard bounces back within that window the timer is cancelled
       // (next build with raw > _keyboardInset hits the branch above).
-      ComposerDiagLog.add('inset.collapseScheduled',
-          {'raw': raw.round(), 'held': _keyboardInset.round()});
       _insetCollapseTimer = Timer(const Duration(milliseconds: 450), () {
         _insetCollapseTimer = null;
-        ComposerDiagLog.add('inset.collapsed');
         if (mounted) setState(() => _keyboardInset = 0);
       });
     }

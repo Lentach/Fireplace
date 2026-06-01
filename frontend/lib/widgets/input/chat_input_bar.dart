@@ -13,8 +13,6 @@ import '../../providers/conversations_provider.dart';
 import '../../providers/messaging_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/rpg_theme.dart';
-import '../../utils/composer_diag_log.dart';
-import '../../utils/composer_probe.dart';
 import '../../utils/message_expiry.dart';
 import '../../utils/reply_preview_helper.dart';
 import '../../utils/soft_keyboard.dart';
@@ -217,13 +215,6 @@ class ChatInputBarState extends State<ChatInputBar>
 
   void _toggleActionPanel() {
     final hadComposerFocus = _focusNode.hasFocus;
-    final willShow = !_showActionPanel;
-    ComposerDiagLog.add('toggle.tap', {
-      'willShow': willShow,
-      'hadFocus': hadComposerFocus,
-      'viewInsets': MediaQuery.viewInsetsOf(context).bottom.round(),
-      'web': composerProbeString(),
-    });
     setState(() {
       _showActionPanel = !_showActionPanel;
       if (_showActionPanel) {
@@ -233,16 +224,6 @@ class ChatInputBarState extends State<ChatInputBar>
       }
     });
     if (kIsWeb && isIOSWebKit()) {
-      // Snapshot one frame later — captures focus/inset/scroll after iOS reacts.
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted) return;
-        ComposerDiagLog.add('toggle.postFrame', {
-          'showPanel': _showActionPanel,
-          'hasFocus': _focusNode.hasFocus,
-          'viewInsets': MediaQuery.viewInsetsOf(context).bottom.round(),
-          'web': composerProbeString(),
-        });
-      });
       if (hadComposerFocus) {
         // Keyboard was open: keep it open and reset any iOS document scroll.
         WidgetsBinding.instance.addPostFrameCallback((_) {

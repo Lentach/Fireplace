@@ -5,7 +5,6 @@ import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../providers/encryption_provider.dart';
 import '../theme/rpg_theme.dart';
-import '../utils/composer_diag_log.dart';
 import '../utils/e2e_diag_log.dart';
 import '../widgets/audio/playback_controller.dart';
 import '../widgets/top_snackbar.dart';
@@ -22,27 +21,6 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
   bool _loading = true;
   bool _clearingLocalCache = false;
   bool _diagLogUnlocked = false;
-
-  // Triple-tap the shield unlocks the composer/keyboard diagnostics panel
-  // (separate from the long-press that unlocks the E2E log).
-  bool _composerDiagUnlocked = false;
-  int _shieldTapCount = 0;
-  DateTime? _lastShieldTap;
-
-  void _onShieldTap() {
-    final now = DateTime.now();
-    if (_lastShieldTap == null ||
-        now.difference(_lastShieldTap!) > const Duration(milliseconds: 700)) {
-      _shieldTapCount = 1;
-    } else {
-      _shieldTapCount++;
-    }
-    _lastShieldTap = now;
-    if (_shieldTapCount >= 3) {
-      _shieldTapCount = 0;
-      setState(() => _composerDiagUnlocked = true);
-    }
-  }
 
   @override
   void initState() {
@@ -85,7 +63,6 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
             Center(
               child: GestureDetector(
                 onLongPress: () => setState(() => _diagLogUnlocked = true),
-                onTap: _onShieldTap,
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
@@ -226,10 +203,6 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
               const SizedBox(height: 24),
               _buildDiagLogPanel(context),
             ],
-            if (_composerDiagUnlocked) ...[
-              const SizedBox(height: 24),
-              _buildComposerDiagPanel(context),
-            ],
           ],
         ),
       ),
@@ -344,81 +317,6 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
                   : const Icon(Icons.delete_sweep_outlined),
               label: Text(l10n.clearLocalMessageCache),
             ),
-          ),
-        ],
-      ),
-    );
-  }
-
-  Widget _buildComposerDiagPanel(BuildContext context) {
-    final theme = Theme.of(context);
-    final isDark = RpgTheme.isDark(context);
-    final mutedColor = isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
-    final entries = ComposerDiagLog.entries.reversed.toList();
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            children: [
-              Icon(Icons.keyboard, size: 20, color: theme.colorScheme.primary),
-              const SizedBox(width: 8),
-              Expanded(
-                child: Text(
-                  'Composer / Keyboard Log',
-                  style: RpgTheme.bodyFont(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurface,
-                  ),
-                ),
-              ),
-              TextButton(
-                onPressed: () async {
-                  final all = ComposerDiagLog.entries.join('\n');
-                  await Clipboard.setData(ClipboardData(text: all));
-                  if (!mounted) return;
-                  // ignore: use_build_context_synchronously
-                  showTopSnackBar(context, 'Composer log copied to clipboard');
-                },
-                child: const Text('Copy'),
-              ),
-              TextButton(
-                onPressed: () {
-                  ComposerDiagLog.clear();
-                  setState(() {});
-                },
-                child: const Text('Clear'),
-              ),
-            ],
-          ),
-          const SizedBox(height: 8),
-          ConstrainedBox(
-            constraints: const BoxConstraints(maxHeight: 260),
-            child: entries.isEmpty
-                ? Text(
-                    'No events recorded — open a chat, tap the action-panel '
-                    'toggle with the keyboard up, then come back here.',
-                    style: RpgTheme.bodyFont(fontSize: 12, color: mutedColor),
-                  )
-                : ListView.builder(
-                    shrinkWrap: true,
-                    itemCount: entries.length,
-                    itemBuilder: (context, index) => SelectableText(
-                      entries[index],
-                      style: TextStyle(
-                        fontSize: 11,
-                        color: mutedColor,
-                        fontFamily: 'monospace',
-                      ),
-                    ),
-                  ),
           ),
         ],
       ),
