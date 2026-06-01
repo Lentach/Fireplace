@@ -57,7 +57,7 @@ cd frontend && flutter run -d chrome          # Terminal 2: Flutter web
 - Chat composer bottom inset: `SafeArea(bottom: false)` on chat screen; `ChatInputBar` uses `max(viewPadding.bottom, padding.bottom)` +16 when inset>0 + keyboard hidden. Web-mobile fallback: 16dp on compact + keyboard hidden. `MainShell` wraps navbar in `SafeArea(top: false, minimum: EdgeInsets.only(bottom: 10))`.
 - Chat composer horizontal: `SafeArea` only around message list, not whole column. `ChatInputBar` adds `MediaQuery.padding.left/right` + inner 8/4dp. Compact: +14dp right padding for OS gesture strip.
 - **Chat composer viewport (non-embedded):** `widgets/input/chat_composer_viewport.dart` — Stack overlay; `ListView` bottom padding = composer height + keyboard inset; composer `Positioned(bottom: keyboardInset)`; `Scaffold(resizeToAvoidBottomInset: false)`. Keyboard scroll in `didChangeMetrics`. Spec: `docs/superpowers/specs/2026-05-23-chat-composer-viewport-design.md`.
-- **iOS WebKit keyboard inset (visualViewport):** On iOS WebKit the soft keyboard shrinks the *visual* viewport but NOT the *layout* viewport, so `MediaQuery.viewInsets.bottom` reads **0 even while the keyboard is up** (confirmed on-device: viewInsets=0 while `visualViewport.height`=394 of `innerHeight`=797 → 403px keyboard Flutter never saw). Caused the composer to float mid-screen / sit under the keyboard after the action-panel toggle. Fix: `utils/web_keyboard_inset.dart` (stub/web pair) — `KeyboardInsetSource` listens to `window.visualViewport` `resize`+`scroll` and exposes `inset = max(0, innerHeight − visualViewport.height − visualViewport.offsetTop)` (threshold `_kMinKeyboardInset`=80 ignores rounding noise); `isActive` only on iOS WebKit. `ChatComposerViewport` owns one, rebuilds via its `ValueListenable` listener (Flutter won't rebuild — it never sees the inset), and uses `raw = isActive ? max(flutterInset, vvInset) : flutterInset` feeding the existing 450ms collapse debounce. Off iOS web / native: inactive, falls back to `MediaQuery.viewInsets.bottom` (no behaviour change). On-screen `ComposerDiagnosticsOverlay` (`composer_diagnostics_overlay.dart`, top-left, iOS-WebKit only) kept as a dev testing tool — **off by default; long-press the chat app-bar title to toggle** (`composerDiagOverlayEnabled` notifier / `toggleComposerDiagOverlay()`); shows `kbInset(vv)` vs Flutter `viewInsets`; depends on `composer_probe.dart`. (The triple-tap `ComposerDiagLog` was removed after the fix landed.) The earlier focus-guard / racy-`hadComposerFocus` theories were RULED OUT by the readout (`active: TEXTAREA`, all scroll values 0).
+- **iOS WebKit keyboard inset (visualViewport):** On iOS WebKit the soft keyboard shrinks the *visual* viewport but NOT the *layout* viewport, so `MediaQuery.viewInsets.bottom` reads **0 while the keyboard is up** — Flutter never sees the inset, so the composer floats mid-screen / sits under the keyboard after the action-panel toggle. Fix: `utils/web_keyboard_inset.dart` (stub/web pair) — `KeyboardInsetSource` listens to `window.visualViewport` `resize`+`scroll`, exposes `inset = max(0, innerHeight − visualViewport.height − visualViewport.offsetTop)` (threshold `_kMinKeyboardInset`=80 ignores rounding noise); `isActive` only on iOS WebKit. `ChatComposerViewport` owns one, rebuilds via its `ValueListenable`, uses `raw = isActive ? max(flutterInset, vvInset) : flutterInset` into the existing 450ms collapse debounce. Off iOS web / native: inactive, falls back to `MediaQuery.viewInsets.bottom`. Dev tool: `ComposerDiagnosticsOverlay` (`composer_diagnostics_overlay.dart`, iOS-WebKit only) — off by default, long-press the chat app-bar title to toggle (`composerDiagOverlayEnabled` / `toggleComposerDiagOverlay()`); depends on `composer_probe.dart`. (Focus-guard / racy-`hadComposerFocus` theories were ruled out by the readout.)
 - **Disappearing messages UI:** `DisappearingTimerSheet` (5s–30d, Turn off/Set timer). `HearthFadeArcIndicator` on bubbles + list. `ConversationsScreen` owns the 1Hz tick (`countdownTickNotifier`). `ChatInputBar.build` must `context.watch<ConversationsProvider>()` for banner (not `read`). Regression: `chat_input_bar_disappearing_banner_test.dart`, `conversation_tile_ephemeral_test.dart`.
 - Local incoming sound: `assets/sounds/incoming_message_long_pop.wav` (non-self, non-PING). `PingEffectOverlay`: `assets/sounds/ping_alert.mp3`. Test hook: `setIncomingMessageSoundEnabledForTest(false)`.
 - `enableForceNew()` on Socket.IO reconnect — Dart caches socket by URL
@@ -145,32 +145,7 @@ cd frontend && flutter run -d chrome          # Terminal 2: Flutter web
 
 ## 2. Architecture Overview
 
-```mermaid
-flowchart TB
-    subgraph Client["Flutter App (Web / Mobile)"]
-        AuthGate -->|logged out| AuthScreen
-        AuthGate -->|logged in| MainShell
-        MainShell --> ConversationsScreen
-        MainShell --> ContactsScreen
-        MainShell --> SettingsScreen
-        ConversationsScreen -->|tap| ChatDetailScreen
-        ContactsScreen -->|tap| ChatDetailScreen
-    end
-
-    subgraph Backend["NestJS Backend :3000"]
-        REST["REST API\n/auth /users /messages"]
-        WS["WebSocket Gateway\nSocket.IO"]
-        REST --> Services
-        WS --> ChatServices["Chat Services\nmessage | conversation | friend-request | key-exchange"]
-        ChatServices --> Services
-        Services["Core Services\nusers | conversations | messages | friends | key-bundles"]
-        Services --> DB[(PostgreSQL :5433)]
-        Services --> Media["Local media\navatars + encrypted blobs"]
-    end
-
-    Client -->|"REST + Bearer JWT"| REST
-    Client -->|"Socket.IO auth.token"| WS
-```
+**Topology:** Flutter app (web/mobile) ⇄ NestJS backend (:3000) ⇄ PostgreSQL (:5433). Client talks REST (Bearer JWT: `/auth /users /messages`) + Socket.IO (`auth.token`, chat). Backend serves self-hosted media (avatars + encrypted blobs) from local disk. Client flow: `AuthGate` → `AuthScreen` (logged out) or `MainShell` (Conversations/Contacts/Settings) → `ChatDetailScreen`.
 
 **7 Providers (ChangeNotifier):** `AuthProvider`, `ConnectionProvider` (socket lifecycle), `ConversationsProvider` (list/active/unread), `MessagingProvider` (messages/E2E/typing), `FriendsProvider`, `EncryptionProvider` (Signal), `SettingsProvider` (theme: light|teal|dark|blue; locale: pl/en default pl).
 **Services:** `SocketService` (event-map), `ApiService` (REST), `EncryptionService` (Signal Protocol), `MediaCryptoService` (AES-256-GCM in isolate), `LinkPreviewService`.
@@ -181,157 +156,26 @@ flowchart TB
 
 ## 3. File Location Map
 
-### Backend (`backend/src/`)
+Most files are discoverable by Glob; this section captures only grouping and the non-obvious locations.
 
-| Domain | Key Files |
-|---|---|
-| **Auth** | `auth/auth.service.ts`, `auth.controller.ts`, `refresh-token.entity.ts`, `refresh-tokens.service.ts`, `jwt-auth.guard.ts`, `strategies/jwt.strategy.ts`, `password.constants.ts` |
-| **Users** | `users/user.entity.ts`, `users.service.ts`, `users.controller.ts` |
-| **Conversations** | `conversations/conversation.entity.ts`, `conversations.service.ts` |
-| **Messages** | `messages/message.entity.ts`, `message.mapper.ts`, `messages.service.ts`, `messages.controller.ts` |
-| **Media** | `media/local-storage.service.ts`, `media.controller.ts`, `media-cleanup.service.ts` |
-| **Friends** | `friends/friend-request.entity.ts`, `friends.service.ts` |
-| **Blocked** | `blocked/blocked-user.entity.ts`, `blocked.service.ts` |
-| **Chat** | `chat/chat.gateway.ts`, `chat/services/chat-{message,conversation,friend-request,key-exchange,presence,block,search,reaction,link-preview}.service.ts` |
-| **DTOs** | `chat/dto/chat.dto.ts` + typing/recording-voice DTOs |
-| **Key Bundles** | `key-bundles/key-bundle.entity.ts`, `one-time-pre-key.entity.ts`, `key-bundles.service.ts` |
-| **Push** | `fcm-tokens/fcm-token.entity.ts`, `fcm-tokens.service.ts`, `web-push-subscriptions/web-push-subscription.entity.ts`, `push-notifications/push-notifications.service.ts` |
-| **Secret Notes** | `secret-notes/secret-note.entity.ts`, `secret-notes.service.ts`, `secret-notes.controller.ts` |
-| **Utils** | `chat/utils/dto.validator.ts`, `chat/services/chat-validation.service.ts`, `link-preview.service.ts`, `app.module.ts` |
+**Backend (`backend/src/`):** one folder per domain — `auth/`, `users/`, `conversations/`, `messages/`, `media/`, `friends/`, `blocked/`, `key-bundles/`, `fcm-tokens/`, `web-push-subscriptions/`, `push-notifications/`, `secret-notes/` — each with `*.entity.ts` + `*.service.ts` (+ `*.controller.ts` for REST). WebSocket layer: `chat/chat.gateway.ts` (pure delegation) → `chat/services/chat-{message,conversation,friend-request,key-exchange,presence,block,search,reaction,link-preview}.service.ts`. DTOs `chat/dto/chat.dto.ts`; validation `chat/utils/dto.validator.ts` + `chat/services/chat-validation.service.ts`. Auth extras: `refresh-token.entity.ts`, `strategies/jwt.strategy.ts`, `password.constants.ts`. Wiring: `app.module.ts`.
 
-### Frontend (`frontend/lib/`)
-
-| Domain | Key Files |
-|---|---|
-| **Entry** | `main.dart`, `config/app_config.dart`, `config/app_version_info.dart`, `constants/app_constants.dart` |
-| **Models** | `models/{user,conversation,message,friend_request}_model.dart` |
-| **L10n** | `l10n/app_pl.arb`, `l10n/app_en.arb`, `l10n/app_localizations.dart` (generated) |
-| **Providers** | `providers/{auth,connection,conversations,messaging,friends,encryption,settings}_provider.dart`, `chat_reconnect_manager.dart` |
-| **Services** | `services/{socket_service,api_service,encryption_service,media_crypto_service,link_preview_service,push_service,gif_service}.dart` |
-| **Utils** | `utils/e2e_envelope.dart`, `portrait_lock_policy.dart`; stub/io/web pairs: `file_utils`, `audio_blob_url`, `gif_blob_url`, `secure_context`, `download_utils`; `init_file_picker_{stub,web}.dart` |
-| **Portrait lock** | `services/portrait_lock_service.dart`, `web_orientation_lock_{stub,web}.dart`, `widgets/portrait_lock_shell.dart`, `widgets/portrait_required_overlay.dart` |
-| **Encryption** | `services/encryption/signal_stores.dart` (4 persistent Signal stores) |
-| **Screens** | `screens/{auth,main_shell,conversations,contacts,settings,chat_detail,add_or_invitations,privacy_safety,blocked_users}_screen.dart` |
-| **Widgets** | `widgets/{main_tab_screen_header,chat_action_tiles,conversation_tile,top_snackbar,avatar_circle,gif_picker_sheet,chat_background_pattern,message_date_separator,message_swipe_wrapper,ping_effect_overlay}.dart`; `widgets/message/{chat_message_bubble,text_message_content,image_message_content,gif_message_content,file_message_content,voice_message_content,message_content_factory,message_metadata_row,reaction_chips_row,message_bubble_inline_time,message_context_menu_overlay,message_context_menu_bubble_highlight,context_menu_bubble_anchor,message_action_panel}.dart`; `widgets/input/{chat_composer_viewport,chat_input_bar,recording_controller,attachment_handler,reply_preview_bar}.dart`; `widgets/audio/{playback_controller,waveform_display}.dart` |
-| **Theme** | `theme/rpg_theme.dart` (`FireplaceColors` ThemeExtension; light/teal/dark/blue themes), `theme/app_scroll_behavior.dart` |
-| **Push** | `services/push_service.dart`, `android_fcm_local_notifications.dart`, `web_push_bridge_{stub,web}.dart`, `badging_bridge_{stub,web}.dart`, `pwa_app_badge_clear.dart`, `unread_badge_sync.dart`, `utils/app_badge_math.dart`, `web/web-push-sw.js` |
+**Frontend (`frontend/lib/`):** `main.dart` entry; folders `config/`, `constants/`, `models/`, `providers/` (7 providers + `chat_reconnect_manager.dart`), `services/`, `screens/`, `theme/` (`rpg_theme.dart` = `FireplaceColors` ThemeExtension + light/teal/dark/blue), `l10n/` (`app_pl.arb`/`app_en.arb` + generated `app_localizations.dart`). `widgets/` sub-dirs: `message/`, `input/` (`chat_composer_viewport`, `chat_input_bar`, `recording_controller`, `attachment_handler`, `reply_preview_bar`), `audio/`. Non-obvious:
+- **Conditional-import pairs (stub/io/web):** `file_utils`, `audio_blob_url`, `gif_blob_url`, `secure_context`, `download_utils`, `init_file_picker`, `web_keyboard_inset`, `web_focus_guard`, `web_orientation_lock`, `web_push_bridge`, `badging_bridge`.
+- **Re-export shims (do NOT delete):** top-level `widgets/chat_message_bubble.dart`, `chat_input_bar.dart`, `voice_message_bubble.dart`.
+- **Signal stores:** `services/encryption/signal_stores.dart` (4 persistent stores). **Service worker:** `web/web-push-sw.js`.
 
 ---
 
 ## 4. Database Schema
 
-```mermaid
-erDiagram
-    users ||--o{ conversations : "userOne / userTwo"
-    users ||--o{ messages : "sender"
-    users ||--o{ friend_requests : "sender / receiver"
-    users ||--o{ blocked_users : "blocker / blocked"
-    conversations ||--o{ messages : "conversation"
+Entities (`backend/src/**/*.entity.ts`) are the source of truth — only non-obvious facts live here.
 
-    users {
-        int id PK
-        string username "not unique alone"
-        string tag "4-digit, unique with username"
-        string password "bcrypt hash, 10 rounds"
-        string profilePictureUrl "nullable"
-        string profilePicturePublicId "nullable"
-        timestamp createdAt
-    }
-
-    conversations {
-        int id PK
-        int user_one_id FK "eager: true"
-        int user_two_id FK "eager: true"
-        int disappearingTimer "nullable, default null"
-        int pinnedMessageId "nullable"
-        timestamp pinnedAt "nullable"
-        int pinnedByUserId "nullable"
-        timestamp createdAt
-    }
-
-    messages {
-        int id PK
-        text content
-        int sender_id FK "eager: true"
-        int conversation_id FK "eager: false"
-        enum deliveryStatus "SENDING|SENT|DELIVERED|READ"
-        enum messageType "TEXT|PING|IMAGE|VOICE|GIF|FILE"
-        text mediaUrl "nullable"
-        int mediaDuration "nullable, seconds"
-        varchar hiddenByUserIds "comma-separated"
-        text reactions "nullable JSON"
-        text linkPreviewUrl "nullable"
-        text linkPreviewTitle "nullable"
-        text linkPreviewImageUrl "nullable"
-        text encryptedContent "nullable"
-        timestamp expiresAt "nullable"
-        int disappearAfterSeconds "nullable"
-        timestamp createdAt
-    }
-
-    key_bundles {
-        int id PK
-        int userId "unique"
-        int registrationId
-        text identityPublicKey
-        int signedPreKeyId
-        text signedPreKeyPublic
-        text signedPreKeySignature
-    }
-
-    one_time_pre_keys {
-        int id PK
-        int userId
-        int keyId
-        text publicKey
-        boolean used "default false"
-    }
-
-    friend_requests {
-        int id PK
-        int sender_id FK "eager: true, CASCADE"
-        int receiver_id FK "eager: true, CASCADE"
-        enum status "PENDING|ACCEPTED|REJECTED"
-        timestamp createdAt
-        timestamp respondedAt "nullable"
-    }
-
-    fcm_tokens {
-        int id PK
-        int userId
-        string token "unique"
-        string platform "web|android|ios"
-    }
-
-    web_push_subscription {
-        int id PK
-        int userId
-        text endpoint "unique"
-        text p256dh
-        text auth
-        string userAgent "nullable"
-        bigint expirationTime "nullable, stringified"
-        timestamp createdAt
-        timestamp updatedAt
-    }
-
-    secret_notes {
-        int id PK
-        varchar token "UNIQUE"
-        text ciphertext
-        timestamp expires_at
-        int creator_id FK "nullable"
-        timestamp created_at
-    }
-
-    blocked_users {
-        int id PK
-        int blocker_id FK "CASCADE"
-        int blocked_id FK "eager: true, CASCADE"
-    }
-```
-
-**Constraints:** `users` unique on `(username, tag)`. No cascade on User entity. `secret_notes.token` unique. `blocked_users` unique on `(blocker_id, blocked_id)`. `refresh_tokens`: unique `token_hash`, FK `user_id` CASCADE.
+**Relations:** `users`→`conversations` (userOne/userTwo), `users`→`messages` (sender), `users`→`friend_requests` (sender/receiver), `users`→`blocked_users` (blocker/blocked), `conversations`→`messages`. `key_bundles` (1/user) + `one_time_pre_keys` (many/user) hold Signal keys.
+**Eager loading:** `conversations.userOne/userTwo`, `messages.sender`, `friend_requests.sender/receiver`, `blocked_users.blocked` are `eager: true`; `messages.conversation` is `eager: false`.
+**Enums:** `messages.deliveryStatus` `SENDING|SENT|DELIVERED|READ` (never downgrades); `messages.messageType` `TEXT|PING|IMAGE|VOICE|GIF|FILE`; `friend_requests.status` `PENDING|ACCEPTED|REJECTED`.
+**Non-obvious columns:** `messages.hiddenByUserIds` comma-separated string; `reactions` nullable JSON; `encryptedContent`/`expiresAt`/`disappearAfterSeconds` nullable. `conversations.disappearingTimer`/`pinnedMessageId`/`pinnedAt`/`pinnedByUserId` nullable. `web_push_subscription.expirationTime` bigint, stringified.
+**Constraints:** `users` unique on `(username, tag)` (username not unique alone). No cascade on User entity. `friend_requests` sender/receiver + `blocked_users` blocker/blocked FKs are CASCADE. `secret_notes.token` unique. `blocked_users` unique on `(blocker_id, blocked_id)`. `refresh_tokens`: unique `token_hash`, FK `user_id` CASCADE.
 
 ---
 
