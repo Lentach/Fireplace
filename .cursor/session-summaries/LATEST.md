@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-01
 
-**Topic:** iOS composer floats — root-caused (Flutter viewInsets=0 while keyboard up), fixed via visualViewport-derived keyboard inset (v0.0.27, commit 9734d3d). Deploy + iPhone confirm pending.
+**Topic:** iOS composer floats — root-caused (Flutter viewInsets=0 while keyboard up), fixed via visualViewport-derived keyboard inset. **CONFIRMED fixed on iPhone.** Diagnostics cleaned up; overlay kept as a toggle-gated dev tool (long-press chat title). Now v0.0.29 (commit da48c74).
 
 → [2026-06-01-session-ios-visualviewport-keyboard-inset.md](./2026-06-01-session-ios-visualviewport-keyboard-inset.md)
 
