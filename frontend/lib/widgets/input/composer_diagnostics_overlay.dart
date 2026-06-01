@@ -6,14 +6,19 @@ import 'package:flutter/material.dart';
 import '../../utils/composer_probe.dart';
 import '../../utils/web_ios_webkit.dart' show isIOSWebKit;
 
-/// TEMPORARY on-screen diagnostics for the iOS-WebKit composer keyboard bug.
-/// Shows the visualViewport-derived keyboard inset that now drives the composer
-/// position vs. Flutter's (unreliable) `MediaQuery.viewInsets.bottom`, so the
-/// fix can be verified on-device.
+/// Dev testing tool: on-screen readout of the visualViewport-derived keyboard
+/// inset (what now drives the composer position) vs. Flutter's unreliable
+/// `MediaQuery.viewInsets.bottom`. Off by default so real users never see it;
+/// toggled at runtime by long-pressing the chat app-bar title (iOS WebKit only).
 ///
-/// To disable: flip [kComposerDiagOverlay] to `false`.
-/// To remove: delete this file and its usage in `chat_composer_viewport.dart`.
-const bool kComposerDiagOverlay = true;
+/// To remove entirely: delete this file and its usage in
+/// `chat_composer_viewport.dart`.
+final ValueNotifier<bool> composerDiagOverlayEnabled =
+    ValueNotifier<bool>(false);
+
+/// Flip the overlay on/off. No-op effect off iOS WebKit (overlay never mounts).
+void toggleComposerDiagOverlay() =>
+    composerDiagOverlayEnabled.value = !composerDiagOverlayEnabled.value;
 
 class ComposerDiagnosticsOverlay extends StatefulWidget {
   const ComposerDiagnosticsOverlay({
@@ -32,7 +37,9 @@ class ComposerDiagnosticsOverlay extends StatefulWidget {
   /// What the composer is actually `Positioned(bottom:)` at after debounce.
   final double debouncedInset;
 
-  static bool get isEnabled => kComposerDiagOverlay && kIsWeb && isIOSWebKit();
+  /// True only where the overlay can run (iOS WebKit web). Actual visibility is
+  /// further gated at runtime by [composerDiagOverlayEnabled].
+  static bool get isAvailable => kIsWeb && isIOSWebKit();
 
   @override
   State<ComposerDiagnosticsOverlay> createState() =>

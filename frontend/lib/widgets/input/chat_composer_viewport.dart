@@ -134,15 +134,21 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
             ),
           ),
         ),
-        if (ComposerDiagnosticsOverlay.isEnabled)
+        if (ComposerDiagnosticsOverlay.isAvailable)
           Positioned(
             top: MediaQuery.paddingOf(context).top + 4,
             left: 8,
-            child: ComposerDiagnosticsOverlay(
-              flutterInset: flutterInset,
-              computedInset:
-                  _kbInsetSource.isActive ? _kbInsetSource.inset.value : null,
-              debouncedInset: _keyboardInset,
+            child: ValueListenableBuilder<bool>(
+              valueListenable: composerDiagOverlayEnabled,
+              builder: (context, enabled, _) => enabled
+                  ? ComposerDiagnosticsOverlay(
+                      flutterInset: flutterInset,
+                      computedInset: _kbInsetSource.isActive
+                          ? _kbInsetSource.inset.value
+                          : null,
+                      debouncedInset: _keyboardInset,
+                    )
+                  : const SizedBox.shrink(),
             ),
           ),
       ],

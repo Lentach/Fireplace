@@ -12,6 +12,8 @@ import '../theme/rpg_theme.dart';
 import '../widgets/chat_message_bubble.dart';
 import '../widgets/chat_input_bar.dart';
 import '../widgets/input/chat_composer_viewport.dart';
+import '../widgets/input/composer_diagnostics_overlay.dart'
+    show toggleComposerDiagOverlay;
 import '../widgets/message_date_separator.dart';
 import '../models/conversation_model.dart';
 import '../models/message_model.dart';
@@ -686,7 +688,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final otherUser = _getOtherUser();
     final activeConv = convs.getConversationById(widget.conversationId);
     final statusText = _getHeaderStatusText(context, messaging);
-    final headerTitle = _buildHeaderTitle(context, contactName, otherUser, statusText);
+    // Long-press the title toggles the iOS keyboard-diagnostics overlay (dev
+    // tool; only renders on iOS WebKit, off by default).
+    final headerTitle = GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      onLongPress: toggleComposerDiagOverlay,
+      child: _buildHeaderTitle(context, contactName, otherUser, statusText),
+    );
     final pinnedBanner = activeConv != null
         ? _buildPinnedMessageBanner(
             context,
