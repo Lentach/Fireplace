@@ -11,9 +11,12 @@ import 'composer_diagnostics_overlay.dart';
 typedef MessageListBuilder = Widget Function(double listBottomPadding);
 
 /// Owns chat layout: messages fill the stack; [composer] is positioned at the
-/// bottom above [MediaQuery.viewInsets]. List bottom padding tracks measured
-/// composer height plus keyboard inset so [Expanded] does not shrink when the
-/// composer grows (reply bar, action panel).
+/// bottom above the keyboard inset. The inset comes from `visualViewport` on iOS
+/// WebKit (where `MediaQuery.viewInsets.bottom` reads 0 while the keyboard is up)
+/// and from [MediaQuery.viewInsets] everywhere else — see
+/// `utils/web_keyboard_inset.dart`. List bottom padding tracks measured composer
+/// height plus that inset so [Expanded] does not shrink when the composer grows
+/// (reply bar, action panel).
 class ChatComposerViewport extends StatefulWidget {
   const ChatComposerViewport({
     super.key,
@@ -111,6 +114,13 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
       });
     }
 
+    // NOTE: this block intentionally mutates debounce state (`_keyboardInset`,
+    // `_insetCollapseTimer`) during build. It is safe because the grow branch is
+    // idempotent, the collapse is guarded by `_insetCollapseTimer == null`, and
+    // `_keyboardInset` is re-derived from the live `raw` on every build. Bounce
+    // self-corrects: the collapse timer's setState rebuilds, and if the keyboard
+    // is still up `raw` re-grows `_keyboardInset` in the same frame (no visible
+    // drop). Keep `raw` sourced live so this invariant holds.
     final listBottomPadding = _composerHeight + _keyboardInset;
 
     return Stack(
