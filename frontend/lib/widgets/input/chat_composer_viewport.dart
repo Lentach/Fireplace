@@ -1,8 +1,11 @@
 import 'dart:async';
+import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
 import '../../utils/composer_diag_log.dart';
+import '../../utils/web_keyboard_inset.dart';
+import 'composer_diagnostics_overlay.dart';
 
 /// Builds the scrollable message list with [listBottomPadding] clearance for the
 /// overlaid composer and keyboard inset.
@@ -37,10 +40,23 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
   double _keyboardInset = 0;
   Timer? _insetCollapseTimer;
 
+  // iOS WebKit reports MediaQuery.viewInsets.bottom = 0 even while the keyboard
+  // is up, so derive the real inset from visualViewport. Inactive (and ignored)
+  // off iOS web.
+  late final KeyboardInsetSource _kbInsetSource;
+
   @override
   void initState() {
     super.initState();
+    _kbInsetSource = createKeyboardInsetSource();
+    _kbInsetSource.inset.addListener(_onKeyboardInsetChanged);
     WidgetsBinding.instance.addPostFrameCallback(_measureComposer);
+  }
+
+  void _onKeyboardInsetChanged() {
+    // Flutter does not rebuild on the iOS keyboard (it never sees the inset), so
+    // the visualViewport listener must drive the rebuild itself.
+    if (mounted) setState(() {});
   }
 
   @override
@@ -52,6 +68,8 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
   @override
   void dispose() {
     _insetCollapseTimer?.cancel();
+    _kbInsetSource.inset.removeListener(_onKeyboardInsetChanged);
+    _kbInsetSource.dispose();
     super.dispose();
   }
 
@@ -72,7 +90,12 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
 
   @override
   Widget build(BuildContext context) {
-    final raw = MediaQuery.viewInsetsOf(context).bottom;
+    final flutterInset = MediaQuery.viewInsetsOf(context).bottom;
+    // On iOS WebKit prefer the visualViewport-derived inset (Flutter's reads 0
+    // while the keyboard is up); take the max so we never under-report.
+    final raw = _kbInsetSource.isActive
+        ? math.max(flutterInset, _kbInsetSource.inset.value)
+        : flutterInset;
 
     if (raw > _keyboardInset) {
       // Keyboard growing or appearing: apply immediately, cancel any pending collapse.
@@ -116,6 +139,17 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
             ),
           ),
         ),
+        if (ComposerDiagnosticsOverlay.isEnabled)
+          Positioned(
+            top: MediaQuery.paddingOf(context).top + 4,
+            left: 8,
+            child: ComposerDiagnosticsOverlay(
+              flutterInset: flutterInset,
+              computedInset:
+                  _kbInsetSource.isActive ? _kbInsetSource.inset.value : null,
+              debouncedInset: _keyboardInset,
+            ),
+          ),
       ],
     );
   }
