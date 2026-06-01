@@ -598,23 +598,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get snackbarFailedToStartRecording => 'Failed to start recording';
 
   @override
-  String get snackbarHoldLongerForVoiceMessage =>
-      'Hold longer to record a voice message';
-
-  @override
   String get snackbarVoiceRecordingCanceled => 'Voice recording canceled';
-
-  @override
-  String get voiceRecordingSlideToCancel => '← Slide to cancel';
-
-  @override
-  String get voiceRecordingSlideUpToLock => '↑ Slide up to lock';
-
-  @override
-  String get voiceRecordingLocked => 'Locked — tap Send when done';
-
-  @override
-  String get voiceRecordingCancelLocked => 'Cancel recording';
 
   @override
   String get voiceRecordingSendVoiceTooltip => 'Send voice message';
@@ -623,13 +607,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get voiceRecordingSendVoiceSemantics => 'Send voice message';
 
   @override
-  String voiceRecordingSemanticsLabel(String time) {
-    return 'Recording voice message, $time. Swipe left to cancel.';
-  }
+  String get voiceRecordingDiscard => 'Discard recording';
 
   @override
-  String voiceRecordingLockedSemantics(String time) {
-    return 'Locked voice recording, $time. Tap Send to send or Cancel to discard.';
+  String voiceRecordingSemanticsLabel(String time) {
+    return 'Recording voice message, $time.';
   }
 
   @override

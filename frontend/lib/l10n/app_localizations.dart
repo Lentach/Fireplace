@@ -1124,41 +1124,11 @@ abstract class AppLocalizations {
   /// **'Nie udało się rozpocząć nagrywania'**
   String get snackbarFailedToStartRecording;
 
-  /// No description provided for @snackbarHoldLongerForVoiceMessage.
-  ///
-  /// In pl, this message translates to:
-  /// **'Przytrzymaj dłużej, aby nagrać wiadomość głosową'**
-  String get snackbarHoldLongerForVoiceMessage;
-
   /// No description provided for @snackbarVoiceRecordingCanceled.
   ///
   /// In pl, this message translates to:
   /// **'Nagrywanie głosu anulowane'**
   String get snackbarVoiceRecordingCanceled;
-
-  /// No description provided for @voiceRecordingSlideToCancel.
-  ///
-  /// In pl, this message translates to:
-  /// **'← Przesuń, aby anulować'**
-  String get voiceRecordingSlideToCancel;
-
-  /// No description provided for @voiceRecordingSlideUpToLock.
-  ///
-  /// In pl, this message translates to:
-  /// **'↑ Przesuń w górę, aby zablokować'**
-  String get voiceRecordingSlideUpToLock;
-
-  /// No description provided for @voiceRecordingLocked.
-  ///
-  /// In pl, this message translates to:
-  /// **'Zablokowano — dotknij Wyślij, gdy skończysz'**
-  String get voiceRecordingLocked;
-
-  /// No description provided for @voiceRecordingCancelLocked.
-  ///
-  /// In pl, this message translates to:
-  /// **'Anuluj nagrywanie'**
-  String get voiceRecordingCancelLocked;
 
   /// No description provided for @voiceRecordingSendVoiceTooltip.
   ///
@@ -1172,17 +1142,17 @@ abstract class AppLocalizations {
   /// **'Wyślij wiadomość głosową'**
   String get voiceRecordingSendVoiceSemantics;
 
+  /// No description provided for @voiceRecordingDiscard.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odrzuć nagranie'**
+  String get voiceRecordingDiscard;
+
   /// No description provided for @voiceRecordingSemanticsLabel.
   ///
   /// In pl, this message translates to:
-  /// **'Nagrywanie wiadomości głosowej, {time}. Przesuń w lewo, aby anulować.'**
+  /// **'Nagrywanie wiadomości głosowej, {time}.'**
   String voiceRecordingSemanticsLabel(String time);
-
-  /// No description provided for @voiceRecordingLockedSemantics.
-  ///
-  /// In pl, this message translates to:
-  /// **'Zablokowane nagrywanie, {time}. Dotknij Wyślij, aby wysłać, lub Anuluj, aby odrzucić.'**
-  String voiceRecordingLockedSemantics(String time);
 
   /// No description provided for @snackbarFailedToReadRecording.
   ///

@@ -605,24 +605,7 @@ class AppLocalizationsPl extends AppLocalizations {
       'Nie udało się rozpocząć nagrywania';
 
   @override
-  String get snackbarHoldLongerForVoiceMessage =>
-      'Przytrzymaj dłużej, aby nagrać wiadomość głosową';
-
-  @override
   String get snackbarVoiceRecordingCanceled => 'Nagrywanie głosu anulowane';
-
-  @override
-  String get voiceRecordingSlideToCancel => '← Przesuń, aby anulować';
-
-  @override
-  String get voiceRecordingSlideUpToLock => '↑ Przesuń w górę, aby zablokować';
-
-  @override
-  String get voiceRecordingLocked =>
-      'Zablokowano — dotknij Wyślij, gdy skończysz';
-
-  @override
-  String get voiceRecordingCancelLocked => 'Anuluj nagrywanie';
 
   @override
   String get voiceRecordingSendVoiceTooltip => 'Wyślij wiadomość głosową';
@@ -631,13 +614,11 @@ class AppLocalizationsPl extends AppLocalizations {
   String get voiceRecordingSendVoiceSemantics => 'Wyślij wiadomość głosową';
 
   @override
-  String voiceRecordingSemanticsLabel(String time) {
-    return 'Nagrywanie wiadomości głosowej, $time. Przesuń w lewo, aby anulować.';
-  }
+  String get voiceRecordingDiscard => 'Odrzuć nagranie';
 
   @override
-  String voiceRecordingLockedSemantics(String time) {
-    return 'Zablokowane nagrywanie, $time. Dotknij Wyślij, aby wysłać, lub Anuluj, aby odrzucić.';
+  String voiceRecordingSemanticsLabel(String time) {
+    return 'Nagrywanie wiadomości głosowej, $time.';
   }
 
   @override
