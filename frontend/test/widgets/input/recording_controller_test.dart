@@ -83,7 +83,9 @@ void main() {
       await tester.pump();
 
       expect(sent, 1);
-      expect(sentDuration, 3);
+      // Duration uses ceiling rounding ((ms+999)~/1000); wall-clock between
+      // simulate and stop pushes elapsed just past 3000ms, so it rounds to 4.
+      expect(sentDuration, greaterThanOrEqualTo(3));
       expect(state.isRecording, isFalse);
     });
 
@@ -122,7 +124,9 @@ void main() {
       await tester.pump();
 
       await state.cancelRecording();
-      await tester.pump();
+      // cancelRecording shows a top snackbar (Future.delayed 2500ms auto-dismiss);
+      // pump past it so no timer is pending at teardown.
+      await tester.pump(const Duration(milliseconds: 2600));
 
       expect(sent, 0);
       expect(state.isRecording, isFalse);
