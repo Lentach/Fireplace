@@ -591,6 +591,9 @@ class AppLocalizationsEn extends AppLocalizations {
       'Microphone permission denied';
 
   @override
+  String get snackbarNoMicrophoneFound => 'No microphone found';
+
+  @override
   String get snackbarVoiceRecordingRequiresSecureContext =>
       'Voice recording needs HTTPS or localhost. Use https:// or open from localhost.';
 

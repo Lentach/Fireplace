@@ -1,0 +1,145 @@
+<h2>Full Composer State Map</h2>
+<p class="subtitle">All 5 states we're designing — click one to focus it</p>
+
+<style>
+.state-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 16px; }
+.state-box {
+  background: #1a1a2e;
+  border-radius: 12px;
+  overflow: hidden;
+  border: 1.5px solid #333;
+}
+.state-box.selected-state { border-color: #5c6bc0; }
+.state-label-bar {
+  background: #2a2a40;
+  padding: 6px 12px;
+  font-size: 11px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #888;
+  display: flex; justify-content: space-between; align-items: center;
+}
+.state-label-bar .id { color: #5c6bc0; font-weight: 700; }
+.state-label-bar .badge { font-size: 10px; padding: 2px 6px; border-radius: 6px; }
+.badge.existing { background: #1a2a1a; color: #6fcf97; }
+.badge.new { background: #2a1a3a; color: #bb86fc; }
+.badge.bug { background: #3a1a1a; color: #ff6b6b; }
+.composer {
+  padding: 10px 12px;
+  display: flex; align-items: center; gap: 8px;
+}
+.ci { width: 36px; height: 36px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 16px; flex-shrink: 0; }
+.ci.muted { opacity: 0.4; }
+.ci.send { background: #5c6bc0; color: white; font-size: 14px; }
+.ci.send-voice { background: #7c4dff; color: white; font-size: 14px; }
+.ci.mic { color: #aaa; }
+.ci.mic-red { color: red; font-size: 18px; }
+.ci.cancel { background: #c0392b; color: white; font-size: 14px; border-radius: 8px; width: 44px; }
+.ci.spin { border: 2px solid #5c6bc0; border-top-color: transparent; border-radius: 50%; width: 22px; height: 22px; animation: spin 0.8s linear infinite; }
+@keyframes spin { to { transform: rotate(360deg); } }
+.field {
+  flex: 1; background: #2a2a40; border-radius: 18px; border: 1px solid #444;
+  padding: 8px 12px; color: #ccc; font-size: 13px; font-family: inherit;
+}
+.recbar {
+  flex: 1; background: #2a2a40; border-radius: 18px; border: 1px solid #444;
+  padding: 8px 12px; font-size: 13px; display: flex; align-items: center; gap: 8px;
+}
+.reddot { width: 10px; height: 10px; border-radius: 50%; background: red; flex-shrink: 0; }
+.timer { color: #eee; font-weight: 600; font-size: 13px; }
+.hint { color: #666; font-size: 12px; flex: 1; }
+.lockicon { font-size: 14px; }
+.state-desc { padding: 8px 12px 10px; color: #888; font-size: 12px; line-height: 1.4; }
+
+.arrow-row { display: flex; align-items: center; justify-content: center; gap: 8px; padding: 4px 0; color: #5c6bc0; font-size: 12px; }
+.big-arrow { font-size: 20px; color: #444; text-align: center; padding: 2px 0; }
+</style>
+
+<div class="state-grid">
+
+  <!-- V0: Idle empty -->
+  <div class="state-box">
+    <div class="state-label-bar">
+      <span><span class="id">V0</span> — Idle, empty</span>
+      <span class="badge existing">existing</span>
+    </div>
+    <div class="composer">
+      <div class="ci muted">⌄</div>
+      <div class="field">Type a message…</div>
+      <div class="ci mic">🎙</div>
+    </div>
+    <div class="state-desc">No changes. Mic = hold to record.</div>
+  </div>
+
+  <!-- V1: Has text -->
+  <div class="state-box">
+    <div class="state-label-bar">
+      <span><span class="id">V1</span> — Has draft text</span>
+      <span class="badge new">Phase 0</span>
+    </div>
+    <div class="composer">
+      <div class="ci muted">⌄</div>
+      <div class="field" style="color:#eee">Hello there!</div>
+      <div class="ci send">➤</div>
+    </div>
+    <div class="state-desc">Send overlays mic (Focus canRequestFocus:false → keyboard stays). Mic GestureDetector invisible but mounted.</div>
+  </div>
+
+  <!-- V3: Recording unlocked -->
+  <div class="state-box">
+    <div class="state-label-bar">
+      <span><span class="id">V3</span> — Recording (unlocked)</span>
+      <span class="badge existing">existing</span>
+    </div>
+    <div class="composer" style="padding: 10px 8px 6px">
+      <div class="recbar">
+        <div class="reddot"></div>
+        <span class="timer">0:12</span>
+        <span class="hint">← slide to cancel</span>
+      </div>
+      <div class="ci mic-red">🎙</div>
+    </div>
+    <div class="state-desc">Release finger → auto-send. Slide left → cancel. <strong>Slide up → lock (new)</strong>. Bug fix: wrap stop() in try-finally.</div>
+  </div>
+
+  <!-- V4: Recording locked -->
+  <div class="state-box" style="border-color: #7c4dff44;">
+    <div class="state-label-bar">
+      <span><span class="id">V4</span> — Recording (locked)</span>
+      <span class="badge new">Phase 1 — fixes the bug</span>
+    </div>
+    <div class="composer" style="padding: 10px 8px 6px">
+      <div class="ci cancel" style="font-size:11px">✕</div>
+      <div class="recbar">
+        <div class="reddot"></div>
+        <span class="lockicon">🔒</span>
+        <span class="timer">0:28</span>
+        <span class="hint" style="color:#bb86fc">Tap Send →</span>
+      </div>
+      <div class="ci send-voice">➤</div>
+    </div>
+    <div class="state-desc"><strong>Finger released — recording continues.</strong> Explicit Send (purple) sends; Cancel (left) discards. No gesture needed = no stuck-recording bug.</div>
+  </div>
+
+</div>
+
+<!-- V5 -->
+<div class="state-box" style="margin-top:14px; border-color: #333;">
+  <div class="state-label-bar">
+    <span><span class="id">V5</span> — Sending voice (uploading)</span>
+    <span class="badge existing">existing</span>
+  </div>
+  <div class="composer">
+    <div class="ci muted">⌄</div>
+    <div class="field">Type a message…</div>
+    <div class="ci spin"></div>
+  </div>
+  <div class="state-desc">Spinner replaces trailing slot while voice uploads. No changes needed.</div>
+</div>
+
+<div style="margin-top:20px; padding: 14px; background:#1a1a1a; border-radius: 10px; border: 1px solid #ff6b6b33;">
+  <p style="color:#ff6b6b; margin:0 0 6px; font-size:13px; font-weight:600">🐛 Bug fixed by V4 + defensive fix</p>
+  <p style="color:#aaa; font-size:12px; margin:0">Long recording → scroll gesture wins arena → <code>onLongPressEnd</code> swallowed → stuck recording. V4 lock mode gives an explicit Send button so gesture loss doesn't matter. Defensive: wrap <code>_stopRecording()</code> entirely in try-finally to prevent <code>_isStopping</code> deadlock.</p>
+</div>
+
+<p class="subtitle" style="margin-top:16px">Does this match the full scope you want? Let me know in the terminal.</p>

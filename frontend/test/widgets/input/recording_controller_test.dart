@@ -8,6 +8,7 @@ import 'package:fireplace/widgets/input/recording_controller.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:record/record.dart';
 
 // Helper: pump a RecordingController with localization AND the providers it
 // reads from context (stopAndSend/cancelRecording call context.read<...>()).
@@ -59,6 +60,57 @@ void main() {
     test('is distinct from generic Exception for start-recording catch', () {
       expect(const MicRecordingPermissionDenied(), isA<Exception>());
       expect(const MicRecordingPermissionDenied(), isNot(isA<StateError>()));
+    });
+  });
+
+  group('resolveSupportedEncoder', () {
+    test('returns the first supported candidate', () async {
+      final result = await resolveSupportedEncoder(
+        const [AudioEncoder.aacLc, AudioEncoder.opus, AudioEncoder.wav],
+        (e) async => e == AudioEncoder.opus, // aac unsupported, opus supported
+      );
+      expect(result, AudioEncoder.opus);
+    });
+
+    test('prefers the earliest candidate when several are supported', () async {
+      final result = await resolveSupportedEncoder(
+        const [AudioEncoder.aacLc, AudioEncoder.opus, AudioEncoder.wav],
+        (e) async => true,
+      );
+      expect(result, AudioEncoder.aacLc);
+    });
+
+    test('falls back to the last candidate when none are supported', () async {
+      final result = await resolveSupportedEncoder(
+        const [AudioEncoder.aacLc, AudioEncoder.opus, AudioEncoder.wav],
+        (e) async => false,
+      );
+      expect(result, AudioEncoder.wav);
+    });
+  });
+
+  group('classifyRecordingStartError', () {
+    test('NotFoundError maps to noMicrophone', () {
+      expect(
+        classifyRecordingStartError(
+          'NotFoundError: Requested device not found',
+        ),
+        RecordingStartFailure.noMicrophone,
+      );
+    });
+
+    test('NotAllowedError maps to permissionDenied', () {
+      expect(
+        classifyRecordingStartError('NotAllowedError: Permission denied'),
+        RecordingStartFailure.permissionDenied,
+      );
+    });
+
+    test('an unrecognised error maps to generic', () {
+      expect(
+        classifyRecordingStartError('SomeOtherError: boom'),
+        RecordingStartFailure.generic,
+      );
     });
   });
 

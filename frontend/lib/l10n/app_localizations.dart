@@ -1112,6 +1112,12 @@ abstract class AppLocalizations {
   /// **'Odmowa dostępu do mikrofonu'**
   String get snackbarMicrophonePermissionDenied;
 
+  /// No description provided for @snackbarNoMicrophoneFound.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie znaleziono mikrofonu'**
+  String get snackbarNoMicrophoneFound;
+
   /// No description provided for @snackbarVoiceRecordingRequiresSecureContext.
   ///
   /// In pl, this message translates to:

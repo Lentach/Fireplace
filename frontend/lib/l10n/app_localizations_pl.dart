@@ -597,6 +597,9 @@ class AppLocalizationsPl extends AppLocalizations {
       'Odmowa dostępu do mikrofonu';
 
   @override
+  String get snackbarNoMicrophoneFound => 'Nie znaleziono mikrofonu';
+
+  @override
   String get snackbarVoiceRecordingRequiresSecureContext =>
       'Nagrywanie głosu wymaga HTTPS lub localhost. Użyj https:// lub otwórz z localhost.';
 

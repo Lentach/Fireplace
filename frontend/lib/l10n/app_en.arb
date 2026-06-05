@@ -225,6 +225,7 @@
   "snackbarFailedToSendImage": "Failed to send image",
   "snackbarMicrophonePermissionRequired": "Microphone permission required",
   "snackbarMicrophonePermissionDenied": "Microphone permission denied",
+  "snackbarNoMicrophoneFound": "No microphone found",
   "snackbarVoiceRecordingRequiresSecureContext": "Voice recording needs HTTPS or localhost. Use https:// or open from localhost.",
   "snackbarFailedToStartRecording": "Failed to start recording",
   "snackbarVoiceRecordingCanceled": "Voice recording canceled",

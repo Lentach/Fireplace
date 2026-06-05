@@ -213,6 +213,7 @@
   "snackbarFailedToSendImage": "Nie udało się wysłać zdjęcia",
   "snackbarMicrophonePermissionRequired": "Wymagane jest uprawnienie do mikrofonu",
   "snackbarMicrophonePermissionDenied": "Odmowa dostępu do mikrofonu",
+  "snackbarNoMicrophoneFound": "Nie znaleziono mikrofonu",
   "snackbarVoiceRecordingRequiresSecureContext": "Nagrywanie głosu wymaga HTTPS lub localhost. Użyj https:// lub otwórz z localhost.",
   "snackbarFailedToStartRecording": "Nie udało się rozpocząć nagrywania",
   "snackbarVoiceRecordingCanceled": "Nagrywanie głosu anulowane",

@@ -184,7 +184,8 @@
       "WebFetch(domain:github.com)",
       "Bash(flutter pub:*)",
       "Bash(dart pub:*)",
-      "Bash(claude:*)"
+      "Bash(claude:*)",
+      "Bash(git diff *)"
     ]
   }
 }

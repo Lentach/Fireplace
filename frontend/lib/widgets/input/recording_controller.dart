@@ -27,6 +27,46 @@ class MicRecordingPermissionDenied implements Exception {
   const MicRecordingPermissionDenied();
 }
 
+/// First encoder in [candidates] for which [isSupported] resolves true; falls
+/// back to the LAST candidate (wav — `isEncoderSupported` is unconditionally
+/// true for wav) when none match. Used to pick a MediaRecorder-backed web
+/// encoder (aacLc → opus → wav) so recording avoids record_web's WAV/AudioWorklet
+/// path, which drops samples and clips on mobile.
+@visibleForTesting
+Future<AudioEncoder> resolveSupportedEncoder(
+  List<AudioEncoder> candidates,
+  Future<bool> Function(AudioEncoder) isSupported,
+) async {
+  for (final e in candidates) {
+    if (await isSupported(e)) return e;
+  }
+  return candidates.last;
+}
+
+/// Category for a recording-start error. Only used on the paths where `start()`
+/// actually throws (the wav fallback + native); on the MediaRecorder path the
+/// delegate swallows the error, so failures are detected via device enumeration
+/// + `isRecording()` instead (see [RecordingControllerState.startRecording]).
+@visibleForTesting
+enum RecordingStartFailure { noMicrophone, permissionDenied, generic }
+
+/// Best-effort classification of a thrown start error by its string form.
+@visibleForTesting
+RecordingStartFailure classifyRecordingStartError(Object error) {
+  final s = error.toString().toLowerCase();
+  if (s.contains('notfounderror') ||
+      s.contains('requested device not found') ||
+      s.contains('devices not found')) {
+    return RecordingStartFailure.noMicrophone;
+  }
+  if (s.contains('notallowederror') ||
+      s.contains('permissiondenied') ||
+      s.contains('permission denied')) {
+    return RecordingStartFailure.permissionDenied;
+  }
+  return RecordingStartFailure.generic;
+}
+
 /// Tap-to-toggle voice recording. Owns the `AudioRecorder` lifecycle and the
 /// recording bar (trash + pulsing dot + timer + decorative waveform).
 ///
@@ -227,17 +267,6 @@ class RecordingControllerState extends State<RecordingController>
       if (!mounted) return;
 
       _audioRecorder = AudioRecorder();
-      if (kIsWeb) {
-        _recordingPath = 'voice_${DateTime.now().millisecondsSinceEpoch}.wav';
-      } else {
-        final tempDir = await getTemporaryDirectory();
-        _recordingPath =
-            '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
-      }
-      if (!mounted) {
-        await _releaseRecorderSilently();
-        return;
-      }
 
       if (kIsWeb && !secure_context.isWebSecureContext()) {
         if (mounted) {
@@ -251,18 +280,51 @@ class RecordingControllerState extends State<RecordingController>
         return;
       }
 
-      // Native is already gated by _checkMicPermission; only probe on web.
+      // Web: pick a MediaRecorder-backed encoder (aacLc → opus → wav by browser
+      // support). wav routes to record_web's AudioWorklet path, which drops
+      // samples + clips the tail on mobile; aacLc/opus route to the native
+      // MediaRecorder. Native keeps aacLc (.m4a).
+      final encoder = kIsWeb
+          ? await resolveSupportedEncoder(
+              const [AudioEncoder.aacLc, AudioEncoder.opus, AudioEncoder.wav],
+              _audioRecorder!.isEncoderSupported,
+            )
+          : AudioEncoder.aacLc;
+      if (!mounted) {
+        await _releaseRecorderSilently();
+        return;
+      }
+
+      // Web no-mic pre-check: MediaRecorderDelegate swallows a no-device
+      // getUserMedia error, so detect it deterministically before starting.
       if (kIsWeb) {
-        final hasPermission = await _audioRecorder!.hasPermission();
+        final inputs = await _audioRecorder!.listInputDevices();
         if (!mounted) {
           await _releaseRecorderSilently();
           return;
         }
-        if (!hasPermission) {
+        if (inputs.isEmpty) {
           showTopSnackBar(
             context,
-            AppLocalizations.of(context).snackbarMicrophonePermissionDenied,
+            AppLocalizations.of(context).snackbarNoMicrophoneFound,
           );
+          await _releaseRecorderSilently();
+          return;
+        }
+      }
+
+      if (kIsWeb) {
+        final ext = switch (encoder) {
+          AudioEncoder.aacLc => 'm4a',
+          AudioEncoder.opus => 'webm',
+          _ => 'wav',
+        };
+        _recordingPath = 'voice_${DateTime.now().millisecondsSinceEpoch}.$ext';
+      } else {
+        final tempDir = await getTemporaryDirectory();
+        _recordingPath =
+            '${tempDir.path}/voice_${DateTime.now().millisecondsSinceEpoch}.m4a';
+        if (!mounted) {
           await _releaseRecorderSilently();
           return;
         }
@@ -270,7 +332,7 @@ class RecordingControllerState extends State<RecordingController>
 
       await _audioRecorder!.start(
         RecordConfig(
-          encoder: kIsWeb ? AudioEncoder.wav : AudioEncoder.aacLc,
+          encoder: encoder,
           bitRate: 128000,
           sampleRate: 44100,
           numChannels: 1,
@@ -278,6 +340,20 @@ class RecordingControllerState extends State<RecordingController>
         path: _recordingPath!,
       );
       if (!mounted) {
+        await _releaseRecorderSilently();
+        return;
+      }
+
+      // Web start-failure post-check: MediaRecorderDelegate.start() swallows a
+      // denied/blocked getUserMedia error and resolves anyway. If recording did
+      // not actually engage, surface it instead of starting a fake session.
+      if (kIsWeb && !await _audioRecorder!.isRecording()) {
+        if (mounted) {
+          showTopSnackBar(
+            context,
+            AppLocalizations.of(context).snackbarMicrophonePermissionDenied,
+          );
+        }
         await _releaseRecorderSilently();
         return;
       }
@@ -303,10 +379,15 @@ class RecordingControllerState extends State<RecordingController>
     } catch (e) {
       await _releaseRecorderSilently();
       if (mounted) {
-        showTopSnackBar(
-          context,
-          AppLocalizations.of(context).snackbarFailedToStartRecording,
-        );
+        final l10n = AppLocalizations.of(context);
+        final msg = switch (classifyRecordingStartError(e)) {
+          RecordingStartFailure.noMicrophone => l10n.snackbarNoMicrophoneFound,
+          RecordingStartFailure.permissionDenied =>
+              l10n.snackbarMicrophonePermissionDenied,
+          RecordingStartFailure.generic =>
+              l10n.snackbarFailedToStartRecording,
+        };
+        showTopSnackBar(context, msg);
         debugPrint('Recording error: $e');
       }
     } finally {
