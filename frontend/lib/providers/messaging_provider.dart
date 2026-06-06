@@ -3,7 +3,6 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:webcrypto/webcrypto.dart';
 import '../utils/file_utils_stub.dart'
     if (dart.library.io) '../utils/file_utils_io.dart' as file_utils;
@@ -12,6 +11,7 @@ import '../config/app_config.dart';
 import '../models/message_model.dart';
 import '../services/api_service.dart';
 import '../services/media_crypto_service.dart';
+import '../services/incoming_message_sound_service.dart';
 import '../services/link_preview_service.dart';
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_envelope.dart';
@@ -25,9 +25,6 @@ import 'encryption_provider.dart';
 /// encryption orchestration, typing/recording indicators, and reactions.
 /// Wired by [ConnectionProvider] and ConversationsScreen (setEncryptionProvider, setConversationsProvider).
 class MessagingProvider extends ChangeNotifier {
-  static const String _incomingMessageSoundAsset =
-      'assets/sounds/incoming_message_long_pop.wav';
-
   static void _e2eFlowLog(String step, [Map<String, dynamic>? data]) {
     E2eDiagLog.add(step, data ?? {});
     if (kDebugMode) debugPrint('[E2E-FLOW] $step | ${data ?? {}}');
@@ -120,8 +117,8 @@ class MessagingProvider extends ChangeNotifier {
   MessageModel? _replyingToMessage;
 
   bool _showPingEffect = false;
-  AudioPlayer? _incomingMessageSoundPlayer;
-  bool _incomingMessageSoundEnabled = true;
+  final IncomingMessageSoundService _incomingSound =
+      IncomingMessageSoundService();
 
   // ---------- Typing / Recording Indicators ----------
 
@@ -540,7 +537,7 @@ class MessagingProvider extends ChangeNotifier {
 
   @visibleForTesting
   void setIncomingMessageSoundEnabledForTest(bool enabled) {
-    _incomingMessageSoundEnabled = enabled;
+    _incomingSound.setEnabledForTest(enabled);
   }
 
   bool isPartnerTyping(int conversationId) =>
@@ -894,7 +891,7 @@ class MessagingProvider extends ChangeNotifier {
         }
         if (merged.senderId != _currentUserId &&
             merged.messageType != MessageType.ping) {
-          _playIncomingMessageSound().ignore();
+          _incomingSound.play().ignore();
         }
       });
       return;
@@ -902,7 +899,7 @@ class MessagingProvider extends ChangeNotifier {
 
     _addMessageToState(msg);
     if (msg.senderId != _currentUserId && msg.messageType != MessageType.ping) {
-      _playIncomingMessageSound().ignore();
+      _incomingSound.play().ignore();
     }
     // Keep cache current for active conversation.
     final activeIdAfterPlain = _effectiveActiveConversationId;
@@ -2745,23 +2742,6 @@ class MessagingProvider extends ChangeNotifier {
 
   // ---------- Internal Helpers ----------
 
-  Future<void> _playIncomingMessageSound() async {
-    if (kIsWeb || !_incomingMessageSoundEnabled) return;
-    try {
-      _incomingMessageSoundPlayer ??= AudioPlayer();
-      final player = _incomingMessageSoundPlayer!;
-      if (player.audioSource == null) {
-        await player.setAsset(_incomingMessageSoundAsset);
-      }
-      await player.seek(Duration.zero);
-      await player.play();
-    } catch (e) {
-      if (kDebugMode) {
-        debugPrint('[MessagingProvider] Incoming sound failed: $e');
-      }
-    }
-  }
-
   void _markMessageFailed(String tempId, String errorMsg) {
     final idx = _messages.indexWhere((m) => m.tempId == tempId);
     if (idx != -1) {
@@ -3002,7 +2982,7 @@ class MessagingProvider extends ChangeNotifier {
 
   @override
   void dispose() {
-    _incomingMessageSoundPlayer?.dispose().ignore();
+    _incomingSound.dispose();
     countdownTickNotifier.dispose();
     super.dispose();
   }
