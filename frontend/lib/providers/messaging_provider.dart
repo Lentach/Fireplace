@@ -21,6 +21,12 @@ import 'conversation_helpers.dart' as conv_helpers;
 import 'conversations_provider.dart';
 import 'encryption_provider.dart';
 
+part 'messaging/messaging_provider.history.dart';
+part 'messaging/messaging_provider.events.dart';
+part 'messaging/messaging_provider.send.dart';
+part 'messaging/messaging_provider.decrypt.dart';
+part 'messaging/messaging_provider.actions.dart';
+
 /// MessagingProvider — owns all message state, send/receive handlers,
 /// encryption orchestration, typing/recording indicators, and reactions.
 /// Wired by [ConnectionProvider] and ConversationsScreen (setEncryptionProvider, setConversationsProvider).
