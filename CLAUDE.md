@@ -31,7 +31,7 @@ cd frontend && flutter run -d chrome          # Terminal 2: Flutter web
 **Ports:** Backend :3000 | Frontend :random | DB :5433→:5432
 **Stack:** NestJS 11 + Flutter 3.x + PostgreSQL 16 + Socket.IO 4 + JWT + self-hosted media
 **Phone (WiFi):** `.\run_web_for_phone.ps1` or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`
-**Tests:** `cd backend && npm test` (281 unit tests, 39 suites; verified by `node scripts/verify-claude-backend-test-counts.mjs`). `cd frontend && flutter test`. CI: `.github/workflows/ci.yml`.
+**Tests:** `cd backend && npm test` (285 unit tests, 39 suites; verified by `node scripts/verify-claude-backend-test-counts.mjs`). `cd frontend && flutter test`. CI: `.github/workflows/ci.yml`.
 **Production:** https://fireplace.ignorelist.com — GCP VM (Warszawa), user `olek292`, repo `~/fireplace`. Deploy: `cd ~/fireplace && ./deploy.sh && cp -a frontend/build/web/. frontend-build/`. Verify: `curl -sS https://fireplace.ignorelist.com/version`. Rules: `.cursor/rules/version-bump.mdc`, `.cursor/rules/production-vm-deploy.mdc`.
 
 ---
@@ -104,6 +104,7 @@ cd frontend && flutter run -d chrome          # Terminal 2: Flutter web
 - `isBlockedByEither` uses single OR query
 - `_conversationsWithUnread` uses batch (2 queries total, not 2N)
 - `og:image` validated via `isSafeImageUrl` (HTTPS + non-private); IPv6 brackets stripped; relative URLs resolved
+- **Link-preview SSRF:** `fetchPreview` follows redirects **manually** (`redirect: 'manual'`, max 5 hops) and re-runs `isFetchableUrl` (http/https + non-private host) on **every** hop — `fetch`'s default `redirect: 'follow'` would chase a 3xx into a private/metadata host unchecked. Residual (known): a public host whose DNS resolves to a private IP isn't caught — needs resolve-and-pin; tracked for later.
 - WS rate limiting: `WsThrottlerGuard`; `sendMessage` 300/15min; read events 300/15min; `searchUsers` 30/60s. Mock `res` with no-op `header()` for Socket.
 - Pre-key anti-depletion: same requester→target limited to 750ms min interval; tracker pruned TTL 10min + capped 10k entries
 - JWT invalidation after password change: `passwordChangedAt` in `resetPassword`; `JwtStrategy.validate()` rejects `iat <= passwordChangedAt`. Also revokes all refresh tokens.

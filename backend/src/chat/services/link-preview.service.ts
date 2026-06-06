@@ -30,6 +30,20 @@ function isSafeImageUrl(url: string): boolean {
   }
 }
 
+/** True only for http(s) URLs whose host is public — gates every fetch hop. */
+function isFetchableUrl(url: string): boolean {
+  let protocol: string;
+  try {
+    protocol = new URL(url).protocol;
+  } catch {
+    return false;
+  }
+  if (protocol !== 'http:' && protocol !== 'https:') return false;
+  return !isPrivateOrLocal(url);
+}
+
+const MAX_REDIRECTS = 5;
+
 function parseOgMeta(html: string, pageUrl: string): {
   title: string | null;
   imageUrl: string | null;
@@ -71,49 +85,72 @@ export class LinkPreviewService {
   async fetchPreview(
     text: string,
   ): Promise<{ url: string; title: string | null; imageUrl: string | null } | null> {
-    const url = extractFirstUrl(text);
-    if (!url) return null;
-    if (isPrivateOrLocal(url)) return null;
+    const startUrl = extractFirstUrl(text);
+    if (!startUrl) return null;
 
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), 5000);
     try {
-      const controller = new AbortController();
-      const timeout = setTimeout(() => controller.abort(), 5000);
+      // Follow redirects manually so every hop is SSRF-validated. fetch's own
+      // `redirect: 'follow'` would silently chase a 3xx into a private/metadata
+      // host without re-checking it — the classic open-redirect SSRF bypass.
+      // (Residual: a public host whose DNS resolves to a private IP is not
+      // caught here; closing that needs resolve-and-pin, tracked for later.)
+      let currentUrl = startUrl;
+      for (let hop = 0; hop <= MAX_REDIRECTS; hop++) {
+        if (!isFetchableUrl(currentUrl)) return null;
 
-      const response = await fetch(url, {
-        signal: controller.signal,
-        headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChatBot/1.0)' },
-      });
-      clearTimeout(timeout);
+        const response = await fetch(currentUrl, {
+          signal: controller.signal,
+          redirect: 'manual',
+          headers: { 'User-Agent': 'Mozilla/5.0 (compatible; ChatBot/1.0)' },
+        });
 
-      if (!response.ok) return null;
+        if (response.status >= 300 && response.status < 400) {
+          const location = response.headers.get('location');
+          if (!location) return null;
+          try {
+            currentUrl = new URL(location, currentUrl).href;
+          } catch {
+            return null;
+          }
+          continue; // re-validated at the top of the loop before the next fetch
+        }
 
-      const contentType = response.headers.get('content-type') ?? '';
-      if (!contentType.includes('text/html')) return null;
+        if (!response.ok) return null;
 
-      // Read until </head> found (covers sites like YouTube with large inline JS)
-      // or until 800KB safety limit to avoid unbounded downloads.
-      const reader = response.body?.getReader();
-      if (!reader) return null;
-      let html = '';
-      let totalBytes = 0;
-      const decoder = new TextDecoder();
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-        totalBytes += value.byteLength;
-        html += decoder.decode(value);
-        if (html.includes('</head>')) break;
-        if (totalBytes > 800_000) break;
+        const contentType = response.headers.get('content-type') ?? '';
+        if (!contentType.includes('text/html')) return null;
+
+        // Read until </head> found (covers sites like YouTube with large inline JS)
+        // or until 800KB safety limit to avoid unbounded downloads.
+        const reader = response.body?.getReader();
+        if (!reader) return null;
+        let html = '';
+        let totalBytes = 0;
+        const decoder = new TextDecoder();
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+          totalBytes += value.byteLength;
+          html += decoder.decode(value);
+          if (html.includes('</head>')) break;
+          if (totalBytes > 800_000) break;
+        }
+        reader.cancel();
+
+        const { title, imageUrl } = parseOgMeta(html, currentUrl);
+        if (!title && !imageUrl) return null;
+
+        // Preview is for the link as written in the message (startUrl).
+        return { url: startUrl, title, imageUrl };
       }
-      reader.cancel();
-
-      const { title, imageUrl } = parseOgMeta(html, url);
-      if (!title && !imageUrl) return null;
-
-      return { url, title, imageUrl };
+      return null; // too many redirects
     } catch (err) {
-      this.logger.debug(`Link preview fetch failed for ${url}: ${err.message}`);
+      this.logger.debug(`Link preview fetch failed for ${startUrl}: ${err.message}`);
       return null;
+    } finally {
+      clearTimeout(timeout);
     }
   }
 }
