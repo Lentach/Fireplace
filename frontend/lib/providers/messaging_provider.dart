@@ -27,15 +27,37 @@ part 'messaging/messaging_provider.send.dart';
 part 'messaging/messaging_provider.decrypt.dart';
 part 'messaging/messaging_provider.actions.dart';
 
+// ---------- Library-private top-level helpers ----------
+// Hoisted from MessagingProvider statics so the part-file extensions can
+// reference them by bare name (an extension cannot see a class's statics).
+
+void _e2eFlowLog(String step, [Map<String, dynamic>? data]) {
+  E2eDiagLog.add(step, data ?? {});
+  if (kDebugMode) debugPrint('[E2E-FLOW] $step | ${data ?? {}}');
+}
+
+int _deliveryStatusRank(MessageDeliveryStatus status) {
+  switch (status) {
+    case MessageDeliveryStatus.sending:
+    case MessageDeliveryStatus.failed:
+      return 0;
+    case MessageDeliveryStatus.sent:
+      return 1;
+    case MessageDeliveryStatus.delivered:
+      return 2;
+    case MessageDeliveryStatus.read:
+      return 3;
+  }
+}
+
+const int _pageSize = 50;
+const String _kDecryptionFailedLabel = '[Decryption failed]';
+const String _kEncryptedPlaceholderLabel = '[encrypted]';
+
 /// MessagingProvider — owns all message state, send/receive handlers,
 /// encryption orchestration, typing/recording indicators, and reactions.
 /// Wired by [ConnectionProvider] and ConversationsScreen (setEncryptionProvider, setConversationsProvider).
 class MessagingProvider extends ChangeNotifier {
-  static void _e2eFlowLog(String step, [Map<String, dynamic>? data]) {
-    E2eDiagLog.add(step, data ?? {});
-    if (kDebugMode) debugPrint('[E2E-FLOW] $step | ${data ?? {}}');
-  }
-
   // ---------- Dependencies ----------
 
   late final ApiService _api = ApiService(baseUrl: AppConfig.baseUrl);
@@ -96,7 +118,6 @@ class MessagingProvider extends ChangeNotifier {
 
   // ---------- Message State ----------
 
-  static const int _pageSize = 50;
   List<MessageModel> _messages = [];
   bool _isLoadingMore = false;
   bool _hasMore = false;
@@ -233,23 +254,6 @@ class MessagingProvider extends ChangeNotifier {
     final pending = _pendingHistoryFetchSeq[conversationId];
     return pending != null && pending.length > 1;
   }
-
-  static int _deliveryStatusRank(MessageDeliveryStatus status) {
-    switch (status) {
-      case MessageDeliveryStatus.sending:
-      case MessageDeliveryStatus.failed:
-        return 0;
-      case MessageDeliveryStatus.sent:
-        return 1;
-      case MessageDeliveryStatus.delivered:
-        return 2;
-      case MessageDeliveryStatus.read:
-        return 3;
-    }
-  }
-
-  static const String _kDecryptionFailedLabel = '[Decryption failed]';
-  static const String _kEncryptedPlaceholderLabel = '[encrypted]';
 
   /// Self-hosted `/media/msgs/*.bin` blobs are AES-GCM encrypted; keys live only in the E2E envelope.
   bool _requiresEncryptedMediaKeys(MessageModel msg) {
