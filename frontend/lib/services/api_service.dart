@@ -348,33 +348,9 @@ class ApiService {
   /// Media URLs from the server often use `http://localhost:3000/...`. On
   /// Android/iOS emulators `localhost` is the device itself, not the dev PC.
   /// Rewrite loopback hosts to [baseUrl]'s host (e.g. `10.0.2.2` on Android
-  /// emulator) so GIF/image/file/voice fetch works. Web keeps the original URL.
-  String _effectiveMediaUrl(String url) {
-    if (kIsWeb) return url;
-    late final Uri u;
-    try {
-      u = Uri.parse(url);
-    } catch (_) {
-      return url;
-    }
-    if (u.host != 'localhost' && u.host != '127.0.0.1') {
-      return url;
-    }
-    late final Uri b;
-    try {
-      b = Uri.parse(baseUrl);
-    } catch (_) {
-      return url;
-    }
-    if (!b.hasScheme || b.host.isEmpty) return url;
-    return u
-        .replace(
-          scheme: b.scheme,
-          host: b.host,
-          port: b.hasPort ? b.port : u.port,
-        )
-        .toString();
-  }
+  /// emulator, or a dev PC's LAN IP for a phone) so GIF/image/file/voice fetch
+  /// works on every platform — web included. See [rewriteLoopbackMediaUrl].
+  String _effectiveMediaUrl(String url) => rewriteLoopbackMediaUrl(url, baseUrl);
 
   Future<Uint8List> fetchMediaBytes(String url, String token) async {
     final resolved = _effectiveMediaUrl(url);
@@ -400,4 +376,44 @@ class ApiService {
     return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
+}
+
+/// Rewrites a loopback (`localhost` / `127.0.0.1`) media host to [baseUrl]'s
+/// scheme/host/port so the URL is reachable from the current client: the
+/// Android emulator (`10.0.2.2`), a phone hitting a dev PC over the LAN, or a
+/// web build whose stored `mediaUrl` carries the backend's default
+/// `MEDIA_BASE_URL` (`http://localhost:3000`). Non-loopback hosts (e.g. a
+/// correctly-configured production origin) are returned unchanged.
+///
+/// Applies on ALL platforms, web included. Web previously skipped this, so a
+/// `localhost` media URL was fetched verbatim and failed on every device that
+/// was not the backend host — voice/image/file playback broke cross-device
+/// (the listener's `localhost` resolved to its own machine, not the backend).
+String rewriteLoopbackMediaUrl(String url, String baseUrl) {
+  late final Uri u;
+  try {
+    u = Uri.parse(url);
+  } catch (_) {
+    return url;
+  }
+  if (u.host != 'localhost' && u.host != '127.0.0.1') {
+    return url;
+  }
+  late final Uri b;
+  try {
+    b = Uri.parse(baseUrl);
+  } catch (_) {
+    return url;
+  }
+  if (!b.hasScheme || b.host.isEmpty) return url;
+  // Adopt baseUrl's authority fully. `Uri.port` yields the scheme's default
+  // (443/80) when baseUrl omits a port, and Dart drops default ports in
+  // toString() — so https same-origin rewrites don't get a stray `:3000`.
+  return u
+      .replace(
+        scheme: b.scheme,
+        host: b.host,
+        port: b.port,
+      )
+      .toString();
 }
