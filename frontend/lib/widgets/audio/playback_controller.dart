@@ -13,7 +13,7 @@ import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/media_crypto_service.dart';
-import '../../utils/e2e_diag_log.dart';
+import '../../services/voice_audio_coordinator.dart';
 import '../../utils/audio_blob_url_stub.dart'
     if (dart.library.html) '../../utils/audio_blob_url_web.dart' as audio_blob;
 import '../top_snackbar.dart';
@@ -62,7 +62,8 @@ class PlaybackController extends StatefulWidget {
   State<PlaybackController> createState() => _PlaybackControllerState();
 }
 
-class _PlaybackControllerState extends State<PlaybackController> {
+class _PlaybackControllerState extends State<PlaybackController>
+    implements ManagedAudioPlayback {
   final AudioPlayer _audioPlayer = AudioPlayer();
   bool _isPlaying = false;
   bool _isLoading = false;
@@ -72,6 +73,9 @@ class _PlaybackControllerState extends State<PlaybackController> {
   double _playbackSpeed = 1.0;
   String? _cachedFilePath;
   String? _webAudioObjectUrl;
+
+  @override
+  void pauseForCoordinator() => _audioPlayer.pause().ignore();
 
   /// Duration from message metadata (for display before audio loads).
   Duration get _messageDuration =>
@@ -91,7 +95,11 @@ class _PlaybackControllerState extends State<PlaybackController> {
         setState(() {
           _isPlaying = completed ? false : state.playing;
         });
+        if (state.playing && !completed) {
+          VoiceAudioCoordinator.instance.onStartedPlaying(this);
+        }
         if (completed) {
+          VoiceAudioCoordinator.instance.onStoppedPlaying(this);
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (mounted) {
               _audioPlayer.stop();
@@ -121,6 +129,7 @@ class _PlaybackControllerState extends State<PlaybackController> {
 
   @override
   void dispose() {
+    VoiceAudioCoordinator.instance.onStoppedPlaying(this);
     if (kIsWeb && _webAudioObjectUrl != null) {
       audio_blob.revokeAudioObjectUrl(_webAudioObjectUrl);
     }
@@ -166,21 +175,6 @@ class _PlaybackControllerState extends State<PlaybackController> {
     }
     final token = context.read<AuthProvider>().token ?? '';
 
-    // ── TEMP DIAGNOSTICS (voice) — view in Privacy & Safety → long-press shield ──
-    final mk0 = widget.message.mediaKey;
-    final mi0 = widget.message.mediaIv;
-    E2eDiagLog.add('voice.start', {
-      'id': widget.message.id,
-      'kIsWeb': kIsWeb,
-      'mediaUrl': mediaUrl,
-      'resolved': rewriteLoopbackMediaUrl(mediaUrl, AppConfig.baseUrl),
-      'baseUrl': AppConfig.baseUrl,
-      'hasKey': mk0 != null,
-      'hasIv': mi0 != null,
-      'tokenLen': token.length,
-    });
-    // ───────────────────────────────────────────────────────────────────────────
-
     _loadCancelled = false;
     setState(() {
       _isLoading = true;
@@ -191,11 +185,9 @@ class _PlaybackControllerState extends State<PlaybackController> {
         final mk = widget.message.mediaKey;
         final mi = widget.message.mediaIv;
         if (mk != null && mi != null) {
-          E2eDiagLog.add('voice.web.fetch', {});
           final raw = await ApiService(
             baseUrl: AppConfig.baseUrl,
           ).fetchMediaBytes(mediaUrl, token);
-          E2eDiagLog.add('voice.web.fetched', {'bytes': raw.length});
           if (raw.length > MediaCryptoService.maxBytes) {
             throw Exception('Audio too large');
           }
@@ -204,25 +196,16 @@ class _PlaybackControllerState extends State<PlaybackController> {
             mk,
             mi,
           );
-          E2eDiagLog.add('voice.web.decrypted', {
-            'bytes': plain.length,
-            'head': plain.take(12).toList(),
-          });
           if (_webAudioObjectUrl != null) {
             audio_blob.revokeAudioObjectUrl(_webAudioObjectUrl);
           }
           _webAudioObjectUrl = audio_blob.createAudioObjectUrl(plain);
           final blobUrl = _webAudioObjectUrl;
-          E2eDiagLog.add('voice.web.blob', {'url': blobUrl});
           if (blobUrl == null || blobUrl.isEmpty) {
             throw Exception('Could not create audio URL');
           }
           await _audioPlayer.setUrl(blobUrl);
-          E2eDiagLog.add('voice.web.setUrl.ok', {
-            'durationMs': _audioPlayer.duration?.inMilliseconds,
-          });
         } else {
-          E2eDiagLog.add('voice.web.noKeys.setUrlDirect', {'mediaUrl': mediaUrl});
           await _audioPlayer.setUrl(mediaUrl);
         }
       } else {
@@ -240,9 +223,7 @@ class _PlaybackControllerState extends State<PlaybackController> {
       if (mounted) setState(() => _isLoading = false);
       if (_loadCancelled || !mounted) return;
       await _audioPlayer.play();
-      E2eDiagLog.add('voice.play.ok', {});
     } catch (e) {
-      E2eDiagLog.add('voice.ERROR', {'error': e.toString()});
       debugPrint('Audio load error: $e');
       if (mounted) {
         showTopSnackBar(
