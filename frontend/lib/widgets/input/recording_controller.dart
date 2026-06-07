@@ -14,7 +14,13 @@ import '../../l10n/app_localizations.dart';
 import '../../providers/connection_provider.dart';
 import '../../providers/conversations_provider.dart';
 import '../../providers/messaging_provider.dart';
+import '../../services/voice_audio_coordinator.dart';
 import '../../theme/rpg_theme.dart';
+import '../../utils/e2e_diag_log.dart';
+import '../../utils/page_load_nonce.dart';
+import '../../utils/mic_permission_state_stub.dart'
+    if (dart.library.html) '../../utils/mic_permission_state_web.dart'
+    as mic_perm;
 import '../../utils/secure_context_stub.dart'
     if (dart.library.html) '../../utils/secure_context_web.dart'
     as secure_context;
@@ -261,7 +267,15 @@ class RecordingControllerState extends State<RecordingController>
   Future<void> startRecording() async {
     if (_isRecording || _isStarting || widget.isSendingVoice) return;
     _isStarting = true;
+    VoiceAudioCoordinator.instance.pauseActive();
     final messaging = context.read<MessagingProvider>();
+    if (kIsWeb) {
+      final permState = await mic_perm.queryMicPermissionState();
+      E2eDiagLog.add('mic.start', {
+        'loadNonce': kPageLoadNonce,
+        'permState': permState,
+      });
+    }
     try {
       await _checkMicPermission();
       if (!mounted) return;
