@@ -8,6 +8,7 @@ import '../providers/auth_provider.dart';
 import '../providers/conversations_provider.dart';
 import '../providers/friends_provider.dart';
 import '../providers/messaging_provider.dart';
+import '../services/voice_audio_coordinator.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/chat_message_bubble.dart';
 import '../widgets/chat_input_bar.dart';
@@ -358,6 +359,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
   @override
   void dispose() {
+    VoiceAudioCoordinator.instance.pauseActive();
     dismissMessageContextMenu();
     WidgetsBinding.instance.removeObserver(this);
     _clearActiveConversationIfThisChat();
