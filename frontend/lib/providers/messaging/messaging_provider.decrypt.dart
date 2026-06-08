@@ -112,6 +112,19 @@ extension MessagingDecrypt on MessagingProvider {
     if (_missingEncryptedMediaKeys(msg)) {
       return false;
     }
+    // Decrypted E2E media is usable once it has its one-shot keys + URL, even if
+    // the text content is still the "[encrypted]" placeholder — voice/image rows
+    // carry no text, so their decrypted content is legitimately empty. Without
+    // this, restore-on-reopen treats a keyed media row as an undecrypted
+    // placeholder and pointlessly re-decrypts it → DuplicateMessage →
+    // "[Decryption failed]" in memory (the keys are safe in storage but unused),
+    // so received voice/image fails to replay after reopening the chat.
+    if (msg.mediaKey != null &&
+        msg.mediaIv != null &&
+        msg.mediaUrl != null &&
+        msg.messageType != MessageType.text) {
+      return true;
+    }
     if (!msg.needsDecryption(_currentUserId)) {
       if (msg.content == _kEncryptedPlaceholderLabel ||
           msg.displayAsEncryptedPlaceholder) {
