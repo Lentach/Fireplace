@@ -109,4 +109,84 @@ void main() {
       expect(msg.mediaUrl, isNull); // never patched — upload threw before the patch
     });
   });
+
+  group('MessagingProvider media send — voice', () {
+    test('routes through the upload service with duration', () async {
+      final provider = _newProvider();
+      final fake = _FakeMediaUpload();
+      provider.setMediaUploadServiceForTest(fake);
+
+      await provider.sendVoiceMessage(
+        recipientId: 2,
+        duration: 5,
+        conversationId: 10,
+        localAudioBytes: Uint8List.fromList([1, 2, 3]),
+      );
+
+      final msg = provider.messages.last;
+      expect(msg.mediaUrl, 'http://test/media/msgs/x.bin');
+      expect(msg.mediaDuration, 5); // serverDuration = upload.mediaDuration ?? duration
+      expect(msg.mediaKey, 'K');
+      expect(fake.calls.single['mediaType'], 'voice');
+      expect(fake.calls.single['duration'], 5);
+    });
+
+    test('marks the message failed when upload throws', () async {
+      final provider = _newProvider();
+      provider.setMediaUploadServiceForTest(
+        _FakeMediaUpload(throwOnUpload: Exception('boom')),
+      );
+
+      await provider.sendVoiceMessage(
+        recipientId: 2,
+        duration: 5,
+        conversationId: 10,
+        localAudioBytes: Uint8List.fromList([1, 2, 3]),
+      );
+
+      expect(provider.messages.last.deliveryStatus, MessageDeliveryStatus.failed);
+    });
+  });
+
+  group('MessagingProvider media send — file', () {
+    test('routes through the upload service with fileName and no expiresIn', () async {
+      final provider = _newProvider();
+      final fake = _FakeMediaUpload();
+      provider.setMediaUploadServiceForTest(fake);
+
+      await provider.sendFileMessage(
+        'tok',
+        Uint8List.fromList([1, 2, 3]),
+        'doc.pdf',
+        'application/pdf',
+        2,
+      );
+
+      final msg = provider.messages.last;
+      expect(msg.mediaUrl, 'http://test/media/msgs/x.bin');
+      expect(msg.content, 'doc.pdf');
+      expect(fake.calls.single['mediaType'], 'file');
+      expect(fake.calls.single['fileName'], 'doc.pdf');
+      expect(fake.calls.single['expiresIn'], isNull);
+    });
+
+    test('marks the message failed (no mediaUrl) when upload throws', () async {
+      final provider = _newProvider();
+      provider.setMediaUploadServiceForTest(
+        _FakeMediaUpload(throwOnUpload: Exception('boom')),
+      );
+
+      await provider.sendFileMessage(
+        'tok',
+        Uint8List.fromList([1, 2, 3]),
+        'doc.pdf',
+        'application/pdf',
+        2,
+      );
+
+      final msg = provider.messages.last;
+      expect(msg.deliveryStatus, MessageDeliveryStatus.failed);
+      expect(msg.mediaUrl, isNull);
+    });
+  });
 }
