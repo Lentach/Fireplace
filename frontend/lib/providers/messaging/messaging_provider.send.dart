@@ -113,26 +113,15 @@ extension MessagingSend on MessagingProvider {
     final tempId =
         'temp_${DateTime.now().millisecondsSinceEpoch}_$_currentUserId';
     final effectiveReplyToId = _replyingToMessage?.id;
-    final replyPreview = _buildReplyPreviewFromReplyingTo();
 
-    // Create optimistic message
-    final tempMessage = MessageModel(
-      id: -(++MessagingProvider._tempIdSeq),
-      content: '',
-      senderId: _currentUserId!,
-      senderUsername: '',
-      conversationId: activeConversationId,
-      createdAt: DateTime.now(),
-      deliveryStatus: MessageDeliveryStatus.sending,
-      messageType: MessageType.image,
-      disappearAfterSeconds: effectiveExpiresIn,
-      expiresAt: null,
+    _messages.add(_buildOptimisticMediaMessage(
       tempId: tempId,
-      replyToMessageId: effectiveReplyToId,
-      replyTo: replyPreview,
-    );
-
-    _messages.add(tempMessage);
+      conversationId: activeConversationId,
+      messageType: MessageType.image,
+      content: '',
+      effectiveExpiresIn: effectiveExpiresIn,
+      effectiveReplyToId: effectiveReplyToId,
+    ));
     _pendingSendContent[tempId] =
         <String, dynamic>{'content': '', 'messageType': 'IMAGE'};
     _clearReplyingToAfterSendStart();
@@ -144,31 +133,28 @@ extension MessagingSend on MessagingProvider {
         _markMessageFailed(tempId, 'Image too large (max 20 MB)');
         return;
       }
-      final encrypted =
-          await _mediaCrypto.encrypt(Uint8List.fromList(rawBytes));
-      _pendingSendContent[tempId] = <String, dynamic>{
-        'content': '',
-        'messageType': 'IMAGE',
-        'mediaKey': encrypted.keyBase64,
-        'mediaIv': encrypted.ivBase64,
-      };
-
-      final responseData = await _api.uploadEncryptedMedia(
+      final upload = await _mediaUpload.encryptAndUpload(
+        bytes: Uint8List.fromList(rawBytes),
         token: token,
-        encryptedBytes: encrypted.ciphertext,
         mediaType: 'image',
         expiresIn: effectiveExpiresIn,
+        onEncrypted: (key, iv) {
+          _pendingSendContent[tempId] = <String, dynamic>{
+            'content': '',
+            'messageType': 'IMAGE',
+            'mediaKey': key,
+            'mediaIv': iv,
+          };
+        },
       );
-
-      final mediaUrl = responseData['mediaUrl'] as String;
-      _pendingSendContent[tempId]!['mediaUrl'] = mediaUrl;
+      _pendingSendContent[tempId]!['mediaUrl'] = upload.mediaUrl;
 
       final idx = _messages.indexWhere((m) => m.tempId == tempId);
       if (idx != -1) {
         _messages[idx] = _messages[idx].copyWith(
-          mediaUrl: mediaUrl,
-          mediaKey: encrypted.keyBase64,
-          mediaIv: encrypted.ivBase64,
+          mediaUrl: upload.mediaUrl,
+          mediaKey: upload.keyBase64,
+          mediaIv: upload.ivBase64,
         );
         notifyListeners();
       }
@@ -180,9 +166,9 @@ extension MessagingSend on MessagingProvider {
         effectiveExpiresIn: effectiveExpiresIn,
         effectiveReplyToId: effectiveReplyToId,
         messageType: 'IMAGE',
-        mediaUrl: mediaUrl,
-        mediaKey: encrypted.keyBase64,
-        mediaIv: encrypted.ivBase64,
+        mediaUrl: upload.mediaUrl,
+        mediaKey: upload.keyBase64,
+        mediaIv: upload.ivBase64,
       );
     } catch (e) {
       debugPrint('[MessagingProvider] Image upload failed: $e');
