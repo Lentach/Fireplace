@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../utils/e2e_diag_log.dart';
 import 'encryption/signal_stores.dart';
 
 class EncryptionService {
@@ -297,15 +298,31 @@ class EncryptionService {
       // Double Ratchet consumed the message key. A later keyless write (e.g. a
       // transient re-decrypt that throws DuplicateMessage and tries to store
       // "[Decryption failed]") must not destroy them.
-      if (data['mediaKey'] == null) {
-        final existingRaw = prefs.getString(key);
-        if (existingRaw != null) {
-          try {
-            final existing = jsonDecode(existingRaw) as Map<String, dynamic>;
-            if (existing['mediaKey'] != null) return;
-          } catch (_) {}
-        }
+      final incomingHasKey = data['mediaKey'] != null;
+      bool existingHasKey = false;
+      final existingRaw = prefs.getString(key);
+      if (existingRaw != null) {
+        try {
+          final existing = jsonDecode(existingRaw) as Map<String, dynamic>;
+          existingHasKey = existing['mediaKey'] != null;
+        } catch (_) {}
       }
+      final blocked = !incomingHasKey && existingHasKey;
+      // TEMP DIAGNOSTIC: log every write that touches the keyed state.
+      if (existingHasKey || incomingHasKey) {
+        E2eDiagLog.add('cache.write', {
+          'id': id,
+          'inKey': incomingHasKey,
+          'exKey': existingHasKey,
+          'inContent': (data['content'] as String?) == '[Decryption failed]'
+              ? 'FAILED'
+              : (data['content'] as String?)?.isNotEmpty == true
+                  ? 'text'
+                  : 'empty',
+          'blocked': blocked,
+        });
+      }
+      if (blocked) return;
       await prefs.setString(key, jsonEncode(data));
       await _pruneDecryptedContentCache(prefs, userId);
     } catch (_) {}
@@ -334,6 +351,7 @@ class EncryptionService {
   Future<int> clearDecryptedContentCache() async {
     final userId = _userId;
     if (userId == null) return 0;
+    E2eDiagLog.add('cache.clearAll', {}); // TEMP DIAGNOSTIC
     final prefix = _decryptedContentPrefix(userId);
     final keysToDelete = <String>{};
 
@@ -417,6 +435,10 @@ class EncryptionService {
     });
 
     final overflow = keys.length - _decryptedContentCacheLimit;
+    E2eDiagLog.add('cache.prune', {
+      'total': keys.length,
+      'removed': overflow,
+    }); // TEMP DIAGNOSTIC
     for (final key in keys.take(overflow)) {
       await prefs.remove(key);
       await _storage.delete(key: key);
