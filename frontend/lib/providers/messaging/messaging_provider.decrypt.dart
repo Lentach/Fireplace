@@ -92,6 +92,14 @@ extension MessagingDecrypt on MessagingProvider {
     });
     try {
       await _encryptionProvider?.saveDecryptedContent(decrypted.id, data);
+      // VERIFY: read straight back to prove the write actually committed.
+      final back = await _encryptionProvider?.getDecryptedContent(decrypted.id);
+      _e2eFlowLog('persist.verify', {
+        'id': decrypted.id,
+        'readBackExists': back != null,
+        'readBackHasKey': back?['mediaKey'] != null,
+        'readBackType': back?['messageType'],
+      });
     } catch (_) {}
   }
 
