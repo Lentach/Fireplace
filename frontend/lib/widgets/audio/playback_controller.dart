@@ -11,6 +11,7 @@ import '../../config/app_config.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
+import '../../providers/encryption_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/media_crypto_service.dart';
 import '../../services/voice_audio_coordinator.dart';
@@ -175,19 +176,22 @@ class _PlaybackControllerState extends State<PlaybackController>
       throw Exception('No media URL');
     }
     final token = context.read<AuthProvider>().token ?? '';
+    final encProvider = context.read<EncryptionProvider>();
 
     // ── TEMP DIAGNOSTICS (voice history) — view in Privacy & Safety → long-press shield ──
     final mk0 = widget.message.mediaKey;
     final mi0 = widget.message.mediaIv;
+    final enc0 = widget.message.encryptedContent;
+    final content0 = widget.message.content;
     E2eDiagLog.add('voice.start', {
       'id': widget.message.id,
-      'mine': widget.message.senderId,
+      'sender': widget.message.senderId,
+      'type': widget.message.messageType.name,
       'kIsWeb': kIsWeb,
-      'mediaUrl': mediaUrl,
-      'resolved': rewriteLoopbackMediaUrl(mediaUrl, AppConfig.baseUrl),
-      'baseUrl': AppConfig.baseUrl,
       'hasKey': mk0 != null,
       'hasIv': mi0 != null,
+      'hasEnc': enc0 != null && enc0.isNotEmpty,
+      'content': content0.length > 24 ? content0.substring(0, 24) : content0,
       'durMeta': widget.message.mediaDuration,
       'tokenLen': token.length,
     });
@@ -234,7 +238,19 @@ class _PlaybackControllerState extends State<PlaybackController>
             'durationMs': _audioPlayer.duration?.inMilliseconds,
           });
         } else {
-          E2eDiagLog.add('voice.web.noKeys.setUrlDirect', {'mediaUrl': mediaUrl});
+          // Probe: are the keys in the PERSISTED cache but not applied to the
+          // in-memory message? Separates "persist never happened" from
+          // "restore-on-reload didn't apply them".
+          Map<String, dynamic>? persisted;
+          try {
+            persisted = await encProvider.getDecryptedContent(widget.message.id);
+          } catch (_) {}
+          E2eDiagLog.add('voice.web.noKeys.probe', {
+            'persistedExists': persisted != null,
+            'persistedHasKey': persisted?['mediaKey'] != null,
+            'persistedHasIv': persisted?['mediaIv'] != null,
+            'persistedType': persisted?['messageType'],
+          });
           await _audioPlayer.setUrl(mediaUrl);
         }
       } else {
