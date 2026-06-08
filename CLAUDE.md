@@ -33,6 +33,7 @@ cd frontend && flutter run -d chrome          # Terminal 2: Flutter web
 **Phone (WiFi):** `.\run_web_for_phone.ps1` or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`
 **Tests:** `cd backend && npm test` (285 unit tests, 39 suites; verified by `node scripts/verify-claude-backend-test-counts.mjs`). `cd frontend && flutter test`. CI: `.github/workflows/ci.yml`.
 **Production:** https://fireplace.ignorelist.com — GCP VM (Warszawa), user `olek292`, repo `~/fireplace`. Deploy: `cd ~/fireplace && ./deploy.sh && cp -a frontend/build/web/. frontend-build/`. Verify: `curl -sS https://fireplace.ignorelist.com/version`. Rules: `.cursor/rules/version-bump.mdc`, `.cursor/rules/production-vm-deploy.mdc`.
+**Stale-build trap (cost a long debugging detour):** a pubspec **version bump does NOT prove the frontend rebuilt**. `flutter build web` can serve a **cached** compile, so the served bundle's *code* can lag the version string. Trust the **`gitCommit`** (from `/version` and the Settings footer), not the version number — it must match `git rev-parse --short HEAD`. If a frontend change isn't taking effect, run `cd frontend && flutter clean` before `./deploy.sh`, and **hard-bust the PWA cache** on the device (incognito tab or uninstall+reinstall) — the service worker caches the old bundle. The OS "restart required" message on the VM is unrelated to app deploys; no reboot needed.
 
 ---
 

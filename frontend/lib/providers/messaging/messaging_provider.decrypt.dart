@@ -84,22 +84,8 @@ extension MessagingDecrypt on MessagingProvider {
     if (safeImageUrl != null) {
       data['linkPreviewImageUrl'] = safeImageUrl;
     }
-    _e2eFlowLog('persist', {
-      'id': decrypted.id,
-      'hasKey': data.containsKey('mediaKey'),
-      'type': data['messageType'],
-      'hasMedia': data.containsKey('mediaUrl'),
-    });
     try {
       await _encryptionProvider?.saveDecryptedContent(decrypted.id, data);
-      // VERIFY: read straight back to prove the write actually committed.
-      final back = await _encryptionProvider?.getDecryptedContent(decrypted.id);
-      _e2eFlowLog('persist.verify', {
-        'id': decrypted.id,
-        'readBackExists': back != null,
-        'readBackHasKey': back?['mediaKey'] != null,
-        'readBackType': back?['messageType'],
-      });
     } catch (_) {}
   }
 
@@ -196,14 +182,6 @@ extension MessagingDecrypt on MessagingProvider {
         // isE2EReady is true, which requires the provider to be set.
         final persisted =
             await _encryptionProvider!.getDecryptedContent(msg.id);
-        if (_requiresEncryptedMediaKeys(msg)) {
-          _e2eFlowLog('hist.persisted', {
-            'id': msg.id,
-            'exists': persisted != null,
-            'hasKey': persisted?['mediaKey'] != null,
-            'type': persisted?['messageType'],
-          });
-        }
         final pContent = persisted?['content'] as String? ?? '';
         final hasPersistedPayload = persisted != null &&
             (pContent.isNotEmpty ||

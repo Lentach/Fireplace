@@ -11,11 +11,9 @@ import '../../config/app_config.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
-import '../../providers/encryption_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/media_crypto_service.dart';
 import '../../services/voice_audio_coordinator.dart';
-import '../../utils/e2e_diag_log.dart';
 import '../../utils/audio_blob_url_stub.dart'
     if (dart.library.html) '../../utils/audio_blob_url_web.dart' as audio_blob;
 import '../top_snackbar.dart';
@@ -176,26 +174,6 @@ class _PlaybackControllerState extends State<PlaybackController>
       throw Exception('No media URL');
     }
     final token = context.read<AuthProvider>().token ?? '';
-    final encProvider = context.read<EncryptionProvider>();
-
-    // ── TEMP DIAGNOSTICS (voice history) — view in Privacy & Safety → long-press shield ──
-    final mk0 = widget.message.mediaKey;
-    final mi0 = widget.message.mediaIv;
-    final enc0 = widget.message.encryptedContent;
-    final content0 = widget.message.content;
-    E2eDiagLog.add('voice.start', {
-      'id': widget.message.id,
-      'sender': widget.message.senderId,
-      'type': widget.message.messageType.name,
-      'kIsWeb': kIsWeb,
-      'hasKey': mk0 != null,
-      'hasIv': mi0 != null,
-      'hasEnc': enc0 != null && enc0.isNotEmpty,
-      'content': content0.length > 24 ? content0.substring(0, 24) : content0,
-      'durMeta': widget.message.mediaDuration,
-      'tokenLen': token.length,
-    });
-    // ─────────────────────────────────────────────────────────────────────────────────
 
     _loadCancelled = false;
     setState(() {
@@ -207,11 +185,9 @@ class _PlaybackControllerState extends State<PlaybackController>
         final mk = widget.message.mediaKey;
         final mi = widget.message.mediaIv;
         if (mk != null && mi != null) {
-          E2eDiagLog.add('voice.web.fetch', {});
           final raw = await ApiService(
             baseUrl: AppConfig.baseUrl,
           ).fetchMediaBytes(mediaUrl, token);
-          E2eDiagLog.add('voice.web.fetched', {'bytes': raw.length});
           if (raw.length > MediaCryptoService.maxBytes) {
             throw Exception('Audio too large');
           }
@@ -220,37 +196,16 @@ class _PlaybackControllerState extends State<PlaybackController>
             mk,
             mi,
           );
-          E2eDiagLog.add('voice.web.decrypted', {
-            'bytes': plain.length,
-            'head': plain.take(12).toList(),
-          });
           if (_webAudioObjectUrl != null) {
             audio_blob.revokeAudioObjectUrl(_webAudioObjectUrl);
           }
           _webAudioObjectUrl = audio_blob.createAudioObjectUrl(plain);
           final blobUrl = _webAudioObjectUrl;
-          E2eDiagLog.add('voice.web.blob', {'url': blobUrl});
           if (blobUrl == null || blobUrl.isEmpty) {
             throw Exception('Could not create audio URL');
           }
           await _audioPlayer.setUrl(blobUrl);
-          E2eDiagLog.add('voice.web.setUrl.ok', {
-            'durationMs': _audioPlayer.duration?.inMilliseconds,
-          });
         } else {
-          // Probe: are the keys in the PERSISTED cache but not applied to the
-          // in-memory message? Separates "persist never happened" from
-          // "restore-on-reload didn't apply them".
-          Map<String, dynamic>? persisted;
-          try {
-            persisted = await encProvider.getDecryptedContent(widget.message.id);
-          } catch (_) {}
-          E2eDiagLog.add('voice.web.noKeys.probe', {
-            'persistedExists': persisted != null,
-            'persistedHasKey': persisted?['mediaKey'] != null,
-            'persistedHasIv': persisted?['mediaIv'] != null,
-            'persistedType': persisted?['messageType'],
-          });
           await _audioPlayer.setUrl(mediaUrl);
         }
       } else {
@@ -268,9 +223,7 @@ class _PlaybackControllerState extends State<PlaybackController>
       if (mounted) setState(() => _isLoading = false);
       if (_loadCancelled || !mounted) return;
       await _audioPlayer.play();
-      E2eDiagLog.add('voice.play.ok', {});
     } catch (e) {
-      E2eDiagLog.add('voice.ERROR', {'error': e.toString()});
       debugPrint('Audio load error: $e');
       if (mounted) {
         showTopSnackBar(
