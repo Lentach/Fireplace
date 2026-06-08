@@ -290,7 +290,23 @@ class EncryptionService {
     if (userId == null) return;
     try {
       final prefs = await _sharedPrefs;
-      await prefs.setString(_decryptedContentKey(userId, id), jsonEncode(data));
+      final key = _decryptedContentKey(userId, id);
+      // Never downgrade a keyed media entry to a keyless one. E2E media keys
+      // (mediaKey/mediaIv) are persisted at first successful decrypt and are the
+      // ONLY way to replay the message — re-decryption is impossible once the
+      // Double Ratchet consumed the message key. A later keyless write (e.g. a
+      // transient re-decrypt that throws DuplicateMessage and tries to store
+      // "[Decryption failed]") must not destroy them.
+      if (data['mediaKey'] == null) {
+        final existingRaw = prefs.getString(key);
+        if (existingRaw != null) {
+          try {
+            final existing = jsonDecode(existingRaw) as Map<String, dynamic>;
+            if (existing['mediaKey'] != null) return;
+          } catch (_) {}
+        }
+      }
+      await prefs.setString(key, jsonEncode(data));
       await _pruneDecryptedContentCache(prefs, userId);
     } catch (_) {}
   }

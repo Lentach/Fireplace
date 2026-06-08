@@ -95,6 +95,54 @@ void main() {
       expect((await limited.getDecryptedContent(1003))!['content'], 'newest');
     });
 
+    test('a keyless [Decryption failed] write never destroys stored media keys',
+        () async {
+      // First decrypt persists the media keys (only chance — ratchet is one-shot).
+      await service.saveDecryptedContent(2001, {
+        'content': '',
+        'messageType': 'VOICE',
+        'mediaUrl': 'https://x/media/msgs/a.bin',
+        'mediaKey': 'KEYbase64',
+        'mediaIv': 'IVbase64',
+      });
+
+      // A later transient re-decrypt throws DuplicateMessage and tries to mark
+      // the row failed — this must be ignored, the keys must survive.
+      await service.saveDecryptedContent(2001, {'content': '[Decryption failed]'});
+
+      final result = await service.getDecryptedContent(2001);
+      expect(result, isNotNull);
+      expect(result!['mediaKey'], 'KEYbase64');
+      expect(result['mediaIv'], 'IVbase64');
+      expect(result['messageType'], 'VOICE');
+      expect(result['content'], isNot('[Decryption failed]'));
+    });
+
+    test('a keyed write still updates an existing keyed entry', () async {
+      await service.saveDecryptedContent(2002, {
+        'content': '',
+        'mediaUrl': 'https://x/old.bin',
+        'mediaKey': 'OLD',
+        'mediaIv': 'OLDIV',
+      });
+      await service.saveDecryptedContent(2002, {
+        'content': '',
+        'mediaUrl': 'https://x/new.bin',
+        'mediaKey': 'NEW',
+        'mediaIv': 'NEWIV',
+      });
+      final result = await service.getDecryptedContent(2002);
+      expect(result!['mediaKey'], 'NEW');
+      expect(result['mediaUrl'], 'https://x/new.bin');
+    });
+
+    test('a keyless write still overwrites a keyless (text) entry', () async {
+      await service.saveDecryptedContent(2003, {'content': 'hello'});
+      await service.saveDecryptedContent(2003, {'content': '[Decryption failed]'});
+      final result = await service.getDecryptedContent(2003);
+      expect(result!['content'], '[Decryption failed]');
+    });
+
     test('clearDecryptedContentCache removes plaintext cache without deleting keys', () async {
       await service.saveDecryptedContent(1005, {'content': 'Local plaintext'});
 
