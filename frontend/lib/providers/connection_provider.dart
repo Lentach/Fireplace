@@ -183,17 +183,25 @@ class ConnectionProvider extends ChangeNotifier {
 
     if (!_pushInitialized) {
       _pushInitialized = true;
+      void onNavigateToConversation(int conversationId) {
+        _conversationsProvider?.requestNavigateToConversationFromNotification(
+          conversationId,
+        );
+      }
+
       _pushService
           .initialize(
             token,
-            onAndroidNavigateToConversation: (conversationId) {
-              _conversationsProvider
-                  ?.requestNavigateToConversationFromNotification(
-                conversationId,
-              );
-            },
+            onNavigateToConversation: onNavigateToConversation,
           )
           .catchError((_) {});
+
+      // Drain cold-start notification deep-link (web: URL param; Android: handled by FCM path)
+      final coldConvId = _pushService.coldStartConversationId;
+      if (coldConvId != null) {
+        _pushService.coldStartConversationId = null;
+        onNavigateToConversation(coldConvId);
+      }
     }
   }
 
