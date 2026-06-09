@@ -1,18 +1,29 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { PushNotificationCoalescingService } from './push-notification-coalescing.service';
 import { PushNotificationsService } from './push-notifications.service';
+import { MessagesService } from '../messages/messages.service';
 
 describe('PushNotificationCoalescingService', () => {
   let service: PushNotificationCoalescingService;
   let notify: jest.Mock;
+  let getUnreadSummary: jest.Mock;
+
+  const makeUnreadSummary = (convId: number, convCount: number, total: number) => ({
+    unreadTotal: total,
+    unreadConversationIds: [convId],
+    countByConversationId: new Map([[convId, convCount]]),
+  });
 
   beforeEach(async () => {
     jest.useFakeTimers();
     notify = jest.fn().mockResolvedValue(undefined);
+    getUnreadSummary = jest.fn().mockResolvedValue(makeUnreadSummary(10, 3, 3));
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PushNotificationCoalescingService,
         { provide: PushNotificationsService, useValue: { notify } },
+        { provide: MessagesService, useValue: { getUnreadSummaryForUser: getUnreadSummary } },
       ],
     }).compile();
 
@@ -25,6 +36,7 @@ describe('PushNotificationCoalescingService', () => {
   });
 
   it('aggregates bursts into one notify after debounce', async () => {
+    getUnreadSummary.mockResolvedValue(makeUnreadSummary(10, 3, 3));
     await service.scheduleMessagePush(2, 10);
     await service.scheduleMessagePush(2, 10);
     await service.scheduleMessagePush(2, 10);
@@ -32,12 +44,19 @@ describe('PushNotificationCoalescingService', () => {
 
     jest.advanceTimersByTime(2500);
     await Promise.resolve();
+    await Promise.resolve();
 
     expect(notify).toHaveBeenCalledTimes(1);
-    expect(notify).toHaveBeenCalledWith(2, expect.objectContaining({ conversationId: 10 }));
+    expect(notify).toHaveBeenCalledWith(2, {
+      conversationId: 10,
+      unreadCount: 3,
+      unreadTotal: 3,
+      unreadConversationIds: [10],
+    });
   });
 
   it('flushes by max wait when debounce keeps resetting', async () => {
+    getUnreadSummary.mockResolvedValue(makeUnreadSummary(5, 5, 5));
     await service.scheduleMessagePush(1, 5);
     jest.advanceTimersByTime(2000);
     await service.scheduleMessagePush(1, 5);
@@ -51,19 +70,45 @@ describe('PushNotificationCoalescingService', () => {
 
     jest.advanceTimersByTime(2000);
     await Promise.resolve();
+    await Promise.resolve();
 
     expect(notify).toHaveBeenCalledTimes(1);
-    expect(notify).toHaveBeenCalledWith(1, expect.objectContaining({ conversationId: 5 }));
+    expect(notify).toHaveBeenCalledWith(1, {
+      conversationId: 5,
+      unreadCount: 5,
+      unreadTotal: 5,
+      unreadConversationIds: [5],
+    });
   });
 
   it('uses separate buckets per conversation', async () => {
+    getUnreadSummary.mockResolvedValue({
+      unreadTotal: 2,
+      unreadConversationIds: [1, 2],
+      countByConversationId: new Map([[1, 1], [2, 1]]),
+    });
     await service.scheduleMessagePush(9, 1);
     await service.scheduleMessagePush(9, 2);
     jest.advanceTimersByTime(2500);
     await Promise.resolve();
+    await Promise.resolve();
 
     expect(notify).toHaveBeenCalledTimes(2);
-    expect(notify).toHaveBeenCalledWith(9, expect.objectContaining({ conversationId: 1 }));
-    expect(notify).toHaveBeenCalledWith(9, expect.objectContaining({ conversationId: 2 }));
+    expect(notify).toHaveBeenCalledWith(9,
+      expect.objectContaining({ conversationId: 1, unreadTotal: 2 }));
+    expect(notify).toHaveBeenCalledWith(9,
+      expect.objectContaining({ conversationId: 2, unreadTotal: 2 }));
+  });
+
+  it('calls getUnreadSummaryForUser at flush time (not at schedule time)', async () => {
+    getUnreadSummary.mockResolvedValue(makeUnreadSummary(10, 1, 1));
+    await service.scheduleMessagePush(2, 10);
+    expect(getUnreadSummary).not.toHaveBeenCalled();
+
+    jest.advanceTimersByTime(2500);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(getUnreadSummary).toHaveBeenCalledWith(2);
   });
 });
