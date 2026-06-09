@@ -159,6 +159,52 @@ class WebPushBridge {
   String _toBase64Url(Uint8List bytes) {
     return base64UrlEncode(bytes).replaceAll('=', '');
   }
+
+  // Tracks whether the SW 'message' listener has been registered.
+  static bool _clickListenerRegistered = false;
+
+  /// Register a listener on navigator.serviceWorker 'message' events.
+  /// Filters on `type == 'push-notification-click'` and calls [handler] with the
+  /// conversationId (null if absent). Safe to call multiple times — only registers once.
+  void listenForNotificationClicks(
+      void Function(int? conversationId) handler) {
+    if (_clickListenerRegistered) return;
+    _clickListenerRegistered = true;
+
+    (web.window.navigator.serviceWorker as JSObject).callMethod<JSAny?>(
+      'addEventListener'.toJS,
+      'message'.toJS,
+      ((JSObject event) {
+        try {
+          final data = event.getProperty<JSObject?>('data'.toJS);
+          if (data == null) return;
+          final type = data.getProperty<JSString?>('type'.toJS)?.toDart;
+          if (type != 'push-notification-click') return;
+          final convIdJs = data.getProperty<JSAny?>('conversationId'.toJS);
+          int? convId;
+          if (convIdJs != null) {
+            final raw = convIdJs.dartify();
+            if (raw is num) convId = raw.toInt();
+          }
+          handler(convId);
+        } catch (_) {}
+      }).toJS,
+    );
+  }
+
+  /// Post a badge-update message to the controlling SW.
+  /// On iOS, SW context is required for badge persistence after WebView close.
+  void updateBadgeViaSw(int count) {
+    try {
+      final controller = web.window.navigator.serviceWorker.controller;
+      if (controller == null) return;
+      if (count <= 0) {
+        controller.postMessage({'type': 'clear-badge'}.jsify());
+      } else {
+        controller.postMessage({'type': 'set-badge', 'count': count}.jsify());
+      }
+    } catch (_) {}
+  }
 }
 
 WebPushBridge createWebPushBridge() => WebPushBridge();
