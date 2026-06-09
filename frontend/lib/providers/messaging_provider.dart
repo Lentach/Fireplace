@@ -11,8 +11,10 @@ import '../config/app_config.dart';
 import '../models/message_model.dart';
 import '../services/api_service.dart';
 import '../services/media_crypto_service.dart';
+import '../services/encrypted_media_upload_service.dart';
 import '../services/incoming_message_sound_service.dart';
 import '../services/link_preview_service.dart';
+import '../utils/decryption_failure_policy.dart';
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_envelope.dart';
 import '../utils/message_expiry.dart';
@@ -62,6 +64,22 @@ class MessagingProvider extends ChangeNotifier {
 
   late final ApiService _api = ApiService(baseUrl: AppConfig.baseUrl);
   final MediaCryptoService _mediaCrypto = MediaCryptoService();
+
+  late final EncryptedMediaUploadService _mediaUploadDefault =
+      EncryptedMediaUploadService(api: _api, crypto: _mediaCrypto);
+
+  /// Test override for the media upload service. Null in production.
+  /// Mirrors `_activeConversationIdOverrideForTest`.
+  EncryptedMediaUploadService? _mediaUploadOverrideForTest;
+
+  /// Effective media upload service — test override if set, else the default.
+  EncryptedMediaUploadService get _mediaUpload =>
+      _mediaUploadOverrideForTest ?? _mediaUploadDefault;
+
+  @visibleForTesting
+  void setMediaUploadServiceForTest(EncryptedMediaUploadService service) {
+    _mediaUploadOverrideForTest = service;
+  }
 
   /// Callback to emit socket events. Set by the wiring layer.
   void Function(String event, dynamic data)? _emit;
@@ -238,6 +256,38 @@ class MessagingProvider extends ChangeNotifier {
       _replyingToMessage = null;
       notifyListeners();
     }
+  }
+
+  /// Builds the optimistic (SENDING) message shown immediately for a media
+  /// send, before encrypt/upload. Centralizes the fields every media path
+  /// shares; per-type extras (voice `mediaUrl`/`mediaDuration`) are passed in.
+  MessageModel _buildOptimisticMediaMessage({
+    required String tempId,
+    required int conversationId,
+    required MessageType messageType,
+    required String content,
+    required int? effectiveExpiresIn,
+    required int? effectiveReplyToId,
+    String? mediaUrl,
+    int? mediaDuration,
+  }) {
+    return MessageModel(
+      id: -(++MessagingProvider._tempIdSeq),
+      content: content,
+      senderId: _currentUserId!,
+      senderUsername: '',
+      conversationId: conversationId,
+      createdAt: DateTime.now(),
+      deliveryStatus: MessageDeliveryStatus.sending,
+      messageType: messageType,
+      mediaUrl: mediaUrl,
+      mediaDuration: mediaDuration,
+      disappearAfterSeconds: effectiveExpiresIn,
+      expiresAt: null,
+      tempId: tempId,
+      replyToMessageId: effectiveReplyToId,
+      replyTo: _buildReplyPreviewFromReplyingTo(),
+    );
   }
 
   Future<void> _waitForE2EReady({int maxAttempts = 100}) async {

@@ -18,6 +18,45 @@ extension MessagingDecrypt on MessagingProvider {
   bool _isNoSessionDecryptError(Object e) =>
       e.toString().contains('NoSessionException');
 
+  /// Classify a raw decrypt exception (string-matched). Precedence:
+  /// duplicate → badMac → noSession → unknown. Identity-reset is orthogonal and
+  /// applied by [decideDecryptionFailure], not here.
+  DecryptionFailureKind _classifyDecryptError(Object e) {
+    if (_isDuplicateDecryptError(e)) return DecryptionFailureKind.duplicate;
+    if (_isBadMacDecryptError(e)) return DecryptionFailureKind.badMac;
+    if (_isNoSessionDecryptError(e)) return DecryptionFailureKind.noSession;
+    return DecryptionFailureKind.unknown;
+  }
+
+  /// Emit the same diagnostic the original if-chain did, per fired rule.
+  void _logDecryptionFailure(
+    DecryptionFailureRule rule,
+    MessageModel msg,
+    Object e,
+  ) {
+    switch (rule) {
+      case DecryptionFailureRule.duplicate:
+        // Ratchet already consumed this key (live-decrypted earlier); session valid.
+        _e2eFlowLog('DECRYPT_DUPLICATE', {'msgId': msg.id});
+        break;
+      case DecryptionFailureRule.badMac:
+        // MAC mismatch: encrypted for a different/old session key; session valid.
+        _e2eFlowLog('DECRYPT_BAD_MAC', {'msgId': msg.id});
+        break;
+      case DecryptionFailureRule.identityReset:
+        // Identity regenerated (reinstall / storage loss) — old messages unrecoverable.
+        _e2eFlowLog('DECRYPT_IDENTITY_RESET', {'msgId': msg.id});
+        break;
+      case DecryptionFailureRule.noSession:
+        _e2eFlowLog('DECRYPT_SKIP', {'msgId': msg.id, 'reason': e.toString()});
+        break;
+      case DecryptionFailureRule.unknown:
+        debugPrint('[E2E] Decrypt failed for msg ${msg.id}: $e');
+        _e2eFlowLog('DECRYPT_FAIL', {'msgId': msg.id, 'error': e.toString()});
+        break;
+    }
+  }
+
   bool _conversationHasUndecryptedInbound(int conversationId) {
     return _messages.any(
       (m) =>
@@ -548,56 +587,38 @@ extension MessagingDecrypt on MessagingProvider {
         }
       }
 
-      if (_isDuplicateDecryptError(e)) {
-        // Ratchet already consumed this key (message was live-decrypted earlier).
-        // Session is valid — do NOT delete it or schedule retry. Mark terminal now.
+      // Decision logic extracted to a pure, characterization-tested policy
+      // (utils/decryption_failure_policy.dart). A wrong branch here deletes a
+      // working Signal session, so the branching is unit-tested in isolation.
+      // Precedence: duplicate/badMac (terminal, persist) > identityReset
+      // (terminal, no persist) > noSession (keep [encrypted], retry) > unknown
+      // (live: terminal+retry; history: keep [encrypted], retry).
+      final decision = decideDecryptionFailure(
+        _classifyDecryptError(e),
+        hadIdentityReset: _encryptionProvider?.hadIdentityReset == true,
+        isHistory: _decryptingHistory,
+      );
+      _logDecryptionFailure(decision.rule, msg, e);
+      if (decision.persistTerminalFailure) {
         // Persist so future app starts skip this message without re-attempting.
-        _e2eFlowLog('DECRYPT_DUPLICATE', {'msgId': msg.id});
         await _encryptionProvider?.saveDecryptedContent(
             msg.id, {'content': _kDecryptionFailedLabel});
-        return msg.copyWith(content: _kDecryptionFailedLabel);
       }
-      if (_isBadMacDecryptError(e)) {
-        // MAC mismatch: message was encrypted for a different/old session key.
-        // Session is valid — do NOT delete it or add to historyDecryptFailedPeers.
-        // Persist so future app starts skip this message without re-attempting.
-        _e2eFlowLog('DECRYPT_BAD_MAC', {'msgId': msg.id});
-        await _encryptionProvider?.saveDecryptedContent(
-            msg.id, {'content': _kDecryptionFailedLabel});
-        return msg.copyWith(content: _kDecryptionFailedLabel);
-      }
-      if (_encryptionProvider?.hadIdentityReset == true) {
-        // Identity was just regenerated (reinstall / storage loss).
-        // All messages encrypted for the old identity are permanently unrecoverable.
-        // Do NOT delete sessions or schedule retries — a fresh session will be built
-        // by the next PreKey message the peer sends.
-        _e2eFlowLog('DECRYPT_IDENTITY_RESET', {'msgId': msg.id});
-        return msg.copyWith(content: _kDecryptionFailedLabel);
-      }
-      if (_isNoSessionDecryptError(e)) {
-        _e2eFlowLog('DECRYPT_SKIP', {
-          'msgId': msg.id,
-          'reason': e.toString(),
-        });
-        if (_decryptingHistory) {
+      switch (decision.retryAction) {
+        case DecryptionRetryAction.markHistoryPeerForRetry:
+          // Keep [encrypted] until retry + session reset finish (see
+          // [_markHistoryDecryptFailuresAfterRetry]).
           _historyDecryptFailedPeers?.add(msg.senderId);
-        } else {
+          break;
+        case DecryptionRetryAction.scheduleLiveRetry:
           _scheduleLiveDecryptRetry(msg.senderId);
-        }
-        return msg;
+          break;
+        case DecryptionRetryAction.none:
+          break;
       }
-
-      debugPrint('[E2E] Decrypt failed for msg ${msg.id}: $e');
-      _e2eFlowLog(
-          'DECRYPT_FAIL', {'msgId': msg.id, 'error': e.toString()});
-      if (_decryptingHistory) {
-        _historyDecryptFailedPeers?.add(msg.senderId);
-        // Keep [encrypted] until retry + session reset finish (see
-        // [_markHistoryDecryptFailuresAfterRetry]).
-        return msg;
-      }
-      _scheduleLiveDecryptRetry(msg.senderId);
-      return msg.copyWith(content: _kDecryptionFailedLabel);
+      return decision.markContentFailed
+          ? msg.copyWith(content: _kDecryptionFailedLabel)
+          : msg;
     }
   }
 }
