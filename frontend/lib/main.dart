@@ -8,6 +8,8 @@ import 'fcm_background_stub.dart'
     if (dart.library.io) 'services/android_fcm_local_notifications.dart'
     as fcm_background;
 import 'init_file_picker_stub.dart' if (dart.library.html) 'init_file_picker_web.dart' as file_picker_init;
+import 'utils/notify_conv_param_stub.dart'
+    if (dart.library.html) 'utils/notify_conv_param_web.dart';
 import 'l10n/app_localizations.dart';
 import 'providers/auth_provider.dart';
 import 'providers/connection_provider.dart';
@@ -42,11 +44,15 @@ Future<void> main() async {
       fcm_background.firebaseMessagingBackgroundHandler,
     );
   }
-  runApp(const FireplaceApp());
+  final coldStartConvId = consumeNotifyConvParam();
+  stripNotifyConvParam();
+  runApp(FireplaceApp(coldStartConversationId: coldStartConvId));
 }
 
 class FireplaceApp extends StatelessWidget {
-  const FireplaceApp({super.key});
+  const FireplaceApp({super.key, this.coldStartConversationId});
+
+  final int? coldStartConversationId;
 
   @override
   Widget build(BuildContext context) {
@@ -58,7 +64,11 @@ class FireplaceApp extends StatelessWidget {
         ChangeNotifierProvider(create: (_) => FriendsProvider()),
         ChangeNotifierProvider(create: (_) => ConversationsProvider()),
         ChangeNotifierProvider(create: (_) => MessagingProvider()),
-        ChangeNotifierProvider(create: (_) => ConnectionProvider()),
+        ChangeNotifierProvider(
+          create: (_) => ConnectionProvider(
+            coldStartConversationId: coldStartConversationId,
+          ),
+        ),
       ],
       child: Consumer<SettingsProvider>(
         builder: (context, settings, _) {
