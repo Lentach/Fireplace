@@ -491,6 +491,18 @@ extension MessagingHistory on MessagingProvider {
       }
     }
 
+    // DIAGNOSTIC (iOS-PWA live-receive drop): records whether this incoming message
+    // was appended to the open chat, and the active/pagination id state at decision time.
+    // Remove once the active-conversation desync root cause is confirmed & fixed.
+    _e2eFlowLog('ADD_TO_STATE', {
+      'msgId': msg.id,
+      'senderId': msg.senderId,
+      'msgConvId': msg.conversationId,
+      'activeId': activeConversationId,
+      'paginationConvId': _paginationConversationId,
+      'appendedToOpenChat': msg.conversationId == viewingConversationId,
+    });
+
     _conversationsProvider?.updateLastMessage(msg.conversationId, msg);
     if (msg.senderId != _currentUserId) {
       if (msg.conversationId != activeConversationId) {

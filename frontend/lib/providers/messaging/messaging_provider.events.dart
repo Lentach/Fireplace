@@ -62,12 +62,24 @@ extension MessagingEvents on MessagingProvider {
     if (_decryptingHistory &&
         msg.conversationId == activeConversationId &&
         msg.needsDecryption(_currentUserId)) {
+      // DIAGNOSTIC (iOS-PWA live-receive drop): message queued behind history decrypt.
+      _e2eFlowLog('RECV_QUEUED', {
+        'msgId': msg.id,
+        'msgConvId': msg.conversationId,
+        'activeId': activeConversationId,
+        'paginationConvId': _paginationConversationId,
+      });
       _incomingMessageQueue.add(dataMap);
       return;
     }
     _e2eFlowLog('RECV_MSG', {
       'msgId': msg.id,
       'senderId': msg.senderId,
+      // DIAGNOSTIC (iOS-PWA live-receive drop): capture active/pagination id state.
+      'msgConvId': msg.conversationId,
+      'activeId': activeConversationId,
+      'paginationConvId': _paginationConversationId,
+      'decryptingHistory': _decryptingHistory,
       'hasEncryptedContent':
           msg.encryptedContent != null && msg.encryptedContent!.isNotEmpty,
       'needsDecryption': msg.needsDecryption(_currentUserId),
