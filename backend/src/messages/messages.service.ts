@@ -234,6 +234,49 @@ export class MessagesService {
   }
 
   /**
+   * Get total unread count and per-conversation breakdown for a user.
+   * Single JOIN query across all conversations the user participates in.
+   * Used by push-notification coalescing flush for live unread counts.
+   */
+  async getUnreadSummaryForUser(userId: number): Promise<{
+    unreadTotal: number;
+    unreadConversationIds: number[];
+    countByConversationId: Map<number, number>;
+  }> {
+    const rows = await this.msgRepo
+      .createQueryBuilder('m')
+      .innerJoin('m.sender', 's')
+      .innerJoin('m.conversation', 'c')
+      .select('m.conversation_id', 'conversationId')
+      .addSelect('COUNT(*)::int', 'count')
+      .where('(c.user_one_id = :userId OR c.user_two_id = :userId)', { userId })
+      .andWhere('s.id != :userId', { userId })
+      .andWhere('m."deliveryStatus" != :status', { status: MessageDeliveryStatus.READ })
+      .andWhere(MESSAGE_NOT_EXPIRED_SQL, { now: new Date() })
+      .andWhere(
+        `(m."hiddenByUserIds" IS NULL OR m."hiddenByUserIds" = '' OR ` +
+          `(',' || COALESCE(m."hiddenByUserIds", '') || ',' NOT LIKE '%,' || :uid::text || ',%'))`,
+        { uid: userId },
+      )
+      .groupBy('m.conversation_id')
+      .getRawMany();
+
+    const countByConversationId = new Map<number, number>();
+    let unreadTotal = 0;
+    for (const r of rows) {
+      const convId = Number(r.conversationId);
+      const count = Number(r.count);
+      countByConversationId.set(convId, count);
+      unreadTotal += count;
+    }
+    return {
+      unreadTotal,
+      unreadConversationIds: Array.from(countByConversationId.keys()),
+      countByConversationId,
+    };
+  }
+
+  /**
    * Batch get last message per conversation (I3: avoids N+1).
    * Uses PostgreSQL DISTINCT ON. Returns Map<conversationId, Message | null>.
    */
