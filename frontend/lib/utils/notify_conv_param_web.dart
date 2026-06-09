@@ -1,5 +1,4 @@
-// ignore_for_file: avoid_web_libraries_in_flutter, deprecated_member_use
-import 'dart:html' as html;
+import 'package:web/web.dart' as web;
 
 /// Read `?notify_conv=<id>` from the current URL.
 /// Returns the conversation ID as an int, or null if absent/invalid.
@@ -17,6 +16,5 @@ void stripNotifyConvParam() {
   final params = Map<String, String>.from(Uri.base.queryParameters)
     ..remove('notify_conv');
   final stripped = Uri.base.replace(queryParameters: params.isEmpty ? null : params);
-  final strippedUrl = stripped.toString();
-  html.window.history.replaceState(null, '', strippedUrl);
+  web.window.history.replaceState(null, '', stripped.toString());
 }
