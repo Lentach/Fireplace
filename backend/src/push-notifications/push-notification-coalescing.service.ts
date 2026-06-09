@@ -75,7 +75,6 @@ export class PushNotificationCoalescingService implements OnModuleDestroy {
     void this.pushNotificationsService
       .notify(recipientUserId, {
         conversationId,
-        messageCount: bucket.count,
       })
       .catch(() => {});
   }
