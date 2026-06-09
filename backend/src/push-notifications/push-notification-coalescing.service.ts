@@ -25,7 +25,7 @@ export class PushNotificationCoalescingService implements OnModuleDestroy {
 
   /**
    * Schedule a coalesced push for one message to recipientUserId in conversationId.
-   * Multiple rapid messages collapse into a single notify with aggregated messageCount.
+   * Multiple rapid messages collapse into a single notify with live unread counts.
    */
   scheduleMessagePush(
     recipientUserId: number,

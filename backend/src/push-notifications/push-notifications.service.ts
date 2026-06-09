@@ -157,9 +157,7 @@ export class PushNotificationsService implements OnModuleInit {
       body.unreadConversationIds = options.unreadConversationIds;
     }
     const payload = JSON.stringify(body);
-    const topic = options.conversationId
-      ? `conv-${options.conversationId}`.slice(0, 32)
-      : 'new-message';
+    const topic = `conv-${options.conversationId}`.slice(0, 32);
 
     const staleEndpoints: string[] = [];
     for (const subscription of subscriptions) {
