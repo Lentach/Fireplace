@@ -60,7 +60,11 @@ class TextMessageContent extends StatelessWidget {
     }
 
     return RichText(
-      textAlign: isMine ? TextAlign.right : TextAlign.left,
+      // Text always reads left-to-right inside the bubble, regardless of which
+      // side the bubble sits on — matches WhatsApp/iMessage/Telegram/Signal.
+      // The bubble itself is still right-aligned for sent messages (see the
+      // Align in ChatMessageBubble); only the wrapped text lines align left.
+      textAlign: TextAlign.left,
       textWidthBasis: TextWidthBasis.longestLine,
       text: TextSpan(children: spans),
     );
