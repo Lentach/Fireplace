@@ -62,9 +62,11 @@ self.addEventListener('push', function (event) {
   var unreadTotal = typeof payload.unreadTotal === 'number'
     ? payload.unreadTotal
     : unreadCount;
+  // null = field absent (backend error at flush time) — skip sweep rather than
+  // wrongly closing other conversations' notifications.
   var unreadConvIds = Array.isArray(payload.unreadConversationIds)
     ? payload.unreadConversationIds
-    : (convId != null ? [convId] : []);
+    : null;
 
   var body = unreadCount > 1
     ? 'You have ' + unreadCount + ' new messages'
@@ -82,7 +84,11 @@ self.addEventListener('push', function (event) {
   event.waitUntil(
     self.registration
       .showNotification('Fireplace', notificationOptions)
-      .then(function () { return sweepStaleNotifications(unreadConvIds); })
+      .then(function () {
+        return unreadConvIds != null
+          ? sweepStaleNotifications(unreadConvIds)
+          : Promise.resolve();
+      })
       .then(function () { return setBadgeFromSW(unreadTotal); })
   );
 });

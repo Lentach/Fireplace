@@ -192,19 +192,6 @@ class WebPushBridge {
     );
   }
 
-  /// Post a badge-update message to the controlling SW.
-  /// On iOS, SW context is required for badge persistence after WebView close.
-  void updateBadgeViaSw(int count) {
-    try {
-      final controller = web.window.navigator.serviceWorker.controller;
-      if (controller == null) return;
-      if (count <= 0) {
-        controller.postMessage({'type': 'clear-badge'}.jsify());
-      } else {
-        controller.postMessage({'type': 'set-badge', 'count': count}.jsify());
-      }
-    } catch (_) {}
-  }
 }
 
 WebPushBridge createWebPushBridge() => WebPushBridge();

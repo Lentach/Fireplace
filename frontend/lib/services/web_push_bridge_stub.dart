@@ -22,8 +22,6 @@ class WebPushBridge {
 
   void listenForNotificationClicks(
       void Function(int? conversationId) handler) {}
-
-  void updateBadgeViaSw(int count) {}
 }
 
 WebPushBridge createWebPushBridge() => WebPushBridge();
