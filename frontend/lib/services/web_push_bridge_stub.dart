@@ -19,6 +19,9 @@ class WebPushBridge {
       null;
 
   Future<String?> unsubscribe() async => null;
+
+  void listenForNotificationClicks(
+      void Function(int? conversationId) handler) {}
 }
 
 WebPushBridge createWebPushBridge() => WebPushBridge();

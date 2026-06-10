@@ -32,12 +32,16 @@ class WebPushRequestResult {
 /// the message from your own server via WebSocket.
 ///
 /// Android: data messages show a grouped local notification (see
-/// [android_fcm_local_notifications.dart]); tap routes via [onAndroidNavigateToConversation].
+/// [android_fcm_local_notifications.dart]); tap routes via [onNavigateToConversation].
 class PushService {
   final ApiService _api;
   final WebPushBridge _webPushBridge = createWebPushBridge();
 
   StreamSubscription<RemoteMessage>? _androidFcmOpenedSubscription;
+
+  /// Set by main.dart from the `notify_conv` URL param before initialize() is called.
+  /// Drained once by ConnectionProvider._onSocketReady().
+  int? coldStartConversationId;
 
   // VAPID key for web push — get from:
   // Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
@@ -55,13 +59,18 @@ class PushService {
   /// Call after WebSocket connect so the user is authenticated.
   /// [jwtToken] is the current user's JWT for the backend API call.
   ///
-  /// [onAndroidNavigateToConversation]: notification / FCM open routing (Android only).
+  /// [onNavigateToConversation]: notification tap routing (Android FCM + web push).
   Future<void> initialize(
     String jwtToken, {
-    void Function(int conversationId)? onAndroidNavigateToConversation,
+    void Function(int conversationId)? onNavigateToConversation,
   }) async {
     if (kIsWeb) {
       await _registerExistingWebSubscription(jwtToken);
+      if (onNavigateToConversation != null) {
+        _webPushBridge.listenForNotificationClicks((convId) {
+          if (convId != null) onNavigateToConversation(convId);
+        });
+      }
       return;
     }
     try {
@@ -93,12 +102,12 @@ class PushService {
       if (defaultTargetPlatform == TargetPlatform.android) {
         await push_android.initAndroidFcmLocalNotificationsOnMainIsolate();
         push_android.setAndroidNotificationConversationTapHandler(
-          onAndroidNavigateToConversation,
+          onNavigateToConversation,
         );
 
         await push_android.deliverPendingLocalNotificationTapIfAny(
           onConversationId: (id) {
-            onAndroidNavigateToConversation?.call(id);
+            onNavigateToConversation?.call(id);
           },
         );
 
@@ -107,7 +116,7 @@ class PushService {
           push_android.handleFcmRemoteMessageOpen(
             initial,
             onConversationId: (id) =>
-                onAndroidNavigateToConversation?.call(id),
+                onNavigateToConversation?.call(id),
           );
         }
 
@@ -117,7 +126,7 @@ class PushService {
           push_android.handleFcmRemoteMessageOpen(
             message,
             onConversationId: (id) =>
-                onAndroidNavigateToConversation?.call(id),
+                onNavigateToConversation?.call(id),
           );
         });
       }

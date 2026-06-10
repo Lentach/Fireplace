@@ -137,10 +137,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
               final active =
                   context.read<ConversationsProvider>().activeConversationId;
               if (active == id) return;
-              Navigator.of(context).push(
+              Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute<void>(
                   builder: (_) => ChatDetailScreen(conversationId: id),
                 ),
+                (route) => route.isFirst,
               );
             }
           });

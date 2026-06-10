@@ -47,3 +47,56 @@ describe('MessagesService.findByConversation', () => {
     );
   });
 });
+
+describe('MessagesService.getUnreadSummaryForUser', () => {
+  let service: MessagesService;
+  let qb: any;
+
+  beforeEach(async () => {
+    qb = {
+      innerJoin: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      groupBy: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue([
+        { conversationId: '10', count: '3' },
+        { conversationId: '20', count: '5' },
+      ]),
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        MessagesService,
+        {
+          provide: getRepositoryToken(Message),
+          useValue: {
+            find: jest.fn().mockResolvedValue([]),
+            createQueryBuilder: jest.fn().mockReturnValue(qb),
+          },
+        },
+      ],
+    }).compile();
+    service = module.get(MessagesService);
+  });
+
+  it('returns correct unreadTotal, unreadConversationIds, and per-conv counts', async () => {
+    const result = await service.getUnreadSummaryForUser(42);
+
+    expect(result.unreadTotal).toBe(8);
+    expect(result.unreadConversationIds).toEqual(expect.arrayContaining([10, 20]));
+    expect(result.unreadConversationIds).toHaveLength(2);
+    expect(result.countByConversationId.get(10)).toBe(3);
+    expect(result.countByConversationId.get(20)).toBe(5);
+  });
+
+  it('returns zeros when no unread messages', async () => {
+    qb.getRawMany.mockResolvedValue([]);
+
+    const result = await service.getUnreadSummaryForUser(99);
+
+    expect(result.unreadTotal).toBe(0);
+    expect(result.unreadConversationIds).toHaveLength(0);
+    expect(result.countByConversationId.size).toBe(0);
+  });
+});

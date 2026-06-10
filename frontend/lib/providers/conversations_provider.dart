@@ -6,6 +6,9 @@ import '../utils/message_expiry.dart';
 import '../utils/reply_preview_helper.dart';
 import 'conversation_helpers.dart' as conv_helpers;
 import '../models/user_model.dart';
+import '../services/notification_cleaner_stub.dart'
+    if (dart.library.html) '../services/notification_cleaner_web.dart'
+    if (dart.library.io) '../services/notification_cleaner_io.dart';
 
 /// ConversationsProvider — owns conversation list state, active conversation,
 /// unread counts, and pending-open navigation pattern.
@@ -28,6 +31,8 @@ class ConversationsProvider extends ChangeNotifier {
   bool _clientVisible = true;
 
   int? _currentUserId;
+
+  final _notificationCleaner = createNotificationCleaner();
 
   // ---------- Emit Callback ----------
 
@@ -191,6 +196,15 @@ class ConversationsProvider extends ChangeNotifier {
         }
       }
     }
+
+    // Sweep push notifications for conversations that are no longer unread.
+    final unreadConvIds = _unreadCounts.entries
+        .where((e) => e.value > 0)
+        .map((e) => e.key)
+        .toSet();
+    final totalUnread = _unreadCounts.values.fold(0, (sum, v) => sum + v);
+    _notificationCleaner.sweepNotificationsKeepUnread(
+        unreadConvIds, totalUnread);
 
     notifyListeners();
   }
@@ -507,6 +521,8 @@ class ConversationsProvider extends ChangeNotifier {
     _activeConversationDeletedByOther = false;
     _errorMessage = null;
     _clientVisible = true;
+    // Clear all push notifications on logout.
+    _notificationCleaner.sweepNotificationsKeepUnread(const {}, 0);
     notifyListeners();
     _emitPushClientState();
   }

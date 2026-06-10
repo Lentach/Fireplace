@@ -21,12 +21,16 @@ class ConnectionProvider extends ChangeNotifier {
 
   final SocketService _socketService;
 
-  ConnectionProvider({SocketService? socketService})
-      : _socketService = socketService ?? SocketService();
+  ConnectionProvider({
+    SocketService? socketService,
+    int? coldStartConversationId,
+  })  : _socketService = socketService ?? SocketService(),
+        _coldStartConversationId = coldStartConversationId;
   final ChatReconnectManager _reconnectManager = ChatReconnectManager();
   late final ApiService _api = ApiService(baseUrl: AppConfig.baseUrl);
   late final PushService _pushService = PushService(_api);
   bool _pushInitialized = false;
+  int? _coldStartConversationId;
   DateTime? _lastConnectStartedAt;
   Timer? _debouncedConnectTimer;
 
@@ -183,17 +187,29 @@ class ConnectionProvider extends ChangeNotifier {
 
     if (!_pushInitialized) {
       _pushInitialized = true;
+      void onNavigateToConversation(int conversationId) {
+        _conversationsProvider?.requestNavigateToConversationFromNotification(
+          conversationId,
+        );
+      }
+
       _pushService
           .initialize(
             token,
-            onAndroidNavigateToConversation: (conversationId) {
-              _conversationsProvider
-                  ?.requestNavigateToConversationFromNotification(
-                conversationId,
-              );
-            },
+            onNavigateToConversation: onNavigateToConversation,
           )
           .catchError((_) {});
+
+      // Seed cold-start id from URL param (set once; subsequent reconnects skip it).
+      _pushService.coldStartConversationId ??= _coldStartConversationId;
+      _coldStartConversationId = null;
+
+      // Drain cold-start notification deep-link (web: URL param; Android: handled by FCM path)
+      final coldConvId = _pushService.coldStartConversationId;
+      if (coldConvId != null) {
+        _pushService.coldStartConversationId = null;
+        onNavigateToConversation(coldConvId);
+      }
     }
   }
 

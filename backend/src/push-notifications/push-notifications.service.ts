@@ -5,9 +5,10 @@ import * as webPush from 'web-push';
 import { WebPushSubscriptionsService } from '../web-push-subscriptions/web-push-subscriptions.service';
 
 export interface NotifyOptions {
-  conversationId?: number;
-  /** Aggregated count when coalescing bursts (optional; omitted when 1). */
-  messageCount?: number;
+  conversationId: number;            // required — always present (coalescing bucket key)
+  unreadCount?: number;              // cumulative unread in this conversation
+  unreadTotal?: number;              // user's total unread across all conversations
+  unreadConversationIds?: number[];  // conv IDs with unread > 0
 }
 
 @Injectable()
@@ -70,7 +71,7 @@ export class PushNotificationsService implements OnModuleInit {
     }
   }
 
-  async notify(userId: number, options: NotifyOptions = {}): Promise<void> {
+  async notify(userId: number, options: NotifyOptions): Promise<void> {
     await Promise.all([
       this.notifyFcm(userId, options),
       this.notifyWebPush(userId, options),
@@ -88,11 +89,15 @@ export class PushNotificationsService implements OnModuleInit {
     if (!tokens.length) return;
 
     const data: Record<string, string> = { type: 'new_message' };
-    if (options.conversationId != null) {
-      data.conversationId = String(options.conversationId);
+    data.conversationId = String(options.conversationId);
+    if (options.unreadCount != null) {
+      data.unreadCount = String(options.unreadCount);
     }
-    if (options.messageCount != null && options.messageCount > 1) {
-      data.messageCount = String(options.messageCount);
+    if (options.unreadTotal != null) {
+      data.unreadTotal = String(options.unreadTotal);
+    }
+    if (options.unreadConversationIds != null) {
+      data.unreadConversationIds = JSON.stringify(options.unreadConversationIds);
     }
 
     try {
@@ -140,15 +145,19 @@ export class PushNotificationsService implements OnModuleInit {
 
     const body: Record<string, unknown> = {
       type: 'new_message',
-      conversationId: options.conversationId ?? null,
+      conversationId: options.conversationId,
     };
-    if (options.messageCount != null && options.messageCount > 1) {
-      body.messageCount = options.messageCount;
+    if (options.unreadCount != null) {
+      body.unreadCount = options.unreadCount;
+    }
+    if (options.unreadTotal != null) {
+      body.unreadTotal = options.unreadTotal;
+    }
+    if (options.unreadConversationIds != null) {
+      body.unreadConversationIds = options.unreadConversationIds;
     }
     const payload = JSON.stringify(body);
-    const topic = options.conversationId
-      ? `conv-${options.conversationId}`.slice(0, 32)
-      : 'new-message';
+    const topic = `conv-${options.conversationId}`.slice(0, 32);
 
     const staleEndpoints: string[] = [];
     for (const subscription of subscriptions) {

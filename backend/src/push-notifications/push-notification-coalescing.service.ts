@@ -4,6 +4,7 @@ import {
   OnModuleDestroy,
 } from '@nestjs/common';
 import { PushNotificationsService } from './push-notifications.service';
+import { MessagesService } from '../messages/messages.service';
 
 /** Trailing debounce window before firing one push for a burst in the same chat. */
 const DEBOUNCE_MS = 2500;
@@ -11,7 +12,6 @@ const DEBOUNCE_MS = 2500;
 const MAX_WAIT_MS = 10000;
 
 interface PendingBucket {
-  count: number;
   debounceTimer: NodeJS.Timeout;
   maxWaitTimer: NodeJS.Timeout;
 }
@@ -21,11 +21,14 @@ export class PushNotificationCoalescingService implements OnModuleDestroy {
   private readonly logger = new Logger(PushNotificationCoalescingService.name);
   private readonly pending = new Map<string, PendingBucket>();
 
-  constructor(private readonly pushNotificationsService: PushNotificationsService) {}
+  constructor(
+    private readonly pushNotificationsService: PushNotificationsService,
+    private readonly messagesService: MessagesService,
+  ) {}
 
   /**
    * Schedule a coalesced push for one message to recipientUserId in conversationId.
-   * Multiple rapid messages collapse into a single notify with aggregated messageCount.
+   * Multiple rapid messages collapse into a single notify with live unread counts.
    */
   scheduleMessagePush(
     recipientUserId: number,
@@ -35,24 +38,22 @@ export class PushNotificationCoalescingService implements OnModuleDestroy {
     const existing = this.pending.get(key);
 
     if (existing) {
-      existing.count += 1;
       clearTimeout(existing.debounceTimer);
       existing.debounceTimer = setTimeout(() => {
-        this.flush(key);
+        void this.flush(key);
       }, DEBOUNCE_MS);
       return Promise.resolve();
     }
 
     const bucket: PendingBucket = {
-      count: 1,
-      debounceTimer: setTimeout(() => this.flush(key), DEBOUNCE_MS),
-      maxWaitTimer: setTimeout(() => this.flush(key), MAX_WAIT_MS),
+      debounceTimer: setTimeout(() => void this.flush(key), DEBOUNCE_MS),
+      maxWaitTimer: setTimeout(() => void this.flush(key), MAX_WAIT_MS),
     };
     this.pending.set(key, bucket);
     return Promise.resolve();
   }
 
-  private flush(key: string): void {
+  private async flush(key: string): Promise<void> {
     const bucket = this.pending.get(key);
     if (!bucket) return;
 
@@ -72,10 +73,25 @@ export class PushNotificationCoalescingService implements OnModuleDestroy {
       return;
     }
 
-    void this.pushNotificationsService
+    let unreadCount: number | undefined;
+    let unreadTotal: number | undefined;
+    let unreadConversationIds: number[] | undefined;
+
+    try {
+      const summary = await this.messagesService.getUnreadSummaryForUser(recipientUserId);
+      unreadTotal = summary.unreadTotal;
+      unreadConversationIds = summary.unreadConversationIds;
+      unreadCount = summary.countByConversationId.get(conversationId) ?? 0;
+    } catch (err) {
+      this.logger.warn(`Push coalesce: unread summary failed for userId=${recipientUserId}`, err);
+    }
+
+    await this.pushNotificationsService
       .notify(recipientUserId, {
         conversationId,
-        messageCount: bucket.count,
+        unreadCount,
+        unreadTotal,
+        unreadConversationIds,
       })
       .catch(() => {});
   }

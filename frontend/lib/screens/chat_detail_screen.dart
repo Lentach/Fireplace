@@ -29,6 +29,9 @@ import '../utils/scroll_to_message_helper.dart';
 import '../utils/pinned_banner_visibility.dart';
 import '../utils/reply_preview_helper.dart';
 import '../providers/encryption_provider.dart';
+import '../services/notification_cleaner_stub.dart'
+    if (dart.library.html) '../services/notification_cleaner_web.dart'
+    if (dart.library.io) '../services/notification_cleaner_io.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final int conversationId;
@@ -48,6 +51,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   /// Cached in [initState] so [dispose] can sync push state without relying on [context].
   late final ConversationsProvider _conversations;
   late final MessagingProvider _messaging;
+  final _notificationCleaner = createNotificationCleaner();
 
   final _scrollController = ScrollController();
   Timer? _showFullHandleTimer;
@@ -303,6 +307,15 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       _conversations.notifyActiveConversationChanged();
       _messaging.loadCachedMessages(widget.conversationId);
       _messaging.getMessages(widget.conversationId);
+    });
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final unreadTotal = _conversations.unreadCounts.values
+          .fold<int>(0, (sum, c) => sum + c);
+      _notificationCleaner.closeNotificationForConversation(
+        widget.conversationId,
+        newUnreadTotal: unreadTotal,
+      );
     });
 
     // Countdown tick + expiry prune run on [ConversationsScreen] (always mounted in
