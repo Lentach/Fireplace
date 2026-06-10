@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
@@ -10,6 +11,7 @@ import '../../theme/rpg_theme.dart';
 import '../../utils/reply_preview_helper.dart';
 import '../message_swipe_wrapper.dart';
 import '../dialogs/message_delete_dialog.dart';
+import '../top_snackbar.dart';
 import 'message_context_menu_overlay.dart';
 import 'message_context_menu_bubble_highlight.dart';
 import 'context_menu_bubble_anchor.dart';
@@ -122,6 +124,7 @@ class ChatMessageBubble extends StatelessWidget {
     if (renderBox == null) return;
     final bubbleSize = renderBox.size;
     final themePreference = context.read<SettingsProvider>().themePreference;
+    final l10n = AppLocalizations.of(context);
     openMessageContextMenu(
       context: context,
       message: message,
@@ -135,6 +138,12 @@ class ChatMessageBubble extends StatelessWidget {
         themePreference: themePreference,
       ),
       onReply: () => messaging.setReplyingTo(message),
+      onCopy: !message.hasCopyablePlaintext
+          ? null
+          : () {
+              Clipboard.setData(ClipboardData(text: message.content));
+              showTopSnackBar(context, l10n.snackbarMessageCopied);
+            },
       onPin: () {
         if (message.id > 0) {
           messaging.pinMessage(message.conversationId, message.id);

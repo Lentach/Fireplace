@@ -11,6 +11,7 @@ import 'package:fireplace/widgets/message/message_context_menu_overlay.dart';
 import 'package:fireplace/widgets/message/message_bubble_inline_time.dart';
 import 'package:fireplace/widgets/message_swipe_wrapper.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -562,6 +563,85 @@ void main() {
     expect(find.text('Pin'), findsOneWidget);
     expect(find.text('Delete'), findsOneWidget);
     expect(find.byType(BackdropFilter), findsOneWidget);
+  });
+
+  Future<void> pumpBubble(WidgetTester tester, MessageModel msg) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: RpgTheme.themeDataLight,
+        home: Scaffold(
+          body: MultiProvider(
+            providers: [
+              ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
+              ChangeNotifierProvider<MessagingProvider>(
+                create: (_) => MessagingProvider(),
+              ),
+              ChangeNotifierProvider<SettingsProvider>(
+                create: (_) => SettingsProvider(),
+              ),
+            ],
+            child: SizedBox(
+              width: 390,
+              height: 600,
+              child: ChatMessageBubble(message: msg, isMine: true),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets('Copy on text bubble writes clipboard, dismisses menu, confirms',
+      (tester) async {
+    final calls = <MethodCall>[];
+    tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+      SystemChannels.platform,
+      (call) async {
+        calls.add(call);
+        return null;
+      },
+    );
+    addTearDown(() => tester.binding.defaultBinaryMessenger
+        .setMockMethodCallHandler(SystemChannels.platform, null));
+
+    await pumpBubble(tester, _msg(id: 10, senderId: 1));
+    await tester.longPress(find.byType(MessageSwipeWrapper));
+    await tester.pumpAndSettle();
+    expect(find.text('Copy'), findsOneWidget);
+
+    await tester.tap(find.text('Copy'));
+    await tester.pump();
+
+    final setData =
+        calls.where((c) => c.method == 'Clipboard.setData').toList();
+    expect(setData, hasLength(1));
+    expect((setData.single.arguments as Map)['text'], 'hello');
+    expect(find.text('Reply'), findsNothing); // menu dismissed
+    expect(find.text('Message copied'), findsOneWidget); // top snackbar
+    // Flush showTopSnackBar's 2500ms removal future so no pending timers leak.
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('image bubble context menu has no Copy row', (tester) async {
+    await pumpBubble(tester, _imageMsg(id: 11, senderId: 1));
+    await tester.longPress(find.byType(MessageSwipeWrapper));
+    await tester.pumpAndSettle();
+    expect(find.text('Reply'), findsOneWidget);
+    expect(find.text('Copy'), findsNothing);
+  });
+
+  testWidgets('decryption-failed text bubble has no Copy row', (tester) async {
+    await pumpBubble(
+      tester,
+      _msg(id: 12, senderId: 1).copyWith(content: '[Decryption failed]'),
+    );
+    await tester.longPress(find.byType(MessageSwipeWrapper));
+    await tester.pumpAndSettle();
+    expect(find.text('Reply'), findsOneWidget);
+    expect(find.text('Copy'), findsNothing);
   });
 
   testWidgets('copy row appears when onCopy is provided', (tester) async {
