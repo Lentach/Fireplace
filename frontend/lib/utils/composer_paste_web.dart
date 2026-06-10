@@ -45,17 +45,11 @@ void _onPasteCapture(web.Event event) {
   final data = (event as web.ClipboardEvent).clipboardData;
   if (data == null) return;
 
-  // First image in clipboardData.files (the cross-browser paste-image path —
-  // spec §2; navigator.clipboard.read() is permission-gated and avoided).
-  web.File? imageFile;
-  final files = data.files;
-  for (var i = 0; i < files.length; i++) {
-    final f = files.item(i);
-    if (f != null && f.type.startsWith('image/')) {
-      imageFile = f;
-      break;
-    }
-  }
+  // First image in clipboardData.files (Chromium/Firefox paste-image path —
+  // spec §2; navigator.clipboard.read() is permission-gated and avoided),
+  // falling back to .items (historically the Safari/WebKit path).
+  final imageFile =
+      _firstImageFromFiles(data.files) ?? _firstImageFromItems(data.items);
   if (imageFile == null) return; // text-only paste: let the browser handle it
 
   // We own this paste: stop the native insertion, forward text + image.
@@ -69,6 +63,25 @@ void _onPasteCapture(web.Event event) {
   file.arrayBuffer().toDart.then((JSArrayBuffer buf) {
     _onImage?.call(buf.toDart.asUint8List(), mime, name);
   });
+}
+
+web.File? _firstImageFromFiles(web.FileList files) {
+  for (var i = 0; i < files.length; i++) {
+    final f = files.item(i);
+    if (f != null && f.type.startsWith('image/')) return f;
+  }
+  return null;
+}
+
+web.File? _firstImageFromItems(web.DataTransferItemList items) {
+  for (var i = 0; i < items.length; i++) {
+    final item = items[i];
+    if (item.kind == 'file' && item.type.startsWith('image/')) {
+      final f = item.getAsFile();
+      if (f != null) return f;
+    }
+  }
+  return null;
 }
 
 String _defaultName(String mime) {
