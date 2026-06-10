@@ -51,7 +51,7 @@ class ComposerAttachmentBar extends StatelessWidget {
                 height: 40,
                 fit: BoxFit.cover,
                 cacheWidth: 120,
-                errorBuilder: (_, __, ___) => Container(
+                errorBuilder: (_, _, _) => Container(
                   width: 40,
                   height: 40,
                   color: fc.inputBg,
