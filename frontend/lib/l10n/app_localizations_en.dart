@@ -663,6 +663,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get messageActionReply => 'Reply';
 
   @override
+  String get messageActionCopy => 'Copy';
+
+  @override
   String get messageActionEdit => 'Edit';
 
   @override
@@ -690,6 +693,9 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get snackbarPinnedMessageUnavailable =>
       'Message is no longer available';
+
+  @override
+  String get snackbarMessageCopied => 'Message copied';
 
   @override
   String get pinnedMessageUnpinTooltip => 'Unpin';

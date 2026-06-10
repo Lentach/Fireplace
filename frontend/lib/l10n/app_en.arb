@@ -265,6 +265,7 @@
   },
 
   "messageActionReply": "Reply",
+  "messageActionCopy": "Copy",
   "messageActionEdit": "Edit",
   "messageActionPin": "Pin",
   "messageActionDelete": "Delete",
@@ -274,6 +275,7 @@
   "messageEditComingSoon": "Edit is coming soon",
   "messagePinRequiresSentMessage": "Wait until the message is sent before pinning",
   "snackbarPinnedMessageUnavailable": "Message is no longer available",
+  "snackbarMessageCopied": "Message copied",
   "pinnedMessageUnpinTooltip": "Unpin",
   "pinnedMessageBannerSemantics": "Pinned message"
 }

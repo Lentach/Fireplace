@@ -247,6 +247,7 @@
   "rotateDeviceMessage": "Fireplace działa tylko w trybie pionowym.",
 
   "messageActionReply": "Odpowiedz",
+  "messageActionCopy": "Kopiuj",
   "messageActionEdit": "Edytuj",
   "messageActionPin": "Przypnij",
   "messageActionDelete": "Usuń",
@@ -256,6 +257,7 @@
   "messageEditComingSoon": "Edycja wkrótce",
   "messagePinRequiresSentMessage": "Poczekaj na wysłanie wiadomości, aby ją przypiąć",
   "snackbarPinnedMessageUnavailable": "Wiadomość jest niedostępna",
+  "snackbarMessageCopied": "Skopiowano wiadomość",
   "pinnedMessageUnpinTooltip": "Odepnij",
   "pinnedMessageBannerSemantics": "Przypięta wiadomość"
 }

@@ -1244,6 +1244,12 @@ abstract class AppLocalizations {
   /// **'Odpowiedz'**
   String get messageActionReply;
 
+  /// No description provided for @messageActionCopy.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kopiuj'**
+  String get messageActionCopy;
+
   /// No description provided for @messageActionEdit.
   ///
   /// In pl, this message translates to:
@@ -1297,6 +1303,12 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Wiadomość jest niedostępna'**
   String get snackbarPinnedMessageUnavailable;
+
+  /// No description provided for @snackbarMessageCopied.
+  ///
+  /// In pl, this message translates to:
+  /// **'Skopiowano wiadomość'**
+  String get snackbarMessageCopied;
 
   /// No description provided for @pinnedMessageUnpinTooltip.
   ///

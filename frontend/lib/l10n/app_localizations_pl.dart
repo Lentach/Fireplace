@@ -672,6 +672,9 @@ class AppLocalizationsPl extends AppLocalizations {
   String get messageActionReply => 'Odpowiedz';
 
   @override
+  String get messageActionCopy => 'Kopiuj';
+
+  @override
   String get messageActionEdit => 'Edytuj';
 
   @override
@@ -698,6 +701,9 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get snackbarPinnedMessageUnavailable => 'Wiadomość jest niedostępna';
+
+  @override
+  String get snackbarMessageCopied => 'Skopiowano wiadomość';
 
   @override
   String get pinnedMessageUnpinTooltip => 'Odepnij';
