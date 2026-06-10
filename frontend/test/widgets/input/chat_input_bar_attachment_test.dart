@@ -8,6 +8,7 @@ import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/services/api_service.dart';
 import 'package:fireplace/services/encrypted_media_upload_service.dart';
+import 'package:fireplace/services/media_crypto_service.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/input/chat_input_bar.dart';
 import 'package:flutter/material.dart';
@@ -226,5 +227,71 @@ void main() {
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 200));
     expect(h.emitted, ['TEXT']);
+  });
+
+  testWidgets('pasted text inserts at the cursor, replacing the selection',
+      (tester) async {
+    final h = await pumpComposer(tester);
+    await tester.enterText(find.byType(TextField), 'hello world');
+    final controller =
+        tester.widget<TextField>(find.byType(TextField)).controller!;
+    controller.selection =
+        const TextSelection(baseOffset: 6, extentOffset: 11);
+
+    h.key.currentState!.insertPastedTextForTest('there');
+    await tester.pump();
+
+    expect(controller.text, 'hello there');
+    expect(controller.selection,
+        const TextSelection.collapsed(offset: 11));
+  });
+
+  testWidgets('oversize pasted image: snackbar, nothing staged',
+      (tester) async {
+    final h = await pumpComposer(tester);
+
+    h.key.currentState!.handlePastedImageForTest(
+      Uint8List(MediaCryptoService.maxBytes + 1),
+      'image/png',
+      'huge.png',
+    );
+    await tester.pump();
+
+    expect(find.text('Image is too large (max 20 MB)'), findsOneWidget);
+    expect(find.byKey(const ValueKey('composer_attachment_thumb')),
+        findsNothing);
+    await tester.pump(const Duration(seconds: 3)); // flush snackbar timer
+  });
+
+  testWidgets('unsupported pasted image type: snackbar, nothing staged',
+      (tester) async {
+    final h = await pumpComposer(tester);
+
+    h.key.currentState!.handlePastedImageForTest(
+      kTinyPng,
+      'image/tiff', // image/* but outside kStageableImageMimeTypes
+      'scan.tiff',
+    );
+    await tester.pump();
+
+    expect(find.text("This image type can't be pasted"), findsOneWidget);
+    expect(find.byKey(const ValueKey('composer_attachment_thumb')),
+        findsNothing);
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('valid pasted image stages the chip via the paste handler',
+      (tester) async {
+    final h = await pumpComposer(tester);
+
+    h.key.currentState!.handlePastedImageForTest(
+      kTinyPng,
+      'image/png',
+      'pasted.png',
+    );
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('composer_attachment_thumb')),
+        findsOneWidget);
   });
 }

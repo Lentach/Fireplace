@@ -13,6 +13,7 @@ import '../../providers/conversations_provider.dart';
 import '../../providers/messaging_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/rpg_theme.dart';
+import '../../utils/composer_paste.dart';
 import '../../utils/message_expiry.dart';
 import '../../utils/reply_preview_helper.dart';
 import '../../utils/soft_keyboard.dart';
@@ -95,6 +96,11 @@ class ChatInputBarState extends State<ChatInputBar>
       _focusNode.addListener(_onComposerFocusForWebViewport);
       _focusNode.addListener(_onFocusLostAfterSend);
       ensureFocusGuardListenerInstalled();
+      installComposerPasteListener(
+        shouldHandle: _canAcceptPaste,
+        onImage: _onPastedImage,
+        onText: _insertPastedText,
+      );
     }
   }
 
@@ -123,6 +129,43 @@ class ChatInputBarState extends State<ChatInputBar>
 
   void _onAttachmentChanged() {
     if (mounted) setState(() {});
+  }
+
+  bool _canAcceptPaste() => mounted && !_isRecording && !_isSendingStagedImage;
+
+  void _onPastedImage(Uint8List bytes, String mimeType, String filename) {
+    if (!mounted) return;
+    final result = _attachment.stage(
+      bytes: bytes,
+      mimeType: mimeType,
+      filename: filename,
+    );
+    if (result == StageResult.ok) return;
+    final l10n = AppLocalizations.of(context);
+    showTopSnackBar(
+      context,
+      result == StageResult.tooLarge
+          ? l10n.snackbarPastedImageTooLarge
+          : l10n.snackbarPastedImageUnsupported,
+    );
+  }
+
+  /// Mixed text+image paste: preventDefault suppressed the native insertion,
+  /// so we re-insert the clipboard text at the current cursor/selection
+  /// (spec §3 — not append-at-end).
+  void _insertPastedText(String text) {
+    if (!mounted) return;
+    final value = _controller.value;
+    final sel = value.selection;
+    final start = (sel.isValid ? sel.start : value.text.length)
+        .clamp(0, value.text.length);
+    final end = (sel.isValid ? sel.end : value.text.length)
+        .clamp(0, value.text.length);
+    _controller.value = value.copyWith(
+      text: value.text.replaceRange(start, end, text),
+      selection: TextSelection.collapsed(offset: start + text.length),
+      composing: TextRange.empty,
+    );
   }
 
   void _onMessagingProviderChanged() {
@@ -165,6 +208,7 @@ class ChatInputBarState extends State<ChatInputBar>
       _focusNode.removeListener(_onComposerFocusForWebViewport);
       _focusNode.removeListener(_onFocusLostAfterSend);
       setIOSWebViewportScrollLocked(false);
+      uninstallComposerPasteListener();
     }
     _sendJustFiredTimer?.cancel();
     _messagingProvider?.setComposerFocusRequest(null);
@@ -336,6 +380,16 @@ class ChatInputBarState extends State<ChatInputBar>
   /// Widget tests: trigger the send path (the tap overlay is private).
   @visibleForTesting
   void sendForTest() => _send();
+
+  /// Widget tests: drive the paste-image handler without a DOM paste event.
+  @visibleForTesting
+  void handlePastedImageForTest(
+          Uint8List bytes, String mimeType, String filename) =>
+      _onPastedImage(bytes, mimeType, filename);
+
+  /// Widget tests: drive cursor-aware pasted-text insertion.
+  @visibleForTesting
+  void insertPastedTextForTest(String text) => _insertPastedText(text);
 
   /// Widget tests: exercise trailing spinner / send precedence without upload pipeline.
   @visibleForTesting
