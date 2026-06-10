@@ -12,8 +12,13 @@ OverlayEntry? _activeMessageContextMenu;
 
 const _kReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
-/// Estimated height of [MessageActionPanel] (4 rows × ~46dp); used for overlay layout.
+/// Estimated height of [MessageActionPanel] (4 base rows × ~46dp; the Copy row
+/// adds [kMessageActionPanelRowHeightEstimate]); used for overlay layout.
 const kMessageActionPanelHeightEstimate = 184.0;
+
+/// Height of one additional [MessageActionPanel] row (Copy); added to
+/// [kMessageActionPanelHeightEstimate] when the row is shown.
+const kMessageActionPanelRowHeightEstimate = 46.0;
 
 /// Estimated height of the reaction emoji pill row; keep in sync with overlay UI.
 const kMessageContextMenuEmojiRowHeight = 44.0;
@@ -102,8 +107,8 @@ typedef _ContextMenuStackLayout = ({
   required Size viewSize,
   required double keyboardBottom,
   double composerClearance = _kComposerClearance,
+  double panelHeight = kMessageActionPanelHeightEstimate,
 }) {
-  const panelHeight = kMessageActionPanelHeightEstimate;
   const emojiHeight = kMessageContextMenuEmojiRowHeight;
   const gap = kMessageContextMenuOverlayGap;
   final minTop = viewPadding.top;
@@ -227,6 +232,7 @@ void openMessageContextMenu({
   required VoidCallback onReply,
   required VoidCallback onPin,
   required VoidCallback onDelete,
+  VoidCallback? onCopy,
   required void Function(String emoji, bool alreadyReacted) onReaction,
   MessageContextMenuBubbleBuilder? bubblePreviewBuilder,
 }) {
@@ -250,6 +256,8 @@ void openMessageContextMenu({
         viewPadding: viewPadding,
         viewSize: viewSize,
         keyboardBottom: keyboardBottom,
+        panelHeight: kMessageActionPanelHeightEstimate +
+            (onCopy != null ? kMessageActionPanelRowHeightEstimate : 0),
       );
       final bubbleAlign =
           isMine ? Alignment.centerRight : Alignment.centerLeft;
@@ -316,6 +324,12 @@ void openMessageContextMenu({
                   dismissMessageContextMenu();
                   onReply();
                 },
+                onCopy: onCopy == null
+                    ? null
+                    : () {
+                        dismissMessageContextMenu();
+                        onCopy();
+                      },
                 onEdit: () {
                   dismissMessageContextMenu();
                   showTopSnackBar(context, l10n.messageEditComingSoon);

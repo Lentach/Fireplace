@@ -8,6 +8,7 @@ class MessageActionPanel extends StatelessWidget {
     required this.isMine,
     required this.canPinOrDeleteForEveryone,
     required this.onReply,
+    this.onCopy,
     required this.onEdit,
     required this.onPin,
     required this.onDelete,
@@ -16,6 +17,9 @@ class MessageActionPanel extends StatelessWidget {
   final bool isMine;
   final bool canPinOrDeleteForEveryone;
   final VoidCallback onReply;
+
+  /// Null hides the Copy row (non-TEXT messages, E2E placeholders).
+  final VoidCallback? onCopy;
   final VoidCallback onEdit;
   final VoidCallback onPin;
   final VoidCallback onDelete;
@@ -32,6 +36,14 @@ class MessageActionPanel extends StatelessWidget {
           mainAxisSize: MainAxisSize.min,
           children: [
             _row(context, l10n.messageActionReply, Icons.reply, onReply, enabled: true),
+            if (onCopy != null)
+              _row(
+                context,
+                l10n.messageActionCopy,
+                Icons.copy_outlined,
+                onCopy!,
+                enabled: true,
+              ),
             _row(
               context,
               l10n.messageActionEdit,

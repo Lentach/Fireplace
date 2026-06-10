@@ -241,6 +241,33 @@ void main() {
       );
     });
 
+    test('larger panelHeight shifts bottom-anchored stack further up', () {
+      const bubbleRect = Rect.fromLTWH(16, 680, 200, 40);
+      const fiveRowHeight = kMessageActionPanelHeightEstimate +
+          kMessageActionPanelRowHeightEstimate;
+      final maxContentBottom = viewSize.height - 88;
+
+      final fourRows = computeMessageContextMenuLayout(
+        bubbleRect: bubbleRect,
+        viewPadding: viewPadding,
+        viewSize: viewSize,
+        keyboardBottom: 0,
+      );
+      final fiveRows = computeMessageContextMenuLayout(
+        bubbleRect: bubbleRect,
+        viewPadding: viewPadding,
+        viewSize: viewSize,
+        keyboardBottom: 0,
+        panelHeight: fiveRowHeight,
+      );
+
+      expect(
+        fiveRows.panelTop + fiveRowHeight,
+        lessThanOrEqualTo(maxContentBottom),
+      );
+      expect(fiveRows.bubbleHighlightTop, lessThan(fourRows.bubbleHighlightTop));
+    });
+
     test('inverted layout preserves gaps between emoji panel and bubble', () {
       const bubbleRect = Rect.fromLTWH(16, 52, 200, 40);
       final layout = computeMessageContextMenuLayout(
@@ -535,6 +562,95 @@ void main() {
     expect(find.text('Pin'), findsOneWidget);
     expect(find.text('Delete'), findsOneWidget);
     expect(find.byType(BackdropFilter), findsOneWidget);
+  });
+
+  testWidgets('copy row appears when onCopy is provided', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: RpgTheme.themeDataLight,
+        home: Scaffold(
+          body: MultiProvider(
+            providers: [
+              ChangeNotifierProvider<SettingsProvider>(
+                create: (_) => SettingsProvider(),
+              ),
+            ],
+            child: Builder(
+              builder: (ctx) => Center(
+                child: GestureDetector(
+                  onLongPress: () {
+                    final box = ctx.findRenderObject() as RenderBox;
+                    openMessageContextMenu(
+                      context: ctx,
+                      message: _msg(id: 10, senderId: 1),
+                      bubbleRenderBox: box,
+                      isMine: true,
+                      currentUserId: 1,
+                      onReply: () {},
+                      onPin: () {},
+                      onDelete: () {},
+                      onCopy: () {},
+                      onReaction: (emoji, alreadyReacted) {},
+                    );
+                  },
+                  child: const Text('bubble'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.longPress(find.text('bubble'));
+    await tester.pumpAndSettle();
+    expect(find.text('Copy'), findsOneWidget);
+    expect(find.text('Reply'), findsOneWidget);
+  });
+
+  testWidgets('copy row absent when onCopy is omitted', (tester) async {
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: RpgTheme.themeDataLight,
+        home: Scaffold(
+          body: MultiProvider(
+            providers: [
+              ChangeNotifierProvider<SettingsProvider>(
+                create: (_) => SettingsProvider(),
+              ),
+            ],
+            child: Builder(
+              builder: (ctx) => Center(
+                child: GestureDetector(
+                  onLongPress: () {
+                    final box = ctx.findRenderObject() as RenderBox;
+                    openMessageContextMenu(
+                      context: ctx,
+                      message: _msg(id: 10, senderId: 1),
+                      bubbleRenderBox: box,
+                      isMine: true,
+                      currentUserId: 1,
+                      onReply: () {},
+                      onPin: () {},
+                      onDelete: () {},
+                      onReaction: (emoji, alreadyReacted) {},
+                    );
+                  },
+                  child: const Text('bubble'),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.longPress(find.text('bubble'));
+    await tester.pumpAndSettle();
+    expect(find.text('Copy'), findsNothing);
+    expect(find.text('Reply'), findsOneWidget);
   });
 
   testWidgets('rendered gaps match overlay constant with scale overflow', (tester) async {
