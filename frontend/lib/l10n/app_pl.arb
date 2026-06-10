@@ -258,6 +258,7 @@
   "messagePinRequiresSentMessage": "Poczekaj na wysłanie wiadomości, aby ją przypiąć",
   "snackbarPinnedMessageUnavailable": "Wiadomość jest niedostępna",
   "snackbarMessageCopied": "Skopiowano wiadomość",
+  "composerAttachmentRemoveTooltip": "Usuń załącznik",
   "pinnedMessageUnpinTooltip": "Odepnij",
   "pinnedMessageBannerSemantics": "Przypięta wiadomość"
 }

@@ -698,6 +698,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get snackbarMessageCopied => 'Message copied';
 
   @override
+  String get composerAttachmentRemoveTooltip => 'Remove attachment';
+
+  @override
   String get pinnedMessageUnpinTooltip => 'Unpin';
 
   @override

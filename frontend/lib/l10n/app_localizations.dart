@@ -1310,6 +1310,12 @@ abstract class AppLocalizations {
   /// **'Skopiowano wiadomość'**
   String get snackbarMessageCopied;
 
+  /// No description provided for @composerAttachmentRemoveTooltip.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń załącznik'**
+  String get composerAttachmentRemoveTooltip;
+
   /// No description provided for @pinnedMessageUnpinTooltip.
   ///
   /// In pl, this message translates to:

@@ -22,6 +22,9 @@ import '../../utils/web_viewport_scroll.dart';
 import '../chat_action_tiles.dart';
 import '../hearth_fade_arc.dart';
 import '../top_snackbar.dart' show showTopSnackBar;
+import 'attachment_handler.dart';
+import 'composer_attachment_bar.dart';
+import 'composer_attachment_controller.dart';
 import 'focus_guard_area.dart';
 import 'recording_controller.dart';
 import 'reply_preview_bar.dart';
@@ -60,6 +63,12 @@ class ChatInputBarState extends State<ChatInputBar>
   // GlobalKey to access RecordingControllerState.buildRecordingBar() + methods.
   final _recordingKey = GlobalKey<RecordingControllerState>();
 
+  // Staged pasted image (Clipboard Phase 2). Chip renders above the input
+  // row; _sendStaged() drains it honoring the image-then-caption ordering
+  // contract (spec §3).
+  final _attachment = ComposerAttachmentController();
+  bool _isSendingStagedImage = false;
+
   @override
   void initState() {
     super.initState();
@@ -70,6 +79,8 @@ class ChatInputBarState extends State<ChatInputBar>
         if (mounted) context.read<MessagingProvider>().emitTyping();
       });
     });
+
+    _attachment.addListener(_onAttachmentChanged);
 
     _actionPanelController = AnimationController(
       duration: const Duration(milliseconds: 250),
@@ -108,6 +119,10 @@ class ChatInputBarState extends State<ChatInputBar>
       if (!mounted || !_focusNode.hasFocus) return;
       resetWebDocumentScroll();
     });
+  }
+
+  void _onAttachmentChanged() {
+    if (mounted) setState(() {});
   }
 
   void _onMessagingProviderChanged() {
@@ -154,6 +169,8 @@ class ChatInputBarState extends State<ChatInputBar>
     _sendJustFiredTimer?.cancel();
     _messagingProvider?.setComposerFocusRequest(null);
     _messagingProvider?.removeListener(_onMessagingProviderChanged);
+    _attachment.removeListener(_onAttachmentChanged);
+    _attachment.dispose();
     _controller.dispose();
     _focusNode.dispose();
     _actionPanelController.dispose();
@@ -177,6 +194,10 @@ class ChatInputBarState extends State<ChatInputBar>
   }
 
   void _send() {
+    if (_attachment.staged != null) {
+      _sendStaged().ignore();
+      return;
+    }
     final text = _controller.text.trim();
     if (text.isEmpty) return;
 
@@ -197,6 +218,49 @@ class ChatInputBarState extends State<ChatInputBar>
 
     _controller.clear();
     // Fallback for non-iOS or when FocusNode listener fires before the blur.
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_focusNode.canRequestFocus) return;
+      if (!_focusNode.hasFocus) _focusNode.requestFocus();
+      showSoftKeyboardIfHidden(context: context, hasFocus: true);
+    });
+  }
+
+  /// Image-then-caption send (spec §3 ordering contract): await the image's
+  /// post-emit completion, only then emit the caption; on image failure the
+  /// caption is restored to the field (the failed bubble owns retry).
+  Future<void> _sendStaged() async {
+    if (_isSendingStagedImage) return;
+    final staged = _attachment.staged;
+    if (staged == null) return;
+
+    final caption = _controller.text.trim();
+    final messaging = context.read<MessagingProvider>();
+    final expiresIn =
+        context.read<ConversationsProvider>().conversationDisappearingTimer;
+
+    setState(() => _isSendingStagedImage = true);
+    _attachment.clear();
+    _controller.clear();
+    try {
+      final sent = await AttachmentHandler.sendImage(
+        context,
+        imageBytes: staged.bytes,
+        filename: staged.filename,
+        mimeType: staged.mimeType,
+      );
+      if (!mounted) return;
+      if (caption.isNotEmpty) {
+        if (sent) {
+          messaging.sendMessage(caption, expiresIn: expiresIn);
+        } else {
+          final current = _controller.text;
+          _controller.text =
+              current.isEmpty ? caption : '$caption\n$current';
+        }
+      }
+    } finally {
+      if (mounted) setState(() => _isSendingStagedImage = false);
+    }
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_focusNode.canRequestFocus) return;
       if (!_focusNode.hasFocus) _focusNode.requestFocus();
@@ -265,6 +329,14 @@ class ChatInputBarState extends State<ChatInputBar>
     setState(() => _isRecording = isRecording);
   }
 
+  /// Widget tests: stage attachments without a paste source (Phases 3/4 add those).
+  @visibleForTesting
+  ComposerAttachmentController get attachmentControllerForTest => _attachment;
+
+  /// Widget tests: trigger the send path (the tap overlay is private).
+  @visibleForTesting
+  void sendForTest() => _send();
+
   /// Widget tests: exercise trailing spinner / send precedence without upload pipeline.
   @visibleForTesting
   void setSendingVoiceForTest(bool isSendingVoice) {
@@ -326,7 +398,8 @@ class ChatInputBarState extends State<ChatInputBar>
       builder: (context, value, _) {
         final showTextSend = !_isRecording &&
             !_isSendingVoice &&
-            value.text.trim().isNotEmpty;
+            !_isSendingStagedImage &&
+            (value.text.trim().isNotEmpty || _attachment.staged != null);
         final showVoiceSend = _isRecording && !_isSendingVoice;
 
         // ExcludeFocus on the whole trailing slot (mic + send overlay) so long-press
@@ -584,6 +657,13 @@ class ChatInputBarState extends State<ChatInputBar>
                   ),
                 ),
               ),
+            ),
+
+          // Staged pasted image (Clipboard Phase 2)
+          if (_attachment.staged != null && !_isRecording)
+            ComposerAttachmentBar(
+              attachment: _attachment.staged!,
+              onRemove: _attachment.clear,
             ),
 
           // Input row

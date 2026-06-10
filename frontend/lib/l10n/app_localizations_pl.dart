@@ -706,6 +706,9 @@ class AppLocalizationsPl extends AppLocalizations {
   String get snackbarMessageCopied => 'Skopiowano wiadomość';
 
   @override
+  String get composerAttachmentRemoveTooltip => 'Usuń załącznik';
+
+  @override
   String get pinnedMessageUnpinTooltip => 'Odepnij';
 
   @override

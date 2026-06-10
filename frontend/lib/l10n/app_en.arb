@@ -276,6 +276,7 @@
   "messagePinRequiresSentMessage": "Wait until the message is sent before pinning",
   "snackbarPinnedMessageUnavailable": "Message is no longer available",
   "snackbarMessageCopied": "Message copied",
+  "composerAttachmentRemoveTooltip": "Remove attachment",
   "pinnedMessageUnpinTooltip": "Unpin",
   "pinnedMessageBannerSemantics": "Pinned message"
 }
