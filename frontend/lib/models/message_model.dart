@@ -79,6 +79,17 @@ class MessageModel {
       encryptedContent!.isNotEmpty &&
       content == '[encrypted]';
 
+  /// True when this is a TEXT message whose [content] is real plaintext —
+  /// i.e. safe to offer "Copy" in the context menu. The bracket labels are
+  /// the E2E placeholder / terminal states (same literals used by
+  /// ChatMessageBubble._displayContent and reply_preview_helper.dart).
+  bool get hasCopyablePlaintext =>
+      messageType == MessageType.text &&
+      content.isNotEmpty &&
+      content != '[encrypted]' &&
+      content != '[Decryption failed]' &&
+      content != '[Encryption not initialized]';
+
   MessageModel({
     required this.id,
     required this.content,
