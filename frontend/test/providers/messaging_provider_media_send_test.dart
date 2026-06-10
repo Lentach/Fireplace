@@ -2,6 +2,7 @@ import 'dart:typed_data';
 
 import 'package:fireplace/models/message_model.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
+import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/services/api_service.dart';
 import 'package:fireplace/services/encrypted_media_upload_service.dart';
@@ -46,6 +47,25 @@ class _FakeMediaUpload extends EncryptedMediaUploadService {
       mediaDuration: duration,
     );
   }
+}
+
+/// E2E-ready fake so _encryptAndSend reaches the socket emit (send path only).
+class _SendReadyEncryption extends EncryptionProvider {
+  @override
+  bool get isE2EReady => true;
+
+  @override
+  bool get hadIdentityReset => false;
+
+  @override
+  Future<void> ensureSession(int recipientId) async {}
+
+  @override
+  Future<String> encrypt(int recipientId, String plaintext) async => '1:abc';
+
+  @override
+  Future<Map<String, dynamic>?> getDecryptedContent(int messageId) async =>
+      null;
 }
 
 MessagingProvider _newProvider() {
@@ -187,6 +207,63 @@ void main() {
       final msg = provider.messages.last;
       expect(msg.deliveryStatus, MessageDeliveryStatus.failed);
       expect(msg.mediaUrl, isNull);
+    });
+  });
+
+  group('sendImageMessage ordering contract (Clipboard Phase 2)', () {
+    test('completes only after the IMAGE emit and returns true', () async {
+      final provider = _newProvider();
+      provider.setMediaUploadServiceForTest(_FakeMediaUpload());
+      provider.setEncryptionProvider(_SendReadyEncryption());
+      final emitted = <String>[];
+      provider.setEmitCallback((event, data) {
+        if (event == 'sendMessage') {
+          emitted.add((data as Map)['messageType'] as String? ?? 'TEXT');
+        }
+      });
+
+      final ok = await provider.sendImageMessage(
+        'tok',
+        XFile.fromData(Uint8List.fromList([1, 2, 3]), name: 'a.jpg'),
+        2,
+      );
+
+      expect(ok, isTrue);
+      // THE contract: when the Future completes, the emit already happened.
+      expect(emitted, ['IMAGE']);
+
+      provider.sendMessage('caption');
+      await Future<void>.delayed(const Duration(milliseconds: 100));
+      expect(emitted, ['IMAGE', 'TEXT']); // caption strictly after image
+    });
+
+    test('returns false when upload throws', () async {
+      final provider = _newProvider();
+      provider.setMediaUploadServiceForTest(
+        _FakeMediaUpload(throwOnUpload: Exception('boom')),
+      );
+      provider.setEncryptionProvider(_SendReadyEncryption());
+
+      final ok = await provider.sendImageMessage(
+        'tok',
+        XFile.fromData(Uint8List.fromList([1, 2, 3]), name: 'a.jpg'),
+        2,
+      );
+
+      expect(ok, isFalse);
+    });
+
+    test('returns false when E2E is not ready', () async {
+      final provider = _newProvider(); // no EncryptionProvider set
+      provider.setMediaUploadServiceForTest(_FakeMediaUpload());
+
+      final ok = await provider.sendImageMessage(
+        'tok',
+        XFile.fromData(Uint8List.fromList([1, 2, 3]), name: 'a.jpg'),
+        2,
+      );
+
+      expect(ok, isFalse);
     });
   });
 }

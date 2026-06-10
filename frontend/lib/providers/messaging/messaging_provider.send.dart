@@ -100,13 +100,17 @@ extension MessagingSend on MessagingProvider {
     );
   }
 
-  Future<void> sendImageMessage(
+  /// Returns true only AFTER the image's `sendMessage` socket emit (spec
+  /// §3 ordering contract) — callers sequencing a caption must await this.
+  /// False = failed before emit (no conversation, oversize, upload/encrypt
+  /// failure); the optimistic bubble is marked failed internally.
+  Future<bool> sendImageMessage(
     String token,
     XFile imageFile,
     int recipientId,
   ) async {
     final activeConversationId = _conversationsProvider?.activeConversationId;
-    if (activeConversationId == null || _currentUserId == null) return;
+    if (activeConversationId == null || _currentUserId == null) return false;
 
     final effectiveExpiresIn =
         _conversationsProvider!.conversationDisappearingTimer;
@@ -131,7 +135,7 @@ extension MessagingSend on MessagingProvider {
       final rawBytes = await imageFile.readAsBytes();
       if (rawBytes.length > MediaCryptoService.maxBytes) {
         _markMessageFailed(tempId, 'Image too large (max 20 MB)');
-        return;
+        return false;
       }
       final upload = await _mediaUpload.encryptAndUpload(
         bytes: Uint8List.fromList(rawBytes),
@@ -159,7 +163,7 @@ extension MessagingSend on MessagingProvider {
         notifyListeners();
       }
 
-      _encryptAndSend(
+      return await _encryptAndSend(
         recipientId: recipientId,
         content: '',
         tempId: tempId,
@@ -173,6 +177,7 @@ extension MessagingSend on MessagingProvider {
     } catch (e) {
       debugPrint('[MessagingProvider] Image upload failed: $e');
       _markMessageFailed(tempId, 'Image upload failed: ${e.toString()}');
+      return false;
     }
   }
 
@@ -771,7 +776,7 @@ extension MessagingSend on MessagingProvider {
     }
   }
 
-  Future<void> _encryptAndSend({
+  Future<bool> _encryptAndSend({
     required int recipientId,
     required String content,
     required String tempId,
@@ -794,7 +799,7 @@ extension MessagingSend on MessagingProvider {
         tempId,
         'Encryption not ready. Please wait and try again.',
       );
-      return;
+      return false;
     }
 
     try {
@@ -879,6 +884,7 @@ extension MessagingSend on MessagingProvider {
         emitPayload['mediaDuration'] = mediaDuration;
       }
       _emit?.call('sendMessage', emitPayload);
+      return true;
     } catch (e) {
       _encryptionProvider?.clearPendingPreKeyFetch(recipientId);
       debugPrint('[E2E] Encryption failed: $e');
@@ -891,6 +897,7 @@ extension MessagingSend on MessagingProvider {
       if (_isKeyBundleOrTimeoutError(e)) {
         _scheduleDelayedRetry(tempId);
       }
+      return false;
     }
   }
 

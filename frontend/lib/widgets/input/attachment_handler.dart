@@ -1,7 +1,6 @@
 import 'dart:typed_data';
 
 import 'package:cross_file/cross_file.dart';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -28,8 +27,10 @@ class AttachmentHandler {
 
   /// Sends an image from bytes (already loaded by the caller).
   ///
-  /// Uses [MessagingProvider.sendImageMessage] which expects an [XFile].
-  static Future<void> sendImage(
+  /// Returns true only after the image's socket emit (see
+  /// [MessagingProvider.sendImageMessage] ordering contract); false when the
+  /// send failed before the emit.
+  static Future<bool> sendImage(
     BuildContext context, {
     required Uint8List imageBytes,
     required String filename,
@@ -43,25 +44,26 @@ class AttachmentHandler {
     if (conversationId == null) {
       showTopSnackBar(
           context, AppLocalizations.of(context).snackbarNoActiveConversation);
-      return;
+      return false;
     }
 
     final conv = convs.getConversationById(conversationId);
-    if (conv == null) return;
+    if (conv == null) return false;
     final recipientId = convs.getOtherUserId(conv);
 
     try {
       final xfile = XFile.fromData(
-        kIsWeb ? imageBytes : imageBytes,
+        imageBytes,
         name: filename,
         mimeType: mimeType,
       );
-      await messaging.sendImageMessage(auth.token!, xfile, recipientId);
+      return await messaging.sendImageMessage(auth.token!, xfile, recipientId);
     } catch (e) {
-      if (!context.mounted) return;
+      if (!context.mounted) return false;
       showTopSnackBar(
           context, AppLocalizations.of(context).snackbarFailedToSendImage);
       debugPrint('AttachmentHandler.sendImage error: $e');
+      return false;
     }
   }
 
