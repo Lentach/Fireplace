@@ -150,6 +150,26 @@ class ChatInputBarState extends State<ChatInputBar>
     );
   }
 
+  /// Android IME image insertion (Gboard clipboard chip / sticker insert) —
+  /// Clipboard Phase 4. Some keyboards/OS versions deliver a content URI
+  /// with no inline bytes; reading content:// needs a platform channel we
+  /// don't have, so surface an honest error instead of failing silently.
+  void _onKeyboardContentInserted(KeyboardInsertedContent content) {
+    if (!_canAcceptPaste()) return;
+    if (!content.hasData) {
+      showTopSnackBar(
+        context,
+        AppLocalizations.of(context).snackbarPastedImageUnavailable,
+      );
+      return;
+    }
+    _onPastedImage(
+      content.data!,
+      content.mimeType,
+      pastedFilenameForMime(content.mimeType),
+    );
+  }
+
   /// Mixed text+image paste: preventDefault suppressed the native insertion,
   /// so we re-insert the clipboard text at the current cursor/selection
   /// (spec §3 — not append-at-end).
@@ -821,6 +841,14 @@ class ChatInputBarState extends State<ChatInputBar>
                               // the keyboard while the node can still report focused in the same sync turn.
                               onEditingComplete: () {},
                               onSubmitted: (_) => _send(),
+                              // Android IME rich-content insertion (Phase 4);
+                              // other platforms never emit commitContent.
+                              contentInsertionConfiguration:
+                                  ContentInsertionConfiguration(
+                                allowedMimeTypes:
+                                    kStageableImageMimeTypes.toList(),
+                                onContentInserted: _onKeyboardContentInserted,
+                              ),
                             ),
                           ),
                         ),

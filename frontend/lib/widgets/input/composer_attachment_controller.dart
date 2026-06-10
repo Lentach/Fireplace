@@ -26,6 +26,19 @@ const kStageableImageMimeTypes = {
   'image/webp',
 };
 
+/// Fallback filename for clipboard images that arrive without one
+/// (Android commitContent, nameless web clipboard files).
+String pastedFilenameForMime(String mimeType) {
+  final ext = switch (mimeType) {
+    'image/png' => 'png',
+    'image/jpeg' => 'jpg',
+    'image/gif' => 'gif',
+    'image/webp' => 'webp',
+    _ => 'img',
+  };
+  return 'pasted.$ext';
+}
+
 /// Holds at most ONE staged image; a new [stage] replaces the current one
 /// (v1 single-image rule). Validation happens at stage time so the user gets
 /// feedback before tapping send.

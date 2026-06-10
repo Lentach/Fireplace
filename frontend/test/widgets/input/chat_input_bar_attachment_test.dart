@@ -1,5 +1,3 @@
-import 'dart:typed_data';
-
 import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/providers/auth_provider.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
@@ -11,7 +9,9 @@ import 'package:fireplace/services/encrypted_media_upload_service.dart';
 import 'package:fireplace/services/media_crypto_service.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/input/chat_input_bar.dart';
+import 'package:fireplace/widgets/input/composer_attachment_controller.dart';
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
@@ -293,5 +293,44 @@ void main() {
 
     expect(find.byKey(const ValueKey('composer_attachment_thumb')),
         findsOneWidget);
+  });
+
+  testWidgets('keyboard commitContent with bytes stages the chip',
+      (tester) async {
+    await pumpComposer(tester);
+    final tf = tester.widget<TextField>(find.byType(TextField));
+    final config = tf.contentInsertionConfiguration;
+
+    expect(config, isNotNull);
+    expect(config!.allowedMimeTypes, containsAll(kStageableImageMimeTypes));
+
+    config.onContentInserted(KeyboardInsertedContent(
+      mimeType: 'image/png',
+      uri: 'content://clipboard/0',
+      data: kTinyPng,
+    ));
+    await tester.pumpAndSettle();
+
+    expect(find.byKey(const ValueKey('composer_attachment_thumb')),
+        findsOneWidget);
+  });
+
+  testWidgets('keyboard commitContent without bytes shows honest snackbar',
+      (tester) async {
+    await pumpComposer(tester);
+    final config = tester
+        .widget<TextField>(find.byType(TextField))
+        .contentInsertionConfiguration!;
+
+    config.onContentInserted(const KeyboardInsertedContent(
+      mimeType: 'image/png',
+      uri: 'content://clipboard/0',
+    ));
+    await tester.pump();
+
+    expect(find.text("Couldn't read the pasted image"), findsOneWidget);
+    expect(find.byKey(const ValueKey('composer_attachment_thumb')),
+        findsNothing);
+    await tester.pump(const Duration(seconds: 3)); // flush snackbar timer
   });
 }

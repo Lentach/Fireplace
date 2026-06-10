@@ -1328,6 +1328,12 @@ abstract class AppLocalizations {
   /// **'Nie można wkleić tego typu obrazu'**
   String get snackbarPastedImageUnsupported;
 
+  /// No description provided for @snackbarPastedImageUnavailable.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się odczytać wklejonego obrazu'**
+  String get snackbarPastedImageUnavailable;
+
   /// No description provided for @pinnedMessageUnpinTooltip.
   ///
   /// In pl, this message translates to:

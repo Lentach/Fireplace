@@ -708,6 +708,10 @@ class AppLocalizationsEn extends AppLocalizations {
       'This image type can\'t be pasted';
 
   @override
+  String get snackbarPastedImageUnavailable =>
+      'Couldn\'t read the pasted image';
+
+  @override
   String get pinnedMessageUnpinTooltip => 'Unpin';
 
   @override

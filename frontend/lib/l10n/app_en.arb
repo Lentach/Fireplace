@@ -279,6 +279,7 @@
   "composerAttachmentRemoveTooltip": "Remove attachment",
   "snackbarPastedImageTooLarge": "Image is too large (max 20 MB)",
   "snackbarPastedImageUnsupported": "This image type can't be pasted",
+  "snackbarPastedImageUnavailable": "Couldn't read the pasted image",
   "pinnedMessageUnpinTooltip": "Unpin",
   "pinnedMessageBannerSemantics": "Pinned message"
 }

@@ -716,6 +716,10 @@ class AppLocalizationsPl extends AppLocalizations {
       'Nie można wkleić tego typu obrazu';
 
   @override
+  String get snackbarPastedImageUnavailable =>
+      'Nie udało się odczytać wklejonego obrazu';
+
+  @override
   String get pinnedMessageUnpinTooltip => 'Odepnij';
 
   @override
