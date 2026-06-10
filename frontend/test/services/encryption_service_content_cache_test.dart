@@ -153,5 +153,49 @@ void main() {
       expect(service.isInitialized, isTrue);
       expect(await service.getIdentityFingerprint(), isNotNull);
     });
+
+    // Pins the in-app "Clear local message cache" scope (Class-A verdict):
+    // it removes ONLY persisted plaintext — Signal sessions and identity stay,
+    // so a peer's NEXT message on the existing session still decrypts. A user
+    // who "cleared cache" and then lost the session did a browser-level
+    // site-data clear or reinstall, not this.
+    test('clearDecryptedContentCache does NOT delete Signal sessions or identity', () async {
+      const secureStorage = FlutterSecureStorage();
+      await secureStorage.write(
+        key: 'e2e_42_session_7_1',
+        value: 'fake-session-record',
+      );
+      await service.saveDecryptedContent(1006, {'content': 'plain'});
+
+      await service.clearDecryptedContentCache();
+
+      expect(
+        await secureStorage.read(key: 'e2e_42_session_7_1'),
+        'fake-session-record',
+        reason: 'sessions must survive a plaintext-cache clear',
+      );
+      expect(
+        await secureStorage.read(key: 'e2e_42_identity_key_pair'),
+        isNotNull,
+        reason: 'identity must survive a plaintext-cache clear',
+      );
+      expect(await service.getDecryptedContent(1006), isNull);
+    });
+
+    test('clearAllKeys (account deletion) deletes sessions AND identity', () async {
+      const secureStorage = FlutterSecureStorage();
+      await secureStorage.write(
+        key: 'e2e_42_session_7_1',
+        value: 'fake-session-record',
+      );
+
+      await service.clearAllKeys();
+
+      expect(await secureStorage.read(key: 'e2e_42_session_7_1'), isNull);
+      expect(
+        await secureStorage.read(key: 'e2e_42_identity_key_pair'),
+        isNull,
+      );
+    });
   });
 }

@@ -147,10 +147,23 @@ class EncryptionProvider extends ChangeNotifier {
     _forceSessionRebuild.add(recipientId);
   }
 
+  /// Whether a Signal session exists with [peerUserId]. Diagnostic + policy
+  /// input; false when E2E is not initialized.
+  Future<bool> hasSessionWith(int peerUserId) async {
+    if (!_e2eInitialized) return false;
+    return _encryptionService.hasSession(peerUserId);
+  }
+
   /// Delete the local Signal session with [peerUserId] (sender or recipient).
-  /// Used when inbound history decrypt fails and the ratchet must be replayed.
+  ///
+  /// DANGER: this wipes the current AND archived ratchet states, making every
+  /// message the peer already encrypted with them permanently undecryptable.
+  /// The inbound decrypt-failure path must never call this (see
+  /// `_retryDecryptForPeers`); session replacement on send goes through
+  /// [ensureSession]'s atomic rebuild instead.
   Future<void> deleteSessionWithPeer(int peerUserId) async {
     if (!_e2eInitialized) return;
+    _e2eFlowLog('SESSION_DELETE', {'peerId': peerUserId});
     await _encryptionService.deleteSession(peerUserId);
   }
 
@@ -182,6 +195,10 @@ class EncryptionProvider extends ChangeNotifier {
   Future<int> clearLocalDecryptedContentCache() async {
     final removed = await _encryptionService.clearDecryptedContentCache();
     _decryptedContentCache.clear();
+    // Scope on record: plaintext cache only — identity, sessions and pre-keys
+    // are untouched. If a user report says "cleared cache" and sessions died,
+    // it was NOT this path (browser site-data clear / reinstall wipes those).
+    _e2eFlowLog('CACHE_CLEAR', {'scope': 'decryptedContent', 'removed': removed});
     notifyListeners();
     return removed;
   }
@@ -363,6 +380,7 @@ class EncryptionProvider extends ChangeNotifier {
 
   /// Clear all E2E encryption keys. Call on account deletion only.
   Future<void> clearEncryptionKeys() async {
+    _e2eFlowLog('CACHE_CLEAR', {'scope': 'allE2EKeys'});
     await _encryptionService.clearAllKeys();
     _e2eInitialized = false;
     _pendingPreKeyFetches.clear();

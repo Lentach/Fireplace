@@ -116,6 +116,9 @@ class MessagingProvider extends ChangeNotifier {
   final Set<int> _liveDecryptFailedPeers = {};
   Timer? _liveDecryptRetryTimer;
 
+  /// Peers already told to re-key after our identity reset (once per session).
+  final Set<int> _identityResetRebuildNotified = {};
+
   /// Incremented on each new messageHistory to cancel stale in-flight decrypt loops.
   /// Each loop captures its generation at start and exits when the counter changes.
   int _decryptHistoryGeneration = 0;
@@ -431,6 +434,7 @@ class MessagingProvider extends ChangeNotifier {
       _replyingToMessage = null;
       _pendingSendContent.clear();
       _incomingMessageQueue.clear();
+      _identityResetRebuildNotified.clear();
       _cancelDelayedRetryIfAny();
     } else {
       // Reconnect (same user): keep messages to avoid flicker.
@@ -482,6 +486,7 @@ class MessagingProvider extends ChangeNotifier {
     _liveDecryptRetryTimer?.cancel();
     _liveDecryptRetryTimer = null;
     _liveDecryptFailedPeers.clear();
+    _identityResetRebuildNotified.clear();
     _cancelDelayedRetryIfAny();
     _currentUserId = null;
     _tokenForReconnect = null;

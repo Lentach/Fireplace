@@ -59,11 +59,21 @@ class DecryptionFailureDecision {
   /// The retry side effect to perform (or [DecryptionRetryAction.none]).
   final DecryptionRetryAction retryAction;
 
+  /// Emit `requestSessionRebuild` to the peer (once per peer) WITHOUT touching
+  /// any local state. Only the identity-reset rule sets this: our identity was
+  /// just regenerated, so the peer's session targets keys that no longer exist —
+  /// every message they send on it is dead until they re-key. Notifying them
+  /// shrinks the loss window from "until we happen to reply" to "their next
+  /// send". Their old session encrypts nothing we could ever read, so asking
+  /// them to discard it destroys no recoverable data.
+  final bool notifyPeerRebuild;
+
   const DecryptionFailureDecision({
     required this.rule,
     required this.persistTerminalFailure,
     required this.markContentFailed,
     required this.retryAction,
+    this.notifyPeerRebuild = false,
   });
 }
 
@@ -108,6 +118,7 @@ DecryptionFailureDecision decideDecryptionFailure(
           persistTerminalFailure: false,
           markContentFailed: true,
           retryAction: DecryptionRetryAction.none,
+          notifyPeerRebuild: true,
         );
       }
       final retryAction = isHistory

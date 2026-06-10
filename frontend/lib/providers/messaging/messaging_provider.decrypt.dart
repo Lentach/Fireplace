@@ -163,10 +163,39 @@ extension MessagingDecrypt on MessagingProvider {
         msg.messageType != MessageType.text;
   }
 
-  void _requestSessionRebuildForPeer(int peerId) {
+  /// Ciphertext type prefix ("{type}:{base64}"): 3 = PreKey, 1 = Signal.
+  /// Diagnostic only — null when the prefix is absent/unparseable.
+  int? _ciphertextType(String? ciphertext) {
+    if (ciphertext == null) return null;
+    final colonIdx = ciphertext.indexOf(':');
+    if (colonIdx <= 0) return null;
+    return int.tryParse(ciphertext.substring(0, colonIdx));
+  }
+
+  void _requestSessionRebuildForPeer(int peerId, {required String trigger}) {
     _encryptionProvider?.markSessionRebuild(peerId);
     _emit?.call('requestSessionRebuild', {'recipientId': peerId});
-    _e2eFlowLog('SESSION_RESET', {'peerId': peerId});
+    _e2eFlowLog('SESSION_RESET', {'peerId': peerId, 'trigger': trigger});
+  }
+
+  /// Drop peers whose inbound rows are all resolved or terminal — nothing a
+  /// session rebuild could still recover. Without this, one live decrypt
+  /// failure keeps the peer armed for the whole app session, and every later
+  /// history pass re-fires the reset machinery (the Bad-MAC → reset loop).
+  void _pruneLiveDecryptFailedPeers() {
+    if (_liveDecryptFailedPeers.isEmpty) return;
+    _liveDecryptFailedPeers.removeWhere((peerId) {
+      final hasRecoverable = _messages.any(
+        (m) =>
+            m.senderId == peerId &&
+            m.needsDecryption(_currentUserId) &&
+            m.displayAsEncryptedPlaceholder,
+      );
+      if (!hasRecoverable) {
+        _e2eFlowLog('LIVE_RETRY_PRUNED', {'peerId': peerId});
+      }
+      return !hasRecoverable;
+    });
   }
 
   Future<void> _decryptMessageHistory(int generation) async {
@@ -352,6 +381,9 @@ extension MessagingDecrypt on MessagingProvider {
       if (_markHistoryDecryptFailuresAfterRetry(generation)) {
         changed = true;
       }
+      // Rows that stayed locked are terminal now — disarm their peers so the
+      // next pass doesn't re-run the reset machinery for unrecoverable rows.
+      _pruneLiveDecryptFailedPeers();
     }
     _historyDecryptFailedPeers = null;
     _historySessionRebuildRequested = null;
@@ -370,8 +402,13 @@ extension MessagingDecrypt on MessagingProvider {
       }
     }
     if (unresolvedPeers.isEmpty) return false;
+    // Dedupe against the rebuilds _retryDecryptForPeers already requested this
+    // pass — the old double emit made the peer discard their session twice.
+    final rebuildRequested = _historySessionRebuildRequested ??= <int>{};
     for (final peerId in unresolvedPeers) {
-      _requestSessionRebuildForPeer(peerId);
+      if (rebuildRequested.add(peerId)) {
+        _requestSessionRebuildForPeer(peerId, trigger: 'recoverUnresolved');
+      }
     }
     _e2eFlowLog('E2E_RECOVERY_SESSION_RESET', {'peerIds': unresolvedPeers.toList()});
     return true;
@@ -395,24 +432,28 @@ extension MessagingDecrypt on MessagingProvider {
     return changed;
   }
 
-  /// After history/live decrypt failures, reset the local session with each peer
-  /// (once per pass) and replay decrypt oldest-first. Does not downgrade
+  /// After history/live decrypt failures, request a session rebuild from each
+  /// peer (once per pass) and replay decrypt oldest-first. Does not downgrade
   /// [Decryption failed] to [encrypted] — failed rows stay failed until decrypt succeeds.
+  ///
+  /// This path must NEVER call deleteSessionWithPeer. Deleting the local
+  /// SessionRecord wipes the current AND archived ratchet states, so every
+  /// message the peer already encrypted with them becomes a permanent Bad-MAC
+  /// loss — that is the mid-conversation [Decryption failed] cascade. The
+  /// rebuild *request* is lossless: when either side later sends a PreKey
+  /// message, libsignal archives the old state instead of destroying it, so
+  /// in-flight old-session messages stay decryptable.
   Future<bool> _retryDecryptForPeers(
     int generation,
-    Set<int> peerIds,
-  ) async {
+    Set<int> peerIds, {
+    String trigger = 'historyRetry',
+  }) async {
     bool changed = false;
     final rebuildRequested = _historySessionRebuildRequested ??= <int>{};
     for (final peerId in peerIds) {
       if (_decryptHistoryGeneration != generation) return changed;
       if (rebuildRequested.add(peerId)) {
-        _requestSessionRebuildForPeer(peerId);
-      }
-      try {
-        await _encryptionProvider?.deleteSessionWithPeer(peerId);
-      } catch (e) {
-        debugPrint('[E2E] deleteSessionWithPeer($peerId) failed: $e');
+        _requestSessionRebuildForPeer(peerId, trigger: trigger);
       }
     }
 
@@ -437,6 +478,10 @@ extension MessagingDecrypt on MessagingProvider {
         _encryptionProvider?.cacheDecryption(msg.id, row);
         continue;
       }
+      // [Decryption failed] is terminal (same guard as the main history loop):
+      // re-attempting it can only fail again, and the failure re-arms the
+      // retry sets — that re-arming is what kept the reset loop alive forever.
+      if (row.content == _kDecryptionFailedLabel) continue;
       final decrypted = await _decryptMessageAsyncQueued(row);
       if (idx == -1) continue;
       _messages[idx] = _mergeMessagePreferNewer(_messages[idx], decrypted);
@@ -448,6 +493,7 @@ extension MessagingDecrypt on MessagingProvider {
         _encryptionProvider?.clearSessionRebuild(msg.senderId);
       }
     }
+    _pruneLiveDecryptFailedPeers();
     return changed;
   }
 
@@ -465,7 +511,8 @@ extension MessagingDecrypt on MessagingProvider {
     if (_decryptingHistory || _liveDecryptFailedPeers.isEmpty) return;
     final peers = Set<int>.from(_liveDecryptFailedPeers);
     final gen = _decryptHistoryGeneration;
-    final changed = await _retryDecryptForPeers(gen, peers);
+    final changed =
+        await _retryDecryptForPeers(gen, peers, trigger: 'liveRetry');
     if (_decryptHistoryGeneration != gen) return;
     if (changed) {
       final cid = _effectiveActiveConversationId;
@@ -498,8 +545,18 @@ extension MessagingDecrypt on MessagingProvider {
       return msg.copyWith(content: '[Encryption not initialized]');
     }
 
-    _e2eFlowLog(
-        'DECRYPT_START', {'msgId': msg.id, 'senderId': msg.senderId});
+    // hasSession + ciphertext type make every failure self-explaining in the
+    // field: a type-1 (Signal) message with hasSession:false is state loss on
+    // our side; type 3 (PreKey) failing means OTP/identity trouble. Ids,
+    // types and booleans only — never plaintext or key material.
+    final hadSessionAtDecrypt =
+        await _encryptionProvider!.hasSessionWith(msg.senderId);
+    _e2eFlowLog('DECRYPT_START', {
+      'msgId': msg.id,
+      'senderId': msg.senderId,
+      'ctype': _ciphertextType(msg.encryptedContent),
+      'hasSession': hadSessionAtDecrypt,
+    });
     try {
       final plaintext = await _encryptionProvider!.decrypt(
         msg.senderId,
@@ -593,16 +650,43 @@ extension MessagingDecrypt on MessagingProvider {
       // Precedence: duplicate/badMac (terminal, persist) > identityReset
       // (terminal, no persist) > noSession (keep [encrypted], retry) > unknown
       // (live: terminal+retry; history: keep [encrypted], retry).
+      final kind = _classifyDecryptError(e);
       final decision = decideDecryptionFailure(
-        _classifyDecryptError(e),
+        kind,
         hadIdentityReset: _encryptionProvider?.hadIdentityReset == true,
         isHistory: _decryptingHistory,
       );
       _logDecryptionFailure(decision.rule, msg, e);
+      // One line that fully explains the outcome of this failure: what the
+      // error was classified as, which rule fired and with which inputs, and
+      // exactly what the caller will do about it.
+      _e2eFlowLog('DECRYPT_DECISION', {
+        'msgId': msg.id,
+        'senderId': msg.senderId,
+        'kind': kind.name,
+        'rule': decision.rule.name,
+        'isHistory': _decryptingHistory,
+        'idReset': _encryptionProvider?.hadIdentityReset == true,
+        'hadSession': hadSessionAtDecrypt,
+        'persist': decision.persistTerminalFailure,
+        'markFailed': decision.markContentFailed,
+        'retry': decision.retryAction.name,
+        'notifyPeer': decision.notifyPeerRebuild,
+      });
       if (decision.persistTerminalFailure) {
         // Persist so future app starts skip this message without re-attempting.
         await _encryptionProvider?.saveDecryptedContent(
             msg.id, {'content': _kDecryptionFailedLabel});
+      }
+      if (decision.notifyPeerRebuild &&
+          _identityResetRebuildNotified.add(msg.senderId)) {
+        // Identity reset: tell the peer to re-key on their next send. No local
+        // state is touched (there is none to protect — the old identity is
+        // gone); without this the peer keeps sending undecryptable messages
+        // until we happen to reply.
+        _emit?.call('requestSessionRebuild', {'recipientId': msg.senderId});
+        _e2eFlowLog(
+            'IDENTITY_RESET_REBUILD_REQUESTED', {'peerId': msg.senderId});
       }
       switch (decision.retryAction) {
         case DecryptionRetryAction.markHistoryPeerForRetry:

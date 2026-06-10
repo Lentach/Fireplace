@@ -18,6 +18,7 @@ void main() {
           expect(d.persistTerminalFailure, isTrue);
           expect(d.markContentFailed, isTrue);
           expect(d.retryAction, DecryptionRetryAction.none);
+          expect(d.notifyPeerRebuild, isFalse);
         }
       }
     });
@@ -34,11 +35,12 @@ void main() {
           expect(d.persistTerminalFailure, isTrue);
           expect(d.markContentFailed, isTrue);
           expect(d.retryAction, DecryptionRetryAction.none);
+          expect(d.notifyPeerRebuild, isFalse);
         }
       }
     });
 
-    test('identity reset overrides noSession/unknown → terminal, no persist, no retry', () {
+    test('identity reset overrides noSession/unknown → terminal, no persist, no retry, notify peer', () {
       for (final kind in [
         DecryptionFailureKind.noSession,
         DecryptionFailureKind.unknown,
@@ -53,6 +55,9 @@ void main() {
           expect(d.persistTerminalFailure, isFalse);
           expect(d.markContentFailed, isTrue);
           expect(d.retryAction, DecryptionRetryAction.none);
+          // The peer's session targets our DEAD identity — telling them to
+          // re-key destroys nothing recoverable and stops further dead sends.
+          expect(d.notifyPeerRebuild, isTrue);
         }
       }
     });
@@ -67,6 +72,7 @@ void main() {
       expect(d.persistTerminalFailure, isFalse);
       expect(d.markContentFailed, isFalse);
       expect(d.retryAction, DecryptionRetryAction.markHistoryPeerForRetry);
+      expect(d.notifyPeerRebuild, isFalse);
     });
 
     test('noSession (live) → keep [encrypted], schedule live retry', () {
@@ -79,6 +85,7 @@ void main() {
       expect(d.persistTerminalFailure, isFalse);
       expect(d.markContentFailed, isFalse);
       expect(d.retryAction, DecryptionRetryAction.scheduleLiveRetry);
+      expect(d.notifyPeerRebuild, isFalse);
     });
 
     test('unknown (history) → keep [encrypted], mark history peer for retry', () {
@@ -91,6 +98,7 @@ void main() {
       expect(d.persistTerminalFailure, isFalse);
       expect(d.markContentFailed, isFalse);
       expect(d.retryAction, DecryptionRetryAction.markHistoryPeerForRetry);
+      expect(d.notifyPeerRebuild, isFalse);
     });
 
     test('unknown (live) → terminal [Decryption failed], schedule live retry', () {
@@ -103,6 +111,7 @@ void main() {
       expect(d.persistTerminalFailure, isFalse);
       expect(d.markContentFailed, isTrue);
       expect(d.retryAction, DecryptionRetryAction.scheduleLiveRetry);
+      expect(d.notifyPeerRebuild, isFalse);
     });
   });
 }

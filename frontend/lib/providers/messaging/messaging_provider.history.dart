@@ -174,10 +174,6 @@ extension MessagingHistory on MessagingProvider {
     required List<MessageModel> existingForConv,
     required List<MessageModel> serverSnapshot,
   }) {
-    final serverIds = <int>{
-      for (final m in serverSnapshot)
-        if (m.id > 0) m.id,
-    };
     final serverTempIds = <String>{
       for (final m in serverSnapshot)
         if (m.tempId != null) m.tempId!,
@@ -185,8 +181,14 @@ extension MessagingHistory on MessagingProvider {
 
     final mergedById = <int, MessageModel>{};
 
+    // Pre-seed ALL local rows so overlapping ids go through
+    // _mergeMessagePreferNewer below. The old `!serverIds.contains(m.id)`
+    // exclusion made the server snapshot replace local rows wholesale: every
+    // reconnect resurrected decrypted/terminal rows as "[encrypted]"
+    // placeholders, which re-armed the decrypt-retry machinery on every pass
+    // (the Bad-MAC → session-reset loop).
     for (final m in existingForConv) {
-      if (m.id > 0 && !serverIds.contains(m.id)) {
+      if (m.id > 0) {
         mergedById[m.id] = m;
       }
     }

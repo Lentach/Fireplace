@@ -149,6 +149,25 @@ class _IdentityResetEncryption extends _FakeEncryptionProvider {
   }
 }
 
+/// Always throws NoSessionException — simulates the receiver having lost the
+/// Signal session (or never had one) while the peer keeps sending on theirs.
+/// Counts deletes + decrypts to pin the Bad-MAC → reset cascade regression.
+class _AlwaysNoSessionEncryption extends _FakeEncryptionProvider {
+  int deleteSessionCalls = 0;
+  int decryptCalls = 0;
+
+  @override
+  Future<void> deleteSessionWithPeer(int peerUserId) async {
+    deleteSessionCalls++;
+  }
+
+  @override
+  Future<String> decrypt(int senderId, String ciphertext) async {
+    decryptCalls++;
+    throw Exception('NoSessionException - No session for: $senderId:1');
+  }
+}
+
 /// Second decrypt throws DuplicateMessageException (live decrypt already advanced ratchet).
 class _DuplicateDecryptEncryption extends _FakeEncryptionProvider {
   int decryptCalls = 0;
@@ -292,12 +311,19 @@ void main() {
       () async {
         provider.setActiveConversationIdForTest(10);
 
+        // Recent timestamps: these are unread disappearing messages (TTL 60s,
+        // expiresAt null) — old createdAt would trip the never-read 24h
+        // expiry fallback now that the history merge preserves the TTL.
+        String recentCreatedAt(int id) => DateTime.now()
+            .toUtc()
+            .subtract(Duration(seconds: 30 - id))
+            .toIso8601String();
+
         for (var id = 1; id <= 3; id++) {
           provider.onNewMessage(
             incomingJson(
               id: id,
-              createdAt:
-                  '2026-01-01T00:00:${id.toString().padLeft(2, '0')}.000Z',
+              createdAt: recentCreatedAt(id),
             ),
           );
         }
@@ -308,8 +334,7 @@ void main() {
             3,
             (i) => incomingJson(
               id: i + 1,
-              createdAt:
-                  '2026-01-01T00:00:${(i + 1).toString().padLeft(2, '0')}.000Z',
+              createdAt: recentCreatedAt(i + 1),
               includeTtl: false,
             ),
           ),
@@ -432,9 +457,14 @@ void main() {
         fakeAsync((async) {
           provider.setActiveConversationIdForTest(10);
 
+          // Recent timestamps — see the recipient-burst test above.
+          String recentCreatedAt(int id) => DateTime.now()
+              .toUtc()
+              .subtract(Duration(seconds: 30 - id))
+              .toIso8601String();
+
           for (var id = 1; id <= 3; id++) {
-            final createdAt =
-                '2026-01-01T00:00:${id.toString().padLeft(2, '0')}.000Z';
+            final createdAt = recentCreatedAt(id);
             provider.onNewMessage(incomingJson(id: id, createdAt: createdAt));
             encryption.cacheDecryption(
               id,
@@ -454,8 +484,7 @@ void main() {
               3,
               (i) => incomingJson(
                 id: i + 1,
-                createdAt:
-                    '2026-01-01T00:00:${(i + 1).toString().padLeft(2, '0')}.000Z',
+                createdAt: recentCreatedAt(i + 1),
                 includeTtl: false,
               ),
             ),
@@ -463,6 +492,8 @@ void main() {
 
           async.flushMicrotasks();
 
+          expect(provider.messages.length, 3,
+              reason: 'rows must survive the expiry sweep');
           expect(
             provider.messages.every((m) => m.disappearAfterSeconds == 60),
             isTrue,
@@ -594,7 +625,7 @@ void main() {
     );
 
     test(
-      'history decrypt failure resets session and retries instead of permanent [Decryption failed]',
+      'history decrypt failure requests rebuild and retries WITHOUT deleting the local session',
       () async {
         final retryEncryption = _HistoryDecryptRetryEncryption();
         provider.setEncryptionProvider(retryEncryption);
@@ -613,7 +644,10 @@ void main() {
         await Future<void>.delayed(Duration.zero);
         await Future<void>.delayed(Duration.zero);
 
-        expect(retryEncryption.deleteSessionCalls, 1);
+        // Deleting the local session wipes archived ratchet states and turns
+        // the peer's in-flight messages into permanent Bad-MAC losses. The
+        // recovery path must only *request* a rebuild (lossless).
+        expect(retryEncryption.deleteSessionCalls, 0);
         expect(
           emitted.any(
             (e) =>
@@ -964,6 +998,149 @@ void main() {
     );
 
     test(
+      'NoSession cascade: never deletes session; loop settles instead of re-firing on every pass',
+      () async {
+        final enc = _AlwaysNoSessionEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        // 1. Live message fails decrypt → arms the live-failure retry set.
+        provider.onNewMessage(incomingJson(
+          id: 7656,
+          createdAt: '2026-01-01T00:00:01.000Z',
+          includeTtl: false,
+        ));
+        // Let the 800ms debounced live retry fire (it emits its own single
+        // rebuild request for the live failure — not under test here).
+        await Future<void>.delayed(const Duration(milliseconds: 850));
+        emitted.clear();
+
+        // 2. First history pass: rows fail NoSession → ONE rebuild request,
+        //    rows become terminal [Decryption failed].
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            for (final id in [7656, 7657, 7658])
+              incomingJson(
+                id: id,
+                createdAt: '2026-01-01T00:00:0${id - 7655}.000Z',
+                includeTtl: false,
+              ),
+          ],
+        });
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+
+        expect(
+          enc.deleteSessionCalls,
+          0,
+          reason: 'deleting the session converts the peer\'s in-flight '
+              'old-session messages into permanent Bad-MAC losses',
+        );
+        expect(
+          provider.messages.every((m) => m.content == '[Decryption failed]'),
+          isTrue,
+        );
+        final rebuildsPass1 = emitted
+            .where((e) => e['event'] == 'requestSessionRebuild')
+            .length;
+        expect(rebuildsPass1, 1,
+            reason: 'rebuild request must be deduped within a pass '
+                '(old code emitted twice: retry + recoverUnresolved)');
+
+        // 3. Second history pass (reconnect replay): everything is terminal —
+        //    the machinery must stay quiet: no resets, no re-decrypts, no deletes.
+        emitted.clear();
+        final decryptsAfterFirstPass = enc.decryptCalls;
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            for (final id in [7656, 7657, 7658])
+              incomingJson(
+                id: id,
+                createdAt: '2026-01-01T00:00:0${id - 7655}.000Z',
+                includeTtl: false,
+              ),
+          ],
+        });
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+
+        expect(enc.deleteSessionCalls, 0);
+        expect(enc.decryptCalls, decryptsAfterFirstPass,
+            reason: '[Decryption failed] is terminal — no re-attempts');
+        expect(
+          emitted.where((e) => e['event'] == 'requestSessionRebuild'),
+          isEmpty,
+          reason: 'peer must be pruned from the failure sets once nothing '
+              'recoverable remains — the old sticky set re-fired forever',
+        );
+      },
+    );
+
+    test(
+      'identity reset notifies the peer to re-key exactly once, with no local delete',
+      () async {
+        final enc = _IdentityResetEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 301,
+              createdAt: '2026-01-01T00:00:01.000Z',
+              includeTtl: false,
+            ),
+            incomingJson(
+              id: 302,
+              createdAt: '2026-01-01T00:00:02.000Z',
+              includeTtl: false,
+            ),
+          ],
+        });
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        final rebuilds = emitted
+            .where((e) => e['event'] == 'requestSessionRebuild')
+            .toList();
+        expect(rebuilds.length, 1,
+            reason: 'peer must learn our identity is new on the FIRST dead '
+                'message, not keep sending undecryptable ones until we reply');
+        expect((rebuilds.single['data'] as Map)['recipientId'], 2);
+        expect(enc.deleteSessionCalls, 0);
+        expect(
+          provider.messages.every((m) => m.content == '[Decryption failed]'),
+          isTrue,
+        );
+
+        // Second pass: no duplicate notification.
+        emitted.clear();
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 301,
+              createdAt: '2026-01-01T00:00:01.000Z',
+              includeTtl: false,
+            ),
+          ],
+        });
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+        expect(
+          emitted.where((e) => e['event'] == 'requestSessionRebuild'),
+          isEmpty,
+        );
+      },
+    );
+
+    test(
       'retryDecryptActiveConversation does NOT delete session when messages are already [Decryption failed]',
       () async {
         final enc = _AlwaysFailWithSessionCountEncryption();
@@ -986,16 +1163,16 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 50));
 
         expect(provider.messages.single.content, '[Decryption failed]');
-        final deletesAfterFirstPass = enc.deleteSessionCalls;
-        expect(deletesAfterFirstPass, greaterThan(0));
+        expect(enc.deleteSessionCalls, 0,
+            reason: 'inbound decrypt failures must never delete the session');
 
         // Simulate 900ms timer firing (retryDecryptActiveConversation).
-        // With the fix, [Decryption failed] is terminal — no second session delete.
+        // [Decryption failed] is terminal — still no session delete.
         await provider.retryDecryptActiveConversation();
         await Future<void>.delayed(Duration.zero);
 
-        expect(enc.deleteSessionCalls, deletesAfterFirstPass,
-            reason: 'session must not be deleted again for [Decryption failed] messages');
+        expect(enc.deleteSessionCalls, 0,
+            reason: 'session must not be deleted for [Decryption failed] messages');
         expect(provider.messages.single.content, '[Decryption failed]');
       },
     );
