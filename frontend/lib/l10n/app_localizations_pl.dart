@@ -709,6 +709,13 @@ class AppLocalizationsPl extends AppLocalizations {
   String get composerAttachmentRemoveTooltip => 'Usuń załącznik';
 
   @override
+  String get snackbarPastedImageTooLarge => 'Obraz jest za duży (maks. 20 MB)';
+
+  @override
+  String get snackbarPastedImageUnsupported =>
+      'Nie można wkleić tego typu obrazu';
+
+  @override
   String get pinnedMessageUnpinTooltip => 'Odepnij';
 
   @override

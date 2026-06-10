@@ -701,6 +701,13 @@ class AppLocalizationsEn extends AppLocalizations {
   String get composerAttachmentRemoveTooltip => 'Remove attachment';
 
   @override
+  String get snackbarPastedImageTooLarge => 'Image is too large (max 20 MB)';
+
+  @override
+  String get snackbarPastedImageUnsupported =>
+      'This image type can\'t be pasted';
+
+  @override
   String get pinnedMessageUnpinTooltip => 'Unpin';
 
   @override

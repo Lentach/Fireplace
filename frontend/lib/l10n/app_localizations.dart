@@ -1316,6 +1316,18 @@ abstract class AppLocalizations {
   /// **'Usuń załącznik'**
   String get composerAttachmentRemoveTooltip;
 
+  /// No description provided for @snackbarPastedImageTooLarge.
+  ///
+  /// In pl, this message translates to:
+  /// **'Obraz jest za duży (maks. 20 MB)'**
+  String get snackbarPastedImageTooLarge;
+
+  /// No description provided for @snackbarPastedImageUnsupported.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie można wkleić tego typu obrazu'**
+  String get snackbarPastedImageUnsupported;
+
   /// No description provided for @pinnedMessageUnpinTooltip.
   ///
   /// In pl, this message translates to:
