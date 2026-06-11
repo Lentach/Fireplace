@@ -119,7 +119,7 @@ export class ChatMessageService {
       )
     ) {
       this.pushCoalescingService
-        .scheduleMessagePush(data.recipientId, conversation.id)
+        .scheduleMessagePush(data.recipientId, conversation.id, sender.username)
         .catch(() => {});
     }
 

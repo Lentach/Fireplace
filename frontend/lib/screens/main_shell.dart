@@ -134,20 +134,27 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
             }
           });
         }
-        if (convs.pendingNotificationConversationId != null) {
+        // Notification deep-link — Option A: route through the SAME open path
+        // the conversations list uses, and only for conversations that exist
+        // locally. Gated on the first server snapshot: consuming earlier would
+        // either race an empty list (cold start) or mount a chat for a stale
+        // id from an old notification (deleted conversation) — such a screen
+        // renders empty and sendMessage finds no conversation, so typed text
+        // vanished. Stale id ⇒ land on the conversations tab and stop.
+        if (convs.pendingNotificationConversationId != null &&
+            convs.hasLoadedConversationsOnce) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            final id = context
-                .read<ConversationsProvider>()
-                .consumePendingNotificationConversationId();
-            if (id == null || !mounted) return;
+            if (!mounted) return;
+            final provider = context.read<ConversationsProvider>();
+            final id = provider.consumePendingNotificationConversationId();
+            if (id == null) return;
             setState(() => _selectedIndex = 0);
+            if (provider.getConversationById(id) == null) return;
             final width = MediaQuery.of(context).size.width;
             if (width >= AppConstants.layoutBreakpointDesktop) {
-              context.read<ConversationsProvider>().setActiveConversation(id);
+              provider.setActiveConversation(id);
             } else {
-              final active =
-                  context.read<ConversationsProvider>().activeConversationId;
-              if (active == id) return;
+              if (provider.activeConversationId == id) return;
               Navigator.of(context).pushAndRemoveUntil(
                 MaterialPageRoute<void>(
                   builder: (_) => ChatDetailScreen(conversationId: id),

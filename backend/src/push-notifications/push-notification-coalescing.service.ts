@@ -14,6 +14,8 @@ const MAX_WAIT_MS = 10000;
 interface PendingBucket {
   debounceTimer: NodeJS.Timeout;
   maxWaitTimer: NodeJS.Timeout;
+  /** Display name of the message sender — shown as the notification title. */
+  senderName?: string;
 }
 
 @Injectable()
@@ -33,6 +35,7 @@ export class PushNotificationCoalescingService implements OnModuleDestroy {
   scheduleMessagePush(
     recipientUserId: number,
     conversationId: number,
+    senderName?: string,
   ): Promise<void> {
     const key = `${recipientUserId}:${conversationId}`;
     const existing = this.pending.get(key);
@@ -42,12 +45,14 @@ export class PushNotificationCoalescingService implements OnModuleDestroy {
       existing.debounceTimer = setTimeout(() => {
         void this.flush(key);
       }, DEBOUNCE_MS);
+      if (senderName) existing.senderName = senderName;
       return Promise.resolve();
     }
 
     const bucket: PendingBucket = {
       debounceTimer: setTimeout(() => void this.flush(key), DEBOUNCE_MS),
       maxWaitTimer: setTimeout(() => void this.flush(key), MAX_WAIT_MS),
+      senderName,
     };
     this.pending.set(key, bucket);
     return Promise.resolve();
@@ -60,6 +65,7 @@ export class PushNotificationCoalescingService implements OnModuleDestroy {
     clearTimeout(bucket.debounceTimer);
     clearTimeout(bucket.maxWaitTimer);
     this.pending.delete(key);
+    const senderName = bucket.senderName;
 
     const colon = key.indexOf(':');
     const recipientUserId = Number(key.slice(0, colon));
@@ -92,6 +98,7 @@ export class PushNotificationCoalescingService implements OnModuleDestroy {
         unreadCount,
         unreadTotal,
         unreadConversationIds,
+        senderName,
       })
       .catch(() => {});
   }

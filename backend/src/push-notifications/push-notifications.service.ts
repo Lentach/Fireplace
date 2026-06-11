@@ -9,6 +9,7 @@ export interface NotifyOptions {
   unreadCount?: number;              // cumulative unread in this conversation
   unreadTotal?: number;              // user's total unread across all conversations
   unreadConversationIds?: number[];  // conv IDs with unread > 0
+  senderName?: string;               // sender display name (metadata-only; approved for notification title)
 }
 
 @Injectable()
@@ -99,6 +100,9 @@ export class PushNotificationsService implements OnModuleInit {
     if (options.unreadConversationIds != null) {
       data.unreadConversationIds = JSON.stringify(options.unreadConversationIds);
     }
+    if (options.senderName != null) {
+      data.senderName = options.senderName;
+    }
 
     try {
       const result = await admin.messaging().sendEachForMulticast({
@@ -155,6 +159,9 @@ export class PushNotificationsService implements OnModuleInit {
     }
     if (options.unreadConversationIds != null) {
       body.unreadConversationIds = options.unreadConversationIds;
+    }
+    if (options.senderName != null) {
+      body.senderName = options.senderName;
     }
     const payload = JSON.stringify(body);
     const topic = `conv-${options.conversationId}`.slice(0, 32);

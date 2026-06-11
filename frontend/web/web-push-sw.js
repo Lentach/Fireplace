@@ -131,9 +131,15 @@ self.addEventListener('push', function (event) {
     ? payload.unreadConversationIds
     : null;
 
+  // WhatsApp/Signal model: title = sender display name (metadata-only,
+  // approved), body = per-conversation unread count → "Bob: 15 new messages".
+  var senderName = typeof payload.senderName === 'string' && payload.senderName
+    ? payload.senderName
+    : null;
+  var title = senderName || 'Fireplace';
   var body = unreadCount > 1
-    ? 'You have ' + unreadCount + ' new messages'
-    : 'You have a new message';
+    ? unreadCount + ' new messages'
+    : 'New message';
 
   var tag = convId != null ? 'conversation-' + convId : 'new-message';
   var notificationOptions = {
@@ -150,7 +156,7 @@ self.addEventListener('push', function (event) {
   event.waitUntil(
     closeNotificationsForTag(tag)
       .then(function () {
-        return self.registration.showNotification('Fireplace', notificationOptions);
+        return self.registration.showNotification(title, notificationOptions);
       })
       .then(function () {
         return unreadConvIds != null

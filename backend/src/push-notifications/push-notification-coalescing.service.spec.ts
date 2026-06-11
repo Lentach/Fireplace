@@ -100,6 +100,33 @@ describe('PushNotificationCoalescingService', () => {
       expect.objectContaining({ conversationId: 2, unreadTotal: 2 }));
   });
 
+  it('forwards senderName to notify, keeping the latest across a burst', async () => {
+    getUnreadSummary.mockResolvedValue(makeUnreadSummary(10, 2, 2));
+    await service.scheduleMessagePush(2, 10, 'bob');
+    jest.advanceTimersByTime(1000);
+    await service.scheduleMessagePush(2, 10, 'bob');
+    jest.advanceTimersByTime(2500);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({ conversationId: 10, senderName: 'bob' }),
+    );
+  });
+
+  it('omits senderName when never provided', async () => {
+    getUnreadSummary.mockResolvedValue(makeUnreadSummary(10, 1, 1));
+    await service.scheduleMessagePush(2, 10);
+    jest.advanceTimersByTime(2500);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify.mock.calls[0][1].senderName).toBeUndefined();
+  });
+
   it('calls getUnreadSummaryForUser at flush time (not at schedule time)', async () => {
     getUnreadSummary.mockResolvedValue(makeUnreadSummary(10, 1, 1));
     await service.scheduleMessagePush(2, 10);

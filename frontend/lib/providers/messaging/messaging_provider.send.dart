@@ -13,7 +13,12 @@ extension MessagingSend on MessagingProvider {
     if (activeConversationId == null || _currentUserId == null) return;
 
     final conversations = _conversationsProvider!.conversations;
-    final conv = conversations.firstWhere((c) => c.id == activeConversationId);
+    // firstOrNull, NOT firstWhere: a stale active id (e.g. a notification for
+    // a deleted conversation) must not throw before the optimistic add — the
+    // old StateError here ate typed messages silently.
+    final conv =
+        conversations.where((c) => c.id == activeConversationId).firstOrNull;
+    if (conv == null) return;
     final recipientId = conv_helpers.getOtherUserId(conv, _currentUserId);
 
     // Use conversation disappearing timer if expiresIn not provided
@@ -205,10 +210,12 @@ extension MessagingSend on MessagingProvider {
     final tempId =
         'temp_${DateTime.now().millisecondsSinceEpoch}_$_currentUserId';
     final effectiveReplyToId = _replyingToMessage?.id;
-    // Get disappearing timer from conversation
+    // Get disappearing timer from conversation (null-safe: stale conv id must
+    // not throw mid-send, same reasoning as sendMessage).
     final conversations = _conversationsProvider!.conversations;
-    final conv = conversations.firstWhere((c) => c.id == effectiveConvId);
-    final effectiveExpiresIn = conv.disappearingTimer;
+    final conv =
+        conversations.where((c) => c.id == effectiveConvId).firstOrNull;
+    final effectiveExpiresIn = conv?.disappearingTimer;
 
     final optimisticMessage = _buildOptimisticMediaMessage(
       tempId: tempId,
