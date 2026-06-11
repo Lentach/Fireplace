@@ -42,7 +42,7 @@ class _NotificationNavHostState extends State<_NotificationNavHost> {
 }
 
 void main() {
-  Widget _buildApp(ConversationsProvider convs) {
+  Widget buildApp(ConversationsProvider convs) {
     return ChangeNotifierProvider<ConversationsProvider>.value(
       value: convs,
       child: MaterialApp(
@@ -58,7 +58,7 @@ void main() {
       (tester) async {
     final convs = ConversationsProvider();
 
-    await tester.pumpWidget(_buildApp(convs));
+    await tester.pumpWidget(buildApp(convs));
     await tester.pumpAndSettle();
 
     // Simulate being already in Chat A (push it on top of the root).
@@ -91,7 +91,7 @@ void main() {
     final convs = ConversationsProvider();
     convs.setActiveConversation(5);
 
-    await tester.pumpWidget(_buildApp(convs));
+    await tester.pumpWidget(buildApp(convs));
     await tester.pumpAndSettle();
 
     convs.requestNavigateToConversationFromNotification(5);
