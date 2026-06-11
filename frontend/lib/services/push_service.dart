@@ -5,6 +5,8 @@ import 'package:flutter/foundation.dart'
     show defaultTargetPlatform, kIsWeb, TargetPlatform;
 import '../push_android_stub.dart'
     if (dart.library.io) 'android_fcm_local_notifications.dart' as push_android;
+import '../utils/pending_deep_link_stub.dart'
+    if (dart.library.html) '../utils/pending_deep_link_web.dart';
 import 'api_service.dart';
 import 'web_push_bridge_stub.dart'
     if (dart.library.html) 'web_push_bridge_web.dart';
@@ -68,6 +70,9 @@ class PushService {
       await _registerExistingWebSubscription(jwtToken);
       if (onNavigateToConversation != null) {
         _webPushBridge.listenForNotificationClicks((convId) {
+          // Click handled live — drop the SW's IndexedDB fallback record so it
+          // cannot re-trigger navigation on the next cold start.
+          clearPendingNotificationDeepLink().ignore();
           if (convId != null) onNavigateToConversation(convId);
         });
       }

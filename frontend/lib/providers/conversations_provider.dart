@@ -30,6 +30,12 @@ class ConversationsProvider extends ChangeNotifier {
   /// App/window foreground — server skips push when this chat is already open.
   bool _clientVisible = true;
 
+  /// True once a server conversations snapshot has been processed this session.
+  /// [UnreadBadgeSync] gates on this: before the first snapshot the local
+  /// unread map is empty, and writing that "0" would wipe a legitimate badge
+  /// set by the push SW while the app was closed.
+  bool _conversationsListReceivedOnce = false;
+
   int? _currentUserId;
 
   final _notificationCleaner = createNotificationCleaner();
@@ -81,6 +87,7 @@ class ConversationsProvider extends ChangeNotifier {
   int? get pendingOpenConversationId => _pendingOpenConversationId;
   int? get pendingNotificationConversationId =>
       _pendingNotificationConversationId;
+  bool get hasLoadedConversationsOnce => _conversationsListReceivedOnce;
   bool get activeConversationDeletedByOther => _activeConversationDeletedByOther;
   Map<int, int> get unreadCounts => _unreadCounts;
 
@@ -147,6 +154,7 @@ class ConversationsProvider extends ChangeNotifier {
   /// Handle 'conversationsList' event from backend.
   void onConversationsList(dynamic data) {
     final list = data as List<dynamic>;
+    _conversationsListReceivedOnce = true;
     final previousUnread = Map<int, int>.from(_unreadCounts);
     final newConvs = list
         .map((c) => ConversationModel.fromJson(c as Map<String, dynamic>))
@@ -494,6 +502,7 @@ class ConversationsProvider extends ChangeNotifier {
       _activeConversationDeletedByOther = false;
       _errorMessage = null;
       _clientVisible = true;
+      _conversationsListReceivedOnce = false;
     } else {
       // Reconnect (same user): keep conversations and active chat to avoid flicker.
       _pendingOpenConversationId = null;
@@ -521,6 +530,7 @@ class ConversationsProvider extends ChangeNotifier {
     _activeConversationDeletedByOther = false;
     _errorMessage = null;
     _clientVisible = true;
+    _conversationsListReceivedOnce = false;
     // Clear all push notifications on logout.
     _notificationCleaner.sweepNotificationsKeepUnread(const {}, 0);
     notifyListeners();

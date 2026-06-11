@@ -10,6 +10,8 @@ import 'fcm_background_stub.dart'
 import 'init_file_picker_stub.dart' if (dart.library.html) 'init_file_picker_web.dart' as file_picker_init;
 import 'utils/notify_conv_param_stub.dart'
     if (dart.library.html) 'utils/notify_conv_param_web.dart';
+import 'utils/pending_deep_link_stub.dart'
+    if (dart.library.html) 'utils/pending_deep_link_web.dart';
 import 'l10n/app_localizations.dart';
 import 'providers/auth_provider.dart';
 import 'providers/connection_provider.dart';
@@ -44,7 +46,11 @@ Future<void> main() async {
       fcm_background.firebaseMessagingBackgroundHandler,
     );
   }
-  final coldStartConvId = consumeNotifyConvParam();
+  // Always consume the SW-written IndexedDB record (read + delete) so it can
+  // never re-fire on a later launch; iOS killed-PWA cold start arrives with no
+  // URL param (start_url), so the record is the only deep-link carrier there.
+  final pendingDeepLinkConvId = await consumePendingNotificationDeepLink();
+  final coldStartConvId = consumeNotifyConvParam() ?? pendingDeepLinkConvId;
   stripNotifyConvParam();
   runApp(FireplaceApp(coldStartConversationId: coldStartConvId));
 }

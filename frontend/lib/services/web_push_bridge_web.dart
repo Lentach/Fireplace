@@ -190,6 +190,15 @@ class WebPushBridge {
         } catch (_) {}
       }).toJS,
     );
+
+    // REQUIRED: with addEventListener (vs the onmessage setter) the spec keeps
+    // client messages queued until startMessages() is called — WebKit enforces
+    // this strictly, so without it the SW's notification-click postMessage is
+    // queued forever and taps never navigate (iOS PWA Bug 2).
+    try {
+      (web.window.navigator.serviceWorker as JSObject)
+          .callMethod<JSAny?>('startMessages'.toJS);
+    } catch (_) {}
   }
 
 }

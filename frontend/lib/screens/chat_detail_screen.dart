@@ -310,8 +310,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
-      final unreadTotal = _conversations.unreadCounts.values
-          .fold<int>(0, (sum, c) => sum + c);
+      // Exclude this conversation — opening it reads it, but the local count
+      // may not be zeroed yet when this runs, and the badge must not flash
+      // the about-to-be-read messages back in.
+      final unreadTotal = _conversations.unreadCounts.entries
+          .where((e) => e.key != widget.conversationId)
+          .fold<int>(0, (sum, e) => sum + e.value);
       _notificationCleaner.closeNotificationForConversation(
         widget.conversationId,
         newUnreadTotal: unreadTotal,

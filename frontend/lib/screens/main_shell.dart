@@ -13,6 +13,8 @@ import '../providers/connection_provider.dart';
 import '../providers/conversations_provider.dart';
 import '../providers/friends_provider.dart';
 import 'chat_detail_screen.dart';
+import '../utils/pending_deep_link_stub.dart'
+    if (dart.library.html) '../utils/pending_deep_link_web.dart';
 import '../utils/tab_visibility.dart';
 import '../services/unread_badge_sync.dart';
 import '../widgets/top_snackbar.dart';
@@ -61,6 +63,15 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           if (!auth.isLoggedIn) return;
           context.read<ConversationsProvider>().setClientVisible(true);
           context.read<ConnectionProvider>().ensureReconnectIfNeeded();
+          // iOS PWA: a notification tap on a suspended WebView loses the SW's
+          // click postMessage — the SW also persisted the target conversation
+          // to IndexedDB, so drain it now that the tab is visible again.
+          final pendingConvId = await consumePendingNotificationDeepLink();
+          if (pendingConvId != null && mounted) {
+            context
+                .read<ConversationsProvider>()
+                .requestNavigateToConversationFromNotification(pendingConvId);
+          }
         }());
       });
     }

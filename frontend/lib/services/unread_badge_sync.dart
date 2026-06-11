@@ -4,16 +4,30 @@ import '../providers/conversations_provider.dart';
 import '../utils/app_badge_math.dart';
 import 'badging_bridge_stub.dart'
     if (dart.library.html) 'badging_bridge_web.dart';
+import 'push_sw_channel_stub.dart'
+    if (dart.library.html) 'push_sw_channel_web.dart';
 
 /// Keeps the PWA app icon badge in sync with [ConversationsProvider.unreadCounts].
 ///
-/// Web-only effect ([BadgingBridge.isSupported]); debounces rapid list updates.
+/// Writes route through the **push SW** (set-badge/clear-badge messages, see
+/// web-push-sw.js) so the SW is the single badge writer — its push handler and
+/// the app's reads serialize in one worker instead of racing. The window-context
+/// Badging API is only a fallback when the push SW is not registered.
+///
+/// Flushes are gated on [ConversationsProvider.hasLoadedConversationsOnce]:
+/// before the first server snapshot the local unread map is empty, and writing
+/// that "0" would wipe a legitimate badge the SW set while the app was closed.
+/// After the first snapshot a zero **is** written — clearing stale badges on
+/// read is the whole point (the old `_lastSentCapped != null` guard refused to
+/// clear badges the SW wrote, which is why stale counts stuck forever).
 class UnreadBadgeSync {
   UnreadBadgeSync(
     this._conversations, {
     BadgingBridge? bridge,
+    PushSwChannel? channel,
     Duration debounce = const Duration(milliseconds: 200),
   })  : _bridge = bridge ?? createBadgingBridge(),
+        _channel = channel ?? createPushSwChannel(),
         _debounce = debounce {
     _conversations.addListener(_onConversationsChanged);
     _scheduleFlush();
@@ -21,11 +35,10 @@ class UnreadBadgeSync {
 
   final ConversationsProvider _conversations;
   final BadgingBridge _bridge;
+  final PushSwChannel _channel;
   final Duration _debounce;
 
   Timer? _debounceTimer;
-  /// Last capped value sent to the OS (`null` after clear). Integer badge is required for iOS WebKit.
-  int? _lastSentCapped;
 
   void _onConversationsChanged() {
     _scheduleFlush();
@@ -38,22 +51,27 @@ class UnreadBadgeSync {
 
   Future<void> _flush() async {
     _debounceTimer = null;
-    if (!_bridge.isSupported) return;
+    if (!_conversations.hasLoadedConversationsOnce) return;
 
+    // No value-dedupe: the SW may have written a different value in between
+    // (push race), so an "unchanged" local value can still need re-asserting.
+    // The debounce already rate-limits writes.
     final raw = sumUnreadBadgeCounts(_conversations.unreadCounts);
     final capped = capUnreadForBadge(raw);
 
-    if (capped == 0) {
-      if (_lastSentCapped != null) {
-        _lastSentCapped = null;
-        await _bridge.clearBadge();
-      }
-      return;
-    }
+    final delivered = await _channel.postMessage(
+      capped == 0
+          ? const {'type': 'clear-badge'}
+          : {'type': 'set-badge', 'count': capped},
+    );
+    if (delivered) return;
 
-    if (_lastSentCapped == capped) return;
-    _lastSentCapped = capped;
-    await _bridge.setBadgeCount(capped);
+    if (!_bridge.isSupported) return;
+    if (capped == 0) {
+      await _bridge.clearBadge();
+    } else {
+      await _bridge.setBadgeCount(capped);
+    }
   }
 
   /// Stops listening. Does **not** clear the OS badge — closing the PWA (recents swipe)
@@ -63,6 +81,5 @@ class UnreadBadgeSync {
     _conversations.removeListener(_onConversationsChanged);
     _debounceTimer?.cancel();
     _debounceTimer = null;
-    _lastSentCapped = null;
   }
 }
