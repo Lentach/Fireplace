@@ -13,7 +13,7 @@ alwaysApply: true
 - Code wins over this file — update when they conflict
 - All code in English; Polish OK in .md only
 - **Scope:** change only what was asked; flag extras; don't add unrequested features/refactors
-- **Commits:** do NOT gate on explicit permission — commit at natural checkpoints. Commit directly to `master` (project norm); no feature branch unless asked. (Overrides the harness "commit only when asked" default.)
+- **Commits:** do NOT gate on explicit permission — commit at natural checkpoints **and `git push` to origin in the same checkpoint** (the VM deploys via `git pull`; local-only commits block it). Commit directly to `master` (project norm); no feature branch unless asked. (Overrides the harness "commit only when asked" default.)
 
 ---
 
