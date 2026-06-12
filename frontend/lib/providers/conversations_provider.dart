@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/conversation_model.dart';
 import '../models/message_model.dart';
+import '../utils/e2e_diag_log.dart';
 import '../utils/message_expiry.dart';
 import '../utils/reply_preview_helper.dart';
 import 'conversation_helpers.dart' as conv_helpers;
@@ -163,10 +164,16 @@ class ConversationsProvider extends ChangeNotifier {
     // Reconnect / network handoff: ignore empty snapshots that would wipe a populated
     // local list (stale response, throttled handler, or race before auth was ready).
     if (newConvs.isEmpty && _conversations.isNotEmpty) {
+      E2eDiagLog.add('CONV_LIST', {
+        'count': 0,
+        'ignoredEmpty': true,
+        'localCount': _conversations.length,
+      });
       debugPrint(
           '[ConversationsProvider] Ignoring empty conversationsList (${_conversations.length} local conversations preserved)');
       return;
     }
+    E2eDiagLog.add('CONV_LIST', {'count': newConvs.length});
 
     // If our active conv is no longer in list (e.g. other user deleted), mark it
     if (_activeConversationId != null &&

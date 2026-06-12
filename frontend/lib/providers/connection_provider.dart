@@ -7,6 +7,7 @@ import '../constants/app_constants.dart';
 import '../services/api_service.dart';
 import '../services/push_service.dart';
 import '../services/socket_service.dart';
+import '../utils/e2e_diag_log.dart';
 import 'chat_reconnect_manager.dart';
 import 'conversations_provider.dart';
 import 'encryption_provider.dart';
@@ -33,6 +34,12 @@ class ConnectionProvider extends ChangeNotifier {
   int? _coldStartConversationId;
   DateTime? _lastConnectStartedAt;
   Timer? _debouncedConnectTimer;
+
+  /// Bumped on every conversationsList/messageHistory response — liveness
+  /// signal for the resume probe (zombie-socket detection, see
+  /// [ensureReconnectIfNeeded]).
+  int _serverResponseCounter = 0;
+  Timer? _resumeProbeTimer;
 
   int? _currentUserId;
   bool _isConnected = false;
@@ -156,6 +163,7 @@ class ConnectionProvider extends ChangeNotifier {
 
     // 10. On 'disconnect': handle reconnect
     _socketService.onDisconnect((_) {
+      E2eDiagLog.add('SOCKET_DISCONNECT', {'intentional': _intentionalDisconnect});
       _isConnected = false;
       notifyListeners();
 
@@ -179,6 +187,7 @@ class ConnectionProvider extends ChangeNotifier {
   }
 
   void _onSocketTransportConnect(int userId, String token) {
+    E2eDiagLog.add('SOCKET_CONNECT', {'userId': userId});
     _intentionalDisconnect = false;
     _isConnected = true;
     notifyListeners();
@@ -215,6 +224,9 @@ class ConnectionProvider extends ChangeNotifier {
 
   /// After JWT auth completes on the server (`socketReady` event).
   void _onSocketReady() {
+    E2eDiagLog.add('SOCKET_READY', {
+      'activeConvId': _conversationsProvider?.activeConversationId ?? -1,
+    });
     _reconnectManager.resetAttempts();
     _socketService.getConversations();
     _socketService.getFriendRequests();
@@ -254,6 +266,7 @@ class ConnectionProvider extends ChangeNotifier {
   void disconnect({bool isLogout = false}) {
     _intentionalDisconnect = true;
     _debouncedConnectTimer?.cancel();
+    _resumeProbeTimer?.cancel();
     _reconnectManager.cancel();
 
     // Notify sub-providers
@@ -281,13 +294,55 @@ class ConnectionProvider extends ChangeNotifier {
   }
 
   /// Ensure reconnected if needed (e.g. app resume from background).
+  /// Test-only: seed identity so [ensureReconnectIfNeeded]'s guards pass
+  /// without a full connect() (which arms the real connect cooldown).
+  @visibleForTesting
+  void setIdentityForTest(int userId, String token) {
+    _currentUserId = userId;
+    _reconnectManager.tokenForReconnect = token;
+  }
+
   void ensureReconnectIfNeeded() {
-    if (_socketService.isConnected) return;
+    final claimsConnected = _socketService.isConnected;
+    E2eDiagLog.add('RESUME_CHECK', {'socketConnected': claimsConnected});
     if (_currentUserId == null || _reconnectManager.tokenForReconnect == null) {
       return;
     }
-    connect(_currentUserId!, _reconnectManager.tokenForReconnect!,
-        AppConfig.baseUrl);
+    if (!claimsConnected) {
+      connect(_currentUserId!, _reconnectManager.tokenForReconnect!,
+          AppConfig.baseUrl);
+      return;
+    }
+    // Socket CLAIMS connected, but iOS suspends the transport in background
+    // and socket.io only notices on ping timeout (zombie socket) — the resume
+    // used to do nothing, leaving pushed messages invisible until a full
+    // relaunch. Re-sync now and arm a liveness probe: if no server response
+    // lands within the window, force a fresh connect (cheap; reconnect
+    // preserves state by design).
+    _resyncAfterResume();
+  }
+
+  static const _kResumeProbeWindow = Duration(seconds: 6);
+
+  void _resyncAfterResume() {
+    final probeStart = _serverResponseCounter;
+    final activeConvId = _conversationsProvider?.activeConversationId;
+    _socketService.getConversations();
+    if (activeConvId != null) {
+      _socketService.getMessages(activeConvId,
+          limit: AppConstants.messagePageSize);
+    }
+    E2eDiagLog.add('RESUME_RESYNC', {'activeConvId': activeConvId ?? -1});
+
+    _resumeProbeTimer?.cancel();
+    _resumeProbeTimer = Timer(_kResumeProbeWindow, () {
+      if (_serverResponseCounter != probeStart) return; // server replied: alive
+      E2eDiagLog.add('RESUME_PROBE_TIMEOUT', {'forcedReconnect': true});
+      final userId = _currentUserId;
+      final token = _reconnectManager.tokenForReconnect;
+      if (userId == null || token == null) return;
+      connect(userId, token, AppConfig.baseUrl);
+    });
   }
 
   // ---------- Event Routing ----------
@@ -347,6 +402,7 @@ class ConnectionProvider extends ChangeNotifier {
 
     // --- Conversation events ---
     _socketService.on('conversationsList', (data) {
+      _serverResponseCounter++;
       _conversationsProvider?.onConversationsList(data);
     });
     _socketService.on('openConversation', (data) {
@@ -384,6 +440,7 @@ class ConnectionProvider extends ChangeNotifier {
       _messagingProvider?.onMessageSent(data);
     });
     _socketService.on('messageHistory', (data) {
+      _serverResponseCounter++;
       _messagingProvider?.onMessageHistory(data);
     });
     _socketService.on('messageDelivered', (data) {

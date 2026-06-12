@@ -267,8 +267,15 @@ extension MessagingHistory on MessagingProvider {
     } else if (data is List<dynamic>) {
       list = data;
     } else {
+      _e2eFlowLog('HISTORY_DROP', {'reason': 'badPayload'});
       return;
     }
+    _e2eFlowLog('HISTORY_RESP', {
+      'convId': responseConversationId ?? -1,
+      'count': list.length,
+      'activeId': effectiveActive ?? -1,
+      'paginationId': _paginationConversationId,
+    });
     if (responseConversationId != null &&
         effectiveActive != null &&
         responseConversationId != effectiveActive) {
@@ -276,6 +283,11 @@ extension MessagingHistory on MessagingProvider {
         _finishPaginationLoad();
         notifyListeners();
       }
+      _e2eFlowLog('HISTORY_DROP', {
+        'reason': 'convMismatch',
+        'convId': responseConversationId,
+        'activeId': effectiveActive,
+      });
       return;
     }
     final newMessages = list
@@ -317,6 +329,11 @@ extension MessagingHistory on MessagingProvider {
           responseConversationId == effectiveActive;
       final paginationUnset = _paginationConversationId < 0;
       if (!matchesActive && !paginationUnset) {
+        _e2eFlowLog('HISTORY_DROP', {
+          'reason': 'notActiveNotPagination',
+          'convId': responseConversationId,
+          'paginationId': _paginationConversationId,
+        });
         return;
       }
       _paginationConversationId = responseConversationId;
@@ -331,6 +348,11 @@ extension MessagingHistory on MessagingProvider {
 
     if (staleHistory) {
       _mergeServerSnapshotIntoCache(convIdForMerge, newMessages);
+      _e2eFlowLog('HISTORY_DROP', {
+        'reason': 'staleSeq',
+        'convId': convIdForMerge,
+        'mergedToCache': true,
+      });
       // A newer getMessages owns _decryptingHistory — do not release the hold here.
       return;
     }
@@ -392,6 +414,11 @@ extension MessagingHistory on MessagingProvider {
     _paginationOffset = 0;
     _hasMore = false;
     _trackHistoryFetch(conversationId);
+    _e2eFlowLog('HISTORY_REQ', {
+      'convId': conversationId,
+      'seq': _historyFetchSeq,
+      'emitWired': _emit != null,
+    });
     _emit?.call('getMessages', {
       'conversationId': conversationId,
       'limit': _pageSize,

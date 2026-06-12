@@ -15,6 +15,7 @@ import '../providers/friends_provider.dart';
 import 'chat_detail_screen.dart';
 import '../utils/pending_deep_link_stub.dart'
     if (dart.library.html) '../utils/pending_deep_link_web.dart';
+import '../utils/e2e_diag_log.dart';
 import '../utils/tab_visibility.dart';
 import '../services/unread_badge_sync.dart';
 import '../widgets/top_snackbar.dart';
@@ -50,6 +51,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     if (kIsWeb) {
       _tabVisibilitySub = registerTabVisibilityListener((visible) {
         if (!mounted) return;
+        E2eDiagLog.add('TAB_VIS', {'visible': visible});
         final auth = context.read<AuthProvider>();
         if (!visible) {
           if (auth.currentUser != null && auth.token != null) {
@@ -92,6 +94,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   @override
   void didChangeAppLifecycleState(AppLifecycleState state) {
     final auth = context.read<AuthProvider>();
+    E2eDiagLog.add('LIFECYCLE', {
+      'state': state.name,
+      'loggedIn': auth.currentUser != null,
+    });
     if (auth.currentUser == null || auth.token == null) return;
 
     switch (state) {
