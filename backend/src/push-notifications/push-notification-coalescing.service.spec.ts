@@ -127,6 +127,62 @@ describe('PushNotificationCoalescingService', () => {
     expect(notify.mock.calls[0][1].senderName).toBeUndefined();
   });
 
+  it('suppresses an immediately-repeated push with identical counts ("5 then 5")', async () => {
+    getUnreadSummary.mockResolvedValue(makeUnreadSummary(10, 5, 5));
+
+    // Burst flush #1 announces 5.
+    await service.scheduleMessagePush(2, 10);
+    jest.advanceTimersByTime(2500);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(notify).toHaveBeenCalledTimes(1);
+
+    // The message that raced into flush #1's summary opens bucket #2 — its
+    // flush re-reads the same counts and must NOT send a second card.
+    await service.scheduleMessagePush(2, 10);
+    jest.advanceTimersByTime(2500);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(notify).toHaveBeenCalledTimes(1);
+  });
+
+  it('does not suppress when the counts changed', async () => {
+    getUnreadSummary.mockResolvedValue(makeUnreadSummary(10, 5, 5));
+    await service.scheduleMessagePush(2, 10);
+    jest.advanceTimersByTime(2500);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(notify).toHaveBeenCalledTimes(1);
+
+    getUnreadSummary.mockResolvedValue(makeUnreadSummary(10, 6, 6));
+    await service.scheduleMessagePush(2, 10);
+    jest.advanceTimersByTime(2500);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(notify).toHaveBeenCalledTimes(2);
+    expect(notify).toHaveBeenLastCalledWith(
+      2,
+      expect.objectContaining({ unreadCount: 6, unreadTotal: 6 }),
+    );
+  });
+
+  it('does not suppress identical counts after the suppress window', async () => {
+    getUnreadSummary.mockResolvedValue(makeUnreadSummary(10, 5, 5));
+    await service.scheduleMessagePush(2, 10);
+    jest.advanceTimersByTime(2500);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(notify).toHaveBeenCalledTimes(1);
+
+    // Past the 10s window (modern fake timers advance Date.now too).
+    jest.advanceTimersByTime(11000);
+    await service.scheduleMessagePush(2, 10);
+    jest.advanceTimersByTime(2500);
+    await Promise.resolve();
+    await Promise.resolve();
+    expect(notify).toHaveBeenCalledTimes(2);
+  });
+
   it('calls getUnreadSummaryForUser at flush time (not at schedule time)', async () => {
     getUnreadSummary.mockResolvedValue(makeUnreadSummary(10, 1, 1));
     await service.scheduleMessagePush(2, 10);

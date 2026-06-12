@@ -49,14 +49,34 @@ function setBadgeFromSW(n) {
 // replaces same-tag notifications (WebKit bug 258922), so the push handler
 // emulates tag replacement with close-then-show; on engines with working tag
 // replacement this is a harmless no-op pass.
+// Queries BOTH the spec'd filtered form and an unfiltered scan and closes the
+// union — belt-and-suspenders against engines where one form is unreliable.
+// Closing the same notification twice is a harmless no-op. Hard limit (iOS):
+// neither form can return notifications shown by a PREVIOUS SW instance, so
+// cards from older bursts stay until the user swipes them.
 function closeNotificationsForTag(tag) {
-  return self.registration.getNotifications().then(function (notifications) {
-    for (var i = 0; i < notifications.length; i++) {
-      if (notifications[i].tag === tag) {
-        try { notifications[i].close(); } catch (_) {}
-      }
+  function getSafe(filter) {
+    try {
+      var p = filter
+        ? self.registration.getNotifications(filter)
+        : self.registration.getNotifications();
+      return p.catch(function () { return []; });
+    } catch (_) {
+      return Promise.resolve([]);
     }
-  }).catch(function () {});
+  }
+  return Promise.all([getSafe({ tag: tag }), getSafe(null)])
+    .then(function (results) {
+      for (var r = 0; r < results.length; r++) {
+        var list = results[r] || [];
+        for (var i = 0; i < list.length; i++) {
+          if (list[i].tag === tag) {
+            try { list[i].close(); } catch (_) {}
+          }
+        }
+      }
+    })
+    .catch(function () {});
 }
 
 // Close any shown notification whose conversationId is NOT in unreadConvIds.

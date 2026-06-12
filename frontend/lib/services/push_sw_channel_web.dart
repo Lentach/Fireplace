@@ -10,7 +10,9 @@ import 'package:web/web.dart' as web;
 /// the never-clearing iOS badge. Only `getRegistration('/web-push-scope/')`
 /// reaches the push SW.
 class PushSwChannel {
-  static const String _pushSwScope = '/web-push-scope/';
+  /// Public so page-side helpers (e.g. NotificationCleaner's best-effort
+  /// close) target the same registration.
+  static const String pushSwScope = '/web-push-scope/';
 
   /// Returns `true` when the message was handed to the push SW; `false` when
   /// the push SW is not registered/active (e.g. push permission never granted)
@@ -18,7 +20,7 @@ class PushSwChannel {
   Future<bool> postMessage(Map<String, Object?> message) async {
     try {
       final regAny = await web.window.navigator.serviceWorker
-          .getRegistration(_pushSwScope)
+          .getRegistration(pushSwScope)
           .toDart;
       if (regAny.isUndefinedOrNull) return false;
       final active = (regAny as web.ServiceWorkerRegistration).active;
