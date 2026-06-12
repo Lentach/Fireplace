@@ -269,6 +269,70 @@ void main() {
       expect(fiveRows.bubbleHighlightTop, lessThan(fourRows.bubbleHighlightTop));
     });
 
+    test('huge bubble clamps preview and keeps the whole menu on-screen', () {
+      // Taller than the screen and partially scrolled off the top.
+      const bubbleRect = Rect.fromLTWH(16, -400, 200, 2000);
+      final maxContentBottom = viewSize.height - 88;
+      final layout = computeMessageContextMenuLayout(
+        bubbleRect: bubbleRect,
+        viewPadding: viewPadding,
+        viewSize: viewSize,
+        keyboardBottom: 0,
+      );
+
+      expect(layout.previewHeight, lessThan(bubbleRect.height));
+      expect(layout.previewHeight, greaterThan(0));
+      expect(layout.emojiTop, greaterThanOrEqualTo(viewPadding.top));
+      expect(
+        layout.panelTop + panelHeight,
+        lessThanOrEqualTo(maxContentBottom),
+      );
+      expect(layout.panelTop, greaterThan(layout.emojiTop));
+
+      // Stack geometry (equal gaps) holds for the CLAMPED height.
+      final scalePad = scaleOverflow(layout.previewHeight);
+      expect(
+        layout.emojiTop + emojiHeight + gap,
+        closeTo(layout.bubbleHighlightTop - scalePad, 0.001),
+      );
+      expect(
+        layout.bubbleHighlightTop + layout.previewHeight + scalePad + gap,
+        closeTo(layout.panelTop, 0.001),
+      );
+    });
+
+    test('huge bubble with five-row panel also fits on-screen', () {
+      const bubbleRect = Rect.fromLTWH(16, 100, 200, 2000);
+      const fiveRowHeight = kMessageActionPanelHeightEstimate +
+          kMessageActionPanelRowHeightEstimate;
+      final maxContentBottom = viewSize.height - 88;
+      final layout = computeMessageContextMenuLayout(
+        bubbleRect: bubbleRect,
+        viewPadding: viewPadding,
+        viewSize: viewSize,
+        keyboardBottom: 0,
+        panelHeight: fiveRowHeight,
+      );
+
+      expect(layout.emojiTop, greaterThanOrEqualTo(viewPadding.top));
+      expect(
+        layout.panelTop + fiveRowHeight,
+        lessThanOrEqualTo(maxContentBottom),
+      );
+      expect(layout.previewHeight, lessThan(bubbleRect.height));
+    });
+
+    test('normal bubble keeps previewHeight equal to its own height', () {
+      const bubbleRect = Rect.fromLTWH(120, 400, 200, 40);
+      final layout = computeMessageContextMenuLayout(
+        bubbleRect: bubbleRect,
+        viewPadding: viewPadding,
+        viewSize: viewSize,
+        keyboardBottom: 0,
+      );
+      expect(layout.previewHeight, bubbleRect.height);
+    });
+
     test('inverted layout preserves gaps between emoji panel and bubble', () {
       const bubbleRect = Rect.fromLTWH(16, 52, 200, 40);
       final layout = computeMessageContextMenuLayout(
@@ -731,6 +795,80 @@ void main() {
     await tester.pumpAndSettle();
     expect(find.text('Copy'), findsNothing);
     expect(find.text('Reply'), findsOneWidget);
+  });
+
+  testWidgets('huge message: menu fully on-screen and Copy tappable', (tester) async {
+    final bubbleKey = GlobalKey();
+    var copied = false;
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: RpgTheme.themeDataLight,
+        home: Scaffold(
+          body: MultiProvider(
+            providers: [
+              ChangeNotifierProvider<SettingsProvider>(
+                create: (_) => SettingsProvider(),
+              ),
+            ],
+            child: Builder(
+              builder: (ctx) => Center(
+                child: GestureDetector(
+                  onLongPress: () {
+                    final box = bubbleKey.currentContext!.findRenderObject()
+                        as RenderBox;
+                    openMessageContextMenu(
+                      context: ctx,
+                      message: _msg(id: 10, senderId: 1),
+                      bubbleRenderBox: box,
+                      isMine: false,
+                      currentUserId: 1,
+                      onReply: () {},
+                      onPin: () {},
+                      onDelete: () {},
+                      onCopy: () => copied = true,
+                      onReaction: (emoji, alreadyReacted) {},
+                    );
+                  },
+                  // Far taller than the 600px test viewport.
+                  child: SizedBox(
+                    key: bubbleKey,
+                    width: 200,
+                    height: 2000,
+                    child: const ColoredBox(color: Colors.blue),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    // Center positions the 2000px box from y=-700; press a visible point.
+    await tester.longPressAt(const Offset(400, 100));
+    await tester.pumpAndSettle();
+
+    final viewHeight = tester.view.physicalSize.height /
+        tester.view.devicePixelRatio;
+    final panel = tester.renderObject(
+      find.byKey(const Key('context-menu-action-panel')),
+    ) as RenderBox;
+    final emoji = tester.renderObject(
+      find.byKey(const Key('context-menu-emoji-bar')),
+    ) as RenderBox;
+
+    final panelTop = panel.localToGlobal(Offset.zero).dy;
+    expect(panelTop, greaterThanOrEqualTo(0));
+    expect(panelTop + panel.size.height, lessThanOrEqualTo(viewHeight));
+    expect(emoji.localToGlobal(Offset.zero).dy, greaterThanOrEqualTo(0));
+
+    await tester.tap(find.text('Copy'));
+    await tester.pumpAndSettle();
+    expect(copied, isTrue);
+    expect(find.text('Reply'), findsNothing); // menu dismissed
   });
 
   testWidgets('rendered gaps match overlay constant with scale overflow', (tester) async {

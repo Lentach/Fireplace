@@ -101,6 +101,7 @@ typedef _ContextMenuStackLayout = ({
   double panelTop,
   double bubbleHighlightTop,
   bool panelAboveBubble,
+  double previewHeight,
 }) computeMessageContextMenuLayout({
   required Rect bubbleRect,
   required EdgeInsets viewPadding,
@@ -113,6 +114,34 @@ typedef _ContextMenuStackLayout = ({
   const gap = kMessageContextMenuOverlayGap;
   final minTop = viewPadding.top;
   final maxContentBottom = viewSize.height - keyboardBottom - composerClearance;
+
+  // Bubbles taller than the space left between emoji bar and panel can never
+  // fit; the legacy flow would push the panel above the screen. Clamp the
+  // preview height (the overlay crops the replica to it) and center the
+  // emoji → preview → panel stack vertically instead.
+  final availableForBubble =
+      maxContentBottom - minTop - emojiHeight - panelHeight - 2 * gap;
+  final maxPreviewHeight =
+      math.max(48.0, availableForBubble / _kElevatedBubbleScale);
+  if (bubbleRect.height > maxPreviewHeight) {
+    final previewHeight = maxPreviewHeight;
+    final scalePad = bubbleHighlightScaleOverflow(previewHeight);
+    final totalHeight =
+        emojiHeight + gap + previewHeight + 2 * scalePad + gap + panelHeight;
+    final emojiTop = math.max(
+      minTop,
+      minTop + (maxContentBottom - minTop - totalHeight) / 2,
+    );
+    final bubbleTop = emojiTop + emojiHeight + gap + scalePad;
+    return (
+      emojiTop: emojiTop,
+      bubbleHighlightTop: bubbleTop,
+      panelTop: bubbleTop + previewHeight + scalePad + gap,
+      panelAboveBubble: false,
+      previewHeight: previewHeight,
+    );
+  }
+
   final bubbleHeight = bubbleRect.height;
   final scaleOverflow = bubbleHighlightScaleOverflow(bubbleHeight);
 
@@ -180,6 +209,7 @@ typedef _ContextMenuStackLayout = ({
     panelTop: stack.panelTop,
     bubbleHighlightTop: stack.bubbleHighlightTop,
     panelAboveBubble: panelAboveBubble,
+    previewHeight: bubbleHeight,
   );
 }
 
@@ -291,11 +321,44 @@ void openMessageContextMenu({
                 child: Transform.scale(
                   scale: _kElevatedBubbleScale,
                   alignment: Alignment.center,
-                  child: SizedBox(
-                    width: layoutRect.width,
-                    height: layoutRect.height,
-                    child: bubblePreview,
-                  ),
+                  child: layout.previewHeight < layoutRect.height - 0.5
+                      // Huge bubble: crop the replica top-aligned to the
+                      // clamped height with a fade at the cut edge (the full
+                      // message stays visible under the blur scrim).
+                      ? SizedBox(
+                          width: layoutRect.width,
+                          height: layout.previewHeight,
+                          child: ShaderMask(
+                            shaderCallback: (rect) => const LinearGradient(
+                              begin: Alignment.topCenter,
+                              end: Alignment.bottomCenter,
+                              colors: [
+                                Colors.white,
+                                Colors.white,
+                                Colors.transparent,
+                              ],
+                              stops: [0.0, 0.85, 1.0],
+                            ).createShader(rect),
+                            blendMode: BlendMode.dstIn,
+                            child: ClipRect(
+                              child: OverflowBox(
+                                alignment: Alignment.topCenter,
+                                minHeight: layoutRect.height,
+                                maxHeight: layoutRect.height,
+                                child: SizedBox(
+                                  width: layoutRect.width,
+                                  height: layoutRect.height,
+                                  child: bubblePreview,
+                                ),
+                              ),
+                            ),
+                          ),
+                        )
+                      : SizedBox(
+                          width: layoutRect.width,
+                          height: layoutRect.height,
+                          child: bubblePreview,
+                        ),
                 ),
               ),
             ),
