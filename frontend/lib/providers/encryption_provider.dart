@@ -102,10 +102,16 @@ class EncryptionProvider extends ChangeNotifier {
     _e2eFlowLog('SESSION_ENSURE', {'recipientId': recipientId, 'hasSession': hasSession, 'needsRebuild': needsRebuild});
     if (hasSession && !needsRebuild) return;
 
-    // Delete stale session before fetching a fresh bundle (atomic with rebuild).
+    // Rebuild = build OVER the existing record, never delete it first.
+    // libsignal's processPreKeyBundle archives the current ratchet state
+    // itself (libsignal_protocol_dart 0.7.4 session_builder.dart:139) and
+    // persists the record in one storeSession write, so the peer's in-flight
+    // messages on the old state still decrypt via the archived-states
+    // iteration in decryptFromSignal. The deleteSession that used to live
+    // here wiped current + all 40 archived states and turned every in-flight
+    // old-session message into a permanent Bad-MAC loss (msg 8489 class).
     if (needsRebuild && hasSession) {
-      await _encryptionService.deleteSession(recipientId);
-      _e2eFlowLog('SESSION_DELETED_FOR_REBUILD', {'recipientId': recipientId});
+      _e2eFlowLog('SESSION_ARCHIVED_FOR_REBUILD', {'recipientId': recipientId});
     }
 
     // Check if we already have a pending fetch for this user

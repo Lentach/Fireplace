@@ -156,10 +156,17 @@ class _AlwaysNoSessionEncryption extends _FakeEncryptionProvider {
   int deleteSessionCalls = 0;
   int decryptCalls = 0;
 
+  /// Served by [getDecryptedContent] for every id (e.g. restored media keys).
+  Map<String, dynamic>? persisted;
+
   @override
   Future<void> deleteSessionWithPeer(int peerUserId) async {
     deleteSessionCalls++;
   }
+
+  @override
+  Future<Map<String, dynamic>?> getDecryptedContent(int messageId) async =>
+      persisted;
 
   @override
   Future<String> decrypt(int senderId, String ciphertext) async {
@@ -1010,13 +1017,13 @@ void main() {
           createdAt: '2026-01-01T00:00:01.000Z',
           includeTtl: false,
         ));
-        // Let the 800ms debounced live retry fire (it emits its own single
-        // rebuild request for the live failure — not under test here).
+        // Let the 800ms debounced live retry fire — it emits the single
+        // rebuild request this peer gets for the whole app session.
         await Future<void>.delayed(const Duration(milliseconds: 850));
-        emitted.clear();
 
-        // 2. First history pass: rows fail NoSession → ONE rebuild request,
-        //    rows become terminal [Decryption failed].
+        // 2. First history pass: rows fail NoSession → rows become terminal
+        //    [Decryption failed]; NO additional rebuild request (cross-pass
+        //    dedupe — the peer was already asked at the live retry).
         provider.onMessageHistory({
           'conversationId': 10,
           'messages': [
@@ -1042,12 +1049,16 @@ void main() {
           provider.messages.every((m) => m.content == '[Decryption failed]'),
           isTrue,
         );
-        final rebuildsPass1 = emitted
+        final rebuildsSoFar = emitted
             .where((e) => e['event'] == 'requestSessionRebuild')
             .length;
-        expect(rebuildsPass1, 1,
-            reason: 'rebuild request must be deduped within a pass '
-                '(old code emitted twice: retry + recoverUnresolved)');
+        expect(rebuildsSoFar, 1,
+            reason: 'ONE rebuild request total across live retry + history '
+                'pass — every extra emit forces the peer into another '
+                'rebuild on their next send (the SESSION_RESET loop)');
+        expect(enc.needsSessionRebuild(2), isFalse,
+            reason: 'rebuild requests ask the PEER to re-key; our own '
+                'session must never be marked for a forced rebuild');
 
         // 3. Second history pass (reconnect replay): everything is terminal —
         //    the machinery must stay quiet: no resets, no re-decrypts, no deletes.
@@ -1077,6 +1088,133 @@ void main() {
           reason: 'peer must be pruned from the failure sets once nothing '
               'recoverable remains — the old sticky set re-fired forever',
         );
+      },
+    );
+
+    test(
+      'restored keyed-media rows do not re-arm the session-reset machinery',
+      () async {
+        // A received voice/image keeps content == "[encrypted]" forever BY
+        // DESIGN (its decrypted payload is mediaKey/mediaIv, not text). The
+        // placeholder-only "unresolved" predicates counted every such row as
+        // still-undecrypted, so any chat containing received media re-fired
+        // SESSION_RESET on every history pass — and the surviving
+        // markSessionRebuild made the next send rebuild (pre-fix: DELETE) a
+        // valid session. This is the 2026-06-12 LOG-B loop.
+        final enc = _AlwaysNoSessionEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+        // Persisted store holds the restored media keys for the row.
+        enc.persisted = {
+          'content': '',
+          'messageType': 'VOICE',
+          'mediaUrl': 'http://localhost:3000/media/msgs/v.bin',
+          'mediaKey': 'KEYbase64',
+          'mediaIv': 'IVbase64',
+        };
+
+        final row = {
+          'id': 950,
+          'content': '[encrypted]',
+          'encryptedContent': 'cipher-950',
+          'senderId': 2,
+          'senderUsername': 'bob',
+          'conversationId': 10,
+          'deliveryStatus': 'DELIVERED',
+          'messageType': 'VOICE',
+          'mediaUrl': 'http://localhost:3000/media/msgs/v.bin',
+          'createdAt': '2026-01-01T00:00:01.000Z',
+        };
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [row],
+        });
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+
+        expect(enc.decryptCalls, 0,
+            reason: 'restored keyed media must never be re-decrypted');
+        expect(
+          emitted.where((e) => e['event'] == 'requestSessionRebuild'),
+          isEmpty,
+          reason: 'a fully-restored media row is RESOLVED — it must not '
+              'trigger session-reset recovery',
+        );
+        expect(enc.needsSessionRebuild(2), isFalse);
+        expect(enc.deleteSessionCalls, 0);
+
+        // Second pass (reconnect replay) must stay just as quiet.
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [row],
+        });
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+        expect(
+          emitted.where((e) => e['event'] == 'requestSessionRebuild'),
+          isEmpty,
+        );
+        expect(enc.needsSessionRebuild(2), isFalse);
+      },
+    );
+
+    test(
+      'inbound decrypt failure never marks our own session for forced rebuild',
+      () async {
+        final enc = _AlwaysNoSessionEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 901,
+              createdAt: '2026-01-01T00:00:01.000Z',
+              includeTtl: false,
+            ),
+          ],
+        });
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 100));
+
+        // The rebuild request goes to the PEER (socket emit). Our own session
+        // must stay untouched: the old markSessionRebuild here made the next
+        // send rebuild a VALID session — and with the pre-fix delete-on-
+        // rebuild, that destroyed the archived ratchet states the peer's
+        // in-flight messages needed (LOG B: SESSION_ENSURE needsRebuild:true
+        // → SESSION_DELETED_FOR_REBUILD → Bad Mac on msg 8489).
+        expect(
+          emitted.where((e) => e['event'] == 'requestSessionRebuild'),
+          isNotEmpty,
+        );
+        expect(enc.needsSessionRebuild(2), isFalse);
+        expect(enc.deleteSessionCalls, 0);
+      },
+    );
+
+    test(
+      'a tempId is emitted exactly once; retry after failure is still allowed',
+      () async {
+        // First attempt fails at ensureSession (latch must be RELEASED so the
+        // user-driven retry works), second succeeds, third is a duplicate.
+        encryption.failEnsureSession = true;
+        await provider.encryptAndSendForTest(
+            recipientId: 2, content: 'once', tempId: 'temp_dup_1');
+        await provider.encryptAndSendForTest(
+            recipientId: 2, content: 'once', tempId: 'temp_dup_1');
+        await provider.encryptAndSendForTest(
+            recipientId: 2, content: 'once', tempId: 'temp_dup_1');
+        await Future<void>.delayed(Duration.zero);
+
+        final sendEvents =
+            emitted.where((e) => e['event'] == 'sendMessage').toList();
+        expect(sendEvents.length, 1,
+            reason: 'each duplicate emit advances the Double Ratchet and '
+                'hands the recipient an undecryptable duplicate — one '
+                'optimistic message must be emitted exactly once');
       },
     );
 

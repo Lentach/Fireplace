@@ -57,12 +57,24 @@ extension MessagingDecrypt on MessagingProvider {
     }
   }
 
+  /// True for a row that still NEEDS a decrypt pass: shows the "[encrypted]"
+  /// placeholder AND has no usable decrypted content. The second check is
+  /// load-bearing: restored keyed-media rows (voice/image) legitimately keep
+  /// `content == '[encrypted]'` forever — their decrypted payload is the
+  /// mediaKey/mediaIv, not text — so placeholder-only predicates counted every
+  /// received media message as "still undecrypted" and re-armed the
+  /// session-reset machinery on every history pass (the 2026-06-12
+  /// SESSION_RESET{historyRetry} loop).
+  bool _isUnresolvedEncryptedInbound(MessageModel m) =>
+      m.needsDecryption(_currentUserId) &&
+      m.displayAsEncryptedPlaceholder &&
+      !_hasUsableDecryptedContent(m);
+
   bool _conversationHasUndecryptedInbound(int conversationId) {
     return _messages.any(
       (m) =>
           m.conversationId == conversationId &&
-          m.needsDecryption(_currentUserId) &&
-          m.displayAsEncryptedPlaceholder,
+          _isUnresolvedEncryptedInbound(m),
     );
   }
 
@@ -163,7 +175,8 @@ extension MessagingDecrypt on MessagingProvider {
         msg.messageType != MessageType.text;
   }
 
-  /// Ciphertext type prefix ("{type}:{base64}"): 3 = PreKey, 1 = Signal.
+  /// Ciphertext type prefix ("{type}:{base64}"): 3 = PreKey, 2 = Signal
+  /// (CiphertextMessage.prekeyType / whisperType in libsignal_protocol_dart).
   /// Diagnostic only — null when the prefix is absent/unparseable.
   int? _ciphertextType(String? ciphertext) {
     if (ciphertext == null) return null;
@@ -173,7 +186,22 @@ extension MessagingDecrypt on MessagingProvider {
   }
 
   void _requestSessionRebuildForPeer(int peerId, {required String trigger}) {
-    _encryptionProvider?.markSessionRebuild(peerId);
+    // Once per peer until a decrypt from them succeeds: every emit forces the
+    // peer to re-key on their next send (OTP burn; on pre-fix clients a
+    // lossful local delete), so the old per-pass dedupe re-spammed it on
+    // every reconnect/history pass — the SESSION_RESET{historyRetry} loop.
+    if (!_rebuildRequestedPeers.add(peerId)) {
+      _e2eFlowLog('SESSION_RESET_SKIPPED',
+          {'peerId': peerId, 'trigger': trigger, 'reason': 'alreadyRequested'});
+      return;
+    }
+    // NOTE: deliberately NO markSessionRebuild here. This request asks the
+    // PEER to re-key; our own outbound session stays untouched — it either
+    // still works, or the peer sends US sessionRebuildNeeded (the one
+    // legitimate setter of the force-rebuild flag). The old mark made our
+    // next send rebuild a perfectly valid session, and with the pre-fix
+    // delete-on-rebuild that destroyed the archived ratchet states the
+    // peer's in-flight messages needed (msg 8489 Bad-MAC class).
     _emit?.call('requestSessionRebuild', {'recipientId': peerId});
     _e2eFlowLog('SESSION_RESET', {'peerId': peerId, 'trigger': trigger});
   }
@@ -186,10 +214,7 @@ extension MessagingDecrypt on MessagingProvider {
     if (_liveDecryptFailedPeers.isEmpty) return;
     _liveDecryptFailedPeers.removeWhere((peerId) {
       final hasRecoverable = _messages.any(
-        (m) =>
-            m.senderId == peerId &&
-            m.needsDecryption(_currentUserId) &&
-            m.displayAsEncryptedPlaceholder,
+        (m) => m.senderId == peerId && _isUnresolvedEncryptedInbound(m),
       );
       if (!hasRecoverable) {
         _e2eFlowLog('LIVE_RETRY_PRUNED', {'peerId': peerId});
@@ -364,9 +389,7 @@ extension MessagingDecrypt on MessagingProvider {
         ...?_historyDecryptFailedPeers,
         ..._liveDecryptFailedPeers,
         for (final m in _messages)
-          if (m.needsDecryption(_currentUserId) &&
-              m.displayAsEncryptedPlaceholder)
-            m.senderId,
+          if (_isUnresolvedEncryptedInbound(m)) m.senderId,
       };
       if (peersNeedingRetry.isNotEmpty) {
         final retried = await _retryDecryptForPeers(
@@ -397,7 +420,7 @@ extension MessagingDecrypt on MessagingProvider {
     if (_decryptHistoryGeneration != generation) return false;
     final unresolvedPeers = <int>{};
     for (final m in _messages) {
-      if (m.needsDecryption(_currentUserId) && m.displayAsEncryptedPlaceholder) {
+      if (_isUnresolvedEncryptedInbound(m)) {
         unresolvedPeers.add(m.senderId);
       }
     }
@@ -562,6 +585,9 @@ extension MessagingDecrypt on MessagingProvider {
         msg.senderId,
         msg.encryptedContent!,
       );
+      // Decrypt from this peer works again — allow a future failure to issue
+      // a fresh rebuild request.
+      _rebuildRequestedPeers.remove(msg.senderId);
       try {
         final parsed = E2eEnvelope.parse(plaintext);
         _e2eFlowLog('DECRYPT_OK', {

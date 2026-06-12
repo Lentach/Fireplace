@@ -119,6 +119,18 @@ class MessagingProvider extends ChangeNotifier {
   /// Peers already told to re-key after our identity reset (once per session).
   final Set<int> _identityResetRebuildNotified = {};
 
+  /// Peers we already sent `requestSessionRebuild` to. Cleared per peer when a
+  /// decrypt from them succeeds; cleared wholesale on fresh connect/logout.
+  /// Without this, every history pass re-asked the peer to re-key (the
+  /// SESSION_RESET{historyRetry} loop), forcing rebuild churn on every send.
+  final Set<int> _rebuildRequestedPeers = {};
+
+  /// tempIds whose `sendMessage` emit already happened — a second emit for the
+  /// same optimistic message would advance the ratchet again and hand the
+  /// recipient an undecryptable duplicate. Released on send failure (so user
+  /// retry works); cleared on connect/logout with [_pendingSendContent].
+  final Set<String> _emittedSendTempIds = {};
+
   /// Incremented on each new messageHistory to cancel stale in-flight decrypt loops.
   /// Each loop captures its generation at start and exits when the counter changes.
   int _decryptHistoryGeneration = 0;
@@ -433,12 +445,16 @@ class MessagingProvider extends ChangeNotifier {
       _partnerRecordingVoice.clear();
       _replyingToMessage = null;
       _pendingSendContent.clear();
+      _emittedSendTempIds.clear();
       _incomingMessageQueue.clear();
       _identityResetRebuildNotified.clear();
+      _rebuildRequestedPeers.clear();
       _cancelDelayedRetryIfAny();
     } else {
       // Reconnect (same user): keep messages to avoid flicker.
       // Clear typing/recording indicators (stale after reconnect).
+      // NOTE: _rebuildRequestedPeers is deliberately KEPT on reconnect —
+      // reconnect storms were exactly what re-fired the rebuild-request loop.
       _typingStatus.clear();
       for (final t in _typingTimers.values) {
         t.cancel();
@@ -447,6 +463,7 @@ class MessagingProvider extends ChangeNotifier {
       _partnerRecordingVoice.clear();
       _replyingToMessage = null;
       _pendingSendContent.clear(); // retry was cancelled; orphaned entries serve no purpose
+      _emittedSendTempIds.clear();
       _cancelDelayedRetryIfAny();
     }
 
@@ -487,6 +504,8 @@ class MessagingProvider extends ChangeNotifier {
     _liveDecryptRetryTimer = null;
     _liveDecryptFailedPeers.clear();
     _identityResetRebuildNotified.clear();
+    _rebuildRequestedPeers.clear();
+    _emittedSendTempIds.clear();
     _cancelDelayedRetryIfAny();
     _currentUserId = null;
     _tokenForReconnect = null;

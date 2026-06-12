@@ -800,12 +800,26 @@ extension MessagingSend on MessagingProvider {
       'recipientId': recipientId,
       'e2eInitialized': e2eReady,
       'messageType': messageType,
+      'tempId': tempId,
     });
     if (!e2eReady) {
       _markMessageFailed(
         tempId,
         'Encryption not ready. Please wait and try again.',
       );
+      return false;
+    }
+
+    // Exactly-once per tempId: a second attempt for the same optimistic
+    // message must not even ENCRYPT (each encrypt advances the Double Ratchet
+    // and hands the recipient a duplicate they may fail on). Latched for the
+    // whole attempt; released by _markMessageFailed so a deliberate user
+    // retry of a FAILED message still goes through.
+    if (!_emittedSendTempIds.add(tempId)) {
+      _e2eFlowLog('SEND_DUPLICATE_BLOCKED', {
+        'recipientId': recipientId,
+        'tempId': tempId,
+      });
       return false;
     }
 
@@ -872,7 +886,7 @@ extension MessagingSend on MessagingProvider {
 
       // 6. Send encrypted payload; include type/media metadata so the server
       // can reference self-hosted blobs (orphan media cleanup, expiry deletes).
-      _e2eFlowLog('SEND_EMIT', {'recipientId': recipientId});
+      _e2eFlowLog('SEND_EMIT', {'recipientId': recipientId, 'tempId': tempId});
       final emitPayload = <String, dynamic>{
         'recipientId': recipientId,
         'content': '[encrypted]',
@@ -935,6 +949,8 @@ extension MessagingSend on MessagingProvider {
       );
 
   void _markMessageFailed(String tempId, String errorMsg) {
+    // Failed = eligible for retry; release the exactly-once send latch.
+    _emittedSendTempIds.remove(tempId);
     final idx = _messages.indexWhere((m) => m.tempId == tempId);
     if (idx != -1) {
       _messages[idx] = _messages[idx].copyWith(
@@ -951,6 +967,8 @@ extension MessagingSend on MessagingProvider {
         .toList();
     if (sending.isEmpty) return;
     for (final msg in sending) {
+      final tid = msg.tempId;
+      if (tid != null) _emittedSendTempIds.remove(tid);
       final idx = _messages.indexWhere((m) => m.tempId == msg.tempId);
       if (idx != -1) {
         _messages[idx] = _messages[idx].copyWith(
