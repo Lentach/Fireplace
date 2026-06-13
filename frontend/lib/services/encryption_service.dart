@@ -131,6 +131,13 @@ class EncryptionService {
     debugPrint('[EncryptionService] Session deleted for userId=$userId (broken session reset)');
   }
 
+  /// TEMP storage-durability probe: peer ids with a persisted Signal session.
+  /// Drives the SESSION_INVENTORY diag event (see [SecureSessionStore.inventoryPeerIds]).
+  Future<List<String>> sessionInventoryPeerIds() async {
+    if (!_initialized) return const [];
+    return _sessionStore.inventoryPeerIds();
+  }
+
   /// Build a session with the given user from their pre-key bundle.
   ///
   /// [preKeyBundle] must contain: registrationId, identityPublicKey,

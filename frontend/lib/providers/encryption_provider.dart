@@ -5,6 +5,7 @@ import 'package:flutter/foundation.dart';
 import '../models/message_model.dart';
 import '../services/encryption_service.dart';
 import '../utils/e2e_diag_log.dart';
+import '../utils/storage_persist.dart';
 
 /// EncryptionProvider — owns all E2E encryption state, initialization,
 /// key exchange, and session management.
@@ -215,6 +216,33 @@ class EncryptionProvider extends ChangeNotifier {
     _pendingPreKeyFetches.remove(recipientId);
   }
 
+  // ---------- TEMP storage-durability probes (remove after root cause) ----------
+
+  /// Logged once per app run.
+  static bool _persistProbed = false;
+
+  Future<void> _logSessionInventory() async {
+    try {
+      final peers = await _encryptionService.sessionInventoryPeerIds();
+      _e2eFlowLog('SESSION_INVENTORY', {
+        'count': peers.length,
+        'peerIds': peers,
+      });
+    } catch (_) {}
+  }
+
+  Future<void> _probeStoragePersistenceOnce() async {
+    if (_persistProbed) return;
+    _persistProbed = true;
+    try {
+      final r = await requestPersistentStorage();
+      _e2eFlowLog('STORAGE_PERSIST', {
+        'supported': r['supported'] ?? false,
+        'granted': r['granted'] ?? false,
+      });
+    } catch (_) {}
+  }
+
   // ---------- E2E Initialization ----------
 
   /// Initialize E2E encryption for the current user. On fresh connect,
@@ -241,6 +269,12 @@ class EncryptionProvider extends ChangeNotifier {
         debugPrint('[E2E] Reconnect: skipping re-init, E2E already active');
         _e2eFlowLog('E2E_RECONNECT_SKIP_INIT', {});
       }
+
+      // TEMP storage-durability probe — snapshot which sessions survived to this
+      // start (compare across reloads), and once per app run ask the browser to
+      // stop evicting our keystore. Remove with the rest of the SESSION_* probes.
+      await _logSessionInventory();
+      await _probeStoragePersistenceOnce();
 
       if (_encryptionService.needsKeyUpload) {
         final keys = _encryptionService.getKeysForUpload();

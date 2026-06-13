@@ -182,6 +182,24 @@ void main() {
       expect(await service.getDecryptedContent(1006), isNull);
     });
 
+    test('sessionInventoryPeerIds lists only peers with a persisted session', () async {
+      // Pre-seed session rows (+ a non-session key that must be ignored) before
+      // init. Under flutter test kIsWeb is false, so DualStorage reads these
+      // from the FlutterSecureStorage mock.
+      FlutterSecureStorage.setMockInitialValues({
+        'e2e_77_session_49_1': 'fake-record',
+        'e2e_77_session_580_1': 'fake-record',
+        'e2e_77_signed_pre_key_0': 'not-a-session',
+      });
+      SharedPreferences.setMockInitialValues({});
+      final svc = EncryptionService();
+      await svc.initialize(77);
+
+      final peers = await svc.sessionInventoryPeerIds();
+      expect(peers.toSet(), {'49', '580'},
+          reason: 'multi-digit peer ids must parse; non-session keys excluded');
+    });
+
     test('clearAllKeys (account deletion) deletes sessions AND identity', () async {
       const secureStorage = FlutterSecureStorage();
       await secureStorage.write(
