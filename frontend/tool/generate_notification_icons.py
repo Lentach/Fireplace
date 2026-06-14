@@ -12,8 +12,8 @@ Two families, both derived from the Fireplace brand artwork
     original bug this script fixes. The detailed campfire/shield does not read at
     24dp, so the small icon is a clean bold flame silhouette echoing the brand.
 
-  * LARGE web `icon` (notification body) — the FULL-COLOUR brand campfire scene,
-    cropped out of the tile interior (frame + "FIREPLACE" wordmark removed).
+  * LARGE web `icon` (notification body) — the FULL-COLOUR brand campfire scene
+    (`source/fireplace-logo-scene.png`, pre-cropped), padded to a square.
       - web/icons/notification-icon-512.png  (and -192.png)
 
 Run:  python frontend/tool/generate_notification_icons.py
@@ -26,11 +26,9 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 FRONTEND = os.path.dirname(HERE)
 RES = os.path.join(FRONTEND, "android", "app", "src", "main", "res")
 WEB_ICONS = os.path.join(FRONTEND, "web", "icons")
-SOURCE = os.path.join(HERE, "source", "fireplace-logo-source.png")
-
-# Interior campfire scene inside the metallic frame (detected from the 1024px
-# source by scanning for the frame), excluding frame + wordmark.
-TILE_CROP = (212, 162, 812, 762)
+# Brand campfire scene (flame + shield + logs on the dark hearth bg), pre-cropped
+# to taste — no metallic frame, no wordmark, no light edges.
+SOURCE_SCENE = os.path.join(HERE, "source", "fireplace-logo-scene.png")
 
 SS = 8  # supersample factor for the procedural flame
 
@@ -102,9 +100,20 @@ def render_flame_white(size, margin_frac=0.07):
 
 # ---------------------------------------------------------------------------
 
+def _square_scene():
+    """The campfire scene padded to a square (no aspect distortion) using its own
+    background colour, so the icon edges match the hearth backdrop."""
+    im = Image.open(SOURCE_SCENE).convert("RGBA")
+    w, h = im.size
+    side = max(w, h)
+    bg = im.getpixel((1, 1))  # dark hearth background corner
+    canvas = Image.new("RGBA", (side, side), bg)
+    canvas.paste(im, ((side - w) // 2, (side - h) // 2), im)
+    return canvas
+
+
 def build_large_icon():
-    src = Image.open(SOURCE).convert("RGBA")
-    scene = src.crop(TILE_CROP)
+    scene = _square_scene()
     for sz in (512, 192):
         out = scene.resize((sz, sz), Image.LANCZOS)
         path = os.path.join(WEB_ICONS, f"notification-icon-{sz}.png")
