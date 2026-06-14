@@ -50,47 +50,76 @@ Legend: ⬜ pending · 🔶 in-progress · ✅ done
 - ✅ B14 Push (backend) — payloads **metadata-only**, web-push body VAPID-encrypted (strong); senderName→FCM/Google metadata leak (info). Coalescing/dup-suppress sound.
 - ✅ B15 Health + mappers — no-auth health/version intended; UserMapper no sensitive fields. Clean.
 
-### Frontend (priority: E2E + auth + push)
-- ⬜ F1  Bootstrap — `main.dart`, `config/*`, `firebase_*`, `constants/*`
-- ⬜ F2  Models — `models/*`
-- ⬜ F3  Auth + REST — `providers/auth_provider.dart`, `services/api_service.dart`, `services/session_refresh_exception.dart`
-- ⬜ F4  Connection/Socket — `providers/connection_provider.dart`, `services/socket_service.dart`, `providers/chat_reconnect_manager.dart`
-- ⬜ F5  Conversations — `providers/conversations_provider.dart`, `providers/conversation_helpers.dart`
-- ⬜ F6  Messaging provider (core + 5 part-files) — `providers/messaging_provider.dart`, `providers/messaging/*`
-- ⬜ F7  E2E crypto — `providers/encryption_provider.dart`, `services/encryption_service.dart`, `services/encryption/signal_stores.dart`, `utils/e2e_envelope.dart`, `utils/decryption_failure_policy.dart`, `utils/e2e_diag_log.dart`
-- ⬜ F8  Media crypto — `services/media_crypto_service.dart`, `services/encrypted_media_upload_service.dart`, `utils/audio_*`, `utils/gif_blob_url*`, `services/gif_service.dart`
-- ⬜ F9  Friends + Settings providers — `providers/friends_provider.dart`, `providers/settings_provider.dart`
-- ⬜ F10 Push/badge (frontend) — `services/push_service.dart`, `web_push_bridge*`, `push_sw_channel*`, `android_fcm_local_notifications.dart`, `fcm_background_stub.dart`, `push_android_stub.dart`, `badging_bridge*`, `unread_badge_sync.dart`, `notification_cleaner*`, `pwa_app_badge_clear.dart`, `utils/app_badge_math.dart`, `utils/notify_conv_param*`, `utils/pending_deep_link*`
-- ⬜ F11 Screens — `screens/*`
-- ⬜ F12 Input widgets — `widgets/input/*`, `widgets/chat_input_bar.dart`
-- ⬜ F13 Message widgets — `widgets/message/*`, `widgets/chat_message_bubble.dart`, `widgets/voice_message_bubble.dart`, `widgets/audio/*`
-- ⬜ F14 Other widgets — `widgets/*` (dialogs, tiles, overlays, anti-quantum note, etc.)
-- ⬜ F15 Web platform shims — `utils/web_*`, `utils/*_stub/_web` pairs, `utils/document_visibility*`, `utils/soft_keyboard*`, `utils/storage_persist*`, `utils/secure_context*`, `services/web_orientation_lock*`
-- ⬜ F16 Misc utils — `utils/message_expiry.dart`, `reply_preview_helper.dart`, `scroll_to_message_helper.dart`, `pinned_banner_visibility.dart`, `portrait_lock_policy.dart`, `audio_mime.dart`, `page_load_nonce.dart`, `mic_permission_state*`, `services/link_preview_service.dart`, `services/voice_audio_coordinator.dart`, `services/incoming_message_sound_service.dart`, `services/portrait_lock_service.dart`
-- ⬜ F17 Theme + l10n — `theme/*`, `l10n/*`
+### Frontend (priority: E2E + auth + push) — depth: 🔬 deep · 📖 full read · 🔍 pattern-swept
+- ✅ F1  Bootstrap (📖) — `main.dart` clean (deep-link drain, Firebase dup-app guard); `firebase_secrets.dart` = TODO placeholders (no committed secrets); config dart-defines.
+- ✅ F2  Models (📖) — `message_model` copyWith includes all fields (trap avoided); robust enum/reaction parsing. No findings.
+- ✅ F3  Auth + REST (🔬) — **L-14** tokens in plain SharedPreferences (365d refresh); refresh mutex/transient handling solid; no token logging. `api_service` → **H-04** sink.
+- ✅ F4  Connection/Socket (🔬) — socket token in `auth` not query (good); reconnect cooldown + zombie-socket resume probe sound. No findings.
+- ✅ F5  Conversations (📖) — unread-merge + `hasLoadedConversationsOnce` gate correct; push-freshness heartbeat matches backend. No findings.
+- ✅ F6  Messaging provider (🔬 decrypt/send; 📖 events/history/actions) — send uses server-validated mediaUrl (clean); exactly-once latch as documented.
+- ✅ F7  E2E crypto (🔬) — **H-03** no identity pinning (silent re-key); **L-10** signed-prekey never rotated; **I-04** RAM cache unbounded. `decryption_failure_policy` excellent (no lossful delete).
+- ✅ F8  Media crypto (🔬) — AES-256-GCM fresh key+IV/blob, 20MB cap (strong); `EncryptedMediaUploadService` clean.
+- ✅ F9  Friends + Settings providers (📖) — client mirrors server authz; `blockedByUserIds` unmodifiable. No findings.
+- ✅ F10 Push/badge (🔬 push_service/SW-channel; 🔍 badge math/cleaner shims) — metadata-only; VAPID default is a public key; no plaintext.
+- ✅ F11 Screens (📖 chat_detail/main_shell/auth/settings/privacy; 🔍 rest) — no XSS sinks; url_launcher restricted to `https?://` (text_message_content).
+- ✅ F12 Input widgets (🔍) — composer/recording/attachment; no security-relevant sinks; paste staging validates mime+size.
+- ✅ F13 Message widgets (🔬 image/voice/file/gif fetch path → H-04; 🔍 bubbles/context-menu) — preview image `isSafeImageUrl`-gated.
+- ✅ F14 Other widgets (🔍) — dialogs/tiles/overlays/anti-quantum-note; note dialog encrypts client-side (fragment key).
+- ✅ F15 Web platform shims (🔍) — stub/web pairs; no `dart:html` XSS sinks anywhere (grep-confirmed).
+- ✅ F16 Misc utils (🔬 link_preview_service.isSafeImageUrl, audio_mime; 🔍 rest) — SSRF image guard reused on decrypt path.
+- ✅ F17 Theme + l10n (🔍) — `rpg_theme`, ARB files; no logic/secrets. No findings.
 
 ### Service worker / web shell
-- ⬜ SW1 `frontend/web/web-push-sw.js`, `frontend/web/manifest.json`, `frontend/web/index.html`
+- ✅ SW1 (🔬) — `web-push-sw.js`: metadata-only, notification text rendered as text (no XSS), numeric id parsing, same-origin message handling. Clean.
 
 ### Infra & supply chain
-- ⬜ I1 Docker/compose/nginx/deploy — `docker-compose*.yml`, `backend/Dockerfile*`, `frontend/Dockerfile`, `frontend/nginx.conf`, `deploy.sh`, `.env`, `scripts/`
-- ⬜ CI1 CI — `.github/workflows/ci.yml`
-- ⬜ D1 Dependencies — backend `package.json` + `package-lock.json`, frontend `pubspec.yaml`/`pubspec.lock`
+- ✅ I1 (🔬) — **H-02** root container amplification (L-11); **M-07** prod `NODE_ENV=development`; nginx no-CSP (L-12) + 11m body cap (L-13); `.env` gitignored.
+- ✅ CI1 (📖) — runs backend tests + flutter analyze/test; **no `npm audit`/dep-scan gate** (I-03).
+- ✅ D1 (📖) — modern backend deps; `libsignal_protocol_dart` community port assurance note (I-03). No live audit run.
 
 ### Cross-cutting passes (Phase 2)
-- ⬜ X1 End-to-end E2E flow (keygen→prekey→session→encrypt→transport→decrypt→failure/rebuild)
-- ⬜ X2 AuthN/AuthZ matrix across every REST endpoint + WS event
-- ⬜ X3 Untrusted-input flow (SSRF / injection / path traversal / regex DoS)
-- ⬜ X4 Concurrency/races (optimistic send, reconnect, decrypt order, badge/push)
-- ⬜ X5 Data lifecycle (account delete cascade, media cleanup, expiry, orphans)
+- ✅ X1 E2E flow — keygen→publish(self-scoped)→fetch(public)→build(**H-03 no pin**)→encrypt→transport(ciphertext only)→decrypt(no lossful delete, strong)→rebuild. Plaintext/keys never cross boundary or get logged.
+- ✅ X2 AuthN/AuthZ matrix — every REST endpoint JWT-guarded; every WS handler scoped via `client.data.user.id`. Gaps: **H-01** getMessages (no membership), **M-02** fcm delete (unscoped), **L-07** media-by-UUID, **M-05** WS skips pwChangedAt.
+- ✅ X3 Untrusted input — **M-04** SSRF (alt-IP-encoding bypass), **H-02** path traversal, no SQL injection (parameterized + constant interpolation only), no ReDoS (linear regexes). **L-09** messageType not enum-validated.
+- ✅ X4 Concurrency/races — **M-01** refresh rotation race; optimistic send exactly-once latch OK; reconnect cooldown OK; decrypt serialized per-sender; push dup-suppress OK.
+- ✅ X5 Data lifecycle — account-delete cascade thorough except **L-04** secret_notes; media GC + per-minute expiry cron OK (but feeds **H-02** sink); used-OTP rows never pruned (info).
 
 ---
 
-## Chunk log (one line per chunk when done: status + finding count + summary)
-
-_(updated as chunks complete)_
+## Findings tally
+- **Critical:** 0
+- **High:** 4 — H-01 getMessages IDOR · H-02 mediaUrl path-traversal file delete · H-03 no E2E
+  identity pinning (server MITM) · H-04 access-token exfil via attacker media URL
+- **Medium:** 7 — M-01 refresh rotation race · M-02 unscoped fcm-token delete · M-03 prod
+  `synchronize` gate · M-04 link-preview SSRF · M-05 WS skips pwChangedAt · M-06 deep-pagination
+  memory · M-07 prod `NODE_ENV=development`
+- **Low:** 14 (L-01 … L-14) · **Info:** 4 (I-01 … I-04)
 
 ---
 
 ## Coverage statement
-_(filled at the end — must assert 100% of chunks audited or list deferrals + reasons)_
+
+**100% of the planned audit chunks were audited** (all marked ✅ above), at the risk-weighted depth
+the user approved. Depth legend used in the frontend list: 🔬 deep line-by-line · 📖 full read,
+lighter analysis · 🔍 read + targeted security-pattern sweep.
+
+- **Backend (100 source files):** every domain module, the WS gateway + all 10 chat services, DTOs/
+  validators/guards, entities, mappers, crypto-relevant utils, and all cron/cleanup services were
+  read in full and analyzed deeply. **No backend source file was skipped.**
+- **Frontend (177 files):** all security-critical files (E2E crypto, auth/token, socket/connection,
+  messaging decrypt+send, media crypto, push/SW, api_service) were read line-by-line (🔬). Providers,
+  models, bootstrap, and the main screens were fully read (📖). Leaf UI widgets, theme, l10n, and
+  platform stub/web shims were read at sweep depth (🔍) and additionally verified via repo-wide greps
+  for: web XSS sinks (`dart:html`/`innerHtml`/`eval` — none), dangerous URL schemes (links restricted
+  to `https?://`), committed secrets (none — placeholders only), plaintext/key/token logging (none),
+  and every `fetchMediaBytes` call site (→ H-04).
+- **Infra & supply chain:** Dockerfiles, both compose files, nginx.conf, deploy.sh, `.env` handling,
+  and CI were read in full. Dependencies were reviewed statically (versions/maintenance); **a live
+  `npm audit` / `flutter pub outdated` was NOT executed in this pass** (sandbox/offline) — flagged in
+  I-03 as the one item to run to close the dependency-vuln question.
+- **Cross-cutting passes X1–X5** were completed against the full picture (see above).
+
+**Not separately deep-audited (deferred, low risk):** test suites (`*.spec.ts`, `frontend/test/**`)
+were used as evidence/confirmation but not audited as product code; generated files
+(`l10n/app_localizations*.dart`, `firebase_options.dart`) were skimmed; build artifacts
+(`dist/`, `build/`, `coverage/`, `node_modules/`) were excluded by design.
