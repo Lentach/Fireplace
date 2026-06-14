@@ -59,6 +59,28 @@ class ConversationsProvider extends ChangeNotifier {
     _emitPushClientState();
   }
 
+  /// Periodic foreground heartbeat (web). [reallyVisible] is the LIVE
+  /// `document.visibilityState`, polled rather than read from the (flaky on
+  /// Android) `visibilitychange` event.
+  ///
+  /// Two jobs: (1) self-heal `_clientVisible` if it drifted from reality
+  /// because a background event was missed — without this the server keeps
+  /// skipping pushes for the last-open chat; (2) while genuinely foreground in
+  /// a chat, re-emit so the server's freshness stamp stays current and the
+  /// legitimate "viewing this chat" skip keeps working. Backgrounded ⇒ no
+  /// re-emit ⇒ the server's stamp goes stale ⇒ pushes resume.
+  void heartbeatForegroundPushState(bool reallyVisible) {
+    if (_currentUserId == null) return;
+    if (_clientVisible != reallyVisible) {
+      _clientVisible = reallyVisible; // correct drift
+      _emitPushClientState();
+      return;
+    }
+    if (reallyVisible && _activeConversationId != null) {
+      _emitPushClientState(); // refresh freshness stamp
+    }
+  }
+
   void _emitPushClientState() {
     _emit?.call('pushClientState', {
       'activeConversationId': _activeConversationId,

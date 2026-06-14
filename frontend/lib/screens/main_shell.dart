@@ -13,6 +13,8 @@ import '../providers/connection_provider.dart';
 import '../providers/conversations_provider.dart';
 import '../providers/friends_provider.dart';
 import 'chat_detail_screen.dart';
+import '../utils/document_visibility_stub.dart'
+    if (dart.library.html) '../utils/document_visibility_web.dart';
 import '../utils/pending_deep_link_stub.dart'
     if (dart.library.html) '../utils/pending_deep_link_web.dart';
 import '../utils/e2e_diag_log.dart';
@@ -32,6 +34,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   int _selectedIndex = 0;
   StreamSubscription<dynamic>? _tabVisibilitySub;
   UnreadBadgeSync? _unreadBadgeSync;
+  Timer? _pushStateHeartbeat;
 
   @override
   void initState() {
@@ -76,11 +79,26 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           }
         }());
       });
+      // Foreground heartbeat: polls the LIVE document.visibilityState every 15s
+      // and self-heals clientVisible drift when Android Chrome misses a
+      // visibilitychange event (the cause of "badge updates but no push"). Also
+      // refreshes the server's freshness stamp so the genuine "viewing this
+      // chat" skip keeps working. The server trusts a foreground claim only
+      // within 35s, so a missed background event self-corrects within one beat.
+      _pushStateHeartbeat = Timer.periodic(const Duration(seconds: 15), (_) {
+        if (!mounted) return;
+        final auth = context.read<AuthProvider>();
+        if (auth.currentUser == null || auth.token == null) return;
+        context
+            .read<ConversationsProvider>()
+            .heartbeatForegroundPushState(isDocumentVisible());
+      });
     }
   }
 
   @override
   void dispose() {
+    _pushStateHeartbeat?.cancel();
     final badge = _unreadBadgeSync;
     _unreadBadgeSync = null;
     if (badge != null) {

@@ -14,10 +14,21 @@ import { MessageDeliveryStatus } from '../../messages/message.entity';
 import { MessageMapper } from '../../messages/message.mapper';
 import { MediaCleanupService } from '../../media/media-cleanup.service';
 import { isMessageExpired } from '../../messages/message-expiry.util';
+import {
+  shouldSuppressPushForFocusedState,
+  PushClientState,
+} from '../utils/push-focus-skip';
 
 @Injectable()
 export class ChatMessageService {
   private readonly logger = new Logger(ChatMessageService.name);
+
+  /**
+   * A foreground `pushClientState` claim is only trusted if refreshed within
+   * this window. Must exceed the client heartbeat interval (15s) with margin so
+   * a genuinely-foreground client never goes stale between beats.
+   */
+  private static readonly PUSH_FOCUS_FRESH_MS = 35000;
 
   constructor(
     private readonly messagesService: MessagesService,
@@ -457,9 +468,25 @@ export class ChatMessageService {
     const recipientSocket =
       server.sockets?.sockets?.get(recipientSocketId) ?? undefined;
     const state = recipientSocket?.data?.pushClientState as
-      | { activeConversationId?: number | null; clientVisible?: boolean }
+      | PushClientState
       | undefined;
-    if (!state?.clientVisible) return false;
-    return state.activeConversationId === conversationId;
+    const skip = shouldSuppressPushForFocusedState(
+      state,
+      conversationId,
+      Date.now(),
+      ChatMessageService.PUSH_FOCUS_FRESH_MS,
+    );
+    // Instrumentation (Android push-reliability triage): one line per message
+    // decision, correlated by recipient + conversation. Grep `[push-skip]`.
+    const ageMs =
+      state?.updatedAt != null ? Date.now() - state.updatedAt : null;
+    this.logger.log(
+      `[push-skip] recipient=${recipientId} conv=${conversationId} ` +
+        `decision=${skip ? 'SKIP' : 'SEND'} ` +
+        `visible=${state?.clientVisible ?? 'none'} ` +
+        `active=${state?.activeConversationId ?? 'none'} ` +
+        `stateAgeMs=${ageMs ?? 'none'}`,
+    );
+    return skip;
   }
 }

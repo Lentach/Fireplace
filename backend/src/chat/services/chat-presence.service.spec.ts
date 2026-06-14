@@ -117,16 +117,17 @@ describe('ChatPresenceService', () => {
   });
 
   describe('handlePushClientState', () => {
-    it('stores push prefs on client.data when valid', () => {
+    it('stores push prefs on client.data when valid (with freshness stamp)', () => {
       service.handlePushClientState(mockClient, {
         activeConversationId: 7,
         clientVisible: true,
       });
 
-      expect(mockClient.data.pushClientState).toEqual({
+      expect(mockClient.data.pushClientState).toMatchObject({
         activeConversationId: 7,
         clientVisible: true,
       });
+      expect(typeof mockClient.data.pushClientState.updatedAt).toBe('number');
     });
 
     it('allows null activeConversationId', () => {
@@ -135,10 +136,11 @@ describe('ChatPresenceService', () => {
         clientVisible: false,
       });
 
-      expect(mockClient.data.pushClientState).toEqual({
+      expect(mockClient.data.pushClientState).toMatchObject({
         activeConversationId: null,
         clientVisible: false,
       });
+      expect(typeof mockClient.data.pushClientState.updatedAt).toBe('number');
     });
 
     it('no-op when payload invalid', () => {

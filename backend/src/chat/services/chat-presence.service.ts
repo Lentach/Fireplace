@@ -36,6 +36,11 @@ export class ChatPresenceService {
       client.data.pushClientState = {
         activeConversationId: dto.activeConversationId ?? null,
         clientVisible: dto.clientVisible,
+        // Server receipt time — the push-skip freshness guard only trusts a
+        // foreground claim refreshed within PUSH_FOCUS_FRESH_MS (a stale
+        // clientVisible:true from a missed Android background event must not
+        // suppress the push). The client heartbeats this while foreground.
+        updatedAt: Date.now(),
       };
     } catch {
       return;

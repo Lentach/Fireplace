@@ -377,6 +377,54 @@ void main() {
         expect(pushAfterSetup, 1);
       });
 
+      test('heartbeat self-heals clientVisible drift to false (missed bg event)',
+          () {
+        final provider = ConversationsProvider();
+        provider.onConnect(false);
+        provider.setCurrentUserId(5);
+        provider.openConversation(42); // clientVisible defaults true
+        final pushStates = <Map<String, dynamic>>[];
+        provider.setEmitCallback((event, data) {
+          if (event == 'pushClientState') {
+            pushStates.add(Map<String, dynamic>.from(data as Map));
+          }
+        });
+
+        // The visibilitychange→hidden event never fired, but the poll says
+        // the document is actually hidden: the heartbeat must correct it.
+        provider.heartbeatForegroundPushState(false);
+
+        expect(pushStates, hasLength(1));
+        expect(pushStates.single['clientVisible'], isFalse);
+      });
+
+      test('heartbeat refreshes freshness stamp while foreground in a chat', () {
+        final provider = ConversationsProvider();
+        provider.onConnect(false);
+        provider.setCurrentUserId(5);
+        provider.openConversation(42);
+        var emits = 0;
+        provider.setEmitCallback((event, _) {
+          if (event == 'pushClientState') emits++;
+        });
+
+        provider.heartbeatForegroundPushState(true); // still visible + active
+        expect(emits, 1); // re-emits to refresh the server's updatedAt
+      });
+
+      test('heartbeat is a no-op when not authenticated', () {
+        final provider = ConversationsProvider();
+        provider.onConnect(false);
+        provider.openConversation(42);
+        var emits = 0;
+        provider.setEmitCallback((event, _) {
+          if (event == 'pushClientState') emits++;
+        });
+
+        provider.heartbeatForegroundPushState(true);
+        expect(emits, 0);
+      });
+
       test('closeConversation emits activeConversationId null for pushClientState', () {
         final provider = ConversationsProvider();
         final pushStates = <Map<String, dynamic>>[];
