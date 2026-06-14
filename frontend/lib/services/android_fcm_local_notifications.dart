@@ -50,7 +50,7 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (!_backgroundIsolateReady) {
     await _backgroundIsolateNotificationsPlugin.initialize(
       settings: const InitializationSettings(
-        android: AndroidInitializationSettings('@mipmap/ic_launcher'),
+        android: AndroidInitializationSettings('@drawable/ic_stat_fireplace'),
         iOS: DarwinInitializationSettings(),
       ),
     );
@@ -133,7 +133,10 @@ Future<void> showFireplaceMessageNotificationWithPlugin({
     channelDescription: _androidChannelDescription,
     importance: Importance.high,
     priority: Priority.high,
-    icon: '@mipmap/ic_launcher',
+    // Status-bar small icon: monochrome white-on-transparent flame
+    // (res/drawable-*/ic_stat_fireplace.png). A full-colour icon here renders
+    // as a white square in the status bar.
+    icon: '@drawable/ic_stat_fireplace',
     tag: tag,
   );
 

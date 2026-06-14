@@ -164,8 +164,12 @@ self.addEventListener('push', function (event) {
   var tag = convId != null ? 'conversation-' + convId : 'new-message';
   var notificationOptions = {
     body: body,
-    icon: '/icons/Icon-192.png',
-    badge: '/icons/Icon-192.png',
+    // Large icon (notification body): full-colour Fireplace campfire mark.
+    icon: '/icons/notification-icon-512.png',
+    // Small/status-bar icon: MUST be monochrome white-on-transparent — Android
+    // renders only its alpha channel. A full-colour image here is the classic
+    // "white square" bug.
+    badge: '/icons/notification-badge-96.png',
     tag: tag,
     data: payload,
     // Re-alert on tag replacement (Chrome/Android); ignored by Safari, where

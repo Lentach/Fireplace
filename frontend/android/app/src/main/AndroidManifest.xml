@@ -28,6 +28,17 @@
                 <category android:name="android.intent.category.LAUNCHER"/>
             </intent-filter>
         </activity>
+        <!-- FCM default notification icon + accent. Fireplace delivers data-only
+             messages rendered via flutter_local_notifications (which sets the
+             same small icon per-notification), but these apply if the system
+             ever renders an FCM notification directly. Small icon MUST be
+             monochrome white-on-transparent. -->
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_icon"
+            android:resource="@drawable/ic_stat_fireplace" />
+        <meta-data
+            android:name="com.google.firebase.messaging.default_notification_color"
+            android:resource="@color/fireplace_notification_accent" />
         <!-- Don't delete the meta-data below.
              This is used by the Flutter tool to generate GeneratedPluginRegistrant.java -->
         <meta-data
