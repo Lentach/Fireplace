@@ -148,6 +148,24 @@ export class ChatMessageService {
       return;
     }
 
+    // H-01: enforce conversation membership before serving history. Without this
+    // any authenticated user could read any (sequential-id) conversation's
+    // messages. Mirrors the membership check in handleMarkConversationRead.
+    const conversation = await this.conversationsService.findById(
+      data.conversationId,
+    );
+    if (
+      !conversation ||
+      (conversation.userOne.id !== userId &&
+        conversation.userTwo.id !== userId)
+    ) {
+      client.emit('messageHistory', {
+        conversationId: data.conversationId,
+        messages: [],
+      });
+      return;
+    }
+
     try {
       const messages = await this.messagesService.findByConversation(
         data.conversationId,
