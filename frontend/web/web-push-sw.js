@@ -174,7 +174,14 @@ self.addEventListener('push', function (event) {
     data: payload,
     // Re-alert on tag replacement (Chrome/Android); ignored by Safari, where
     // close-then-show below produces a fresh alerting notification anyway.
+    // web.dev: a tagged notification that replaces another is SILENT unless
+    // renotify is true — without this every update after the first is passive.
     renotify: true,
+    // Belt-and-suspenders heads-up signalling on Android: never silent, and a
+    // vibration pattern marks this as an alerting notification (raises the
+    // chance of a heads-up banner + wake). Ignored by iOS/desktop.
+    silent: false,
+    vibrate: [200, 100, 200],
   };
 
   event.waitUntil(

@@ -179,7 +179,17 @@ export class PushNotificationsService implements OnModuleInit {
           },
           payload,
           {
-            TTL: 120,
+            // urgency:high asks the push service to deliver immediately and wake
+            // a dozing device; but on aggressive OEM power management (MIUI etc.)
+            // delivery is still deferred to a Doze maintenance window. The old
+            // TTL of 120s meant any push deferred past 2 minutes was DROPPED by
+            // the push service → "I only see it when I turn the screen on / it's
+            // inconsistent". 30 min lets a deferred push survive until the device
+            // next wakes; `topic` collapse still guarantees only the latest
+            // (highest-count) card per conversation is delivered, so a late push
+            // is never stale-duplicated. Unread is unread, so a delayed alert is
+            // still correct.
+            TTL: 1800,
             urgency: 'high',
             topic,
           },
