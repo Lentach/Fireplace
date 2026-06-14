@@ -21,8 +21,11 @@ const _mediaOriginEscaped = (process.env.MEDIA_BASE_URL ?? 'http://localhost:300
   /[.*+?^${}()|[\]\\]/g,
   '\\$&',
 );
+// The self-hosted branch is anchored to a single `avatars|msgs/<filename>.<ext>`
+// segment (no `/`, so no `..` traversal) — `mediaUrl` is later turned into a
+// filesystem path and unlinked (H-02). The `$` anchor applies to both branches.
 export const MEDIA_URL_REGEX = new RegExp(
-  `^(https://res\\.cloudinary\\.com/[a-zA-Z0-9_-]+/(video|image|raw)/upload/.+|${_mediaOriginEscaped}/media/.+)`,
+  `^(https://res\\.cloudinary\\.com/[a-zA-Z0-9_-]+/(video|image|raw)/upload/.+|${_mediaOriginEscaped}/media/(avatars|msgs)/[A-Za-z0-9_-]+\\.[A-Za-z0-9]+)$`,
 );
 
 export class SendMessageDto {

@@ -205,4 +205,53 @@ describe('SendMessageDto', () => {
       expect(mediaUrlError).toBeDefined();
     });
   });
+
+  // H-02: a self-hosted mediaUrl is later turned into a filesystem path and
+  // unlinked. The regex must forbid path traversal / nested paths so a crafted
+  // mediaUrl cannot delete arbitrary files.
+  describe('mediaUrl path-traversal rejection (H-02)', () => {
+    const base = process.env.MEDIA_BASE_URL ?? 'http://localhost:3000';
+
+    async function mediaUrlRejected(mediaUrl: string): Promise<boolean> {
+      const dto = createDto({
+        recipientId: 1,
+        content: '[encrypted]',
+        encryptedContent: '3:cipher==',
+        messageType: 'FILE',
+        mediaUrl,
+      });
+      const errors = await validate(dto);
+      return errors.some((e) => e.property === 'mediaUrl');
+    }
+
+    it('rejects ../ escaping the media root', async () => {
+      expect(await mediaUrlRejected(`${base}/media/../../../etc/passwd`)).toBe(
+        true,
+      );
+    });
+
+    it('rejects a msgs/.. traversal', async () => {
+      expect(await mediaUrlRejected(`${base}/media/msgs/../../etc/passwd`)).toBe(
+        true,
+      );
+    });
+
+    it('rejects nested sub-paths under msgs (extra slashes)', async () => {
+      expect(await mediaUrlRejected(`${base}/media/msgs/sub/dir/x.bin`)).toBe(
+        true,
+      );
+    });
+
+    it('still accepts a normal single-segment msgs blob', async () => {
+      expect(await mediaUrlRejected(`${base}/media/msgs/a1b2-c3d4.bin`)).toBe(
+        false,
+      );
+    });
+
+    it('still accepts a normal avatar blob', async () => {
+      expect(await mediaUrlRejected(`${base}/media/avatars/abc123.jpg`)).toBe(
+        false,
+      );
+    });
+  });
 });
