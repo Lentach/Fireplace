@@ -354,10 +354,29 @@ class ApiService {
 
   Future<Uint8List> fetchMediaBytes(String url, String token) async {
     final resolved = _effectiveMediaUrl(url);
-    final headers =
-        resolved.contains('/media/msgs/')
-            ? {'Authorization': 'Bearer $token'}
-            : <String, String>{};
+    final resolvedUri = Uri.tryParse(resolved);
+    final baseUri = Uri.tryParse(baseUrl);
+    // The media `mediaUrl` arrives in the (sender-controlled, server-unvalidated)
+    // E2E envelope, so only ever talk to the backend origin or the legacy
+    // Cloudinary host — and only ever send the JWT to our own origin.
+    final sameOrigin = resolvedUri != null &&
+        baseUri != null &&
+        resolvedUri.scheme == baseUri.scheme &&
+        resolvedUri.host == baseUri.host &&
+        resolvedUri.port == baseUri.port;
+    final isLegacyCloudinary = resolvedUri != null &&
+        resolvedUri.scheme == 'https' &&
+        resolvedUri.host == 'res.cloudinary.com';
+    if (!sameOrigin && !isLegacyCloudinary) {
+      // H-04: never fetch an attacker-chosen host (so the token cannot leak to it).
+      throw Exception(
+        'Refusing to fetch media from untrusted host: ${resolvedUri?.host}',
+      );
+    }
+    // Credentials go to our own backend only — never cross-origin.
+    final headers = sameOrigin && resolved.contains('/media/msgs/')
+        ? {'Authorization': 'Bearer $token'}
+        : <String, String>{};
     final response = await _httpClient.get(Uri.parse(resolved), headers: headers);
     if (response.statusCode != 200) {
       throw Exception('Media fetch failed: ${response.statusCode}');

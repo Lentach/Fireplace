@@ -89,4 +89,68 @@ void main() {
       },
     );
   });
+
+  // Regression for H-04: the access JWT must only ever be sent to the backend
+  // origin. The media `mediaUrl` comes from the (sender-controlled, never
+  // server-validated) E2E envelope, so a malicious peer could point it at an
+  // attacker host containing `/media/msgs/` and harvest the recipient's token.
+  group('ApiService.fetchMediaBytes restricts the JWT to the backend origin', () {
+    const prodBase = 'https://fireplace.example.com';
+
+    test('refuses to fetch an untrusted host and makes no request', () async {
+      var requestMade = false;
+      final mock = MockClient((request) async {
+        requestMade = true;
+        return http.Response.bytes([1, 2, 3], 200);
+      });
+      final api = ApiService(baseUrl: prodBase, httpClient: mock);
+
+      await expectLater(
+        api.fetchMediaBytes(
+          'https://attacker.example/media/msgs/steal.bin',
+          'jwt_token',
+        ),
+        throwsA(isA<Exception>()),
+      );
+      // The whole point: the attacker host is never contacted, so the token
+      // cannot leak even in the Authorization header.
+      expect(requestMade, isFalse);
+    });
+
+    test('sends the JWT for a same-origin /media/msgs/ URL', () async {
+      String? authHeader;
+      final mock = MockClient((request) async {
+        authHeader = request.headers['Authorization'];
+        return http.Response.bytes([1], 200);
+      });
+      final api = ApiService(baseUrl: prodBase, httpClient: mock);
+
+      await api.fetchMediaBytes(
+        '$prodBase/media/msgs/voice.bin',
+        'jwt_token',
+      );
+
+      expect(authHeader, 'Bearer jwt_token');
+    });
+
+    test('fetches legacy Cloudinary media without attaching the JWT', () async {
+      String? authHeader;
+      Uri? requested;
+      final mock = MockClient((request) async {
+        requested = request.url;
+        authHeader = request.headers['Authorization'];
+        return http.Response.bytes([9], 200);
+      });
+      final api = ApiService(baseUrl: prodBase, httpClient: mock);
+
+      final bytes = await api.fetchMediaBytes(
+        'https://res.cloudinary.com/demo/image/upload/v1/x.jpg',
+        'jwt_token',
+      );
+
+      expect(requested?.host, 'res.cloudinary.com');
+      expect(authHeader, isNull);
+      expect(bytes, [9]);
+    });
+  });
 }
