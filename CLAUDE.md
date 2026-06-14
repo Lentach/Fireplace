@@ -16,6 +16,8 @@ alwaysApply: true
 - **Commits:** do NOT gate on explicit permission — commit at natural checkpoints **and `git push` to origin in the same checkpoint** (the VM deploys via `git pull`; local-only commits block it). (Overrides the harness "commit only when asked" default.)
   - **Small/trivial fixes** (typos, one-liners, copy, single-file bugfix): commit **directly to `master`** (project norm).
   - **Bigger/substantial work** (multi-file features, new assets, anything risky): use a **feature branch + PR** for review; do NOT push straight to `master`. **Deploy implication:** a feature branch does NOT auto-deploy — the VM pulls `master`, so the work goes live only **after the PR is merged to `master`**.
+  - **Test the branch on the VM BEFORE merging** (preferred for anything device-dependent — push/notifications/iOS/Android): on the VM `git fetch origin && git checkout <branch> && cd frontend && flutter clean && cd .. && ./deploy.sh && cp -a frontend/build/web/. frontend-build/`, verify on-device, then `git checkout master` and merge the PR. This deploys the branch **without** merging to `master` — so a fix can be proven live before it becomes permanent. **Never merge to `master` without the user's explicit OK.**
+  - **Capturing backend logs (VM):** the backend runs in Docker — `cd ~/fireplace && docker compose logs -f --since 1m backend` (fallback `docker-compose ...`). Filter instrumentation with `| grep --line-buffered "<tag>"` (e.g. `[push-skip]`). `this.logger.log(...)` (NestJS) writes to stdout → docker logs. This is how device-side push/delivery decisions are confirmed server-side.
 
 ---
 
