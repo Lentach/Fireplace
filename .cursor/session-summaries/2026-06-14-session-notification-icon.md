@@ -48,4 +48,4 @@ Version 0.0.55 → **0.0.56**.
   - iOS Safari PWA: shows the Home-Screen icon (confirm it's the installed icon; `icon`/`badge` are ignored by iOS).
   - Native Android FCM (if exercised): status-bar small icon = flame; tinted with `#FF6A2C`.
   - Regression: delivery, grouping (one card/conv), tap/deep-link, badge count, clearing all unchanged.
-- Optional future: rebrand the PWA/launcher app icon to the campfire too (currently still the Flutter logo) — deliberately out of scope here.
+  - **App/launcher icon now the campfire** (added later in session): Android launcher (`mipmap-*/ic_launcher.png`), PWA `Icon-{192,512}` + `Icon-maskable-{192,512}` + `favicon.png` — verify the home-screen/launcher/tab icon shows the campfire (was Flutter logo). PWA cache-bust + Android reinstall needed to see it.
