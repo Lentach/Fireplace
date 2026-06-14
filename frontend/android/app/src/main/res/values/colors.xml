@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <!-- Accent used to tint the monochrome notification small icon (FCM
+         default_notification_color). Fireplace ember orange. -->
+    <color name="fireplace_notification_accent">#FF6A2C</color>
+</resources>
