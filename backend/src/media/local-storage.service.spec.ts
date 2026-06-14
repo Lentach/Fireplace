@@ -89,4 +89,22 @@ describe('LocalStorageService', () => {
     mockFs.unlink.mockRejectedValueOnce(err);
     await expect(service.deleteFile('msgs/missing.bin')).resolves.not.toThrow();
   });
+
+  // H-02: a crafted mediaUrl can yield a traversing publicId (e.g.
+  // '../../etc/passwd' after extractPublicId). deleteFile must never unlink
+  // anything outside MEDIA_DIR.
+  it('deleteFile refuses a ../-escaping publicId and never unlinks', async () => {
+    await service.deleteFile('../../etc/passwd');
+    expect(mockFs.unlink).not.toHaveBeenCalled();
+  });
+
+  it('deleteFile refuses a msgs/../ traversal and never unlinks', async () => {
+    await service.deleteFile('msgs/../../../etc/passwd');
+    expect(mockFs.unlink).not.toHaveBeenCalled();
+  });
+
+  it('deleteFile refuses the media root itself', async () => {
+    await service.deleteFile('.');
+    expect(mockFs.unlink).not.toHaveBeenCalled();
+  });
 });
