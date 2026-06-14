@@ -184,11 +184,22 @@ self.addEventListener('push', function (event) {
     vibrate: [200, 100, 200],
   };
 
-  event.waitUntil(
-    closeNotificationsForTag(tag)
-      .then(function () {
+  // HEADS-UP FIX: only iOS needs close-then-show (WebKit ignores tag replace).
+  // On Android/desktop, closing the existing same-tag card BEFORE showing the
+  // new one defeats `renotify` — the heads-up banner + sound fire only on a
+  // genuine in-place REPLACE, so pre-closing turns every update into a silent,
+  // banner-less notification. Let Chrome do its native tag replacement: show
+  // FIRST (also surfaces the card as early as possible in the push event),
+  // and only sweep OTHER conversations' stale cards afterwards.
+  var isIOS = /iphone|ipad|ipod/i.test((self.navigator && self.navigator.userAgent) || '');
+  var showChain = isIOS
+    ? closeNotificationsForTag(tag).then(function () {
         return self.registration.showNotification(title, notificationOptions);
       })
+    : self.registration.showNotification(title, notificationOptions);
+
+  event.waitUntil(
+    showChain
       .then(function () {
         return unreadConvIds != null
           ? sweepStaleNotifications(unreadConvIds)
