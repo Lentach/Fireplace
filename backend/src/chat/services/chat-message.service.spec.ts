@@ -693,4 +693,49 @@ describe('ChatMessageService', () => {
       );
     });
   });
+
+  describe('handleGetMessages (H-01 IDOR guard)', () => {
+    it('refuses a non-member: returns empty history and never queries messages', async () => {
+      // Caller is user 1 (beforeEach). Conversation 10 is between users 2 and 3.
+      conversationsService.findById.mockResolvedValue({
+        id: 10,
+        userOne: { id: 2 },
+        userTwo: { id: 3 },
+      } as Conversation);
+
+      await service.handleGetMessages(mockClient as Socket, {
+        conversationId: 10,
+      });
+
+      expect(messagesService.findByConversation).not.toHaveBeenCalled();
+      expect(mockClient.emit).toHaveBeenCalledWith('messageHistory', {
+        conversationId: 10,
+        messages: [],
+      });
+    });
+
+    it('serves history to a participant', async () => {
+      conversationsService.findById.mockResolvedValue({
+        id: 10,
+        userOne: { id: 1 },
+        userTwo: { id: 2 },
+      } as Conversation);
+      messagesService.findByConversation.mockResolvedValue([]);
+
+      await service.handleGetMessages(mockClient as Socket, {
+        conversationId: 10,
+      });
+
+      expect(messagesService.findByConversation).toHaveBeenCalledWith(
+        10,
+        undefined,
+        undefined,
+        1,
+      );
+      expect(mockClient.emit).toHaveBeenCalledWith('messageHistory', {
+        conversationId: 10,
+        messages: [],
+      });
+    });
+  });
 });

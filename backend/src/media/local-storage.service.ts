@@ -83,6 +83,15 @@ export class LocalStorageService {
    *  Full Cloudinary URLs are skipped (legacy messages). ENOENT is silently ignored. */
   async deleteFile(publicId: string): Promise<void> {
     if (publicId.startsWith('http')) return;
+    // H-02 defense in depth: never unlink outside mediaDir, even if a crafted
+    // publicId (e.g. '../../etc/passwd') slips past mediaUrl validation. Gate on
+    // a resolved-path containment check; the unlink itself keeps using
+    // path.join so the on-disk target is unchanged for legitimate ids.
+    const root = path.resolve(this.mediaDir);
+    const rel = path.relative(root, path.resolve(this.mediaDir, publicId));
+    if (rel === '' || rel.startsWith('..') || path.isAbsolute(rel)) {
+      return;
+    }
     try {
       await fs.unlink(path.join(this.mediaDir, publicId));
     } catch (err: any) {
