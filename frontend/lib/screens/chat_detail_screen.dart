@@ -28,6 +28,7 @@ import '../widgets/message/message_context_menu_overlay.dart';
 import '../utils/scroll_to_message_helper.dart';
 import '../utils/pinned_banner_visibility.dart';
 import '../utils/reply_preview_helper.dart';
+import '../utils/chat_resume_reassert.dart';
 import '../providers/encryption_provider.dart';
 import '../services/notification_cleaner_stub.dart'
     if (dart.library.html) '../services/notification_cleaner_web.dart'
@@ -372,6 +373,23 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       });
     }
     _lastKeyboardHeight = bottom;
+  }
+
+  @override
+  void didChangeAppLifecycleState(AppLifecycleState state) {
+    // iOS PWA resume can dispose this widget and/or reconnect the socket while
+    // the chat is still on screen, which clears the active/pagination conversation
+    // ids (dispose → closeConversation + clearMessages) — incoming messages then
+    // get dropped by _addMessageToState's active-id gate (confirmed via E2eDiagLog
+    // ADD_TO_STATE appendedToOpenChat:false). Re-assert + reload the open chat on
+    // resume so live receive recovers deterministically (no manual reopen needed).
+    if (state == AppLifecycleState.resumed && mounted) {
+      reassertOpenConversationOnResume(
+        _conversations,
+        _messaging,
+        widget.conversationId,
+      );
+    }
   }
 
   @override
