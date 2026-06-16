@@ -110,10 +110,18 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   handleDisconnect(client: Socket) {
-    if (client.data.user) {
-      this.onlineUsers.delete(client.data.user.id);
-      this.logger.debug(`User disconnected: ${client.data.user.username}`);
+    const user = client.data.user;
+    if (!user) return;
+    // Only unregister if THIS socket is still the user's current one. On iOS
+    // suspend/resume the device reconnects with a NEW socket while the abandoned
+    // OLD socket lingers until its ping times out (~20s); that stale disconnect
+    // must NOT evict the live socket — otherwise onlineUsers.get(userId) goes
+    // undefined and peers' newMessage emits silently fall back to push (the
+    // "notification arrives but the message never appears live" bug).
+    if (this.onlineUsers.get(user.id) === client.id) {
+      this.onlineUsers.delete(user.id);
     }
+    this.logger.debug(`User disconnected: ${user.username} (socket: ${client.id})`);
   }
 
   // ========== MESSAGE HANDLERS ==========

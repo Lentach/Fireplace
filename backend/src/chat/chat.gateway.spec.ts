@@ -22,11 +22,12 @@ function createMockClient(overrides: Partial<{
   token: string | undefined;
   emit: jest.Mock;
   disconnect: jest.Mock;
+  id: string;
 }> = {}) {
   const emit = overrides.emit ?? jest.fn();
   const disconnect = overrides.disconnect ?? jest.fn();
   return {
-    id: 'socket-test-1',
+    id: overrides.id ?? 'socket-test-1',
     handshake: {
       auth: overrides.token !== undefined ? { token: overrides.token } : {},
     },
@@ -101,5 +102,47 @@ describe('ChatGateway handleConnection', () => {
     expect(client.emit).not.toHaveBeenCalledWith('socketReady', {});
     expect(client.disconnect).toHaveBeenCalled();
     expect(usersService.findById).not.toHaveBeenCalled();
+  });
+});
+
+describe('ChatGateway handleDisconnect (stale-socket guard)', () => {
+  let gateway: ChatGateway;
+  let jwtService: { verify: jest.Mock };
+  let usersService: { findById: jest.Mock };
+
+  beforeEach(() => {
+    gateway = createGateway();
+    jwtService = (gateway as any).jwtService;
+    usersService = (gateway as any).usersService;
+    jwtService.verify.mockReturnValue({ sub: 37 });
+    usersService.findById.mockResolvedValue({ id: 37, username: 'me', tag: '0037' });
+  });
+
+  // iOS PWA suspend/resume: the device reconnects with a NEW socket while the
+  // abandoned OLD socket lingers on the server until its ping times out (~20s).
+  // When that stale disconnect finally fires, it must NOT evict the live socket —
+  // otherwise onlineUsers.get(userId) goes undefined and peers' newMessage emits
+  // silently fall back to push (notification arrives, message never delivered live).
+  it('a stale old-socket disconnect does NOT unregister the live new socket', async () => {
+    const oldSocket = createMockClient({ token: 'jwt', id: 'OLD' });
+    const newSocket = createMockClient({ token: 'jwt', id: 'NEW' });
+
+    await gateway.handleConnection(oldSocket as any); // onlineUsers[37] = OLD
+    await gateway.handleConnection(newSocket as any); // reconnect → onlineUsers[37] = NEW
+
+    gateway.handleDisconnect(oldSocket as any); // abandoned old socket times out
+
+    const onlineUsers: Map<number, string> = (gateway as any).onlineUsers;
+    expect(onlineUsers.get(37)).toBe('NEW');
+  });
+
+  it('disconnect of the current socket DOES unregister the user', async () => {
+    const socket = createMockClient({ token: 'jwt', id: 'ONLY' });
+
+    await gateway.handleConnection(socket as any);
+    gateway.handleDisconnect(socket as any);
+
+    const onlineUsers: Map<number, string> = (gateway as any).onlineUsers;
+    expect(onlineUsers.has(37)).toBe(false);
   });
 });
