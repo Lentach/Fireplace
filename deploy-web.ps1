@@ -10,9 +10,7 @@
 
 .USAGE
   1) One-time: copy deploy-web.config.example.ps1 to deploy-web.config.ps1 and set
-     your VM target inside it (that file is gitignored). Easiest = gcloud (Google
-     Cloud CLI): set GcloudInstance + GcloudZone. Otherwise set VmSshTarget to
-     "user@<external-ip>" with SSH-key access.
+     your VM target (GcloudUser/Instance/Zone). That file is gitignored.
   2) Deploy:           .\deploy-web.ps1
      Build only:       .\deploy-web.ps1 -SkipPublish -SkipVerify
      Re-publish only:  .\deploy-web.ps1 -SkipBuild
@@ -28,17 +26,18 @@ param(
   [string]$BaseUrl        = "https://fireplace.ignorelist.com",
   # VAPID public key - public by design (it is already inside the deployed bundle).
   [string]$VapidPublicKey = "BOyiyoPFLS19q4OUIHdhb97je8EOzxjRIzEafCH1nZqzyKGG6DfytNqFK6u3IaNrgwPSbHuj0Hra1IP-KWX7Prc",
-  [string]$RemoteDir      = "fireplace", # repo dir on the VM, relative to the SSH home (~)
-  # Publish target - set ONE of these in deploy-web.config.ps1:
-  [string]$GcloudInstance = "",          # recommended: GCP instance name, e.g. "fireplace-server"
+  [string]$RemoteDir      = "fireplace", # repo dir on the VM, relative to the SSH user's home
+  # Publish target - set these in deploy-web.config.ps1 (gcloud is recommended for a GCP VM):
+  [string]$GcloudUser     = "",          # SSH/login user on the VM, e.g. "olek292"  (NOT your local Windows user)
+  [string]$GcloudInstance = "",          # GCP instance name, e.g. "fireplace-server"
   [string]$GcloudZone     = "",          # e.g. "europe-central2-a"
-  [string]$VmSshTarget    = "",          # fallback: "user@<external-ip>" (needs SSH-key access)
+  [string]$VmSshTarget    = "",          # fallback (OpenSSH): "user@<external-ip>" with SSH-key access
   [switch]$SkipBuild,
   [switch]$SkipPublish,
   [switch]$SkipVerify
 )
 
-# NOTE: deliberately NOT $ErrorActionPreference='Stop' - native tools (flutter/ssh/gcloud)
+# NOTE: deliberately NOT $ErrorActionPreference='Stop' - native tools (flutter/gcloud/ssh)
 # write progress to stderr, which Stop would treat as fatal. We check $LASTEXITCODE instead.
 
 $repo = Split-Path -Parent $MyInvocation.MyCommand.Path
@@ -65,7 +64,7 @@ if ($behind -and ([int]$behind) -gt 0) {
 
 # ---------- build ----------
 if (-not $SkipBuild) {
-  Step "Build web bundle (release)  [a few minutes]"
+  Step "Build web bundle (release)  [~1 min]"
   $buildTime = [DateTime]::UtcNow.ToString("s") + "Z"   # e.g. 2026-06-16T19:58:10Z
   $defines = @(
     "--dart-define=BASE_URL=$BaseUrl",
@@ -85,29 +84,36 @@ if (-not $SkipBuild) {
   Write-Host "Built frontend/build/web  (commit=$commit, version=$ver)" -ForegroundColor Green
 }
 
-# ---------- publish (PC -> VM temp -> atomic swap) ----------
+# ---------- publish (PC -> VM staging -> atomic swap) ----------
 if (-not $SkipPublish) {
-  $useGcloud = $GcloudInstance -and $GcloudZone -and (Get-Command gcloud -ErrorAction SilentlyContinue)
+  $useGcloud = $GcloudUser -and $GcloudInstance -and $GcloudZone -and (Get-Command gcloud -ErrorAction SilentlyContinue)
   if (-not $useGcloud -and -not $VmSshTarget) {
-    throw "No publish target. In deploy-web.config.ps1 set GcloudInstance+GcloudZone (recommended), or VmSshTarget."
+    throw "No publish target. In deploy-web.config.ps1 set GcloudUser+GcloudInstance+GcloudZone (recommended), or VmSshTarget."
   }
-  # Remote swap: only replace frontend-build if the upload really contains the bundle.
-  $swap = "test -f ~/web-deploy-tmp/version.json && cd ~/$RemoteDir && rm -rf frontend-build && mv ~/web-deploy-tmp frontend-build && echo PUBLISHED_OK || (echo ABORT-upload-incomplete; exit 1)"
 
   if ($useGcloud) {
-    Step "Publish via gcloud ($GcloudInstance / $GcloudZone)"
-    gcloud compute ssh $GcloudInstance --zone $GcloudZone --command "rm -rf ~/web-deploy-tmp"
-    gcloud compute scp --recurse frontend/build/web "${GcloudInstance}:~/web-deploy-tmp" --zone $GcloudZone
+    # gcloud on Windows uses PuTTY's pscp, which does NOT expand ~ and will not create
+    # the destination dir - so use ABSOLUTE paths and pre-make the staging dir, then scp
+    # the 'web' dir INTO it (-> $stg/web) and swap that into frontend-build.
+    $tgt   = "$GcloudUser@$GcloudInstance"
+    $rHome = "/home/$GcloudUser"
+    $stg   = "$rHome/web-staging"
+    Step "Publish via gcloud ($tgt / $GcloudZone)"
+    gcloud compute ssh $tgt --zone $GcloudZone --command "rm -rf $stg; mkdir -p $stg"
+    gcloud compute scp --recurse frontend/build/web "${tgt}:$stg" --zone $GcloudZone
     if ($LASTEXITCODE -ne 0) { throw "gcloud scp failed (exit=$LASTEXITCODE)." }
-    gcloud compute ssh $GcloudInstance --zone $GcloudZone --command $swap
+    $swap = "test -f $stg/web/version.json && cd $rHome/$RemoteDir && rm -rf frontend-build && mv $stg/web frontend-build && echo PUBLISHED_OK || (echo ABORT-upload-incomplete; exit 1)"
+    gcloud compute ssh $tgt --zone $GcloudZone --command $swap
     if ($LASTEXITCODE -ne 0) { throw "Remote swap failed (exit=$LASTEXITCODE). frontend-build left untouched." }
   }
   else {
+    # OpenSSH scp expands ~ and creates dirs, so the temp-dir approach works directly.
     Step "Publish via ssh/scp ($VmSshTarget)"
-    ssh $VmSshTarget "rm -rf ~/web-deploy-tmp"
-    scp -r frontend/build/web "${VmSshTarget}:web-deploy-tmp"
+    ssh $VmSshTarget "rm -rf ~/web-staging && mkdir -p ~/web-staging"
+    scp -r frontend/build/web "${VmSshTarget}:web-staging"
     if ($LASTEXITCODE -ne 0) { throw "scp failed (exit=$LASTEXITCODE). Check VmSshTarget / SSH access." }
-    ssh $VmSshTarget $swap
+    $swap2 = "test -f ~/web-staging/web/version.json && cd ~/$RemoteDir && rm -rf frontend-build && mv ~/web-staging/web frontend-build && echo PUBLISHED_OK || (echo ABORT-upload-incomplete; exit 1)"
+    ssh $VmSshTarget $swap2
     if ($LASTEXITCODE -ne 0) { throw "Remote swap failed (exit=$LASTEXITCODE). frontend-build left untouched." }
   }
   Write-Host "Published to ~/$RemoteDir/frontend-build on the VM." -ForegroundColor Green
@@ -117,10 +123,10 @@ if (-not $SkipPublish) {
 if (-not $SkipVerify) {
   Step "Verify ($BaseUrl)"
   try {
-    $v  = Invoke-RestMethod "$BaseUrl/version"      -TimeoutSec 15
     $vj = Invoke-RestMethod "$BaseUrl/version.json" -TimeoutSec 15
-    Write-Host ("backend  /version      -> version={0}  gitCommit={1}" -f $v.version, $v.gitCommit)
+    $bv = Invoke-RestMethod "$BaseUrl/version"      -TimeoutSec 15
     Write-Host ("frontend /version.json -> version={0}" -f $vj.version)
+    Write-Host ("backend  /version      -> version={0}  gitCommit={1}" -f $bv.version, $bv.gitCommit)
     if ($vj.version -eq $ver) { Write-Host "OK: served frontend version matches your build ($ver)." -ForegroundColor Green }
     else { Write-Warning "Served frontend version ($($vj.version)) != your build ($ver). Did the publish/swap run?" }
   } catch {
