@@ -10,7 +10,6 @@ const String _kPingAsset = 'assets/sounds/ping_alert.mp3';
 web.AudioContext? _ctx;
 web.AudioBuffer? _buffer;
 JSFunction? _unlockListener;
-bool _unlocked = false;
 
 web.AudioContext _context() => _ctx ??= web.AudioContext();
 
@@ -24,14 +23,14 @@ web.AudioContext _context() => _ctx ??= web.AudioContext();
 /// context is a harmless no-op, and a later OS-driven suspend re-unlocks).
 void primePingSound() {
   if (_unlockListener != null) return;
+  // Resume on EVERY gesture (cheap: resume() on an already-running context is a
+  // no-op, so we only call it when not running). This self-heals after an iOS
+  // suspend or `interrupted` (phone call, Siri, another app grabbing audio) —
+  // `interrupted` can only be cleared by a user gesture, so a one-shot latch
+  // would permanently silence the ping after the first interruption.
   void unlock(web.Event _) {
-    if (_unlocked) return;
     final ctx = _context();
-    if (ctx.state == 'running') {
-      _unlocked = true;
-      return;
-    }
-    ctx.resume().toDart.then((_) => _unlocked = true).ignore();
+    if (ctx.state != 'running') ctx.resume().toDart.ignore();
   }
 
   final listener = unlock.toJS;
