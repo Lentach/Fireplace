@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
@@ -14,14 +13,15 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/media_crypto_service.dart';
 import '../../services/voice_audio_coordinator.dart';
-import '../../utils/audio_blob_url_stub.dart'
-    if (dart.library.html) '../../utils/audio_blob_url_web.dart' as audio_blob;
 import '../top_snackbar.dart';
+import 'voice_player.dart';
 
-/// Manages AudioPlayer lifecycle: loading, caching, play/pause, seek, speed.
+/// Manages voice playback lifecycle: loading, caching, play/pause, seek, speed.
 ///
+/// Playback runs through the [VoicePlayer] abstraction: just_audio on native,
+/// the Web Audio API on web (no MediaSession ⇒ no iOS media-control card).
 /// Exposes state via callbacks and boolean fields so the parent widget can
-/// drive the UI without caring about AudioPlayer internals.
+/// drive the UI without caring about the player internals.
 class PlaybackController extends StatefulWidget {
   final MessageModel message;
 
@@ -38,10 +38,14 @@ class PlaybackController extends StatefulWidget {
     VoidCallback toggleSpeed,
   ) builder;
 
+  /// Test seam: inject a fake [VoicePlayer]. Defaults to the platform player.
+  final VoicePlayer Function()? playerFactory;
+
   const PlaybackController({
     super.key,
     required this.message,
     required this.builder,
+    this.playerFactory,
   });
 
   static Future<int> clearAudioCache() async {
@@ -64,7 +68,8 @@ class PlaybackController extends StatefulWidget {
 
 class _PlaybackControllerState extends State<PlaybackController>
     implements ManagedAudioPlayback {
-  final AudioPlayer _audioPlayer = AudioPlayer();
+  late final VoicePlayer _player =
+      widget.playerFactory?.call() ?? createVoicePlayer();
   bool _isPlaying = false;
   bool _isLoading = false;
   bool _loadCancelled = false;
@@ -72,10 +77,9 @@ class _PlaybackControllerState extends State<PlaybackController>
   Duration _duration = Duration.zero;
   double _playbackSpeed = 1.0;
   String? _cachedFilePath;
-  String? _webAudioObjectUrl;
 
   @override
-  void pauseForCoordinator() => _audioPlayer.pause().ignore();
+  void pauseForCoordinator() => _player.pause().ignore();
 
   /// Duration from message metadata (for display before audio loads).
   Duration get _messageDuration =>
@@ -89,28 +93,26 @@ class _PlaybackControllerState extends State<PlaybackController>
   void initState() {
     super.initState();
 
-    _audioPlayer.playerStateStream.listen((state) {
-      if (mounted) {
-        final completed = state.processingState == ProcessingState.completed;
-        setState(() {
-          _isPlaying = completed ? false : state.playing;
+    _player.stateStream.listen((state) {
+      if (!mounted) return;
+      setState(() {
+        _isPlaying = state.completed ? false : state.playing;
+      });
+      if (state.playing && !state.completed) {
+        VoiceAudioCoordinator.instance.onStartedPlaying(this);
+      }
+      if (state.completed) {
+        VoiceAudioCoordinator.instance.onStoppedPlaying(this);
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) {
+            _player.stop();
+            _player.seek(Duration.zero);
+          }
         });
-        if (state.playing && !completed) {
-          VoiceAudioCoordinator.instance.onStartedPlaying(this);
-        }
-        if (completed) {
-          VoiceAudioCoordinator.instance.onStoppedPlaying(this);
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (mounted) {
-              _audioPlayer.stop();
-              _audioPlayer.seek(Duration.zero);
-            }
-          });
-        }
       }
     });
 
-    _audioPlayer.positionStream.listen((position) {
+    _player.positionStream.listen((position) {
       if (mounted) {
         setState(() {
           _position = position;
@@ -118,7 +120,7 @@ class _PlaybackControllerState extends State<PlaybackController>
       }
     });
 
-    _audioPlayer.durationStream.listen((duration) {
+    _player.durationStream.listen((duration) {
       if (mounted && duration != null) {
         setState(() {
           _duration = duration;
@@ -130,10 +132,7 @@ class _PlaybackControllerState extends State<PlaybackController>
   @override
   void dispose() {
     VoiceAudioCoordinator.instance.onStoppedPlaying(this);
-    if (kIsWeb && _webAudioObjectUrl != null) {
-      audio_blob.revokeAudioObjectUrl(_webAudioObjectUrl);
-    }
-    _audioPlayer.dispose();
+    _player.dispose();
     super.dispose();
   }
 
@@ -145,17 +144,17 @@ class _PlaybackControllerState extends State<PlaybackController>
   Future<void> _togglePlayPause() async {
     if (_isLoading) {
       _loadCancelled = true;
-      _audioPlayer.stop();
+      _player.stop();
       setState(() => _isLoading = false);
       return;
     }
     if (_isPlaying) {
-      await _audioPlayer.pause();
+      await _player.pause();
     } else {
-      if (_audioPlayer.duration == null) {
+      if (_player.duration == null) {
         await _loadAndPlayAudio();
       } else {
-        await _audioPlayer.play();
+        await _player.play();
       }
     }
   }
@@ -182,47 +181,38 @@ class _PlaybackControllerState extends State<PlaybackController>
 
     try {
       if (kIsWeb) {
+        // Web Audio decodes raw bytes (no HTML <audio> element ⇒ no
+        // MediaSession). Fetch the bytes ourselves (encrypted media already
+        // does), decrypt when keyed, and hand the plaintext to the player.
+        // The legacy unencrypted (Cloudinary) case fetches the same way, which
+        // also avoids the CORS wall a bare fetch+decode would hit.
+        final raw = await ApiService(
+          baseUrl: AppConfig.baseUrl,
+        ).fetchMediaBytes(mediaUrl, token);
+        if (raw.length > MediaCryptoService.maxBytes) {
+          throw Exception('Audio too large');
+        }
         final mk = widget.message.mediaKey;
         final mi = widget.message.mediaIv;
-        if (mk != null && mi != null) {
-          final raw = await ApiService(
-            baseUrl: AppConfig.baseUrl,
-          ).fetchMediaBytes(mediaUrl, token);
-          if (raw.length > MediaCryptoService.maxBytes) {
-            throw Exception('Audio too large');
-          }
-          final plain = await MediaCryptoService().decrypt(
-            Uint8List.fromList(raw),
-            mk,
-            mi,
-          );
-          if (_webAudioObjectUrl != null) {
-            audio_blob.revokeAudioObjectUrl(_webAudioObjectUrl);
-          }
-          _webAudioObjectUrl = audio_blob.createAudioObjectUrl(plain);
-          final blobUrl = _webAudioObjectUrl;
-          if (blobUrl == null || blobUrl.isEmpty) {
-            throw Exception('Could not create audio URL');
-          }
-          await _audioPlayer.setUrl(blobUrl);
-        } else {
-          await _audioPlayer.setUrl(mediaUrl);
-        }
+        final Uint8List plain = (mk != null && mi != null)
+            ? await MediaCryptoService().decrypt(Uint8List.fromList(raw), mk, mi)
+            : Uint8List.fromList(raw);
+        await _player.setAudioBytes(plain);
       } else {
         _cachedFilePath = await _getCachedFilePath();
 
         if (_cachedFilePath != null && File(_cachedFilePath!).existsSync()) {
-          await _audioPlayer.setFilePath(_cachedFilePath!);
+          await _player.setFilePath(_cachedFilePath!);
         } else {
           final path = await _downloadAndCache(mediaUrl, token);
           _cachedFilePath = path;
-          await _audioPlayer.setFilePath(path);
+          await _player.setFilePath(path);
         }
       }
 
       if (mounted) setState(() => _isLoading = false);
       if (_loadCancelled || !mounted) return;
-      await _audioPlayer.play();
+      await _player.play();
     } catch (e) {
       debugPrint('Audio load error: $e');
       if (mounted) {
@@ -284,7 +274,7 @@ class _PlaybackControllerState extends State<PlaybackController>
     final newPosition = Duration(
       milliseconds: (progress * _displayDuration.inMilliseconds).round(),
     );
-    _audioPlayer.seek(newPosition);
+    _player.seek(newPosition);
   }
 
   void _toggleSpeed() {
@@ -296,7 +286,7 @@ class _PlaybackControllerState extends State<PlaybackController>
       } else {
         _playbackSpeed = 1.0;
       }
-      _audioPlayer.setSpeed(_playbackSpeed);
+      _player.setSpeed(_playbackSpeed);
     });
   }
 

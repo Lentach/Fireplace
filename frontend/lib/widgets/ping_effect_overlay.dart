@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
-import 'package:just_audio/just_audio.dart';
+
+import '../utils/ping_sound.dart';
 
 class PingEffectOverlay extends StatefulWidget {
   final VoidCallback onComplete;
@@ -15,7 +16,6 @@ class _PingEffectOverlayState extends State<PingEffectOverlay>
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _opacityAnimation;
-  AudioPlayer? _audioPlayer;
 
   @override
   void initState() {
@@ -34,7 +34,9 @@ class _PingEffectOverlayState extends State<PingEffectOverlay>
       CurvedAnimation(parent: _controller, curve: Curves.easeIn),
     );
 
-    _playPingSound();
+    // Fire-and-forget: on web this plays through the Web Audio API (no
+    // MediaSession ⇒ no stale iOS media-control card); on native via just_audio.
+    playPingSound().ignore();
     _controller.forward().then((_) {
       if (mounted) {
         widget.onComplete();
@@ -42,35 +44,9 @@ class _PingEffectOverlayState extends State<PingEffectOverlay>
     });
   }
 
-  Future<void> _playPingSound() async {
-    final player = AudioPlayer();
-    _audioPlayer = player;
-    try {
-      await player.setAsset('assets/sounds/ping_alert.mp3');
-      await player.play();
-      await player.processingStateStream.firstWhere(
-        (s) => s == ProcessingState.completed,
-      );
-    } catch (e) {
-      debugPrint('Error playing ping sound: $e');
-    } finally {
-      if (identical(_audioPlayer, player)) {
-        _audioPlayer = null;
-      }
-      try {
-        await player.dispose();
-      } catch (_) {}
-    }
-  }
-
   @override
   void dispose() {
     _controller.dispose();
-    final player = _audioPlayer;
-    _audioPlayer = null;
-    if (player != null) {
-      player.dispose().catchError((_) {});
-    }
     super.dispose();
   }
 

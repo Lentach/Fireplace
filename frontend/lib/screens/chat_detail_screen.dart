@@ -29,6 +29,7 @@ import '../utils/scroll_to_message_helper.dart';
 import '../utils/pinned_banner_visibility.dart';
 import '../utils/reply_preview_helper.dart';
 import '../utils/chat_resume_reassert.dart';
+import '../utils/ping_sound.dart';
 import '../providers/encryption_provider.dart';
 import '../services/notification_cleaner_stub.dart'
     if (dart.library.html) '../services/notification_cleaner_web.dart'
@@ -301,6 +302,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     _conversations = context.read<ConversationsProvider>();
     _messaging = context.read<MessagingProvider>();
     _scrollController.addListener(_onScroll);
+    // Web/iOS: install the Web Audio gesture-unlock now so a ping that lands
+    // later (outside any user gesture) can still produce sound. No-op native.
+    primePingSound();
     // Active id + pushClientState immediately; listener notify deferred (initState).
     _conversations.openConversation(widget.conversationId, notify: false);
     WidgetsBinding.instance.addPostFrameCallback((_) {
