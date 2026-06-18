@@ -803,6 +803,7 @@ extension MessagingSend on MessagingProvider {
       'tempId': tempId,
     });
     if (!e2eReady) {
+      _logMediaOrphanLikely(tempId, mediaUrl);
       _markMessageFailed(
         tempId,
         'Encryption not ready. Please wait and try again.',
@@ -913,6 +914,7 @@ extension MessagingSend on MessagingProvider {
         'recipientId': recipientId,
         'error': e.toString(),
       });
+      _logMediaOrphanLikely(tempId, mediaUrl);
       final String userMsg = _userFriendlySendError(e, recipientId);
       _markMessageFailed(tempId, userMsg);
       if (_isKeyBundleOrTimeoutError(e)) {
@@ -947,6 +949,16 @@ extension MessagingSend on MessagingProvider {
         mediaKey: mediaKey,
         mediaIv: mediaIv,
       );
+
+  /// Observability for the I1 media-orphan gap: a media blob was uploaded
+  /// (`mediaUrl` obtained) but the send failed before the `sendMessage` emit,
+  /// so the `.bin` is now orphaned on the server until the cleanup cron sweeps
+  /// it. Logs an id-only event so the client side of the gap is measurable.
+  /// No-op for text/ping sends (no upload, so `mediaUrl` is null/empty).
+  void _logMediaOrphanLikely(String tempId, String? mediaUrl) {
+    if (mediaUrl == null || mediaUrl.isEmpty) return;
+    _e2eFlowLog('MEDIA_ORPHAN_LIKELY', {'tempId': tempId});
+  }
 
   void _markMessageFailed(String tempId, String errorMsg) {
     // Failed = eligible for retry; release the exactly-once send latch.

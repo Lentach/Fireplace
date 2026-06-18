@@ -83,6 +83,11 @@ describe('MediaCleanupService', () => {
       await fs.rm(tempMediaDir, { recursive: true, force: true });
     });
 
+    // Comfortably older than the 15-min default grace window so a backdated
+    // file is eligible for deletion.
+    const AGED_MS = 20 * 60 * 1000;
+
+    /** Sticky mock: both cleanup queries (valid + all-referenced) see `urls`. */
     function mockValidMediaUrls(urls: string[]) {
       const queryBuilder = {
         select: jest.fn().mockReturnThis(),
@@ -94,11 +99,38 @@ describe('MediaCleanupService', () => {
       return queryBuilder;
     }
 
+    /**
+     * Distinct results per query: first call = non-expired rows (`valid`),
+     * second call = ALL referenced rows (`referenced`). A filename in
+     * `referenced` but not `valid` is an EXPIRED file; in neither is an ORPHAN.
+     */
+    function mockMediaUrls(opts: { valid: string[]; referenced: string[] }) {
+      const makeBuilder = (urls: string[]) => ({
+        select: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        andWhere: jest.fn().mockReturnThis(),
+        getRawMany: jest
+          .fn()
+          .mockResolvedValue(urls.map((mediaUrl) => ({ mediaUrl }))),
+      });
+      mockMessageRepo.createQueryBuilder
+        .mockReturnValueOnce(makeBuilder(opts.valid))
+        .mockReturnValueOnce(makeBuilder(opts.referenced));
+    }
+
+    /** Write a file then backdate its mtime by `ageMs` (to age past grace). */
+    async function writeAged(name: string, ageMs: number) {
+      const p = path.join(msgsDir, name);
+      await fs.writeFile(p, name);
+      const pastSeconds = (Date.now() - ageMs) / 1000;
+      await fs.utimes(p, pastSeconds, pastSeconds);
+    }
+
     it('does not delete disk file referenced by a message row', async () => {
       const referenced = 'referenced.bin';
       const orphan = 'orphan-only.bin';
       await fs.writeFile(path.join(msgsDir, referenced), 'referenced-data');
-      await fs.writeFile(path.join(msgsDir, orphan), 'orphan-data');
+      await writeAged(orphan, AGED_MS); // aged so grace does not protect it
 
       mockValidMediaUrls([
         `${MEDIA_BASE_URL}/media/msgs/${referenced}`,
@@ -115,8 +147,8 @@ describe('MediaCleanupService', () => {
     it('deletes disk files with no matching message mediaUrl', async () => {
       const orphanA = 'stale-a.bin';
       const orphanB = 'stale-b.bin';
-      await fs.writeFile(path.join(msgsDir, orphanA), 'a');
-      await fs.writeFile(path.join(msgsDir, orphanB), 'b');
+      await writeAged(orphanA, AGED_MS);
+      await writeAged(orphanB, AGED_MS);
 
       mockValidMediaUrls([]);
 
@@ -124,6 +156,73 @@ describe('MediaCleanupService', () => {
 
       await expect(fs.access(path.join(msgsDir, orphanA))).rejects.toThrow();
       await expect(fs.access(path.join(msgsDir, orphanB))).rejects.toThrow();
+    });
+
+    it('does not delete a recently-created unreferenced file (within grace)', async () => {
+      // mtime ≈ now → an in-flight upload whose send emit has not landed yet.
+      await fs.writeFile(path.join(msgsDir, 'in-flight.bin'), 'x');
+
+      mockMediaUrls({ valid: [], referenced: [] });
+
+      const summary = await cronService.cleanupOrphanedFiles();
+
+      expect(summary.graceSkipped).toBe(1);
+      expect(summary.deleted).toBe(0);
+      await expect(
+        fs.access(path.join(msgsDir, 'in-flight.bin')),
+      ).resolves.toBeUndefined();
+    });
+
+    it('deletes an old unreferenced orphan (older than grace)', async () => {
+      await writeAged('old-orphan.bin', AGED_MS);
+
+      mockMediaUrls({ valid: [], referenced: [] });
+
+      const summary = await cronService.cleanupOrphanedFiles();
+
+      expect(summary.deleted).toBe(1);
+      expect(summary.orphan).toBe(1);
+      expect(summary.graceSkipped).toBe(0);
+      await expect(
+        fs.access(path.join(msgsDir, 'old-orphan.bin')),
+      ).rejects.toThrow();
+    });
+
+    it('classifies deleted files as orphan vs expired and skips grace', async () => {
+      // live.bin: referenced by a non-expired row → kept
+      // expired.bin: referenced by a row that is expired → deleted as EXPIRED
+      // orphan.bin: referenced by no row → deleted as ORPHAN
+      // recent-orphan.bin: referenced by no row but younger than grace → skipped
+      await fs.writeFile(path.join(msgsDir, 'live.bin'), 'l');
+      await writeAged('expired.bin', AGED_MS);
+      await writeAged('orphan.bin', AGED_MS);
+      await fs.writeFile(path.join(msgsDir, 'recent-orphan.bin'), 'r');
+
+      mockMediaUrls({
+        valid: [`${MEDIA_BASE_URL}/media/msgs/live.bin`],
+        referenced: [
+          `${MEDIA_BASE_URL}/media/msgs/live.bin`,
+          `${MEDIA_BASE_URL}/media/msgs/expired.bin`,
+        ],
+      });
+
+      const summary = await cronService.cleanupOrphanedFiles();
+
+      expect(summary).toEqual({
+        scanned: 4,
+        deleted: 2,
+        orphan: 1,
+        expired: 1,
+        graceSkipped: 1,
+      });
+      await expect(
+        fs.access(path.join(msgsDir, 'live.bin')),
+      ).resolves.toBeUndefined();
+      await expect(
+        fs.access(path.join(msgsDir, 'recent-orphan.bin')),
+      ).resolves.toBeUndefined();
+      await expect(fs.access(path.join(msgsDir, 'expired.bin'))).rejects.toThrow();
+      await expect(fs.access(path.join(msgsDir, 'orphan.bin'))).rejects.toThrow();
     });
 
     it('skips cleanup when msgs dir is missing', async () => {

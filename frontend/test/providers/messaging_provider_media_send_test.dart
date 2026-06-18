@@ -6,6 +6,7 @@ import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/services/api_service.dart';
 import 'package:fireplace/services/encrypted_media_upload_service.dart';
+import 'package:fireplace/utils/e2e_diag_log.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -264,6 +265,43 @@ void main() {
       );
 
       expect(ok, isFalse);
+    });
+  });
+
+  group('MEDIA_ORPHAN_LIKELY diagnostic (I1 observability)', () {
+    test('logged when a media send fails AFTER a successful upload', () async {
+      // Upload succeeds (fake returns a mediaUrl) but no EncryptionProvider is
+      // set, so _encryptAndSend fails on the !e2eReady path → the blob is
+      // uploaded yet never referenced by an emitted message = orphan-likely.
+      final provider = _newProvider();
+      provider.setMediaUploadServiceForTest(_FakeMediaUpload());
+      E2eDiagLog.clear();
+
+      final ok = await provider.sendImageMessage(
+        'tok',
+        XFile.fromData(Uint8List.fromList([1, 2, 3]), name: 'a.jpg'),
+        2,
+      );
+
+      expect(ok, isFalse);
+      final orphanEvents = E2eDiagLog.entries
+          .where((e) => e.contains('MEDIA_ORPHAN_LIKELY'))
+          .toList();
+      expect(orphanEvents, hasLength(1));
+      expect(orphanEvents.single, contains('tempId'));
+    });
+
+    test('NOT logged for a text send failure (nothing was uploaded)', () async {
+      final provider = _newProvider(); // no EncryptionProvider → E2E not ready
+      E2eDiagLog.clear();
+
+      provider.sendMessage('hello');
+      await Future<void>.delayed(const Duration(milliseconds: 50));
+
+      expect(
+        E2eDiagLog.entries.where((e) => e.contains('MEDIA_ORPHAN_LIKELY')),
+        isEmpty,
+      );
     });
   });
 }
