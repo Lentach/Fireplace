@@ -47,7 +47,9 @@ fi
 
 echo "==> deploying backend  version=${APP_VERSION} commit=${GIT_COMMIT} built=${BUILD_TIME}"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build backend
-docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d backend
+# 'up -d' (both) so the version env applies to backend AND the db restart policy lands;
+# never run a bare 'docker compose up -d' yourself — it would lack APP_VERSION (-> 0.0.1).
+docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d
 
 # --- verify ---
 echo "==> waiting for backend health"

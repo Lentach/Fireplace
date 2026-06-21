@@ -102,8 +102,10 @@ subscribe fails (`push service error` / delivery `400`).
   `pg_restore --clean`, restarts). Media restore (separate):
   `docker run --rm -v fireplace_media_storage:/data -v ~/fireplace-backups:/b alpine sh -c 'cd /data && tar xzf /b/media-<ts>.tar.gz'`.
 - **Restart policy:** `docker-compose.prod.yml` sets `restart: unless-stopped` on backend + db
-  (survives VM reboot). Applies to db on its next recreate — apply once with
-  `docker compose -f docker-compose.prod.yml up -d`.
+  (survives VM reboot). `deploy-backend.sh` runs `up -d` (both services) with the version env set,
+  so it applies automatically. **NEVER run a bare `docker compose -f docker-compose.prod.yml up -d`
+  by hand** — without the exported `APP_VERSION`/`GIT_COMMIT` it recreates the backend at the
+  Dockerfile default (`0.0.1 / unknown`). Always go through `./deploy-backend.sh`.
 - **Uptime monitor (external):** point UptimeRobot / healthchecks.io at
   `https://fireplace.ignorelist.com/health` (expect `{"status":"ok","db":"ok"}`) so an outage pages
   you instead of being noticed by hand.
