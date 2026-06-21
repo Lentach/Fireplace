@@ -25,7 +25,7 @@ services:
       POSTGRES_PASSWORD: postgres
       POSTGRES_DB: chatdb
     ports:
-      - '5433:5432'
+      - '127.0.0.1:5433:5432'
     volumes:
       - pgdata:/var/lib/postgresql/data
 
@@ -39,7 +39,7 @@ services:
     image: fireplace-backend:latest
     restart: unless-stopped
     ports:
-      - '3000:3000'
+      - '127.0.0.1:3000:3000'
     environment:
       DB_HOST: db
       DB_PORT: '5432'

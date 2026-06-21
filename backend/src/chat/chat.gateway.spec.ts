@@ -1,6 +1,7 @@
 import { JwtService } from '@nestjs/jwt';
 import { ChatGateway } from './chat.gateway';
 import { UsersService } from '../users/users.service';
+import { Socket } from 'socket.io';
 
 function createGateway(): ChatGateway {
   const noop = {} as any;
@@ -102,6 +103,22 @@ describe('ChatGateway handleConnection', () => {
     expect(client.emit).not.toHaveBeenCalledWith('socketReady', {});
     expect(client.disconnect).toHaveBeenCalled();
     expect(usersService.findById).not.toHaveBeenCalled();
+  });
+
+  it('disconnects when the token predates a password change', async () => {
+    const client = createMockClient({ token: 'old-jwt' });
+    jwtService.verify.mockReturnValue({ sub: 7, iat: 1000 });
+    usersService.findById.mockResolvedValue({
+      id: 7,
+      username: 'me',
+      tag: '0007',
+      passwordChangedAt: new Date(2000 * 1000), // changedAt=2000s > iat=1000s -> invalid
+    });
+
+    await gateway.handleConnection(client as unknown as Socket);
+
+    expect(client.disconnect).toHaveBeenCalled();
+    expect(client.emit).not.toHaveBeenCalledWith('socketReady', {});
   });
 });
 

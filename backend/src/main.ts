@@ -15,6 +15,9 @@ async function bootstrap() {
   const logger = new Logger('Bootstrap');
   const configService = app.get(ConfigService);
 
+  // Behind nginx (sets X-Real-IP); trust the first proxy hop so req.ip reflects the client.
+  app.set('trust proxy', 1);
+
   // Security headers (X-Content-Type-Options, X-Frame-Options, etc.)
   app.use(helmet());
 
