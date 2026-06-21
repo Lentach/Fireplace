@@ -106,7 +106,7 @@ export class UsersController {
 
   @Post('reset-password')
   @UseGuards(JwtAuthGuard)
-  @Throttle({ default: { limit: 3, ttl: 3600000 } })
+  @Throttle({ default: { limit: 10, ttl: 3600000 } })
   async resetPassword(@Body() dto: ResetPasswordDto, @Request() req) {
     const userId = req.user.id;
 
@@ -123,7 +123,7 @@ export class UsersController {
 
   @Delete('account')
   @UseGuards(JwtAuthGuard)
-  @Throttle({ default: { limit: 1, ttl: 3600000 } })
+  @Throttle({ default: { limit: 5, ttl: 3600000 } })
   async deleteAccount(@Body() dto: DeleteAccountDto, @Request() req) {
     const userId = req.user.id;
 
