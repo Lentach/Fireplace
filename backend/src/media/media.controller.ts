@@ -21,7 +21,10 @@ import { UploadMediaDto } from './dto/upload-media.dto';
 import { validateDto } from '../chat/utils/dto.validator';
 import { validateAvatarMagicBytes } from './magic-bytes.validator';
 
-const isDev = process.env.NODE_ENV !== 'production';
+// Media is served directly by Node by default. Set MEDIA_X_ACCEL_REDIRECT=true ONLY when
+// nginx is configured with an internal `/internal/media/` location to offload file serving;
+// otherwise the response would be an empty 200 (the cause of "all media broken" in prod).
+const useXAccel = process.env.MEDIA_X_ACCEL_REDIRECT === 'true';
 const mediaDir = process.env.MEDIA_DIR ?? '/app/media';
 
 @Controller('media')
@@ -90,7 +93,7 @@ export class MediaController {
   ) {
     const safeFilename = path.basename(filename);
     if (safeFilename !== filename) throw new BadRequestException('Invalid filename');
-    if (isDev) {
+    if (!useXAccel) {
       return res.sendFile(path.join(mediaDir, 'avatars', safeFilename));
     }
     res.setHeader('X-Accel-Redirect', `/internal/media/avatars/${safeFilename}`);
@@ -103,7 +106,7 @@ export class MediaController {
   async serveMsgs(@Param('filename') filename: string, @Res() res: Response) {
     const safeFilename = path.basename(filename);
     if (safeFilename !== filename) throw new BadRequestException('Invalid filename');
-    if (isDev) {
+    if (!useXAccel) {
       return res.sendFile(path.join(mediaDir, 'msgs', safeFilename));
     }
     res.setHeader('X-Accel-Redirect', `/internal/media/msgs/${safeFilename}`);

@@ -91,15 +91,16 @@ describe('MediaController', () => {
     ).rejects.toThrow(BadRequestException);
   });
 
-  // In test/dev (NODE_ENV != 'production') the controller calls sendFile directly.
-  it('serveMsgs serves file directly in dev mode', async () => {
+  // By default (MEDIA_X_ACCEL_REDIRECT unset) the controller serves the file directly,
+  // independent of NODE_ENV — prod must NOT fall back to an empty X-Accel response.
+  it('serveMsgs serves file directly by default', async () => {
     await controller.serveMsgs('abc.bin', fakeRes);
     expect(fakeRes.sendFile).toHaveBeenCalledWith(
       expect.stringMatching(/msgs[/\\]abc\.bin/),
     );
   });
 
-  it('serveAvatars serves file directly in dev mode', async () => {
+  it('serveAvatars serves file directly by default', async () => {
     await controller.serveAvatars('uuid.jpg', fakeRes);
     expect(fakeRes.sendFile).toHaveBeenCalledWith(
       expect.stringMatching(/avatars[/\\]uuid\.jpg/),
