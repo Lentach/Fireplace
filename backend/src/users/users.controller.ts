@@ -145,7 +145,7 @@ export class UsersController {
   @Delete('fcm-token')
   @UseGuards(JwtAuthGuard)
   async removeFcmToken(@Body() dto: RemoveFcmTokenDto, @Request() req) {
-    await this.fcmTokensService.removeByToken(dto.token);
+    await this.fcmTokensService.removeByTokenForUser(req.user.id, dto.token);
     return { message: 'FCM token removed' };
   }
 

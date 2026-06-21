@@ -15,6 +15,7 @@ const mockRes = () => {
   res.send = jest.fn().mockReturnValue(res);
   res.status = jest.fn().mockReturnValue(res);
   res.json = jest.fn().mockReturnValue(res);
+  res.setHeader = jest.fn().mockReturnValue(res);
   return res;
 };
 
@@ -53,6 +54,12 @@ describe('SecretNotesController', () => {
       expect(res.send).toHaveBeenCalled();
       const html = res.send.mock.calls[0][0];
       expect(html).toContain('Reveal');
+      expect(res.setHeader).toHaveBeenCalledWith(
+        'Content-Security-Policy',
+        expect.stringContaining("script-src 'nonce-"),
+      );
+      expect(html).toContain("addEventListener('click', reveal)");
+      expect(html).not.toContain('onclick=');
     });
 
     it('sends destroyed HTML when note not found', async () => {
