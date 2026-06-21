@@ -1,71 +1,97 @@
 ---
-description: Use when deploying to production GCP VM, SSH/fireplace-server, ~/fireplace paths, deploy.sh, nginx frontend-build, curl /version or /health, PWA prod verification, or fireplace.ignorelist.com ops.
+description: Use when deploying to production GCP VM, SSH/fireplace-server, ~/fireplace paths, deploy-backend.sh / deploy-web.ps1, docker-compose.prod.yml, nginx frontend-build, curl /version or /version.json or /health, PWA prod verification, or fireplace.ignorelist.com ops.
 ---
 
 # Production VM deploy (GCP)
 
-**URL:** https://fireplace.ignorelist.com  
+**URL:** https://fireplace.ignorelist.com
 **Typical SSH user:** `olek292` (adjust if docs differ).
+
+Deploy is **split**: the 2 GB VM cannot build the Flutter web bundle (dart2js OOMs), so
+the **frontend is built on a dev PC** and published to the VM; the **backend is built on
+the VM** from a production Docker image.
 
 ## Paths (do not guess `~/Fireplace`)
 
 | What | Path |
 |------|------|
 | Git repo | `~/fireplace` (lowercase) |
-| Flutter build output | `~/fireplace/frontend/build/web/` |
+| Backend deploy (run on VM) | `~/fireplace/deploy-backend.sh` → builds prod image via `docker-compose.prod.yml` |
+| Frontend deploy (run on PC) | `deploy-web.ps1` → builds web on PC, publishes to VM `frontend-build/` |
 | Nginx static root (what users load) | `~/fireplace/frontend-build/` |
-| Deploy script (use this one) | `~/fireplace/deploy.sh` |
 | Host nginx config | `/etc/nginx/sites-enabled/fireplace` |
-| Docker compose project | `~/fireplace/docker-compose.yml` → containers `fireplace-backend-1`, `fireplace-db-1` |
+| Prod compose (VM) | `~/fireplace/docker-compose.prod.yml` → `fireplace-backend-1`, `fireplace-db-1` |
+| Dev compose | `~/fireplace/docker-compose.yml` — **LOCAL DEV ONLY**, never on the VM |
 
-**Wrong:** `cd ~/Fireplace`, running only `~/deploy.sh` from `$HOME` without `cd ~/fireplace` (old 446-byte `~/deploy.sh` copy may lack version dart-defines).
+**Wrong on the VM:** `cd ~/Fireplace`; `docker compose up` against the **dev** `docker-compose.yml`
+(runs backend bind-mounted in watch mode: `NODE_ENV=development`, relaxed CORS, TypeORM auto-DDL).
 
-## What `./deploy.sh` does vs does not
-
-**Does:** `git pull` → rebuild **backend** Docker image (with `GIT_COMMIT`, `BUILD_TIME`, `APP_VERSION`) → `flutter build web` into `frontend/build/web/` with **`WEB_PUSH_VAPID_PUBLIC_KEY`** from `~/fireplace/.env` (must match backend VAPID or PWA push subscribe fails with `push service error` / delivery `400`).
-
-**Does not:** copy web files to `frontend-build/`, reload host nginx, or edit `/etc/nginx/`. Those are separate manual steps on this VM layout.
-
-## Standard deploy (tell user or document after push to `master`)
+## Backend deploy (on the VM)
 
 ```bash
 cd ~/fireplace
-./deploy.sh
-cp -a ~/fireplace/frontend/build/web/. ~/fireplace/frontend-build/
-curl -sS https://fireplace.ignorelist.com/version
+./deploy-backend.sh          # git pull → build prod image → recreate backend → verify /version+/health
 ```
 
-Optional: `rsync -a --delete …` if `rsync` installed; `cp -a` is enough.
+What it does: `git pull` → computes `APP_VERSION` (from `frontend/pubspec.yaml`), `GIT_COMMIT`,
+`BUILD_TIME` → `docker compose -f docker-compose.prod.yml build backend` → `up -d backend` →
+waits for `(healthy)` → curls `/version` + `/health`.
+
+Preflight aborts if `~/fireplace/.env` is missing any of: `ALLOWED_ORIGINS`, `MEDIA_BASE_URL`,
+`JWT_SECRET`, `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY` (compose also fails fast
+via `${VAR:?}`). This is intentional — see NODE_ENV note below.
+
+## Frontend deploy (on the dev PC)
+
+```powershell
+cd C:\Users\Lentach\Desktop\fireplace ; git pull ; .\deploy-web.ps1
+```
+
+`deploy-web.ps1` builds `flutter build web --release` with `BASE_URL`, `GIT_COMMIT`, `BUILD_TIME`,
+`WEB_PUSH_VAPID_PUBLIC_KEY` dart-defines, scp's the bundle to a VM staging dir, then atomic-swaps it
+into `~/fireplace/frontend-build/`. No nginx reload needed for an app-code-only change.
+**`WEB_PUSH_VAPID_PUBLIC_KEY`** in the PC build must match the backend VAPID public key or PWA push
+subscribe fails (`push service error` / delivery `400`).
 
 ## Verify production
 
 | Check | Expected |
 |-------|----------|
 | `curl https://fireplace.ignorelist.com/health` | `{"status":"ok","db":"ok"}` |
-| `curl https://fireplace.ignorelist.com/version` | JSON `{ version, gitCommit, buildTime }` — **not** Flutter HTML |
-| `curl http://127.0.0.1:3000/version` on VM | Same JSON (backend OK even if nginx broken) |
-| App **Settings** footer | `semver · shortSha · buildTime` (e.g. `0.0.2 · 6a560ec · …`; label: App version / Wersja aplikacji) |
+| `curl https://fireplace.ignorelist.com/version.json` | **frontend** semver, e.g. `{"version":"0.0.60",...}` — the real served app version |
+| `curl https://fireplace.ignorelist.com/version` | **backend** `{ version, gitCommit, buildTime }` — after `deploy-backend.sh`, `version`=pubspec semver, `gitCommit`=short SHA (NOT `0.0.2`/`dev`) |
+| `curl http://127.0.0.1:3000/version` on VM | Same backend JSON (OK even if nginx broken) |
+| `docker inspect -f '{{.State.Health.Status}}' fireplace-backend-1` | `healthy` |
+| App **Settings** footer | `semver · shortSha · buildTime` (label: App version / Wersja aplikacji) |
 
-If `/version` returns HTML → nginx missing `location = /version` proxy to `127.0.0.1:3000`; fix config, then `sudo nginx -t && sudo systemctl reload nginx`. Template block lives in repo `frontend/nginx.conf` (host uses `127.0.0.1`, not `backend:`).
+- `/version` returns Flutter HTML → nginx missing `location = /version` proxy to `127.0.0.1:3000`;
+  fix config, `sudo nginx -t && sudo systemctl reload nginx`. Template in repo `frontend/nginx.conf`
+  (host uses `127.0.0.1`, not `backend:`).
+- `/version` shows `0.0.2 / dev / ""` → backend was started with the **dev** compose (or plain
+  `docker compose build/up` with no version env). Use `./deploy-backend.sh`.
+- Settings shows `· dev` → PWA/browser cache; hard refresh.
+- Container `(unhealthy)` but `/health` ok externally → healthcheck must hit `127.0.0.1`, not
+  `localhost` (busybox resolves `localhost`→`::1`; Nest listens IPv4-only). Already set in compose.
 
-If Settings shows `· dev` after deploy → PWA/browser cache; hard refresh. Build must use `--dart-define=GIT_COMMIT` (see `deploy.sh`).
+## Version surfaces (do not confuse)
 
-## Version fields (do not confuse)
+- **`/version.json`** — frontend (Flutter) version from `pubspec.yaml`. The authoritative "what's live" signal.
+- **`/version`** — backend env (`APP_VERSION` / `GIT_COMMIT` / `BUILD_TIME`), injected by `deploy-backend.sh`.
+- Semver: `frontend/pubspec.yaml` (`0.0.1`, `0.0.2`, … +1 PATCH per release; never a `+N` suffix).
 
-- **Semver in UI/API `version`:** from `frontend/pubspec.yaml` (`0.0.1`, `0.0.2`, … — increment PATCH by 1 per release; never show `+N` suffix).
-- **`gitCommit`:** short SHA at deploy time from `git rev-parse` in `deploy.sh`.
-- **`buildTime`:** UTC ISO timestamp when deploy ran.
+## NODE_ENV / .env / DB caveats
 
-## Nginx / env caveats
+- **`docker-compose.prod.yml` runs `NODE_ENV=production`:** CORS is restricted to `ALLOWED_ORIGINS`
+  (must include `https://fireplace.ignorelist.com`); media URLs use `MEDIA_BASE_URL`; **TypeORM
+  `synchronize` is OFF** — schema changes need **manual SQL** (see `backend/CLAUDE.md` for the
+  ALTER/CREATE INDEX statements). The dev compose (`NODE_ENV=development`) auto-DDLs; prod does not.
+- **`.env`** in `~/fireplace/.env` is gitignored / not overwritten by `git pull`; it supplies all
+  secrets + origins for compose interpolation. Re-run `deploy-backend.sh` (or restart backend) after edits.
+- **Postgres:** DB name is **`chatdb`**: `docker compose -f docker-compose.prod.yml exec db psql -U postgres -d chatdb`.
 
-- Changing **only** app code: deploy + `cp` enough; no nginx reload.
-- Changing **nginx** routes (e.g. new `location`): edit `/etc/nginx/sites-enabled/fireplace`, test, reload.
-- **`.env`** in `~/fireplace/.env` is not overwritten by `git pull`; restart backend after env edits. **`WEB_PUSH_VAPID_PUBLIC_KEY`** in `.env` must match what `deploy.sh` passes to `flutter build web` (script reads it automatically).
-- **Postgres on VM:** DB name is **`chatdb`** (not `fireplace`): `docker compose exec db psql -U postgres -d chatdb`.
+## Agent checklist after a production-related PR
 
-## Agent checklist after production-related PR
-
-1. User pushed `master` (agent does not SSH unless user asks).
-2. Remind full deploy block above if they deploy to VM.
+1. User pushed `master` (agent does not SSH unless asked).
+2. Backend change → remind `./deploy-backend.sh` on the VM. Frontend change → remind `deploy-web.ps1` on the PC.
 3. Mention new `pubspec` version if bumped.
-4. Do not claim prod is updated until user confirms `curl /version` or Settings line.
+4. Do not claim prod is updated until confirmed via `curl /version.json` (frontend) / `curl /version` (backend) / Settings line.

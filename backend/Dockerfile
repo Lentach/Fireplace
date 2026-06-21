@@ -1,35 +1,24 @@
-# Stage 1: Build
+# syntax=docker/dockerfile:1
+# Stage 1: Build — full deps, compile TS -> dist/main.js
 FROM node:20-alpine AS builder
-
 WORKDIR /app
-
-# Copy dependency files first for layer caching
 COPY package*.json ./
-RUN npm ci --only=production && \
-    npm cache clean --force
-
-# Copy source and build
+RUN npm ci
 COPY . .
-RUN npm install --only=development && \
-    npm run build && \
-    npm prune --production
+RUN npm run build
 
-# Stage 2: Production
+# Stage 2: Production runtime — prod deps + built dist only
 FROM node:20-alpine
-
 ARG APP_VERSION=0.0.1
 ARG GIT_COMMIT=unknown
 ARG BUILD_TIME=
-ENV APP_VERSION=${APP_VERSION}
-ENV GIT_COMMIT=${GIT_COMMIT}
-ENV BUILD_TIME=${BUILD_TIME}
-
+ENV APP_VERSION=${APP_VERSION} \
+    GIT_COMMIT=${GIT_COMMIT} \
+    BUILD_TIME=${BUILD_TIME} \
+    NODE_ENV=production
 WORKDIR /app
-
-# Copy only production dependencies and built app
-COPY --from=builder /app/node_modules ./node_modules
+COPY package*.json ./
+RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder /app/dist ./dist
-COPY --from=builder /app/package*.json ./
-
 EXPOSE 3000
 CMD ["node", "dist/main.js"]

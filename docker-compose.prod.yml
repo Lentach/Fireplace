@@ -1,0 +1,73 @@
+# Production compose for the Fireplace VM. Self-contained (db + backend).
+# Deploy with:  ./deploy-backend.sh   (runs: docker compose -f docker-compose.prod.yml ...)
+#
+# Do NOT use the dev docker-compose.yml on the VM — that runs the backend
+# bind-mounted in watch mode (NODE_ENV=development), which relaxes CORS and
+# enables TypeORM auto-DDL (synchronize) on the live database.
+#
+# This file runs the backend from a BUILT image (NODE_ENV=production):
+#   - CORS is restricted to ALLOWED_ORIGINS
+#   - media URLs are built from MEDIA_BASE_URL
+#   - TypeORM synchronize is OFF (schema changes need manual SQL — see backend/CLAUDE.md)
+#
+# Required keys in ~/fireplace/.env (compose interpolates them; deploy aborts if missing):
+#   ALLOWED_ORIGINS, MEDIA_BASE_URL, JWT_SECRET,
+#   WEB_PUSH_VAPID_PUBLIC_KEY, WEB_PUSH_VAPID_PRIVATE_KEY
+# Set by deploy-backend.sh:  APP_VERSION, GIT_COMMIT, BUILD_TIME
+# Optional:  FIREBASE_SERVICE_ACCOUNT, WEB_PUSH_VAPID_SUBJECT, DB_USER/DB_PASS/DB_NAME
+
+services:
+  db:
+    image: postgres:16-alpine
+    environment:
+      POSTGRES_USER: postgres
+      POSTGRES_PASSWORD: postgres
+      POSTGRES_DB: chatdb
+    ports:
+      - '5433:5432'
+    volumes:
+      - pgdata:/var/lib/postgresql/data
+
+  backend:
+    build:
+      context: ./backend
+      args:
+        APP_VERSION: ${APP_VERSION:-0.0.1}
+        GIT_COMMIT: ${GIT_COMMIT:-unknown}
+        BUILD_TIME: ${BUILD_TIME:-}
+    image: fireplace-backend:latest
+    restart: unless-stopped
+    ports:
+      - '3000:3000'
+    environment:
+      DB_HOST: db
+      DB_PORT: '5432'
+      DB_USER: ${DB_USER:-postgres}
+      DB_PASS: ${DB_PASS:-postgres}
+      DB_NAME: ${DB_NAME:-chatdb}
+      JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in ~/fireplace/.env}
+      ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?set ALLOWED_ORIGINS in ~/fireplace/.env (e.g. https://fireplace.ignorelist.com)}
+      MEDIA_BASE_URL: ${MEDIA_BASE_URL:?set MEDIA_BASE_URL in ~/fireplace/.env (e.g. https://fireplace.ignorelist.com)}
+      MEDIA_DIR: /app/media
+      FIREBASE_SERVICE_ACCOUNT: ${FIREBASE_SERVICE_ACCOUNT:-}
+      WEB_PUSH_VAPID_PUBLIC_KEY: ${WEB_PUSH_VAPID_PUBLIC_KEY:?set WEB_PUSH_VAPID_PUBLIC_KEY in ~/fireplace/.env}
+      WEB_PUSH_VAPID_PRIVATE_KEY: ${WEB_PUSH_VAPID_PRIVATE_KEY:?set WEB_PUSH_VAPID_PRIVATE_KEY in ~/fireplace/.env}
+      WEB_PUSH_VAPID_SUBJECT: ${WEB_PUSH_VAPID_SUBJECT:-mailto:admin@example.com}
+      APP_VERSION: ${APP_VERSION:-0.0.1}
+      GIT_COMMIT: ${GIT_COMMIT:-unknown}
+      BUILD_TIME: ${BUILD_TIME:-}
+      NODE_ENV: production
+    depends_on:
+      - db
+    healthcheck:
+      test: ["CMD", "wget", "-qO-", "http://127.0.0.1:3000/health"]
+      interval: 30s
+      timeout: 10s
+      retries: 3
+      start_period: 40s
+    volumes:
+      - media_storage:/app/media
+
+volumes:
+  pgdata:
+  media_storage:

@@ -1,5 +1,7 @@
-# docker-compose.yml — Backend + DB only (for mobile dev)
-# Frontend runs locally via: cd frontend && flutter run
+# docker-compose.yml — LOCAL DEV ONLY (backend + DB for mobile dev).
+# Backend runs bind-mounted in watch mode: NODE_ENV=development, relaxed CORS,
+# TypeORM auto-DDL (synchronize). Frontend runs locally via: cd frontend && flutter run
+# PRODUCTION (the VM) uses docker-compose.prod.yml via ./deploy-backend.sh — never this file.
 
 services:
   db:
