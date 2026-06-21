@@ -20,6 +20,10 @@ export class FcmTokensService {
     await this.fcmTokenRepo.delete({ token });
   }
 
+  async removeByTokenForUser(userId: number, token: string): Promise<void> {
+    await this.fcmTokenRepo.delete({ userId, token });
+  }
+
   async removeByUserId(userId: number): Promise<void> {
     await this.fcmTokenRepo.delete({ userId });
   }

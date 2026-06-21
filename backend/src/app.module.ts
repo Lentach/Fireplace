@@ -30,6 +30,8 @@ import { VersionModule } from './version/version.module';
 import { WebPushSubscription } from './web-push-subscriptions/web-push-subscription.entity';
 import { WebPushSubscriptionsModule } from './web-push-subscriptions/web-push-subscriptions.module';
 import { RefreshToken } from './auth/refresh-token.entity';
+import { APP_GUARD } from '@nestjs/core';
+import { HttpThrottlerGuard } from './common/http-throttler.guard';
 
 @Module({
   imports: [
@@ -91,6 +93,11 @@ import { RefreshToken } from './auth/refresh-token.entity';
     SecretNotesModule,
     HealthModule,
     VersionModule,
+  ],
+  providers: [
+    // Activates HTTP @Throttle limits with per-client-IP tracking (behind nginx);
+    // skips WS (gateway uses WsThrottlerGuard). See common/http-throttler.guard.ts.
+    { provide: APP_GUARD, useClass: HttpThrottlerGuard },
   ],
 })
 export class AppModule {}

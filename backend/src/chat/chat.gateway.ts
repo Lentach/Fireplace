@@ -85,12 +85,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      const payload = this.jwtService.verify(token);
+      const payload = this.jwtService.verify<{ sub: number; iat?: number }>(token);
       const user = await this.usersService.findById(payload.sub);
 
       if (!user) {
         client.disconnect();
         return;
+      }
+
+      // Mirror JwtStrategy: a token issued before the last password change is invalid.
+      if (user.passwordChangedAt) {
+        const changedAtSeconds = Math.floor(user.passwordChangedAt.getTime() / 1000);
+        if (typeof payload.iat === 'number' && payload.iat <= changedAtSeconds) {
+          client.disconnect();
+          return;
+        }
       }
 
       client.data.user = {

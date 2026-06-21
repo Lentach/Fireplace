@@ -6,6 +6,8 @@ import { IsString, IsNotEmpty, IsInt, MaxLength } from 'class-validator';
 import { JwtAuthGuard } from '../auth/jwt-auth.guard';
 import { SecretNotesService } from './secret-notes.service';
 import type { Response } from 'express';
+import { randomBytes } from 'crypto';
+import { Throttle } from '@nestjs/throttler';
 
 class CreateNoteDto {
   @IsString()
@@ -30,18 +32,22 @@ export class SecretNotesController {
   }
 
   @Get('note/:token')
+  @Throttle({ default: { limit: 60, ttl: 60000 } })
   async getNotePage(@Param('token') token: string, @Res() res: Response) {
     const note = await this.service.findByToken(token);
+    const nonce = randomBytes(16).toString('base64');
+    this.setNoteCsp(res, nonce);
     if (!note) {
       res.send(this.destroyedPage());
       return;
     }
     const remainingMs = new Date(note.expiresAt).getTime() - Date.now();
     const remainingLabel = this.formatRemaining(remainingMs);
-    res.send(this.landingPage(token, remainingLabel));
+    res.send(this.landingPage(token, remainingLabel, nonce));
   }
 
   @Post('note/:token/reveal')
+  @Throttle({ default: { limit: 30, ttl: 60000 } })
   async revealNote(@Param('token') token: string, @Res() res: Response) {
     const result = await this.service.revealAndDelete(token);
     if (!result) {
@@ -58,7 +64,15 @@ export class SecretNotesController {
     return `${m}m`;
   }
 
-  private landingPage(token: string, remaining: string): string {
+  // Per-response CSP overriding helmet's global one so the nonce'd reveal script runs.
+  private setNoteCsp(res: Response, nonce: string): void {
+    res.setHeader(
+      'Content-Security-Policy',
+      `default-src 'self'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'`,
+    );
+  }
+
+  private landingPage(token: string, remaining: string, nonce: string): string {
     return `<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -93,7 +107,7 @@ export class SecretNotesController {
   <div class="icon">⚛️</div>
   <h1>Anti-Quantum Note</h1>
   <p class="sub">Someone sent you a self-destructing message.<br>It will be permanently destroyed after you read it.</p>
-  <button class="btn" id="revealBtn" onclick="reveal()">🔓 Reveal &amp; Destroy</button>
+  <button class="btn" id="revealBtn">🔓 Reveal &amp; Destroy</button>
   <div class="expires">Expires in ${remaining} · Powered by Fireplace</div>
   <div id="error">Failed to load note. It may have already been read.</div>
 </div>
@@ -105,7 +119,7 @@ export class SecretNotesController {
   <div class="footer">This note has been deleted from the server.<br>Refreshing this page will show nothing.</div>
 </div>
 
-<script>
+<script nonce="${nonce}">
 async function reveal() {
   const btn = document.getElementById('revealBtn');
   btn.disabled = true;
@@ -146,6 +160,7 @@ function base64ToBytes(b64) {
   const bin = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
   return Uint8Array.from(bin, c => c.charCodeAt(0));
 }
+document.getElementById('revealBtn').addEventListener('click', reveal);
 </script>
 </body>
 </html>`;

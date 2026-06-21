@@ -137,6 +137,20 @@ describe('SendMessageDto', () => {
     });
   });
 
+  describe('messageType validation', () => {
+    it('rejects an unknown messageType', async () => {
+      const dto = createDto({ content: 'hi', messageType: 'BOGUS' });
+      const errors = await validate(dto);
+      expect(errors.some((e) => e.property === 'messageType')).toBe(true);
+    });
+
+    it('accepts a valid enum messageType', async () => {
+      const dto = createDto({ content: 'hi', messageType: 'IMAGE' });
+      const errors = await validate(dto);
+      expect(errors.some((e) => e.property === 'messageType')).toBe(false);
+    });
+  });
+
   describe('mediaUrl validation', () => {
     it('should reject non-Cloudinary URL', async () => {
       const dto = createDto({

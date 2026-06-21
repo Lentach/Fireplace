@@ -15,6 +15,7 @@ import {
   DISAPPEARING_MAX_SECONDS,
   DISAPPEARING_MIN_SECONDS,
 } from '../../messages/disappearing.constants';
+import { MessageType } from '../../messages/message.entity';
 
 /** Cloudinary (https only) or self-hosted media under MEDIA_BASE_URL — prevents SSRF */
 const _mediaOriginEscaped = (process.env.MEDIA_BASE_URL ?? 'http://localhost:3000').replace(
@@ -58,7 +59,8 @@ export class SendMessageDto {
 
   @IsOptional()
   @IsString()
-  messageType?: string; // 'TEXT', 'VOICE', 'PING', etc.
+  @IsIn(Object.values(MessageType))
+  messageType?: string; // TEXT | PING | IMAGE | VOICE | GIF | FILE
 
   @IsOptional()
   @IsString()
