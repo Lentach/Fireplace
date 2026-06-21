@@ -29,7 +29,7 @@ tmp=""
 _PASS_TMP=""
 PASS_FILE=""
 cleanup() {
-  [[ -n "$tmp" ]] && rm -f "$tmp"
+  [[ -n "$tmp" ]] && { shred -u "$tmp" 2>/dev/null || rm -f "$tmp"; }
   [[ -n "$_PASS_TMP" ]] && { shred -u "$_PASS_TMP" 2>/dev/null || rm -f "$_PASS_TMP"; }
 }
 trap cleanup EXIT INT TERM

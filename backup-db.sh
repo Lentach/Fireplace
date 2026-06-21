@@ -68,9 +68,11 @@ compose exec -T db pg_dump -U "$DB_USER" -d "$DB_NAME" -Fc > "$db_file"
 [[ -s "$db_file" ]] || { echo "ERROR: dump is empty — aborting" >&2; rm -f "$db_file"; exit 1; }
 
 echo "==> tar media volume ($MEDIA_VOLUME)"
-if ! docker run --rm -v "$MEDIA_VOLUME":/data:ro -v "$BACKUP_DIR":/backup alpine \
+if ! docker volume inspect "$MEDIA_VOLUME" >/dev/null 2>&1; then
+  echo "WARN: media volume '$MEDIA_VOLUME' not found — SKIPPING media (check: docker volume ls). Not creating an empty one."
+elif ! docker run --rm -v "$MEDIA_VOLUME":/data:ro -v "$BACKUP_DIR":/backup alpine \
        tar czf "/backup/$(basename "$media_file")" -C /data . ; then
-  echo "WARN: media backup skipped (is the volume named '$MEDIA_VOLUME'? check: docker volume ls)"
+  echo "WARN: media backup failed"
 fi
 
 # --- encryption at rest (gpg AES256 via --passphrase-file; never on argv) ---
@@ -81,7 +83,7 @@ if [[ -n "$PASS_FILE" ]]; then
     [[ -f "$f" ]] || continue
     gpg --batch --yes --pinentry-mode loopback --passphrase-file "$PASS_FILE" \
       --symmetric --cipher-algo AES256 "$f"
-    rm -f "$f"
+      shred -u "$f" 2>/dev/null || rm -f "$f"
   done
   if [[ -f "$ENV_FILE" ]]; then
     echo "==> backing up .env (encrypted)"
@@ -93,10 +95,20 @@ else
   echo "      DB+media are UNENCRYPTED in $BACKUP_DIR; .env is SKIPPED (never written cleartext)."
 fi
 
-# Optional offsite copy to a private bucket. Requires gsutil + BACKUP_GCS_BUCKET=gs://your-bucket
-if [[ -n "${BACKUP_GCS_BUCKET:-}" ]] && command -v gsutil >/dev/null 2>&1; then
-  echo "==> uploading to $BACKUP_GCS_BUCKET"
-  gsutil -m cp "$BACKUP_DIR/"*"$ts"* "$BACKUP_GCS_BUCKET/" || echo "WARN: gsutil upload failed"
+# Optional offsite copy to a private bucket (BACKUP_GCS_BUCKET=gs://your-bucket).
+# Only ENCRYPTED files are uploaded; refuse if encryption is off so cleartext never leaves the VM.
+if [[ -n "${BACKUP_GCS_BUCKET:-}" ]]; then
+  if [[ -z "$PASS_FILE" ]]; then
+    echo "WARN: BACKUP_GCS_BUCKET set but no passphrase — refusing to upload UNENCRYPTED backups offsite."
+  elif command -v gsutil >/dev/null 2>&1; then
+    echo "==> uploading to $BACKUP_GCS_BUCKET (gsutil)"
+    gsutil -m cp "$BACKUP_DIR/"*"$ts"*.gpg "$BACKUP_GCS_BUCKET/" || echo "WARN: gsutil upload failed"
+  elif command -v gcloud >/dev/null 2>&1; then
+    echo "==> uploading to $BACKUP_GCS_BUCKET (gcloud storage)"
+    gcloud storage cp "$BACKUP_DIR/"*"$ts"*.gpg "$BACKUP_GCS_BUCKET/" || echo "WARN: gcloud storage upload failed"
+  else
+    echo "WARN: BACKUP_GCS_BUCKET set but neither gsutil nor gcloud found — offsite upload SKIPPED."
+  fi
 fi
 
 echo "==> pruning local backups older than $RETENTION_DAYS days"
