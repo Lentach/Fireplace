@@ -89,6 +89,25 @@ subscribe fails (`push service error` / delivery `400`).
   secrets + origins for compose interpolation. Re-run `deploy-backend.sh` (or restart backend) after edits.
 - **Postgres:** DB name is **`chatdb`**: `docker compose -f docker-compose.prod.yml exec db psql -U postgres -d chatdb`.
 
+## Backups & monitoring
+
+- **DB + media backup:** `./backup-db.sh` (VM) → `pg_dump -Fc` of `chatdb` + tar of the
+  `fireplace_media_storage` volume into `~/fireplace-backups/` (0700), prunes >`RETENTION_DAYS`
+  (14). Optional: `BACKUP_PASSPHRASE` (gpg AES256 at rest), `BACKUP_GCS_BUCKET` (gsutil offsite).
+  Cron: `0 4 * * * cd ~/fireplace && BACKUP_PASSPHRASE='…' ./backup-db.sh >> ~/fireplace-backups/backup.log 2>&1`.
+- **E2E-safe:** dumps hold only ciphertext messages + PUBLIC keys + metadata + bcrypt hashes;
+  Signal private keys are device-only, never in the DB — a dump cannot decrypt messages. Still
+  sensitive (metadata + hashes) → keep private / encrypt / lock down the bucket.
+- **Restore:** `./restore-db.sh ~/fireplace-backups/chatdb-<ts>.dump[.gpg]` (stops backend,
+  `pg_restore --clean`, restarts). Media restore (separate):
+  `docker run --rm -v fireplace_media_storage:/data -v ~/fireplace-backups:/b alpine sh -c 'cd /data && tar xzf /b/media-<ts>.tar.gz'`.
+- **Restart policy:** `docker-compose.prod.yml` sets `restart: unless-stopped` on backend + db
+  (survives VM reboot). Applies to db on its next recreate — apply once with
+  `docker compose -f docker-compose.prod.yml up -d`.
+- **Uptime monitor (external):** point UptimeRobot / healthchecks.io at
+  `https://fireplace.ignorelist.com/health` (expect `{"status":"ok","db":"ok"}`) so an outage pages
+  you instead of being noticed by hand.
+
 ## Agent checklist after a production-related PR
 
 1. User pushed `master` (agent does not SSH unless asked).
