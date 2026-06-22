@@ -59,14 +59,29 @@ if [[ "$SRC" == *.gpg ]]; then
   SRC="$tmp"
 fi
 
+# Guard: never restore from an empty/truncated source.
+[[ -s "$SRC" ]] || { echo "ERROR: restore source is empty: $1" >&2; exit 1; }
+
 echo "WARNING: this OVERWRITES data in '$DB_NAME'. Ctrl-C within 5s to abort."
 sleep 5
 
 echo "==> stopping backend"
 compose stop backend
-echo "==> pg_restore (clean)"
-compose exec -T db pg_restore -U "$DB_USER" -d "$DB_NAME" --clean --if-exists < "$SRC"
+
+# Atomic: --single-transaction rolls the ENTIRE restore back on ANY error, so a
+# corrupt/partial dump can never leave the DB half-dropped. Capture the status
+# WITHOUT letting `set -e` abort, so the backend is ALWAYS brought back up.
+echo "==> pg_restore (atomic, single transaction)"
+restore_status=0
+compose exec -T db pg_restore -U "$DB_USER" -d "$DB_NAME" \
+  --clean --if-exists --single-transaction < "$SRC" || restore_status=$?
+
 echo "==> starting backend"
 compose up -d backend
 
+if [[ "$restore_status" -ne 0 ]]; then
+  echo "ERROR: pg_restore failed (exit $restore_status). The transaction rolled back —" >&2
+  echo "       the database is unchanged and the backend is back up on the prior data." >&2
+  exit "$restore_status"
+fi
 echo "==> restore complete. Verify:  curl -fsS http://127.0.0.1:3000/health"

@@ -14,6 +14,8 @@
 # STORE THE PASSPHRASE OFF THE VM (password manager) — an encrypted backup is useless if
 # the only copy of the key dies with the machine. Optional offsite: BACKUP_GCS_BUCKET
 # (see setup-backup-bucket.sh).
+# NOTE: cleartext intermediates are shred'd best-effort; on CoW/journaled/tmpfs
+# filesystems shred cannot guarantee erasure — rely on full-disk encryption for the VM.
 #
 # Usage:  cd ~/fireplace && ./backup-db.sh
 # Cron (daily 04:00) — passphrase lives in the file, NOT the cron line:
@@ -45,6 +47,7 @@ resolve_pass_file() {
   if [[ -n "${BACKUP_PASSPHRASE:-}" ]]; then
     _PASS_TMP="$(mktemp)"; chmod 600 "$_PASS_TMP"
     printf '%s' "$BACKUP_PASSPHRASE" > "$_PASS_TMP"
+    unset BACKUP_PASSPHRASE  # don't leak via child env / /proc/<pid>/environ
     PASS_FILE="$_PASS_TMP"; return 0
   fi
   if [[ -f "$BACKUP_PASSPHRASE_FILE" ]]; then
@@ -59,6 +62,12 @@ resolve_pass_file() {
 
 mkdir -p "$BACKUP_DIR"
 chmod 700 "$BACKUP_DIR"
+
+# Prevent overlapping runs (cron overlap, or manual + nightly). Degrades gracefully without flock.
+if command -v flock >/dev/null 2>&1; then
+  exec 9>"$BACKUP_DIR/.backup.lock"
+  flock -n 9 || { echo "another backup run is in progress — exiting"; exit 0; }
+fi
 ts="$(date -u +%Y%m%dT%H%M%SZ)"
 db_file="$BACKUP_DIR/chatdb-$ts.dump"
 media_file="$BACKUP_DIR/media-$ts.tar.gz"
@@ -72,7 +81,8 @@ if ! docker volume inspect "$MEDIA_VOLUME" >/dev/null 2>&1; then
   echo "WARN: media volume '$MEDIA_VOLUME' not found — SKIPPING media (check: docker volume ls). Not creating an empty one."
 elif ! docker run --rm -v "$MEDIA_VOLUME":/data:ro -v "$BACKUP_DIR":/backup alpine \
        tar czf "/backup/$(basename "$media_file")" -C /data . ; then
-  echo "WARN: media backup failed"
+  echo "WARN: media backup failed — removing partial archive"
+  rm -f "$media_file"
 fi
 
 # --- encryption at rest (gpg AES256 via --passphrase-file; never on argv) ---
@@ -100,14 +110,21 @@ fi
 if [[ -n "${BACKUP_GCS_BUCKET:-}" ]]; then
   if [[ -z "$PASS_FILE" ]]; then
     echo "WARN: BACKUP_GCS_BUCKET set but no passphrase — refusing to upload UNENCRYPTED backups offsite."
-  elif command -v gsutil >/dev/null 2>&1; then
-    echo "==> uploading to $BACKUP_GCS_BUCKET (gsutil)"
-    gsutil -m cp "$BACKUP_DIR/"*"$ts"*.gpg "$BACKUP_GCS_BUCKET/" || echo "WARN: gsutil upload failed"
-  elif command -v gcloud >/dev/null 2>&1; then
-    echo "==> uploading to $BACKUP_GCS_BUCKET (gcloud storage)"
-    gcloud storage cp "$BACKUP_DIR/"*"$ts"*.gpg "$BACKUP_GCS_BUCKET/" || echo "WARN: gcloud storage upload failed"
   else
-    echo "WARN: BACKUP_GCS_BUCKET set but neither gsutil nor gcloud found — offsite upload SKIPPED."
+    shopt -s nullglob
+    encrypted=("$BACKUP_DIR"/*"$ts"*.gpg)
+    shopt -u nullglob
+    if (( ${#encrypted[@]} == 0 )); then
+      echo "WARN: no encrypted files for $ts to upload."
+    elif command -v gsutil >/dev/null 2>&1; then
+      echo "==> uploading ${#encrypted[@]} file(s) to $BACKUP_GCS_BUCKET (gsutil)"
+      gsutil -m cp "${encrypted[@]}" "$BACKUP_GCS_BUCKET/" || echo "WARN: gsutil upload failed"
+    elif command -v gcloud >/dev/null 2>&1; then
+      echo "==> uploading ${#encrypted[@]} file(s) to $BACKUP_GCS_BUCKET (gcloud storage)"
+      gcloud storage cp "${encrypted[@]}" "$BACKUP_GCS_BUCKET/" || echo "WARN: gcloud storage upload failed"
+    else
+      echo "WARN: BACKUP_GCS_BUCKET set but neither gsutil nor gcloud found — offsite upload SKIPPED."
+    fi
   fi
 fi
 
