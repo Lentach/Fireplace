@@ -72,6 +72,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get logout => 'Logout';
 
   @override
+  String get uninstallWarning =>
+      'Uninstalling or clearing site data permanently erases your message history — to refresh, just fully close and reopen the app.';
+
+  @override
   String get chat => 'Chat';
 
   @override
