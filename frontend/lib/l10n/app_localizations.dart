@@ -1286,11 +1286,17 @@ abstract class AppLocalizations {
   /// **'Usuń dla wszystkich'**
   String get messageDeleteForEveryone;
 
-  /// No description provided for @messageEditComingSoon.
+  /// No description provided for @messageEditedLabel.
   ///
   /// In pl, this message translates to:
-  /// **'Edycja wkrótce'**
-  String get messageEditComingSoon;
+  /// **'edytowano'**
+  String get messageEditedLabel;
+
+  /// No description provided for @messageEditingTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Edytowanie wiadomości'**
+  String get messageEditingTitle;
 
   /// No description provided for @messagePinRequiresSentMessage.
   ///

@@ -20,7 +20,9 @@ class MessageActionPanel extends StatelessWidget {
 
   /// Null hides the Copy row (non-TEXT messages, E2E placeholders).
   final VoidCallback? onCopy;
-  final VoidCallback onEdit;
+
+  /// Null hides the Edit row (non-own / non-TEXT / unsent / past the 15-min window).
+  final VoidCallback? onEdit;
   final VoidCallback onPin;
   final VoidCallback onDelete;
 
@@ -44,14 +46,14 @@ class MessageActionPanel extends StatelessWidget {
                 onCopy!,
                 enabled: true,
               ),
-            _row(
-              context,
-              l10n.messageActionEdit,
-              Icons.edit_outlined,
-              onEdit,
-              enabled: true,
-              muted: true,
-            ),
+            if (onEdit != null)
+              _row(
+                context,
+                l10n.messageActionEdit,
+                Icons.edit_outlined,
+                onEdit!,
+                enabled: true,
+              ),
             _row(
               context,
               l10n.messageActionPin,

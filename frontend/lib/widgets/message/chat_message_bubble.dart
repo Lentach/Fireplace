@@ -9,6 +9,7 @@ import '../../providers/messaging_provider.dart';
 import '../../providers/settings_provider.dart';
 import '../../theme/rpg_theme.dart';
 import '../../utils/reply_preview_helper.dart';
+import '../../utils/message_edit_eligibility.dart';
 import '../message_swipe_wrapper.dart';
 import '../dialogs/message_delete_dialog.dart';
 import '../top_snackbar.dart';
@@ -144,6 +145,9 @@ class ChatMessageBubble extends StatelessWidget {
               Clipboard.setData(ClipboardData(text: message.content));
               showTopSnackBar(context, l10n.snackbarMessageCopied);
             },
+      onEdit: messageEditEligible(message, isMine: isMine)
+          ? () => messaging.beginEditMessage(message)
+          : null,
       onPin: () {
         if (message.id > 0) {
           messaging.pinMessage(message.conversationId, message.id);

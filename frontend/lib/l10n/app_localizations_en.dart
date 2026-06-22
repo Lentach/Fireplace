@@ -684,7 +684,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get messageDeleteForEveryone => 'Delete for everyone';
 
   @override
-  String get messageEditComingSoon => 'Edit is coming soon';
+  String get messageEditedLabel => 'edited';
+
+  @override
+  String get messageEditingTitle => 'Editing message';
 
   @override
   String get messagePinRequiresSentMessage =>
