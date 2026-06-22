@@ -557,6 +557,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
             if (_appVersionLine != null) const SizedBox(height: 16),
 
+            // E2E key-loss warning — shown right above logout (the uninstall/clear-data danger point).
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Text(
+                AppLocalizations.of(context).uninstallWarning,
+                style: RpgTheme.bodyFont(
+                  fontSize: 11,
+                  color: theme.colorScheme.onSurfaceVariant,
+                ),
+                textAlign: TextAlign.center,
+              ),
+            ),
+            const SizedBox(height: 12),
+
             // Logout Button
             Padding(
               padding: const EdgeInsets.symmetric(horizontal: 16),
