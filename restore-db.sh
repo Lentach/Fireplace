@@ -5,8 +5,10 @@
 # stopped during the restore and started again afterwards.
 #
 # Usage:  cd ~/fireplace && ./restore-db.sh ~/fireplace-backups/chatdb-YYYYmmddTHHMMSSZ.dump[.gpg]
-#   Encrypted (.gpg) dumps need BACKUP_PASSPHRASE set.
-#   Media is restored separately (see production-vm-deploy rule).
+#   Encrypted (.gpg) dumps use BACKUP_PASSPHRASE or BACKUP_PASSPHRASE_FILE
+#   (default ~/.config/fireplace/backup.pass, chmod 600).
+#   Media + .env are restored MANUALLY (see production-vm-deploy rule) — this script is DB-only,
+#   so a restore never clobbers a rotated live .env.
 set -euo pipefail
 
 [[ $# -eq 1 ]] || { echo "usage: $0 <chatdb-*.dump[.gpg]>" >&2; exit 1; }
@@ -22,25 +24,64 @@ DB_USER="${DB_USER:-postgres}"
 
 compose() { docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" "$@"; }
 
+BACKUP_PASSPHRASE_FILE="${BACKUP_PASSPHRASE_FILE:-$HOME/.config/fireplace/backup.pass}"
 tmp=""
-cleanup() { [[ -n "$tmp" ]] && rm -f "$tmp"; }
-trap cleanup EXIT
+_PASS_TMP=""
+PASS_FILE=""
+cleanup() {
+  [[ -n "$tmp" ]] && { shred -u "$tmp" 2>/dev/null || rm -f "$tmp"; }
+  [[ -n "$_PASS_TMP" ]] && { shred -u "$_PASS_TMP" 2>/dev/null || rm -f "$_PASS_TMP"; }
+}
+trap cleanup EXIT INT TERM
+
+# Sets global PASS_FILE to a 0600 passphrase file, or "" if none (parent scope; trap-safe).
+resolve_pass_file() {
+  if [[ -n "${BACKUP_PASSPHRASE:-}" ]]; then
+    _PASS_TMP="$(mktemp)"; chmod 600 "$_PASS_TMP"
+    printf '%s' "$BACKUP_PASSPHRASE" > "$_PASS_TMP"
+    PASS_FILE="$_PASS_TMP"; return 0
+  fi
+  if [[ -f "$BACKUP_PASSPHRASE_FILE" ]]; then
+    local mode; mode="$(stat -c '%a' "$BACKUP_PASSPHRASE_FILE" 2>/dev/null || stat -f '%Lp' "$BACKUP_PASSPHRASE_FILE")"
+    if [[ "$mode" != "600" && "$mode" != "400" ]]; then
+      echo "ERROR: $BACKUP_PASSPHRASE_FILE must be chmod 600 (is $mode)" >&2; return 1
+    fi
+    PASS_FILE="$BACKUP_PASSPHRASE_FILE"; return 0
+  fi
+  PASS_FILE=""; return 0
+}
 
 if [[ "$SRC" == *.gpg ]]; then
-  [[ -n "${BACKUP_PASSPHRASE:-}" ]] || { echo "ERROR: encrypted dump needs BACKUP_PASSPHRASE" >&2; exit 1; }
+  resolve_pass_file || exit 1
+  [[ -n "$PASS_FILE" ]] || { echo "ERROR: encrypted dump needs BACKUP_PASSPHRASE or $BACKUP_PASSPHRASE_FILE (chmod 600)" >&2; exit 1; }
   tmp="$(mktemp)"
-  gpg --batch --yes --pinentry-mode loopback --passphrase "$BACKUP_PASSPHRASE" -o "$tmp" -d "$SRC"
+  gpg --batch --yes --pinentry-mode loopback --passphrase-file "$PASS_FILE" -o "$tmp" -d "$SRC"
   SRC="$tmp"
 fi
+
+# Guard: never restore from an empty/truncated source.
+[[ -s "$SRC" ]] || { echo "ERROR: restore source is empty: $1" >&2; exit 1; }
 
 echo "WARNING: this OVERWRITES data in '$DB_NAME'. Ctrl-C within 5s to abort."
 sleep 5
 
 echo "==> stopping backend"
 compose stop backend
-echo "==> pg_restore (clean)"
-compose exec -T db pg_restore -U "$DB_USER" -d "$DB_NAME" --clean --if-exists < "$SRC"
+
+# Atomic: --single-transaction rolls the ENTIRE restore back on ANY error, so a
+# corrupt/partial dump can never leave the DB half-dropped. Capture the status
+# WITHOUT letting `set -e` abort, so the backend is ALWAYS brought back up.
+echo "==> pg_restore (atomic, single transaction)"
+restore_status=0
+compose exec -T db pg_restore -U "$DB_USER" -d "$DB_NAME" \
+  --clean --if-exists --single-transaction < "$SRC" || restore_status=$?
+
 echo "==> starting backend"
 compose up -d backend
 
+if [[ "$restore_status" -ne 0 ]]; then
+  echo "ERROR: pg_restore failed (exit $restore_status). The transaction rolled back —" >&2
+  echo "       the database is unchanged and the backend is back up on the prior data." >&2
+  exit "$restore_status"
+fi
 echo "==> restore complete. Verify:  curl -fsS http://127.0.0.1:3000/health"
