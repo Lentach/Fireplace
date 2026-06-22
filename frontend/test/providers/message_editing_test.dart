@@ -2,7 +2,6 @@ import 'dart:convert';
 
 import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
-import 'package:fireplace/models/message_model.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/utils/e2e_envelope.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -11,11 +10,11 @@ import 'package:flutter_test/flutter_test.dart';
 /// (default 'decrypted'); persists saveDecryptedContent in-memory so the
 /// edit-staleness cache path can be exercised.
 class _FakeEnc extends EncryptionProvider {
-  bool ready;
+  bool ready = true;
   final Map<String, String> decryptMap;
   final Map<int, Map<String, dynamic>> persisted = {};
 
-  _FakeEnc({this.ready = true, this.decryptMap = const {}});
+  _FakeEnc({this.decryptMap = const {}});
 
   @override
   bool get isE2EReady => ready;
@@ -64,7 +63,7 @@ Map<String, dynamic> _peerMsg({
       'deliveryStatus': 'DELIVERED',
       'messageType': 'TEXT',
       'createdAt': createdAt,
-      if (editedAt != null) 'editedAt': editedAt,
+      'editedAt': ?editedAt,
     };
 
 Future<void> _settle() async {

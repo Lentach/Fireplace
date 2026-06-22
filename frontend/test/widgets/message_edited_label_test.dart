@@ -6,7 +6,6 @@ import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/message/message_metadata_row.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:flutter_localizations/flutter_localizations.dart';
 import 'package:provider/provider.dart';
 
 MessageModel _msg({DateTime? editedAt}) => MessageModel(

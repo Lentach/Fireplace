@@ -134,10 +134,12 @@ a normal send. The server only swaps the stored `encryptedContent` and stamps `e
    client treats `messageEdited` for a missing/`_deletedMessageIds` row as a no-op. Delete wins.
 6. **Edit after read** — allowed within window; **do not touch `deliveryStatus`** (never downgrades).
    v1 does not track per-edit read state (unlike Signal).
-7. **Link preview on edited URL** — content changed ⇒ existing `linkPreview*` is stale; clear it on
-   edit and let the normal preview path regenerate. **Needs verification:** who populates
-   `linkPreview*` for E2E rows (server skips it) — confirm the client-side owner before wiring.
-   Acceptable v1 fallback: just clear the preview on edit.
+7. **Link preview on edited URL** — **v1 decision (as built): the existing `linkPreview*` is kept
+   as-is on edit — not regenerated and not cleared.** Verified during impl: for E2E rows link
+   preview travels inside the client envelope (the server skips preview when `encryptedContent` is
+   present), so there is no server-side preview to touch. Consequence (accepted): editing a message
+   to add/remove/change a URL leaves the original preview card on both sides until a fresh message.
+   Deferred follow-up: regenerate-on-edit (re-fetch into the new envelope) or clear-on-URL-change.
 8. **Search / client-side text** — on edit, update the decrypted-plaintext cache
    (`EncryptionProvider.saveDecryptedContent`; safe for TEXT — no media keys to clobber).
 9. **Last vs older message** — if edited id == `lastMessages[conv].id`, also `updateLastMessage`
