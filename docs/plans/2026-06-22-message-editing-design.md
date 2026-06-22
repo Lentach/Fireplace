@@ -110,17 +110,26 @@ a normal send. The server only swaps the stored `encryptedContent` and stamps `e
 
 ## 5. Edge-case decisions
 
-1. **Edited message quoted in a reply** — leave the stored reply snapshot (E2E `'Encrypted message'`
-   placeholder server-side). Frontend reply previews resolve **live** via `findMessageById`
-   (`frontend/CLAUDE.md`), so they reflect the new text automatically. No propagation code.
+1. **Edited message quoted in a reply** — the lookup source is live, but the projection is
+   **cached**: the bubble renders the stored `message.replyTo` snapshot
+   (`chat_message_bubble.dart:185-186`), refreshed only by `_reEnrichAllReplyQuotes()`
+   (`messaging_provider.dart:239-244`), currently triggered at `events.dart:103` and
+   `history.dart:240`. So after an edit, any reply quoting that message shows the **old text**
+   until some unrelated event re-enriches. **Fix:** `_handleMessageEdited` must call
+   `_reEnrichAllReplyQuotes()` after patching the row — one line, helper already exists
+   (NOT "no code"). Server-side reply snapshot stays the `'Encrypted message'` placeholder.
 2. **Edit a pinned message** — pin stores only `pinnedMessageId`; on `messageEdited`, if it equals
    the pinned id, refresh the pinned-banner preview client-side. Small UI task.
 3. **Edit an expiring message** — **do not reset** `expiresAt`/`disappearAfterSeconds`.
 4. **Recipient offline** — replace-in-place: the DB row carries the new ciphertext + `editedAt`;
-   recipient gets it via `messageHistory` on reconnect (no live broadcast needed). **E2E risk to
-   validate:** the edit ciphertext sits at a later ratchet step; libsignal's skipped-message-key
-   tolerance must cover the gap when the original ciphertext was replaced/never delivered — add an
-   explicit offline-edit decrypt test.
+   recipient gets it via `messageHistory` on reconnect (no live broadcast needed). **E2E ordering
+   risk to validate:** replace-in-place keeps the original `createdAt`, so on reconnect
+   `messageHistory` orders the edit ciphertext (a **later** ratchet step) **before** messages that
+   were encrypted at **earlier** ratchet steps. The recipient decrypts the higher-step ciphertext
+   first and relies on libsignal's skipped-message-key storage for the lower-step ones. For a single
+   edit the gap is tiny (well under the ~2000-key cap), so it works — but the test (P5) must assert
+   exactly that interleave (send A, send B, edit A while offline, reconnect → **all three decrypt**),
+   not just "edit decrypts in isolation."
 5. **Edit vs delete-for-everyone race** — `handleEditMessage` emits an error on message-not-found;
    client treats `messageEdited` for a missing/`_deletedMessageIds` row as a no-op. Delete wins.
 6. **Edit after read** — allowed within window; **do not touch `deliveryStatus`** (never downgrades).
@@ -150,17 +159,25 @@ a normal send. The server only swaps the stored `encryptedContent` and stamps `e
 - **P2 — frontend model + wiring:** `MessageModel.editedAt` (+ ctor/`fromJson`/`copyWith`);
   `socket_service` emit + `messaging_provider.actions.editMessage`; `connection_provider`
   `on('messageEdited')`; `messaging_provider.events.onMessageEdited → _handleMessageEdited`
-  (patch row, decrypt if encrypted, update cache + `lastMessages`, refresh pin, guard deleted rows).
+  (patch row, decrypt if encrypted, **call `_reEnrichAllReplyQuotes()` so reply quotes refresh —
+  edge #1**, update cache + `lastMessages`, refresh pin, guard deleted rows).
 - **P3 — send/encrypt reuse:** encrypt new plaintext via existing `EncryptionService` session →
   `editMessage` emit; optimistic local update (sender has plaintext) + reconcile on echo +
   revert/snackbar on reject (retain original to revert).
 - **P4 — UI:** replace the `messageEditComingSoon` snackbar in `message_context_menu_overlay.dart`
-  with edit-mode entry (gate: own + TEXT + within window); composer "editing" banner (mirror
-  `reply_preview_bar.dart`); "edited" label in `ChatMessageBubble` meta (new ARB `messageEditedLabel`);
-  pinned-banner refresh.
+  with edit-mode entry. **Eligibility predicate:** own + `MessageType.text` + within 15-min window
+  + **confirmed server id** (positive `id`, `deliveryStatus` ∈ {sent, delivered, read}) — hide Edit
+  for optimistic/unsent rows (`id=-timestamp`, sending/failed) since the server has no row to edit;
+  the own-message gate already covers inbound `[Decryption failed]`/placeholder rows. The client
+  window check is clock-based (skew may briefly show Edit when the server will reject) — acceptable,
+  since P1 is the authoritative enforcer and the cost is a rare snackbar; the client gate must
+  **never** be the only enforcement. Composer "editing" banner (mirror `reply_preview_bar.dart`);
+  "edited" label in `ChatMessageBubble` meta (new ARB `messageEditedLabel`); pinned-banner refresh.
 - **P5 — tests:** backend spec (happy path, non-sender reject, expired-window reject, not-found,
-  pin refresh, expiry untouched, **offline-edit decrypt/ratchet**); frontend (`onMessageEdited`
-  row+last+cache, optimistic+revert, `fromJson`/`copyWith` round-trip, context-menu eligibility).
+  pin refresh, expiry untouched, **offline-edit out-of-order interleave: send A, send B, edit A
+  offline, reconnect → all three decrypt**); frontend (`onMessageEdited` row+last+cache,
+  **reply-quote re-enrichment after edit**, optimistic+revert, `fromJson`/`copyWith` round-trip,
+  context-menu eligibility incl. unsent-row exclusion).
 - **P6 — deploy:** feature branch + PR (substantial); patch version bump; **run manual SQL first**,
   then `git pull && docker compose restart backend` / `deploy-backend.sh`; frontend via `deploy-web.ps1`.
 
