@@ -176,6 +176,15 @@ class MessagingProvider extends ChangeNotifier {
   /// Message being replied to (set when user taps Reply in bubble bottom sheet).
   MessageModel? _replyingToMessage;
 
+  /// Message currently being edited (set when the user taps Edit in the context
+  /// menu; cleared on send/cancel). Drives the composer "editing" banner.
+  MessageModel? _editingMessage;
+
+  /// Pre-edit row kept per messageId so a server reject (`editMessageFailed`) or
+  /// an encrypt failure can restore the optimistic in-place update verbatim
+  /// (copyWith can't reset editedAt to null, so we keep the whole row).
+  final Map<int, MessageModel> _pendingEdits = {};
+
   bool _showPingEffect = false;
   final IncomingMessageSoundService _incomingSound =
       IncomingMessageSoundService();
@@ -198,6 +207,7 @@ class MessagingProvider extends ChangeNotifier {
 
   List<MessageModel> get messages => _messages;
   MessageModel? get replyingToMessage => _replyingToMessage;
+  MessageModel? get editingMessage => _editingMessage;
   bool get showPingEffect => _showPingEffect;
   bool get isDecryptingHistory => _decryptingHistory;
   int? get currentUserId => _currentUserId;
@@ -396,6 +406,23 @@ class MessagingProvider extends ChangeNotifier {
     }
   }
 
+  /// Enter edit mode for [msg]; the composer prefills its text and routes send
+  /// to [editMessage]. Focuses the composer like reply.
+  void beginEditMessage(MessageModel msg) {
+    _editingMessage = msg;
+    _replyingToMessage = null;
+    _composerFocusRequest?.call();
+    notifyListeners();
+  }
+
+  /// Leave edit mode without sending.
+  void cancelEditMessage() {
+    if (_editingMessage != null) {
+      _editingMessage = null;
+      notifyListeners();
+    }
+  }
+
   // ---------- Ping Effect ----------
 
   void clearPingEffect() {
@@ -444,6 +471,8 @@ class MessagingProvider extends ChangeNotifier {
       _typingTimers.clear();
       _partnerRecordingVoice.clear();
       _replyingToMessage = null;
+      _editingMessage = null;
+      _pendingEdits.clear();
       _pendingSendContent.clear();
       _emittedSendTempIds.clear();
       _incomingMessageQueue.clear();
@@ -462,6 +491,8 @@ class MessagingProvider extends ChangeNotifier {
       _typingTimers.clear();
       _partnerRecordingVoice.clear();
       _replyingToMessage = null;
+      _editingMessage = null;
+      _pendingEdits.clear();
       _pendingSendContent.clear(); // retry was cancelled; orphaned entries serve no purpose
       _emittedSendTempIds.clear();
       _cancelDelayedRetryIfAny();
@@ -494,6 +525,8 @@ class MessagingProvider extends ChangeNotifier {
     _typingTimers.clear();
     _partnerRecordingVoice.clear();
     _replyingToMessage = null;
+    _editingMessage = null;
+    _pendingEdits.clear();
     _showPingEffect = false;
     _pendingSendContent.clear();
     _incomingMessageQueue.clear();

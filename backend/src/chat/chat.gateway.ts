@@ -217,6 +217,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     );
   }
 
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 900000 } })
+  @SubscribeMessage('editMessage')
+  handleEditMessage(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
+  ) {
+    return this.chatMessageService.handleEditMessage(
+      client,
+      data,
+      this.server,
+      this.onlineUsers,
+    );
+  }
+
   // ========== TYPING INDICATOR ==========
 
   @SubscribeMessage('typing')

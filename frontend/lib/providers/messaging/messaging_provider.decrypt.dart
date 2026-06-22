@@ -120,6 +120,8 @@ extension MessagingDecrypt on MessagingProvider {
         : null;
     final data = <String, dynamic>{
       'content': decrypted.content,
+      if (decrypted.editedAt != null)
+        'editedAt': decrypted.editedAt!.toIso8601String(),
       if (decrypted.messageType != MessageType.text)
         'messageType': decrypted.messageType.name.toUpperCase(),
       if (decrypted.mediaUrl != null) 'mediaUrl': decrypted.mediaUrl!,
@@ -173,6 +175,15 @@ extension MessagingDecrypt on MessagingProvider {
     return msg.content.isNotEmpty ||
         msg.mediaUrl != null ||
         msg.messageType != MessageType.text;
+  }
+
+  /// True when [serverEditedAt] is newer than the [cachedEditedAt] a stored
+  /// plaintext was decrypted at — i.e. an edit landed and the cache is stale, so
+  /// the new ciphertext must be re-decrypted instead of served from cache.
+  bool _isEditStale(DateTime? serverEditedAt, DateTime? cachedEditedAt) {
+    if (serverEditedAt == null) return false;
+    if (cachedEditedAt == null) return true;
+    return serverEditedAt.isAfter(cachedEditedAt);
   }
 
   /// Ciphertext type prefix ("{type}:{base64}"): 3 = PreKey, 2 = Signal
@@ -260,7 +271,8 @@ extension MessagingDecrypt on MessagingProvider {
             }
             continue;
           }
-          if (_hasUsableDecryptedContent(cached)) {
+          if (_hasUsableDecryptedContent(cached) &&
+              !_isEditStale(msg.editedAt, cached.editedAt)) {
             final idx = _messages.indexWhere((m) => m.id == msg.id);
             if (idx != -1) {
               final merged = _mergeMessagePreferNewer(_messages[idx], cached);
@@ -276,11 +288,15 @@ extension MessagingDecrypt on MessagingProvider {
         final persisted =
             await _encryptionProvider!.getDecryptedContent(msg.id);
         final pContent = persisted?['content'] as String? ?? '';
+        final persistedEditedAt = persisted?['editedAt'] != null
+            ? DateTime.tryParse(persisted!['editedAt'] as String)
+            : null;
         final hasPersistedPayload = persisted != null &&
             (pContent.isNotEmpty ||
                 persisted['mediaUrl'] != null ||
                 persisted['messageType'] != null);
-        if (hasPersistedPayload) {
+        if (hasPersistedPayload &&
+            !_isEditStale(msg.editedAt, persistedEditedAt)) {
           if (pContent == _kDecryptionFailedLabel) {
             // Terminal failure persisted — restore and skip without live decrypt.
             final idx = _messages.indexWhere((m) => m.id == msg.id);

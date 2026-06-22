@@ -114,9 +114,17 @@ extension MessagingHistory on MessagingProvider {
     final disappearAfterSeconds =
         server.disappearAfterSeconds ?? local.disappearAfterSeconds;
 
+    // Remote edit detected on reconnect: a newer server editedAt invalidates the
+    // local plaintext, so the new ciphertext must re-decrypt. Drop the stale RAM
+    // cache entry too (the cache-first shortcut would otherwise re-serve it).
+    final editStale = _isEditStale(server.editedAt, local.editedAt);
+    if (editStale) _encryptionProvider?.invalidateDecryptionCache(server.id);
+
     var content = local.content;
     // Keep failure label over server "[encrypted]" on reload; successful decrypt wins.
-    if (local.content == _kDecryptionFailedLabel) {
+    if (editStale) {
+      content = server.content;
+    } else if (local.content == _kDecryptionFailedLabel) {
       if (!server.displayAsEncryptedPlaceholder &&
           server.content.isNotEmpty &&
           server.content != _kDecryptionFailedLabel) {

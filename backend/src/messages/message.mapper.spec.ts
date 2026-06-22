@@ -189,4 +189,17 @@ describe('MessageMapper', () => {
     const payload = MessageMapper.toPayload(msg);
     expect(payload.disappearAfterSeconds).toBe(3600);
   });
+
+  it('should format editedAt as ISO string when set', () => {
+    const editedAt = new Date('2025-03-10T09:30:00Z');
+    const msg = createMockMessage({ editedAt });
+    const payload = MessageMapper.toPayload(msg);
+    expect(payload.editedAt).toBe('2025-03-10T09:30:00.000Z');
+  });
+
+  it('should set editedAt to null when not set', () => {
+    const msg = createMockMessage();
+    const payload = MessageMapper.toPayload(msg);
+    expect(payload.editedAt).toBeNull();
+  });
 });

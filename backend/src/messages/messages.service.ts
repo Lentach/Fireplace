@@ -60,6 +60,26 @@ export class MessagesService {
     return saved;
   }
 
+  /**
+   * Replace an existing message in place with new (E2E) content and stamp `editedAt`.
+   * Sender-only: returns null when the message is missing or the caller is not the sender.
+   */
+  async editMessage(
+    messageId: number,
+    userId: number,
+    fields: { encryptedContent?: string | null; content?: string },
+  ): Promise<Message | null> {
+    const msg = await this.msgRepo.findOne({
+      where: { id: messageId },
+      relations: ['sender'],
+    });
+    if (!msg || msg.sender?.id !== userId) return null;
+    if (fields.encryptedContent !== undefined) msg.encryptedContent = fields.encryptedContent;
+    if (fields.content !== undefined) msg.content = fields.content;
+    msg.editedAt = new Date();
+    return this.msgRepo.save(msg);
+  }
+
   /** Parse hiddenByUserIds string "1,2,3" to number[] */
   static parseHiddenIds(s: string | null | undefined): number[] {
     if (!s || typeof s !== 'string') return [];

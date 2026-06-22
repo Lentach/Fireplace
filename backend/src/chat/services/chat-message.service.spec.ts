@@ -694,6 +694,122 @@ describe('ChatMessageService', () => {
     });
   });
 
+  describe('handleEditMessage', () => {
+    it('updates the row and emits messageEdited to both sockets when sender edits within the window', async () => {
+      const conv = { id: 10, userOne: { id: 1 }, userTwo: { id: 2 } };
+      const msg = {
+        id: 100,
+        sender: { id: 1 },
+        conversation: conv,
+        createdAt: new Date(),
+      } as unknown as Message;
+      const editedAt = new Date('2026-06-22T12:00:00Z');
+      (messagesService as any).findByIdWithConversation = jest
+        .fn()
+        .mockResolvedValue(msg);
+      (messagesService as any).editMessage = jest
+        .fn()
+        .mockResolvedValue({ id: 100, editedAt } as Message);
+      onlineUsers.set(2, 'sock-bob');
+
+      await service.handleEditMessage(
+        mockClient as Socket,
+        { messageId: 100, content: '[encrypted]', encryptedContent: 'new-cipher' },
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      expect((messagesService as any).editMessage).toHaveBeenCalledWith(100, 1, {
+        encryptedContent: 'new-cipher',
+        content: '[encrypted]',
+      });
+      const expectedPayload = {
+        messageId: 100,
+        conversationId: 10,
+        content: '[encrypted]',
+        encryptedContent: 'new-cipher',
+        editedAt: '2026-06-22T12:00:00.000Z',
+      };
+      expect(mockClient.emit).toHaveBeenCalledWith('messageEdited', expectedPayload);
+      expect(mockServer.to).toHaveBeenCalledWith('sock-bob');
+      expect(mockServer.emit).toHaveBeenCalledWith('messageEdited', expectedPayload);
+    });
+
+    it('emits editMessageFailed with reason not_sender when caller is not the sender', async () => {
+      const conv = { id: 10, userOne: { id: 1 }, userTwo: { id: 2 } };
+      const msg = {
+        id: 100,
+        sender: { id: 2 },
+        conversation: conv,
+        createdAt: new Date(),
+      } as unknown as Message;
+      (messagesService as any).findByIdWithConversation = jest
+        .fn()
+        .mockResolvedValue(msg);
+      (messagesService as any).editMessage = jest.fn();
+
+      await service.handleEditMessage(
+        mockClient as Socket,
+        { messageId: 100, content: '[encrypted]', encryptedContent: 'new-cipher' },
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      expect((messagesService as any).editMessage).not.toHaveBeenCalled();
+      expect(mockClient.emit).toHaveBeenCalledWith('editMessageFailed', {
+        messageId: 100,
+        reason: 'not_sender',
+      });
+    });
+
+    it('emits editMessageFailed with reason window_expired when the edit window has passed', async () => {
+      const conv = { id: 10, userOne: { id: 1 }, userTwo: { id: 2 } };
+      const msg = {
+        id: 100,
+        sender: { id: 1 },
+        conversation: conv,
+        createdAt: new Date(Date.now() - 16 * 60 * 1000),
+      } as unknown as Message;
+      (messagesService as any).findByIdWithConversation = jest
+        .fn()
+        .mockResolvedValue(msg);
+      (messagesService as any).editMessage = jest.fn();
+
+      await service.handleEditMessage(
+        mockClient as Socket,
+        { messageId: 100, content: '[encrypted]', encryptedContent: 'new-cipher' },
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      expect((messagesService as any).editMessage).not.toHaveBeenCalled();
+      expect(mockClient.emit).toHaveBeenCalledWith('editMessageFailed', {
+        messageId: 100,
+        reason: 'window_expired',
+      });
+    });
+
+    it('emits editMessageFailed with reason not_found when the message does not exist', async () => {
+      (messagesService as any).findByIdWithConversation = jest
+        .fn()
+        .mockResolvedValue(null);
+      (messagesService as any).editMessage = jest.fn();
+
+      await service.handleEditMessage(
+        mockClient as Socket,
+        { messageId: 100, content: '[encrypted]', encryptedContent: 'new-cipher' },
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      expect((messagesService as any).editMessage).not.toHaveBeenCalled();
+      expect(mockClient.emit).toHaveBeenCalledWith('editMessageFailed', {
+        messageId: 100,
+        reason: 'not_found',
+      });
+    });
+  });
+
   describe('handleGetMessages (H-01 IDOR guard)', () => {
     it('refuses a non-member: returns empty history and never queries messages', async () => {
       // Caller is user 1 (beforeEach). Conversation 10 is between users 2 and 3.

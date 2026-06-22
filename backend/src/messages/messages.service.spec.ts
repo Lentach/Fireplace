@@ -100,3 +100,75 @@ describe('MessagesService.getUnreadSummaryForUser', () => {
     expect(result.countByConversationId.size).toBe(0);
   });
 });
+
+describe('MessagesService.editMessage', () => {
+  let service: MessagesService;
+  let repo: jest.Mocked<Repository<Message>>;
+
+  beforeEach(async () => {
+    const module = await Test.createTestingModule({
+      providers: [
+        MessagesService,
+        {
+          provide: getRepositoryToken(Message),
+          useValue: {
+            findOne: jest.fn(),
+            save: jest.fn((m) => Promise.resolve(m)),
+          },
+        },
+      ],
+    }).compile();
+    service = module.get(MessagesService);
+    repo = module.get(getRepositoryToken(Message));
+  });
+
+  it('returns null and does not save when caller is not the sender', async () => {
+    repo.findOne.mockResolvedValue({
+      id: 5,
+      sender: { id: 99 },
+      content: '[encrypted]',
+      encryptedContent: 'old',
+    } as unknown as Message);
+
+    const result = await service.editMessage(5, 1, {
+      encryptedContent: 'new',
+      content: '[encrypted]',
+    });
+
+    expect(result).toBeNull();
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('returns null when the message does not exist', async () => {
+    repo.findOne.mockResolvedValue(null);
+
+    const result = await service.editMessage(5, 1, { encryptedContent: 'new' });
+
+    expect(result).toBeNull();
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('updates encryptedContent, content and editedAt for the sender and returns the saved row', async () => {
+    const existing = {
+      id: 5,
+      sender: { id: 1 },
+      content: 'old plaintext',
+      encryptedContent: 'old-cipher',
+      editedAt: null,
+    } as unknown as Message;
+    repo.findOne.mockResolvedValue(existing);
+
+    const before = Date.now();
+    const result = await service.editMessage(5, 1, {
+      encryptedContent: 'new-cipher',
+      content: '[encrypted]',
+    });
+
+    expect(repo.save).toHaveBeenCalledTimes(1);
+    expect(result).not.toBeNull();
+    expect(result!.encryptedContent).toBe('new-cipher');
+    expect(result!.content).toBe('[encrypted]');
+    expect(result!.editedAt).toBeInstanceOf(Date);
+    expect(result!.editedAt!.getTime()).toBeGreaterThanOrEqual(before);
+  });
+});

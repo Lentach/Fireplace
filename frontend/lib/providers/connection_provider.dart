@@ -449,6 +449,12 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.on('messageDeleted', (data) {
       _messagingProvider?.onMessageDeleted(data);
     });
+    _socketService.on('messageEdited', (data) {
+      _messagingProvider?.onMessageEdited(data);
+    });
+    _socketService.on('editMessageFailed', (data) {
+      _messagingProvider?.onEditMessageFailed(data);
+    });
     _socketService.on('reactionUpdated', (data) {
       _messagingProvider?.onReactionUpdated(data);
     });
