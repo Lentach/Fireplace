@@ -702,6 +702,7 @@ describe('ChatMessageService', () => {
         sender: { id: 1 },
         conversation: conv,
         createdAt: new Date(),
+        messageType: 'TEXT',
       } as unknown as Message;
       const editedAt = new Date('2026-06-22T12:00:00Z');
       (messagesService as any).findByIdWithConversation = jest
@@ -806,6 +807,34 @@ describe('ChatMessageService', () => {
       expect(mockClient.emit).toHaveBeenCalledWith('editMessageFailed', {
         messageId: 100,
         reason: 'not_found',
+      });
+    });
+
+    it('emits editMessageFailed with reason not_text for a non-TEXT message', async () => {
+      const conv = { id: 10, userOne: { id: 1 }, userTwo: { id: 2 } };
+      const msg = {
+        id: 100,
+        sender: { id: 1 },
+        conversation: conv,
+        createdAt: new Date(),
+        messageType: 'IMAGE',
+      } as unknown as Message;
+      (messagesService as any).findByIdWithConversation = jest
+        .fn()
+        .mockResolvedValue(msg);
+      (messagesService as any).editMessage = jest.fn();
+
+      await service.handleEditMessage(
+        mockClient as Socket,
+        { messageId: 100, content: '[encrypted]', encryptedContent: 'new-cipher' },
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      expect((messagesService as any).editMessage).not.toHaveBeenCalled();
+      expect(mockClient.emit).toHaveBeenCalledWith('editMessageFailed', {
+        messageId: 100,
+        reason: 'not_text',
       });
     });
   });

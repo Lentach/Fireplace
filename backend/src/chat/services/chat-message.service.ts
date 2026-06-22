@@ -515,6 +515,13 @@ export class ChatMessageService {
       return;
     }
 
+    // v1 is text-only: never let a crafted client swap a media row's ciphertext
+    // (messageType is a server-visible column, so this is cheap defense-in-depth).
+    if (message.messageType !== 'TEXT') {
+      client.emit('editMessageFailed', { messageId, reason: 'not_text' });
+      return;
+    }
+
     const otherUserId =
       conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
     const conversationId = conv.id;

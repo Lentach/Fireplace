@@ -184,6 +184,23 @@ void main() {
       expect(row.content, 'original');
       expect(row.editedAt, isNull);
     });
+
+    test('rolls back the persisted plaintext cache so a rejected edit does not '
+        'resurrect on reopen (H1)', () async {
+      wire(_FakeEnc());
+      await seedOwn(100, 'original');
+      provider.editMessage(100, 'edited');
+      await _settle();
+      // Optimistic success path persisted the new content.
+      expect(encryption.persisted[100]?['content'], 'edited');
+
+      provider.onEditMessageFailed({'messageId': 100, 'reason': 'window_expired'});
+      await _settle();
+      // Revert must roll the persisted cache back to the original, else the
+      // own-message restore path would re-show 'edited' after reopening.
+      expect(encryption.persisted[100]?['content'], 'original');
+      expect(provider.messages.firstWhere((m) => m.id == 100).content, 'original');
+    });
   });
 
   group('messageEdited (peer)', () {

@@ -42,7 +42,10 @@ extension MessagingActions on MessagingProvider {
     final original = _messages[idx];
     if (original.senderId != _currentUserId ||
         messageId <= 0 ||
-        original.messageType != MessageType.text) {
+        original.messageType != MessageType.text ||
+        DateTime.now().difference(original.createdAt) >=
+            const Duration(minutes: 15)) {
+      cancelEditMessage();
       return;
     }
     if (original.content == trimmed) {
@@ -94,12 +97,11 @@ extension MessagingActions on MessagingProvider {
         'content': '[encrypted]',
         'encryptedContent': ciphertext,
       });
-      // Sender owns plaintext: persist the new content so reloads (own-message
-      // restore path) show the edit rather than the stale original.
-      await _encryptionProvider!.saveDecryptedContent(messageId, {
-        'content': content,
-        'editedAt': DateTime.now().toIso8601String(),
-      });
+      // Sender owns plaintext: persist the FULL edited row (content + editedAt +
+      // kept link preview) so reloads (own-message restore) show the edit and
+      // nothing is silently dropped.
+      final i = _messages.indexWhere((m) => m.id == messageId);
+      if (i != -1) await _persistDecryptedContent(_messages[i]);
       _e2eFlowLog('EDIT_EMIT', {'messageId': messageId});
     } catch (e) {
       _e2eFlowLog('EDIT_FAILED', {'messageId': messageId});
@@ -107,7 +109,10 @@ extension MessagingActions on MessagingProvider {
     }
   }
 
-  /// Restore the pre-edit row stored in [_pendingEdits] after a reject/failure.
+  /// Restore the pre-edit row after a reject/failure: in-memory row, the
+  /// persisted plaintext cache (written optimistically on the success path), and
+  /// the conversation-list preview. Without all three a rejected edit would
+  /// resurrect on reopen and diverge from the peer (server is authoritative).
   void _revertPendingEdit(int messageId, String reason) {
     final original = _pendingEdits.remove(messageId);
     if (original == null) return;
@@ -118,8 +123,15 @@ extension MessagingActions on MessagingProvider {
       if (_conversationCache.containsKey(original.conversationId)) {
         _updateCache(original.conversationId);
       }
-      notifyListeners();
     }
+    // Roll back the persisted plaintext written by _encryptAndEmitEdit.
+    _persistDecryptedContent(original).ignore();
+    final lastMessages = _conversationsProvider?.lastMessages;
+    if (lastMessages != null &&
+        lastMessages[original.conversationId]?.id == messageId) {
+      _conversationsProvider?.updateLastMessage(original.conversationId, original);
+    }
+    notifyListeners();
   }
 
   void pinMessage(int conversationId, int messageId) {

@@ -329,7 +329,9 @@ extension MessagingEvents on MessagingProvider {
       if (idx != -1) _messages[idx] = candidate;
       if (conversationId != null) {
         _patchMessageInCache(conversationId, messageId, (_) => candidate);
-        _maybeUpdateLastEdited(conversationId, messageId, candidate);
+        // Do NOT push the '[encrypted]' placeholder into the conv-list preview:
+        // keep the readable pre-edit text until the row re-decrypts on open
+        // (avoids a "last message → Encrypted message" regression). M1.
       }
       _reEnrichAllReplyQuotes();
       notifyListeners();

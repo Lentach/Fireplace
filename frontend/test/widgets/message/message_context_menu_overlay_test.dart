@@ -15,13 +15,13 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-MessageModel _msg({required int id, required int senderId}) => MessageModel(
+MessageModel _msg({required int id, required int senderId, DateTime? createdAt}) => MessageModel(
       id: id,
       content: 'hello',
       senderId: senderId,
       senderUsername: 'alice',
       conversationId: 1,
-      createdAt: DateTime(2026, 5, 23),
+      createdAt: createdAt ?? DateTime(2026, 5, 23),
       deliveryStatus: MessageDeliveryStatus.sent,
       messageType: MessageType.text,
     );
@@ -537,7 +537,7 @@ void main() {
   });
 
   testWidgets('ChatMessageBubble long-press opens context menu overlay', (tester) async {
-    final msg = _msg(id: 10, senderId: 1);
+    final msg = _msg(id: 10, senderId: 1, createdAt: DateTime.now());
     await tester.pumpWidget(
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -601,6 +601,7 @@ void main() {
                       isMine: true,
                       currentUserId: 1,
                       onReply: () {},
+                      onEdit: () {},
                       onPin: () {},
                       onDelete: () {},
                       onReaction: (emoji, alreadyReacted) {},
