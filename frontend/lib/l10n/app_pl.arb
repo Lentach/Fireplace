@@ -20,6 +20,7 @@
   "resetPassword": "Zmień hasło",
   "deleteAccount": "Usuń konto",
   "logout": "Wyloguj",
+  "uninstallWarning": "Odinstalowanie aplikacji lub wyczyszczenie danych witryny trwale usuwa historię wiadomości — aby odświeżyć, po prostu całkowicie zamknij i otwórz aplikację ponownie.",
   "chat": "Czat",
   "contacts": "Kontakty",
   "profilePictureUpdated": "Zdjęcie profilowe zaktualizowane",

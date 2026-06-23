@@ -91,16 +91,27 @@ subscribe fails (`push service error` / delivery `400`).
 
 ## Backups & monitoring
 
-- **DB + media backup:** `./backup-db.sh` (VM) → `pg_dump -Fc` of `chatdb` + tar of the
-  `fireplace_media_storage` volume into `~/fireplace-backups/` (0700), prunes >`RETENTION_DAYS`
-  (14). Optional: `BACKUP_PASSPHRASE` (gpg AES256 at rest), `BACKUP_GCS_BUCKET` (gsutil offsite).
-  Cron: `0 4 * * * cd ~/fireplace && BACKUP_PASSPHRASE='…' ./backup-db.sh >> ~/fireplace-backups/backup.log 2>&1`.
+- **DB + media + .env backup:** `./backup-db.sh` (VM) → `pg_dump -Fc` of `chatdb` + tar of the
+  `fireplace_media_storage` volume → `~/fireplace-backups/` (0700), prunes >`RETENTION_DAYS` (14).
+- **Encryption:** gpg AES256, keyed by `BACKUP_PASSPHRASE_FILE` (default
+  `~/.config/fireplace/backup.pass`, **chmod 600** — refused otherwise) or `BACKUP_PASSPHRASE` env.
+  Fed via `--passphrase-file` → never in `ps`/argv or the cron line. **`.env` is included in the set
+  but ONLY when encryption is on** (no passphrase → `.env` skipped, never written cleartext).
+  **Store the passphrase OFF the VM** (password manager) — an encrypted backup is useless if the only
+  copy of the key dies with the machine.
+  Cron (no secret in the line): `0 4 * * * cd ~/fireplace && BACKUP_GCS_BUCKET=gs://… ./backup-db.sh >> ~/fireplace-backups/backup.log 2>&1`.
+- **Offsite:** `BACKUP_GCS_BUCKET=gs://…` (gsutil) uploads each run. One-time bucket setup:
+  `BUCKET=gs://… PROJECT=… SA=<vm-sa> ./setup-backup-bucket.sh` (private + lifecycle + IAM). Bucket
+  lifecycle (`LIFECYCLE_DAYS`, default 30) is independent of local `RETENTION_DAYS` (14) — by design.
 - **E2E-safe:** dumps hold only ciphertext messages + PUBLIC keys + metadata + bcrypt hashes;
   Signal private keys are device-only, never in the DB — a dump cannot decrypt messages. Still
   sensitive (metadata + hashes) → keep private / encrypt / lock down the bucket.
-- **Restore:** `./restore-db.sh ~/fireplace-backups/chatdb-<ts>.dump[.gpg]` (stops backend,
-  `pg_restore --clean`, restarts). Media restore (separate):
-  `docker run --rm -v fireplace_media_storage:/data -v ~/fireplace-backups:/b alpine sh -c 'cd /data && tar xzf /b/media-<ts>.tar.gz'`.
+- **Restore (DB):** `./restore-db.sh ~/fireplace-backups/chatdb-<ts>.dump[.gpg]` (stops backend,
+  `pg_restore --clean`, restarts; uses the same passphrase file). DB-only by design.
+- **Restore (media):** `gpg -d media-<ts>.tar.gz.gpg > /tmp/m.tgz` then
+  `docker run --rm -v fireplace_media_storage:/data -v /tmp:/b alpine sh -c 'cd /data && tar xzf /b/m.tgz'`.
+- **Restore (.env):** MANUAL (never auto-clobbered): `gpg -d env-<ts>.gpg > /tmp/env.restored`, review,
+  then place at `~/fireplace/.env` and `./deploy-backend.sh`.
 - **Restart policy:** `docker-compose.prod.yml` sets `restart: unless-stopped` on backend + db
   (survives VM reboot). `deploy-backend.sh` runs `up -d` (both services) with the version env set,
   so it applies automatically. **NEVER run a bare `docker compose -f docker-compose.prod.yml up -d`
