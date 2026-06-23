@@ -263,6 +263,7 @@ void openMessageContextMenu({
   required VoidCallback onPin,
   required VoidCallback onDelete,
   VoidCallback? onCopy,
+  VoidCallback? onEdit,
   required void Function(String emoji, bool alreadyReacted) onReaction,
   MessageContextMenuBubbleBuilder? bubblePreviewBuilder,
 }) {
@@ -393,10 +394,12 @@ void openMessageContextMenu({
                         dismissMessageContextMenu();
                         onCopy();
                       },
-                onEdit: () {
-                  dismissMessageContextMenu();
-                  showTopSnackBar(context, l10n.messageEditComingSoon);
-                },
+                onEdit: onEdit == null
+                    ? null
+                    : () {
+                        dismissMessageContextMenu();
+                        onEdit();
+                      },
                 onPin: () {
                   dismissMessageContextMenu();
                   if (message.id <= 0) {

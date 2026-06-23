@@ -184,6 +184,12 @@ class EncryptionProvider extends ChangeNotifier {
     _decryptedContentCache[messageId] = msg;
   }
 
+  /// Drop the in-RAM decrypted entry for [messageId] so the next decrypt pass
+  /// re-decrypts (used when a message is edited and its ciphertext changes).
+  void invalidateDecryptionCache(int messageId) {
+    _decryptedContentCache.remove(messageId);
+  }
+
   /// Persist decrypted message content to local cache.
   /// Delegates to [EncryptionService.saveDecryptedContent].
   /// Silent on failure (matches service behavior).

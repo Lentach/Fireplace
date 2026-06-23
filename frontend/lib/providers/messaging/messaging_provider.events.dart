@@ -24,6 +24,17 @@ extension MessagingEvents on MessagingProvider {
     _handleMessageDeleted(data);
   }
 
+  void onMessageEdited(dynamic data) {
+    _handleMessageEdited(data);
+  }
+
+  void onEditMessageFailed(dynamic data) {
+    final m = data as Map<String, dynamic>;
+    final messageId = m['messageId'] as int;
+    final reason = m['reason'] as String? ?? 'edit_failed';
+    _revertPendingEdit(messageId, reason);
+  }
+
   void onChatHistoryCleared(dynamic data) {
     _handleChatHistoryCleared(data);
   }
@@ -253,6 +264,99 @@ extension MessagingEvents on MessagingProvider {
       } else {
         _updateCache(conversationId);
       }
+    }
+  }
+
+  void _handleMessageEdited(dynamic data) {
+    final m = data as Map<String, dynamic>;
+    final messageId = m['messageId'] as int;
+    final conversationId = m['conversationId'] as int?;
+    final newCipher = m['encryptedContent'] as String?;
+    final editedAt = m['editedAt'] != null
+        ? DateTime.parse(m['editedAt'] as String)
+        : null;
+
+    // Edit-vs-delete race: a deleted row must stay gone.
+    if (_deletedMessageIds.contains(messageId)) return;
+
+    final idx = _messages.indexWhere((msg) => msg.id == messageId);
+    MessageModel? existing = idx != -1 ? _messages[idx] : null;
+    if (existing == null && conversationId != null) {
+      final list = _conversationCache[conversationId];
+      if (list != null) {
+        for (final msg in list) {
+          if (msg.id == messageId) {
+            existing = msg;
+            break;
+          }
+        }
+      }
+    }
+    // Not loaded anywhere — the edited ciphertext arrives later via messageHistory.
+    if (existing == null) return;
+
+    // OWN edit echo: content already applied optimistically; reconcile editedAt.
+    if (existing.senderId == _currentUserId) {
+      _pendingEdits.remove(messageId);
+      if (idx != -1) {
+        _messages[idx] = _messages[idx].copyWith(editedAt: editedAt);
+      }
+      if (conversationId != null) {
+        _patchMessageInCache(
+            conversationId, messageId, (msg) => msg.copyWith(editedAt: editedAt));
+      }
+      _reEnrichAllReplyQuotes();
+      notifyListeners();
+      return;
+    }
+
+    // PEER edit: the new ciphertext supersedes the cached plaintext.
+    _encryptionProvider?.invalidateDecryptionCache(messageId);
+    final candidate = existing.copyWith(
+      encryptedContent: newCipher,
+      content: _kEncryptedPlaceholderLabel,
+      editedAt: editedAt,
+    );
+    final activeId = _effectiveActiveConversationId;
+    final isActive = conversationId != null && conversationId == activeId;
+    final e2eReady = _encryptionProvider?.isE2EReady ?? false;
+
+    if (isActive && e2eReady && newCipher != null && newCipher.isNotEmpty) {
+      // Decrypt the new ciphertext now (serialized per sender), then apply.
+      _decryptEditedMessage(candidate);
+    } else {
+      // Defer: store the new ciphertext; it re-decrypts when the chat opens.
+      if (idx != -1) _messages[idx] = candidate;
+      if (conversationId != null) {
+        _patchMessageInCache(conversationId, messageId, (_) => candidate);
+        // Do NOT push the '[encrypted]' placeholder into the conv-list preview:
+        // keep the readable pre-edit text until the row re-decrypts on open
+        // (avoids a "last message → Encrypted message" regression). M1.
+      }
+      _reEnrichAllReplyQuotes();
+      notifyListeners();
+    }
+  }
+
+  Future<void> _decryptEditedMessage(MessageModel candidate) async {
+    final decrypted = await _decryptMessageAsyncQueued(candidate);
+    final idx = _messages.indexWhere((msg) => msg.id == candidate.id);
+    if (idx != -1) _messages[idx] = decrypted;
+    _patchMessageInCache(
+        decrypted.conversationId, decrypted.id, (_) => decrypted);
+    await _persistDecryptedContent(decrypted);
+    _maybeUpdateLastEdited(
+        decrypted.conversationId, decrypted.id, decrypted);
+    _reEnrichAllReplyQuotes();
+    notifyListeners();
+  }
+
+  void _maybeUpdateLastEdited(
+      int conversationId, int messageId, MessageModel updated) {
+    final lastMessages = _conversationsProvider?.lastMessages;
+    if (lastMessages != null &&
+        lastMessages[conversationId]?.id == messageId) {
+      _conversationsProvider?.updateLastMessage(conversationId, updated);
     }
   }
 

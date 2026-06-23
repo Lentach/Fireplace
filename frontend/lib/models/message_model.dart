@@ -65,6 +65,8 @@ class MessageModel {
   final String? mediaKey;
   /// AES-256-GCM IV (base64), from E2E envelope — client-only.
   final String? mediaIv;
+  /// Server-stamped time of the last edit; null = never edited. From REST/WS payload.
+  final DateTime? editedAt;
 
   /// True if this message has E2E encrypted content and was sent by another
   /// user (needs decryption before display).
@@ -113,6 +115,7 @@ class MessageModel {
     this.encryptedContent,
     this.mediaKey,
     this.mediaIv,
+    this.editedAt,
   });
 
   factory MessageModel.fromJson(Map<String, dynamic> json) {
@@ -147,6 +150,9 @@ class MessageModel {
       linkPreviewTitle: json['linkPreviewTitle'] as String?,
       linkPreviewImageUrl: json['linkPreviewImageUrl'] as String?,
       encryptedContent: json['encryptedContent'] as String?,
+      editedAt: json['editedAt'] != null
+          ? DateTime.parse(json['editedAt'] as String)
+          : null,
     );
   }
 
@@ -209,6 +215,7 @@ class MessageModel {
     String? encryptedContent,
     String? mediaKey,
     String? mediaIv,
+    DateTime? editedAt,
   }) {
     return MessageModel(
       id: id,
@@ -234,6 +241,7 @@ class MessageModel {
       encryptedContent: encryptedContent ?? this.encryptedContent,
       mediaKey: mediaKey ?? this.mediaKey,
       mediaIv: mediaIv ?? this.mediaIv,
+      editedAt: editedAt ?? this.editedAt,
     );
   }
 }

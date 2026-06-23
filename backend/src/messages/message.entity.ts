@@ -102,4 +102,8 @@ export class Message {
 
   @CreateDateColumn()
   createdAt: Date;
+
+  /** Timestamp of the last in-place edit (E2E re-encryption). Null = never edited. */
+  @Column({ type: 'timestamp', nullable: true })
+  editedAt: Date | null;
 }

@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/messaging_provider.dart';
 import '../../providers/settings_provider.dart';
@@ -92,6 +93,13 @@ class MessageMetadataRow extends StatelessWidget {
         return Row(
           mainAxisSize: MainAxisSize.min,
           children: [
+            if (message.editedAt != null) ...[
+              Text(
+                AppLocalizations.of(context).messageEditedLabel,
+                style: RpgTheme.bodyFont(fontSize: 10, color: timeColor),
+              ),
+              const SizedBox(width: 4),
+            ],
             Text(
               RpgTheme.formatMessageClock(message.createdAt),
               style: RpgTheme.bodyFont(fontSize: 10, color: timeColor),

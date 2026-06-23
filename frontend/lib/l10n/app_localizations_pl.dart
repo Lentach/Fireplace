@@ -697,7 +697,10 @@ class AppLocalizationsPl extends AppLocalizations {
   String get messageDeleteForEveryone => 'Usuń dla wszystkich';
 
   @override
-  String get messageEditComingSoon => 'Edycja wkrótce';
+  String get messageEditedLabel => 'edytowano';
+
+  @override
+  String get messageEditingTitle => 'Edytowanie wiadomości';
 
   @override
   String get messagePinRequiresSentMessage =>

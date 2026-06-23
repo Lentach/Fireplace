@@ -29,6 +29,7 @@ import 'composer_attachment_controller.dart';
 import 'focus_guard_area.dart';
 import 'recording_controller.dart';
 import 'reply_preview_bar.dart';
+import 'edit_preview_bar.dart';
 
 class ChatInputBar extends StatefulWidget {
   const ChatInputBar({super.key});
@@ -44,6 +45,7 @@ class ChatInputBarState extends State<ChatInputBar>
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
   MessageModel? _lastReplyingTo;
+  MessageModel? _lastEditingMessage;
   bool _showActionPanel = false;
   late final AnimationController _actionPanelController;
   late final Animation<double> _actionPanelAnimation;
@@ -189,8 +191,8 @@ class ChatInputBarState extends State<ChatInputBar>
   }
 
   void _onMessagingProviderChanged() {
-    final replyingTo = _messagingProvider?.replyingToMessage;
-    _onReplyTargetChanged(replyingTo);
+    _onReplyTargetChanged(_messagingProvider?.replyingToMessage);
+    _onEditTargetChanged(_messagingProvider?.editingMessage);
   }
 
   @override
@@ -203,6 +205,7 @@ class ChatInputBarState extends State<ChatInputBar>
       messaging.addListener(_onMessagingProviderChanged);
       messaging.setComposerFocusRequest(_requestComposerFocus);
       _onReplyTargetChanged(messaging.replyingToMessage);
+      _onEditTargetChanged(messaging.editingMessage);
     }
   }
 
@@ -219,6 +222,23 @@ class ChatInputBarState extends State<ChatInputBar>
       });
     } else if (replyingTo == null) {
       _lastReplyingTo = null;
+    }
+  }
+
+  void _onEditTargetChanged(MessageModel? editing) {
+    if (editing != null && _lastEditingMessage?.id != editing.id) {
+      _lastEditingMessage = editing;
+      _controller.text = editing.content;
+      _controller.selection =
+          TextSelection.collapsed(offset: editing.content.length);
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_focusNode.canRequestFocus) return;
+        if (!_focusNode.hasFocus) _focusNode.requestFocus();
+        showSoftKeyboardIfHidden(context: context, hasFocus: true);
+      });
+    } else if (editing == null && _lastEditingMessage != null) {
+      _lastEditingMessage = null;
+      _controller.clear();
     }
   }
 
@@ -266,6 +286,24 @@ class ChatInputBarState extends State<ChatInputBar>
     if (text.isEmpty) return;
 
     final messaging = context.read<MessagingProvider>();
+    final editing = messaging.editingMessage;
+    if (editing != null) {
+      messaging.editMessage(editing.id, text);
+      if (kIsWeb && isIOSWebKit()) {
+        _sendJustFired = true;
+        _sendJustFiredTimer?.cancel();
+        _sendJustFiredTimer = Timer(const Duration(milliseconds: 500), () {
+          _sendJustFired = false;
+        });
+      }
+      _controller.clear();
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (!mounted || !_focusNode.canRequestFocus) return;
+        if (!_focusNode.hasFocus) _focusNode.requestFocus();
+        showSoftKeyboardIfHidden(context: context, hasFocus: true);
+      });
+      return;
+    }
     final convs = context.read<ConversationsProvider>();
     final expiresIn = convs.conversationDisappearingTimer;
     messaging.sendMessage(text, expiresIn: expiresIn);
@@ -613,6 +651,9 @@ class ChatInputBarState extends State<ChatInputBar>
     final replyingTo = context.select<MessagingProvider, MessageModel?>(
       (m) => m.replyingToMessage,
     );
+    final editing = context.select<MessagingProvider, MessageModel?>(
+      (m) => m.editingMessage,
+    );
 
     final activeTimer = context.select<ConversationsProvider, int?>(
       (c) => c.conversationDisappearingTimer,
@@ -685,6 +726,13 @@ class ChatInputBarState extends State<ChatInputBar>
                       context.read<MessagingProvider>().clearReplyingTo(),
                 );
               },
+            ),
+
+          // Editing banner
+          if (editing != null)
+            EditPreviewBar(
+              onDismiss: () =>
+                  context.read<MessagingProvider>().cancelEditMessage(),
             ),
 
           if (activeTimer != null)

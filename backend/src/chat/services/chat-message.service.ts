@@ -14,6 +14,10 @@ import { MessageDeliveryStatus } from '../../messages/message.entity';
 import { MessageMapper } from '../../messages/message.mapper';
 import { MediaCleanupService } from '../../media/media-cleanup.service';
 import { isMessageExpired } from '../../messages/message-expiry.util';
+import { EditMessageDto } from '../dto/edit-message.dto';
+
+/** Editing a sent message is only allowed within this window after it was created. */
+const EDIT_WINDOW_MS = 15 * 60 * 1000;
 
 @Injectable()
 export class ChatMessageService {
@@ -459,6 +463,94 @@ export class ChatMessageService {
       }
       this.logger.debug(`User ${userId} deleted message ${messageId} for everyone`);
     }
+  }
+
+  async handleEditMessage(
+    client: Socket,
+    data: any,
+    server: Server,
+    onlineUsers: Map<number, string>,
+  ) {
+    const userId: number = client.data.user?.id;
+    if (!userId) return;
+
+    try {
+      const dto = validateDto(EditMessageDto, data);
+      data = dto;
+    } catch (error) {
+      client.emit('error', { message: error.message });
+      return;
+    }
+
+    const { messageId } = data;
+
+    const message = await this.messagesService.findByIdWithConversation(messageId);
+    if (!message) {
+      client.emit('editMessageFailed', { messageId, reason: 'not_found' });
+      return;
+    }
+
+    const conv = message.conversation;
+    if (!conv) {
+      client.emit('editMessageFailed', { messageId, reason: 'not_found' });
+      return;
+    }
+
+    // Membership first (mirror delete): only the two participants may touch the message.
+    const userBelongs = conv.userOne.id === userId || conv.userTwo.id === userId;
+    if (!userBelongs) {
+      client.emit('editMessageFailed', { messageId, reason: 'not_sender' });
+      return;
+    }
+
+    // Sender-only: only the author may edit their own message.
+    if (message.sender?.id !== userId) {
+      client.emit('editMessageFailed', { messageId, reason: 'not_sender' });
+      return;
+    }
+
+    // 15-minute edit window.
+    if (Date.now() - new Date(message.createdAt).getTime() > EDIT_WINDOW_MS) {
+      client.emit('editMessageFailed', { messageId, reason: 'window_expired' });
+      return;
+    }
+
+    // v1 is text-only: never let a crafted client swap a media row's ciphertext
+    // (messageType is a server-visible column, so this is cheap defense-in-depth).
+    if (message.messageType !== 'TEXT') {
+      client.emit('editMessageFailed', { messageId, reason: 'not_text' });
+      return;
+    }
+
+    const otherUserId =
+      conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
+    const conversationId = conv.id;
+
+    // Server stays blind: store the new ciphertext, keep content as the placeholder.
+    // Expiry / deliveryStatus are intentionally left untouched.
+    const updated = await this.messagesService.editMessage(messageId, userId, {
+      encryptedContent: data.encryptedContent ?? null,
+      content: '[encrypted]',
+    });
+    if (!updated || !updated.editedAt) {
+      client.emit('editMessageFailed', { messageId, reason: 'not_found' });
+      return;
+    }
+
+    const payload = {
+      messageId,
+      conversationId,
+      content: '[encrypted]',
+      encryptedContent: data.encryptedContent ?? null,
+      editedAt: updated.editedAt.toISOString(),
+    };
+
+    client.emit('messageEdited', payload);
+    const otherSocketId = onlineUsers.get(otherUserId);
+    if (otherSocketId) {
+      server.to(otherSocketId).emit('messageEdited', payload);
+    }
+    this.logger.debug(`User ${userId} edited message ${messageId}`);
   }
 
   /**
