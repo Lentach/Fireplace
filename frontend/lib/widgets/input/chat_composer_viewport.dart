@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../utils/web_keyboard_inset.dart';
 import 'composer_diagnostics_overlay.dart';
 import 'composer_keyboard_signals.dart';
+import '../../utils/jump_probe.dart';
 
 /// Builds the scrollable message list with [listBottomPadding] clearance for the
 /// overlaid composer and keyboard inset.
@@ -54,6 +55,7 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
     _kbInsetSource = createKeyboardInsetSource();
     _kbInsetSource.inset.addListener(_onKeyboardInsetChanged);
     WidgetsBinding.instance.addPostFrameCallback(_measureComposer);
+    installJumpProbe(); // TEMP: iOS focus-jump diagnostic
   }
 
   void _onKeyboardInsetChanged() {
@@ -71,6 +73,7 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
   @override
   void dispose() {
     _insetCollapseTimer?.cancel();
+    removeJumpProbe();
     _kbInsetSource.inset.removeListener(_onKeyboardInsetChanged);
     _kbInsetSource.dispose();
     super.dispose();
