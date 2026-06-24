@@ -19,6 +19,9 @@ void registerFocusGuardRect(String id, Rect rect) => _registerImpl(id, rect);
 /// Removes the guard rect for [id].
 void unregisterFocusGuardRect(String id) => _unregisterImpl(id);
 
+/// Diagnostic-only: recent focus/blur/guard events (newest last); empty off iOS.
+List<String> focusGuardEventLines() => impl.focusGuardEventLines();
+
 @visibleForTesting
 void setFocusGuardHooksForTest({
   void Function(String id, Rect rect)? register,

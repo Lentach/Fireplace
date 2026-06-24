@@ -910,6 +910,15 @@ class ChatInputBarState extends State<ChatInputBar>
                               // the keyboard while the node can still report focused in the same sync turn.
                               onEditingComplete: () {},
                               onSubmitted: (_) => _send(),
+                              // Keep the IME up when a tap lands OUTSIDE this
+                              // field's TapRegion (the in-app Send button, mic,
+                              // action toggle). Flutter's default onTapOutside
+                              // unfocuses → on iOS the keyboard hides then the
+                              // refocus machinery re-shows it = the send-button
+                              // bounce. The IME send key is not a tap-outside, so
+                              // it never bounced. Explicit unfocus (mic/panel)
+                              // still works — this only disables the auto-unfocus.
+                              onTapOutside: (_) {},
                               // Android IME rich-content insertion (Phase 4);
                               // other platforms never emit commitContent.
                               contentInsertionConfiguration:

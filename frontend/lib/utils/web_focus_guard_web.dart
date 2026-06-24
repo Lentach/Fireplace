@@ -15,17 +15,42 @@ JSFunction? _endListener;
 // user-gesture context — the only place iOS Safari accepts .focus() calls.
 web.Element? _savedElement;
 
+// --- diagnostic ring buffer (Symptom C): records the focus/blur/guard sequence
+// so a device capture shows whether the editable still blurs on a control tap.
+final List<String> _events = <String>[];
+final int _t0 = DateTime.now().millisecondsSinceEpoch;
+JSFunction? _focusListener;
+
+void _logEvent(String s) {
+  final t = DateTime.now().millisecondsSinceEpoch - _t0;
+  _events.add('$t ms $s');
+  if (_events.length > 12) _events.removeAt(0);
+}
+
+/// Diagnostic-only: recent focus/blur/guard events (newest last); empty off iOS.
+List<String> focusGuardEventLines() => List<String>.unmodifiable(_events);
+
+String _targetTag(web.Event e) {
+  final t = e.target;
+  if (t != null && t.isA<web.Element>()) return (t as web.Element).tagName;
+  return '?';
+}
+
 void ensureFocusGuardListenerInstalled() {
   if (_installed) return;
   if (!isIOSWebKit()) return;
   _installed = true;
   _downListener = _onPointerDownCapture.toJS;
   _endListener = _onTouchEndCapture.toJS;
+  _focusListener =
+      ((web.Event e) => _logEvent('${e.type == 'focusout' ? 'BLUR' : 'FOCUS'} ${_targetTag(e)}')).toJS;
   // passive: false is required so preventDefault() is allowed.
   final opts = web.AddEventListenerOptions(capture: true, passive: false);
   web.window.addEventListener('touchstart', _downListener, opts);
   web.window.addEventListener('mousedown', _downListener, opts);
   web.window.addEventListener('touchend', _endListener, opts);
+  web.window.addEventListener('focusin', _focusListener!, opts);
+  web.window.addEventListener('focusout', _focusListener!, opts);
 }
 
 void registerFocusGuardRect(String id, Rect rect) {
@@ -45,10 +70,13 @@ void _onPointerDownCapture(web.Event event) {
   if (!_isEditable(active)) return;
   final point = _eventPoint(event);
   if (point == null) return;
-  if (focusGuardPointHitsAnyRect(_rects.values, point, _visualViewportOffset())) {
+  final hit =
+      focusGuardPointHitsAnyRect(_rects.values, point, _visualViewportOffset());
+  if (hit) {
     _savedElement = active;
     event.preventDefault();
   }
+  _logEvent('${event.type} hit=$hit');
 }
 
 // touchend is a user-gesture context on iOS — .focus() called here is accepted
@@ -61,6 +89,7 @@ void _onTouchEndCapture(web.Event event) {
   event.preventDefault();
   if (el.isA<web.HTMLElement>()) {
     (el as web.HTMLElement).focus();
+    _logEvent('touchend refocus');
   }
 }
 
