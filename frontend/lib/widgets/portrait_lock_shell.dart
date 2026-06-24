@@ -14,6 +14,7 @@ class PortraitLockShell extends StatelessWidget {
     final showOverlay = shouldShowRotateOverlay(
       orientation: mq.orientation,
       logicalSize: mq.size,
+      keyboardVisible: mq.viewInsets.bottom > 0,
     );
     if (!showOverlay) return child;
     return Stack(

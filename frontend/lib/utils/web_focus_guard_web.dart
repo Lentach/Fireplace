@@ -4,6 +4,7 @@ import 'package:flutter/widgets.dart' show Offset, Rect;
 import 'package:web/web.dart' as web;
 
 import 'web_ios_webkit.dart';
+import 'focus_guard_geometry.dart';
 
 final Map<String, Rect> _rects = <String, Rect>{};
 bool _installed = false;
@@ -44,12 +45,9 @@ void _onPointerDownCapture(web.Event event) {
   if (!_isEditable(active)) return;
   final point = _eventPoint(event);
   if (point == null) return;
-  for (final rect in _rects.values) {
-    if (rect.contains(point)) {
-      _savedElement = active;
-      event.preventDefault();
-      return;
-    }
+  if (focusGuardPointHitsAnyRect(_rects.values, point, _visualViewportOffset())) {
+    _savedElement = active;
+    event.preventDefault();
   }
 }
 
@@ -89,4 +87,14 @@ Offset? _eventPoint(web.Event event) {
     return Offset(m.clientX.toDouble(), m.clientY.toDouble());
   }
   return null;
+}
+
+// iOS offsets the visual viewport (not the document scroll) to keep a focused
+// field visible while the keyboard is up, so a touch's clientX/Y can be in a
+// different origin than the Flutter-registered rects. Expose that offset so the
+// hit-test can also check the layout-space point.
+Offset _visualViewportOffset() {
+  final vv = web.window.visualViewport;
+  if (vv == null) return Offset.zero;
+  return Offset(vv.offsetLeft.toDouble(), vv.offsetTop.toDouble());
 }

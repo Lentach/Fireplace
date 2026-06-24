@@ -4,19 +4,18 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../utils/composer_probe.dart';
-import '../../utils/web_ios_webkit.dart' show isIOSWebKit;
 
 /// Dev testing tool: on-screen readout of the visualViewport-derived keyboard
 /// inset (what now drives the composer position) vs. Flutter's unreliable
 /// `MediaQuery.viewInsets.bottom`. Off by default so real users never see it;
-/// toggled at runtime by long-pressing the chat app-bar title (iOS WebKit only).
+/// toggled at runtime by long-pressing the chat app-bar title (mobile web).
 ///
 /// To remove entirely: delete this file and its usage in
 /// `chat_composer_viewport.dart`.
 final ValueNotifier<bool> composerDiagOverlayEnabled =
     ValueNotifier<bool>(false);
 
-/// Flip the overlay on/off. No-op effect off iOS WebKit (overlay never mounts).
+/// Flip the overlay on/off. No-op effect off web (overlay never mounts).
 void toggleComposerDiagOverlay() =>
     composerDiagOverlayEnabled.value = !composerDiagOverlayEnabled.value;
 
@@ -37,9 +36,9 @@ class ComposerDiagnosticsOverlay extends StatefulWidget {
   /// What the composer is actually `Positioned(bottom:)` at after debounce.
   final double debouncedInset;
 
-  /// True only where the overlay can run (iOS WebKit web). Actual visibility is
-  /// further gated at runtime by [composerDiagOverlayEnabled].
-  static bool get isAvailable => kIsWeb && isIOSWebKit();
+  /// True only where the overlay can run (web). Actual visibility is further
+  /// gated at runtime by [composerDiagOverlayEnabled].
+  static bool get isAvailable => kIsWeb;
 
   @override
   State<ComposerDiagnosticsOverlay> createState() =>

@@ -5,6 +5,7 @@ import 'package:flutter/material.dart';
 
 import '../../utils/web_keyboard_inset.dart';
 import 'composer_diagnostics_overlay.dart';
+import 'composer_keyboard_signals.dart';
 
 /// Builds the scrollable message list with [listBottomPadding] clearance for the
 /// overlaid composer and keyboard inset.
@@ -104,14 +105,23 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
       _insetCollapseTimer?.cancel();
       _insetCollapseTimer = null;
       _keyboardInset = raw;
-    } else if (raw < _keyboardInset && _insetCollapseTimer == null) {
-      // Keyboard shrinking: wait 450ms before collapsing layout.
-      // If the keyboard bounces back within that window the timer is cancelled
-      // (next build with raw > _keyboardInset hits the branch above).
-      _insetCollapseTimer = Timer(const Duration(milliseconds: 450), () {
+    } else if (raw < _keyboardInset) {
+      if (composerKeyboardCollapseGuard.value) {
+        // A send / refocus is in flight: the keyboard may bounce straight back
+        // (iOS send-button), so wait 450ms before collapsing layout to avoid a
+        // visible composer drop + black-screen flash. If the keyboard returns
+        // within the window the grow branch above re-applies raw immediately.
+        _insetCollapseTimer ??= Timer(const Duration(milliseconds: 450), () {
+          _insetCollapseTimer = null;
+          if (mounted) setState(() => _keyboardInset = 0);
+        });
+      } else {
+        // Genuine user dismiss: collapse immediately so the composer tracks the
+        // keyboard down with no laggy dark gap on hide (Symptom B).
+        _insetCollapseTimer?.cancel();
         _insetCollapseTimer = null;
-        if (mounted) setState(() => _keyboardInset = 0);
-      });
+        _keyboardInset = raw;
+      }
     }
 
     // NOTE: this block intentionally mutates debounce state (`_keyboardInset`,

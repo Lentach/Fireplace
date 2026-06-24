@@ -30,6 +30,7 @@ import 'focus_guard_area.dart';
 import 'recording_controller.dart';
 import 'reply_preview_bar.dart';
 import 'edit_preview_bar.dart';
+import 'composer_keyboard_signals.dart';
 
 class ChatInputBar extends StatefulWidget {
   const ChatInputBar({super.key});
@@ -58,6 +59,10 @@ class ChatInputBarState extends State<ChatInputBar>
   // faster than waiting for the next postFrameCallback.
   bool _sendJustFired = false;
   Timer? _sendJustFiredTimer;
+  // Set true (with a 600ms auto-clear) whenever the composer initiates a send /
+  // deliberate refocus that may briefly blur+restore the IME. Gates the viewport
+  // keyboard-collapse debounce — see composer_keyboard_signals.dart.
+  Timer? _collapseGuardTimer;
 
   // Recording state mirrored from RecordingController via callback
   bool _isRecording = false;
@@ -251,6 +256,8 @@ class ChatInputBarState extends State<ChatInputBar>
       uninstallComposerPasteListener();
     }
     _sendJustFiredTimer?.cancel();
+    _collapseGuardTimer?.cancel();
+    composerKeyboardCollapseGuard.value = false;
     _messagingProvider?.setComposerFocusRequest(null);
     _messagingProvider?.removeListener(_onMessagingProviderChanged);
     _attachment.removeListener(_onAttachmentChanged);
@@ -277,6 +284,17 @@ class ChatInputBarState extends State<ChatInputBar>
     });
   }
 
+  // Tells [ChatComposerViewport] a refocus is imminent so it defers collapsing
+  // the keyboard inset (preserves the send-bounce flash guard). Auto-clears so a
+  // subsequent genuine dismiss collapses immediately (no laggy gap on hide).
+  void _armComposerCollapseGuard() {
+    composerKeyboardCollapseGuard.value = true;
+    _collapseGuardTimer?.cancel();
+    _collapseGuardTimer = Timer(const Duration(milliseconds: 600), () {
+      composerKeyboardCollapseGuard.value = false;
+    });
+  }
+
   void _send() {
     if (_attachment.staged != null) {
       _sendStaged().ignore();
@@ -284,6 +302,7 @@ class ChatInputBarState extends State<ChatInputBar>
     }
     final text = _controller.text.trim();
     if (text.isEmpty) return;
+    _armComposerCollapseGuard();
 
     final messaging = context.read<MessagingProvider>();
     final editing = messaging.editingMessage;
@@ -334,6 +353,7 @@ class ChatInputBarState extends State<ChatInputBar>
     if (_isSendingStagedImage) return;
     final staged = _attachment.staged;
     if (staged == null) return;
+    _armComposerCollapseGuard();
 
     final caption = _controller.text.trim();
     final messaging = context.read<MessagingProvider>();
@@ -382,6 +402,7 @@ class ChatInputBarState extends State<ChatInputBar>
     });
     if (kIsWeb && isIOSWebKit()) {
       if (hadComposerFocus) {
+        _armComposerCollapseGuard();
         // Keyboard was open: keep it open and reset any iOS document scroll.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || !_focusNode.canRequestFocus) return;

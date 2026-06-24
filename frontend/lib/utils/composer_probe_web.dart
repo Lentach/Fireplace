@@ -30,6 +30,14 @@ String composerProbeString() {
   final scrollY = web.window.scrollY.round();
   final root = web.document.documentElement;
   final docTop = root != null ? root.scrollTop.round().toString() : '-';
+  final innerH = web.window.innerHeight;
+  String orient;
+  try {
+    orient = web.window.screen.orientation.type;
+  } catch (_) {
+    orient = '-';
+  }
 
-  return 'active=$activeLabel vv.off=$vvOff vv.h=$vvH sY=$scrollY dT=$docTop';
+  return 'active=$activeLabel vv.off=$vvOff vv.h=$vvH iH=$innerH '
+      'sY=$scrollY dT=$docTop or=$orient';
 }
