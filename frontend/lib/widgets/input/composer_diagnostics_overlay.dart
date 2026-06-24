@@ -4,19 +4,19 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 
 import '../../utils/composer_probe.dart';
-import '../../utils/web_focus_guard.dart' show focusGuardEventLines;
+import '../../utils/web_ios_webkit.dart' show isIOSWebKit;
 
 /// Dev testing tool: on-screen readout of the visualViewport-derived keyboard
 /// inset (what now drives the composer position) vs. Flutter's unreliable
 /// `MediaQuery.viewInsets.bottom`. Off by default so real users never see it;
-/// toggled at runtime by long-pressing the chat app-bar title (mobile web).
+/// toggled at runtime by long-pressing the chat app-bar title (iOS WebKit only).
 ///
 /// To remove entirely: delete this file and its usage in
 /// `chat_composer_viewport.dart`.
 final ValueNotifier<bool> composerDiagOverlayEnabled =
     ValueNotifier<bool>(false);
 
-/// Flip the overlay on/off. No-op effect off web (overlay never mounts).
+/// Flip the overlay on/off. No-op effect off iOS WebKit (overlay never mounts).
 void toggleComposerDiagOverlay() =>
     composerDiagOverlayEnabled.value = !composerDiagOverlayEnabled.value;
 
@@ -37,9 +37,9 @@ class ComposerDiagnosticsOverlay extends StatefulWidget {
   /// What the composer is actually `Positioned(bottom:)` at after debounce.
   final double debouncedInset;
 
-  /// True only where the overlay can run (web). Actual visibility is further
-  /// gated at runtime by [composerDiagOverlayEnabled].
-  static bool get isAvailable => kIsWeb;
+  /// True only where the overlay can run (iOS WebKit web). Actual visibility is
+  /// further gated at runtime by [composerDiagOverlayEnabled].
+  static bool get isAvailable => kIsWeb && isIOSWebKit();
 
   @override
   State<ComposerDiagnosticsOverlay> createState() =>
@@ -66,20 +66,11 @@ class _ComposerDiagnosticsOverlayState
 
   @override
   Widget build(BuildContext context) {
-    final mqSize = MediaQuery.sizeOf(context);
-    final dpr = MediaQuery.devicePixelRatioOf(context).toStringAsFixed(1);
     final lines = <String>[
       'kbInset(vv):  ${widget.computedInset?.round() ?? '-'}',
       'viewInsets:   ${widget.flutterInset.round()}  (flutter)',
       'composerBot:  ${widget.debouncedInset.round()}',
-      // A1: Flutter view size vs window/visualViewport. If mqH < iH (in the
-      // probe line) after the keyboard hides, the Flutter view did not restore
-      // — that gap is the white void.
-      'mqH: ${mqSize.height.round()}  mqW: ${mqSize.width.round()}  dpr: $dpr',
       composerProbeString(),
-      // Focus/blur sequence (iOS only) — confirms Symptom C: a `BLUR TEXTAREA`
-      // between a control tap and `touchend refocus` is the bounce.
-      ...focusGuardEventLines(),
     ];
     return IgnorePointer(
       child: Container(

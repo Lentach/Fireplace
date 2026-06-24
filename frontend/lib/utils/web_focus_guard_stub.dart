@@ -6,6 +6,3 @@ void ensureFocusGuardListenerInstalled() {}
 void registerFocusGuardRect(String id, Rect rect) {}
 
 void unregisterFocusGuardRect(String id) {}
-
-/// Non-web / VM: no focus-guard events.
-List<String> focusGuardEventLines() => const <String>[];
