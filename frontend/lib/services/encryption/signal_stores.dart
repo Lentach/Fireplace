@@ -10,15 +10,19 @@ import '../../utils/e2e_diag_log.dart';
 ///
 /// **Web:** Uses ONLY SharedPreferences (localStorage). flutter_secure_storage
 /// on web uses IndexedDB+WebCrypto which loses data when browser tabs are closed
-/// or the WebCrypto key is evicted. localStorage never loses data.
+/// or the WebCrypto key is evicted. Uses SharedPreferencesAsync so Signal
+/// session reads are not served from the legacy SharedPreferences in-memory
+/// cache after another tab/client updates localStorage.
 ///
 /// **Mobile:** Uses flutter_secure_storage (Keychain on iOS, Keystore on Android)
 /// which is hardware-backed and reliable.
 class DualStorage {
   final FlutterSecureStorage _secure;
+  final SharedPreferencesAsync _asyncPrefs;
   SharedPreferences? _prefs;
 
-  DualStorage(this._secure);
+  DualStorage(this._secure, {SharedPreferencesAsync? asyncPrefs})
+    : _asyncPrefs = asyncPrefs ?? SharedPreferencesAsync();
 
   Future<SharedPreferences> get _sharedPrefs async =>
       _prefs ??= await SharedPreferences.getInstance();
@@ -29,8 +33,7 @@ class DualStorage {
 
   Future<void> write({required String key, required String value}) async {
     if (kIsWeb) {
-      final prefs = await _sharedPrefs;
-      await prefs.setString('$_spPrefix$key', value);
+      await _asyncPrefs.setString('$_spPrefix$key', value);
     } else {
       await _secure.write(key: key, value: value);
     }
@@ -38,7 +41,12 @@ class DualStorage {
 
   Future<String?> read({required String key}) async {
     if (kIsWeb) {
+      final asyncValue = await _asyncPrefs.getString('$_spPrefix$key');
+      if (asyncValue != null) return asyncValue;
+      // Compatibility fallback for values written by the legacy API. Reload
+      // before reading so we do not reuse a stale in-memory preferences cache.
       final prefs = await _sharedPrefs;
+      await prefs.reload();
       return prefs.getString('$_spPrefix$key');
     } else {
       return _secure.read(key: key);
@@ -47,8 +55,12 @@ class DualStorage {
 
   Future<void> delete({required String key}) async {
     if (kIsWeb) {
-      final prefs = await _sharedPrefs;
-      await prefs.remove('$_spPrefix$key');
+      await _asyncPrefs.remove('$_spPrefix$key');
+      final prefs = _prefs;
+      if (prefs != null) {
+        await prefs.reload();
+        await prefs.remove('$_spPrefix$key');
+      }
     } else {
       await _secure.delete(key: key);
     }
@@ -56,12 +68,24 @@ class DualStorage {
 
   Future<Map<String, String>> readAll() async {
     if (kIsWeb) {
-      final prefs = await _sharedPrefs;
       final result = <String, String>{};
+      final asyncValues = await _asyncPrefs.getAll();
+      for (final entry in asyncValues.entries) {
+        final key = entry.key;
+        if (key.startsWith(_spPrefix) && entry.value is String) {
+          result[key.substring(_spPrefix.length)] = entry.value as String;
+        }
+      }
+      // Compatibility fallback for legacy SharedPreferences values that were
+      // not visible through the async API for any platform-specific reason.
+      final prefs = await _sharedPrefs;
+      await prefs.reload();
       for (final key in prefs.getKeys()) {
         if (key.startsWith(_spPrefix)) {
           final val = prefs.getString(key);
-          if (val != null) result[key.substring(_spPrefix.length)] = val;
+          if (val != null) {
+            result.putIfAbsent(key.substring(_spPrefix.length), () => val);
+          }
         }
       }
       return result;
@@ -85,7 +109,9 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
   SecureIdentityKeyStore(this._storage, this._p);
 
   Future<void> initialize(
-      IdentityKeyPair identityKeyPair, int registrationId) async {
+    IdentityKeyPair identityKeyPair,
+    int registrationId,
+  ) async {
     _identityKeyPair = identityKeyPair;
     _localRegistrationId = registrationId;
     await _storage.write(
@@ -102,8 +128,7 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
     final pairB64 = await _storage.read(key: '${_p}identity_key_pair');
     final regIdStr = await _storage.read(key: '${_p}registration_id');
     if (pairB64 == null || regIdStr == null) return false;
-    _identityKeyPair =
-        IdentityKeyPair.fromSerialized(base64Decode(pairB64));
+    _identityKeyPair = IdentityKeyPair.fromSerialized(base64Decode(pairB64));
     _localRegistrationId = int.parse(regIdStr);
     return true;
   }
@@ -120,9 +145,12 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
 
   @override
   Future<bool> saveIdentity(
-      SignalProtocolAddress address, IdentityKey? identityKey) async {
+    SignalProtocolAddress address,
+    IdentityKey? identityKey,
+  ) async {
     if (identityKey == null) return false;
-    final key = '${_p}trusted_identity_${address.getName()}_${address.getDeviceId()}';
+    final key =
+        '${_p}trusted_identity_${address.getName()}_${address.getDeviceId()}';
     await _storage.write(
       key: key,
       value: base64Encode(identityKey.serialize()),
@@ -131,8 +159,11 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
   }
 
   @override
-  Future<bool> isTrustedIdentity(SignalProtocolAddress address,
-      IdentityKey? identityKey, Direction direction) async {
+  Future<bool> isTrustedIdentity(
+    SignalProtocolAddress address,
+    IdentityKey? identityKey,
+    Direction direction,
+  ) async {
     if (identityKey == null) return false;
     // Auto-update: accept key rotation (e.g. peer reinstalled / storage evicted).
     // Consumer app — we don't verify fingerprints manually, so TOFU always wins.
@@ -142,7 +173,8 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
 
   @override
   Future<IdentityKey?> getIdentity(SignalProtocolAddress address) async {
-    final key = '${_p}trusted_identity_${address.getName()}_${address.getDeviceId()}';
+    final key =
+        '${_p}trusted_identity_${address.getName()}_${address.getDeviceId()}';
     final stored = await _storage.read(key: key);
     if (stored == null) return null;
     return IdentityKey.fromBytes(base64Decode(stored), 0);
@@ -194,18 +226,22 @@ class SecureSignedPreKeyStore extends SignedPreKeyStore {
 
   @override
   Future<SignedPreKeyRecord> loadSignedPreKey(int signedPreKeyId) async {
-    final data =
-        await _storage.read(key: '${_p}signed_pre_key_$signedPreKeyId');
+    final data = await _storage.read(
+      key: '${_p}signed_pre_key_$signedPreKeyId',
+    );
     if (data == null) {
       throw InvalidKeyIdException(
-          'No signed pre-key found for id: $signedPreKeyId');
+        'No signed pre-key found for id: $signedPreKeyId',
+      );
     }
     return SignedPreKeyRecord.fromSerialized(base64Decode(data));
   }
 
   @override
   Future<void> storeSignedPreKey(
-      int signedPreKeyId, SignedPreKeyRecord record) async {
+    int signedPreKeyId,
+    SignedPreKeyRecord record,
+  ) async {
     await _storage.write(
       key: '${_p}signed_pre_key_$signedPreKeyId',
       value: base64Encode(record.serialize()),
@@ -225,8 +261,9 @@ class SecureSignedPreKeyStore extends SignedPreKeyStore {
 
   @override
   Future<bool> containsSignedPreKey(int signedPreKeyId) async {
-    final data =
-        await _storage.read(key: '${_p}signed_pre_key_$signedPreKeyId');
+    final data = await _storage.read(
+      key: '${_p}signed_pre_key_$signedPreKeyId',
+    );
     return data != null;
   }
 
@@ -263,7 +300,9 @@ class SecureSessionStore extends SessionStore {
 
   @override
   Future<void> storeSession(
-      SignalProtocolAddress address, SessionRecord record) async {
+    SignalProtocolAddress address,
+    SessionRecord record,
+  ) async {
     try {
       await _storage.write(
         key: _sessionKey(address),
@@ -276,8 +315,10 @@ class SecureSessionStore extends SessionStore {
       // (An immediate read-back would NOT catch non-persistence: SharedPreferences
       // serves the in-memory value even when the localStorage flush silently
       // dropped. The cross-reload SESSION_INVENTORY is the real durability test.)
-      E2eDiagLog.add('SESSION_STORE_WRITE_FAIL',
-          {'peerId': address.getName(), 'err': e.runtimeType.toString()});
+      E2eDiagLog.add('SESSION_STORE_WRITE_FAIL', {
+        'peerId': address.getName(),
+        'err': e.runtimeType.toString(),
+      });
       rethrow;
     }
   }

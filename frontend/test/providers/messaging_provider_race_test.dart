@@ -58,8 +58,8 @@ class _DecryptCountingEncryption extends _FakeEncryptionProvider {
 }
 
 /// Always fails decrypt with a generic error (triggers retry path: debounce +
-/// requestSessionRebuild). Use Bad Mac / DuplicateMessageException for terminal
-/// failure scenarios where no retry should happen.
+/// requestSessionRebuild). Use DuplicateMessageException for terminal failures
+/// where no peer re-key should happen.
 class _AlwaysFailDecryptEncryption extends _FakeEncryptionProvider {
   @override
   Future<String> decrypt(int senderId, String ciphertext) async {
@@ -127,6 +127,22 @@ class _AlwaysDuplicateDecryptEncryption extends _FakeEncryptionProvider {
     throw Exception(
       'DuplicateMessageException - Received message with old counter',
     );
+  }
+}
+
+/// Always throws Bad Mac — the row is terminal, but the peer must be asked to
+/// re-key because repeated type-2 Bad-MACs mean their sender ratchet is stale.
+class _AlwaysBadMacDecryptEncryption extends _FakeEncryptionProvider {
+  int deleteSessionCalls = 0;
+
+  @override
+  Future<void> deleteSessionWithPeer(int peerUserId) async {
+    deleteSessionCalls++;
+  }
+
+  @override
+  Future<String> decrypt(int senderId, String ciphertext) async {
+    throw Exception('InvalidMessageException: Bad Mac');
   }
 }
 
@@ -222,22 +238,14 @@ class _HistoryDecryptRetryEncryption extends _FakeEncryptionProvider {
 }
 
 Map<String, dynamic> _convJson() => {
-      'id': 10,
-      'userOne': {
-        'id': 1,
-        'username': 'alice',
-        'tag': '0001',
-      },
-      'userTwo': {
-        'id': 2,
-        'username': 'bob',
-        'tag': '0002',
-      },
-      'createdAt': '2026-01-01T00:00:00.000Z',
-      'disappearingTimer': 60,
-      'unreadCount': 0,
-      'lastMessage': null,
-    };
+  'id': 10,
+  'userOne': {'id': 1, 'username': 'alice', 'tag': '0001'},
+  'userTwo': {'id': 2, 'username': 'bob', 'tag': '0002'},
+  'createdAt': '2026-01-01T00:00:00.000Z',
+  'disappearingTimer': 60,
+  'unreadCount': 0,
+  'lastMessage': null,
+};
 
 void main() {
   group('MessagingProvider — race regressions', () {
@@ -267,18 +275,23 @@ void main() {
       });
     });
 
-    test('never emits plaintext sendMessage when session bootstrap fails', () async {
-      provider.sendMessage('hello');
-      await Future<void>.delayed(Duration.zero);
+    test(
+      'never emits plaintext sendMessage when session bootstrap fails',
+      () async {
+        provider.sendMessage('hello');
+        await Future<void>.delayed(Duration.zero);
 
-      final sendEvents = emitted.where((e) => e['event'] == 'sendMessage').toList();
-      expect(sendEvents, isEmpty);
-      expect(provider.messages.any((m) => m.content == 'hello'), isTrue);
-      expect(
-        provider.messages.any((m) => m.deliveryStatus.name == 'failed'),
-        isTrue,
-      );
-    });
+        final sendEvents = emitted
+            .where((e) => e['event'] == 'sendMessage')
+            .toList();
+        expect(sendEvents, isEmpty);
+        expect(provider.messages.any((m) => m.content == 'hello'), isTrue);
+        expect(
+          provider.messages.any((m) => m.deliveryStatus.name == 'failed'),
+          isTrue,
+        );
+      },
+    );
 
     test('reconnect cancels delayed retry timer (no second ensureSession)', () {
       fakeAsync((async) {
@@ -299,19 +312,18 @@ void main() {
       required String createdAt,
       bool includeTtl = true,
       String messageType = 'TEXT',
-    }) =>
-        {
-          'id': id,
-          'content': '[encrypted]',
-          'encryptedContent': 'cipher-$id',
-          'senderId': 2,
-          'senderUsername': 'bob',
-          'conversationId': 10,
-          'deliveryStatus': 'DELIVERED',
-          'messageType': messageType,
-          if (includeTtl) 'disappearAfterSeconds': 60,
-          'createdAt': createdAt,
-        };
+    }) => {
+      'id': id,
+      'content': '[encrypted]',
+      'encryptedContent': 'cipher-$id',
+      'senderId': 2,
+      'senderUsername': 'bob',
+      'conversationId': 10,
+      'deliveryStatus': 'DELIVERED',
+      'messageType': messageType,
+      if (includeTtl) 'disappearAfterSeconds': 60,
+      'createdAt': createdAt,
+    };
 
     test(
       'recipient burst: stale messageHistory null TTL keeps disappearAfterSeconds from newMessage',
@@ -328,10 +340,7 @@ void main() {
 
         for (var id = 1; id <= 3; id++) {
           provider.onNewMessage(
-            incomingJson(
-              id: id,
-              createdAt: recentCreatedAt(id),
-            ),
+            incomingJson(id: id, createdAt: recentCreatedAt(id)),
           );
         }
 
@@ -429,32 +438,21 @@ void main() {
         encryption.cacheDecryption(
           1,
           MessageModel.fromJson(
-            incomingJson(
-              id: 1,
-              createdAt: createdAt,
-              includeTtl: false,
-            ),
+            incomingJson(id: 1, createdAt: createdAt, includeTtl: false),
           ),
         );
 
         provider.onMessageHistory({
           'conversationId': 10,
           'messages': [
-            incomingJson(
-              id: 1,
-              createdAt: createdAt,
-              includeTtl: false,
-            ),
+            incomingJson(id: 1, createdAt: createdAt, includeTtl: false),
           ],
         });
         await Future<void>.delayed(Duration.zero);
         await Future<void>.delayed(Duration.zero);
 
         expect(provider.messages.single.content, 'decrypted');
-        expect(
-          provider.messages.single.displayAsEncryptedPlaceholder,
-          isFalse,
-        );
+        expect(provider.messages.single.displayAsEncryptedPlaceholder, isFalse);
       },
     );
 
@@ -476,11 +474,7 @@ void main() {
             encryption.cacheDecryption(
               id,
               MessageModel.fromJson(
-                incomingJson(
-                  id: id,
-                  createdAt: createdAt,
-                  includeTtl: false,
-                ),
+                incomingJson(id: id, createdAt: createdAt, includeTtl: false),
               ).copyWith(content: 'cached-plain'),
             );
           }
@@ -499,8 +493,11 @@ void main() {
 
           async.flushMicrotasks();
 
-          expect(provider.messages.length, 3,
-              reason: 'rows must survive the expiry sweep');
+          expect(
+            provider.messages.length,
+            3,
+            reason: 'rows must survive the expiry sweep',
+          );
           expect(
             provider.messages.every((m) => m.disappearAfterSeconds == 60),
             isTrue,
@@ -516,12 +513,14 @@ void main() {
         provider.setEncryptionProvider(dupEncryption);
         provider.setActiveConversationIdForTest(10);
 
-        provider.onNewMessage(incomingJson(
-          id: 8,
-          createdAt: '2026-01-01T00:00:08.000Z',
-          messageType: 'PING',
-          includeTtl: false,
-        ));
+        provider.onNewMessage(
+          incomingJson(
+            id: 8,
+            createdAt: '2026-01-01T00:00:08.000Z',
+            messageType: 'PING',
+            includeTtl: false,
+          ),
+        );
         for (var i = 0; i < 30; i++) {
           await Future<void>.delayed(Duration.zero);
           if (provider.messages.any((m) => m.id == 8)) break;
@@ -562,14 +561,18 @@ void main() {
         provider.setActiveConversationIdForTest(10);
         provider.getMessages(10);
 
-        provider.onNewMessage(incomingJson(
-          id: 7,
-          createdAt: '2026-01-01T00:00:07.000Z',
-          includeTtl: false,
-        ));
+        provider.onNewMessage(
+          incomingJson(
+            id: 7,
+            createdAt: '2026-01-01T00:00:07.000Z',
+            includeTtl: false,
+          ),
+        );
         for (var i = 0; i < 30; i++) {
           await Future<void>.delayed(Duration.zero);
-          if (provider.messages.any((m) => m.id == 7 && m.content == 'plain-1')) {
+          if (provider.messages.any(
+            (m) => m.id == 7 && m.content == 'plain-1',
+          )) {
             break;
           }
         }
@@ -614,20 +617,14 @@ void main() {
           ],
         });
         await Future<void>.delayed(Duration.zero);
-        expect(
-          provider.messages.single.displayAsEncryptedPlaceholder,
-          isTrue,
-        );
+        expect(provider.messages.single.displayAsEncryptedPlaceholder, isTrue);
 
         delayed.markReady();
         await provider.retryDecryptActiveConversation();
         await Future<void>.delayed(Duration.zero);
 
         expect(provider.messages.single.content, isNot('[encrypted]'));
-        expect(
-          provider.messages.single.displayAsEncryptedPlaceholder,
-          isFalse,
-        );
+        expect(provider.messages.single.displayAsEncryptedPlaceholder, isFalse);
       },
     );
 
@@ -702,10 +699,7 @@ void main() {
 
       expect(provider.messages.any((m) => m.id == 99), isTrue);
 
-      provider.onMessageHistory({
-        'conversationId': 10,
-        'messages': serverPage,
-      });
+      provider.onMessageHistory({'conversationId': 10, 'messages': serverPage});
 
       expect(provider.messages.any((m) => m.id == 99), isTrue);
       expect(provider.messages.length, 4);
@@ -723,10 +717,7 @@ void main() {
         'disappearAfterSeconds': 60,
         'createdAt': '2026-01-01T00:00:00.000Z',
       };
-      provider.seedCacheForTest(
-        10,
-        [MessageModel.fromJson(msg)],
-      );
+      provider.seedCacheForTest(10, [MessageModel.fromJson(msg)]);
       provider.setActiveConversationIdForTest(99);
 
       provider.onMessageDelivered({
@@ -742,47 +733,51 @@ void main() {
       expect(cached.expiresAt, DateTime.parse('2026-01-01T01:00:00.000Z'));
     });
 
-    test('deterministic interleaving: reconnect + messageHistory + retry keeps encrypted send path', () {
-      fakeAsync((async) {
-        provider.sendMessage('hello');
-        async.flushMicrotasks();
+    test(
+      'deterministic interleaving: reconnect + messageHistory + retry keeps encrypted send path',
+      () {
+        fakeAsync((async) {
+          provider.sendMessage('hello');
+          async.flushMicrotasks();
 
-        final failed = provider.messages.firstWhere(
-          (m) => m.deliveryStatus.name == 'failed',
-        );
-        final failedTempId = failed.tempId!;
+          final failed = provider.messages.firstWhere(
+            (m) => m.deliveryStatus.name == 'failed',
+          );
+          final failedTempId = failed.tempId!;
 
-        provider.onConnect(true);
-        provider.onMessageHistory({
-          'conversationId': 10,
-          'messages': [
-            {
-              'id': 7001,
-              'content': 'hello',
-              'senderId': 1,
-              'senderUsername': 'alice',
-              'conversationId': 10,
-              'deliveryStatus': 'FAILED',
-              'messageType': 'TEXT',
-              'tempId': failedTempId,
-              'createdAt': '2026-01-01T00:00:00.000Z',
-            },
-          ],
+          provider.onConnect(true);
+          provider.onMessageHistory({
+            'conversationId': 10,
+            'messages': [
+              {
+                'id': 7001,
+                'content': 'hello',
+                'senderId': 1,
+                'senderUsername': 'alice',
+                'conversationId': 10,
+                'deliveryStatus': 'FAILED',
+                'messageType': 'TEXT',
+                'tempId': failedTempId,
+                'createdAt': '2026-01-01T00:00:00.000Z',
+              },
+            ],
+          });
+          async.flushMicrotasks();
+
+          provider.retryFailedMessage(failedTempId);
+          async.flushMicrotasks();
+
+          final sendEvents = emitted
+              .where((e) => e['event'] == 'sendMessage')
+              .toList();
+          expect(sendEvents.length, 1);
+          final payload = sendEvents.first['data'] as Map<String, dynamic>;
+          expect(payload['content'], '[encrypted]');
+          expect(payload['encryptedContent'], 'ciphertext');
+          expect(payload['content'], isNot('hello'));
         });
-        async.flushMicrotasks();
-
-        provider.retryFailedMessage(failedTempId);
-        async.flushMicrotasks();
-
-        final sendEvents =
-            emitted.where((e) => e['event'] == 'sendMessage').toList();
-        expect(sendEvents.length, 1);
-        final payload = sendEvents.first['data'] as Map<String, dynamic>;
-        expect(payload['content'], '[encrypted]');
-        expect(payload['encryptedContent'], 'ciphertext');
-        expect(payload['content'], isNot('hello'));
-      });
-    });
+      },
+    );
 
     test(
       'encrypted sendMessage includes messageType and mediaUrl for IMAGE',
@@ -797,8 +792,9 @@ void main() {
         );
         await Future<void>.delayed(Duration.zero);
 
-        final sendEvents =
-            emitted.where((e) => e['event'] == 'sendMessage').toList();
+        final sendEvents = emitted
+            .where((e) => e['event'] == 'sendMessage')
+            .toList();
         expect(sendEvents.length, 1);
         final payload = sendEvents.first['data'] as Map<String, dynamic>;
         expect(payload['messageType'], 'IMAGE');
@@ -819,9 +815,9 @@ void main() {
       );
       await Future<void>.delayed(Duration.zero);
 
-      final payload = emitted
-          .firstWhere((e) => e['event'] == 'sendMessage')['data']
-          as Map<String, dynamic>;
+      final payload =
+          emitted.firstWhere((e) => e['event'] == 'sendMessage')['data']
+              as Map<String, dynamic>;
       expect(payload.containsKey('messageType'), isFalse);
       expect(payload.containsKey('mediaUrl'), isFalse);
     });
@@ -874,13 +870,9 @@ void main() {
           createdAt: DateTime.now().toUtc().toIso8601String(),
           includeTtl: false,
         );
-        provider.seedCacheForTest(
-          10,
-          [
-            MessageModel.fromJson(row)
-                .copyWith(content: '[Decryption failed]'),
-          ],
-        );
+        provider.seedCacheForTest(10, [
+          MessageModel.fromJson(row).copyWith(content: '[Decryption failed]'),
+        ]);
         provider.loadCachedMessages(10);
 
         provider.onMessageHistory({
@@ -892,10 +884,7 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 900));
 
         expect(provider.messages.single.content, '[Decryption failed]');
-        expect(
-          provider.messages.single.displayAsEncryptedPlaceholder,
-          isFalse,
-        );
+        expect(provider.messages.single.displayAsEncryptedPlaceholder, isFalse);
       },
     );
 
@@ -909,10 +898,7 @@ void main() {
           emitted.clear();
 
           provider.onNewMessage(
-            incomingJson(
-              id: 77,
-              createdAt: '2026-01-01T00:00:77.000Z',
-            ),
+            incomingJson(id: 77, createdAt: '2026-01-01T00:00:77.000Z'),
           );
           async.flushMicrotasks();
 
@@ -920,10 +906,7 @@ void main() {
             emitted.where((e) => e['event'] == 'requestSessionRebuild'),
             isEmpty,
           );
-          expect(
-            provider.messages.single.content,
-            '[Decryption failed]',
-          );
+          expect(provider.messages.single.content, '[Decryption failed]');
 
           async.elapse(const Duration(milliseconds: 800));
           async.flushMicrotasks();
@@ -965,8 +948,48 @@ void main() {
         expect(
           enc.deleteSessionCalls,
           0,
-          reason: 'session must NOT be deleted — DuplicateMessageException means session is valid',
+          reason:
+              'session must NOT be deleted — DuplicateMessageException means session is valid',
         );
+      },
+    );
+
+    test(
+      'Bad Mac marks message terminal and asks peer to re-key without deleting session',
+      () async {
+        final enc = _AlwaysBadMacDecryptEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 202,
+              createdAt: DateTime.now().toUtc().toIso8601String(),
+              includeTtl: false,
+            ),
+          ],
+        });
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+
+        expect(provider.messages.single.content, '[Decryption failed]');
+        expect(
+          enc.deleteSessionCalls,
+          0,
+          reason: 'Bad Mac recovery must never delete local ratchet state',
+        );
+        final rebuilds = emitted
+            .where((e) => e['event'] == 'requestSessionRebuild')
+            .toList();
+        expect(
+          rebuilds.length,
+          1,
+          reason: 'the sender must re-key after a stale type-2 Bad MAC',
+        );
+        expect((rebuilds.single['data'] as Map)['recipientId'], 2);
       },
     );
 
@@ -999,7 +1022,8 @@ void main() {
         expect(
           enc.deleteSessionCalls,
           0,
-          reason: 'session must NOT be deleted — a fresh session will be built by the next PreKey message',
+          reason:
+              'session must NOT be deleted — a fresh session will be built by the next PreKey message',
         );
       },
     );
@@ -1012,11 +1036,13 @@ void main() {
         provider.setActiveConversationIdForTest(10);
 
         // 1. Live message fails decrypt → arms the live-failure retry set.
-        provider.onNewMessage(incomingJson(
-          id: 7656,
-          createdAt: '2026-01-01T00:00:01.000Z',
-          includeTtl: false,
-        ));
+        provider.onNewMessage(
+          incomingJson(
+            id: 7656,
+            createdAt: '2026-01-01T00:00:01.000Z',
+            includeTtl: false,
+          ),
+        );
         // Let the 800ms debounced live retry fire — it emits the single
         // rebuild request this peer gets for the whole app session.
         await Future<void>.delayed(const Duration(milliseconds: 850));
@@ -1042,7 +1068,8 @@ void main() {
         expect(
           enc.deleteSessionCalls,
           0,
-          reason: 'deleting the session converts the peer\'s in-flight '
+          reason:
+              'deleting the session converts the peer\'s in-flight '
               'old-session messages into permanent Bad-MAC losses',
         );
         expect(
@@ -1052,13 +1079,21 @@ void main() {
         final rebuildsSoFar = emitted
             .where((e) => e['event'] == 'requestSessionRebuild')
             .length;
-        expect(rebuildsSoFar, 1,
-            reason: 'ONE rebuild request total across live retry + history '
-                'pass — every extra emit forces the peer into another '
-                'rebuild on their next send (the SESSION_RESET loop)');
-        expect(enc.needsSessionRebuild(2), isFalse,
-            reason: 'rebuild requests ask the PEER to re-key; our own '
-                'session must never be marked for a forced rebuild');
+        expect(
+          rebuildsSoFar,
+          1,
+          reason:
+              'ONE rebuild request total across live retry + history '
+              'pass — every extra emit forces the peer into another '
+              'rebuild on their next send (the SESSION_RESET loop)',
+        );
+        expect(
+          enc.needsSessionRebuild(2),
+          isFalse,
+          reason:
+              'rebuild requests ask the PEER to re-key; our own '
+              'session must never be marked for a forced rebuild',
+        );
 
         // 3. Second history pass (reconnect replay): everything is terminal —
         //    the machinery must stay quiet: no resets, no re-decrypts, no deletes.
@@ -1080,12 +1115,16 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 100));
 
         expect(enc.deleteSessionCalls, 0);
-        expect(enc.decryptCalls, decryptsAfterFirstPass,
-            reason: '[Decryption failed] is terminal — no re-attempts');
+        expect(
+          enc.decryptCalls,
+          decryptsAfterFirstPass,
+          reason: '[Decryption failed] is terminal — no re-attempts',
+        );
         expect(
           emitted.where((e) => e['event'] == 'requestSessionRebuild'),
           isEmpty,
-          reason: 'peer must be pruned from the failure sets once nothing '
+          reason:
+              'peer must be pruned from the failure sets once nothing '
               'recoverable remains — the old sticky set re-fired forever',
         );
       },
@@ -1133,12 +1172,16 @@ void main() {
         await Future<void>.delayed(Duration.zero);
         await Future<void>.delayed(const Duration(milliseconds: 100));
 
-        expect(enc.decryptCalls, 0,
-            reason: 'restored keyed media must never be re-decrypted');
+        expect(
+          enc.decryptCalls,
+          0,
+          reason: 'restored keyed media must never be re-decrypted',
+        );
         expect(
           emitted.where((e) => e['event'] == 'requestSessionRebuild'),
           isEmpty,
-          reason: 'a fully-restored media row is RESOLVED — it must not '
+          reason:
+              'a fully-restored media row is RESOLVED — it must not '
               'trigger session-reset recovery',
         );
         expect(enc.needsSessionRebuild(2), isFalse);
@@ -1202,19 +1245,33 @@ void main() {
         // user-driven retry works), second succeeds, third is a duplicate.
         encryption.failEnsureSession = true;
         await provider.encryptAndSendForTest(
-            recipientId: 2, content: 'once', tempId: 'temp_dup_1');
+          recipientId: 2,
+          content: 'once',
+          tempId: 'temp_dup_1',
+        );
         await provider.encryptAndSendForTest(
-            recipientId: 2, content: 'once', tempId: 'temp_dup_1');
+          recipientId: 2,
+          content: 'once',
+          tempId: 'temp_dup_1',
+        );
         await provider.encryptAndSendForTest(
-            recipientId: 2, content: 'once', tempId: 'temp_dup_1');
+          recipientId: 2,
+          content: 'once',
+          tempId: 'temp_dup_1',
+        );
         await Future<void>.delayed(Duration.zero);
 
-        final sendEvents =
-            emitted.where((e) => e['event'] == 'sendMessage').toList();
-        expect(sendEvents.length, 1,
-            reason: 'each duplicate emit advances the Double Ratchet and '
-                'hands the recipient an undecryptable duplicate — one '
-                'optimistic message must be emitted exactly once');
+        final sendEvents = emitted
+            .where((e) => e['event'] == 'sendMessage')
+            .toList();
+        expect(
+          sendEvents.length,
+          1,
+          reason:
+              'each duplicate emit advances the Double Ratchet and '
+              'hands the recipient an undecryptable duplicate — one '
+              'optimistic message must be emitted exactly once',
+        );
       },
     );
 
@@ -1247,9 +1304,13 @@ void main() {
         final rebuilds = emitted
             .where((e) => e['event'] == 'requestSessionRebuild')
             .toList();
-        expect(rebuilds.length, 1,
-            reason: 'peer must learn our identity is new on the FIRST dead '
-                'message, not keep sending undecryptable ones until we reply');
+        expect(
+          rebuilds.length,
+          1,
+          reason:
+              'peer must learn our identity is new on the FIRST dead '
+              'message, not keep sending undecryptable ones until we reply',
+        );
         expect((rebuilds.single['data'] as Map)['recipientId'], 2);
         expect(enc.deleteSessionCalls, 0);
         expect(
@@ -1301,16 +1362,23 @@ void main() {
         await Future<void>.delayed(const Duration(milliseconds: 50));
 
         expect(provider.messages.single.content, '[Decryption failed]');
-        expect(enc.deleteSessionCalls, 0,
-            reason: 'inbound decrypt failures must never delete the session');
+        expect(
+          enc.deleteSessionCalls,
+          0,
+          reason: 'inbound decrypt failures must never delete the session',
+        );
 
         // Simulate 900ms timer firing (retryDecryptActiveConversation).
         // [Decryption failed] is terminal — still no session delete.
         await provider.retryDecryptActiveConversation();
         await Future<void>.delayed(Duration.zero);
 
-        expect(enc.deleteSessionCalls, 0,
-            reason: 'session must not be deleted for [Decryption failed] messages');
+        expect(
+          enc.deleteSessionCalls,
+          0,
+          reason:
+              'session must not be deleted for [Decryption failed] messages',
+        );
         expect(provider.messages.single.content, '[Decryption failed]');
       },
     );

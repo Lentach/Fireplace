@@ -11,11 +11,20 @@ const PRE_KEY_LOW_THRESHOLD = 10;
 const PRE_KEY_FETCH_MIN_INTERVAL_MS = 750;
 const PRE_KEY_FETCH_MAP_TTL_MS = 10 * 60 * 1000;
 const PRE_KEY_FETCH_MAP_MAX_ENTRIES = 10000;
+const SESSION_REBUILD_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
 
 @Injectable()
 export class ChatKeyExchangeService {
   private readonly logger = new Logger(ChatKeyExchangeService.name);
   private readonly lastPreKeyFetchByPair = new Map<string, number>();
+  private readonly pendingSessionRebuildsByRecipient = new Map<
+    number,
+    Map<number, number>
+  >();
+
+  static userRoom(userId: number): string {
+    return `user:${userId}`;
+  }
 
   constructor(private readonly keyBundlesService: KeyBundlesService) {}
 
@@ -43,10 +52,7 @@ export class ChatKeyExchangeService {
     }
   }
 
-  async handleUploadOneTimePreKeys(
-    client: Socket,
-    data: any,
-  ): Promise<void> {
+  async handleUploadOneTimePreKeys(client: Socket, data: any): Promise<void> {
     const userId: number = client.data.user?.id;
     if (!userId) return;
 
@@ -77,11 +83,15 @@ export class ChatKeyExchangeService {
       const dto = validateDto(FetchPreKeyBundleDto, data);
       if (this.isPreKeyFetchRateLimited(requesterId, dto.userId)) {
         client.emit('error', {
-          message: 'Pre-key bundle fetch rate limit exceeded. Please retry shortly.',
+          message:
+            'Pre-key bundle fetch rate limit exceeded. Please retry shortly.',
         });
         return;
       }
       const bundle = await this.keyBundlesService.fetchPreKeyBundle(dto.userId);
+      if (bundle) {
+        this.clearPendingSessionRebuildRequest(requesterId, dto.userId);
+      }
 
       client.emit('preKeyBundleResponse', {
         userId: dto.userId,
@@ -96,9 +106,7 @@ export class ChatKeyExchangeService {
         if (remaining < PRE_KEY_LOW_THRESHOLD) {
           const targetSocketId = onlineUsers.get(dto.userId);
           if (targetSocketId) {
-            server
-              .to(targetSocketId)
-              .emit('preKeysLow', { remaining });
+            server.to(targetSocketId).emit('preKeysLow', { remaining });
           }
         }
       }
@@ -120,7 +128,10 @@ export class ChatKeyExchangeService {
     this.cleanupPreKeyFetchTracker(now);
     const key = `${requesterId}:${recipientId}`;
     const lastSeen = this.lastPreKeyFetchByPair.get(key);
-    if (lastSeen !== undefined && now - lastSeen < PRE_KEY_FETCH_MIN_INTERVAL_MS) {
+    if (
+      lastSeen !== undefined &&
+      now - lastSeen < PRE_KEY_FETCH_MIN_INTERVAL_MS
+    ) {
       return true;
     }
     this.lastPreKeyFetchByPair.set(key, now);
@@ -140,32 +151,92 @@ export class ChatKeyExchangeService {
     const ordered = [...this.lastPreKeyFetchByPair.entries()].sort(
       (a, b) => a[1] - b[1],
     );
-    const toDelete = this.lastPreKeyFetchByPair.size - PRE_KEY_FETCH_MAP_MAX_ENTRIES;
+    const toDelete =
+      this.lastPreKeyFetchByPair.size - PRE_KEY_FETCH_MAP_MAX_ENTRIES;
     for (let i = 0; i < toDelete; i++) {
       this.lastPreKeyFetchByPair.delete(ordered[i][0]);
     }
   }
 
-  /// Relay a session-rebuild request to the target user.
-  /// Called when receiver cannot decrypt a live message — asks sender to
-  /// delete their stale session so their next send uses a fresh PreKeySignalMessage.
+  deliverPendingSessionRebuilds(client: Socket): void {
+    const recipientId: number = client.data.user?.id;
+    if (!recipientId) return;
+    const pending = this.pendingSessionRebuildsByRecipient.get(recipientId);
+    if (!pending) return;
+
+    const now = Date.now();
+    for (const [fromUserId, requestedAt] of pending.entries()) {
+      if (now - requestedAt > SESSION_REBUILD_REQUEST_TTL_MS) {
+        pending.delete(fromUserId);
+        continue;
+      }
+      client.emit('sessionRebuildNeeded', { fromUserId });
+    }
+    if (pending.size === 0) {
+      this.pendingSessionRebuildsByRecipient.delete(recipientId);
+    }
+  }
+
+  private rememberSessionRebuildRequest(
+    recipientId: number,
+    requesterId: number,
+  ): void {
+    this.cleanupPendingSessionRebuilds(Date.now());
+    let pending = this.pendingSessionRebuildsByRecipient.get(recipientId);
+    if (!pending) {
+      pending = new Map<number, number>();
+      this.pendingSessionRebuildsByRecipient.set(recipientId, pending);
+    }
+    pending.set(requesterId, Date.now());
+  }
+
+  private clearPendingSessionRebuildRequest(
+    recipientId: number,
+    requesterId: number,
+  ): void {
+    const pending = this.pendingSessionRebuildsByRecipient.get(recipientId);
+    if (!pending) return;
+    pending.delete(requesterId);
+    if (pending.size === 0) {
+      this.pendingSessionRebuildsByRecipient.delete(recipientId);
+    }
+  }
+
+  private cleanupPendingSessionRebuilds(now: number): void {
+    for (const [recipientId, pending] of this
+      .pendingSessionRebuildsByRecipient) {
+      for (const [requesterId, requestedAt] of pending) {
+        if (now - requestedAt > SESSION_REBUILD_REQUEST_TTL_MS) {
+          pending.delete(requesterId);
+        }
+      }
+      if (pending.size === 0) {
+        this.pendingSessionRebuildsByRecipient.delete(recipientId);
+      }
+    }
+  }
+
+  /// Relay a session-rebuild request to every live socket for the target user.
+  /// Called when receiver cannot decrypt an inbound message — asks sender to
+  /// build over their stale session so their next send uses a fresh PreKeySignalMessage.
   async handleRequestSessionRebuild(
     client: Socket,
     data: any,
     server: Server,
     onlineUsers: Map<number, string>,
   ): Promise<void> {
+    void onlineUsers;
     const requesterId: number = client.data.user?.id;
     if (!requesterId) return;
 
     try {
       const dto = validateDto(RequestSessionRebuildDto, data);
-      const targetSocketId = onlineUsers.get(dto.recipientId);
-      if (targetSocketId) {
-        server.to(targetSocketId).emit('sessionRebuildNeeded', {
+      this.rememberSessionRebuildRequest(dto.recipientId, requesterId);
+      server
+        .to(ChatKeyExchangeService.userRoom(dto.recipientId))
+        .emit('sessionRebuildNeeded', {
           fromUserId: requesterId,
         });
-      }
     } catch (error) {
       this.logger.error(
         `requestSessionRebuild failed requesterId=${requesterId}: ${error.message}`,

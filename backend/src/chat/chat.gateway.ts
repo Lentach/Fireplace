@@ -85,7 +85,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      const payload = this.jwtService.verify<{ sub: number; iat?: number }>(token);
+      const payload = this.jwtService.verify<{ sub: number; iat?: number }>(
+        token,
+      );
       const user = await this.usersService.findById(payload.sub);
 
       if (!user) {
@@ -95,8 +97,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
       // Mirror JwtStrategy: a token issued before the last password change is invalid.
       if (user.passwordChangedAt) {
-        const changedAtSeconds = Math.floor(user.passwordChangedAt.getTime() / 1000);
-        if (typeof payload.iat === 'number' && payload.iat <= changedAtSeconds) {
+        const changedAtSeconds = Math.floor(
+          user.passwordChangedAt.getTime() / 1000,
+        );
+        if (
+          typeof payload.iat === 'number' &&
+          payload.iat <= changedAtSeconds
+        ) {
           client.disconnect();
           return;
         }
@@ -107,9 +114,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         username: user.username,
         tag: user.tag,
       };
+      client.join(ChatKeyExchangeService.userRoom(user.id));
       this.onlineUsers.set(user.id, client.id);
+      this.chatKeyExchangeService.deliverPendingSessionRebuilds(client);
 
-      this.logger.debug(`User connected: ${user.username} (socket: ${client.id})`);
+      this.logger.debug(
+        `User connected: ${user.username} (socket: ${client.id})`,
+      );
       // Auth is complete — client may safely emit authenticated WS events.
       client.emit('socketReady', {});
     } catch (error) {
@@ -130,7 +141,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     if (this.onlineUsers.get(user.id) === client.id) {
       this.onlineUsers.delete(user.id);
     }
-    this.logger.debug(`User disconnected: ${user.username} (socket: ${client.id})`);
+    this.logger.debug(
+      `User disconnected: ${user.username} (socket: ${client.id})`,
+    );
   }
 
   // ========== MESSAGE HANDLERS ==========
@@ -239,7 +252,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ): void {
-    return this.chatPresenceService.handleTyping(client, data, this.server, this.onlineUsers);
+    return this.chatPresenceService.handleTyping(
+      client,
+      data,
+      this.server,
+      this.onlineUsers,
+    );
   }
 
   @UseGuards(WsThrottlerGuard)
@@ -249,7 +267,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    return this.chatReactionService.handleAddReaction(client, data, this.server, this.onlineUsers);
+    return this.chatReactionService.handleAddReaction(
+      client,
+      data,
+      this.server,
+      this.onlineUsers,
+    );
   }
 
   @UseGuards(WsThrottlerGuard)
@@ -259,7 +282,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    return this.chatReactionService.handleRemoveReaction(client, data, this.server, this.onlineUsers);
+    return this.chatReactionService.handleRemoveReaction(
+      client,
+      data,
+      this.server,
+      this.onlineUsers,
+    );
   }
 
   @SubscribeMessage('recordingVoice')
@@ -267,7 +295,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ): void {
-    return this.chatPresenceService.handleRecordingVoice(client, data, this.server, this.onlineUsers);
+    return this.chatPresenceService.handleRecordingVoice(
+      client,
+      data,
+      this.server,
+      this.onlineUsers,
+    );
   }
 
   /** Lets client suppress push when already viewing this conversation (foreground + active chat). */
@@ -501,7 +534,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    return this.chatBlockService.handleBlockUser(client, data, this.server, this.onlineUsers);
+    return this.chatBlockService.handleBlockUser(
+      client,
+      data,
+      this.server,
+      this.onlineUsers,
+    );
   }
 
   @SubscribeMessage('unblockUser')

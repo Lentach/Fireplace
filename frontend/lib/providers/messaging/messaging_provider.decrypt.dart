@@ -110,7 +110,8 @@ extension MessagingDecrypt on MessagingProvider {
       return;
     }
     // Validate linkPreviewImageUrl before persist (SSRF defense in depth)
-    final safeImageUrl = decrypted.linkPreviewImageUrl != null &&
+    final safeImageUrl =
+        decrypted.linkPreviewImageUrl != null &&
             decrypted.linkPreviewUrl != null &&
             LinkPreviewService.isSafeImageUrl(
               decrypted.linkPreviewImageUrl,
@@ -202,8 +203,11 @@ extension MessagingDecrypt on MessagingProvider {
     // lossful local delete), so the old per-pass dedupe re-spammed it on
     // every reconnect/history pass — the SESSION_RESET{historyRetry} loop.
     if (!_rebuildRequestedPeers.add(peerId)) {
-      _e2eFlowLog('SESSION_RESET_SKIPPED',
-          {'peerId': peerId, 'trigger': trigger, 'reason': 'alreadyRequested'});
+      _e2eFlowLog('SESSION_RESET_SKIPPED', {
+        'peerId': peerId,
+        'trigger': trigger,
+        'reason': 'alreadyRequested',
+      });
       return;
     }
     // NOTE: deliberately NO markSessionRebuild here. This request asks the
@@ -242,8 +246,9 @@ extension MessagingDecrypt on MessagingProvider {
       _e2eFlowLog('HISTORY_DECRYPT_SKIP_E2E_NOT_READY', {});
       return;
     }
-    final toDecrypt =
-        _messages.where((m) => m.needsDecryption(_currentUserId)).length;
+    final toDecrypt = _messages
+        .where((m) => m.needsDecryption(_currentUserId))
+        .length;
     if (toDecrypt > 0) {
       _e2eFlowLog('HISTORY_DECRYPT_START', {'count': toDecrypt});
     }
@@ -265,8 +270,11 @@ extension MessagingDecrypt on MessagingProvider {
           if (cached.content == _kDecryptionFailedLabel) {
             // Terminal failure cached — restore and skip without live decrypt.
             final idx = _messages.indexWhere((m) => m.id == msg.id);
-            if (idx != -1 && _messages[idx].content != _kDecryptionFailedLabel) {
-              _messages[idx] = _messages[idx].copyWith(content: _kDecryptionFailedLabel);
+            if (idx != -1 &&
+                _messages[idx].content != _kDecryptionFailedLabel) {
+              _messages[idx] = _messages[idx].copyWith(
+                content: _kDecryptionFailedLabel,
+              );
               changed = true;
             }
             continue;
@@ -285,13 +293,15 @@ extension MessagingDecrypt on MessagingProvider {
         }
         // _encryptionProvider is non-null here: this path is reached only when
         // isE2EReady is true, which requires the provider to be set.
-        final persisted =
-            await _encryptionProvider!.getDecryptedContent(msg.id);
+        final persisted = await _encryptionProvider!.getDecryptedContent(
+          msg.id,
+        );
         final pContent = persisted?['content'] as String? ?? '';
         final persistedEditedAt = persisted?['editedAt'] != null
             ? DateTime.tryParse(persisted!['editedAt'] as String)
             : null;
-        final hasPersistedPayload = persisted != null &&
+        final hasPersistedPayload =
+            persisted != null &&
             (pContent.isNotEmpty ||
                 persisted['mediaUrl'] != null ||
                 persisted['messageType'] != null);
@@ -300,21 +310,26 @@ extension MessagingDecrypt on MessagingProvider {
           if (pContent == _kDecryptionFailedLabel) {
             // Terminal failure persisted — restore and skip without live decrypt.
             final idx = _messages.indexWhere((m) => m.id == msg.id);
-            if (idx != -1 && _messages[idx].content != _kDecryptionFailedLabel) {
-              _messages[idx] = _messages[idx].copyWith(content: _kDecryptionFailedLabel);
+            if (idx != -1 &&
+                _messages[idx].content != _kDecryptionFailedLabel) {
+              _messages[idx] = _messages[idx].copyWith(
+                content: _kDecryptionFailedLabel,
+              );
               changed = true;
             }
             continue;
           }
           final safeImageUrl = persisted['linkPreviewImageUrl'] as String?;
           final safePageUrl = persisted['linkPreviewUrl'] as String?;
-          final validImage = safeImageUrl != null &&
+          final validImage =
+              safeImageUrl != null &&
                   safePageUrl != null &&
                   LinkPreviewService.isSafeImageUrl(safeImageUrl, safePageUrl)
               ? safeImageUrl
               : null;
-          final restoredType =
-              _parseMessageTypeString(persisted['messageType'] as String?);
+          final restoredType = _parseMessageTypeString(
+            persisted['messageType'] as String?,
+          );
           final restored = msg.copyWith(
             content: pContent.isNotEmpty ? pContent : msg.content,
             messageType: restoredType,
@@ -354,10 +369,7 @@ extension MessagingDecrypt on MessagingProvider {
         final decrypted = await _decryptMessageAsyncQueued(rowForDecrypt);
         if (idx != -1) {
           _messages[idx] = _mergeMessagePreferNewer(_messages[idx], decrypted);
-          _encryptionProvider?.cacheDecryption(
-            msg.id,
-            _messages[idx],
-          );
+          _encryptionProvider?.cacheDecryption(msg.id, _messages[idx]);
           changed = true;
         }
       } else if (msg.senderId == _currentUserId &&
@@ -372,13 +384,15 @@ extension MessagingDecrypt on MessagingProvider {
           // Restore all fields from persisted cache (SSRF validated)
           final rawImageUrl = stored?['linkPreviewImageUrl'] as String?;
           final rawPageUrl = stored?['linkPreviewUrl'] as String?;
-          final safeImageUrl = rawImageUrl != null &&
+          final safeImageUrl =
+              rawImageUrl != null &&
                   rawPageUrl != null &&
                   LinkPreviewService.isSafeImageUrl(rawImageUrl, rawPageUrl)
               ? rawImageUrl
               : null;
-          final restoredType =
-              _parseMessageTypeString(stored?['messageType'] as String?);
+          final restoredType = _parseMessageTypeString(
+            stored?['messageType'] as String?,
+          );
           final restored = msg.copyWith(
             content: storedContent.isNotEmpty ? storedContent : null,
             messageType: restoredType,
@@ -449,7 +463,9 @@ extension MessagingDecrypt on MessagingProvider {
         _requestSessionRebuildForPeer(peerId, trigger: 'recoverUnresolved');
       }
     }
-    _e2eFlowLog('E2E_RECOVERY_SESSION_RESET', {'peerIds': unresolvedPeers.toList()});
+    _e2eFlowLog('E2E_RECOVERY_SESSION_RESET', {
+      'peerIds': unresolvedPeers.toList(),
+    });
     return true;
   }
 
@@ -496,18 +512,19 @@ extension MessagingDecrypt on MessagingProvider {
       }
     }
 
-    final sorted = _messages
-        .where(
-          (m) =>
-              peerIds.contains(m.senderId) &&
-              m.needsDecryption(_currentUserId),
-        )
-        .toList()
-      ..sort((a, b) {
-        final byTime = a.createdAt.compareTo(b.createdAt);
-        if (byTime != 0) return byTime;
-        return a.id.compareTo(b.id);
-      });
+    final sorted =
+        _messages
+            .where(
+              (m) =>
+                  peerIds.contains(m.senderId) &&
+                  m.needsDecryption(_currentUserId),
+            )
+            .toList()
+          ..sort((a, b) {
+            final byTime = a.createdAt.compareTo(b.createdAt);
+            if (byTime != 0) return byTime;
+            return a.id.compareTo(b.id);
+          });
 
     for (final msg in sorted) {
       if (_decryptHistoryGeneration != generation) break;
@@ -550,8 +567,11 @@ extension MessagingDecrypt on MessagingProvider {
     if (_decryptingHistory || _liveDecryptFailedPeers.isEmpty) return;
     final peers = Set<int>.from(_liveDecryptFailedPeers);
     final gen = _decryptHistoryGeneration;
-    final changed =
-        await _retryDecryptForPeers(gen, peers, trigger: 'liveRetry');
+    final changed = await _retryDecryptForPeers(
+      gen,
+      peers,
+      trigger: 'liveRetry',
+    );
     if (_decryptHistoryGeneration != gen) return;
     if (changed) {
       final cid = _effectiveActiveConversationId;
@@ -564,10 +584,7 @@ extension MessagingDecrypt on MessagingProvider {
     if (msg.senderId == _currentUserId) {
       return Future.value(msg);
     }
-    return _runDecryptSerialized(
-      msg.senderId,
-      () => _decryptMessageAsync(msg),
-    );
+    return _runDecryptSerialized(msg.senderId, () => _decryptMessageAsync(msg));
   }
 
   Future<MessageModel> _decryptMessageAsync(MessageModel msg) async {
@@ -588,8 +605,9 @@ extension MessagingDecrypt on MessagingProvider {
     // field: a type-1 (Signal) message with hasSession:false is state loss on
     // our side; type 3 (PreKey) failing means OTP/identity trouble. Ids,
     // types and booleans only — never plaintext or key material.
-    final hadSessionAtDecrypt =
-        await _encryptionProvider!.hasSessionWith(msg.senderId);
+    final hadSessionAtDecrypt = await _encryptionProvider!.hasSessionWith(
+      msg.senderId,
+    );
     _e2eFlowLog('DECRYPT_START', {
       'msgId': msg.id,
       'senderId': msg.senderId,
@@ -611,7 +629,8 @@ extension MessagingDecrypt on MessagingProvider {
           'contentLength': parsed.content.length,
         });
         // SSRF: validate imageUrl before storing
-        final safeImageUrl = parsed.linkPreviewImageUrl != null &&
+        final safeImageUrl =
+            parsed.linkPreviewImageUrl != null &&
                 parsed.linkPreviewUrl != null &&
                 LinkPreviewService.isSafeImageUrl(
                   parsed.linkPreviewImageUrl,
@@ -632,8 +651,7 @@ extension MessagingDecrypt on MessagingProvider {
           linkPreviewImageUrl: safeImageUrl,
         );
         // Trigger ping effect for recipient when decrypted type is PING
-        if (parsedType == MessageType.ping &&
-            msg.senderId != _currentUserId) {
+        if (parsedType == MessageType.ping && msg.senderId != _currentUserId) {
           _showPingEffect = true;
         }
         _encryptionProvider?.cacheDecryption(msg.id, decryptedMsg);
@@ -641,7 +659,8 @@ extension MessagingDecrypt on MessagingProvider {
         return decryptedMsg;
       } catch (parseErr) {
         debugPrint(
-            '[E2E] Envelope parse failed for msg ${msg.id}, using raw plaintext: $parseErr');
+          '[E2E] Envelope parse failed for msg ${msg.id}, using raw plaintext: $parseErr',
+        );
         final fallback = msg.copyWith(content: plaintext);
         _encryptionProvider?.cacheDecryption(msg.id, fallback);
         if (plaintext.isNotEmpty) await _persistDecryptedContent(fallback);
@@ -652,23 +671,25 @@ extension MessagingDecrypt on MessagingProvider {
       if (cached != null && _hasUsableDecryptedContent(cached)) return cached;
       if (_hasUsableDecryptedContent(msg)) return msg;
 
-      final persisted =
-          await _encryptionProvider!.getDecryptedContent(msg.id);
+      final persisted = await _encryptionProvider!.getDecryptedContent(msg.id);
       final persistedContent = persisted?['content'] as String? ?? '';
-      final canRestorePersisted = persisted != null &&
+      final canRestorePersisted =
+          persisted != null &&
           (persistedContent.isNotEmpty ||
               persisted['mediaUrl'] != null ||
               persisted['messageType'] != null);
       if (canRestorePersisted) {
         final rawImageUrl = persisted['linkPreviewImageUrl'] as String?;
         final rawPageUrl = persisted['linkPreviewUrl'] as String?;
-        final safeImageUrl = rawImageUrl != null &&
+        final safeImageUrl =
+            rawImageUrl != null &&
                 rawPageUrl != null &&
                 LinkPreviewService.isSafeImageUrl(rawImageUrl, rawPageUrl)
             ? rawImageUrl
             : null;
-        final restoredType =
-            _parseMessageTypeString(persisted['messageType'] as String?);
+        final restoredType = _parseMessageTypeString(
+          persisted['messageType'] as String?,
+        );
         final restored = msg.copyWith(
           content: persistedContent.isNotEmpty ? persistedContent : msg.content,
           messageType: restoredType,
@@ -717,18 +738,28 @@ extension MessagingDecrypt on MessagingProvider {
       });
       if (decision.persistTerminalFailure) {
         // Persist so future app starts skip this message without re-attempting.
-        await _encryptionProvider?.saveDecryptedContent(
-            msg.id, {'content': _kDecryptionFailedLabel});
+        await _encryptionProvider?.saveDecryptedContent(msg.id, {
+          'content': _kDecryptionFailedLabel,
+        });
       }
-      if (decision.notifyPeerRebuild &&
-          _identityResetRebuildNotified.add(msg.senderId)) {
-        // Identity reset: tell the peer to re-key on their next send. No local
-        // state is touched (there is none to protect — the old identity is
-        // gone); without this the peer keeps sending undecryptable messages
-        // until we happen to reply.
-        _emit?.call('requestSessionRebuild', {'recipientId': msg.senderId});
-        _e2eFlowLog(
-            'IDENTITY_RESET_REBUILD_REQUESTED', {'peerId': msg.senderId});
+      if (decision.notifyPeerRebuild) {
+        if (decision.rule == DecryptionFailureRule.identityReset) {
+          if (_identityResetRebuildNotified.add(msg.senderId)) {
+            // Identity reset: tell the peer to re-key on their next send. No
+            // local state is touched (there is none to protect — the old
+            // identity is gone); without this the peer keeps sending
+            // undecryptable messages until we happen to reply.
+            _emit?.call('requestSessionRebuild', {'recipientId': msg.senderId});
+            _e2eFlowLog('IDENTITY_RESET_REBUILD_REQUESTED', {
+              'peerId': msg.senderId,
+            });
+          }
+        } else if (decision.rule == DecryptionFailureRule.badMac) {
+          // The failed row is unrecoverable, but a Bad MAC on a fresh type-2
+          // message is evidence the peer is encrypting from a stale sender
+          // ratchet. Ask them to build over their session on the next send.
+          _requestSessionRebuildForPeer(msg.senderId, trigger: 'badMac');
+        }
       }
       switch (decision.retryAction) {
         case DecryptionRetryAction.markHistoryPeerForRetry:
