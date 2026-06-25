@@ -42,7 +42,9 @@ class ChatInputBar extends StatefulWidget {
 
 class ChatInputBarState extends State<ChatInputBar>
     with SingleTickerProviderStateMixin {
-  static const Duration _kTrailingSendFadeDuration = Duration(milliseconds: 175);
+  static const Duration _kTrailingSendFadeDuration = Duration(
+    milliseconds: 175,
+  );
 
   final _controller = TextEditingController();
   final _focusNode = FocusNode();
@@ -64,6 +66,9 @@ class ChatInputBarState extends State<ChatInputBar>
   // deliberate refocus that may briefly blur+restore the IME. Gates the viewport
   // keyboard-collapse debounce — see composer_keyboard_signals.dart.
   Timer? _collapseGuardTimer;
+  // Pre-arms the iOS viewport pin on composer pointer-down (before focus) and
+  // self-disarms if the tap never focuses. See _preArmComposerViewportPin.
+  Timer? _pinPreArmTimer;
 
   // Recording state mirrored from RecordingController via callback
   bool _isRecording = false;
@@ -127,7 +132,23 @@ class ChatInputBarState extends State<ChatInputBar>
       return;
     }
     if (!isIOSWebKit()) return;
+    _pinPreArmTimer
+        ?.cancel(); // focus arrived — the focus path owns the pin now
     setIOSComposerViewportPin(true);
+  }
+
+  // Pre-arm the iOS viewport pin on pointer-DOWN — before focus + the keyboard
+  // animation begin — so iOS never has an unpinned window to scroll/pan into
+  // (that window was the brief focus "flash"). Safety timer disarms if the tap
+  // never focuses (tap-and-drag-away); once focused, _onComposerFocusForWebViewport
+  // cancels the timer and owns the pin until blur. iOS-only (idempotent no-op else).
+  void _preArmComposerViewportPin(PointerDownEvent _) {
+    if (!kIsWeb || !isIOSWebKit()) return;
+    setIOSComposerViewportPin(true);
+    _pinPreArmTimer?.cancel();
+    _pinPreArmTimer = Timer(const Duration(milliseconds: 700), () {
+      if (!_focusNode.hasFocus) setIOSComposerViewportPin(false);
+    });
   }
 
   void _onAttachmentChanged() {
@@ -180,10 +201,14 @@ class ChatInputBarState extends State<ChatInputBar>
     if (!mounted) return;
     final value = _controller.value;
     final sel = value.selection;
-    final start = (sel.isValid ? sel.start : value.text.length)
-        .clamp(0, value.text.length);
-    final end = (sel.isValid ? sel.end : value.text.length)
-        .clamp(0, value.text.length);
+    final start = (sel.isValid ? sel.start : value.text.length).clamp(
+      0,
+      value.text.length,
+    );
+    final end = (sel.isValid ? sel.end : value.text.length).clamp(
+      0,
+      value.text.length,
+    );
     _controller.value = value.copyWith(
       text: value.text.replaceRange(start, end, text),
       selection: TextSelection.collapsed(offset: start + text.length),
@@ -230,8 +255,9 @@ class ChatInputBarState extends State<ChatInputBar>
     if (editing != null && _lastEditingMessage?.id != editing.id) {
       _lastEditingMessage = editing;
       _controller.text = editing.content;
-      _controller.selection =
-          TextSelection.collapsed(offset: editing.content.length);
+      _controller.selection = TextSelection.collapsed(
+        offset: editing.content.length,
+      );
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted || !_focusNode.canRequestFocus) return;
         if (!_focusNode.hasFocus) _focusNode.requestFocus();
@@ -253,6 +279,7 @@ class ChatInputBarState extends State<ChatInputBar>
     }
     _sendJustFiredTimer?.cancel();
     _collapseGuardTimer?.cancel();
+    _pinPreArmTimer?.cancel();
     composerKeyboardCollapseGuard.value = false;
     _messagingProvider?.setComposerFocusRequest(null);
     _messagingProvider?.removeListener(_onMessagingProviderChanged);
@@ -353,8 +380,9 @@ class ChatInputBarState extends State<ChatInputBar>
 
     final caption = _controller.text.trim();
     final messaging = context.read<MessagingProvider>();
-    final expiresIn =
-        context.read<ConversationsProvider>().conversationDisappearingTimer;
+    final expiresIn = context
+        .read<ConversationsProvider>()
+        .conversationDisappearingTimer;
 
     setState(() => _isSendingStagedImage = true);
     _attachment.clear();
@@ -372,8 +400,7 @@ class ChatInputBarState extends State<ChatInputBar>
           messaging.sendMessage(caption, expiresIn: expiresIn);
         } else {
           final current = _controller.text;
-          _controller.text =
-              current.isEmpty ? caption : '$caption\n$current';
+          _controller.text = current.isEmpty ? caption : '$caption\n$current';
         }
       }
     } finally {
@@ -459,8 +486,10 @@ class ChatInputBarState extends State<ChatInputBar>
   /// Widget tests: drive the paste-image handler without a DOM paste event.
   @visibleForTesting
   void handlePastedImageForTest(
-          Uint8List bytes, String mimeType, String filename) =>
-      _onPastedImage(bytes, mimeType, filename);
+    Uint8List bytes,
+    String mimeType,
+    String filename,
+  ) => _onPastedImage(bytes, mimeType, filename);
 
   /// Widget tests: drive cursor-aware pasted-text insertion.
   @visibleForTesting
@@ -525,7 +554,8 @@ class ChatInputBarState extends State<ChatInputBar>
     return ValueListenableBuilder<TextEditingValue>(
       valueListenable: _controller,
       builder: (context, value, _) {
-        final showTextSend = !_isRecording &&
+        final showTextSend =
+            !_isRecording &&
             !_isSendingVoice &&
             !_isSendingStagedImage &&
             (value.text.trim().isNotEmpty || _attachment.staged != null);
@@ -615,8 +645,8 @@ class ChatInputBarState extends State<ChatInputBar>
                             excludeSemantics: true,
                             child: IconButton(
                               onPressed: showVoiceSend
-                                  ? () =>
-                                      _recordingKey.currentState?.stopAndSend()
+                                  ? () => _recordingKey.currentState
+                                        ?.stopAndSend()
                                   : null,
                               padding: const EdgeInsets.all(12),
                               constraints: const BoxConstraints(
@@ -663,8 +693,8 @@ class ChatInputBarState extends State<ChatInputBar>
 
   @override
   Widget build(BuildContext context) {
-  // Rebuild only for composer-relevant provider slices so message list / decrypt
-  // updates do not dismiss the Android soft keyboard while typing.
+    // Rebuild only for composer-relevant provider slices so message list / decrypt
+    // updates do not dismiss the Android soft keyboard while typing.
     final replyingTo = context.select<MessagingProvider, MessageModel?>(
       (m) => m.replyingToMessage,
     );
@@ -693,8 +723,9 @@ class ChatInputBarState extends State<ChatInputBar>
     // Phone / narrow PWA: keep trailing mic off the physical right edge so OS back-swipe
     // and browser edge gestures are less likely to steal the long-press.
     const trailingGestureBufferDp = 14.0;
-    final trailingGestureBuffer =
-        isCompactLayout ? trailingGestureBufferDp : 0.0;
+    final trailingGestureBuffer = isCompactLayout
+        ? trailingGestureBufferDp
+        : 0.0;
     // Insets for notches / home indicator: chat body no longer applies horizontal SafeArea
     // around the composer (see ChatDetailScreen), so we pad here instead.
     final composerHorizontalPadding = EdgeInsets.fromLTRB(
@@ -704,161 +735,166 @@ class ChatInputBarState extends State<ChatInputBar>
       8.0,
     );
     final keyboardVisible = mediaQuery.viewInsets.bottom > 0;
-    final bottomSystemInset =
-        math.max(mediaQuery.viewPadding.bottom, mediaQuery.padding.bottom);
+    final bottomSystemInset = math.max(
+      mediaQuery.viewPadding.bottom,
+      mediaQuery.padding.bottom,
+    );
     const additionalBottomSpacing = 16.0;
     final needsErgonomicBuffer = bottomSystemInset > 0;
-    final webMobileFallbackInset = !needsErgonomicBuffer &&
-            kIsWeb &&
-            isCompactLayout &&
-            !keyboardVisible
+    final webMobileFallbackInset =
+        !needsErgonomicBuffer && kIsWeb && isCompactLayout && !keyboardVisible
         ? 16.0
         : 0.0;
     final bottomInteractivePadding = keyboardVisible
         ? 0.0
         : (needsErgonomicBuffer
-            ? bottomSystemInset + additionalBottomSpacing
-            : webMobileFallbackInset);
+              ? bottomSystemInset + additionalBottomSpacing
+              : webMobileFallbackInset);
 
     // Cap multiline growth: Row/Expanded can still pass a tall maxHeight; keep the
     // composer Telegram-like even under large text scale or IME quirks.
     final textScaler = MediaQuery.textScalerOf(context);
-    final maxComposerHeight =
-        (textScaler.scale(22.0) * 6 + 36).clamp(120.0, 400.0);
+    final maxComposerHeight = (textScaler.scale(22.0) * 6 + 36).clamp(
+      120.0,
+      400.0,
+    );
 
     return Column(
       mainAxisSize: MainAxisSize.min,
       children: [
-          // Reply preview
-          if (replyingTo != null)
-            Selector<MessagingProvider, MessageModel>(
-              selector: (_, messaging) {
-                return findMessageById(replyingTo.id, messaging.messages) ??
-                    replyingTo;
-              },
-              builder: (context, resolvedReply, _) {
-                return ReplyPreviewBar(
-                  message: resolvedReply,
-                  onDismiss: () =>
-                      context.read<MessagingProvider>().clearReplyingTo(),
-                );
-              },
-            ),
+        // Reply preview
+        if (replyingTo != null)
+          Selector<MessagingProvider, MessageModel>(
+            selector: (_, messaging) {
+              return findMessageById(replyingTo.id, messaging.messages) ??
+                  replyingTo;
+            },
+            builder: (context, resolvedReply, _) {
+              return ReplyPreviewBar(
+                message: resolvedReply,
+                onDismiss: () =>
+                    context.read<MessagingProvider>().clearReplyingTo(),
+              );
+            },
+          ),
 
-          // Editing banner
-          if (editing != null)
-            EditPreviewBar(
-              onDismiss: () =>
-                  context.read<MessagingProvider>().cancelEditMessage(),
-            ),
+        // Editing banner
+        if (editing != null)
+          EditPreviewBar(
+            onDismiss: () =>
+                context.read<MessagingProvider>().cancelEditMessage(),
+          ),
 
-          if (activeTimer != null)
-            Material(
-              color: ephemeral.withValues(alpha: 0.12),
-              child: Semantics(
-                label: l10n.disappearingComposerBannerSemantics(
-                  _bannerDurationLabel(l10n, activeTimer),
+        if (activeTimer != null)
+          Material(
+            color: ephemeral.withValues(alpha: 0.12),
+            child: Semantics(
+              label: l10n.disappearingComposerBannerSemantics(
+                _bannerDurationLabel(l10n, activeTimer),
+              ),
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 6,
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 6,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CustomPaint(
-                        size: const Size(14, 14),
-                        painter: HearthFadeArcPainter(
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    CustomPaint(
+                      size: const Size(14, 14),
+                      painter: HearthFadeArcPainter(
+                        color: ephemeral,
+                        trackColor: ephemeral.withValues(alpha: 0.35),
+                        dotted: true,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    Flexible(
+                      child: Text(
+                        l10n.disappearingComposerBanner(
+                          _bannerDurationLabel(l10n, activeTimer),
+                        ),
+                        textAlign: TextAlign.center,
+                        maxLines: 2,
+                        overflow: TextOverflow.ellipsis,
+                        style: RpgTheme.bodyFont(
+                          fontSize: 11,
                           color: ephemeral,
-                          trackColor: ephemeral.withValues(alpha: 0.35),
-                          dotted: true,
+                          fontWeight: FontWeight.w500,
                         ),
                       ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          l10n.disappearingComposerBanner(
-                            _bannerDurationLabel(l10n, activeTimer),
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: RpgTheme.bodyFont(
-                            fontSize: 11,
-                            color: ephemeral,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
+                    ),
+                  ],
                 ),
               ),
             ),
+          ),
 
-          // Staged pasted image (Clipboard Phase 2)
-          if (_attachment.staged != null && !_isRecording)
-            ComposerAttachmentBar(
-              attachment: _attachment.staged!,
-              onRemove: _attachment.clear,
-            ),
+        // Staged pasted image (Clipboard Phase 2)
+        if (_attachment.staged != null && !_isRecording)
+          ComposerAttachmentBar(
+            attachment: _attachment.staged!,
+            onRemove: _attachment.clear,
+          ),
 
-          // Input row
-          Container(
-            padding: composerHorizontalPadding,
-            decoration: BoxDecoration(
-              color: colorScheme.surface,
-              border: Border(top: BorderSide(color: fc.convItemBorder)),
-            ),
-            child: Row(
-              children: [
-                // Action panel toggle (hidden during recording)
-                if (!_isRecording)
-                  FocusGuardArea(
-                    id: 'composer_action_toggle',
-                    child: Focus(
-                      canRequestFocus: false,
-                      child: IconButton(
-                        icon: Icon(
-                          _showActionPanel
-                              ? Icons.keyboard_arrow_up
-                              : Icons.keyboard_arrow_down,
-                        ),
-                        iconSize: 24,
-                        color: isDark
-                            ? RpgTheme.mutedDark
-                            : RpgTheme.textSecondaryLight,
-                        onPressed: _toggleActionPanel,
+        // Input row
+        Container(
+          padding: composerHorizontalPadding,
+          decoration: BoxDecoration(
+            color: colorScheme.surface,
+            border: Border(top: BorderSide(color: fc.convItemBorder)),
+          ),
+          child: Row(
+            children: [
+              // Action panel toggle (hidden during recording)
+              if (!_isRecording)
+                FocusGuardArea(
+                  id: 'composer_action_toggle',
+                  child: Focus(
+                    canRequestFocus: false,
+                    child: IconButton(
+                      icon: Icon(
+                        _showActionPanel
+                            ? Icons.keyboard_arrow_up
+                            : Icons.keyboard_arrow_down,
                       ),
+                      iconSize: 24,
+                      color: isDark
+                          ? RpgTheme.mutedDark
+                          : RpgTheme.textSecondaryLight,
+                      onPressed: _toggleActionPanel,
                     ),
                   ),
+                ),
 
-                // Text field or recording bar
-                Expanded(
-                  child: _isRecording
-                      ? Builder(
-                          builder: (context) {
-                            final recordingState = _recordingKey.currentState;
-                            if (recordingState == null) {
-                              return const SizedBox.shrink();
-                            }
-                            return recordingState.buildRecordingBar(context);
-                          },
-                        )
-                      : CallbackShortcuts(
-                          bindings: <ShortcutActivator, VoidCallback>{
-                            // Web/desktop: multiline fields often lack an IME “Send”; keep one send path.
-                            const SingleActivator(
-                              LogicalKeyboardKey.enter,
-                              control: true,
-                            ): _send,
-                            const SingleActivator(
-                              LogicalKeyboardKey.enter,
-                              meta: true,
-                            ): _send,
-                          },
+              // Text field or recording bar
+              Expanded(
+                child: _isRecording
+                    ? Builder(
+                        builder: (context) {
+                          final recordingState = _recordingKey.currentState;
+                          if (recordingState == null) {
+                            return const SizedBox.shrink();
+                          }
+                          return recordingState.buildRecordingBar(context);
+                        },
+                      )
+                    : CallbackShortcuts(
+                        bindings: <ShortcutActivator, VoidCallback>{
+                          // Web/desktop: multiline fields often lack an IME “Send”; keep one send path.
+                          const SingleActivator(
+                            LogicalKeyboardKey.enter,
+                            control: true,
+                          ): _send,
+                          const SingleActivator(
+                            LogicalKeyboardKey.enter,
+                            meta: true,
+                          ): _send,
+                        },
+                        child: Listener(
+                          behavior: HitTestBehavior.translucent,
+                          onPointerDown: _preArmComposerViewportPin,
                           child: ConstrainedBox(
                             constraints: BoxConstraints(
                               maxHeight: maxComposerHeight,
@@ -871,8 +907,9 @@ class ChatInputBarState extends State<ChatInputBar>
                                 color: colorScheme.onSurface,
                               ),
                               decoration: InputDecoration(
-                                hintText: AppLocalizations.of(context)
-                                    .chatMessageHint,
+                                hintText: AppLocalizations.of(
+                                  context,
+                                ).chatMessageHint,
                                 contentPadding: const EdgeInsets.symmetric(
                                   horizontal: 16,
                                   vertical: 10,
@@ -919,26 +956,28 @@ class ChatInputBarState extends State<ChatInputBar>
                               // other platforms never emit commitContent.
                               contentInsertionConfiguration:
                                   ContentInsertionConfiguration(
-                                allowedMimeTypes:
-                                    kStageableImageMimeTypes.toList(),
-                                onContentInserted: _onKeyboardContentInserted,
-                              ),
+                                    allowedMimeTypes: kStageableImageMimeTypes
+                                        .toList(),
+                                    onContentInserted:
+                                        _onKeyboardContentInserted,
+                                  ),
                             ),
                           ),
                         ),
-                ),
+                      ),
+              ),
 
-                const SizedBox(width: 2),
+              const SizedBox(width: 2),
 
-                // Trailing 48×48 stack: mic always mounted; text send fades on top (Phase 0).
-                // CLAUDE.md: never swap mic/send as Row siblings — unmount dismisses keyboard.
-                FocusGuardArea(
-                  id: 'composer_trailing',
-                  child: _buildTrailingSlot(context),
-                ),
-              ],
-            ),
+              // Trailing 48×48 stack: mic always mounted; text send fades on top (Phase 0).
+              // CLAUDE.md: never swap mic/send as Row siblings — unmount dismisses keyboard.
+              FocusGuardArea(
+                id: 'composer_trailing',
+                child: _buildTrailingSlot(context),
+              ),
+            ],
           ),
+        ),
 
         if (!_showActionPanel && bottomInteractivePadding > 0)
           Container(
@@ -973,7 +1012,8 @@ class _ComposerTapSendOverlay extends StatefulWidget {
   final String semanticsLabel;
 
   @override
-  State<_ComposerTapSendOverlay> createState() => _ComposerTapSendOverlayState();
+  State<_ComposerTapSendOverlay> createState() =>
+      _ComposerTapSendOverlayState();
 }
 
 class _ComposerTapSendOverlayState extends State<_ComposerTapSendOverlay> {
