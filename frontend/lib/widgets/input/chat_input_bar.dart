@@ -20,6 +20,7 @@ import '../../utils/soft_keyboard.dart';
 import '../../utils/web_focus_guard.dart';
 import '../../utils/web_ios_webkit.dart';
 import '../../utils/web_viewport_scroll.dart';
+import '../../utils/web_ios_viewport_pin.dart';
 import '../chat_action_tiles.dart';
 import '../hearth_fade_arc.dart';
 import '../top_snackbar.dart' show showTopSnackBar;
@@ -122,16 +123,11 @@ class ChatInputBarState extends State<ChatInputBar>
   void _onComposerFocusForWebViewport() {
     if (!kIsWeb) return;
     if (!_focusNode.hasFocus) {
-      setIOSWebViewportScrollLocked(false);
+      setIOSComposerViewportPin(false);
       return;
     }
     if (!isIOSWebKit()) return;
-    setIOSWebViewportScrollLocked(true);
-    resetWebDocumentScroll();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_focusNode.hasFocus) return;
-      resetWebDocumentScroll();
-    });
+    setIOSComposerViewportPin(true);
   }
 
   void _onAttachmentChanged() {
@@ -252,7 +248,7 @@ class ChatInputBarState extends State<ChatInputBar>
     if (kIsWeb) {
       _focusNode.removeListener(_onComposerFocusForWebViewport);
       _focusNode.removeListener(_onFocusLostAfterSend);
-      setIOSWebViewportScrollLocked(false);
+      setIOSComposerViewportPin(false);
       uninstallComposerPasteListener();
     }
     _sendJustFiredTimer?.cancel();
