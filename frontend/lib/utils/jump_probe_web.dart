@@ -4,6 +4,7 @@ import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 
 import 'web_ios_webkit.dart';
+import 'web_ios_composer_focus_mask.dart';
 
 // TEMP diagnostic for the iOS "screen jumps up on composer focus" bug. A DOM
 // overlay pinned to the VISUAL viewport (so it stays visible even while the page
@@ -63,7 +64,8 @@ void installJumpProbe() {
     box.textContent =
         'JUMP  sT=$sT bT=$bT sY=$sY  vvOff=$vvOff vvH=$vvH iH=$iH act=$act\n'
         'PEAK  scroll=$_maxScroll  vvOff=$_maxVvOff   '
-        '(scroll>0 ⇒ document; vvOff>0 ⇒ visual-pan)';
+        '(scroll>0 ⇒ document; vvOff>0 ⇒ visual-pan)\n'
+        '${composerFocusMaskDiag()}';
     reposition();
   });
 }

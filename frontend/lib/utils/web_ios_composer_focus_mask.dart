@@ -27,3 +27,7 @@ void showComposerFocusMask(String cssColor) =>
 /// Immediately removes the focus mask (blur / drag-away / dispose). No-op when no
 /// mask is showing or off iOS WebKit / off web.
 void hideComposerFocusMask() => impl.hideComposerFocusMask();
+
+/// TEMP diagnostic: one-line live DOM state of the focus mask, for the jump_probe
+/// overlay. Empty string off web. Remove with the probe once the bug is fixed.
+String composerFocusMaskDiag() => impl.composerFocusMaskDiag();

@@ -2,3 +2,5 @@
 void showComposerFocusMask(String cssColor) {}
 
 void hideComposerFocusMask() {}
+
+String composerFocusMaskDiag() => '';
