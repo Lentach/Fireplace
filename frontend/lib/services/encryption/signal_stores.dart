@@ -21,6 +21,7 @@ class DualStorage {
   final SharedPreferencesAsync? _asyncPrefsOverride;
   SharedPreferencesAsync? _asyncPrefsInstance;
   SharedPreferences? _prefs;
+  WebSignalKvStore? _web;
 
   DualStorage(this._secure, {SharedPreferencesAsync? asyncPrefs})
     : _asyncPrefsOverride = asyncPrefs;
@@ -39,9 +40,18 @@ class DualStorage {
   /// with other SharedPreferences data (e.g. decrypted message cache).
   static const String _spPrefix = 'sig_';
 
+  /// Web-only key-value layer (localStorage). Built lazily; never touched on
+  /// mobile. The legacy store is supplied through a provider so it is loaded
+  /// only when the web path actually runs.
+  WebSignalKvStore get _webStore => _web ??= WebSignalKvStore(
+    _SharedPrefsAsyncKv(_asyncPrefs),
+    () async => _SharedPrefsLegacyKv(await _sharedPrefs),
+    _spPrefix,
+  );
+
   Future<void> write({required String key, required String value}) async {
     if (kIsWeb) {
-      await _asyncPrefs.setString('$_spPrefix$key', value);
+      await _webStore.write(key, value);
     } else {
       await _secure.write(key: key, value: value);
     }
@@ -49,23 +59,7 @@ class DualStorage {
 
   Future<String?> read({required String key}) async {
     if (kIsWeb) {
-      final asyncValue = await _asyncPrefs.getString('$_spPrefix$key');
-      if (asyncValue != null) return asyncValue;
-      // Compatibility fallback for values written by the legacy API. Reload
-      // before reading so we do not reuse a stale in-memory preferences cache.
-      final prefs = await _sharedPrefs;
-      await prefs.reload();
-      final legacyValue = prefs.getString('$_spPrefix$key');
-      if (legacyValue != null) {
-        // One-time lazy migration into the async namespace: a duplicate legacy
-        // copy can resurrect a deleted session and doubles localStorage usage
-        // (quota exhaustion → silent write loss, the very durability bug this
-        // store fights). Write async FIRST, then drop the legacy copy — if the
-        // async write throws, legacy is left untouched (no data loss).
-        await _asyncPrefs.setString('$_spPrefix$key', legacyValue);
-        await prefs.remove('$_spPrefix$key');
-      }
-      return legacyValue;
+      return _webStore.read(key);
     } else {
       return _secure.read(key: key);
     }
@@ -73,13 +67,7 @@ class DualStorage {
 
   Future<void> delete({required String key}) async {
     if (kIsWeb) {
-      await _asyncPrefs.remove('$_spPrefix$key');
-      // Always clear the legacy copy too. Force-load the legacy store: if it
-      // was never loaded this session, a leftover legacy entry would otherwise
-      // be resurrected by the next fallback read.
-      final prefs = await _sharedPrefs;
-      await prefs.reload();
-      await prefs.remove('$_spPrefix$key');
+      await _webStore.delete(key);
     } else {
       await _secure.delete(key: key);
     }
@@ -87,27 +75,7 @@ class DualStorage {
 
   Future<Map<String, String>> readAll() async {
     if (kIsWeb) {
-      final result = <String, String>{};
-      final asyncValues = await _asyncPrefs.getAll();
-      for (final entry in asyncValues.entries) {
-        final key = entry.key;
-        if (key.startsWith(_spPrefix) && entry.value is String) {
-          result[key.substring(_spPrefix.length)] = entry.value as String;
-        }
-      }
-      // Compatibility fallback for legacy SharedPreferences values that were
-      // not visible through the async API for any platform-specific reason.
-      final prefs = await _sharedPrefs;
-      await prefs.reload();
-      for (final key in prefs.getKeys()) {
-        if (key.startsWith(_spPrefix)) {
-          final val = prefs.getString(key);
-          if (val != null) {
-            result.putIfAbsent(key.substring(_spPrefix.length), () => val);
-          }
-        }
-      }
-      return result;
+      return _webStore.readAll();
     } else {
       return _secure.readAll();
     }
@@ -115,6 +83,164 @@ class DualStorage {
 
   void clearPrefsCache() {
     _prefs = null;
+    _web = null;
+  }
+}
+
+/// Cache-free async key-value backend (reads straight through to the platform
+/// store). Abstracted so [WebSignalKvStore] is unit-testable without a browser
+/// or `kIsWeb`. Production impl wraps `SharedPreferencesAsync`.
+abstract class AsyncKv {
+  Future<String?> getString(String key);
+  Future<void> setString(String key, String value);
+  Future<void> remove(String key);
+  Future<Map<String, Object?>> getAll();
+}
+
+/// Legacy (in-memory cached) key-value backend. `reload()` re-reads the backing
+/// store before a read. Production impl wraps `SharedPreferences`.
+abstract class LegacyKv {
+  Future<void> reload();
+  Iterable<String> keys();
+  String? getString(String key);
+  Future<void> remove(String key);
+}
+
+class _SharedPrefsAsyncKv implements AsyncKv {
+  final SharedPreferencesAsync _p;
+  _SharedPrefsAsyncKv(this._p);
+  @override
+  Future<String?> getString(String key) => _p.getString(key);
+  @override
+  Future<void> setString(String key, String value) => _p.setString(key, value);
+  @override
+  Future<void> remove(String key) => _p.remove(key);
+  @override
+  Future<Map<String, Object?>> getAll() => _p.getAll();
+}
+
+class _SharedPrefsLegacyKv implements LegacyKv {
+  final SharedPreferences _p;
+  _SharedPrefsLegacyKv(this._p);
+  @override
+  Future<void> reload() => _p.reload();
+  @override
+  Iterable<String> keys() => _p.getKeys();
+  @override
+  String? getString(String key) => _p.getString(key);
+  @override
+  Future<void> remove(String key) => _p.remove(key);
+}
+
+/// Web Signal key-value store backing [DualStorage] on `kIsWeb`.
+///
+/// `SharedPreferencesAsync` (cache-free localStorage) is the source of truth so
+/// resumed/multi-tab clients always read the latest ratchet state. Keys written
+/// by the legacy `SharedPreferences` API (a different localStorage namespace)
+/// are drained into the async store by a **one-time, best-effort** migration on
+/// first use:
+///  - runs exactly once per instance ([_ensureMigrated] memoizes the future)
+///    BEFORE any read/write proceeds, so it never races a concurrent write — no
+///    lost update, no stale-session resurrection;
+///  - per-key failures (e.g. localStorage quota) are swallowed and leave the
+///    legacy copy intact, so a read can still fall back to it (no data loss, no
+///    throw — a found key never becomes a decrypt failure);
+///  - once every legacy `sig_` key is drained, [_legacyDrained] is set and
+///    reads/deletes stop touching the legacy store, so steady-state negative
+///    lookups never pay an O(n) `reload()`.
+class WebSignalKvStore {
+  final AsyncKv _async;
+  final Future<LegacyKv> Function() _legacyProvider;
+  final String _prefix;
+
+  Future<void>? _migration;
+  bool _legacyDrained = false;
+
+  WebSignalKvStore(this._async, this._legacyProvider, this._prefix);
+
+  /// Visible for testing: true once no legacy `sig_` keys remain as a fallback.
+  bool get legacyDrained => _legacyDrained;
+
+  Future<void> _ensureMigrated() => _migration ??= _migrate();
+
+  Future<void> _migrate() async {
+    try {
+      final legacy = await _legacyProvider();
+      await legacy.reload();
+      final keys = legacy.keys().where((k) => k.startsWith(_prefix)).toList();
+      var allDrained = true;
+      for (final key in keys) {
+        final value = legacy.getString(key);
+        try {
+          // Move into async only if async has no value — never clobber a newer
+          // async write with a stale legacy copy.
+          if (value != null && await _async.getString(key) == null) {
+            await _async.setString(key, value);
+          }
+          await legacy.remove(key);
+        } catch (_) {
+          // Quota / platform error: keep the legacy copy so read() can serve
+          // it; leave the fallback armed.
+          allDrained = false;
+        }
+      }
+      _legacyDrained = allDrained;
+    } catch (_) {
+      _legacyDrained = false;
+    }
+  }
+
+  Future<void> write(String key, String value) async {
+    await _ensureMigrated();
+    await _async.setString('$_prefix$key', value);
+  }
+
+  Future<String?> read(String key) async {
+    await _ensureMigrated();
+    final value = await _async.getString('$_prefix$key');
+    if (value != null) return value;
+    if (_legacyDrained) return null;
+    // A legacy key survived migration (e.g. quota). Reload before reading so we
+    // never serve a stale in-memory cache, then return it as-is — no write-back
+    // (that could lose a concurrent write or throw under quota).
+    final legacy = await _legacyProvider();
+    await legacy.reload();
+    return legacy.getString('$_prefix$key');
+  }
+
+  Future<void> delete(String key) async {
+    await _ensureMigrated();
+    await _async.remove('$_prefix$key');
+    if (_legacyDrained) return;
+    // Clear any legacy copy that survived migration so a later fallback read
+    // cannot resurrect it.
+    final legacy = await _legacyProvider();
+    await legacy.reload();
+    await legacy.remove('$_prefix$key');
+  }
+
+  Future<Map<String, String>> readAll() async {
+    await _ensureMigrated();
+    final result = <String, String>{};
+    final asyncValues = await _async.getAll();
+    for (final entry in asyncValues.entries) {
+      if (entry.key.startsWith(_prefix) && entry.value is String) {
+        result[entry.key.substring(_prefix.length)] = entry.value as String;
+      }
+    }
+    if (!_legacyDrained) {
+      final legacy = await _legacyProvider();
+      await legacy.reload();
+      for (final key in legacy.keys()) {
+        if (key.startsWith(_prefix)) {
+          final val = legacy.getString(key);
+          if (val != null) {
+            result.putIfAbsent(key.substring(_prefix.length), () => val);
+          }
+        }
+      }
+    }
+    return result;
   }
 }
 

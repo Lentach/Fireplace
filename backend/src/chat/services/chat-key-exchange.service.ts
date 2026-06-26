@@ -12,6 +12,7 @@ const PRE_KEY_FETCH_MIN_INTERVAL_MS = 750;
 const PRE_KEY_FETCH_MAP_TTL_MS = 10 * 60 * 1000;
 const PRE_KEY_FETCH_MAP_MAX_ENTRIES = 10000;
 const SESSION_REBUILD_REQUEST_TTL_MS = 24 * 60 * 60 * 1000;
+const SESSION_REBUILD_MAP_MAX_RECIPIENTS = 10000;
 
 @Injectable()
 export class ChatKeyExchangeService {
@@ -213,6 +214,26 @@ export class ChatKeyExchangeService {
       if (pending.size === 0) {
         this.pendingSessionRebuildsByRecipient.delete(recipientId);
       }
+    }
+    // Bound memory the same way the prekey-fetch tracker is bounded: a client
+    // can mint pending entries for arbitrary recipientIds (DTO only checks
+    // positive), so evict the least-recently-requested recipients past the cap.
+    if (
+      this.pendingSessionRebuildsByRecipient.size <=
+      SESSION_REBUILD_MAP_MAX_RECIPIENTS
+    ) {
+      return;
+    }
+    const newest = (pending: Map<number, number>): number =>
+      Math.max(...pending.values());
+    const ordered = [...this.pendingSessionRebuildsByRecipient.entries()].sort(
+      (a, b) => newest(a[1]) - newest(b[1]),
+    );
+    const toDelete =
+      this.pendingSessionRebuildsByRecipient.size -
+      SESSION_REBUILD_MAP_MAX_RECIPIENTS;
+    for (let i = 0; i < toDelete; i++) {
+      this.pendingSessionRebuildsByRecipient.delete(ordered[i][0]);
     }
   }
 
