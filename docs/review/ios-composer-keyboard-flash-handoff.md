@@ -1,8 +1,11 @@
 # iOS PWA Composer Keyboard — Focus "Flash" — Fresh-Agent Handoff Brief
 
-**Status:** UNSOLVED (one residual bug). The persistent jump is fixed; a brief (<1s)
-flash on keyboard-open remains and **must be eliminated for production.**
-**Branch:** `review/frontend-prod-readiness` (current tip ~`457c339`, app `0.0.69`).
+**Status:** FIX IMPLEMENTED (approach A — cosmetic mask), **on-device verification owed**
+(cannot be reproduced off-device; this machine is Windows-only). The persistent jump was
+fixed earlier (pin, 0.0.68/69); the residual <1s keyboard-open flash is now hidden by a
+solid full-scene mask faded out once the viewport settles — see §6.A and the implementation
+note below.
+**Branch:** `review/frontend-prod-readiness` (app `0.0.70`).
 **Platform:** iOS Safari/Chrome **standalone PWA** AND plain Safari/Chrome tab. NOT Android.
 **Scope:** chat composer keyboard/focus/viewport ONLY. The E2E send path is a hard
 trust boundary — do not touch it.
@@ -243,3 +246,45 @@ cd C:\Users\Lentach\Desktop\Fireplace ; git pull ; .\deploy-web.ps1   # build on
 
 The full audit + prior findings: `docs/review/composer-keyboard-audit.md`, and frontend
 gotchas in `frontend/CLAUDE.md` §1 + §6 (the iOS PWA composer notes).
+
+---
+
+## 12. Implementation note — approach A shipped (0.0.70, NOT yet device-verified)
+
+Implemented the recommended **approach A (cosmetic mask)**. No E2E / `index.html` / Android
+change; iOS-WebKit-gated, focus-scoped, reverted on blur (not the banned global lock).
+
+**New files:** `frontend/lib/utils/web_ios_composer_focus_mask.dart` (facade + pure
+`composerMaskCssColor(Color) → '#rrggbb'`), `_stub.dart` (VM no-op), `_web.dart` (the mask).
+The web impl appends a `position:fixed` solid `<div>` covering the **full layout viewport**
+(explicit height = max of `innerHeight`/`documentElement.clientHeight`/`vv.height+offsetTop`,
+so the visible window is always a sub-rect regardless of the OS pan), background = the
+theme's `FireplaceColors.messagesAreaBg`. It fades (140ms) + removes when **settled**
+(`visualViewport`: keyboard-up `vvHeightAtShow − vv.height > 80` **and** `offsetTop ≤ 3` ⇒
+the pin reconciled the pan) or after a **600ms** safety timeout. A solid full-scene fill
+needs no frame-perfect tracking → the compositor lag that defeats the pin's reset is
+irrelevant; the jump happens invisibly underneath.
+
+**Wiring (`widgets/input/chat_input_bar.dart`):** armed next to the existing pin —
+`_preArmComposerViewportPin` (pointer-down; now also early-returns on a re-tap of the
+already-focused field so no spurious flash) and `_onComposerFocusForWebViewport` (covers
+programmatic reply/edit focus; **gated on `!_sendJustFired`** so a send-refocus never
+flashes). Hidden on blur, on the 700ms no-focus safety (drag-away), and in `dispose`.
+
+**Verified (off-device):** `flutter analyze` clean on all touched files; new pure-helper
+test `test/utils/web_ios_composer_focus_mask_test.dart` green; composer/focus regression
+suites green (`chat_composer_viewport_test`, `focus_guard_area_test`,
+`messaging_provider_composer_focus_test`, `web_viewport_scroll_test`).
+
+**OWED before "production-done":** real iOS Safari + Chrome-PWA device test (build on PC →
+`.\deploy-web.ps1`, confirm `0.0.70` via `/version.json` + Settings footer, hard-bust the
+PWA cache). Tune if needed: the **mask colour** must match the chat background per theme
+(light/teal/dark/blue) so the fade is seamless; the **600ms** safety + **80px/3px** settle
+thresholds. Once the flash is confirmed gone, **remove the temp `jump_probe`** (file +
+facade + the install/remove calls in `chat_composer_viewport.dart`).
+
+**If the mask still shows a sliver of the jump on device** (unlikely — full-scene fill):
+the only residual cause would be the fill not covering during the pan; bump the explicit
+height / append the mask to `documentElement` instead of `<body>`. If instead a *true*
+root-cause fix is wanted later, approach **B** (reposition Flutter's editing `<textarea>`
+into the visible area so iOS never scrolls) remains the highest-potential/highest-risk path.

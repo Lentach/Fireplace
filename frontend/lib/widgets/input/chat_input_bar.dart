@@ -21,6 +21,7 @@ import '../../utils/web_focus_guard.dart';
 import '../../utils/web_ios_webkit.dart';
 import '../../utils/web_viewport_scroll.dart';
 import '../../utils/web_ios_viewport_pin.dart';
+import '../../utils/web_ios_composer_focus_mask.dart';
 import '../chat_action_tiles.dart';
 import '../hearth_fade_arc.dart';
 import '../top_snackbar.dart' show showTopSnackBar;
@@ -129,25 +130,42 @@ class ChatInputBarState extends State<ChatInputBar>
     if (!kIsWeb) return;
     if (!_focusNode.hasFocus) {
       setIOSComposerViewportPin(false);
+      hideComposerFocusMask();
       return;
     }
     if (!isIOSWebKit()) return;
     _pinPreArmTimer
         ?.cancel(); // focus arrived — the focus path owns the pin now
     setIOSComposerViewportPin(true);
+    // Programmatic focus (reply / edit) opens the keyboard with no pointer-down
+    // pre-arm, so cover its jump here too. Skip a send-refocus bounce
+    // (_sendJustFired): the keyboard stays up there, no jump, a flash would be
+    // spurious. Idempotent when a pre-arm already painted the mask.
+    if (!_sendJustFired) showComposerFocusMask(_composerMaskColorCss());
   }
 
-  // Pre-arm the iOS viewport pin on pointer-DOWN — before focus + the keyboard
-  // animation begin — so iOS never has an unpinned window to scroll/pan into
-  // (that window was the brief focus "flash"). Safety timer disarms if the tap
-  // never focuses (tap-and-drag-away); once focused, _onComposerFocusForWebViewport
-  // cancels the timer and owns the pin until blur. iOS-only (idempotent no-op else).
+  // App background colour for the focus mask (theme-aware: light/teal/dark/blue).
+  String _composerMaskColorCss() =>
+      composerMaskCssColor(FireplaceColors.of(context).messagesAreaBg);
+
+  // Pre-arm the iOS viewport pin + focus mask on pointer-DOWN — before focus +
+  // the keyboard animation begin — so iOS never has an unpinned/unmasked window
+  // to scroll/pan into (that window was the brief focus "flash"). The mask hides
+  // the transient; the pin settles the final layout. Safety timer disarms both
+  // if the tap never focuses (tap-and-drag-away); once focused,
+  // _onComposerFocusForWebViewport cancels the timer and owns the pin until blur.
+  // Skips a re-tap on the already-focused field (keyboard up ⇒ no jump to mask).
   void _preArmComposerViewportPin(PointerDownEvent _) {
     if (!kIsWeb || !isIOSWebKit()) return;
+    if (_focusNode.hasFocus) return;
     setIOSComposerViewportPin(true);
+    showComposerFocusMask(_composerMaskColorCss());
     _pinPreArmTimer?.cancel();
     _pinPreArmTimer = Timer(const Duration(milliseconds: 700), () {
-      if (!_focusNode.hasFocus) setIOSComposerViewportPin(false);
+      if (!_focusNode.hasFocus) {
+        setIOSComposerViewportPin(false);
+        hideComposerFocusMask();
+      }
     });
   }
 
@@ -275,6 +293,7 @@ class ChatInputBarState extends State<ChatInputBar>
       _focusNode.removeListener(_onComposerFocusForWebViewport);
       _focusNode.removeListener(_onFocusLostAfterSend);
       setIOSComposerViewportPin(false);
+      hideComposerFocusMask();
       uninstallComposerPasteListener();
     }
     _sendJustFiredTimer?.cancel();
