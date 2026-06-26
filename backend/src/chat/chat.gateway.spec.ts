@@ -5,13 +5,16 @@ import { Socket } from 'socket.io';
 
 function createGateway(): ChatGateway {
   const noop = {} as any;
+  const keyExchange = {
+    deliverPendingSessionRebuilds: jest.fn(),
+  } as any;
   return new ChatGateway(
     { verify: jest.fn() } as unknown as JwtService,
     { findById: jest.fn() } as unknown as UsersService,
     noop,
     noop,
     noop,
-    noop,
+    keyExchange,
     noop,
     noop,
     noop,
@@ -19,14 +22,18 @@ function createGateway(): ChatGateway {
   );
 }
 
-function createMockClient(overrides: Partial<{
-  token: string | undefined;
-  emit: jest.Mock;
-  disconnect: jest.Mock;
-  id: string;
-}> = {}) {
+function createMockClient(
+  overrides: Partial<{
+    token: string | undefined;
+    emit: jest.Mock;
+    disconnect: jest.Mock;
+    join: jest.Mock;
+    id: string;
+  }> = {},
+) {
   const emit = overrides.emit ?? jest.fn();
   const disconnect = overrides.disconnect ?? jest.fn();
+  const join = overrides.join ?? jest.fn();
   return {
     id: overrides.id ?? 'socket-test-1',
     handshake: {
@@ -35,6 +42,7 @@ function createMockClient(overrides: Partial<{
     data: {} as Record<string, unknown>,
     emit,
     disconnect,
+    join,
   };
 }
 
@@ -62,6 +70,10 @@ describe('ChatGateway handleConnection', () => {
 
     expect(jwtService.verify).toHaveBeenCalledWith('valid-jwt');
     expect(usersService.findById).toHaveBeenCalledWith(42);
+    expect(client.join).toHaveBeenCalledWith('user:42');
+    expect(
+      (gateway as any).chatKeyExchangeService.deliverPendingSessionRebuilds,
+    ).toHaveBeenCalledWith(client);
     expect(client.emit).toHaveBeenCalledWith('socketReady', {});
     expect(client.disconnect).not.toHaveBeenCalled();
     expect(client.data.user).toEqual({
@@ -132,7 +144,11 @@ describe('ChatGateway handleDisconnect (stale-socket guard)', () => {
     jwtService = (gateway as any).jwtService;
     usersService = (gateway as any).usersService;
     jwtService.verify.mockReturnValue({ sub: 37 });
-    usersService.findById.mockResolvedValue({ id: 37, username: 'me', tag: '0037' });
+    usersService.findById.mockResolvedValue({
+      id: 37,
+      username: 'me',
+      tag: '0037',
+    });
   });
 
   // iOS PWA suspend/resume: the device reconnects with a NEW socket while the

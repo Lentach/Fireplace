@@ -28,11 +28,17 @@ enum DecryptionFailureKind {
 /// The rule that actually fired, after applying precedence. Drives diagnostics.
 /// Note `identityReset` is not a [DecryptionFailureKind] — it is an orthogonal
 /// override that supersedes [noSession]/[unknown] (but NOT [duplicate]/[badMac]).
-enum DecryptionFailureRule { duplicate, badMac, identityReset, noSession, unknown }
+enum DecryptionFailureRule {
+  duplicate,
+  badMac,
+  identityReset,
+  noSession,
+  unknown,
+}
 
 /// The retry side effect the caller must perform.
 enum DecryptionRetryAction {
-  /// No retry — the session is valid (duplicate/badMac) or unrecoverable (reset).
+  /// No local retry — the row is terminal or unrecoverable.
   none,
 
   /// History pass: add the sender to the failed-peers set for the post-pass retry.
@@ -59,13 +65,10 @@ class DecryptionFailureDecision {
   /// The retry side effect to perform (or [DecryptionRetryAction.none]).
   final DecryptionRetryAction retryAction;
 
-  /// Emit `requestSessionRebuild` to the peer (once per peer) WITHOUT touching
-  /// any local state. Only the identity-reset rule sets this: our identity was
-  /// just regenerated, so the peer's session targets keys that no longer exist —
-  /// every message they send on it is dead until they re-key. Notifying them
-  /// shrinks the loss window from "until we happen to reply" to "their next
-  /// send". Their old session encrypts nothing we could ever read, so asking
-  /// them to discard it destroys no recoverable data.
+  /// Emit `requestSessionRebuild` to the peer WITHOUT touching any local state.
+  /// Bad-MAC sends indicate their sender ratchet is stale; identity-reset sends
+  /// target keys we no longer have. In both cases their next send must use a
+  /// fresh PreKey message.
   final bool notifyPeerRebuild;
 
   const DecryptionFailureDecision({
@@ -81,8 +84,9 @@ class DecryptionFailureDecision {
 ///
 /// Precedence (mirrors the original if-chain exactly):
 /// 1. `duplicate` / `badMac` → terminal + persist, no retry. These win even when
-///    [hadIdentityReset] is true (the session is valid; the key was consumed or
-///    the message was for an old key).
+///    [hadIdentityReset] is true. `badMac` also asks the peer to re-key, because
+///    repeated Bad-MAC type-2 messages mean their sending ratchet is stale for
+///    our current session.
 /// 2. `hadIdentityReset` → terminal, NOT persisted, no retry. All messages for the
 ///    old identity are unrecoverable; a fresh session will be built by the next
 ///    PreKey message.
@@ -108,6 +112,7 @@ DecryptionFailureDecision decideDecryptionFailure(
         persistTerminalFailure: true,
         markContentFailed: true,
         retryAction: DecryptionRetryAction.none,
+        notifyPeerRebuild: true,
       );
     case DecryptionFailureKind.noSession:
     case DecryptionFailureKind.unknown:

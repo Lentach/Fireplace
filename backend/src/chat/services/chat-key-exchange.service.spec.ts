@@ -62,10 +62,7 @@ describe('ChatKeyExchangeService', () => {
     };
 
     it('should call upsertKeyBundle and emit keyBundleUploaded on success', async () => {
-      await service.handleUploadKeyBundle(
-        mockClient as Socket,
-        validData,
-      );
+      await service.handleUploadKeyBundle(mockClient as Socket, validData);
 
       expect(keyBundlesService.upsertKeyBundle).toHaveBeenCalledWith(1, {
         registrationId: validData.registrationId,
@@ -82,10 +79,7 @@ describe('ChatKeyExchangeService', () => {
     it('should emit error when DTO validation fails', async () => {
       const invalidData = { registrationId: -1 };
 
-      await service.handleUploadKeyBundle(
-        mockClient as Socket,
-        invalidData,
-      );
+      await service.handleUploadKeyBundle(mockClient as Socket, invalidData);
 
       expect(keyBundlesService.upsertKeyBundle).not.toHaveBeenCalled();
       expect(mockClient.emit).toHaveBeenCalledWith(
@@ -118,19 +112,15 @@ describe('ChatKeyExchangeService', () => {
     };
 
     it('should call uploadOneTimePreKeys and emit oneTimePreKeysUploaded', async () => {
-      await service.handleUploadOneTimePreKeys(
-        mockClient as Socket,
-        validData,
-      );
+      await service.handleUploadOneTimePreKeys(mockClient as Socket, validData);
 
       expect(keyBundlesService.uploadOneTimePreKeys).toHaveBeenCalledWith(
         1,
         validData.keys,
       );
-      expect(mockClient.emit).toHaveBeenCalledWith(
-        'oneTimePreKeysUploaded',
-        { count: 2 },
-      );
+      expect(mockClient.emit).toHaveBeenCalledWith('oneTimePreKeysUploaded', {
+        count: 2,
+      });
     });
 
     it('should emit error when DTO validation fails', async () => {
@@ -305,7 +295,8 @@ describe('ChatKeyExchangeService', () => {
       expect(mockClient.emit).toHaveBeenCalledWith(
         'error',
         expect.objectContaining({
-          message: 'Pre-key bundle fetch rate limit exceeded. Please retry shortly.',
+          message:
+            'Pre-key bundle fetch rate limit exceeded. Please retry shortly.',
         }),
       );
     });
@@ -323,7 +314,8 @@ describe('ChatKeyExchangeService', () => {
         onlineUsers,
       );
 
-      const tracker: Map<string, number> = (service as any).lastPreKeyFetchByPair;
+      const tracker: Map<string, number> = (service as any)
+        .lastPreKeyFetchByPair;
       expect(tracker.has('1:9')).toBe(false);
       nowSpy.mockRestore();
     });
@@ -332,7 +324,7 @@ describe('ChatKeyExchangeService', () => {
   describe('handleRequestSessionRebuild', () => {
     const validData = { recipientId: 2 };
 
-    it('relays sessionRebuildNeeded to recipient when online', async () => {
+    it('relays sessionRebuildNeeded to the recipient user room', async () => {
       onlineUsers.set(2, 'socket-of-user-2');
 
       await service.handleRequestSessionRebuild(
@@ -342,15 +334,13 @@ describe('ChatKeyExchangeService', () => {
         onlineUsers,
       );
 
-      expect(mockServer.to).toHaveBeenCalledWith('socket-of-user-2');
+      expect(mockServer.to).toHaveBeenCalledWith('user:2');
       expect(mockServer.emit).toHaveBeenCalledWith('sessionRebuildNeeded', {
         fromUserId: 1,
       });
     });
 
-    it('does nothing when recipient is offline', async () => {
-      // onlineUsers does not contain userId 2
-
+    it('emits to the recipient room even when the one-socket online map has no entry', async () => {
       await service.handleRequestSessionRebuild(
         mockClient as Socket,
         validData,
@@ -358,8 +348,64 @@ describe('ChatKeyExchangeService', () => {
         onlineUsers,
       );
 
-      expect(mockServer.to).not.toHaveBeenCalled();
-      expect(mockServer.emit).not.toHaveBeenCalled();
+      expect(mockServer.to).toHaveBeenCalledWith('user:2');
+      expect(mockServer.emit).toHaveBeenCalledWith('sessionRebuildNeeded', {
+        fromUserId: 1,
+      });
+    });
+
+    it('replays a pending rebuild request when the recipient connects later', async () => {
+      await service.handleRequestSessionRebuild(
+        mockClient as Socket,
+        validData,
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      const recipientClient = {
+        data: { user: { id: 2 } },
+        emit: jest.fn(),
+      };
+      service.deliverPendingSessionRebuilds(
+        recipientClient as unknown as Socket,
+      );
+
+      expect(recipientClient.emit).toHaveBeenCalledWith(
+        'sessionRebuildNeeded',
+        { fromUserId: 1 },
+      );
+    });
+
+    it('clears a pending rebuild request once the recipient fetches the requester bundle', async () => {
+      await service.handleRequestSessionRebuild(
+        mockClient as Socket,
+        validData,
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      keyBundlesService.fetchPreKeyBundle.mockResolvedValue(mockBundle);
+      keyBundlesService.countUnusedPreKeys.mockResolvedValue(20);
+      const recipientClient = {
+        data: { user: { id: 2 } },
+        emit: jest.fn(),
+      };
+      await service.handleFetchPreKeyBundle(
+        recipientClient as unknown as Socket,
+        { userId: 1 },
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      (recipientClient.emit as jest.Mock).mockClear();
+      service.deliverPendingSessionRebuilds(
+        recipientClient as unknown as Socket,
+      );
+
+      expect(recipientClient.emit).not.toHaveBeenCalledWith(
+        'sessionRebuildNeeded',
+        expect.anything(),
+      );
     });
 
     it('emits error when DTO validation fails (invalid recipientId)', async () => {
