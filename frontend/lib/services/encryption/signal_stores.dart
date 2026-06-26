@@ -18,11 +18,19 @@ import '../../utils/e2e_diag_log.dart';
 /// which is hardware-backed and reliable.
 class DualStorage {
   final FlutterSecureStorage _secure;
-  final SharedPreferencesAsync _asyncPrefs;
+  final SharedPreferencesAsync? _asyncPrefsOverride;
+  SharedPreferencesAsync? _asyncPrefsInstance;
   SharedPreferences? _prefs;
 
   DualStorage(this._secure, {SharedPreferencesAsync? asyncPrefs})
-    : _asyncPrefs = asyncPrefs ?? SharedPreferencesAsync();
+    : _asyncPrefsOverride = asyncPrefs;
+
+  /// Lazily built so construction never touches the async platform plugin on
+  /// non-web (mobile/tests, where `kIsWeb` is false and the plugin is not
+  /// registered) — eager construction threw "SharedPreferencesAsyncPlatform
+  /// instance must be set" and broke every unit test that builds the store.
+  SharedPreferencesAsync get _asyncPrefs =>
+      _asyncPrefsInstance ??= _asyncPrefsOverride ?? SharedPreferencesAsync();
 
   Future<SharedPreferences> get _sharedPrefs async =>
       _prefs ??= await SharedPreferences.getInstance();
@@ -47,7 +55,17 @@ class DualStorage {
       // before reading so we do not reuse a stale in-memory preferences cache.
       final prefs = await _sharedPrefs;
       await prefs.reload();
-      return prefs.getString('$_spPrefix$key');
+      final legacyValue = prefs.getString('$_spPrefix$key');
+      if (legacyValue != null) {
+        // One-time lazy migration into the async namespace: a duplicate legacy
+        // copy can resurrect a deleted session and doubles localStorage usage
+        // (quota exhaustion → silent write loss, the very durability bug this
+        // store fights). Write async FIRST, then drop the legacy copy — if the
+        // async write throws, legacy is left untouched (no data loss).
+        await _asyncPrefs.setString('$_spPrefix$key', legacyValue);
+        await prefs.remove('$_spPrefix$key');
+      }
+      return legacyValue;
     } else {
       return _secure.read(key: key);
     }
@@ -56,11 +74,12 @@ class DualStorage {
   Future<void> delete({required String key}) async {
     if (kIsWeb) {
       await _asyncPrefs.remove('$_spPrefix$key');
-      final prefs = _prefs;
-      if (prefs != null) {
-        await prefs.reload();
-        await prefs.remove('$_spPrefix$key');
-      }
+      // Always clear the legacy copy too. Force-load the legacy store: if it
+      // was never loaded this session, a leftover legacy entry would otherwise
+      // be resurrected by the next fallback read.
+      final prefs = await _sharedPrefs;
+      await prefs.reload();
+      await prefs.remove('$_spPrefix$key');
     } else {
       await _secure.delete(key: key);
     }
