@@ -218,6 +218,12 @@ abstract class AppLocalizations {
   /// **'Wyloguj'**
   String get logout;
 
+  /// No description provided for @uninstallWarning.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odinstalowanie aplikacji lub wyczyszczenie danych witryny trwale usuwa historię wiadomości — aby odświeżyć, po prostu całkowicie zamknij i otwórz aplikację ponownie.'**
+  String get uninstallWarning;
+
   /// No description provided for @chat.
   ///
   /// In pl, this message translates to:

@@ -72,6 +72,10 @@ class AppLocalizationsPl extends AppLocalizations {
   String get logout => 'Wyloguj';
 
   @override
+  String get uninstallWarning =>
+      'Odinstalowanie aplikacji lub wyczyszczenie danych witryny trwale usuwa historię wiadomości — aby odświeżyć, po prostu całkowicie zamknij i otwórz aplikację ponownie.';
+
+  @override
   String get chat => 'Czat';
 
   @override
