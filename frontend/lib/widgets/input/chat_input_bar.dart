@@ -922,7 +922,11 @@ class ChatInputBarState extends State<ChatInputBar>
                               controller: _controller,
                               focusNode: _focusNode,
                               style: RpgTheme.bodyFont(
-                                fontSize: 14,
+                                // MUST be >= 16: iOS Safari auto-zooms on focus
+                                // of any input with font-size < 16px (no engine
+                                // clamp; flutter/flutter #119085) — that zoom is
+                                // a major part of the composer focus "flip".
+                                fontSize: 16,
                                 color: colorScheme.onSurface,
                               ),
                               decoration: InputDecoration(

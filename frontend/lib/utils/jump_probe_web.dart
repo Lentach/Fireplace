@@ -18,6 +18,8 @@ Timer? _timer;
 JSFunction? _reposition;
 int _maxScroll = 0;
 int _maxVvOff = 0;
+bool _running = false;
+JSFunction? _rafCb;
 
 void installJumpProbe() {
   if (!isIOSWebKit()) return;
@@ -33,6 +35,9 @@ void installJumpProbe() {
   _box = box;
   _maxScroll = 0;
   _maxVvOff = 0;
+  _running = true;
+  _rafCb = ((double _) => _rafLoop()).toJS;
+  web.window.requestAnimationFrame(_rafCb!);
 
   void reposition() {
     final vv = web.window.visualViewport;
@@ -71,6 +76,8 @@ void installJumpProbe() {
 }
 
 void removeJumpProbe() {
+  _running = false;
+  _rafCb = null;
   _timer?.cancel();
   _timer = null;
   final vv = web.window.visualViewport;
@@ -81,4 +88,23 @@ void removeJumpProbe() {
   _reposition = null;
   _box?.remove();
   _box = null;
+}
+
+// Per-frame peak sampler: the 200ms text timer can miss a <200ms pan/scroll
+// spike, falsely showing PEAK=0. This catches the transient maxima every frame.
+void _rafLoop() {
+  if (!_running) return;
+  final root = web.document.documentElement;
+  final body = web.document.body;
+  final vv = web.window.visualViewport;
+  final scroll = <int>[
+    (root?.scrollTop ?? 0).round(),
+    (body?.scrollTop ?? 0).round(),
+    web.window.scrollY.round(),
+  ].reduce((a, b) => a > b ? a : b);
+  final vvOff = (vv?.offsetTop ?? 0).round();
+  if (scroll > _maxScroll) _maxScroll = scroll;
+  if (vvOff > _maxVvOff) _maxVvOff = vvOff;
+  final cb = _rafCb;
+  if (cb != null) web.window.requestAnimationFrame(cb);
 }

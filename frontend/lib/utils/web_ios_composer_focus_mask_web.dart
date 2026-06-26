@@ -21,7 +21,7 @@ import 'web_ios_webkit.dart';
 // NOT fade — it stays for the whole focus so it is impossible to miss and the
 // jump_probe MASK line can read its live state. Flip to false for production
 // (real app-bg colour + fade). See docs/review/ios-composer-keyboard-flash-*.
-const bool kLoudComposerMaskDebug = true;
+const bool kLoudComposerMaskDebug = false;
 
 const int _kMaxVisibleMs = 600; // safety fade even if settle is never detected
 const int _kFadeMs = 140;
