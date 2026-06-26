@@ -4,7 +4,6 @@ import 'dart:js_interop';
 import 'package:web/web.dart' as web;
 
 import 'web_ios_webkit.dart';
-import 'web_ios_composer_focus_mask.dart';
 
 // TEMP diagnostic for the iOS "screen jumps up on composer focus" bug. A DOM
 // overlay pinned to the VISUAL viewport (so it stays visible even while the page
@@ -18,8 +17,6 @@ Timer? _timer;
 JSFunction? _reposition;
 int _maxScroll = 0;
 int _maxVvOff = 0;
-bool _running = false;
-JSFunction? _rafCb;
 
 void installJumpProbe() {
   if (!isIOSWebKit()) return;
@@ -35,9 +32,6 @@ void installJumpProbe() {
   _box = box;
   _maxScroll = 0;
   _maxVvOff = 0;
-  _running = true;
-  _rafCb = ((double _) => _rafLoop()).toJS;
-  web.window.requestAnimationFrame(_rafCb!);
 
   void reposition() {
     final vv = web.window.visualViewport;
@@ -69,15 +63,12 @@ void installJumpProbe() {
     box.textContent =
         'JUMP  sT=$sT bT=$bT sY=$sY  vvOff=$vvOff vvH=$vvH iH=$iH act=$act\n'
         'PEAK  scroll=$_maxScroll  vvOff=$_maxVvOff   '
-        '(scroll>0 ⇒ document; vvOff>0 ⇒ visual-pan)\n'
-        '${composerFocusMaskDiag()}';
+        '(scroll>0 ⇒ document; vvOff>0 ⇒ visual-pan)';
     reposition();
   });
 }
 
 void removeJumpProbe() {
-  _running = false;
-  _rafCb = null;
   _timer?.cancel();
   _timer = null;
   final vv = web.window.visualViewport;
@@ -88,23 +79,4 @@ void removeJumpProbe() {
   _reposition = null;
   _box?.remove();
   _box = null;
-}
-
-// Per-frame peak sampler: the 200ms text timer can miss a <200ms pan/scroll
-// spike, falsely showing PEAK=0. This catches the transient maxima every frame.
-void _rafLoop() {
-  if (!_running) return;
-  final root = web.document.documentElement;
-  final body = web.document.body;
-  final vv = web.window.visualViewport;
-  final scroll = <int>[
-    (root?.scrollTop ?? 0).round(),
-    (body?.scrollTop ?? 0).round(),
-    web.window.scrollY.round(),
-  ].reduce((a, b) => a > b ? a : b);
-  final vvOff = (vv?.offsetTop ?? 0).round();
-  if (scroll > _maxScroll) _maxScroll = scroll;
-  if (vvOff > _maxVvOff) _maxVvOff = vvOff;
-  final cb = _rafCb;
-  if (cb != null) web.window.requestAnimationFrame(cb);
 }
