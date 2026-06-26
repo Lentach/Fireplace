@@ -5,9 +5,4 @@ void main() {
   test('resetWebDocumentScroll is a safe no-op in VM tests', () {
     expect(() => resetWebDocumentScroll(), returnsNormally);
   });
-
-  test('setIOSWebViewportScrollLocked is a safe no-op in VM tests', () {
-    expect(() => setIOSWebViewportScrollLocked(true), returnsNormally);
-    expect(() => setIOSWebViewportScrollLocked(false), returnsNormally);
-  });
 }

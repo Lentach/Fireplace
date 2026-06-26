@@ -42,4 +42,17 @@ void main() {
       isTrue,
     );
   });
+
+  test('keyboard up suppresses overlay even when size reads landscape', () {
+    // Symptom A2: a soft keyboard shrinking reported height below width must not
+    // trigger the rotate overlay while the device is physically in portrait.
+    expect(
+      shouldShowRotateOverlay(
+        orientation: Orientation.landscape,
+        logicalSize: const Size(844, 390),
+        keyboardVisible: true,
+      ),
+      isFalse,
+    );
+  });
 }

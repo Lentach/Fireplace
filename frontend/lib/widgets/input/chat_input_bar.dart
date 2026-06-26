@@ -20,6 +20,7 @@ import '../../utils/soft_keyboard.dart';
 import '../../utils/web_focus_guard.dart';
 import '../../utils/web_ios_webkit.dart';
 import '../../utils/web_viewport_scroll.dart';
+import '../../utils/web_ios_viewport_pin.dart';
 import '../chat_action_tiles.dart';
 import '../hearth_fade_arc.dart';
 import '../top_snackbar.dart' show showTopSnackBar;
@@ -30,6 +31,7 @@ import 'focus_guard_area.dart';
 import 'recording_controller.dart';
 import 'reply_preview_bar.dart';
 import 'edit_preview_bar.dart';
+import 'composer_keyboard_signals.dart';
 
 class ChatInputBar extends StatefulWidget {
   const ChatInputBar({super.key});
@@ -58,6 +60,10 @@ class ChatInputBarState extends State<ChatInputBar>
   // faster than waiting for the next postFrameCallback.
   bool _sendJustFired = false;
   Timer? _sendJustFiredTimer;
+  // Set true (with a 600ms auto-clear) whenever the composer initiates a send /
+  // deliberate refocus that may briefly blur+restore the IME. Gates the viewport
+  // keyboard-collapse debounce — see composer_keyboard_signals.dart.
+  Timer? _collapseGuardTimer;
 
   // Recording state mirrored from RecordingController via callback
   bool _isRecording = false;
@@ -117,16 +123,11 @@ class ChatInputBarState extends State<ChatInputBar>
   void _onComposerFocusForWebViewport() {
     if (!kIsWeb) return;
     if (!_focusNode.hasFocus) {
-      setIOSWebViewportScrollLocked(false);
+      setIOSComposerViewportPin(false);
       return;
     }
     if (!isIOSWebKit()) return;
-    setIOSWebViewportScrollLocked(true);
-    resetWebDocumentScroll();
-    WidgetsBinding.instance.addPostFrameCallback((_) {
-      if (!mounted || !_focusNode.hasFocus) return;
-      resetWebDocumentScroll();
-    });
+    setIOSComposerViewportPin(true);
   }
 
   void _onAttachmentChanged() {
@@ -247,10 +248,12 @@ class ChatInputBarState extends State<ChatInputBar>
     if (kIsWeb) {
       _focusNode.removeListener(_onComposerFocusForWebViewport);
       _focusNode.removeListener(_onFocusLostAfterSend);
-      setIOSWebViewportScrollLocked(false);
+      setIOSComposerViewportPin(false);
       uninstallComposerPasteListener();
     }
     _sendJustFiredTimer?.cancel();
+    _collapseGuardTimer?.cancel();
+    composerKeyboardCollapseGuard.value = false;
     _messagingProvider?.setComposerFocusRequest(null);
     _messagingProvider?.removeListener(_onMessagingProviderChanged);
     _attachment.removeListener(_onAttachmentChanged);
@@ -277,6 +280,17 @@ class ChatInputBarState extends State<ChatInputBar>
     });
   }
 
+  // Tells [ChatComposerViewport] a refocus is imminent so it defers collapsing
+  // the keyboard inset (preserves the send-bounce flash guard). Auto-clears so a
+  // subsequent genuine dismiss collapses immediately (no laggy gap on hide).
+  void _armComposerCollapseGuard() {
+    composerKeyboardCollapseGuard.value = true;
+    _collapseGuardTimer?.cancel();
+    _collapseGuardTimer = Timer(const Duration(milliseconds: 600), () {
+      composerKeyboardCollapseGuard.value = false;
+    });
+  }
+
   void _send() {
     if (_attachment.staged != null) {
       _sendStaged().ignore();
@@ -284,6 +298,7 @@ class ChatInputBarState extends State<ChatInputBar>
     }
     final text = _controller.text.trim();
     if (text.isEmpty) return;
+    _armComposerCollapseGuard();
 
     final messaging = context.read<MessagingProvider>();
     final editing = messaging.editingMessage;
@@ -334,6 +349,7 @@ class ChatInputBarState extends State<ChatInputBar>
     if (_isSendingStagedImage) return;
     final staged = _attachment.staged;
     if (staged == null) return;
+    _armComposerCollapseGuard();
 
     final caption = _controller.text.trim();
     final messaging = context.read<MessagingProvider>();
@@ -382,6 +398,7 @@ class ChatInputBarState extends State<ChatInputBar>
     });
     if (kIsWeb && isIOSWebKit()) {
       if (hadComposerFocus) {
+        _armComposerCollapseGuard();
         // Keyboard was open: keep it open and reset any iOS document scroll.
         WidgetsBinding.instance.addPostFrameCallback((_) {
           if (!mounted || !_focusNode.canRequestFocus) return;
@@ -889,6 +906,15 @@ class ChatInputBarState extends State<ChatInputBar>
                               // the keyboard while the node can still report focused in the same sync turn.
                               onEditingComplete: () {},
                               onSubmitted: (_) => _send(),
+                              // Keep the IME up when a tap lands OUTSIDE this
+                              // field's TapRegion (the in-app Send button, mic,
+                              // action toggle). Flutter's default onTapOutside
+                              // unfocuses → on iOS the keyboard hides then the
+                              // refocus machinery re-shows it = the send-button
+                              // bounce. The IME send key is not a tap-outside, so
+                              // it never bounced. Explicit unfocus (mic/panel)
+                              // still works — this only disables the auto-unfocus.
+                              onTapOutside: (_) {},
                               // Android IME rich-content insertion (Phase 4);
                               // other platforms never emit commitContent.
                               contentInsertionConfiguration:
