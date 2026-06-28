@@ -10,6 +10,7 @@ alwaysApply: true
 - **At session start:** read `.cursor/session-summaries/LATEST.md`
 - **At task end:** write/update `.cursor/session-summaries/YYYY-MM-DD-session.md` + `LATEST.md` — format: `# title`, `**Date:**`, `## What was done`, `## Key files` (paths), `## Verification` (commands + results), `## Notes for next session`. Update `LATEST.md`: new entry on top, shift old to `**Previous:**`/`**Earlier:**`.
 - **Thinking with files:** for multi-step/debugging/deploy-sensitive work, use persistent file-backed planning (`task_plan.md`, `findings.md`, `progress.md` or `.planning/<task>/`). Re-read the plan before decisions, update progress after phases, and log failed attempts so context survives compaction/clear. Do not wing long work from chat memory.
+- **Auto-review model:** when spawning/requesting an auto reviewer, code-reviewer, review subagent, or PR reviewer, use the same model class as the primary Codex agent for this session. Do not use `mini`, cheap, or lower-capability reviewers unless the user explicitly asks for that downgrade.
 - **Before any change:** read ALL files the task touches; trace code paths; verify names in source — never guess
 - Code wins over this file — update when they conflict
 - All code in English; Polish OK in .md only

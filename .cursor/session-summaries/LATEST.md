@@ -2,6 +2,10 @@
 
 **Date:** 2026-06-28
 
+**Topic:** **Auto-review model memory.** Added root memory in `AGENTS.md` and `CLAUDE.md`: auto reviewers, code-reviewers, review subagents, and PR reviewers must use the same model class as the primary agent for the session. No `mini`, cheap, or lower-capability reviewer unless the user explicitly asks for that downgrade. Docs-only change; no tests needed. → [2026-06-28-session.md](./2026-06-28-session.md)
+
+**Previous:** 2026-06-28
+
 **Topic:** **Memory workflow update + message-editing PR triage + freshness audit.** Added explicit root-memory rules in `AGENTS.md` and `CLAUDE.md`: use persistent file-backed planning for real multi-step work. Checked stale message-editing note: PR #16 is merged into `master`, not pending. Freshness audit verdict: local `master`/`origin/master` are current at `6847ac6`, local frontend build is `0.0.75`, open PRs = 0. Production is NOT newest: VM checkout is behind `origin/master` by 4 commits, VM `frontend-build/version.json` is `0.0.74`, and backend is running dev mode (`NODE_ENV=development`, `npm run start:dev`, `/version`=`0.0.2/dev`). DB has `messages.editedAt`. To make prod current: backend on VM via `./deploy-backend.sh`; frontend from PC via `.\deploy-web.ps1`; never build Flutter web on the 2 GB VM. → [2026-06-28-session.md](./2026-06-28-session.md)
 
 **Previous:** 2026-06-25
