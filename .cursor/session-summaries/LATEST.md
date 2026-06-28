@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-28
 
-**Topic:** **Memory workflow update — thinking-with-files made mandatory for real work.** Added explicit root-memory rules in `AGENTS.md` and `CLAUDE.md`: for multi-step/debugging/deploy-sensitive work, use persistent file-backed planning (`task_plan.md`, `findings.md`, `progress.md`, or `.planning/<task>/`), re-read plans before decisions, update progress after phases, and log failed attempts. Strengthened tone instructions: blunt truth, no "nice guy" softening, no lazy fact-checking, no corporate mush. Docs-only; no tests run. → [2026-06-28-session.md](./2026-06-28-session.md)
+**Topic:** **Memory workflow update + message-editing PR triage.** Added explicit root-memory rules in `AGENTS.md` and `CLAUDE.md`: for multi-step/debugging/deploy-sensitive work, use persistent file-backed planning (`task_plan.md`, `findings.md`, `progress.md`, or `.planning/<task>/`). Strengthened tone instructions: blunt truth, no "nice guy" softening, no lazy fact-checking. Later checked the stale "message editing PR open" note: PR #16 (`feat/message-editing`) is merged into `master` (`bf44c6a`, GitHub merged 2026-06-23), so the feature is not pending. Important operational stink: production backend `/version` currently reports `0.0.2/dev`, while frontend `/version.json` reports `0.0.74` and repo is `0.0.75`; verify VM compose mode/schema before assuming prod matches current `master`. → [2026-06-28-session.md](./2026-06-28-session.md)
 
 **Previous:** 2026-06-25
 
