@@ -2,7 +2,7 @@
 
 **Date:** 2026-06-28
 
-**Topic:** **Memory workflow update + message-editing PR triage.** Added explicit root-memory rules in `AGENTS.md` and `CLAUDE.md`: for multi-step/debugging/deploy-sensitive work, use persistent file-backed planning (`task_plan.md`, `findings.md`, `progress.md`, or `.planning/<task>/`). Strengthened tone instructions: blunt truth, no "nice guy" softening, no lazy fact-checking. Later checked the stale "message editing PR open" note: PR #16 (`feat/message-editing`) is merged into `master` (`bf44c6a`, GitHub merged 2026-06-23), so the feature is not pending. Important operational stink: production backend `/version` currently reports `0.0.2/dev`, while frontend `/version.json` reports `0.0.74` and repo is `0.0.75`; verify VM compose mode/schema before assuming prod matches current `master`. → [2026-06-28-session.md](./2026-06-28-session.md)
+**Topic:** **Memory workflow update + message-editing PR triage + freshness audit.** Added explicit root-memory rules in `AGENTS.md` and `CLAUDE.md`: use persistent file-backed planning for real multi-step work. Checked stale message-editing note: PR #16 is merged into `master`, not pending. Freshness audit verdict: local `master`/`origin/master` are current at `6847ac6`, local frontend build is `0.0.75`, open PRs = 0. Production is NOT newest: VM checkout is behind `origin/master` by 4 commits, VM `frontend-build/version.json` is `0.0.74`, and backend is running dev mode (`NODE_ENV=development`, `npm run start:dev`, `/version`=`0.0.2/dev`). DB has `messages.editedAt`. To make prod current: backend on VM via `./deploy-backend.sh`; frontend from PC via `.\deploy-web.ps1`; never build Flutter web on the 2 GB VM. → [2026-06-28-session.md](./2026-06-28-session.md)
 
 **Previous:** 2026-06-25
 
