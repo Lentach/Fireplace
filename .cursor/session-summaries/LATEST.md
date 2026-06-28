@@ -1,6 +1,10 @@
 # Latest session summary
 
-**Date:** 2026-06-25
+**Date:** 2026-06-28
+
+**Topic:** **Memory workflow update — thinking-with-files made mandatory for real work.** Added explicit root-memory rules in `AGENTS.md` and `CLAUDE.md`: for multi-step/debugging/deploy-sensitive work, use persistent file-backed planning (`task_plan.md`, `findings.md`, `progress.md`, or `.planning/<task>/`), re-read plans before decisions, update progress after phases, and log failed attempts. Strengthened tone instructions: blunt truth, no "nice guy" softening, no lazy fact-checking, no corporate mush. Docs-only; no tests run. → [2026-06-28-session.md](./2026-06-28-session.md)
+
+**Previous:** 2026-06-25
 
 **Topic:** **iOS composer focus "flash" — post-0.0.68 attempts REVERTED to the jump→flash state (0.0.73).** Per user ("revert all changes from the jump→flash point"), rolled back the 0.0.69 pointer-down pre-arm, the 0.0.70–0.0.71 cosmetic focus mask, and the 0.0.72 font-16/rAF probe to the **0.0.68 viewport-pin** state. They regressed without killing the flash: the pre-arm fired the pin's `position:fixed` on pointer-DOWN → in a **browser tab** that bounced the browser toolbar on every composer tap; the mask + stacked blur-teardown made keyboard-**hide** laggy. **Kept:** the pin (jump→flash), `onTapOutside`, collapse-guard, portrait guard, inset. Deleted `utils/web_ios_composer_focus_mask{,_web,_stub}.dart` + test. Analyze clean; 44 input tests green (E2E send-flow intact). **Still OPEN:** the residual <1s focus flash (iOS compositor pan to Flutter's below-fold `<textarea>`) — solve non-invasively, NOT host `position:fixed`; see `docs/review/ios-composer-keyboard-flash-handoff.md`. `font-16` (iOS auto-zooms inputs <16px on focus) is a safe re-addable 1-liner. **Next:** deploy `0.0.73`, confirm no toolbar-bounce / no laggy hide.
 
