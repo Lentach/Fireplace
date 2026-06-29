@@ -8,6 +8,7 @@ import '../providers/friends_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/main_tab_screen_header.dart';
+import '../utils/instant_opaque_route.dart';
 import 'chat_detail_screen.dart';
 
 class ContactsScreen extends StatelessWidget {
@@ -29,7 +30,7 @@ class ContactsScreen extends StatelessWidget {
       final width = MediaQuery.of(context).size.width;
       if (width < AppConstants.layoutBreakpointDesktop) {
         Navigator.of(context).push(
-          MaterialPageRoute(
+          instantOpaqueRoute(
             builder: (_) => ChatDetailScreen(conversationId: existingConv.id),
           ),
         );
@@ -60,7 +61,9 @@ class ContactsScreen extends StatelessWidget {
                 ListTile(
                   leading: Icon(Icons.person_remove, color: colorScheme.error),
                   title: Text(
-                    AppLocalizations.of(context).removeFriendTitle.replaceAll('?', ''),
+                    AppLocalizations.of(
+                      context,
+                    ).removeFriendTitle.replaceAll('?', ''),
                     style: RpgTheme.bodyFont(
                       fontSize: 14,
                       color: colorScheme.onSurface,
@@ -157,7 +160,7 @@ class ContactsScreen extends StatelessWidget {
         final id = context.read<ConversationsProvider>().consumePendingOpen();
         if (id != null && context.mounted) {
           Navigator.of(context).push(
-            MaterialPageRoute(
+            instantOpaqueRoute(
               builder: (_) => ChatDetailScreen(conversationId: id),
             ),
           );
@@ -176,9 +179,7 @@ class ContactsScreen extends StatelessWidget {
   }
 
   Widget _buildHeader(BuildContext context) {
-    return MainTabScreenHeader(
-      title: AppLocalizations.of(context).contacts,
-    );
+    return MainTabScreenHeader(title: AppLocalizations.of(context).contacts);
   }
 
   /// Natural sort: same prefix → smaller number first (ziomek3, ziomek6, ziomek50).
@@ -231,16 +232,12 @@ class ContactsScreen extends StatelessWidget {
       );
     }
 
-    final borderColor =
-        FireplaceColors.of(context).convItemBorder;
+    final borderColor = FireplaceColors.of(context).convItemBorder;
 
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
       itemCount: friends.length,
-      separatorBuilder: (_, index) => Divider(
-        height: 1,
-        color: borderColor,
-      ),
+      separatorBuilder: (_, index) => Divider(height: 1, color: borderColor),
       itemBuilder: (context, index) {
         final friend = friends[index];
         return _buildContactTile(context, friend);
@@ -259,7 +256,9 @@ class ContactsScreen extends StatelessWidget {
         onTap: () => _openChatWithContact(context, user.id),
         onLongPress: () => _showContactContextMenu(context, user),
         borderRadius: BorderRadius.circular(8),
-        splashColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
+        splashColor: Theme.of(
+          context,
+        ).colorScheme.primary.withValues(alpha: 0.2),
         child: Padding(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
           child: Row(
