@@ -54,7 +54,7 @@ cd frontend && flutter run -d chrome
 - Ports: backend `:3000`, DB host `:5433 -> :5432`, Flutter web random unless specified.
 - Before local start on Windows if stale node processes bite: `taskkill //F //IM node.exe`.
 - Phone on WiFi: `cd frontend && .\run_web_for_phone.ps1`, or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`.
-- Tests: `cd backend && npm test` (328 unit tests, 41 suites; verified by `node scripts/verify-claude-backend-test-counts.mjs`). Frontend: `cd frontend && flutter analyze --no-fatal-infos && flutter test`.
+- Tests: `cd backend && npm test` (346 unit tests, 41 suites; verified by `node scripts/verify-claude-backend-test-counts.mjs`). Frontend: `cd frontend && flutter analyze --no-fatal-infos && flutter test`.
 - CI: `.github/workflows/ci.yml` runs backend tests + the CLAUDE test-count verifier, then Flutter analyze/tests.
 
 ## 4. Production deploy and safety

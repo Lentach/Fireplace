@@ -11,7 +11,6 @@ npm run build        # nest build
 npm run start:dev    # nest start --watch
 npm run start:prod   # node dist/main
 npm test             # jest --config jest.config.json
-npm run test:e2e     # jest --config ./test/jest-e2e.json
 ```
 
 Other scripts: `npm run test:watch`, `npm run test:cov`, `npm run test:debug`, `npm run lint` (fixing), `npm run format`.

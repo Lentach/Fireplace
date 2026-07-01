@@ -19,6 +19,8 @@ describe('ChatMessageService', () => {
   let conversationsService: jest.Mocked<ConversationsService>;
   let chatValidationService: jest.Mocked<ChatValidationService>;
   let usersService: jest.Mocked<UsersService>;
+  let chatLinkPreviewService: jest.Mocked<ChatLinkPreviewService>;
+  let pushCoalescingService: jest.Mocked<PushNotificationCoalescingService>;
 
   const mockSender: Partial<User> = { id: 1, username: 'alice' };
   const mockRecipient: Partial<User> = { id: 2, username: 'bob' };
@@ -61,6 +63,10 @@ describe('ChatMessageService', () => {
             findByConversation: jest.fn(),
             findMediaUrlsByConversation: jest.fn().mockResolvedValue([]),
             markConversationAsReadFromSender: jest.fn(),
+            findByIdWithConversation: jest.fn(),
+            updateDeliveryStatus: jest.fn(),
+            deleteById: jest.fn(),
+            editMessage: jest.fn(),
           },
         },
         {
@@ -103,6 +109,8 @@ describe('ChatMessageService', () => {
     conversationsService = module.get(ConversationsService);
     chatValidationService = module.get(ChatValidationService);
     usersService = module.get(UsersService);
+    chatLinkPreviewService = module.get(ChatLinkPreviewService);
+    pushCoalescingService = module.get(PushNotificationCoalescingService);
     jest.clearAllMocks();
   });
 
@@ -234,13 +242,88 @@ describe('ChatMessageService', () => {
 
       // ChatLinkPreviewService.fetchAndEmitIfNeeded is called but with encryptedContent set,
       // so the service internally skips the preview fetch
-      const chatLinkPreviewService = (service as any).chatLinkPreviewService;
       expect(chatLinkPreviewService.fetchAndEmitIfNeeded).toHaveBeenCalledWith(
         expect.objectContaining({
           encryptedContent: '3:base64ciphertext==',
         }),
       );
     });
+
+    const arrangeSuccessfulTextMessageSend = () => {
+      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+      usersService.findById
+        .mockResolvedValueOnce(mockSender as User)
+        .mockResolvedValueOnce(mockRecipient as User);
+      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+      messagesService.create.mockResolvedValue({
+        ...mockMessage,
+        content: 'hello',
+        messageType: 'TEXT',
+        mediaUrl: null,
+        mediaDuration: null,
+      } as Message);
+    };
+
+    const installRecipientSocket = (pushClientState: {
+      clientVisible: boolean;
+      activeConversationId: number | null;
+    }) => {
+      onlineUsers.set(2, 'socket-bob');
+      Object.defineProperty(mockServer, 'sockets', {
+        configurable: true,
+        value: {
+          sockets: new Map([
+            ['socket-bob', { data: { pushClientState } }],
+          ]),
+        },
+      });
+    };
+
+    it('does not schedule push when recipient is visible in the active conversation', async () => {
+      arrangeSuccessfulTextMessageSend();
+      installRecipientSocket({
+        clientVisible: true,
+        activeConversationId: 10,
+      });
+
+      await service.handleSendMessage(
+        mockClient as Socket,
+        { recipientId: 2, content: 'hello' },
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      expect(mockServer.to).toHaveBeenCalledWith('socket-bob');
+      expect(pushCoalescingService.scheduleMessagePush).not.toHaveBeenCalled();
+    });
+
+    it.each([
+      ['hidden', { clientVisible: false, activeConversationId: 10 }],
+      [
+        'active on another conversation',
+        { clientVisible: true, activeConversationId: 11 },
+      ],
+    ])(
+      'schedules push when recipient socket is online but %s',
+      async (_caseName, pushClientState) => {
+        arrangeSuccessfulTextMessageSend();
+        installRecipientSocket(pushClientState);
+
+        await service.handleSendMessage(
+          mockClient as Socket,
+          { recipientId: 2, content: 'hello' },
+          mockServer as Server,
+          onlineUsers,
+        );
+
+        expect(mockServer.to).toHaveBeenCalledWith('socket-bob');
+        expect(pushCoalescingService.scheduleMessagePush).toHaveBeenCalledWith(
+          2,
+          10,
+          'alice',
+        );
+      },
+    );
   });
 
   describe('E2E encrypted message types', () => {
@@ -467,7 +550,6 @@ describe('ChatMessageService', () => {
       );
 
       // ChatLinkPreviewService is called but with encryptedContent, so it skips internally
-      const chatLinkPreviewService = (service as any).chatLinkPreviewService;
       expect(chatLinkPreviewService.fetchAndEmitIfNeeded).toHaveBeenCalledWith(
         expect.objectContaining({
           encryptedContent: '3:textWithLinkCipher==',
@@ -620,40 +702,38 @@ describe('ChatMessageService', () => {
       // Message sender = userId 1 (the caller). Recipient = userId 2.
       const conv = { id: 10, userOne: { id: 1 }, userTwo: { id: 2 } };
       const msg = { id: 99, sender: { id: 1 }, conversation: conv };
-      (messagesService as any).findByIdWithConversation = jest
-        .fn()
-        .mockResolvedValue(msg);
-      (messagesService as any).updateDeliveryStatus = jest.fn();
+      messagesService.findByIdWithConversation.mockResolvedValue(msg as Message);
+      messagesService.updateDeliveryStatus.mockResolvedValue(null);
 
       await service.handleMessageDelivered(
-        mockClient as any,
+        mockClient as Socket,
         { messageId: 99 },
-        mockServer as any,
+        mockServer as Server,
         onlineUsers,
       );
 
-      expect((messagesService as any).updateDeliveryStatus).not.toHaveBeenCalled();
+      expect(messagesService.updateDeliveryStatus).not.toHaveBeenCalled();
     });
 
     it('allows when caller is the recipient', async () => {
       // Message sender = userId 2. Caller = userId 1 (recipient).
       const conv = { id: 10, userOne: { id: 2 }, userTwo: { id: 1 } };
       const updatedMsg = { id: 99, sender: { id: 2 }, conversation: conv, deliveryStatus: 'DELIVERED' };
-      (messagesService as any).findByIdWithConversation = jest
-        .fn()
-        .mockResolvedValue({ id: 99, sender: { id: 2 }, conversation: conv });
-      (messagesService as any).updateDeliveryStatus = jest
-        .fn()
-        .mockResolvedValue(updatedMsg);
+      messagesService.findByIdWithConversation.mockResolvedValue({
+        id: 99,
+        sender: { id: 2 },
+        conversation: conv,
+      } as Message);
+      messagesService.updateDeliveryStatus.mockResolvedValue(updatedMsg as Message);
 
       await service.handleMessageDelivered(
-        mockClient as any,
+        mockClient as Socket,
         { messageId: 99 },
-        mockServer as any,
+        mockServer as Server,
         onlineUsers,
       );
 
-      expect((messagesService as any).updateDeliveryStatus).toHaveBeenCalledWith(
+      expect(messagesService.updateDeliveryStatus).toHaveBeenCalledWith(
         99,
         MessageDeliveryStatus.DELIVERED,
       );
@@ -674,15 +754,13 @@ describe('ChatMessageService', () => {
         conversation: conv,
         mediaUrl: null,
       };
-      (messagesService as any).findByIdWithConversation = jest
-        .fn()
-        .mockResolvedValue(msg);
-      (messagesService as any).deleteById = jest.fn().mockResolvedValue(true);
+      messagesService.findByIdWithConversation.mockResolvedValue(msg as Message);
+      messagesService.deleteById.mockResolvedValue(msg as Message);
 
       await service.handleDeleteMessage(
-        mockClient as any,
+        mockClient as Socket,
         { messageId: 55, mode: 'for_everyone' },
-        mockServer as any,
+        mockServer as Server,
         onlineUsers,
       );
 
@@ -705,12 +783,8 @@ describe('ChatMessageService', () => {
         messageType: 'TEXT',
       } as unknown as Message;
       const editedAt = new Date('2026-06-22T12:00:00Z');
-      (messagesService as any).findByIdWithConversation = jest
-        .fn()
-        .mockResolvedValue(msg);
-      (messagesService as any).editMessage = jest
-        .fn()
-        .mockResolvedValue({ id: 100, editedAt } as Message);
+      messagesService.findByIdWithConversation.mockResolvedValue(msg);
+      messagesService.editMessage.mockResolvedValue({ id: 100, editedAt } as Message);
       onlineUsers.set(2, 'sock-bob');
 
       await service.handleEditMessage(
@@ -720,7 +794,7 @@ describe('ChatMessageService', () => {
         onlineUsers,
       );
 
-      expect((messagesService as any).editMessage).toHaveBeenCalledWith(100, 1, {
+      expect(messagesService.editMessage).toHaveBeenCalledWith(100, 1, {
         encryptedContent: 'new-cipher',
         content: '[encrypted]',
       });
@@ -744,10 +818,8 @@ describe('ChatMessageService', () => {
         conversation: conv,
         createdAt: new Date(),
       } as unknown as Message;
-      (messagesService as any).findByIdWithConversation = jest
-        .fn()
-        .mockResolvedValue(msg);
-      (messagesService as any).editMessage = jest.fn();
+      messagesService.findByIdWithConversation.mockResolvedValue(msg);
+      messagesService.editMessage.mockResolvedValue(null);
 
       await service.handleEditMessage(
         mockClient as Socket,
@@ -756,7 +828,7 @@ describe('ChatMessageService', () => {
         onlineUsers,
       );
 
-      expect((messagesService as any).editMessage).not.toHaveBeenCalled();
+      expect(messagesService.editMessage).not.toHaveBeenCalled();
       expect(mockClient.emit).toHaveBeenCalledWith('editMessageFailed', {
         messageId: 100,
         reason: 'not_sender',
@@ -771,10 +843,8 @@ describe('ChatMessageService', () => {
         conversation: conv,
         createdAt: new Date(Date.now() - 16 * 60 * 1000),
       } as unknown as Message;
-      (messagesService as any).findByIdWithConversation = jest
-        .fn()
-        .mockResolvedValue(msg);
-      (messagesService as any).editMessage = jest.fn();
+      messagesService.findByIdWithConversation.mockResolvedValue(msg);
+      messagesService.editMessage.mockResolvedValue(null);
 
       await service.handleEditMessage(
         mockClient as Socket,
@@ -783,7 +853,7 @@ describe('ChatMessageService', () => {
         onlineUsers,
       );
 
-      expect((messagesService as any).editMessage).not.toHaveBeenCalled();
+      expect(messagesService.editMessage).not.toHaveBeenCalled();
       expect(mockClient.emit).toHaveBeenCalledWith('editMessageFailed', {
         messageId: 100,
         reason: 'window_expired',
@@ -791,10 +861,8 @@ describe('ChatMessageService', () => {
     });
 
     it('emits editMessageFailed with reason not_found when the message does not exist', async () => {
-      (messagesService as any).findByIdWithConversation = jest
-        .fn()
-        .mockResolvedValue(null);
-      (messagesService as any).editMessage = jest.fn();
+      messagesService.findByIdWithConversation.mockResolvedValue(null);
+      messagesService.editMessage.mockResolvedValue(null);
 
       await service.handleEditMessage(
         mockClient as Socket,
@@ -803,7 +871,7 @@ describe('ChatMessageService', () => {
         onlineUsers,
       );
 
-      expect((messagesService as any).editMessage).not.toHaveBeenCalled();
+      expect(messagesService.editMessage).not.toHaveBeenCalled();
       expect(mockClient.emit).toHaveBeenCalledWith('editMessageFailed', {
         messageId: 100,
         reason: 'not_found',
@@ -819,10 +887,8 @@ describe('ChatMessageService', () => {
         createdAt: new Date(),
         messageType: 'IMAGE',
       } as unknown as Message;
-      (messagesService as any).findByIdWithConversation = jest
-        .fn()
-        .mockResolvedValue(msg);
-      (messagesService as any).editMessage = jest.fn();
+      messagesService.findByIdWithConversation.mockResolvedValue(msg);
+      messagesService.editMessage.mockResolvedValue(null);
 
       await service.handleEditMessage(
         mockClient as Socket,
@@ -831,7 +897,7 @@ describe('ChatMessageService', () => {
         onlineUsers,
       );
 
-      expect((messagesService as any).editMessage).not.toHaveBeenCalled();
+      expect(messagesService.editMessage).not.toHaveBeenCalled();
       expect(mockClient.emit).toHaveBeenCalledWith('editMessageFailed', {
         messageId: 100,
         reason: 'not_text',
