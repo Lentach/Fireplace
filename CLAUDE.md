@@ -5,11 +5,17 @@ alwaysApply: true
 
 # CLAUDE.md — Fireplace
 
-Root memory stays cross-cutting. Frontend-only traps live in `frontend/CLAUDE.md`; backend-only traps live in `backend/CLAUDE.md`. Do not turn this file back into a junk drawer.
+**Source of truth = this root file + the two tier files.** Root is cross-cutting and stays in context — read it before any Fireplace work. The tier files hold the detailed traps and are **not** auto-injected. Read the matching one **once, before your first change in that tier**, then keep it in context — do not re-read it on every edit:
+
+- Changing anything under `frontend/` (Flutter/PWA/client) → read `frontend/CLAUDE.md` first.
+- Changing anything under `backend/` (NestJS/Postgres/server) → read `backend/CLAUDE.md` first.
+- Cross-tier or infra/deploy/docs → this root file is enough.
+
+Keep root cross-cutting: if a fact only matters while editing Flutter or NestJS code, it belongs in the tier file, not here. Do not turn root back into a junk drawer.
 
 ## 1. Non-negotiable workflow
 
-- Read this file before any Fireplace app work. Main agents and spawned subagents must treat it as the project source of truth; for tier work, also read `frontend/CLAUDE.md` or `backend/CLAUDE.md`.
+- Read this root file before any Fireplace app work, and the matching tier file before your first change in that tier (see the header rule). Main agents and spawned subagents both treat these three files as the project source of truth.
 - At session start: read `.cursor/session-summaries/LATEST.md`.
 - At task end: write/update `.cursor/session-summaries/YYYY-MM-DD-session.md` and `.cursor/session-summaries/LATEST.md`. Required summary sections: `# title`, `**Date:**`, `## What was done`, `## Key files`, `## Verification`, `## Notes for next session`. New LATEST entry goes on top; older entries shift to `Previous`/`Earlier`.
 - For multi-step/debug/deploy-sensitive work, use persistent planning files (`task_plan.md`, `findings.md`, `progress.md` or `.planning/<task>/`). Re-read before decisions; log failed attempts.
