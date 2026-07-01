@@ -39,8 +39,41 @@ describe('MessageMapper', () => {
       expiresAt: null,
       disappearAfterSeconds: null,
       tempId: null,
+      reactions: {},
     });
     expect(payload.createdAt).toBeDefined();
+  });
+
+  it('should parse stored reaction JSON into payload reactions', () => {
+    const msg = createMockMessage({
+      reactions: JSON.stringify({
+        '👍': [10, 20],
+        '🔥': [30],
+      }),
+    });
+    const payload = MessageMapper.toPayload(msg);
+    expect(payload.reactions).toEqual({
+      '👍': [10, 20],
+      '🔥': [30],
+    });
+  });
+
+  it('should include link preview metadata for encrypted messages', () => {
+    const msg = createMockMessage({
+      content: '[encrypted]',
+      encryptedContent: '3:base64ciphertext==',
+      linkPreviewUrl: 'https://example.com/article',
+      linkPreviewTitle: 'Example article',
+      linkPreviewImageUrl: 'https://example.com/preview.png',
+    });
+    const payload = MessageMapper.toPayload(msg);
+    expect(payload).toMatchObject({
+      content: '[encrypted]',
+      encryptedContent: '3:base64ciphertext==',
+      linkPreviewUrl: 'https://example.com/article',
+      linkPreviewTitle: 'Example article',
+      linkPreviewImageUrl: 'https://example.com/preview.png',
+    });
   });
 
   it('should use options.conversationId when provided', () => {

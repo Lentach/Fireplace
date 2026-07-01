@@ -65,4 +65,75 @@ describe('RefreshTokensService', () => {
       UnauthorizedException,
     );
   });
+
+  it('consumeAndRotate removes the old row and persists a newly hashed token for the same user', async () => {
+    const oldRow = {
+      id: 'old-token-id',
+      userId: 42,
+      tokenHash: RefreshTokensService.hashToken('old-plain'),
+      expiresAt: new Date(Date.now() + 60_000),
+    } as RefreshToken;
+    repo.findOne.mockResolvedValue(oldRow);
+    repo.save.mockImplementation(async (e: RefreshToken) => e);
+
+    const result = await service.consumeAndRotate('old-plain');
+
+    expect(repo.findOne).toHaveBeenCalledWith({
+      where: { tokenHash: RefreshTokensService.hashToken('old-plain') },
+    });
+    expect(repo.remove).toHaveBeenCalledWith(oldRow);
+    expect(result.userId).toBe(42);
+    expect(result.newPlain).not.toBe('old-plain');
+    expect(repo.save).toHaveBeenCalledTimes(1);
+    const saved = repo.save.mock.calls[0][0] as RefreshToken;
+    expect(saved.userId).toBe(42);
+    expect(saved.tokenHash).toBe(RefreshTokensService.hashToken(result.newPlain));
+    expect(saved.tokenHash).not.toBe(oldRow.tokenHash);
+    expect(saved.expiresAt.getTime()).toBeGreaterThan(Date.now());
+  });
+
+  it('consumeAndRotate removes expired tokens and rejects without issuing a replacement', async () => {
+    const expiredRow = {
+      id: 'expired-token-id',
+      userId: 42,
+      tokenHash: RefreshTokensService.hashToken('expired-plain'),
+      expiresAt: new Date(Date.now() - 1),
+    } as RefreshToken;
+    repo.findOne.mockResolvedValue(expiredRow);
+
+    await expect(service.consumeAndRotate('expired-plain')).rejects.toThrow(
+      new UnauthorizedException('Refresh token expired'),
+    );
+
+    expect(repo.remove).toHaveBeenCalledWith(expiredRow);
+    expect(repo.save).not.toHaveBeenCalled();
+  });
+
+  it('revokeByPlain removes matching tokens and ignores unknown tokens', async () => {
+    const row = {
+      id: 'token-id',
+      userId: 42,
+      tokenHash: RefreshTokensService.hashToken('plain-to-revoke'),
+      expiresAt: new Date(Date.now() + 60_000),
+    } as RefreshToken;
+    repo.findOne.mockResolvedValueOnce(row).mockResolvedValueOnce(null);
+
+    await service.revokeByPlain('plain-to-revoke');
+    await service.revokeByPlain('unknown-plain');
+
+    expect(repo.findOne).toHaveBeenNthCalledWith(1, {
+      where: { tokenHash: RefreshTokensService.hashToken('plain-to-revoke') },
+    });
+    expect(repo.findOne).toHaveBeenNthCalledWith(2, {
+      where: { tokenHash: RefreshTokensService.hashToken('unknown-plain') },
+    });
+    expect(repo.remove).toHaveBeenCalledTimes(1);
+    expect(repo.remove).toHaveBeenCalledWith(row);
+  });
+
+  it('revokeAllForUser deletes refresh sessions by userId', async () => {
+    await service.revokeAllForUser(42);
+
+    expect(repo.delete).toHaveBeenCalledWith({ userId: 42 });
+  });
 });

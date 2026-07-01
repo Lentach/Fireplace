@@ -94,6 +94,49 @@ describe('AuthService', () => {
       });
     });
 
+    it('trims username#tag identifiers, signs a JWT, and creates a refresh token for valid credentials', async () => {
+      usersService.findByUsernameAndTag.mockResolvedValue(mockUser as User);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+
+      const result = await service.login('  testuser # 0427  ', 'ValidPass1');
+
+      expect(usersService.findByUsernameAndTag).toHaveBeenCalledWith(
+        'testuser',
+        '0427',
+      );
+      expect(usersService.findByUsername).not.toHaveBeenCalled();
+      expect(bcrypt.compare).toHaveBeenCalledWith('ValidPass1', 'hashed_password');
+      expect(refreshTokensService.createToken).toHaveBeenCalledWith(1);
+      expect(jwtService.sign).toHaveBeenCalledWith({
+        sub: 1,
+        username: 'testuser',
+        tag: '0427',
+      });
+      expect(result).toEqual({
+        access_token: 'mock_jwt_token',
+        refresh_token: 'mock_refresh_plain',
+      });
+    });
+
+    it('rejects ambiguous bare usernames before comparing passwords', async () => {
+      usersService.findByUsername.mockResolvedValue([
+        mockUser as User,
+        { ...mockUser, id: 2, tag: '9001' } as User,
+      ]);
+
+      await expect(service.login('testuser', 'ValidPass1')).rejects.toThrow(
+        new UnauthorizedException(
+          'Multiple users found, please use username#tag',
+        ),
+      );
+
+      expect(usersService.findByUsername).toHaveBeenCalledWith('testuser');
+      expect(usersService.findByUsernameAndTag).not.toHaveBeenCalled();
+      expect(bcrypt.compare).not.toHaveBeenCalled();
+      expect(refreshTokensService.createToken).not.toHaveBeenCalled();
+      expect(jwtService.sign).not.toHaveBeenCalled();
+    });
+
     it('should throw when user not found', async () => {
       usersService.findByUsername.mockResolvedValue([]);
       await expect(service.login('unknown', 'ValidPass1')).rejects.toThrow(

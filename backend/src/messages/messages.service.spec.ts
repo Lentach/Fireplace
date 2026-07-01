@@ -1,8 +1,19 @@
 import { MessagesService } from './messages.service';
 import { Repository } from 'typeorm';
-import { Message } from './message.entity';
+import { Message, MessageDeliveryStatus } from './message.entity';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Test } from '@nestjs/testing';
+import { MESSAGE_NOT_EXPIRED_SQL } from './message-expiry.util';
+
+type UnreadSummaryQueryBuilder = {
+  innerJoin: jest.Mock;
+  select: jest.Mock;
+  addSelect: jest.Mock;
+  where: jest.Mock;
+  andWhere: jest.Mock;
+  groupBy: jest.Mock;
+  getRawMany: jest.Mock;
+};
 
 describe('MessagesService.findByConversation', () => {
   let service: MessagesService;
@@ -50,7 +61,7 @@ describe('MessagesService.findByConversation', () => {
 
 describe('MessagesService.getUnreadSummaryForUser', () => {
   let service: MessagesService;
-  let qb: any;
+  let qb: UnreadSummaryQueryBuilder;
 
   beforeEach(async () => {
     qb = {
@@ -98,6 +109,35 @@ describe('MessagesService.getUnreadSummaryForUser', () => {
     expect(result.unreadTotal).toBe(0);
     expect(result.unreadConversationIds).toHaveLength(0);
     expect(result.countByConversationId.size).toBe(0);
+  });
+
+  it('applies unread query filters before grouping by conversation', async () => {
+    await service.getUnreadSummaryForUser(42);
+
+    expect(qb.innerJoin).toHaveBeenCalledWith('m.sender', 's');
+    expect(qb.innerJoin).toHaveBeenCalledWith('m.conversation', 'c');
+    expect(qb.where).toHaveBeenCalledWith(
+      '(c.user_one_id = :userId OR c.user_two_id = :userId)',
+      { userId: 42 },
+    );
+    expect(qb.andWhere).toHaveBeenCalledWith('s.id != :userId', { userId: 42 });
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      'm."deliveryStatus" != :status',
+      { status: MessageDeliveryStatus.READ },
+    );
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      MESSAGE_NOT_EXPIRED_SQL,
+      expect.objectContaining({ now: expect.any(Date) }),
+    );
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('"hiddenByUserIds"'),
+      { uid: 42 },
+    );
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      expect.stringContaining('NOT LIKE'),
+      { uid: 42 },
+    );
+    expect(qb.groupBy).toHaveBeenCalledWith('m.conversation_id');
   });
 });
 
