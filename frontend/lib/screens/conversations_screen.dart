@@ -15,6 +15,7 @@ import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/conversation_tile.dart';
 import '../widgets/main_tab_screen_header.dart';
+import '../utils/instant_opaque_route.dart';
 import 'add_or_invitations_screen.dart';
 import 'chat_detail_screen.dart';
 
@@ -83,7 +84,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     } else {
       // Mobile: only navigate; ChatDetailScreen initState will call openConversation (avoids double getMessages)
       Navigator.of(context).push(
-        MaterialPageRoute(
+        instantOpaqueRoute(
           builder: (_) => ChatDetailScreen(conversationId: conversationId),
         ),
       );
@@ -113,7 +114,8 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   Widget build(BuildContext context) {
     return LayoutBuilder(
       builder: (context, constraints) {
-        final isDesktop = constraints.maxWidth >= AppConstants.layoutBreakpointDesktop;
+        final isDesktop =
+            constraints.maxWidth >= AppConstants.layoutBreakpointDesktop;
         if (isDesktop) {
           return _buildDesktopLayout();
         }
@@ -193,8 +195,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   Widget _buildDesktopLayout() {
     final convs = context.watch<ConversationsProvider>();
     final isDark = RpgTheme.isDark(context);
-    final borderColor =
-        FireplaceColors.of(context).convItemBorder;
+    final borderColor = FireplaceColors.of(context).convItemBorder;
 
     return Scaffold(
       body: Row(
@@ -250,8 +251,9 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     final convs = context.watch<ConversationsProvider>();
     final conversations = convs.sortedConversations;
     final isDark = RpgTheme.isDark(context);
-    final mutedColor =
-        isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
+    final mutedColor = isDark
+        ? RpgTheme.mutedDark
+        : RpgTheme.textSecondaryLight;
 
     if (conversations.isEmpty) {
       return Center(
@@ -271,7 +273,9 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                 AppLocalizations.of(context).startNewChatToBegin,
                 style: RpgTheme.bodyFont(
                   fontSize: 13,
-                  color: isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight,
+                  color: isDark
+                      ? RpgTheme.timeColorDark
+                      : RpgTheme.textSecondaryLight,
                 ),
               ),
             ],
@@ -280,15 +284,11 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       );
     }
 
-    final borderColor =
-        FireplaceColors.of(context).convItemBorder;
+    final borderColor = FireplaceColors.of(context).convItemBorder;
     return ListView.separated(
       padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
       itemCount: conversations.length,
-      separatorBuilder: (_, index) => Divider(
-        height: 1,
-        color: borderColor,
-      ),
+      separatorBuilder: (_, index) => Divider(height: 1, color: borderColor),
       itemBuilder: (context, index) {
         final conv = conversations[index];
         final otherUser = convs.getOtherUser(conv);
