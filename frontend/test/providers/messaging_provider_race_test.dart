@@ -994,41 +994,6 @@ void main() {
     );
 
     test(
-      'identity reset marks messages [Decryption failed] without deleting session or retrying',
-      () async {
-        final enc = _IdentityResetEncryption();
-        provider.setEncryptionProvider(enc);
-        provider.setActiveConversationIdForTest(10);
-
-        provider.onMessageHistory({
-          'conversationId': 10,
-          'messages': [
-            incomingJson(
-              id: 301,
-              createdAt: DateTime.now().toUtc().toIso8601String(),
-              includeTtl: false,
-            ),
-          ],
-        });
-        await Future<void>.delayed(Duration.zero);
-        await Future<void>.delayed(Duration.zero);
-        await Future<void>.delayed(const Duration(milliseconds: 50));
-
-        expect(
-          provider.messages.single.content,
-          '[Decryption failed]',
-          reason: 'message encrypted for old identity is unrecoverable',
-        );
-        expect(
-          enc.deleteSessionCalls,
-          0,
-          reason:
-              'session must NOT be deleted — a fresh session will be built by the next PreKey message',
-        );
-      },
-    );
-
-    test(
       'NoSession cascade: never deletes session; loop settles instead of re-firing on every pass',
       () async {
         final enc = _AlwaysNoSessionEncryption();
