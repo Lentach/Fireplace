@@ -107,7 +107,7 @@ describe('ChatMessageService', () => {
   });
 
   describe('handleSendMessage', () => {
-    it('should reject non-Cloudinary mediaUrl and emit error (no message created)', async () => {
+    it('should reject non-allowlisted mediaUrl and emit error (no message created)', async () => {
       const data = {
         recipientId: 2,
         content: '',

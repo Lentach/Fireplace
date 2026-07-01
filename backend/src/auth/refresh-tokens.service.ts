@@ -1,6 +1,6 @@
 import { Injectable, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
-import { Repository, LessThan } from 'typeorm';
+import { Repository } from 'typeorm';
 import { createHash, randomBytes } from 'crypto';
 import { RefreshToken } from './refresh-token.entity';
 
@@ -73,11 +73,4 @@ export class RefreshTokensService {
     await this.refreshRepo.delete({ userId });
   }
 
-  /** Removes expired rows (e.g. orphaned after failed attempts). Optional cron hook. */
-  async deleteExpired(): Promise<number> {
-    const result = await this.refreshRepo.delete({
-      expiresAt: LessThan(new Date()),
-    });
-    return result.affected ?? 0;
-  }
 }

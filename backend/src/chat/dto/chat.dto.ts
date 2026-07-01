@@ -69,7 +69,7 @@ export class SendMessageDto {
     message:
       'mediaUrl must be a valid Cloudinary or self-hosted media URL',
   })
-  mediaUrl?: string; // Cloudinary URL for voice/image
+  mediaUrl?: string; // Validated self-hosted or legacy Cloudinary media URL
 
   @IsOptional()
   @IsNumber()

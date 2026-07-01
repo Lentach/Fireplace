@@ -21,8 +21,8 @@ import 'reaction_chips_row.dart';
 
 /// Full voice-message bubble: outer bubble shell + PlaybackController + WaveformDisplay.
 ///
-/// Extracted from the monolithic voice_message_bubble.dart. Visual output is
-/// identical — only the internal organisation has changed.
+/// Kept as a focused widget so playback, waveform, reactions, and context-menu
+/// shell stay readable without changing the visual output.
 class VoiceMessageContent extends StatelessWidget {
   final MessageModel message;
   final bool isMine;
