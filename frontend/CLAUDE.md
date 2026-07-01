@@ -123,6 +123,7 @@ Most files are discoverable by Glob; this section captures only grouping and the
 ## 5. Screens & Widgets
 
 **Navigation:** AuthGate → AuthScreen OR MainShell (IndexedStack: Conversations, Contacts, Settings). Desktop ≥600px: sidebar+detail.
+- Mobile chat entry routes use `utils/instant_opaque_route.dart` instead of `MaterialPageRoute` (0.0.76). Reason: the default iOS-style horizontal push can visibly freeze halfway on mobile web/PWA, leaving the conversations tab and chat room painted together. Keep chat-entry pushes opaque + zero-duration unless device QA proves the split-screen lag is gone another way. Regression: `test/utils/instant_opaque_route_test.dart`.
 
 **Screen gotchas:**
 - Tabs share `MainTabScreenHeader`: `width: double.infinity`, `kToolbarHeight`, `Row+Expanded` title. Settings uses `Column` + header (not `AppBar`).

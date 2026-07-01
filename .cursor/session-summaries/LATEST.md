@@ -1,6 +1,10 @@
 # Latest session summary
 
-**Date:** 2026-06-28
+**Date:** 2026-06-29
+
+**Topic:** **Chat entry split-screen lag fix (0.0.76).** Investigated the screenshot: old conversations tab + bottom nav were visible under a partially slid-in `ChatDetailScreen`, matching a frozen/default iOS-style `MaterialPageRoute` transition rather than desktop split layout. Added `utils/instant_opaque_route.dart` and switched mobile/chat-entry paths in conversations, contacts, and notification deep-link navigation to opaque zero-duration routes. Added regression `test/utils/instant_opaque_route_test.dart`; route test, notification nav test, and `flutter analyze` passed; `ChatRouteReview` found no blocking issues; ran `graphify update .`. Commit `d6bf1c0` pushed to `origin/fix/chat-entry-instant-route`; PR creation blocked by missing `GH_TOKEN`. → [2026-06-29-session.md](./2026-06-29-session.md)
+
+**Previous:** 2026-06-28
 
 **Topic:** **Auto-review model memory.** Added root memory in `AGENTS.md` and `CLAUDE.md`: auto reviewers, code-reviewers, review subagents, and PR reviewers must use the same model class as the primary agent for the session. No `mini`, cheap, or lower-capability reviewer unless the user explicitly asks for that downgrade. Docs-only change; no tests needed. → [2026-06-28-session.md](./2026-06-28-session.md)
 

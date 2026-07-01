@@ -17,6 +17,7 @@ import '../utils/pending_deep_link_stub.dart'
     if (dart.library.html) '../utils/pending_deep_link_web.dart';
 import '../utils/e2e_diag_log.dart';
 import '../utils/tab_visibility.dart';
+import '../utils/instant_opaque_route.dart';
 import '../services/unread_badge_sync.dart';
 import '../widgets/top_snackbar.dart';
 
@@ -44,7 +45,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     if (kIsWeb) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
-        _unreadBadgeSync = UnreadBadgeSync(context.read<ConversationsProvider>());
+        _unreadBadgeSync = UnreadBadgeSync(
+          context.read<ConversationsProvider>(),
+        );
       });
     }
     WidgetsBinding.instance.addObserver(this);
@@ -130,7 +133,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       builder: (context, friends, convs, _) {
         if (friends.pendingFriendAcceptedByName != null) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
-            final name = context.read<FriendsProvider>().consumePendingFriendAccepted();
+            final name = context
+                .read<FriendsProvider>()
+                .consumePendingFriendAccepted();
             if (name != null && context.mounted) {
               showTopSnackBar(
                 context,
@@ -162,7 +167,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
             } else {
               if (provider.activeConversationId == id) return;
               Navigator.of(context).pushAndRemoveUntil(
-                MaterialPageRoute<void>(
+                instantOpaqueRoute<void>(
                   builder: (_) => ChatDetailScreen(conversationId: id),
                 ),
                 (route) => route.isFirst,
@@ -175,9 +180,14 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     );
   }
 
-  Widget _buildScaffold(BuildContext context, ThemeData theme, ColorScheme colorScheme) {
+  Widget _buildScaffold(
+    BuildContext context,
+    ThemeData theme,
+    ColorScheme colorScheme,
+  ) {
     final isDesktop =
-        MediaQuery.sizeOf(context).width >= AppConstants.layoutBreakpointDesktop;
+        MediaQuery.sizeOf(context).width >=
+        AppConstants.layoutBreakpointDesktop;
     final bottomNavigation = BottomNavigationBar(
       backgroundColor: theme.colorScheme.surface,
       currentIndex: _selectedIndex,
@@ -216,8 +226,9 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       ),
       bottomNavigationBar: SafeArea(
         top: false,
-        minimum:
-            isDesktop ? EdgeInsets.zero : const EdgeInsets.only(bottom: 10),
+        minimum: isDesktop
+            ? EdgeInsets.zero
+            : const EdgeInsets.only(bottom: 10),
         child: bottomNavigation,
       ),
     );
@@ -238,10 +249,7 @@ class _FilledChatBubbleWithLines extends StatelessWidget {
   Widget build(BuildContext context) {
     return CustomPaint(
       size: const Size(24, 24),
-      painter: _ChatBubblePainter(
-        bubbleColor: iconColor,
-        lineColor: lineColor,
-      ),
+      painter: _ChatBubblePainter(bubbleColor: iconColor, lineColor: lineColor),
     );
   }
 }
@@ -251,10 +259,7 @@ class _ChatBubblePainter extends CustomPainter {
   final Color bubbleColor;
   final Color lineColor;
 
-  _ChatBubblePainter({
-    required this.bubbleColor,
-    required this.lineColor,
-  });
+  _ChatBubblePainter({required this.bubbleColor, required this.lineColor});
 
   @override
   void paint(Canvas canvas, Size size) {
