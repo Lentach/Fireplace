@@ -112,7 +112,7 @@ describe('SendMessageDto', () => {
       expect(errors).toHaveLength(0);
     });
 
-    it('should reject non-Cloudinary mediaUrl even with encryptedContent', async () => {
+    it('should reject non-allowlisted mediaUrl even with encryptedContent', async () => {
       const dto = createDto({
         recipientId: 1,
         content: '[encrypted]',
@@ -152,7 +152,7 @@ describe('SendMessageDto', () => {
   });
 
   describe('mediaUrl validation', () => {
-    it('should reject non-Cloudinary URL', async () => {
+    it('should reject non-allowlisted media URL', async () => {
       const dto = createDto({
         recipientId: 1,
         content: '',

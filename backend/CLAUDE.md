@@ -1,87 +1,159 @@
 # CLAUDE.md — Fireplace Backend (NestJS)
 
-Cross-cutting rules, Quick Start, shared wire contracts, and env/config live in
-the root `../CLAUDE.md` (always loaded). This file is auto-loaded by Claude Code
-when you work under `backend/`.
+Root rules, production safety, shared wire contracts, version policy, and env overview live in `../CLAUDE.md`. This file is for NestJS/PostgreSQL/server-specific facts only.
 
----
+## 1. Commands
 
-## 1. Critical Rules & Gotchas
+```bash
+cd backend
+npm ci
+npm run build        # nest build
+npm run start:dev    # nest start --watch
+npm run start:prod   # node dist/main
+npm test             # jest --config jest.config.json
+npm run test:e2e     # jest --config ./test/jest-e2e.json
+```
 
-### TypeORM
-- Always `relations: ['sender', 'receiver']` on friendRequestRepository — without: empty objects/crash
-- Use find-then-remove for friend_requests delete — `.delete()` can't use nested relation conditions
-- Always `new Date(val).getTime()` for expiresAt comparisons — TypeORM returns string or Date
-- **Read-based disappearing messages:** Sends store `disappearAfterSeconds` with `expiresAt = null`. On `markConversationRead`, backend sets `expiresAt = now + disappearAfterSeconds` and emits on `messageDelivered`. Never-read fallback: expire after `createdAt + 86400s`. Grandfathered rows: send-time `expiresAt` only. Shared expiry: `backend/src/messages/message-expiry.util.ts`, frontend `lib/utils/message_expiry.dart`. Hearth Fade UI: `disappearing_timer_sheet.dart`, `hearth_fade_arc.dart`. Ephemeral accent: `RpgTheme.ephemeralAccent` (ember/light, teal/teal). Prod SQL: `ALTER TABLE messages ADD COLUMN "disappearAfterSeconds" integer NULL;`
-- `deliveryStatus` never downgrades — enforced via `DELIVERY_STATUS_ORDER` map
-- `synchronize` enabled only when `NODE_ENV !== 'production'` — no migrations
+Other scripts: `npm run test:watch`, `npm run test:cov`, `npm run test:debug`, `npm run lint` (fixing), `npm run format`.
 
-### Backend
-- `ChatValidationService.validateCanMessage(senderId, recipientId)` — shared blocked+friends check
-- `mediaUrl` must match `MEDIA_URL_REGEX` in `chat.dto.ts` — a Cloudinary upload URL **or** `${MEDIA_BASE_URL}/media/(avatars|msgs)/<file>.<ext>` (anchored, single segment, **no `..`/extra slashes**). Prevents SSRF **and path traversal (H-02, security)**: `mediaUrl` is later turned into a filesystem path and `unlink`ed (delete-for-everyone / block / expiry cron), so the old `…/media/.+` allowed `../../etc/passwd`. Defense in depth: `LocalStorageService.deleteFile` also runs a resolved-path containment check (`path.relative` vs `MEDIA_DIR`) and refuses anything escaping the root. The container also still runs as root (audit L-11). Regression: `chat.dto.spec.ts`, `local-storage.service.spec.ts`.
-- **`getMessages` membership (H-01, security):** `handleGetMessages` loads the conversation and verifies the caller is `userOne`/`userTwo` before serving history (mirrors `handleMarkConversationRead`); non-members get an empty `messageHistory` and the query never runs. `findByConversation`'s `userId` arg is ONLY the deleted-for-me filter, never an authz check — without the membership gate any authenticated user could read any (sequential-id) `conversationId`. Regression: `chat-message.service.spec.ts`.
-- Delete account cascade: key bundles → OTPs → msgs → convs → friend_reqs → user (no entity cascade)
-- `conversationsService.delete()` deletes msgs first (no cascade)
-- Skip server-side link preview when `encryptedContent` present
-- `handleMessageDelivered` verifies caller is recipient (not sender)
-- `handleStartConversation` requires friendship; emits `conversationsList` + `openConversation` to caller only
-- OTP claim atomic: `UPDATE ... WHERE id = (SELECT ... LIMIT 1) RETURNING *`
-- `isBlockedByEither` uses single OR query
-- `_conversationsWithUnread` uses batch (2 queries total, not 2N)
-- `og:image` validated via `isSafeImageUrl` (HTTPS + non-private); IPv6 brackets stripped; relative URLs resolved
-- **Link-preview SSRF:** `fetchPreview` follows redirects **manually** (`redirect: 'manual'`, max 5 hops) and re-runs `isFetchableUrl` (http/https + non-private host) on **every** hop — `fetch`'s default `redirect: 'follow'` would chase a 3xx into a private/metadata host unchecked. Residual (known): a public host whose DNS resolves to a private IP isn't caught — needs resolve-and-pin; tracked for later.
-- WS rate limiting: `WsThrottlerGuard`; `sendMessage` 300/15min; read events 300/15min; `searchUsers` 30/60s. Mock `res` with no-op `header()` for Socket.
-- **Online-socket map (guarded disconnect):** `ChatGateway.onlineUsers` is `Map<userId, socketId>` (one socket/user); `newMessage` delivery is `server.to(onlineUsers.get(recipientId)).emit(...)`, else push fallback. `handleDisconnect` MUST only `onlineUsers.delete(userId)` when `onlineUsers.get(userId) === client.id` — on iOS suspend/resume the device reconnects with a NEW socket while the abandoned OLD socket lingers until its server-side ping timeout (~20s); an **unconditional** delete then evicts the live socket → `onlineUsers.get(recipientId)` is `undefined` → peers' messages silently fall back to push (**"notification arrives but the message never appears live"**, ~20s after each resume). Own sends still echo via `client.emit('messageSent')` (live socket), so only *peer* messages vanish. Regression: `chat.gateway.spec.ts` (stale-socket guard).
-- Pre-key anti-depletion: same requester→target limited to 750ms min interval; tracker pruned TTL 10min + capped 10k entries
-- JWT invalidation after password change: `passwordChangedAt` in `resetPassword`; `JwtStrategy.validate()` rejects `iat <= passwordChangedAt`. Also revokes all refresh tokens.
-- **Pinned message:** `conversations.pinnedMessageId/pinnedAt/pinnedByUserId`. WS `pinMessage/unpinMessage` → `messagePinned/messageUnpinned`. Delete-for-everyone clears pin. Prod SQL: `ALTER TABLE conversations ADD COLUMN "pinnedMessageId" integer NULL;` / `"pinnedAt" timestamp NULL;` / `"pinnedByUserId" integer NULL;`
-- **Reactions:** WS `addReaction`/`removeReaction` `{ messageId, emoji }` (participant-checked in `chat-reaction.service.ts`) → `messagesService.addOrUpdateReaction`/`removeReaction` (stores `messages.reactions` JSON `{emoji:[userId]}`) → emits `reactionUpdated` `{ messageId, conversationId, reactions }` to **both** caller and peer. Frontend: `MessagingActions.addReaction/removeReaction`; listener `ConnectionProvider.on('reactionUpdated')`; driven by the context-menu emoji bar (see frontend/CLAUDE.md).
-- **Edit message:** WS `editMessage` `{ messageId, content:'[encrypted]', encryptedContent }` → `handleEditMessage` (`chat-message.service.ts`): membership + **sender-only** + **15-min window** (`EDIT_WINDOW_MS`, from `createdAt`) → `messagesService.editMessage` swaps `encryptedContent`, stamps `messages.editedAt`, leaves `expiresAt`/`disappearAfterSeconds`/`deliveryStatus` untouched → emits `messageEdited` to both; rejects via `editMessageFailed` `{ messageId, reason }` (`not_sender`/`window_expired`/`not_found`) to the editor only. Text-only, replace-in-place (no history). Throttle 60/15min. Prod SQL: `ALTER TABLE messages ADD COLUMN "editedAt" timestamp NULL;`
-- **Secret Notes ("Anti-Quantum Note"):** self-destructing note shared via link, separate from chat E2E (`secret-notes/`). `POST /notes` (JWT) `{ ciphertext, expiresIn }` → `{ token }` (16-byte hex); `expiresIn` ∈ `{7200,21600,43200}`s (2h/6h/12h, default 6h); `ciphertext` ≤ 65536. `GET /note/:token` (public) → server-rendered HTML landing page; `POST /note/:token/reveal` (public) is **read-once** — atomic `DELETE … WHERE token AND expires_at > NOW() RETURNING ciphertext`. AES-GCM **key lives in the URL fragment** (`#<key>`, never sent to server); server stores only `ciphertext` = `iv_b64:enc_b64`; client decrypts in-browser via WebCrypto. Lazy-delete on expiry + daily 3 AM `deleteExpiredNotes` cron.
-- **Sessions:** JWT TTL 24h. Refresh tokens: 365-day rolling, rotation on each refresh, SHA-256 stored. `POST /auth/logout` revokes token.
-- `GET /media/msgs/:filename` JWT-guarded; avatars public
-- Daily cleanup: expired media deleted before rows removed. `cleanupOrphanedFiles()` daily safety net. **Grace period (I1):** before deleting an unreferenced file the cron `fs.stat`s it and SKIPS any whose mtime is within `MEDIA_CLEANUP_GRACE_MS` (default 15 min) — protects an in-flight upload whose `sendMessage` emit/persist hasn't landed (the 03:00 run can overlap a send); such a file is swept on a later run once it ages past the window and is still unreferenced. Returns a `MediaCleanupSummary` (`scanned/deleted/orphan/expired/graceSkipped`) and logs it: **ORPHAN** = no row references the file (the upload-ok/send-failed gap) vs **EXPIRED** = a row exists but is expired — two queries (non-expired set + all-referenced set) classify each delete. Grace uses **file mtime, not message timestamps**. Regression: `media-cleanup.service.spec.ts`.
-- **E2E upload gap (I1):** upload success + sendMessage failure → orphaned `.bin`. Mitigated, not closed: cron now has a grace period (won't delete in-flight uploads — see above) + per-run orphan/expired/skipped counts to stdout (`docker logs`). Client side: `_encryptAndSend` logs `MEDIA_ORPHAN_LIKELY{tempId}` to `E2eDiagLog` when a send fails AFTER a successful upload (`mediaUrl` obtained, gated non-empty so text/ping never log) — id-only. Ordering (upload→send) + E2E envelope unchanged. **Retry does NOT re-upload** (verified): `retryFailedMessage` reuses the model's `mediaUrl`+`mediaKey`+`mediaIv` and re-runs the E2E send only; the re-upload branch fires only when the original upload never produced a URL (no orphan to multiply).
-- Block user: deletes self-hosted media before conversation/messages (no wait for daily sweep)
-- `GET /health`: `SELECT 1`, returns 503 on failure — no version fields (healthcheck contract)
-- `GET /version` (no auth): `{ version, gitCommit, buildTime }` from env
-- Raw SQL: use `"deliveryStatus"` quoted — PostgreSQL column is camelCase
-- Composite index `idx_messages_conv_created` on `(conversation_id, createdAt DESC)` — manual in prod: `CREATE INDEX CONCURRENTLY idx_messages_conv_created ON messages (conversation_id, "createdAt" DESC);`
-- SSRF: `PRIVATE_IP_RE` blocks 169.254.x, fe80:, RFC-1918, loopback
-- Push: dual-channel FCM + Web Push. Coalesced per `(recipientUserId, conversationId)` ~2.5s debounce, ~10s max. Metadata-only payload: `conversationId`, `unreadCount` (per-conv), `unreadTotal`, `unreadConversationIds`, `senderName` (sender display name for the card title — approved; passed at schedule time from `chat-message.service`, latest wins per burst). Never message text or keys. **Duplicate-count suppression:** flush deletes its bucket BEFORE awaiting the unread summary, so a message landing in that await window is counted in flush #1 yet opens bucket #2 → second card with identical counts ("5 then 5"). `lastSent` tracker skips the send when `(unreadCount, unreadTotal)` are unchanged within 10s (server-side skip is safe — no push ⇒ nothing must be shown); TTL-pruned + 10k cap.
-- `pushClientState` `{ activeConversationId, clientVisible }` — skip push when client visible + active matches. Set `clientVisible=false` on `AppLifecycleState.inactive` (not just paused). `ChatDetailScreen.dispose` clears active id.
-- **Live-receive resume re-assert (iOS PWA):** on background→resume, iOS can dispose `ChatDetailScreen` and/or reconnect the socket while the chat is still on screen; `dispose` → `closeConversation` + `clearMessages` null `activeConversationId`/`_paginationConversationId`, so incoming messages land while no conversation is "active" and `_addMessageToState`'s gate (`msg.conversationId == (activeConversationId ?? _paginationConversationId)`) **drops** them — `updateLastMessage` still runs unconditionally, so the conv list updates but the open chat doesn't; recovery otherwise hinges on a race in `_onSocketReady` (re-fetches only if `activeConversationId != null`). Fix: `ChatDetailScreen.didChangeAppLifecycleState(resumed)` calls `reassertOpenConversationOnResume` (`utils/chat_resume_reassert.dart`) → `openConversation` + `loadCachedMessages` + `getMessages`, restoring active id (+ `pushClientState`) and refetching deterministically. Diagnosed via the temp `E2eDiagLog` `RECV_MSG`/`RECV_QUEUED`/`ADD_TO_STATE{appendedToOpenChat}` entries (in `messaging_provider.events.dart`/`.history.dart`) — **remove those once the fix is confirmed on-device**. Regression: `chat_resume_reassert_test.dart`.
-- Web Push subscriptions in `web_push_subscription`. REST: `POST /users/web-push-subscription`, `DELETE /users/web-push-subscription`.
+Backend test count is documented in root `CLAUDE.md`, not here. CI captures backend Jest output and runs `node scripts/verify-claude-backend-test-counts.mjs --log backend/test-output.txt`.
 
----
+Production backend deploy, on VM only:
 
-## 2. Architecture (backend)
+```bash
+cd ~/fireplace
+./deploy-backend.sh
+```
 
-**Backend:** `ChatGateway` (pure delegation) → 9 domain chat services (+ shared `ChatValidationService`; 10 `chat-*.service.ts` files total). Mappers: `UserMapper`, `MessageMapper`, `ConversationMapper`, `FriendRequestMapper` (all `toPayload()`). DTOs validated by `chat/utils/dto.validator.ts`.
+`deploy-backend.sh` does `git pull --ff-only`, derives `APP_VERSION` from `frontend/pubspec.yaml`, validates `.env`, builds/up's `docker-compose.prod.yml`, waits for Docker health, curls local `/version` and `/health`.
 
----
+## 2. Runtime architecture
 
-## 3. File Location Map
+- `AppModule` imports Config, Schedule, Throttler, TypeORM, and domain modules: auth, media, users, conversations, messages, friends, blocked, FCM tokens, web push subscriptions, key bundles, push notifications, chat, secret notes, health, version.
+- `main.ts` sets trust proxy, helmet, global `ValidationPipe({ whitelist:true })`, CORS, and listens on `PORT || 3000` at `0.0.0.0`.
+- Production logger omits debug/verbose. Production CORS is restricted to `ALLOWED_ORIGINS`; dev allows localhost/127.0.0.1/192.168/10.*.
+- `ChatGateway` authenticates Socket.IO with `handshake.auth.token`, rejects stale JWTs after password change, joins `user:<id>` room, tracks `onlineUsers: Map<userId, socketId>`, and delegates event handlers.
+- Chat service map: `chat-message`, `chat-friend-request`, `chat-conversation`, `chat-key-exchange`, `chat-presence`, `chat-block`, `chat-search`, `chat-reaction`, `chat-link-preview`; shared `ChatValidationService` lives in `ChatValidationModule`.
+- DTO validation uses `validateDto()` and class-validator decorators. Do not bypass it with ad hoc object checks.
 
-Most files are discoverable by Glob; this section captures only grouping and the non-obvious locations.
+## 3. Docker and environment
 
-**Backend (`backend/src/`):** one folder per domain — `auth/`, `users/`, `conversations/`, `messages/`, `media/`, `friends/`, `blocked/`, `key-bundles/`, `fcm-tokens/`, `web-push-subscriptions/`, `push-notifications/`, `secret-notes/` — each with `*.entity.ts` + `*.service.ts` (+ `*.controller.ts` for REST). WebSocket layer: `chat/chat.gateway.ts` (pure delegation) → `chat/services/chat-{message,conversation,friend-request,key-exchange,presence,block,search,reaction,link-preview}.service.ts`. DTOs `chat/dto/chat.dto.ts`; validation `chat/utils/dto.validator.ts` + `chat/services/chat-validation.service.ts`. Auth extras: `refresh-token.entity.ts`, `strategies/jwt.strategy.ts`, `password.constants.ts`. Wiring: `app.module.ts`.
+- Local `docker-compose.yml`: dev only, Node 20 bind mount, `NODE_ENV=development`, command `npm install && npm run start:dev`, Postgres 16 exposed at host `5433`, TypeORM auto-sync enabled by source.
+- Prod `docker-compose.prod.yml`: built image from `backend/Dockerfile`, backend and DB bound to localhost only, `NODE_ENV=production`, persistent `pgdata` and `media_storage`, healthcheck on `http://127.0.0.1:3000/health`.
+- `backend/Dockerfile`: multi-stage build, runtime installs prod deps only, copies `dist`, sets `NODE_ENV=production`, runs `node dist/main.js`. No `USER` directive; container runs as image default/root.
+- `deploy.sh` is legacy/all-in-one; do not use it as backend production deploy path.
 
----
+Backend env source:
 
-## 4. Database Schema
+| Var | Notes |
+|---|---|
+| `NODE_ENV`, `PORT` | `production` changes logger, CORS, TypeORM sync. |
+| `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME` | Postgres; prod DB name is `chatdb`. |
+| `JWT_SECRET` | Required; validation requires at least 32 chars. |
+| `ALLOWED_ORIGINS` | Required in prod. |
+| `MEDIA_BASE_URL`, `MEDIA_DIR` | Self-hosted media URLs and filesystem root. |
+| `MEDIA_CLEANUP_GRACE_MS` | Used by orphan cleanup; default 15 min. Not class-validator validated. |
+| `MEDIA_X_ACCEL_REDIRECT` | Use only when nginx has matching internal media route. |
+| `FIREBASE_SERVICE_ACCOUNT` | Optional FCM; absent means FCM disabled. |
+| `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`, `WEB_PUSH_VAPID_SUBJECT` | Web Push. Public key must match frontend build. |
+| `APP_VERSION`, `GIT_COMMIT`, `BUILD_TIME` | `/version`; set by deploy script. |
 
-Entities (`backend/src/**/*.entity.ts`) are the source of truth — only non-obvious facts live here.
+## 4. Database and schema rules
 
-**Relations:** `users`→`conversations` (userOne/userTwo), `users`→`messages` (sender), `users`→`friend_requests` (sender/receiver), `users`→`blocked_users` (blocker/blocked), `conversations`→`messages`. `messages.replyTo` self-references `messages` (`replyToMessageId`, `eager: false`). `key_bundles` (1/user) + `one_time_pre_keys` (many/user) hold Signal keys. **No FK to `users`:** `key_bundles`/`one_time_pre_keys`/`fcm_tokens`/`web_push_subscription`/`secret_notes` store a plain `userId`/`creatorId` int (no FK) — which is why account-delete cascade is manual (see §1).
-**Eager loading:** `conversations.userOne/userTwo`, `messages.sender`, `friend_requests.sender/receiver`, `blocked_users.blocked` are `eager: true`; `messages.conversation` is `eager: false`.
-**Enums:** `messages.deliveryStatus` `SENDING|SENT|DELIVERED|READ` (never downgrades) and `messages.messageType` `TEXT|PING|IMAGE|VOICE|GIF|FILE` store UPPERCASE values; `friend_requests.status` `PENDING|ACCEPTED|REJECTED` stores **lowercase** (`'pending'`/`'accepted'`/`'rejected'`) — raw-SQL trap.
-**Non-obvious columns:** `messages.hiddenByUserIds` comma-separated string (default `''`); `reactions` nullable JSON `{emoji: [userId]}`; `linkPreviewUrl`/`linkPreviewTitle`/`linkPreviewImageUrl` flat columns (not JSON); `encryptedContent`/`expiresAt`/`disappearAfterSeconds`/`mediaUrl`/`mediaDuration` (int seconds)/`replyToMessageId`/`editedAt` (timestamp, set on edit) nullable. `conversations.disappearingTimer`/`pinnedMessageId`/`pinnedAt`/`pinnedByUserId` nullable. `web_push_subscription.expirationTime` bigint, stringified.
-**Constraints:** `users` unique on `(username, tag)` (username not unique alone). No cascade on User entity. `friend_requests` unique on `(sender, receiver)` (no duplicate A→B); its sender/receiver + `blocked_users` blocker/blocked FKs are CASCADE. `secret_notes.token` unique. `blocked_users` unique on `(blocker_id, blocked_id)`. `refresh_tokens`: UUID PK, unique `token_hash`, FK `user_id` CASCADE.
+Entities in `backend/src/**/*.entity.ts` are the source of truth. There are no real TypeORM migrations in this repo.
 
----
+- TypeORM `synchronize` is `process.env.NODE_ENV !== 'production'`. Dev restart may create columns; prod will not. Every prod schema change needs manual SQL.
+- Manual SQL notes currently relevant:
+  - `messages.disappearAfterSeconds`: `ALTER TABLE messages ADD COLUMN "disappearAfterSeconds" integer NULL;`
+  - message edit: `ALTER TABLE messages ADD COLUMN "editedAt" timestamp NULL;`
+  - pinned messages: `ALTER TABLE conversations ADD COLUMN "pinnedMessageId" integer NULL;` plus `"pinnedAt" timestamp NULL`, `"pinnedByUserId" integer NULL`.
+  - message index exists in entity as `@Index('idx_messages_conv_created', ['conversation', 'createdAt'])`; if prod needs a descending concurrent index, treat `CREATE INDEX CONCURRENTLY ... "createdAt" DESC` as manual DBA/perf work, not generated entity truth.
+- Raw SQL must quote camelCase: `"deliveryStatus"`, `"hiddenByUserIds"`, `"expiresAt"`, `"createdAt"`.
+- `users` unique key is `(username, tag)`, not username alone.
+- `friend_requests.status` stores lowercase values (`pending`, `accepted`, `rejected`), unlike uppercase message enums.
+- No FK to `users`: `key_bundles.userId`, `one_time_pre_keys.userId`, `fcm_token.userId`, `web_push_subscription.userId`, `secret_notes.creatorId`. Manual account-delete cleanup is required.
+- Cascades present: friend request sender/receiver FKs, blocked blocker/blocked FKs, refresh token `user_id`. Conversations/messages do not cascade from users in entities.
+- `messages.reactions` is nullable text containing JSON string `{ emoji: [userId] }`, not a JSON column.
+- `messages.hiddenByUserIds` is comma-separated text for delete-for-me.
 
-## 5. Known Limitations
+## 5. Auth and sessions
 
-- `secret_notes` table auto-creation requires `NODE_ENV !== 'production'`
-- Large files: `chat-message.service.ts`, `chat-friend-request.service.ts`.
+- JWT TTL is 24h. Refresh tokens are 365-day rolling, rotation on each refresh, SHA-256 stored in `refresh_tokens`.
+- `POST /auth/logout` revokes the current refresh token. Password reset sets `passwordChangedAt`, revokes all refresh tokens, and `JwtStrategy.validate()` rejects old tokens with `iat <= passwordChangedAt`.
+- Register/login use username#tag model; tag is a 4-digit string.
+- Delete account deletes profile avatar, FCM tokens, Web Push subscriptions, key bundles/OTPs, conversation media, messages/conversations/friend requests, then user. Refresh tokens are removed by FK cascade.
+
+## 6. Socket.IO contracts and rate limits
+
+- Guarded disconnect is load-bearing: only delete `onlineUsers[userId]` if the disconnecting socket id still matches. iOS resume can connect a new socket before the old one times out.
+- `ChatValidationService.validateCanMessage(senderId, recipientId)` is the shared blocked+friendship gate for messaging/start conversation.
+- `handleStartConversation` requires friendship; emits `openConversation` only to caller and `conversationsList` updates as needed.
+- `handleGetMessages` must load the conversation and verify caller membership before querying history. Non-members receive empty `messageHistory`.
+- `handleMessageDelivered` must verify caller is the recipient, not sender.
+- `handleMarkConversationRead` verifies membership, marks peer-sent messages read, stamps read-based disappearing expiry, and emits `messageDelivered` to sender and reader.
+- `conversationsWithUnread` batches unread, last message, and pinned-message reads; do not reintroduce N+1 list queries.
+
+Gateway throttles are source-truth in `chat.gateway.ts`:
+
+- `sendMessage`, `getMessages`, list fetches: high-volume 300/15min where annotated.
+- Mutating chat actions like clear/delete/edit/pin/timer/start are mostly 60/15min.
+- Reactions: 120/15min. Search/friend/block/key-rebuild actions have lower limits.
+- `messageDelivered`, `markConversationRead`, typing, voice-recording, upload key bundle, accept/reject friend request, and unblock are not all throttled. Do not document a blanket “read events throttled” rule.
+- `WsThrottlerGuard` adapts Nest throttler to sockets with a no-op `res.header()` mock and user-id tracker.
+
+## 7. Messages, disappearing, edit, pin, reactions
+
+- Server never sees plaintext for encrypted messages. Stored `content` is `[encrypted]`; `encryptedContent` holds Signal ciphertext.
+- E2E envelope metadata (`messageType`, `mediaUrl`, `mediaDuration`, `mediaKey`, `mediaIv`) is needed for media cleanup and client display; do not strip it because “server is blind”.
+- Read-based disappearing messages: send stores `disappearAfterSeconds`, leaves `expiresAt=null`; `markConversationRead` sets `expiresAt = now + disappearAfterSeconds`. Never-read fallback expires at `createdAt + DISAPPEARING_MAX_UNREAD_SECONDS`.
+- Expired-message cleanup runs every minute and deletes media files before removing rows.
+- Delivery status never downgrades; enforced via `DELIVERY_STATUS_ORDER`.
+- Delete-for-everyone deletes media before row removal and clears pin if the deleted message was pinned.
+- Edit message: sender-only, TEXT-only, 15-minute window from `createdAt`; stores new ciphertext, stamps `editedAt`, leaves expiry/status untouched; rejects with `editMessageFailed` reason `not_sender`, `window_expired`, `not_text`, or `not_found`.
+- Reactions: WS `addReaction` / `removeReaction` `{ messageId, emoji }`; participant-checked in `ChatReactionService`; `MessagesService` JSON-parse/stringifies the text column; emits `reactionUpdated` to both sides.
+- Pin/unpin validates conversation membership and message state; delete-for-everyone clears the pin.
+
+## 8. Media and cleanup
+
+- `POST /media/upload`: JWT-guarded, 20/min, 21 MiB limit; handles `image`, `voice`, `gif`, `file`, `avatar`. Voice returns `mediaDuration`; file returns `fileName`; avatar validates magic bytes.
+- Avatars are public. `GET /media/msgs/:filename` is JWT-guarded. Filename must be a basename; no path traversal.
+- `LocalStorageService` writes avatars to `avatars/<uuid>.(jpg|png)` and encrypted message blobs to `msgs/<uuid>.bin` under `MEDIA_DIR`.
+- `MEDIA_URL_REGEX` allows either legacy Cloudinary HTTPS upload URLs or exact self-hosted `${MEDIA_BASE_URL}/media/(avatars|msgs)/<filename>.<ext>` with one path segment. This prevents SSRF/path traversal because URLs later become unlink targets.
+- `LocalStorageService.deleteFile()` has a resolved-path containment check against `MEDIA_DIR`. Keep it even if DTO validation looks strict.
+- `MEDIA_X_ACCEL_REDIRECT=true` only works with nginx internal `/internal/media/`; otherwise media responses can become empty 200s.
+- Orphan/expired cleanup runs daily at 03:00. It scans `msgs`, compares non-expired references vs all references, skips files newer than `MEDIA_CLEANUP_GRACE_MS` (default 15 min), logs `scanned/deleted/orphan/expired/graceSkipped`.
+- Block user / delete conversation / clear history delete self-hosted media before deleting DB rows; do not rely on daily cleanup for user-visible destructive actions.
+
+## 9. Push notifications
+
+- Push is dual-channel: FCM for native android/ios tokens, Web Push for PWA subscriptions.
+- Payload is metadata-only: `type`, `conversationId`, `unreadCount`, `unreadTotal`, `unreadConversationIds`, `senderName`. Never include message text or keys.
+- FCM initializes from `FIREBASE_SERVICE_ACCOUNT`; absent means disabled. Web Push initializes from VAPID env; absent means disabled.
+- Coalescer buckets by `(recipientUserId, conversationId)`, debounce 2500 ms, max wait 10000 ms, latest `senderName` wins, and suppresses identical count repeat within 10000 ms.
+- Push scheduling is skipped only when recipient socket exists and `client.data.pushClientState` says client visible + active conversation matches.
+- `pushClientState` is set by WS event and stored on `client.data`; frontend should set `clientVisible=false` on inactive/background.
+- Web Push subscriptions: `POST /users/web-push-subscription`, `DELETE /users/web-push-subscription`.
+- FCM token endpoints: `POST /users/fcm-token`, `DELETE /users/fcm-token`.
+
+## 10. Link previews and SSRF
+
+- `ChatLinkPreviewService` skips encrypted messages and non-TEXT messages.
+- Link preview fetching accepts only http/https public hosts; private/loopback/link-local ranges are blocked by `PRIVATE_IP_RE`.
+- Redirects are manual (`redirect:'manual'`, max 5); every hop is revalidated. Do not switch to default fetch follow.
+- `og:image` must be HTTPS and non-private; relative image URLs are resolved against page URL.
+- Known residual: a public hostname resolving to a private IP is not pinned/blocked by DNS resolution. Do not claim it is.
+
+## 11. Secret Notes
+
+- Secret Notes (“Anti-Quantum Note”) are separate from chat E2E.
+- `POST /notes` (JWT) stores ciphertext and returns a random 16-byte hex token. `expiresIn` is constrained to 2h/6h/12h, default 6h. Ciphertext max 65536 chars.
+- `GET /note/:token` is public server-rendered HTML. AES-GCM key is in URL fragment (`#key`), never sent to server.
+- `POST /note/:token/reveal` is public read-once: atomic `DELETE ... WHERE token AND expires_at > NOW() RETURNING ciphertext`.
+- Expired notes are lazy-deleted on reveal and daily at 03:00.
+
+## 12. REST/media/auth additions checklist
+
+- New REST endpoint: DTO if input is non-trivial, service method, controller route, `JwtAuthGuard` unless deliberately public, throttle if user-triggered, frontend `ApiService` update.
+- New WS event: DTO + service handler + gateway `@SubscribeMessage`, throttle decision, frontend socket emit/listener, provider state update, regression test.
+- New DB field: entity + mapper payload + frontend model + manual prod SQL + test-count update if backend tests change.
+- Any destructive path involving media must delete self-hosted files before row deletion or explicitly rely on the orphan cleanup grace logic.

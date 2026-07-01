@@ -40,12 +40,20 @@ function parseJestLog(text) {
 }
 
 function runBackendTests() {
-  const r = spawnSync('npm', ['test'], {
+  const command =
+    process.platform === 'win32' ? process.env.ComSpec || 'cmd.exe' : 'npm';
+  const args =
+    process.platform === 'win32' ? ['/d', '/s', '/c', 'npm test'] : ['test'];
+  const r = spawnSync(command, args, {
     cwd: join(root, 'backend'),
     encoding: 'utf8',
-    shell: true,
+    maxBuffer: 50 * 1024 * 1024,
   });
   const out = `${r.stdout ?? ''}${r.stderr ?? ''}`;
+  if (r.error) {
+    console.error(r.error);
+    process.exit(1);
+  }
   if (r.status !== 0) {
     console.error(out);
     process.exit(r.status ?? 1);

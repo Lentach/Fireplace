@@ -38,7 +38,7 @@ docker exec -it CONTAINER psql -U postgres -d chatdb -c "
 
 **Expected result:**
 - `content` = `[encrypted]` (placeholder, NOT your plaintext)
-- `encryptedContent` = non-null base64 string (e.g. `3:YWJjZGVm...` — type 3 = PreKeySignalMessage, type 1 = SignalMessage)
+- `encryptedContent` = non-null base64 string prefixed as `"{type}:{base64}"` (type `3` = PreKeySignalMessage, type `2` = Signal/whisper message)
 - `encrypted_len` > 100 (ciphertext is much longer than plaintext)
 
 **If you see your plaintext in `content`** → encryption is NOT being used (bug).
@@ -62,14 +62,14 @@ docker exec -it CONTAINER psql -U postgres -d chatdb -c "
 {
   "recipientId": 2,
   "content": "[encrypted]",
-  "encryptedContent": "3:base64encodedciphertext...",
+  "encryptedContent": "{type}:base64encodedciphertext...",
   "messageType": "TEXT",
   ...
 }
 ```
 
 - `content` must be `[encrypted]`, never your actual message text.
-- `encryptedContent` must be present and look like base64 (alphanumeric + `+/=`).
+- `encryptedContent` must be present and look like `{type}:{base64}` (`3` for first PreKey messages, commonly `2` once a session exists).
 
 **If you see your plaintext in `content` or no `encryptedContent`** → encryption is not applied.
 
@@ -122,7 +122,7 @@ FROM messages
 ORDER BY id DESC 
 LIMIT 5;
 
--- Count encrypted vs plaintext messages (PostgreSQL uses snake_case for columns)
+-- Count encrypted vs plaintext text rows
 SELECT 
   COUNT(*) FILTER (WHERE "encryptedContent" IS NOT NULL) AS encrypted,
   COUNT(*) FILTER (WHERE "encryptedContent" IS NULL AND "messageType" = 'TEXT') AS plaintext
@@ -144,5 +144,5 @@ FROM messages;
 
 ## Scope Reminder
 
-- **Encrypted:** Text messages only.
-- **Not encrypted:** PING, IMAGE, VOICE, DRAWING (per design).
+- **Encrypted:** TEXT payloads and media envelopes (`IMAGE`, `VOICE`, `GIF`, `FILE`) carry Signal ciphertext in `encryptedContent`; self-hosted media blobs are additionally AES-GCM encrypted client-side via `mediaKey`/`mediaIv`.
+- **Not E2E content:** `PING` carries no plaintext message body.

@@ -64,7 +64,7 @@ describe('SendMessageDto mediaUrl validation', () => {
     expect(result.mediaUrl).toBe(data.mediaUrl);
   });
 
-  it('should reject non-Cloudinary mediaUrl', () => {
+  it('should reject non-allowlisted mediaUrl', () => {
     const data = {
       ...validVoicePayload,
       mediaUrl: 'https://evil.com/malicious.mp3',

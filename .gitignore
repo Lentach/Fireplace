@@ -39,6 +39,8 @@ frontend/android/key.properties
 # Local working artifacts — session summaries, specs, plans (kept on disk, not in repo)
 .cursor/session-summaries/
 docs/superpowers/
+.planning/
+.tmp/
 
 # Local audit report — repo is PUBLIC; keep the findings/backlog off the remote
 docs/audit/

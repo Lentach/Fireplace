@@ -10,8 +10,8 @@ import '../providers/friends_provider.dart';
 import '../providers/messaging_provider.dart';
 import '../services/voice_audio_coordinator.dart';
 import '../theme/rpg_theme.dart';
-import '../widgets/chat_message_bubble.dart';
-import '../widgets/chat_input_bar.dart';
+import '../widgets/message/chat_message_bubble.dart';
+import '../widgets/input/chat_input_bar.dart';
 import '../widgets/input/chat_composer_viewport.dart';
 import '../widgets/input/composer_diagnostics_overlay.dart'
     show toggleComposerDiagOverlay;
