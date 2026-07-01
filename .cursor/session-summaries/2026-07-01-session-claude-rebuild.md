@@ -9,11 +9,14 @@
 - Rewrote `frontend/CLAUDE.md` as Flutter/client memory: commands, provider/service architecture, dart-defines/versioning, PWA/push/cache traps, E2E storage, messaging/UI/composer gotchas, tests/localization.
 - Rewrote `backend/CLAUDE.md` as NestJS/server memory: commands, modules, Docker/env, schema rules, auth, Socket.IO, messages/media/push/link-preview/secret-notes contracts.
 - Dropped the planned extra review agent after the user asked not to spawn many agents.
+- Added an explicit Codex bootstrap rule in `AGENTS.md`: every main agent and spawned subagent must read root `CLAUDE.md` before Fireplace app work, plus the relevant tier `CLAUDE.md`; `CLAUDE.md` is the project source of truth.
+- Corrected stale Codex doc pointers from `backend/AGENTS.md` / `frontend/AGENTS.md` and `verify-Codex-backend-test-counts.mjs` to current `CLAUDE.md` tier docs and verifier script.
 
 ## Key files
 - `CLAUDE.md`
 - `frontend/CLAUDE.md`
 - `backend/CLAUDE.md`
+- `AGENTS.md`
 - `.planning/2026-07-01-claude-rebuild/task_plan.md`
 - `.planning/2026-07-01-claude-rebuild/findings.md`
 - `.planning/2026-07-01-claude-rebuild/progress.md`
@@ -22,6 +25,7 @@
 ## Verification
 - `node scripts/verify-claude-backend-test-counts.mjs` → PASS: `CLAUDE.md` matches Jest output (`328 tests, 41 suites`).
 - Python doc content check → PASS after fixing a bad stale-term predicate: required root/frontend/backend facts present; stale false claims absent; line counts `CLAUDE.md` 117, `frontend/CLAUDE.md` 119, `backend/CLAUDE.md` 159.
+- Python Codex bootstrap rule check → PASS: `AGENTS.md` requires root `CLAUDE.md`, requires subagent handoff instruction, points tier docs to `frontend/CLAUDE.md` / `backend/CLAUDE.md`, and uses `verify-claude-backend-test-counts.mjs`.
 
 ## Notes for next session
 - Docs-only change; no app version bump.

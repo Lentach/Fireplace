@@ -9,7 +9,7 @@ Root memory stays cross-cutting. Frontend-only traps live in `frontend/CLAUDE.md
 
 ## 1. Non-negotiable workflow
 
-- Read this file before changes. For tier work, also read `frontend/CLAUDE.md` or `backend/CLAUDE.md`.
+- Read this file before any Fireplace app work. Main agents and spawned subagents must treat it as the project source of truth; for tier work, also read `frontend/CLAUDE.md` or `backend/CLAUDE.md`.
 - At session start: read `.cursor/session-summaries/LATEST.md`.
 - At task end: write/update `.cursor/session-summaries/YYYY-MM-DD-session.md` and `.cursor/session-summaries/LATEST.md`. Required summary sections: `# title`, `**Date:**`, `## What was done`, `## Key files`, `## Verification`, `## Notes for next session`. New LATEST entry goes on top; older entries shift to `Previous`/`Earlier`.
 - For multi-step/debug/deploy-sensitive work, use persistent planning files (`task_plan.md`, `findings.md`, `progress.md` or `.planning/<task>/`). Re-read before decisions; log failed attempts.

@@ -2,7 +2,7 @@
 
 **Date:** 2026-07-01
 
-**Topic:** **CLAUDE.md split rebuild.** Rebuilt the repo instruction split from current source: root `CLAUDE.md` now holds only cross-cutting workflow/architecture/deploy/E2E safety/wire-contract memory; `frontend/CLAUDE.md` holds Flutter/PWA/push/E2E client commands and gotchas; `backend/CLAUDE.md` holds NestJS/Docker/PostgreSQL/schema/Socket.IO/media/push server commands and gotchas. Old split commit `4798f9a` and `2026-06-21-session-claude-md-split.md` were used as structure references only, not copied. Verification: `node scripts/verify-claude-backend-test-counts.mjs` PASS (`328 tests, 41 suites`); Python content check PASS. Docs-only, no version bump, no graphify update. → [2026-07-01-session-claude-rebuild.md](./2026-07-01-session-claude-rebuild.md)
+**Topic:** **CLAUDE.md split rebuild.** Rebuilt the repo instruction split from current source: root `CLAUDE.md` now holds only cross-cutting workflow/architecture/deploy/E2E safety/wire-contract memory; `frontend/CLAUDE.md` holds Flutter/PWA/push/E2E client commands and gotchas; `backend/CLAUDE.md` holds NestJS/Docker/PostgreSQL/schema/Socket.IO/media/push server commands and gotchas. Old split commit `4798f9a` and `2026-06-21-session-claude-md-split.md` were used as structure references only, not copied. Verification: `node scripts/verify-claude-backend-test-counts.mjs` PASS (`328 tests, 41 suites`); Python content check PASS. Added explicit Codex bootstrap rule in `AGENTS.md`: every main agent/subagent reads root `CLAUDE.md` before app work and tier `CLAUDE.md` when relevant. Docs-only, no version bump, no graphify update. → [2026-07-01-session-claude-rebuild.md](./2026-07-01-session-claude-rebuild.md)
 
 **Previous:** 2026-06-29
 
