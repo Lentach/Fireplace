@@ -241,6 +241,67 @@ double computePanelLeft({
   );
 }
 
+/// Max size and screen margin of the in-place expanded reaction picker.
+const kExpandedReactionPickerMaxHeight = 420.0;
+const kExpandedReactionPickerMaxWidth = 360.0;
+const kExpandedReactionPickerMargin = 16.0;
+
+/// Telegram-style in-place expansion: the panel replaces the emoji row and
+/// action panel in the larger free region above or below the (possibly
+/// clamped) bubble highlight. It never covers the bubble, never crosses the
+/// 16px screen margins, and never sits under the keyboard or home indicator.
+///
+/// [bubbleHighlightTop] and [previewHeight] come from
+/// [computeMessageContextMenuLayout] so huge-message clamped previews are
+/// respected. [below] is also the entrance-animation anchor side.
+@visibleForTesting
+({double left, double top, double width, double height, bool below})
+computeExpandedReactionPickerLayout({
+  required Rect bubbleRect,
+  required EdgeInsets viewPadding,
+  required Size viewSize,
+  required double keyboardBottom,
+  required bool isMine,
+  required double bubbleHighlightTop,
+  required double previewHeight,
+}) {
+  const gap = kMessageContextMenuOverlayGap;
+  const margin = kExpandedReactionPickerMargin;
+  final minTop = viewPadding.top + 8;
+  final maxBottom =
+      viewSize.height - math.max(keyboardBottom, viewPadding.bottom) - margin;
+  final highlightTop = bubbleHighlightVisualTop(
+    bubbleHighlightTop: bubbleHighlightTop,
+    layoutBubbleHeight: previewHeight,
+  );
+  final highlightBottom = bubbleHighlightVisualBottom(
+    bubbleHighlightTop: bubbleHighlightTop,
+    layoutBubbleHeight: previewHeight,
+  );
+  final above = highlightTop - gap - minTop;
+  final below = maxBottom - (highlightBottom + gap);
+  final placeBelow = below >= above;
+  final region = math.max(placeBelow ? below : above, 0.0);
+  final height = math.min(kExpandedReactionPickerMaxHeight, region);
+  final top = placeBelow ? highlightBottom + gap : highlightTop - gap - height;
+  final width = math.min(
+    viewSize.width - 2 * margin,
+    kExpandedReactionPickerMaxWidth,
+  );
+  final leftRaw = isMine ? bubbleRect.right - width : bubbleRect.left;
+  final left = math.min(
+    math.max(leftRaw, margin),
+    viewSize.width - margin - width,
+  );
+  return (
+    left: left,
+    top: top,
+    width: width,
+    height: height,
+    below: placeBelow,
+  );
+}
+
 void _dismissMessageContextMenu() {
   _activeMessageContextMenu?.remove();
   _activeMessageContextMenu = null;

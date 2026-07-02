@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/models/message_model.dart';
 import 'package:fireplace/providers/auth_provider.dart';
@@ -372,6 +374,111 @@ void main() {
       expect(layout.emojiTop, viewPadding.top);
       expect(layout.panelTop, layout.emojiTop + emojiHeight + gap);
       expect(layout.bubbleHighlightTop, layout.panelTop + panelHeight + gap);
+    });
+  });
+
+  group('computeExpandedReactionPickerLayout', () {
+    const viewSize = Size(400, 800);
+    const wideViewSize = Size(800, 800);
+    const viewPadding = EdgeInsets.only(top: 40, bottom: 20);
+    const gap = kMessageContextMenuOverlayGap;
+
+    ({double left, double top, double width, double height, bool below})
+    layoutFor({
+      Rect bubbleRect = const Rect.fromLTWH(120, 200, 240, 48),
+      Size size = viewSize,
+      double keyboardBottom = 0,
+      bool isMine = true,
+      double? bubbleHighlightTop,
+      double? previewHeight,
+    }) => computeExpandedReactionPickerLayout(
+      bubbleRect: bubbleRect,
+      viewPadding: viewPadding,
+      viewSize: size,
+      keyboardBottom: keyboardBottom,
+      isMine: isMine,
+      bubbleHighlightTop: bubbleHighlightTop ?? bubbleRect.top,
+      previewHeight: previewHeight ?? bubbleRect.height,
+    );
+
+    test('prefers the larger region below a high bubble and caps at 420', () {
+      final l = layoutFor();
+      expect(l.below, isTrue);
+      final highlightBottom = bubbleHighlightVisualBottom(
+        bubbleHighlightTop: 200,
+        layoutBubbleHeight: 48,
+      );
+      expect(l.top, closeTo(highlightBottom + gap, 0.001));
+      expect(l.height, kExpandedReactionPickerMaxHeight);
+      expect(
+        l.top + l.height,
+        lessThanOrEqualTo(800 - 20 - kExpandedReactionPickerMargin),
+      );
+    });
+
+    test('places above when the bubble sits near the screen bottom', () {
+      final l = layoutFor(bubbleRect: const Rect.fromLTWH(120, 680, 240, 48));
+      expect(l.below, isFalse);
+      final highlightTop = bubbleHighlightVisualTop(
+        bubbleHighlightTop: 680,
+        layoutBubbleHeight: 48,
+      );
+      expect(l.top + l.height, closeTo(highlightTop - gap, 0.001));
+      expect(l.top, greaterThanOrEqualTo(viewPadding.top + 8));
+    });
+
+    test('keyboard inset shrinks the below region', () {
+      final noKb = layoutFor();
+      final withKb = layoutFor(keyboardBottom: 300);
+      expect(withKb.height, lessThan(noKb.height));
+      expect(
+        withKb.top + withKb.height,
+        lessThanOrEqualTo(800 - 300 - kExpandedReactionPickerMargin),
+      );
+    });
+
+    test('width caps at 360 and respects 16px margins on narrow screens', () {
+      final l = layoutFor();
+      expect(l.width, math.min(400 - 32, kExpandedReactionPickerMaxWidth));
+      expect(l.left, greaterThanOrEqualTo(kExpandedReactionPickerMargin));
+      expect(
+        l.left + l.width,
+        lessThanOrEqualTo(400 - kExpandedReactionPickerMargin),
+      );
+    });
+
+    test('own message right-aligns panel to the bubble right edge', () {
+      final l = layoutFor(
+        size: wideViewSize,
+        bubbleRect: const Rect.fromLTWH(300, 200, 240, 48),
+      );
+      expect(l.width, kExpandedReactionPickerMaxWidth);
+      expect(l.left + l.width, closeTo(540, 0.001)); // bubbleRect.right
+    });
+
+    test('received message left-aligns panel to the bubble left edge', () {
+      final l = layoutFor(
+        size: wideViewSize,
+        isMine: false,
+        bubbleRect: const Rect.fromLTWH(300, 200, 240, 48),
+      );
+      expect(l.left, closeTo(300, 0.001)); // bubbleRect.left
+    });
+
+    test('huge-message clamped previewHeight drives the free regions', () {
+      // Raw bubble is 700px tall but the overlay shows a clamped 400px preview
+      // starting at highlight top 150; free space is measured from the preview.
+      final l = layoutFor(
+        bubbleRect: const Rect.fromLTWH(20, 100, 300, 700),
+        bubbleHighlightTop: 150,
+        previewHeight: 400,
+      );
+      final highlightBottom = bubbleHighlightVisualBottom(
+        bubbleHighlightTop: 150,
+        layoutBubbleHeight: 400,
+      );
+      expect(l.below, isTrue);
+      expect(l.top, closeTo(highlightBottom + gap, 0.001));
     });
   });
 
