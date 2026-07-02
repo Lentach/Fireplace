@@ -272,6 +272,7 @@ double computePanelLeft({
 const kExpandedReactionPickerMaxHeight = 420.0;
 const kExpandedReactionPickerMaxWidth = 360.0;
 const kExpandedReactionPickerMargin = 16.0;
+const kExpandedReactionPickerMinHeight = 52.0;
 
 /// Telegram-style in-place expansion: the panel replaces the emoji row and
 /// action panel in the larger free region above or below the (possibly
@@ -309,7 +310,10 @@ computeExpandedReactionPickerLayout({
   final below = maxBottom - (highlightBottom + gap);
   final placeBelow = below >= above;
   final region = math.max(placeBelow ? below : above, 0.0);
-  final height = math.min(kExpandedReactionPickerMaxHeight, region);
+  final height = math.min(
+    kExpandedReactionPickerMaxHeight,
+    math.max(kExpandedReactionPickerMinHeight, region),
+  );
   final top = placeBelow ? highlightBottom + gap : highlightTop - gap - height;
   final width = math.min(
     viewSize.width - 2 * margin,
@@ -366,28 +370,31 @@ void openMessageContextMenu({
   final anchorRect =
       bubbleRenderBox.localToGlobal(Offset.zero) & bubbleRenderBox.size;
   final layoutRect = bubbleRectForContextMenuLayout(anchorRect);
-  final viewPadding = MediaQuery.paddingOf(context);
-  final viewSize = MediaQuery.sizeOf(context);
-  final keyboardBottom = MediaQuery.viewInsetsOf(context).bottom;
+  // Read MediaQuery from the overlay build context below, not here. Keyboard
+  // and visual-viewport metrics can change while the overlay is open on iOS/PWA.
   final canPinOrDeleteForEveryone = message.id > 0;
   final bubblePreview = bubblePreviewBuilder?.call(context);
   var pickerExpanded = false;
 
   _activeMessageContextMenu = OverlayEntry(
     builder: (ctx) {
-      final layout = computeMessageContextMenuLayout(
-        bubbleRect: layoutRect,
-        viewPadding: viewPadding,
-        viewSize: viewSize,
-        keyboardBottom: keyboardBottom,
-        panelHeight:
-            kMessageActionPanelHeightEstimate +
-            (onCopy != null ? kMessageActionPanelRowHeightEstimate : 0),
-      );
-      final bubbleAlign = isMine ? Alignment.centerRight : Alignment.centerLeft;
-
       return StatefulBuilder(
         builder: (ctx, setOverlayState) {
+          final viewPadding = MediaQuery.paddingOf(ctx);
+          final viewSize = MediaQuery.sizeOf(ctx);
+          final keyboardBottom = MediaQuery.viewInsetsOf(ctx).bottom;
+          final layout = computeMessageContextMenuLayout(
+            bubbleRect: layoutRect,
+            viewPadding: viewPadding,
+            viewSize: viewSize,
+            keyboardBottom: keyboardBottom,
+            panelHeight:
+                kMessageActionPanelHeightEstimate +
+                (onCopy != null ? kMessageActionPanelRowHeightEstimate : 0),
+          );
+          final bubbleAlign = isMine
+              ? Alignment.centerRight
+              : Alignment.centerLeft;
           void selectPickerEmoji(String emoji) {
             final alreadyReacted =
                 currentUserId != null &&

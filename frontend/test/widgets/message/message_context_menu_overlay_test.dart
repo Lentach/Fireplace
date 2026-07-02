@@ -436,6 +436,16 @@ void main() {
       );
     });
 
+    test('never returns a height below the suggested-row minimum', () {
+      final l = layoutFor(
+        size: const Size(400, 220),
+        keyboardBottom: 118,
+        bubbleRect: const Rect.fromLTWH(120, 78, 160, 48),
+      );
+
+      expect(l.height, greaterThanOrEqualTo(52));
+    });
+
     test('width caps at 360 and respects 16px margins on narrow screens', () {
       final l = layoutFor();
       expect(l.width, math.min(400 - 32, kExpandedReactionPickerMaxWidth));
@@ -817,9 +827,13 @@ void main() {
     WidgetTester tester, {
     MessageModel? message,
     int currentUserId = 1,
+    bool isMine = true,
+    GlobalKey? bubbleKey,
+    Size bubbleSize = const Size(160, 48),
+    MessageContextMenuBubbleBuilder? bubblePreviewBuilder,
     void Function(String emoji, bool alreadyReacted)? onReaction,
   }) async {
-    final bubbleKey = GlobalKey();
+    final effectiveBubbleKey = bubbleKey ?? GlobalKey();
     final menuMessage = message ?? _msg(id: 10, senderId: 1);
 
     await tester.pumpWidget(
@@ -828,6 +842,7 @@ void main() {
         supportedLocales: AppLocalizations.supportedLocales,
         theme: RpgTheme.themeDataLight,
         home: Scaffold(
+          resizeToAvoidBottomInset: false,
           body: MultiProvider(
             providers: [
               ChangeNotifierProvider<SettingsProvider>(
@@ -839,24 +854,25 @@ void main() {
                 child: GestureDetector(
                   onLongPress: () {
                     final box =
-                        bubbleKey.currentContext!.findRenderObject()
+                        effectiveBubbleKey.currentContext!.findRenderObject()
                             as RenderBox;
                     openMessageContextMenu(
                       context: ctx,
                       message: menuMessage,
                       bubbleRenderBox: box,
-                      isMine: true,
+                      isMine: isMine,
                       currentUserId: currentUserId,
                       onReply: () {},
                       onPin: () {},
                       onDelete: () {},
                       onReaction: onReaction ?? (emoji, alreadyReacted) {},
+                      bubblePreviewBuilder: bubblePreviewBuilder,
                     );
                   },
                   child: SizedBox(
-                    key: bubbleKey,
-                    width: 160,
-                    height: 48,
+                    key: effectiveBubbleKey,
+                    width: bubbleSize.width,
+                    height: bubbleSize.height,
                     child: const Center(child: Text('bubble')),
                   ),
                 ),
@@ -917,6 +933,130 @@ void main() {
       greaterThanOrEqualTo(kExpandedReactionPickerMargin),
     );
   });
+
+  testWidgets('expanded picker recomputes geometry from live keyboard insets', (
+    tester,
+  ) async {
+    tester.view.devicePixelRatio = 1;
+    tester.view.physicalSize = const Size(400, 800);
+    addTearDown(tester.view.resetDevicePixelRatio);
+    addTearDown(tester.view.resetPhysicalSize);
+    addTearDown(tester.view.resetViewInsets);
+
+    final bubbleKey = GlobalKey();
+    await pumpDirectContextMenu(tester, bubbleKey: bubbleKey);
+    await tester.tap(
+      find.byKey(const ValueKey('context-menu-expand-reactions')),
+    );
+    await tester.pumpAndSettle();
+
+    Positioned positioned() => tester.widget<Positioned>(
+      find.byKey(const Key('context-menu-expanded-reaction-picker')),
+    );
+
+    final bubbleRect = bubbleRectForContextMenuLayout(
+      tester.getRect(find.byKey(bubbleKey)),
+    );
+    final viewSize = tester.view.physicalSize / tester.view.devicePixelRatio;
+    final viewPadding = MediaQuery.paddingOf(
+      tester.element(find.byType(Scaffold)),
+    );
+    final baseMenuLayout = computeMessageContextMenuLayout(
+      bubbleRect: bubbleRect,
+      viewPadding: viewPadding,
+      viewSize: viewSize,
+      keyboardBottom: 0,
+      panelHeight: kMessageActionPanelHeightEstimate,
+    );
+    final basePickerLayout = computeExpandedReactionPickerLayout(
+      bubbleRect: bubbleRect,
+      viewPadding: viewPadding,
+      viewSize: viewSize,
+      keyboardBottom: 0,
+      isMine: true,
+      bubbleHighlightTop: baseMenuLayout.bubbleHighlightTop,
+      previewHeight: baseMenuLayout.previewHeight,
+    );
+
+    expect(positioned().top, closeTo(basePickerLayout.top, 0.001));
+    expect(positioned().height, closeTo(basePickerLayout.height, 0.001));
+
+    tester.view.viewInsets = const FakeViewPadding(bottom: 320);
+    await tester.pump();
+
+    final insetMenuLayout = computeMessageContextMenuLayout(
+      bubbleRect: bubbleRect,
+      viewPadding: viewPadding,
+      viewSize: viewSize,
+      keyboardBottom: 320,
+      panelHeight: kMessageActionPanelHeightEstimate,
+    );
+    final insetPickerLayout = computeExpandedReactionPickerLayout(
+      bubbleRect: bubbleRect,
+      viewPadding: viewPadding,
+      viewSize: viewSize,
+      keyboardBottom: 320,
+      isMine: true,
+      bubbleHighlightTop: insetMenuLayout.bubbleHighlightTop,
+      previewHeight: insetMenuLayout.previewHeight,
+    );
+    final insetPositioned = positioned();
+
+    expect(insetPositioned.top, closeTo(insetPickerLayout.top, 0.001));
+    expect(insetPositioned.height, closeTo(insetPickerLayout.height, 0.001));
+    expect(
+      insetPositioned.top! + insetPositioned.height!,
+      lessThanOrEqualTo(800 - 320),
+    );
+
+    tester.view.viewInsets = FakeViewPadding.zero;
+    await tester.pump();
+
+    expect(positioned().top, closeTo(basePickerLayout.top, 0.001));
+    expect(positioned().height, closeTo(basePickerLayout.height, 0.001));
+  });
+
+  testWidgets(
+    'expanded picker keeps bubble highlight while hiding quick row and actions',
+    (tester) async {
+      final message = _msg(id: 10, senderId: 1);
+      await pumpDirectContextMenu(
+        tester,
+        message: message,
+        bubblePreviewBuilder: (_) => MessageContextMenuBubbleHighlight(
+          message: message,
+          isMine: true,
+          maxWidth: 160,
+        ),
+      );
+
+      expect(
+        find.byKey(const Key('context-menu-bubble-highlight')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('context-menu-emoji-bar')), findsOneWidget);
+      expect(
+        find.byKey(const Key('context-menu-action-panel')),
+        findsOneWidget,
+      );
+
+      await tester.tap(
+        find.byKey(const ValueKey('context-menu-expand-reactions')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const Key('context-menu-expanded-reaction-picker')),
+        findsOneWidget,
+      );
+      expect(
+        find.byKey(const Key('context-menu-bubble-highlight')),
+        findsOneWidget,
+      );
+      expect(find.byKey(const Key('context-menu-emoji-bar')), findsNothing);
+      expect(find.byKey(const Key('context-menu-action-panel')), findsNothing);
+    },
+  );
 
   testWidgets('outside tap dismisses the expanded picker overlay', (
     tester,

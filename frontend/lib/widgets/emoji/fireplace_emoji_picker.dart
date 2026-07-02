@@ -37,7 +37,8 @@ class FireplaceEmojiPicker extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
-    final pickerHeight = showSuggestedRow ? height - 52 : height;
+    final hasSuggestedRow = showSuggestedRow && height >= 104;
+    final pickerHeight = hasSuggestedRow ? height - 52 : height;
 
     return Semantics(
       label: l10n.emojiPickerSemantics,
@@ -52,7 +53,7 @@ class FireplaceEmojiPicker extends StatelessWidget {
             child: Column(
               mainAxisSize: MainAxisSize.min,
               children: [
-                if (showSuggestedRow)
+                if (hasSuggestedRow)
                   _SuggestedEmojiRow(onEmojiSelected: onEmojiSelected),
                 Expanded(
                   child: EmojiPicker(

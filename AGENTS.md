@@ -92,7 +92,7 @@ cd frontend && flutter run -d chrome          # Terminal 2: Flutter web
 
 **Edit message** (text only, sender-only, 15-min window): WS `editMessage` `{ messageId, content:'[encrypted]', encryptedContent }` — a NEW ciphertext over the existing Signal session (server stays blind). Server (`handleEditMessage`) replaces stored `encryptedContent`, stamps `editedAt`, leaves `expiresAt`/`disappearAfterSeconds`/`deliveryStatus` untouched → broadcasts `messageEdited` `{ messageId, conversationId, content, encryptedContent, editedAt }` to both; rejects (not sender / past window / not found) via `editMessageFailed` `{ messageId, reason }` to the editor only. Replace-in-place (no edit history). Prod SQL: `ALTER TABLE messages ADD COLUMN "editedAt" timestamp NULL;`
 
-**Frontend reactions/emoji UX:** long-press reaction UI is frontend-only on the existing `addReaction`/`removeReaction` socket contract (`{messageId, emoji}`). The composer and reaction sheet use `emoji_picker_flutter`; text insertion/backspace must stay grapheme-safe via `characters`, not UTF-16 slicing.
+**Frontend reactions/emoji UX:** long-press reaction UI is frontend-only on the existing `addReaction`/`removeReaction` socket contract (`{messageId, emoji}`). Expanded reaction overlays must compute position from live overlay `MediaQuery` values so keyboard/visual-viewport changes do not strand the picker. The composer and reaction sheet use `emoji_picker_flutter`; text insertion/backspace must stay grapheme-safe via `characters`, not UTF-16 slicing.
 
 ---
 
