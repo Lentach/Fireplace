@@ -6,6 +6,28 @@ void main() {
   group('FriendsProvider', () {
     test('onConnect(false) clears all state and blockedByUserIds', () {
       final provider = FriendsProvider();
+      provider.onFriendsList([
+        {'id': 1, 'username': 'alice'},
+      ]);
+      provider.onFriendRequestsList([
+        {
+          'id': 5,
+          'sender': {'id': 2, 'username': 'bob'},
+          'receiver': {'id': 1, 'username': 'alice'},
+          'status': 'pending',
+          'createdAt': '2026-01-01T00:00:00.000Z',
+        },
+      ]);
+      provider.onPendingRequestsCount({'count': 1});
+      provider.onBlockedList([
+        {'id': 3, 'username': 'carol'},
+      ]);
+      provider.onYouWereBlocked({'userId': 42});
+      provider.onSearchUsersResult([
+        {'id': 4, 'username': 'dave'},
+      ]);
+      expect(provider.friends, isNotEmpty);
+      expect(provider.blockedByUserIds, isNotEmpty);
 
       provider.onConnect(false);
 

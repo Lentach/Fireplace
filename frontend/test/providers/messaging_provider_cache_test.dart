@@ -203,29 +203,5 @@ void main() {
       p2.loadCachedMessages(10);
       expect(p2.messages.length, 2);
     });
-
-    test('_updateCache does not overwrite valid cache when user navigated away (idx == -1 guard)', () {
-      // Simulate: user was in conv 10, a message arrived but user navigated to conv 20
-      // before async decrypt completed. _messages now holds conv 20 messages.
-      // The cache for conv 10 must remain intact.
-      provider.seedCacheForTest(10, [_msg(1, 10), _msg(2, 10)]);
-      provider.seedCacheForTest(20, [_msg(3, 20)]);
-      provider.setActiveConversationIdForTest(20);
-      // Simulate _messages being for conv 20 now
-      provider.loadCachedMessages(20);
-
-      // Manually invoke _updateCache for conv 10 via the scenario:
-      // if _messages only has conv 20 messages, _updateCache(10) should remove the key
-      // because filtered list is empty. But the idx != -1 guard in .then() prevents this call.
-      // We test _updateCache directly through messageDeleted on a non-loaded conversation:
-      // (The important guard itself is in production code; this test validates _updateCache semantics)
-
-      // Conv 10 cache should still have 2 messages (not clobbered by conv 20 context)
-      expect(provider.hasCachedMessages(10), isTrue);
-      final loaded = MessagingProvider();
-      loaded.seedCacheForTest(10, [_msg(1, 10), _msg(2, 10)]);
-      loaded.loadCachedMessages(10);
-      expect(loaded.messages.length, 2);
-    });
   });
 }

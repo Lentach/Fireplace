@@ -28,8 +28,16 @@ class GifModel {
 }
 
 class GifService {
+  GifService({http.Client Function()? clientFactory})
+      : _clientFactory = clientFactory ?? http.Client.new;
+
   static const _baseUrl = 'https://api.giphy.com/v1/gifs';
+  final http.Client Function() _clientFactory;
   http.Client? _client;
+
+  /// Test-only override for the compile-time [AppConfig.giphyApiKey].
+  @visibleForTesting
+  String? apiKeyOverride;
 
   void dispose() {
     _client?.close();
@@ -45,13 +53,13 @@ class GifService {
   }
 
   Future<List<GifModel>> _fetch(String url, {String? query, int limit = 25, int offset = 0}) async {
-    final apiKey = AppConfig.giphyApiKey;
+    final apiKey = apiKeyOverride ?? AppConfig.giphyApiKey;
     if (apiKey.isEmpty) {
       debugPrint('[GifService] GIPHY_API_KEY not set. Pass --dart-define=GIPHY_API_KEY=your_key');
       return [];
     }
     _client?.close();
-    _client = http.Client();
+    _client = _clientFactory();
     final params = {
       'api_key': apiKey,
       'limit': '$limit',

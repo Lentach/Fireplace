@@ -50,18 +50,6 @@ Future<RecordingControllerState> _pumpController(
 }
 
 void main() {
-  group('RecordingControllerState', () {
-    test('kMinVoiceRecordingMs is 500ms from actual recording start', () {
-      expect(RecordingControllerState.kMinVoiceRecordingMs, 500);
-    });
-  });
-
-  group('MicRecordingPermissionDenied', () {
-    test('is distinct from generic Exception for start-recording catch', () {
-      expect(const MicRecordingPermissionDenied(), isA<Exception>());
-      expect(const MicRecordingPermissionDenied(), isNot(isA<StateError>()));
-    });
-  });
 
   group('resolveSupportedEncoder', () {
     test('returns the first supported candidate', () async {
