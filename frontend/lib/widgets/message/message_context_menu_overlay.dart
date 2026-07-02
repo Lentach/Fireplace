@@ -433,7 +433,10 @@ void openMessageContextMenu({
                 Positioned(
                   left: 0,
                   right: 0,
-                  bottom: 0,
+                  // Keyboard can be up (long-press does not unfocus the
+                  // composer); keep the sheet above it, live-tracked so it
+                  // follows the keyboard dismissing mid-overlay.
+                  bottom: MediaQuery.viewInsetsOf(ctx).bottom,
                   child: Material(
                     elevation: 16,
                     color: Theme.of(ctx).colorScheme.surface,

@@ -4,6 +4,7 @@ import 'package:fireplace/providers/auth_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
+import 'package:fireplace/widgets/emoji/fireplace_emoji_picker.dart';
 import 'package:fireplace/widgets/message/chat_message_bubble.dart';
 import 'package:fireplace/widgets/message/message_context_menu_bubble_highlight.dart';
 import 'package:fireplace/widgets/message/context_menu_bubble_anchor.dart';
@@ -807,6 +808,48 @@ void main() {
       expect(calls, [(emoji: '🧙', alreadyReacted: true)]);
       expect(find.text('Reply'), findsNothing);
       expect(find.bySemanticsLabel('Emoji picker'), findsNothing);
+    },
+  );
+
+  // Regression: with the keyboard up, the reaction picker sheet must ride on
+  // the live viewInsets.bottom instead of hiding underneath the keyboard.
+  testWidgets(
+    'reaction emoji picker sheet is lifted above the keyboard inset',
+    (tester) async {
+      const inset = 250.0;
+      tester.view.viewInsets = FakeViewPadding(
+        bottom: inset * tester.view.devicePixelRatio,
+      );
+      addTearDown(tester.view.reset);
+
+      await pumpDirectContextMenu(tester);
+      await tester.tap(
+        find.byKey(const ValueKey('context-menu-more-emoji-reactions')),
+      );
+      await tester.pumpAndSettle();
+
+      final sheet = find.byType(FireplaceEmojiPicker);
+      expect(sheet, findsOneWidget);
+
+      final positioned = tester.widget<Positioned>(
+        find.ancestor(of: sheet, matching: find.byType(Positioned)).first,
+      );
+      expect(positioned.bottom, inset);
+
+      // Geometry double-check: the sheet's bottom edge sits exactly at
+      // screen height minus the keyboard inset.
+      final screenHeight =
+          tester.view.physicalSize.height / tester.view.devicePixelRatio;
+      expect(tester.getBottomLeft(sheet).dy, screenHeight - inset);
+
+      // The sheet follows the keyboard dismissing mid-overlay (live inset
+      // read, not the value captured when the menu opened).
+      tester.view.viewInsets = FakeViewPadding.zero;
+      await tester.pumpAndSettle();
+      final settled = tester.widget<Positioned>(
+        find.ancestor(of: sheet, matching: find.byType(Positioned)).first,
+      );
+      expect(settled.bottom, 0);
     },
   );
 
