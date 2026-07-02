@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../theme/rpg_theme.dart';
+import '../../utils/jumbo_emoji.dart';
 import 'message_bubble_inline_time.dart';
 
 /// Sharp bubble replica shown above the blurred scrim during long-press menu.
@@ -148,8 +149,8 @@ class MessageContextMenuBubbleHighlight extends StatelessWidget {
         : FireplaceColors.of(context).theirsMsgBg;
     final textColor = isMine
         ? (themePreference == 'teal'
-            ? Colors.white
-            : (isDark ? RpgTheme.textColor : RpgTheme.textColorLight))
+              ? Colors.white
+              : (isDark ? RpgTheme.textColor : RpgTheme.textColorLight))
         : (isDark ? RpgTheme.textColor : RpgTheme.textColorLight);
     final timeColor = RpgTheme.messageBubbleMetaColor(
       context,
@@ -158,12 +159,14 @@ class MessageContextMenuBubbleHighlight extends StatelessWidget {
     );
     final safeWidth = maxWidth.clamp(48.0, double.infinity);
 
-    final isMediaMessage = message.messageType == MessageType.image ||
+    final isMediaMessage =
+        message.messageType == MessageType.image ||
         message.messageType == MessageType.gif;
     if (isMediaMessage) {
       return _buildMediaHighlight(context, safeWidth, timeColor);
     }
 
+    final displayContent = _displayContent(context);
     Widget body;
     switch (message.messageType) {
       case MessageType.voice:
@@ -184,7 +187,7 @@ class MessageContextMenuBubbleHighlight extends StatelessWidget {
             const SizedBox(width: 8),
             Flexible(
               child: Text(
-                _displayContent(context),
+                displayContent,
                 style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
                 maxLines: 2,
                 overflow: TextOverflow.ellipsis,
@@ -195,7 +198,7 @@ class MessageContextMenuBubbleHighlight extends StatelessWidget {
         break;
       case MessageType.ping:
         body = Text(
-          _displayContent(context),
+          displayContent,
           style: RpgTheme.bodyFont(
             fontSize: 14,
             color: textColor,
@@ -204,13 +207,17 @@ class MessageContextMenuBubbleHighlight extends StatelessWidget {
         );
         break;
       default:
+        // Mirror TextMessageContent's jumbo emoji sizing so the long-press
+        // replica matches the live bubble instead of visibly shrinking.
         body = Text(
-          _displayContent(context),
-          style: RpgTheme.bodyFont(fontSize: 15, color: textColor),
+          displayContent,
+          style: RpgTheme.bodyFont(
+            fontSize: jumboEmojiFontSize(displayContent) ?? 15,
+            color: textColor,
+          ),
         );
     }
 
-    final displayContent = _displayContent(context);
     final useInlineTime = messageBubbleUsesInlineTime(
       message: message,
       displayContent: displayContent,
