@@ -41,8 +41,9 @@ void main() {
 
   // Boundary: the empty-text no-op must still precede any send side effect, so it
   // must NOT arm the collapse guard (the guard is armed only on a real send).
-  testWidgets('empty send is a no-op and does not arm the collapse guard',
-      (tester) async {
+  testWidgets('empty send is a no-op and does not arm the collapse guard', (
+    tester,
+  ) async {
     final state = await _pump(tester);
     state.sendForTest();
     await tester.pump();
@@ -51,12 +52,33 @@ void main() {
 
   // A real send routes through `_send()` (which dispatches to MessagingProvider)
   // and arms the keyboard collapse guard so the viewport keeps the flash guard.
-  testWidgets('non-empty send arms the keyboard collapse guard',
-      (tester) async {
+  testWidgets('non-empty send arms the keyboard collapse guard', (
+    tester,
+  ) async {
     final state = await _pump(tester);
     await tester.enterText(find.byType(TextField), 'hello');
     state.sendForTest();
     await tester.pump();
     expect(composerKeyboardCollapseGuard.value, isTrue);
+  });
+
+  // Regression: the composer emoji picker must mutate the actual draft field,
+  // not just render a detached picker.
+  testWidgets('emoji picker opens and inserts a suggested emoji', (
+    tester,
+  ) async {
+    await _pump(tester);
+    await tester.enterText(find.byType(TextField), 'Fire ');
+
+    await tester.tap(find.byKey(const ValueKey('composer-emoji-toggle')));
+    await tester.pumpAndSettle();
+
+    final suggestedFire = find.byKey(const ValueKey('emoji-picker-option-🔥'));
+    expect(suggestedFire, findsOneWidget);
+
+    await tester.tap(suggestedFire);
+    await tester.pump();
+
+    expect(find.widgetWithText(TextField, 'Fire 🔥'), findsOneWidget);
   });
 }

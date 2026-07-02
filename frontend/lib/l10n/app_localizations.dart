@@ -554,6 +554,42 @@ abstract class AppLocalizations {
   /// **'Wyślij wiadomość'**
   String get chatComposerSendSemantics;
 
+  /// No description provided for @chatComposerEmojiTooltip.
+  ///
+  /// In pl, this message translates to:
+  /// **'Emoji'**
+  String get chatComposerEmojiTooltip;
+
+  /// No description provided for @chatComposerEmojiSemantics.
+  ///
+  /// In pl, this message translates to:
+  /// **'Otwórz panel emoji'**
+  String get chatComposerEmojiSemantics;
+
+  /// No description provided for @emojiPickerSemantics.
+  ///
+  /// In pl, this message translates to:
+  /// **'Panel emoji'**
+  String get emojiPickerSemantics;
+
+  /// No description provided for @emojiPickerSearchHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Szukaj emoji'**
+  String get emojiPickerSearchHint;
+
+  /// No description provided for @emojiPickerNoRecents.
+  ///
+  /// In pl, this message translates to:
+  /// **'Brak ostatnich emoji'**
+  String get emojiPickerNoRecents;
+
+  /// No description provided for @emojiPickerEmojiOptionSemantics.
+  ///
+  /// In pl, this message translates to:
+  /// **'Emoji {emoji}'**
+  String emojiPickerEmojiOptionSemantics(String emoji);
+
   /// No description provided for @chatDateToday.
   ///
   /// In pl, this message translates to:
@@ -1309,6 +1345,30 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Poczekaj na wysłanie wiadomości, aby ją przypiąć'**
   String get messagePinRequiresSentMessage;
+
+  /// No description provided for @messageReactionMoreEmoji.
+  ///
+  /// In pl, this message translates to:
+  /// **'Więcej reakcji emoji'**
+  String get messageReactionMoreEmoji;
+
+  /// No description provided for @messageReactionSelected.
+  ///
+  /// In pl, this message translates to:
+  /// **'wybrana'**
+  String get messageReactionSelected;
+
+  /// No description provided for @messageReactionNotSelected.
+  ///
+  /// In pl, this message translates to:
+  /// **'niewybrana'**
+  String get messageReactionNotSelected;
+
+  /// No description provided for @messageReactionSemantics.
+  ///
+  /// In pl, this message translates to:
+  /// **'Reakcja {emoji}, {state}'**
+  String messageReactionSemantics(Object emoji, Object state);
 
   /// No description provided for @snackbarPinnedMessageUnavailable.
   ///

@@ -15,18 +15,23 @@ import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-MessageModel _msg({required int id, required int senderId, DateTime? createdAt}) => MessageModel(
-      id: id,
-      content: 'hello',
-      senderId: senderId,
-      senderUsername: 'alice',
-      conversationId: 1,
-      createdAt: createdAt ?? DateTime(2026, 5, 23),
-      deliveryStatus: MessageDeliveryStatus.sent,
-      messageType: MessageType.text,
-    );
+MessageModel _msg({
+  required int id,
+  required int senderId,
+  DateTime? createdAt,
+}) => MessageModel(
+  id: id,
+  content: 'hello',
+  senderId: senderId,
+  senderUsername: 'alice',
+  conversationId: 1,
+  createdAt: createdAt ?? DateTime(2026, 5, 23),
+  deliveryStatus: MessageDeliveryStatus.sent,
+  messageType: MessageType.text,
+);
 
-MessageModel _imageMsg({required int id, required int senderId}) => MessageModel(
+MessageModel _imageMsg({required int id, required int senderId}) =>
+    MessageModel(
       id: id,
       content: '',
       senderId: senderId,
@@ -57,7 +62,10 @@ void main() {
         isFalse,
       );
       expect(
-        messageBubbleUsesInlineTime(message: msg, displayContent: 'line\nbreak'),
+        messageBubbleUsesInlineTime(
+          message: msg,
+          displayContent: 'line\nbreak',
+        ),
         isFalse,
       );
     });
@@ -76,9 +84,10 @@ void main() {
         isFalse,
       );
 
-      final withPreview = _msg(id: 1, senderId: 1).copyWith(
-        linkPreviewUrl: 'https://example.com',
-      );
+      final withPreview = _msg(
+        id: 1,
+        senderId: 1,
+      ).copyWith(linkPreviewUrl: 'https://example.com');
       expect(
         messageBubbleUsesInlineTime(message: withPreview, displayContent: 'hi'),
         isFalse,
@@ -86,10 +95,10 @@ void main() {
     });
 
     test('ping uses inline time; image and file do not', () {
-      final ping = _msg(id: 1, senderId: 1).copyWith(
-        messageType: MessageType.ping,
-        content: 'Ping!',
-      );
+      final ping = _msg(
+        id: 1,
+        senderId: 1,
+      ).copyWith(messageType: MessageType.ping, content: 'Ping!');
       expect(
         messageBubbleUsesInlineTime(message: ping, displayContent: 'Ping!'),
         isTrue,
@@ -101,10 +110,10 @@ void main() {
         isFalse,
       );
 
-      final file = _msg(id: 1, senderId: 1).copyWith(
-        messageType: MessageType.file,
-        content: 'doc.pdf',
-      );
+      final file = _msg(
+        id: 1,
+        senderId: 1,
+      ).copyWith(messageType: MessageType.file, content: 'doc.pdf');
       expect(
         messageBubbleUsesInlineTime(message: file, displayContent: 'doc.pdf'),
         isFalse,
@@ -157,7 +166,12 @@ void main() {
     });
 
     test('standard layout keeps equal gaps for tall media bubble (220dp)', () {
-      const bubbleRect = Rect.fromLTWH(120, 400, 200, kMessageMediaBubbleHeight);
+      const bubbleRect = Rect.fromLTWH(
+        120,
+        400,
+        200,
+        kMessageMediaBubbleHeight,
+      );
       final layout = computeMessageContextMenuLayout(
         bubbleRect: bubbleRect,
         viewPadding: viewPadding,
@@ -207,44 +221,51 @@ void main() {
       );
     });
 
-    test('bottom message at y ~720 keeps all four action rows within bounds', () {
-      const bubbleRect = Rect.fromLTWH(16, 720, 200, 40);
-      final maxContentBottom = viewSize.height - 88;
-      final layout = computeMessageContextMenuLayout(
-        bubbleRect: bubbleRect,
-        viewPadding: viewPadding,
-        viewSize: viewSize,
-        keyboardBottom: 0,
-      );
+    test(
+      'bottom message at y ~720 keeps all four action rows within bounds',
+      () {
+        const bubbleRect = Rect.fromLTWH(16, 720, 200, 40);
+        final maxContentBottom = viewSize.height - 88;
+        final layout = computeMessageContextMenuLayout(
+          bubbleRect: bubbleRect,
+          viewPadding: viewPadding,
+          viewSize: viewSize,
+          keyboardBottom: 0,
+        );
 
-      expect(
-        layout.panelTop + panelHeight,
-        lessThanOrEqualTo(maxContentBottom),
-      );
-      expect(layout.panelTop, greaterThanOrEqualTo(viewPadding.top));
-      expect(layout.panelTop + panelHeight - layout.panelTop, panelHeight);
-    });
+        expect(
+          layout.panelTop + panelHeight,
+          lessThanOrEqualTo(maxContentBottom),
+        );
+        expect(layout.panelTop, greaterThanOrEqualTo(viewPadding.top));
+        expect(layout.panelTop + panelHeight - layout.panelTop, panelHeight);
+      },
+    );
 
-    test('Telegram order: emoji top < bubble top < panel top when centered', () {
-      const bubbleRect = Rect.fromLTWH(80, 300, 220, 56);
-      final layout = computeMessageContextMenuLayout(
-        bubbleRect: bubbleRect,
-        viewPadding: viewPadding,
-        viewSize: viewSize,
-        keyboardBottom: 0,
-      );
-      final scalePad = scaleOverflow(bubbleRect.height);
+    test(
+      'Telegram order: emoji top < bubble top < panel top when centered',
+      () {
+        const bubbleRect = Rect.fromLTWH(80, 300, 220, 56);
+        final layout = computeMessageContextMenuLayout(
+          bubbleRect: bubbleRect,
+          viewPadding: viewPadding,
+          viewSize: viewSize,
+          keyboardBottom: 0,
+        );
+        final scalePad = scaleOverflow(bubbleRect.height);
 
-      expect(layout.emojiTop, lessThan(layout.bubbleHighlightTop));
-      expect(
-        layout.panelTop,
-        greaterThan(layout.bubbleHighlightTop + bubbleRect.height + scalePad),
-      );
-    });
+        expect(layout.emojiTop, lessThan(layout.bubbleHighlightTop));
+        expect(
+          layout.panelTop,
+          greaterThan(layout.bubbleHighlightTop + bubbleRect.height + scalePad),
+        );
+      },
+    );
 
     test('larger panelHeight shifts bottom-anchored stack further up', () {
       const bubbleRect = Rect.fromLTWH(16, 680, 200, 40);
-      const fiveRowHeight = kMessageActionPanelHeightEstimate +
+      const fiveRowHeight =
+          kMessageActionPanelHeightEstimate +
           kMessageActionPanelRowHeightEstimate;
       final maxContentBottom = viewSize.height - 88;
 
@@ -266,7 +287,10 @@ void main() {
         fiveRows.panelTop + fiveRowHeight,
         lessThanOrEqualTo(maxContentBottom),
       );
-      expect(fiveRows.bubbleHighlightTop, lessThan(fourRows.bubbleHighlightTop));
+      expect(
+        fiveRows.bubbleHighlightTop,
+        lessThan(fourRows.bubbleHighlightTop),
+      );
     });
 
     test('huge bubble clamps preview and keeps the whole menu on-screen', () {
@@ -303,7 +327,8 @@ void main() {
 
     test('huge bubble with five-row panel also fits on-screen', () {
       const bubbleRect = Rect.fromLTWH(16, 100, 200, 2000);
-      const fiveRowHeight = kMessageActionPanelHeightEstimate +
+      const fiveRowHeight =
+          kMessageActionPanelHeightEstimate +
           kMessageActionPanelRowHeightEstimate;
       final maxContentBottom = viewSize.height - 88;
       final layout = computeMessageContextMenuLayout(
@@ -345,15 +370,17 @@ void main() {
       expect(layout.panelAboveBubble, isTrue);
       expect(layout.emojiTop, viewPadding.top);
       expect(layout.panelTop, layout.emojiTop + emojiHeight + gap);
-      expect(
-        layout.bubbleHighlightTop,
-        layout.panelTop + panelHeight + gap,
-      );
+      expect(layout.bubbleHighlightTop, layout.panelTop + panelHeight + gap);
     });
   });
 
   group('horizontal alignment helpers', () {
-    const viewPadding = EdgeInsets.only(top: 48, left: 16, right: 16, bottom: 34);
+    const viewPadding = EdgeInsets.only(
+      top: 48,
+      left: 16,
+      right: 16,
+      bottom: 34,
+    );
     const viewSize = Size(390, 844);
 
     test('received panel aligns to bubble left edge', () {
@@ -407,7 +434,9 @@ void main() {
     });
   });
 
-  testWidgets('ChatMessageBubble short text has equal top and bottom gaps', (tester) async {
+  testWidgets('ChatMessageBubble short text has equal top and bottom gaps', (
+    tester,
+  ) async {
     final msg = _msg(id: 10, senderId: 1);
     await tester.pumpWidget(
       MaterialApp(
@@ -417,7 +446,9 @@ void main() {
         home: Scaffold(
           body: MultiProvider(
             providers: [
-              ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
+              ChangeNotifierProvider<AuthProvider>(
+                create: (_) => AuthProvider(),
+              ),
               ChangeNotifierProvider<MessagingProvider>(
                 create: (_) => MessagingProvider(),
               ),
@@ -439,15 +470,17 @@ void main() {
     await tester.longPress(find.byType(MessageSwipeWrapper));
     await tester.pumpAndSettle();
 
-    final highlight = tester.renderObject(
-      find.byKey(const Key('context-menu-bubble-highlight')),
-    ) as RenderBox;
-    final emoji = tester.renderObject(
-      find.byKey(const Key('context-menu-emoji-bar')),
-    ) as RenderBox;
-    final panel = tester.renderObject(
-      find.byKey(const Key('context-menu-action-panel')),
-    ) as RenderBox;
+    final highlight =
+        tester.renderObject(
+              find.byKey(const Key('context-menu-bubble-highlight')),
+            )
+            as RenderBox;
+    final emoji =
+        tester.renderObject(find.byKey(const Key('context-menu-emoji-bar')))
+            as RenderBox;
+    final panel =
+        tester.renderObject(find.byKey(const Key('context-menu-action-panel')))
+            as RenderBox;
 
     final highlightTop = highlight.localToGlobal(Offset.zero).dy;
     final layoutHeight = highlight.size.height;
@@ -470,7 +503,9 @@ void main() {
     expect(topGap, closeTo(bottomGap, 1.0));
   });
 
-  testWidgets('ChatMessageBubble image message has equal top and bottom gaps', (tester) async {
+  testWidgets('ChatMessageBubble image message has equal top and bottom gaps', (
+    tester,
+  ) async {
     final msg = _imageMsg(id: 11, senderId: 1);
     await tester.pumpWidget(
       MaterialApp(
@@ -480,7 +515,9 @@ void main() {
         home: Scaffold(
           body: MultiProvider(
             providers: [
-              ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
+              ChangeNotifierProvider<AuthProvider>(
+                create: (_) => AuthProvider(),
+              ),
               ChangeNotifierProvider<MessagingProvider>(
                 create: (_) => MessagingProvider(),
               ),
@@ -502,15 +539,17 @@ void main() {
     await tester.longPress(find.byType(MessageSwipeWrapper));
     await tester.pumpAndSettle();
 
-    final highlight = tester.renderObject(
-      find.byKey(const Key('context-menu-bubble-highlight')),
-    ) as RenderBox;
-    final emoji = tester.renderObject(
-      find.byKey(const Key('context-menu-emoji-bar')),
-    ) as RenderBox;
-    final panel = tester.renderObject(
-      find.byKey(const Key('context-menu-action-panel')),
-    ) as RenderBox;
+    final highlight =
+        tester.renderObject(
+              find.byKey(const Key('context-menu-bubble-highlight')),
+            )
+            as RenderBox;
+    final emoji =
+        tester.renderObject(find.byKey(const Key('context-menu-emoji-bar')))
+            as RenderBox;
+    final panel =
+        tester.renderObject(find.byKey(const Key('context-menu-action-panel')))
+            as RenderBox;
 
     final highlightTop = highlight.localToGlobal(Offset.zero).dy;
     final layoutHeight = highlight.size.height;
@@ -536,7 +575,9 @@ void main() {
     expect(panelTop, greaterThan(highlightVisualBottom));
   });
 
-  testWidgets('ChatMessageBubble long-press opens context menu overlay', (tester) async {
+  testWidgets('ChatMessageBubble long-press opens context menu overlay', (
+    tester,
+  ) async {
     final msg = _msg(id: 10, senderId: 1, createdAt: DateTime.now());
     await tester.pumpWidget(
       MaterialApp(
@@ -546,7 +587,9 @@ void main() {
         home: Scaffold(
           body: MultiProvider(
             providers: [
-              ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
+              ChangeNotifierProvider<AuthProvider>(
+                create: (_) => AuthProvider(),
+              ),
               ChangeNotifierProvider<MessagingProvider>(
                 create: (_) => MessagingProvider(),
               ),
@@ -576,7 +619,9 @@ void main() {
     expect(find.byType(MessageContextMenuBubbleHighlight), findsOneWidget);
   });
 
-  testWidgets('long-press entry shows four action labels and blur scrim', (tester) async {
+  testWidgets('long-press entry shows four action labels and blur scrim', (
+    tester,
+  ) async {
     await tester.pumpWidget(
       MaterialApp(
         localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -607,10 +652,10 @@ void main() {
                       onReaction: (emoji, alreadyReacted) {},
                       bubblePreviewBuilder: (_) =>
                           MessageContextMenuBubbleHighlight(
-                        message: _msg(id: 10, senderId: 1),
-                        isMine: true,
-                        maxWidth: 120,
-                      ),
+                            message: _msg(id: 10, senderId: 1),
+                            isMine: true,
+                            maxWidth: 120,
+                          ),
                     );
                   },
                   child: const Text('bubble'),
@@ -639,7 +684,9 @@ void main() {
         home: Scaffold(
           body: MultiProvider(
             providers: [
-              ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
+              ChangeNotifierProvider<AuthProvider>(
+                create: (_) => AuthProvider(),
+              ),
               ChangeNotifierProvider<MessagingProvider>(
                 create: (_) => MessagingProvider(),
               ),
@@ -659,8 +706,132 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('Copy on text bubble writes clipboard, dismisses menu, confirms',
-      (tester) async {
+  Future<void> pumpDirectContextMenu(
+    WidgetTester tester, {
+    MessageModel? message,
+    int currentUserId = 1,
+    void Function(String emoji, bool alreadyReacted)? onReaction,
+  }) async {
+    final bubbleKey = GlobalKey();
+    final menuMessage = message ?? _msg(id: 10, senderId: 1);
+
+    await tester.pumpWidget(
+      MaterialApp(
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        theme: RpgTheme.themeDataLight,
+        home: Scaffold(
+          body: MultiProvider(
+            providers: [
+              ChangeNotifierProvider<SettingsProvider>(
+                create: (_) => SettingsProvider(),
+              ),
+            ],
+            child: Builder(
+              builder: (ctx) => Center(
+                child: GestureDetector(
+                  onLongPress: () {
+                    final box =
+                        bubbleKey.currentContext!.findRenderObject()
+                            as RenderBox;
+                    openMessageContextMenu(
+                      context: ctx,
+                      message: menuMessage,
+                      bubbleRenderBox: box,
+                      isMine: true,
+                      currentUserId: currentUserId,
+                      onReply: () {},
+                      onPin: () {},
+                      onDelete: () {},
+                      onReaction: onReaction ?? (emoji, alreadyReacted) {},
+                    );
+                  },
+                  child: SizedBox(
+                    key: bubbleKey,
+                    width: 160,
+                    height: 48,
+                    child: const Center(child: Text('bubble')),
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+
+    await tester.longPress(find.text('bubble'));
+    await tester.pumpAndSettle();
+  }
+
+  testWidgets(
+    'reaction row exposes more emoji affordance and keeps menu open while picker opens',
+    (tester) async {
+      await pumpDirectContextMenu(tester);
+
+      final moreEmoji = find.bySemanticsLabel('More emoji reactions');
+      expect(moreEmoji, findsOneWidget);
+
+      await tester.tap(moreEmoji);
+      await tester.pumpAndSettle();
+
+      expect(find.bySemanticsLabel('Emoji picker'), findsOneWidget);
+      expect(find.text('Reply'), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsOneWidget);
+    },
+  );
+
+  testWidgets(
+    'emoji picker selection invokes reaction callback and dismisses menu',
+    (tester) async {
+      final calls = <({String emoji, bool alreadyReacted})>[];
+      final message = _msg(id: 10, senderId: 1).copyWith(
+        reactions: const {
+          '🧙': [1],
+        },
+      );
+
+      await pumpDirectContextMenu(
+        tester,
+        message: message,
+        currentUserId: 1,
+        onReaction: (emoji, alreadyReacted) =>
+            calls.add((emoji: emoji, alreadyReacted: alreadyReacted)),
+      );
+
+      await tester.tap(find.bySemanticsLabel('More emoji reactions'));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('emoji-picker-option-🧙')));
+      await tester.pumpAndSettle();
+
+      expect(calls, [(emoji: '🧙', alreadyReacted: true)]);
+      expect(find.text('Reply'), findsNothing);
+      expect(find.bySemanticsLabel('Emoji picker'), findsNothing);
+    },
+  );
+
+  testWidgets(
+    'selected quick reaction is announced as selected for current user',
+    (tester) async {
+      final message = _msg(id: 10, senderId: 1).copyWith(
+        reactions: const {
+          '🔥': [1],
+        },
+      );
+
+      await pumpDirectContextMenu(tester, message: message, currentUserId: 1);
+
+      expect(find.bySemanticsLabel('Reaction 🔥, selected'), findsOneWidget);
+      expect(
+        find.bySemanticsLabel('Reaction 👍, not selected'),
+        findsOneWidget,
+      );
+    },
+  );
+
+  testWidgets('Copy on text bubble writes clipboard, dismisses menu, confirms', (
+    tester,
+  ) async {
     final calls = <MethodCall>[];
     tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
       SystemChannels.platform,
@@ -669,8 +840,12 @@ void main() {
         return null;
       },
     );
-    addTearDown(() => tester.binding.defaultBinaryMessenger
-        .setMockMethodCallHandler(SystemChannels.platform, null));
+    addTearDown(
+      () => tester.binding.defaultBinaryMessenger.setMockMethodCallHandler(
+        SystemChannels.platform,
+        null,
+      ),
+    );
 
     await pumpBubble(tester, _msg(id: 10, senderId: 1));
     await tester.longPress(find.byType(MessageSwipeWrapper));
@@ -680,8 +855,9 @@ void main() {
     await tester.tap(find.text('Copy'));
     await tester.pump();
 
-    final setData =
-        calls.where((c) => c.method == 'Clipboard.setData').toList();
+    final setData = calls
+        .where((c) => c.method == 'Clipboard.setData')
+        .toList();
     expect(setData, hasLength(1));
     expect((setData.single.arguments as Map)['text'], 'hello');
     expect(find.text('Reply'), findsNothing); // menu dismissed
@@ -798,7 +974,9 @@ void main() {
     expect(find.text('Reply'), findsOneWidget);
   });
 
-  testWidgets('huge message: menu fully on-screen and Copy tappable', (tester) async {
+  testWidgets('huge message: menu fully on-screen and Copy tappable', (
+    tester,
+  ) async {
     final bubbleKey = GlobalKey();
     var copied = false;
 
@@ -818,8 +996,9 @@ void main() {
               builder: (ctx) => Center(
                 child: GestureDetector(
                   onLongPress: () {
-                    final box = bubbleKey.currentContext!.findRenderObject()
-                        as RenderBox;
+                    final box =
+                        bubbleKey.currentContext!.findRenderObject()
+                            as RenderBox;
                     openMessageContextMenu(
                       context: ctx,
                       message: _msg(id: 10, senderId: 1),
@@ -852,14 +1031,14 @@ void main() {
     await tester.longPressAt(const Offset(400, 100));
     await tester.pumpAndSettle();
 
-    final viewHeight = tester.view.physicalSize.height /
-        tester.view.devicePixelRatio;
-    final panel = tester.renderObject(
-      find.byKey(const Key('context-menu-action-panel')),
-    ) as RenderBox;
-    final emoji = tester.renderObject(
-      find.byKey(const Key('context-menu-emoji-bar')),
-    ) as RenderBox;
+    final viewHeight =
+        tester.view.physicalSize.height / tester.view.devicePixelRatio;
+    final panel =
+        tester.renderObject(find.byKey(const Key('context-menu-action-panel')))
+            as RenderBox;
+    final emoji =
+        tester.renderObject(find.byKey(const Key('context-menu-emoji-bar')))
+            as RenderBox;
 
     final panelTop = panel.localToGlobal(Offset.zero).dy;
     expect(panelTop, greaterThanOrEqualTo(0));
@@ -872,7 +1051,9 @@ void main() {
     expect(find.text('Reply'), findsNothing); // menu dismissed
   });
 
-  testWidgets('rendered gaps match overlay constant with scale overflow', (tester) async {
+  testWidgets('rendered gaps match overlay constant with scale overflow', (
+    tester,
+  ) async {
     final bubbleKey = GlobalKey();
     final msg = _msg(id: 10, senderId: 1);
 
@@ -900,10 +1081,10 @@ void main() {
                     onReaction: (_, _) {},
                     bubblePreviewBuilder: (_) =>
                         MessageContextMenuBubbleHighlight(
-                      message: msg,
-                      isMine: true,
-                      maxWidth: 200,
-                    ),
+                          message: msg,
+                          isMine: true,
+                          maxWidth: 200,
+                        ),
                   );
                 },
                 child: SizedBox(
@@ -922,15 +1103,17 @@ void main() {
     await tester.longPress(find.byKey(bubbleKey));
     await tester.pumpAndSettle();
 
-    final highlight = tester.renderObject(
-      find.byKey(const Key('context-menu-bubble-highlight')),
-    ) as RenderBox;
-    final emoji = tester.renderObject(
-      find.byKey(const Key('context-menu-emoji-bar')),
-    ) as RenderBox;
-    final panel = tester.renderObject(
-      find.byKey(const Key('context-menu-action-panel')),
-    ) as RenderBox;
+    final highlight =
+        tester.renderObject(
+              find.byKey(const Key('context-menu-bubble-highlight')),
+            )
+            as RenderBox;
+    final emoji =
+        tester.renderObject(find.byKey(const Key('context-menu-emoji-bar')))
+            as RenderBox;
+    final panel =
+        tester.renderObject(find.byKey(const Key('context-menu-action-panel')))
+            as RenderBox;
 
     final layoutHeight = 58 - kContextMenuAnchorBottomMargin;
     final highlightTop = highlight.localToGlobal(Offset.zero).dy;

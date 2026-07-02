@@ -6,7 +6,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
 # App version: semver only (0.0.1, 0.0.2, 0.0.3, â€¦). Bump PATCH by +1 on each release (see .cursor/rules/version-bump.mdc).
 # Do not add a +suffix here â€” that is Flutter build metadata, not our user-visible version.
-version: 0.0.76
+version: 0.0.77
 
 environment:
   sdk: ^3.10.7
@@ -52,6 +52,8 @@ dependencies:
   flutter_local_notifications: ^21.0.0
   flutter_web_plugins:
     sdk: flutter
+  emoji_picker_flutter: ^4.4.0
+  characters: ^1.4.1
 
 dependency_overrides:
   record_linux: ^1.3.0

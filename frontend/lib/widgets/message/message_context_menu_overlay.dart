@@ -3,6 +3,7 @@ import 'dart:ui';
 
 import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
+import '../emoji/fireplace_emoji_picker.dart';
 import '../../models/message_model.dart';
 import '../top_snackbar.dart';
 import 'context_menu_bubble_anchor.dart';
@@ -42,10 +43,7 @@ Rect bubbleRectForContextMenuLayout(Rect globalAnchorRect) {
     globalAnchorRect.left,
     globalAnchorRect.top,
     globalAnchorRect.width,
-    math.max(
-      0,
-      globalAnchorRect.height - kContextMenuAnchorBottomMargin,
-    ),
+    math.max(0, globalAnchorRect.height - kContextMenuAnchorBottomMargin),
   );
 }
 
@@ -54,9 +52,7 @@ Rect bubbleRectForContextMenuLayout(Rect globalAnchorRect) {
 double bubbleHighlightVisualTop({
   required double bubbleHighlightTop,
   required double layoutBubbleHeight,
-}) =>
-    bubbleHighlightTop -
-    bubbleHighlightScaleOverflow(layoutBubbleHeight);
+}) => bubbleHighlightTop - bubbleHighlightScaleOverflow(layoutBubbleHeight);
 
 /// Visual bottom of the scaled highlight replica (global coordinates).
 @visibleForTesting
@@ -102,7 +98,8 @@ typedef _ContextMenuStackLayout = ({
   double bubbleHighlightTop,
   bool panelAboveBubble,
   double previewHeight,
-}) computeMessageContextMenuLayout({
+})
+computeMessageContextMenuLayout({
   required Rect bubbleRect,
   required EdgeInsets viewPadding,
   required Size viewSize,
@@ -121,8 +118,10 @@ typedef _ContextMenuStackLayout = ({
   // emoji → preview → panel stack vertically instead.
   final availableForBubble =
       maxContentBottom - minTop - emojiHeight - panelHeight - 2 * gap;
-  final maxPreviewHeight =
-      math.max(48.0, availableForBubble / _kElevatedBubbleScale);
+  final maxPreviewHeight = math.max(
+    48.0,
+    availableForBubble / _kElevatedBubbleScale,
+  );
   if (bubbleRect.height > maxPreviewHeight) {
     final previewHeight = maxPreviewHeight;
     final scalePad = bubbleHighlightScaleOverflow(previewHeight);
@@ -152,7 +151,8 @@ typedef _ContextMenuStackLayout = ({
     );
     return (
       bubbleHighlightTop: bubbleTop,
-      emojiTop: bubbleHighlightVisualTop(
+      emojiTop:
+          bubbleHighlightVisualTop(
             bubbleHighlightTop: bubbleTop,
             layoutBubbleHeight: bubbleHeight,
           ) -
@@ -179,9 +179,7 @@ typedef _ContextMenuStackLayout = ({
 
   final panelBottom = stack.panelTop + panelHeight;
   if (panelBottom > maxContentBottom) {
-    stack = standardStack(
-      bubbleRect.top - (panelBottom - maxContentBottom),
-    );
+    stack = standardStack(bubbleRect.top - (panelBottom - maxContentBottom));
   }
 
   if (stack.emojiTop < minTop) {
@@ -221,8 +219,7 @@ double computeEmojiBarLeft({
   required bool isMine,
   required double emojiBarWidth,
 }) {
-  final rawLeft =
-      isMine ? bubbleRect.right - emojiBarWidth : bubbleRect.left;
+  final rawLeft = isMine ? bubbleRect.right - emojiBarWidth : bubbleRect.left;
   return rawLeft.clamp(
     viewPadding.left,
     viewSize.width - viewPadding.right - emojiBarWidth,
@@ -251,7 +248,8 @@ void _dismissMessageContextMenu() {
 
 void dismissMessageContextMenu() => _dismissMessageContextMenu();
 
-typedef MessageContextMenuBubbleBuilder = Widget Function(BuildContext overlayContext);
+typedef MessageContextMenuBubbleBuilder =
+    Widget Function(BuildContext overlayContext);
 
 void openMessageContextMenu({
   required BuildContext context,
@@ -270,15 +268,15 @@ void openMessageContextMenu({
   _dismissMessageContextMenu();
   final overlay = Overlay.of(context);
   final l10n = AppLocalizations.of(context);
-  final anchorRect = bubbleRenderBox.localToGlobal(Offset.zero) &
-      bubbleRenderBox.size;
+  final anchorRect =
+      bubbleRenderBox.localToGlobal(Offset.zero) & bubbleRenderBox.size;
   final layoutRect = bubbleRectForContextMenuLayout(anchorRect);
   final viewPadding = MediaQuery.paddingOf(context);
   final viewSize = MediaQuery.sizeOf(context);
   final keyboardBottom = MediaQuery.viewInsetsOf(context).bottom;
   final canPinOrDeleteForEveryone = message.id > 0;
-  final bubblePreview =
-      bubblePreviewBuilder?.call(context);
+  final bubblePreview = bubblePreviewBuilder?.call(context);
+  var pickerOpen = false;
 
   _activeMessageContextMenu = OverlayEntry(
     builder: (ctx) {
@@ -287,138 +285,172 @@ void openMessageContextMenu({
         viewPadding: viewPadding,
         viewSize: viewSize,
         keyboardBottom: keyboardBottom,
-        panelHeight: kMessageActionPanelHeightEstimate +
+        panelHeight:
+            kMessageActionPanelHeightEstimate +
             (onCopy != null ? kMessageActionPanelRowHeightEstimate : 0),
       );
-      final bubbleAlign =
-          isMine ? Alignment.centerRight : Alignment.centerLeft;
+      final bubbleAlign = isMine ? Alignment.centerRight : Alignment.centerLeft;
 
-      return Stack(
-        children: [
-          Positioned.fill(
-            child: GestureDetector(
-              onTap: dismissMessageContextMenu,
-              behavior: HitTestBehavior.opaque,
-              child: ClipRect(
-                child: BackdropFilter(
-                  filter: ImageFilter.blur(
-                    sigmaX: _kScrimBlurSigma,
-                    sigmaY: _kScrimBlurSigma,
-                  ),
-                  child: ColoredBox(
-                    color: Colors.black.withValues(alpha: 0.45),
+      return StatefulBuilder(
+        builder: (ctx, setOverlayState) {
+          void selectPickerEmoji(String emoji) {
+            final alreadyReacted =
+                currentUserId != null &&
+                (message.reactions[emoji]?.contains(currentUserId) ?? false);
+            onReaction(emoji, alreadyReacted);
+            dismissMessageContextMenu();
+          }
+
+          return Stack(
+            children: [
+              Positioned.fill(
+                child: GestureDetector(
+                  onTap: dismissMessageContextMenu,
+                  behavior: HitTestBehavior.opaque,
+                  child: ClipRect(
+                    child: BackdropFilter(
+                      filter: ImageFilter.blur(
+                        sigmaX: _kScrimBlurSigma,
+                        sigmaY: _kScrimBlurSigma,
+                      ),
+                      child: ColoredBox(
+                        color: Colors.black.withValues(alpha: 0.45),
+                      ),
+                    ),
                   ),
                 ),
               ),
-            ),
-          ),
-          if (bubblePreview != null)
-            Positioned(
-              key: const Key('context-menu-bubble-highlight'),
-              left: layoutRect.left,
-              top: layout.bubbleHighlightTop,
-              width: layoutRect.width,
-              child: IgnorePointer(
-                child: Transform.scale(
-                  scale: _kElevatedBubbleScale,
-                  alignment: Alignment.center,
-                  child: layout.previewHeight < layoutRect.height - 0.5
-                      // Huge bubble: crop the replica top-aligned to the
-                      // clamped height with a fade at the cut edge (the full
-                      // message stays visible under the blur scrim).
-                      ? SizedBox(
-                          width: layoutRect.width,
-                          height: layout.previewHeight,
-                          child: ShaderMask(
-                            shaderCallback: (rect) => const LinearGradient(
-                              begin: Alignment.topCenter,
-                              end: Alignment.bottomCenter,
-                              colors: [
-                                Colors.white,
-                                Colors.white,
-                                Colors.transparent,
-                              ],
-                              stops: [0.0, 0.85, 1.0],
-                            ).createShader(rect),
-                            blendMode: BlendMode.dstIn,
-                            child: ClipRect(
-                              child: OverflowBox(
-                                alignment: Alignment.topCenter,
-                                minHeight: layoutRect.height,
-                                maxHeight: layoutRect.height,
-                                child: SizedBox(
-                                  width: layoutRect.width,
-                                  height: layoutRect.height,
-                                  child: bubblePreview,
+              if (bubblePreview != null)
+                Positioned(
+                  key: const Key('context-menu-bubble-highlight'),
+                  left: layoutRect.left,
+                  top: layout.bubbleHighlightTop,
+                  width: layoutRect.width,
+                  child: IgnorePointer(
+                    child: Transform.scale(
+                      scale: _kElevatedBubbleScale,
+                      alignment: Alignment.center,
+                      child: layout.previewHeight < layoutRect.height - 0.5
+                          // Huge bubble: crop the replica top-aligned to the
+                          // clamped height with a fade at the cut edge (the full
+                          // message stays visible under the blur scrim).
+                          ? SizedBox(
+                              width: layoutRect.width,
+                              height: layout.previewHeight,
+                              child: ShaderMask(
+                                shaderCallback: (rect) => const LinearGradient(
+                                  begin: Alignment.topCenter,
+                                  end: Alignment.bottomCenter,
+                                  colors: [
+                                    Colors.white,
+                                    Colors.white,
+                                    Colors.transparent,
+                                  ],
+                                  stops: [0.0, 0.85, 1.0],
+                                ).createShader(rect),
+                                blendMode: BlendMode.dstIn,
+                                child: ClipRect(
+                                  child: OverflowBox(
+                                    alignment: Alignment.topCenter,
+                                    minHeight: layoutRect.height,
+                                    maxHeight: layoutRect.height,
+                                    child: SizedBox(
+                                      width: layoutRect.width,
+                                      height: layoutRect.height,
+                                      child: bubblePreview,
+                                    ),
+                                  ),
                                 ),
                               ),
+                            )
+                          : SizedBox(
+                              width: layoutRect.width,
+                              height: layoutRect.height,
+                              child: bubblePreview,
                             ),
-                          ),
-                        )
-                      : SizedBox(
-                          width: layoutRect.width,
-                          height: layoutRect.height,
-                          child: bubblePreview,
-                        ),
+                    ),
+                  ),
+                ),
+              Positioned(
+                key: const Key('context-menu-emoji-bar'),
+                top: layout.emojiTop,
+                left: isMine ? null : layoutRect.left,
+                right: isMine ? viewSize.width - layoutRect.right : null,
+                child: _ContextMenuReactionEmojiBar(
+                  message: message,
+                  currentUserId: currentUserId,
+                  onReaction: onReaction,
+                  onMoreEmoji: () => setOverlayState(() {
+                    pickerOpen = true;
+                  }),
                 ),
               ),
-            ),
-          Positioned(
-            key: const Key('context-menu-emoji-bar'),
-            top: layout.emojiTop,
-            left: isMine ? null : layoutRect.left,
-            right: isMine ? viewSize.width - layoutRect.right : null,
-            child: _ContextMenuReactionEmojiBar(
-              message: message,
-              currentUserId: currentUserId,
-              onReaction: onReaction,
-            ),
-          ),
-          Positioned(
-            key: const Key('context-menu-action-panel'),
-            top: layout.panelTop,
-            left: layoutRect.left,
-            width: layoutRect.width,
-            child: Align(
-              alignment: bubbleAlign,
-              child: MessageActionPanel(
-                isMine: isMine,
-                canPinOrDeleteForEveryone: canPinOrDeleteForEveryone,
-                onReply: () {
-                  dismissMessageContextMenu();
-                  onReply();
-                },
-                onCopy: onCopy == null
-                    ? null
-                    : () {
-                        dismissMessageContextMenu();
-                        onCopy();
-                      },
-                onEdit: onEdit == null
-                    ? null
-                    : () {
-                        dismissMessageContextMenu();
-                        onEdit();
-                      },
-                onPin: () {
-                  dismissMessageContextMenu();
-                  if (message.id <= 0) {
-                    showTopSnackBar(
-                      context,
-                      l10n.messagePinRequiresSentMessage,
-                    );
-                  } else {
-                    onPin();
-                  }
-                },
-                onDelete: () {
-                  dismissMessageContextMenu();
-                  onDelete();
-                },
+              Positioned(
+                key: const Key('context-menu-action-panel'),
+                top: layout.panelTop,
+                left: layoutRect.left,
+                width: layoutRect.width,
+                child: Align(
+                  alignment: bubbleAlign,
+                  child: MessageActionPanel(
+                    isMine: isMine,
+                    canPinOrDeleteForEveryone: canPinOrDeleteForEveryone,
+                    onReply: () {
+                      dismissMessageContextMenu();
+                      onReply();
+                    },
+                    onCopy: onCopy == null
+                        ? null
+                        : () {
+                            dismissMessageContextMenu();
+                            onCopy();
+                          },
+                    onEdit: onEdit == null
+                        ? null
+                        : () {
+                            dismissMessageContextMenu();
+                            onEdit();
+                          },
+                    onPin: () {
+                      dismissMessageContextMenu();
+                      if (message.id <= 0) {
+                        showTopSnackBar(
+                          context,
+                          l10n.messagePinRequiresSentMessage,
+                        );
+                      } else {
+                        onPin();
+                      }
+                    },
+                    onDelete: () {
+                      dismissMessageContextMenu();
+                      onDelete();
+                    },
+                  ),
+                ),
               ),
-            ),
-          ),
-        ],
+              if (pickerOpen)
+                Positioned(
+                  left: 0,
+                  right: 0,
+                  bottom: 0,
+                  child: Material(
+                    elevation: 16,
+                    color: Theme.of(ctx).colorScheme.surface,
+                    borderRadius: const BorderRadius.vertical(
+                      top: Radius.circular(24),
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: FireplaceEmojiPicker(
+                      onEmojiSelected: selectPickerEmoji,
+                      onBackspacePressed: null,
+                      height: 360,
+                    ),
+                  ),
+                ),
+            ],
+          );
+        },
       );
     },
   );
@@ -430,14 +462,16 @@ class _ContextMenuReactionEmojiBar extends StatelessWidget {
     required this.message,
     required this.currentUserId,
     required this.onReaction,
+    required this.onMoreEmoji,
   });
 
   final MessageModel message;
   final int? currentUserId;
   final void Function(String emoji, bool alreadyReacted) onReaction;
-
+  final VoidCallback onMoreEmoji;
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     return Material(
       elevation: 8,
       borderRadius: BorderRadius.circular(24),
@@ -449,31 +483,64 @@ class _ContextMenuReactionEmojiBar extends StatelessWidget {
           child: Row(
             mainAxisSize: MainAxisSize.min,
             crossAxisAlignment: CrossAxisAlignment.center,
-            children: _kReactionEmojis.map((emoji) {
-              final alreadyReacted = currentUserId != null &&
-                  (message.reactions[emoji]?.contains(currentUserId) ?? false);
-              return GestureDetector(
-                onTap: () {
-                  onReaction(emoji, alreadyReacted);
-                  dismissMessageContextMenu();
-                },
-                child: Container(
-                  width: 36,
-                  height: 36,
-                  alignment: Alignment.center,
-                  decoration: BoxDecoration(
-                    color: alreadyReacted
-                        ? Theme.of(context)
-                            .colorScheme
-                            .primary
-                            .withValues(alpha: 0.15)
-                        : Colors.transparent,
-                    shape: BoxShape.circle,
+            children: [
+              ..._kReactionEmojis.map((emoji) {
+                final alreadyReacted =
+                    currentUserId != null &&
+                    (message.reactions[emoji]?.contains(currentUserId) ??
+                        false);
+                return Semantics(
+                  button: true,
+                  selected: alreadyReacted,
+                  label: l10n.messageReactionSemantics(
+                    emoji,
+                    alreadyReacted
+                        ? l10n.messageReactionSelected
+                        : l10n.messageReactionNotSelected,
                   ),
-                  child: Text(emoji, style: const TextStyle(fontSize: 22)),
+                  excludeSemantics: true,
+                  child: GestureDetector(
+                    onTap: () {
+                      onReaction(emoji, alreadyReacted);
+                      dismissMessageContextMenu();
+                    },
+                    child: Container(
+                      width: 36,
+                      height: 36,
+                      alignment: Alignment.center,
+                      decoration: BoxDecoration(
+                        color: alreadyReacted
+                            ? Theme.of(
+                                context,
+                              ).colorScheme.primary.withValues(alpha: 0.15)
+                            : Colors.transparent,
+                        shape: BoxShape.circle,
+                      ),
+                      child: Text(emoji, style: const TextStyle(fontSize: 22)),
+                    ),
+                  ),
+                );
+              }),
+              Semantics(
+                button: true,
+                label: l10n.messageReactionMoreEmoji,
+                excludeSemantics: true,
+                child: Tooltip(
+                  message: l10n.messageReactionMoreEmoji,
+                  child: IconButton(
+                    key: const ValueKey('context-menu-more-emoji-reactions'),
+                    onPressed: onMoreEmoji,
+                    constraints: const BoxConstraints(
+                      minWidth: 36,
+                      minHeight: 36,
+                    ),
+                    padding: EdgeInsets.zero,
+                    iconSize: 20,
+                    icon: const Icon(Icons.add_reaction_outlined),
+                  ),
                 ),
-              );
-            }).toList(),
+              ),
+            ],
           ),
         ),
       ),
