@@ -441,7 +441,7 @@ void openMessageContextMenu({
                   message: message,
                   currentUserId: currentUserId,
                   onReaction: onReaction,
-                  onMoreEmoji: () => setOverlayState(() {
+                  onExpand: () => setOverlayState(() {
                     pickerOpen = true;
                   }),
                 ),
@@ -526,13 +526,13 @@ class _ContextMenuReactionEmojiBar extends StatelessWidget {
     required this.message,
     required this.currentUserId,
     required this.onReaction,
-    required this.onMoreEmoji,
+    required this.onExpand,
   });
 
   final MessageModel message;
   final int? currentUserId;
   final void Function(String emoji, bool alreadyReacted) onReaction;
-  final VoidCallback onMoreEmoji;
+  final VoidCallback onExpand;
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
@@ -592,15 +592,15 @@ class _ContextMenuReactionEmojiBar extends StatelessWidget {
                 child: Tooltip(
                   message: l10n.messageReactionMoreEmoji,
                   child: IconButton(
-                    key: const ValueKey('context-menu-more-emoji-reactions'),
-                    onPressed: onMoreEmoji,
+                    key: const ValueKey('context-menu-expand-reactions'),
+                    onPressed: onExpand,
                     constraints: const BoxConstraints(
                       minWidth: 36,
                       minHeight: 36,
                     ),
                     padding: EdgeInsets.zero,
-                    iconSize: 20,
-                    icon: const Icon(Icons.add_reaction_outlined),
+                    iconSize: 22,
+                    icon: const Icon(Icons.keyboard_arrow_down),
                   ),
                 ),
               ),

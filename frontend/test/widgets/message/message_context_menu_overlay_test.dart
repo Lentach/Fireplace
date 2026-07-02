@@ -931,7 +931,7 @@ void main() {
 
       await pumpDirectContextMenu(tester);
       await tester.tap(
-        find.byKey(const ValueKey('context-menu-more-emoji-reactions')),
+        find.byKey(const ValueKey('context-menu-expand-reactions')),
       );
       await tester.pumpAndSettle();
 
