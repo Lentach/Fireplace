@@ -337,7 +337,7 @@ void openMessageContextMenu({
   final keyboardBottom = MediaQuery.viewInsetsOf(context).bottom;
   final canPinOrDeleteForEveryone = message.id > 0;
   final bubblePreview = bubblePreviewBuilder?.call(context);
-  var pickerOpen = false;
+  var pickerExpanded = false;
 
   _activeMessageContextMenu = OverlayEntry(
     builder: (ctx) {
@@ -432,86 +432,115 @@ void openMessageContextMenu({
                     ),
                   ),
                 ),
-              Positioned(
-                key: const Key('context-menu-emoji-bar'),
-                top: layout.emojiTop,
-                left: isMine ? null : layoutRect.left,
-                right: isMine ? viewSize.width - layoutRect.right : null,
-                child: _ContextMenuReactionEmojiBar(
-                  message: message,
-                  currentUserId: currentUserId,
-                  onReaction: onReaction,
-                  onExpand: () => setOverlayState(() {
-                    pickerOpen = true;
-                  }),
-                ),
-              ),
-              Positioned(
-                key: const Key('context-menu-action-panel'),
-                top: layout.panelTop,
-                left: layoutRect.left,
-                width: layoutRect.width,
-                child: Align(
-                  alignment: bubbleAlign,
-                  child: MessageActionPanel(
-                    isMine: isMine,
-                    canPinOrDeleteForEveryone: canPinOrDeleteForEveryone,
-                    onReply: () {
-                      dismissMessageContextMenu();
-                      onReply();
-                    },
-                    onCopy: onCopy == null
-                        ? null
-                        : () {
-                            dismissMessageContextMenu();
-                            onCopy();
-                          },
-                    onEdit: onEdit == null
-                        ? null
-                        : () {
-                            dismissMessageContextMenu();
-                            onEdit();
-                          },
-                    onPin: () {
-                      dismissMessageContextMenu();
-                      if (message.id <= 0) {
-                        showTopSnackBar(
-                          context,
-                          l10n.messagePinRequiresSentMessage,
-                        );
-                      } else {
-                        onPin();
-                      }
-                    },
-                    onDelete: () {
-                      dismissMessageContextMenu();
-                      onDelete();
-                    },
-                  ),
-                ),
-              ),
-              if (pickerOpen)
+              if (!pickerExpanded)
                 Positioned(
-                  left: 0,
-                  right: 0,
-                  // Keyboard can be up (long-press does not unfocus the
-                  // composer); keep the sheet above it, live-tracked so it
-                  // follows the keyboard dismissing mid-overlay.
-                  bottom: MediaQuery.viewInsetsOf(ctx).bottom,
-                  child: Material(
-                    elevation: 16,
-                    color: Theme.of(ctx).colorScheme.surface,
-                    borderRadius: const BorderRadius.vertical(
-                      top: Radius.circular(24),
-                    ),
-                    clipBehavior: Clip.antiAlias,
-                    child: FireplaceEmojiPicker(
-                      onEmojiSelected: selectPickerEmoji,
-                      onBackspacePressed: null,
-                      height: 360,
+                  key: const Key('context-menu-emoji-bar'),
+                  top: layout.emojiTop,
+                  left: isMine ? null : layoutRect.left,
+                  right: isMine ? viewSize.width - layoutRect.right : null,
+                  child: _ContextMenuReactionEmojiBar(
+                    message: message,
+                    currentUserId: currentUserId,
+                    onReaction: onReaction,
+                    onExpand: () => setOverlayState(() {
+                      pickerExpanded = true;
+                    }),
+                  ),
+                ),
+              if (!pickerExpanded)
+                Positioned(
+                  key: const Key('context-menu-action-panel'),
+                  top: layout.panelTop,
+                  left: layoutRect.left,
+                  width: layoutRect.width,
+                  child: Align(
+                    alignment: bubbleAlign,
+                    child: MessageActionPanel(
+                      isMine: isMine,
+                      canPinOrDeleteForEveryone: canPinOrDeleteForEveryone,
+                      onReply: () {
+                        dismissMessageContextMenu();
+                        onReply();
+                      },
+                      onCopy: onCopy == null
+                          ? null
+                          : () {
+                              dismissMessageContextMenu();
+                              onCopy();
+                            },
+                      onEdit: onEdit == null
+                          ? null
+                          : () {
+                              dismissMessageContextMenu();
+                              onEdit();
+                            },
+                      onPin: () {
+                        dismissMessageContextMenu();
+                        if (message.id <= 0) {
+                          showTopSnackBar(
+                            context,
+                            l10n.messagePinRequiresSentMessage,
+                          );
+                        } else {
+                          onPin();
+                        }
+                      },
+                      onDelete: () {
+                        dismissMessageContextMenu();
+                        onDelete();
+                      },
                     ),
                   ),
                 ),
+              if (pickerExpanded)
+                () {
+                  final picker = computeExpandedReactionPickerLayout(
+                    bubbleRect: layoutRect,
+                    viewPadding: viewPadding,
+                    viewSize: viewSize,
+                    keyboardBottom: keyboardBottom,
+                    isMine: isMine,
+                    bubbleHighlightTop: layout.bubbleHighlightTop,
+                    previewHeight: layout.previewHeight,
+                  );
+                  return Positioned(
+                    key: const Key('context-menu-expanded-reaction-picker'),
+                    left: picker.left,
+                    top: picker.top,
+                    width: picker.width,
+                    height: picker.height,
+                    child: TweenAnimationBuilder<double>(
+                      tween: Tween(begin: 0, end: 1),
+                      duration: const Duration(milliseconds: 150),
+                      curve: Curves.easeOutCubic,
+                      child: Material(
+                        elevation: 16,
+                        color: Theme.of(ctx).colorScheme.surface,
+                        borderRadius: BorderRadius.circular(20),
+                        clipBehavior: Clip.antiAlias,
+                        child: FireplaceEmojiPicker(
+                          onEmojiSelected: selectPickerEmoji,
+                          onBackspacePressed: null,
+                          height: picker.height,
+                        ),
+                      ),
+                      builder: (context, t, child) => Opacity(
+                        opacity: t,
+                        child: Transform.scale(
+                          scale: 0.95 + 0.05 * t,
+                          alignment: picker.below
+                              ? (isMine
+                                    ? Alignment.topRight
+                                    : Alignment.topLeft)
+                              : (isMine
+                                    ? Alignment.bottomRight
+                                    : Alignment.bottomLeft),
+                          child: child,
+                        ),
+                      ),
+                    ),
+                  );
+                }(),
             ],
           );
         },

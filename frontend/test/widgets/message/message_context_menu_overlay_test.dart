@@ -873,21 +873,71 @@ void main() {
   }
 
   testWidgets(
-    'reaction row exposes more emoji affordance and keeps menu open while picker opens',
+    'chevron expands picker in place, hiding row and action panel',
     (tester) async {
       await pumpDirectContextMenu(tester);
 
-      final moreEmoji = find.bySemanticsLabel('More emoji reactions');
-      expect(moreEmoji, findsOneWidget);
+      final expand = find.byKey(
+        const ValueKey('context-menu-expand-reactions'),
+      );
+      expect(expand, findsOneWidget);
+      expect(find.text('Reply'), findsOneWidget);
 
-      await tester.tap(moreEmoji);
+      await tester.tap(expand);
       await tester.pumpAndSettle();
 
+      expect(
+        find.byKey(const Key('context-menu-expanded-reaction-picker')),
+        findsOneWidget,
+      );
       expect(find.bySemanticsLabel('Emoji picker'), findsOneWidget);
-      expect(find.text('Reply'), findsOneWidget);
+      // Telegram parity: row and action panel unmount while expanded.
+      expect(find.byKey(const Key('context-menu-emoji-bar')), findsNothing);
+      expect(find.text('Reply'), findsNothing);
+      // Scrim (and the bubble underneath) stay.
       expect(find.byType(BackdropFilter), findsOneWidget);
     },
   );
+
+  testWidgets('expanded picker geometry matches the layout function', (
+    tester,
+  ) async {
+    await pumpDirectContextMenu(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('context-menu-expand-reactions')),
+    );
+    await tester.pumpAndSettle();
+
+    final panel = find.byKey(const Key('context-menu-expanded-reaction-picker'));
+    final positioned = tester.widget<Positioned>(panel);
+    final screenWidth =
+        tester.view.physicalSize.width / tester.view.devicePixelRatio;
+    expect(positioned.width, math.min(screenWidth - 32, 360));
+    expect(positioned.height, lessThanOrEqualTo(420));
+    expect(
+      positioned.left,
+      greaterThanOrEqualTo(kExpandedReactionPickerMargin),
+    );
+  });
+
+  testWidgets('outside tap dismisses the expanded picker overlay', (
+    tester,
+  ) async {
+    await pumpDirectContextMenu(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('context-menu-expand-reactions')),
+    );
+    await tester.pumpAndSettle();
+
+    await tester.tapAt(const Offset(5, 5));
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('context-menu-expanded-reaction-picker')),
+      findsNothing,
+    );
+    expect(find.byType(BackdropFilter), findsNothing);
+  });
 
   testWidgets(
     'emoji picker selection invokes reaction callback and dismisses menu',
@@ -895,7 +945,7 @@ void main() {
       final calls = <({String emoji, bool alreadyReacted})>[];
       final message = _msg(id: 10, senderId: 1).copyWith(
         reactions: const {
-          '🧙': [1],
+          '🔥': [1],
         },
       );
 
@@ -907,58 +957,18 @@ void main() {
             calls.add((emoji: emoji, alreadyReacted: alreadyReacted)),
       );
 
-      await tester.tap(find.bySemanticsLabel('More emoji reactions'));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('emoji-picker-option-🧙')));
-      await tester.pumpAndSettle();
-
-      expect(calls, [(emoji: '🧙', alreadyReacted: true)]);
-      expect(find.text('Reply'), findsNothing);
-      expect(find.bySemanticsLabel('Emoji picker'), findsNothing);
-    },
-  );
-
-  // Regression: with the keyboard up, the reaction picker sheet must ride on
-  // the live viewInsets.bottom instead of hiding underneath the keyboard.
-  testWidgets(
-    'reaction emoji picker sheet is lifted above the keyboard inset',
-    (tester) async {
-      const inset = 250.0;
-      tester.view.viewInsets = FakeViewPadding(
-        bottom: inset * tester.view.devicePixelRatio,
-      );
-      addTearDown(tester.view.reset);
-
-      await pumpDirectContextMenu(tester);
       await tester.tap(
         find.byKey(const ValueKey('context-menu-expand-reactions')),
       );
       await tester.pumpAndSettle();
-
-      final sheet = find.byType(FireplaceEmojiPicker);
-      expect(sheet, findsOneWidget);
-
-      final positioned = tester.widget<Positioned>(
-        find.ancestor(of: sheet, matching: find.byType(Positioned)).first,
-      );
-      expect(positioned.bottom, inset);
-
-      // Geometry double-check: the sheet's bottom edge sits exactly at
-      // screen height minus the keyboard inset.
-      final screenHeight =
-          tester.view.physicalSize.height / tester.view.devicePixelRatio;
-      expect(tester.getBottomLeft(sheet).dy, screenHeight - inset);
-
-      // The sheet follows the keyboard dismissing mid-overlay (live inset
-      // read, not the value captured when the menu opened).
-      tester.view.viewInsets = FakeViewPadding.zero;
+      await tester.tap(find.byKey(const ValueKey('emoji-picker-option-🔥')));
       await tester.pumpAndSettle();
-      final settled = tester.widget<Positioned>(
-        find.ancestor(of: sheet, matching: find.byType(Positioned)).first,
-      );
-      expect(settled.bottom, 0);
+
+      expect(calls, [(emoji: '🔥', alreadyReacted: true)]);
+      expect(find.bySemanticsLabel('Emoji picker'), findsNothing);
     },
   );
+
 
   testWidgets(
     'selected quick reaction is announced as selected for current user',
