@@ -95,6 +95,9 @@
   "emojiPickerSearchHint": "Search emoji",
   "emojiPickerNoRecents": "No recent emoji",
   "emojiPickerEmojiOptionSemantics": "Emoji {emoji}",
+  "@emojiPickerEmojiOptionSemantics": {
+    "placeholders": { "emoji": { "type": "String" } }
+  },
   "chatDateToday": "Today",
   "chatDateYesterday": "Yesterday",
   "selectAConversation": "Select a conversation",

@@ -15,3 +15,6 @@
 - Review found the expanded picker used stale `MediaQuery` values captured before `OverlayEntry` build and could return a sub-52dp picker height under constrained viewport/keyboard geometry.
 - Fixed expanded picker geometry to read live overlay `MediaQuery` values, added a 52dp minimum layout height, and made `FireplaceEmojiPicker` hide its suggested row when too short instead of squeezing the grid into garbage.
 - Final verification passed: `flutter analyze --no-fatal-infos`, targeted overlay/input/composer tests (56 tests), full `flutter test` (446 tests), and `graphify update .`.
+- Ship-fix pass: backend reaction DTO red test proved non-basic picker emoji were rejected by the old six-emoji allowlist; frontend input red test proved tap-away kept focus.
+- Implemented reaction DTO single-emoji validation and composer `TapRegion` tap-outside behavior; pinned l10n placeholder type; bumped version to `0.0.78`.
+- Verification passed: backend DTO test (48), backend verifier (369 tests / 41 suites), `flutter analyze --no-fatal-infos`, full `flutter test` (481), and `graphify update .`.

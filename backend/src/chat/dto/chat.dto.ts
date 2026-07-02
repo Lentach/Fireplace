@@ -18,10 +18,9 @@ import {
 import { MessageType } from '../../messages/message.entity';
 
 /** Cloudinary (https only) or self-hosted media under MEDIA_BASE_URL — prevents SSRF */
-const _mediaOriginEscaped = (process.env.MEDIA_BASE_URL ?? 'http://localhost:3000').replace(
-  /[.*+?^${}()|[\]\\]/g,
-  '\\$&',
-);
+const _mediaOriginEscaped = (
+  process.env.MEDIA_BASE_URL ?? 'http://localhost:3000'
+).replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 // The self-hosted branch is anchored to a single `avatars|msgs/<filename>.<ext>`
 // segment (no `/`, so no `..` traversal) — `mediaUrl` is later turned into a
 // filesystem path and unlinked (H-02). The `$` anchor applies to both branches.
@@ -35,7 +34,9 @@ export class SendMessageDto {
   recipientId: number;
 
   @IsString()
-  @ValidateIf((o) => !o.encryptedContent && !['VOICE', 'PING'].includes(o?.messageType))
+  @ValidateIf(
+    (o) => !o.encryptedContent && !['VOICE', 'PING'].includes(o?.messageType),
+  )
   @MinLength(1, { message: 'Message cannot be empty' })
   @MaxLength(5000, { message: 'Message cannot exceed 5000 characters' })
   content: string;
@@ -66,8 +67,7 @@ export class SendMessageDto {
   @IsString()
   @ValidateIf((o) => o.mediaUrl != null && o.mediaUrl !== '')
   @Matches(MEDIA_URL_REGEX, {
-    message:
-      'mediaUrl must be a valid Cloudinary or self-hosted media URL',
+    message: 'mediaUrl must be a valid Cloudinary or self-hosted media URL',
   })
   mediaUrl?: string; // Validated self-hosted or legacy Cloudinary media URL
 
@@ -147,7 +147,8 @@ export * from './set-disappearing-timer.dto';
 export * from './delete-conversation-only.dto';
 export * from './delete-message.dto';
 
-const ALLOWED_EMOJIS = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
+const REACTION_EMOJI_REGEX =
+  /^(?:\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier})?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F|\p{Emoji_Modifier})?)*|\p{Regional_Indicator}{2}|[0-9#*]\uFE0F?\u20E3)$/u;
 
 export class AddReactionDto {
   @IsNumber()
@@ -155,7 +156,10 @@ export class AddReactionDto {
   messageId: number;
 
   @IsString()
-  @IsIn(ALLOWED_EMOJIS)
+  @MaxLength(32)
+  @Matches(REACTION_EMOJI_REGEX, {
+    message: 'emoji must be a single emoji grapheme',
+  })
   emoji: string;
 }
 
@@ -165,6 +169,9 @@ export class RemoveReactionDto {
   messageId: number;
 
   @IsString()
-  @IsIn(ALLOWED_EMOJIS)
+  @MaxLength(32)
+  @Matches(REACTION_EMOJI_REGEX, {
+    message: 'emoji must be a single emoji grapheme',
+  })
   emoji: string;
 }

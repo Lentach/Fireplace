@@ -107,6 +107,45 @@ void main() {
     );
   });
 
+  // Android/desktop web parity: tapping the chat surface outside the composer
+  // should hide the keyboard. The old blanket no-op was only meant for iOS
+  // WebKit send-button bounce, but it blocked Android PWA dismissal too.
+  testWidgets('tap outside unfocuses the composer outside iOS WebKit', (
+    tester,
+  ) async {
+    await _pump(tester);
+    await tester.tap(find.byType(TextField));
+    await tester.pump();
+
+    final field = tester.widget<TextField>(find.byType(TextField));
+    expect(field.focusNode!.hasFocus, isTrue);
+
+    field.onTapOutside!(const PointerDownEvent(position: Offset(1, 1)));
+    await tester.pump();
+
+    expect(field.focusNode!.hasFocus, isFalse);
+  });
+
+  testWidgets(
+    'send button tap stays inside composer tap region and keeps focus',
+    (tester) async {
+      await _pump(tester);
+      await tester.enterText(find.byType(TextField), 'send from button');
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+
+      final fieldBefore = tester.widget<TextField>(find.byType(TextField));
+      expect(fieldBefore.focusNode!.hasFocus, isTrue);
+
+      await tester.tap(find.byKey(const ValueKey('composer_text_send_layer')));
+      await tester.pump();
+
+      final fieldAfter = tester.widget<TextField>(find.byType(TextField));
+      expect(fieldAfter.focusNode!.hasFocus, isTrue);
+      expect(fieldAfter.controller!.text, isEmpty);
+    },
+  );
+
   // System back with the panel open must be consumed by the panel
   // (Telegram/Signal parity); only the next back leaves the chat route.
   testWidgets('system back closes the emoji panel before popping the route', (

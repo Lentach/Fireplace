@@ -98,7 +98,7 @@ git pull ; .\deploy-web.ps1
 - Chat composer viewport: non-embedded chat uses `ChatComposerViewport`; `Scaffold(resizeToAvoidBottomInset:false)`, list bottom padding = composer height + keyboard inset, composer `Positioned(bottom: keyboardInset)`.
 - iOS WebKit keyboard inset comes from `visualViewport` via `web_keyboard_inset.dart`; Flutter `MediaQuery.viewInsets.bottom` is unreliable there.
 - Composer collapse guard defers inset collapse only for send/edit/staged/action-toggle operations; genuine keyboard dismiss should collapse immediately.
-- `TextField.onTapOutside: (_) {}` is deliberate; default Flutter unfocus caused iOS in-app Send keyboard bounce.
+- Composer tap-outside: `ChatInputBar` groups the text field + composer controls in one `TapRegion`; taps outside the whole composer unfocus on Android/desktop web, while iOS WebKit still no-ops to avoid the send-button keyboard bounce.
 - DOM focus guard (`web_focus_guard.dart` + `FocusGuardArea`) prevents canvas-painted composer controls from stealing focus when input is already focused. It does not replace `onTapOutside`.
 - Trailing composer control is one always-mounted 48x48 stack: mic idle, text-send for draft/staged image, voice-send while recording, spinner while sending. Do not swap Row siblings; unmounting dismisses keyboard.
 - Voice recording is tap-to-toggle, not hold/lock/swipe. 500 ms minimum, 120 s auto-send. Recording waveform is decorative, not real amplitude.

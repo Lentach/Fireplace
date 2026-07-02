@@ -109,7 +109,7 @@ Gateway throttles are source-truth in `chat.gateway.ts`:
 - Delivery status never downgrades; enforced via `DELIVERY_STATUS_ORDER`.
 - Delete-for-everyone deletes media before row removal and clears pin if the deleted message was pinned.
 - Edit message: sender-only, TEXT-only, 15-minute window from `createdAt`; stores new ciphertext, stamps `editedAt`, leaves expiry/status untouched; rejects with `editMessageFailed` reason `not_sender`, `window_expired`, `not_text`, or `not_found`.
-- Reactions: WS `addReaction` / `removeReaction` `{ messageId, emoji }`; participant-checked in `ChatReactionService`; `MessagesService` JSON-parse/stringifies the text column; emits `reactionUpdated` to both sides.
+- Reactions: WS `addReaction` / `removeReaction` `{ messageId, emoji }`; DTOs accept one emoji grapheme (basic emoji, VS16, skin tones, ZWJ sequences, flags, keycaps) with a 32-code-unit cap, not the old six-emoji allowlist. Participant-checked in `ChatReactionService`; `MessagesService` JSON-parse/stringifies the text column; emits `reactionUpdated` to both sides.
 - Pin/unpin validates conversation membership and message state; delete-for-everyone clears the pin.
 
 ## 8. Media and cleanup
