@@ -1,6 +1,7 @@
 import 'dart:math' as math;
 import 'dart:ui';
 
+import 'package:flutter/foundation.dart' show ValueListenable;
 import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
 import '../emoji/fireplace_emoji_picker.dart';
@@ -10,6 +11,32 @@ import 'context_menu_bubble_anchor.dart';
 import 'message_action_panel.dart';
 
 OverlayEntry? _activeMessageContextMenu;
+
+/// Consumes system back while the context menu is open (collapsed or
+/// expanded): back closes the menu instead of popping the chat route.
+/// Registered on the caller's [ModalRoute] — the same mechanism [PopScope]
+/// uses — because a [WidgetsBindingObserver] would be consulted after
+/// [WidgetsApp]'s own observer already popped the route.
+class _ContextMenuPopEntry implements PopEntry<Object?> {
+  final ValueNotifier<bool> _canPop = ValueNotifier<bool>(false);
+
+  @override
+  ValueListenable<bool> get canPopNotifier => _canPop;
+
+  @override
+  void onPopInvokedWithResult(bool didPop, Object? result) {
+    if (didPop) return;
+    Future<void>.microtask(_dismissMessageContextMenu);
+  }
+
+  @override
+  void onPopInvoked(bool didPop) {}
+
+  void dispose() => _canPop.dispose();
+}
+
+_ContextMenuPopEntry? _contextMenuPopEntry;
+ModalRoute<Object?>? _contextMenuPopRoute;
 
 const _kReactionEmojis = ['👍', '❤️', '😂', '😮', '😢', '🔥'];
 
@@ -303,6 +330,13 @@ computeExpandedReactionPickerLayout({
 }
 
 void _dismissMessageContextMenu() {
+  final entry = _contextMenuPopEntry;
+  if (entry != null) {
+    _contextMenuPopRoute?.unregisterPopEntry(entry);
+    entry.dispose();
+    _contextMenuPopEntry = null;
+    _contextMenuPopRoute = null;
+  }
   _activeMessageContextMenu?.remove();
   _activeMessageContextMenu = null;
 }
@@ -548,6 +582,12 @@ void openMessageContextMenu({
     },
   );
   overlay.insert(_activeMessageContextMenu!);
+  final route = ModalRoute.of(context);
+  if (route != null) {
+    _contextMenuPopEntry = _ContextMenuPopEntry();
+    _contextMenuPopRoute = route;
+    route.registerPopEntry(_contextMenuPopEntry!);
+  }
 }
 
 class _ContextMenuReactionEmojiBar extends StatelessWidget {

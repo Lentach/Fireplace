@@ -969,6 +969,42 @@ void main() {
     },
   );
 
+  testWidgets('system back closes the context menu instead of the route', (
+    tester,
+  ) async {
+    await pumpDirectContextMenu(tester);
+    expect(find.text('Reply'), findsOneWidget);
+
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+    final handled = await navigator.maybePop();
+    await tester.pumpAndSettle();
+
+    expect(handled, isTrue); // consumed by the overlay's PopEntry
+    expect(find.text('Reply'), findsNothing);
+    expect(find.byType(BackdropFilter), findsNothing);
+    expect(find.text('bubble'), findsOneWidget); // chat screen intact
+  });
+
+  testWidgets('system back closes the expanded picker overlay too', (
+    tester,
+  ) async {
+    await pumpDirectContextMenu(tester);
+    await tester.tap(
+      find.byKey(const ValueKey('context-menu-expand-reactions')),
+    );
+    await tester.pumpAndSettle();
+
+    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
+    await navigator.maybePop();
+    await tester.pumpAndSettle();
+
+    expect(
+      find.byKey(const Key('context-menu-expanded-reaction-picker')),
+      findsNothing,
+    );
+    expect(find.text('bubble'), findsOneWidget);
+  });
+
 
   testWidgets(
     'selected quick reaction is announced as selected for current user',
