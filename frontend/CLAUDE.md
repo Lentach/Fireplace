@@ -84,7 +84,7 @@ git pull ; .\deploy-web.ps1
 - Optimistic send: temp message (`id=-timestamp`, `SENDING`, `tempId`) → encrypt/upload → WS `sendMessage` → `messageSent` replaces temp with real row.
 - Text edit: `messageEditEligible` gates own TEXT positive-id sent/delivered/read rows within 15 minutes. `beginEditMessage` shows `EditPreviewBar`; send emits new ciphertext via `editMessage`; reject reverts optimistic content.
 - Message model `copyWith` must include every field. Missing fields silently drop data.
-- Reactions: context-menu quick row calls `MessagingActions.addReaction/removeReaction`; “more emoji” opens the in-overlay `FireplaceEmojiPicker`; composer emoji insertion/backspace must use `composer_emoji_text_editing.dart` so emoji sequences stay grapheme-safe.
+- Reactions: context-menu quick row calls `MessagingActions.addReaction/removeReaction`; the chevron (`context-menu-expand-reactions`) expands `FireplaceEmojiPicker` in place via `computeExpandedReactionPickerLayout` (row + action panel unmount, bubble stays; never covers bubble/keyboard). System back closes the menu via a `PopEntry` on the chat route. `emoji_picker_flutter`'s grid renders nothing under the widget-test binding — test emoji selection through the suggested row keys only. Composer emoji insertion/backspace must use `composer_emoji_text_editing.dart` so emoji sequences stay grapheme-safe.
 - Pinned banner shows when `pinnedMessageId` + preview exist, even if the message is not loaded locally; tap paginates and scrolls.
 - Reply preview uses type labels for encrypted media; never leak plaintext to backend snapshots.
 - Provider cannot navigate directly. Use pending-consume patterns (`consumePendingOpen`, notification request/consume, friend request sent/accepted flags).

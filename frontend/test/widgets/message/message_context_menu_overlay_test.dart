@@ -6,7 +6,6 @@ import 'package:fireplace/providers/auth_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
-import 'package:fireplace/widgets/emoji/fireplace_emoji_picker.dart';
 import 'package:fireplace/widgets/message/chat_message_bubble.dart';
 import 'package:fireplace/widgets/message/message_context_menu_bubble_highlight.dart';
 import 'package:fireplace/widgets/message/context_menu_bubble_anchor.dart';
@@ -872,32 +871,29 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets(
-    'chevron expands picker in place, hiding row and action panel',
-    (tester) async {
-      await pumpDirectContextMenu(tester);
+  testWidgets('chevron expands picker in place, hiding row and action panel', (
+    tester,
+  ) async {
+    await pumpDirectContextMenu(tester);
 
-      final expand = find.byKey(
-        const ValueKey('context-menu-expand-reactions'),
-      );
-      expect(expand, findsOneWidget);
-      expect(find.text('Reply'), findsOneWidget);
+    final expand = find.byKey(const ValueKey('context-menu-expand-reactions'));
+    expect(expand, findsOneWidget);
+    expect(find.text('Reply'), findsOneWidget);
 
-      await tester.tap(expand);
-      await tester.pumpAndSettle();
+    await tester.tap(expand);
+    await tester.pumpAndSettle();
 
-      expect(
-        find.byKey(const Key('context-menu-expanded-reaction-picker')),
-        findsOneWidget,
-      );
-      expect(find.bySemanticsLabel('Emoji picker'), findsOneWidget);
-      // Telegram parity: row and action panel unmount while expanded.
-      expect(find.byKey(const Key('context-menu-emoji-bar')), findsNothing);
-      expect(find.text('Reply'), findsNothing);
-      // Scrim (and the bubble underneath) stay.
-      expect(find.byType(BackdropFilter), findsOneWidget);
-    },
-  );
+    expect(
+      find.byKey(const Key('context-menu-expanded-reaction-picker')),
+      findsOneWidget,
+    );
+    expect(find.bySemanticsLabel('Emoji picker'), findsOneWidget);
+    // Telegram parity: row and action panel unmount while expanded.
+    expect(find.byKey(const Key('context-menu-emoji-bar')), findsNothing);
+    expect(find.text('Reply'), findsNothing);
+    // Scrim (and the bubble underneath) stay.
+    expect(find.byType(BackdropFilter), findsOneWidget);
+  });
 
   testWidgets('expanded picker geometry matches the layout function', (
     tester,
@@ -908,7 +904,9 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    final panel = find.byKey(const Key('context-menu-expanded-reaction-picker'));
+    final panel = find.byKey(
+      const Key('context-menu-expanded-reaction-picker'),
+    );
     final positioned = tester.widget<Positioned>(panel);
     final screenWidth =
         tester.view.physicalSize.width / tester.view.devicePixelRatio;
@@ -1004,7 +1002,6 @@ void main() {
     );
     expect(find.text('bubble'), findsOneWidget);
   });
-
 
   testWidgets(
     'selected quick reaction is announced as selected for current user',
