@@ -1,6 +1,6 @@
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
-import { SendMessageDto } from './chat.dto';
+import { AddReactionDto, RemoveReactionDto, SendMessageDto } from './chat.dto';
 
 function createDto(data: Partial<SendMessageDto>): SendMessageDto {
   return plainToInstance(SendMessageDto, data);
@@ -130,7 +130,8 @@ describe('SendMessageDto', () => {
         recipientId: 1,
         content: '[encrypted]',
         encryptedContent: '3:cipher==',
-        mediaUrl: 'https://res.cloudinary.com/demo/video/upload/v1/voice/abc.m4a',
+        mediaUrl:
+          'https://res.cloudinary.com/demo/video/upload/v1/voice/abc.m4a',
       });
       const errors = await validate(dto);
       expect(errors).toHaveLength(0);
@@ -169,7 +170,8 @@ describe('SendMessageDto', () => {
         recipientId: 1,
         content: 'image caption',
         messageType: 'IMAGE',
-        mediaUrl: 'https://res.cloudinary.com/demo/image/upload/v1/photos/pic.jpg',
+        mediaUrl:
+          'https://res.cloudinary.com/demo/image/upload/v1/photos/pic.jpg',
       });
       const errors = await validate(dto);
       expect(errors).toHaveLength(0);
@@ -245,9 +247,9 @@ describe('SendMessageDto', () => {
     });
 
     it('rejects a msgs/.. traversal', async () => {
-      expect(await mediaUrlRejected(`${base}/media/msgs/../../etc/passwd`)).toBe(
-        true,
-      );
+      expect(
+        await mediaUrlRejected(`${base}/media/msgs/../../etc/passwd`),
+      ).toBe(true);
     });
 
     it('rejects nested sub-paths under msgs (extra slashes)', async () => {
@@ -268,4 +270,56 @@ describe('SendMessageDto', () => {
       );
     });
   });
+});
+
+describe('Reaction DTOs', () => {
+  const validCases = [
+    '👍',
+    '❤️',
+    '🔥',
+    '🧙',
+    '👏🏽',
+    '👨‍👩‍👧‍👦',
+    '🇵🇱',
+    '1️⃣',
+    '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+    '✌️🏻',
+  ];
+  const invalidCases = ['hi', '😀😀', '123', '#', '', ' ', '👍 reaction'];
+
+  it.each(validCases)(
+    'should accept a single emoji reaction: %s',
+    async (emoji) => {
+      const dto = plainToInstance(AddReactionDto, { messageId: 1, emoji });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    },
+  );
+
+  it.each(validCases)(
+    'should accept removing a single emoji reaction: %s',
+    async (emoji) => {
+      const dto = plainToInstance(RemoveReactionDto, { messageId: 1, emoji });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    },
+  );
+
+  it.each(invalidCases)(
+    'should reject non-single-emoji reaction: %s',
+    async (emoji) => {
+      const dto = plainToInstance(AddReactionDto, { messageId: 1, emoji });
+      const errors = await validate(dto);
+      expect(errors.length).toBeGreaterThan(0);
+    },
+  );
+
+  it.each(invalidCases)(
+    'should reject removing a non-single-emoji reaction: %s',
+    async (emoji) => {
+      const dto = plainToInstance(RemoveReactionDto, { messageId: 1, emoji });
+      const errors = await validate(dto);
+      expect(errors.length).toBeGreaterThan(0);
+    },
+  );
 });

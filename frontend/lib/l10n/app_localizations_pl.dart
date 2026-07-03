@@ -254,6 +254,26 @@ class AppLocalizationsPl extends AppLocalizations {
   String get chatComposerSendSemantics => 'Wyślij wiadomość';
 
   @override
+  String get chatComposerEmojiTooltip => 'Emoji';
+
+  @override
+  String get chatComposerEmojiSemantics => 'Otwórz panel emoji';
+
+  @override
+  String get emojiPickerSemantics => 'Panel emoji';
+
+  @override
+  String get emojiPickerSearchHint => 'Szukaj emoji';
+
+  @override
+  String get emojiPickerNoRecents => 'Brak ostatnich emoji';
+
+  @override
+  String emojiPickerEmojiOptionSemantics(String emoji) {
+    return 'Emoji $emoji';
+  }
+
+  @override
   String get chatDateToday => 'Dziś';
 
   @override
@@ -705,6 +725,20 @@ class AppLocalizationsPl extends AppLocalizations {
   @override
   String get messagePinRequiresSentMessage =>
       'Poczekaj na wysłanie wiadomości, aby ją przypiąć';
+
+  @override
+  String get messageReactionMoreEmoji => 'Więcej reakcji emoji';
+
+  @override
+  String get messageReactionSelected => 'wybrana';
+
+  @override
+  String get messageReactionNotSelected => 'niewybrana';
+
+  @override
+  String messageReactionSemantics(Object emoji, Object state) {
+    return 'Reakcja $emoji, $state';
+  }
 
   @override
   String get snackbarPinnedMessageUnavailable => 'Wiadomość jest niedostępna';

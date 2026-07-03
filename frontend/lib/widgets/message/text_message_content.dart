@@ -4,9 +4,12 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/message_model.dart';
 import '../../services/link_preview_service.dart';
 import '../../theme/rpg_theme.dart';
+import '../../utils/jumbo_emoji.dart';
 
 /// Key for the time-overlay [Stack] in [TextMessageContent] (tests / debugging).
-const Key kTextMessageTimeOverlayStackKey = Key('text-message-time-overlay-stack');
+const Key kTextMessageTimeOverlayStackKey = Key(
+  'text-message-time-overlay-stack',
+);
 
 /// Content widget for TEXT message type, including link detection and link preview card.
 class TextMessageContent extends StatelessWidget {
@@ -29,34 +32,56 @@ class TextMessageContent extends StatelessWidget {
 
   Widget _buildTextWithLinks(BuildContext context) {
     final text = message.content;
+    // Telegram-parity jumbo rendering for emoji-only messages (1-2 emoji →
+    // 40, 3 → 34, 4 → 26, 5+ → 22; body text stays 14). Emoji-only content
+    // cannot contain URLs, so the link pipeline below is safely skipped.
+    final jumboSize = jumboEmojiFontSize(text);
+    if (jumboSize != null) {
+      return Text(
+        text,
+        textAlign: TextAlign.left,
+        textWidthBasis: TextWidthBasis.longestLine,
+        style: RpgTheme.bodyFont(fontSize: jumboSize, color: textColor),
+      );
+    }
     final urlRegex = RegExp(r'https?://[^\s]+', caseSensitive: false);
     final spans = <InlineSpan>[];
     int last = 0;
-    final linkColor = isMine ? textColor : Theme.of(context).colorScheme.primary;
+    final linkColor = isMine
+        ? textColor
+        : Theme.of(context).colorScheme.primary;
 
     for (final match in urlRegex.allMatches(text)) {
       if (match.start > last) {
-        spans.add(TextSpan(
-          text: text.substring(last, match.start),
-          style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
-        ));
+        spans.add(
+          TextSpan(
+            text: text.substring(last, match.start),
+            style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
+          ),
+        );
       }
       final url = match.group(0)!;
-      spans.add(TextSpan(
-        text: url,
-        style: RpgTheme.bodyFont(fontSize: 14, color: linkColor)
-            .copyWith(decoration: TextDecoration.underline),
-        recognizer: TapGestureRecognizer()
-          ..onTap = () =>
-              launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
-      ));
+      spans.add(
+        TextSpan(
+          text: url,
+          style: RpgTheme.bodyFont(
+            fontSize: 14,
+            color: linkColor,
+          ).copyWith(decoration: TextDecoration.underline),
+          recognizer: TapGestureRecognizer()
+            ..onTap = () =>
+                launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
+        ),
+      );
       last = match.end;
     }
     if (last < text.length) {
-      spans.add(TextSpan(
-        text: text.substring(last),
-        style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
-      ));
+      spans.add(
+        TextSpan(
+          text: text.substring(last),
+          style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
+        ),
+      );
     }
 
     return RichText(
@@ -126,10 +151,7 @@ class TextMessageContent extends StatelessWidget {
                     const SizedBox(height: 2),
                     Text(
                       message.linkPreviewUrl!,
-                      style: RpgTheme.bodyFont(
-                        fontSize: 11,
-                        color: urlColor,
-                      ),
+                      style: RpgTheme.bodyFont(fontSize: 11, color: urlColor),
                       maxLines: 1,
                       overflow: TextOverflow.ellipsis,
                     ),
@@ -154,8 +176,9 @@ class TextMessageContent extends StatelessWidget {
 
     final content = Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment:
-          isMine ? CrossAxisAlignment.end : CrossAxisAlignment.start,
+      crossAxisAlignment: isMine
+          ? CrossAxisAlignment.end
+          : CrossAxisAlignment.start,
       children: [
         textWidget,
         if (message.linkPreviewUrl != null)
@@ -178,11 +201,7 @@ class TextMessageContent extends StatelessWidget {
             child: content,
           ),
         ),
-        Positioned(
-          bottom: 0,
-          right: 0,
-          child: timeOverlay!,
-        ),
+        Positioned(bottom: 0, right: 0, child: timeOverlay!),
       ],
     );
   }

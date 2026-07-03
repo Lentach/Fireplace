@@ -84,7 +84,8 @@ git pull ; .\deploy-web.ps1
 - Optimistic send: temp message (`id=-timestamp`, `SENDING`, `tempId`) → encrypt/upload → WS `sendMessage` → `messageSent` replaces temp with real row.
 - Text edit: `messageEditEligible` gates own TEXT positive-id sent/delivered/read rows within 15 minutes. `beginEditMessage` shows `EditPreviewBar`; send emits new ciphertext via `editMessage`; reject reverts optimistic content.
 - Message model `copyWith` must include every field. Missing fields silently drop data.
-- Reactions: context-menu emoji bar calls `MessagingActions.addReaction/removeReaction`; socket listener handles `reactionUpdated`.
+- Reactions: context-menu quick row calls `MessagingActions.addReaction/removeReaction`; the chevron (`context-menu-expand-reactions`) expands `FireplaceEmojiPicker` in place via `computeExpandedReactionPickerLayout` (row + action panel unmount, bubble stays; never covers bubble/keyboard). Keep expanded overlay geometry based on `MediaQuery` read inside the `OverlayEntry` builder, not the pre-overlay message context, or iOS/PWA keyboard viewport changes will strand the picker. System back closes the menu via a `PopEntry` on the chat route. `emoji_picker_flutter`'s grid renders nothing under the widget-test binding — test emoji selection through the suggested row keys only. Composer emoji insertion/backspace must use `composer_emoji_text_editing.dart` so emoji sequences stay grapheme-safe.
+- Jumbo emoji (Telegram parity, static only — no animated emoji, ever: copyright + E2E metadata leak): emoji-only TEXT messages render bigger via `utils/jumbo_emoji.dart` (`emojiOnlyCount` grapheme regex — `Extended_Pictographic`, flags, keycaps; digits/`#`/`*` excluded; tiers 1–2→40, 3→34, 4→26, 5+→22). Applied in `TextMessageContent` and mirrored in `MessageContextMenuBubbleHighlight` (`?? 15`); previews (reply/pinned/conversation list) deliberately stay small.
 - Pinned banner shows when `pinnedMessageId` + preview exist, even if the message is not loaded locally; tap paginates and scrolls.
 - Reply preview uses type labels for encrypted media; never leak plaintext to backend snapshots.
 - Provider cannot navigate directly. Use pending-consume patterns (`consumePendingOpen`, notification request/consume, friend request sent/accepted flags).
@@ -97,7 +98,7 @@ git pull ; .\deploy-web.ps1
 - Chat composer viewport: non-embedded chat uses `ChatComposerViewport`; `Scaffold(resizeToAvoidBottomInset:false)`, list bottom padding = composer height + keyboard inset, composer `Positioned(bottom: keyboardInset)`.
 - iOS WebKit keyboard inset comes from `visualViewport` via `web_keyboard_inset.dart`; Flutter `MediaQuery.viewInsets.bottom` is unreliable there.
 - Composer collapse guard defers inset collapse only for send/edit/staged/action-toggle operations; genuine keyboard dismiss should collapse immediately.
-- `TextField.onTapOutside: (_) {}` is deliberate; default Flutter unfocus caused iOS in-app Send keyboard bounce.
+- Composer tap-outside: `ChatInputBar` groups the text field + composer controls in one `TapRegion`; taps outside the whole composer unfocus on Android/desktop web, while iOS WebKit still no-ops to avoid the send-button keyboard bounce.
 - DOM focus guard (`web_focus_guard.dart` + `FocusGuardArea`) prevents canvas-painted composer controls from stealing focus when input is already focused. It does not replace `onTapOutside`.
 - Trailing composer control is one always-mounted 48x48 stack: mic idle, text-send for draft/staged image, voice-send while recording, spinner while sending. Do not swap Row siblings; unmounting dismisses keyboard.
 - Voice recording is tap-to-toggle, not hold/lock/swipe. 500 ms minimum, 120 s auto-send. Recording waveform is decorative, not real amplitude.
