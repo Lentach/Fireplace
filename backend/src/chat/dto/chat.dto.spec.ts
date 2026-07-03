@@ -273,7 +273,18 @@ describe('SendMessageDto', () => {
 });
 
 describe('Reaction DTOs', () => {
-  const validCases = ['👍', '❤️', '🔥', '🧙', '👏🏽', '👨‍👩‍👧‍👦', '🇵🇱', '1️⃣'];
+  const validCases = [
+    '👍',
+    '❤️',
+    '🔥',
+    '🧙',
+    '👏🏽',
+    '👨‍👩‍👧‍👦',
+    '🇵🇱',
+    '1️⃣',
+    '🏴󠁧󠁢󠁳󠁣󠁴󠁿',
+    '✌️🏻',
+  ];
   const invalidCases = ['hi', '😀😀', '123', '#', '', ' ', '👍 reaction'];
 
   it.each(validCases)(
@@ -298,6 +309,15 @@ describe('Reaction DTOs', () => {
     'should reject non-single-emoji reaction: %s',
     async (emoji) => {
       const dto = plainToInstance(AddReactionDto, { messageId: 1, emoji });
+      const errors = await validate(dto);
+      expect(errors.length).toBeGreaterThan(0);
+    },
+  );
+
+  it.each(invalidCases)(
+    'should reject removing a non-single-emoji reaction: %s',
+    async (emoji) => {
+      const dto = plainToInstance(RemoveReactionDto, { messageId: 1, emoji });
       const errors = await validate(dto);
       expect(errors.length).toBeGreaterThan(0);
     },

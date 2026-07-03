@@ -811,276 +811,286 @@ class ChatInputBarState extends State<ChatInputBar>
           setState(() => _showEmojiPicker = false);
         }
       },
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Reply preview
-          if (replyingTo != null)
-            Selector<MessagingProvider, MessageModel>(
-              selector: (_, messaging) {
-                return findMessageById(replyingTo.id, messaging.messages) ??
-                    replyingTo;
-              },
-              builder: (context, resolvedReply, _) {
-                return ReplyPreviewBar(
-                  message: resolvedReply,
-                  onDismiss: () =>
-                      context.read<MessagingProvider>().clearReplyingTo(),
-                );
-              },
-            ),
-
-          // Editing banner
-          if (editing != null)
-            EditPreviewBar(
-              onDismiss: () =>
-                  context.read<MessagingProvider>().cancelEditMessage(),
-            ),
-
-          if (activeTimer != null)
-            Material(
-              color: ephemeral.withValues(alpha: 0.12),
-              child: Semantics(
-                label: l10n.disappearingComposerBannerSemantics(
-                  _bannerDurationLabel(l10n, activeTimer),
-                ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 6,
-                  ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CustomPaint(
-                        size: const Size(14, 14),
-                        painter: HearthFadeArcPainter(
-                          color: ephemeral,
-                          trackColor: ephemeral.withValues(alpha: 0.35),
-                          dotted: true,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          l10n.disappearingComposerBanner(
-                            _bannerDurationLabel(l10n, activeTimer),
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: RpgTheme.bodyFont(
-                            fontSize: 11,
-                            color: ephemeral,
-                            fontWeight: FontWeight.w500,
-                          ),
-                        ),
-                      ),
-                    ],
-                  ),
-                ),
+      child: TapRegion(
+        groupId: _composerTapRegionGroup,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Reply preview
+            if (replyingTo != null)
+              Selector<MessagingProvider, MessageModel>(
+                selector: (_, messaging) {
+                  return findMessageById(replyingTo.id, messaging.messages) ??
+                      replyingTo;
+                },
+                builder: (context, resolvedReply, _) {
+                  return ReplyPreviewBar(
+                    message: resolvedReply,
+                    onDismiss: () =>
+                        context.read<MessagingProvider>().clearReplyingTo(),
+                  );
+                },
               ),
-            ),
 
-          // Staged pasted image (Clipboard Phase 2)
-          if (_attachment.staged != null && !_isRecording)
-            ComposerAttachmentBar(
-              attachment: _attachment.staged!,
-              onRemove: _attachment.clear,
-            ),
-
-          // Input row
-          TapRegion(
-            groupId: _composerTapRegionGroup,
-            child: Container(
-              padding: composerHorizontalPadding,
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                border: Border(top: BorderSide(color: fc.convItemBorder)),
+            // Editing banner
+            if (editing != null)
+              EditPreviewBar(
+                onDismiss: () =>
+                    context.read<MessagingProvider>().cancelEditMessage(),
               ),
-              child: Row(
-                children: [
-                  // Action panel toggle (hidden during recording)
-                  if (!_isRecording)
-                    FocusGuardArea(
-                      id: 'composer_action_toggle',
-                      child: Focus(
-                        canRequestFocus: false,
-                        child: IconButton(
-                          icon: Icon(
-                            _showActionPanel
-                                ? Icons.keyboard_arrow_up
-                                : Icons.keyboard_arrow_down,
-                          ),
-                          iconSize: 24,
-                          color: isDark
-                              ? RpgTheme.mutedDark
-                              : RpgTheme.textSecondaryLight,
-                          onPressed: _toggleActionPanel,
-                        ),
-                      ),
+
+            if (activeTimer != null)
+              Material(
+                color: ephemeral.withValues(alpha: 0.12),
+                child: Semantics(
+                  label: l10n.disappearingComposerBannerSemantics(
+                    _bannerDurationLabel(l10n, activeTimer),
+                  ),
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
                     ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CustomPaint(
+                          size: const Size(14, 14),
+                          painter: HearthFadeArcPainter(
+                            color: ephemeral,
+                            trackColor: ephemeral.withValues(alpha: 0.35),
+                            dotted: true,
+                          ),
+                        ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            l10n.disappearingComposerBanner(
+                              _bannerDurationLabel(l10n, activeTimer),
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: RpgTheme.bodyFont(
+                              fontSize: 11,
+                              color: ephemeral,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
 
-                  if (!_isRecording)
-                    FocusGuardArea(
-                      id: 'composer_emoji_toggle',
-                      child: Focus(
-                        canRequestFocus: false,
-                        child: Semantics(
-                          button: true,
-                          label: l10n.chatComposerEmojiSemantics,
-                          excludeSemantics: true,
+            // Staged pasted image (Clipboard Phase 2)
+            if (_attachment.staged != null && !_isRecording)
+              ComposerAttachmentBar(
+                attachment: _attachment.staged!,
+                onRemove: _attachment.clear,
+              ),
+
+            // Input row
+            TapRegion(
+              groupId: _composerTapRegionGroup,
+              child: Container(
+                padding: composerHorizontalPadding,
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  border: Border(top: BorderSide(color: fc.convItemBorder)),
+                ),
+                child: Row(
+                  children: [
+                    // Action panel toggle (hidden during recording)
+                    if (!_isRecording)
+                      FocusGuardArea(
+                        id: 'composer_action_toggle',
+                        child: Focus(
+                          canRequestFocus: false,
                           child: IconButton(
-                            key: const ValueKey('composer-emoji-toggle'),
-                            tooltip: l10n.chatComposerEmojiTooltip,
                             icon: Icon(
-                              _showEmojiPicker
-                                  ? Icons.keyboard_alt_outlined
-                                  : Icons.emoji_emotions_outlined,
+                              _showActionPanel
+                                  ? Icons.keyboard_arrow_up
+                                  : Icons.keyboard_arrow_down,
                             ),
                             iconSize: 24,
-                            color: _showEmojiPicker
-                                ? RpgTheme.primaryColor(context)
-                                : (isDark
-                                      ? RpgTheme.mutedDark
-                                      : RpgTheme.textSecondaryLight),
-                            onPressed: _toggleEmojiPicker,
+                            color: isDark
+                                ? RpgTheme.mutedDark
+                                : RpgTheme.textSecondaryLight,
+                            onPressed: _toggleActionPanel,
                           ),
                         ),
                       ),
-                    ),
 
-                  // Text field or recording bar
-                  Expanded(
-                    child: _isRecording
-                        ? Builder(
-                            builder: (context) {
-                              final recordingState = _recordingKey.currentState;
-                              if (recordingState == null) {
-                                return const SizedBox.shrink();
-                              }
-                              return recordingState.buildRecordingBar(context);
-                            },
-                          )
-                        : CallbackShortcuts(
-                            bindings: <ShortcutActivator, VoidCallback>{
-                              // Web/desktop: multiline fields often lack an IME “Send”; keep one send path.
-                              const SingleActivator(
-                                LogicalKeyboardKey.enter,
-                                control: true,
-                              ): _send,
-                              const SingleActivator(
-                                LogicalKeyboardKey.enter,
-                                meta: true,
-                              ): _send,
-                            },
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxHeight: maxComposerHeight,
+                    if (!_isRecording)
+                      FocusGuardArea(
+                        id: 'composer_emoji_toggle',
+                        child: Focus(
+                          canRequestFocus: false,
+                          child: Semantics(
+                            button: true,
+                            label: l10n.chatComposerEmojiSemantics,
+                            excludeSemantics: true,
+                            child: IconButton(
+                              key: const ValueKey('composer-emoji-toggle'),
+                              tooltip: l10n.chatComposerEmojiTooltip,
+                              icon: Icon(
+                                _showEmojiPicker
+                                    ? Icons.keyboard_alt_outlined
+                                    : Icons.emoji_emotions_outlined,
                               ),
-                              child: TextField(
-                                controller: _controller,
-                                focusNode: _focusNode,
-                                style: RpgTheme.bodyFont(
-                                  fontSize: 14,
-                                  color: colorScheme.onSurface,
-                                ),
-                                decoration: InputDecoration(
-                                  hintText: AppLocalizations.of(
-                                    context,
-                                  ).chatMessageHint,
-                                  contentPadding: const EdgeInsets.symmetric(
-                                    horizontal: 16,
-                                    vertical: 10,
-                                  ),
-                                  border: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(24),
-                                    borderSide: BorderSide(color: fc.tabBorder),
-                                  ),
-                                  enabledBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(24),
-                                    borderSide: BorderSide(color: fc.tabBorder),
-                                  ),
-                                  focusedBorder: OutlineInputBorder(
-                                    borderRadius: BorderRadius.circular(24),
-                                    borderSide: BorderSide(
-                                      color: RpgTheme.primaryColor(context),
-                                      width: 1.5,
-                                    ),
-                                  ),
-                                  filled: true,
-                                  fillColor: fc.inputBg,
-                                ),
-                                // Cap height so the composer does not consume the whole screen (matches
-                                // WhatsApp/Telegram-style behavior: grow to a few lines, then scroll inside).
-                                minLines: 1,
-                                maxLines: 6,
-                                // Send via IME action (mobile) or Ctrl/Cmd+Enter (web/desktop).
-                                // Plain Enter still inserts '\n' in this multiline field.
-                                textInputAction: TextInputAction.send,
-                                // Default [onEditingComplete] unfocuses after "Send", which dismisses
-                                // the keyboard while the node can still report focused in the same sync turn.
-                                onEditingComplete: () {},
-                                onSubmitted: (_) => _send(),
-                                // Android/desktop should hide the keyboard when
-                                // the user taps the chat outside the whole
-                                // composer. Composer controls sit in the same
-                                // [TapRegion] group, so send/emoji/attachment
-                                // taps do not trigger this callback. iOS WebKit
-                                // keeps the old no-op because tap-outside blur
-                                // caused the send-button keyboard bounce.
-                                groupId: _composerTapRegionGroup,
-                                onTapOutside: _handleComposerTapOutside,
-                                // Android IME rich-content insertion (Phase 4);
-                                // other platforms never emit commitContent.
-                                contentInsertionConfiguration:
-                                    ContentInsertionConfiguration(
-                                      allowedMimeTypes: kStageableImageMimeTypes
-                                          .toList(),
-                                      onContentInserted:
-                                          _onKeyboardContentInserted,
-                                    ),
-                              ),
+                              iconSize: 24,
+                              color: _showEmojiPicker
+                                  ? RpgTheme.primaryColor(context)
+                                  : (isDark
+                                        ? RpgTheme.mutedDark
+                                        : RpgTheme.textSecondaryLight),
+                              onPressed: _toggleEmojiPicker,
                             ),
                           ),
-                  ),
+                        ),
+                      ),
 
-                  const SizedBox(width: 2),
+                    // Text field or recording bar
+                    Expanded(
+                      child: _isRecording
+                          ? Builder(
+                              builder: (context) {
+                                final recordingState =
+                                    _recordingKey.currentState;
+                                if (recordingState == null) {
+                                  return const SizedBox.shrink();
+                                }
+                                return recordingState.buildRecordingBar(
+                                  context,
+                                );
+                              },
+                            )
+                          : CallbackShortcuts(
+                              bindings: <ShortcutActivator, VoidCallback>{
+                                // Web/desktop: multiline fields often lack an IME “Send”; keep one send path.
+                                const SingleActivator(
+                                  LogicalKeyboardKey.enter,
+                                  control: true,
+                                ): _send,
+                                const SingleActivator(
+                                  LogicalKeyboardKey.enter,
+                                  meta: true,
+                                ): _send,
+                              },
+                              child: ConstrainedBox(
+                                constraints: BoxConstraints(
+                                  maxHeight: maxComposerHeight,
+                                ),
+                                child: TextField(
+                                  controller: _controller,
+                                  focusNode: _focusNode,
+                                  style: RpgTheme.bodyFont(
+                                    fontSize: 14,
+                                    color: colorScheme.onSurface,
+                                  ),
+                                  decoration: InputDecoration(
+                                    hintText: AppLocalizations.of(
+                                      context,
+                                    ).chatMessageHint,
+                                    contentPadding: const EdgeInsets.symmetric(
+                                      horizontal: 16,
+                                      vertical: 10,
+                                    ),
+                                    border: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(24),
+                                      borderSide: BorderSide(
+                                        color: fc.tabBorder,
+                                      ),
+                                    ),
+                                    enabledBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(24),
+                                      borderSide: BorderSide(
+                                        color: fc.tabBorder,
+                                      ),
+                                    ),
+                                    focusedBorder: OutlineInputBorder(
+                                      borderRadius: BorderRadius.circular(24),
+                                      borderSide: BorderSide(
+                                        color: RpgTheme.primaryColor(context),
+                                        width: 1.5,
+                                      ),
+                                    ),
+                                    filled: true,
+                                    fillColor: fc.inputBg,
+                                  ),
+                                  // Cap height so the composer does not consume the whole screen (matches
+                                  // WhatsApp/Telegram-style behavior: grow to a few lines, then scroll inside).
+                                  minLines: 1,
+                                  maxLines: 6,
+                                  // Send via IME action (mobile) or Ctrl/Cmd+Enter (web/desktop).
+                                  // Plain Enter still inserts '\n' in this multiline field.
+                                  textInputAction: TextInputAction.send,
+                                  // Default [onEditingComplete] unfocuses after "Send", which dismisses
+                                  // the keyboard while the node can still report focused in the same sync turn.
+                                  onEditingComplete: () {},
+                                  onSubmitted: (_) => _send(),
+                                  // Android/desktop should hide the keyboard when
+                                  // the user taps the chat outside the whole
+                                  // composer. Composer controls sit in the same
+                                  // [TapRegion] group, so send/emoji/attachment
+                                  // taps do not trigger this callback. iOS WebKit
+                                  // keeps the old no-op because tap-outside blur
+                                  // caused the send-button keyboard bounce.
+                                  groupId: _composerTapRegionGroup,
+                                  onTapOutside: _handleComposerTapOutside,
+                                  // Android IME rich-content insertion (Phase 4);
+                                  // other platforms never emit commitContent.
+                                  contentInsertionConfiguration:
+                                      ContentInsertionConfiguration(
+                                        allowedMimeTypes:
+                                            kStageableImageMimeTypes.toList(),
+                                        onContentInserted:
+                                            _onKeyboardContentInserted,
+                                      ),
+                                ),
+                              ),
+                            ),
+                    ),
 
-                  // Trailing 48×48 stack: mic always mounted; text send fades on top (Phase 0).
-                  // CLAUDE.md: never swap mic/send as Row siblings — unmount dismisses keyboard.
-                  FocusGuardArea(
-                    id: 'composer_trailing',
-                    child: _buildTrailingSlot(context),
-                  ),
-                ],
+                    const SizedBox(width: 2),
+
+                    // Trailing 48×48 stack: mic always mounted; text send fades on top (Phase 0).
+                    // CLAUDE.md: never swap mic/send as Row siblings — unmount dismisses keyboard.
+                    FocusGuardArea(
+                      id: 'composer_trailing',
+                      child: _buildTrailingSlot(context),
+                    ),
+                  ],
+                ),
               ),
             ),
-          ),
 
-          if (!_showActionPanel &&
-              !_showEmojiPicker &&
-              bottomInteractivePadding > 0)
-            Container(
-              height: bottomInteractivePadding,
-              color: colorScheme.surface,
+            if (!_showActionPanel &&
+                !_showEmojiPicker &&
+                bottomInteractivePadding > 0)
+              Container(
+                height: bottomInteractivePadding,
+                color: colorScheme.surface,
+              ),
+
+            // Action tiles with slide animation
+            SizeTransition(
+              sizeFactor: _actionPanelAnimation,
+              axisAlignment: -1.0,
+              child: ChatActionTiles(bottomPadding: bottomInteractivePadding),
             ),
 
-          // Action tiles with slide animation
-          SizeTransition(
-            sizeFactor: _actionPanelAnimation,
-            axisAlignment: -1.0,
-            child: ChatActionTiles(bottomPadding: bottomInteractivePadding),
-          ),
-
-          if (_showEmojiPicker)
-            FireplaceEmojiPicker(
-              onEmojiSelected: _insertEmoji,
-              onBackspacePressed: _deletePreviousEmoji,
-              height: 320,
-            ),
-        ],
+            if (_showEmojiPicker)
+              FireplaceEmojiPicker(
+                onEmojiSelected: _insertEmoji,
+                onBackspacePressed: _deletePreviousEmoji,
+                height: 320,
+              ),
+          ],
+        ),
       ),
     );
   }

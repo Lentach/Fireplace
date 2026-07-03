@@ -3,6 +3,7 @@ import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
+import 'package:fireplace/widgets/chat_action_tiles.dart';
 import 'package:fireplace/widgets/emoji/fireplace_emoji_picker.dart';
 import 'package:fireplace/widgets/input/chat_input_bar.dart';
 import 'package:fireplace/widgets/input/composer_keyboard_signals.dart';
@@ -143,6 +144,31 @@ void main() {
       final fieldAfter = tester.widget<TextField>(find.byType(TextField));
       expect(fieldAfter.focusNode!.hasFocus, isTrue);
       expect(fieldAfter.controller!.text, isEmpty);
+    },
+  );
+
+  testWidgets(
+    'action panel tap stays inside composer tap region and keeps focus',
+    (tester) async {
+      await _pump(tester);
+      await tester.enterText(find.byType(TextField), 'keep keyboard');
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(ChatActionTiles), findsOneWidget);
+      final fieldBefore = tester.widget<TextField>(find.byType(TextField));
+      expect(fieldBefore.focusNode!.hasFocus, isTrue);
+
+      final actionPanelTopLeft = tester.getTopLeft(
+        find.byType(ChatActionTiles),
+      );
+      await tester.tapAt(actionPanelTopLeft + const Offset(4, 4));
+      await tester.pump();
+
+      final fieldAfter = tester.widget<TextField>(find.byType(TextField));
+      expect(fieldAfter.focusNode!.hasFocus, isTrue);
     },
   );
 
