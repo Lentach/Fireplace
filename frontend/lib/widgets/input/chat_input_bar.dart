@@ -56,6 +56,7 @@ class ChatInputBarState extends State<ChatInputBar>
   bool _showActionPanel = false;
   late final AnimationController _actionPanelController;
   bool _showEmojiPicker = false;
+  bool _ignoreComposerTapOutsideForChatSurfaceTap = false;
 
   @visibleForTesting
   bool get isActionPanelOpenForTest => _showActionPanel;
@@ -139,16 +140,28 @@ class ChatInputBarState extends State<ChatInputBar>
   }
 
   void _handleComposerTapOutside(PointerDownEvent _) {
+    if (_ignoreComposerTapOutsideForChatSurfaceTap) return;
     if (kIsWeb && isIOSWebKit()) return;
     _focusNode.unfocus();
   }
 
   void dismissForChatSurfaceTap() {
+    if (_showActionPanel) {
+      // The message list owns the real chat-surface pointer. TapRegion still
+      // receives the same outside tap afterward; suppress only that follow-up
+      // so the lower action panel does not collapse or lose focus.
+      _ignoreComposerTapOutsideForChatSurfaceTap = true;
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _ignoreComposerTapOutsideForChatSurfaceTap = false;
+      });
+      return;
+    }
     _dismissOpenComposerPanels();
     _focusNode.unfocus();
   }
 
   void _handleComposerRegionTapOutside(PointerDownEvent event) {
+    if (_ignoreComposerTapOutsideForChatSurfaceTap) return;
     _dismissOpenComposerPanels();
     _handleComposerTapOutside(event);
   }
