@@ -39,6 +39,36 @@ Future<ChatInputBarState> _pump(WidgetTester tester) async {
   return key.currentState!;
 }
 
+Future<ChatInputBarState> _pumpWithChatSurface(WidgetTester tester) async {
+  final key = GlobalKey<ChatInputBarState>();
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: RpgTheme.themeDataLight,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: const Locale('en'),
+      home: Scaffold(
+        body: _providerScope(
+          child: Column(
+            children: [
+              Expanded(
+                child: GestureDetector(
+                  key: const ValueKey('chat-surface'),
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () {},
+                ),
+              ),
+              ChatInputBar(key: key),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+  return key.currentState!;
+}
+
 Future<void> _openEmojiPanel(WidgetTester tester) async {
   await tester.tap(find.byKey(const ValueKey('composer-emoji-toggle')));
   await tester.pumpAndSettle();
@@ -230,6 +260,21 @@ void main() {
     // Draft consumed proves the send actually ran (not an early no-op return).
     expect(field.controller!.text, isEmpty);
   });
+
+  testWidgets(
+    'chat surface tap closes emoji panel and leaves composer unfocused',
+    (tester) async {
+      await _pumpWithChatSurface(tester);
+      await _openEmojiPanel(tester);
+
+      await tester.tap(find.byKey(const ValueKey('chat-surface')));
+      await tester.pumpAndSettle();
+
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(find.byType(FireplaceEmojiPicker), findsNothing);
+      expect(field.focusNode!.hasFocus, isFalse);
+    },
+  );
 
   // Recording replaces the composer row; a stacked emoji panel must drop
   // with it (mic tap dismisses the panel, Telegram parity).

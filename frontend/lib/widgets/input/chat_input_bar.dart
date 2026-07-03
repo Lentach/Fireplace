@@ -140,6 +140,29 @@ class ChatInputBarState extends State<ChatInputBar>
     _focusNode.unfocus();
   }
 
+  void _handleComposerRegionTapOutside(PointerDownEvent event) {
+    var closedPanel = false;
+    if (_showEmojiPicker || _showActionPanel) {
+      setState(() {
+        if (_showEmojiPicker) {
+          _showEmojiPicker = false;
+          closedPanel = true;
+        }
+        if (_showActionPanel) {
+          _showActionPanel = false;
+          _actionPanelController.reverse();
+          closedPanel = true;
+        }
+      });
+    }
+
+    if (!closedPanel) {
+      _handleComposerTapOutside(event);
+    } else if (!(kIsWeb && isIOSWebKit())) {
+      _focusNode.unfocus();
+    }
+  }
+
   void _onComposerFocusForWebViewport() {
     if (!kIsWeb) return;
     if (!_focusNode.hasFocus) {
@@ -813,6 +836,7 @@ class ChatInputBarState extends State<ChatInputBar>
       },
       child: TapRegion(
         groupId: _composerTapRegionGroup,
+        onTapOutside: _handleComposerRegionTapOutside,
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
