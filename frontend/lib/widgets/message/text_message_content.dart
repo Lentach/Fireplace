@@ -23,9 +23,9 @@ class TextMessageContent extends StatelessWidget {
   });
   Widget _buildTextWithLinks(BuildContext context) {
     final text = message.content;
-    // Telegram-parity jumbo rendering for emoji-only messages (1-2 emoji →
-    // 40, 3 → 34, 4 → 26, 5+ → 22; body text stays 14). Emoji-only content
-    // cannot contain URLs, so the link pipeline below is safely skipped.
+    // Telegram-parity jumbo rendering for emoji-only messages. Size tiers live
+    // in jumbo_emoji.dart so this comment does not fossilize another copy.
+    // Emoji-only content cannot contain URLs, so the link pipeline below is safely skipped.
     final jumboSize = jumboEmojiFontSize(text);
     if (jumboSize != null) {
       return RichText(

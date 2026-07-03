@@ -205,10 +205,10 @@ void main() {
   );
 
   testWidgets(
-    'chat surface tap closes the action panel and unfocuses composer',
+    'chat surface tap keeps the action panel open and only unfocuses composer',
     (tester) async {
       final state = await _pumpWithChatSurface(tester);
-      await tester.enterText(find.byType(TextField), 'dismiss both');
+      await tester.enterText(find.byType(TextField), 'dismiss keyboard only');
       await tester.tap(find.byType(TextField));
       await tester.pump();
       await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
@@ -222,7 +222,7 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('chat-surface')));
       await tester.pumpAndSettle();
 
-      expect(state.isActionPanelOpenForTest, isFalse);
+      expect(state.isActionPanelOpenForTest, isTrue);
       expect(
         tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
         isFalse,
@@ -290,7 +290,7 @@ void main() {
   });
 
   testWidgets(
-    'chat surface tap closes emoji panel and leaves composer unfocused',
+    'chat surface tap keeps emoji panel open and leaves composer unfocused',
     (tester) async {
       await _pumpWithChatSurface(tester);
       await _openEmojiPanel(tester);
@@ -299,7 +299,7 @@ void main() {
       await tester.pumpAndSettle();
 
       final field = tester.widget<TextField>(find.byType(TextField));
-      expect(find.byType(FireplaceEmojiPicker), findsNothing);
+      expect(find.byType(FireplaceEmojiPicker), findsOneWidget);
       expect(field.focusNode!.hasFocus, isFalse);
     },
   );

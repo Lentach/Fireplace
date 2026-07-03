@@ -10,6 +10,7 @@ import '../../providers/settings_provider.dart';
 import '../../theme/rpg_theme.dart';
 import '../../utils/reply_preview_helper.dart';
 import '../../utils/message_edit_eligibility.dart';
+import '../../utils/jumbo_emoji.dart';
 import '../message_swipe_wrapper.dart';
 import '../dialogs/message_delete_dialog.dart';
 import '../top_snackbar.dart';
@@ -282,6 +283,10 @@ class ChatMessageBubble extends StatelessWidget {
                   final useTextOverlay =
                       message.messageType == MessageType.text &&
                       message.linkPreviewUrl == null;
+                  final isEmojiOnlyText =
+                      useTextOverlay &&
+                      message.replyTo == null &&
+                      emojiOnlyCount(message.content) != null;
 
                   final standardTimeWidget = MessageMetadataRow(
                     message: message,
@@ -310,6 +315,39 @@ class ChatMessageBubble extends StatelessWidget {
                   );
 
                   Widget child;
+
+                  if (isEmojiOnlyText) {
+                    return ContextMenuBubbleAnchor(
+                      child: ConstrainedBox(
+                        constraints: BoxConstraints(maxWidth: maxBubbleWidth),
+                        child: Padding(
+                          padding: EdgeInsets.only(
+                            left: isMine ? 48 : 0,
+                            right: isMine ? 0 : 48,
+                            bottom: kContextMenuAnchorBottomMargin,
+                          ),
+                          child: Wrap(
+                            alignment: isMine
+                                ? WrapAlignment.end
+                                : WrapAlignment.start,
+                            crossAxisAlignment: WrapCrossAlignment.end,
+                            spacing: 6,
+                            runSpacing: 2,
+                            children: [
+                              _buildContentColumn(
+                                context,
+                                isDark,
+                                textColor,
+                                borderColor,
+                                contentAreaWidth: contentAreaWidth,
+                              ),
+                              standardTimeWidget,
+                            ],
+                          ),
+                        ),
+                      ),
+                    );
+                  }
 
                   if (isMediaMessage) {
                     child = Stack(

@@ -3,11 +3,10 @@ import 'package:flutter/foundation.dart' show visibleForTesting;
 
 /// Telegram-style "jumbo" sizing for emoji-only messages.
 ///
-/// Telegram Android (`MessageObject.checkEmojiOnly` + `Theme.java`,
-/// `emojiSizePercents = [.68,.46,.34,.28,.22,.19] × 120dp`) renders regular
-/// (non-premium) emoji-only messages at 40.8/33.6/26.4/22.8dp for
-/// 1–2/3/4/5+ emoji. Fireplace body text is 14 — these tiers mirror
-/// Telegram's, rounded.
+/// Emoji-only chat messages are rendered outside the normal message bubble,
+/// Telegram-style. A single emoji should read like a lightweight sticker, not
+/// body text in a colored rectangle. Multi-emoji messages step down so rows do
+/// not explode horizontally.
 ///
 /// Detection is purely client-side rendering: content is plaintext after E2E
 /// decrypt; nothing about it goes on the wire.
@@ -44,7 +43,7 @@ int? emojiOnlyCount(String text) {
   return count == 0 ? null : count;
 }
 
-/// Telegram-parity font size for an emoji-only message, or `null` when [text]
+/// Telegram-style font size for an emoji-only message, or `null` when [text]
 /// is not emoji-only (render at normal body size).
 double? jumboEmojiFontSize(String text) {
   final count = emojiOnlyCount(text);
@@ -54,8 +53,9 @@ double? jumboEmojiFontSize(String text) {
 
 @visibleForTesting
 double jumboEmojiFontSizeForCount(int count) {
-  if (count <= 2) return 40;
-  if (count == 3) return 34;
-  if (count == 4) return 26;
-  return 22;
+  if (count == 1) return 104;
+  if (count == 2) return 84;
+  if (count == 3) return 64;
+  if (count == 4) return 52;
+  return 44;
 }

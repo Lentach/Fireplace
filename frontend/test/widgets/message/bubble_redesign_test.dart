@@ -276,7 +276,7 @@ void main() {
     );
 
     testWidgets(
-      'jumbo emoji reserves inline metadata without a wide empty row',
+      'single emoji-only message renders large without a message bubble',
       (tester) async {
         final msg = MessageModel(
           id: 8,
@@ -306,23 +306,16 @@ void main() {
         final emojiLineWidth = tester.getSize(emojiFinder).width;
         expect(
           emojiLineWidth,
-          lessThan(70),
-          reason: 'Emoji RichText width must be the emoji, not metadata.',
+          greaterThan(80),
+          reason: 'Single emoji-only message should be Telegram-large.',
         );
         final surfaceFinder = find.byKey(
           const ValueKey('message-bubble-surface-8'),
         );
-        expect(surfaceFinder, findsOneWidget);
-        final surfaceWidth = tester.getSize(surfaceFinder).width;
         expect(
-          surfaceWidth,
-          greaterThan(90),
-          reason: 'Painted emoji bubble must include metadata.',
-        );
-        expect(
-          surfaceWidth,
-          lessThan(180),
-          reason: 'Painted emoji bubble must stay tight, not max out width.',
+          surfaceFinder,
+          findsNothing,
+          reason: 'Emoji-only messages should not paint a message bubble.',
         );
       },
     );

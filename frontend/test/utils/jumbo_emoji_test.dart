@@ -40,13 +40,13 @@ void main() {
 
   group('jumboEmojiFontSizeForCount', () {
     const tiers = <int, double>{
-      1: 40,
-      2: 40,
-      3: 34,
-      4: 26,
-      5: 22,
-      6: 22,
-      50: 22,
+      1: 104,
+      2: 84,
+      3: 64,
+      4: 52,
+      5: 44,
+      6: 44,
+      50: 44,
     };
     tiers.forEach((count, size) {
       test('$count emoji -> $size', () {
@@ -57,10 +57,10 @@ void main() {
 
   group('jumboEmojiFontSize', () {
     test('emoji-only text maps through the tier table', () {
-      expect(jumboEmojiFontSize('😀'), 40);
-      expect(jumboEmojiFontSize('😀😀😀'), 34);
-      expect(jumboEmojiFontSize('😀😀😀😀'), 26);
-      expect(jumboEmojiFontSize('😀 😀 😀 😀 😀 😀'), 22);
+      expect(jumboEmojiFontSize('😀'), 104);
+      expect(jumboEmojiFontSize('😀😀😀'), 64);
+      expect(jumboEmojiFontSize('😀😀😀😀'), 52);
+      expect(jumboEmojiFontSize('😀 😀 😀 😀 😀 😀'), 44);
     });
 
     test('null for non-emoji-only text', () {
