@@ -144,11 +144,26 @@ class ChatInputBarState extends State<ChatInputBar>
   }
 
   void dismissForChatSurfaceTap() {
+    _dismissOpenComposerPanels();
     _focusNode.unfocus();
   }
 
   void _handleComposerRegionTapOutside(PointerDownEvent event) {
+    _dismissOpenComposerPanels();
     _handleComposerTapOutside(event);
+  }
+
+  void _dismissOpenComposerPanels() {
+    if (!_showEmojiPicker && !_showActionPanel) return;
+    setState(() {
+      if (_showEmojiPicker) {
+        _showEmojiPicker = false;
+      }
+      if (_showActionPanel) {
+        _showActionPanel = false;
+        _actionPanelController.reverse();
+      }
+    });
   }
   void _onComposerFocusForWebViewport() {
     if (!kIsWeb) return;
