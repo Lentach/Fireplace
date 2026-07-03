@@ -43,7 +43,7 @@ void main() {
       final result = await store.isTrustedIdentity(
           address, newKeyPair.getPublicKey(), Direction.receiving);
 
-      // Should accept key rotation — currently returns false (BUG)
+      // Rotation is accepted (TOFU with rotation trust) — see signal_stores.dart saveIdentity.
       expect(result, isTrue);
     });
 

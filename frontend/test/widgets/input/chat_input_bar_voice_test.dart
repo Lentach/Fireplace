@@ -73,4 +73,43 @@ void main() {
     expect(find.byType(CircularProgressIndicator), findsOneWidget);
     expect(find.byIcon(Icons.mic_none), findsNothing);
   });
+
+  testWidgets(
+      'trailing slot stays MOUNTED across idle -> recording -> sending '
+      '(element identity; unmount would dismiss the iOS keyboard)',
+      (tester) async {
+    final state = await _pump(tester);
+
+    Element textSendLayer() =>
+        tester.element(find.byKey(const ValueKey('composer_text_send_layer')));
+    Element voiceSendLayer() =>
+        tester.element(find.byKey(const ValueKey('composer_voice_send_layer')));
+
+    // Idle: all layers mounted (opacity-toggled, never conditionally built).
+    final idleTextLayer = textSendLayer();
+    final idleVoiceLayer = voiceSendLayer();
+
+    // -> recording
+    state.setRecordingForTest(true);
+    await tester.pump();
+    expect(identical(textSendLayer(), idleTextLayer), isTrue,
+        reason: 'text-send layer must not be remounted when recording starts');
+    expect(identical(voiceSendLayer(), idleVoiceLayer), isTrue,
+        reason: 'voice-send layer must not be remounted when recording starts');
+
+    // -> sending voice
+    state.setRecordingForTest(false);
+    state.setSendingVoiceForTest(true);
+    await tester.pump();
+    expect(identical(textSendLayer(), idleTextLayer), isTrue,
+        reason: 'text-send layer must survive the recording->sending flip');
+    expect(identical(voiceSendLayer(), idleVoiceLayer), isTrue,
+        reason: 'voice-send layer must survive the recording->sending flip');
+
+    // -> back to idle
+    state.setSendingVoiceForTest(false);
+    await tester.pump();
+    expect(identical(textSendLayer(), idleTextLayer), isTrue,
+        reason: 'a full state round trip must never swap Row siblings');
+  });
 }
