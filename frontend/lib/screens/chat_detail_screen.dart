@@ -49,7 +49,8 @@ class ChatDetailScreen extends StatefulWidget {
   State<ChatDetailScreen> createState() => _ChatDetailScreenState();
 }
 
-class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBindingObserver {
+class _ChatDetailScreenState extends State<ChatDetailScreen>
+    with WidgetsBindingObserver {
   /// Cached in [initState] so [dispose] can sync push state without relying on [context].
   late final ConversationsProvider _conversations;
   late final MessagingProvider _messaging;
@@ -62,11 +63,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   int _newMessagesCount = 0;
   int _lastMessageCount = 0;
   int _lastLinkPreviewCount = 0;
+  final Set<int> _knownMessageIds = <int>{};
   double _lastKeyboardHeight = 0;
   bool _isLoadingMoreLocal = false;
   double? _prePaginationScrollOffset;
   double? _prePaginationScrollExtent;
   bool _wasNearBottom = true;
+
   /// After the user drags the list, do not auto-scroll to bottom until they scroll back
   /// (cleared when near bottom in [_onScroll]).
   bool _userHasScrolledChat = false;
@@ -82,8 +85,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       messageId: messageId,
       getMessages: () => messaging.messages,
       hasMoreMessages: () => messaging.hasMoreMessages,
-      loadOlderPage: () =>
-          messaging.loadOlderMessages(widget.conversationId),
+      loadOlderPage: () => messaging.loadOlderMessages(widget.conversationId),
     );
 
     if (listIndex == null) {
@@ -100,17 +102,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     var revealed = false;
     const maxRevealAttempts = 12;
-    final itemCount = messaging.messages.length +
-        (_isLoadingMoreLocal ? 1 : 0);
+    final itemCount = messaging.messages.length + (_isLoadingMoreLocal ? 1 : 0);
     for (var attempt = 0; attempt < maxRevealAttempts; attempt++) {
-      if (attempt > 0 &&
-          _scrollController.hasClients &&
-          itemCount > 1) {
+      if (attempt > 0 && _scrollController.hasClients && itemCount > 1) {
         final maxExtent = _scrollController.position.maxScrollExtent;
         final fraction = listIndex / (itemCount - 1);
-        _scrollController.jumpTo(
-          (maxExtent * fraction).clamp(0.0, maxExtent),
-        );
+        _scrollController.jumpTo((maxExtent * fraction).clamp(0.0, maxExtent));
       }
       await WidgetsBinding.instance.endOfFrame;
       if (!mounted) return;
@@ -152,10 +149,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       children: [
         if (showDate) MessageDateSeparator(date: msg.createdAt),
         if (showDate) const SizedBox(height: 8),
-        ChatMessageBubble(
-          message: msg,
-          isMine: isMine,
-        ),
+        ChatMessageBubble(message: msg, isMine: isMine),
       ],
     );
     if (scrollKey == null) return bubble;
@@ -223,8 +217,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   }
 
   void _onNewMessages(int currentCount, int added) {
+    final messaging = context.read<MessagingProvider>();
+    final currentUserId = context.read<AuthProvider>().currentUser?.id;
+    final currentMessages = messaging.messages;
+    final currentMessageIds = currentMessages.map((m) => m.id).toSet();
+
     if (_isLoadingMoreLocal) {
-      final messaging = context.read<MessagingProvider>();
+      _knownMessageIds.addAll(currentMessageIds);
+      _lastMessageCount = currentCount;
+      _lastLinkPreviewCount = currentMessages
+          .where((m) => m.linkPreviewUrl != null)
+          .length;
+
       if (!messaging.isLoadingMore) {
         setState(() => _isLoadingMoreLocal = false);
         final preOffset = _prePaginationScrollOffset;
@@ -252,29 +256,45 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       });
       return;
     }
-    // Non-pagination path.
-    if (added <= 0) return;
+
+    if (added <= 0) {
+      _lastMessageCount = currentCount;
+      _knownMessageIds
+        ..clear()
+        ..addAll(currentMessageIds);
+      _lastLinkPreviewCount = currentMessages
+          .where((m) => m.linkPreviewUrl != null)
+          .length;
+      return;
+    }
+
+    final newPeerMessages = currentMessages.where((m) {
+      final known = _knownMessageIds.contains(m.id);
+      return !known && m.senderId != currentUserId;
+    }).length;
+
+    _knownMessageIds.addAll(currentMessageIds);
 
     // Initial full snapshot: opening the chat. _lastMessageCount was 0 so added == currentCount.
     // Do NOT badge — this is the open render, not an incoming message.
     // pixels=0 already shows newest with reverse:true; no explicit scroll needed.
     if (_lastMessageCount == 0 && added == currentCount) {
       _lastMessageCount = currentCount;
-      final messaging = context.read<MessagingProvider>();
-      _lastLinkPreviewCount =
-          messaging.messages.where((m) => m.linkPreviewUrl != null).length;
+      _lastLinkPreviewCount = currentMessages
+          .where((m) => m.linkPreviewUrl != null)
+          .length;
       return;
     }
 
     // Subsequent incoming message.
     _lastMessageCount = currentCount;
-    final messaging = context.read<MessagingProvider>();
-    _lastLinkPreviewCount =
-        messaging.messages.where((m) => m.linkPreviewUrl != null).length;
+    _lastLinkPreviewCount = currentMessages
+        .where((m) => m.linkPreviewUrl != null)
+        .length;
     if (_wasNearBottom && !_userHasScrolledChat) {
       _scrollToBottom();
-    } else {
-      setState(() => _newMessagesCount++);
+    } else if (newPeerMessages > 0) {
+      setState(() => _newMessagesCount += newPeerMessages);
     }
   }
 
@@ -337,6 +357,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     if (oldWidget.conversationId != widget.conversationId) {
       _showFullHandleTimer?.cancel();
       _showingFullHandle = false;
+      _knownMessageIds.clear();
       _lastMessageCount = 0;
       _lastLinkPreviewCount = 0;
       _newMessagesCount = 0;
@@ -453,7 +474,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                     top: -4,
                     right: -4,
                     child: Container(
-                      padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 6,
+                        vertical: 2,
+                      ),
                       decoration: const BoxDecoration(
                         color: Colors.blue,
                         borderRadius: BorderRadius.all(Radius.circular(10)),
@@ -478,7 +502,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   }
 
   ConversationModel? _getActiveConversation() {
-    return context.read<ConversationsProvider>().getConversationById(widget.conversationId);
+    return context.read<ConversationsProvider>().getConversationById(
+      widget.conversationId,
+    );
   }
 
   String _getContactName() {
@@ -490,7 +516,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
   UserModel? _getOtherUser() {
     final conv = _getActiveConversation();
-    return conv != null ? context.read<ConversationsProvider>().getOtherUser(conv) : null;
+    return conv != null
+        ? context.read<ConversationsProvider>().getOtherUser(conv)
+        : null;
   }
 
   /// statusText: e.g. "typing..." or "Recording voice..."
@@ -515,14 +543,17 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
         return FadeTransition(
           opacity: animation,
           child: SlideTransition(
-            position: Tween<Offset>(
-              begin: const Offset(0.25, 0),
-              end: Offset.zero,
-            ).animate(CurvedAnimation(
-              parent: animation,
-              curve: Curves.easeOut,
-              reverseCurve: Curves.easeIn,
-            )),
+            position:
+                Tween<Offset>(
+                  begin: const Offset(0.25, 0),
+                  end: Offset.zero,
+                ).animate(
+                  CurvedAnimation(
+                    parent: animation,
+                    curve: Curves.easeOut,
+                    reverseCurve: Curves.easeIn,
+                  ),
+                ),
             child: child,
           ),
         );
@@ -573,7 +604,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
   String? _getHeaderStatusText(BuildContext context, MessagingProvider msg) {
     final l10n = AppLocalizations.of(context);
     if (msg.isRecordingVoice) return l10n.recordingVoice;
-    if (msg.isPartnerRecordingVoice(widget.conversationId)) return l10n.recordingVoice;
+    if (msg.isPartnerRecordingVoice(widget.conversationId)) {
+      return l10n.recordingVoice;
+    }
     if (msg.isPartnerTyping(widget.conversationId)) return l10n.typing;
     return null;
   }
@@ -600,10 +633,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
             ? Center(
                 child: Text(
                   AppLocalizations.of(context).noMessagesYet,
-                  style: RpgTheme.bodyFont(
-                    fontSize: 14,
-                    color: mutedColor,
-                  ),
+                  style: RpgTheme.bodyFont(fontSize: 14, color: mutedColor),
                 ),
               )
             : NotificationListener<ScrollStartNotification>(
@@ -621,8 +651,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                     controller: _scrollController,
                     findChildIndexCallback: (Key key) {
                       if (key is ValueKey<int>) {
-                        final idx =
-                            messages.indexWhere((m) => m.id == key.value);
+                        final idx = messages.indexWhere(
+                          (m) => m.id == key.value,
+                        );
                         if (idx == -1) return null;
                         return messages.length - 1 - idx;
                       }
@@ -634,8 +665,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                       top: 8,
                       bottom: 8 + listBottomPadding,
                     ),
-                    itemCount:
-                        messages.length + (_isLoadingMoreLocal ? 1 : 0),
+                    itemCount: messages.length + (_isLoadingMoreLocal ? 1 : 0),
                     itemBuilder: (context, index) {
                       if (_isLoadingMoreLocal && index == messages.length) {
                         return const Padding(
@@ -645,7 +675,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                       }
                       final msgIndex = messages.length - 1 - index;
                       final msg = messages[msgIndex];
-                      final showDate = msgIndex == 0 ||
+                      final showDate =
+                          msgIndex == 0 ||
                           _isDifferentDay(
                             messages[msgIndex - 1].createdAt,
                             msg.createdAt,
@@ -670,7 +701,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     required ColorScheme colorScheme,
   }) {
     if (otherUser != null &&
-        context.read<FriendsProvider>().blockedByUserIds.contains(otherUser.id)) {
+        context.read<FriendsProvider>().blockedByUserIds.contains(
+          otherUser.id,
+        )) {
       return SafeArea(
         top: false,
         left: true,
@@ -712,7 +745,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
 
     // When a link preview arrives, the same message is updated in place (no count change)
     // but the bubble grows; scroll to bottom so the expanded message stays visible.
-    final linkPreviewCount = messages.where((m) => m.linkPreviewUrl != null).length;
+    final linkPreviewCount = messages
+        .where((m) => m.linkPreviewUrl != null)
+        .length;
     if (messages.isNotEmpty && linkPreviewCount > _lastLinkPreviewCount) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
@@ -724,8 +759,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
     final messagesAreaBg = FireplaceColors.of(context).messagesAreaBg;
-    final mutedColor =
-        isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
+    final mutedColor = isDark
+        ? RpgTheme.mutedDark
+        : RpgTheme.textSecondaryLight;
     final otherUser = _getOtherUser();
     final activeConv = convs.getConversationById(widget.conversationId);
     final statusText = _getHeaderStatusText(context, messaging);
@@ -737,16 +773,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
       child: _buildHeaderTitle(context, contactName, otherUser, statusText),
     );
     final pinnedBanner = activeConv != null
-        ? _buildPinnedMessageBanner(
-            context,
-            activeConv,
-            messaging,
-            convs,
-          )
+        ? _buildPinnedMessageBanner(context, activeConv, messaging, convs)
         : null;
-    final deletedByOther = activeConv == null && convs.activeConversationDeletedByOther;
+    final deletedByOther =
+        activeConv == null && convs.activeConversationDeletedByOther;
     // Auto-pop only when conv gone and NOT deleted by other (e.g. unfriend/block)
-    if (activeConv == null && convs.conversations.isNotEmpty && !deletedByOther) {
+    if (activeConv == null &&
+        convs.conversations.isNotEmpty &&
+        !deletedByOther) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (!mounted) return;
         if (Navigator.canPop(context)) {
@@ -848,11 +882,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen> with WidgetsBinding
                     profilePictureUrl: otherUser?.profilePictureUrl,
                   ),
                 ),
-                Expanded(
-                  child: Center(
-                    child: headerTitle,
-                  ),
-                ),
+                Expanded(child: Center(child: headerTitle)),
               ],
             ),
           ),

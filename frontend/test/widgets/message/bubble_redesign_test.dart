@@ -13,45 +13,47 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
 MessageModel _gifMessage() => MessageModel(
-      id: 1,
-      content: '',
-      senderId: 1,
-      senderUsername: 'a',
-      conversationId: 1,
-      deliveryStatus: MessageDeliveryStatus.read,
-      messageType: MessageType.gif,
-      createdAt: DateTime(2026, 1, 1, 14, 30),
-      mediaUrl: 'https://example.com/test.gif',
-    );
+  id: 1,
+  content: '',
+  senderId: 1,
+  senderUsername: 'a',
+  conversationId: 1,
+  deliveryStatus: MessageDeliveryStatus.read,
+  messageType: MessageType.gif,
+  createdAt: DateTime(2026, 1, 1, 14, 30),
+  mediaUrl: 'https://example.com/test.gif',
+);
 
 Widget _wrap(Widget child) => MaterialApp(
-      home: Scaffold(
-        body: MultiProvider(
-          providers: [
-            ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
-          ],
-          child: child,
-        ),
-      ),
-    );
+  home: Scaffold(
+    body: MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
+      ],
+      child: child,
+    ),
+  ),
+);
 
 Widget _wrapBubble(Widget child) => MaterialApp(
-      theme: RpgTheme.themeDataBlue,
-      localizationsDelegates: AppLocalizations.localizationsDelegates,
-      supportedLocales: AppLocalizations.supportedLocales,
-      home: Scaffold(
-        body: MultiProvider(
-          providers: [
-            ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
-            ChangeNotifierProvider<MessagingProvider>(
-                create: (_) => MessagingProvider()),
-            ChangeNotifierProvider<SettingsProvider>(
-                create: (_) => SettingsProvider()),
-          ],
-          child: child,
+  theme: RpgTheme.themeDataBlue,
+  localizationsDelegates: AppLocalizations.localizationsDelegates,
+  supportedLocales: AppLocalizations.supportedLocales,
+  home: Scaffold(
+    body: MultiProvider(
+      providers: [
+        ChangeNotifierProvider<AuthProvider>(create: (_) => AuthProvider()),
+        ChangeNotifierProvider<MessagingProvider>(
+          create: (_) => MessagingProvider(),
         ),
-      ),
-    );
+        ChangeNotifierProvider<SettingsProvider>(
+          create: (_) => SettingsProvider(),
+        ),
+      ],
+      child: child,
+    ),
+  ),
+);
 
 void main() {
   group('GifMessageContent', () {
@@ -65,9 +67,13 @@ void main() {
       );
     });
 
-    testWidgets('does not render a ConstrainedBox with maxWidth 200', (tester) async {
+    testWidgets('does not render a ConstrainedBox with maxWidth 200', (
+      tester,
+    ) async {
       await tester.pumpWidget(_wrap(GifMessageContent(message: _gifMessage())));
-      final boxes = tester.widgetList<ConstrainedBox>(find.byType(ConstrainedBox));
+      final boxes = tester.widgetList<ConstrainedBox>(
+        find.byType(ConstrainedBox),
+      );
       expect(
         boxes.any((b) => b.constraints.maxWidth == 200.0),
         isFalse,
@@ -98,7 +104,9 @@ void main() {
       );
     });
 
-    testWidgets('does not render ConstrainedBox with maxWidth 200', (tester) async {
+    testWidgets('does not render ConstrainedBox with maxWidth 200', (
+      tester,
+    ) async {
       final msg = MessageModel(
         id: 2,
         content: '',
@@ -111,44 +119,17 @@ void main() {
         mediaUrl: 'https://example.com/test.jpg',
       );
       await tester.pumpWidget(_wrap(ImageMessageContent(message: msg)));
-      final boxes = tester.widgetList<ConstrainedBox>(find.byType(ConstrainedBox));
-      expect(
-        boxes.any((b) => b.constraints.maxWidth == 200.0),
-        isFalse,
+      final boxes = tester.widgetList<ConstrainedBox>(
+        find.byType(ConstrainedBox),
       );
+      expect(boxes.any((b) => b.constraints.maxWidth == 200.0), isFalse);
     });
   });
 
-  group('TextMessageContent overlay', () {
-    testWidgets('renders Stack with Positioned when timeOverlay provided', (tester) async {
-      final msg = MessageModel(
-        id: 3,
-        content: 'Hej co słychać dzisiaj u ciebie?',
-        senderId: 1,
-        senderUsername: 'a',
-        conversationId: 1,
-        deliveryStatus: MessageDeliveryStatus.read,
-        messageType: MessageType.text,
-        createdAt: DateTime(2026, 1, 1, 14, 30),
-      );
-      const overlay = SizedBox(key: Key('time-overlay'), width: 60, height: 16);
-      await tester.pumpWidget(_wrap(
-        TextMessageContent(
-          message: msg,
-          isMine: true,
-          textColor: Colors.white,
-          isDark: true,
-          maxWidth: 250,
-          timeOverlay: overlay,
-        ),
-      ));
-      expect(find.byKey(kTextMessageTimeOverlayStackKey), findsOneWidget);
-      expect(find.byKey(const Key('time-overlay')), findsOneWidget);
-      final positioned = tester.widgetList<Positioned>(find.byType(Positioned));
-      expect(positioned.any((p) => p.bottom == 0 && p.right == 0), isTrue);
-    });
-
-    testWidgets('renders plain Column when timeOverlay is null', (tester) async {
+  group('TextMessageContent layout', () {
+    testWidgets('renders text content without metadata overlay', (
+      tester,
+    ) async {
       final msg = MessageModel(
         id: 4,
         content: 'Hello',
@@ -159,16 +140,24 @@ void main() {
         messageType: MessageType.text,
         createdAt: DateTime(2026, 1, 1, 14, 30),
       );
-      await tester.pumpWidget(_wrap(
-        TextMessageContent(
-          message: msg,
-          isMine: true,
-          textColor: Colors.white,
-          isDark: true,
-          maxWidth: 250,
+      await tester.pumpWidget(
+        _wrap(
+          TextMessageContent(
+            message: msg,
+            isMine: true,
+            textColor: Colors.white,
+            isDark: true,
+            maxWidth: 250,
+          ),
         ),
-      ));
-      expect(find.byKey(kTextMessageTimeOverlayStackKey), findsNothing);
+      );
+      expect(
+        find.byWidgetPredicate(
+          (widget) =>
+              widget is RichText && widget.text.toPlainText() == 'Hello',
+        ),
+        findsOneWidget,
+      );
     });
   });
 
@@ -185,9 +174,9 @@ void main() {
         createdAt: DateTime(2026, 1, 1, 14, 30),
         mediaUrl: 'https://example.com/test.gif',
       );
-      await tester.pumpWidget(_wrapBubble(
-        ChatMessageBubble(message: msg, isMine: true),
-      ));
+      await tester.pumpWidget(
+        _wrapBubble(ChatMessageBubble(message: msg, isMine: true)),
+      );
       final containers = tester.widgetList<Container>(find.byType(Container));
       expect(
         containers.any((c) => c.padding == EdgeInsets.zero),
@@ -196,22 +185,39 @@ void main() {
       );
     });
 
-    testWidgets('text bubble (>25 chars, no link preview): renders overlay stack',
-        (tester) async {
-      final msg = MessageModel(
-        id: 6,
-        content: 'Hej, co słychać u Ciebie dzisiaj wieczorem?',
-        senderId: 1,
-        senderUsername: 'a',
-        conversationId: 1,
-        deliveryStatus: MessageDeliveryStatus.read,
-        messageType: MessageType.text,
-        createdAt: DateTime(2026, 1, 1, 14, 30),
-      );
-      await tester.pumpWidget(_wrapBubble(
-        ChatMessageBubble(message: msg, isMine: true),
-      ));
-      expect(find.byKey(kTextMessageTimeOverlayStackKey), findsOneWidget);
-    });
+    testWidgets(
+      'edited long text bubble lays metadata in flow instead of a positioned overlay',
+      (tester) async {
+        final msg = MessageModel(
+          id: 6,
+          content:
+              'Edited wrapped text must keep its final line separate from the timestamp row.',
+          senderId: 1,
+          senderUsername: 'a',
+          conversationId: 1,
+          deliveryStatus: MessageDeliveryStatus.read,
+          messageType: MessageType.text,
+          createdAt: DateTime(2026, 1, 1, 14, 30),
+          editedAt: DateTime(2026, 1, 1, 14, 35),
+        );
+
+        await tester.pumpWidget(
+          _wrapBubble(
+            SizedBox(
+              width: 260,
+              child: ChatMessageBubble(message: msg, isMine: true),
+            ),
+          ),
+        );
+
+        final editedLabel = find.text('edited');
+        expect(editedLabel, findsOneWidget);
+        expect(
+          find.ancestor(of: editedLabel, matching: find.byType(Positioned)),
+          findsNothing,
+          reason: 'Text metadata must not be absolutely positioned over text.',
+        );
+      },
+    );
   });
 }

@@ -6,11 +6,6 @@ import '../../services/link_preview_service.dart';
 import '../../theme/rpg_theme.dart';
 import '../../utils/jumbo_emoji.dart';
 
-/// Key for the time-overlay [Stack] in [TextMessageContent] (tests / debugging).
-const Key kTextMessageTimeOverlayStackKey = Key(
-  'text-message-time-overlay-stack',
-);
-
 /// Content widget for TEXT message type, including link detection and link preview card.
 class TextMessageContent extends StatelessWidget {
   final MessageModel message;
@@ -18,7 +13,6 @@ class TextMessageContent extends StatelessWidget {
   final Color textColor;
   final bool isDark;
   final double maxWidth;
-  final Widget? timeOverlay;
 
   const TextMessageContent({
     super.key,
@@ -27,7 +21,6 @@ class TextMessageContent extends StatelessWidget {
     required this.textColor,
     required this.isDark,
     required this.maxWidth,
-    this.timeOverlay,
   });
 
   Widget _buildTextWithLinks(BuildContext context) {
@@ -167,14 +160,12 @@ class TextMessageContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final hasOverlay = timeOverlay != null;
-
     final textWidget = ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxWidth),
       child: _buildTextWithLinks(context),
     );
 
-    final content = Column(
+    return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: isMine
           ? CrossAxisAlignment.end
@@ -186,22 +177,6 @@ class TextMessageContent extends StatelessWidget {
             alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
             child: _buildLinkPreviewCard(context),
           ),
-      ],
-    );
-
-    if (!hasOverlay) return content;
-
-    return Stack(
-      key: kTextMessageTimeOverlayStackKey,
-      children: [
-        ConstrainedBox(
-          constraints: const BoxConstraints(minWidth: 66),
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: content,
-          ),
-        ),
-        Positioned(bottom: 0, right: 0, child: timeOverlay!),
       ],
     );
   }
