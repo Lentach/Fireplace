@@ -151,6 +151,9 @@ class ChatInputBarState extends State<ChatInputBar>
       // receives the same outside tap afterward; suppress only that follow-up
       // so the lower action panel does not collapse or lose focus.
       _ignoreComposerTapOutsideForChatSurfaceTap = true;
+      if (_showEmojiPicker) {
+        setState(() => _showEmojiPicker = false);
+      }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _ignoreComposerTapOutsideForChatSurfaceTap = false;
       });
@@ -470,10 +473,6 @@ class ChatInputBarState extends State<ChatInputBar>
     final opening = !_showEmojiPicker;
     setState(() {
       _showEmojiPicker = opening;
-      if (opening && _showActionPanel) {
-        _showActionPanel = false;
-        _actionPanelController.reverse();
-      }
     });
     if (opening) {
       _focusNode.unfocus();
@@ -493,7 +492,6 @@ class ChatInputBarState extends State<ChatInputBar>
     setState(() {
       _showActionPanel = !_showActionPanel;
       if (_showActionPanel) {
-        _showEmojiPicker = false;
         _actionPanelController.forward();
       } else {
         _actionPanelController.reverse();

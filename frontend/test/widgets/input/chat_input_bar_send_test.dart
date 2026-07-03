@@ -235,6 +235,51 @@ void main() {
   );
 
   testWidgets(
+    'emoji toggle keeps the lower action panel visible when opening emoji',
+    (tester) async {
+      final state = await _pump(tester);
+      await tester.enterText(find.byType(TextField), 'stack panels');
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pumpAndSettle();
+
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(find.byType(ChatActionTiles), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('composer-emoji-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(find.byType(ChatActionTiles), findsOneWidget);
+      expect(find.byType(FireplaceEmojiPicker), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isFalse,
+      );
+    },
+  );
+
+  testWidgets(
+    'action panel toggle keeps the emoji panel visible when opening actions',
+    (tester) async {
+      final state = await _pump(tester);
+      await _openEmojiPanel(tester);
+
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pumpAndSettle();
+
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(find.byType(ChatActionTiles), findsOneWidget);
+      expect(find.byType(FireplaceEmojiPicker), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isFalse,
+      );
+    },
+  );
+
+  testWidgets(
     'plain outside tap closes the action panel and unfocuses composer',
     (tester) async {
       final state = await _pumpWithPlainOutsideSurface(tester);
@@ -283,6 +328,34 @@ void main() {
       expect(
         tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
         isTrue,
+      );
+    },
+  );
+
+  testWidgets(
+    'chat surface tap closes emoji while keeping the action panel visible',
+    (tester) async {
+      final state = await _pumpWithChatSurface(tester);
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('composer-emoji-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(find.byType(ChatActionTiles), findsOneWidget);
+      expect(find.byType(FireplaceEmojiPicker), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('chat-surface')));
+      await tester.pumpAndSettle();
+
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(find.byType(ChatActionTiles), findsOneWidget);
+      expect(find.byType(FireplaceEmojiPicker), findsNothing);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isFalse,
       );
     },
   );
