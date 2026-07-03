@@ -219,5 +219,112 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      'short text keeps full content width and reserves metadata only on final line',
+      (tester) async {
+        final msg = MessageModel(
+          id: 7,
+          content: 'widzimy sie za godzinke?',
+          senderId: 2,
+          senderUsername: 'a',
+          conversationId: 1,
+          deliveryStatus: MessageDeliveryStatus.sent,
+          messageType: MessageType.text,
+          createdAt: DateTime(2026, 1, 1, 14, 46),
+        );
+
+        await tester.pumpWidget(
+          _wrapBubble(
+            SizedBox(
+              width: 360,
+              child: ChatMessageBubble(message: msg, isMine: false),
+            ),
+          ),
+        );
+
+        final textFinder = find.byWidgetPredicate(
+          (widget) =>
+              widget is RichText &&
+              widget.text.toPlainText().startsWith('widzimy sie za godzinke?'),
+        );
+        expect(textFinder, findsOneWidget);
+        final textWidth = tester.getSize(textFinder).width;
+        expect(
+          textWidth,
+          greaterThan(150),
+          reason:
+              'Short bubble text must measure as the text itself, not collapse from timestamp squeezing.',
+        );
+        final surfaceFinder = find.byKey(
+          const ValueKey('message-bubble-surface-7'),
+        );
+        expect(surfaceFinder, findsOneWidget);
+        final surfaceWidth = tester.getSize(surfaceFinder).width;
+        expect(
+          surfaceWidth,
+          closeTo(textWidth + 32, 1),
+          reason:
+              'When metadata wraps, painted bubble should shrink-wrap the text run plus padding.',
+        );
+        expect(
+          surfaceWidth,
+          lessThan(306),
+          reason: 'Painted bubble must not expand to the max bubble width.',
+        );
+      },
+    );
+
+    testWidgets(
+      'jumbo emoji reserves inline metadata without a wide empty row',
+      (tester) async {
+        final msg = MessageModel(
+          id: 8,
+          content: '🐶',
+          senderId: 1,
+          senderUsername: 'a',
+          conversationId: 1,
+          deliveryStatus: MessageDeliveryStatus.sent,
+          messageType: MessageType.text,
+          createdAt: DateTime(2026, 1, 1, 14, 56),
+        );
+
+        await tester.pumpWidget(
+          _wrapBubble(
+            SizedBox(
+              width: 360,
+              child: ChatMessageBubble(message: msg, isMine: true),
+            ),
+          ),
+        );
+
+        final emojiFinder = find.byWidgetPredicate(
+          (widget) =>
+              widget is RichText && widget.text.toPlainText().startsWith('🐶'),
+        );
+        expect(emojiFinder, findsOneWidget);
+        final emojiLineWidth = tester.getSize(emojiFinder).width;
+        expect(
+          emojiLineWidth,
+          lessThan(70),
+          reason: 'Emoji RichText width must be the emoji, not metadata.',
+        );
+        final surfaceFinder = find.byKey(
+          const ValueKey('message-bubble-surface-8'),
+        );
+        expect(surfaceFinder, findsOneWidget);
+        final surfaceWidth = tester.getSize(surfaceFinder).width;
+        expect(
+          surfaceWidth,
+          greaterThan(90),
+          reason: 'Painted emoji bubble must include metadata.',
+        );
+        expect(
+          surfaceWidth,
+          lessThan(180),
+          reason: 'Painted emoji bubble must stay tight, not max out width.',
+        );
+      },
+    );
   });
 }

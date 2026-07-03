@@ -57,6 +57,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   final _notificationCleaner = createNotificationCleaner();
 
   final _scrollController = ScrollController();
+  final _composerKey = GlobalKey<ChatInputBarState>();
   Timer? _showFullHandleTimer;
   bool _showScrollToBottomButton = false;
   bool _showingFullHandle = false;
@@ -636,58 +637,65 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                   style: RpgTheme.bodyFont(fontSize: 14, color: mutedColor),
                 ),
               )
-            : NotificationListener<ScrollStartNotification>(
-                onNotification: (notification) {
-                  dismissMessageContextMenu();
-                  return false;
+            : Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: (_) {
+                  _composerKey.currentState?.dismissForChatSurfaceTap();
                 },
-                child: NotificationListener<UserScrollNotification>(
+                child: NotificationListener<ScrollStartNotification>(
                   onNotification: (notification) {
-                    _userHasScrolledChat = true;
+                    dismissMessageContextMenu();
                     return false;
                   },
-                  child: ListView.builder(
-                    reverse: true,
-                    controller: _scrollController,
-                    findChildIndexCallback: (Key key) {
-                      if (key is ValueKey<int>) {
-                        final idx = messages.indexWhere(
-                          (m) => m.id == key.value,
-                        );
-                        if (idx == -1) return null;
-                        return messages.length - 1 - idx;
-                      }
-                      return null;
+                  child: NotificationListener<UserScrollNotification>(
+                    onNotification: (notification) {
+                      _userHasScrolledChat = true;
+                      return false;
                     },
-                    padding: EdgeInsets.only(
-                      left: 16,
-                      right: 20,
-                      top: 8,
-                      bottom: 8 + listBottomPadding,
-                    ),
-                    itemCount: messages.length + (_isLoadingMoreLocal ? 1 : 0),
-                    itemBuilder: (context, index) {
-                      if (_isLoadingMoreLocal && index == messages.length) {
-                        return const Padding(
-                          padding: EdgeInsets.symmetric(vertical: 8),
-                          child: Center(child: CircularProgressIndicator()),
-                        );
-                      }
-                      final msgIndex = messages.length - 1 - index;
-                      final msg = messages[msgIndex];
-                      final showDate =
-                          msgIndex == 0 ||
-                          _isDifferentDay(
-                            messages[msgIndex - 1].createdAt,
-                            msg.createdAt,
+                    child: ListView.builder(
+                      reverse: true,
+                      controller: _scrollController,
+                      findChildIndexCallback: (Key key) {
+                        if (key is ValueKey<int>) {
+                          final idx = messages.indexWhere(
+                            (m) => m.id == key.value,
                           );
-                      return _buildMessageListItem(
-                        listIndex: index,
-                        msg: msg,
-                        showDate: showDate,
-                        isMine: msg.senderId == currentUserId,
-                      );
-                    },
+                          if (idx == -1) return null;
+                          return messages.length - 1 - idx;
+                        }
+                        return null;
+                      },
+                      padding: EdgeInsets.only(
+                        left: 16,
+                        right: 20,
+                        top: 8,
+                        bottom: 8 + listBottomPadding,
+                      ),
+                      itemCount:
+                          messages.length + (_isLoadingMoreLocal ? 1 : 0),
+                      itemBuilder: (context, index) {
+                        if (_isLoadingMoreLocal && index == messages.length) {
+                          return const Padding(
+                            padding: EdgeInsets.symmetric(vertical: 8),
+                            child: Center(child: CircularProgressIndicator()),
+                          );
+                        }
+                        final msgIndex = messages.length - 1 - index;
+                        final msg = messages[msgIndex];
+                        final showDate =
+                            msgIndex == 0 ||
+                            _isDifferentDay(
+                              messages[msgIndex - 1].createdAt,
+                              msg.createdAt,
+                            );
+                        return _buildMessageListItem(
+                          listIndex: index,
+                          msg: msg,
+                          showDate: showDate,
+                          isMine: msg.senderId == currentUserId,
+                        );
+                      },
+                    ),
                   ),
                 ),
               ),
@@ -724,7 +732,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         ),
       );
     }
-    return const ChatInputBar();
+    return ChatInputBar(key: _composerKey);
   }
 
   @override

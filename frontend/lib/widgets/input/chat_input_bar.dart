@@ -56,6 +56,9 @@ class ChatInputBarState extends State<ChatInputBar>
   bool _showActionPanel = false;
   late final AnimationController _actionPanelController;
   bool _showEmojiPicker = false;
+
+  @visibleForTesting
+  bool get isActionPanelOpenForTest => _showActionPanel;
   late final Animation<double> _actionPanelAnimation;
 
   Timer? _typingDebounceTimer;
@@ -140,6 +143,24 @@ class ChatInputBarState extends State<ChatInputBar>
     _focusNode.unfocus();
   }
 
+  void dismissForChatSurfaceTap() {
+    if (_showEmojiPicker || _showActionPanel) {
+      setState(() {
+        if (_showEmojiPicker) {
+          _showEmojiPicker = false;
+        }
+        if (_showActionPanel) {
+          _showActionPanel = false;
+          _actionPanelController.reverse();
+        }
+      });
+      _focusNode.unfocus();
+      return;
+    }
+
+    _handleComposerTapOutside(const PointerDownEvent());
+  }
+
   void _handleComposerRegionTapOutside(PointerDownEvent event) {
     var closedPanel = false;
     if (_showEmojiPicker || _showActionPanel) {
@@ -158,7 +179,7 @@ class ChatInputBarState extends State<ChatInputBar>
 
     if (!closedPanel) {
       _handleComposerTapOutside(event);
-    } else if (!(kIsWeb && isIOSWebKit())) {
+    } else {
       _focusNode.unfocus();
     }
   }

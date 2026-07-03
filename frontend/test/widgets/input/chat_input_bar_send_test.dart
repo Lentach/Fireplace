@@ -52,10 +52,12 @@ Future<ChatInputBarState> _pumpWithChatSurface(WidgetTester tester) async {
           child: Column(
             children: [
               Expanded(
-                child: GestureDetector(
+                child: Listener(
                   key: const ValueKey('chat-surface'),
                   behavior: HitTestBehavior.opaque,
-                  onTap: () {},
+                  onPointerDown: (_) =>
+                      key.currentState?.dismissForChatSurfaceTap(),
+                  child: const SizedBox.expand(),
                 ),
               ),
               ChatInputBar(key: key),
@@ -199,6 +201,32 @@ void main() {
 
       final fieldAfter = tester.widget<TextField>(find.byType(TextField));
       expect(fieldAfter.focusNode!.hasFocus, isTrue);
+    },
+  );
+
+  testWidgets(
+    'chat surface tap closes the action panel and unfocuses composer',
+    (tester) async {
+      final state = await _pumpWithChatSurface(tester);
+      await tester.enterText(find.byType(TextField), 'dismiss both');
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pumpAndSettle();
+
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isTrue,
+      );
+      await tester.tap(find.byKey(const ValueKey('chat-surface')));
+      await tester.pumpAndSettle();
+
+      expect(state.isActionPanelOpenForTest, isFalse);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isFalse,
+      );
     },
   );
 

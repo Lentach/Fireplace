@@ -14,7 +14,7 @@ bool messageBubbleUsesInlineTime({
   if (message.replyTo != null || message.linkPreviewUrl != null) return false;
   switch (message.messageType) {
     case MessageType.text:
-      return displayContent.length <= 25 && !displayContent.contains('\n');
+      return !displayContent.contains('\n');
     case MessageType.ping:
       return true;
     case MessageType.image:

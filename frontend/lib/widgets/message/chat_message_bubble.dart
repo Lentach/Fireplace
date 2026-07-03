@@ -25,8 +25,6 @@ import 'reaction_chips_row.dart';
 export 'reaction_chips_row.dart' show ReactionChipsRow;
 
 class ChatMessageBubble extends StatelessWidget {
-  static const double _kTimeRowWidth = 88.0;
-
   final MessageModel message;
   final bool isMine;
 
@@ -332,28 +330,21 @@ class ChatMessageBubble extends StatelessWidget {
                       message: message,
                       displayContent: displayContent,
                     )) {
-                      final maxContentWidthInline =
-                          contentAreaWidth - 6 - _kTimeRowWidth;
-                      child = Row(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                      child = Wrap(
+                        alignment: isMine
+                            ? WrapAlignment.end
+                            : WrapAlignment.start,
+                        crossAxisAlignment: WrapCrossAlignment.end,
+                        spacing: 6,
+                        runSpacing: 2,
                         children: [
-                          Flexible(
-                            fit: FlexFit.loose,
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxWidth: maxContentWidthInline,
-                              ),
-                              child: _buildContentColumn(
-                                context,
-                                isDark,
-                                textColor,
-                                borderColor,
-                                contentAreaWidth: maxContentWidthInline,
-                              ),
-                            ),
+                          _buildContentColumn(
+                            context,
+                            isDark,
+                            textColor,
+                            borderColor,
+                            contentAreaWidth: contentAreaWidth,
                           ),
-                          const SizedBox(width: 6),
                           standardTimeWidget,
                         ],
                       );
@@ -389,28 +380,21 @@ class ChatMessageBubble extends StatelessWidget {
                     );
 
                     if (isShortMessage) {
-                      final maxContentWidthInline =
-                          contentAreaWidth - 6 - _kTimeRowWidth;
-                      child = Row(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: CrossAxisAlignment.end,
+                      child = Wrap(
+                        alignment: isMine
+                            ? WrapAlignment.end
+                            : WrapAlignment.start,
+                        crossAxisAlignment: WrapCrossAlignment.end,
+                        spacing: 6,
+                        runSpacing: 2,
                         children: [
-                          Flexible(
-                            fit: FlexFit.loose,
-                            child: ConstrainedBox(
-                              constraints: BoxConstraints(
-                                maxWidth: maxContentWidthInline,
-                              ),
-                              child: _buildContentColumn(
-                                context,
-                                isDark,
-                                textColor,
-                                borderColor,
-                                contentAreaWidth: maxContentWidthInline,
-                              ),
-                            ),
+                          _buildContentColumn(
+                            context,
+                            isDark,
+                            textColor,
+                            borderColor,
+                            contentAreaWidth: contentAreaWidth,
                           ),
-                          const SizedBox(width: 6),
                           standardTimeWidget,
                         ],
                       );
@@ -443,31 +427,34 @@ class ChatMessageBubble extends StatelessWidget {
                   return ContextMenuBubbleAnchor(
                     child: ConstrainedBox(
                       constraints: BoxConstraints(maxWidth: maxBubbleWidth),
-                      child: Container(
-                        margin: EdgeInsets.only(
+                      child: Padding(
+                        padding: EdgeInsets.only(
                           left: isMine ? 48 : 0,
                           right: isMine ? 0 : 48,
                           bottom: kContextMenuAnchorBottomMargin,
                         ),
-                        decoration: BoxDecoration(
-                          color: isMediaMessage
-                              ? Colors.transparent
-                              : bubbleColor,
-                          borderRadius: BorderRadius.circular(16),
+                        child: Container(
+                          key: ValueKey('message-bubble-surface-${message.id}'),
+                          decoration: BoxDecoration(
+                            color: isMediaMessage
+                                ? Colors.transparent
+                                : bubbleColor,
+                            borderRadius: BorderRadius.circular(16),
+                          ),
+                          clipBehavior: isMediaMessage
+                              ? Clip.hardEdge
+                              : Clip.none,
+                          padding: isMediaMessage
+                              ? (message.replyTo != null
+                                    ? const EdgeInsets.only(
+                                        top: 8,
+                                        left: 12,
+                                        right: 12,
+                                      )
+                                    : EdgeInsets.zero)
+                              : const EdgeInsets.fromLTRB(16, 10, 16, 8),
+                          child: child,
                         ),
-                        clipBehavior: isMediaMessage
-                            ? Clip.hardEdge
-                            : Clip.none,
-                        padding: isMediaMessage
-                            ? (message.replyTo != null
-                                  ? const EdgeInsets.only(
-                                      top: 8,
-                                      left: 12,
-                                      right: 12,
-                                    )
-                                  : EdgeInsets.zero)
-                            : const EdgeInsets.fromLTRB(16, 10, 16, 8),
-                        child: child,
                       ),
                     ),
                   );
