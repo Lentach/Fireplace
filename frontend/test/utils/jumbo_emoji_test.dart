@@ -40,7 +40,7 @@ void main() {
 
   group('jumboEmojiFontSizeForCount', () {
     const tiers = <int, double>{
-      1: 104,
+      1: 84,
       2: 84,
       3: 64,
       4: 52,
@@ -57,7 +57,7 @@ void main() {
 
   group('jumboEmojiFontSize', () {
     test('emoji-only text maps through the tier table', () {
-      expect(jumboEmojiFontSize('😀'), 104);
+      expect(jumboEmojiFontSize('😀'), 84);
       expect(jumboEmojiFontSize('😀😀😀'), 64);
       expect(jumboEmojiFontSize('😀😀😀😀'), 52);
       expect(jumboEmojiFontSize('😀 😀 😀 😀 😀 😀'), 44);

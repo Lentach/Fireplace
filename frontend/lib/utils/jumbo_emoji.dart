@@ -53,7 +53,7 @@ double? jumboEmojiFontSize(String text) {
 
 @visibleForTesting
 double jumboEmojiFontSizeForCount(int count) {
-  if (count == 1) return 104;
+  if (count == 1) return 84;
   if (count == 2) return 84;
   if (count == 3) return 64;
   if (count == 4) return 52;
