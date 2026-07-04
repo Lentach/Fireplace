@@ -412,12 +412,12 @@ class ChatMessageBubble extends StatelessWidget {
                     }
                   } else {
                     final displayContent = _displayContent(context);
-                    final isShortMessage = messageBubbleUsesInlineTime(
+                    final useInlineTime = messageBubbleUsesInlineTime(
                       message: message,
                       displayContent: displayContent,
                     );
 
-                    if (isShortMessage) {
+                    if (useInlineTime) {
                       child = Wrap(
                         alignment: isMine
                             ? WrapAlignment.end
