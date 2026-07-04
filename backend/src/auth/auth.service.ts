@@ -67,7 +67,7 @@ export class AuthService {
   }
 
   async refreshWithToken(refreshTokenPlain: string) {
-    const { userId, newPlain } =
+    const userId =
       await this.refreshTokensService.consumeAndSlide(refreshTokenPlain);
     const user = await this.usersService.findById(userId);
     if (!user) {
@@ -80,7 +80,7 @@ export class AuthService {
     };
     return {
       access_token: this.jwtService.sign(payload),
-      refresh_token: newPlain,
+      refresh_token: refreshTokenPlain,
     };
   }
 

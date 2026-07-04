@@ -165,10 +165,7 @@ describe('AuthService', () => {
 
   describe('refreshWithToken', () => {
     it('returns new access_token and slid refresh_token when refresh valid', async () => {
-      refreshTokensService.consumeAndSlide.mockResolvedValue({
-        userId: 1,
-        newPlain: 'incoming_refresh',
-      });
+      refreshTokensService.consumeAndSlide.mockResolvedValue(1);
       usersService.findById.mockResolvedValue(mockUser as User);
 
       const result = await service.refreshWithToken('incoming_refresh');
@@ -189,10 +186,7 @@ describe('AuthService', () => {
     });
 
     it('throws when user row missing after sliding refresh', async () => {
-      refreshTokensService.consumeAndSlide.mockResolvedValue({
-        userId: 99,
-        newPlain: 'incoming_refresh',
-      });
+      refreshTokensService.consumeAndSlide.mockResolvedValue(99);
       usersService.findById.mockResolvedValue(null);
 
       await expect(service.refreshWithToken('r')).rejects.toThrow(

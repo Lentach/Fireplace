@@ -54,9 +54,7 @@ export class RefreshTokensService {
    * old token. Sliding the existing row preserves sticky sessions without
    * weakening explicit revoke/password-change invalidation.
    */
-  async consumeAndSlide(
-    plain: string,
-  ): Promise<{ userId: number; newPlain: string }> {
+  async consumeAndSlide(plain: string): Promise<number> {
     const tokenHash = RefreshTokensService.hashToken(plain);
     const row = await this.refreshRepo.findOne({ where: { tokenHash } });
     if (!row) {
@@ -75,7 +73,7 @@ export class RefreshTokensService {
 
     row.expiresAt = this.expiresAtFromNow();
     await this.refreshRepo.save(row);
-    return { userId: row.userId, newPlain: plain };
+    return row.userId;
   }
 
   async revokeByPlain(plain: string): Promise<void> {

@@ -81,8 +81,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const token = client.handshake.auth?.token as string;
 
       if (!token) {
-        this.logger.warn(
-          '[auth-session-end] reason=missing_access source=socket_connect',
+        this.logger.debug(
+          '[auth-access-reject] reason=missing_access source=socket_connect',
         );
         client.disconnect();
         return;
@@ -94,8 +94,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const user = await this.usersService.findById(payload.sub);
 
       if (!user) {
-        this.logger.warn(
-          `[auth-session-end] reason=user_missing source=socket_connect userId=${payload.sub}`,
+        this.logger.debug(
+          `[auth-access-reject] reason=user_missing source=socket_connect userId=${payload.sub}`,
         );
         client.disconnect();
         return;
@@ -110,8 +110,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           typeof payload.iat === 'number' &&
           payload.iat <= changedAtSeconds
         ) {
-          this.logger.warn(
-            `[auth-session-end] reason=password_changed source=socket_connect userId=${user.id}`,
+          this.logger.debug(
+            `[auth-access-reject] reason=password_changed source=socket_connect userId=${user.id}`,
           );
           client.disconnect();
           return;
@@ -141,9 +141,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           : errorName === 'JsonWebTokenError'
             ? 'invalid_signature'
             : 'access_invalid';
-      this.logger.warn(
-        `[auth-session-end] reason=${reason} source=socket_connect errorType=${errorName}`,
-      );
+      const line = `[auth-access-reject] reason=${reason} source=socket_connect errorType=${errorName}`;
+      if (reason === 'invalid_signature') {
+        this.logger.warn(line);
+      } else {
+        this.logger.debug(line);
+      }
       client.disconnect();
     }
   }

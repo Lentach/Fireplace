@@ -84,7 +84,7 @@ describe('RefreshTokensService', () => {
     });
     expect(repo.remove).not.toHaveBeenCalled();
     expect(repo.save).toHaveBeenCalledWith(oldRow);
-    expect(result).toEqual({ userId: 42, newPlain: 'old-plain' });
+    expect(result).toBe(42);
     expect(oldRow.expiresAt.getTime()).toBeGreaterThan(oldExpiry.getTime());
     expect(oldRow.expiresAt.getTime()).toBeGreaterThan(
       Date.now() + (REFRESH_TOKEN_TTL_DAYS - 2) * 86400 * 1000,

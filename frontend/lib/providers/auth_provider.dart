@@ -63,6 +63,8 @@ class AuthProvider extends ChangeNotifier {
     try {
       return JwtDecoder.isExpired(jwt);
     } catch (_) {
+      // Undecodable token → treat as expired (fail closed): forces a refresh
+      // attempt instead of trusting garbage; recovers or lands on login.
       return true;
     }
   }
