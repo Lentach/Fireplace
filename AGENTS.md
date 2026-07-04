@@ -101,7 +101,7 @@ cd frontend && flutter run -d chrome          # Terminal 2: Flutter web
 | Variable | Required | Purpose |
 |---|---|---|
 | `DB_HOST/PORT/USER/PASS/NAME` | Yes | PostgreSQL |
-| `JWT_SECRET` | Yes | JWT signing (≥32 chars prod) |
+| `JWT_SECRET` | Yes | JWT signing (≥32 chars prod); if exposed, rotate after sticky-session refresh deploy so valid refresh tokens silently recover |
 | `MEDIA_BASE_URL` | No | Public base URL for media (default `http://localhost:3000`) |
 | `MEDIA_DIR` | No | Filesystem root for media (default `/app/media`) |
 | `MEDIA_CLEANUP_GRACE_MS` | No | Cron grace window — never delete msgs blobs newer than this (default 900000 = 15 min) |

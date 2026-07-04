@@ -48,7 +48,7 @@ Backend env source:
 |---|---|
 | `NODE_ENV`, `PORT` | `production` changes logger, CORS, TypeORM sync. |
 | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME` | Postgres; prod DB name is `chatdb`. |
-| `JWT_SECRET` | Required; validation requires at least 32 chars. Generate once, persist in the VM `.env` and encrypted backups, and copy the same value during host moves. Do not regenerate on normal deploy/recreate; intentional rotation is a planned access-token invalidation event. |
+| `JWT_SECRET` | Required; validation requires at least 32 chars. Generate once, persist in the VM `.env` and encrypted backups, and copy the current valid value during host moves. Do not regenerate on normal deploy/recreate. If exposed, rotate after sticky-session refresh is deployed: `/auth/refresh` uses the opaque refresh-token hash, not the old access JWT signature, so valid sessions can silently obtain new access JWTs. |
 | `ALLOWED_ORIGINS` | Required in prod. |
 | `MEDIA_BASE_URL`, `MEDIA_DIR` | Self-hosted media URLs and filesystem root. |
 | `MEDIA_CLEANUP_GRACE_MS` | Used by orphan cleanup; default 15 min. Not class-validator validated. |

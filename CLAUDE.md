@@ -86,7 +86,7 @@ Core env vars:
 | Area | Vars |
 |---|---|
 | DB | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME` |
-| Auth/CORS | `JWT_SECRET` (>=32 chars, generated once and persisted; do not rotate/regenerate during normal deploys or host moves), `ALLOWED_ORIGINS` |
+| Auth/CORS | `JWT_SECRET` (>=32 chars, generated once and persisted; do not rotate/regenerate during normal deploys or host moves. If exposed, rotate after sticky-session refresh is deployed; valid refresh tokens can obtain new access JWTs without re-login), `ALLOWED_ORIGINS` |
 | Media | `MEDIA_BASE_URL`, `MEDIA_DIR`, `MEDIA_CLEANUP_GRACE_MS`, `MEDIA_X_ACCEL_REDIRECT` |
 | Push | `FIREBASE_SERVICE_ACCOUNT`, `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`, `WEB_PUSH_VAPID_SUBJECT` |
 | Frontend dart-defines | `BASE_URL`, `GIPHY_API_KEY`, `WEB_PUSH_VAPID_PUBLIC_KEY`, `GIT_COMMIT`, `BUILD_TIME` |
