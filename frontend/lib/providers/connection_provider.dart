@@ -224,8 +224,10 @@ class ConnectionProvider extends ChangeNotifier {
 
   /// After JWT auth completes on the server (`socketReady` event).
   void _onSocketReady() {
+    final activeConvId = _conversationsProvider?.activeConversationId;
     E2eDiagLog.add('SOCKET_READY', {
-      'activeConvId': _conversationsProvider?.activeConversationId ?? -1,
+      'activeConvId': activeConvId ?? -1,
+      'socketConnected': _socketService.isConnected,
     });
     _reconnectManager.resetAttempts();
     _socketService.getConversations();
@@ -233,8 +235,13 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.getFriends();
     _socketService.getBlockedList();
 
-    final activeConvId = _conversationsProvider?.activeConversationId;
     if (activeConvId != null) {
+      _conversationsProvider?.reemitPushClientState();
+      E2eDiagLog.add('ACTIVE_REASSERT', {
+        'source': 'socketReady',
+        'activeConvId': activeConvId,
+        'socketConnected': _socketService.isConnected,
+      });
       _socketService.getMessages(activeConvId,
           limit: AppConstants.messagePageSize);
     }
@@ -329,10 +336,14 @@ class ConnectionProvider extends ChangeNotifier {
     final activeConvId = _conversationsProvider?.activeConversationId;
     _socketService.getConversations();
     if (activeConvId != null) {
+      _conversationsProvider?.reemitPushClientState();
       _socketService.getMessages(activeConvId,
           limit: AppConstants.messagePageSize);
     }
-    E2eDiagLog.add('RESUME_RESYNC', {'activeConvId': activeConvId ?? -1});
+    E2eDiagLog.add('RESUME_RESYNC', {
+      'activeConvId': activeConvId ?? -1,
+      'socketConnected': _socketService.isConnected,
+    });
 
     _resumeProbeTimer?.cancel();
     _resumeProbeTimer = Timer(_kResumeProbeWindow, () {

@@ -11,6 +11,17 @@ MessageModel _msg(int id, int convId) => MessageModel(
       createdAt: DateTime.utc(2026, 1, 1),
     );
 
+Map<String, dynamic> _msgJson(int id, int convId) => {
+      'id': id,
+      'content': 'message $id',
+      'senderId': 1,
+      'senderUsername': 'alice',
+      'conversationId': convId,
+      'deliveryStatus': 'READ',
+      'messageType': 'TEXT',
+      'createdAt': '2026-01-01T00:00:0$id.000Z',
+    };
+
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
@@ -97,6 +108,25 @@ void main() {
       // Cache populated synchronously (with encrypted placeholders; decrypted version follows async)
       expect(provider.hasCachedMessages(10), isTrue);
       expect(provider.messages.length, 1);
+    });
+
+    test('history response deduplicates loaded row and appends missed row', () {
+      provider.setActiveConversationIdForTest(10);
+      provider.seedCacheForTest(10, [_msg(1, 10)]);
+      provider.loadCachedMessages(10);
+      provider.getMessages(10);
+
+      provider.onMessageHistory({
+        'conversationId': 10,
+        'messages': [
+          _msgJson(1, 10),
+          _msgJson(2, 10),
+        ],
+      });
+
+      expect(provider.messages.map((message) => message.id), [1, 2],
+          reason:
+              'resume history may include already-loaded and missed rows; each id must appear once in chronological order');
     });
 
     test('onMessageHistory for a different conversation is ignored', () {
