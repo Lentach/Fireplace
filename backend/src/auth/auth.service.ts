@@ -1,8 +1,4 @@
-import {
-  Injectable,
-  UnauthorizedException,
-  Logger,
-} from '@nestjs/common';
+import { Injectable, UnauthorizedException, Logger } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import * as bcrypt from 'bcrypt';
 import { User } from '../users/user.entity';
@@ -29,13 +25,18 @@ export class AuthService {
     let user: User | null = null;
     if (identifier.includes('#')) {
       const [u, t] = identifier.split('#');
-      if (u && t) user = await this.usersService.findByUsernameAndTag(u.trim(), t.trim());
+      if (u && t)
+        user = await this.usersService.findByUsernameAndTag(u.trim(), t.trim());
     } else {
       const users = await this.usersService.findByUsername(identifier.trim());
       if (users.length === 1) user = users[0];
       else if (users.length > 1) {
-        this.auditLogger.log(`login failed identifier=${identifier} (multiple users)`);
-        throw new UnauthorizedException('Multiple users found, please use username#tag');
+        this.auditLogger.log(
+          `login failed identifier=${identifier} (multiple users)`,
+        );
+        throw new UnauthorizedException(
+          'Multiple users found, please use username#tag',
+        );
       }
     }
     if (!user) {
@@ -49,7 +50,9 @@ export class AuthService {
       throw new UnauthorizedException('Invalid credentials');
     }
 
-    this.auditLogger.log(`login success userId=${user.id} username=${user.username}`);
+    this.auditLogger.log(
+      `login success userId=${user.id} username=${user.username}`,
+    );
 
     const payload = {
       sub: user.id,
@@ -65,7 +68,7 @@ export class AuthService {
 
   async refreshWithToken(refreshTokenPlain: string) {
     const { userId, newPlain } =
-      await this.refreshTokensService.consumeAndRotate(refreshTokenPlain);
+      await this.refreshTokensService.consumeAndSlide(refreshTokenPlain);
     const user = await this.usersService.findById(userId);
     if (!user) {
       throw new UnauthorizedException();

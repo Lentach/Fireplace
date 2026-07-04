@@ -30,6 +30,8 @@ if [[ ! -f "$ENV_FILE" ]]; then
   exit 1
 fi
 missing=()
+# JWT_SECRET must come from ~/fireplace/.env; deploy only checks presence and
+# never generates/rotates it. Rotate exposed secrets manually after deploying sticky refresh.
 for key in ALLOWED_ORIGINS MEDIA_BASE_URL JWT_SECRET \
            WEB_PUSH_VAPID_PUBLIC_KEY WEB_PUSH_VAPID_PRIVATE_KEY; do
   grep -qE "^${key}=" "$ENV_FILE" || missing+=("$key")

@@ -48,7 +48,7 @@ Backend env source:
 |---|---|
 | `NODE_ENV`, `PORT` | `production` changes logger, CORS, TypeORM sync. |
 | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME` | Postgres; prod DB name is `chatdb`. |
-| `JWT_SECRET` | Required; validation requires at least 32 chars. |
+| `JWT_SECRET` | Required; validation requires at least 32 chars. Generate once, persist in the VM `.env` and encrypted backups, and copy the current valid value during host moves. Do not regenerate on normal deploy/recreate. If exposed, rotate after sticky-session refresh is deployed: `/auth/refresh` uses the opaque refresh-token hash, not the old access JWT signature, so valid sessions can silently obtain new access JWTs. |
 | `ALLOWED_ORIGINS` | Required in prod. |
 | `MEDIA_BASE_URL`, `MEDIA_DIR` | Self-hosted media URLs and filesystem root. |
 | `MEDIA_CLEANUP_GRACE_MS` | Used by orphan cleanup; default 15 min. Not class-validator validated. |
@@ -77,7 +77,7 @@ Entities in `backend/src/**/*.entity.ts` are the source of truth. There are no r
 
 ## 5. Auth and sessions
 
-- JWT TTL is 24h. Refresh tokens are 365-day rolling, rotation on each refresh, SHA-256 stored in `refresh_tokens`.
+- JWT TTL is 24h. Refresh tokens are stable opaque 365-day sliding sessions: `/auth/refresh` extends the existing row and returns the same refresh token value; do **not** reintroduce single-use rotation because a lost refresh response would strand the client on login. SHA-256 only is stored in `refresh_tokens`.
 - `POST /auth/logout` revokes the current refresh token. Password reset sets `passwordChangedAt`, revokes all refresh tokens, and `JwtStrategy.validate()` rejects old tokens with `iat <= passwordChangedAt`.
 - Register/login use username#tag model; tag is a 4-digit string.
 - Delete account deletes profile avatar, FCM tokens, Web Push subscriptions, key bundles/OTPs, conversation media, messages/conversations/friend requests, then user. Refresh tokens are removed by FK cascade.

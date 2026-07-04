@@ -46,6 +46,8 @@ services:
       DB_USER: ${DB_USER:-postgres}
       DB_PASS: ${DB_PASS:-postgres}
       DB_NAME: ${DB_NAME:-chatdb}
+      # Generate once and persist in ~/fireplace/.env + encrypted backups.
+      # If exposed, rotate after sticky refresh deploy; refresh tokens survive it.
       JWT_SECRET: ${JWT_SECRET:?set JWT_SECRET in ~/fireplace/.env}
       ALLOWED_ORIGINS: ${ALLOWED_ORIGINS:?set ALLOWED_ORIGINS in ~/fireplace/.env (e.g. https://fireplace.ignorelist.com)}
       MEDIA_BASE_URL: ${MEDIA_BASE_URL:?set MEDIA_BASE_URL in ~/fireplace/.env (e.g. https://fireplace.ignorelist.com)}

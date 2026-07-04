@@ -45,7 +45,7 @@ git pull ; .\deploy-web.ps1
 - `ConnectionProvider` owns socket lifecycle and event routing. It waits for server `socketReady` before fetching conversations/friends/messages.
 - `MessagingProvider` is one `ChangeNotifier` split into part-files under `lib/providers/messaging/`: `history`, `events`, `send`, `decrypt`, `actions`. Core fields and `dispose` stay in `messaging_provider.dart`; extensions may use private fields.
 - Primary services: `SocketService` (Socket.IO auth + `enableForceNew()`), `ApiService` (REST/media), `EncryptionService` (Signal), `EncryptedMediaUploadService` (AES-GCM encrypt+upload), `PushService`, `WebPushBridge`, `PushSwChannel`, `IncomingMessageSoundService`, `VoiceAudioCoordinator`.
-- Navigation: `AuthGate` → `AuthScreen` or `MainShell` (`IndexedStack`: Conversations/Contacts/Settings). Desktop width >=600 uses sidebar/detail. Mobile chat entry routes use `utils/instant_opaque_route.dart` (opaque + zero-duration) to avoid iOS/Web half-transition split-screen lag; regression `test/utils/instant_opaque_route_test.dart`.
+- Navigation: `AuthGate` → restoring spinner while saved auth is being checked, then `AuthScreen` or `MainShell` (`IndexedStack`: Conversations/Contacts/Settings). Desktop width >=600 uses sidebar/detail. Mobile chat entry routes use `utils/instant_opaque_route.dart` (opaque + zero-duration) to avoid iOS/Web half-transition split-screen lag; regression `test/utils/instant_opaque_route_test.dart`.
 
 ## 3. Dart defines and versioning
 

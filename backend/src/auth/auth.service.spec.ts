@@ -17,10 +17,7 @@ describe('AuthService', () => {
   let usersService: jest.Mocked<UsersService>;
   let jwtService: jest.Mocked<JwtService>;
   let refreshTokensService: jest.Mocked<
-    Pick<
-      RefreshTokensService,
-      'createToken' | 'consumeAndRotate'
-    >
+    Pick<RefreshTokensService, 'createToken' | 'consumeAndSlide'>
   >;
 
   const mockUser: Partial<User> = {
@@ -53,7 +50,7 @@ describe('AuthService', () => {
           provide: RefreshTokensService,
           useValue: {
             createToken: jest.fn(() => Promise.resolve('mock_refresh_plain')),
-            consumeAndRotate: jest.fn(),
+            consumeAndSlide: jest.fn(),
           },
         },
       ],
@@ -70,7 +67,10 @@ describe('AuthService', () => {
     it('should create user and return id/username/tag', async () => {
       usersService.create.mockResolvedValue(mockUser as User);
       const result = await service.register('testuser', 'ValidPass1');
-      expect(usersService.create).toHaveBeenCalledWith('testuser', 'ValidPass1');
+      expect(usersService.create).toHaveBeenCalledWith(
+        'testuser',
+        'ValidPass1',
+      );
       expect(result).toEqual({ id: 1, username: 'testuser', tag: '0427' });
     });
 
@@ -105,7 +105,10 @@ describe('AuthService', () => {
         '0427',
       );
       expect(usersService.findByUsername).not.toHaveBeenCalled();
-      expect(bcrypt.compare).toHaveBeenCalledWith('ValidPass1', 'hashed_password');
+      expect(bcrypt.compare).toHaveBeenCalledWith(
+        'ValidPass1',
+        'hashed_password',
+      );
       expect(refreshTokensService.createToken).toHaveBeenCalledWith(1);
       expect(jwtService.sign).toHaveBeenCalledWith({
         sub: 1,
@@ -161,22 +164,22 @@ describe('AuthService', () => {
   });
 
   describe('refreshWithToken', () => {
-    it('returns new access_token and rotated refresh_token when refresh valid', async () => {
-      refreshTokensService.consumeAndRotate.mockResolvedValue({
+    it('returns new access_token and slid refresh_token when refresh valid', async () => {
+      refreshTokensService.consumeAndSlide.mockResolvedValue({
         userId: 1,
-        newPlain: 'rotated_refresh_plain',
+        newPlain: 'incoming_refresh',
       });
       usersService.findById.mockResolvedValue(mockUser as User);
 
       const result = await service.refreshWithToken('incoming_refresh');
 
-      expect(refreshTokensService.consumeAndRotate).toHaveBeenCalledWith(
+      expect(refreshTokensService.consumeAndSlide).toHaveBeenCalledWith(
         'incoming_refresh',
       );
       expect(usersService.findById).toHaveBeenCalledWith(1);
       expect(result).toEqual({
         access_token: 'mock_jwt_token',
-        refresh_token: 'rotated_refresh_plain',
+        refresh_token: 'incoming_refresh',
       });
       expect(jwtService.sign).toHaveBeenCalledWith({
         sub: 1,
@@ -185,10 +188,10 @@ describe('AuthService', () => {
       });
     });
 
-    it('throws when user row missing after rotate', async () => {
-      refreshTokensService.consumeAndRotate.mockResolvedValue({
+    it('throws when user row missing after sliding refresh', async () => {
+      refreshTokensService.consumeAndSlide.mockResolvedValue({
         userId: 99,
-        newPlain: 'rotated',
+        newPlain: 'incoming_refresh',
       });
       usersService.findById.mockResolvedValue(null);
 

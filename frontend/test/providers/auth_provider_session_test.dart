@@ -21,10 +21,10 @@ Future<void> _waitForAuthSettled(
 }) async {
   for (var i = 0; i < 40; i++) {
     await Future<void>.delayed(const Duration(milliseconds: 50));
-    if (auth.isLoggedIn == expectLoggedIn) return;
+    if (!auth.isRestoringSession && auth.isLoggedIn == expectLoggedIn) return;
   }
   fail(
-    'AuthProvider did not settle (isLoggedIn=${auth.isLoggedIn}, expected=$expectLoggedIn)',
+    'AuthProvider did not settle (isRestoringSession=${auth.isRestoringSession}, isLoggedIn=${auth.isLoggedIn}, expected=$expectLoggedIn)',
   );
 }
 
@@ -49,11 +49,14 @@ void main() {
         throw Exception('Unexpected ${request.url.path}');
       });
 
-      final auth = AuthProvider(api: ApiService(baseUrl: base, httpClient: mock));
+      final auth = AuthProvider(
+        api: ApiService(baseUrl: base, httpClient: mock),
+      );
       await _waitForAuthSettled(auth, expectLoggedIn: false);
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getString('jwt_token'), isNull);
       expect(prefs.getString('refresh_token'), isNull);
+      expect(auth.lastSessionEndReason, 'refresh_invalid');
     });
 
     test('refresh network error keeps auth with JWT user', () async {
@@ -85,7 +88,9 @@ void main() {
         throw Exception('Unexpected ${request.url.path}');
       });
 
-      final auth = AuthProvider(api: ApiService(baseUrl: base, httpClient: mock));
+      final auth = AuthProvider(
+        api: ApiService(baseUrl: base, httpClient: mock),
+      );
       await _waitForAuthSettled(auth, expectLoggedIn: true);
 
       expect(auth.isLoggedIn, isTrue);
@@ -146,51 +151,97 @@ void main() {
       expect(auth.isLoggedIn, isTrue);
     });
 
-    test('startup load and ensureSessionReady share single refresh call', () async {
-      SharedPreferences.setMockInitialValues({
-        'jwt_token': _expiredAccessJwt,
-        'refresh_token': 'opaque_refresh',
-      });
+    test(
+      'startup load and ensureSessionReady share single refresh call',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'jwt_token': _expiredAccessJwt,
+          'refresh_token': 'opaque_refresh',
+        });
 
-      var refreshCalls = 0;
-      final mock = MockClient((request) async {
-        if (request.url.path == '/auth/refresh') {
-          refreshCalls++;
-          await Future<void>.delayed(const Duration(milliseconds: 120));
-          return http.Response(
-            jsonEncode({
-              'access_token': _validAccessJwt,
-              'refresh_token': 'rotated_refresh',
-            }),
-            200,
-            headers: {'Content-Type': 'application/json'},
-          );
-        }
-        if (request.url.path == '/users/me') {
-          return http.Response(
-            jsonEncode({
-              'id': 1,
-              'username': 'test',
-              'tag': '0000',
-              'profilePictureUrl': null,
-            }),
-            200,
-            headers: {'Content-Type': 'application/json'},
-          );
-        }
-        throw Exception('Unexpected ${request.url.path}');
-      });
+        var refreshCalls = 0;
+        final mock = MockClient((request) async {
+          if (request.url.path == '/auth/refresh') {
+            refreshCalls++;
+            await Future<void>.delayed(const Duration(milliseconds: 120));
+            return http.Response(
+              jsonEncode({
+                'access_token': _validAccessJwt,
+                'refresh_token': 'rotated_refresh',
+              }),
+              200,
+              headers: {'Content-Type': 'application/json'},
+            );
+          }
+          if (request.url.path == '/users/me') {
+            return http.Response(
+              jsonEncode({
+                'id': 1,
+                'username': 'test',
+                'tag': '0000',
+                'profilePictureUrl': null,
+              }),
+              200,
+              headers: {'Content-Type': 'application/json'},
+            );
+          }
+          throw Exception('Unexpected ${request.url.path}');
+        });
 
-      final api = ApiService(baseUrl: base, httpClient: mock);
-      final auth = AuthProvider(api: api);
-      await Future<void>.delayed(Duration.zero);
-      await Future.wait([
-        auth.ensureSessionReady(),
-        auth.ensureSessionReady(),
-      ]);
-      await _waitForAuthSettled(auth, expectLoggedIn: true);
+        final api = ApiService(baseUrl: base, httpClient: mock);
+        final auth = AuthProvider(api: api);
+        await Future<void>.delayed(Duration.zero);
+        await Future.wait([
+          auth.ensureSessionReady(),
+          auth.ensureSessionReady(),
+        ]);
+        await _waitForAuthSettled(auth, expectLoggedIn: true);
 
-      expect(refreshCalls, 1);
-    });
+        expect(refreshCalls, 1);
+      },
+    );
+
+    test(
+      'password reset clears invalidated local session with reason',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'jwt_token': _validAccessJwt,
+          'refresh_token': 'opaque_refresh',
+        });
+
+        final mock = MockClient((request) async {
+          if (request.url.path == '/users/me') {
+            return http.Response(
+              jsonEncode({
+                'id': 1,
+                'username': 'test',
+                'tag': '0000',
+                'profilePictureUrl': null,
+              }),
+              200,
+              headers: {'Content-Type': 'application/json'},
+            );
+          }
+          if (request.url.path == '/users/reset-password') {
+            expect(request.headers['Authorization'], 'Bearer $_validAccessJwt');
+            return http.Response('{}', 200);
+          }
+          throw Exception('Unexpected ${request.url.path}');
+        });
+
+        final auth = AuthProvider(
+          api: ApiService(baseUrl: base, httpClient: mock),
+        );
+        await _waitForAuthSettled(auth, expectLoggedIn: true);
+
+        await auth.resetPassword('old-password', 'new-password');
+
+        final prefs = await SharedPreferences.getInstance();
+        expect(auth.isLoggedIn, isFalse);
+        expect(auth.lastSessionEndReason, 'password_changed');
+        expect(prefs.getString('jwt_token'), isNull);
+        expect(prefs.getString('refresh_token'), isNull);
+      },
+    );
   });
 }

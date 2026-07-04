@@ -25,7 +25,7 @@ export class AuthController {
     return this.authService.login(dto.identifier, dto.password);
   }
 
-  /** Exchange refresh token for new access + refresh (rotation). */
+  /** Exchange opaque refresh token for a fresh access JWT and renewed sliding session. */
   @Throttle({ default: { limit: 60, ttl: 60000 } })
   @Post('refresh')
   refresh(@Body() dto: RefreshBodyDto) {

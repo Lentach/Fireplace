@@ -7,7 +7,9 @@ import 'firebase_options.dart';
 import 'fcm_background_stub.dart'
     if (dart.library.io) 'services/android_fcm_local_notifications.dart'
     as fcm_background;
-import 'init_file_picker_stub.dart' if (dart.library.html) 'init_file_picker_web.dart' as file_picker_init;
+import 'init_file_picker_stub.dart'
+    if (dart.library.html) 'init_file_picker_web.dart'
+    as file_picker_init;
 import 'utils/notify_conv_param_stub.dart'
     if (dart.library.html) 'utils/notify_conv_param_web.dart';
 import 'utils/pending_deep_link_stub.dart'
@@ -83,18 +85,13 @@ class FireplaceApp extends StatelessWidget {
             debugShowCheckedModeBanner: false,
             scrollBehavior: const AppScrollBehavior(),
             builder: (context, child) {
-              return PortraitLockShell(
-                child: child ?? const SizedBox.shrink(),
-              );
+              return PortraitLockShell(child: child ?? const SizedBox.shrink());
             },
             theme: settings.lightTheme,
             darkTheme: settings.darkTheme,
             themeMode: settings.themeMode,
             locale: settings.locale,
-            supportedLocales: const [
-              Locale('pl'),
-              Locale('en'),
-            ],
+            supportedLocales: const [Locale('pl'), Locale('en')],
             localizationsDelegates: const [
               ...AppLocalizations.localizationsDelegates,
             ],
@@ -129,6 +126,10 @@ class _AuthGateState extends State<AuthGate> {
     }
 
     _previousLoggedInState = auth.isLoggedIn;
+
+    if (auth.isRestoringSession) {
+      return const Scaffold(body: Center(child: CircularProgressIndicator()));
+    }
 
     if (auth.isLoggedIn) {
       return const MainShell();

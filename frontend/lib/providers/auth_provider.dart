@@ -13,7 +13,7 @@ import '../config/app_config.dart';
 
 class AuthProvider extends ChangeNotifier {
   AuthProvider({ApiService? api})
-      : _api = api ?? ApiService(baseUrl: AppConfig.baseUrl) {
+    : _api = api ?? ApiService(baseUrl: AppConfig.baseUrl) {
     _pushService = PushService(_api);
     _loadSavedToken();
   }
@@ -28,6 +28,8 @@ class AuthProvider extends ChangeNotifier {
   bool _isError = false;
   Timer? _sessionRefreshTimer;
   Future<void>? _sessionRefreshInFlight;
+  bool _isRestoringSession = true;
+  String? _lastSessionEndReason;
 
   static const int _refreshMaxAttempts = 3;
   static const Duration _refreshRetryBaseDelay = Duration(milliseconds: 250);
@@ -39,7 +41,11 @@ class AuthProvider extends ChangeNotifier {
   UserModel? get currentUser => _currentUser;
   String? get statusMessage => _statusMessage;
   bool get isError => _isError;
+  bool get isRestoringSession => _isRestoringSession;
   bool get isLoggedIn => _token != null && _currentUser != null;
+
+  @visibleForTesting
+  String? get lastSessionEndReason => _lastSessionEndReason;
 
   void setOnAccessTokenChanged(void Function(String)? cb) {
     onAccessTokenChanged = cb;
@@ -135,8 +141,39 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
-  Future<void> _clearLocalAuthState() async {
+  void _logSessionEnd(String reason, {required String source, Object? error}) {
+    _lastSessionEndReason = reason;
+    final access = _token;
+    final userId = _currentUser?.id;
+    final accessExpired = access == null ? null : _isAccessExpired(access);
+    debugPrint(
+      '[auth-session-end] reason=$reason source=$source '
+      'hasAccess=${access != null} hasRefresh=${_refreshToken != null} '
+      'accessExpired=$accessExpired userId=$userId '
+      'errorType=${error.runtimeType}',
+    );
+  }
+
+  void _finishRestoringSession() {
+    if (!_isRestoringSession) return;
+    _isRestoringSession = false;
+    notifyListeners();
+  }
+
+  void _restoreSavedAccessToken(String savedToken) {
+    _token = savedToken;
+    _restoreUserFromAccessJwt(savedToken);
+    notifyListeners();
+  }
+
+  Future<void> _clearLocalAuthState(
+    String reason, {
+    required String source,
+    Object? error,
+  }) async {
+    _logSessionEnd(reason, source: source, error: error);
     _cancelSessionRefreshTimer();
+    _isRestoringSession = false;
     _token = null;
     _refreshToken = null;
     _currentUser = null;
@@ -157,7 +194,10 @@ class AuthProvider extends ChangeNotifier {
   Future<void> _ensureSessionReadyBody() async {
     if (_refreshToken == null) {
       if (_token != null && _isAccessExpired(_token!)) {
-        await _clearLocalAuthState();
+        await _clearLocalAuthState(
+          'expired_access_without_refresh',
+          source: 'ensureSessionReady',
+        );
       }
       return;
     }
@@ -165,8 +205,12 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       await _refreshSessionLocked();
-    } on SessionRefreshInvalidException {
-      await _clearLocalAuthState();
+    } on SessionRefreshInvalidException catch (e) {
+      await _clearLocalAuthState(
+        'refresh_invalid',
+        source: 'ensureSessionReady',
+        error: e,
+      );
     } on SessionRefreshTransientException {
       if (_token != null) {
         _restoreUserFromAccessJwt(_token!);
@@ -188,73 +232,88 @@ class AuthProvider extends ChangeNotifier {
   }
 
   Future<void> _loadSavedToken() async {
-    final prefs = await SharedPreferences.getInstance();
-    final savedToken = prefs.getString('jwt_token');
-    final savedRefresh = prefs.getString('refresh_token');
-    _refreshToken = savedRefresh;
-
-    if (savedToken == null && savedRefresh == null) return;
-
-    if (savedRefresh != null &&
-        (savedToken == null || _isAccessExpired(savedToken))) {
-      try {
-        await _refreshSessionLocked();
-      } on SessionRefreshInvalidException {
-        await _clearLocalAuthState();
-        return;
-      } on SessionRefreshTransientException {
-        if (savedToken != null) {
-          _token = savedToken;
-          _restoreUserFromAccessJwt(savedToken);
-          notifyListeners();
-        }
-      } catch (_) {
-        if (savedToken != null) {
-          _token = savedToken;
-          _restoreUserFromAccessJwt(savedToken);
-          notifyListeners();
-        }
-      }
-    } else if (savedToken != null) {
-      _token = savedToken;
-      _restoreUserFromAccessJwt(savedToken);
-      notifyListeners();
-    }
-
-    if (_token == null) return;
-
     try {
-      final userData = await _api.fetchMe(_token!);
-      _currentUser = UserModel.fromJson(userData);
-    } on Exception catch (e) {
-      if (e.toString().startsWith('Exception: HTTP_401')) {
-        if (_refreshToken != null) {
-          try {
-            await _refreshSessionLocked();
-            if (_token != null) {
-              final userData = await _api.fetchMe(_token!);
-              _currentUser = UserModel.fromJson(userData);
-            }
-          } on SessionRefreshInvalidException {
-            await _clearLocalAuthState();
-            return;
-          } on SessionRefreshTransientException {
-            if (_token != null) {
-              _restoreUserFromAccessJwt(_token!);
-            }
-          } catch (_) {
-            if (_token != null) {
-              _restoreUserFromAccessJwt(_token!);
-            }
-          }
-        } else {
-          await _clearLocalAuthState();
+      final prefs = await SharedPreferences.getInstance();
+      final savedToken = prefs.getString('jwt_token');
+      final savedRefresh = prefs.getString('refresh_token');
+      _refreshToken = savedRefresh;
+
+      if (savedToken == null && savedRefresh == null) return;
+
+      if (savedRefresh != null &&
+          (savedToken == null || _isAccessExpired(savedToken))) {
+        try {
+          await _refreshSessionLocked();
+        } on SessionRefreshInvalidException catch (e) {
+          await _clearLocalAuthState(
+            'refresh_invalid',
+            source: 'boot',
+            error: e,
+          );
           return;
+        } on SessionRefreshTransientException {
+          if (savedToken != null) {
+            _restoreSavedAccessToken(savedToken);
+          }
+        } catch (e) {
+          if (savedToken != null) {
+            _restoreSavedAccessToken(savedToken);
+          } else {
+            debugPrint(
+              '[auth-session-restore] source=boot outcome=transient_without_access '
+              'hasRefresh=true errorType=${e.runtimeType}',
+            );
+          }
+        }
+      } else if (savedToken != null) {
+        _restoreSavedAccessToken(savedToken);
+      }
+
+      if (_token == null) return;
+
+      try {
+        final userData = await _api.fetchMe(_token!);
+        _currentUser = UserModel.fromJson(userData);
+      } on Exception catch (e) {
+        if (e.toString().startsWith('Exception: HTTP_401')) {
+          if (_refreshToken != null) {
+            try {
+              await _refreshSessionLocked();
+              if (_token != null) {
+                final userData = await _api.fetchMe(_token!);
+                _currentUser = UserModel.fromJson(userData);
+              }
+            } on SessionRefreshInvalidException catch (refreshError) {
+              await _clearLocalAuthState(
+                'refresh_invalid_after_access_401',
+                source: 'boot_fetch_me',
+                error: refreshError,
+              );
+              return;
+            } on SessionRefreshTransientException {
+              if (_token != null) {
+                _restoreUserFromAccessJwt(_token!);
+              }
+            } catch (_) {
+              if (_token != null) {
+                _restoreUserFromAccessJwt(_token!);
+              }
+            }
+          } else {
+            await _clearLocalAuthState(
+              'access_401_without_refresh',
+              source: 'boot_fetch_me',
+              error: e,
+            );
+            return;
+          }
         }
       }
+      _startSessionRefreshTimer();
+      notifyListeners();
+    } finally {
+      _finishRestoringSession();
     }
-    _startSessionRefreshTimer();
-    notifyListeners();
   }
 
   Future<bool> register(String username, String password) async {
@@ -316,7 +375,7 @@ class AuthProvider extends ChangeNotifier {
       } catch (_) {}
     }
 
-    await _clearLocalAuthState();
+    await _clearLocalAuthState('explicit_logout', source: 'logout');
   }
 
   void clearStatus() {
@@ -348,6 +407,7 @@ class AuthProvider extends ChangeNotifier {
 
     try {
       await _api.resetPassword(_token!, oldPassword, newPassword);
+      await _clearLocalAuthState('password_changed', source: 'resetPassword');
     } catch (e) {
       throw Exception(e.toString().replaceFirst('Exception: ', ''));
     }
