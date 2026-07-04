@@ -52,10 +52,42 @@ Future<ChatInputBarState> _pumpWithChatSurface(WidgetTester tester) async {
           child: Column(
             children: [
               Expanded(
-                child: GestureDetector(
+                child: Listener(
                   key: const ValueKey('chat-surface'),
                   behavior: HitTestBehavior.opaque,
-                  onTap: () {},
+                  onPointerDown: (_) =>
+                      key.currentState?.dismissForChatSurfaceTap(),
+                  child: const SizedBox.expand(),
+                ),
+              ),
+              ChatInputBar(key: key),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+  return key.currentState!;
+}
+
+Future<ChatInputBarState> _pumpWithPlainOutsideSurface(WidgetTester tester) async {
+  final key = GlobalKey<ChatInputBarState>();
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: RpgTheme.themeDataLight,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: const Locale('en'),
+      home: Scaffold(
+        body: _providerScope(
+          child: Column(
+            children: [
+              Expanded(
+                child: Listener(
+                  key: const ValueKey('plain-outside-surface'),
+                  behavior: HitTestBehavior.opaque,
+                  child: const SizedBox.expand(),
                 ),
               ),
               ChatInputBar(key: key),
@@ -199,6 +231,132 @@ void main() {
 
       final fieldAfter = tester.widget<TextField>(find.byType(TextField));
       expect(fieldAfter.focusNode!.hasFocus, isTrue);
+    },
+  );
+
+  testWidgets(
+    'emoji toggle keeps the lower action panel visible when opening emoji',
+    (tester) async {
+      final state = await _pump(tester);
+      await tester.enterText(find.byType(TextField), 'stack panels');
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pumpAndSettle();
+
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(find.byType(ChatActionTiles), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('composer-emoji-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(find.byType(ChatActionTiles), findsOneWidget);
+      expect(find.byType(FireplaceEmojiPicker), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isFalse,
+      );
+    },
+  );
+
+  testWidgets(
+    'action panel toggle keeps the emoji panel visible when opening actions',
+    (tester) async {
+      final state = await _pump(tester);
+      await _openEmojiPanel(tester);
+
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pumpAndSettle();
+
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(find.byType(ChatActionTiles), findsOneWidget);
+      expect(find.byType(FireplaceEmojiPicker), findsOneWidget);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isFalse,
+      );
+    },
+  );
+
+  testWidgets(
+    'plain outside tap closes the action panel and unfocuses composer',
+    (tester) async {
+      final state = await _pumpWithPlainOutsideSurface(tester);
+      await tester.enterText(find.byType(TextField), 'outside dismisses');
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pumpAndSettle();
+
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isTrue,
+      );
+
+      await tester.tap(find.byKey(const ValueKey('plain-outside-surface')));
+      await tester.pumpAndSettle();
+
+      expect(state.isActionPanelOpenForTest, isFalse);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isFalse,
+      );
+    },
+  );
+
+  testWidgets(
+    'chat surface tap leaves the action panel and composer focus untouched',
+    (tester) async {
+      final state = await _pumpWithChatSurface(tester);
+      await tester.enterText(find.byType(TextField), 'keep lower panel stable');
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pumpAndSettle();
+
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isTrue,
+      );
+      await tester.tap(find.byKey(const ValueKey('chat-surface')));
+      await tester.pumpAndSettle();
+
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isTrue,
+      );
+    },
+  );
+
+  testWidgets(
+    'chat surface tap closes emoji while keeping the action panel visible',
+    (tester) async {
+      final state = await _pumpWithChatSurface(tester);
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pumpAndSettle();
+      await tester.tap(find.byKey(const ValueKey('composer-emoji-toggle')));
+      await tester.pumpAndSettle();
+
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(find.byType(ChatActionTiles), findsOneWidget);
+      expect(find.byType(FireplaceEmojiPicker), findsOneWidget);
+
+      await tester.tap(find.byKey(const ValueKey('chat-surface')));
+      await tester.pumpAndSettle();
+
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(find.byType(ChatActionTiles), findsOneWidget);
+      expect(find.byType(FireplaceEmojiPicker), findsNothing);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isFalse,
+      );
     },
   );
 

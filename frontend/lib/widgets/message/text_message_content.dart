@@ -13,7 +13,6 @@ class TextMessageContent extends StatelessWidget {
   final Color textColor;
   final bool isDark;
   final double maxWidth;
-
   const TextMessageContent({
     super.key,
     required this.message,
@@ -22,19 +21,20 @@ class TextMessageContent extends StatelessWidget {
     required this.isDark,
     required this.maxWidth,
   });
-
   Widget _buildTextWithLinks(BuildContext context) {
     final text = message.content;
-    // Telegram-parity jumbo rendering for emoji-only messages (1-2 emoji →
-    // 40, 3 → 34, 4 → 26, 5+ → 22; body text stays 14). Emoji-only content
-    // cannot contain URLs, so the link pipeline below is safely skipped.
+    // Telegram-parity jumbo rendering for emoji-only messages. Size tiers live
+    // in jumbo_emoji.dart so this comment does not fossilize another copy.
+    // Emoji-only content cannot contain URLs, so the link pipeline below is safely skipped.
     final jumboSize = jumboEmojiFontSize(text);
     if (jumboSize != null) {
-      return Text(
-        text,
+      return RichText(
         textAlign: TextAlign.left,
         textWidthBasis: TextWidthBasis.longestLine,
-        style: RpgTheme.bodyFont(fontSize: jumboSize, color: textColor),
+        text: TextSpan(
+          style: RpgTheme.bodyFont(fontSize: jumboSize, color: textColor),
+          children: [TextSpan(text: text)],
+        ),
       );
     }
     final urlRegex = RegExp(r'https?://[^\s]+', caseSensitive: false);

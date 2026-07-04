@@ -43,18 +43,20 @@ RichText _richTextOf(WidgetTester tester) => tester.widget<RichText>(
 
 void main() {
   group('TextMessageContent jumbo emoji', () {
-    testWidgets('emoji-only message renders as Text at fontSize 40', (
+    testWidgets('emoji-only message renders as RichText at fontSize 84', (
       tester,
     ) async {
       await tester.pumpWidget(_textContent('😀'));
-      final text = tester.widget<Text>(find.text('😀'));
-      expect(text.style?.fontSize, 40);
+      final span = _richTextOf(tester).text as TextSpan;
+      expect(span.style?.fontSize, 84);
+      expect((span.children!.single as TextSpan).text, '😀');
     });
 
-    testWidgets('five emoji render at fontSize 22', (tester) async {
+    testWidgets('five emoji render at fontSize 44', (tester) async {
       await tester.pumpWidget(_textContent('😀😀😀😀😀'));
-      final text = tester.widget<Text>(find.text('😀😀😀😀😀'));
-      expect(text.style?.fontSize, 22);
+      final span = _richTextOf(tester).text as TextSpan;
+      expect(span.style?.fontSize, 44);
+      expect((span.children!.single as TextSpan).text, '😀😀😀😀😀');
     });
 
     testWidgets('plain text keeps the 14px RichText pipeline', (tester) async {
@@ -83,7 +85,7 @@ void main() {
   });
 
   group('MessageContextMenuBubbleHighlight jumbo emoji', () {
-    testWidgets('emoji-only TEXT replica renders body at fontSize 40', (
+    testWidgets('emoji-only TEXT replica renders body at fontSize 84', (
       tester,
     ) async {
       await tester.pumpWidget(
@@ -96,7 +98,7 @@ void main() {
         ),
       );
       final text = tester.widget<Text>(find.text('😀'));
-      expect(text.style?.fontSize, 40);
+      expect(text.style?.fontSize, 84);
     });
 
     testWidgets('plain-text replica keeps body fontSize 15', (tester) async {

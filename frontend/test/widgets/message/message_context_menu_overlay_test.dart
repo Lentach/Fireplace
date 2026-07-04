@@ -54,14 +54,14 @@ void main() {
       );
     });
 
-    test('long text or newline uses stacked time', () {
+    test('long text stays inline; newline uses stacked time', () {
       final msg = _msg(id: 1, senderId: 1);
       expect(
         messageBubbleUsesInlineTime(
           message: msg,
           displayContent: 'this message is definitely too long',
         ),
-        isFalse,
+        isTrue,
       );
       expect(
         messageBubbleUsesInlineTime(

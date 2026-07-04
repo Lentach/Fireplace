@@ -219,5 +219,105 @@ void main() {
         );
       },
     );
+
+    testWidgets(
+      'short text keeps full content width and reserves metadata only on final line',
+      (tester) async {
+        final msg = MessageModel(
+          id: 7,
+          content: 'widzimy sie za godzinke?',
+          senderId: 2,
+          senderUsername: 'a',
+          conversationId: 1,
+          deliveryStatus: MessageDeliveryStatus.sent,
+          messageType: MessageType.text,
+          createdAt: DateTime(2026, 1, 1, 14, 46),
+        );
+
+        await tester.pumpWidget(
+          _wrapBubble(
+            SizedBox(
+              width: 360,
+              child: ChatMessageBubble(message: msg, isMine: false),
+            ),
+          ),
+        );
+
+        final textFinder = find.byWidgetPredicate(
+          (widget) =>
+              widget is RichText &&
+              widget.text.toPlainText().startsWith('widzimy sie za godzinke?'),
+        );
+        expect(textFinder, findsOneWidget);
+        final textWidth = tester.getSize(textFinder).width;
+        expect(
+          textWidth,
+          greaterThan(150),
+          reason:
+              'Short bubble text must measure as the text itself, not collapse from timestamp squeezing.',
+        );
+        final surfaceFinder = find.byKey(
+          const ValueKey('message-bubble-surface-7'),
+        );
+        expect(surfaceFinder, findsOneWidget);
+        final surfaceWidth = tester.getSize(surfaceFinder).width;
+        expect(
+          surfaceWidth,
+          closeTo(textWidth + 32, 1),
+          reason:
+              'When metadata wraps, painted bubble should shrink-wrap the text run plus padding.',
+        );
+        expect(
+          surfaceWidth,
+          lessThan(306),
+          reason: 'Painted bubble must not expand to the max bubble width.',
+        );
+      },
+    );
+
+    testWidgets(
+      'single emoji-only message renders large without a message bubble',
+      (tester) async {
+        final msg = MessageModel(
+          id: 8,
+          content: '🐶',
+          senderId: 1,
+          senderUsername: 'a',
+          conversationId: 1,
+          deliveryStatus: MessageDeliveryStatus.sent,
+          messageType: MessageType.text,
+          createdAt: DateTime(2026, 1, 1, 14, 56),
+        );
+
+        await tester.pumpWidget(
+          _wrapBubble(
+            SizedBox(
+              width: 360,
+              child: ChatMessageBubble(message: msg, isMine: true),
+            ),
+          ),
+        );
+
+        final emojiFinder = find.byWidgetPredicate(
+          (widget) =>
+              widget is RichText && widget.text.toPlainText().startsWith('🐶'),
+        );
+        expect(emojiFinder, findsOneWidget);
+        final emojiLineWidth = tester.getSize(emojiFinder).width;
+        expect(
+          emojiLineWidth,
+          greaterThan(80),
+          reason: 'Single emoji-only message should be Telegram-large.',
+        );
+        final surfaceFinder = find.byKey(
+          const ValueKey('message-bubble-surface-8'),
+        );
+        expect(
+          surfaceFinder,
+          findsNothing,
+          reason: 'Emoji-only messages should not paint a message bubble.',
+        );
+      },
+    );
   });
 }

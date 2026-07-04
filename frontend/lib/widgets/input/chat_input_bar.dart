@@ -56,6 +56,10 @@ class ChatInputBarState extends State<ChatInputBar>
   bool _showActionPanel = false;
   late final AnimationController _actionPanelController;
   bool _showEmojiPicker = false;
+  bool _ignoreComposerTapOutsideForChatSurfaceTap = false;
+
+  @visibleForTesting
+  bool get isActionPanelOpenForTest => _showActionPanel;
   late final Animation<double> _actionPanelAnimation;
 
   Timer? _typingDebounceTimer;
@@ -136,33 +140,47 @@ class ChatInputBarState extends State<ChatInputBar>
   }
 
   void _handleComposerTapOutside(PointerDownEvent _) {
+    if (_ignoreComposerTapOutsideForChatSurfaceTap) return;
     if (kIsWeb && isIOSWebKit()) return;
     _focusNode.unfocus();
   }
 
-  void _handleComposerRegionTapOutside(PointerDownEvent event) {
-    var closedPanel = false;
-    if (_showEmojiPicker || _showActionPanel) {
-      setState(() {
-        if (_showEmojiPicker) {
-          _showEmojiPicker = false;
-          closedPanel = true;
-        }
-        if (_showActionPanel) {
-          _showActionPanel = false;
-          _actionPanelController.reverse();
-          closedPanel = true;
-        }
+  void dismissForChatSurfaceTap() {
+    if (_showActionPanel) {
+      // The message list owns the real chat-surface pointer. TapRegion still
+      // receives the same outside tap afterward; suppress only that follow-up
+      // so the lower action panel does not collapse or lose focus.
+      _ignoreComposerTapOutsideForChatSurfaceTap = true;
+      if (_showEmojiPicker) {
+        setState(() => _showEmojiPicker = false);
+      }
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        if (mounted) _ignoreComposerTapOutsideForChatSurfaceTap = false;
       });
+      return;
     }
-
-    if (!closedPanel) {
-      _handleComposerTapOutside(event);
-    } else if (!(kIsWeb && isIOSWebKit())) {
-      _focusNode.unfocus();
-    }
+    _dismissOpenComposerPanels();
+    _focusNode.unfocus();
   }
 
+  void _handleComposerRegionTapOutside(PointerDownEvent event) {
+    if (_ignoreComposerTapOutsideForChatSurfaceTap) return;
+    _dismissOpenComposerPanels();
+    _handleComposerTapOutside(event);
+  }
+
+  void _dismissOpenComposerPanels() {
+    if (!_showEmojiPicker && !_showActionPanel) return;
+    setState(() {
+      if (_showEmojiPicker) {
+        _showEmojiPicker = false;
+      }
+      if (_showActionPanel) {
+        _showActionPanel = false;
+        _actionPanelController.reverse();
+      }
+    });
+  }
   void _onComposerFocusForWebViewport() {
     if (!kIsWeb) return;
     if (!_focusNode.hasFocus) {
@@ -455,10 +473,6 @@ class ChatInputBarState extends State<ChatInputBar>
     final opening = !_showEmojiPicker;
     setState(() {
       _showEmojiPicker = opening;
-      if (opening && _showActionPanel) {
-        _showActionPanel = false;
-        _actionPanelController.reverse();
-      }
     });
     if (opening) {
       _focusNode.unfocus();
@@ -478,7 +492,6 @@ class ChatInputBarState extends State<ChatInputBar>
     setState(() {
       _showActionPanel = !_showActionPanel;
       if (_showActionPanel) {
-        _showEmojiPicker = false;
         _actionPanelController.forward();
       } else {
         _actionPanelController.reverse();
