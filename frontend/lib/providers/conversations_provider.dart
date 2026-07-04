@@ -59,6 +59,15 @@ class ConversationsProvider extends ChangeNotifier {
     _emitPushClientState();
   }
 
+  /// Re-sends the current active/visibility tuple without changing state.
+  ///
+  /// Socket.IO reconnects create a fresh server-side socket, so `client.data`
+  /// loses the previous `pushClientState`. Use this after socketReady/resume
+  /// even when `_clientVisible` and `_activeConversationId` did not change.
+  void reemitPushClientState() {
+    _emitPushClientState();
+  }
+
   void _emitPushClientState() {
     _emit?.call('pushClientState', {
       'activeConversationId': _activeConversationId,
