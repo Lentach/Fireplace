@@ -59,40 +59,39 @@ describe('RefreshTokensService', () => {
     );
   });
 
-  it('consumeAndRotate throws when token unknown', async () => {
+  it('consumeAndSlide throws when token unknown', async () => {
     repo.findOne.mockResolvedValue(null);
-    await expect(service.consumeAndRotate('unknown')).rejects.toThrow(
+    await expect(service.consumeAndSlide('unknown')).rejects.toThrow(
       UnauthorizedException,
     );
   });
 
-  it('consumeAndRotate removes the old row and persists a newly hashed token for the same user', async () => {
+  it('consumeAndSlide extends the existing refresh token instead of invalidating a lost response retry', async () => {
+    const oldExpiry = new Date(Date.now() + 60_000);
     const oldRow = {
       id: 'old-token-id',
       userId: 42,
       tokenHash: RefreshTokensService.hashToken('old-plain'),
-      expiresAt: new Date(Date.now() + 60_000),
+      expiresAt: oldExpiry,
     } as RefreshToken;
     repo.findOne.mockResolvedValue(oldRow);
     repo.save.mockImplementation(async (e: RefreshToken) => e);
 
-    const result = await service.consumeAndRotate('old-plain');
+    const result = await service.consumeAndSlide('old-plain');
 
     expect(repo.findOne).toHaveBeenCalledWith({
       where: { tokenHash: RefreshTokensService.hashToken('old-plain') },
     });
-    expect(repo.remove).toHaveBeenCalledWith(oldRow);
-    expect(result.userId).toBe(42);
-    expect(result.newPlain).not.toBe('old-plain');
-    expect(repo.save).toHaveBeenCalledTimes(1);
-    const saved = repo.save.mock.calls[0][0] as RefreshToken;
-    expect(saved.userId).toBe(42);
-    expect(saved.tokenHash).toBe(RefreshTokensService.hashToken(result.newPlain));
-    expect(saved.tokenHash).not.toBe(oldRow.tokenHash);
-    expect(saved.expiresAt.getTime()).toBeGreaterThan(Date.now());
+    expect(repo.remove).not.toHaveBeenCalled();
+    expect(repo.save).toHaveBeenCalledWith(oldRow);
+    expect(result).toEqual({ userId: 42, newPlain: 'old-plain' });
+    expect(oldRow.expiresAt.getTime()).toBeGreaterThan(oldExpiry.getTime());
+    expect(oldRow.expiresAt.getTime()).toBeGreaterThan(
+      Date.now() + (REFRESH_TOKEN_TTL_DAYS - 2) * 86400 * 1000,
+    );
   });
 
-  it('consumeAndRotate removes expired tokens and rejects without issuing a replacement', async () => {
+  it('consumeAndSlide removes expired tokens and rejects without issuing a replacement', async () => {
     const expiredRow = {
       id: 'expired-token-id',
       userId: 42,
@@ -101,7 +100,7 @@ describe('RefreshTokensService', () => {
     } as RefreshToken;
     repo.findOne.mockResolvedValue(expiredRow);
 
-    await expect(service.consumeAndRotate('expired-plain')).rejects.toThrow(
+    await expect(service.consumeAndSlide('expired-plain')).rejects.toThrow(
       new UnauthorizedException('Refresh token expired'),
     );
 

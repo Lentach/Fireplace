@@ -81,6 +81,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const token = client.handshake.auth?.token as string;
 
       if (!token) {
+        this.logger.warn(
+          '[auth-session-end] reason=missing_access source=socket_connect',
+        );
         client.disconnect();
         return;
       }
@@ -91,6 +94,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       const user = await this.usersService.findById(payload.sub);
 
       if (!user) {
+        this.logger.warn(
+          `[auth-session-end] reason=user_missing source=socket_connect userId=${payload.sub}`,
+        );
         client.disconnect();
         return;
       }
@@ -104,6 +110,9 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
           typeof payload.iat === 'number' &&
           payload.iat <= changedAtSeconds
         ) {
+          this.logger.warn(
+            `[auth-session-end] reason=password_changed source=socket_connect userId=${user.id}`,
+          );
           client.disconnect();
           return;
         }
@@ -124,7 +133,17 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       // Auth is complete — client may safely emit authenticated WS events.
       client.emit('socketReady', {});
     } catch (error) {
-      this.logger.error(`handleConnection failed: ${error.message}`);
+      const errorName =
+        error instanceof Error ? error.name : 'UnknownSocketAuthError';
+      const reason =
+        errorName === 'TokenExpiredError'
+          ? 'access_expired'
+          : errorName === 'JsonWebTokenError'
+            ? 'invalid_signature'
+            : 'access_invalid';
+      this.logger.warn(
+        `[auth-session-end] reason=${reason} source=socket_connect errorType=${errorName}`,
+      );
       client.disconnect();
     }
   }

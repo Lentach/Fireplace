@@ -1,4 +1,4 @@
-import { Injectable, UnauthorizedException } from '@nestjs/common';
+import { Injectable, Logger, UnauthorizedException } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { createHash, randomBytes } from 'crypto';
@@ -10,6 +10,8 @@ export const REFRESH_TOKEN_TTL_DAYS = 365;
 
 @Injectable()
 export class RefreshTokensService {
+  private readonly logger = new Logger(RefreshTokensService.name);
+
   constructor(
     @InjectRepository(RefreshToken)
     private readonly refreshRepo: Repository<RefreshToken>,
@@ -19,14 +21,19 @@ export class RefreshTokensService {
     return createHash('sha256').update(plain, 'utf8').digest('hex');
   }
 
+  private expiresAtFromNow(): Date {
+    const expiresAt = new Date();
+    expiresAt.setUTCDate(expiresAt.getUTCDate() + REFRESH_TOKEN_TTL_DAYS);
+    return expiresAt;
+  }
+
   /**
    * Persists a new refresh session and returns the plaintext token (client-only).
    */
   async createToken(userId: number): Promise<string> {
     const plain = randomBytes(REFRESH_TOKEN_BYTE_LENGTH).toString('base64url');
     const tokenHash = RefreshTokensService.hashToken(plain);
-    const expiresAt = new Date();
-    expiresAt.setUTCDate(expiresAt.getUTCDate() + REFRESH_TOKEN_TTL_DAYS);
+    const expiresAt = this.expiresAtFromNow();
 
     await this.refreshRepo.save(
       this.refreshRepo.create({
@@ -39,26 +46,36 @@ export class RefreshTokensService {
   }
 
   /**
-   * Validates plaintext refresh token, rotates it (old row deleted), returns user id.
-   * Caller issues new JWT + createToken for the pair returned... actually rotation:
-   * we delete old hash and issue new plain in same transaction pattern via createToken after validate.
+   * Validates a plaintext refresh token and extends its expiry.
+   *
+   * This deliberately keeps the opaque refresh token stable. Hard single-use
+   * rotation turns a lost `/auth/refresh` response into a self-inflicted logout:
+   * the server has already deleted the row, while the client can only retry the
+   * old token. Sliding the existing row preserves sticky sessions without
+   * weakening explicit revoke/password-change invalidation.
    */
-  async consumeAndRotate(plain: string): Promise<{ userId: number; newPlain: string }> {
+  async consumeAndSlide(
+    plain: string,
+  ): Promise<{ userId: number; newPlain: string }> {
     const tokenHash = RefreshTokensService.hashToken(plain);
     const row = await this.refreshRepo.findOne({ where: { tokenHash } });
     if (!row) {
+      this.logger.warn(
+        '[auth-session-end] reason=refresh_invalid source=refresh_endpoint hasUser=false',
+      );
       throw new UnauthorizedException('Invalid refresh token');
     }
     if (new Date(row.expiresAt).getTime() <= Date.now()) {
+      this.logger.warn(
+        `[auth-session-end] reason=refresh_expired source=refresh_endpoint userId=${row.userId}`,
+      );
       await this.refreshRepo.remove(row);
       throw new UnauthorizedException('Refresh token expired');
     }
 
-    const userId = row.userId;
-    await this.refreshRepo.remove(row);
-
-    const newPlain = await this.createToken(userId);
-    return { userId, newPlain };
+    row.expiresAt = this.expiresAtFromNow();
+    await this.refreshRepo.save(row);
+    return { userId: row.userId, newPlain: plain };
   }
 
   async revokeByPlain(plain: string): Promise<void> {
@@ -72,5 +89,4 @@ export class RefreshTokensService {
   async revokeAllForUser(userId: number): Promise<void> {
     await this.refreshRepo.delete({ userId });
   }
-
 }

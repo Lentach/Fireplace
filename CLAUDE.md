@@ -54,7 +54,7 @@ cd frontend && flutter run -d chrome
 - Ports: backend `:3000`, DB host `:5433 -> :5432`, Flutter web random unless specified.
 - Before local start on Windows if stale node processes bite: `taskkill //F //IM node.exe`.
 - Phone on WiFi: `cd frontend && .\run_web_for_phone.ps1`, or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`.
-- Tests: `cd backend && npm test` (380 unit tests, 41 suites; verified by `node scripts/verify-claude-backend-test-counts.mjs`). Frontend: `cd frontend && flutter analyze --no-fatal-infos && flutter test`.
+- Tests: `cd backend && npm test` (381 unit tests, 42 suites; verified by `node scripts/verify-claude-backend-test-counts.mjs`). Frontend: `cd frontend && flutter analyze --no-fatal-infos && flutter test`.
 - CI: `.github/workflows/ci.yml` runs backend tests + the CLAUDE test-count verifier, then Flutter analyze/tests.
 
 ## 4. Production deploy and safety
@@ -86,7 +86,7 @@ Core env vars:
 | Area | Vars |
 |---|---|
 | DB | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME` |
-| Auth/CORS | `JWT_SECRET` (>=32 chars), `ALLOWED_ORIGINS` |
+| Auth/CORS | `JWT_SECRET` (>=32 chars, generated once and persisted; do not rotate/regenerate during normal deploys or host moves), `ALLOWED_ORIGINS` |
 | Media | `MEDIA_BASE_URL`, `MEDIA_DIR`, `MEDIA_CLEANUP_GRACE_MS`, `MEDIA_X_ACCEL_REDIRECT` |
 | Push | `FIREBASE_SERVICE_ACCOUNT`, `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`, `WEB_PUSH_VAPID_SUBJECT` |
 | Frontend dart-defines | `BASE_URL`, `GIPHY_API_KEY`, `WEB_PUSH_VAPID_PUBLIC_KEY`, `GIT_COMMIT`, `BUILD_TIME` |
