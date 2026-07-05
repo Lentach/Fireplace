@@ -329,10 +329,9 @@ class ChatMessageBubble extends StatelessWidget {
                           // Emoji-only messages stack the metadata UNDER the
                           // emote (Telegram parity) so a single emote stays
                           // flush to its side instead of being shoved toward
-                          // center by an inline time run. A Column + side
-                          // crossAxisAlignment also renders reliably on iOS
-                          // WebKit, where the previous inline Wrap dropped the
-                          // metadata run beside the wide jumbo glyph.
+                          // center by an inline time run. Metadata legibility on
+                          // the bubbleless chat surface is handled by the
+                          // on-surface color below, not by this layout.
                           child: Column(
                             mainAxisSize: MainAxisSize.min,
                             crossAxisAlignment: isMine
@@ -347,7 +346,22 @@ class ChatMessageBubble extends StatelessWidget {
                                 contentAreaWidth: contentAreaWidth,
                               ),
                               const SizedBox(height: 4),
-                              standardTimeWidget,
+                              MessageMetadataRow(
+                                message: message,
+                                isMine: isMine,
+                                // Emotes render with no bubble, so the metadata
+                                // sits on the bare chat background. Use the
+                                // received-side (background-readable) meta color
+                                // regardless of sender — the on-bubble sent
+                                // color is white and vanishes on a light chat
+                                // surface (the persisted iOS light-theme bug).
+                                timeColor: RpgTheme.messageBubbleMetaColor(
+                                  context,
+                                  isMine: false,
+                                  themePreference: themePreference,
+                                ),
+                                onChatSurface: true,
+                              ),
                             ],
                           ),
                         ),
@@ -407,12 +421,7 @@ class ChatMessageBubble extends StatelessWidget {
                             contentAreaWidth: contentAreaWidth,
                           ),
                           const SizedBox(height: 4),
-                          Align(
-                            alignment: isMine
-                                ? Alignment.centerRight
-                                : Alignment.centerLeft,
-                            child: standardTimeWidget,
-                          ),
+                          standardTimeWidget,
                         ],
                       );
                     }
@@ -457,12 +466,7 @@ class ChatMessageBubble extends StatelessWidget {
                             contentAreaWidth: contentAreaWidth,
                           ),
                           const SizedBox(height: 4),
-                          Align(
-                            alignment: isMine
-                                ? Alignment.centerRight
-                                : Alignment.centerLeft,
-                            child: standardTimeWidget,
-                          ),
+                          standardTimeWidget,
                         ],
                       );
                     }

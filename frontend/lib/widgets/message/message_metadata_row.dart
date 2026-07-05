@@ -13,11 +13,18 @@ class MessageMetadataRow extends StatelessWidget {
   final bool isMine;
   final Color timeColor;
 
+  /// True when this row sits on the bare chat background (bubbleless emotes)
+  /// rather than on a colored message bubble. On-surface mode uses
+  /// background-readable delivery-tick colors instead of the pale on-bubble
+  /// palette (which is invisible on a light chat surface).
+  final bool onChatSurface;
+
   const MessageMetadataRow({
     super.key,
     required this.message,
     required this.isMine,
     required this.timeColor,
+    this.onChatSurface = false,
   });
 
   /// One check = delivered. Two checks = read.
@@ -46,15 +53,22 @@ class MessageMetadataRow extends StatelessWidget {
         break;
     }
 
-    final tickPref = context.read<SettingsProvider>().themePreference;
-    final ticks = RpgTheme.messageBubbleDeliveryTickColors(
-      context,
-      isMine: isMine,
-      themePreference: tickPref,
-    );
-    final color = message.deliveryStatus == MessageDeliveryStatus.read
-        ? ticks.$2
-        : ticks.$1;
+    final Color color;
+    if (onChatSurface) {
+      color = message.deliveryStatus == MessageDeliveryStatus.read
+          ? Theme.of(context).colorScheme.primary
+          : timeColor;
+    } else {
+      final tickPref = context.read<SettingsProvider>().themePreference;
+      final ticks = RpgTheme.messageBubbleDeliveryTickColors(
+        context,
+        isMine: isMine,
+        themePreference: tickPref,
+      );
+      color = message.deliveryStatus == MessageDeliveryStatus.read
+          ? ticks.$2
+          : ticks.$1;
+    }
     return Icon(icon, size: 12, color: color);
   }
 
