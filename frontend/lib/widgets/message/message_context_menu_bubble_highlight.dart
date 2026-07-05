@@ -207,21 +207,42 @@ class MessageContextMenuBubbleHighlight extends StatelessWidget {
         );
         break;
       default:
-        // Mirror TextMessageContent's jumbo emoji sizing so the long-press
-        // replica matches the live bubble instead of visibly shrinking.
-        body = Text(
-          displayContent,
-          style: RpgTheme.bodyFont(
-            fontSize: jumboEmojiFontSize(displayContent) ?? 15,
-            color: textColor,
-          ),
-        );
+        {
+          // Mirror TextMessageContent: jumbo sizing for emoji-only messages and
+          // enlarged inline emoji for mixed text so the replica does not visibly
+          // shift when the long-press menu opens.
+          final jumboSize = jumboEmojiFontSize(displayContent);
+          body = jumboSize != null
+              ? Text(
+                  displayContent,
+                  style: RpgTheme.bodyFont(
+                    fontSize: jumboSize,
+                    color: textColor,
+                  ),
+                )
+              : Text.rich(
+                  TextSpan(
+                    children: buildInlineEmojiSpans(
+                      displayContent,
+                      textStyle: RpgTheme.bodyFont(
+                        fontSize: 15,
+                        color: textColor,
+                      ),
+                    ),
+                  ),
+                );
+        }
     }
 
-    final useInlineTime = messageBubbleUsesInlineTime(
-      message: message,
-      displayContent: displayContent,
-    );
+    // Emoji-only messages stack the metadata below the emote (matches the live
+    // bubble); everything else may keep the inline time row.
+    final isEmojiOnly = jumboEmojiFontSize(displayContent) != null;
+    final useInlineTime =
+        !isEmojiOnly &&
+        messageBubbleUsesInlineTime(
+          message: message,
+          displayContent: displayContent,
+        );
 
     return Material(
       elevation: 12,

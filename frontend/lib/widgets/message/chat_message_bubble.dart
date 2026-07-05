@@ -326,13 +326,18 @@ class ChatMessageBubble extends StatelessWidget {
                             right: isMine ? 0 : 48,
                             bottom: kContextMenuAnchorBottomMargin,
                           ),
-                          child: Wrap(
-                            alignment: isMine
-                                ? WrapAlignment.end
-                                : WrapAlignment.start,
-                            crossAxisAlignment: WrapCrossAlignment.end,
-                            spacing: 6,
-                            runSpacing: 2,
+                          // Emoji-only messages stack the metadata UNDER the
+                          // emote (Telegram parity) so a single emote stays
+                          // flush to its side instead of being shoved toward
+                          // center by an inline time run. A Column + side
+                          // crossAxisAlignment also renders reliably on iOS
+                          // WebKit, where the previous inline Wrap dropped the
+                          // metadata run beside the wide jumbo glyph.
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            crossAxisAlignment: isMine
+                                ? CrossAxisAlignment.end
+                                : CrossAxisAlignment.start,
                             children: [
                               _buildContentColumn(
                                 context,
@@ -341,6 +346,7 @@ class ChatMessageBubble extends StatelessWidget {
                                 borderColor,
                                 contentAreaWidth: contentAreaWidth,
                               ),
+                              const SizedBox(height: 4),
                               standardTimeWidget,
                             ],
                           ),
