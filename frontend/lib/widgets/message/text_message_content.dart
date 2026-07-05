@@ -46,10 +46,10 @@ class TextMessageContent extends StatelessWidget {
 
     for (final match in urlRegex.allMatches(text)) {
       if (match.start > last) {
-        spans.add(
-          TextSpan(
-            text: text.substring(last, match.start),
-            style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
+        spans.addAll(
+          buildInlineEmojiSpans(
+            text.substring(last, match.start),
+            textStyle: RpgTheme.bodyFont(fontSize: 14, color: textColor),
           ),
         );
       }
@@ -69,10 +69,10 @@ class TextMessageContent extends StatelessWidget {
       last = match.end;
     }
     if (last < text.length) {
-      spans.add(
-        TextSpan(
-          text: text.substring(last),
-          style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
+      spans.addAll(
+        buildInlineEmojiSpans(
+          text.substring(last),
+          textStyle: RpgTheme.bodyFont(fontSize: 14, color: textColor),
         ),
       );
     }
