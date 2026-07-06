@@ -41,6 +41,7 @@ frontend/android/key.properties
 docs/superpowers/
 .planning/
 .tmp/
+omp-session*.html
 
 # Local audit report — repo is PUBLIC; keep the findings/backlog off the remote
 docs/audit/
