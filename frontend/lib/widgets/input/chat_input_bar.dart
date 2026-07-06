@@ -126,9 +126,17 @@ class ChatInputBarState extends State<ChatInputBar>
     }
   }
 
+  /// Single mutation point for emoji-panel visibility so the viewport bottom
+  /// pin ([composerBottomPanelPinned]) can never drift out of sync with
+  /// [_showEmojiPicker]. Call inside setState.
+  void _setEmojiPickerVisible(bool value) {
+    _showEmojiPicker = value;
+    composerBottomPanelPinned.value = value;
+  }
+
   void _closeEmojiPickerOnFocusGain() {
     if (!_focusNode.hasFocus || !_showEmojiPicker) return;
-    setState(() => _showEmojiPicker = false);
+    setState(() => _setEmojiPickerVisible(false));
   }
 
   void _requestComposerFocus() {
@@ -152,7 +160,7 @@ class ChatInputBarState extends State<ChatInputBar>
       // so the lower action panel does not collapse or lose focus.
       _ignoreComposerTapOutsideForChatSurfaceTap = true;
       if (_showEmojiPicker) {
-        setState(() => _showEmojiPicker = false);
+        setState(() => _setEmojiPickerVisible(false));
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _ignoreComposerTapOutsideForChatSurfaceTap = false;
@@ -173,7 +181,7 @@ class ChatInputBarState extends State<ChatInputBar>
     if (!_showEmojiPicker && !_showActionPanel) return;
     setState(() {
       if (_showEmojiPicker) {
-        _showEmojiPicker = false;
+        _setEmojiPickerVisible(false);
       }
       if (_showActionPanel) {
         _showActionPanel = false;
@@ -311,6 +319,12 @@ class ChatInputBarState extends State<ChatInputBar>
 
   @override
   void dispose() {
+    // Reset the pin so the next chat opens unpinned, but DEFER it: a sync
+    // notify here fires the still-mounted ancestor viewport's setState during
+    // tree finalization (locked-tree assert when leaving the chat with the
+    // panel open). By microtask time the tree is unlocked (or the viewport is
+    // unmounted and its listener no-ops on the mounted guard).
+    scheduleMicrotask(() => composerBottomPanelPinned.value = false);
     _focusNode.removeListener(_closeEmojiPickerOnFocusGain);
     if (kIsWeb) {
       _focusNode.removeListener(_onComposerFocusForWebViewport);
@@ -472,7 +486,7 @@ class ChatInputBarState extends State<ChatInputBar>
   void _toggleEmojiPicker() {
     final opening = !_showEmojiPicker;
     setState(() {
-      _showEmojiPicker = opening;
+      _setEmojiPickerVisible(opening);
     });
     if (opening) {
       _focusNode.unfocus();
@@ -529,7 +543,7 @@ class ChatInputBarState extends State<ChatInputBar>
   void _onRecordingStateChanged(bool isRecording) {
     setState(() {
       _isRecording = isRecording;
-      if (isRecording) _showEmojiPicker = false;
+      if (isRecording) _setEmojiPickerVisible(false);
     });
   }
 
@@ -844,7 +858,7 @@ class ChatInputBarState extends State<ChatInputBar>
       canPop: !_showEmojiPicker,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && _showEmojiPicker) {
-          setState(() => _showEmojiPicker = false);
+          setState(() => _setEmojiPickerVisible(false));
         }
       },
       child: TapRegion(

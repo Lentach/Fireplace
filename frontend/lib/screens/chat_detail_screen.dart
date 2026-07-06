@@ -26,6 +26,7 @@ import '../widgets/top_snackbar.dart';
 import '../widgets/message/pinned_message_banner.dart';
 import '../widgets/message/message_context_menu_overlay.dart';
 import '../utils/scroll_to_message_helper.dart';
+import '../utils/chat_auto_scroll.dart';
 import '../utils/pinned_banner_visibility.dart';
 import '../utils/reply_preview_helper.dart';
 import '../utils/chat_resume_reassert.dart';
@@ -273,6 +274,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       final known = _knownMessageIds.contains(m.id);
       return !known && m.senderId != currentUserId;
     }).length;
+    final newOwnMessages = currentMessages.where((m) {
+      final known = _knownMessageIds.contains(m.id);
+      return !known && m.senderId == currentUserId;
+    }).length;
 
     _knownMessageIds.addAll(currentMessageIds);
 
@@ -292,7 +297,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     _lastLinkPreviewCount = currentMessages
         .where((m) => m.linkPreviewUrl != null)
         .length;
-    if (_wasNearBottom && !_userHasScrolledChat) {
+    // Own sends always scroll (emote-panel sends have no keyboard-open scroll
+    // to piggyback on); peer messages scroll only near-bottom, else badge.
+    if (shouldAutoScrollOnNewMessages(
+      newOwnMessages: newOwnMessages,
+      wasNearBottom: _wasNearBottom,
+      userHasScrolledChat: _userHasScrolledChat,
+    )) {
       _scrollToBottom();
     } else if (newPeerMessages > 0) {
       setState(() => _newMessagesCount += newPeerMessages);

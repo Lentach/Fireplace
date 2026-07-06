@@ -53,12 +53,17 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
     super.initState();
     _kbInsetSource = createKeyboardInsetSource();
     _kbInsetSource.inset.addListener(_onKeyboardInsetChanged);
+    composerBottomPanelPinned.addListener(_onBottomPanelPinnedChanged);
     WidgetsBinding.instance.addPostFrameCallback(_measureComposer);
   }
 
   void _onKeyboardInsetChanged() {
     // Flutter does not rebuild on the iOS keyboard (it never sees the inset), so
     // the visualViewport listener must drive the rebuild itself.
+    if (mounted) setState(() {});
+  }
+
+  void _onBottomPanelPinnedChanged() {
     if (mounted) setState(() {});
   }
 
@@ -71,6 +76,7 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
   @override
   void dispose() {
     _insetCollapseTimer?.cancel();
+    composerBottomPanelPinned.removeListener(_onBottomPanelPinnedChanged);
     _kbInsetSource.inset.removeListener(_onKeyboardInsetChanged);
     _kbInsetSource.dispose();
     super.dispose();
@@ -131,7 +137,17 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
     // self-corrects: the collapse timer's setState rebuilds, and if the keyboard
     // is still up `raw` re-grows `_keyboardInset` in the same frame (no visible
     // drop). Keep `raw` sourced live so this invariant holds.
-    final listBottomPadding = _composerHeight + _keyboardInset;
+    // While a composer bottom panel (emoji picker) is open it REPLACES the
+    // keyboard: anchor the composer block at the true bottom so the panel sits
+    // in the keyboard's space from the first frame and a dismissing keyboard
+    // simply reveals it. Without the pin the block hovers at the stale inset
+    // (input row near the top of the screen) and visibly drops as the inset
+    // collapses. _keyboardInset keeps tracking raw for when the pin releases
+    // (tapping the field closes the panel and reopens the keyboard).
+    final effectiveInset = composerBottomPanelPinned.value
+        ? 0.0
+        : _keyboardInset;
+    final listBottomPadding = _composerHeight + effectiveInset;
 
     return Stack(
       clipBehavior: Clip.none,
@@ -143,7 +159,7 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
         Positioned(
           left: 0,
           right: 0,
-          bottom: _keyboardInset,
+          bottom: effectiveInset,
           child: NotificationListener<SizeChangedLayoutNotification>(
             onNotification: _onComposerSizeChanged,
             child: KeyedSubtree(

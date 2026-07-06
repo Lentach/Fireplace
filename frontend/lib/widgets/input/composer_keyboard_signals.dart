@@ -10,3 +10,13 @@ import 'package:flutter/foundation.dart';
 /// hide (Symptom B). Singleton: only one chat composer is active at a time.
 final ValueNotifier<bool> composerKeyboardCollapseGuard =
     ValueNotifier<bool>(false);
+
+/// True while the composer has a bottom panel (emoji picker) open that
+/// REPLACES the keyboard. While true, [ChatComposerViewport] anchors the
+/// composer block at `bottom: 0` instead of the keyboard inset, so on a
+/// keyboard→panel switch the panel occupies the keyboard's space from the
+/// first frame and the dismissing keyboard simply reveals it (native-style
+/// swap). Without this the panel mounts above the still-large inset and
+/// visibly drops from the top as the inset collapses.
+/// Singleton: only one chat composer is active at a time.
+final ValueNotifier<bool> composerBottomPanelPinned = ValueNotifier<bool>(false);
