@@ -168,10 +168,18 @@ class ChatInputBarState extends State<ChatInputBar>
     if (_showActionPanel) {
       // The message list owns the real chat-surface pointer. TapRegion still
       // receives the same outside tap afterward; suppress only that follow-up
-      // so the lower action panel does not collapse or lose focus.
+      // so the lower action panel does not collapse. The keyboard now
+      // dismisses on a chat-surface tap even with the panel open
+      // (user-reported Android PWA bug 2026-07-07) — EXCEPT on iOS WebKit,
+      // where the 07-03 keep-focus contract stays until a device session
+      // proves the blur can't retrigger the lower-panel tap loop the contract
+      // was written against.
       _ignoreComposerTapOutsideForChatSurfaceTap = true;
       if (_showEmojiPicker) {
         setState(() => _setEmojiPickerVisible(false));
+      }
+      if (!(kIsWeb && isIOSWebKit())) {
+        _focusNode.unfocus();
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _ignoreComposerTapOutsideForChatSurfaceTap = false;

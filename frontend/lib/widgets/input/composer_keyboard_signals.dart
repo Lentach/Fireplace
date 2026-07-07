@@ -42,8 +42,12 @@ final ValueNotifier<double> predictedComposerKeyboardInset =
     ValueNotifier<double>(0);
 
 /// A/B switch for the flash-fix prediction above, toggleable on-device from
-/// the composer diagnostics overlay. Default ON.
-final ValueNotifier<bool> composerFlashFixEnabled = ValueNotifier<bool>(true);
+/// the composer diagnostics overlay. Default OFF: the user reported the flash
+/// gone on the 0.0.91-era build (no frontend delta vs master — most likely the
+/// 0.0.88 panel-pin work), so the prediction stays opt-in for device A/B. If
+/// the device session confirms the flash is dead without it, DELETE this
+/// mechanism instead of shipping it dormant.
+final ValueNotifier<bool> composerFlashFixEnabled = ValueNotifier<bool>(false);
 
 /// TEMP Phase-B probe (diagnostics overlay, device sessions only): when true
 /// the DOM focus guard (`web_focus_guard_web.dart`) stops intercepting pointer
