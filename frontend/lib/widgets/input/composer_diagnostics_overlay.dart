@@ -5,6 +5,8 @@ import 'package:flutter/material.dart';
 
 import '../../utils/composer_probe.dart';
 import '../../utils/web_ios_webkit.dart' show isIOSWebKit;
+import '../../utils/web_keyboard_inset.dart' show lastKnownKeyboardInset;
+import 'composer_keyboard_signals.dart';
 
 /// Dev testing tool: on-screen readout of the visualViewport-derived keyboard
 /// inset (what now drives the composer position) vs. Flutter's unreliable
@@ -13,8 +15,9 @@ import '../../utils/web_ios_webkit.dart' show isIOSWebKit;
 ///
 /// To remove entirely: delete this file and its usage in
 /// `chat_composer_viewport.dart`.
-final ValueNotifier<bool> composerDiagOverlayEnabled =
-    ValueNotifier<bool>(false);
+final ValueNotifier<bool> composerDiagOverlayEnabled = ValueNotifier<bool>(
+  false,
+);
 
 /// Flip the overlay on/off. No-op effect off iOS WebKit (overlay never mounts).
 void toggleComposerDiagOverlay() =>
@@ -70,23 +73,83 @@ class _ComposerDiagnosticsOverlayState
       'kbInset(vv):  ${widget.computedInset?.round() ?? '-'}',
       'viewInsets:   ${widget.flutterInset.round()}  (flutter)',
       'composerBot:  ${widget.debouncedInset.round()}',
+      'predicted:    ${predictedComposerKeyboardInset.value.round()}'
+          '  lastKnown: ${lastKnownKeyboardInset().round()}',
       composerProbeString(),
     ];
-    return IgnorePointer(
-      child: Container(
-        padding: const EdgeInsets.all(6),
-        color: const Color(0xCC000000),
-        child: DefaultTextStyle(
-          style: const TextStyle(
-            color: Color(0xFF7CFFB2),
-            fontSize: 11,
-            fontFamily: 'monospace',
-            height: 1.35,
+    return Container(
+      padding: const EdgeInsets.all(6),
+      color: const Color(0xCC000000),
+      child: DefaultTextStyle(
+        style: const TextStyle(
+          color: Color(0xFF7CFFB2),
+          fontSize: 11,
+          fontFamily: 'monospace',
+          height: 1.35,
+        ),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            IgnorePointer(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [for (final line in lines) Text(line)],
+              ),
+            ),
+            const SizedBox(height: 4),
+            // On-device A/B toggles: flash-fix prediction + the TEMP Phase-B
+            // dead-weight probes (focus guard / refocus machinery).
+            Row(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                _DiagToggle(label: 'FLASH', notifier: composerFlashFixEnabled),
+                _DiagToggle(
+                  label: 'FG-OFF',
+                  notifier: composerProbeDisableFocusGuard,
+                ),
+                _DiagToggle(
+                  label: 'RF-OFF',
+                  notifier: composerProbeDisableRefocusMachinery,
+                ),
+              ],
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
+class _DiagToggle extends StatelessWidget {
+  const _DiagToggle({required this.label, required this.notifier});
+
+  final String label;
+  final ValueNotifier<bool> notifier;
+
+  @override
+  Widget build(BuildContext context) {
+    return ValueListenableBuilder<bool>(
+      valueListenable: notifier,
+      builder: (context, on, _) => GestureDetector(
+        behavior: HitTestBehavior.opaque,
+        onTap: () => notifier.value = !on,
+        child: Container(
+          margin: const EdgeInsets.only(right: 6),
+          padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 5),
+          decoration: BoxDecoration(
+            color: on ? const Color(0xFF1E5E3A) : const Color(0xFF3A1E1E),
+            borderRadius: BorderRadius.circular(4),
+            border: Border.all(color: const Color(0xFF7CFFB2), width: 0.5),
           ),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [for (final line in lines) Text(line)],
+          child: Text(
+            '$label ${on ? 'ON' : 'off'}',
+            style: const TextStyle(
+              color: Color(0xFF7CFFB2),
+              fontSize: 10,
+              fontFamily: 'monospace',
+            ),
           ),
         ),
       ),

@@ -58,8 +58,10 @@ void _persistLastKnownInset(double inset, double width) {
   if (inset == _lastKnownInset) return;
   _lastKnownInset = inset;
   try {
-    web.window.localStorage
-        .setItem(_kLastInsetStorageKey, '${width.round()}:${inset.round()}');
+    web.window.localStorage.setItem(
+      _kLastInsetStorageKey,
+      '${width.round()}:${inset.round()}',
+    );
   } catch (_) {
     // Best-effort; in-memory value still serves this session.
   }
@@ -118,7 +120,8 @@ class _VisualViewportKeyboardInsetSource implements KeyboardInsetSource {
       vvWidth: vv.width,
       vvOffsetTop: vv.offsetTop,
       innerHeight: web.window.innerHeight.toDouble(),
-      clientHeight: (web.document.documentElement?.clientHeight ?? 0).toDouble(),
+      clientHeight: (web.document.documentElement?.clientHeight ?? 0)
+          .toDouble(),
     );
     _fullLayoutHeight = result.fullLayoutHeight;
     _trackedWidth = result.trackedWidth;

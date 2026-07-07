@@ -158,9 +158,7 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
       clipBehavior: Clip.none,
       fit: StackFit.expand,
       children: [
-        Positioned.fill(
-          child: widget.messageListBuilder(listBottomPadding),
-        ),
+        Positioned.fill(child: widget.messageListBuilder(listBottomPadding)),
         Positioned(
           left: 0,
           right: 0,
@@ -169,9 +167,7 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
             onNotification: _onComposerSizeChanged,
             child: KeyedSubtree(
               key: _composerKey,
-              child: SizeChangedLayoutNotifier(
-                child: widget.composer,
-              ),
+              child: SizeChangedLayoutNotifier(child: widget.composer),
             ),
           ),
         ),
