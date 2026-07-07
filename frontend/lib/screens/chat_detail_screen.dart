@@ -68,6 +68,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   int _lastLinkPreviewCount = 0;
   final Set<int> _knownMessageIds = <int>{};
   double _lastKeyboardHeight = 0;
+  // Cached so dispose removes the listener from the SAME instance initState
+  // added it to, even when a test overrides the shared source between mounts.
+  late final KeyboardInsetSource _sharedInset;
   bool _isLoadingMoreLocal = false;
   double? _prePaginationScrollOffset;
   double? _prePaginationScrollExtent;
@@ -339,7 +342,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     // (Flutter's viewInsets stay 0 there) — the shared visualViewport source
     // is the real keyboard signal, so the keyboard-open autoscroll listens to
     // it too. Inactive (never fires) off iOS web.
-    sharedKeyboardInsetSource().inset.addListener(_onWebKeyboardInsetChanged);
+    _sharedInset = sharedKeyboardInsetSource();
+    _sharedInset.inset.addListener(_onWebKeyboardInsetChanged);
     // Web/iOS: install the Web Audio gesture-unlock now so a ping that lands
     // later (outside any user gesture) can still produce sound. No-op native.
     primePingSound();
@@ -399,19 +403,25 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     super.didChangeMetrics();
     if (!mounted) return;
     dismissMessageContextMenu();
-    _handleKeyboardHeightChanged(View.of(context).viewInsets.bottom);
+    _handleKeyboardHeightChanged();
   }
 
   void _onWebKeyboardInsetChanged() {
     if (!mounted) return;
-    _handleKeyboardHeightChanged(sharedKeyboardInsetSource().inset.value);
+    _handleKeyboardHeightChanged();
   }
 
-  // Keyboard just opened: keep the newest messages visible above it. Fed by
-  // BOTH keyboard signals (Flutter viewInsets via didChangeMetrics; the shared
-  // visualViewport inset on iOS WebKit) — only one is ever nonzero per
-  // platform, so the edge detection below cannot double-fire.
-  void _handleKeyboardHeightChanged(double bottom) {
+  // Keyboard just opened: keep the newest messages visible above it. Both
+  // keyboard signals (Flutter viewInsets via didChangeMetrics; the shared
+  // visualViewport inset on iOS WebKit) funnel here, and the height is always
+  // the MAX of the two — so a zero-write from the idle signal (e.g. a
+  // didChangeMetrics toolbar resize while the iOS keyboard is up) can never
+  // reset the edge detector and re-trigger the scroll on the next inset
+  // change.
+  void _handleKeyboardHeightChanged() {
+    final flutterInset = View.of(context).viewInsets.bottom;
+    final webInset = _sharedInset.inset.value;
+    final bottom = flutterInset > webInset ? flutterInset : webInset;
     if (bottom > 0 &&
         _lastKeyboardHeight == 0 &&
         _messaging.messages.isNotEmpty) {
@@ -451,9 +461,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     VoiceAudioCoordinator.instance.pauseActive();
     dismissMessageContextMenu();
     WidgetsBinding.instance.removeObserver(this);
-    sharedKeyboardInsetSource().inset.removeListener(
-      _onWebKeyboardInsetChanged,
-    );
+    _sharedInset.inset.removeListener(_onWebKeyboardInsetChanged);
     _clearActiveConversationIfThisChat();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();

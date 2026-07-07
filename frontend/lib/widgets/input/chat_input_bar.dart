@@ -74,6 +74,9 @@ class ChatInputBarState extends State<ChatInputBar>
   // Flash-fix prediction (see predictedComposerKeyboardInset): release timer
   // for the pointer-down pre-arm — real-inset handoff or keyboard-never-came.
   Timer? _predictedInsetReleaseTimer;
+  // Cached so dispose removes the listener from the SAME instance initState
+  // added it to, even when a test overrides the shared source between mounts.
+  late final KeyboardInsetSource _sharedInsetSource;
   // Set true (with a 600ms auto-clear) whenever the composer initiates a send /
   // deliberate refocus that may briefly blur+restore the IME. Gates the viewport
   // keyboard-collapse debounce — see composer_keyboard_signals.dart.
@@ -118,15 +121,14 @@ class ChatInputBarState extends State<ChatInputBar>
     // exclusive. Any composer focus gain (field tap, reply/edit refocus)
     // closes the panel so they never stack.
     _focusNode.addListener(_closeEmojiPickerOnFocusGain);
+    _sharedInsetSource = sharedKeyboardInsetSource();
     if (kIsWeb) {
       _focusNode.addListener(_onComposerFocusForWebViewport);
       _focusNode.addListener(_onFocusLostAfterSend);
       // Single source of truth for keyboard visibility (iOS WebKit's
       // viewInsets read 0): drives bottomInteractivePadding + the flash-fix
       // prediction handoff. The inactive source never fires off iOS web.
-      sharedKeyboardInsetSource().inset.addListener(
-        _onSharedKeyboardInsetChanged,
-      );
+      _sharedInsetSource.inset.addListener(_onSharedKeyboardInsetChanged);
       predictedComposerKeyboardInset.addListener(_onPredictedInsetChanged);
       ensureFocusGuardListenerInstalled();
       installComposerPasteListener(
@@ -225,7 +227,7 @@ class ChatInputBarState extends State<ChatInputBar>
   }
 
   void _onSharedKeyboardInsetChanged() {
-    final real = sharedKeyboardInsetSource().inset.value;
+    final real = _sharedInsetSource.inset.value;
     final predicted = predictedComposerKeyboardInset.value;
     if (real > 0 && predicted > 0) {
       if (real >= predicted) {
@@ -264,7 +266,7 @@ class ChatInputBarState extends State<ChatInputBar>
     if (!kIsWeb || !isIOSWebKit()) return;
     if (!composerFlashFixEnabled.value) return;
     if (_focusNode.hasFocus) return; // keyboard already up or coming
-    if (sharedKeyboardInsetSource().inset.value > 0) return;
+    if (_sharedInsetSource.inset.value > 0) return;
     final predicted = lastKnownKeyboardInset();
     if (predicted <= 0) return; // first-ever focus on this device: no cache
     predictedComposerKeyboardInset.value = predicted;
@@ -408,9 +410,7 @@ class ChatInputBarState extends State<ChatInputBar>
     if (kIsWeb) {
       _focusNode.removeListener(_onComposerFocusForWebViewport);
       _focusNode.removeListener(_onFocusLostAfterSend);
-      sharedKeyboardInsetSource().inset.removeListener(
-        _onSharedKeyboardInsetChanged,
-      );
+      _sharedInsetSource.inset.removeListener(_onSharedKeyboardInsetChanged);
       predictedComposerKeyboardInset.removeListener(_onPredictedInsetChanged);
       setIOSComposerViewportPin(false);
       uninstallComposerPasteListener();
@@ -933,7 +933,7 @@ class ChatInputBarState extends State<ChatInputBar>
     // renders underneath a raised (or incoming) keyboard.
     final keyboardVisible =
         mediaQuery.viewInsets.bottom > 0 ||
-        sharedKeyboardInsetSource().inset.value > 0 ||
+        _sharedInsetSource.inset.value > 0 ||
         predictedComposerKeyboardInset.value > 0;
     final bottomSystemInset = math.max(
       mediaQuery.viewPadding.bottom,

@@ -43,6 +43,8 @@ double _readPersistedInset() {
     final width = double.tryParse(parts[0]);
     final inset = double.tryParse(parts[1]);
     if (width == null || inset == null) return 0;
+    // NaN slips both the width delta and the bounds checks below.
+    if (!width.isFinite || !inset.isFinite) return 0;
     final vvWidth = web.window.visualViewport?.width ?? 0;
     if ((width - vvWidth).abs() > 1) return 0;
     if (inset <= kMinKeyboardInset || inset > 600) return 0;
