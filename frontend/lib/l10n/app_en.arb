@@ -205,9 +205,10 @@
 
   "antiQuantumNoteTitle": "Anti-Quantum Note",
   "antiQuantumNoteHint": "Write your secret message...",
-  "antiQuantumNoteTtl2h": "2h",
+  "antiQuantumNoteTtl1h": "1h",
   "antiQuantumNoteTtl6h": "6h",
   "antiQuantumNoteTtl12h": "12h",
+  "antiQuantumNoteTtl24h": "24h",
   "antiQuantumNoteGenerateAndSend": "🔗 Generate & Send",
   "antiQuantumNoteFooter": "Encrypted client-side · Key never leaves your device",
   "antiQuantumNoteSent": "Anti-Quantum Note sent",
@@ -217,7 +218,16 @@
       "error": { "type": "String" }
     }
   },
-  "antiQuantumNoteCardSubtitle": "One-time read · Tap to reveal & destroy",
+  "antiQuantumNoteCardSubtitle": "One-time read · Tap to open",
+  "antiQuantumNoteCardCountdown": "Self-destructs in {time}",
+  "@antiQuantumNoteCardCountdown": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
+  "antiQuantumNoteCardDestroyed": "This note has self-destructed",
+  "privacyAntiQuantumNoteTitle": "Anti-Quantum Notes",
+  "privacyAntiQuantumNoteDescription": "Notes are encrypted on your device before upload — the server stores only unreadable ciphertext, and the decryption key travels solely inside the link's #fragment, which browsers never send to any server. A note can be revealed exactly once, then it is permanently deleted. Unopened notes self-destruct when their timer (1h–24h) runs out, and the chat message disappears with them.",
 
   "documentDownloaded": "Document downloaded",
   "documentDownloadFailed": "Failed to download document",

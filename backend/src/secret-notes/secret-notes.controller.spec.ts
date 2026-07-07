@@ -49,12 +49,45 @@ describe('SecretNotesController', () => {
     it('returns token for valid request', async () => {
       service.create.mockResolvedValue({ token: 'abc123' });
       const result = await controller.createNote(
-        { ciphertext: 'enc', expiresIn: 7200 },
+        { ciphertext: 'enc', expiresIn: 3600 },
         { user: mockUser },
       );
       expect(result).toEqual({ token: 'abc123' });
-      expect(service.create).toHaveBeenCalledWith('enc', 7200, 1);
+      expect(service.create).toHaveBeenCalledWith('enc', 3600, 1);
     });
+
+    it.each([3600, 21600, 43200, 86400])(
+      'passes whitelisted TTL %d through unchanged',
+      async (ttl) => {
+        service.create.mockResolvedValue({ token: 'tok' });
+        await controller.createNote(
+          { ciphertext: 'enc', expiresIn: ttl },
+          { user: mockUser },
+        );
+        expect(service.create).toHaveBeenCalledWith('enc', ttl, 1);
+      },
+    );
+
+    it('falls back to 21600 for a non-whitelisted TTL (7200)', async () => {
+      service.create.mockResolvedValue({ token: 'tok' });
+      await controller.createNote(
+        { ciphertext: 'enc', expiresIn: 7200 },
+        { user: mockUser },
+      );
+      expect(service.create).toHaveBeenCalledWith('enc', 21600, 1);
+    });
+
+    it.each([0, -1, 60, 3599, 1000000])(
+      'falls back to 21600 for out-of-whitelist TTL %d',
+      async (ttl) => {
+        service.create.mockResolvedValue({ token: 'tok' });
+        await controller.createNote(
+          { ciphertext: 'enc', expiresIn: ttl },
+          { user: mockUser },
+        );
+        expect(service.create).toHaveBeenCalledWith('enc', 21600, 1);
+      },
+    );
   });
 
   describe('getNotePage', () => {
@@ -168,6 +201,31 @@ describe('SecretNotesController', () => {
       expect(fetchIdx).toBeGreaterThan(-1);
       expect(importIdx).toBeLessThan(fetchIdx);
       expect(html).toContain('keyBytes.length !== 32');
+    });
+
+    // Round 2: the inline key extraction takes only the part before the first
+    // '&', so the trailing &c=/&e= fragment params never corrupt the AES key.
+    it('extracts the key as the pre-& segment of the fragment', async () => {
+      const future = new Date(Date.now() + 60000);
+      service.findByToken.mockResolvedValue({ token: VALID_TOKEN, expiresAt: future });
+      const res = mockRes();
+      await controller.getNotePage(VALID_TOKEN, res);
+      const html = res.send.mock.calls[0][0];
+      expect(html).toContain("location.hash.slice(1).split('&')[0]");
+    });
+
+    // Round 2: wireAppLinks rewrites every applink to the chat deep link using
+    // ONLY the digits captured from the fragment's c= param.
+    it('wires applinks to a digits-only notify_conv deep link', async () => {
+      const future = new Date(Date.now() + 60000);
+      service.findByToken.mockResolvedValue({ token: VALID_TOKEN, expiresAt: future });
+      const res = mockRes();
+      await controller.getNotePage(VALID_TOKEN, res);
+      const html = res.send.mock.calls[0][0];
+      // Digits-only capture guards against templating anything but a conv id.
+      expect(html).toContain('[#&]c=(\\d+)(&|$)');
+      expect(html).toContain('a.applink');
+      expect(html).toContain("'/?notify_conv=' + match[1]");
     });
   });
 

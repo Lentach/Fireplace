@@ -547,13 +547,16 @@ class AppLocalizationsPl extends AppLocalizations {
   String get antiQuantumNoteHint => 'Napisz swoją tajną wiadomość...';
 
   @override
-  String get antiQuantumNoteTtl2h => '2h';
+  String get antiQuantumNoteTtl1h => '1h';
 
   @override
   String get antiQuantumNoteTtl6h => '6h';
 
   @override
   String get antiQuantumNoteTtl12h => '12h';
+
+  @override
+  String get antiQuantumNoteTtl24h => '24h';
 
   @override
   String get antiQuantumNoteGenerateAndSend => '🔗 Wygeneruj i wyślij';
@@ -572,7 +575,23 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get antiQuantumNoteCardSubtitle =>
-      'Jednorazowy odczyt · Dotknij, aby odczytać i zniszczyć';
+      'Jednorazowy odczyt · Dotknij, aby otworzyć';
+
+  @override
+  String antiQuantumNoteCardCountdown(String time) {
+    return 'Zniszczy się za $time';
+  }
+
+  @override
+  String get antiQuantumNoteCardDestroyed =>
+      'Ta notatka uległa samozniszczeniu';
+
+  @override
+  String get privacyAntiQuantumNoteTitle => 'Notatki antykwantowe';
+
+  @override
+  String get privacyAntiQuantumNoteDescription =>
+      'Notatki są szyfrowane na Twoim urządzeniu przed wysłaniem — serwer przechowuje wyłącznie nieczytelny szyfrogram, a klucz deszyfrujący podróżuje jedynie we fragmencie linku (#), którego przeglądarki nigdy nie wysyłają do żadnego serwera. Notatkę można odczytać dokładnie raz, po czym jest trwale usuwana. Nieotwarte notatki niszczą się same po upływie timera (1h–24h), a wiadomość w czacie znika razem z nimi.';
 
   @override
   String get documentDownloaded => 'Dokument pobrany';

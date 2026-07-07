@@ -193,9 +193,10 @@
 
   "antiQuantumNoteTitle": "Notatka antykwantowa",
   "antiQuantumNoteHint": "Napisz swoją tajną wiadomość...",
-  "antiQuantumNoteTtl2h": "2h",
+  "antiQuantumNoteTtl1h": "1h",
   "antiQuantumNoteTtl6h": "6h",
   "antiQuantumNoteTtl12h": "12h",
+  "antiQuantumNoteTtl24h": "24h",
   "antiQuantumNoteGenerateAndSend": "🔗 Wygeneruj i wyślij",
   "antiQuantumNoteFooter": "Szyfrowanie po stronie klienta · Klucz nigdy nie opuszcza Twojego urządzenia",
   "antiQuantumNoteSent": "Notatka antykwantowa wysłana",
@@ -205,7 +206,16 @@
       "error": { "type": "String" }
     }
   },
-  "antiQuantumNoteCardSubtitle": "Jednorazowy odczyt · Dotknij, aby odczytać i zniszczyć",
+  "antiQuantumNoteCardSubtitle": "Jednorazowy odczyt · Dotknij, aby otworzyć",
+  "antiQuantumNoteCardCountdown": "Zniszczy się za {time}",
+  "@antiQuantumNoteCardCountdown": {
+    "placeholders": {
+      "time": { "type": "String" }
+    }
+  },
+  "antiQuantumNoteCardDestroyed": "Ta notatka uległa samozniszczeniu",
+  "privacyAntiQuantumNoteTitle": "Notatki antykwantowe",
+  "privacyAntiQuantumNoteDescription": "Notatki są szyfrowane na Twoim urządzeniu przed wysłaniem — serwer przechowuje wyłącznie nieczytelny szyfrogram, a klucz deszyfrujący podróżuje jedynie we fragmencie linku (#), którego przeglądarki nigdy nie wysyłają do żadnego serwera. Notatkę można odczytać dokładnie raz, po czym jest trwale usuwana. Nieotwarte notatki niszczą się same po upływie timera (1h–24h), a wiadomość w czacie znika razem z nimi.",
 
   "documentDownloaded": "Dokument pobrany",
   "documentDownloadFailed": "Nie udało się pobrać dokumentu",

@@ -495,12 +495,24 @@ extension MessagingSend on MessagingProvider {
     final noteToken =
         await _api.createSecretNote(token, ciphertextEncoded, expiresInSeconds);
 
-    // Key encoded as base64url for URL fragment (#KEY)
+    // Key encoded as base64url for URL fragment (#KEY). The fragment also
+    // carries c=<convId> (reveal page's "Open Fireplace" deep link back into
+    // this chat) and e=<expiry epoch ms> (in-chat self-destruct countdown).
+    // Fragments never travel in HTTP requests — the server sees none of it.
     final keyBase64Url = base64Url.encode(keyBytes);
-    final noteUrl = '${AppConfig.baseUrl}/note/$noteToken#$keyBase64Url';
+    final convId = _conversationsProvider?.activeConversationId;
+    final expiresAtMs = DateTime.now()
+        .add(Duration(seconds: expiresInSeconds))
+        .millisecondsSinceEpoch;
+    final fragmentParams =
+        '${convId != null ? '&c=$convId' : ''}&e=$expiresAtMs';
+    final noteUrl =
+        '${AppConfig.baseUrl}/note/$noteToken#$keyBase64Url$fragmentParams';
 
-    // Send URL as a plain text message in the active conversation
-    sendMessage(noteUrl);
+    // Send URL as a text message. Notes ignore the conversation's disappearing
+    // timer: the carrying message expires with the NOTE's TTL instead, so the
+    // banner leaves chat history in step with the note's own destruction.
+    sendMessage(noteUrl, expiresIn: expiresInSeconds);
   }
 
   void sendTypingIndicator(int recipientId, int conversationId) {

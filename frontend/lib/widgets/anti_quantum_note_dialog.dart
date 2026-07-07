@@ -16,9 +16,10 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
   bool _sending = false;
 
   static const _ttlOptions = [
-    (key: '2h', seconds: 7200),
+    (key: '1h', seconds: 3600),
     (key: '6h', seconds: 21600),
     (key: '12h', seconds: 43200),
+    (key: '24h', seconds: 86400),
   ];
 
   @override
@@ -94,9 +95,10 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
             children: _ttlOptions.map((opt) {
               final selected = _selectedTtl == opt.seconds;
               final label = switch (opt.key) {
-                '2h' => l10n.antiQuantumNoteTtl2h,
+                '1h' => l10n.antiQuantumNoteTtl1h,
                 '6h' => l10n.antiQuantumNoteTtl6h,
                 '12h' => l10n.antiQuantumNoteTtl12h,
+                '24h' => l10n.antiQuantumNoteTtl24h,
                 _ => opt.key,
               };
               return Expanded(

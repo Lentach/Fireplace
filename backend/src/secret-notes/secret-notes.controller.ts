@@ -30,8 +30,11 @@ export class SecretNotesController {
 
   @UseGuards(JwtAuthGuard)
   @Post('notes')
-  async createNote(@Body() dto: CreateNoteDto, @Req() req: any) {
-    const validTtls = [7200, 21600, 43200];
+  async createNote(
+    @Body() dto: CreateNoteDto,
+    @Req() req: { user: { id: number } },
+  ) {
+    const validTtls = [3600, 21600, 43200, 86400];
     const expiresIn = validTtls.includes(dto.expiresIn) ? dto.expiresIn : 21600;
     return this.service.create(dto.ciphertext, expiresIn, req.user.id);
   }
@@ -146,7 +149,8 @@ async function reveal() {
   btn.textContent = 'Decrypting...';
 
   try {
-    const fragment = location.hash.slice(1);
+    // Fragment: <key>[&c=<convId>][&e=<expiry ms>] — key is always first.
+    const fragment = location.hash.slice(1).split('&')[0];
     if (!fragment) throw new Error('No key in URL');
 
     // Validate and import the key BEFORE the destructive reveal call: a
@@ -184,6 +188,16 @@ function base64ToBytes(b64) {
   const bin = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
   return Uint8Array.from(bin, c => c.charCodeAt(0));
 }
+
+// Deep link back into the chat the note came from: c=<convId> rides the URL
+// fragment (never sent to the server). Digits-only guard before templating.
+(function wireAppLinks() {
+  const match = location.hash.match(/[#&]c=(\\d+)(&|$)/);
+  if (!match) return;
+  document.querySelectorAll('a.applink').forEach(a => {
+    a.href = '/?notify_conv=' + match[1];
+  });
+})();
 document.getElementById('revealBtn').addEventListener('click', reveal);
 </script>
 </body>

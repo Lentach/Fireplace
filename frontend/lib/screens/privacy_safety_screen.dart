@@ -152,6 +152,15 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
               description: AppLocalizations.of(context).serverStoresMetadataDescription,
             ),
             const SizedBox(height: 16),
+
+            _buildInfoCard(
+              context,
+              icon: Icons.science_outlined,
+              title: AppLocalizations.of(context).privacyAntiQuantumNoteTitle,
+              description: AppLocalizations.of(context)
+                  .privacyAntiQuantumNoteDescription,
+            ),
+            const SizedBox(height: 16),
             _buildLocalCacheCard(context),
             const SizedBox(height: 32),
 

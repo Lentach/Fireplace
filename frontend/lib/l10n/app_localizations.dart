@@ -1016,11 +1016,11 @@ abstract class AppLocalizations {
   /// **'Napisz swoją tajną wiadomość...'**
   String get antiQuantumNoteHint;
 
-  /// No description provided for @antiQuantumNoteTtl2h.
+  /// No description provided for @antiQuantumNoteTtl1h.
   ///
   /// In pl, this message translates to:
-  /// **'2h'**
-  String get antiQuantumNoteTtl2h;
+  /// **'1h'**
+  String get antiQuantumNoteTtl1h;
 
   /// No description provided for @antiQuantumNoteTtl6h.
   ///
@@ -1033,6 +1033,12 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'12h'**
   String get antiQuantumNoteTtl12h;
+
+  /// No description provided for @antiQuantumNoteTtl24h.
+  ///
+  /// In pl, this message translates to:
+  /// **'24h'**
+  String get antiQuantumNoteTtl24h;
 
   /// No description provided for @antiQuantumNoteGenerateAndSend.
   ///
@@ -1061,8 +1067,32 @@ abstract class AppLocalizations {
   /// No description provided for @antiQuantumNoteCardSubtitle.
   ///
   /// In pl, this message translates to:
-  /// **'Jednorazowy odczyt · Dotknij, aby odczytać i zniszczyć'**
+  /// **'Jednorazowy odczyt · Dotknij, aby otworzyć'**
   String get antiQuantumNoteCardSubtitle;
+
+  /// No description provided for @antiQuantumNoteCardCountdown.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zniszczy się za {time}'**
+  String antiQuantumNoteCardCountdown(String time);
+
+  /// No description provided for @antiQuantumNoteCardDestroyed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ta notatka uległa samozniszczeniu'**
+  String get antiQuantumNoteCardDestroyed;
+
+  /// No description provided for @privacyAntiQuantumNoteTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Notatki antykwantowe'**
+  String get privacyAntiQuantumNoteTitle;
+
+  /// No description provided for @privacyAntiQuantumNoteDescription.
+  ///
+  /// In pl, this message translates to:
+  /// **'Notatki są szyfrowane na Twoim urządzeniu przed wysłaniem — serwer przechowuje wyłącznie nieczytelny szyfrogram, a klucz deszyfrujący podróżuje jedynie we fragmencie linku (#), którego przeglądarki nigdy nie wysyłają do żadnego serwera. Notatkę można odczytać dokładnie raz, po czym jest trwale usuwana. Nieotwarte notatki niszczą się same po upływie timera (1h–24h), a wiadomość w czacie znika razem z nimi.'**
+  String get privacyAntiQuantumNoteDescription;
 
   /// No description provided for @documentDownloaded.
   ///
