@@ -336,8 +336,8 @@ class ChatInputBarState extends State<ChatInputBar>
 
   @override
   void dispose() {
-    // Reset the pin + predicted inset so the next chat opens clean, but DEFER
-    // them: a sync notify here fires the still-mounted ancestor viewport's
+    // Reset the pin so the next chat opens unpinned, but DEFER it: a sync
+    // notify here fires the still-mounted ancestor viewport's
     // setState during tree finalization (locked-tree assert when leaving the
     // chat with the panel open). By microtask time the tree is unlocked (or
     // the viewport is unmounted and its listener no-ops on the mounted guard).
@@ -386,7 +386,7 @@ class ChatInputBarState extends State<ChatInputBar>
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     // Telegram parity: sending from the emoji panel keeps the panel open and
-    // the keyboard hidden — skip refocus/fast-restore arming in that state.
+    // the keyboard hidden — skip the post-send refocus in that state.
     final keepEmojiPanel = _showEmojiPicker;
     _armComposerCollapseGuard();
 
@@ -410,7 +410,8 @@ class ChatInputBarState extends State<ChatInputBar>
 
     _controller.clear();
     if (keepEmojiPanel) return;
-    // Fallback for non-iOS or when FocusNode listener fires before the blur.
+    // Post-send refocus: keeps the keyboard up after a send-button tap on
+    // non-iOS (the DOM focus guard covers iOS WebKit).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_focusNode.canRequestFocus) return;
       if (!_focusNode.hasFocus) _focusNode.requestFocus();
