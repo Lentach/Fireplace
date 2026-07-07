@@ -26,3 +26,27 @@ abstract class KeyboardInsetSource {
 
 KeyboardInsetSource createKeyboardInsetSource() =>
     impl.createKeyboardInsetSource();
+
+
+KeyboardInsetSource? _sharedSource;
+KeyboardInsetSource? _sharedSourceOverrideForTest;
+
+/// App-wide shared inset source — the single source of truth for "how tall is
+/// the soft keyboard" that `MediaQuery.viewInsets` cannot provide on iOS
+/// WebKit. Consumers (`ChatComposerViewport`, `ChatInputBar` padding,
+/// `PortraitLockShell`, chat keyboard-open autoscroll) MUST read this instead
+/// of creating their own source or trusting raw `viewInsets`, so they can
+/// never disagree about whether the keyboard is up. Lazily created, never
+/// disposed (one window-level listener for the app's lifetime).
+KeyboardInsetSource sharedKeyboardInsetSource() =>
+    _sharedSourceOverrideForTest ??
+    (_sharedSource ??= createKeyboardInsetSource());
+
+/// Last real keyboard inset observed on this device (persisted on web), or 0
+/// when unknown. Used by the composer flash-fix pre-arm.
+double lastKnownKeyboardInset() => impl.lastKnownKeyboardInset();
+
+@visibleForTesting
+void setSharedKeyboardInsetSourceForTest(KeyboardInsetSource? source) {
+  _sharedSourceOverrideForTest = source;
+}

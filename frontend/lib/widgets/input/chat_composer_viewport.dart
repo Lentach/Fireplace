@@ -45,14 +45,15 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
 
   // iOS WebKit reports MediaQuery.viewInsets.bottom = 0 even while the keyboard
   // is up, so derive the real inset from visualViewport. Inactive (and ignored)
-  // off iOS web.
+  // off iOS web. App-wide shared instance — never disposed here.
   late final KeyboardInsetSource _kbInsetSource;
 
   @override
   void initState() {
     super.initState();
-    _kbInsetSource = createKeyboardInsetSource();
+    _kbInsetSource = sharedKeyboardInsetSource();
     _kbInsetSource.inset.addListener(_onKeyboardInsetChanged);
+    predictedComposerKeyboardInset.addListener(_onKeyboardInsetChanged);
     composerBottomPanelPinned.addListener(_onBottomPanelPinnedChanged);
     WidgetsBinding.instance.addPostFrameCallback(_measureComposer);
   }
@@ -77,8 +78,8 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
   void dispose() {
     _insetCollapseTimer?.cancel();
     composerBottomPanelPinned.removeListener(_onBottomPanelPinnedChanged);
+    predictedComposerKeyboardInset.removeListener(_onKeyboardInsetChanged);
     _kbInsetSource.inset.removeListener(_onKeyboardInsetChanged);
-    _kbInsetSource.dispose();
     super.dispose();
   }
 
@@ -101,10 +102,14 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
   Widget build(BuildContext context) {
     final flutterInset = MediaQuery.viewInsetsOf(context).bottom;
     // On iOS WebKit prefer the visualViewport-derived inset (Flutter's reads 0
-    // while the keyboard is up); take the max so we never under-report.
-    final raw = _kbInsetSource.isActive
+    // while the keyboard is up); take the max so we never under-report. The
+    // predicted inset (flash-fix pointer-down pre-arm, 0 when idle) folds in
+    // the same way: the grow branch below applies it immediately, and the
+    // real-inset handoff / safety clear in ChatInputBar releases it.
+    final base = _kbInsetSource.isActive
         ? math.max(flutterInset, _kbInsetSource.inset.value)
         : flutterInset;
+    final raw = math.max(base, predictedComposerKeyboardInset.value);
 
     if (raw > _keyboardInset) {
       // Keyboard growing or appearing: apply immediately, cancel any pending collapse.
