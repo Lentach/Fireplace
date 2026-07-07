@@ -40,7 +40,7 @@ if [[ -s "$PASS_FILE" ]]; then
 fi
 
 if [[ ! -s "$PASS_FILE" ]]; then
-  mkdir -p "$PASS_DIR"; chmod 700 "$PASS_DIR"
+  mkdir -p -m 700 "$PASS_DIR"
   echo "==> Enter the backup passphrase (input hidden). STORE IT OFF THE VM too —"
   echo "    an encrypted backup is useless if the only copy of the key dies with the box."
   read -r -s -p "    Passphrase: " pass1; echo
@@ -63,7 +63,7 @@ echo "    A GCS bucket path looks like: gs://your-fireplace-backups"
 read -r -p "    BACKUP_GCS_BUCKET (blank = none): " gcs_bucket
 
 # --- 3. install/replace the cron line ------------------------------------------
-mkdir -p "$BACKUP_DIR"; chmod 700 "$BACKUP_DIR"
+mkdir -p -m 700 "$BACKUP_DIR"
 
 if [[ -n "$gcs_bucket" ]]; then
   cron_cmd="cd $REPO_DIR && BACKUP_GCS_BUCKET=$gcs_bucket ./backup-db.sh >> $BACKUP_DIR/backup.log 2>&1"
@@ -74,7 +74,12 @@ cron_line="0 $CRON_HOUR * * * $cron_cmd $CRON_TAG"
 
 # Preserve every existing cron line EXCEPT our previous fireplace-backup marker.
 existing="$(crontab -l 2>/dev/null | grep -vF "$CRON_TAG" || true)"
-printf '%s\n%s\n' "$existing" "$cron_line" | sed '/^$/d' | crontab -
+# Append our line WITHOUT rewriting the user's other entries (preserve their blank lines).
+if [[ -n "$existing" ]]; then
+  printf '%s\n%s\n' "$existing" "$cron_line" | crontab -
+else
+  printf '%s\n' "$cron_line" | crontab -
+fi
 
 echo
 echo "==> Installed cron (daily $(printf '%02d' "$CRON_HOUR"):00):"
