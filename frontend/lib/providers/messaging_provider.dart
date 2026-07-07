@@ -18,6 +18,7 @@ import '../utils/anti_quantum_note_link.dart';
 import '../utils/decryption_failure_policy.dart';
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_envelope.dart';
+import '../utils/e2e_persistent_diag.dart';
 import '../utils/message_expiry.dart';
 import '../utils/reply_preview_helper.dart';
 import 'conversation_helpers.dart' as conv_helpers;

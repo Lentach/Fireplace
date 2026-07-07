@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../utils/e2e_persistent_diag.dart';
 import 'encryption/signal_stores.dart';
 
 class EncryptionService {
@@ -187,6 +188,13 @@ class EncryptionService {
   /// deterministically in encryption_send_race_probe_test.dart.
   final Map<int, Future<void>> _encryptTails = {};
 
+  /// In-flight encrypt count per recipient — the overlap probe. If this is
+  /// ever >0 at enqueue, two sends WERE concurrent even if they did not feel
+  /// "rapid" (a note send overlapping a resync decrypt, a typing-driven op,
+  /// another message). Logged durably so the field report can confirm or rule
+  /// out concurrency as the cause of a peer decrypt failure.
+  final Map<int, int> _encryptInFlight = {};
+
   /// Encrypt a plaintext string for the given recipient.
   /// Returns "{type}:{base64_body}" format.
   ///
@@ -194,11 +202,29 @@ class EncryptionService {
   /// failed predecessor never poisons the queue (errors are contained to the
   /// caller that owns them).
   Future<String> encrypt(int recipientUserId, String plaintext) {
+    final inFlight = _encryptInFlight[recipientUserId] ?? 0;
+    if (inFlight > 0) {
+      E2ePersistentDiag.record(
+          'ENCRYPT_OVERLAP', {'recipientId': recipientUserId, 'inFlight': inFlight});
+    }
+    _encryptInFlight[recipientUserId] = inFlight + 1;
+
     final tail = _encryptTails[recipientUserId] ?? Future<void>.value();
     final result =
         tail.then((_) => _encryptSerialized(recipientUserId, plaintext));
-    _encryptTails[recipientUserId] =
-        result.then<void>((_) {}, onError: (_) {});
+    // Error-swallowed continuation: used BOTH as the next queue tail and as
+    // the decrement hook, so a failed encrypt never leaks an unhandled async
+    // error (the owning caller still sees it via `result`).
+    final settled = result.then<void>((_) {}, onError: (_) {});
+    _encryptTails[recipientUserId] = settled;
+    settled.whenComplete(() {
+      final n = (_encryptInFlight[recipientUserId] ?? 1) - 1;
+      if (n <= 0) {
+        _encryptInFlight.remove(recipientUserId);
+      } else {
+        _encryptInFlight[recipientUserId] = n;
+      }
+    });
     return result;
   }
 

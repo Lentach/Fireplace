@@ -908,6 +908,11 @@ extension MessagingSend on MessagingProvider {
       _e2eFlowLog('SEND_ENCRYPT_DONE', {
         'recipientId': recipientId,
         'ciphertextLength': ciphertext.length,
+        // 3 = PreKey (session (re)built), 2 = whisper. A 3 mid-conversation
+        // means a spurious rebuild — a prime suspect for peer decrypt failure.
+        'ctype': ciphertext.contains(':')
+            ? ciphertext.substring(0, ciphertext.indexOf(':'))
+            : '?',
       });
 
       // 6. Send encrypted payload; include type/media metadata so the server
@@ -935,7 +940,7 @@ extension MessagingSend on MessagingProvider {
     } catch (e) {
       _encryptionProvider?.clearPendingPreKeyFetch(recipientId);
       debugPrint('[E2E] Encryption failed: $e');
-      _e2eFlowLog('SEND_FAIL', {
+      E2ePersistentDiag.record('SEND_FAIL', {
         'recipientId': recipientId,
         'error': e.toString(),
       });

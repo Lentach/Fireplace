@@ -26,6 +26,7 @@ import 'screens/auth_screen.dart';
 import 'screens/main_shell.dart';
 import 'services/portrait_lock_service.dart';
 import 'theme/app_scroll_behavior.dart';
+import 'utils/e2e_persistent_diag.dart';
 import 'widgets/portrait_lock_shell.dart';
 
 Future<void> main() async {
@@ -54,6 +55,8 @@ Future<void> main() async {
   final pendingDeepLinkConvId = await consumePendingNotificationDeepLink();
   final coldStartConvId = consumeNotifyConvParam() ?? pendingDeepLinkConvId;
   stripNotifyConvParam();
+  // Load the durable E2E failure log (survives restarts) before the UI mounts.
+  await E2ePersistentDiag.init();
   runApp(FireplaceApp(coldStartConversationId: coldStartConvId));
 }
 

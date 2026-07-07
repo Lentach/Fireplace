@@ -6,6 +6,7 @@ import '../l10n/app_localizations.dart';
 import '../providers/encryption_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../utils/e2e_diag_log.dart';
+import '../utils/e2e_persistent_diag.dart';
 import '../widgets/audio/playback_controller.dart';
 import '../widgets/top_snackbar.dart';
 
@@ -337,6 +338,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
     final isDark = RpgTheme.isDark(context);
     final mutedColor = isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
     final entries = E2eDiagLog.entries.reversed.toList();
+    final durable = E2ePersistentDiag.entries.reversed.toList();
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -363,7 +365,10 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
               ),
               TextButton(
                 onPressed: () async {
-                  final all = E2eDiagLog.entries.join('\n');
+                  final all = '== DURABLE FAILURES (survives restart) ==\n'
+                      '${E2ePersistentDiag.entries.join('\n')}\n\n'
+                      '== LIVE LOG ==\n'
+                      '${E2eDiagLog.entries.join('\n')}';
                   await Clipboard.setData(ClipboardData(text: all));
                   if (!mounted) return;
                   // ignore: use_build_context_synchronously
@@ -372,8 +377,10 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
                 child: const Text('Copy'),
               ),
               TextButton(
-                onPressed: () {
+                onPressed: () async {
                   E2eDiagLog.clear();
+                  await E2ePersistentDiag.clear();
+                  if (!mounted) return;
                   setState(() {});
                 },
                 child: const Text('Clear'),
@@ -381,6 +388,42 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
             ],
           ),
           const SizedBox(height: 8),
+          if (durable.isNotEmpty) ...[
+            Text(
+              'Durable failures (survives restart)',
+              style: RpgTheme.bodyFont(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: theme.colorScheme.error,
+              ),
+            ),
+            const SizedBox(height: 4),
+            ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 160),
+              child: ListView.builder(
+                shrinkWrap: true,
+                itemCount: durable.length,
+                itemBuilder: (context, index) => SelectableText(
+                  durable[index],
+                  style: TextStyle(
+                    fontSize: 11,
+                    color: theme.colorScheme.error,
+                    fontFamily: 'monospace',
+                  ),
+                ),
+              ),
+            ),
+            const SizedBox(height: 12),
+            Text(
+              'Live log',
+              style: RpgTheme.bodyFont(
+                fontSize: 11,
+                fontWeight: FontWeight.bold,
+                color: mutedColor,
+              ),
+            ),
+            const SizedBox(height: 4),
+          ],
           ConstrainedBox(
             constraints: const BoxConstraints(maxHeight: 220),
             child: entries.isEmpty
