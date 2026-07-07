@@ -77,4 +77,67 @@ void main() {
       expect(LinkPreviewService.isSafeImageUrl('://missing-scheme'), false);
     });
   });
+
+  group('LinkPreviewService.extractFirstUrl', () {
+    test('returns null for text without a URL', () {
+      expect(LinkPreviewService.extractFirstUrl(''), isNull);
+      expect(LinkPreviewService.extractFirstUrl('just some plain text'), isNull);
+      expect(LinkPreviewService.extractFirstUrl('email me at a@b.com'), isNull);
+    });
+
+    test('finds the URL embedded in surrounding text', () {
+      expect(
+        LinkPreviewService.extractFirstUrl('check this https://example.com out'),
+        'https://example.com',
+      );
+    });
+
+    test('preserves the #fragment (note decryption key) in the result', () {
+      const noteUrl = 'https://host/note/abc123#SGVsbG8=';
+      expect(
+        LinkPreviewService.extractFirstUrl('open $noteUrl now'),
+        noteUrl,
+      );
+      // The key material must survive extraction so the display path can decrypt.
+      expect(LinkPreviewService.extractFirstUrl(noteUrl), contains('#SGVsbG8='));
+    });
+
+    test('returns the FIRST of multiple URLs', () {
+      expect(
+        LinkPreviewService.extractFirstUrl(
+          'first https://a.example second https://b.example',
+        ),
+        'https://a.example',
+      );
+    });
+  });
+
+  group('LinkPreviewService.stripFragment', () {
+    test('removes the #key from a note-style URL', () {
+      expect(
+        LinkPreviewService.stripFragment('https://host/note/abc123#SGVsbG8='),
+        'https://host/note/abc123',
+      );
+    });
+
+    test('is a no-op for a fragment-less URL', () {
+      const url = 'https://host/note/abc123';
+      expect(LinkPreviewService.stripFragment(url), url);
+    });
+
+    test('cuts at the FIRST # when several are present', () {
+      expect(
+        LinkPreviewService.stripFragment('https://host/page#a#b#c'),
+        'https://host/page',
+      );
+    });
+
+    test('stripped note URL never leaks the key material', () {
+      const key = 'SGVsbG8gc2VjcmV0IGtleQ==';
+      final stripped =
+          LinkPreviewService.stripFragment('https://host/note/xyz#$key');
+      expect(stripped, isNot(contains(key)));
+      expect(stripped, isNot(contains('#')));
+    });
+  });
 }

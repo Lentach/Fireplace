@@ -70,6 +70,48 @@ describe('SecretNotesController', () => {
       const html = res.send.mock.calls[0][0];
       expect(html).toContain('no longer exists');
     });
+
+    it('sets Cache-Control no-store on the found-note page', async () => {
+      const future = new Date(Date.now() + 60000);
+      service.findByToken.mockResolvedValue({ token: 'tok', expiresAt: future });
+      const res = mockRes();
+      await controller.getNotePage('tok', res);
+      expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+    });
+
+    it('sets Cache-Control no-store on the missing-note page', async () => {
+      service.findByToken.mockResolvedValue(null);
+      const res = mockRes();
+      await controller.getNotePage('missing', res);
+      expect(res.setHeader).toHaveBeenCalledWith('Cache-Control', 'no-store');
+    });
+
+    it('landing page unhides the error element with display block', async () => {
+      // Regression: display = '' cannot override a stylesheet display:none rule.
+      const future = new Date(Date.now() + 60000);
+      service.findByToken.mockResolvedValue({ token: 'tok', expiresAt: future });
+      const res = mockRes();
+      await controller.getNotePage('tok', res);
+      const html = res.send.mock.calls[0][0];
+      expect(html).toContain("style.display = 'block'");
+    });
+
+    it('landing page includes an exit link back to the app', async () => {
+      const future = new Date(Date.now() + 60000);
+      service.findByToken.mockResolvedValue({ token: 'tok', expiresAt: future });
+      const res = mockRes();
+      await controller.getNotePage('tok', res);
+      const html = res.send.mock.calls[0][0];
+      expect(html).toContain('class="applink" href="/"');
+    });
+
+    it('destroyed page includes an exit link back to the app', async () => {
+      service.findByToken.mockResolvedValue(null);
+      const res = mockRes();
+      await controller.getNotePage('missing', res);
+      const html = res.send.mock.calls[0][0];
+      expect(html).toContain('class="applink" href="/"');
+    });
   });
 
   describe('revealNote', () => {

@@ -830,10 +830,20 @@ extension MessagingSend on MessagingProvider {
       if (messageType == 'TEXT') {
         try {
           if (kIsWeb && _tokenForReconnect != null) {
-            linkPreview = await _api.fetchLinkPreview(
-              _tokenForReconnect!,
-              content,
-            );
+            // Web goes through the backend proxy (CORS). E2E hygiene: send it
+            // ONLY the fragment-stripped first URL, never the message text —
+            // plaintext must not reach the server, and URL fragments can hold
+            // secrets (Anti-Quantum Note keys ride in `#<key>`).
+            final firstUrl = LinkPreviewService.extractFirstUrl(content);
+            if (firstUrl != null) {
+              linkPreview = await _api.fetchLinkPreview(
+                _tokenForReconnect!,
+                LinkPreviewService.stripFragment(firstUrl),
+              );
+              // Preview is for the link as written: restore the full URL so
+              // the preview-card tap keeps the fragment (note key).
+              if (linkPreview != null) linkPreview['url'] = firstUrl;
+            }
           } else {
             linkPreview = await LinkPreviewService.fetchPreview(content);
           }

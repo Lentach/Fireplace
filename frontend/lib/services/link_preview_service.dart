@@ -32,6 +32,19 @@ class LinkPreviewService {
     }
   }
 
+  /// First URL in [text], or null. Same regex the preview paths use.
+  static String? extractFirstUrl(String text) =>
+      _urlRegex.firstMatch(text)?.group(0);
+
+  /// URL without its `#fragment`. Fragments can carry secrets (Anti-Quantum
+  /// Note decryption keys, magic-link tokens) and are never needed to fetch
+  /// a preview — HTTP never transmits them. NEVER send a fragment to the
+  /// link-preview proxy.
+  static String stripFragment(String url) {
+    final hashIndex = url.indexOf('#');
+    return hashIndex == -1 ? url : url.substring(0, hashIndex);
+  }
+
   /// Extract first URL from text, fetch OG metadata, return preview or null.
   static Future<Map<String, String?>?> fetchPreview(String text) async {
     final match = _urlRegex.firstMatch(text);

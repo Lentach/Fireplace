@@ -67,7 +67,8 @@ Entities in `backend/src/**/*.entity.ts` are the source of truth. There are no r
   - message edit: `ALTER TABLE messages ADD COLUMN "editedAt" timestamp NULL;`
   - pinned messages: `ALTER TABLE conversations ADD COLUMN "pinnedMessageId" integer NULL;` plus `"pinnedAt" timestamp NULL`, `"pinnedByUserId" integer NULL`.
   - message index exists in entity as `@Index('idx_messages_conv_created', ['conversation', 'createdAt'])`; if prod needs a descending concurrent index, treat `CREATE INDEX CONCURRENTLY ... "createdAt" DESC` as manual DBA/perf work, not generated entity truth.
-- Raw SQL must quote camelCase: `"deliveryStatus"`, `"hiddenByUserIds"`, `"expiresAt"`, `"createdAt"`.
+- Raw SQL must quote camelCase: `"deliveryStatus"`, `"hiddenByUserIds"`, `"expiresAt"`, `"createdAt"`. Column casing is PER ENTITY — `secret_notes` is camelCase but `refresh_tokens` uses snake_case `user_id`; check the entity, never guess (unquoted `expires_at` silently broke secret-note reveal with 42703 for weeks; the mocked `repo.query` spec could not catch it).
+- `repo.query()` on Postgres returns `[rows, rowCount]` for DELETE/UPDATE (even with `RETURNING`), plain `rows` only for SELECT — destructure `const [rows] = ...` or you read the wrong shape.
 - `users` unique key is `(username, tag)`, not username alone.
 - `friend_requests.status` stores lowercase values (`pending`, `accepted`, `rejected`), unlike uppercase message enums.
 - No FK to `users`: `key_bundles.userId`, `one_time_pre_keys.userId`, `fcm_token.userId`, `web_push_subscription.userId`, `secret_notes.creatorId`. Manual account-delete cleanup is required.

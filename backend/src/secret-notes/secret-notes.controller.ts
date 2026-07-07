@@ -36,7 +36,7 @@ export class SecretNotesController {
   async getNotePage(@Param('token') token: string, @Res() res: Response) {
     const note = await this.service.findByToken(token);
     const nonce = randomBytes(16).toString('base64');
-    this.setNoteCsp(res, nonce);
+    this.setNoteHeaders(res, nonce);
     if (!note) {
       res.send(this.destroyedPage());
       return;
@@ -64,12 +64,14 @@ export class SecretNotesController {
     return `${m}m`;
   }
 
-  // Per-response CSP overriding helmet's global one so the nonce'd reveal script runs.
-  private setNoteCsp(res: Response, nonce: string): void {
+  // Per-response CSP overriding helmet's global one so the nonce'd reveal script
+  // runs, plus no-store: note pages must never be served from any cache.
+  private setNoteHeaders(res: Response, nonce: string): void {
     res.setHeader(
       'Content-Security-Policy',
       `default-src 'self'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'`,
     );
+    res.setHeader('Cache-Control', 'no-store');
   }
 
   private landingPage(token: string, remaining: string, nonce: string): string {
@@ -100,6 +102,8 @@ export class SecretNotesController {
   .revealed-header{color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px}
   .footer{color:#444;font-size:11px;margin-top:12px}
   #error{color:#e74c3c;font-size:13px;margin-top:12px;display:none}
+  .applink{display:inline-block;margin-top:20px;color:#888;font-size:13px;font-weight:600;text-decoration:none}
+  .applink:hover{color:#ccc}
 </style>
 </head>
 <body>
@@ -110,6 +114,7 @@ export class SecretNotesController {
   <button class="btn" id="revealBtn">🔓 Reveal &amp; Destroy</button>
   <div class="expires">Expires in ${remaining} · Powered by Fireplace</div>
   <div id="error">Failed to load note. It may have already been read.</div>
+  <a class="applink" href="/">← Open Fireplace</a>
 </div>
 
 <div class="card" id="revealed" style="display:none">
@@ -117,6 +122,7 @@ export class SecretNotesController {
   <div class="revealed-header">Message revealed · Now permanently destroyed</div>
   <div class="content" id="noteContent"></div>
   <div class="footer">This note has been deleted from the server.<br>Refreshing this page will show nothing.</div>
+  <a class="applink" href="/">← Open Fireplace</a>
 </div>
 
 <script nonce="${nonce}">
@@ -152,7 +158,7 @@ async function reveal() {
   } catch (e) {
     btn.disabled = false;
     btn.textContent = '🔓 Reveal & Destroy';
-    document.getElementById('error').style.display = '';
+    document.getElementById('error').style.display = 'block';
   }
 }
 
@@ -182,6 +188,8 @@ document.getElementById('revealBtn').addEventListener('click', reveal);
   .icon{font-size:48px;margin-bottom:16px}
   h1{font-size:18px;font-weight:700;margin-bottom:10px}
   p{color:#666;font-size:14px;line-height:1.6}
+  .applink{display:inline-block;margin-top:20px;color:#888;font-size:13px;font-weight:600;text-decoration:none}
+  .applink:hover{color:#ccc}
 </style>
 </head>
 <body>
@@ -189,6 +197,7 @@ document.getElementById('revealBtn').addEventListener('click', reveal);
   <div class="icon">💀</div>
   <h1>This note no longer exists</h1>
   <p>It was either already read or has expired.<br>Ask the sender to create a new one.</p>
+  <a class="applink" href="/">← Open Fireplace</a>
 </div>
 </body>
 </html>`;
