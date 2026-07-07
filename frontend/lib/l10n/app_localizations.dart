@@ -1058,6 +1058,12 @@ abstract class AppLocalizations {
   /// **'Nie udało się wysłać notatki: {error}'**
   String antiQuantumNoteSendFailed(String error);
 
+  /// No description provided for @antiQuantumNoteCardSubtitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Jednorazowy odczyt · Dotknij, aby odczytać i zniszczyć'**
+  String get antiQuantumNoteCardSubtitle;
+
   /// No description provided for @documentDownloaded.
   ///
   /// In pl, this message translates to:

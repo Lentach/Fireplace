@@ -205,6 +205,7 @@
       "error": { "type": "String" }
     }
   },
+  "antiQuantumNoteCardSubtitle": "Jednorazowy odczyt · Dotknij, aby odczytać i zniszczyć",
 
   "documentDownloaded": "Dokument pobrany",
   "documentDownloadFailed": "Nie udało się pobrać dokumentu",

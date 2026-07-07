@@ -21,6 +21,11 @@ class CreateNoteDto {
 
 @Controller()
 export class SecretNotesController {
+  /** Tokens are 32 lowercase hex chars (crypto.randomBytes(16).toString('hex')).
+   *  Gate BEFORE any DB hit or HTML interpolation: nothing else may ever be
+   *  embedded into the served pages. */
+  private static readonly TOKEN_RE = /^[0-9a-f]{32}$/;
+
   constructor(private readonly service: SecretNotesService) {}
 
   @UseGuards(JwtAuthGuard)
@@ -34,6 +39,11 @@ export class SecretNotesController {
   @Get('note/:token')
   @Throttle({ default: { limit: 60, ttl: 60000 } })
   async getNotePage(@Param('token') token: string, @Res() res: Response) {
+    if (!SecretNotesController.TOKEN_RE.test(token)) {
+      this.setNoteHeaders(res, randomBytes(16).toString('base64'));
+      res.send(this.destroyedPage());
+      return;
+    }
     const note = await this.service.findByToken(token);
     const nonce = randomBytes(16).toString('base64');
     this.setNoteHeaders(res, nonce);
@@ -49,6 +59,10 @@ export class SecretNotesController {
   @Post('note/:token/reveal')
   @Throttle({ default: { limit: 30, ttl: 60000 } })
   async revealNote(@Param('token') token: string, @Res() res: Response) {
+    if (!SecretNotesController.TOKEN_RE.test(token)) {
+      res.status(404).json({ error: 'gone' });
+      return;
+    }
     const result = await this.service.revealAndDelete(token);
     if (!result) {
       res.status(404).json({ error: 'gone' });
@@ -135,14 +149,18 @@ async function reveal() {
     const fragment = location.hash.slice(1);
     if (!fragment) throw new Error('No key in URL');
 
-    const res = await fetch('/note/${token}/reveal', { method: 'POST' });
-    if (!res.ok) throw new Error('gone');
-    const { ciphertext } = await res.json();
-
+    // Validate and import the key BEFORE the destructive reveal call: a
+    // mangled/truncated fragment must never burn the note. Only a fetch that
+    // reaches the server can destroy it, so everything checkable stays first.
     const keyBytes = base64ToBytes(fragment);
+    if (keyBytes.length !== 32) throw new Error('bad key length');
     const cryptoKey = await crypto.subtle.importKey(
       'raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']
     );
+
+    const res = await fetch('/note/${token}/reveal', { method: 'POST' });
+    if (!res.ok) throw new Error('gone');
+    const { ciphertext } = await res.json();
 
     const parts = ciphertext.split(':');
     if (parts.length !== 2) throw new Error('bad format');

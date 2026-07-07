@@ -564,6 +564,10 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get antiQuantumNoteCardSubtitle =>
+      'One-time read · Tap to reveal & destroy';
+
+  @override
   String get documentDownloaded => 'Document downloaded';
 
   @override

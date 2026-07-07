@@ -217,6 +217,7 @@
       "error": { "type": "String" }
     }
   },
+  "antiQuantumNoteCardSubtitle": "One-time read · Tap to reveal & destroy",
 
   "documentDownloaded": "Document downloaded",
   "documentDownloadFailed": "Failed to download document",

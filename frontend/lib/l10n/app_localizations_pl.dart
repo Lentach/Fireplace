@@ -571,6 +571,10 @@ class AppLocalizationsPl extends AppLocalizations {
   }
 
   @override
+  String get antiQuantumNoteCardSubtitle =>
+      'Jednorazowy odczyt · Dotknij, aby odczytać i zniszczyć';
+
+  @override
   String get documentDownloaded => 'Dokument pobrany';
 
   @override

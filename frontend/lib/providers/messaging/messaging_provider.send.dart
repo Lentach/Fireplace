@@ -825,25 +825,28 @@ extension MessagingSend on MessagingProvider {
     }
 
     try {
-      // 1. Fetch client-side link preview before encrypting (TEXT only)
+      // 1. Fetch client-side link preview before encrypting (TEXT only).
+      // Anti-Quantum Note links skip previews entirely: the chat renders a
+      // dedicated banner card instead, so fetching our own landing page is a
+      // wasted round trip on both platforms.
       Map<String, String?>? linkPreview;
-      if (messageType == 'TEXT') {
+      final firstUrl = messageType == 'TEXT'
+          ? LinkPreviewService.extractFirstUrl(content)
+          : null;
+      if (firstUrl != null && !isAntiQuantumNoteUrl(firstUrl)) {
         try {
           if (kIsWeb && _tokenForReconnect != null) {
             // Web goes through the backend proxy (CORS). E2E hygiene: send it
             // ONLY the fragment-stripped first URL, never the message text —
             // plaintext must not reach the server, and URL fragments can hold
             // secrets (Anti-Quantum Note keys ride in `#<key>`).
-            final firstUrl = LinkPreviewService.extractFirstUrl(content);
-            if (firstUrl != null) {
-              linkPreview = await _api.fetchLinkPreview(
-                _tokenForReconnect!,
-                LinkPreviewService.stripFragment(firstUrl),
-              );
-              // Preview is for the link as written: restore the full URL so
-              // the preview-card tap keeps the fragment (note key).
-              if (linkPreview != null) linkPreview['url'] = firstUrl;
-            }
+            linkPreview = await _api.fetchLinkPreview(
+              _tokenForReconnect!,
+              LinkPreviewService.stripFragment(firstUrl),
+            );
+            // Preview is for the link as written: restore the full URL so
+            // the preview-card tap keeps the fragment (note key).
+            if (linkPreview != null) linkPreview['url'] = firstUrl;
           } else {
             linkPreview = await LinkPreviewService.fetchPreview(content);
           }

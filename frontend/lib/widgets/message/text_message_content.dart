@@ -4,7 +4,9 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../models/message_model.dart';
 import '../../services/link_preview_service.dart';
 import '../../theme/rpg_theme.dart';
+import '../../utils/anti_quantum_note_link.dart';
 import '../../utils/jumbo_emoji.dart';
+import 'anti_quantum_note_card.dart';
 
 /// Content widget for TEXT message type, including link detection and link preview card.
 class TextMessageContent extends StatelessWidget {
@@ -160,6 +162,18 @@ class TextMessageContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    // An Anti-Quantum Note link renders as a trusted banner card, not as a
+    // raw URL + generic preview. Tap behavior matches the plain-link path.
+    if (isAntiQuantumNoteUrl(message.content)) {
+      return AntiQuantumNoteCard(
+        noteUrl: message.content.trim(),
+        isMine: isMine,
+        textColor: textColor,
+        isDark: isDark,
+        maxWidth: maxWidth,
+      );
+    }
+
     final textWidget = ConstrainedBox(
       constraints: BoxConstraints(maxWidth: maxWidth),
       child: _buildTextWithLinks(context),
