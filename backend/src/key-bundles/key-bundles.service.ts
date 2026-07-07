@@ -44,7 +44,7 @@ export class KeyBundlesService {
       { userId, ...data },
       { conflictPaths: ['userId'] },
     );
-    this.logger.log(`Key bundle upserted for userId=${userId}`);
+    this.logger.debug(`Key bundle upserted for userId=${userId}`);
   }
 
   async uploadOneTimePreKeys(
@@ -55,7 +55,7 @@ export class KeyBundlesService {
       this.otpRepo.create({ userId, keyId: k.keyId, publicKey: k.publicKey }),
     );
     await this.otpRepo.save(entities);
-    this.logger.log(
+    this.logger.debug(
       `Uploaded ${keys.length} one-time pre-keys for userId=${userId}`,
     );
   }

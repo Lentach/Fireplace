@@ -89,20 +89,15 @@ export class PushNotificationsService implements OnModuleInit {
     ]);
     if (!tokens.length) return;
 
-    const data: Record<string, string> = { type: 'new_message' };
-    data.conversationId = String(options.conversationId);
-    if (options.unreadCount != null) {
-      data.unreadCount = String(options.unreadCount);
-    }
-    if (options.unreadTotal != null) {
-      data.unreadTotal = String(options.unreadTotal);
-    }
-    if (options.unreadConversationIds != null) {
-      data.unreadConversationIds = JSON.stringify(options.unreadConversationIds);
-    }
-    if (options.senderName != null) {
-      data.senderName = options.senderName;
-    }
+    // Content-free wake-up (Signal/Wire model): the FCM `data` map transits Google
+    // READABLE, so it carries ONLY the event type + conversationId (an opaque int used
+    // for notification tap-routing/dedup). It intentionally omits senderName and unread
+    // counts — those would leak who-messaged-whom and activity volume to Google. The app
+    // wakes on this signal and fetches real state over its own authenticated socket.
+    const data: Record<string, string> = {
+      type: 'new_message',
+      conversationId: String(options.conversationId),
+    };
 
     try {
       const result = await admin.messaging().sendEachForMulticast({
@@ -124,11 +119,11 @@ export class PushNotificationsService implements OnModuleInit {
       });
       if (staleTokens.length) {
         await this.fcmTokensService.removeByTokens(staleTokens);
-        this.logger.log(
+        this.logger.debug(
           `FCM cleanup removed ${staleTokens.length} stale tokens for userId=${userId}`,
         );
       }
-      this.logger.log(
+      this.logger.debug(
         `FCM push attempted for userId=${userId}, tokens=${tokens.length}, success=${result.successCount}, failure=${result.failureCount}`,
       );
     } catch (err) {
@@ -163,8 +158,12 @@ export class PushNotificationsService implements OnModuleInit {
     if (options.senderName != null) {
       body.senderName = options.senderName;
     }
+    // Deliberately NO `topic` (RFC 8030 collapse key): a `conv-<id>` topic is sent as a
+    // CLEARTEXT header to the push relay (Mozilla/Apple/Google) and would leak per-
+    // conversation activity + cadence. The payload body below is E2E-encrypted to the
+    // browser, so senderName/counts inside it stay private; server-side coalescing and
+    // client-side notification tags already de-dupe bursts without a relay collapse key.
     const payload = JSON.stringify(body);
-    const topic = `conv-${options.conversationId}`.slice(0, 32);
 
     const staleEndpoints: string[] = [];
     for (const subscription of subscriptions) {
@@ -181,7 +180,6 @@ export class PushNotificationsService implements OnModuleInit {
           {
             TTL: 120,
             urgency: 'high',
-            topic,
           },
         );
       } catch (err: any) {
@@ -197,18 +195,18 @@ export class PushNotificationsService implements OnModuleInit {
           continue;
         }
         this.logger.warn(
-          `Web Push delivery failed for userId=${userId}, endpoint=${subscription.endpoint}, status=${statusCode || 'unknown'}`,
+          `Web Push delivery failed for userId=${userId}, status=${statusCode || 'unknown'}`,
         );
       }
     }
 
     if (staleEndpoints.length) {
       await this.webPushSubscriptionsService.removeByEndpoints(staleEndpoints);
-      this.logger.log(
+      this.logger.debug(
         `Web Push cleanup removed ${staleEndpoints.length} stale subscriptions for userId=${userId}`,
       );
     }
-    this.logger.log(
+    this.logger.debug(
       `Web Push attempted for userId=${userId}, subscriptions=${subscriptions.length}, stale=${staleEndpoints.length}`,
     );
   }

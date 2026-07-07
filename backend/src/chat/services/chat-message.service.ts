@@ -103,11 +103,11 @@ export class ChatMessageService {
     const recipientSocketId = onlineUsers.get(data.recipientId);
     if (recipientSocketId) {
       server.to(recipientSocketId).emit('newMessage', messagePayload);
-      this.logger.log(
+      this.logger.debug(
         `[sendMessage] newMessage emitted to recipient ${data.recipientId} (socket ${recipientSocketId})`,
       );
     } else {
-      this.logger.log(
+      this.logger.debug(
         `[sendMessage] Recipient ${data.recipientId} NOT ONLINE - newMessage not emitted. Online userIds: [${Array.from(onlineUsers.keys()).join(', ')}]`,
       );
     }
