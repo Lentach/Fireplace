@@ -3,8 +3,6 @@ import 'dart:js_interop';
 import 'package:flutter/widgets.dart' show Offset, Rect;
 import 'package:web/web.dart' as web;
 
-import '../widgets/input/composer_keyboard_signals.dart'
-    show composerProbeDisableFocusGuard;
 import 'web_ios_webkit.dart';
 
 final Map<String, Rect> _rects = <String, Rect>{};
@@ -38,11 +36,11 @@ void unregisterFocusGuardRect(String id) {
   _rects.remove(id);
 }
 
+// 2026-07-07 device probe: this guard is LOAD-BEARING — with it disabled,
+// EVERY send-button tap dismissed the keyboard (the 0.0.64 onTapOutside fix
+// does not stop the DOM-level blur). Never remove without device re-proof.
 void _onPointerDownCapture(web.Event event) {
   _savedElement = null;
-  // TEMP Phase-B probe: pass every pointer through untouched so the device
-  // session can tell whether the guard is still load-bearing.
-  if (composerProbeDisableFocusGuard.value) return;
 
   // Only protect an active editing session; first-focus taps must work normally.
   final active = web.document.activeElement;

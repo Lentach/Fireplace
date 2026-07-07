@@ -24,43 +24,9 @@ final ValueNotifier<bool> composerBottomPanelPinned = ValueNotifier<bool>(
   false,
 );
 
-/// Predicted keyboard inset, pre-armed on composer pointer-DOWN (iOS WebKit
-/// only): the last known real keyboard height, applied to layout BEFORE focus
-/// commits. The composer — and Flutter's hidden DOM editing element, whose
-/// position the engine syncs from the field's transform at IME attach — then
-/// already sits above the incoming keyboard when iOS decides whether to pan
-/// the visual viewport toward the focused element. No pan = no focus flash
-/// (the <1s jump the viewport pin can only reset one frame late; see
-/// docs/review/ios-composer-keyboard-flash-handoff.md §2).
-///
-/// Pure Flutter layout — writes NO DOM styles, so the reverted 0.0.69 DOM
-/// pre-arm failure mode (browser-tab toolbar bounce) cannot recur. Cleared by
-/// the composer when the real visualViewport inset arrives (handoff) or by a
-/// safety timer when the keyboard never shows. 0 = no prediction.
-/// [ChatComposerViewport] takes `max(real, predicted)`.
-final ValueNotifier<double> predictedComposerKeyboardInset =
-    ValueNotifier<double>(0);
-
-/// A/B switch for the flash-fix prediction above, toggleable on-device from
-/// the composer diagnostics overlay. Default OFF: the user reported the flash
-/// gone on the 0.0.91-era build (no frontend delta vs master — most likely the
-/// 0.0.88 panel-pin work), so the prediction stays opt-in for device A/B. If
-/// the device session confirms the flash is dead without it, DELETE this
-/// mechanism instead of shipping it dormant.
-final ValueNotifier<bool> composerFlashFixEnabled = ValueNotifier<bool>(false);
-
-/// TEMP Phase-B probe (diagnostics overlay, device sessions only): when true
-/// the DOM focus guard (`web_focus_guard_web.dart`) stops intercepting pointer
-/// events. Establishes whether the guard is still load-bearing after the
-/// 0.0.64 `onTapOutside` fix. Delete once the device verdict is in.
-final ValueNotifier<bool> composerProbeDisableFocusGuard = ValueNotifier<bool>(
-  false,
-);
-
-/// TEMP Phase-B probe: when true the send refocus machinery is disabled —
-/// `_sendJustFired` fast-refocus, the post-frame refocus fallbacks, AND
-/// collapse-guard arming (the guard exists solely to mask the bounce the
-/// refocus heals). If sends keep the keyboard up with this ON, the blur no
-/// longer happens and the whole apparatus is deletable. Delete with verdict.
-final ValueNotifier<bool> composerProbeDisableRefocusMachinery =
-    ValueNotifier<bool>(false);
+// 2026-07-07 device-probe verdicts (see the composer-viewport session
+// summary): the DOM focus guard is LOAD-BEARING (FG-OFF made every send tap
+// dismiss the keyboard) — never remove it. The `_sendJustFired` fast-refocus
+// machinery and the flash-fix predicted-inset pre-arm were proven
+// unobservable and DELETED; do not reintroduce them without new device
+// evidence.

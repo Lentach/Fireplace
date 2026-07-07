@@ -99,7 +99,9 @@ Future<ChatInputBarState> _pumpWithChatSurface(WidgetTester tester) async {
   return key.currentState!;
 }
 
-Future<ChatInputBarState> _pumpWithPlainOutsideSurface(WidgetTester tester) async {
+Future<ChatInputBarState> _pumpWithPlainOutsideSurface(
+  WidgetTester tester,
+) async {
   final key = GlobalKey<ChatInputBarState>();
   await tester.pumpWidget(
     MaterialApp(
@@ -139,7 +141,6 @@ void main() {
   setUp(() => composerKeyboardCollapseGuard.value = false);
   tearDown(() {
     composerKeyboardCollapseGuard.value = false;
-    predictedComposerKeyboardInset.value = 0;
     composerBottomPanelPinned.value = false;
     setSharedKeyboardInsetSourceForTest(null);
   });

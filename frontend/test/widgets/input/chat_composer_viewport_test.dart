@@ -10,12 +10,13 @@ void main() {
   // override after each test.
   tearDown(() {
     composerKeyboardCollapseGuard.value = false;
-    predictedComposerKeyboardInset.value = 0;
     composerBottomPanelPinned.value = false;
     setSharedKeyboardInsetSourceForTest(null);
   });
 
-  testWidgets('applies list bottom padding at least composer height', (tester) async {
+  testWidgets('applies list bottom padding at least composer height', (
+    tester,
+  ) async {
     double? capturedPadding;
 
     await tester.pumpWidget(
@@ -42,7 +43,9 @@ void main() {
     expect(capturedPadding!, greaterThanOrEqualTo(48));
   });
 
-  testWidgets('increases list bottom padding when composer grows', (tester) async {
+  testWidgets('increases list bottom padding when composer grows', (
+    tester,
+  ) async {
     await tester.pumpWidget(const MaterialApp(home: _GrowingComposerHarness()));
     await tester.pumpAndSettle();
 
@@ -58,8 +61,9 @@ void main() {
     expect(paddingAfter.bottom, greaterThan(paddingBefore.bottom));
   });
 
-  testWidgets('genuine dismiss collapses the keyboard inset immediately',
-      (tester) async {
+  testWidgets('genuine dismiss collapses the keyboard inset immediately', (
+    tester,
+  ) async {
     composerKeyboardCollapseGuard.value = false;
     var padding = 0.0;
     await tester.pumpWidget(_insetHarness(300, onPadding: (p) => padding = p));
@@ -72,8 +76,9 @@ void main() {
     expect(padding, greaterThanOrEqualTo(48));
   });
 
-  testWidgets('send bounce defers the collapse for the debounce window',
-      (tester) async {
+  testWidgets('send bounce defers the collapse for the debounce window', (
+    tester,
+  ) async {
     composerKeyboardCollapseGuard.value = true;
     var padding = 0.0;
     await tester.pumpWidget(_insetHarness(300, onPadding: (p) => padding = p));
@@ -87,33 +92,6 @@ void main() {
     await tester.pump(const Duration(milliseconds: 500));
     expect(padding, lessThan(48 + 300)); // collapsed after the 450ms debounce
   });
-
-  testWidgets(
-    'predicted inset drives layout with zero MediaQuery inset, then collapses when cleared',
-    (tester) async {
-      composerKeyboardCollapseGuard.value = false;
-      var padding = 0.0;
-      await tester.pumpWidget(_insetHarness(0, onPadding: (p) => padding = p));
-      await tester.pumpAndSettle();
-      final basePadding = padding;
-      expect(_composerBottom(tester), moreOrLessEquals(0, epsilon: 0.01));
-
-      // Flash-fix pre-arm (iOS): no real inset yet, but the composer must
-      // already ride the predicted keyboard height so the field sits above the
-      // incoming keyboard before iOS decides whether to pan.
-      predictedComposerKeyboardInset.value = 300;
-      await tester.pump();
-      expect(_composerBottom(tester), moreOrLessEquals(300, epsilon: 0.01));
-      expect(padding - basePadding, moreOrLessEquals(300, epsilon: 0.01));
-
-      // Handoff / safety clear with the guard down: layout collapses at once,
-      // no debounce wait.
-      predictedComposerKeyboardInset.value = 0;
-      await tester.pump();
-      expect(_composerBottom(tester), moreOrLessEquals(0, epsilon: 0.01));
-      expect(padding, moreOrLessEquals(basePadding, epsilon: 0.01));
-    },
-  );
 
   testWidgets(
     'active shared source inset drives layout while MediaQuery inset stays 0',
@@ -163,7 +141,8 @@ class _GrowingComposerHarness extends StatefulWidget {
   const _GrowingComposerHarness();
 
   @override
-  State<_GrowingComposerHarness> createState() => _GrowingComposerHarnessState();
+  State<_GrowingComposerHarness> createState() =>
+      _GrowingComposerHarnessState();
 }
 
 class _GrowingComposerHarnessState extends State<_GrowingComposerHarness> {
@@ -195,8 +174,9 @@ Widget _insetHarness(double inset, {required ValueChanged<double> onPadding}) {
   return MaterialApp(
     home: Builder(
       builder: (context) => MediaQuery(
-        data: MediaQuery.of(context)
-            .copyWith(viewInsets: EdgeInsets.only(bottom: inset)),
+        data: MediaQuery.of(
+          context,
+        ).copyWith(viewInsets: EdgeInsets.only(bottom: inset)),
         child: Scaffold(
           // Production uses resizeToAvoidBottomInset:false so the composer
           // viewport owns the keyboard inset; default true would let Scaffold

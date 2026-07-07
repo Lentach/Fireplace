@@ -42,10 +42,6 @@ KeyboardInsetSource sharedKeyboardInsetSource() =>
     _sharedSourceOverrideForTest ??
     (_sharedSource ??= createKeyboardInsetSource());
 
-/// Last real keyboard inset observed on this device (persisted on web), or 0
-/// when unknown. Used by the composer flash-fix pre-arm.
-double lastKnownKeyboardInset() => impl.lastKnownKeyboardInset();
-
 @visibleForTesting
 void setSharedKeyboardInsetSourceForTest(KeyboardInsetSource? source) {
   _sharedSourceOverrideForTest = source;

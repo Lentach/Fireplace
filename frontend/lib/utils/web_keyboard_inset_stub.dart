@@ -7,9 +7,6 @@ import 'web_keyboard_inset.dart';
 KeyboardInsetSource createKeyboardInsetSource() =>
     _InactiveKeyboardInsetSource();
 
-/// Off-web there is no persisted keyboard measurement; prediction stays off.
-double lastKnownKeyboardInset() => 0;
-
 class _InactiveKeyboardInsetSource implements KeyboardInsetSource {
   final ValueNotifier<double> _inset = ValueNotifier<double>(0);
 
