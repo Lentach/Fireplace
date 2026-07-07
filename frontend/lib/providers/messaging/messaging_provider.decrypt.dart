@@ -218,7 +218,7 @@ extension MessagingDecrypt on MessagingProvider {
     // delete-on-rebuild that destroyed the archived ratchet states the
     // peer's in-flight messages needed (msg 8489 Bad-MAC class).
     _emit?.call('requestSessionRebuild', {'recipientId': peerId});
-    _e2eFlowLog('SESSION_RESET', {'peerId': peerId, 'trigger': trigger});
+    E2ePersistentDiag.record('SESSION_RESET', {'peerId': peerId, 'trigger': trigger});
   }
 
   /// Drop peers whose inbound rows are all resolved or terminal — nothing a
@@ -723,7 +723,7 @@ extension MessagingDecrypt on MessagingProvider {
       // One line that fully explains the outcome of this failure: what the
       // error was classified as, which rule fired and with which inputs, and
       // exactly what the caller will do about it.
-      _e2eFlowLog('DECRYPT_DECISION', {
+      E2ePersistentDiag.record('DECRYPT_DECISION', {
         'msgId': msg.id,
         'senderId': msg.senderId,
         'kind': kind.name,

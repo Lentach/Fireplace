@@ -75,9 +75,10 @@ git pull ; .\deploy-web.ps1
 - Plaintext decrypted-message cache is separate from Signal keys. Privacy & Safety “clear local message cache” clears plaintext cache + audio, not Signal keys.
 - E2E envelope media keys are one-shot: once a media envelope is decrypted, persisted decrypted content is the surviving copy of `mediaKey`/`mediaIv`. Never overwrite an existing keyed media cache entry with keyless `[Decryption failed]` data.
 - Live decrypt is serialized per sender. Do not live-decrypt outside the active conversation; Signal ratchet order matters. `[Decryption failed]` is terminal. Inbound decrypt failure must never delete the session record.
+- `EncryptionService.encrypt` is serialized per recipient (tail-chained futures). Concurrent encrypts interleave at store awaits, load the same ratchet state, and emit DUPLICATE chain counters — the receiver terminally rejects the collisions (the 2026-07-07 rapid note-burst field bug). Regression: `test/services/encryption_send_race_probe_test.dart`. Never bypass `encrypt()` with a raw `SessionCipher`.
 - `_pendingSendContent` stores tempId → plaintext/media metadata; write `mediaKey`/`mediaIv` immediately after encryption and before any await.
 - Media send path uses `EncryptedMediaUploadService`; its `onEncrypted(key, iv)` fires before upload await so callers can preserve keys. Retry reuses existing `mediaUrl`/`mediaKey`/`mediaIv` when upload already succeeded.
-- Temporary diagnostics still exist: `E2eDiagLog` ring buffer (200), mic re-prompt log, storage durability probes. Keep them until the underlying field issue is closed.
+- Temporary diagnostics still exist: `E2eDiagLog` ring buffer (200, in-memory), the durable failure log `E2ePersistentDiag` (`e2e_diag_persist_v1`, capped 80, SharedPreferences — mirrors failure-class events `DECRYPT_DECISION`/`SEND_FAIL`/`SESSION_RESET`/`ENCRYPT_OVERLAP` so they survive ring eviction AND restart; `init()` in `main.dart` before `runApp`; both shown/copied/cleared in the Privacy & Safety hacker-mode panel), mic re-prompt log, storage durability probes. `SEND_ENCRYPT_DONE` carries `ctype` (3 = PreKey/rebuild, 2 = whisper). Keep them until the underlying field issue is closed.
 
 ## 6. Messaging and UI contracts
 
