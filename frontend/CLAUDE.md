@@ -79,6 +79,7 @@ git pull ; .\deploy-web.ps1
 - `_pendingSendContent` stores tempId → plaintext/media metadata; write `mediaKey`/`mediaIv` immediately after encryption and before any await.
 - Media send path uses `EncryptedMediaUploadService`; its `onEncrypted(key, iv)` fires before upload await so callers can preserve keys. Retry reuses existing `mediaUrl`/`mediaKey`/`mediaIv` when upload already succeeded.
 - Temporary diagnostics still exist: `E2eDiagLog` ring buffer (200, in-memory), the durable failure log `E2ePersistentDiag` (`e2e_diag_persist_v1`, capped 80, SharedPreferences — mirrors failure-class events `DECRYPT_DECISION`/`SEND_FAIL`/`SESSION_RESET`/`ENCRYPT_OVERLAP` so they survive ring eviction AND restart; `init()` in `main.dart` before `runApp`; both shown/copied/cleared in the Privacy & Safety hacker-mode panel), mic re-prompt log, storage durability probes. `SEND_ENCRYPT_DONE` carries `ctype` (3 = PreKey/rebuild, 2 = whisper). Keep them until the underlying field issue is closed.
+- `[Decryption failed]` reported in the field → follow `docs/runbooks/e2e-decryption-failed.md` FIRST (stale-build check → E2ePersistentDiag dump → signature table discriminating race-back / lock-deadlock / pre-fix damage / identity regeneration). Do not re-derive the diagnosis from scratch.
 
 ## 6. Messaging and UI contracts
 
