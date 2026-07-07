@@ -34,12 +34,15 @@ export class SecretNotesService {
   }
 
   async revealAndDelete(token: string): Promise<{ ciphertext: string } | null> {
-    const result = await this.repo.query(
-      `DELETE FROM secret_notes WHERE token = $1 AND expires_at > NOW() RETURNING ciphertext`,
+    // Column is camelCase (TypeORM default naming from the entity property) —
+    // raw SQL MUST quote it: unquoted expires_at was 42703 and broke reveal.
+    // Postgres driver returns [rows, rowCount] for DELETE — destructure rows.
+    const [rows] = await this.repo.query(
+      `DELETE FROM secret_notes WHERE token = $1 AND "expiresAt" > NOW() RETURNING ciphertext`,
       [token],
     );
-    if (result.length === 0) return null;
-    return { ciphertext: result[0].ciphertext };
+    if (!Array.isArray(rows) || rows.length === 0) return null;
+    return { ciphertext: rows[0].ciphertext };
   }
 
   @Cron(CronExpression.EVERY_DAY_AT_3AM)

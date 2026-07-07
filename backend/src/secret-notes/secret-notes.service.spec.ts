@@ -43,7 +43,8 @@ describe('SecretNotesService', () => {
 
   describe('revealAndDelete', () => {
     it('returns ciphertext when note found and not expired', async () => {
-      repo.query.mockResolvedValue([{ ciphertext: 'enc' }]);
+      // TypeORM postgres driver returns [rows, rowCount] for DELETE ... RETURNING.
+      repo.query.mockResolvedValue([[{ ciphertext: 'enc' }], 1]);
       const result = await service.revealAndDelete('tok');
       expect(result).toEqual({ ciphertext: 'enc' });
       expect(repo.query).toHaveBeenCalledWith(
@@ -53,9 +54,25 @@ describe('SecretNotesService', () => {
     });
 
     it('returns null when note not found or expired', async () => {
-      repo.query.mockResolvedValue([]);
+      repo.query.mockResolvedValue([[], 0]);
       const result = await service.revealAndDelete('missing');
       expect(result).toBeNull();
+    });
+
+    it('returns null when the driver yields a non-array rows slot', async () => {
+      // The Array.isArray guard turns a non-array rows slot into null, not a crash.
+      repo.query.mockResolvedValue([undefined, 0]);
+      const result = await service.revealAndDelete('weird');
+      expect(result).toBeNull();
+    });
+
+    it('queries the quoted camelCase column, never snake_case', async () => {
+      // Regression: unquoted expires_at raised Postgres 42703 and 500'd reveal forever.
+      repo.query.mockResolvedValue([[], 0]);
+      await service.revealAndDelete('tok');
+      const sql = repo.query.mock.calls[0][0] as string;
+      expect(sql).toContain('"expiresAt"');
+      expect(sql).not.toContain('expires_at');
     });
   });
 

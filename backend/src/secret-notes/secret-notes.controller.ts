@@ -21,12 +21,20 @@ class CreateNoteDto {
 
 @Controller()
 export class SecretNotesController {
+  /** Tokens are 32 lowercase hex chars (crypto.randomBytes(16).toString('hex')).
+   *  Gate BEFORE any DB hit or HTML interpolation: nothing else may ever be
+   *  embedded into the served pages. */
+  private static readonly TOKEN_RE = /^[0-9a-f]{32}$/;
+
   constructor(private readonly service: SecretNotesService) {}
 
   @UseGuards(JwtAuthGuard)
   @Post('notes')
-  async createNote(@Body() dto: CreateNoteDto, @Req() req: any) {
-    const validTtls = [7200, 21600, 43200];
+  async createNote(
+    @Body() dto: CreateNoteDto,
+    @Req() req: { user: { id: number } },
+  ) {
+    const validTtls = [3600, 21600, 43200, 86400];
     const expiresIn = validTtls.includes(dto.expiresIn) ? dto.expiresIn : 21600;
     return this.service.create(dto.ciphertext, expiresIn, req.user.id);
   }
@@ -34,9 +42,14 @@ export class SecretNotesController {
   @Get('note/:token')
   @Throttle({ default: { limit: 60, ttl: 60000 } })
   async getNotePage(@Param('token') token: string, @Res() res: Response) {
+    if (!SecretNotesController.TOKEN_RE.test(token)) {
+      this.setNoteHeaders(res, randomBytes(16).toString('base64'));
+      res.send(this.destroyedPage());
+      return;
+    }
     const note = await this.service.findByToken(token);
     const nonce = randomBytes(16).toString('base64');
-    this.setNoteCsp(res, nonce);
+    this.setNoteHeaders(res, nonce);
     if (!note) {
       res.send(this.destroyedPage());
       return;
@@ -49,6 +62,10 @@ export class SecretNotesController {
   @Post('note/:token/reveal')
   @Throttle({ default: { limit: 30, ttl: 60000 } })
   async revealNote(@Param('token') token: string, @Res() res: Response) {
+    if (!SecretNotesController.TOKEN_RE.test(token)) {
+      res.status(404).json({ error: 'gone' });
+      return;
+    }
     const result = await this.service.revealAndDelete(token);
     if (!result) {
       res.status(404).json({ error: 'gone' });
@@ -64,12 +81,14 @@ export class SecretNotesController {
     return `${m}m`;
   }
 
-  // Per-response CSP overriding helmet's global one so the nonce'd reveal script runs.
-  private setNoteCsp(res: Response, nonce: string): void {
+  // Per-response CSP overriding helmet's global one so the nonce'd reveal script
+  // runs, plus no-store: note pages must never be served from any cache.
+  private setNoteHeaders(res: Response, nonce: string): void {
     res.setHeader(
       'Content-Security-Policy',
       `default-src 'self'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; base-uri 'none'`,
     );
+    res.setHeader('Cache-Control', 'no-store');
   }
 
   private landingPage(token: string, remaining: string, nonce: string): string {
@@ -100,6 +119,8 @@ export class SecretNotesController {
   .revealed-header{color:#888;font-size:11px;text-transform:uppercase;letter-spacing:1px;margin-bottom:16px}
   .footer{color:#444;font-size:11px;margin-top:12px}
   #error{color:#e74c3c;font-size:13px;margin-top:12px;display:none}
+  .applink{display:inline-block;margin-top:20px;color:#888;font-size:13px;font-weight:600;text-decoration:none}
+  .applink:hover{color:#ccc}
 </style>
 </head>
 <body>
@@ -110,6 +131,7 @@ export class SecretNotesController {
   <button class="btn" id="revealBtn">🔓 Reveal &amp; Destroy</button>
   <div class="expires">Expires in ${remaining} · Powered by Fireplace</div>
   <div id="error">Failed to load note. It may have already been read.</div>
+  <a class="applink" href="/">← Open Fireplace</a>
 </div>
 
 <div class="card" id="revealed" style="display:none">
@@ -117,6 +139,7 @@ export class SecretNotesController {
   <div class="revealed-header">Message revealed · Now permanently destroyed</div>
   <div class="content" id="noteContent"></div>
   <div class="footer">This note has been deleted from the server.<br>Refreshing this page will show nothing.</div>
+  <a class="applink" href="/">← Open Fireplace</a>
 </div>
 
 <script nonce="${nonce}">
@@ -126,17 +149,22 @@ async function reveal() {
   btn.textContent = 'Decrypting...';
 
   try {
-    const fragment = location.hash.slice(1);
+    // Fragment: <key>[&c=<convId>][&e=<expiry ms>] — key is always first.
+    const fragment = location.hash.slice(1).split('&')[0];
     if (!fragment) throw new Error('No key in URL');
+
+    // Validate and import the key BEFORE the destructive reveal call: a
+    // mangled/truncated fragment must never burn the note. Only a fetch that
+    // reaches the server can destroy it, so everything checkable stays first.
+    const keyBytes = base64ToBytes(fragment);
+    if (keyBytes.length !== 32) throw new Error('bad key length');
+    const cryptoKey = await crypto.subtle.importKey(
+      'raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']
+    );
 
     const res = await fetch('/note/${token}/reveal', { method: 'POST' });
     if (!res.ok) throw new Error('gone');
     const { ciphertext } = await res.json();
-
-    const keyBytes = base64ToBytes(fragment);
-    const cryptoKey = await crypto.subtle.importKey(
-      'raw', keyBytes, { name: 'AES-GCM' }, false, ['decrypt']
-    );
 
     const parts = ciphertext.split(':');
     if (parts.length !== 2) throw new Error('bad format');
@@ -152,7 +180,7 @@ async function reveal() {
   } catch (e) {
     btn.disabled = false;
     btn.textContent = '🔓 Reveal & Destroy';
-    document.getElementById('error').style.display = '';
+    document.getElementById('error').style.display = 'block';
   }
 }
 
@@ -160,6 +188,16 @@ function base64ToBytes(b64) {
   const bin = atob(b64.replace(/-/g, '+').replace(/_/g, '/'));
   return Uint8Array.from(bin, c => c.charCodeAt(0));
 }
+
+// Deep link back into the chat the note came from: c=<convId> rides the URL
+// fragment (never sent to the server). Digits-only guard before templating.
+(function wireAppLinks() {
+  const match = location.hash.match(/[#&]c=(\\d+)(&|$)/);
+  if (!match) return;
+  document.querySelectorAll('a.applink').forEach(a => {
+    a.href = '/?notify_conv=' + match[1];
+  });
+})();
 document.getElementById('revealBtn').addEventListener('click', reveal);
 </script>
 </body>
@@ -182,6 +220,8 @@ document.getElementById('revealBtn').addEventListener('click', reveal);
   .icon{font-size:48px;margin-bottom:16px}
   h1{font-size:18px;font-weight:700;margin-bottom:10px}
   p{color:#666;font-size:14px;line-height:1.6}
+  .applink{display:inline-block;margin-top:20px;color:#888;font-size:13px;font-weight:600;text-decoration:none}
+  .applink:hover{color:#ccc}
 </style>
 </head>
 <body>
@@ -189,6 +229,7 @@ document.getElementById('revealBtn').addEventListener('click', reveal);
   <div class="icon">💀</div>
   <h1>This note no longer exists</h1>
   <p>It was either already read or has expired.<br>Ask the sender to create a new one.</p>
+  <a class="applink" href="/">← Open Fireplace</a>
 </div>
 </body>
 </html>`;

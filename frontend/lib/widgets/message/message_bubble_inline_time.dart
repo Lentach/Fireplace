@@ -1,4 +1,5 @@
 import '../../models/message_model.dart';
+import '../../utils/anti_quantum_note_link.dart';
 
 /// Full-bleed image/GIF bubble content height (matches [ImageMessageContent] / [GifMessageContent]).
 const kMessageMediaBubbleHeight = 220.0;
@@ -12,6 +13,9 @@ bool messageBubbleUsesInlineTime({
   required String displayContent,
 }) {
   if (message.replyTo != null || message.linkPreviewUrl != null) return false;
+  // Anti-Quantum Note links render as a banner card; time stacks below it
+  // like link-preview bubbles, never inline beside the card.
+  if (isAntiQuantumNoteUrl(displayContent)) return false;
   switch (message.messageType) {
     case MessageType.text:
       return !displayContent.contains('\n');

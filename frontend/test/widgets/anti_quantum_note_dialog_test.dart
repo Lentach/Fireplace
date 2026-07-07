@@ -15,9 +15,11 @@ void main() {
     await tester.pumpAndSettle();
 
     expect(find.byType(AntiQuantumNoteDialog), findsOneWidget);
-    expect(find.text('2h'), findsOneWidget);
+    expect(find.text('1h'), findsOneWidget);
     expect(find.text('6h'), findsOneWidget);
     expect(find.text('12h'), findsOneWidget);
+    expect(find.text('24h'), findsOneWidget);
+    expect(find.text('2h'), findsNothing);
     expect(find.byType(ElevatedButton), findsOneWidget);
   });
 

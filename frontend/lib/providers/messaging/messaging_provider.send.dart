@@ -495,12 +495,24 @@ extension MessagingSend on MessagingProvider {
     final noteToken =
         await _api.createSecretNote(token, ciphertextEncoded, expiresInSeconds);
 
-    // Key encoded as base64url for URL fragment (#KEY)
+    // Key encoded as base64url for URL fragment (#KEY). The fragment also
+    // carries c=<convId> (reveal page's "Open Fireplace" deep link back into
+    // this chat) and e=<expiry epoch ms> (in-chat self-destruct countdown).
+    // Fragments never travel in HTTP requests — the server sees none of it.
     final keyBase64Url = base64Url.encode(keyBytes);
-    final noteUrl = '${AppConfig.baseUrl}/note/$noteToken#$keyBase64Url';
+    final convId = _conversationsProvider?.activeConversationId;
+    final expiresAtMs = DateTime.now()
+        .add(Duration(seconds: expiresInSeconds))
+        .millisecondsSinceEpoch;
+    final fragmentParams =
+        '${convId != null ? '&c=$convId' : ''}&e=$expiresAtMs';
+    final noteUrl =
+        '${AppConfig.baseUrl}/note/$noteToken#$keyBase64Url$fragmentParams';
 
-    // Send URL as a plain text message in the active conversation
-    sendMessage(noteUrl);
+    // Send URL as a text message. Notes ignore the conversation's disappearing
+    // timer: the carrying message expires with the NOTE's TTL instead, so the
+    // banner leaves chat history in step with the note's own destruction.
+    sendMessage(noteUrl, expiresIn: expiresInSeconds);
   }
 
   void sendTypingIndicator(int recipientId, int conversationId) {
@@ -825,15 +837,28 @@ extension MessagingSend on MessagingProvider {
     }
 
     try {
-      // 1. Fetch client-side link preview before encrypting (TEXT only)
+      // 1. Fetch client-side link preview before encrypting (TEXT only).
+      // Anti-Quantum Note links skip previews entirely: the chat renders a
+      // dedicated banner card instead, so fetching our own landing page is a
+      // wasted round trip on both platforms.
       Map<String, String?>? linkPreview;
-      if (messageType == 'TEXT') {
+      final firstUrl = messageType == 'TEXT'
+          ? LinkPreviewService.extractFirstUrl(content)
+          : null;
+      if (firstUrl != null && !isAntiQuantumNoteUrl(firstUrl)) {
         try {
           if (kIsWeb && _tokenForReconnect != null) {
+            // Web goes through the backend proxy (CORS). E2E hygiene: send it
+            // ONLY the fragment-stripped first URL, never the message text —
+            // plaintext must not reach the server, and URL fragments can hold
+            // secrets (Anti-Quantum Note keys ride in `#<key>`).
             linkPreview = await _api.fetchLinkPreview(
               _tokenForReconnect!,
-              content,
+              LinkPreviewService.stripFragment(firstUrl),
             );
+            // Preview is for the link as written: restore the full URL so
+            // the preview-card tap keeps the fragment (note key).
+            if (linkPreview != null) linkPreview['url'] = firstUrl;
           } else {
             linkPreview = await LinkPreviewService.fetchPreview(content);
           }

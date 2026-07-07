@@ -540,13 +540,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get antiQuantumNoteHint => 'Write your secret message...';
 
   @override
-  String get antiQuantumNoteTtl2h => '2h';
+  String get antiQuantumNoteTtl1h => '1h';
 
   @override
   String get antiQuantumNoteTtl6h => '6h';
 
   @override
   String get antiQuantumNoteTtl12h => '12h';
+
+  @override
+  String get antiQuantumNoteTtl24h => '24h';
 
   @override
   String get antiQuantumNoteGenerateAndSend => '🔗 Generate & Send';
@@ -562,6 +565,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String antiQuantumNoteSendFailed(String error) {
     return 'Failed to send note: $error';
   }
+
+  @override
+  String get antiQuantumNoteCardSubtitle => 'One-time read · Tap to open';
+
+  @override
+  String antiQuantumNoteCardCountdown(String time) {
+    return 'Self-destructs in $time';
+  }
+
+  @override
+  String get antiQuantumNoteCardDestroyed => 'This note has self-destructed';
+
+  @override
+  String get privacyAntiQuantumNoteTitle => 'Anti-Quantum Notes';
+
+  @override
+  String get privacyAntiQuantumNoteDescription =>
+      'Notes are encrypted on your device before upload — the server stores only unreadable ciphertext, and the decryption key travels solely inside the link\'s #fragment, which browsers never send to any server. A note can be revealed exactly once, then it is permanently deleted. Unopened notes self-destruct when their timer (1h–24h) runs out, and the chat message disappears with them.';
 
   @override
   String get documentDownloaded => 'Document downloaded';
