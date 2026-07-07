@@ -13,8 +13,9 @@ import '../../utils/web_ios_webkit.dart' show isIOSWebKit;
 ///
 /// To remove entirely: delete this file and its usage in
 /// `chat_composer_viewport.dart`.
-final ValueNotifier<bool> composerDiagOverlayEnabled =
-    ValueNotifier<bool>(false);
+final ValueNotifier<bool> composerDiagOverlayEnabled = ValueNotifier<bool>(
+  false,
+);
 
 /// Flip the overlay on/off. No-op effect off iOS WebKit (overlay never mounts).
 void toggleComposerDiagOverlay() =>

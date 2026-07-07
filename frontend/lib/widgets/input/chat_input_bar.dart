@@ -17,6 +17,7 @@ import '../../utils/composer_paste.dart';
 import '../../utils/message_expiry.dart';
 import '../../utils/reply_preview_helper.dart';
 import '../../utils/soft_keyboard.dart';
+import '../../utils/web_keyboard_inset.dart';
 import '../../utils/web_focus_guard.dart';
 import '../../utils/web_ios_webkit.dart';
 import '../../utils/web_viewport_scroll.dart';
@@ -65,11 +66,9 @@ class ChatInputBarState extends State<ChatInputBar>
   Timer? _typingDebounceTimer;
   MessagingProvider? _messagingProvider;
 
-  // Set in _send(); cleared after 500ms. While true the FocusNode listener
-  // fires a microtask restore the instant iOS blur reaches Flutter — much
-  // faster than waiting for the next postFrameCallback.
-  bool _sendJustFired = false;
-  Timer? _sendJustFiredTimer;
+  // Cached so dispose removes the listener from the SAME instance initState
+  // added it to, even when a test overrides the shared source between mounts.
+  late final KeyboardInsetSource _sharedInsetSource;
   // Set true (with a 600ms auto-clear) whenever the composer initiates a send /
   // deliberate refocus that may briefly blur+restore the IME. Gates the viewport
   // keyboard-collapse debounce — see composer_keyboard_signals.dart.
@@ -114,9 +113,13 @@ class ChatInputBarState extends State<ChatInputBar>
     // exclusive. Any composer focus gain (field tap, reply/edit refocus)
     // closes the panel so they never stack.
     _focusNode.addListener(_closeEmojiPickerOnFocusGain);
+    _sharedInsetSource = sharedKeyboardInsetSource();
     if (kIsWeb) {
       _focusNode.addListener(_onComposerFocusForWebViewport);
-      _focusNode.addListener(_onFocusLostAfterSend);
+      // Single source of truth for keyboard visibility (iOS WebKit's
+      // viewInsets read 0): drives bottomInteractivePadding. The inactive
+      // source never fires off iOS web.
+      _sharedInsetSource.inset.addListener(_onSharedKeyboardInsetChanged);
       ensureFocusGuardListenerInstalled();
       installComposerPasteListener(
         shouldHandle: _canAcceptPaste,
@@ -157,10 +160,18 @@ class ChatInputBarState extends State<ChatInputBar>
     if (_showActionPanel) {
       // The message list owns the real chat-surface pointer. TapRegion still
       // receives the same outside tap afterward; suppress only that follow-up
-      // so the lower action panel does not collapse or lose focus.
+      // so the lower action panel does not collapse. The keyboard now
+      // dismisses on a chat-surface tap even with the panel open
+      // (user-reported Android PWA bug 2026-07-07) — EXCEPT on iOS WebKit,
+      // where the 07-03 keep-focus contract stays until a device session
+      // proves the blur can't retrigger the lower-panel tap loop the contract
+      // was written against.
       _ignoreComposerTapOutsideForChatSurfaceTap = true;
       if (_showEmojiPicker) {
         setState(() => _setEmojiPickerVisible(false));
+      }
+      if (!(kIsWeb && isIOSWebKit())) {
+        _focusNode.unfocus();
       }
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _ignoreComposerTapOutsideForChatSurfaceTap = false;
@@ -189,6 +200,7 @@ class ChatInputBarState extends State<ChatInputBar>
       }
     });
   }
+
   void _onComposerFocusForWebViewport() {
     if (!kIsWeb) return;
     if (!_focusNode.hasFocus) {
@@ -197,6 +209,11 @@ class ChatInputBarState extends State<ChatInputBar>
     }
     if (!isIOSWebKit()) return;
     setIOSComposerViewportPin(true);
+  }
+
+  void _onSharedKeyboardInsetChanged() {
+    // bottomInteractivePadding derives from this inset: rebuild.
+    if (mounted) setState(() {});
   }
 
   void _onAttachmentChanged() {
@@ -320,19 +337,18 @@ class ChatInputBarState extends State<ChatInputBar>
   @override
   void dispose() {
     // Reset the pin so the next chat opens unpinned, but DEFER it: a sync
-    // notify here fires the still-mounted ancestor viewport's setState during
-    // tree finalization (locked-tree assert when leaving the chat with the
-    // panel open). By microtask time the tree is unlocked (or the viewport is
-    // unmounted and its listener no-ops on the mounted guard).
+    // notify here fires the still-mounted ancestor viewport's
+    // setState during tree finalization (locked-tree assert when leaving the
+    // chat with the panel open). By microtask time the tree is unlocked (or
+    // the viewport is unmounted and its listener no-ops on the mounted guard).
     scheduleMicrotask(() => composerBottomPanelPinned.value = false);
     _focusNode.removeListener(_closeEmojiPickerOnFocusGain);
     if (kIsWeb) {
       _focusNode.removeListener(_onComposerFocusForWebViewport);
-      _focusNode.removeListener(_onFocusLostAfterSend);
+      _sharedInsetSource.inset.removeListener(_onSharedKeyboardInsetChanged);
       setIOSComposerViewportPin(false);
       uninstallComposerPasteListener();
     }
-    _sendJustFiredTimer?.cancel();
     _collapseGuardTimer?.cancel();
     composerKeyboardCollapseGuard.value = false;
     _messagingProvider?.setComposerFocusRequest(null);
@@ -346,24 +362,14 @@ class ChatInputBarState extends State<ChatInputBar>
     super.dispose();
   }
 
-  // Fires the moment Flutter learns the composer lost focus. If a send just
-  // happened we restore immediately in a microtask — faster than waiting for
-  // the next postFrameCallback, so the keyboard barely dips before coming back.
-  void _onFocusLostAfterSend() {
-    if (!isIOSWebKit()) return;
-    if (_focusNode.hasFocus || !_sendJustFired) return;
-    _sendJustFired = false;
-    _sendJustFiredTimer?.cancel();
-    Future.microtask(() {
-      if (!mounted || !_focusNode.canRequestFocus) return;
-      _focusNode.requestFocus();
-      showSoftKeyboardIfHidden(context: context, hasFocus: true).ignore();
-    });
-  }
-
   // Tells [ChatComposerViewport] a refocus is imminent so it defers collapsing
   // the keyboard inset (preserves the send-bounce flash guard). Auto-clears so a
   // subsequent genuine dismiss collapses immediately (no laggy gap on hide).
+  // NOTE 2026-07-07: the iOS `_sendJustFired` fast-refocus that this guard
+  // masked was deleted after the device probe proved it unobservable — the
+  // DOM focus guard (load-bearing, see composer_keyboard_signals.dart) holds
+  // focus through send taps. The guard stays as cheap cover for the edit /
+  // staged / action-toggle paths the probe did not isolate.
   void _armComposerCollapseGuard() {
     composerKeyboardCollapseGuard.value = true;
     _collapseGuardTimer?.cancel();
@@ -380,7 +386,7 @@ class ChatInputBarState extends State<ChatInputBar>
     final text = _controller.text.trim();
     if (text.isEmpty) return;
     // Telegram parity: sending from the emoji panel keeps the panel open and
-    // the keyboard hidden — skip refocus/fast-restore arming in that state.
+    // the keyboard hidden — skip the post-send refocus in that state.
     final keepEmojiPanel = _showEmojiPicker;
     _armComposerCollapseGuard();
 
@@ -388,13 +394,6 @@ class ChatInputBarState extends State<ChatInputBar>
     final editing = messaging.editingMessage;
     if (editing != null) {
       messaging.editMessage(editing.id, text);
-      if (kIsWeb && isIOSWebKit() && !keepEmojiPanel) {
-        _sendJustFired = true;
-        _sendJustFiredTimer?.cancel();
-        _sendJustFiredTimer = Timer(const Duration(milliseconds: 500), () {
-          _sendJustFired = false;
-        });
-      }
       _controller.clear();
       if (!keepEmojiPanel) {
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -409,19 +408,10 @@ class ChatInputBarState extends State<ChatInputBar>
     final expiresIn = convs.conversationDisappearingTimer;
     messaging.sendMessage(text, expiresIn: expiresIn);
 
-    // Arm the fast-restore listener for iOS before clearing text.
-    if (kIsWeb && isIOSWebKit() && !keepEmojiPanel) {
-      _sendJustFired = true;
-      _sendJustFiredTimer?.cancel();
-      // Disarm after 500ms so an intentional blur right after send is respected.
-      _sendJustFiredTimer = Timer(const Duration(milliseconds: 500), () {
-        _sendJustFired = false;
-      });
-    }
-
     _controller.clear();
     if (keepEmojiPanel) return;
-    // Fallback for non-iOS or when FocusNode listener fires before the blur.
+    // Post-send refocus: keeps the keyboard up after a send-button tap on
+    // non-iOS (the DOM focus guard covers iOS WebKit).
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_focusNode.canRequestFocus) return;
       if (!_focusNode.hasFocus) _focusNode.requestFocus();
@@ -827,7 +817,12 @@ class ChatInputBarState extends State<ChatInputBar>
       4.0 + pad.right + trailingGestureBuffer,
       8.0,
     );
-    final keyboardVisible = mediaQuery.viewInsets.bottom > 0;
+    // Single source of truth (D2 fix): MediaQuery.viewInsets reads 0 on iOS
+    // WebKit while the keyboard is up — fold in the shared visualViewport
+    // inset so the ergonomic bottom buffer never renders underneath a raised
+    // keyboard.
+    final keyboardVisible =
+        mediaQuery.viewInsets.bottom > 0 || _sharedInsetSource.inset.value > 0;
     final bottomSystemInset = math.max(
       mediaQuery.viewPadding.bottom,
       mediaQuery.padding.bottom,

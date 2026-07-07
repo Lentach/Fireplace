@@ -1,15 +1,11 @@
 import 'dart:js_interop';
-import 'dart:math' as math;
 
 import 'package:flutter/foundation.dart';
 import 'package:web/web.dart' as web;
 
+import 'keyboard_inset_math.dart';
 import 'web_ios_webkit.dart';
 import 'web_keyboard_inset.dart';
-
-/// Insets smaller than this are treated as 0 — rounding / safe-area noise. A real
-/// soft keyboard is always far taller (~250px+).
-const double _kMinKeyboardInset = 80.0;
 
 KeyboardInsetSource createKeyboardInsetSource() {
   if (isIOSWebKit()) return _VisualViewportKeyboardInsetSource();
@@ -45,11 +41,8 @@ class _VisualViewportKeyboardInsetSource implements KeyboardInsetSource {
   final ValueNotifier<double> _inset = ValueNotifier<double>(0);
   late final JSFunction _listener;
 
-  // The full (pre-keyboard) layout height, tracked as a running max. iOS keeps
-  // the *layout* viewport at the full height when the keyboard opens, but in a
-  // standalone PWA `window.innerHeight` SHRINKS to the above-keyboard height, so
-  // it can't be used live as the layout reference. Reset on a width change
-  // (orientation), then re-captured.
+  // Running-max full layout height + the width it is valid for — see
+  // `computeKeyboardInset` in keyboard_inset_math.dart for the rationale.
   double _fullLayoutHeight = 0;
   double _trackedWidth = 0;
 
@@ -65,34 +58,19 @@ class _VisualViewportKeyboardInsetSource implements KeyboardInsetSource {
       _inset.value = 0;
       return;
     }
-    final vvHeight = vv.height;
-    final vvWidth = vv.width;
-    final innerHeight = web.window.innerHeight.toDouble();
-    final clientHeight =
-        (web.document.documentElement?.clientHeight ?? 0).toDouble();
-
-    // Orientation change: drop the captured height and re-capture below.
-    if ((vvWidth - _trackedWidth).abs() > 1) {
-      _trackedWidth = vvWidth;
-      _fullLayoutHeight = 0;
-    }
-    // Track the full layout height from every signal that reflects it:
-    //  - innerHeight (full while the keyboard is down),
-    //  - documentElement.clientHeight (the layout viewport; stays full),
-    //  - vv.height + vv.offsetTop (the visual viewport's bottom edge in layout
-    //    space; equals the layout height when the page is panned to the bottom).
-    // A running max is safe: the keyboard only shrinks these, never grows the
-    // true layout height (orientation is handled by the reset above).
-    _fullLayoutHeight = math.max(
-      _fullLayoutHeight,
-      math.max(innerHeight, math.max(clientHeight, vvHeight + vv.offsetTop)),
+    final result = computeKeyboardInset(
+      previousFullLayoutHeight: _fullLayoutHeight,
+      previousTrackedWidth: _trackedWidth,
+      vvHeight: vv.height,
+      vvWidth: vv.width,
+      vvOffsetTop: vv.offsetTop,
+      innerHeight: web.window.innerHeight.toDouble(),
+      clientHeight: (web.document.documentElement?.clientHeight ?? 0)
+          .toDouble(),
     );
-
-    // Keyboard occlusion in Flutter's (unshrunk) scene = full layout height minus
-    // the above-keyboard visible height. NOT minus offsetTop: offsetTop is the
-    // OS pan (countered by the viewport pin), not part of the keyboard height.
-    final occluded = _fullLayoutHeight - vvHeight;
-    _inset.value = occluded > _kMinKeyboardInset ? occluded : 0;
+    _fullLayoutHeight = result.fullLayoutHeight;
+    _trackedWidth = result.trackedWidth;
+    _inset.value = result.inset;
   }
 
   @override

@@ -1,7 +1,8 @@
 import 'package:flutter/foundation.dart';
 
 import 'web_keyboard_inset_stub.dart'
-    if (dart.library.html) 'web_keyboard_inset_web.dart' as impl;
+    if (dart.library.html) 'web_keyboard_inset_web.dart'
+    as impl;
 
 /// Tracks the iOS soft-keyboard height from `window.visualViewport`.
 ///
@@ -26,3 +27,22 @@ abstract class KeyboardInsetSource {
 
 KeyboardInsetSource createKeyboardInsetSource() =>
     impl.createKeyboardInsetSource();
+
+KeyboardInsetSource? _sharedSource;
+KeyboardInsetSource? _sharedSourceOverrideForTest;
+
+/// App-wide shared inset source — the single source of truth for "how tall is
+/// the soft keyboard" that `MediaQuery.viewInsets` cannot provide on iOS
+/// WebKit. Consumers (`ChatComposerViewport`, `ChatInputBar` padding,
+/// `PortraitLockShell`, chat keyboard-open autoscroll) MUST read this instead
+/// of creating their own source or trusting raw `viewInsets`, so they can
+/// never disagree about whether the keyboard is up. Lazily created, never
+/// disposed (one window-level listener for the app's lifetime).
+KeyboardInsetSource sharedKeyboardInsetSource() =>
+    _sharedSourceOverrideForTest ??
+    (_sharedSource ??= createKeyboardInsetSource());
+
+@visibleForTesting
+void setSharedKeyboardInsetSourceForTest(KeyboardInsetSource? source) {
+  _sharedSourceOverrideForTest = source;
+}

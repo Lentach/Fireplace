@@ -7,6 +7,7 @@ import 'package:fireplace/widgets/chat_action_tiles.dart';
 import 'package:fireplace/widgets/emoji/fireplace_emoji_picker.dart';
 import 'package:fireplace/widgets/input/chat_input_bar.dart';
 import 'package:fireplace/widgets/input/composer_keyboard_signals.dart';
+import 'package:fireplace/utils/web_keyboard_inset.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -32,6 +33,33 @@ Future<ChatInputBarState> _pump(WidgetTester tester) async {
       locale: const Locale('en'),
       home: Scaffold(
         body: _providerScope(child: ChatInputBar(key: key)),
+      ),
+    ),
+  );
+  await tester.pump();
+  return key.currentState!;
+}
+
+Future<ChatInputBarState> _pumpWithBottomInset(WidgetTester tester) async {
+  final key = GlobalKey<ChatInputBarState>();
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: RpgTheme.themeDataLight,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: const Locale('en'),
+      home: Builder(
+        // Simulate a home-indicator safe area so the ergonomic bottom buffer
+        // would render while the keyboard is down.
+        builder: (context) => MediaQuery(
+          data: MediaQuery.of(context).copyWith(
+            padding: const EdgeInsets.only(bottom: 34),
+            viewPadding: const EdgeInsets.only(bottom: 34),
+          ),
+          child: Scaffold(
+            body: _providerScope(child: ChatInputBar(key: key)),
+          ),
+        ),
       ),
     ),
   );
@@ -71,7 +99,9 @@ Future<ChatInputBarState> _pumpWithChatSurface(WidgetTester tester) async {
   return key.currentState!;
 }
 
-Future<ChatInputBarState> _pumpWithPlainOutsideSurface(WidgetTester tester) async {
+Future<ChatInputBarState> _pumpWithPlainOutsideSurface(
+  WidgetTester tester,
+) async {
   final key = GlobalKey<ChatInputBarState>();
   await tester.pumpWidget(
     MaterialApp(
@@ -109,7 +139,11 @@ Future<void> _openEmojiPanel(WidgetTester tester) async {
 
 void main() {
   setUp(() => composerKeyboardCollapseGuard.value = false);
-  tearDown(() => composerKeyboardCollapseGuard.value = false);
+  tearDown(() {
+    composerKeyboardCollapseGuard.value = false;
+    composerBottomPanelPinned.value = false;
+    setSharedKeyboardInsetSourceForTest(null);
+  });
 
   // Boundary: the empty-text no-op must still precede any send side effect, so it
   // must NOT arm the collapse guard (the guard is armed only on a real send).
@@ -306,8 +340,12 @@ void main() {
     },
   );
 
+  // 2026-07-07 ruling: a chat-surface tap with the lower action panel open now
+  // ALWAYS dismisses the keyboard, while the panel itself survives (only the
+  // panel is exempt from the tap). The unfocus is gated to non-iOS-WebKit; on
+  // the VM isIOSWebKit() is false, so this exercises the Android/desktop path.
   testWidgets(
-    'chat surface tap leaves the action panel and composer focus untouched',
+    'chat surface tap keeps the action panel but dismisses the keyboard (non-iOS)',
     (tester) async {
       final state = await _pumpWithChatSurface(tester);
       await tester.enterText(find.byType(TextField), 'keep lower panel stable');
@@ -324,10 +362,11 @@ void main() {
       await tester.tap(find.byKey(const ValueKey('chat-surface')));
       await tester.pumpAndSettle();
 
+      // Panel survives the tap; the keyboard is dismissed (field unfocused).
       expect(state.isActionPanelOpenForTest, isTrue);
       expect(
         tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
-        isTrue,
+        isFalse,
       );
     },
   );
@@ -447,4 +486,44 @@ void main() {
 
     expect(find.byType(FireplaceEmojiPicker), findsNothing);
   });
+
+  // D2 fix: MediaQuery.viewInsets reads 0 on iOS WebKit with the keyboard up,
+  // so keyboardVisible folds in the shared visualViewport inset. The ergonomic
+  // bottom buffer (driven by bottomInteractivePadding, which also sizes the
+  // always-mounted ChatActionTiles) must collapse to 0 when that inset is up,
+  // otherwise the filler renders underneath the raised keyboard.
+  testWidgets('a raised web keyboard inset removes the ergonomic bottom buffer', (
+    tester,
+  ) async {
+    double buffer() => tester
+        .widget<ChatActionTiles>(find.byType(ChatActionTiles))
+        .bottomPadding;
+
+    // Keyboard down, bottom safe-area inset present -> ergonomic buffer applied.
+    await _pumpWithBottomInset(tester);
+    expect(buffer(), greaterThan(0));
+
+    // Same layout, but the shared source reports a keyboard while viewInsets
+    // still reads 0: the buffer must be suppressed.
+    setSharedKeyboardInsetSourceForTest(_FakeInsetSource(300));
+    await _pumpWithBottomInset(tester);
+    expect(buffer(), 0);
+  });
+}
+
+/// Fake iOS-WebKit shared inset source (isActive true) with a fixed inset, so
+/// the keyboardVisible fold-in can be exercised on the VM.
+class _FakeInsetSource implements KeyboardInsetSource {
+  _FakeInsetSource(double initial) : _inset = ValueNotifier<double>(initial);
+
+  final ValueNotifier<double> _inset;
+
+  @override
+  ValueNotifier<double> get inset => _inset;
+
+  @override
+  bool get isActive => true;
+
+  @override
+  void dispose() {}
 }

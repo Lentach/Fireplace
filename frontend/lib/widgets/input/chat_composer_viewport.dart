@@ -45,13 +45,13 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
 
   // iOS WebKit reports MediaQuery.viewInsets.bottom = 0 even while the keyboard
   // is up, so derive the real inset from visualViewport. Inactive (and ignored)
-  // off iOS web.
+  // off iOS web. App-wide shared instance — never disposed here.
   late final KeyboardInsetSource _kbInsetSource;
 
   @override
   void initState() {
     super.initState();
-    _kbInsetSource = createKeyboardInsetSource();
+    _kbInsetSource = sharedKeyboardInsetSource();
     _kbInsetSource.inset.addListener(_onKeyboardInsetChanged);
     composerBottomPanelPinned.addListener(_onBottomPanelPinnedChanged);
     WidgetsBinding.instance.addPostFrameCallback(_measureComposer);
@@ -78,7 +78,6 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
     _insetCollapseTimer?.cancel();
     composerBottomPanelPinned.removeListener(_onBottomPanelPinnedChanged);
     _kbInsetSource.inset.removeListener(_onKeyboardInsetChanged);
-    _kbInsetSource.dispose();
     super.dispose();
   }
 
@@ -153,9 +152,7 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
       clipBehavior: Clip.none,
       fit: StackFit.expand,
       children: [
-        Positioned.fill(
-          child: widget.messageListBuilder(listBottomPadding),
-        ),
+        Positioned.fill(child: widget.messageListBuilder(listBottomPadding)),
         Positioned(
           left: 0,
           right: 0,
@@ -164,9 +161,7 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
             onNotification: _onComposerSizeChanged,
             child: KeyedSubtree(
               key: _composerKey,
-              child: SizeChangedLayoutNotifier(
-                child: widget.composer,
-              ),
+              child: SizeChangedLayoutNotifier(child: widget.composer),
             ),
           ),
         ),

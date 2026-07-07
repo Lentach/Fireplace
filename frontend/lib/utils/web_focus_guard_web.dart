@@ -36,6 +36,9 @@ void unregisterFocusGuardRect(String id) {
   _rects.remove(id);
 }
 
+// 2026-07-07 device probe: this guard is LOAD-BEARING — with it disabled,
+// EVERY send-button tap dismissed the keyboard (the 0.0.64 onTapOutside fix
+// does not stop the DOM-level blur). Never remove without device re-proof.
 void _onPointerDownCapture(web.Event event) {
   _savedElement = null;
 
