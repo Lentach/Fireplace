@@ -178,9 +178,32 @@ class EncryptionService {
     debugPrint('[EncryptionService] Session built with userId=$userId');
   }
 
+  /// Tail of the in-flight encrypt chain per recipient. Signal's Double
+  /// Ratchet is stateful: two encrypts that interleave at store await points
+  /// both load the same session state and emit DUPLICATE chain counters — the
+  /// receiver accepts the first and terminally rejects the rest
+  /// (DuplicateMessageException → "[Decryption failed]"). Field-hit by a
+  /// rapid burst of anti-quantum-note sends (2026-07-07); reproduced
+  /// deterministically in encryption_send_race_probe_test.dart.
+  final Map<int, Future<void>> _encryptTails = {};
+
   /// Encrypt a plaintext string for the given recipient.
   /// Returns "{type}:{base64_body}" format.
-  Future<String> encrypt(int recipientUserId, String plaintext) async {
+  ///
+  /// Serialized per recipient: concurrent callers queue in call order. A
+  /// failed predecessor never poisons the queue (errors are contained to the
+  /// caller that owns them).
+  Future<String> encrypt(int recipientUserId, String plaintext) {
+    final tail = _encryptTails[recipientUserId] ?? Future<void>.value();
+    final result =
+        tail.then((_) => _encryptSerialized(recipientUserId, plaintext));
+    _encryptTails[recipientUserId] =
+        result.then<void>((_) {}, onError: (_) {});
+    return result;
+  }
+
+  Future<String> _encryptSerialized(
+      int recipientUserId, String plaintext) async {
     final address =
         SignalProtocolAddress(recipientUserId.toString(), _deviceId);
     final cipher = SessionCipher(_sessionStore, _preKeyStore,
