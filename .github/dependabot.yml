@@ -1,0 +1,29 @@
+# Dependabot: security-focused, low-noise (solo maintainer).
+# Version-update PRs are capped and grouped monthly; security updates are
+# governed by repo Settings -> Code security (enable Dependabot alerts +
+# security updates there — they ignore these limits and open PRs immediately).
+version: 2
+updates:
+  - package-ecosystem: npm
+    directory: /backend
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      backend-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: pub
+    directory: /frontend
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 3
+    groups:
+      frontend-minor-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: monthly
+    open-pull-requests-limit: 2
