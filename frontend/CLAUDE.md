@@ -21,6 +21,16 @@ flutter test test/services/api_service_media_url_test.dart
 flutter test test/providers/message_editing_test.dart
 ```
 
+Full-stack E2E wire harness (`test_e2e/` — sibling of `test/` so the default suite/CI never runs it; needs a live local backend):
+
+```powershell
+docker-compose up            # repo root, separate terminal
+cd frontend
+flutter test test_e2e
+```
+
+Two headless accounts run the REAL `ApiService`+`SocketService`+`EncryptionService` (real libsignal) against the local backend: register → WS key upload → friendship → conversation → PreKey(3:)/whisper(2:) round trips → mid-conversation session rebuild → edit → reactions, asserting decryption both ends. Fresh accounts every run BY DESIGN (server keeps old unused OTPs oldest-first; reuse ⇒ phantom bad-MAC). Register throttle 10/hr/IP is in-memory — `docker compose restart backend` resets it. The harness resets the flutter_test binding's HTTP-blocking `HttpOverrides` globally (`enableRealNetwork()`); found the burned-but-never-served OTP backend bug on its first run.
+
 Local devices:
 
 - Android emulator: `cd frontend && flutter run -d <deviceId> --dart-define=BASE_URL=http://10.0.2.2:3000`.

@@ -68,19 +68,23 @@ export class KeyBundlesService {
 
     // Atomic claim: UPDATE ... WHERE id = (SELECT id ... LIMIT 1) RETURNING *
     // Prevents race condition where two concurrent calls serve the same OTP.
-    const [otp]: Array<{ id: number; keyId: number; publicKey: string } | undefined> =
-      await this.otpRepo.query(
-        `UPDATE one_time_pre_keys
-           SET used = true
-         WHERE id = (
-           SELECT id FROM one_time_pre_keys
-           WHERE "userId" = $1 AND used = false
-           ORDER BY id ASC
-           LIMIT 1
-         )
-         RETURNING id, "keyId", "publicKey"`,
-        [userId],
-      );
+    // Postgres repo.query() returns [rows, rowCount] for UPDATE ... RETURNING
+    // (see backend/CLAUDE.md §4) — destructuring the row directly reads the
+    // rows ARRAY and silently serves oneTimePreKey* as null while still
+    // burning the OTP (used=true). Caught by the test_e2e wire harness.
+    const [rows] = (await this.otpRepo.query(
+      `UPDATE one_time_pre_keys
+         SET used = true
+       WHERE id = (
+         SELECT id FROM one_time_pre_keys
+         WHERE "userId" = $1 AND used = false
+         ORDER BY id ASC
+         LIMIT 1
+       )
+       RETURNING id, "keyId", "publicKey"`,
+      [userId],
+    )) as [Array<{ id: number; keyId: number; publicKey: string }>, number];
+    const otp = rows[0];
 
     if (!otp) {
       this.logger.warn(
