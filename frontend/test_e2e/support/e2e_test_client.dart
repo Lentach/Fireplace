@@ -195,15 +195,26 @@ class E2eClient {
     for (final event in _trackedEvents) {
       socketService.on(event, (payload) => events.record(event, payload));
     }
+    // connect_error completes with a VALUE (never an error) so the losing
+    // branch of Future.any can complete later without becoming an unhandled
+    // async error; the listener is removed once auth resolves so transient
+    // reconnect churn after socketReady stays silent.
     final connectError = Completer<dynamic>();
     socketService.socket!.on('connect_error', (e) {
       if (!connectError.isCompleted) connectError.complete(e);
     });
-    await Future.any([
-      events.next('socketReady', reason: '$label socket auth'),
-      connectError.future.then((e) =>
-          throw StateError('$label socket connect_error: $e')),
-    ]);
+    try {
+      final firstError = await Future.any<dynamic>([
+        events.next('socketReady', reason: '$label socket auth')
+            .then((_) => null),
+        connectError.future,
+      ]);
+      if (firstError != null) {
+        throw StateError('$label socket connect_error: $firstError');
+      }
+    } finally {
+      socketService.off('connect_error');
+    }
   }
 
   /// Initializes Signal keys (fresh mock storage → always generates) and

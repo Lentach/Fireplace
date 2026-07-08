@@ -26,6 +26,9 @@
 // fresh client keys would deterministically produce phantom bad-MAC failures.
 // Register throttle is 10/hr per IP; `docker compose restart backend` resets
 // the in-memory counters when iterating.
+// Each run leaves 2 throwaway accounts (+1 conversation, ~11 messages, key
+// bundles/OTPs) in the TARGET dev DB — harmless local cruft; never point
+// E2E_BASE_URL at production.
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
