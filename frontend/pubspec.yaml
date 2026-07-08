@@ -25,7 +25,7 @@ dependencies:
 
   cupertino_icons: ^1.0.8
   provider: ^6.1.2
-  socket_io_client: ^2.0.3+1
+  socket_io_client: ^3.1.6
   http: ^1.2.2
   google_fonts: ^6.2.1
   jwt_decoder: ^2.0.1
