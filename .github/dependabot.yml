@@ -24,7 +24,13 @@ updates:
     ignore:
       # Pinned in pubspec.yaml: >=0.6.1 native-assets hook needs CMake + MSVC C++
       # on the build PC; the asset ships nowhere (web=JS path, Android=NDK).
+      # Version updates only — SECURITY updates for this crypto dep must still
+      # open PRs (an unconditional ignore would silence CVE fixes too).
       - dependency-name: webcrypto
+        update-types:
+          - version-update:semver-patch
+          - version-update:semver-minor
+          - version-update:semver-major
 
   - package-ecosystem: github-actions
     directory: /
