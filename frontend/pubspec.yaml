@@ -4,8 +4,8 @@ description: "Fireplace - real-time messenger."
 # pub.dev using `flutter pub publish`. This is preferred for private packages.
 publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
-# App version: semver only (0.0.1, 0.0.2, 0.0.3, â€¦). Bump PATCH by +1 on each release (see .cursor/rules/version-bump.mdc).
-# Do not add a +suffix here â€” that is Flutter build metadata, not our user-visible version.
+# App version: semver only (0.0.1, 0.0.2, 0.0.3, …). Bump PATCH by +1 on each release (see root CLAUDE.md §5).
+# Do not add a +suffix here — that is Flutter build metadata, not our user-visible version.
 version: 0.0.96
 
 environment:
