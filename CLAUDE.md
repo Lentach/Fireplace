@@ -103,6 +103,7 @@ VAPID public key in the frontend build must match backend VAPID keys. A wrong ke
 
 - Local `docker-compose.yml`: dev only, bind-mounted backend, `NODE_ENV=development`, relaxed CORS, TypeORM auto-DDL.
 - Prod `docker-compose.prod.yml`: `NODE_ENV=production`, restricted CORS, TypeORM `synchronize` OFF. Every new prod column/index needs manual SQL and verification. Entities are source of truth; there are no real TypeORM migrations.
+- Staging dress rehearsal (PC, not routine — a GATE for risky deploys only): `.\staging.ps1` boots the real prod compose isolated as `fireplace-staging` (backend `:3100`, db `:5533`, own volumes, dummy secrets in gitignored `.env.staging` — NEVER the real `JWT_SECRET`). Rehearse BEFORE deploying anything that touches `*.entity.ts`, manual SQL, `docker-compose.prod.yml`, `backend/Dockerfile`, or bootstrap/config code; skip it for UI work. Flow: `up` → `restore <dump>` (or `seed-schema` for entity-fresh) → `sql <migration>` (runs with `lock_timeout=10s`) → `harness` (wire harness vs prod-mode stack). It does NOT rehearse nginx/TLS, host perms, or devices.
 - Raw SQL with camelCase columns needs quotes, e.g. `"deliveryStatus"`, `"createdAt"`.
 - Backups: `./backup-db.sh` on VM backs up Postgres + media + encrypted `.env` when a passphrase is configured. Dumps contain ciphertext messages, public keys, usernames/contact graph/timestamps and password hashes; they cannot decrypt messages but are still sensitive.
 - Backup setup: `./setup-backup-cron.sh` on the VM stores the gpg passphrase in a 0600 file (never on the cron line/argv) and installs the daily cron. Without it there are effectively no backups, or unencrypted ones (`backup-db.sh` skips `.env` and warns when no passphrase). Store the passphrase OFF the VM and decrypt-test one dump before trusting it.
@@ -124,6 +125,6 @@ VAPID public key in the frontend build must match backend VAPID keys. A wrong ke
 
 - New WS event: backend DTO + service handler + `@SubscribeMessage` in `chat.gateway.ts`; frontend `SocketService` emit/listen + `ConnectionProvider` routing + provider/model updates.
 - New REST endpoint: backend controller/service with `JwtAuthGuard` where needed; frontend `ApiService` call + provider/screen wiring.
-- New DB column: backend entity + manual prod SQL + mapper payload + frontend model `fromJson`/`copyWith` + tests. Dev auto-DDL does not mean prod is done.
+- New DB column: backend entity + manual prod SQL + mapper payload + frontend model `fromJson`/`copyWith` + tests. Dev auto-DDL does not mean prod is done. Rehearse the SQL on the staging stack first (§6).
 
 Maintain this file by pruning. If a fact only matters while editing Flutter or NestJS code, put it in the tier file. After adding/removing backend tests, update the count in §3 so `node scripts/verify-claude-backend-test-counts.mjs` stays green.
