@@ -110,6 +110,7 @@ if (-not $SkipPublish) {
     # OpenSSH scp expands ~ and creates dirs, so the temp-dir approach works directly.
     Step "Publish via ssh/scp ($VmSshTarget)"
     ssh $VmSshTarget "rm -rf ~/web-staging && mkdir -p ~/web-staging"
+    if ($LASTEXITCODE -ne 0) { throw "ssh staging-dir prep failed (exit=$LASTEXITCODE). Check VmSshTarget / SSH access." }
     scp -r frontend/build/web "${VmSshTarget}:web-staging"
     if ($LASTEXITCODE -ne 0) { throw "scp failed (exit=$LASTEXITCODE). Check VmSshTarget / SSH access." }
     # chmod: Ubuntu 24.04 scp lands dirs 700; nginx (www-data) needs world-readable bundle.
