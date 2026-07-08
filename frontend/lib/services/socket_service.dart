@@ -175,12 +175,6 @@ class SocketService {
     _socket?.emit('getMessages', payload);
   }
 
-  void deleteConversation(int conversationId) {
-    _socket?.emit('deleteConversation', {
-      'conversationId': conversationId,
-    });
-  }
-
   void sendFriendRequest(int recipientId) {
     _socket?.emit('sendFriendRequest', {
       'recipientId': recipientId,
