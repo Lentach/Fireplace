@@ -21,6 +21,10 @@ updates:
     groups:
       frontend-minor-patch:
         update-types: [minor, patch]
+    ignore:
+      # Pinned in pubspec.yaml: >=0.6.1 native-assets hook needs CMake + MSVC C++
+      # on the build PC; the asset ships nowhere (web=JS path, Android=NDK).
+      - dependency-name: webcrypto
 
   - package-ecosystem: github-actions
     directory: /

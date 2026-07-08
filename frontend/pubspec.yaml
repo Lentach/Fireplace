@@ -48,10 +48,11 @@ dependencies:
   web: ^1.1.0
   libsignal_protocol_dart: ^0.8.2
   flutter_secure_storage: ^9.2.4
-  # PINNED: 0.6.1's native-assets build hook hard-requires CMake on the host and
-  # breaks `flutter test` AND potentially `deploy-web.ps1` builds on the dev PC
-  # (CI passes only because ubuntu runners ship cmake). Unpin to ^0.6.1 after
-  # installing CMake (admin terminal: winget install Kitware.CMake).
+  # PINNED: >=0.6.1 switched to a native-assets hook that builds windows-x64 on
+  # every local `flutter test` and needs CMake (installed) PLUS the MSVC C++
+  # toolchain (multi-GB, NOT installed). Nothing ships from that asset: prod web
+  # uses the JS/WebCrypto path, Android builds via Gradle/NDK. Unpin only if a
+  # future version carries something needed AND VS Build Tools C++ is installed.
   webcrypto: 0.6.0
   flutter_local_notifications: ^21.0.0
   flutter_web_plugins:
