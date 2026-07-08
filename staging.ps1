@@ -34,6 +34,17 @@ $BackendUrl = 'http://localhost:3100'
 $BackendCtr = 'fireplace-staging-backend-1'
 $DbCtr      = 'fireplace-staging-db-1'
 
+# The overlay's `!override` ports tag needs docker compose >= 2.24. An older
+# compose fails to parse it (safe abort), but never risk the default list-MERGE
+# semantics, which would append staging ports onto prod's and collide with the
+# dev stack (:3000/:5433).
+$composeVer = (docker compose version --short) 2>$null
+if ($composeVer -and (($composeVer -replace '^v', '') -match '^(\d+)\.(\d+)')) {
+    if ([version]"$($Matches[1]).$($Matches[2])" -lt [version]'2.24') {
+        throw "docker compose $composeVer is too old: the staging overlay needs >= 2.24 (!override)"
+    }
+}
+
 function Invoke-Compose {
     docker compose -p $Project --env-file $EnvFile `
         -f (Join-Path $RepoDir 'docker-compose.prod.yml') `
@@ -130,6 +141,10 @@ switch ($Command) {
         $dump = Resolve-Path $Target
         Initialize-EnvFile
         Set-VersionEnv
+        # Defensive: a leaked STAGING_NODE_ENV=development (e.g. hard-interrupted
+        # seed-schema in this same shell) would boot the restored PROD DATA in dev
+        # mode with TypeORM auto-DDL -- the exact thing this rehearsal must not do.
+        Remove-Item Env:\STAGING_NODE_ENV -ErrorAction SilentlyContinue
         Invoke-Compose up -d db
         Start-Sleep -Seconds 3
 
@@ -141,6 +156,10 @@ switch ($Command) {
             New-Item -ItemType Directory -Path $tempDir | Out-Null
             $pass = Read-Host 'Backup passphrase' -AsSecureString
             $plain = [System.Net.NetworkCredential]::new('', $pass).Password
+            # PS 5.1 pipes to native processes via $OutputEncoding (default ASCII);
+            # force UTF-8 so a non-ASCII passphrase survives the stdin pipe to gpg.
+            $prevEnc = $OutputEncoding
+            $OutputEncoding = [System.Text.UTF8Encoding]::new($false)
             $inDir  = Split-Path $dump.Path
             $inFile = Split-Path $dump.Path -Leaf
             # Passphrase over stdin (fd 0); ciphertext + output via mounts -- nothing
@@ -149,6 +168,7 @@ switch ($Command) {
                 -v "${inDir}:/in:ro" -v "${tempDir}:/out" `
                 alpine:3.20 sh -c "apk add -q gnupg && gpg --batch --pinentry-mode loopback --passphrase-fd 0 --output /out/staging.dump --decrypt /in/$inFile"
             $plain = $null
+            $OutputEncoding = $prevEnc
             if ($LASTEXITCODE -ne 0) { throw 'gpg decryption failed (wrong passphrase?)' }
             $plainDump = Join-Path $tempDir 'staging.dump'
         }
@@ -160,11 +180,14 @@ switch ($Command) {
             docker exec $DbCtr rm -rf /tmp/restore.dump | Out-Null
             docker cp $plainDump "${DbCtr}:/tmp/restore.dump"
             if ($LASTEXITCODE -ne 0) { throw 'docker cp failed' }
-            docker exec $DbCtr pg_restore -U postgres -d chatdb --clean --if-exists --no-owner --single-transaction /tmp/restore.dump
+            # Mirror restore-db.sh exactly (--clean --if-exists --single-transaction,
+            # no --no-owner) so the rehearsal matches the real prod restore path.
+            docker exec $DbCtr pg_restore -U postgres -d chatdb --clean --if-exists --single-transaction /tmp/restore.dump
             if ($LASTEXITCODE -ne 0) { throw 'pg_restore failed (transaction rolled back)' }
-            docker exec $DbCtr rm -rf /tmp/restore.dump | Out-Null
         } finally {
             if ($tempDir) { Remove-Item -Recurse -Force $tempDir -ErrorAction SilentlyContinue }
+            # Plaintext dump must not linger in the container even when pg_restore threw.
+            docker exec $DbCtr rm -rf /tmp/restore.dump 2>$null | Out-Null
         }
         Invoke-Compose up -d
         Wait-BackendHealthy

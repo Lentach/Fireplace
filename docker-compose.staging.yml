@@ -29,6 +29,9 @@ services:
 
   backend:
     restart: "no"
+    # Own tag: never clobber fireplace-backend:latest (a later manual prod-compose
+    # run on this PC would silently reuse a staging-built image otherwise).
+    image: fireplace-staging-backend:latest
     ports: !override
       - '127.0.0.1:3100:3000'
     environment:
