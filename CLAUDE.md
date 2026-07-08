@@ -37,7 +37,7 @@ Flutter web/mobile client ⇄ NestJS backend (:3000) ⇄ PostgreSQL 16 (:5433 ho
 ```
 
 - Client: `AuthGate` → `AuthScreen` or `MainShell` → `ChatDetailScreen`; state is provider-driven. See `frontend/CLAUDE.md`.
-- Backend: `AppModule` wires auth/users/chat/messages/media/push/health/version; `ChatGateway` authenticates sockets and delegates to chat services. See `backend/CLAUDE.md`.
+- Backend: `AppModule` wires ~15 domain modules (auth, users, chat, messages, media, key-bundles, push, …) — authoritative full map in `backend/CLAUDE.md` §2; `ChatGateway` authenticates sockets and delegates to chat services.
 - Media: current media storage is self-hosted under `/app/media` (`avatars/`, `msgs/`). Cloudinary URLs remain accepted only as legacy/backward-compatible media URLs.
 - Graph context: read `graphify-out/GRAPH_REPORT.md` before architecture/codebase answers. No `graphify-out/wiki/index.md` currently exists.
 
@@ -71,7 +71,7 @@ Deploy is split because small servers cannot compile Flutter web without OOM/fre
   - Verify served app via `/version.json` and Settings footer. Trust `gitCommit`, not semver alone; Flutter can serve cached code with a bumped version. Change not taking effect → `cd frontend && flutter clean` before `.\deploy-web.ps1`, and hard-bust the PWA service-worker cache (incognito tab proves it).
   - After deploy: fully close + reopen PWA. Never uninstall / clear site data to refresh — that wipes local E2E Signal keys.
 - Backend deploy is on the VM: `cd ~/fireplace && ./deploy-backend.sh`.
-  - Script runs `git pull --ff-only`, computes `APP_VERSION` from `frontend/pubspec.yaml`, builds `docker-compose.prod.yml`, recreates backend, verifies local `/version` and `/health`.
+  - Script runs `git pull --ff-only`, computes `APP_VERSION` from `frontend/pubspec.yaml`, builds the backend image from `docker-compose.prod.yml`, recreates the backend container via `up -d` (db stays up), verifies local `/version` and `/health`. Never run a bare `docker compose -f docker-compose.prod.yml up -d` by hand — without the exported `APP_VERSION`/`GIT_COMMIT` it recreates the backend at `0.0.1/unknown`.
   - Verify public backend via `curl https://fireplace.ignorelist.com/version` and `/health`.
 - `deploy.sh` exists but is legacy/all-in-one. Do not use it as the production deploy path and never run Flutter web build on the VM.
 - VM logs: `cd ~/fireplace && docker compose -f docker-compose.prod.yml logs -f --since 1m backend` (filter instrumentation with `| grep --line-buffered "<tag>"`; NestJS `this.logger.log` goes to stdout → docker logs).
