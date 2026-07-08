@@ -6,7 +6,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
 # App version: semver only (0.0.1, 0.0.2, 0.0.3, …). Bump PATCH by +1 on each release (see root CLAUDE.md §5).
 # Do not add a +suffix here — that is Flutter build metadata, not our user-visible version.
-version: 0.0.96
+version: 0.0.97
 
 environment:
   sdk: ^3.10.7
@@ -25,7 +25,7 @@ dependencies:
 
   cupertino_icons: ^1.0.8
   provider: ^6.1.2
-  socket_io_client: ^2.0.3+1
+  socket_io_client: ^3.1.6
   http: ^1.2.2
   google_fonts: ^6.2.1
   jwt_decoder: ^2.0.1
