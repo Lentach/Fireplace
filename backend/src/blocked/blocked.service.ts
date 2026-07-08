@@ -77,7 +77,9 @@ export class BlockedService {
   async getBlockedUserIds(blockerId: number): Promise<number[]> {
     const rows = await this.blockedRepo.find({
       where: { blocker: { id: blockerId } },
-      relations: ['blocked'],
+      relations: {
+        blocked: true
+      },
     });
     return rows.map((r) => r.blocked.id);
   }
@@ -86,7 +88,9 @@ export class BlockedService {
   async getBlockedByUserIds(blockedId: number): Promise<number[]> {
     const rows = await this.blockedRepo.find({
       where: { blocked: { id: blockedId } },
-      relations: ['blocker'],
+      relations: {
+        blocker: true
+      },
     });
     return rows.map((r) => r.blocker.id);
   }
@@ -94,7 +98,9 @@ export class BlockedService {
   async getBlockedUsers(blockerId: number): Promise<User[]> {
     const rows = await this.blockedRepo.find({
       where: { blocker: { id: blockerId } },
-      relations: ['blocked'],
+      relations: {
+        blocked: true
+      },
     });
     return rows.map((r) => r.blocked);
   }

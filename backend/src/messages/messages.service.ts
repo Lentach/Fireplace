@@ -32,7 +32,9 @@ export class MessagesService {
     if (options?.replyToMessageId != null) {
       const replyToMsg = await this.msgRepo.findOne({
         where: { id: options.replyToMessageId, conversation: { id: conversation.id } },
-        relations: ['sender'],
+        relations: {
+          sender: true
+        },
       });
       if (replyToMsg) {
         replyTo = replyToMsg;
@@ -71,7 +73,9 @@ export class MessagesService {
   ): Promise<Message | null> {
     const msg = await this.msgRepo.findOne({
       where: { id: messageId },
-      relations: ['sender'],
+      relations: {
+        sender: true
+      },
     });
     if (!msg || msg.sender?.id !== userId) return null;
     if (fields.encryptedContent !== undefined) msg.encryptedContent = fields.encryptedContent;
@@ -103,7 +107,13 @@ export class MessagesService {
       // No hidden messages: efficient DB-level pagination
       const messages = await this.msgRepo.find({
         where: { conversation: { id: conversationId } },
-        relations: ['sender', 'replyTo', 'replyTo.sender'],
+        relations: {
+          sender: true,
+
+          replyTo: {
+            sender: true
+          }
+        },
         order: { createdAt: 'DESC' },
         take: limit,
         skip: offset,
@@ -116,7 +126,13 @@ export class MessagesService {
     const fetchLimit = limit * 3 + offset + 50;
     const messages = await this.msgRepo.find({
       where: { conversation: { id: conversationId } },
-      relations: ['sender', 'replyTo', 'replyTo.sender'],
+      relations: {
+        sender: true,
+
+        replyTo: {
+          sender: true
+        }
+      },
       order: { createdAt: 'DESC' },
       take: fetchLimit,
       skip: 0,
@@ -132,7 +148,14 @@ export class MessagesService {
   async findByIdWithConversation(messageId: number): Promise<Message | null> {
     const message = await this.msgRepo.findOne({
       where: { id: messageId },
-      relations: ['sender', 'conversation', 'conversation.userOne', 'conversation.userTwo'],
+      relations: {
+        sender: true,
+
+        conversation: {
+          userOne: true,
+          userTwo: true
+        }
+      },
     });
     return message || null;
   }
@@ -145,7 +168,9 @@ export class MessagesService {
   ): Promise<Message | null> {
     const messages = await this.msgRepo.find({
       where: { conversation: { id: conversationId } },
-      relations: ['sender'],
+      relations: {
+        sender: true
+      },
       order: { createdAt: 'DESC' },
       take: hiddenByUserId != null ? 50 : 1,
     });
@@ -171,7 +196,10 @@ export class MessagesService {
   ): Promise<Message | null> {
     const message = await this.msgRepo.findOne({
       where: { id: messageId },
-      relations: ['sender', 'conversation'],
+      relations: {
+        sender: true,
+        conversation: true
+      },
     });
 
     if (!message) {
@@ -338,7 +366,9 @@ export class MessagesService {
     }
     const messages = await this.msgRepo.find({
       where: { id: In(msgIds) },
-      relations: ['sender'],
+      relations: {
+        sender: true
+      },
     });
     const byConvId = new Map<number, Message>();
     for (const m of messages) {
@@ -378,7 +408,10 @@ export class MessagesService {
 
     const messages = await this.msgRepo.find({
       where: { id: In(pinnedIds) },
-      relations: ['sender', 'conversation'],
+      relations: {
+        sender: true,
+        conversation: true
+      },
     });
 
     for (const m of messages) {
@@ -411,7 +444,9 @@ export class MessagesService {
         sender: { id: senderId },
         deliveryStatus: Not(MessageDeliveryStatus.READ),
       },
-      relations: ['sender'],
+      relations: {
+        sender: true
+      },
     });
 
     if (toUpdate.length === 0) return [];
@@ -432,7 +467,10 @@ export class MessagesService {
       .execute();
 
     const readMessages = toUpdate.map(
-      (m) => ({ ...m, deliveryStatus: MessageDeliveryStatus.READ }) as Message,
+      (m) => (({
+        ...m,
+        deliveryStatus: MessageDeliveryStatus.READ
+      }) as Message),
     );
 
     const now = new Date();
@@ -482,7 +520,9 @@ export class MessagesService {
   async hideMessageForUser(messageId: number, userId: number): Promise<boolean> {
     const message = await this.msgRepo.findOne({
       where: { id: messageId },
-      relations: ['conversation'],
+      relations: {
+        conversation: true
+      },
     });
     if (!message) return false;
 
@@ -501,7 +541,10 @@ export class MessagesService {
   ): Promise<Message | null> {
     const message = await this.msgRepo.findOne({
       where: { id: messageId },
-      relations: ['sender', 'conversation'],
+      relations: {
+        sender: true,
+        conversation: true
+      },
     });
     if (!message) return null;
 
@@ -530,7 +573,10 @@ export class MessagesService {
   ): Promise<Message | null> {
     const message = await this.msgRepo.findOne({
       where: { id: messageId },
-      relations: ['sender', 'conversation'],
+      relations: {
+        sender: true,
+        conversation: true
+      },
     });
     if (!message) return null;
 
@@ -567,7 +613,10 @@ export class MessagesService {
   async deleteById(messageId: number, requesterId: number): Promise<Message | null> {
     const message = await this.msgRepo.findOne({
       where: { id: messageId },
-      relations: ['sender', 'conversation'],
+      relations: {
+        sender: true,
+        conversation: true
+      },
     });
     if (!message) return null;
     if (message.sender.id !== requesterId) return null;

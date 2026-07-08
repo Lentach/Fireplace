@@ -93,7 +93,10 @@ export class FriendsService {
 
         const updated = await manager.findOne(FriendRequest, {
           where: { id: newRequest.id },
-          relations: ['sender', 'receiver'],
+          relations: {
+            sender: true,
+            receiver: true
+          },
         });
         return updated!;
       }
@@ -108,7 +111,10 @@ export class FriendsService {
   ): Promise<FriendRequest> {
     const request = await this.friendRequestRepository.findOne({
       where: { id: requestId },
-      relations: ['sender', 'receiver'],
+      relations: {
+        sender: true,
+        receiver: true
+      },
     });
 
     if (!request) {
@@ -129,7 +135,10 @@ export class FriendsService {
 
     const updated = await this.friendRequestRepository.findOne({
       where: { id: requestId },
-      relations: ['sender', 'receiver'],
+      relations: {
+        sender: true,
+        receiver: true
+      },
     });
     return updated!;
   }
@@ -140,7 +149,10 @@ export class FriendsService {
   ): Promise<FriendRequest> {
     const request = await this.friendRequestRepository.findOne({
       where: { id: requestId },
-      relations: ['sender', 'receiver'],
+      relations: {
+        sender: true,
+        receiver: true
+      },
     });
 
     if (!request) {
@@ -161,7 +173,10 @@ export class FriendsService {
 
     const updated = await this.friendRequestRepository.findOne({
       where: { id: requestId },
-      relations: ['sender', 'receiver'],
+      relations: {
+        sender: true,
+        receiver: true
+      },
     });
     return updated!;
   }
@@ -191,7 +206,10 @@ export class FriendsService {
         receiver: { id: userId },
         status: FriendRequestStatus.PENDING,
       },
-      relations: ['sender', 'receiver'],
+      relations: {
+        sender: true,
+        receiver: true
+      },
       order: { createdAt: 'DESC' },
     });
   }
@@ -208,7 +226,10 @@ export class FriendsService {
           status: FriendRequestStatus.ACCEPTED,
         },
       ],
-      relations: ['sender', 'receiver'],
+      relations: {
+        sender: true,
+        receiver: true
+      },
     });
 
     const friendIds = new Set<number>();

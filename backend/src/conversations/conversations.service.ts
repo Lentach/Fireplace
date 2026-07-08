@@ -44,7 +44,10 @@ export class ConversationsService {
   async findById(id: number): Promise<Conversation | null> {
     return this.convRepo.findOne({
       where: { id },
-      relations: ['userOne', 'userTwo'],
+      relations: {
+        userOne: true,
+        userTwo: true
+      },
     });
   }
 
@@ -52,7 +55,10 @@ export class ConversationsService {
   async findByUser(userId: number): Promise<Conversation[]> {
     return this.convRepo.find({
       where: [{ userOne: { id: userId } }, { userTwo: { id: userId } }],
-      relations: ['userOne', 'userTwo'],
+      relations: {
+        userOne: true,
+        userTwo: true
+      },
     });
   }
 
@@ -98,7 +104,9 @@ export class ConversationsService {
     if (!userBelongs) throw new Error('Unauthorized');
     const message = await this.messageRepo.findOne({
       where: { id: messageId },
-      relations: ['conversation'],
+      relations: {
+        conversation: true
+      },
     });
     if (!message || message.conversation.id !== conversationId) {
       throw new Error('Message not in conversation');
