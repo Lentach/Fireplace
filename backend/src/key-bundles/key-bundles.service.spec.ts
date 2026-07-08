@@ -140,7 +140,10 @@ describe('KeyBundlesService', () => {
       const otp = { id: 10, keyId: 7, publicKey: 'otp-pk-7' };
 
       keyBundleRepo.findOne.mockResolvedValue(bundle);
-      otpRepo.query.mockResolvedValue([otp]);
+      // Real Postgres shape for UPDATE ... RETURNING: [rows, rowCount].
+      // Mocking plain rows here is exactly how the burned-but-never-served
+      // OTP bug slipped past this spec (see backend/CLAUDE.md §4).
+      otpRepo.query.mockResolvedValue([[otp], 1]);
 
       const result = await service.fetchPreKeyBundle(5);
 
@@ -169,7 +172,7 @@ describe('KeyBundlesService', () => {
       };
 
       keyBundleRepo.findOne.mockResolvedValue(bundle);
-      otpRepo.query.mockResolvedValue([]);
+      otpRepo.query.mockResolvedValue([[], 0]);
 
       const result = await service.fetchPreKeyBundle(5);
 
@@ -194,8 +197,8 @@ describe('KeyBundlesService', () => {
       };
       keyBundleRepo.findOne.mockResolvedValue(bundle);
       otpRepo.query
-        .mockResolvedValueOnce([{ id: 10, keyId: 101, publicKey: 'otp-101' }])
-        .mockResolvedValueOnce([{ id: 11, keyId: 102, publicKey: 'otp-102' }]);
+        .mockResolvedValueOnce([[{ id: 10, keyId: 101, publicKey: 'otp-101' }], 1])
+        .mockResolvedValueOnce([[{ id: 11, keyId: 102, publicKey: 'otp-102' }], 1]);
 
       const first = await service.fetchPreKeyBundle(5);
       const second = await service.fetchPreKeyBundle(5);
