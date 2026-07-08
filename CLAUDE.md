@@ -73,6 +73,7 @@ Deploy is split because small servers cannot compile Flutter web without OOM/fre
 - Backend deploy is on the VM: `cd ~/fireplace && ./deploy-backend.sh`.
   - Script runs `git pull --ff-only`, computes `APP_VERSION` from `frontend/pubspec.yaml`, builds the backend image from `docker-compose.prod.yml`, recreates the backend container via `up -d` (db stays up), verifies local `/version` and `/health`. Never run a bare `docker compose -f docker-compose.prod.yml up -d` by hand — without the exported `APP_VERSION`/`GIT_COMMIT` it recreates the backend at `0.0.1/unknown`.
   - Verify public backend via `curl https://fireplace.ignorelist.com/version` and `/health`.
+- One-shot deploy verification: `cd scripts/smoke && node post-deploy-smoke.mjs` (one-time `npm install && npx playwright install chromium`). Checks `/health`, both version surfaces, that the served `main.dart.js` literally contains the expected git short-sha (definitive stale-build detector), and boots the app in a fresh headless browser. Defaults to local HEAD; `--commit <sha>` to check an older deploy.
 - `deploy.sh` exists but is legacy/all-in-one. Do not use it as the production deploy path and never run Flutter web build on the VM.
 - VM logs: `cd ~/fireplace && docker compose -f docker-compose.prod.yml logs -f --since 1m backend` (filter instrumentation with `| grep --line-buffered "<tag>"`; NestJS `this.logger.log` goes to stdout → docker logs).
 - Never run `docker compose down -v`, `docker volume rm`, or `prune --volumes` on prod. `pgdata` and `media_storage` are user data.
