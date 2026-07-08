@@ -125,7 +125,7 @@ class ChatActionTiles extends StatelessWidget {
     final result = _requireActiveConversation(context);
     if (result == null) return;
 
-    final pickResult = await FilePicker.platform.pickFiles(
+    final pickResult = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: [
         'jpg', 'jpeg', 'png', 'gif',

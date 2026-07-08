@@ -7,9 +7,6 @@ import 'firebase_options.dart';
 import 'fcm_background_stub.dart'
     if (dart.library.io) 'services/android_fcm_local_notifications.dart'
     as fcm_background;
-import 'init_file_picker_stub.dart'
-    if (dart.library.html) 'init_file_picker_web.dart'
-    as file_picker_init;
 import 'utils/notify_conv_param_stub.dart'
     if (dart.library.html) 'utils/notify_conv_param_web.dart';
 import 'utils/pending_deep_link_stub.dart'
@@ -32,7 +29,6 @@ import 'widgets/portrait_lock_shell.dart';
 Future<void> main() async {
   WidgetsFlutterBinding.ensureInitialized();
   await PortraitLockService.initialize();
-  file_picker_init.initFilePickerWeb();
   // Firebase + FCM background handler must be ready before [runApp] (native only).
   // Android auto-init from google-services can exist before Dart sees Firebase.apps.
   if (!kIsWeb) {
