@@ -15,16 +15,16 @@ Keep root cross-cutting: if a fact only matters while editing Flutter or NestJS 
 
 ## 1. Non-negotiable workflow
 
-- Read this root file before any Fireplace app work, and the matching tier file before your first change in that tier (see the header rule). Main agents and spawned subagents both treat these three files as the project source of truth.
+- Read this root file before any Fireplace app work, and the matching tier file before your first change in that tier (see the header rule). Main agents and spawned subagents both treat these three files as the project source of truth. When delegating, explicitly tell the subagent to read them — subagents do not inherit your loaded context.
 - At session start: read `.cursor/session-summaries/LATEST.md`.
 - At task end: write/update `.cursor/session-summaries/YYYY-MM-DD-session.md` and `.cursor/session-summaries/LATEST.md`. Required summary sections: `# title`, `**Date:**`, `## What was done`, `## Key files`, `## Verification`, `## Notes for next session`. New LATEST entry goes on top; older entries shift to `Previous`/`Earlier`.
 - For multi-step/debug/deploy-sensitive work, use persistent planning files (`task_plan.md`, `findings.md`, `progress.md` or `.planning/<task>/`). Re-read before decisions; log failed attempts.
 - Before any change: read the files you touch and trace the code paths. Code/source beats docs and old summaries.
 - Scope: change only what was asked. Fix obvious bugs in edited paths; do not add unasked features, abstractions, or cleanup crusades.
 - Code, comments, commit messages, logs: English. UI strings may stay localized.
-- Tone: blunt, technical, no flattery.
+- Tone: brutally blunt — lead with the verdict, no hedging, no flattery ("great question" / "you're absolutely right" are banned). Roast bad code and time-wasting rabbit holes; speak the truth even when inconvenient.
 - Auto-review/code-review subagents must use the same model class as the primary session unless the user explicitly asks for a cheaper model.
-- Commits: commit at natural checkpoints and `git push` in the same checkpoint. Small/trivial fixes can go straight to `master`; bigger/riskier work uses a feature branch + PR. Never merge to `master` without explicit user OK.
+- Commits: commit at natural checkpoints and `git push` in the same checkpoint (the VM deploys via `git pull`; local-only commits block it). Small/trivial fixes can go straight to `master`; bigger/riskier work uses a feature branch + PR. Feature branches do NOT auto-deploy — the VM pulls `master`, so work goes live only after PR merge. Never merge to `master` without explicit user OK.
 - After modifying code files, run `graphify update .`. Docs-only changes do not need it.
 
 ## 2. Architecture map
@@ -61,24 +61,28 @@ cd frontend && flutter run -d chrome
 
 Production: `https://fireplace.ignorelist.com`, **OVH VPS** `ubuntu@51.68.138.13` (Warszawa, 4 GB + 2G swap, Ubuntu 24.04, key-only SSH), repo `~/fireplace`. Migrated off the GCP VM 2026-07-08; the GCP box only relays stale-DNS traffic to the VPS pending decommission — never redeploy to it.
 
+Full runbook (paths, verification table, backup/restore, troubleshooting): `.cursor/rules/production-vm-deploy.mdc` — read it before non-trivial prod ops.
+
 Deploy is split because small servers cannot compile Flutter web without OOM/freezing:
 
 - Frontend deploy is from the PC: `git pull ; .\deploy-web.ps1`.
   - Script runs `flutter clean` then `flutter build web --release --no-wasm-dry-run` with `BASE_URL`, `GIT_COMMIT`, `BUILD_TIME`, `WEB_PUSH_VAPID_PUBLIC_KEY`.
   - Publishes by staging + atomic swap into `~/fireplace/frontend-build/`.
-  - Verify served app via `/version.json` and Settings footer. Trust `gitCommit`, not semver alone; Flutter can serve cached code with a bumped version.
+  - Verify served app via `/version.json` and Settings footer. Trust `gitCommit`, not semver alone; Flutter can serve cached code with a bumped version. Change not taking effect → `cd frontend && flutter clean` before `.\deploy-web.ps1`, and hard-bust the PWA service-worker cache (incognito tab proves it).
   - After deploy: fully close + reopen PWA. Never uninstall / clear site data to refresh — that wipes local E2E Signal keys.
 - Backend deploy is on the VM: `cd ~/fireplace && ./deploy-backend.sh`.
   - Script runs `git pull --ff-only`, computes `APP_VERSION` from `frontend/pubspec.yaml`, builds `docker-compose.prod.yml`, recreates backend, verifies local `/version` and `/health`.
   - Verify public backend via `curl https://fireplace.ignorelist.com/version` and `/health`.
 - `deploy.sh` exists but is legacy/all-in-one. Do not use it as the production deploy path and never run Flutter web build on the VM.
-- VM logs: `cd ~/fireplace && docker compose -f docker-compose.prod.yml logs -f --since 1m backend`.
+- VM logs: `cd ~/fireplace && docker compose -f docker-compose.prod.yml logs -f --since 1m backend` (filter instrumentation with `| grep --line-buffered "<tag>"`; NestJS `this.logger.log` goes to stdout → docker logs).
 - Never run `docker compose down -v`, `docker volume rm`, or `prune --volumes` on prod. `pgdata` and `media_storage` are user data.
+- Testing a feature branch before merge: frontend — checkout the branch on the PC, `cd frontend && flutter clean && cd .. && .\deploy-web.ps1`, verify Settings `gitCommit` matches the branch commit, smoke-test on device. Backend — on the VPS: `git fetch origin && git checkout <branch> && ./deploy-backend.sh`, verify `/version` + `/health`. Production becomes permanent only after PR merge to `master` + normal deploy.
 
 ## 5. Version and environment contract
 
-- User-visible app version is semver only from `frontend/pubspec.yaml`: `0.0.x`, no `+build`. Production-worthy releases bump PATCH by 1. Docs/session-only edits do not need a version bump.
+- User-visible app version is semver only from `frontend/pubspec.yaml`: `0.0.x`, no `+build` suffix anywhere (Settings, API, commits). "Bump version by +1" means increment the PATCH segment (`0.0.1` → `0.0.2`), never append `+1`. Production-worthy releases bump PATCH by 1; state the new version in the commit message. Docs/session-only edits do not need a bump. Minor/major bumps only on explicit ask or a clear milestone.
 - Settings footer shows `version · gitCommit · buildTime` from `PackageInfo` + dart-defines.
+- Flutter may still use an internal `versionCode` counter for Android store packaging; that is not the user-facing `0.0.x` string — never put `+N` in `pubspec.yaml`.
 - Backend `GET /version` returns `{ version, gitCommit, buildTime }` from `APP_VERSION`, `GIT_COMMIT`, `BUILD_TIME` injected by deploy scripts.
 
 Core env vars:
@@ -121,4 +125,4 @@ VAPID public key in the frontend build must match backend VAPID keys. A wrong ke
 - New REST endpoint: backend controller/service with `JwtAuthGuard` where needed; frontend `ApiService` call + provider/screen wiring.
 - New DB column: backend entity + manual prod SQL + mapper payload + frontend model `fromJson`/`copyWith` + tests. Dev auto-DDL does not mean prod is done.
 
-Maintain this file by pruning. If a fact only matters while editing Flutter or NestJS code, put it in the tier file.
+Maintain this file by pruning. If a fact only matters while editing Flutter or NestJS code, put it in the tier file. After adding/removing backend tests, update the count in §3 so `node scripts/verify-claude-backend-test-counts.mjs` stays green.
