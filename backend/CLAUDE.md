@@ -38,7 +38,7 @@ cd ~/fireplace
 ## 3. Docker and environment
 
 - Local `docker-compose.yml`: dev only, Node 20 bind mount, `NODE_ENV=development`, command `npm install && npm run start:dev`, Postgres 16 exposed at host `5433`, TypeORM auto-sync enabled by source.
-- Prod `docker-compose.prod.yml`: built image from `backend/Dockerfile`, backend and DB bound to localhost only, `NODE_ENV=production`, persistent `pgdata` and `media_storage`, healthcheck on `http://127.0.0.1:3000/health`.
+- Prod `docker-compose.prod.yml`: built image from `backend/Dockerfile`, backend and DB bound to localhost only, `NODE_ENV=production`, persistent `pgdata` and `media_storage`, healthcheck on `http://127.0.0.1:3000/health`, and json-file log rotation capped per service (`max-size: 10m`, `max-file: 3`) so stdout logs cannot grow unbounded on disk. Prod logger is `error/warn/log` only; per-message, push, and key-refresh logs are `debug` (prod-silent) so container-log breach/seizure does not expose recipient IDs, online rosters, or push timing.
 - `backend/Dockerfile`: multi-stage build, runtime installs prod deps only, copies `dist`, sets `NODE_ENV=production`, runs `node dist/main.js`. No `USER` directive; container runs as image default/root.
 - `deploy.sh` is legacy/all-in-one; do not use it as backend production deploy path.
 
@@ -127,7 +127,9 @@ Gateway throttles are source-truth in `chat.gateway.ts`:
 ## 9. Push notifications
 
 - Push is dual-channel: FCM for native android/ios tokens, Web Push for PWA subscriptions.
-- Payload is metadata-only: `type`, `conversationId`, `unreadCount`, `unreadTotal`, `unreadConversationIds`, `senderName`. Never include message text or keys.
+- Payloads differ per channel by design (metadata-privacy contract — verify in `push-notifications.service.ts`):
+  - **FCM** `data` transits Google READABLE, so it is a content-free wake-up: ONLY `type: 'new_message'` + `conversationId` (opaque int, for notification tap-routing/dedup). NEVER `senderName`, unread counts, message text, or keys. The app wakes on the signal and fetches real state over its own socket. (Android handler already renders a generic title/body and ignores senderName, so this is a pure server-side win.)
+  - **Web Push** body is E2E-encrypted to the browser, so it may carry richer metadata (`type`, `conversationId`, `unreadCount`, `unreadTotal`, `unreadConversationIds`, `senderName`) — but sends NO `topic` header: a `conv-<id>` topic is cleartext to the relay (Mozilla/Apple/Google) and would leak per-conversation cadence. Never message text or keys.
 - FCM initializes from `FIREBASE_SERVICE_ACCOUNT`; absent means disabled. Web Push initializes from VAPID env; absent means disabled.
 - Coalescer buckets by `(recipientUserId, conversationId)`, debounce 2500 ms, max wait 10000 ms, latest `senderName` wins, and suppresses identical count repeat within 10000 ms.
 - Push scheduling is skipped only when recipient socket exists and `client.data.pushClientState` says client visible + active conversation matches.

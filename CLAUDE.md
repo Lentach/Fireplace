@@ -54,7 +54,7 @@ cd frontend && flutter run -d chrome
 - Ports: backend `:3000`, DB host `:5433 -> :5432`, Flutter web random unless specified.
 - Before local start on Windows if stale node processes bite: `taskkill //F //IM node.exe`.
 - Phone on WiFi: `cd frontend && .\run_web_for_phone.ps1`, or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`.
-- Tests: `cd backend && npm test` (405 unit tests, 42 suites; verified by `node scripts/verify-claude-backend-test-counts.mjs`). Frontend: `cd frontend && flutter analyze --no-fatal-infos && flutter test`.
+- Tests: `cd backend && npm test` (407 unit tests, 42 suites; verified by `node scripts/verify-claude-backend-test-counts.mjs`). Frontend: `cd frontend && flutter analyze --no-fatal-infos && flutter test`.
 - CI: `.github/workflows/ci.yml` runs backend tests + the CLAUDE test-count verifier, then Flutter analyze/tests.
 
 ## 4. Production deploy and safety
@@ -100,6 +100,7 @@ VAPID public key in the frontend build must match backend VAPID keys. A wrong ke
 - Prod `docker-compose.prod.yml`: `NODE_ENV=production`, restricted CORS, TypeORM `synchronize` OFF. Every new prod column/index needs manual SQL and verification. Entities are source of truth; there are no real TypeORM migrations.
 - Raw SQL with camelCase columns needs quotes, e.g. `"deliveryStatus"`, `"createdAt"`.
 - Backups: `./backup-db.sh` on VM backs up Postgres + media + encrypted `.env` when a passphrase is configured. Dumps contain ciphertext messages, public keys, usernames/contact graph/timestamps and password hashes; they cannot decrypt messages but are still sensitive.
+- Backup setup: `./setup-backup-cron.sh` on the VM stores the gpg passphrase in a 0600 file (never on the cron line/argv) and installs the daily cron. Without it there are effectively no backups, or unencrypted ones (`backup-db.sh` skips `.env` and warns when no passphrase). Store the passphrase OFF the VM and decrypt-test one dump before trusting it.
 - Restore: `./restore-db.sh <dump>` is DB-only, destructive, and wraps `pg_restore` in a single transaction; media and `.env` restore are manual.
 - E2E invariant: server stores Signal ciphertext and metadata, never device private keys. Device Signal keys live locally (web localStorage / mobile secure storage). Clearing site data, uninstalling the PWA, or account deletion can destroy keys with no recovery.
 
