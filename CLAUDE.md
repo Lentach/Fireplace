@@ -59,9 +59,9 @@ cd frontend && flutter run -d chrome
 
 ## 4. Production deploy and safety
 
-Production: `https://fireplace.ignorelist.com`, GCP VM in Warszawa, user `olek292`, repo `~/fireplace`.
+Production: `https://fireplace.ignorelist.com`, **OVH VPS** `ubuntu@51.68.138.13` (Warszawa, 4 GB + 2G swap, Ubuntu 24.04, key-only SSH), repo `~/fireplace`. Migrated off the GCP VM 2026-07-08; the GCP box only relays stale-DNS traffic to the VPS pending decommission — never redeploy to it.
 
-Deploy is split because the 2 GB VM cannot compile Flutter web without OOM/freezing:
+Deploy is split because small servers cannot compile Flutter web without OOM/freezing:
 
 - Frontend deploy is from the PC: `git pull ; .\deploy-web.ps1`.
   - Script runs `flutter clean` then `flutter build web --release --no-wasm-dry-run` with `BASE_URL`, `GIT_COMMIT`, `BUILD_TIME`, `WEB_PUSH_VAPID_PUBLIC_KEY`.

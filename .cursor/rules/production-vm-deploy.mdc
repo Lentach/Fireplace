@@ -1,15 +1,15 @@
 ---
-description: Use when deploying to production GCP VM, SSH/fireplace-server, ~/fireplace paths, deploy-backend.sh / deploy-web.ps1, docker-compose.prod.yml, nginx frontend-build, curl /version or /version.json or /health, PWA prod verification, or fireplace.ignorelist.com ops.
+description: Use when deploying to the production OVH VPS (51.68.138.13), SSH ubuntu@51.68.138.13, ~/fireplace paths, deploy-backend.sh / deploy-web.ps1, docker-compose.prod.yml, nginx frontend-build, curl /version or /version.json or /health, PWA prod verification, or fireplace.ignorelist.com ops.
 ---
 
-# Production VM deploy (GCP)
+# Production server deploy (OVH VPS)
 
 **URL:** https://fireplace.ignorelist.com
-**Typical SSH user:** `olek292` (adjust if docs differ).
+**Server:** OVH VPS-1 `vps-53b896a3` @ `51.68.138.13` (Warszawa, 2 vCore/4 GB + 2G swap, Ubuntu 24.04). SSH: `ssh ubuntu@51.68.138.13` (ed25519 key, key-only, passwordless sudo). Migrated from the GCP VM 2026-07-08; the old GCP box (`olek292@fireplace-server`) only relays stale DNS to the VPS pending decommission — do not deploy there.
 
-Deploy is **split**: the 2 GB VM cannot build the Flutter web bundle (dart2js OOMs), so
-the **frontend is built on a dev PC** and published to the VM; the **backend is built on
-the VM** from a production Docker image.
+Deploy is **split**: small servers cannot build the Flutter web bundle (dart2js OOMs), so
+the **frontend is built on a dev PC** and published to the server; the **backend is built on
+the server** from a production Docker image.
 
 ## Paths (do not guess `~/Fireplace`)
 

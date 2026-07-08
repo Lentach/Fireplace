@@ -112,7 +112,8 @@ if (-not $SkipPublish) {
     ssh $VmSshTarget "rm -rf ~/web-staging && mkdir -p ~/web-staging"
     scp -r frontend/build/web "${VmSshTarget}:web-staging"
     if ($LASTEXITCODE -ne 0) { throw "scp failed (exit=$LASTEXITCODE). Check VmSshTarget / SSH access." }
-    $swap2 = "test -f ~/web-staging/web/version.json && cd ~/$RemoteDir && rm -rf frontend-build && mv ~/web-staging/web frontend-build && echo PUBLISHED_OK || (echo ABORT-upload-incomplete; exit 1)"
+    # chmod: Ubuntu 24.04 scp lands dirs 700; nginx (www-data) needs world-readable bundle.
+    $swap2 = "test -f ~/web-staging/web/version.json && cd ~/$RemoteDir && rm -rf frontend-build && mv ~/web-staging/web frontend-build && chmod -R a+rX frontend-build && echo PUBLISHED_OK || (echo ABORT-upload-incomplete; exit 1)"
     ssh $VmSshTarget $swap2
     if ($LASTEXITCODE -ne 0) { throw "Remote swap failed (exit=$LASTEXITCODE). frontend-build left untouched." }
   }
