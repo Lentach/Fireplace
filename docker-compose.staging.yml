@@ -1,0 +1,38 @@
+# Staging overlay — LOCAL production dress-rehearsal on a dev PC.
+#
+# Runs the REAL prod stack (docker-compose.prod.yml: built image, NODE_ENV=production,
+# TypeORM synchronize OFF, restricted CORS) with only isolation changes:
+#   - project name `fireplace-staging` (own containers + volumes, zero collision
+#     with the dev stack or anything real)
+#   - backend on 127.0.0.1:3100, db on 127.0.0.1:5533
+#   - restart policy off (a PC staging stack must not resurrect on reboot)
+#   - NODE_ENV overridable via STAGING_NODE_ENV (used ONLY by `staging.ps1
+#     seed-schema` for the one-shot dev-mode boot that creates the schema)
+#
+# NEVER use with the real production .env — staging uses .env.staging with a
+# DUMMY JWT_SECRET by design (a staging stack holding the real secret would
+# mint valid production tokens).
+#
+# Drive it through `staging.ps1` (up / seed-schema / restore / sql / harness /
+# status / down / destroy), which passes:
+#   docker compose -p fireplace-staging --env-file .env.staging \
+#     -f docker-compose.prod.yml -f docker-compose.staging.yml ...
+#
+# `!override` on ports needs compose >= 2.24 (default merge would APPEND the
+# staging ports to the prod ones and collide with the dev stack).
+
+services:
+  db:
+    restart: "no"
+    ports: !override
+      - '127.0.0.1:5533:5432'
+
+  backend:
+    restart: "no"
+    # Own tag: never clobber fireplace-backend:latest (a later manual prod-compose
+    # run on this PC would silently reuse a staging-built image otherwise).
+    image: fireplace-staging-backend:latest
+    ports: !override
+      - '127.0.0.1:3100:3000'
+    environment:
+      NODE_ENV: ${STAGING_NODE_ENV:-production}
