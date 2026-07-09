@@ -12,6 +12,63 @@ KeyboardInsetSource createKeyboardInsetSource() {
   return _InactiveKeyboardInsetSource();
 }
 
+/// Storage key for the last real keyboard inset seen on this device, tagged
+/// with the visual-viewport width it was measured at (`width:inset`).
+/// Feeds [lastKnownKeyboardInset] so the composer flash-fix pre-arm works from
+/// the first focus of a session (keyboard height is near-constant per device).
+const String _kLastInsetStorageKey = 'composer_kb_inset_v1';
+
+double _lastKnownInset = 0;
+bool _lastKnownLoaded = false;
+
+/// Last real keyboard inset observed on this device (persisted across
+/// sessions), or 0 when unknown / not iOS WebKit / measured at a different
+/// viewport width. Bounds-checked against [kMinKeyboardInset]..600 so corrupt
+/// storage can never pre-arm a nonsense layout.
+double lastKnownKeyboardInset() {
+  if (!isIOSWebKit()) return 0;
+  if (!_lastKnownLoaded) {
+    _lastKnownLoaded = true;
+    _lastKnownInset = _readPersistedInset();
+  }
+  return _lastKnownInset;
+}
+
+double _readPersistedInset() {
+  try {
+    final raw = web.window.localStorage.getItem(_kLastInsetStorageKey);
+    if (raw == null) return 0;
+    final parts = raw.split(':');
+    if (parts.length != 2) return 0;
+    final width = double.tryParse(parts[0]);
+    final inset = double.tryParse(parts[1]);
+    if (width == null || inset == null) return 0;
+    // NaN slips both the width delta and the bounds checks below.
+    if (!width.isFinite || !inset.isFinite) return 0;
+    final vvWidth = web.window.visualViewport?.width ?? 0;
+    if ((width - vvWidth).abs() > 1) return 0;
+    if (inset <= kMinKeyboardInset || inset > 600) return 0;
+    return inset;
+  } catch (_) {
+    // Storage unavailable (private mode quirks): prediction just stays off.
+    return 0;
+  }
+}
+
+void _persistLastKnownInset(double inset, double width) {
+  _lastKnownLoaded = true;
+  if (inset == _lastKnownInset) return;
+  _lastKnownInset = inset;
+  try {
+    web.window.localStorage.setItem(
+      _kLastInsetStorageKey,
+      '${width.round()}:${inset.round()}',
+    );
+  } catch (_) {
+    // Best-effort; in-memory value still serves this session.
+  }
+}
+
 class _InactiveKeyboardInsetSource implements KeyboardInsetSource {
   final ValueNotifier<double> _inset = ValueNotifier<double>(0);
 
@@ -71,6 +128,7 @@ class _VisualViewportKeyboardInsetSource implements KeyboardInsetSource {
     _fullLayoutHeight = result.fullLayoutHeight;
     _trackedWidth = result.trackedWidth;
     _inset.value = result.inset;
+    if (result.inset > 0) _persistLastKnownInset(result.inset, vv.width);
   }
 
   @override

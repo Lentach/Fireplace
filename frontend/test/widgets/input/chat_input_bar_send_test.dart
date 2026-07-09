@@ -490,23 +490,32 @@ void main() {
   // D2 fix: MediaQuery.viewInsets reads 0 on iOS WebKit with the keyboard up,
   // so keyboardVisible folds in the shared visualViewport inset. The ergonomic
   // bottom buffer (driven by bottomInteractivePadding, which also sizes the
-  // always-mounted ChatActionTiles) must collapse to 0 when that inset is up,
-  // otherwise the filler renders underneath the raised keyboard.
+  // action panel's ChatActionTiles) must collapse to 0 when that inset is up,
+  // otherwise the filler renders underneath the raised keyboard. The panel is
+  // opened first: since the instant-mount change (H3) ChatActionTiles only
+  // exists while the panel is open.
   testWidgets('a raised web keyboard inset removes the ergonomic bottom buffer', (
     tester,
   ) async {
+    Future<void> openActionPanel() async {
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pump();
+    }
+
     double buffer() => tester
         .widget<ChatActionTiles>(find.byType(ChatActionTiles))
         .bottomPadding;
 
     // Keyboard down, bottom safe-area inset present -> ergonomic buffer applied.
     await _pumpWithBottomInset(tester);
+    await openActionPanel();
     expect(buffer(), greaterThan(0));
 
     // Same layout, but the shared source reports a keyboard while viewInsets
     // still reads 0: the buffer must be suppressed.
     setSharedKeyboardInsetSourceForTest(_FakeInsetSource(300));
     await _pumpWithBottomInset(tester);
+    await openActionPanel();
     expect(buffer(), 0);
   });
 }

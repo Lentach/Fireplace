@@ -43,8 +43,7 @@ class ChatInputBar extends StatefulWidget {
   State<ChatInputBar> createState() => ChatInputBarState();
 }
 
-class ChatInputBarState extends State<ChatInputBar>
-    with SingleTickerProviderStateMixin {
+class ChatInputBarState extends State<ChatInputBar> {
   static const Duration _kTrailingSendFadeDuration = Duration(
     milliseconds: 175,
   );
@@ -55,13 +54,15 @@ class ChatInputBarState extends State<ChatInputBar>
   MessageModel? _lastReplyingTo;
   MessageModel? _lastEditingMessage;
   bool _showActionPanel = false;
-  late final AnimationController _actionPanelController;
   bool _showEmojiPicker = false;
   bool _ignoreComposerTapOutsideForChatSurfaceTap = false;
+  // Captured on pointer-down inside the action panel, BEFORE the tap's DOM
+  // blur can reach the framework: tells ping's keyboard-neutral refocus
+  // whether the keyboard was up when the user tapped.
+  bool _actionPanelPointerDownHadFocus = false;
 
   @visibleForTesting
   bool get isActionPanelOpenForTest => _showActionPanel;
-  late final Animation<double> _actionPanelAnimation;
 
   Timer? _typingDebounceTimer;
   MessagingProvider? _messagingProvider;
@@ -69,6 +70,13 @@ class ChatInputBarState extends State<ChatInputBar>
   // Cached so dispose removes the listener from the SAME instance initState
   // added it to, even when a test overrides the shared source between mounts.
   late final KeyboardInsetSource _sharedInsetSource;
+  // H2: iOS fires visualViewport resize/scroll repeatedly during the keyboard
+  // pan; this state only consumes the BOOLEAN (inset > 0), so rebuilds are
+  // gated on the flip, not per pixel event.
+  bool _lastSharedInsetVisible = false;
+  // Flash-fix prediction (see predictedComposerKeyboardInset): release timer
+  // for the pointer-down pre-arm — real-inset handoff or keyboard-never-came.
+  Timer? _predictedInsetReleaseTimer;
   // Set true (with a 600ms auto-clear) whenever the composer initiates a send /
   // deliberate refocus that may briefly blur+restore the IME. Gates the viewport
   // keyboard-collapse debounce — see composer_keyboard_signals.dart.
@@ -100,26 +108,22 @@ class ChatInputBarState extends State<ChatInputBar>
 
     _attachment.addListener(_onAttachmentChanged);
 
-    _actionPanelController = AnimationController(
-      duration: const Duration(milliseconds: 250),
-      vsync: this,
-    );
-    _actionPanelAnimation = CurvedAnimation(
-      parent: _actionPanelController,
-      curve: Curves.easeInOut,
-    );
-
     // Telegram/Signal contract: keyboard and emoji panel are mutually
     // exclusive. Any composer focus gain (field tap, reply/edit refocus)
     // closes the panel so they never stack.
     _focusNode.addListener(_closeEmojiPickerOnFocusGain);
+    // H1: keyboardVisible folds in composer focus, so the ergonomic buffer
+    // collapses/restores on focus flips — rebuild on them.
+    _focusNode.addListener(_onComposerFocusChangedRebuild);
     _sharedInsetSource = sharedKeyboardInsetSource();
     if (kIsWeb) {
       _focusNode.addListener(_onComposerFocusForWebViewport);
       // Single source of truth for keyboard visibility (iOS WebKit's
       // viewInsets read 0): drives bottomInteractivePadding. The inactive
       // source never fires off iOS web.
+      _lastSharedInsetVisible = _sharedInsetSource.inset.value > 0;
       _sharedInsetSource.inset.addListener(_onSharedKeyboardInsetChanged);
+      predictedComposerKeyboardInset.addListener(_onPredictedInsetChanged);
       ensureFocusGuardListenerInstalled();
       installComposerPasteListener(
         shouldHandle: _canAcceptPaste,
@@ -160,19 +164,17 @@ class ChatInputBarState extends State<ChatInputBar>
     if (_showActionPanel) {
       // The message list owns the real chat-surface pointer. TapRegion still
       // receives the same outside tap afterward; suppress only that follow-up
-      // so the lower action panel does not collapse. The keyboard now
-      // dismisses on a chat-surface tap even with the panel open
-      // (user-reported Android PWA bug 2026-07-07) — EXCEPT on iOS WebKit,
-      // where the 07-03 keep-focus contract stays until a device session
-      // proves the blur can't retrigger the lower-panel tap loop the contract
-      // was written against.
+      // so the lower action panel does not collapse (07-03 contract: the
+      // panel survives chat-surface taps). The keyboard dismisses on ALL
+      // platforms since 0.0.99: the former iOS keep-focus gate made the
+      // canvas tap's DOM blur fight the still-focused framework node — the
+      // keyboard closed and bounced straight back (user-reported 2026-07-09,
+      // iOS + Android). Unfocusing the framework node lets the dismiss stick.
       _ignoreComposerTapOutsideForChatSurfaceTap = true;
       if (_showEmojiPicker) {
         setState(() => _setEmojiPickerVisible(false));
       }
-      if (!(kIsWeb && isIOSWebKit())) {
-        _focusNode.unfocus();
-      }
+      _focusNode.unfocus();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _ignoreComposerTapOutsideForChatSurfaceTap = false;
       });
@@ -194,10 +196,7 @@ class ChatInputBarState extends State<ChatInputBar>
       if (_showEmojiPicker) {
         _setEmojiPickerVisible(false);
       }
-      if (_showActionPanel) {
-        _showActionPanel = false;
-        _actionPanelController.reverse();
-      }
+      _showActionPanel = false;
     });
   }
 
@@ -211,9 +210,74 @@ class ChatInputBarState extends State<ChatInputBar>
     setIOSComposerViewportPin(true);
   }
 
-  void _onSharedKeyboardInsetChanged() {
-    // bottomInteractivePadding derives from this inset: rebuild.
+  void _onComposerFocusChangedRebuild() {
+    // H1: bottomInteractivePadding derives from keyboardVisible, which folds
+    // in focus — the buffer then collapses at focus time (BEFORE the keyboard
+    // animation) instead of mid-flight when the inset first ticks up.
     if (mounted) setState(() {});
+  }
+
+  void _onPredictedInsetChanged() {
+    // bottomInteractivePadding treats a predicted inset as keyboard-up.
+    if (mounted) setState(() {});
+  }
+
+  void _onSharedKeyboardInsetChanged() {
+    final real = _sharedInsetSource.inset.value;
+    final predicted = predictedComposerKeyboardInset.value;
+    if (real > 0 && predicted > 0) {
+      if (real >= predicted) {
+        // Real keyboard inset caught up: hand off instantly (max() in the
+        // viewport makes this a no-op layout-wise).
+        _releasePredictedInset();
+      } else {
+        // Keyboard is up but shorter than predicted (e.g. suggestion bar
+        // hidden). Release after the animation tail so a mid-animation
+        // partial inset can't yank the composer down and back up.
+        _predictedInsetReleaseTimer?.cancel();
+        _predictedInsetReleaseTimer = Timer(
+          const Duration(milliseconds: 300),
+          _releasePredictedInset,
+        );
+      }
+    }
+    // H2: this widget consumes only the boolean (inset > 0) for
+    // bottomInteractivePadding; rebuild on the flip, not on every
+    // visualViewport pixel event — a per-event setState relayouts the open
+    // ~300px action panel through the whole keyboard pan.
+    final visible = real > 0;
+    if (visible == _lastSharedInsetVisible) return;
+    _lastSharedInsetVisible = visible;
+    if (mounted) setState(() {});
+  }
+
+  void _releasePredictedInset() {
+    _predictedInsetReleaseTimer?.cancel();
+    _predictedInsetReleaseTimer = null;
+    predictedComposerKeyboardInset.value = 0;
+  }
+
+  /// Flash fix (iOS WebKit, FLASH toggle, default OFF): on pointer-DOWN on
+  /// the field, apply the last known keyboard height to layout BEFORE focus
+  /// commits. By the time the tap-up focuses the field and the engine
+  /// attaches its hidden DOM editing element, the composer already sits above
+  /// the incoming keyboard — iOS has nothing to pan the visual viewport
+  /// toward, which is the flash's cause
+  /// (docs/review/ios-composer-keyboard-flash-handoff.md §2). Pure Flutter
+  /// layout; no DOM writes.
+  void _preArmPredictedKeyboardInset(PointerDownEvent _) {
+    if (!kIsWeb || !isIOSWebKit()) return;
+    if (!composerFlashFixEnabled.value) return;
+    if (_focusNode.hasFocus) return; // keyboard already up or coming
+    if (_sharedInsetSource.inset.value > 0) return;
+    final predicted = lastKnownKeyboardInset();
+    if (predicted <= 0) return; // first-ever focus on this device: no cache
+    predictedComposerKeyboardInset.value = predicted;
+    _predictedInsetReleaseTimer?.cancel();
+    _predictedInsetReleaseTimer = Timer(const Duration(milliseconds: 1200), () {
+      // Keyboard never arrived (drag-away / rejected focus): release layout.
+      _releasePredictedInset();
+    });
   }
 
   void _onAttachmentChanged() {
@@ -341,14 +405,20 @@ class ChatInputBarState extends State<ChatInputBar>
     // setState during tree finalization (locked-tree assert when leaving the
     // chat with the panel open). By microtask time the tree is unlocked (or
     // the viewport is unmounted and its listener no-ops on the mounted guard).
-    scheduleMicrotask(() => composerBottomPanelPinned.value = false);
+    scheduleMicrotask(() {
+      composerBottomPanelPinned.value = false;
+      predictedComposerKeyboardInset.value = 0;
+    });
     _focusNode.removeListener(_closeEmojiPickerOnFocusGain);
+    _focusNode.removeListener(_onComposerFocusChangedRebuild);
     if (kIsWeb) {
       _focusNode.removeListener(_onComposerFocusForWebViewport);
       _sharedInsetSource.inset.removeListener(_onSharedKeyboardInsetChanged);
+      predictedComposerKeyboardInset.removeListener(_onPredictedInsetChanged);
       setIOSComposerViewportPin(false);
       uninstallComposerPasteListener();
     }
+    _predictedInsetReleaseTimer?.cancel();
     _collapseGuardTimer?.cancel();
     composerKeyboardCollapseGuard.value = false;
     _messagingProvider?.setComposerFocusRequest(null);
@@ -357,7 +427,6 @@ class ChatInputBarState extends State<ChatInputBar>
     _attachment.dispose();
     _controller.dispose();
     _focusNode.dispose();
-    _actionPanelController.dispose();
     _typingDebounceTimer?.cancel();
     super.dispose();
   }
@@ -495,11 +564,6 @@ class ChatInputBarState extends State<ChatInputBar>
     final hadComposerFocus = _focusNode.hasFocus;
     setState(() {
       _showActionPanel = !_showActionPanel;
-      if (_showActionPanel) {
-        _actionPanelController.forward();
-      } else {
-        _actionPanelController.reverse();
-      }
     });
     if (kIsWeb && isIOSWebKit()) {
       if (hadComposerFocus) {
@@ -550,6 +614,23 @@ class ChatInputBarState extends State<ChatInputBar>
         resetWebDocumentScroll();
       });
     }
+  }
+
+  /// Ping is keyboard-neutral: tapping the tile must not dismiss a raised
+  /// keyboard (user ruling 2026-07-09). On iOS WebKit the [FocusGuardArea]
+  /// around the tile prevents the DOM blur outright; this is the non-iOS
+  /// fallback — the same post-frame refocus pattern as [_send]. Gated on
+  /// [_actionPanelPointerDownHadFocus] so a ping from the panel-open,
+  /// keyboard-hidden state never summons the keyboard.
+  void _refocusComposerAfterPing() {
+    if (!_actionPanelPointerDownHadFocus) return;
+    _actionPanelPointerDownHadFocus = false;
+    _armComposerCollapseGuard();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted || !_focusNode.canRequestFocus) return;
+      if (!_focusNode.hasFocus) _focusNode.requestFocus();
+      showSoftKeyboardIfHidden(context: context, hasFocus: true);
+    });
   }
 
   /// Widget tests: mirror recording state without mic hardware.
@@ -820,9 +901,16 @@ class ChatInputBarState extends State<ChatInputBar>
     // Single source of truth (D2 fix): MediaQuery.viewInsets reads 0 on iOS
     // WebKit while the keyboard is up — fold in the shared visualViewport
     // inset so the ergonomic bottom buffer never renders underneath a raised
-    // keyboard.
+    // keyboard. Composer focus folds in too (H1): the buffer then collapses
+    // the moment the field focuses — BEFORE the keyboard animation — and
+    // returns only after blur once the insets settle back to 0, never
+    // mid-flight (with the action panel open, a mid-animation flip relayouts
+    // the whole ~300px block and reads as a bounce/void).
     final keyboardVisible =
-        mediaQuery.viewInsets.bottom > 0 || _sharedInsetSource.inset.value > 0;
+        _focusNode.hasFocus ||
+        mediaQuery.viewInsets.bottom > 0 ||
+        _sharedInsetSource.inset.value > 0 ||
+        predictedComposerKeyboardInset.value > 0;
     final bottomSystemInset = math.max(
       mediaQuery.viewPadding.bottom,
       mediaQuery.padding.bottom,
@@ -1026,76 +1114,84 @@ class ChatInputBarState extends State<ChatInputBar>
                                   meta: true,
                                 ): _send,
                               },
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  maxHeight: maxComposerHeight,
-                                ),
-                                child: TextField(
-                                  controller: _controller,
-                                  focusNode: _focusNode,
-                                  style: RpgTheme.bodyFont(
-                                    fontSize: 14,
-                                    color: colorScheme.onSurface,
+                              child: Listener(
+                                // Flash fix (H5, FLASH toggle): pre-arm the
+                                // predicted keyboard inset on pointer-DOWN,
+                                // before focus commits.
+                                behavior: HitTestBehavior.translucent,
+                                onPointerDown: _preArmPredictedKeyboardInset,
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxHeight: maxComposerHeight,
                                   ),
-                                  decoration: InputDecoration(
-                                    hintText: AppLocalizations.of(
-                                      context,
-                                    ).chatMessageHint,
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 16,
-                                      vertical: 10,
+                                  child: TextField(
+                                    controller: _controller,
+                                    focusNode: _focusNode,
+                                    style: RpgTheme.bodyFont(
+                                      fontSize: 14,
+                                      color: colorScheme.onSurface,
                                     ),
-                                    border: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(24),
-                                      borderSide: BorderSide(
-                                        color: fc.tabBorder,
+                                    decoration: InputDecoration(
+                                      hintText: AppLocalizations.of(
+                                        context,
+                                      ).chatMessageHint,
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 16,
+                                            vertical: 10,
+                                          ),
+                                      border: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(24),
+                                        borderSide: BorderSide(
+                                          color: fc.tabBorder,
+                                        ),
                                       ),
-                                    ),
-                                    enabledBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(24),
-                                      borderSide: BorderSide(
-                                        color: fc.tabBorder,
+                                      enabledBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(24),
+                                        borderSide: BorderSide(
+                                          color: fc.tabBorder,
+                                        ),
                                       ),
-                                    ),
-                                    focusedBorder: OutlineInputBorder(
-                                      borderRadius: BorderRadius.circular(24),
-                                      borderSide: BorderSide(
-                                        color: RpgTheme.primaryColor(context),
-                                        width: 1.5,
+                                      focusedBorder: OutlineInputBorder(
+                                        borderRadius: BorderRadius.circular(24),
+                                        borderSide: BorderSide(
+                                          color: RpgTheme.primaryColor(context),
+                                          width: 1.5,
+                                        ),
                                       ),
+                                      filled: true,
+                                      fillColor: fc.inputBg,
                                     ),
-                                    filled: true,
-                                    fillColor: fc.inputBg,
+                                    // Cap height so the composer does not consume the whole screen (matches
+                                    // WhatsApp/Telegram-style behavior: grow to a few lines, then scroll inside).
+                                    minLines: 1,
+                                    maxLines: 6,
+                                    // Send via IME action (mobile) or Ctrl/Cmd+Enter (web/desktop).
+                                    // Plain Enter still inserts '\n' in this multiline field.
+                                    textInputAction: TextInputAction.send,
+                                    // Default [onEditingComplete] unfocuses after "Send", which dismisses
+                                    // the keyboard while the node can still report focused in the same sync turn.
+                                    onEditingComplete: () {},
+                                    onSubmitted: (_) => _send(),
+                                    // Android/desktop should hide the keyboard when
+                                    // the user taps the chat outside the whole
+                                    // composer. Composer controls sit in the same
+                                    // [TapRegion] group, so send/emoji/attachment
+                                    // taps do not trigger this callback. iOS WebKit
+                                    // keeps the old no-op because tap-outside blur
+                                    // caused the send-button keyboard bounce.
+                                    groupId: _composerTapRegionGroup,
+                                    onTapOutside: _handleComposerTapOutside,
+                                    // Android IME rich-content insertion (Phase 4);
+                                    // other platforms never emit commitContent.
+                                    contentInsertionConfiguration:
+                                        ContentInsertionConfiguration(
+                                          allowedMimeTypes:
+                                              kStageableImageMimeTypes.toList(),
+                                          onContentInserted:
+                                              _onKeyboardContentInserted,
+                                        ),
                                   ),
-                                  // Cap height so the composer does not consume the whole screen (matches
-                                  // WhatsApp/Telegram-style behavior: grow to a few lines, then scroll inside).
-                                  minLines: 1,
-                                  maxLines: 6,
-                                  // Send via IME action (mobile) or Ctrl/Cmd+Enter (web/desktop).
-                                  // Plain Enter still inserts '\n' in this multiline field.
-                                  textInputAction: TextInputAction.send,
-                                  // Default [onEditingComplete] unfocuses after "Send", which dismisses
-                                  // the keyboard while the node can still report focused in the same sync turn.
-                                  onEditingComplete: () {},
-                                  onSubmitted: (_) => _send(),
-                                  // Android/desktop should hide the keyboard when
-                                  // the user taps the chat outside the whole
-                                  // composer. Composer controls sit in the same
-                                  // [TapRegion] group, so send/emoji/attachment
-                                  // taps do not trigger this callback. iOS WebKit
-                                  // keeps the old no-op because tap-outside blur
-                                  // caused the send-button keyboard bounce.
-                                  groupId: _composerTapRegionGroup,
-                                  onTapOutside: _handleComposerTapOutside,
-                                  // Android IME rich-content insertion (Phase 4);
-                                  // other platforms never emit commitContent.
-                                  contentInsertionConfiguration:
-                                      ContentInsertionConfiguration(
-                                        allowedMimeTypes:
-                                            kStageableImageMimeTypes.toList(),
-                                        onContentInserted:
-                                            _onKeyboardContentInserted,
-                                      ),
                                 ),
                               ),
                             ),
@@ -1122,12 +1218,23 @@ class ChatInputBarState extends State<ChatInputBar>
                 color: colorScheme.surface,
               ),
 
-            // Action tiles with slide animation
-            SizeTransition(
-              sizeFactor: _actionPanelAnimation,
-              axisAlignment: -1.0,
-              child: ChatActionTiles(bottomPadding: bottomInteractivePadding),
-            ),
+            // Action panel: instant mount/unmount, mirroring the emoji panel
+            // (H3 — the 0.0.88 treatment). The 250ms SizeTransition kept a
+            // ~300px block relayouting through the exact window where iOS
+            // counter-pans the viewport and Android Chrome leaves stale
+            // composited regions. The Listener captures focus state BEFORE
+            // the tap's DOM blur so ping's keyboard-neutral refocus knows
+            // whether the keyboard was up.
+            if (_showActionPanel)
+              Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: (_) =>
+                    _actionPanelPointerDownHadFocus = _focusNode.hasFocus,
+                child: ChatActionTiles(
+                  bottomPadding: bottomInteractivePadding,
+                  onPingSent: _refocusComposerAfterPing,
+                ),
+              ),
 
             if (_showEmojiPicker)
               FireplaceEmojiPicker(
