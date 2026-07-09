@@ -19,6 +19,3 @@ class _InactiveKeyboardInsetSource implements KeyboardInsetSource {
   @override
   void dispose() => _inset.dispose();
 }
-
-/// Off-web there is no persisted keyboard measurement; prediction stays off.
-double lastKnownKeyboardInset() => 0;
