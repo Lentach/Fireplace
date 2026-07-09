@@ -127,4 +127,18 @@ VAPID public key in the frontend build must match backend VAPID keys. A wrong ke
 - New REST endpoint: backend controller/service with `JwtAuthGuard` where needed; frontend `ApiService` call + provider/screen wiring.
 - New DB column: backend entity + manual prod SQL + mapper payload + frontend model `fromJson`/`copyWith` + tests. Dev auto-DDL does not mean prod is done. Rehearse the SQL on the staging stack first (§6).
 
+## 9. Agent skills
+
+### Issue tracker
+
+Issues live in GitHub Issues (`Lentach/Fireplace`) via the `gh` CLI; external PRs are not a triage surface. See `docs/agents/issue-tracker.md`.
+
+### Triage labels
+
+Default vocabulary: `needs-triage`, `needs-info`, `ready-for-agent`, `ready-for-human`, `wontfix`. See `docs/agents/triage-labels.md`.
+
+### Domain docs
+
+Multi-context: `CONTEXT-MAP.md` at the root points to `backend/CONTEXT.md` and `frontend/CONTEXT.md` (created lazily); system-wide ADRs in `docs/adr/`. See `docs/agents/domain.md`.
+
 Maintain this file by pruning. If a fact only matters while editing Flutter or NestJS code, put it in the tier file. After adding/removing backend tests, update the count in §3 so `node scripts/verify-claude-backend-test-counts.mjs` stays green.
