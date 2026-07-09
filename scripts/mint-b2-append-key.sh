@@ -5,8 +5,9 @@
 # capability, and only the account MASTER application key has writeKeys (the
 # capability needed to mint keys). This prompts for the master key, mints a
 # bucket-scoped key with [listBuckets, listFiles, readFiles, writeFiles] —
-# NO deleteFiles — and prints it ONCE. Secrets are read interactively and
-# never touch argv, disk, or shell history.
+# NO deleteFiles — and prints it ONCE. The master key is read interactively
+# and fed to curl via stdin config (-K -): it never touches argv, disk, or
+# shell history. (The short-lived session token does pass as a -H header.)
 #
 # Usage (on any machine with curl + python3, typically the VM):
 #   ./scripts/mint-b2-append-key.sh
@@ -26,8 +27,10 @@ KEY_NAME="${KEY_NAME:-fireplace-vps-append}"
 json() { python3 -c "import sys,json;print(json.load(sys.stdin)$1)"; }
 
 echo "==> authorizing"
-AUTH="$(curl -fsS -u "$MASTER_KEY_ID:$MASTER_KEY" \
-  https://api.backblazeb2.com/b2api/v2/b2_authorize_account)"
+AUTH="$(curl -fsS -K - https://api.backblazeb2.com/b2api/v2/b2_authorize_account <<EOF
+user = "$MASTER_KEY_ID:$MASTER_KEY"
+EOF
+)"
 API_URL="$(echo "$AUTH" | json "['apiUrl']")"
 TOKEN="$(echo "$AUTH" | json "['authorizationToken']")"
 ACCOUNT_ID="$(echo "$AUTH" | json "['accountId']")"
@@ -52,9 +55,11 @@ NEW KEY (shown ONCE — store BOTH values in the password manager NOW):
   applicationKeyId: $APP_KEY_ID
   applicationKey:   $APP_KEY
 
-rclone setup on the VM:
-  rclone config create fireplace-b2 b2 account "$APP_KEY_ID" key "<applicationKey>"
+rclone setup on the VM — use INTERACTIVE config so the key never hits
+argv/shell history:
+  rclone config        # n) new remote -> name: fireplace-b2 -> storage: b2
+                       # account: $APP_KEY_ID   key: <applicationKey>   rest: defaults
   chmod 600 ~/.config/rclone/rclone.conf
-  rclone lsd fireplace-b2:      # should list: $BUCKET_NAME
+  rclone lsd fireplace-b2:       # should list: $BUCKET_NAME
 ============================================================
 EOF
