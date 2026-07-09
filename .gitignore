@@ -37,8 +37,12 @@ frontend/keystore/
 frontend/android/key.properties
 
 
-# Local working artifacts — session summaries, specs, plans (kept on disk, not in repo)
-.cursor/session-summaries/
+# Local working artifacts — specs, plans, scratch (kept on disk, not in repo)
+# Session summaries: LATEST.md is ALWAYS committed (AGENTS.md bootstrap reads it from the repo).
+# Dated session files default to LOCAL-ONLY — commit one deliberately via `git add -f`
+# only after checking it for secrets/audit content (repo is PUBLIC).
+.cursor/session-summaries/*
+!.cursor/session-summaries/LATEST.md
 docs/superpowers/
 .planning/
 .tmp/
