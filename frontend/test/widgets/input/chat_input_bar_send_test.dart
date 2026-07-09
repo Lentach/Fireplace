@@ -12,9 +12,15 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-Widget _providerScope({required Widget child}) => MultiProvider(
+Widget _providerScope({
+  required Widget child,
+  ConversationsProvider? conversations,
+}) => MultiProvider(
   providers: [
-    ChangeNotifierProvider(create: (_) => ConversationsProvider()),
+    if (conversations != null)
+      ChangeNotifierProvider<ConversationsProvider>.value(value: conversations)
+    else
+      ChangeNotifierProvider(create: (_) => ConversationsProvider()),
     ChangeNotifierProvider(create: (_) => MessagingProvider()),
     ChangeNotifierProvider(
       create: (_) => SettingsProvider(initialThemePreference: 'light'),
@@ -118,6 +124,100 @@ Future<ChatInputBarState> _pumpWithPlainOutsideSurface(
                   key: const ValueKey('plain-outside-surface'),
                   behavior: HitTestBehavior.opaque,
                   child: const SizedBox.expand(),
+                ),
+              ),
+              ChatInputBar(key: key),
+            ],
+          ),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+  return key.currentState!;
+}
+
+/// A ConversationsProvider with one active conversation between users 1 (self)
+/// and 2, so the ping tile's active-conversation gate passes on the VM.
+ConversationsProvider _activeConversationsProvider() {
+  final convs = ConversationsProvider();
+  convs.setCurrentUserId(1);
+  convs.onConversationsList(<Map<String, dynamic>>[
+    <String, dynamic>{
+      'id': 42,
+      'userOne': <String, dynamic>{'id': 1, 'username': 'me', 'tag': '0001'},
+      'userTwo': <String, dynamic>{'id': 2, 'username': 'them', 'tag': '0002'},
+      'createdAt': DateTime.now().toIso8601String(),
+    },
+  ]);
+  convs.setActiveConversation(42);
+  return convs;
+}
+
+/// Pumps the composer with an active conversation so ping-tile taps route
+/// through the real `_sendPing`/`onPingSent` path.
+Future<ChatInputBarState> _pumpWithActiveConversation(
+  WidgetTester tester,
+) async {
+  final key = GlobalKey<ChatInputBarState>();
+  final convs = _activeConversationsProvider();
+  addTearDown(convs.dispose);
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: RpgTheme.themeDataLight,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: const Locale('en'),
+      home: Scaffold(
+        body: _providerScope(
+          conversations: convs,
+          child: ChatInputBar(key: key),
+        ),
+      ),
+    ),
+  );
+  await tester.pump();
+  return key.currentState!;
+}
+
+/// Two independent outside surfaces: a chat-surface that routes taps through
+/// [ChatInputBarState.dismissForChatSurfaceTap] (panel must survive) and a
+/// plain surface whose taps reach the composer TapRegion normally (panel must
+/// collapse). Used to prove the chat-surface suppression flag RESETS.
+Future<ChatInputBarState> _pumpWithChatSurfaceAndOutside(
+  WidgetTester tester,
+) async {
+  final key = GlobalKey<ChatInputBarState>();
+  await tester.pumpWidget(
+    MaterialApp(
+      theme: RpgTheme.themeDataLight,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      locale: const Locale('en'),
+      home: Scaffold(
+        body: _providerScope(
+          child: Column(
+            children: [
+              Expanded(
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Listener(
+                        key: const ValueKey('chat-surface'),
+                        behavior: HitTestBehavior.opaque,
+                        onPointerDown: (_) =>
+                            key.currentState?.dismissForChatSurfaceTap(),
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                    Expanded(
+                      child: Listener(
+                        key: const ValueKey('plain-outside'),
+                        behavior: HitTestBehavior.opaque,
+                        child: const SizedBox.expand(),
+                      ),
+                    ),
+                  ],
                 ),
               ),
               ChatInputBar(key: key),
@@ -490,24 +590,255 @@ void main() {
   // D2 fix: MediaQuery.viewInsets reads 0 on iOS WebKit with the keyboard up,
   // so keyboardVisible folds in the shared visualViewport inset. The ergonomic
   // bottom buffer (driven by bottomInteractivePadding, which also sizes the
-  // always-mounted ChatActionTiles) must collapse to 0 when that inset is up,
-  // otherwise the filler renders underneath the raised keyboard.
+  // action panel's ChatActionTiles) must collapse to 0 when that inset is up,
+  // otherwise the filler renders underneath the raised keyboard. The panel is
+  // opened first: since the instant-mount change (H3) ChatActionTiles only
+  // exists while the panel is open.
   testWidgets('a raised web keyboard inset removes the ergonomic bottom buffer', (
     tester,
   ) async {
+    Future<void> openActionPanel() async {
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pump();
+    }
+
     double buffer() => tester
         .widget<ChatActionTiles>(find.byType(ChatActionTiles))
         .bottomPadding;
 
     // Keyboard down, bottom safe-area inset present -> ergonomic buffer applied.
     await _pumpWithBottomInset(tester);
+    await openActionPanel();
     expect(buffer(), greaterThan(0));
 
     // Same layout, but the shared source reports a keyboard while viewInsets
     // still reads 0: the buffer must be suppressed.
     setSharedKeyboardInsetSourceForTest(_FakeInsetSource(300));
     await _pumpWithBottomInset(tester);
+    await openActionPanel();
     expect(buffer(), 0);
+  });
+
+  // H3: the lower action panel is instant-mount (no SizeTransition). A single
+  // pump must mount it on open and fully unmount it on close — a lingering
+  // animation would keep ChatActionTiles in the tree for a frame after close,
+  // so `findsNothing` after one pump is the discriminating assertion.
+  testWidgets('action panel mounts and unmounts instantly with a single pump', (
+    tester,
+  ) async {
+    final state = await _pump(tester);
+    expect(find.byType(ChatActionTiles), findsNothing);
+
+    await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+    await tester.pump();
+    expect(state.isActionPanelOpenForTest, isTrue);
+    expect(find.byType(ChatActionTiles), findsOneWidget);
+
+    // Icon flips to keyboard_arrow_up while the panel is open.
+    await tester.tap(find.byIcon(Icons.keyboard_arrow_up));
+    await tester.pump();
+    expect(state.isActionPanelOpenForTest, isFalse);
+    expect(find.byType(ChatActionTiles), findsNothing);
+  });
+
+  // H1: bottomInteractivePadding folds `_focusNode.hasFocus` into
+  // keyboardVisible, so the ergonomic bottom buffer collapses the instant the
+  // composer focuses — BEFORE any keyboard animation — and restores on blur,
+  // never mid-flight. On the VM there is no keyboard inset at all, so focus is
+  // the ONLY driver here; the buffer is read via ChatActionTiles.bottomPadding
+  // (the panel is opened while unfocused so it renders the buffer).
+  testWidgets(
+    'composer focus collapses the ergonomic bottom buffer and blur restores it',
+    (tester) async {
+      final state = await _pumpWithBottomInset(tester);
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pump();
+
+      double buffer() => tester
+          .widget<ChatActionTiles>(find.byType(ChatActionTiles))
+          .bottomPadding;
+      FocusNode focusNode() =>
+          tester.widget<TextField>(find.byType(TextField)).focusNode!;
+
+      // Panel open, field unfocused, no keyboard inset -> buffer applied.
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(focusNode().hasFocus, isFalse);
+      expect(buffer(), greaterThan(0));
+
+      // Focus alone collapses the buffer (H1); the panel survives the focus.
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      expect(focusNode().hasFocus, isTrue);
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(buffer(), 0);
+
+      // Blur restores it (insets were 0 throughout).
+      focusNode().unfocus();
+      await tester.pump();
+      expect(focusNode().hasFocus, isFalse);
+      expect(buffer(), greaterThan(0));
+    },
+  );
+
+  // 07-03 contract, extended 0.0.99: a chat-surface tap with the action panel
+  // open suppresses the follow-up composer-TapRegion outside-tap so the panel
+  // survives. That suppression flag must RESET post-frame — otherwise every
+  // later outside tap would be swallowed and the panel could never be
+  // dismissed by tapping away. The 'chat surface tap keeps the action panel'
+  // test covers survival; this one guards the reset.
+  testWidgets(
+    'chat-surface tap suppresses the follow-up outside-collapse but the flag resets',
+    (tester) async {
+      final state = await _pumpWithChatSurfaceAndOutside(tester);
+      await tester.enterText(find.byType(TextField), 'panel stays put');
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pumpAndSettle();
+      expect(state.isActionPanelOpenForTest, isTrue);
+
+      // Chat-surface tap: keyboard dismissed, panel survives (follow-up
+      // composer-TapRegion outside-tap suppressed).
+      await tester.tap(find.byKey(const ValueKey('chat-surface')));
+      await tester.pumpAndSettle();
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isFalse,
+      );
+
+      // Flag reset: an independent outside tap now collapses the panel.
+      await tester.tap(find.byKey(const ValueKey('plain-outside')));
+      await tester.pumpAndSettle();
+      expect(state.isActionPanelOpenForTest, isFalse);
+    },
+  );
+
+  // Ping is keyboard-neutral (2026-07-09): tapping the ping tile must not
+  // dismiss a raised keyboard. The panel's Listener captures focus at
+  // pointer-down; when it was focused, `_refocusComposerAfterPing` heals the
+  // (web-only) DOM blur by re-requesting focus, which arms the collapse guard.
+  // The guard flip is the observable proof the gated refocus actually ran
+  // (opening the panel does not arm it on the VM).
+  testWidgets(
+    'ping with the field focused runs the gated refocus and keeps focus',
+    (tester) async {
+      final state = await _pumpWithActiveConversation(tester);
+      await tester.tap(find.byType(TextField));
+      await tester.pump();
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pump();
+
+      expect(state.isActionPanelOpenForTest, isTrue);
+      final field = tester.widget<TextField>(find.byType(TextField));
+      expect(field.focusNode!.hasFocus, isTrue);
+      expect(composerKeyboardCollapseGuard.value, isFalse);
+
+      await tester.tap(find.byIcon(Icons.auto_awesome));
+      await tester.pump();
+
+      // Gated refocus ran (focus was up at pointer-down) -> guard armed.
+      expect(composerKeyboardCollapseGuard.value, isTrue);
+
+      await tester.pumpAndSettle();
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isTrue,
+      );
+    },
+  );
+
+  // The refocus is GATED on focus-at-pointer-down: a ping from the panel-open,
+  // keyboard-hidden state must never summon the keyboard. A broken gate would
+  // requestFocus unconditionally and flip the field to focused + arm the guard.
+  testWidgets(
+    'ping with the field unfocused stays unfocused and never arms the guard',
+    (tester) async {
+      final state = await _pumpWithActiveConversation(tester);
+      // Open the panel from a keyboard-hidden state; never focus the field.
+      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
+      await tester.pump();
+
+      expect(state.isActionPanelOpenForTest, isTrue);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isFalse,
+      );
+      expect(composerKeyboardCollapseGuard.value, isFalse);
+
+      await tester.tap(find.byIcon(Icons.auto_awesome));
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
+        isFalse,
+      );
+      expect(composerKeyboardCollapseGuard.value, isFalse);
+    },
+  );
+
+  // Callback seam: the ping tile fires `onPingSent` after a ping send, but ONLY
+  // when a conversation is active (the composer wires refocus to this).
+  testWidgets('ping tile fires onPingSent when a conversation is active', (
+    tester,
+  ) async {
+    var pings = 0;
+    final convs = _activeConversationsProvider();
+    addTearDown(convs.dispose);
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: RpgTheme.themeDataLight,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('en'),
+        home: Scaffold(
+          body: MultiProvider(
+            providers: [
+              ChangeNotifierProvider<ConversationsProvider>.value(value: convs),
+              ChangeNotifierProvider(create: (_) => MessagingProvider()),
+            ],
+            child: ChatActionTiles(onPingSent: () => pings++),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.auto_awesome));
+    await tester.pump();
+
+    expect(pings, 1);
+  });
+
+  testWidgets('ping tile does not fire onPingSent without an active conversation', (
+    tester,
+  ) async {
+    var pings = 0;
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: RpgTheme.themeDataLight,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('en'),
+        home: Scaffold(
+          body: MultiProvider(
+            providers: [
+              ChangeNotifierProvider(create: (_) => ConversationsProvider()),
+              ChangeNotifierProvider(create: (_) => MessagingProvider()),
+            ],
+            child: ChatActionTiles(onPingSent: () => pings++),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byIcon(Icons.auto_awesome));
+    await tester.pump();
+    expect(pings, 0);
+
+    // Drain the top-snackbar auto-dismiss timer the no-conversation guard spawns.
+    await tester.pump(const Duration(seconds: 3));
   });
 }
 

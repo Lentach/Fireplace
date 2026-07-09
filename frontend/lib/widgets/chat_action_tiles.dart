@@ -5,13 +5,16 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:provider/provider.dart';
 import 'package:file_picker/file_picker.dart';
 import 'package:cross_file/cross_file.dart';
-import '../utils/file_utils_stub.dart' if (dart.library.io) '../utils/file_utils_io.dart' as file_utils;
+import '../utils/file_utils_stub.dart'
+    if (dart.library.io) '../utils/file_utils_io.dart'
+    as file_utils;
 import '../models/conversation_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/conversations_provider.dart';
 import '../providers/messaging_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
+import 'input/focus_guard_area.dart';
 export 'disappearing_timer_sheet.dart';
 import 'disappearing_timer_sheet.dart';
 import 'top_snackbar.dart';
@@ -21,16 +24,18 @@ import 'gif_picker_sheet.dart';
 class ChatActionTiles extends StatelessWidget {
   final double bottomPadding;
 
-  const ChatActionTiles({
-    super.key,
-    this.bottomPadding = 0,
-  });
+  /// Fired after a ping send so the composer can restore keyboard focus.
+  /// Ping is keyboard-neutral (user ruling 2026-07-09): on iOS WebKit the
+  /// [FocusGuardArea] below stops the tap's DOM blur outright; off iOS the
+  /// composer heals the blur post-frame through this callback.
+  final VoidCallback? onPingSent;
+
+  const ChatActionTiles({super.key, this.bottomPadding = 0, this.onPingSent});
 
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final borderColor =
-        FireplaceColors.of(context).convItemBorder;
+    final borderColor = FireplaceColors.of(context).convItemBorder;
     final iconColor = Theme.of(context).colorScheme.primary;
     final convs = context.watch<ConversationsProvider>();
     final timerActive = convs.conversationDisappearingTimer != null;
@@ -53,47 +58,50 @@ class ChatActionTiles extends StatelessWidget {
             mainAxisAlignment: MainAxisAlignment.center,
             mainAxisSize: MainAxisSize.min,
             children: [
-          _LongPressActionTile(
-            icon: Icons.delete_forever,
-            color: iconColor,
-            onLongPressComplete: () => _handleClearChatHistory(context),
-          ),
-          const SizedBox(width: 12),
-          _ActionTile(
-            icon: Icons.hourglass_bottom_outlined,
-            tooltip: l10n.actionTileDisappearingMessages,
-            color: iconColor,
-            showBadge: timerActive,
-            onTap: () => _showTimerDialog(context),
-          ),
-          const SizedBox(width: 12),
-          _ActionTile(
-            icon: Icons.auto_awesome,
-            tooltip: l10n.ping,
-            color: iconColor,
-            onTap: () => _sendPing(context),
-          ),
-          const SizedBox(width: 12),
-          _ActionTile(
-            icon: Icons.attach_file,
-            tooltip: l10n.attachment,
-            color: iconColor,
-            onTap: () => _pickAttachment(context),
-          ),
-          const SizedBox(width: 12),
-          _ActionTile(
-            icon: Icons.gif_box,
-            tooltip: l10n.actionTileGif,
-            color: iconColor,
-            onTap: () => _openGifPicker(context),
-          ),
-          const SizedBox(width: 12),
-          _ActionTile(
-            icon: Icons.science_outlined,
-            tooltip: l10n.actionTileAntiQuantumNote,
-            color: iconColor,
-            onTap: () => _showAntiQuantumNoteDialog(context),
-          ),
+              _LongPressActionTile(
+                icon: Icons.delete_forever,
+                color: iconColor,
+                onLongPressComplete: () => _handleClearChatHistory(context),
+              ),
+              const SizedBox(width: 12),
+              _ActionTile(
+                icon: Icons.hourglass_bottom_outlined,
+                tooltip: l10n.actionTileDisappearingMessages,
+                color: iconColor,
+                showBadge: timerActive,
+                onTap: () => _showTimerDialog(context),
+              ),
+              const SizedBox(width: 12),
+              FocusGuardArea(
+                id: 'action_tile_ping',
+                child: _ActionTile(
+                  icon: Icons.auto_awesome,
+                  tooltip: l10n.ping,
+                  color: iconColor,
+                  onTap: () => _sendPing(context),
+                ),
+              ),
+              const SizedBox(width: 12),
+              _ActionTile(
+                icon: Icons.attach_file,
+                tooltip: l10n.attachment,
+                color: iconColor,
+                onTap: () => _pickAttachment(context),
+              ),
+              const SizedBox(width: 12),
+              _ActionTile(
+                icon: Icons.gif_box,
+                tooltip: l10n.actionTileGif,
+                color: iconColor,
+                onTap: () => _openGifPicker(context),
+              ),
+              const SizedBox(width: 12),
+              _ActionTile(
+                icon: Icons.science_outlined,
+                tooltip: l10n.actionTileAntiQuantumNote,
+                color: iconColor,
+                onTap: () => _showAntiQuantumNoteDialog(context),
+              ),
             ],
           ),
         ),
@@ -118,6 +126,7 @@ class ChatActionTiles extends StatelessWidget {
     final result = _requireActiveConversation(context);
     if (result == null) return;
     context.read<MessagingProvider>().sendPing(result.$2);
+    onPingSent?.call();
   }
 
   /// Single tap opens system picker (gallery / folder). User chooses file; we send as image or document by type.
@@ -128,13 +137,24 @@ class ChatActionTiles extends StatelessWidget {
     final pickResult = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: [
-        'jpg', 'jpeg', 'png', 'gif',
-        'pdf', 'doc', 'docx', 'xls', 'xlsx', 'txt', 'csv',
+        'jpg',
+        'jpeg',
+        'png',
+        'gif',
+        'pdf',
+        'doc',
+        'docx',
+        'xls',
+        'xlsx',
+        'txt',
+        'csv',
       ],
       withData: true,
     );
 
-    if (pickResult == null || pickResult.files.isEmpty || !context.mounted) return;
+    if (pickResult == null || pickResult.files.isEmpty || !context.mounted) {
+      return;
+    }
 
     final l10n = AppLocalizations.of(context);
     final file = pickResult.files.single;
@@ -145,8 +165,11 @@ class ChatActionTiles extends StatelessWidget {
       bytes = await file_utils.readFileBytes(file.path!);
     } else {
       if (context.mounted) {
-        showTopSnackBar(context, l10n.snackbarCouldNotReadFile,
-            backgroundColor: Colors.red);
+        showTopSnackBar(
+          context,
+          l10n.snackbarCouldNotReadFile,
+          backgroundColor: Colors.red,
+        );
       }
       return;
     }
@@ -157,7 +180,9 @@ class ChatActionTiles extends StatelessWidget {
     final auth = context.read<AuthProvider>();
     final recipientId = result.$2;
     final fileName = file.name;
-    final ext = fileName.contains('.') ? fileName.split('.').last.toLowerCase() : '';
+    final ext = fileName.contains('.')
+        ? fileName.split('.').last.toLowerCase()
+        : '';
     final isImage = ['jpg', 'jpeg', 'png', 'gif'].contains(ext);
 
     if (isImage) {
@@ -174,8 +199,11 @@ class ChatActionTiles extends StatelessWidget {
         }
       } catch (e) {
         if (context.mounted) {
-          showTopSnackBar(context, '${l10n.uploadFailed}: $e',
-              backgroundColor: Colors.red);
+          showTopSnackBar(
+            context,
+            '${l10n.uploadFailed}: $e',
+            backgroundColor: Colors.red,
+          );
         }
       }
     } else {
@@ -193,8 +221,11 @@ class ChatActionTiles extends StatelessWidget {
         }
       } catch (e) {
         if (context.mounted) {
-          showTopSnackBar(context, '${l10n.uploadFailed}: $e',
-              backgroundColor: Colors.red);
+          showTopSnackBar(
+            context,
+            '${l10n.uploadFailed}: $e',
+            backgroundColor: Colors.red,
+          );
         }
       }
     }
@@ -202,31 +233,45 @@ class ChatActionTiles extends StatelessWidget {
 
   static String _imageMimeForExtension(String ext) {
     switch (ext) {
-      case 'png': return 'image/png';
-      case 'gif': return 'image/gif';
+      case 'png':
+        return 'image/png';
+      case 'gif':
+        return 'image/gif';
       case 'jpg':
-      case 'jpeg': return 'image/jpeg';
-      default: return 'image/jpeg';
+      case 'jpeg':
+        return 'image/jpeg';
+      default:
+        return 'image/jpeg';
     }
   }
 
   static String _mimeForExtension(String ext) {
     switch (ext) {
-      case 'pdf': return 'application/pdf';
-      case 'doc': return 'application/msword';
-      case 'docx': return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
-      case 'xls': return 'application/vnd.ms-excel';
-      case 'xlsx': return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
-      case 'txt': return 'text/plain';
-      case 'csv': return 'text/csv';
-      default: return 'application/octet-stream';
+      case 'pdf':
+        return 'application/pdf';
+      case 'doc':
+        return 'application/msword';
+      case 'docx':
+        return 'application/vnd.openxmlformats-officedocument.wordprocessingml.document';
+      case 'xls':
+        return 'application/vnd.ms-excel';
+      case 'xlsx':
+        return 'application/vnd.openxmlformats-officedocument.spreadsheetml.sheet';
+      case 'txt':
+        return 'text/plain';
+      case 'csv':
+        return 'text/csv';
+      default:
+        return 'application/octet-stream';
     }
   }
 
   bool _ensureHasActiveConversation(BuildContext context) {
     if (context.read<ConversationsProvider>().activeConversationId == null) {
       showTopSnackBar(
-          context, AppLocalizations.of(context).snackbarOpenConversationFirst);
+        context,
+        AppLocalizations.of(context).snackbarOpenConversationFirst,
+      );
       return false;
     }
     return true;
@@ -299,7 +344,9 @@ class ChatActionTiles extends StatelessWidget {
     // Show success feedback
     if (context.mounted) {
       showTopSnackBar(
-          context, AppLocalizations.of(context).snackbarChatHistoryDeleted);
+        context,
+        AppLocalizations.of(context).snackbarChatHistoryDeleted,
+      );
     }
 
     // Close action panel (navigate back if possible)
@@ -392,17 +439,20 @@ class _LongPressActionTileState extends State<_LongPressActionTile>
   @override
   void initState() {
     super.initState();
-    _animationController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..addListener(() {
-        setState(() {});
-      })..addStatusListener((status) {
-        if (status == AnimationStatus.completed && _isPressed) {
-          widget.onLongPressComplete();
-          _reset();
-        }
-      });
+    _animationController =
+        AnimationController(
+            vsync: this,
+            duration: const Duration(milliseconds: 1500),
+          )
+          ..addListener(() {
+            setState(() {});
+          })
+          ..addStatusListener((status) {
+            if (status == AnimationStatus.completed && _isPressed) {
+              widget.onLongPressComplete();
+              _reset();
+            }
+          });
   }
 
   @override
@@ -474,10 +524,7 @@ class _CenterProgressOverlay extends StatelessWidget {
   final Animation<double> progress;
   final Color color;
 
-  const _CenterProgressOverlay({
-    required this.progress,
-    required this.color,
-  });
+  const _CenterProgressOverlay({required this.progress, required this.color});
 
   @override
   Widget build(BuildContext context) {
@@ -502,10 +549,7 @@ class _CenterProgressOverlay extends StatelessWidget {
             const SizedBox(height: 16),
             Text(
               AppLocalizations.of(context).clearingChat,
-              style: RpgTheme.bodyFont(
-                fontSize: 14,
-                color: Colors.white,
-              ),
+              style: RpgTheme.bodyFont(fontSize: 14, color: Colors.white),
             ),
           ],
         ),
@@ -518,10 +562,7 @@ class _CircularProgressPainter extends CustomPainter {
   final double progress; // 0.0 to 1.0
   final Color color;
 
-  _CircularProgressPainter({
-    required this.progress,
-    required this.color,
-  });
+  _CircularProgressPainter({required this.progress, required this.color});
 
   @override
   void paint(Canvas canvas, Size size) {

@@ -46,3 +46,8 @@ KeyboardInsetSource sharedKeyboardInsetSource() =>
 void setSharedKeyboardInsetSourceForTest(KeyboardInsetSource? source) {
   _sharedSourceOverrideForTest = source;
 }
+
+/// Last real keyboard inset observed on this device (persisted on web), or 0
+/// when unknown. Used by the composer flash-fix pre-arm (H5, default OFF —
+/// see composerFlashFixEnabled).
+double lastKnownKeyboardInset() => impl.lastKnownKeyboardInset();

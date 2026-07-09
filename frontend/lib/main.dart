@@ -24,6 +24,7 @@ import 'screens/main_shell.dart';
 import 'services/portrait_lock_service.dart';
 import 'theme/app_scroll_behavior.dart';
 import 'utils/e2e_persistent_diag.dart';
+import 'utils/web_document_background.dart';
 import 'widgets/portrait_lock_shell.dart';
 
 Future<void> main() async {
@@ -84,6 +85,14 @@ class FireplaceApp extends StatelessWidget {
             debugShowCheckedModeBanner: false,
             scrollBehavior: const AppScrollBehavior(),
             builder: (context, child) {
+              // Android PWA white-void fix: keep the browser document painted
+              // in the ACTIVE theme background so the strip Chrome exposes
+              // while the window resizes around the keyboard is never white
+              // (rationale in utils/web_document_background.dart). Theme.of
+              // resolves the effective light/dark theme here.
+              syncWebDocumentBackground(
+                Theme.of(context).scaffoldBackgroundColor,
+              );
               return PortraitLockShell(child: child ?? const SizedBox.shrink());
             },
             theme: settings.lightTheme,
