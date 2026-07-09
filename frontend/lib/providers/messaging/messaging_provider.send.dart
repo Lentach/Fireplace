@@ -7,6 +7,16 @@ part of '../messaging_provider.dart';
 // ignore_for_file: invalid_use_of_protected_member, invalid_use_of_visible_for_testing_member
 
 /// Optimistic send, encrypt-&-send, send-retry, and typing emit.
+Future<MediaPreviewMetadata?> _extractMediaPreviewMetadata(
+  Uint8List bytes,
+) async {
+  try {
+    return await MediaPreviewMetadata.fromEncodedBytes(bytes);
+  } catch (_) {
+    return null;
+  }
+}
+
 extension MessagingSend on MessagingProvider {
   void sendMessage(String content, {int? expiresIn, int? replyToMessageId}) {
     final activeConversationId = _conversationsProvider?.activeConversationId;
@@ -16,8 +26,9 @@ extension MessagingSend on MessagingProvider {
     // firstOrNull, NOT firstWhere: a stale active id (e.g. a notification for
     // a deleted conversation) must not throw before the optimistic add — the
     // old StateError here ate typed messages silently.
-    final conv =
-        conversations.where((c) => c.id == activeConversationId).firstOrNull;
+    final conv = conversations
+        .where((c) => c.id == activeConversationId)
+        .firstOrNull;
     if (conv == null) return;
     final recipientId = conv_helpers.getOtherUserId(conv, _currentUserId);
 
@@ -91,8 +102,10 @@ extension MessagingSend on MessagingProvider {
     );
 
     _messages.add(tempMessage);
-    _pendingSendContent[tempId] =
-        <String, dynamic>{'content': '', 'messageType': 'PING'};
+    _pendingSendContent[tempId] = <String, dynamic>{
+      'content': '',
+      'messageType': 'PING',
+    };
     _showPingEffect = true;
     notifyListeners();
 
@@ -123,16 +136,20 @@ extension MessagingSend on MessagingProvider {
         'temp_${DateTime.now().millisecondsSinceEpoch}_$_currentUserId';
     final effectiveReplyToId = _replyingToMessage?.id;
 
-    _messages.add(_buildOptimisticMediaMessage(
-      tempId: tempId,
-      conversationId: activeConversationId,
-      messageType: MessageType.image,
-      content: '',
-      effectiveExpiresIn: effectiveExpiresIn,
-      effectiveReplyToId: effectiveReplyToId,
-    ));
-    _pendingSendContent[tempId] =
-        <String, dynamic>{'content': '', 'messageType': 'IMAGE'};
+    _messages.add(
+      _buildOptimisticMediaMessage(
+        tempId: tempId,
+        conversationId: activeConversationId,
+        messageType: MessageType.image,
+        content: '',
+        effectiveExpiresIn: effectiveExpiresIn,
+        effectiveReplyToId: effectiveReplyToId,
+      ),
+    );
+    _pendingSendContent[tempId] = <String, dynamic>{
+      'content': '',
+      'messageType': 'IMAGE',
+    };
     _clearReplyingToAfterSendStart();
     notifyListeners();
 
@@ -141,6 +158,23 @@ extension MessagingSend on MessagingProvider {
       if (rawBytes.length > MediaCryptoService.maxBytes) {
         _markMessageFailed(tempId, 'Image too large (max 20 MB)');
         return false;
+      }
+      final preview = await _extractMediaPreviewMetadata(rawBytes);
+      if (preview != null) {
+        _pendingSendContent[tempId]!.addAll({
+          'mediaWidth': preview.width,
+          'mediaHeight': preview.height,
+          if (preview.thumbHash != null) 'mediaThumbHash': preview.thumbHash,
+        });
+        final previewIndex = _messages.indexWhere((m) => m.tempId == tempId);
+        if (previewIndex != -1) {
+          _messages[previewIndex] = _messages[previewIndex].copyWith(
+            mediaWidth: preview.width,
+            mediaHeight: preview.height,
+            mediaThumbHash: preview.thumbHash,
+          );
+          notifyListeners();
+        }
       }
       final upload = await _mediaUpload.encryptAndUpload(
         bytes: Uint8List.fromList(rawBytes),
@@ -153,6 +187,10 @@ extension MessagingSend on MessagingProvider {
             'messageType': 'IMAGE',
             'mediaKey': key,
             'mediaIv': iv,
+            if (preview != null) 'mediaWidth': preview.width,
+            if (preview != null) 'mediaHeight': preview.height,
+            if (preview?.thumbHash != null)
+              'mediaThumbHash': preview!.thumbHash,
           };
         },
       );
@@ -164,6 +202,9 @@ extension MessagingSend on MessagingProvider {
           mediaUrl: upload.mediaUrl,
           mediaKey: upload.keyBase64,
           mediaIv: upload.ivBase64,
+          mediaWidth: preview?.width,
+          mediaHeight: preview?.height,
+          mediaThumbHash: preview?.thumbHash,
         );
         notifyListeners();
       }
@@ -178,6 +219,9 @@ extension MessagingSend on MessagingProvider {
         mediaUrl: upload.mediaUrl,
         mediaKey: upload.keyBase64,
         mediaIv: upload.ivBase64,
+        mediaWidth: preview?.width,
+        mediaHeight: preview?.height,
+        mediaThumbHash: preview?.thumbHash,
       );
     } catch (e) {
       debugPrint('[MessagingProvider] Image upload failed: $e');
@@ -213,8 +257,9 @@ extension MessagingSend on MessagingProvider {
     // Get disappearing timer from conversation (null-safe: stale conv id must
     // not throw mid-send, same reasoning as sendMessage).
     final conversations = _conversationsProvider!.conversations;
-    final conv =
-        conversations.where((c) => c.id == effectiveConvId).firstOrNull;
+    final conv = conversations
+        .where((c) => c.id == effectiveConvId)
+        .firstOrNull;
     final effectiveExpiresIn = conv?.disappearingTimer;
 
     final optimisticMessage = _buildOptimisticMediaMessage(
@@ -229,9 +274,14 @@ extension MessagingSend on MessagingProvider {
     );
 
     _messages.add(optimisticMessage);
-    _pendingSendContent[tempId] =
-        <String, dynamic>{'content': '', 'messageType': 'VOICE'};
-    _conversationsProvider?.updateLastMessage(effectiveConvId, optimisticMessage);
+    _pendingSendContent[tempId] = <String, dynamic>{
+      'content': '',
+      'messageType': 'VOICE',
+    };
+    _conversationsProvider?.updateLastMessage(
+      effectiveConvId,
+      optimisticMessage,
+    );
     _clearReplyingToAfterSendStart();
     notifyListeners();
 
@@ -306,11 +356,7 @@ extension MessagingSend on MessagingProvider {
   }
 
   /// Send a GIF message. Downloads from Giphy, encrypts bytes, uploads blob, E2E envelope.
-  Future<void> sendGif(
-    String token,
-    String gifUrl,
-    int recipientId,
-  ) async {
+  Future<void> sendGif(String token, String gifUrl, int recipientId) async {
     final activeConversationId = _conversationsProvider?.activeConversationId;
     if (activeConversationId == null || _currentUserId == null) return;
 
@@ -320,16 +366,20 @@ extension MessagingSend on MessagingProvider {
         'temp_${DateTime.now().millisecondsSinceEpoch}_$_currentUserId';
     final effectiveReplyToId = _replyingToMessage?.id;
     // 1. Optimistic message
-    _messages.add(_buildOptimisticMediaMessage(
-      tempId: tempId,
-      conversationId: activeConversationId,
-      messageType: MessageType.gif,
-      content: '',
-      effectiveExpiresIn: effectiveExpiresIn,
-      effectiveReplyToId: effectiveReplyToId,
-    ));
-    _pendingSendContent[tempId] =
-        <String, dynamic>{'content': '', 'messageType': 'GIF'};
+    _messages.add(
+      _buildOptimisticMediaMessage(
+        tempId: tempId,
+        conversationId: activeConversationId,
+        messageType: MessageType.gif,
+        content: '',
+        effectiveExpiresIn: effectiveExpiresIn,
+        effectiveReplyToId: effectiveReplyToId,
+      ),
+    );
+    _pendingSendContent[tempId] = <String, dynamic>{
+      'content': '',
+      'messageType': 'GIF',
+    };
     _clearReplyingToAfterSendStart();
     notifyListeners();
 
@@ -345,6 +395,23 @@ extension MessagingSend on MessagingProvider {
       if (gifBytes.length > 5 * 1024 * 1024) {
         throw Exception('GIF too large (max 5 MB)');
       }
+      final preview = await _extractMediaPreviewMetadata(gifBytes);
+      if (preview != null) {
+        _pendingSendContent[tempId]!.addAll({
+          'mediaWidth': preview.width,
+          'mediaHeight': preview.height,
+          if (preview.thumbHash != null) 'mediaThumbHash': preview.thumbHash,
+        });
+        final previewIndex = _messages.indexWhere((m) => m.tempId == tempId);
+        if (previewIndex != -1) {
+          _messages[previewIndex] = _messages[previewIndex].copyWith(
+            mediaWidth: preview.width,
+            mediaHeight: preview.height,
+            mediaThumbHash: preview.thumbHash,
+          );
+          notifyListeners();
+        }
+      }
 
       final upload = await _mediaUpload.encryptAndUpload(
         bytes: Uint8List.fromList(gifBytes),
@@ -357,6 +424,10 @@ extension MessagingSend on MessagingProvider {
             'messageType': 'GIF',
             'mediaKey': key,
             'mediaIv': iv,
+            if (preview != null) 'mediaWidth': preview.width,
+            if (preview != null) 'mediaHeight': preview.height,
+            if (preview?.thumbHash != null)
+              'mediaThumbHash': preview!.thumbHash,
           };
         },
       );
@@ -368,6 +439,9 @@ extension MessagingSend on MessagingProvider {
           mediaUrl: upload.mediaUrl,
           mediaKey: upload.keyBase64,
           mediaIv: upload.ivBase64,
+          mediaWidth: preview?.width,
+          mediaHeight: preview?.height,
+          mediaThumbHash: preview?.thumbHash,
         );
         notifyListeners();
       }
@@ -382,6 +456,9 @@ extension MessagingSend on MessagingProvider {
         mediaUrl: upload.mediaUrl,
         mediaKey: upload.keyBase64,
         mediaIv: upload.ivBase64,
+        mediaWidth: preview?.width,
+        mediaHeight: preview?.height,
+        mediaThumbHash: preview?.thumbHash,
       );
     } catch (e) {
       debugPrint('[MessagingProvider] GIF send failed: $e');
@@ -405,14 +482,16 @@ extension MessagingSend on MessagingProvider {
     final tempId =
         'temp_${DateTime.now().millisecondsSinceEpoch}_$_currentUserId';
     final effectiveReplyToId = _replyingToMessage?.id;
-    _messages.add(_buildOptimisticMediaMessage(
-      tempId: tempId,
-      conversationId: activeConversationId,
-      messageType: MessageType.file,
-      content: fileName,
-      effectiveExpiresIn: effectiveExpiresIn,
-      effectiveReplyToId: effectiveReplyToId,
-    ));
+    _messages.add(
+      _buildOptimisticMediaMessage(
+        tempId: tempId,
+        conversationId: activeConversationId,
+        messageType: MessageType.file,
+        content: fileName,
+        effectiveExpiresIn: effectiveExpiresIn,
+        effectiveReplyToId: effectiveReplyToId,
+      ),
+    );
     _pendingSendContent[tempId] = <String, dynamic>{
       'content': fileName,
       'messageType': 'FILE',
@@ -492,8 +571,11 @@ extension MessagingSend on MessagingProvider {
         '${base64.encode(ivBytes)}:${base64.encode(Uint8List.fromList(ciphertextWithTag))}';
 
     // POST /notes with ciphertext (server never sees key)
-    final noteToken =
-        await _api.createSecretNote(token, ciphertextEncoded, expiresInSeconds);
+    final noteToken = await _api.createSecretNote(
+      token,
+      ciphertextEncoded,
+      expiresInSeconds,
+    );
 
     // Key encoded as base64url for URL fragment (#KEY). The fragment also
     // carries c=<convId> (reveal page's "Open Fireplace" deep link back into
@@ -527,8 +609,9 @@ extension MessagingSend on MessagingProvider {
     final activeConversationId = _conversationsProvider?.activeConversationId;
     if (activeConversationId == null || _currentUserId == null) return;
     final conversations = _conversationsProvider!.conversations;
-    final conv =
-        conversations.where((c) => c.id == activeConversationId).firstOrNull;
+    final conv = conversations
+        .where((c) => c.id == activeConversationId)
+        .firstOrNull;
     if (conv == null) return;
     final recipientId = conv_helpers.getOtherUserId(conv, _currentUserId);
     sendTypingIndicator(recipientId, activeConversationId);
@@ -543,8 +626,9 @@ extension MessagingSend on MessagingProvider {
     if (message.deliveryStatus != MessageDeliveryStatus.failed) return;
 
     final conversations = _conversationsProvider?.conversations ?? [];
-    final conv =
-        conversations.where((c) => c.id == message.conversationId).firstOrNull;
+    final conv = conversations
+        .where((c) => c.id == message.conversationId)
+        .firstOrNull;
     if (conv == null) return;
     final recipientId = conv_helpers.getOtherUserId(conv, _currentUserId);
 
@@ -552,8 +636,10 @@ extension MessagingSend on MessagingProvider {
       _messages[index] = _messages[index].copyWith(
         deliveryStatus: MessageDeliveryStatus.sending,
       );
-      _pendingSendContent[tempId] =
-          <String, dynamic>{'content': '', 'messageType': 'PING'};
+      _pendingSendContent[tempId] = <String, dynamic>{
+        'content': '',
+        'messageType': 'PING',
+      };
       notifyListeners();
       _encryptAndSend(
         recipientId: recipientId,
@@ -605,8 +691,10 @@ extension MessagingSend on MessagingProvider {
         _messages[index] = _messages[index].copyWith(
           deliveryStatus: MessageDeliveryStatus.sending,
         );
-        _pendingSendContent[tempId] =
-            <String, dynamic>{'content': '', 'messageType': 'VOICE'};
+        _pendingSendContent[tempId] = <String, dynamic>{
+          'content': '',
+          'messageType': 'VOICE',
+        };
         notifyListeners();
         _encryptAndSend(
           recipientId: recipientId,
@@ -639,10 +727,7 @@ extension MessagingSend on MessagingProvider {
       final iUrl = message.mediaUrl;
       final iKey = message.mediaKey;
       final iIv = message.mediaIv;
-      if (iUrl != null &&
-          iUrl.isNotEmpty &&
-          iKey != null &&
-          iIv != null) {
+      if (iUrl != null && iUrl.isNotEmpty && iKey != null && iIv != null) {
         _messages[index] = _messages[index].copyWith(
           deliveryStatus: MessageDeliveryStatus.sending,
         );
@@ -652,6 +737,10 @@ extension MessagingSend on MessagingProvider {
           'mediaUrl': iUrl,
           'mediaKey': iKey,
           'mediaIv': iIv,
+          if (message.mediaWidth != null) 'mediaWidth': message.mediaWidth,
+          if (message.mediaHeight != null) 'mediaHeight': message.mediaHeight,
+          if (message.mediaThumbHash != null)
+            'mediaThumbHash': message.mediaThumbHash,
         };
         notifyListeners();
         _encryptAndSend(
@@ -663,6 +752,9 @@ extension MessagingSend on MessagingProvider {
           mediaUrl: iUrl,
           mediaKey: iKey,
           mediaIv: iIv,
+          mediaWidth: message.mediaWidth,
+          mediaHeight: message.mediaHeight,
+          mediaThumbHash: message.mediaThumbHash,
         );
         return;
       }
@@ -672,8 +764,10 @@ extension MessagingSend on MessagingProvider {
         _messages[index] = _messages[index].copyWith(
           deliveryStatus: MessageDeliveryStatus.sending,
         );
-        _pendingSendContent[tempId] =
-            <String, dynamic>{'content': '', 'messageType': 'IMAGE'};
+        _pendingSendContent[tempId] = <String, dynamic>{
+          'content': '',
+          'messageType': 'IMAGE',
+        };
         notifyListeners();
         _encryptAndSend(
           recipientId: recipientId,
@@ -681,6 +775,9 @@ extension MessagingSend on MessagingProvider {
           tempId: tempId,
           messageType: 'IMAGE',
           mediaUrl: message.mediaUrl,
+          mediaWidth: message.mediaWidth,
+          mediaHeight: message.mediaHeight,
+          mediaThumbHash: message.mediaThumbHash,
         );
       }
       return;
@@ -690,10 +787,7 @@ extension MessagingSend on MessagingProvider {
       final gUrl = message.mediaUrl;
       final gKey = message.mediaKey;
       final gIv = message.mediaIv;
-      if (gUrl != null &&
-          gUrl.isNotEmpty &&
-          gKey != null &&
-          gIv != null) {
+      if (gUrl != null && gUrl.isNotEmpty && gKey != null && gIv != null) {
         _messages[index] = _messages[index].copyWith(
           deliveryStatus: MessageDeliveryStatus.sending,
         );
@@ -703,6 +797,10 @@ extension MessagingSend on MessagingProvider {
           'mediaUrl': gUrl,
           'mediaKey': gKey,
           'mediaIv': gIv,
+          if (message.mediaWidth != null) 'mediaWidth': message.mediaWidth,
+          if (message.mediaHeight != null) 'mediaHeight': message.mediaHeight,
+          if (message.mediaThumbHash != null)
+            'mediaThumbHash': message.mediaThumbHash,
         };
         notifyListeners();
         _encryptAndSend(
@@ -714,6 +812,9 @@ extension MessagingSend on MessagingProvider {
           mediaUrl: gUrl,
           mediaKey: gKey,
           mediaIv: gIv,
+          mediaWidth: message.mediaWidth,
+          mediaHeight: message.mediaHeight,
+          mediaThumbHash: message.mediaThumbHash,
         );
       }
       return;
@@ -724,10 +825,7 @@ extension MessagingSend on MessagingProvider {
       final fKey = message.mediaKey;
       final fIv = message.mediaIv;
       final fileName = message.content;
-      if (fUrl != null &&
-          fUrl.isNotEmpty &&
-          fKey != null &&
-          fIv != null) {
+      if (fUrl != null && fUrl.isNotEmpty && fKey != null && fIv != null) {
         _messages[index] = _messages[index].copyWith(
           deliveryStatus: MessageDeliveryStatus.sending,
         );
@@ -778,12 +876,15 @@ extension MessagingSend on MessagingProvider {
       final content = message.content;
       final conversationId = message.conversationId;
       _messages.removeAt(index);
-      final stillInConv =
-          _messages.where((m) => m.conversationId == conversationId).toList();
+      final stillInConv = _messages
+          .where((m) => m.conversationId == conversationId)
+          .toList();
       if (stillInConv.isNotEmpty) {
         stillInConv.sort((a, b) => a.createdAt.compareTo(b.createdAt));
         _conversationsProvider?.updateLastMessage(
-            conversationId, stillInConv.last);
+          conversationId,
+          stillInConv.last,
+        );
       } else {
         _conversationsProvider?.updateLastMessage(conversationId, null);
       }
@@ -806,6 +907,9 @@ extension MessagingSend on MessagingProvider {
     int? mediaDuration,
     String? mediaKey,
     String? mediaIv,
+    int? mediaWidth,
+    int? mediaHeight,
+    String? mediaThumbHash,
   }) async {
     final e2eReady = _encryptionProvider?.isE2EReady ?? false;
     _e2eFlowLog('SEND_START', {
@@ -875,6 +979,9 @@ extension MessagingSend on MessagingProvider {
         if (mediaDuration != null) pending['mediaDuration'] = mediaDuration;
         if (mediaKey != null) pending['mediaKey'] = mediaKey;
         if (mediaIv != null) pending['mediaIv'] = mediaIv;
+        if (mediaWidth != null) pending['mediaWidth'] = mediaWidth;
+        if (mediaHeight != null) pending['mediaHeight'] = mediaHeight;
+        if (mediaThumbHash != null) pending['mediaThumbHash'] = mediaThumbHash;
         if (linkPreview != null) {
           if (linkPreview['url'] != null) {
             pending['linkPreviewUrl'] = linkPreview['url'];
@@ -889,22 +996,29 @@ extension MessagingSend on MessagingProvider {
       }
 
       // 3. Build encrypted envelope (content + type + media + optional linkPreview)
-      final envelopeJson = jsonEncode(E2eEnvelope.build(
-        content,
-        messageType: messageType,
-        mediaUrl: mediaUrl,
-        mediaDuration: mediaDuration,
-        mediaKey: mediaKey,
-        mediaIv: mediaIv,
-        linkPreview: linkPreview,
-      ));
+      final envelopeJson = jsonEncode(
+        E2eEnvelope.build(
+          content,
+          messageType: messageType,
+          mediaUrl: mediaUrl,
+          mediaDuration: mediaDuration,
+          mediaKey: mediaKey,
+          mediaIv: mediaIv,
+          mediaWidth: mediaWidth,
+          mediaHeight: mediaHeight,
+          mediaThumbHash: mediaThumbHash,
+          linkPreview: linkPreview,
+        ),
+      );
 
       // 4. Ensure session exists with recipient
       await _encryptionProvider!.ensureSession(recipientId);
 
       // 5. Encrypt
-      final ciphertext =
-          await _encryptionProvider!.encrypt(recipientId, envelopeJson);
+      final ciphertext = await _encryptionProvider!.encrypt(
+        recipientId,
+        envelopeJson,
+      );
       _e2eFlowLog('SEND_ENCRYPT_DONE', {
         'recipientId': recipientId,
         'ciphertextLength': ciphertext.length,
@@ -925,7 +1039,9 @@ extension MessagingSend on MessagingProvider {
       if (pendingSnapshot != null) {
         _encryptionProvider!
             .savePendingSendRecord(
-                ciphertext, Map<String, dynamic>.from(pendingSnapshot))
+              ciphertext,
+              Map<String, dynamic>.from(pendingSnapshot),
+            )
             .ignore();
       }
 
@@ -980,19 +1096,18 @@ extension MessagingSend on MessagingProvider {
     int? mediaDuration,
     String? mediaKey,
     String? mediaIv,
-  }) =>
-      _encryptAndSend(
-        recipientId: recipientId,
-        content: content,
-        tempId: tempId,
-        effectiveExpiresIn: effectiveExpiresIn,
-        effectiveReplyToId: effectiveReplyToId,
-        messageType: messageType,
-        mediaUrl: mediaUrl,
-        mediaDuration: mediaDuration,
-        mediaKey: mediaKey,
-        mediaIv: mediaIv,
-      );
+  }) => _encryptAndSend(
+    recipientId: recipientId,
+    content: content,
+    tempId: tempId,
+    effectiveExpiresIn: effectiveExpiresIn,
+    effectiveReplyToId: effectiveReplyToId,
+    messageType: messageType,
+    mediaUrl: mediaUrl,
+    mediaDuration: mediaDuration,
+    mediaKey: mediaKey,
+    mediaIv: mediaIv,
+  );
 
   /// Observability for the I1 media-orphan gap: a media blob was uploaded
   /// (`mediaUrl` obtained) but the send failed before the `sendMessage` emit,
@@ -1086,8 +1201,9 @@ extension MessagingSend on MessagingProvider {
       return;
     }
     final conversations = _conversationsProvider?.conversations ?? [];
-    final convList =
-        conversations.where((c) => c.id == message.conversationId).toList();
+    final convList = conversations
+        .where((c) => c.id == message.conversationId)
+        .toList();
     if (convList.isEmpty) return;
     final conv = convList.first;
     final recipientId = conv_helpers.getOtherUserId(conv, _currentUserId);
@@ -1100,8 +1216,9 @@ extension MessagingSend on MessagingProvider {
     } else {
       effectiveExpiresIn = conv.disappearingTimer;
     }
-    _messages[idx] =
-        message.copyWith(deliveryStatus: MessageDeliveryStatus.sending);
+    _messages[idx] = message.copyWith(
+      deliveryStatus: MessageDeliveryStatus.sending,
+    );
     notifyListeners();
     _encryptAndSend(
       recipientId: recipientId,
@@ -1120,8 +1237,10 @@ extension MessagingSend on MessagingProvider {
         s.contains('no key bundle')) {
       final conversations = _conversationsProvider?.conversations ?? [];
       final otherName = conversations
-          .where((c) =>
-              conv_helpers.getOtherUserId(c, _currentUserId) == recipientId)
+          .where(
+            (c) =>
+                conv_helpers.getOtherUserId(c, _currentUserId) == recipientId,
+          )
           .map((c) => conv_helpers.getOtherUserUsername(c, _currentUserId))
           .firstOrNull;
       final who = otherName ?? 'Recipient';

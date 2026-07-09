@@ -10,16 +10,15 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/media_crypto_service.dart';
 import '../../utils/gif_blob_url_stub.dart'
-    if (dart.library.html) '../../utils/gif_blob_url_web.dart' as gif_blob;
+    if (dart.library.html) '../../utils/gif_blob_url_web.dart'
+    as gif_blob;
+import 'media_preview_frame.dart';
 
 /// GIF message: fetch, optional decrypt; web uses blob URL for animation.
 class GifMessageContent extends StatefulWidget {
   final MessageModel message;
 
-  const GifMessageContent({
-    super.key,
-    required this.message,
-  });
+  const GifMessageContent({super.key, required this.message});
 
   @override
   State<GifMessageContent> createState() => _GifMessageContentState();
@@ -67,10 +66,9 @@ class _GifMessageContentState extends State<GifMessageContent> {
     final token = context.read<AuthProvider>().token ?? '';
     Uint8List raw;
     try {
-      raw = await ApiService(baseUrl: AppConfig.baseUrl).fetchMediaBytes(
-        url,
-        token,
-      );
+      raw = await ApiService(
+        baseUrl: AppConfig.baseUrl,
+      ).fetchMediaBytes(url, token);
     } catch (_) {
       return const _GifDisplay.error();
     }
@@ -139,71 +137,52 @@ class _GifMessageContentState extends State<GifMessageContent> {
 
   @override
   Widget build(BuildContext context) {
-    return FutureBuilder<_GifDisplay>(
-      future: _future,
-      builder: (context, snap) {
-        if (snap.connectionState != ConnectionState.done) {
-          return const SizedBox(
-            width: double.infinity,
-            height: 220,
-            child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-          );
-        }
-        final d = snap.data;
-        if (d == null || d.isError) {
-          return SizedBox(
-            width: double.infinity,
-            height: 220,
-            child: ColoredBox(
-              color: Theme.of(context).colorScheme.surfaceContainerHighest,
-              child: const Center(child: Icon(Icons.broken_image, size: 48)),
-            ),
-          );
-        }
+    return MediaPreviewFrame(
+      mediaWidth: widget.message.mediaWidth,
+      mediaHeight: widget.message.mediaHeight,
+      mediaThumbHash: widget.message.mediaThumbHash,
+      child: FutureBuilder<_GifDisplay>(
+        future: _future,
+        builder: (context, snap) {
+          if (snap.connectionState != ConnectionState.done) {
+            return const Center(
+              child: CircularProgressIndicator(strokeWidth: 2),
+            );
+          }
+          final display = snap.data;
+          if (display == null || display.isError) {
+            return const Center(child: Icon(Icons.broken_image, size: 48));
+          }
 
-        Widget preview;
-        if (d.networkUrl != null) {
-          preview = Image.network(
-            d.networkUrl!,
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: 220,
-            loadingBuilder: (context, child, loadingProgress) {
-              if (loadingProgress == null) return child;
-              return const SizedBox(
-                width: double.infinity,
-                height: 220,
-                child: Center(child: CircularProgressIndicator(strokeWidth: 2)),
-              );
-            },
-            errorBuilder: (context, error, stackTrace) => SizedBox(
-              width: double.infinity,
-              height: 220,
-              child: ColoredBox(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest,
-                child: const Center(child: Icon(Icons.broken_image, size: 48)),
-              ),
-            ),
-          );
-        } else {
-          preview = Image.memory(
-            d.memoryBytes!,
-            fit: BoxFit.cover,
-            width: double.infinity,
-            height: 220,
-            gaplessPlayback: true,
-          );
-        }
+          final Widget preview;
+          if (display.networkUrl != null) {
+            preview = Image.network(
+              display.networkUrl!,
+              fit: BoxFit.contain,
+              loadingBuilder: (context, child, loadingProgress) {
+                return loadingProgress == null
+                    ? child
+                    : const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      );
+              },
+              errorBuilder: (_, _, _) =>
+                  const Center(child: Icon(Icons.broken_image, size: 48)),
+            );
+          } else {
+            preview = Image.memory(
+              display.memoryBytes!,
+              fit: BoxFit.contain,
+              gaplessPlayback: true,
+            );
+          }
 
-        return GestureDetector(
-          onTap: () => _showFullscreen(context, d),
-          child: SizedBox(
-            width: double.infinity,
-            height: 220,
+          return GestureDetector(
+            onTap: () => _showFullscreen(context, display),
             child: preview,
-          ),
-        );
-      },
+          );
+        },
+      ),
     );
   }
 }
@@ -214,15 +193,15 @@ class _GifDisplay {
   final bool isError;
 
   const _GifDisplay.network(this.networkUrl)
-      : memoryBytes = null,
-        isError = false;
+    : memoryBytes = null,
+      isError = false;
 
   const _GifDisplay.memory(this.memoryBytes)
-      : networkUrl = null,
-        isError = false;
+    : networkUrl = null,
+      isError = false;
 
   const _GifDisplay.error()
-      : networkUrl = null,
-        memoryBytes = null,
-        isError = true;
+    : networkUrl = null,
+      memoryBytes = null,
+      isError = true;
 }

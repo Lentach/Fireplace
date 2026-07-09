@@ -6,7 +6,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
 # App version: semver only (0.0.1, 0.0.2, 0.0.3, …). Bump PATCH by +1 on each release (see root CLAUDE.md §5).
 # Do not add a +suffix here — that is Flutter build metadata, not our user-visible version.
-version: 0.0.102
+version: 0.0.103
 
 environment:
   sdk: ^3.10.7
@@ -46,6 +46,7 @@ dependencies:
   firebase_core: ^3.8.0
   firebase_messaging: ^15.1.6
   web: ^1.1.0
+  fast_thumbhash: ^1.2.1
   libsignal_protocol_dart: ^0.8.2
   flutter_secure_storage: ^9.2.4
   # PINNED: >=0.6.1 switched to a native-assets hook that builds windows-x64 on

@@ -1,19 +1,6 @@
-enum MessageDeliveryStatus {
-  sending,
-  sent,
-  delivered,
-  read,
-  failed,
-}
+enum MessageDeliveryStatus { sending, sent, delivered, read, failed }
 
-enum MessageType {
-  text,
-  ping,
-  image,
-  voice,
-  gif,
-  file,
-}
+enum MessageType { text, ping, image, voice, gif, file }
 
 /// Preview of a message being replied to (sent in payload).
 class ReplyToPreview {
@@ -34,7 +21,9 @@ class ReplyToPreview {
       id: json['id'] as int,
       content: json['content'] as String? ?? '',
       senderUsername: json['senderUsername'] as String? ?? '',
-      messageType: MessageModel._parseMessageType(json['messageType'] as String?),
+      messageType: MessageModel._parseMessageType(
+        json['messageType'] as String?,
+      ),
     );
   }
 }
@@ -48,11 +37,21 @@ class MessageModel {
   final DateTime createdAt;
   final MessageDeliveryStatus deliveryStatus;
   final DateTime? expiresAt;
+
   /// TTL frozen at send; countdown starts when recipient reads.
   final int? disappearAfterSeconds;
   final MessageType messageType;
   final String? mediaUrl;
   final int? mediaDuration;
+
+  /// Intrinsic encrypted media geometry from the E2E envelope — client-only.
+  final int? mediaWidth;
+
+  /// Intrinsic encrypted media geometry from the E2E envelope — client-only.
+  final int? mediaHeight;
+
+  /// Compact encrypted visual placeholder from the E2E envelope — client-only.
+  final String? mediaThumbHash;
   final String? tempId; // For optimistic message matching
   final Map<String, List<int>> reactions; // emoji -> [userId]
   final int? replyToMessageId;
@@ -61,10 +60,13 @@ class MessageModel {
   final String? linkPreviewTitle;
   final String? linkPreviewImageUrl;
   final String? encryptedContent;
+
   /// AES-256-GCM key (base64), from E2E envelope — client-only, not from REST.
   final String? mediaKey;
+
   /// AES-256-GCM IV (base64), from E2E envelope — client-only.
   final String? mediaIv;
+
   /// Server-stamped time of the last edit; null = never edited. From REST/WS payload.
   final DateTime? editedAt;
 
@@ -105,6 +107,9 @@ class MessageModel {
     this.messageType = MessageType.text,
     this.mediaUrl,
     this.mediaDuration,
+    this.mediaWidth,
+    this.mediaHeight,
+    this.mediaThumbHash,
     this.tempId,
     this.reactions = const {},
     this.replyToMessageId,
@@ -159,7 +164,8 @@ class MessageModel {
   static Map<String, List<int>> _parseReactions(dynamic raw) {
     if (raw == null || raw is! Map) return {};
     return raw.map(
-      (k, v) => MapEntry(k as String, (v as List).map((e) => e as int).toList()),
+      (k, v) =>
+          MapEntry(k as String, (v as List).map((e) => e as int).toList()),
     );
   }
 
@@ -206,6 +212,9 @@ class MessageModel {
     int? disappearAfterSeconds,
     String? mediaUrl,
     int? mediaDuration,
+    int? mediaWidth,
+    int? mediaHeight,
+    String? mediaThumbHash,
     Map<String, List<int>>? reactions,
     int? replyToMessageId,
     ReplyToPreview? replyTo,
@@ -231,6 +240,9 @@ class MessageModel {
       messageType: messageType ?? this.messageType,
       mediaUrl: mediaUrl ?? this.mediaUrl,
       mediaDuration: mediaDuration ?? this.mediaDuration,
+      mediaWidth: mediaWidth ?? this.mediaWidth,
+      mediaHeight: mediaHeight ?? this.mediaHeight,
+      mediaThumbHash: mediaThumbHash ?? this.mediaThumbHash,
       tempId: tempId,
       reactions: reactions ?? this.reactions,
       replyToMessageId: replyToMessageId ?? this.replyToMessageId,

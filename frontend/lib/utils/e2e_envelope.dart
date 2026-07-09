@@ -10,6 +10,10 @@ class E2eEnvelope {
   static const String _keyMediaDuration = 'mediaDuration';
   static const String _keyMediaKey = 'mediaKey';
   static const String _keyMediaIv = 'mediaIv';
+  static const String _keyMediaWidth = 'mediaWidth';
+  static const String _keyMediaHeight = 'mediaHeight';
+  static const String _keyMediaThumbHash = 'mediaThumbHash';
+  static const int _maximumMediaDimension = 32768;
   static const String _keyLinkPreview = 'linkPreview';
   static const String _keyUrl = 'url';
   static const String _keyTitle = 'title';
@@ -22,6 +26,9 @@ class E2eEnvelope {
     int? mediaDuration,
     String? mediaKey,
     String? mediaIv,
+    int? mediaWidth,
+    int? mediaHeight,
+    String? mediaThumbHash,
     Map<String, String?>? linkPreview,
   }) {
     final envelope = <String, dynamic>{_keyContent: content};
@@ -30,6 +37,13 @@ class E2eEnvelope {
     if (mediaDuration != null) envelope[_keyMediaDuration] = mediaDuration;
     if (mediaKey != null) envelope[_keyMediaKey] = mediaKey;
     if (mediaIv != null) envelope[_keyMediaIv] = mediaIv;
+    if (_areValidMediaDimensions(mediaWidth, mediaHeight)) {
+      envelope[_keyMediaWidth] = mediaWidth;
+      envelope[_keyMediaHeight] = mediaHeight;
+    }
+    if (mediaThumbHash != null && mediaThumbHash.isNotEmpty) {
+      envelope[_keyMediaThumbHash] = mediaThumbHash;
+    }
     if (linkPreview != null) envelope[_keyLinkPreview] = linkPreview;
     return envelope;
   }
@@ -41,16 +55,25 @@ class E2eEnvelope {
     int? mediaDuration,
     String? mediaKey,
     String? mediaIv,
+    int? mediaWidth,
+    int? mediaHeight,
+    String? mediaThumbHash,
     String? linkPreviewUrl,
     String? linkPreviewTitle,
     String? linkPreviewImageUrl,
-  }) parse(String jsonStr) {
+  })
+  parse(String jsonStr) {
     final envelope = jsonDecode(jsonStr) as Map<String, dynamic>;
     final content = envelope[_keyContent] as String? ?? '';
     final messageType = envelope[_keyMessageType] as String? ?? 'TEXT';
     final mediaUrl = envelope[_keyMediaUrl] as String?;
     final rawDuration = envelope[_keyMediaDuration];
     final mediaDuration = rawDuration is num ? rawDuration.round() : null;
+    final mediaWidth = envelope[_keyMediaWidth];
+    final mediaHeight = envelope[_keyMediaHeight];
+    final validDimensions = _areValidMediaDimensions(mediaWidth, mediaHeight);
+    final rawThumbHash = envelope[_keyMediaThumbHash];
+    final mediaThumbHash = rawThumbHash is String ? rawThumbHash : null;
     final lp = envelope[_keyLinkPreview] as Map<String, dynamic>?;
     return (
       content: content,
@@ -59,9 +82,23 @@ class E2eEnvelope {
       mediaDuration: mediaDuration,
       mediaKey: envelope[_keyMediaKey] as String?,
       mediaIv: envelope[_keyMediaIv] as String?,
+      mediaWidth: validDimensions ? mediaWidth as int : null,
+      mediaHeight: validDimensions ? mediaHeight as int : null,
+      mediaThumbHash:
+          validDimensions && mediaThumbHash != null && mediaThumbHash.isNotEmpty
+          ? mediaThumbHash
+          : null,
       linkPreviewUrl: lp?[_keyUrl] as String?,
       linkPreviewTitle: lp?[_keyTitle] as String?,
       linkPreviewImageUrl: lp?[_keyImageUrl] as String?,
     );
   }
+
+  static bool _areValidMediaDimensions(Object? width, Object? height) =>
+      width is int &&
+      height is int &&
+      width > 0 &&
+      height > 0 &&
+      width <= _maximumMediaDimension &&
+      height <= _maximumMediaDimension;
 }

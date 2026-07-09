@@ -1,4 +1,5 @@
 import 'dart:typed_data';
+import 'dart:ui' as ui;
 
 import 'package:fireplace/models/message_model.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
@@ -7,6 +8,7 @@ import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/services/api_service.dart';
 import 'package:fireplace/services/encrypted_media_upload_service.dart';
 import 'package:fireplace/utils/e2e_diag_log.dart';
+import 'package:fireplace/utils/e2e_envelope.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:image_picker/image_picker.dart';
 
@@ -14,7 +16,7 @@ import 'package:image_picker/image_picker.dart';
 /// writes pending content), then either returns a canned result or throws.
 class _FakeMediaUpload extends EncryptedMediaUploadService {
   _FakeMediaUpload({this.throwOnUpload})
-      : super(api: ApiService(baseUrl: 'http://test'));
+    : super(api: ApiService(baseUrl: 'http://test'));
 
   final Object? throwOnUpload;
   final List<Map<String, Object?>> calls = [];
@@ -61,12 +63,39 @@ class _SendReadyEncryption extends EncryptionProvider {
   @override
   Future<void> ensureSession(int recipientId) async {}
 
+  final List<String> encryptedPlaintexts = [];
+  final Map<String, Map<String, dynamic>> pendingRecords = {};
+
   @override
-  Future<String> encrypt(int recipientId, String plaintext) async => '1:abc';
+  Future<String> encrypt(int recipientId, String plaintext) async {
+    encryptedPlaintexts.add(plaintext);
+    return '1:abc-${encryptedPlaintexts.length}';
+  }
+
+  @override
+  Future<void> savePendingSendRecord(
+    String ciphertext,
+    Map<String, dynamic> data,
+  ) async {
+    pendingRecords[ciphertext] = Map<String, dynamic>.from(data);
+  }
 
   @override
   Future<Map<String, dynamic>?> getDecryptedContent(int messageId) async =>
       null;
+}
+
+Future<Uint8List> _solidPng({required int width, required int height}) async {
+  final recorder = ui.PictureRecorder();
+  final canvas = ui.Canvas(recorder);
+  canvas.drawRect(
+    ui.Rect.fromLTWH(0, 0, width.toDouble(), height.toDouble()),
+    ui.Paint()..color = const ui.Color(0xFFFF0000),
+  );
+  final image = await recorder.endRecording().toImage(width, height);
+  final bytes = await image.toByteData(format: ui.ImageByteFormat.png);
+  image.dispose();
+  return bytes!.buffer.asUint8List();
 }
 
 MessagingProvider _newProvider() {
@@ -113,6 +142,50 @@ void main() {
       expect(fake.capturedKey, 'K');
     });
 
+    test(
+      'keeps media dimensions and ThumbHash encrypted, never in outer emit',
+      () async {
+        final provider = _newProvider();
+        provider.setMediaUploadServiceForTest(_FakeMediaUpload());
+        final encryption = _SendReadyEncryption();
+        provider.setEncryptionProvider(encryption);
+        final emitted = <Map<String, dynamic>>[];
+        provider.setEmitCallback((event, data) {
+          if (event == 'sendMessage') {
+            emitted.add(Map<String, dynamic>.from(data as Map));
+          }
+        });
+
+        final ok = await provider.sendImageMessage(
+          'tok',
+          XFile.fromData(await _solidPng(width: 4, height: 2), name: 'a.png'),
+          2,
+        );
+
+        expect(ok, isTrue);
+        final outerPayload = emitted.single;
+        expect(outerPayload['messageType'], 'IMAGE');
+        expect(outerPayload['mediaUrl'], 'http://test/media/msgs/x.bin');
+        expect(outerPayload.containsKey('mediaWidth'), isFalse);
+        expect(outerPayload.containsKey('mediaHeight'), isFalse);
+        expect(outerPayload.containsKey('mediaThumbHash'), isFalse);
+
+        final innerEnvelope = E2eEnvelope.parse(
+          encryption.encryptedPlaintexts.single,
+        );
+        expect(innerEnvelope.mediaWidth, 4);
+        expect(innerEnvelope.mediaHeight, 2);
+        expect(innerEnvelope.mediaThumbHash, isNotNull);
+        expect(innerEnvelope.mediaThumbHash, isNotEmpty);
+
+        final pendingSnapshot =
+            encryption.pendingRecords[outerPayload['encryptedContent']];
+        expect(pendingSnapshot?['mediaWidth'], 4);
+        expect(pendingSnapshot?['mediaHeight'], 2);
+        expect(pendingSnapshot?['mediaThumbHash'], isNotEmpty);
+      },
+    );
+
     test('marks the message failed (no mediaUrl) when upload throws', () async {
       final provider = _newProvider();
       provider.setMediaUploadServiceForTest(
@@ -127,7 +200,10 @@ void main() {
 
       final msg = provider.messages.last;
       expect(msg.deliveryStatus, MessageDeliveryStatus.failed);
-      expect(msg.mediaUrl, isNull); // never patched — upload threw before the patch
+      expect(
+        msg.mediaUrl,
+        isNull,
+      ); // never patched — upload threw before the patch
     });
   });
 
@@ -146,7 +222,10 @@ void main() {
 
       final msg = provider.messages.last;
       expect(msg.mediaUrl, 'http://test/media/msgs/x.bin');
-      expect(msg.mediaDuration, 5); // serverDuration = upload.mediaDuration ?? duration
+      expect(
+        msg.mediaDuration,
+        5,
+      ); // serverDuration = upload.mediaDuration ?? duration
       expect(msg.mediaKey, 'K');
       expect(fake.calls.single['mediaType'], 'voice');
       expect(fake.calls.single['duration'], 5);
@@ -165,31 +244,37 @@ void main() {
         localAudioBytes: Uint8List.fromList([1, 2, 3]),
       );
 
-      expect(provider.messages.last.deliveryStatus, MessageDeliveryStatus.failed);
+      expect(
+        provider.messages.last.deliveryStatus,
+        MessageDeliveryStatus.failed,
+      );
     });
   });
 
   group('MessagingProvider media send — file', () {
-    test('routes through the upload service with fileName and no expiresIn', () async {
-      final provider = _newProvider();
-      final fake = _FakeMediaUpload();
-      provider.setMediaUploadServiceForTest(fake);
+    test(
+      'routes through the upload service with fileName and no expiresIn',
+      () async {
+        final provider = _newProvider();
+        final fake = _FakeMediaUpload();
+        provider.setMediaUploadServiceForTest(fake);
 
-      await provider.sendFileMessage(
-        'tok',
-        Uint8List.fromList([1, 2, 3]),
-        'doc.pdf',
-        'application/pdf',
-        2,
-      );
+        await provider.sendFileMessage(
+          'tok',
+          Uint8List.fromList([1, 2, 3]),
+          'doc.pdf',
+          'application/pdf',
+          2,
+        );
 
-      final msg = provider.messages.last;
-      expect(msg.mediaUrl, 'http://test/media/msgs/x.bin');
-      expect(msg.content, 'doc.pdf');
-      expect(fake.calls.single['mediaType'], 'file');
-      expect(fake.calls.single['fileName'], 'doc.pdf');
-      expect(fake.calls.single['expiresIn'], isNull);
-    });
+        final msg = provider.messages.last;
+        expect(msg.mediaUrl, 'http://test/media/msgs/x.bin');
+        expect(msg.content, 'doc.pdf');
+        expect(fake.calls.single['mediaType'], 'file');
+        expect(fake.calls.single['fileName'], 'doc.pdf');
+        expect(fake.calls.single['expiresIn'], isNull);
+      },
+    );
 
     test('marks the message failed (no mediaUrl) when upload throws', () async {
       final provider = _newProvider();
