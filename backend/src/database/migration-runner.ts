@@ -1,5 +1,6 @@
 import { readdirSync, readFileSync } from 'fs';
 import { join } from 'path';
+import { setTimeout as sleep } from 'timers/promises';
 import * as dotenv from 'dotenv';
 import { Client } from 'pg';
 
@@ -88,14 +89,36 @@ export async function runMigrations(
   dotenv.config({ path: '.env.local' });
   dotenv.config({ path: '.env' });
 
-  const client = new Client({
+  const clientConfig = {
     host: process.env.DB_HOST ?? 'localhost',
     port: Number(process.env.DB_PORT ?? 5432),
     user: process.env.DB_USER ?? 'postgres',
     password: process.env.DB_PASS ?? 'postgres',
     database: process.env.DB_NAME ?? 'chatdb',
-  });
-  await client.connect();
+  };
+  // Bounded connect retry: the runner starts BEFORE Nest/TypeORM (which has its
+  // own retry), so on a cold start (VM reboot, db restart) the backend can beat
+  // Postgres and crash-loop via restart:unless-stopped — self-healing but noisy
+  // exactly during incident recovery. A pg Client cannot re-connect() after a
+  // failed attempt, so each attempt gets a fresh instance.
+  const CONNECT_ATTEMPTS = 10;
+  let client = new Client(clientConfig);
+  for (let attempt = 1; ; attempt++) {
+    try {
+      await client.connect();
+      break;
+    } catch (error) {
+      if (attempt >= CONNECT_ATTEMPTS) throw error;
+      // ECONNREFUSED arrives as an AggregateError with an empty .message.
+      const reason =
+        (error as Error).message || (error as Error & { code?: string }).code || String(error);
+      log(
+        `db not ready (attempt ${attempt}/${CONNECT_ATTEMPTS}): ${reason}; retrying in 3s`,
+      );
+      await sleep(3000);
+      client = new Client(clientConfig);
+    }
+  }
   try {
     await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_KEY]);
     await client.query(
