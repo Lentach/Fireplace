@@ -506,6 +506,12 @@ extension MessagingHistory on MessagingProvider {
             ?.saveDecryptedContent(msg.id, persistData)
             .ignore();
       }
+      // Ack arrived — the pending-send record served its purpose; consume it
+      // so normal sends keep the reconcile store self-cleaning.
+      final ackCiphertext = msg.encryptedContent;
+      if (ackCiphertext != null) {
+        _encryptionProvider?.takePendingSendRecord(ackCiphertext).ignore();
+      }
     }
 
     // Add or update in the open chat (active id may lag openConversation briefly).
