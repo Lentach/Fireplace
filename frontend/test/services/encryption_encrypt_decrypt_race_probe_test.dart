@@ -6,11 +6,14 @@ import 'package:fireplace/services/encryption_service.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
-/// Cross-race probe for the ongoing "[Decryption failed]" field reports
-/// (2026-07-07): the 0.0.90 fix serialized encrypt-vs-encrypt per recipient,
-/// but encrypt and decrypt still run under TWO SEPARATE locks
-/// (EncryptionService._encryptTails vs MessagingProvider._decryptChainBySender)
-/// while both do load→mutate→store on the SAME Signal SessionRecord.
+/// Cross-race probe for the 2026-07-07 "[Decryption failed]" field reports.
+/// HISTORICAL BUG (fixed by the 0.0.94 `_sessionTails` lock): the 0.0.90 fix
+/// serialized encrypt-vs-encrypt per recipient, but encrypt and decrypt ran
+/// under TWO SEPARATE locks (the old EncryptionService._encryptTails vs
+/// MessagingProvider._decryptChainBySender) while both do load→mutate→store
+/// on the SAME Signal SessionRecord. Today EVERY session mutator (encrypt,
+/// decrypt, buildSession, deleteSession) shares ONE per-peer queue —
+/// EncryptionService._sessionTails — and these tests pin that invariant.
 ///
 /// Lost-update mechanics: an encrypt loads the session, a concurrent decrypt
 /// loads the same session, one stores, then the other stores a STALE record
@@ -77,8 +80,9 @@ void main() {
 
     // Alice runs the app's two real loops CONCURRENTLY:
     //  - decrypt loop: sequential per sender (what _runDecryptSerialized does)
-    //  - encrypt loop: sequential per recipient (what the 0.0.90 queue does)
-    // Nothing serializes the two AGAINST EACH OTHER — the bug under probe.
+    //  - encrypt loop: sequential per recipient (what the 0.0.90 queue did)
+    // Pre-0.0.94 nothing serialized the two AGAINST EACH OTHER — the bug this
+    // probe was written for; the shared _sessionTails queue now must.
     final decryptFailures = <String>[];
     final decrypted = <String>[];
     final outboundWires = <String>[];

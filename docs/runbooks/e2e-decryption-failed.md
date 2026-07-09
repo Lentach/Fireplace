@@ -39,7 +39,7 @@ were not what they claimed to be.
 | `DECRYPT_IDENTITY_RESET` / `idReset:true`, peer's OTP uploads in backend log | Peer regenerated identity (storage loss / clear-data / incognito). Separate problem — the still-unbuilt regeneration guard | Run the 2-min persistence test (below), then build the guard |
 | `kind:badMac` | Peer encrypting from a stale sender ratchet or session mismatch | Existing rebuild-request machinery handles it; investigate only if looping |
 | `ENCRYPT_OVERLAP` events | INFO only: proves sends were concurrent. Expected and safe under the lock | Ignore |
-| Own SENT message shows `[encrypted]` on the SENDER's device only; recipient reads it fine; NO `DECRYPT_DECISION` for it; log shows `SEND_EMIT` followed by `SOCKET_DISCONNECT` within seconds and no `RECV_MSG` echo | **Lost `messageSent` ack** (07-08 field case, msg 14667): socket died inside the ack window, so the tempId→realId mapping never happened and the plaintext was never persisted under the real id. NOT an E2E failure — the wire was fine, the recipient got it; a Signal sender cannot decrypt its own ciphertext, so the sender's copy stays `[encrypted]`. Message content is recoverable only by resending | Fix designed, awaiting owner go (2026-07-09): reconcile unacked pending sends on history merge by conversation + tempId-timestamp proximity, persist under real id; durable pending-send map. Zero crypto surface |
+| Own SENT message shows `[encrypted]` on the SENDER's device only; recipient reads it fine; NO `DECRYPT_DECISION` for it; log shows `SEND_EMIT` followed by `SOCKET_DISCONNECT` within seconds and no `RECV_MSG` echo. CAVEAT: those events live only in the in-memory ring (wiped on restart) — capture in-session, or add a durable `SEND_UNACKED` event first | **Lost `messageSent` ack** (07-08 field case, msg 14667): socket died inside the ack window, so the tempId→realId mapping never happened and the plaintext was never persisted under the real id. NOT an E2E failure — the wire was fine, the recipient got it; a Signal sender cannot decrypt its own ciphertext, so the sender's copy stays `[encrypted]`. Message content is recoverable only by resending | Fix designed (2026-07-09, REVISED per independent review), awaiting owner go: durable pending-send map keyed at `SEND_EMIT` time by a **hash of the emitted ciphertext** (per-user `e2e_${uid}_` prefix; wiped by `clearAllKeys` — it holds plaintext at rest; consumed on ack/reconcile/TTL only, NEVER by the onConnect/clearAll `_pendingSendContent` clears, since the lost-ack case IS a reconnect); on history merge, an own `[encrypted]` row reconciles by **exact `encryptedContent` equality** (history rows already carry it; every ciphertext is unique by ratchet construction — immune to burst-send false positives, same-tempId retry duplicates, and multi-device rows). DO NOT build the earlier timestamp-proximity matcher: a wrong proximity match persists the WRONG plaintext under a real id — permanent, worse than `[encrypted]` |
 
 **Dating rule (learned twice — msg 14149, then msgs 14389/14423):** a
 `DECRYPT_DECISION` timestamp is when the receiver ATTEMPTED the decrypt, not
@@ -125,3 +125,20 @@ prioritize over everything else.
 - Never advise users to clear site data / reinstall / test in incognito.
 - `[Decryption failed]` rows that are persisted-terminal do not come back.
   Ever. Set expectations before deploying a fix.
+
+## Known accepted edges (independent review, 2026-07-09 — none blocking)
+
+- `buildSession`/`deleteSession` are lock-guarded but NOT probe-pinned: the
+  gated test would stay green if their `_runSessionSerialized` wrapper were
+  silently removed. Follow-up gated case if touching this code: hold an
+  encrypt's storeSession, run buildSession to completion, release, assert the
+  next wire decrypts.
+- `EncryptionService` is app-lifetime; `_sessionTails` are never cleared and
+  `initialize()` swaps stores without draining the queue. A cross-user write
+  is ~unreachable today (tails drain in ms, prekey fetches cancel on
+  disconnect) but nothing ENFORCES quiescence across `initialize()`. Clean fix
+  if it ever bites: fresh service per login, or key tails by (userId, peerId).
+- `clearAllKeys()` (account deletion) deletes session records outside the
+  queue — an in-flight op past its loadSession can resurrect session bytes at
+  rest after the wipe. Privacy hygiene only; route the deletes through the
+  queue if hardening.
