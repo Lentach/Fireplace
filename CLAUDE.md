@@ -107,6 +107,7 @@ VAPID public key in the frontend build must match backend VAPID keys. A wrong ke
 - Raw SQL with camelCase columns needs quotes, e.g. `"deliveryStatus"`, `"createdAt"`.
 - Backups: `./backup-db.sh` on VM backs up Postgres + media + encrypted `.env` when a passphrase is configured. Dumps contain ciphertext messages, public keys, usernames/contact graph/timestamps and password hashes; they cannot decrypt messages but are still sensitive.
 - Backup setup: `./setup-backup-cron.sh` on the VM stores the gpg passphrase in a 0600 file (never on the cron line/argv) and installs the daily cron. Without it there are effectively no backups, or unencrypted ones (`backup-db.sh` skips `.env` and warns when no passphrase). Store the passphrase OFF the VM and decrypt-test one dump before trusting it.
+- Offsite: `BACKUP_RCLONE_REMOTE=remote:bucket/prefix` on the cron line uploads encrypted artifacts (verified by listing the remote) — B2 with an append-only application key (no `deleteFiles`), pruning via bucket lifecycle. `BACKUP_HEALTHCHECK_URL` pings a dead-man monitor ONLY on full success. Details in `.cursor/rules/production-vm-deploy.mdc`.
 - Restore: `./restore-db.sh <dump>` is DB-only, destructive, and wraps `pg_restore` in a single transaction; media and `.env` restore are manual.
 - E2E invariant: server stores Signal ciphertext and metadata, never device private keys. Device Signal keys live locally (web localStorage / mobile secure storage). Clearing site data, uninstalling the PWA, or account deletion can destroy keys with no recovery.
 
