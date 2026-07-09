@@ -915,6 +915,20 @@ extension MessagingSend on MessagingProvider {
             : '?',
       });
 
+      // 5b. Durable lost-ack insurance: snapshot the plaintext payload keyed
+      // by the EXACT emitted ciphertext. If the `messageSent` ack is lost to a
+      // socket drop (tempId→realId mapping never happens), the history merge
+      // reconciles the '[encrypted]' server row back to this snapshot by
+      // ciphertext equality — a sender cannot decrypt its own ciphertext.
+      // Fire-and-forget: the send is never delayed or failed by this.
+      final pendingSnapshot = _pendingSendContent[tempId];
+      if (pendingSnapshot != null) {
+        _encryptionProvider!
+            .savePendingSendRecord(
+                ciphertext, Map<String, dynamic>.from(pendingSnapshot))
+            .ignore();
+      }
+
       // 6. Send encrypted payload; include type/media metadata so the server
       // can reference self-hosted blobs (orphan media cleanup, expiry deletes).
       _e2eFlowLog('SEND_EMIT', {'recipientId': recipientId, 'tempId': tempId});

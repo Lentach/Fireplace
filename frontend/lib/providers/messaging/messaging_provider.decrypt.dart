@@ -411,6 +411,73 @@ extension MessagingDecrypt on MessagingProvider {
             _encryptionProvider?.cacheDecryption(msg.id, merged);
             changed = true;
           }
+        } else {
+          // Lost-ack reconcile: the `messageSent` ack died with a socket drop,
+          // so this own row arrived as '[encrypted]' with nothing persisted
+          // under its real id. Match the durable pending-send record by EXACT
+          // ciphertext equality (unique by ratchet construction — a miss means
+          // stay '[encrypted]', never a heuristic guess; see the 07-08 field
+          // case msg 14667 and docs/runbooks/e2e-decryption-failed.md).
+          final ciphertext = msg.encryptedContent;
+          // Peek (never consume-first): the pending record is the ONLY
+          // surviving plaintext copy, and saveDecryptedContent swallows
+          // failures — so persist, VERIFY by read-back, and only then take.
+          // A failed persist leaves the record for the next history pass.
+          final pending = ciphertext != null
+              ? await _encryptionProvider!.peekPendingSendRecord(ciphertext)
+              : null;
+          if (pending != null) {
+            final restoredType =
+                _parseMessageTypeString(pending['messageType'] as String?);
+            final pendingContent = pending['content'] as String? ?? '';
+            final restored = msg.copyWith(
+              content: pendingContent.isNotEmpty ? pendingContent : null,
+              messageType: restoredType,
+              mediaUrl: pending['mediaUrl'] as String?,
+              mediaDuration: pending['mediaDuration'] as int?,
+              mediaKey: pending['mediaKey'] as String?,
+              mediaIv: pending['mediaIv'] as String?,
+              linkPreviewUrl: pending['linkPreviewUrl'] as String?,
+              linkPreviewTitle: pending['linkPreviewTitle'] as String?,
+              linkPreviewImageUrl: pending['linkPreviewImageUrl'] as String?,
+            );
+            // peek → persist → verify → take:
+            await _encryptionProvider!.saveDecryptedContent(msg.id, {
+              'content': pendingContent,
+              if (pending['messageType'] != null)
+                'messageType': pending['messageType'],
+              if (pending['mediaUrl'] != null) 'mediaUrl': pending['mediaUrl'],
+              if (pending['mediaDuration'] != null)
+                'mediaDuration': pending['mediaDuration'],
+              if (pending['mediaKey'] != null) 'mediaKey': pending['mediaKey'],
+              if (pending['mediaIv'] != null) 'mediaIv': pending['mediaIv'],
+              if (pending['linkPreviewUrl'] != null)
+                'linkPreviewUrl': pending['linkPreviewUrl'],
+              if (pending['linkPreviewTitle'] != null)
+                'linkPreviewTitle': pending['linkPreviewTitle'],
+              if (pending['linkPreviewImageUrl'] != null)
+                'linkPreviewImageUrl': pending['linkPreviewImageUrl'],
+            });
+            final persisted =
+                await _encryptionProvider!.getDecryptedContent(msg.id);
+            final verified = (persisted?['content'] as String? ?? '') ==
+                    pendingContent &&
+                (pendingContent.isNotEmpty || persisted?['messageType'] != null);
+            if (verified) {
+              await _encryptionProvider!.takePendingSendRecord(ciphertext!);
+            }
+            final idx = _messages.indexWhere((m) => m.id == msg.id);
+            if (idx != -1) {
+              final merged = _mergeMessagePreferNewer(_messages[idx], restored);
+              _messages[idx] = merged;
+              _encryptionProvider?.cacheDecryption(msg.id, merged);
+              changed = true;
+            }
+            _e2eFlowLog('SEND_ACK_RECONCILED',
+                {'msgId': msg.id, 'persistVerified': verified});
+            E2ePersistentDiag.record('SEND_ACK_RECONCILED',
+                {'msgId': msg.id, 'persistVerified': verified});
+          }
         }
       }
     }
