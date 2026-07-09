@@ -103,6 +103,14 @@ class _VisualViewportKeyboardInsetSource implements KeyboardInsetSource {
   double _fullLayoutHeight = 0;
   double _trackedWidth = 0;
 
+  // Max inset seen since the keyboard last fully hid (inset back to 0).
+  // Keyboard HIDE is progressive on iOS (e.g. 336→200→120→0), so persisting
+  // every inset > 0 would leave a mid-hide partial (120) as the "last known"
+  // height and the flash-fix pre-arm would pre-position the composer at a
+  // fraction of the real keyboard — silently breaking the FLASH A/B on every
+  // focus after the first hide. Persist only new episode maxima.
+  double _episodeMaxInset = 0;
+
   @override
   ValueListenable<double> get inset => _inset;
 
@@ -128,7 +136,12 @@ class _VisualViewportKeyboardInsetSource implements KeyboardInsetSource {
     _fullLayoutHeight = result.fullLayoutHeight;
     _trackedWidth = result.trackedWidth;
     _inset.value = result.inset;
-    if (result.inset > 0) _persistLastKnownInset(result.inset, vv.width);
+    if (result.inset <= 0) {
+      _episodeMaxInset = 0;
+    } else if (result.inset > _episodeMaxInset) {
+      _episodeMaxInset = result.inset;
+      _persistLastKnownInset(result.inset, vv.width);
+    }
   }
 
   @override
