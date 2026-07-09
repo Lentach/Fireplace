@@ -101,10 +101,18 @@ subscribe fails (`push service error` / delivery `400`).
   but ONLY when encryption is on** (no passphrase → `.env` skipped, never written cleartext).
   **Store the passphrase OFF the VM** (password manager) — an encrypted backup is useless if the only
   copy of the key dies with the machine.
-  Cron (no secret in the line): `0 4 * * * cd ~/fireplace && BACKUP_GCS_BUCKET=gs://… ./backup-db.sh >> ~/fireplace-backups/backup.log 2>&1`.
-- **Offsite:** `BACKUP_GCS_BUCKET=gs://…` (gsutil) uploads each run. One-time bucket setup:
-  `BUCKET=gs://… PROJECT=… SA=<vm-sa> ./setup-backup-bucket.sh` (private + lifecycle + IAM). Bucket
-  lifecycle (`LIFECYCLE_DAYS`, default 30) is independent of local `RETENTION_DAYS` (14) — by design.
+  Cron (no secret in the line): `0 4 * * * cd ~/fireplace && BACKUP_RCLONE_REMOTE=fireplace-b2:BUCKET/vps BACKUP_HEALTHCHECK_URL=https://hc-ping.com/<uuid> ./backup-db.sh >> ~/fireplace-backups/backup.log 2>&1`.
+- **Offsite (rclone, current path):** `BACKUP_RCLONE_REMOTE=remote:bucket/prefix` uploads each run's
+  encrypted artifacts and VERIFIES them by listing the remote (`offsite verified: N/N`), not by rclone's
+  exit code. Target is Backblaze B2 with an **application key WITHOUT `deleteFiles`** (append-only: a
+  compromised VM can upload but never destroy history) + a bucket lifecycle rule (~30 days) for pruning —
+  never the script. Credentials in `~/.config/rclone/rclone.conf` (0600). Cleartext NEVER leaves the VM:
+  no passphrase → upload refused.
+- **Dead-man's switch:** `BACKUP_HEALTHCHECK_URL` (healthchecks.io, ~26h grace) is pinged ONLY when the
+  backup AND the offsite verification both succeeded — a silently failing night pages by missing ping
+  instead of rotting in `backup.log`.
+- **Offsite (legacy GCS):** `BACKUP_GCS_BUCKET=gs://…` (gsutil/gcloud) still works but was built for the
+  GCP-era VM; on OVH it would need a service-account key on disk. Prefer rclone/B2.
 - **E2E-safe:** dumps hold only ciphertext messages + PUBLIC keys + metadata + bcrypt hashes;
   Signal private keys are device-only, never in the DB — a dump cannot decrypt messages. Still
   sensitive (metadata + hashes) → keep private / encrypt / lock down the bucket.

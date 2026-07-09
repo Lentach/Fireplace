@@ -12,14 +12,15 @@
 # It is fed via gpg --passphrase-file, so it NEVER appears in `ps`/argv or the cron line.
 # .env (JWT_SECRET, VAPID keys, DB creds) is included ONLY when encryption is active.
 # STORE THE PASSPHRASE OFF THE VM (password manager) — an encrypted backup is useless if
-# the only copy of the key dies with the machine. Optional offsite: BACKUP_GCS_BUCKET
-# (see setup-backup-bucket.sh).
+# the only copy of the key dies with the machine. Optional offsite (encrypted files only):
+#   BACKUP_RCLONE_REMOTE=remote:bucket/prefix   (rclone; credentials in ~/.config/rclone/rclone.conf 0600)
+#   BACKUP_GCS_BUCKET=gs://bucket               (legacy GCP-era path; see setup-backup-bucket.sh)
 # NOTE: cleartext intermediates are shred'd best-effort; on CoW/journaled/tmpfs
 # filesystems shred cannot guarantee erasure — rely on full-disk encryption for the VM.
 #
 # Usage:  cd ~/fireplace && ./backup-db.sh
 # Cron (daily 04:00) — passphrase lives in the file, NOT the cron line:
-#   0 4 * * * cd ~/fireplace && BACKUP_GCS_BUCKET=gs://your-bucket ./backup-db.sh >> ~/fireplace-backups/backup.log 2>&1
+#   0 4 * * * cd ~/fireplace && BACKUP_RCLONE_REMOTE=fireplace-b2:BUCKET/vps ./backup-db.sh >> ~/fireplace-backups/backup.log 2>&1
 set -euo pipefail
 
 REPO_DIR="${REPO_DIR:-$(cd "$(dirname "$0")" && pwd)}"
@@ -128,8 +129,60 @@ if [[ -n "${BACKUP_GCS_BUCKET:-}" ]]; then
   fi
 fi
 
+# Optional offsite copy via rclone (BACKUP_RCLONE_REMOTE=remote:bucket/prefix, e.g. B2).
+# Same guard: only ENCRYPTED artifacts ever leave the VM. Use an append-only key
+# (B2 application key WITHOUT deleteFiles) so a compromised VM cannot destroy history;
+# pruning is the bucket's lifecycle rule, never this script.
+# OFFSITE_OK feeds the dead-man ping below: uploads are verified by listing the
+# remote, not trusted from rclone's exit code alone.
+OFFSITE_OK=1
+if [[ -n "${BACKUP_RCLONE_REMOTE:-}" ]]; then
+  OFFSITE_OK=0
+  if [[ -z "$PASS_FILE" ]]; then
+    echo "WARN: BACKUP_RCLONE_REMOTE set but no passphrase — refusing to upload UNENCRYPTED backups offsite."
+  elif ! command -v rclone >/dev/null 2>&1; then
+    echo "WARN: BACKUP_RCLONE_REMOTE set but rclone not found — offsite upload SKIPPED."
+  else
+    shopt -s nullglob
+    rc_encrypted=("$BACKUP_DIR"/*"$ts"*.gpg)
+    shopt -u nullglob
+    if (( ${#rc_encrypted[@]} == 0 )); then
+      echo "WARN: no encrypted files for $ts to upload via rclone."
+    else
+      echo "==> uploading ${#rc_encrypted[@]} file(s) to $BACKUP_RCLONE_REMOTE (rclone)"
+      rclone copy "$BACKUP_DIR" "$BACKUP_RCLONE_REMOTE" --include "*${ts}*.gpg" \
+        || echo "WARN: rclone upload failed"
+      # Trust the listing, not the exit code: count what actually landed.
+      # `|| true` on the lsf stage: under set -euo pipefail a broken remote
+      # would otherwise abort the whole script here, skipping prune and the
+      # ERROR/SKIPPED reporting below (count reads 0 -> verification fails).
+      uploaded="$({ rclone lsf "$BACKUP_RCLONE_REMOTE" --include "*${ts}*.gpg" 2>/dev/null || true; } | wc -l)"
+      if (( uploaded == ${#rc_encrypted[@]} )); then
+        echo "==> offsite verified: ${uploaded}/${#rc_encrypted[@]} objects present"
+        OFFSITE_OK=1
+      else
+        echo "ERROR: offsite verification FAILED: ${uploaded}/${#rc_encrypted[@]} objects present at $BACKUP_RCLONE_REMOTE"
+      fi
+    fi
+  fi
+fi
+
 echo "==> pruning local backups older than $RETENTION_DAYS days"
 find "$BACKUP_DIR" -type f \( -name 'chatdb-*' -o -name 'media-*' -o -name 'env-*' \) -mtime +"$RETENTION_DAYS" -delete
 
 echo "==> done. Local backups in $BACKUP_DIR:"
 ls -lh "$BACKUP_DIR" | grep -E "$ts" || true
+
+# Dead-man's switch (optional): ping ONLY on full success — local backup done AND
+# offsite verified (when configured). A healthchecks.io check with a ~26h grace
+# period then pages on the FIRST silently-failing night instead of accumulating
+# false confidence in a log nobody tails.
+if [[ -n "${BACKUP_HEALTHCHECK_URL:-}" ]]; then
+  if (( OFFSITE_OK == 1 )); then
+    curl -fsS -m 10 --retry 3 "$BACKUP_HEALTHCHECK_URL" >/dev/null \
+      && echo "==> healthcheck pinged" \
+      || echo "WARN: healthcheck ping failed (monitor will alert)"
+  else
+    echo "==> healthcheck ping SKIPPED (offsite not verified) — monitor will alert"
+  fi
+fi

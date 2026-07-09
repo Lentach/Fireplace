@@ -470,7 +470,132 @@ class EncryptionService {
       }
     } catch (_) {}
 
+    // Pending-send records hold plaintext at rest too — same privacy scope.
+    try {
+      final prefs = await _sharedPrefs;
+      final pendPrefix = _pendingSendPrefix(userId);
+      for (final key
+          in prefs.getKeys().where((k) => k.startsWith(pendPrefix)).toList()) {
+        await prefs.remove(key);
+      }
+    } catch (_) {}
+
     return keysToDelete.length;
+  }
+
+  // ── Pending-send reconcile store (lost `messageSent` ack) ────────────────
+  //
+  // A socket drop inside the ack window orphans the sender's plaintext under
+  // a tempId: the server row later arrives as '[encrypted]' and a Signal
+  // sender CANNOT decrypt its own ciphertext (it is encrypted to the
+  // recipient's ratchet) — the 07-08 field case (msg 14667). At SEND_EMIT the
+  // emitted ciphertext + plaintext payload are recorded here; the ack
+  // consumes the entry; a history merge reconciles an own '[encrypted]' row
+  // by EXACT ciphertext equality (unique by ratchet construction). NEVER
+  // match heuristically — review rejected timestamp proximity because a
+  // wrong match persists the WRONG plaintext under a real id, permanently.
+  //
+  // Lifecycle: consumed on ack/reconcile, TTL-pruned, capped; wiped by
+  // clearAllKeys and clearDecryptedContentCache (plaintext at rest).
+  // Deliberately NOT cleared on reconnect — the lost-ack case IS a reconnect.
+  //
+  // ONE SharedPreferences key PER ciphertext — deliberately NOT a shared JSON
+  // map: concurrent burst sends doing read-modify-write on one blob is the
+  // same lost-update shape as the _sessionTails bug. Per-key setString/remove
+  // needs no serialization at all.
+
+  static const int _pendingSendCap = 40;
+  static const Duration _pendingSendTtl = Duration(hours: 72);
+
+  String _pendingSendPrefix(int userId) => 'e2e_${userId}_pendsend_v1_';
+
+  String _pendingSendRecordKey(int userId, String ciphertext) =>
+      '${_pendingSendPrefix(userId)}$ciphertext';
+
+  /// Record an emitted send (ciphertext → plaintext payload) for lost-ack
+  /// reconciliation. Silent on failure (send must never be blocked by this).
+  Future<void> savePendingSendRecord(
+      String ciphertext, Map<String, dynamic> data) async {
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      final now = DateTime.now().millisecondsSinceEpoch;
+      await prefs.setString(
+        _pendingSendRecordKey(userId, ciphertext),
+        jsonEncode(<String, dynamic>{'at': now, 'data': data}),
+      );
+      await _prunePendingSendRecords(prefs, userId, now);
+    } catch (_) {}
+  }
+
+  /// Read a pending-send record WITHOUT consuming it. The reconcile path
+  /// peeks, persists under the real id, VERIFIES the persist by read-back
+  /// (saveDecryptedContent swallows failures), and only then takes — so a
+  /// failed persist leaves the record for the next history pass instead of
+  /// destroying the only surviving plaintext copy.
+  Future<Map<String, dynamic>?> peekPendingSendRecord(String ciphertext) async {
+    final userId = _userId;
+    if (userId == null) return null;
+    try {
+      final prefs = await _sharedPrefs;
+      final raw = prefs.getString(_pendingSendRecordKey(userId, ciphertext));
+      if (raw == null) return null;
+      final entry = jsonDecode(raw);
+      final data = entry is Map ? entry['data'] : null;
+      return data is Map ? data.cast<String, dynamic>() : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Consume the pending-send record whose ciphertext equals [ciphertext]
+  /// EXACTLY, or null. Removing on read keeps normal acks self-cleaning and
+  /// prevents a stale record from ever being applied twice.
+  Future<Map<String, dynamic>?> takePendingSendRecord(String ciphertext) async {
+    final userId = _userId;
+    if (userId == null) return null;
+    try {
+      final prefs = await _sharedPrefs;
+      final key = _pendingSendRecordKey(userId, ciphertext);
+      final raw = prefs.getString(key);
+      if (raw == null) return null;
+      await prefs.remove(key);
+      final entry = jsonDecode(raw);
+      final data = entry is Map ? entry['data'] : null;
+      return data is Map ? data.cast<String, dynamic>() : null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// TTL + cap sweep. Concurrent sweeps may double-remove a key — harmless
+  /// (remove is idempotent); an entry is never modified in place.
+  Future<void> _prunePendingSendRecords(
+      SharedPreferences prefs, int userId, int now) async {
+    final prefix = _pendingSendPrefix(userId);
+    final cutoff = now - _pendingSendTtl.inMilliseconds;
+    final live = <MapEntry<String, int>>[];
+    for (final key
+        in prefs.getKeys().where((k) => k.startsWith(prefix)).toList()) {
+      int? at;
+      try {
+        final entry = jsonDecode(prefs.getString(key) ?? '');
+        final v = entry is Map ? entry['at'] : null;
+        if (v is int) at = v;
+      } catch (_) {}
+      if (at == null || at < cutoff) {
+        await prefs.remove(key);
+      } else {
+        live.add(MapEntry(key, at));
+      }
+    }
+    if (live.length > _pendingSendCap) {
+      live.sort((a, b) => a.value.compareTo(b.value));
+      for (final e in live.take(live.length - _pendingSendCap)) {
+        await prefs.remove(e.key);
+      }
+    }
   }
 
   /// Clear all E2E encryption keys for this user from storage.
@@ -490,7 +615,7 @@ class EncryptionService {
         final prefs = await _sharedPrefs;
         final spKeysToDelete = prefs
             .getKeys()
-            .where((k) => k.startsWith('e2e_${userId}_decrypted_'))
+            .where((k) => k.startsWith(prefix))
             .toList();
         for (final key in spKeysToDelete) {
           await prefs.remove(key);

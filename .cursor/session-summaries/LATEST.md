@@ -1,8 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-09 (production hardening: migrations + FKs + non-root + backups — branch `feat/prod-hardening`, 0.0.102, PR AWAITING MERGE + deploy owed)
 
-**Topic:** **Prod-readiness items 1–4 shipped: SQL migration system (runner at boot, `backend/migrations/`, exactly-once `schema_migrations`, baseline STAMPED on existing DBs / executed on empty), user FKs with CASCADE on `key_bundles`/`one_time_pre_keys`/`fcm_token`/`web_push_subscription`/`secret_notes` (migration 0002 + entity relations, orphan cleanup first), backend container now non-root `USER node` (media volume chown in deploy-backend.sh/staging.ps1, live volume name VPS-verified), and VPS backups verified end-to-end (cron live, all 3 artifact types decrypt-tested; GAP: no offsite upload configured).** Verified: backend Jest 416/416 (43 suites, +9 runner spec by Tester agent) + verifier; dev-stack live boot stamped/applied; FULL staging rehearsal — empty-DB baseline execution, real prod-dump restore + true prod path (`stamped 0001`+`applied 0002`, all 5 `fk_*` CASCADE constraints catalog-asserted, 80 users/489 msgs intact), harness 7/7. New runbook trap: `pg_restore --clean` of a pre-FK dump onto a post-FK DB fails — `DROP SCHEMA public CASCADE` first. **Owed: PR merge OK, then VM `./deploy-backend.sh` (watch `[Migrations]` log lines) + post-deploy media-upload check.** → [2026-07-09-session-prod-hardening.md](./2026-07-09-session-prod-hardening.md)
 
 **Previous:** 2026-07-09 (agent skills switch: obra/superpowers → mattpocock/skills — done, docs-only, no bump)
 

@@ -204,6 +204,26 @@ class EncryptionProvider extends ChangeNotifier {
     return _encryptionService.getDecryptedContent(messageId);
   }
 
+  /// Record an emitted send for lost-ack reconciliation (keyed by the exact
+  /// emitted ciphertext). Delegates to [EncryptionService.savePendingSendRecord].
+  Future<void> savePendingSendRecord(
+      String ciphertext, Map<String, dynamic> data) async {
+    await _encryptionService.savePendingSendRecord(ciphertext, data);
+  }
+
+  /// Read a pending-send record without consuming it (reconcile uses
+  /// peek → persist → verify → take). Delegates to
+  /// [EncryptionService.peekPendingSendRecord].
+  Future<Map<String, dynamic>?> peekPendingSendRecord(String ciphertext) async {
+    return _encryptionService.peekPendingSendRecord(ciphertext);
+  }
+
+  /// Consume the pending-send record matching [ciphertext] exactly, or null.
+  /// Delegates to [EncryptionService.takePendingSendRecord].
+  Future<Map<String, dynamic>?> takePendingSendRecord(String ciphertext) async {
+    return _encryptionService.takePendingSendRecord(ciphertext);
+  }
+
   /// Clear locally cached decrypted plaintext without deleting Signal keys.
   Future<int> clearLocalDecryptedContentCache() async {
     final removed = await _encryptionService.clearDecryptedContentCache();
