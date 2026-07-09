@@ -1,5 +1,15 @@
 # Latest session summary
 
+**Date:** 2026-07-09 (encrypted media-preview aspect-ratio fix — PR #58 open)
+
+**Topic:** **Shipped owner-approved IMAGE/GIF preview correction at `dca8ccb` / PR [#58](https://github.com/Lentach/Fireplace/pull/58): shared `MediaPreviewFrame` preserves normal aspect ratio, caps `>3:1` panoramas and `<1:2` portraits with intentional contain/letterboxing, keeps a 96px tiny-media minimum, and retains the old 220px geometry for legacy messages.** `ImageMessageContent` and `GifMessageContent` now use `BoxFit.contain`; fullscreen remains contain. **VIDEO remains out of scope** because Fireplace still has no video message renderer, upload/poster path, or player.
+
+**Encrypted-only wire contract:** new IMAGE/GIF dimensions and optional `mediaThumbHash` reside solely in the Signal-encrypted `E2eEnvelope`; they flow through optimistic state, pending-send/lost-ack recovery, decrypt cache, history merge, and retry. The outer socket emit, backend DTO/entity/mapper/log, REST payload, and database are unchanged. Old/partial/invalid metadata stays safe and uses the stable legacy fallback.
+
+**Verification:** focused envelope/geometry/containment/privacy suite **31 passed**; `flutter analyze --no-fatal-infos` clean; `flutter build web --release --no-wasm-dry-run` succeeded; `graphify update` succeeded (8,212 nodes / 11,677 edges). Independent GPT-5.5 review passed the contract; its initial concern about `fast_thumbhash` async isolate APIs was adjudicated: this code calls only synchronous APIs and the web release build passes. The code comments preserve that web constraint. Full handoff: [2026-07-09-session-media-preview-implementation.md](./2026-07-09-session-media-preview-implementation.md).
+
+**Previous:** 2026-07-09 (media-preview crop research and owner approval — implementation next)
+
 **Date:** 2026-07-09 (media-preview crop research and owner approval — implementation next)
 
 **Topic:** **Image/GIF chat previews crop because both force an available-width × 220 logical-pixel box and draw with `BoxFit.cover`; full-screen uses `contain`, proving the source is intact.** Source trace: `ImageMessageContent` and `GifMessageContent` load/decrypt then render `cover`; `ChatMessageBubble` caps bubble width at 85% and media surface hard-clips. **There is no VIDEO message type, renderer, uploader, or player in Fireplace** — video poster handling is future scope, not a third existing path. The E2E envelope has type/URL/duration/key/IV but no dimensions or placeholder; a recipient cannot reserve true geometry before decrypt today.
