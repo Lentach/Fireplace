@@ -97,12 +97,19 @@ function Show-Status {
     } catch { Write-Warning "backend not reachable at $BackendUrl : $_" }
 }
 
+function Set-MediaVolumeOwnership {
+    # Backend runs as non-root 'node' (uid 1000); volumes created by older
+    # root images stay root-owned. Idempotent, mirrors deploy-backend.sh.
+    docker run --rm -v "${Project}_media_storage:/media" alpine:3 chown -R 1000:1000 /media | Out-Null
+}
+
 function Start-Stack {
     Initialize-EnvFile
     Set-VersionEnv
     Remove-Item Env:\STAGING_NODE_ENV -ErrorAction SilentlyContinue  # default: production
     Write-Host "==> staging up  version=$env:APP_VERSION commit=$env:GIT_COMMIT (NODE_ENV=production)"
     Invoke-Compose build backend
+    Set-MediaVolumeOwnership
     Invoke-Compose up -d
     Wait-BackendHealthy
     Show-Status
@@ -124,6 +131,7 @@ switch ($Command) {
         $env:STAGING_NODE_ENV = 'development'
         try {
             Invoke-Compose build backend
+            Set-MediaVolumeOwnership
             Invoke-Compose up -d
             Wait-BackendHealthy
         } finally {

@@ -1,5 +1,13 @@
 // backend/src/secret-notes/secret-note.entity.ts
-import { Entity, PrimaryGeneratedColumn, Column, CreateDateColumn } from 'typeorm';
+import {
+  Entity,
+  PrimaryGeneratedColumn,
+  Column,
+  CreateDateColumn,
+  JoinColumn,
+  ManyToOne,
+} from 'typeorm';
+import { User } from '../users/user.entity';
 
 @Entity('secret_notes')
 export class SecretNote {
@@ -17,6 +25,12 @@ export class SecretNote {
 
   @Column({ nullable: true })
   creatorId: number;
+
+  // CASCADE, not SET NULL: account deletion destroys everything the account
+  // created (privacy contract); notes expire within 12h regardless.
+  @ManyToOne(() => User, { onDelete: 'CASCADE', nullable: true })
+  @JoinColumn({ name: 'creatorId' })
+  creator: User | null;
 
   @CreateDateColumn()
   createdAt: Date;

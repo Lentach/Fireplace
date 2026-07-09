@@ -54,7 +54,7 @@ cd frontend && flutter run -d chrome
 - Ports: backend `:3000`, DB host `:5433 -> :5432`, Flutter web random unless specified.
 - Before local start on Windows if stale node processes bite: `taskkill //F //IM node.exe`.
 - Phone on WiFi: `cd frontend && .\run_web_for_phone.ps1`, or `flutter run -d web-server --web-hostname 0.0.0.0 --web-port 8080 --dart-define=BASE_URL=http://YOUR_PC_IP:3000`.
-- Tests: `cd backend && npm test` (407 unit tests, 42 suites; verified by `node scripts/verify-claude-backend-test-counts.mjs`). Frontend: `cd frontend && flutter analyze --no-fatal-infos && flutter test`. Full-stack E2E wire harness (needs `docker-compose up` first, never in the default suite/CI): `cd frontend && flutter test test_e2e` — see `frontend/CLAUDE.md` §1.
+- Tests: `cd backend && npm test` (416 unit tests, 43 suites; verified by `node scripts/verify-claude-backend-test-counts.mjs`). Frontend: `cd frontend && flutter analyze --no-fatal-infos && flutter test`. Full-stack E2E wire harness (needs `docker-compose up` first, never in the default suite/CI): `cd frontend && flutter test test_e2e` — see `frontend/CLAUDE.md` §1.
 - CI: `.github/workflows/ci.yml` runs backend tests + the CLAUDE test-count verifier, then Flutter analyze/tests.
 
 ## 4. Production deploy and safety
@@ -102,7 +102,7 @@ VAPID public key in the frontend build must match backend VAPID keys. A wrong ke
 ## 6. Database, backups, and E2E safety
 
 - Local `docker-compose.yml`: dev only, bind-mounted backend, `NODE_ENV=development`, relaxed CORS, TypeORM auto-DDL.
-- Prod `docker-compose.prod.yml`: `NODE_ENV=production`, restricted CORS, TypeORM `synchronize` OFF. Every new prod column/index needs manual SQL and verification. Entities are source of truth; there are no real TypeORM migrations.
+- Prod `docker-compose.prod.yml`: `NODE_ENV=production`, restricted CORS, TypeORM `synchronize` OFF. Prod schema changes ship as numbered SQL files in `backend/migrations/`, applied automatically at backend boot by the migration runner (exactly-once, tracked in `schema_migrations`; a failed migration aborts boot). Entities define the dev shape; the migration files are prod truth — see `backend/CLAUDE.md` §4.
 - Staging dress rehearsal (PC, not routine — a GATE for risky deploys only): `.\staging.ps1` boots the real prod compose isolated as `fireplace-staging` (backend `:3100`, db `:5533`, own volumes, dummy secrets in gitignored `.env.staging` — NEVER the real `JWT_SECRET`). Rehearse BEFORE deploying anything that touches `*.entity.ts`, manual SQL, `docker-compose.prod.yml`, `backend/Dockerfile`, or bootstrap/config code; skip it for UI work. Flow: `up` → `restore <dump>` (or `seed-schema` for entity-fresh) → `sql <migration>` (runs with `lock_timeout=10s`) → `harness` (wire harness vs prod-mode stack). It does NOT rehearse nginx/TLS, host perms, or devices.
 - Raw SQL with camelCase columns needs quotes, e.g. `"deliveryStatus"`, `"createdAt"`.
 - Backups: `./backup-db.sh` on VM backs up Postgres + media + encrypted `.env` when a passphrase is configured. Dumps contain ciphertext messages, public keys, usernames/contact graph/timestamps and password hashes; they cannot decrypt messages but are still sensitive.
@@ -125,7 +125,7 @@ VAPID public key in the frontend build must match backend VAPID keys. A wrong ke
 
 - New WS event: backend DTO + service handler + `@SubscribeMessage` in `chat.gateway.ts`; frontend `SocketService` emit/listen + `ConnectionProvider` routing + provider/model updates.
 - New REST endpoint: backend controller/service with `JwtAuthGuard` where needed; frontend `ApiService` call + provider/screen wiring.
-- New DB column: backend entity + manual prod SQL + mapper payload + frontend model `fromJson`/`copyWith` + tests. Dev auto-DDL does not mean prod is done. Rehearse the SQL on the staging stack first (§6).
+- New DB column: backend entity + numbered migration in `backend/migrations/` + mapper payload + frontend model `fromJson`/`copyWith` + tests. Dev auto-DDL does not mean prod is done. Rehearse the migration on the staging stack first (§6).
 
 ## 9. Agent skills
 

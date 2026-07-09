@@ -39,7 +39,7 @@ cd ~/fireplace
 
 - Local `docker-compose.yml`: dev only, Node 20 bind mount, `NODE_ENV=development`, command `npm install && npm run start:dev`, Postgres 16 exposed at host `5433`, TypeORM auto-sync enabled by source.
 - Prod `docker-compose.prod.yml`: built image from `backend/Dockerfile`, backend and DB bound to localhost only, `NODE_ENV=production`, persistent `pgdata` and `media_storage`, healthcheck on `http://127.0.0.1:3000/health`, and json-file log rotation capped per service (`max-size: 10m`, `max-file: 3`) so stdout logs cannot grow unbounded on disk. Prod logger is `error/warn/log` only; per-message, push, and key-refresh logs are `debug` (prod-silent) so container-log breach/seizure does not expose recipient IDs, online rosters, or push timing.
-- `backend/Dockerfile`: multi-stage build, runtime installs prod deps only, copies `dist`, sets `NODE_ENV=production`, runs `node dist/main.js`. No `USER` directive; container runs as image default/root.
+- `backend/Dockerfile`: multi-stage build, runtime installs prod deps only, copies `dist` + `migrations/`, sets `NODE_ENV=production`, runs `node dist/main.js` as non-root `USER node` (uid 1000). The media volume must be node-owned: fresh volumes inherit it from the image; volumes created by older root images are chown'd idempotently by `deploy-backend.sh` / `staging.ps1`.
 - `deploy.sh` is legacy/all-in-one; do not use it as backend production deploy path.
 
 Backend env source:
@@ -57,21 +57,21 @@ Backend env source:
 | `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`, `WEB_PUSH_VAPID_SUBJECT` | Web Push. Public key must match frontend build. |
 | `APP_VERSION`, `GIT_COMMIT`, `BUILD_TIME` | `/version`; set by deploy script. |
 
-## 4. Database and schema rules
+## 4. Database, schema, and migrations
 
-Entities in `backend/src/**/*.entity.ts` are the source of truth. There are no real TypeORM migrations in this repo.
+Entities in `backend/src/**/*.entity.ts` define the dev schema (TypeORM `synchronize` in dev only). **Production schema changes go through SQL migrations in `backend/migrations/*.sql`**, applied automatically at every backend boot by `src/database/migration-runner.ts` (runs in `main.ts` BEFORE Nest creates the app, all environments).
 
-- TypeORM `synchronize` is `process.env.NODE_ENV !== 'production'`. Dev restart may create columns; prod will not. Every prod schema change needs manual SQL.
-- Manual SQL notes currently relevant:
-  - `messages.disappearAfterSeconds`: `ALTER TABLE messages ADD COLUMN "disappearAfterSeconds" integer NULL;`
-  - message edit: `ALTER TABLE messages ADD COLUMN "editedAt" timestamp NULL;`
-  - pinned messages: `ALTER TABLE conversations ADD COLUMN "pinnedMessageId" integer NULL;` plus `"pinnedAt" timestamp NULL`, `"pinnedByUserId" integer NULL`.
-  - message index exists in entity as `@Index('idx_messages_conv_created', ['conversation', 'createdAt'])`; if prod needs a descending concurrent index, treat `CREATE INDEX CONCURRENTLY ... "createdAt" DESC` as manual DBA/perf work, not generated entity truth.
+- Runner contract: files apply in lexical order, exactly once, tracked by filename in `schema_migrations`; each file runs in one transaction with `lock_timeout=10s` under an advisory lock. A failed migration aborts boot — the container never goes healthy and `deploy-backend.sh` fails loudly.
+- `0001_baseline.sql` is the full pre-migration schema. It EXECUTES only on an empty database; on any DB that already has tables (live prod, existing dev DBs) the runner STAMPS it as applied without executing. Only the baseline is ever stamped — every later file runs everywhere.
+- Applied migration files are IMMUTABLE — never edit one, add the next numbered file. No `CREATE INDEX CONCURRENTLY` inside a migration (cannot run in a transaction); that stays manual DBA work.
+- Schema-qualify names (`public.messages`) in migration SQL — the baseline clears `search_path` when it executes first on a fresh DB.
+- New schema change = entity update (dev shape) + numbered migration file (prod truth). Dev auto-DDL does not mean prod is done. Rehearse on the staging stack (root `CLAUDE.md` §6) before deploying.
+- Message index exists in entity as `@Index('idx_messages_conv_created', ['conversation', 'createdAt'])`; if prod needs a descending concurrent index, treat `CREATE INDEX CONCURRENTLY ... "createdAt" DESC` as manual DBA/perf work, not generated entity truth.
 - Raw SQL must quote camelCase: `"deliveryStatus"`, `"hiddenByUserIds"`, `"expiresAt"`, `"createdAt"`. Column casing is PER ENTITY — `secret_notes` is camelCase but `refresh_tokens` uses snake_case `user_id`; check the entity, never guess (unquoted `expires_at` silently broke secret-note reveal with 42703 for weeks; the mocked `repo.query` spec could not catch it).
 - `repo.query()` on Postgres returns `[rows, rowCount]` for DELETE/UPDATE (even with `RETURNING`), plain `rows` only for SELECT — destructure `const [rows] = ...` or you read the wrong shape. Bit twice: secret-note reveal, and `key-bundles.service.ts` `fetchPreKeyBundle` OTP claim (2026-07-08: `const [otp]` read the rows ARRAY → every bundle ever served had `oneTimePreKeyId: null` while still burning the OTP `used=true`; mocked `repo.query` specs MUST mock the `[rows, rowCount]` tuple, and the test_e2e wire harness is what caught it).
 - `users` unique key is `(username, tag)`, not username alone.
 - `friend_requests.status` stores lowercase values (`pending`, `accepted`, `rejected`), unlike uppercase message enums.
-- No FK to `users`: `key_bundles.userId`, `one_time_pre_keys.userId`, `fcm_token.userId`, `web_push_subscription.userId`, `secret_notes.creatorId`. Manual account-delete cleanup is required.
+- FKs to `users` with `ON DELETE CASCADE` exist on `key_bundles.userId`, `one_time_pre_keys.userId`, `fcm_token.userId`, `web_push_subscription.userId`, `secret_notes.creatorId` (migration `0002_user_foreign_keys.sql`; entities carry matching `@ManyToOne` relations, scalar `userId`/`creatorId` columns stay the API). Account-delete service cleanup remains for media files and non-cascading tables; the FKs are the backstop against orphan rows.
 - Cascades present: friend request sender/receiver FKs, blocked blocker/blocked FKs, refresh token `user_id`. Conversations/messages do not cascade from users in entities.
 - `messages.reactions` is nullable text containing JSON string `{ emoji: [userId] }`, not a JSON column.
 - `messages.hiddenByUserIds` is comma-separated text for delete-for-me.
@@ -157,5 +157,5 @@ Gateway throttles are source-truth in `chat.gateway.ts`:
 
 - New REST endpoint: DTO if input is non-trivial, service method, controller route, `JwtAuthGuard` unless deliberately public, throttle if user-triggered, frontend `ApiService` update.
 - New WS event: DTO + service handler + gateway `@SubscribeMessage`, throttle decision, frontend socket emit/listener, provider state update, regression test.
-- New DB field: entity + mapper payload + frontend model + manual prod SQL + test-count update if backend tests change.
+- New DB field: entity + mapper payload + frontend model + numbered migration in `backend/migrations/` + test-count update if backend tests change.
 - Any destructive path involving media must delete self-hosted files before row deletion or explicitly rely on the orphan cleanup grace logic.
