@@ -39,6 +39,24 @@ were not what they claimed to be.
 | `DECRYPT_IDENTITY_RESET` / `idReset:true`, peer's OTP uploads in backend log | Peer regenerated identity (storage loss / clear-data / incognito). Separate problem — the still-unbuilt regeneration guard | Run the 2-min persistence test (below), then build the guard |
 | `kind:badMac` | Peer encrypting from a stale sender ratchet or session mismatch | Existing rebuild-request machinery handles it; investigate only if looping |
 | `ENCRYPT_OVERLAP` events | INFO only: proves sends were concurrent. Expected and safe under the lock | Ignore |
+| Own SENT message shows `[encrypted]` on the SENDER's device only; recipient reads it fine; NO `DECRYPT_DECISION` for it; log shows `SEND_EMIT` followed by `SOCKET_DISCONNECT` within seconds and no `RECV_MSG` echo | **Lost `messageSent` ack** (07-08 field case, msg 14667): socket died inside the ack window, so the tempId→realId mapping never happened and the plaintext was never persisted under the real id. NOT an E2E failure — the wire was fine, the recipient got it; a Signal sender cannot decrypt its own ciphertext, so the sender's copy stays `[encrypted]`. Message content is recoverable only by resending | Fix designed, awaiting owner go (2026-07-09): reconcile unacked pending sends on history merge by conversation + tempId-timestamp proximity, persist under real id; durable pending-send map. Zero crypto surface |
+
+**Dating rule (learned twice — msg 14149, then msgs 14389/14423):** a
+`DECRYPT_DECISION` timestamp is when the receiver ATTEMPTED the decrypt, not
+when the message was sent. Wires are poisoned at ENCRYPT time on the sender's
+device. Before classifying any duplicate as new-vs-pre-fix, date the row and
+identify the sender:
+
+```bash
+docker compose -f docker-compose.prod.yml exec db psql -U postgres -d chatdb \
+  -c 'SELECT id, "senderId", "createdAt" FROM messages WHERE id IN (<ids>);'
+```
+
+Then check the SENDER's footer version at that time — a peer PWA keeps running
+its cached old bundle until fully closed + reopened (can be days after a
+deploy), and a stale sender mints poisoned wires that an up-to-date receiver
+correctly rejects. Stale-sender decay is expected after a fix ships; only a
+duplicate from a **confirmed-updated** sender reopens Step 3A.
 
 ## Step 3A — duplicate counters on new messages (the race is back)
 
