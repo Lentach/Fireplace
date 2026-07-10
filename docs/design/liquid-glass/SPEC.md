@@ -42,6 +42,7 @@ Owner-accepted from round-1 mockups (`docs/design/liquid-glass/round1/index.html
 Accepted content deltas vs current app (contrast gate, disclosed at acceptance):
 - `blue` sent bubble `#2481CC` → **#1F74BB**, text pure white (was 3.89:1 → 4.91:1).
 - `teal` sent bubble `#0D9488` → **#0F766E**, text pure white (was 3.59:1 → 5.47:1).
+- Base scaffold/messages-area tones shift slightly to the mock values in §4 (blue `#17212B`→`#141E28`, dark `#17181A`→`#16171A`, light `#F7F4F0`→`#F7F1EA`, teal `#FAFAF9`→`#FAFAF8`) plus matched bubble/text tones — accepted as part of the mock palettes.
 - Scaffold/base tones per theme get the mock’s radial top glow (`bgGrad` in mock CSS) — subtle depth, optional if it fights existing scaffold code.
 
 ## 5. Capsule metrics
