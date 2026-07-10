@@ -30,8 +30,9 @@ class SettingsScreen extends StatefulWidget {
 class _SettingsScreenState extends State<SettingsScreen> {
   String? _deviceName;
   String? _appVersionLine;
-  late final PushService _pushService =
-      PushService(ApiService(baseUrl: AppConfig.baseUrl));
+  late final PushService _pushService = PushService(
+    ApiService(baseUrl: AppConfig.baseUrl),
+  );
 
   @override
   void initState() {
@@ -107,10 +108,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     try {
       final auth = context.read<AuthProvider>();
-      await auth.resetPassword(
-        result['oldPassword']!,
-        result['newPassword']!,
-      );
+      await auth.resetPassword(result['oldPassword']!, result['newPassword']!);
 
       if (mounted) {
         showTopSnackBar(
@@ -250,7 +248,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             width: 44,
             height: 44,
             decoration: BoxDecoration(
-              color: isSelected ? colorScheme.primary.withValues(alpha: 0.2) : Colors.transparent,
+              color: isSelected
+                  ? colorScheme.primary.withValues(alpha: 0.2)
+                  : Colors.transparent,
               shape: BoxShape.circle,
               border: Border.all(
                 color: isSelected ? colorScheme.primary : fc.settingsTileBorder,
@@ -260,7 +260,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             child: Icon(
               icon,
               size: 24,
-              color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+              color: isSelected
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant,
             ),
           ),
         ),
@@ -269,7 +271,11 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
     return _settingsTileShell(
       ListTile(
-        leading: Icon(Icons.palette_outlined, color: colorScheme.primary, size: 24),
+        leading: Icon(
+          Icons.palette_outlined,
+          color: colorScheme.primary,
+          size: 24,
+        ),
         title: Text(
           AppLocalizations.of(context).theme,
           style: RpgTheme.bodyFont(
@@ -309,7 +315,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
         child: Container(
           padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
           decoration: BoxDecoration(
-            color: isSelected ? colorScheme.primary.withValues(alpha: 0.2) : Colors.transparent,
+            color: isSelected
+                ? colorScheme.primary.withValues(alpha: 0.2)
+                : Colors.transparent,
             borderRadius: BorderRadius.circular(20),
             border: Border.all(
               color: isSelected ? colorScheme.primary : fc.settingsTileBorder,
@@ -320,7 +328,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
             label,
             style: RpgTheme.bodyFont(
               fontSize: 13,
-              color: isSelected ? colorScheme.primary : colorScheme.onSurfaceVariant,
+              color: isSelected
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant,
               fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
             ),
           ),
@@ -400,213 +410,234 @@ class _SettingsScreenState extends State<SettingsScreen> {
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          MainTabScreenHeader(
-            title: AppLocalizations.of(context).settings,
-          ),
+          MainTabScreenHeader(title: AppLocalizations.of(context).settings),
           Expanded(
             child: SafeArea(
               top: false,
+              bottom: false,
               child: ListView(
                 physics: const ClampingScrollPhysics(),
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                padding: EdgeInsets.only(
+                  top: 16,
+                  bottom: MediaQuery.paddingOf(context).bottom + 16,
+                ),
                 children: [
-            // Header Section
-            Column(
-              children: [
-                const SizedBox(height: 24),
-                Stack(
-                  children: [
-                    AvatarCircle(
-                      displayName: auth.currentUser?.username ?? '',
-                      radius: 60,
-                      profilePictureUrl: auth.currentUser?.profilePictureUrl,
-                    ),
-                    Positioned(
-                      bottom: 0,
-                      right: 0,
-                      child: GestureDetector(
-                        onTap: _showProfilePictureDialog,
-                        child: Container(
-                          width: 36,
-                          height: 36,
-                          decoration: BoxDecoration(
-                            color: theme.colorScheme.primary,
-                            shape: BoxShape.circle,
-                            border: Border.all(
-                              color: theme.colorScheme.surface,
-                              width: 2,
+                  // Header Section
+                  Column(
+                    children: [
+                      const SizedBox(height: 24),
+                      Stack(
+                        children: [
+                          AvatarCircle(
+                            displayName: auth.currentUser?.username ?? '',
+                            radius: 60,
+                            profilePictureUrl:
+                                auth.currentUser?.profilePictureUrl,
+                          ),
+                          Positioned(
+                            bottom: 0,
+                            right: 0,
+                            child: GestureDetector(
+                              onTap: _showProfilePictureDialog,
+                              child: Container(
+                                width: 36,
+                                height: 36,
+                                decoration: BoxDecoration(
+                                  color: theme.colorScheme.primary,
+                                  shape: BoxShape.circle,
+                                  border: Border.all(
+                                    color: theme.colorScheme.surface,
+                                    width: 2,
+                                  ),
+                                ),
+                                child: const Icon(
+                                  Icons.camera_alt,
+                                  color: Colors.white,
+                                  size: 18,
+                                ),
+                              ),
                             ),
                           ),
-                          child: const Icon(
-                            Icons.camera_alt,
-                            color: Colors.white,
-                            size: 18,
-                          ),
+                        ],
+                      ),
+                      const SizedBox(height: 16),
+                      Text(
+                        '${auth.currentUser?.username ?? 'Hero'}#${auth.currentUser?.tag ?? '0000'}',
+                        style: RpgTheme.bodyFont(
+                          fontSize: 20,
+                          color: theme.colorScheme.onSurface,
+                          fontWeight: FontWeight.w700,
                         ),
                       ),
+                      const SizedBox(height: 32),
+                    ],
+                  ),
+
+                  // Settings Tiles
+                  _buildThemeTile(context, settings),
+                  _buildLanguageTile(context, settings),
+
+                  _buildSettingsTile(
+                    icon: Icons.security,
+                    title: AppLocalizations.of(context).privacyAndSafety,
+                    trailing: Icon(
+                      Icons.chevron_right,
+                      color: theme.colorScheme.onSurfaceVariant,
                     ),
-                  ],
-                ),
-                const SizedBox(height: 16),
-                Text(
-                  '${auth.currentUser?.username ?? 'Hero'}#${auth.currentUser?.tag ?? '0000'}',
-                  style: RpgTheme.bodyFont(
-                    fontSize: 20,
-                    color: theme.colorScheme.onSurface,
-                    fontWeight: FontWeight.w700,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const PrivacySafetyScreen(),
+                        ),
+                      );
+                    },
                   ),
-                ),
-                const SizedBox(height: 32),
-              ],
-            ),
 
-            // Settings Tiles
-            _buildThemeTile(context, settings),
-            _buildLanguageTile(context, settings),
-
-            _buildSettingsTile(
-              icon: Icons.security,
-              title: AppLocalizations.of(context).privacyAndSafety,
-              trailing: Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const PrivacySafetyScreen(),
+                  _buildSettingsTile(
+                    icon: Icons.block,
+                    title: AppLocalizations.of(context).blocked,
+                    trailing: Icon(
+                      Icons.chevron_right,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const BlockedUsersScreen(),
+                        ),
+                      );
+                    },
                   ),
-                );
-              },
-            ),
 
-            _buildSettingsTile(
-              icon: Icons.block,
-              title: AppLocalizations.of(context).blocked,
-              trailing: Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
-              onTap: () {
-                Navigator.of(context).push(
-                  MaterialPageRoute(
-                    builder: (_) => const BlockedUsersScreen(),
+                  _buildSettingsTile(
+                    icon: Icons.devices,
+                    title: AppLocalizations.of(context).devices,
+                    subtitle:
+                        _deviceName ??
+                        AppLocalizations.of(context).devicesLoading,
+                    trailing: Icon(
+                      Icons.chevron_right,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
                   ),
-                );
-              },
-            ),
 
-            _buildSettingsTile(
-              icon: Icons.devices,
-              title: AppLocalizations.of(context).devices,
-              subtitle: _deviceName ?? AppLocalizations.of(context).devicesLoading,
-              trailing: Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
-            ),
+                  if (kIsWeb)
+                    _buildSettingsTile(
+                      icon: Icons.notifications_active,
+                      title: AppLocalizations.of(context).webPushEnableTitle,
+                      subtitle: AppLocalizations.of(
+                        context,
+                      ).webPushEnableSubtitle,
+                      trailing: Icon(
+                        Icons.chevron_right,
+                        color: theme.colorScheme.onSurfaceVariant,
+                      ),
+                      onTap: _enableWebPushNotifications,
+                    ),
 
-            if (kIsWeb)
-              _buildSettingsTile(
-                icon: Icons.notifications_active,
-                title: AppLocalizations.of(context).webPushEnableTitle,
-                subtitle: AppLocalizations.of(context).webPushEnableSubtitle,
-                trailing: Icon(
-                  Icons.chevron_right,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                onTap: _enableWebPushNotifications,
-              ),
+                  _buildSettingsTile(
+                    icon: Icons.lock_reset,
+                    title: AppLocalizations.of(context).resetPassword,
+                    trailing: Icon(
+                      Icons.chevron_right,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    onTap: _showResetPasswordDialog,
+                  ),
 
-            _buildSettingsTile(
-              icon: Icons.lock_reset,
-              title: AppLocalizations.of(context).resetPassword,
-              trailing: Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
-              onTap: _showResetPasswordDialog,
-            ),
+                  _buildSettingsTile(
+                    icon: Icons.delete_forever,
+                    title: AppLocalizations.of(context).deleteAccount,
+                    trailing: Icon(
+                      Icons.chevron_right,
+                      color: theme.colorScheme.onSurfaceVariant,
+                    ),
+                    onTap: _showDeleteAccountDialog,
+                    textColor: const Color(0xFFFF6666),
+                  ),
 
-            _buildSettingsTile(
-              icon: Icons.delete_forever,
-              title: AppLocalizations.of(context).deleteAccount,
-              trailing: Icon(Icons.chevron_right, color: theme.colorScheme.onSurfaceVariant),
-              onTap: _showDeleteAccountDialog,
-              textColor: const Color(0xFFFF6666),
-            ),
+                  const SizedBox(height: 24),
 
-            const SizedBox(height: 24),
+                  if (_appVersionLine != null)
+                    Padding(
+                      padding: const EdgeInsets.symmetric(horizontal: 24),
+                      child: Column(
+                        children: [
+                          Text(
+                            AppLocalizations.of(context).settingsAppVersion,
+                            style: RpgTheme.bodyFont(
+                              fontSize: 11,
+                              color: theme.colorScheme.onSurfaceVariant,
+                              fontWeight: FontWeight.w500,
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                          const SizedBox(height: 4),
+                          Text(
+                            _appVersionLine!,
+                            style: RpgTheme.bodyFont(
+                              fontSize: 11,
+                              color: theme.colorScheme.onSurfaceVariant
+                                  .withValues(alpha: 0.85),
+                            ),
+                            textAlign: TextAlign.center,
+                          ),
+                        ],
+                      ),
+                    ),
 
-            if (_appVersionLine != null)
-              Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 24),
-                child: Column(
-                  children: [
-                    Text(
-                      AppLocalizations.of(context).settingsAppVersion,
+                  if (_appVersionLine != null) const SizedBox(height: 16),
+
+                  // E2E key-loss warning — shown right above logout (the uninstall/clear-data danger point).
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 24),
+                    child: Text(
+                      AppLocalizations.of(context).uninstallWarning,
                       style: RpgTheme.bodyFont(
                         fontSize: 11,
                         color: theme.colorScheme.onSurfaceVariant,
-                        fontWeight: FontWeight.w500,
                       ),
                       textAlign: TextAlign.center,
                     ),
-                    const SizedBox(height: 4),
-                    Text(
-                      _appVersionLine!,
-                      style: RpgTheme.bodyFont(
-                        fontSize: 11,
-                        color: theme.colorScheme.onSurfaceVariant.withValues(
-                          alpha: 0.85,
+                  ),
+                  const SizedBox(height: 12),
+
+                  // Logout Button
+                  Padding(
+                    padding: const EdgeInsets.symmetric(horizontal: 16),
+                    child: ElevatedButton(
+                      onPressed: () {
+                        conn.disconnect(isLogout: true);
+                        auth.logout();
+                        if (Navigator.of(context).canPop()) {
+                          Navigator.pop(context);
+                        }
+                      },
+                      style: ElevatedButton.styleFrom(
+                        backgroundColor: theme.colorScheme.primary,
+                        foregroundColor: Colors.white,
+                        padding: const EdgeInsets.symmetric(vertical: 16),
+                        shape: RoundedRectangleBorder(
+                          borderRadius: BorderRadius.circular(8),
                         ),
                       ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
-                ),
-              ),
-
-            if (_appVersionLine != null) const SizedBox(height: 16),
-
-            // E2E key-loss warning — shown right above logout (the uninstall/clear-data danger point).
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 24),
-              child: Text(
-                AppLocalizations.of(context).uninstallWarning,
-                style: RpgTheme.bodyFont(
-                  fontSize: 11,
-                  color: theme.colorScheme.onSurfaceVariant,
-                ),
-                textAlign: TextAlign.center,
-              ),
-            ),
-            const SizedBox(height: 12),
-
-            // Logout Button
-            Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16),
-              child: ElevatedButton(
-                onPressed: () {
-                  conn.disconnect(isLogout: true);
-                  auth.logout();
-                  if (Navigator.of(context).canPop()) {
-                    Navigator.pop(context);
-                  }
-                },
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: theme.colorScheme.primary,
-                  foregroundColor: Colors.white,
-                  padding: const EdgeInsets.symmetric(vertical: 16),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(8),
-                  ),
-                ),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
-                  children: [
-                    const Icon(Icons.logout, size: 20),
-                    const SizedBox(width: 8),
-                    Text(
-                      AppLocalizations.of(context).logout,
-                      style: RpgTheme.bodyFont(
-                        fontSize: 14,
-                        color: Colors.white,
-                        fontWeight: FontWeight.w600,
+                      child: Row(
+                        mainAxisAlignment: MainAxisAlignment.center,
+                        children: [
+                          const Icon(Icons.logout, size: 20),
+                          const SizedBox(width: 8),
+                          Text(
+                            AppLocalizations.of(context).logout,
+                            style: RpgTheme.bodyFont(
+                              fontSize: 14,
+                              color: Colors.white,
+                              fontWeight: FontWeight.w600,
+                            ),
+                          ),
+                        ],
                       ),
                     ),
-                  ],
-                ),
-              ),
-            ),
+                  ),
                 ],
               ),
             ),

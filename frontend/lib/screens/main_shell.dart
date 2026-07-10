@@ -20,6 +20,8 @@ import '../utils/tab_visibility.dart';
 import '../utils/instant_opaque_route.dart';
 import '../services/unread_badge_sync.dart';
 import '../widgets/top_snackbar.dart';
+import '../theme/glass_theme.dart';
+import '../widgets/glass/glass_bottom_nav.dart';
 
 /// Shell after login: bottom nav with Conversations, Contacts, Settings.
 class MainShell extends StatefulWidget {
@@ -185,35 +187,33 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     ThemeData theme,
     ColorScheme colorScheme,
   ) {
-    final isDesktop =
-        MediaQuery.sizeOf(context).width >=
-        AppConstants.layoutBreakpointDesktop;
-    final bottomNavigation = BottomNavigationBar(
-      backgroundColor: theme.colorScheme.surface,
+    final glass = GlassTheme.of(context);
+    final bottomNavigation = GlassBottomNav(
       currentIndex: _selectedIndex,
       onTap: (index) => setState(() => _selectedIndex = index),
-      items: [
-        BottomNavigationBarItem(
-          icon: Icon(Icons.chat_bubble_outline, size: 24),
+      destinations: [
+        GlassNavDestination(
+          icon: const Icon(Icons.chat_bubble_outline, size: 24),
           activeIcon: _FilledChatBubbleWithLines(
-            iconColor: colorScheme.primary,
-            lineColor: colorScheme.onPrimary,
+            iconColor: glass.onGlassAccent,
+            lineColor: glass.fill.withValues(alpha: 1.0),
           ),
           label: AppLocalizations.of(context).chat,
         ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.people_outline),
-          activeIcon: Icon(Icons.people),
+        GlassNavDestination(
+          icon: const Icon(Icons.people_outline),
+          activeIcon: const Icon(Icons.people),
           label: AppLocalizations.of(context).contacts,
         ),
-        BottomNavigationBarItem(
-          icon: Icon(Icons.settings_outlined),
+        GlassNavDestination(
+          icon: const Icon(Icons.settings_outlined),
           label: AppLocalizations.of(context).settings,
         ),
       ],
     );
 
     return Scaffold(
+      extendBody: true,
       body: IndexedStack(
         index: _selectedIndex,
         children: [
@@ -224,13 +224,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           const SettingsScreen(),
         ],
       ),
-      bottomNavigationBar: SafeArea(
-        top: false,
-        minimum: isDesktop
-            ? EdgeInsets.zero
-            : const EdgeInsets.only(bottom: 10),
-        child: bottomNavigation,
-      ),
+      bottomNavigationBar: SafeArea(top: false, child: bottomNavigation),
     );
   }
 }

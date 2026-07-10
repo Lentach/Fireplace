@@ -22,8 +22,9 @@ class GlassSurface extends StatelessWidget {
   /// Compile-time kill-switch: forces the opaque fallback everywhere
   /// (low-end escape hatch; also the NO-GO ship mode). Immutable by design —
   /// runtime fallback is driven reactively by `MediaQuery.highContrast`.
-  static const bool reduceTransparency =
-      bool.fromEnvironment('REDUCE_TRANSPARENCY');
+  static const bool reduceTransparency = bool.fromEnvironment(
+    'REDUCE_TRANSPARENCY',
+  );
 
   final BorderRadius borderRadius;
   final Widget? child;
@@ -57,9 +58,9 @@ class GlassSurface extends StatelessWidget {
   ]);
 
   static ui.ImageFilter get _backdropFilter => ui.ImageFilter.compose(
-        outer: ui.ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
-        inner: saturate17,
-      );
+    outer: ui.ImageFilter.blur(sigmaX: blurSigma, sigmaY: blurSigma),
+    inner: saturate17,
+  );
 
   bool _opaque(BuildContext context) =>
       reduceTransparency || MediaQuery.highContrastOf(context);
@@ -91,9 +92,7 @@ class GlassSurface extends StatelessWidget {
             left: borderRadius.topLeft.x * 0.6,
             right: borderRadius.topRight.x * 0.6,
             height: 1,
-            child: IgnorePointer(
-              child: ColoredBox(color: glass.highlight),
-            ),
+            child: IgnorePointer(child: ColoredBox(color: glass.highlight)),
           ),
         ],
       );
@@ -136,13 +135,13 @@ class GlassPill extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GlassSurface(
-        borderRadius: BorderRadius.circular(height / 2),
-        height: height,
-        width: width,
-        padding: padding,
-        shadow: shadow,
-        child: child,
-      );
+    borderRadius: BorderRadius.circular(height / 2),
+    height: height,
+    width: width,
+    padding: padding,
+    shadow: shadow,
+    child: child,
+  );
 }
 
 /// Circular [GlassSurface] — icon-button capsules (back, add, avatar ring).
@@ -162,11 +161,11 @@ class GlassCircle extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) => GlassSurface(
-        borderRadius: BorderRadius.circular(size / 2),
-        height: size,
-        width: size,
-        padding: padding,
-        shadow: shadow,
-        child: child,
-      );
+    borderRadius: BorderRadius.circular(size / 2),
+    height: size,
+    width: size,
+    padding: padding,
+    shadow: shadow,
+    child: child,
+  );
 }

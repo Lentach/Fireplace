@@ -203,10 +203,12 @@ class ContactsScreen extends StatelessWidget {
     final isDark = RpgTheme.isDark(context);
     final mutedColor = FireplaceColors.of(context).mutedText;
 
+    final bottomClearance = MediaQuery.paddingOf(context).bottom;
+
     if (friends.isEmpty) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(32),
+          padding: EdgeInsets.fromLTRB(32, 32, 32, 32 + bottomClearance),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -235,7 +237,7 @@ class ContactsScreen extends StatelessWidget {
     final borderColor = FireplaceColors.of(context).convItemBorder;
 
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+      padding: EdgeInsets.fromLTRB(8, 8, 8, bottomClearance + 8),
       itemCount: friends.length,
       separatorBuilder: (_, index) => Divider(height: 1, color: borderColor),
       itemBuilder: (context, index) {
