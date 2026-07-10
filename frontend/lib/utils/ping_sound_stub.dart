@@ -1,6 +1,6 @@
 import 'package:just_audio/just_audio.dart';
 
-const String _kPingAsset = 'assets/sounds/ping_alert.mp3';
+const String _kPingAsset = 'assets/sounds/ping_alert.wav';
 
 /// Native/VM has no MediaSession concern and no gesture-unlock — no-op.
 void primePingSound() {}

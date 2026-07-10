@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../theme/rpg_theme.dart';
+import '../ping_glyph.dart';
 
 /// Content widget for PING message type.
 class PingMessageContent extends StatelessWidget {
@@ -16,9 +17,11 @@ class PingMessageContent extends StatelessWidget {
   Widget build(BuildContext context) {
     return Row(
       mainAxisSize: MainAxisSize.min,
-      mainAxisAlignment: isMine ? MainAxisAlignment.end : MainAxisAlignment.start,
+      mainAxisAlignment: isMine
+          ? MainAxisAlignment.end
+          : MainAxisAlignment.start,
       children: [
-        Icon(Icons.campaign, size: 18, color: textColor),
+        PingGlyph(size: 18, color: textColor),
         const SizedBox(width: 6),
         Text(
           'PING!',
