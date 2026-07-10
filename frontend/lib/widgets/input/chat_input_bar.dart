@@ -582,9 +582,15 @@ class ChatInputBarState extends State<ChatInputBar> {
   @visibleForTesting
   ComposerAttachmentController get attachmentControllerForTest => _attachment;
 
-  /// Widget tests: trigger the send path (the tap overlay is private).
+  /// Widget tests: trigger and await the send path (the tap overlay is private).
   @visibleForTesting
-  void sendForTest() => _send();
+  Future<void> sendForTest() async {
+    if (_attachment.staged != null) {
+      await _sendStaged();
+    } else {
+      _send();
+    }
+  }
 
   /// Widget tests: drive the paste-image handler without a DOM paste event.
   @visibleForTesting
