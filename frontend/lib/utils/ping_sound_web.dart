@@ -5,7 +5,7 @@ import 'dart:typed_data';
 import 'package:flutter/services.dart' show rootBundle;
 import 'package:web/web.dart' as web;
 
-const String _kPingAsset = 'assets/sounds/ping_alert.mp3';
+const String _kPingAsset = 'assets/sounds/ping_alert.wav';
 
 web.AudioContext? _ctx;
 web.AudioBuffer? _buffer;

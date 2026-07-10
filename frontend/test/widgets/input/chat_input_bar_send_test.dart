@@ -4,6 +4,7 @@ import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/chat_action_tiles.dart';
+import 'package:fireplace/widgets/ping_glyph.dart';
 import 'package:fireplace/widgets/emoji/fireplace_emoji_picker.dart';
 import 'package:fireplace/widgets/input/chat_input_bar.dart';
 import 'package:fireplace/widgets/input/composer_keyboard_signals.dart';
@@ -734,7 +735,7 @@ void main() {
       expect(field.focusNode!.hasFocus, isTrue);
       expect(composerKeyboardCollapseGuard.value, isFalse);
 
-      await tester.tap(find.byIcon(Icons.auto_awesome));
+      await tester.tap(find.byType(PingGlyph));
       await tester.pump();
 
       // Gated refocus ran (focus was up at pointer-down) -> guard armed.
@@ -766,7 +767,7 @@ void main() {
       );
       expect(composerKeyboardCollapseGuard.value, isFalse);
 
-      await tester.tap(find.byIcon(Icons.auto_awesome));
+      await tester.tap(find.byType(PingGlyph));
       await tester.pumpAndSettle();
 
       expect(
@@ -804,42 +805,43 @@ void main() {
     );
     await tester.pump();
 
-    await tester.tap(find.byIcon(Icons.auto_awesome));
+    await tester.tap(find.byType(PingGlyph));
     await tester.pump();
 
     expect(pings, 1);
   });
 
-  testWidgets('ping tile does not fire onPingSent without an active conversation', (
-    tester,
-  ) async {
-    var pings = 0;
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: RpgTheme.themeDataLight,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: const Locale('en'),
-        home: Scaffold(
-          body: MultiProvider(
-            providers: [
-              ChangeNotifierProvider(create: (_) => ConversationsProvider()),
-              ChangeNotifierProvider(create: (_) => MessagingProvider()),
-            ],
-            child: ChatActionTiles(onPingSent: () => pings++),
+  testWidgets(
+    'ping tile does not fire onPingSent without an active conversation',
+    (tester) async {
+      var pings = 0;
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: RpgTheme.themeDataLight,
+          localizationsDelegates: AppLocalizations.localizationsDelegates,
+          supportedLocales: AppLocalizations.supportedLocales,
+          locale: const Locale('en'),
+          home: Scaffold(
+            body: MultiProvider(
+              providers: [
+                ChangeNotifierProvider(create: (_) => ConversationsProvider()),
+                ChangeNotifierProvider(create: (_) => MessagingProvider()),
+              ],
+              child: ChatActionTiles(onPingSent: () => pings++),
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pump();
+      );
+      await tester.pump();
 
-    await tester.tap(find.byIcon(Icons.auto_awesome));
-    await tester.pump();
-    expect(pings, 0);
+      await tester.tap(find.byType(PingGlyph));
+      await tester.pump();
+      expect(pings, 0);
 
-    // Drain the top-snackbar auto-dismiss timer the no-conversation guard spawns.
-    await tester.pump(const Duration(seconds: 3));
-  });
+      // Drain the top-snackbar auto-dismiss timer the no-conversation guard spawns.
+      await tester.pump(const Duration(seconds: 3));
+    },
+  );
 }
 
 /// Fake iOS-WebKit shared inset source (isActive true) with a fixed inset, so

@@ -20,6 +20,7 @@ import 'disappearing_timer_sheet.dart';
 import 'top_snackbar.dart';
 import 'anti_quantum_note_dialog.dart';
 import 'gif_picker_sheet.dart';
+import 'ping_glyph.dart';
 
 class ChatActionTiles extends StatelessWidget {
   final double bottomPadding;
@@ -75,7 +76,7 @@ class ChatActionTiles extends StatelessWidget {
               FocusGuardArea(
                 id: 'action_tile_ping',
                 child: _ActionTile(
-                  icon: Icons.auto_awesome,
+                  customIcon: PingGlyph(size: 24, color: iconColor),
                   tooltip: l10n.ping,
                   color: iconColor,
                   onTap: () => _sendPing(context),
@@ -357,19 +358,21 @@ class ChatActionTiles extends StatelessWidget {
 }
 
 class _ActionTile extends StatelessWidget {
-  final IconData icon;
+  final IconData? icon;
+  final Widget? customIcon;
   final String tooltip;
   final Color color;
   final VoidCallback onTap;
   final bool showBadge;
 
   const _ActionTile({
-    required this.icon,
+    this.icon,
+    this.customIcon,
     required this.tooltip,
     required this.color,
     required this.onTap,
     this.showBadge = false,
-  });
+  }) : assert((icon == null) != (customIcon == null));
 
   @override
   Widget build(BuildContext context) {
@@ -388,7 +391,7 @@ class _ActionTile extends StatelessWidget {
             children: [
               Padding(
                 padding: const EdgeInsets.all(8),
-                child: Icon(icon, size: 24, color: color),
+                child: customIcon ?? Icon(icon, size: 24, color: color),
               ),
               if (showBadge)
                 Positioned(
