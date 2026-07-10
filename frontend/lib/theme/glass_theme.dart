@@ -136,9 +136,20 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
   ThemeExtension<GlassTheme> copyWith() => this;
 
   @override
-  ThemeExtension<GlassTheme> lerp(
-    covariant ThemeExtension<GlassTheme>? other,
-    double t,
-  ) =>
-      this;
+  GlassTheme lerp(covariant ThemeExtension<GlassTheme>? other, double t) {
+    if (other is! GlassTheme) return this;
+    return GlassTheme(
+      fill: Color.lerp(fill, other.fill, t)!,
+      border: Color.lerp(border, other.border, t)!,
+      highlight: Color.lerp(highlight, other.highlight, t)!,
+      activeCapsule: Color.lerp(activeCapsule, other.activeCapsule, t)!,
+      onGlassMuted: Color.lerp(onGlassMuted, other.onGlassMuted, t)!,
+      onGlassAccent: Color.lerp(onGlassAccent, other.onGlassAccent, t)!,
+      wallpaperTint: Color.lerp(wallpaperTint, other.wallpaperTint, t)!,
+      datePillBg: Color.lerp(datePillBg, other.datePillBg, t)!,
+      datePillText: Color.lerp(datePillText, other.datePillText, t)!,
+      shadow: BoxShadow.lerp(shadow, other.shadow, t)!,
+      opaqueFill: Color.lerp(opaqueFill, other.opaqueFill, t)!,
+    );
+  }
 }

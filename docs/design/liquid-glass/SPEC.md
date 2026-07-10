@@ -61,7 +61,7 @@ Accepted content deltas vs current app (contrast gate, disclosed at acceptance):
 
 ## 7. Opaque fallback (accessibility / low-end / NO-GO)
 
-Every glass surface swaps to: solid fill = theme `colorScheme.surface` (existing values), same border color at alpha 1.0 equivalent (`convItemBorder`/`tabBorder`), same radii/metrics/shadow, no blur, no saturation. Trigger: (a) explicit user setting if added later, (b) `MediaQuery.highContrast`, (c) Stage-B web-perf NO-GO ships tint+border+shadow fake-glass: same fills as §3 but alpha raised to 0.85 and no backdrop filter.
+Every glass surface swaps to: solid fill = theme `colorScheme.surface` (existing values), same border color at alpha 1.0 equivalent (`convItemBorder`/`tabBorder`), same radii/metrics/shadow, no blur, no saturation. Trigger: (a) explicit user setting if added later, (b) `MediaQuery.highContrast` (reactive), (c) compile-time kill-switch `flutter build web --dart-define=REDUCE_TRANSPARENCY=true` (the NO-GO ship mode) — fake-glass then means: same fills as §3 but alpha raised to 0.85 and no backdrop filter.
 
 ## 8. Contrast results (computed, WCAG 2.x, worst-case backdrop = glass composited over brightest(dark)/darkest(light) bubble)
 

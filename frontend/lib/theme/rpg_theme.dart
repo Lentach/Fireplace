@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'glass_theme.dart';
 
 /// Theme-specific colors for chat UI. Use via `Theme.of(context).extension<FireplaceColors>()!`
 class FireplaceColors extends ThemeExtension<FireplaceColors> {
@@ -367,6 +368,7 @@ class RpgTheme {
           borderColor: borderBlue,
           mutedText: mutedTextBlue,
         ),
+        GlassTheme.blue,
       ],
     );
   }
@@ -483,6 +485,7 @@ class RpgTheme {
           borderColor: accentDarkGray,
           mutedText: mutedDarkGray,
         ),
+        GlassTheme.dark,
       ],
     );
   }
@@ -601,6 +604,7 @@ class RpgTheme {
           borderColor: primaryLight,
           mutedText: textSecondaryLight,
         ),
+        GlassTheme.light,
       ],
     );
   }
@@ -729,6 +733,7 @@ class RpgTheme {
           borderColor: primaryTealStone,
           mutedText: mutedTealStone,
         ),
+        GlassTheme.teal,
       ],
     );
   }
