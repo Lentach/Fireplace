@@ -121,7 +121,6 @@ void main() {
       final size = MediaPreviewFrame.calculateSize(
         availableWidth: 320,
         viewportHeight: 800,
-        devicePixelRatio: 2,
         mediaWidth: 800,
         mediaHeight: 600,
       );
@@ -134,7 +133,6 @@ void main() {
       final size = MediaPreviewFrame.calculateSize(
         availableWidth: 320,
         viewportHeight: 800,
-        devicePixelRatio: 2,
         mediaWidth: 3000,
         mediaHeight: 500,
       );
@@ -147,33 +145,30 @@ void main() {
       final size = MediaPreviewFrame.calculateSize(
         availableWidth: 320,
         viewportHeight: 800,
-        devicePixelRatio: 2,
         mediaWidth: 500,
         mediaHeight: 2000,
       );
 
-      expect(size.width, 240);
-      expect(size.height, 480);
+      expect(size.width, 200);
+      expect(size.height, 400);
     });
 
-    test('keeps tiny media tappable without taking full row width', () {
+    test('scales low-resolution media to the bounded chat width', () {
       final size = MediaPreviewFrame.calculateSize(
         availableWidth: 320,
         viewportHeight: 800,
-        devicePixelRatio: 2,
-        mediaWidth: 40,
-        mediaHeight: 40,
+        mediaWidth: 256,
+        mediaHeight: 256,
       );
 
-      expect(size.width, 96);
-      expect(size.height, 96);
+      expect(size.width, 320);
+      expect(size.height, 320);
     });
 
     test('uses the legacy 220px fallback when dimensions are absent', () {
       final size = MediaPreviewFrame.calculateSize(
         availableWidth: 320,
         viewportHeight: 800,
-        devicePixelRatio: 2,
         mediaWidth: null,
         mediaHeight: null,
       );

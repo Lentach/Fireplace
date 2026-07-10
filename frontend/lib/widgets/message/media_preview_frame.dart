@@ -6,8 +6,7 @@ import 'package:flutter/material.dart';
 class MediaPreviewFrame extends StatelessWidget {
   static const legacyHeight = 220.0;
   static const _maximumWidth = 360.0;
-  static const _maximumHeight = 480.0;
-  static const _minimumHeight = 96.0;
+  static const _maximumHeight = 400.0;
   static const _minimumRatio = 0.5;
   static const _maximumRatio = 3.0;
 
@@ -27,7 +26,6 @@ class MediaPreviewFrame extends StatelessWidget {
   static Size calculateSize({
     required double availableWidth,
     required double viewportHeight,
-    required double devicePixelRatio,
     required int? mediaWidth,
     required int? mediaHeight,
   }) {
@@ -42,27 +40,16 @@ class MediaPreviewFrame extends StatelessWidget {
       return Size(width, legacyHeight);
     }
 
-    final maximumHeight = math.min(viewportHeight * 0.65, _maximumHeight);
+    final maximumHeight = math.min(viewportHeight * 0.52, _maximumHeight);
     final ratio = (mediaWidth / mediaHeight)
         .clamp(_minimumRatio, _maximumRatio)
         .toDouble();
-    final sourceWidth = (mediaWidth / devicePixelRatio)
-        .clamp(_minimumHeight, width)
-        .toDouble();
 
-    var frameWidth = sourceWidth;
+    var frameWidth = width;
     var frameHeight = frameWidth / ratio;
     if (frameHeight > maximumHeight) {
       frameHeight = maximumHeight;
       frameWidth = frameHeight * ratio;
-    }
-
-    if (frameHeight < _minimumHeight) {
-      final minimumWidth = _minimumHeight * ratio;
-      if (minimumWidth <= width) {
-        frameWidth = minimumWidth;
-        frameHeight = _minimumHeight;
-      }
     }
 
     return Size(frameWidth, frameHeight);
@@ -75,7 +62,6 @@ class MediaPreviewFrame extends StatelessWidget {
         final size = calculateSize(
           availableWidth: constraints.maxWidth,
           viewportHeight: MediaQuery.sizeOf(context).height,
-          devicePixelRatio: MediaQuery.devicePixelRatioOf(context),
           mediaWidth: mediaWidth,
           mediaHeight: mediaHeight,
         );
