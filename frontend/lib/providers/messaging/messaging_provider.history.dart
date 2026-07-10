@@ -19,9 +19,7 @@ extension MessagingHistory on MessagingProvider {
     final cached = _conversationCache[conversationId];
     if (cached == null || cached.isEmpty) return false;
     final now = DateTime.now();
-    _messages = List.from(
-      cached.where((m) => !isMessageExpired(m, now)),
-    );
+    _messages = List.from(cached.where((m) => !isMessageExpired(m, now)));
     notifyListeners();
     return true;
   }
@@ -33,8 +31,7 @@ extension MessagingHistory on MessagingProvider {
     final now = DateTime.now();
     final filtered = List<MessageModel>.from(
       _messages.where(
-        (m) =>
-            m.conversationId == conversationId && !isMessageExpired(m, now),
+        (m) => m.conversationId == conversationId && !isMessageExpired(m, now),
       ),
     );
     if (filtered.isEmpty) {
@@ -54,9 +51,7 @@ extension MessagingHistory on MessagingProvider {
 
   void _trackHistoryFetch(int conversationId) {
     final seq = ++_historyFetchSeq;
-    _pendingHistoryFetchSeq
-        .putIfAbsent(conversationId, () => <int>[])
-        .add(seq);
+    _pendingHistoryFetchSeq.putIfAbsent(conversationId, () => <int>[]).add(seq);
   }
 
   void _acknowledgeHistoryFetch(int? conversationId) {
@@ -98,11 +93,15 @@ extension MessagingHistory on MessagingProvider {
       (msg.mediaKey == null || msg.mediaIv == null);
 
   /// Prefer higher delivery status, non-null expiry fields, and local decrypted text.
-  MessageModel _mergeMessagePreferNewer(MessageModel local, MessageModel server) {
+  MessageModel _mergeMessagePreferNewer(
+    MessageModel local,
+    MessageModel server,
+  ) {
     final localRank = _deliveryStatusRank(local.deliveryStatus);
     final serverRank = _deliveryStatusRank(server.deliveryStatus);
-    final deliveryStatus =
-        serverRank >= localRank ? server.deliveryStatus : local.deliveryStatus;
+    final deliveryStatus = serverRank >= localRank
+        ? server.deliveryStatus
+        : local.deliveryStatus;
 
     DateTime? expiresAt = server.expiresAt ?? local.expiresAt;
     if (server.expiresAt != null && local.expiresAt != null) {
@@ -147,7 +146,8 @@ extension MessagingHistory on MessagingProvider {
       content = server.content;
     }
 
-    final messageType = local.messageType != MessageType.text &&
+    final messageType =
+        local.messageType != MessageType.text &&
             server.messageType == MessageType.text
         ? local.messageType
         : server.messageType;
@@ -162,6 +162,9 @@ extension MessagingHistory on MessagingProvider {
       mediaDuration: local.mediaDuration ?? server.mediaDuration,
       mediaKey: local.mediaKey ?? server.mediaKey,
       mediaIv: local.mediaIv ?? server.mediaIv,
+      mediaWidth: local.mediaWidth ?? server.mediaWidth,
+      mediaHeight: local.mediaHeight ?? server.mediaHeight,
+      mediaThumbHash: local.mediaThumbHash ?? server.mediaThumbHash,
       linkPreviewUrl: local.linkPreviewUrl ?? server.linkPreviewUrl,
       linkPreviewTitle: local.linkPreviewTitle ?? server.linkPreviewTitle,
       linkPreviewImageUrl:
@@ -204,8 +207,7 @@ extension MessagingHistory on MessagingProvider {
     for (final m in serverSnapshot) {
       if (m.id <= 0) continue;
       final prev = mergedById[m.id];
-      mergedById[m.id] =
-          prev != null ? _mergeMessagePreferNewer(prev, m) : m;
+      mergedById[m.id] = prev != null ? _mergeMessagePreferNewer(prev, m) : m;
     }
 
     final optimistic = <MessageModel>[];
@@ -287,7 +289,8 @@ extension MessagingHistory on MessagingProvider {
     if (responseConversationId != null &&
         effectiveActive != null &&
         responseConversationId != effectiveActive) {
-      if (_isPaginationLoad && responseConversationId == _paginationConversationId) {
+      if (_isPaginationLoad &&
+          responseConversationId == _paginationConversationId) {
         _finishPaginationLoad();
         notifyListeners();
       }
@@ -299,8 +302,11 @@ extension MessagingHistory on MessagingProvider {
       return;
     }
     final newMessages = list
-        .map((m) => _enrichReplyPreview(
-            MessageModel.fromJson(m as Map<String, dynamic>)))
+        .map(
+          (m) => _enrichReplyPreview(
+            MessageModel.fromJson(m as Map<String, dynamic>),
+          ),
+        )
         .toList();
 
     if (_isPaginationLoad) {
@@ -333,8 +339,8 @@ extension MessagingHistory on MessagingProvider {
 
     if (responseConversationId != null &&
         responseConversationId != _paginationConversationId) {
-      final matchesActive = effectiveActive != null &&
-          responseConversationId == effectiveActive;
+      final matchesActive =
+          effectiveActive != null && responseConversationId == effectiveActive;
       final paginationUnset = _paginationConversationId < 0;
       if (!matchesActive && !paginationUnset) {
         _e2eFlowLog('HISTORY_DROP', {
@@ -350,8 +356,8 @@ extension MessagingHistory on MessagingProvider {
 
     final convIdForMerge =
         responseConversationId ?? _effectiveActiveConversationId;
-    final staleHistory = convIdForMerge != null &&
-        _isStaleHistoryFetch(convIdForMerge);
+    final staleHistory =
+        convIdForMerge != null && _isStaleHistoryFetch(convIdForMerge);
     _acknowledgeHistoryFetch(convIdForMerge);
 
     if (staleHistory) {
@@ -367,8 +373,7 @@ extension MessagingHistory on MessagingProvider {
 
     final existingForConv = List<MessageModel>.from(
       _messages.where(
-        (m) =>
-            convIdForMerge == null || m.conversationId == convIdForMerge,
+        (m) => convIdForMerge == null || m.conversationId == convIdForMerge,
       ),
     );
     _messages = _mergeHistorySnapshot(
@@ -473,8 +478,9 @@ extension MessagingHistory on MessagingProvider {
       if (tempIndex != -1) _messages.removeAt(tempIndex);
       final plaintextContent = savedContent ?? tempContent ?? '';
       if (msg.content == '[encrypted]') {
-        final restoredType =
-            _parseMessageTypeString(savedData?['messageType'] as String?);
+        final restoredType = _parseMessageTypeString(
+          savedData?['messageType'] as String?,
+        );
         msg = msg.copyWith(
           content: plaintextContent.isNotEmpty ? plaintextContent : null,
           messageType: restoredType,
@@ -482,6 +488,9 @@ extension MessagingHistory on MessagingProvider {
           mediaDuration: savedData?['mediaDuration'] as int?,
           mediaKey: savedData?['mediaKey'] as String?,
           mediaIv: savedData?['mediaIv'] as String?,
+          mediaWidth: savedData?['mediaWidth'] as int?,
+          mediaHeight: savedData?['mediaHeight'] as int?,
+          mediaThumbHash: savedData?['mediaThumbHash'] as String?,
           linkPreviewUrl: savedData?['linkPreviewUrl'] as String?,
           linkPreviewTitle: savedData?['linkPreviewTitle'] as String?,
           linkPreviewImageUrl: savedData?['linkPreviewImageUrl'] as String?,
@@ -490,11 +499,19 @@ extension MessagingHistory on MessagingProvider {
           'content': plaintextContent,
           if (savedData?['messageType'] != null)
             'messageType': savedData!['messageType'],
-          if (savedData?['mediaUrl'] != null) 'mediaUrl': savedData!['mediaUrl'],
+          if (savedData?['mediaUrl'] != null)
+            'mediaUrl': savedData!['mediaUrl'],
           if (savedData?['mediaDuration'] != null)
             'mediaDuration': savedData!['mediaDuration'],
-          if (savedData?['mediaKey'] != null) 'mediaKey': savedData!['mediaKey'],
+          if (savedData?['mediaKey'] != null)
+            'mediaKey': savedData!['mediaKey'],
           if (savedData?['mediaIv'] != null) 'mediaIv': savedData!['mediaIv'],
+          if (savedData?['mediaWidth'] != null)
+            'mediaWidth': savedData!['mediaWidth'],
+          if (savedData?['mediaHeight'] != null)
+            'mediaHeight': savedData!['mediaHeight'],
+          if (savedData?['mediaThumbHash'] != null)
+            'mediaThumbHash': savedData!['mediaThumbHash'],
           if (savedData?['linkPreviewUrl'] != null)
             'linkPreviewUrl': savedData!['linkPreviewUrl'],
           if (savedData?['linkPreviewTitle'] != null)
@@ -502,9 +519,7 @@ extension MessagingHistory on MessagingProvider {
           if (savedData?['linkPreviewImageUrl'] != null)
             'linkPreviewImageUrl': savedData!['linkPreviewImageUrl'],
         };
-        _encryptionProvider
-            ?.saveDecryptedContent(msg.id, persistData)
-            .ignore();
+        _encryptionProvider?.saveDecryptedContent(msg.id, persistData).ignore();
       }
       // Ack arrived — the pending-send record served its purpose; consume it
       // so normal sends keep the reconcile store self-cleaning.
@@ -518,10 +533,14 @@ extension MessagingHistory on MessagingProvider {
     final viewingConversationId =
         activeConversationId ?? _paginationConversationId;
     if (msg.conversationId == viewingConversationId) {
-      final existingById = _messages.indexWhere((m) => m.id == msg.id && msg.id > 0);
+      final existingById = _messages.indexWhere(
+        (m) => m.id == msg.id && msg.id > 0,
+      );
       if (existingById != -1) {
-        _messages[existingById] =
-            _mergeMessagePreferNewer(_messages[existingById], msg);
+        _messages[existingById] = _mergeMessagePreferNewer(
+          _messages[existingById],
+          msg,
+        );
       } else if (msg.tempId != null) {
         final tempIdx = _messages.indexWhere((m) => m.tempId == msg.tempId);
         if (tempIdx != -1) {

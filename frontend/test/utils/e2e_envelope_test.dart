@@ -42,10 +42,110 @@ void main() {
       expect(result.mediaIv, isNull);
     });
 
+    test(
+      'media dimensions and ThumbHash survive a build -> parse round trip',
+      () {
+        final built = E2eEnvelope.build(
+          '',
+          messageType: 'IMAGE',
+          mediaUrl: 'http://localhost:3000/media/msgs/image.bin',
+          mediaKey: 'key',
+          mediaIv: 'iv',
+          mediaWidth: 3024,
+          mediaHeight: 4032,
+          mediaThumbHash: 'thumbhash-base64',
+        );
+
+        final result = E2eEnvelope.parse(jsonEncode(built));
+
+        expect(result.mediaWidth, 3024);
+        expect(result.mediaHeight, 4032);
+        expect(result.mediaThumbHash, 'thumbhash-base64');
+      },
+    );
+
+    test(
+      'parse drops media geometry and ThumbHash when dimensions are unsafe',
+      () {
+        final cases = <({String name, Map<String, Object?> fields})>[
+          (name: 'missing', fields: {}),
+          (
+            name: 'half-present',
+            fields: {'mediaWidth': 640, 'mediaThumbHash': 'hash'},
+          ),
+          (
+            name: 'wrong-type',
+            fields: {
+              'mediaWidth': '640',
+              'mediaHeight': 480,
+              'mediaThumbHash': 'hash',
+            },
+          ),
+          (
+            name: 'out-of-range',
+            fields: {
+              'mediaWidth': 32769,
+              'mediaHeight': 480,
+              'mediaThumbHash': 'hash',
+            },
+          ),
+          (
+            name: 'invalid',
+            fields: {
+              'mediaWidth': 0,
+              'mediaHeight': -1,
+              'mediaThumbHash': 'hash',
+            },
+          ),
+        ];
+
+        for (final c in cases) {
+          final result = E2eEnvelope.parse(
+            jsonEncode({'content': '', 'messageType': 'IMAGE', ...c.fields}),
+          );
+
+          expect(result.mediaWidth, isNull, reason: c.name);
+          expect(result.mediaHeight, isNull, reason: c.name);
+          expect(result.mediaThumbHash, isNull, reason: c.name);
+        }
+      },
+    );
+
+    test('parse drops invalid ThumbHash while keeping valid dimensions', () {
+      final emptyHash = E2eEnvelope.parse(
+        jsonEncode({
+          'content': '',
+          'messageType': 'IMAGE',
+          'mediaWidth': 640,
+          'mediaHeight': 480,
+          'mediaThumbHash': '',
+        }),
+      );
+      expect(emptyHash.mediaWidth, 640);
+      expect(emptyHash.mediaHeight, 480);
+      expect(emptyHash.mediaThumbHash, isNull);
+
+      final wrongTypeHash = E2eEnvelope.parse(
+        jsonEncode({
+          'content': '',
+          'messageType': 'IMAGE',
+          'mediaWidth': 640,
+          'mediaHeight': 480,
+          'mediaThumbHash': 42,
+        }),
+      );
+      expect(wrongTypeHash.mediaWidth, 640);
+      expect(wrongTypeHash.mediaHeight, 480);
+      expect(wrongTypeHash.mediaThumbHash, isNull);
+    });
+
     test('build omits messageType for TEXT and includes it otherwise', () {
       final text = E2eEnvelope.build('hi');
-      expect(text.containsKey('messageType'), isFalse,
-          reason: 'TEXT is the wire default and must be elided');
+      expect(
+        text.containsKey('messageType'),
+        isFalse,
+        reason: 'TEXT is the wire default and must be elided',
+      );
 
       final voice = E2eEnvelope.build('', messageType: 'VOICE');
       expect(voice['messageType'], 'VOICE');
@@ -57,11 +157,13 @@ void main() {
     });
 
     test('parse rounds a fractional num mediaDuration', () {
-      final result = E2eEnvelope.parse(jsonEncode({
-        'content': '',
-        'messageType': 'VOICE',
-        'mediaDuration': 7.6,
-      }));
+      final result = E2eEnvelope.parse(
+        jsonEncode({
+          'content': '',
+          'messageType': 'VOICE',
+          'mediaDuration': 7.6,
+        }),
+      );
       expect(result.mediaDuration, 8);
     });
 

@@ -489,6 +489,15 @@ class ChatMessageBubble extends StatelessWidget {
                                 : bubbleColor,
                             borderRadius: BorderRadius.circular(16),
                           ),
+                          foregroundDecoration: isMediaMessage
+                              ? BoxDecoration(
+                                  borderRadius: BorderRadius.circular(16),
+                                  border: Border.all(
+                                    color: borderColor,
+                                    width: 1.25,
+                                  ),
+                                )
+                              : null,
                           clipBehavior: isMediaMessage
                               ? Clip.hardEdge
                               : Clip.none,

@@ -5,7 +5,8 @@ import 'package:http/http.dart' as http;
 import 'package:image_picker/image_picker.dart';
 import 'package:webcrypto/webcrypto.dart';
 import '../utils/file_utils_stub.dart'
-    if (dart.library.io) '../utils/file_utils_io.dart' as file_utils;
+    if (dart.library.io) '../utils/file_utils_io.dart'
+    as file_utils;
 
 import '../config/app_config.dart';
 import '../models/message_model.dart';
@@ -18,6 +19,7 @@ import '../utils/anti_quantum_note_link.dart';
 import '../utils/decryption_failure_policy.dart';
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_envelope.dart';
+import '../utils/media_preview_metadata.dart';
 import '../utils/e2e_persistent_diag.dart';
 import '../utils/message_expiry.dart';
 import '../utils/reply_preview_helper.dart';
@@ -109,8 +111,10 @@ class MessagingProvider extends ChangeNotifier {
   Timer? _delayedRetryTimer;
   String? _delayedRetryTempId;
   bool _decryptingHistory = false;
+
   /// Peers whose messages failed during the current history decrypt pass.
   Set<int>? _historyDecryptFailedPeers;
+
   /// Dedupes session-rebuild emits within one history decrypt pass.
   Set<int>? _historySessionRebuildRequested;
 
@@ -195,7 +199,8 @@ class MessagingProvider extends ChangeNotifier {
 
   final Map<int, bool> _typingStatus = {};
   final Map<int, Timer> _typingTimers = {};
-  final Map<int, bool> _partnerRecordingVoice = {}; // conversationId -> isRecording
+  final Map<int, bool> _partnerRecordingVoice =
+      {}; // conversationId -> isRecording
 
   /// Ticks every second for countdown display. Bubbles use ValueListenableBuilder
   /// so only they rebuild, not the whole screen. Prevents recording timer freeze.
@@ -324,11 +329,16 @@ class MessagingProvider extends ChangeNotifier {
     }
   }
 
-  Future<T> _runDecryptSerialized<T>(int senderId, Future<T> Function() action) {
+  Future<T> _runDecryptSerialized<T>(
+    int senderId,
+    Future<T> Function() action,
+  ) {
     final previous = _decryptChainBySender[senderId] ?? Future<void>.value();
     final result = previous.then((_) => action());
-    _decryptChainBySender[senderId] =
-        result.then<void>((_) {}, onError: (_) {});
+    _decryptChainBySender[senderId] = result.then<void>(
+      (_) {},
+      onError: (_) {},
+    );
     return result;
   }
 
@@ -495,7 +505,8 @@ class MessagingProvider extends ChangeNotifier {
       _replyingToMessage = null;
       _editingMessage = null;
       _pendingEdits.clear();
-      _pendingSendContent.clear(); // retry was cancelled; orphaned entries serve no purpose
+      _pendingSendContent
+          .clear(); // retry was cancelled; orphaned entries serve no purpose
       _emittedSendTempIds.clear();
       _cancelDelayedRetryIfAny();
     }

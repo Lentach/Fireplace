@@ -130,6 +130,10 @@ extension MessagingDecrypt on MessagingProvider {
         'mediaDuration': decrypted.mediaDuration!,
       if (decrypted.mediaKey != null) 'mediaKey': decrypted.mediaKey!,
       if (decrypted.mediaIv != null) 'mediaIv': decrypted.mediaIv!,
+      if (decrypted.mediaWidth != null) 'mediaWidth': decrypted.mediaWidth!,
+      if (decrypted.mediaHeight != null) 'mediaHeight': decrypted.mediaHeight!,
+      if (decrypted.mediaThumbHash != null)
+        'mediaThumbHash': decrypted.mediaThumbHash!,
       if (decrypted.linkPreviewUrl != null)
         'linkPreviewUrl': decrypted.linkPreviewUrl!,
       if (decrypted.linkPreviewTitle != null)
@@ -218,7 +222,10 @@ extension MessagingDecrypt on MessagingProvider {
     // delete-on-rebuild that destroyed the archived ratchet states the
     // peer's in-flight messages needed (msg 8489 Bad-MAC class).
     _emit?.call('requestSessionRebuild', {'recipientId': peerId});
-    E2ePersistentDiag.record('SESSION_RESET', {'peerId': peerId, 'trigger': trigger});
+    E2ePersistentDiag.record('SESSION_RESET', {
+      'peerId': peerId,
+      'trigger': trigger,
+    });
   }
 
   /// Drop peers whose inbound rows are all resolved or terminal — nothing a
@@ -337,6 +344,9 @@ extension MessagingDecrypt on MessagingProvider {
             mediaDuration: persisted['mediaDuration'] as int?,
             mediaKey: persisted['mediaKey'] as String?,
             mediaIv: persisted['mediaIv'] as String?,
+            mediaWidth: persisted['mediaWidth'] as int?,
+            mediaHeight: persisted['mediaHeight'] as int?,
+            mediaThumbHash: persisted['mediaThumbHash'] as String?,
             linkPreviewUrl: persisted['linkPreviewUrl'] as String?,
             linkPreviewTitle: persisted['linkPreviewTitle'] as String?,
             linkPreviewImageUrl: validImage,
@@ -400,6 +410,9 @@ extension MessagingDecrypt on MessagingProvider {
             mediaDuration: stored?['mediaDuration'] as int?,
             mediaKey: stored?['mediaKey'] as String?,
             mediaIv: stored?['mediaIv'] as String?,
+            mediaWidth: stored?['mediaWidth'] as int?,
+            mediaHeight: stored?['mediaHeight'] as int?,
+            mediaThumbHash: stored?['mediaThumbHash'] as String?,
             linkPreviewUrl: stored?['linkPreviewUrl'] as String?,
             linkPreviewTitle: stored?['linkPreviewTitle'] as String?,
             linkPreviewImageUrl: safeImageUrl,
@@ -427,8 +440,9 @@ extension MessagingDecrypt on MessagingProvider {
               ? await _encryptionProvider!.peekPendingSendRecord(ciphertext)
               : null;
           if (pending != null) {
-            final restoredType =
-                _parseMessageTypeString(pending['messageType'] as String?);
+            final restoredType = _parseMessageTypeString(
+              pending['messageType'] as String?,
+            );
             final pendingContent = pending['content'] as String? ?? '';
             final restored = msg.copyWith(
               content: pendingContent.isNotEmpty ? pendingContent : null,
@@ -437,6 +451,9 @@ extension MessagingDecrypt on MessagingProvider {
               mediaDuration: pending['mediaDuration'] as int?,
               mediaKey: pending['mediaKey'] as String?,
               mediaIv: pending['mediaIv'] as String?,
+              mediaWidth: pending['mediaWidth'] as int?,
+              mediaHeight: pending['mediaHeight'] as int?,
+              mediaThumbHash: pending['mediaThumbHash'] as String?,
               linkPreviewUrl: pending['linkPreviewUrl'] as String?,
               linkPreviewTitle: pending['linkPreviewTitle'] as String?,
               linkPreviewImageUrl: pending['linkPreviewImageUrl'] as String?,
@@ -451,6 +468,12 @@ extension MessagingDecrypt on MessagingProvider {
                 'mediaDuration': pending['mediaDuration'],
               if (pending['mediaKey'] != null) 'mediaKey': pending['mediaKey'],
               if (pending['mediaIv'] != null) 'mediaIv': pending['mediaIv'],
+              if (pending['mediaWidth'] != null)
+                'mediaWidth': pending['mediaWidth'],
+              if (pending['mediaHeight'] != null)
+                'mediaHeight': pending['mediaHeight'],
+              if (pending['mediaThumbHash'] != null)
+                'mediaThumbHash': pending['mediaThumbHash'],
               if (pending['linkPreviewUrl'] != null)
                 'linkPreviewUrl': pending['linkPreviewUrl'],
               if (pending['linkPreviewTitle'] != null)
@@ -458,11 +481,13 @@ extension MessagingDecrypt on MessagingProvider {
               if (pending['linkPreviewImageUrl'] != null)
                 'linkPreviewImageUrl': pending['linkPreviewImageUrl'],
             });
-            final persisted =
-                await _encryptionProvider!.getDecryptedContent(msg.id);
-            final verified = (persisted?['content'] as String? ?? '') ==
-                    pendingContent &&
-                (pendingContent.isNotEmpty || persisted?['messageType'] != null);
+            final persisted = await _encryptionProvider!.getDecryptedContent(
+              msg.id,
+            );
+            final verified =
+                (persisted?['content'] as String? ?? '') == pendingContent &&
+                (pendingContent.isNotEmpty ||
+                    persisted?['messageType'] != null);
             if (verified) {
               await _encryptionProvider!.takePendingSendRecord(ciphertext!);
             }
@@ -473,10 +498,14 @@ extension MessagingDecrypt on MessagingProvider {
               _encryptionProvider?.cacheDecryption(msg.id, merged);
               changed = true;
             }
-            _e2eFlowLog('SEND_ACK_RECONCILED',
-                {'msgId': msg.id, 'persistVerified': verified});
-            E2ePersistentDiag.record('SEND_ACK_RECONCILED',
-                {'msgId': msg.id, 'persistVerified': verified});
+            _e2eFlowLog('SEND_ACK_RECONCILED', {
+              'msgId': msg.id,
+              'persistVerified': verified,
+            });
+            E2ePersistentDiag.record('SEND_ACK_RECONCILED', {
+              'msgId': msg.id,
+              'persistVerified': verified,
+            });
           }
         }
       }
@@ -713,6 +742,9 @@ extension MessagingDecrypt on MessagingProvider {
           mediaDuration: parsed.mediaDuration,
           mediaKey: parsed.mediaKey,
           mediaIv: parsed.mediaIv,
+          mediaWidth: parsed.mediaWidth,
+          mediaHeight: parsed.mediaHeight,
+          mediaThumbHash: parsed.mediaThumbHash,
           linkPreviewUrl: parsed.linkPreviewUrl,
           linkPreviewTitle: parsed.linkPreviewTitle,
           linkPreviewImageUrl: safeImageUrl,
@@ -764,6 +796,9 @@ extension MessagingDecrypt on MessagingProvider {
           mediaDuration: persisted['mediaDuration'] as int?,
           mediaKey: persisted['mediaKey'] as String?,
           mediaIv: persisted['mediaIv'] as String?,
+          mediaWidth: persisted['mediaWidth'] as int?,
+          mediaHeight: persisted['mediaHeight'] as int?,
+          mediaThumbHash: persisted['mediaThumbHash'] as String?,
           linkPreviewUrl: persisted['linkPreviewUrl'] as String?,
           linkPreviewTitle: persisted['linkPreviewTitle'] as String?,
           linkPreviewImageUrl: safeImageUrl,
