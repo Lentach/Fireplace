@@ -26,6 +26,18 @@ The full 5-surface chat chrome costs ~1.1 ms raster over baseline on this GPU �
 
 All modes render correctly, no crashes. Timings are NOT device-representative (the emulator can't even hold baseline: 11.3 ms raster avg / 70% frames over budget before any glass). Deltas for the record: hand +4.0, hand5 +5.0, pkg +3.6 ms raster avg over baseline. Real-device perf = owner device QA on the deployed branch. Note: production mobile is the PWA (web renderer), not a native Android build — the web column above is the shipping path.
 
+## Real phone browser — iPhone Safari over LAN (owner-run, 2026-07-10 23:27, screenshot in session)
+
+| mode | raster avg/p90/p99 ms | jank | frames |
+|---|---|---|---|
+| baseline | 0.62 / 1 / 1 | 0.3% | 356 |
+| hand | 0.63 / 1 / 2 | 0% | 170 |
+| **hand5** | **1.08 / 2 / 2** | **0%** | 363 |
+| pkg | 1.34 / 2 / 2 | 0% | 365 |
+| fake | 0.56 / 1 / 1 | 0% | 361 |
+
+Locked 60fps (~360 frames / 6 s sweeps); the full 5-surface glass chrome adds ~0.5 ms raster over baseline on the actual shipping device class. (`hand` captured half the frames — sample-size quirk, percentiles consistent.)
+
 ## Package eval — `liquid_glass_widgets 0.21.3`
 
 Health: MIT, 345★/45 forks, active (pushed 3 days before eval), single maintainer, pre-1.0 (0.21.x), requires Flutter ≥3.41 (we ship 3.44.6 — OK). Deps: equatable, flutter_shaders, logging.
@@ -38,5 +50,5 @@ Verified by running on web release:
 
 ## VERDICT
 
-- **Performance: web-desktop GO** for the hand-rolled recipe. **Mobile-device: UNRESOLVED** — emulator is functional-only; the remaining gate is a real mobile-browser measurement (this harness served over LAN to a physical phone, results shown on-screen) BEFORE the redesign ships. Fake-glass fallback (§7 of SPEC.md) stays wired as the escape hatch.
+- **Performance: GO on both gates** — web-desktop AND real iPhone Safari (owner-run LAN measurement above): 0% jank with the full 5-surface chrome. Android emulator remains functional-only (not device-representative); native Android is not a shipping path today. Fake-glass fallback (§7 of SPEC.md) stays implemented as the accessibility/low-end escape hatch.
 - **Dependency: DO NOT ADOPT `liquid_glass_widgets`.** Hand-rolled `GlassSurface` wins on: exact spec control (σ22 + saturate 1.7 + per-theme tint/border/highlight ≈ 40 lines), cheaper raster, zero dependency/API-churn risk (pre-1.0, single maintainer), no silent-misrender foot-gun, no unused Impeller-only feature weight.
