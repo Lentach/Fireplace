@@ -34,7 +34,7 @@ Future<ConversationsProvider> _openSheet(
       'createdAt': '2026-01-01T00:00:00.000Z',
       'unreadCount': 0,
       'lastMessage': null,
-      if (initialSeconds != null) 'disappearingTimer': initialSeconds,
+      'disappearingTimer': ?initialSeconds,
     },
   ]);
   await tester.pumpWidget(

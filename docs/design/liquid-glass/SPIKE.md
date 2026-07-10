@@ -54,3 +54,17 @@ Verified by running on web release:
 
 - **Performance: GO on both gates** — web-desktop AND real iPhone Safari (owner-run LAN measurement above): 0% jank with the full 5-surface UI chrome (criterion adopted at review: jank ≤5%, raster p99 <16.7 ms; measured margin ~8×). Android emulator remains functional-only (not device-representative); native Android is not a shipping path today. Fake-glass fallback (§7 of SPEC.md) stays implemented as the accessibility/low-end escape hatch.
 - **Dependency: DO NOT ADOPT `liquid_glass_widgets`.** Hand-rolled `GlassSurface` wins on: exact spec control (σ22 + saturate 1.7 + per-theme tint/border/highlight ≈ 40 lines), cheaper raster, zero dependency/API-churn risk (pre-1.0, single maintainer), no silent-misrender foot-gun, no unused Impeller-only feature weight.
+
+## Final chat-scroll re-check — REAL ChatDetailScreen, web RELEASE (2026-07-11)
+
+Harness: `test/preview/glass_preview.dart?bench=1` (real screen + providers, 48 seeded rows, `ScrollableState.animateTo` 3 down/up sweeps, FrameTiming, result beaconed to the static-server log). Headful run in the system default browser (launched via Start-Process; Chrome and Edge are both installed — exact browser NOT recorded), Win11 desktop GPU — vsync-real, unlike headless. Recording starts only after a 3 s warm-up delay and covers exactly the 6 s of scripted sweeps (26/504 frames over 16.7 ms total-span; 6/504 over 33.4 ms).
+
+| metric | value |
+|---|---|
+| frames | 504 (scrolled 2967 px — scroll verified) |
+| build avg / p90 ms | 3.20 / 5.10 |
+| raster avg / p50 / p90 / p99 ms | 7.49 / 7.30 / 10.0 / 12.6 |
+| frames > 16.7 ms (total span) | 26 (5.2%) |
+| frames > 33.4 ms | 6 (1.2%) |
+
+Criteria (adopted before this run, NOT in the original spec): ≥200 frames, scroll delta > 0, raster p99 < 16.7 ms, total-span jank ≤ 5%. Per-criterion result: samples PASS, scroll PASS, raster p99 PASS (12.6 ms, ~25% headroom), total-span jank **FAIL by 0.2pp** (5.2% vs ≤5%). This run is recorded as MARGINAL FAIL on that criterion; it does not override the earlier gates and no reruns were performed (single-attempt policy). The load-bearing GO evidence remains the recipe spike (0.1% jank, desktop release) and the owner's real-iPhone run (0% jank). Interpretation, labeled [INFERENCE]: the 26 long-total-span frames with un-spiked raster (p99 12.6 ms) point at browser scheduling on a loaded desktop, not the glass recipe.

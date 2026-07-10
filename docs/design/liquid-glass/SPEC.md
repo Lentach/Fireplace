@@ -97,3 +97,22 @@ Every glass surface swaps to: solid fill = theme `colorScheme.surface` (existing
 | `teal` | Date-pill text | **5.5** |
 
 All ≥ 4.5:1. Computation script lives in the session eval history; recompute on any value change.
+
+## 9. Implementation status (branch `feat/liquid-glass-redesign`)
+
+| surface | status |
+|---|---|
+| Bottom nav pill + active capsule | GLASS (GlassBottomNav) |
+| Tab header capsules (Chat/Contacts/Settings) | GLASS (MainTabScreenHeader) |
+| Chat top bar capsules | GLASS (GlassTopBar) |
+| Chat wallpaper (flame tile) | DONE (ChatBackgroundPattern) |
+| Composer input pill | GLASS |
+| Action-tile panel | GLASS (in-flow pill) |
+| Bottom sheets (timer / contacts menu / anti-quantum) | GLASS (showGlassSheet) |
+| GIF picker sheet | OPAQUE BY DESIGN (media-dense grid; §7 per-surface fallback) |
+| Emoji picker panel | OPAQUE BY DESIGN (package-rendered dense grid; readability) |
+| Reply/edit/timer banners | Rounded solid cards (content layer) |
+| Date separators | Solid mini-pills (content layer) |
+| Popup menus + alert dialogs | Rounded per-theme surfaces — NOT glass (framework-owned Material routes; treated as §7 fallback surfaces; true glass menus = possible follow-up, owner to ratify at PR review) |
+| Settings tiles / auth screen | UNTOUCHED BY DESIGN (content surfaces; chrome above them is glassed) |
+| Embedded desktop chat header | In-flow, solid (desktop pane header; glass floats only over scrollable content) |

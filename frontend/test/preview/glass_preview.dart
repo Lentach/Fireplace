@@ -2,7 +2,12 @@
 // of the test suite; run: flutter run -d web-server -t test/preview/glass_preview.dart).
 // Hosts the real MainTabScreenHeader + GlassBottomNav + ConversationTile over
 // fake data; ?theme=blue|dark|light|teal picks the theme.
+import 'dart:async';
+import 'dart:convert';
+import 'dart:ui' show FramePhase, FrameTiming;
+
 import 'package:flutter/material.dart';
+import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
 
 import 'package:fireplace/providers/auth_provider.dart';
@@ -12,8 +17,11 @@ import 'package:fireplace/providers/friends_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/screens/chat_detail_screen.dart';
+import 'package:fireplace/screens/conversations_screen.dart';
 
 import 'package:fireplace/l10n/app_localizations.dart';
+
+import 'publish_stub.dart' if (dart.library.js_interop) 'publish_web.dart';
 import 'package:fireplace/models/message_model.dart';
 import 'package:fireplace/models/user_model.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
@@ -70,17 +78,19 @@ class GlassPreviewApp extends StatelessWidget {
       'That campfire photo from Mazury is unreal, send the full-res one when you’re home?',
       'Uploading tonight. It’s 40MB of pure smoke and bad focus.',
     ];
+    // 48 rows so the list is genuinely scrollable (bench + visual parity).
     messaging.seedCacheForTest(10, [
-      for (var i = 0; i < texts.length; i++)
+      for (var i = 0; i < 48; i++)
         MessageModel.fromJson({
           'id': 1000 + i,
-          'content': texts[i],
+          'content': texts[i % texts.length],
           'senderId': i.isOdd ? 1 : 2,
           'senderUsername': i.isOdd ? 'alice' : 'Zosia',
           'conversationId': 10,
           'deliveryStatus': 'READ',
           'messageType': 'TEXT',
-          'createdAt': DateTime.utc(2026, 7, 10, 10, 42 + i).toIso8601String(),
+          'createdAt': DateTime.utc(2026, 7, 10, 6, (42 + i) % 60)
+              .toIso8601String(),
         }),
     ]);
     messaging.loadCachedMessages(10);
@@ -105,9 +115,15 @@ class GlassPreviewApp extends StatelessWidget {
         theme: _theme(themeName),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: screen == 'chat'
-            ? const ChatDetailScreen(conversationId: 10)
-            : const _ChatListPreview(),
+        home: switch (screen) {
+          'chat' => const _MaybeBench(
+            child: ChatDetailScreen(conversationId: 10),
+          ),
+          // Real ConversationsScreen: at >=600px width it renders the
+          // desktop sidebar/detail split (the production breakpoint branch).
+          'desktop' => ConversationsScreen(onAvatarTap: () {}),
+          _ => const _ChatListPreview(),
+        },
       ),
     );
   }
@@ -229,4 +245,139 @@ class _ChatListPreviewState extends State<_ChatListPreview> {
       ),
     );
   }
+}
+
+/// `?bench=1`: drives the real chat list with synthesized pointer-scroll
+/// events and publishes FrameTiming percentiles to `document.title`
+/// (mirrors the spike harness; release-mode measurable from a browser).
+class _MaybeBench extends StatefulWidget {
+  final Widget child;
+  const _MaybeBench({required this.child});
+
+  @override
+  State<_MaybeBench> createState() => _MaybeBenchState();
+}
+
+class _MaybeBenchState extends State<_MaybeBench> {
+  final _timings = <FrameTiming>[];
+  bool _recording = false;
+
+  @override
+  void initState() {
+    super.initState();
+    if (Uri.base.queryParameters['bench'] == '1') {
+      SchedulerBinding.instance.addTimingsCallback((t) {
+        if (_recording) _timings.addAll(t);
+      });
+      unawaited(_drive());
+    }
+  }
+
+  Future<void> _drive() async {
+    try {
+      await Future<void>.delayed(const Duration(seconds: 3));
+      // Drive the REAL message list via its ScrollableState (deterministic,
+      // no synthetic-pointer ambiguity) and record how far it moved.
+      final scrollable = _findScrollable();
+      if (scrollable == null) {
+        publishResult(jsonEncode({'done': true, 'error': 'no scrollable'}));
+        return;
+      }
+      final pos = scrollable.position;
+      final target = (pos.maxScrollExtent.isFinite && pos.maxScrollExtent > 0)
+          ? pos.maxScrollExtent
+          : 400.0;
+      var scrolled = 0.0;
+      _recording = true;
+      for (var i = 0; i < 3; i++) {
+        await pos.animateTo(
+          target,
+          duration: const Duration(milliseconds: 1000),
+          curve: Curves.linear,
+        );
+        scrolled += (pos.pixels).abs();
+        await pos.animateTo(
+          0,
+          duration: const Duration(milliseconds: 1000),
+          curve: Curves.linear,
+        );
+      }
+      _recording = false;
+      if (_timings.length < 30) {
+        publishResult(
+          jsonEncode({
+            'done': true,
+            'error': 'too few frames',
+            'frames': _timings.length,
+            'scrolledPx': scrolled,
+          }),
+        );
+        return;
+      }
+      final raster =
+          _timings
+              .map(
+                (f) =>
+                    (f.timestampInMicroseconds(FramePhase.rasterFinish) -
+                        f.timestampInMicroseconds(FramePhase.rasterStart)) /
+                    1000.0,
+              )
+              .toList()
+            ..sort();
+      final build =
+          _timings
+              .map(
+                (f) =>
+                    (f.timestampInMicroseconds(FramePhase.buildFinish) -
+                        f.timestampInMicroseconds(FramePhase.buildStart)) /
+                    1000.0,
+              )
+              .toList()
+            ..sort();
+      double pct(List<double> v, double p) =>
+          v[(v.length * p).floor().clamp(0, v.length - 1)];
+      double avg(List<double> v) => v.reduce((a, b) => a + b) / v.length;
+      final jank = _timings
+          .where((f) => f.totalSpan.inMicroseconds > 16700)
+          .length;
+      final jank33 = _timings
+          .where((f) => f.totalSpan.inMicroseconds > 33400)
+          .length;
+      publishResult(
+        jsonEncode({
+          'done': true,
+          'frames': _timings.length,
+          'scrolledPx': double.parse(scrolled.toStringAsFixed(0)),
+          'buildAvgMs': double.parse(avg(build).toStringAsFixed(2)),
+          'buildP90Ms': double.parse(pct(build, .9).toStringAsFixed(2)),
+          'rasterAvgMs': double.parse(avg(raster).toStringAsFixed(2)),
+          'rasterP50Ms': double.parse(pct(raster, .5).toStringAsFixed(2)),
+          'rasterP90Ms': double.parse(pct(raster, .9).toStringAsFixed(2)),
+          'rasterP99Ms': double.parse(pct(raster, .99).toStringAsFixed(2)),
+          'framesOver16_7ms': jank,
+          'framesOver33_4ms': jank33,
+        }),
+      );
+    } catch (e) {
+      publishResult(jsonEncode({'done': true, 'error': e.toString()}));
+    }
+  }
+
+  ScrollableState? _findScrollable() {
+    ScrollableState? found;
+    void visit(Element e) {
+      if (found != null) return;
+      if (e is StatefulElement && e.state is ScrollableState) {
+        found = e.state as ScrollableState;
+        return;
+      }
+      e.visitChildren(visit);
+    }
+
+    WidgetsBinding.instance.rootElement!.visitChildren(visit);
+    return found;
+  }
+
+  @override
+  Widget build(BuildContext context) => widget.child;
 }
