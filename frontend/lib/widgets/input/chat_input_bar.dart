@@ -919,8 +919,14 @@ class ChatInputBarState extends State<ChatInputBar> {
               ),
 
             if (activeTimer != null)
-              Material(
-                color: ephemeral.withValues(alpha: 0.12),
+              Container(
+                margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: ephemeral.withValues(alpha: 0.5)),
+                ),
                 child: Semantics(
                   label: l10n.disappearingComposerBannerSemantics(
                     _bannerDurationLabel(l10n, activeTimer),

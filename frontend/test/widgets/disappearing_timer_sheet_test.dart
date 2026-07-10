@@ -1,6 +1,8 @@
 import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/settings_provider.dart';
+import 'package:fireplace/theme/glass_theme.dart';
+import 'package:fireplace/widgets/glass/glass_surface.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/disappearing_timer_sheet.dart';
 import 'package:fireplace/widgets/hearth_fade_arc.dart';
@@ -22,6 +24,19 @@ Future<ConversationsProvider> _openSheet(
   if (onEmit != null) {
     convs.setEmitCallback(onEmit);
   }
+  // Production opener reads the timer from the ACTIVE conversation; seed it
+  // through the same event the backend uses.
+  convs.onConversationsList([
+    {
+      'id': activeConversationId,
+      'userOne': {'id': 1, 'username': 'alice', 'tag': '0001'},
+      'userTwo': {'id': 2, 'username': 'bob', 'tag': '0002'},
+      'createdAt': '2026-01-01T00:00:00.000Z',
+      'unreadCount': 0,
+      'lastMessage': null,
+      if (initialSeconds != null) 'disappearingTimer': initialSeconds,
+    },
+  ]);
   await tester.pumpWidget(
     MaterialApp(
       localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -40,27 +55,8 @@ Future<ConversationsProvider> _openSheet(
           ],
           child: Builder(
             builder: (context) => ElevatedButton(
-              onPressed: () {
-                final provider = context.read<ConversationsProvider>();
-                final settings = context.read<SettingsProvider>();
-                showModalBottomSheet<void>(
-                  context: context,
-                  backgroundColor: Colors.transparent,
-                  builder: (_) => MultiProvider(
-                    providers: [
-                      ChangeNotifierProvider<ConversationsProvider>.value(
-                        value: provider,
-                      ),
-                      ChangeNotifierProvider<SettingsProvider>.value(
-                        value: settings,
-                      ),
-                    ],
-                    child: DisappearingTimerSheet(
-                      initialSeconds: initialSeconds,
-                    ),
-                  ),
-                );
-              },
+              // Production entry point: exercises the real glass sheet route.
+              onPressed: () => showDisappearingTimerSheet(context),
               child: const Text('Open timer'),
             ),
           ),
@@ -83,7 +79,9 @@ Future<void> _tapSheetButton(WidgetTester tester, String label) async {
 
 void main() {
   group('DisappearingTimerSheet', () {
-    testWidgets('shows Hearth Fade hero, explainer, and pickers', (tester) async {
+    testWidgets('shows Hearth Fade hero, explainer, and pickers', (
+      tester,
+    ) async {
       await _openSheet(tester, initialSeconds: 300);
 
       expect(find.byType(HearthFadeArcHero), findsOneWidget);
@@ -107,14 +105,18 @@ void main() {
       expect(find.text('1 day'), findsOneWidget);
     });
 
-    testWidgets('shows composite summary for multi-part duration', (tester) async {
+    testWidgets('shows composite summary for multi-part duration', (
+      tester,
+    ) async {
       const twoDaysThreeMinutes = 2 * 86400 + 3 * 60;
       await _openSheet(tester, initialSeconds: twoDaysThreeMinutes);
 
       expect(find.text('2 days 3 minutes'), findsOneWidget);
     });
 
-    testWidgets('set timer applies valid duration and closes sheet', (tester) async {
+    testWidgets('set timer applies valid duration and closes sheet', (
+      tester,
+    ) async {
       await _openSheet(tester, initialSeconds: 300);
 
       await _tapSheetButton(tester, 'Set timer');
@@ -178,7 +180,9 @@ void main() {
       expect(find.byType(DisappearingTimerSheet), findsNothing);
     });
 
-    testWidgets('out-of-range selection shows validation error', (tester) async {
+    testWidgets('out-of-range selection shows validation error', (
+      tester,
+    ) async {
       await _openSheet(tester, initialSeconds: 3);
 
       await _tapSheetButton(tester, 'Set timer');
@@ -236,18 +240,19 @@ void main() {
       expect(hero.color, RpgTheme.primaryTealStone);
       expect(hero.color, isNot(RpgTheme.primaryLight));
 
-      final sheet = tester.widget<Container>(
+      // Liquid Glass contract: the sheet rides a GlassSurface (blur route,
+      // per-theme translucent fill) instead of an opaque surface Container.
+      expect(find.byType(GlassSurface), findsOneWidget);
+      expect(find.byType(BackdropFilter), findsOneWidget);
+      final fill = tester.widget<Container>(
         find
             .descendant(
-              of: find.byType(DisappearingTimerSheet),
+              of: find.byType(GlassSurface),
               matching: find.byType(Container),
             )
             .first,
       );
-      expect(
-        (sheet.decoration! as BoxDecoration).color,
-        RpgTheme.themeDataTealStone.colorScheme.surface,
-      );
+      expect((fill.decoration! as BoxDecoration).color, GlassTheme.teal.fill);
     });
 
     testWidgets('renders on blue theme with themed surface', (tester) async {
@@ -261,18 +266,16 @@ void main() {
       expect(find.byType(DisappearingTimerSheet), findsOneWidget);
       expect(find.text('5 minutes'), findsOneWidget);
 
-      final sheet = tester.widget<Container>(
+      expect(find.byType(GlassSurface), findsOneWidget);
+      final fill = tester.widget<Container>(
         find
             .descendant(
-              of: find.byType(DisappearingTimerSheet),
+              of: find.byType(GlassSurface),
               matching: find.byType(Container),
             )
             .first,
       );
-      expect(
-        (sheet.decoration! as BoxDecoration).color,
-        RpgTheme.themeDataBlue.colorScheme.surface,
-      );
+      expect((fill.decoration! as BoxDecoration).color, GlassTheme.blue.fill);
     });
 
     testWidgets('Polish plural summary for 2 days', (tester) async {

@@ -14,6 +14,7 @@ import '../providers/conversations_provider.dart';
 import '../providers/messaging_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/glass_theme.dart';
+import 'glass/glass_sheet.dart';
 import 'glass/glass_surface.dart';
 import '../theme/rpg_theme.dart';
 import 'input/focus_guard_area.dart';
@@ -301,13 +302,9 @@ class ChatActionTiles extends StatelessWidget {
     final messaging = context.read<MessagingProvider>();
     final l10n = AppLocalizations.of(context);
 
-    showModalBottomSheet(
-      context: context,
+    showGlassSheet<void>(
+      context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
       builder: (_) => AntiQuantumNoteDialog(
         onSend: (content, ttl) async {
           try {

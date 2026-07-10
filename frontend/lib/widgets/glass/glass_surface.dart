@@ -36,6 +36,10 @@ class GlassSurface extends StatelessWidget {
   /// (e.g. panels attached to the composer stack).
   final bool shadow;
 
+  /// Per-surface opaque fallback (spec §7) for media-dense surfaces where a
+  /// large backdrop blur buys nothing visually (e.g. the GIF grid sheet).
+  final bool forceOpaque;
+
   const GlassSurface({
     super.key,
     required this.borderRadius,
@@ -44,6 +48,7 @@ class GlassSurface extends StatelessWidget {
     this.height,
     this.padding,
     this.shadow = true,
+    this.forceOpaque = false,
   });
 
   /// Blur sigma from the accepted spec.
@@ -63,7 +68,7 @@ class GlassSurface extends StatelessWidget {
   );
 
   bool _opaque(BuildContext context) =>
-      reduceTransparency || MediaQuery.highContrastOf(context);
+      forceOpaque || reduceTransparency || MediaQuery.highContrastOf(context);
 
   @override
   Widget build(BuildContext context) {
@@ -123,6 +128,7 @@ class GlassPill extends StatelessWidget {
   final double? width;
   final EdgeInsetsGeometry? padding;
   final bool shadow;
+  final bool forceOpaque;
 
   const GlassPill({
     super.key,
@@ -131,6 +137,7 @@ class GlassPill extends StatelessWidget {
     this.width,
     this.padding,
     this.shadow = true,
+    this.forceOpaque = false,
   });
 
   @override
@@ -140,6 +147,7 @@ class GlassPill extends StatelessWidget {
     width: width,
     padding: padding,
     shadow: shadow,
+    forceOpaque: forceOpaque,
     child: child,
   );
 }
@@ -150,6 +158,7 @@ class GlassCircle extends StatelessWidget {
   final double size;
   final EdgeInsetsGeometry? padding;
   final bool shadow;
+  final bool forceOpaque;
 
   const GlassCircle({
     super.key,
@@ -157,6 +166,7 @@ class GlassCircle extends StatelessWidget {
     required this.size,
     this.padding,
     this.shadow = true,
+    this.forceOpaque = false,
   });
 
   @override
@@ -166,6 +176,7 @@ class GlassCircle extends StatelessWidget {
     width: size,
     padding: padding,
     shadow: shadow,
+    forceOpaque: forceOpaque,
     child: child,
   );
 }

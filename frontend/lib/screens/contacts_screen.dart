@@ -7,6 +7,7 @@ import '../providers/conversations_provider.dart';
 import '../providers/friends_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
+import '../widgets/glass/glass_sheet.dart';
 import '../widgets/main_tab_screen_header.dart';
 import '../utils/instant_opaque_route.dart';
 import 'chat_detail_screen.dart';
@@ -45,12 +46,8 @@ class ContactsScreen extends StatelessWidget {
   void _showContactContextMenu(BuildContext context, UserModel user) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-      ),
+    showGlassSheet<void>(
+      context,
       builder: (sheetContext) {
         return SafeArea(
           child: Padding(
