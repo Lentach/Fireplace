@@ -136,6 +136,7 @@ Gateway throttles are source-truth in `chat.gateway.ts`:
 - `pushClientState` is set by WS event and stored on `client.data`; frontend should set `clientVisible=false` on inactive/background.
 - Web Push subscriptions: `POST /users/web-push-subscription`, `DELETE /users/web-push-subscription`.
 - FCM token endpoints: `POST /users/fcm-token`, `DELETE /users/fcm-token`.
+- `package.json` pins a scoped `overrides.firebase-admin.uuid = ^11.1.1`: `uuid < 11.1.1` is vulnerable (GHSA-w5hq-g745-h8pq) and 11.1.1 is the only patched line, but the sole consumer is firebase-admin's transitive google-cloud chain (`gaxios`/`teeny-request`), which only calls `uuid.v4()` — stable across the major. Keep it scoped (not top-level) and keep firebase-admin on 13.x: v14 moved to the modular SDK and drops the `admin.apps`/`admin.credential`/`admin.messaging()` namespace this service uses, so a 14 bump needs a code migration + a live FCM smoke test, not just a version change.
 
 ## 10. Link previews and SSRF
 
