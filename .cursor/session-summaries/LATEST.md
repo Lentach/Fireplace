@@ -1,6 +1,14 @@
 # Latest session summary
 
 
+**Date:** 2026-07-10 (code-scanning triage — SSRF hardening + CI permissions + dependency bumps)
+
+**Topic:** **All open GitHub security alerts triaged and fixed on branch `fix/code-scanning-alerts` → PR [#59](https://github.com/Lentach/Fireplace/pull/59) (base `master`, NOT merged — awaiting owner OK; CodeQL+Dependabot re-run on the PR is the proof).** Actual scope was 3 CodeQL alerts + 30 Dependabot alerts (all npm/backend). CodeQL 3/3 fixed at root cause, zero suppressions: `js/request-forgery` critical in `link-preview.service.ts` (`2a26bd3`) replaced the regex host blocklist with two enforced layers — byte-parsed `isPrivateIp` for the URL-literal (kills decimal/hex/octal IPv4, mapped/NAT64 IPv6, 0.0.0.0, CGNAT, ULA, link-local) + an undici `Agent.connect.lookup` **resolve-and-pin** that refuses any hostname resolving to a private address, closing the DNS-rebinding residual the code previously documented as open; manual per-hop redirect validation retained. Two `actions/missing-workflow-permissions` fixed by top-level `permissions: contents: read` (`f87cc80`). Dependabot 29/30 cleared by semver-safe `npm audit fix` (`a6ed352`: protobufjs 7.6.5 incl. critical RCE, js-yaml, fast-uri, fast-xml-parser, node-forge, picomatch, socket.io-parser, flatted, @babel/core; post-fix audit high=0 critical=0). **1 deferred, needs owner sign-off:** `uuid` (moderate) is only reachable via firebase-admin's transitive chain and needs a firebase-admin MAJOR bump (13→14). Added `undici` as a direct dep for the pinned agent; its `connect.lookup` wiring is proven by a live-loopback-server E2E test (fail-open would serve a request).
+
+**Verification:** backend `npm test` **452 passed / 43 suites** (was 416; count verifier green), `tsc --noEmit` clean, `graphify update` 8225 nodes/11698 edges. No frontend changes. Full local handoff (gitignored): [2026-07-10-session-code-scanning-alerts.md](./2026-07-10-session-code-scanning-alerts.md); sensitive triage table in `docs/audit/2026-07-10-code-scanning-triage.md` (local-only, public repo). **Next: owner decision on firebase-admin 13→14; do not merge PR #59 without OK.**
+
+**Previous:** 2026-07-10 (ping visual and sonic identity research + playable prototype)
+
 **Date:** 2026-07-10 (ping visual and sonic identity research + playable prototype)
 
 **Topic:** **Source-confirmed Fireplace currently gives one ping three visual identities: `Icons.auto_awesome` in the action tile, `Icons.campaign` in the message row, and a ringed `Icons.campaign` in the 800 ms overlay. Wire's official 2024 guide uses one centerless radial attention-burst glyph consistently for sending and the resulting indicator. Recommended direction: an original Fireplace 8-ray pulse burst shared at every size, with expanding ring(s) only as overlay animation—not a copied Wire vector.**

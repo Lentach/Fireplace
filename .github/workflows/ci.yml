@@ -6,6 +6,10 @@ on:
       - master
   pull_request:
 
+# Least privilege: CI only reads the repo; no job needs write access.
+permissions:
+  contents: read
+
 jobs:
   backend:
     name: Backend tests

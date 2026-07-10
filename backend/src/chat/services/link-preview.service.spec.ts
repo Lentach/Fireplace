@@ -1,20 +1,13 @@
-import { Test, TestingModule } from '@nestjs/testing';
 import { LinkPreviewService } from './link-preview.service';
 
 describe('LinkPreviewService', () => {
   let service: LinkPreviewService;
-  let fetchMock: jest.SpyInstance;
+  let fetchMock: jest.Mock;
 
-  beforeEach(async () => {
-    const module: TestingModule = await Test.createTestingModule({
-      providers: [LinkPreviewService],
-    }).compile();
-    service = module.get<LinkPreviewService>(LinkPreviewService);
-    fetchMock = jest.spyOn(global, 'fetch');
-  });
-
-  afterEach(() => {
-    fetchMock.mockRestore();
+  beforeEach(() => {
+    service = new LinkPreviewService();
+    fetchMock = jest.fn();
+    service.fetchImpl = fetchMock as unknown as typeof fetch;
   });
 
   function mockFetchResponse(html: string, ok = true) {
@@ -22,6 +15,7 @@ describe('LinkPreviewService', () => {
     const chunks = [encoder.encode(html)];
     let readIndex = 0;
     fetchMock.mockResolvedValue({
+      status: ok ? 200 : 500,
       ok,
       headers: { get: (key: string) => (key === 'content-type' ? 'text/html' : null) },
       body: {
@@ -123,6 +117,7 @@ describe('LinkPreviewService', () => {
 
     it('returns null when content-type is not text/html', async () => {
       fetchMock.mockResolvedValue({
+        status: 200,
         ok: true,
         headers: { get: () => 'application/json' },
         body: { getReader: () => ({ read: () => Promise.resolve({ done: true, value: new Uint8Array(0) }), cancel: jest.fn() }) },
