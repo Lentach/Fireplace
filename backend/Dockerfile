@@ -1,6 +1,6 @@
 # syntax=docker/dockerfile:1
 # Stage 1: Build — full deps, compile TS -> dist/main.js
-FROM node:20-alpine AS builder
+FROM node:22-alpine AS builder
 WORKDIR /app
 COPY package*.json ./
 RUN npm ci
@@ -8,7 +8,7 @@ COPY . .
 RUN npm run build
 
 # Stage 2: Production runtime — prod deps + built dist only
-FROM node:20-alpine
+FROM node:22-alpine
 ARG APP_VERSION=0.0.1
 ARG GIT_COMMIT=unknown
 ARG BUILD_TIME=
