@@ -78,10 +78,8 @@ void main() {
     final handle = tester.ensureSemantics();
     await tester.pumpWidget(_host(index: 0, onTap: (i) => tapped = i));
 
-    tester.binding.pipelineOwner.semanticsOwner!.performAction(
-      tester.getSemantics(find.bySemanticsLabel('Settings')).id,
-      SemanticsAction.tap,
-    );
+    final node = tester.getSemantics(find.bySemanticsLabel('Settings'));
+    node.owner!.performAction(node.id, SemanticsAction.tap);
     expect(tapped, 2);
     handle.dispose();
   });
