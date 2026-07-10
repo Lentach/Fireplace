@@ -1,0 +1,1 @@
+void publishResult(String v) {}

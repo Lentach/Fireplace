@@ -1,0 +1,7 @@
+# Track only benchmark sources + lockfile; scaffolding is recreated via flutter create.
+/*
+!/lib/
+!/pubspec.yaml
+!/pubspec.lock
+!/README.md
+!/.gitignore
