@@ -3,9 +3,12 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  JoinColumn,
+  ManyToOne,
   PrimaryGeneratedColumn,
   UpdateDateColumn,
 } from 'typeorm';
+import { User } from '../users/user.entity';
 
 @Entity()
 @Index(['endpoint'], { unique: true })
@@ -15,6 +18,10 @@ export class WebPushSubscription {
 
   @Column()
   userId: number;
+
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'userId' })
+  user: User;
 
   @Column({ unique: true, type: 'text' })
   endpoint: string;

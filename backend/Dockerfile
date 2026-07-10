@@ -20,5 +20,11 @@ WORKDIR /app
 COPY package*.json ./
 RUN npm ci --omit=dev && npm cache clean --force
 COPY --from=builder /app/dist ./dist
+COPY migrations ./migrations
+# Non-root runtime (uid 1000). chown /app/media so a FRESH named volume
+# initializes with node ownership; volumes created by OLDER images stay
+# root-owned — deploy-backend.sh / staging.ps1 chown those idempotently.
+RUN mkdir -p /app/media && chown node:node /app/media
+USER node
 EXPOSE 3000
 CMD ["node", "dist/main.js"]

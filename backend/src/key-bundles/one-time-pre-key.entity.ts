@@ -3,8 +3,11 @@ import {
   CreateDateColumn,
   Entity,
   Index,
+  JoinColumn,
+  ManyToOne,
   PrimaryGeneratedColumn,
 } from 'typeorm';
+import { User } from '../users/user.entity';
 
 @Entity('one_time_pre_keys')
 @Index(['userId', 'used'])
@@ -14,6 +17,10 @@ export class OneTimePreKey {
 
   @Column()
   userId: number;
+
+  @ManyToOne(() => User, { onDelete: 'CASCADE' })
+  @JoinColumn({ name: 'userId' })
+  user: User;
 
   @Column()
   keyId: number;

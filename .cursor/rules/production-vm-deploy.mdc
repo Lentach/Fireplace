@@ -83,8 +83,10 @@ subscribe fails (`push service error` / delivery `400`).
 
 - **`docker-compose.prod.yml` runs `NODE_ENV=production`:** CORS is restricted to `ALLOWED_ORIGINS`
   (must include `https://fireplace.ignorelist.com`); media URLs use `MEDIA_BASE_URL`; **TypeORM
-  `synchronize` is OFF** — schema changes need **manual SQL** (see `backend/CLAUDE.md` for the
-  ALTER/CREATE INDEX statements). The dev compose (`NODE_ENV=development`) auto-DDLs; prod does not.
+  `synchronize` is OFF** — schema changes ship as numbered SQL files in `backend/migrations/`,
+  applied automatically at backend boot (tracked in `schema_migrations`; a failed migration keeps
+  the container unhealthy and fails the deploy). The dev compose (`NODE_ENV=development`) also
+  auto-DDLs via TypeORM; prod does not.
 - **`.env`** in `~/fireplace/.env` is gitignored / not overwritten by `git pull`; it supplies all
   secrets + origins for compose interpolation. Re-run `deploy-backend.sh` (or restart backend) after edits.
 - **Postgres:** DB name is **`chatdb`**: `docker compose -f docker-compose.prod.yml exec db psql -U postgres -d chatdb`.
@@ -116,6 +118,11 @@ subscribe fails (`push service error` / delivery `400`).
   sensitive (metadata + hashes) → keep private / encrypt / lock down the bucket.
 - **Restore (DB):** `./restore-db.sh ~/fireplace-backups/chatdb-<ts>.dump[.gpg]` (stops backend,
   `pg_restore --clean`, restarts; uses the same passphrase file). DB-only by design.
+- **Cross-version restore trap (seen in staging 2026-07-09):** `pg_restore --clean` only drops
+  objects the DUMP knows about. Restoring a pre-FK-migration dump onto a post-migration DB fails
+  (`cannot drop constraint PK_… because fk_… depends on it`). Fix: wipe first —
+  `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` — then restore; the backend re-runs
+  migrations on next boot (it stamps the baseline and re-applies the rest against the restored data).
 - **Restore (media):** `gpg -d media-<ts>.tar.gz.gpg > /tmp/m.tgz` then
   `docker run --rm -v fireplace_media_storage:/data -v /tmp:/b alpine sh -c 'cd /data && tar xzf /b/m.tgz'`.
 - **Restore (.env):** MANUAL (never auto-clobbered): `gpg -d env-<ts>.gpg > /tmp/env.restored`, review,
@@ -125,6 +132,9 @@ subscribe fails (`push service error` / delivery `400`).
   so it applies automatically. **NEVER run a bare `docker compose -f docker-compose.prod.yml up -d`
   by hand** — without the exported `APP_VERSION`/`GIT_COMMIT` it recreates the backend at the
   Dockerfile default (`0.0.1 / unknown`). Always go through `./deploy-backend.sh`.
+- **Media volume ownership:** the backend runs as non-root `node` (uid 1000); `deploy-backend.sh`
+  chowns `fireplace_media_storage` idempotently before `up -d`. If media uploads ever 500 with
+  EACCES, re-run `./deploy-backend.sh` (or the chown line from it) rather than widening permissions.
 - **Uptime monitor (external):** point UptimeRobot / healthchecks.io at
   `https://fireplace.ignorelist.com/health` (expect `{"status":"ok","db":"ok"}`) so an outage pages
   you instead of being noticed by hand.

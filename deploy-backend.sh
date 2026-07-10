@@ -49,6 +49,10 @@ fi
 
 echo "==> deploying backend  version=${APP_VERSION} commit=${GIT_COMMIT} built=${BUILD_TIME}"
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" build backend
+# The runtime now runs as non-root 'node' (uid 1000). Volumes created by older
+# root images keep root ownership, so make the media volume writable. Idempotent
+# and cheap (media is small); creates the volume on a first-ever deploy.
+docker run --rm -v fireplace_media_storage:/media alpine:3 chown -R 1000:1000 /media
 # 'up -d' (both) so the version env applies to backend AND the db restart policy lands;
 # never run a bare 'docker compose up -d' yourself — it would lack APP_VERSION (-> 0.0.1).
 docker compose --env-file "$ENV_FILE" -f "$COMPOSE_FILE" up -d

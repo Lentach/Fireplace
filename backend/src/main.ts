@@ -4,8 +4,16 @@ import { ConfigService } from '@nestjs/config';
 import { NestExpressApplication } from '@nestjs/platform-express';
 import helmet from 'helmet';
 import { AppModule } from './app.module';
+import { runMigrations } from './database/migration-runner';
 
 async function bootstrap() {
+  // Schema migrations run BEFORE the app exists, every environment. Prod has
+  // TypeORM synchronize OFF — this is the only path that changes prod schema.
+  // A failure here aborts boot: the container stays unhealthy instead of
+  // serving a half-migrated database.
+  const migrationLogger = new Logger('Migrations');
+  await runMigrations({ log: (m) => migrationLogger.log(m) });
+
   const app = await NestFactory.create<NestExpressApplication>(AppModule, {
     logger:
       process.env.NODE_ENV === 'production'
