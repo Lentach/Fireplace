@@ -1,5 +1,13 @@
 # Latest session summary
 
+**Date:** 2026-07-10 (Telegram-like media sizing follow-up — 0.0.104 deployed for owner test)
+
+**Topic:** **Production screenshot exposed the 0.0.103 sizing defect: `mediaWidth / devicePixelRatio` made low-resolution GIFs collapse to 96px squares. Fixed at `fef8fdf`: ordinary and low-resolution IMAGE/GIF media now scale to bounded chat width, preserve aspect ratio with `BoxFit.contain`, and never crop; tall media is capped at 400px / 52% viewport instead of 480px / 65%; media bubbles gain a 1.25px theme-aware outline.** The encrypted metadata boundary and legacy 220px no-dimension fallback are unchanged. Version bumped to 0.0.104.
+
+**Production test deploy:** owner explicitly requested feature-branch production testing before merge. Live `/version.json` reports **0.0.104**; served `main.dart.js` contains **`fef8fdf`**; `/health` is OK; fresh Chromium app boot passed. Focused tests 16 passed, analyze clean, web release build passed, independent GPT-5.5 review PASS. PR [#58](https://github.com/Lentach/Fireplace/pull/58) remains open/unmerged. Full handoff: [2026-07-10-session-media-preview-telegram-followup.md](./2026-07-10-session-media-preview-telegram-followup.md).
+
+**Previous:** 2026-07-09 (encrypted media-preview aspect-ratio fix — PR #58 open)
+
 **Date:** 2026-07-09 (encrypted media-preview aspect-ratio fix — PR #58 open)
 
 **Topic:** **Shipped owner-approved IMAGE/GIF preview correction at `dca8ccb` / PR [#58](https://github.com/Lentach/Fireplace/pull/58): shared `MediaPreviewFrame` preserves normal aspect ratio, caps `>3:1` panoramas and `<1:2` portraits with intentional contain/letterboxing, keeps a 96px tiny-media minimum, and retains the old 220px geometry for legacy messages.** `ImageMessageContent` and `GifMessageContent` now use `BoxFit.contain`; fullscreen remains contain. **VIDEO remains out of scope** because Fireplace still has no video message renderer, upload/poster path, or player.
