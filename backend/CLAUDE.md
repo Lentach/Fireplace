@@ -139,11 +139,11 @@ Gateway throttles are source-truth in `chat.gateway.ts`:
 
 ## 10. Link previews and SSRF
 
-- `ChatLinkPreviewService` skips encrypted messages and non-TEXT messages.
-- Link preview fetching accepts only http/https public hosts; private/loopback/link-local ranges are blocked by `PRIVATE_IP_RE`.
-- Redirects are manual (`redirect:'manual'`, max 5); every hop is revalidated. Do not switch to default fetch follow.
+- `ChatLinkPreviewService` skips encrypted messages and non-TEXT messages. The only user-URL fetch surface is `POST /messages/link-preview` (JWT-guarded) plus the async fire-and-forget path for legacy plaintext messages.
+- SSRF defence in `link-preview.service.ts` is two-layer and both layers must stay: (1) URL-literal — `isPrivateIp` byte-parses the WHATWG-normalized hostname, so decimal/hex/octal IPv4, IPv4-mapped/NAT64 IPv6, `0.0.0.0`, CGNAT, ULA, and link-local literals are all rejected (replaced the old `PRIVATE_IP_RE`, which missed those and false-matched any `fd*` host). (2) DNS resolve-and-pin — every outbound request goes through an undici `Agent` whose `connect.lookup` (`ssrfSafeLookup`) resolves all A/AAAA records and refuses the connection if ANY is private; the socket dials only those validated addresses, so DNS-rebinding cannot bypass it. Do not swap `fetchImpl` back to global `fetch` — that drops the pin.
+- Redirects are manual (`redirect:'manual'`, max 5); every hop is re-validated at the literal layer before the next fetch and re-pinned at the DNS layer on connect. Do not switch to default fetch follow.
 - `og:image` must be HTTPS and non-private; relative image URLs are resolved against page URL.
-- Known residual: a public hostname resolving to a private IP is not pinned/blocked by DNS resolution. Do not claim it is.
+- `undici` is a direct dependency specifically for the pinned-DNS agent; its `connect.lookup` wiring is proven end-to-end by a test in `link-preview.service.unit.spec.ts` (drives a live loopback server; a fail-open would serve a request). Keep that test if you touch the agent.
 
 ## 11. Secret Notes
 
