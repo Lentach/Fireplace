@@ -13,6 +13,8 @@ import '../providers/auth_provider.dart';
 import '../providers/conversations_provider.dart';
 import '../providers/messaging_provider.dart';
 import '../l10n/app_localizations.dart';
+import '../theme/glass_theme.dart';
+import 'glass/glass_surface.dart';
 import '../theme/rpg_theme.dart';
 import 'input/focus_guard_area.dart';
 export 'disappearing_timer_sheet.dart';
@@ -36,74 +38,88 @@ class ChatActionTiles extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final borderColor = FireplaceColors.of(context).convItemBorder;
-    final iconColor = Theme.of(context).colorScheme.primary;
+    final iconColor = GlassTheme.of(context).onGlassAccent;
     final convs = context.watch<ConversationsProvider>();
     final timerActive = convs.conversationDisappearingTimer != null;
 
-    return Container(
-      height: 48 + bottomPadding,
-      padding: EdgeInsets.only(bottom: bottomPadding),
-      decoration: BoxDecoration(
-        color: Theme.of(context).colorScheme.surface,
-        border: Border(top: BorderSide(color: borderColor)),
-      ),
-      child: SingleChildScrollView(
-        scrollDirection: Axis.horizontal,
-        padding: const EdgeInsets.symmetric(horizontal: 8),
-        child: ConstrainedBox(
-          constraints: BoxConstraints(
-            minWidth: MediaQuery.sizeOf(context).width,
-          ),
-          child: Row(
-            mainAxisAlignment: MainAxisAlignment.center,
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              _LongPressActionTile(
-                icon: Icons.delete_forever,
-                color: iconColor,
-                onLongPressComplete: () => _handleClearChatHistory(context),
-              ),
-              const SizedBox(width: 12),
-              _ActionTile(
-                icon: Icons.hourglass_bottom_outlined,
-                tooltip: l10n.actionTileDisappearingMessages,
-                color: iconColor,
-                showBadge: timerActive,
-                onTap: () => _showTimerDialog(context),
-              ),
-              const SizedBox(width: 12),
-              FocusGuardArea(
-                id: 'action_tile_ping',
-                child: _ActionTile(
-                  customIcon: PingGlyph(size: 24, color: iconColor),
-                  tooltip: l10n.ping,
-                  color: iconColor,
-                  onTap: () => _sendPing(context),
+    // Liquid Glass: the panel is a floating glass pill matching the composer
+    // pill footprint; total height (56 + insets + bottomPadding) stays a
+    // plain function of layout so the composer viewport measures it as
+    // before. Glass is paint, not layout.
+    //
+    // The transparent gutter around the pill must still HIT-TEST as part of
+    // the composer tap region: a mis-tap 4px off the pill edge must not
+    // dismiss the keyboard (the exact iOS jank class fixed in 0.0.93-0.0.99).
+    return GestureDetector(
+      behavior: HitTestBehavior.opaque,
+      // Hit-test shim only — never an announced control.
+      excludeFromSemantics: true,
+      onTap: () {},
+      child: Padding(
+        padding: EdgeInsets.fromLTRB(12, 0, 12, 8 + bottomPadding),
+        child: GlassSurface(
+          borderRadius: BorderRadius.circular(28),
+          height: 56,
+          shadow: false,
+          child: LayoutBuilder(
+            builder: (context, box) => SingleChildScrollView(
+              scrollDirection: Axis.horizontal,
+              padding: const EdgeInsets.symmetric(horizontal: 8),
+              child: ConstrainedBox(
+                constraints: BoxConstraints(minWidth: box.maxWidth - 16),
+                child: Row(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _LongPressActionTile(
+                      icon: Icons.delete_forever,
+                      color: iconColor,
+                      onLongPressComplete: () =>
+                          _handleClearChatHistory(context),
+                    ),
+                    const SizedBox(width: 12),
+                    _ActionTile(
+                      icon: Icons.hourglass_bottom_outlined,
+                      tooltip: l10n.actionTileDisappearingMessages,
+                      color: iconColor,
+                      showBadge: timerActive,
+                      onTap: () => _showTimerDialog(context),
+                    ),
+                    const SizedBox(width: 12),
+                    FocusGuardArea(
+                      id: 'action_tile_ping',
+                      child: _ActionTile(
+                        customIcon: PingGlyph(size: 24, color: iconColor),
+                        tooltip: l10n.ping,
+                        color: iconColor,
+                        onTap: () => _sendPing(context),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    _ActionTile(
+                      icon: Icons.attach_file,
+                      tooltip: l10n.attachment,
+                      color: iconColor,
+                      onTap: () => _pickAttachment(context),
+                    ),
+                    const SizedBox(width: 12),
+                    _ActionTile(
+                      icon: Icons.gif_box,
+                      tooltip: l10n.actionTileGif,
+                      color: iconColor,
+                      onTap: () => _openGifPicker(context),
+                    ),
+                    const SizedBox(width: 12),
+                    _ActionTile(
+                      icon: Icons.science_outlined,
+                      tooltip: l10n.actionTileAntiQuantumNote,
+                      color: iconColor,
+                      onTap: () => _showAntiQuantumNoteDialog(context),
+                    ),
+                  ],
                 ),
               ),
-              const SizedBox(width: 12),
-              _ActionTile(
-                icon: Icons.attach_file,
-                tooltip: l10n.attachment,
-                color: iconColor,
-                onTap: () => _pickAttachment(context),
-              ),
-              const SizedBox(width: 12),
-              _ActionTile(
-                icon: Icons.gif_box,
-                tooltip: l10n.actionTileGif,
-                color: iconColor,
-                onTap: () => _openGifPicker(context),
-              ),
-              const SizedBox(width: 12),
-              _ActionTile(
-                icon: Icons.science_outlined,
-                tooltip: l10n.actionTileAntiQuantumNote,
-                color: iconColor,
-                onTap: () => _showAntiQuantumNoteDialog(context),
-              ),
-            ],
+            ),
           ),
         ),
       ),
