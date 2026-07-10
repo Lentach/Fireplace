@@ -186,7 +186,7 @@ void main() {
       final surface = tester.widget<Container>(
         find.byKey(const ValueKey('message-bubble-surface-5')),
       );
-      final decoration = surface.decoration! as BoxDecoration;
+      final decoration = surface.foregroundDecoration! as BoxDecoration;
       final outline = decoration.border! as Border;
       expect(outline.top.width, 1.25);
       expect(outline.top.color, RpgTheme.themeDataBlue.colorScheme.primary);

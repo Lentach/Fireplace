@@ -27,7 +27,7 @@ final kTinyPng = Uint8List.fromList(const [
 
 class _FakeMediaUpload extends EncryptedMediaUploadService {
   _FakeMediaUpload({this.throwOnUpload})
-      : super(api: ApiService(baseUrl: 'http://test'));
+    : super(api: ApiService(baseUrl: 'http://test'));
 
   final Object? throwOnUpload;
 
@@ -142,24 +142,30 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('composer_attachment_thumb')),
-        findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('composer_attachment_thumb')),
+      findsOneWidget,
+    );
     expect(find.text('pasted.png'), findsOneWidget);
 
     await tester.tap(find.byKey(const ValueKey('composer_attachment_remove')));
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('composer_attachment_thumb')),
-        findsNothing);
+    expect(
+      find.byKey(const ValueKey('composer_attachment_thumb')),
+      findsNothing,
+    );
   });
 
-  testWidgets('send affordance visible with staged image and empty text',
-      (tester) async {
+  testWidgets('send affordance visible with staged image and empty text', (
+    tester,
+  ) async {
     final h = await pumpComposer(tester);
     final layer = find.byKey(const ValueKey('composer_text_send_layer'));
 
     AnimatedOpacity opacityOf() => tester.widget<AnimatedOpacity>(
-        find.descendant(of: layer, matching: find.byType(AnimatedOpacity)));
+      find.descendant(of: layer, matching: find.byType(AnimatedOpacity)),
+    );
 
     expect(opacityOf().opacity, 0.0); // empty composer: mic showing
 
@@ -173,8 +179,9 @@ void main() {
     expect(opacityOf().opacity, 1.0);
   });
 
-  testWidgets('send: image emits before caption; composer fully cleared',
-      (tester) async {
+  testWidgets('send: image emits before caption; composer fully cleared', (
+    tester,
+  ) async {
     final h = await pumpComposer(tester);
 
     h.key.currentState!.attachmentControllerForTest.stage(
@@ -185,7 +192,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'my caption');
 
-    h.key.currentState!.sendForTest();
+    await tester.runAsync(() => h.key.currentState!.sendForTest());
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 200));
 
@@ -194,12 +201,15 @@ void main() {
       tester.widget<TextField>(find.byType(TextField)).controller!.text,
       isEmpty,
     );
-    expect(find.byKey(const ValueKey('composer_attachment_thumb')),
-        findsNothing);
+    expect(
+      find.byKey(const ValueKey('composer_attachment_thumb')),
+      findsNothing,
+    );
   });
 
-  testWidgets('image failure: caption restored, no TEXT emit, can retry send',
-      (tester) async {
+  testWidgets('image failure: caption restored, no TEXT emit, can retry send', (
+    tester,
+  ) async {
     final h = await pumpComposer(tester, throwOnUpload: Exception('boom'));
 
     h.key.currentState!.attachmentControllerForTest.stage(
@@ -210,7 +220,7 @@ void main() {
     await tester.pumpAndSettle();
     await tester.enterText(find.byType(TextField), 'my caption');
 
-    h.key.currentState!.sendForTest();
+    await tester.runAsync(() => h.key.currentState!.sendForTest());
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 200));
 
@@ -219,35 +229,38 @@ void main() {
       tester.widget<TextField>(find.byType(TextField)).controller!.text,
       'my caption', // ordering contract rule 3: user keeps their words
     );
-    expect(find.byKey(const ValueKey('composer_attachment_thumb')),
-        findsNothing); // failed optimistic bubble owns retry, not the chip
+    expect(
+      find.byKey(const ValueKey('composer_attachment_thumb')),
+      findsNothing,
+    ); // failed optimistic bubble owns retry, not the chip
 
     // Guard reset: a plain text send still works afterwards.
-    h.key.currentState!.sendForTest();
+    await tester.runAsync(() => h.key.currentState!.sendForTest());
     await tester.pumpAndSettle();
     await tester.pump(const Duration(milliseconds: 200));
     expect(h.emitted, ['TEXT']);
   });
 
-  testWidgets('pasted text inserts at the cursor, replacing the selection',
-      (tester) async {
+  testWidgets('pasted text inserts at the cursor, replacing the selection', (
+    tester,
+  ) async {
     final h = await pumpComposer(tester);
     await tester.enterText(find.byType(TextField), 'hello world');
-    final controller =
-        tester.widget<TextField>(find.byType(TextField)).controller!;
-    controller.selection =
-        const TextSelection(baseOffset: 6, extentOffset: 11);
+    final controller = tester
+        .widget<TextField>(find.byType(TextField))
+        .controller!;
+    controller.selection = const TextSelection(baseOffset: 6, extentOffset: 11);
 
     h.key.currentState!.insertPastedTextForTest('there');
     await tester.pump();
 
     expect(controller.text, 'hello there');
-    expect(controller.selection,
-        const TextSelection.collapsed(offset: 11));
+    expect(controller.selection, const TextSelection.collapsed(offset: 11));
   });
 
-  testWidgets('oversize pasted image: snackbar, nothing staged',
-      (tester) async {
+  testWidgets('oversize pasted image: snackbar, nothing staged', (
+    tester,
+  ) async {
     final h = await pumpComposer(tester);
 
     h.key.currentState!.handlePastedImageForTest(
@@ -258,13 +271,16 @@ void main() {
     await tester.pump();
 
     expect(find.text('Image is too large (max 20 MB)'), findsOneWidget);
-    expect(find.byKey(const ValueKey('composer_attachment_thumb')),
-        findsNothing);
+    expect(
+      find.byKey(const ValueKey('composer_attachment_thumb')),
+      findsNothing,
+    );
     await tester.pump(const Duration(seconds: 3)); // flush snackbar timer
   });
 
-  testWidgets('unsupported pasted image type: snackbar, nothing staged',
-      (tester) async {
+  testWidgets('unsupported pasted image type: snackbar, nothing staged', (
+    tester,
+  ) async {
     final h = await pumpComposer(tester);
 
     h.key.currentState!.handlePastedImageForTest(
@@ -275,13 +291,16 @@ void main() {
     await tester.pump();
 
     expect(find.text("This image type can't be pasted"), findsOneWidget);
-    expect(find.byKey(const ValueKey('composer_attachment_thumb')),
-        findsNothing);
+    expect(
+      find.byKey(const ValueKey('composer_attachment_thumb')),
+      findsNothing,
+    );
     await tester.pump(const Duration(seconds: 3));
   });
 
-  testWidgets('valid pasted image stages the chip via the paste handler',
-      (tester) async {
+  testWidgets('valid pasted image stages the chip via the paste handler', (
+    tester,
+  ) async {
     final h = await pumpComposer(tester);
 
     h.key.currentState!.handlePastedImageForTest(
@@ -291,12 +310,15 @@ void main() {
     );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('composer_attachment_thumb')),
-        findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('composer_attachment_thumb')),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('keyboard commitContent with bytes stages the chip',
-      (tester) async {
+  testWidgets('keyboard commitContent with bytes stages the chip', (
+    tester,
+  ) async {
     await pumpComposer(tester);
     final tf = tester.widget<TextField>(find.byType(TextField));
     final config = tf.contentInsertionConfiguration;
@@ -304,33 +326,42 @@ void main() {
     expect(config, isNotNull);
     expect(config!.allowedMimeTypes, containsAll(kStageableImageMimeTypes));
 
-    config.onContentInserted(KeyboardInsertedContent(
-      mimeType: 'image/png',
-      uri: 'content://clipboard/0',
-      data: kTinyPng,
-    ));
+    config.onContentInserted(
+      KeyboardInsertedContent(
+        mimeType: 'image/png',
+        uri: 'content://clipboard/0',
+        data: kTinyPng,
+      ),
+    );
     await tester.pumpAndSettle();
 
-    expect(find.byKey(const ValueKey('composer_attachment_thumb')),
-        findsOneWidget);
+    expect(
+      find.byKey(const ValueKey('composer_attachment_thumb')),
+      findsOneWidget,
+    );
   });
 
-  testWidgets('keyboard commitContent without bytes shows honest snackbar',
-      (tester) async {
+  testWidgets('keyboard commitContent without bytes shows honest snackbar', (
+    tester,
+  ) async {
     await pumpComposer(tester);
     final config = tester
         .widget<TextField>(find.byType(TextField))
         .contentInsertionConfiguration!;
 
-    config.onContentInserted(const KeyboardInsertedContent(
-      mimeType: 'image/png',
-      uri: 'content://clipboard/0',
-    ));
+    config.onContentInserted(
+      const KeyboardInsertedContent(
+        mimeType: 'image/png',
+        uri: 'content://clipboard/0',
+      ),
+    );
     await tester.pump();
 
     expect(find.text("Couldn't read the pasted image"), findsOneWidget);
-    expect(find.byKey(const ValueKey('composer_attachment_thumb')),
-        findsNothing);
+    expect(
+      find.byKey(const ValueKey('composer_attachment_thumb')),
+      findsNothing,
+    );
     await tester.pump(const Duration(seconds: 3)); // flush snackbar timer
   });
 }
