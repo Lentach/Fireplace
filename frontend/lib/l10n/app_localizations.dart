@@ -1082,6 +1082,18 @@ abstract class AppLocalizations {
   /// **'Ta notatka uległa samozniszczeniu'**
   String get antiQuantumNoteCardDestroyed;
 
+  /// No description provided for @antiQuantumNoteBurnedTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Notatka zniszczona'**
+  String get antiQuantumNoteBurnedTitle;
+
+  /// No description provided for @antiQuantumNoteBurnedSubtitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'została odczytana'**
+  String get antiQuantumNoteBurnedSubtitle;
+
   /// No description provided for @privacyAntiQuantumNoteTitle.
   ///
   /// In pl, this message translates to:

@@ -578,6 +578,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get antiQuantumNoteCardDestroyed => 'This note has self-destructed';
 
   @override
+  String get antiQuantumNoteBurnedTitle => 'Note destroyed';
+
+  @override
+  String get antiQuantumNoteBurnedSubtitle => 'it was read';
+
+  @override
   String get privacyAntiQuantumNoteTitle => 'Anti-Quantum Notes';
 
   @override
