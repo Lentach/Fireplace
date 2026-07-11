@@ -59,6 +59,21 @@ export class SecretNotesController {
     res.send(this.landingPage(token, remainingLabel, nonce));
   }
 
+  /** Existence check for the in-chat note banner: the client flips the card
+   *  to a "burned — it was read" remnant when the note is gone BEFORE its
+   *  clock (the `e=` fragment param) ran out. JWT-guarded — only app clients
+   *  query it; the public reveal page never calls this. Malformed tokens get
+   *  `alive:false` (no oracle beyond what GET /note/:token already exposes).
+   */
+  @UseGuards(JwtAuthGuard)
+  @Get('note/:token/status')
+  @Throttle({ default: { limit: 120, ttl: 60000 } })
+  async noteStatus(@Param('token') token: string): Promise<{ alive: boolean }> {
+    if (!SecretNotesController.TOKEN_RE.test(token)) return { alive: false };
+    const note = await this.service.findByToken(token);
+    return { alive: note !== null };
+  }
+
   @Post('note/:token/reveal')
   @Throttle({ default: { limit: 30, ttl: 60000 } })
   async revealNote(@Param('token') token: string, @Res() res: Response) {

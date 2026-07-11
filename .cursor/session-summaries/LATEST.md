@@ -1,9 +1,6 @@
 # Latest session summary
 
 
-**Date:** 2026-07-10 (Liquid Glass redesign — Stage A ACCEPTED, Stage B in progress)
-
-**Topic:** **Apple Liquid Glass (iOS 26/Telegram-style) redesign, branch `feat/liquid-glass-redesign` — design session complete and OWNER-ACCEPTED; implementation gated on package-eval + web-perf spike.** Round-1 HTML mockups (real backdrop blur, faithful app anatomy) at `docs/design/liquid-glass/round1/index.html`; owner accepted ALL THREE directions mapped onto the 4 existing themes (blue→Nightfall-dark, dark→TealSmoke-dark, light→Hearthglow-light, teal→TealSmoke-light), flame-doodle wallpaper default. **Accepted spec: `docs/design/liquid-glass/SPEC.md`** (glass σ22+saturate1.7 recipe, per-theme values, capsule metrics, wallpaper tile, opaque fallbacks, computed WCAG table — 28/28 ≥4.5:1 worst-case). Disclosed contrast deltas: blue sent bubble→`#1F74BB`, teal sent→`#0F766E`. Stage B next: `liquid_glass_widgets` eval (web VERIFIED by running), web+mobile frame-time spike (NO-GO → fake-glass §7), theme-driven GlassSurface family, screen-by-screen commits. Handoff: [2026-07-10-session-liquid-glass.md](./2026-07-10-session-liquid-glass.md).
 
 **Previous:** 2026-07-10 (code-scanning triage — SSRF hardening + CI permissions + dependency bumps)
 

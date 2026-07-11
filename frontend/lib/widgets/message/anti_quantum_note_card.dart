@@ -1,13 +1,23 @@
 import 'dart:async';
 
 import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../config/app_config.dart';
 import '../../l10n/app_localizations.dart';
+import '../../providers/auth_provider.dart';
+import '../../services/api_service.dart';
 import '../../theme/rpg_theme.dart';
 import '../../utils/anti_quantum_note_link.dart';
 
 const Color _kNoteRed = Color(0xFFC0392B);
 const Color _kNoteRedDark = Color(0xFF922B21);
+
+/// How often a live card re-checks server-side note existence.
+const kNoteAliveProbeInterval = Duration(seconds: 30);
+
+/// Test seam: resolves whether the note behind [token] still exists.
+typedef NoteAliveProbe = Future<bool> Function(String token);
 
 /// In-chat banner for an Anti-Quantum Note link. Replaces the raw URL text
 /// (and any link-preview card) inside the TEXT bubble; tapping opens the
@@ -16,8 +26,20 @@ const Color _kNoteRedDark = Color(0xFF922B21);
 /// When the link carries an `e=` expiry (see anti_quantum_note_link.dart) the
 /// banner shows a live self-destruct countdown, and flips to a "destroyed"
 /// state at the exact server-side death moment — fully client-side.
+///
+/// While the note is alive by its clock, the card also probes the status
+/// endpoint (on mount + every [kNoteAliveProbeInterval]): a note that is gone
+/// BEFORE its clock ran out was read, and the card collapses to a burned
+/// "Note destroyed — it was read" remnant. Probe failures fail OPEN (a
+/// network blip must never claim a live note burned); without a known expiry
+/// (legacy links) a dead note falls back to the generic destroyed state.
 class AntiQuantumNoteCard extends StatefulWidget {
   final String noteUrl;
+
+  /// Overrides the default REST probe in tests. When null the card resolves
+  /// [AuthProvider]/[ApiService] lazily and skips probing entirely if they
+  /// are unavailable (plain widget-test trees).
+  final NoteAliveProbe? aliveProbe;
   final bool isMine;
   final Color textColor;
   final bool isDark;
@@ -30,6 +52,7 @@ class AntiQuantumNoteCard extends StatefulWidget {
     required this.textColor,
     required this.isDark,
     required this.maxWidth,
+    this.aliveProbe,
   });
 
   @override
@@ -38,7 +61,11 @@ class AntiQuantumNoteCard extends StatefulWidget {
 
 class _AntiQuantumNoteCardState extends State<AntiQuantumNoteCard> {
   DateTime? _expiresAt;
+  String? _token;
   Timer? _ticker;
+  Timer? _probeTimer;
+  bool _burned = false;
+  bool _probeInFlight = false;
 
   bool get _destroyed =>
       _expiresAt != null && !_expiresAt!.isAfter(DateTime.now());
@@ -46,17 +73,26 @@ class _AntiQuantumNoteCardState extends State<AntiQuantumNoteCard> {
   @override
   void initState() {
     super.initState();
-    _expiresAt = parseAntiQuantumNoteLink(widget.noteUrl)?.expiresAt;
+    _parseLink();
     _armTicker();
+    _armProbe();
   }
 
   @override
   void didUpdateWidget(covariant AntiQuantumNoteCard oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.noteUrl != widget.noteUrl) {
-      _expiresAt = parseAntiQuantumNoteLink(widget.noteUrl)?.expiresAt;
+      _parseLink();
+      _burned = false;
       _armTicker();
+      _armProbe();
     }
+  }
+
+  void _parseLink() {
+    final link = parseAntiQuantumNoteLink(widget.noteUrl);
+    _expiresAt = link?.expiresAt;
+    _token = link?.token;
   }
 
   void _armTicker() {
@@ -75,9 +111,62 @@ class _AntiQuantumNoteCardState extends State<AntiQuantumNoteCard> {
     });
   }
 
+  /// Probe only while the note can still flip to "burned": a known expiry in
+  /// the future. Once burned, clock-dead, or expiry-less there is nothing a
+  /// probe could change — legacy links without `e=` cannot distinguish
+  /// read-vs-expired, so they keep the generic destroyed state.
+  void _armProbe() {
+    _probeTimer?.cancel();
+    if (_burned || _destroyed || _expiresAt == null || _token == null) return;
+    scheduleMicrotask(_probeOnce);
+    _probeTimer = Timer.periodic(kNoteAliveProbeInterval, (_) => _probeOnce());
+  }
+
+  Future<void> _probeOnce() async {
+    if (_probeInFlight || _burned || _destroyed) return;
+    final probe = widget.aliveProbe ?? _defaultProbe();
+    if (probe == null) {
+      _probeTimer?.cancel();
+      return;
+    }
+    _probeInFlight = true;
+    try {
+      final alive = await probe(_token!);
+      if (!mounted) return;
+      // Re-check the clock AFTER the await: if the timer ran out mid-flight,
+      // "gone" is just expiry and must not claim a read.
+      if (!alive && !_destroyed && !_burned) {
+        setState(() => _burned = true);
+        _probeTimer?.cancel();
+        _ticker?.cancel();
+      }
+    } catch (_) {
+      // Fail open: transport/HTTP errors keep the card alive; the periodic
+      // timer retries.
+    } finally {
+      _probeInFlight = false;
+    }
+  }
+
+  /// Default REST probe; null when the tree has no [AuthProvider] (tests) or
+  /// no session token yet.
+  NoteAliveProbe? _defaultProbe() {
+    String? jwt;
+    try {
+      jwt = context.read<AuthProvider>().token;
+    } catch (_) {
+      return null;
+    }
+    if (jwt == null) return null;
+    final api = ApiService(baseUrl: AppConfig.baseUrl);
+    final sessionToken = jwt;
+    return (noteToken) => api.isNoteAlive(sessionToken, noteToken);
+  }
+
   @override
   void dispose() {
     _ticker?.cancel();
+    _probeTimer?.cancel();
     super.dispose();
   }
 
@@ -93,6 +182,7 @@ class _AntiQuantumNoteCardState extends State<AntiQuantumNoteCard> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    if (_burned) return _buildBurnedPill(l10n);
     final destroyed = _destroyed;
     final cardBg = widget.isDark
         ? Colors.white.withValues(alpha: 0.06)
@@ -251,6 +341,77 @@ class _AntiQuantumNoteCardState extends State<AntiQuantumNoteCard> {
               ),
             ],
           ),
+        ),
+      ),
+    );
+  }
+
+  /// Option-C burned remnant: the card collapses to a slim ash pill. Nothing
+  /// is tappable — the reveal page behind the link no longer exists.
+  Widget _buildBurnedPill(AppLocalizations l10n) {
+    final labelColor = widget.isMine
+        ? widget.textColor.withValues(alpha: 0.55)
+        : (widget.isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight);
+    final titleColor = widget.isMine
+        ? widget.textColor.withValues(alpha: 0.8)
+        : (widget.isDark ? Colors.white70 : Colors.black54);
+    return ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: widget.maxWidth),
+      child: Container(
+        key: const Key('anti-quantum-note-burned-pill'),
+        decoration: BoxDecoration(
+          color: Colors.black.withValues(alpha: widget.isDark ? 0.28 : 0.10),
+          borderRadius: BorderRadius.circular(999),
+        ),
+        padding: const EdgeInsets.fromLTRB(6, 5, 14, 5),
+        child: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            Container(
+              width: 22,
+              height: 22,
+              alignment: Alignment.center,
+              decoration: BoxDecoration(
+                shape: BoxShape.circle,
+                gradient: LinearGradient(
+                  colors: [Colors.grey.shade700, Colors.grey.shade900],
+                  begin: Alignment.topLeft,
+                  end: Alignment.bottomRight,
+                ),
+              ),
+              child: const Icon(
+                Icons.local_fire_department,
+                size: 13,
+                color: Colors.white70,
+              ),
+            ),
+            const SizedBox(width: 8),
+            Flexible(
+              child: Text.rich(
+                TextSpan(
+                  children: [
+                    TextSpan(
+                      text: l10n.antiQuantumNoteBurnedTitle,
+                      style: RpgTheme.bodyFont(
+                        fontSize: 12,
+                        color: titleColor,
+                        fontWeight: FontWeight.w700,
+                      ),
+                    ),
+                    TextSpan(
+                      text: ' — ${l10n.antiQuantumNoteBurnedSubtitle}',
+                      style: RpgTheme.bodyFont(
+                        fontSize: 12,
+                        color: labelColor,
+                      ),
+                    ),
+                  ],
+                ),
+                maxLines: 2,
+                overflow: TextOverflow.ellipsis,
+              ),
+            ),
+          ],
         ),
       ),
     );

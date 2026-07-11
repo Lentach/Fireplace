@@ -26,11 +26,20 @@ bool isAntiQuantumNoteUrl(String content, {String? baseUrl}) {
 class AntiQuantumNoteLink {
   final String url;
 
+  /// 32-hex server token (the `/note/<token>` path segment) — the id the
+  /// status endpoint takes. Never contains the key: that stays in the
+  /// fragment.
+  final String token;
+
   /// Server-side note death moment, from the `e` fragment param.
   /// Null for links sent before the countdown feature existed.
   final DateTime? expiresAt;
 
-  const AntiQuantumNoteLink({required this.url, this.expiresAt});
+  const AntiQuantumNoteLink({
+    required this.url,
+    required this.token,
+    this.expiresAt,
+  });
 }
 
 /// Parse a note link previously accepted by [isAntiQuantumNoteUrl];
@@ -49,5 +58,7 @@ AntiQuantumNoteLink? parseAntiQuantumNoteLink(String content,
       }
     }
   }
-  return AntiQuantumNoteLink(url: url, expiresAt: expiresAt);
+  final hashIndex = url.indexOf('#');
+  final token = url.substring(hashIndex - 32, hashIndex);
+  return AntiQuantumNoteLink(url: url, token: token, expiresAt: expiresAt);
 }

@@ -587,6 +587,12 @@ class AppLocalizationsPl extends AppLocalizations {
       'Ta notatka uległa samozniszczeniu';
 
   @override
+  String get antiQuantumNoteBurnedTitle => 'Notatka zniszczona';
+
+  @override
+  String get antiQuantumNoteBurnedSubtitle => 'została odczytana';
+
+  @override
   String get privacyAntiQuantumNoteTitle => 'Notatki antykwantowe';
 
   @override

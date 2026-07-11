@@ -229,6 +229,36 @@ describe('SecretNotesController', () => {
     });
   });
 
+  describe('noteStatus', () => {
+    it('reports alive for an existing unexpired note', async () => {
+      service.findByToken.mockResolvedValue({
+        token: VALID_TOKEN,
+        expiresAt: new Date(Date.now() + 60000),
+      });
+      await expect(controller.noteStatus(VALID_TOKEN)).resolves.toEqual({
+        alive: true,
+      });
+      expect(service.findByToken).toHaveBeenCalledWith(VALID_TOKEN);
+    });
+
+    it('reports dead when the note is gone (read or expired)', async () => {
+      service.findByToken.mockResolvedValue(null);
+      await expect(controller.noteStatus(VALID_TOKEN)).resolves.toEqual({
+        alive: false,
+      });
+    });
+
+    it.each(INVALID_TOKENS)(
+      'rejects malformed token %j before any service/DB work',
+      async (token) => {
+        await expect(controller.noteStatus(token)).resolves.toEqual({
+          alive: false,
+        });
+        expect(service.findByToken).not.toHaveBeenCalled();
+      },
+    );
+  });
+
   describe('revealNote', () => {
     it('returns ciphertext when note exists', async () => {
       service.revealAndDelete.mockResolvedValue({ ciphertext: 'enc' });

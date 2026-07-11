@@ -151,7 +151,16 @@ void main() {
       final link = parseAntiQuantumNoteLink(url, baseUrl: baseUrl);
       expect(link, isNotNull);
       expect(link!.url, url);
+      expect(link.token, hex);
       expect(link.expiresAt, isNull);
+    });
+
+    test('extracts the 32-hex server token regardless of fragment params', () {
+      const ms = 1720000000000;
+      final noteUrl = '$baseUrl/note/$hex#abcABC012_-&c=42&e=$ms';
+      final link = parseAntiQuantumNoteLink(noteUrl, baseUrl: baseUrl);
+      expect(link, isNotNull);
+      expect(link!.token, hex);
     });
 
     test('parses the e= param into expiresAt (epoch ms)', () {
