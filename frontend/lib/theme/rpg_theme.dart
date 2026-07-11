@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
+import 'glass_theme.dart';
 
 /// Theme-specific colors for chat UI. Use via `Theme.of(context).extension<FireplaceColors>()!`
 class FireplaceColors extends ThemeExtension<FireplaceColors> {
@@ -39,8 +40,7 @@ class FireplaceColors extends ThemeExtension<FireplaceColors> {
   ThemeExtension<FireplaceColors> lerp(
     covariant ThemeExtension<FireplaceColors>? other,
     double t,
-  ) =>
-      this;
+  ) => this;
 }
 
 class RpgTheme {
@@ -64,8 +64,12 @@ class RpgTheme {
   static const Color textColorBlue = Color(0xFFE4E4E4);
   static const Color mutedTextBlue = Color(0xFF8A8A8A);
   static const Color messagesAreaBgBlue = Color(0xFF17212B);
-  static const Color mineMsgBgBlue = Color(0xFF2481CC); // sent bubble (Telegram blue, slightly darker for dark mode)
-  static const Color theirsMsgBgBlue = Color(0xFF2B2B2B); // received bubble (dark gray)
+  static const Color mineMsgBgBlue = Color(
+    0xFF2481CC,
+  ); // sent bubble (Telegram blue, slightly darker for dark mode)
+  static const Color theirsMsgBgBlue = Color(
+    0xFF2B2B2B,
+  ); // received bubble (dark gray)
   static const Color accentBlue = Color(0xFF2AABEE); // Telegram official blue
   static const Color accentBlueDark = Color(0xFF229ED9); // alternative/hover
   static const Color borderBlue = Color(0xFF3D5A6B);
@@ -109,7 +113,9 @@ class RpgTheme {
   static const Color settingsTileBorderDarkGray = Color(0xFF5C9EAD);
 
   // Light theme — warm paper neutrals + ember accent (Fireplace brand, not Slack purple)
-  static const Color primaryLight = Color(0xFFC2410C); // orange-700, white onPrimary
+  static const Color primaryLight = Color(
+    0xFFC2410C,
+  ); // orange-700, white onPrimary
   static const Color primaryLightHover = Color(0xFF9A3412); // orange-800
   static const Color backgroundLight = Color(0xFFF7F4F0);
   static const Color boxBgLight = Color(0xFFFFFFFF);
@@ -214,10 +220,7 @@ class RpgTheme {
         const Color(0xFFCCFBF1), // teal-100, read state on teal bubble
       );
     }
-    return (
-      const Color(0xFFE0E0E0),
-      const Color(0xFF64B5F6),
-    );
+    return (const Color(0xFFE0E0E0), const Color(0xFF64B5F6));
   }
 
   static Color primaryColor(BuildContext context) =>
@@ -226,11 +229,11 @@ class RpgTheme {
   static Color surfaceColor(BuildContext context) =>
       isDark(context) ? boxBg : boxBgLight;
 
-  static TextStyle pressStart2P({double fontSize = 10, Color color = textColor}) {
-    return GoogleFonts.pressStart2p(
-      fontSize: fontSize,
-      color: color,
-    );
+  static TextStyle pressStart2P({
+    double fontSize = 10,
+    Color color = textColor,
+  }) {
+    return GoogleFonts.pressStart2p(fontSize: fontSize, color: color);
   }
 
   /// App chrome (AppBar, main tab headers): matches `bodyFont` / list typography (Inter).
@@ -247,7 +250,11 @@ class RpgTheme {
     );
   }
 
-  static TextStyle bodyFont({double fontSize = 14, Color color = textColor, FontWeight fontWeight = FontWeight.normal}) {
+  static TextStyle bodyFont({
+    double fontSize = 14,
+    Color color = textColor,
+    FontWeight fontWeight = FontWeight.normal,
+  }) {
     return GoogleFonts.inter(
       fontSize: fontSize,
       color: color,
@@ -269,6 +276,14 @@ class RpgTheme {
         onSurface: textColorBlue,
         onError: Colors.white,
       ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: boxBgBlue,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: boxBgBlue,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
       appBarTheme: AppBarTheme(
         backgroundColor: boxBgBlue,
         elevation: 0,
@@ -284,7 +299,10 @@ class RpgTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: inputBgBlue,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderSide: const BorderSide(color: tabBorderBlue, width: 1.5),
           borderRadius: BorderRadius.circular(8),
@@ -349,9 +367,21 @@ class RpgTheme {
           fontWeight: FontWeight.w600,
           letterSpacing: -0.25,
         ),
-        titleMedium: GoogleFonts.inter(color: textColorBlue, fontSize: 16, fontWeight: FontWeight.w600),
-        titleSmall: GoogleFonts.inter(color: textColorBlue, fontSize: 14, fontWeight: FontWeight.w600),
-        labelLarge: GoogleFonts.inter(color: textColorBlue, fontSize: 14, fontWeight: FontWeight.w500),
+        titleMedium: GoogleFonts.inter(
+          color: textColorBlue,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+        titleSmall: GoogleFonts.inter(
+          color: textColorBlue,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+        labelLarge: GoogleFonts.inter(
+          color: textColorBlue,
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
       ),
       extensions: [
         const FireplaceColors(
@@ -367,6 +397,7 @@ class RpgTheme {
           borderColor: borderBlue,
           mutedText: mutedTextBlue,
         ),
+        GlassTheme.blue,
       ],
     );
   }
@@ -385,6 +416,14 @@ class RpgTheme {
         onSurface: textColorDarkGray,
         onError: Colors.white,
       ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: boxBgDarkGray,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: boxBgDarkGray,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
       appBarTheme: AppBarTheme(
         backgroundColor: boxBgDarkGray,
         elevation: 0,
@@ -400,7 +439,10 @@ class RpgTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: inputBgDarkGray,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderSide: const BorderSide(color: tabBorderDarkGray, width: 1.5),
           borderRadius: BorderRadius.circular(8),
@@ -465,9 +507,21 @@ class RpgTheme {
           fontWeight: FontWeight.w600,
           letterSpacing: -0.25,
         ),
-        titleMedium: GoogleFonts.inter(color: textColorDarkGray, fontSize: 16, fontWeight: FontWeight.w600),
-        titleSmall: GoogleFonts.inter(color: textColorDarkGray, fontSize: 14, fontWeight: FontWeight.w600),
-        labelLarge: GoogleFonts.inter(color: textColorDarkGray, fontSize: 14, fontWeight: FontWeight.w500),
+        titleMedium: GoogleFonts.inter(
+          color: textColorDarkGray,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+        titleSmall: GoogleFonts.inter(
+          color: textColorDarkGray,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+        labelLarge: GoogleFonts.inter(
+          color: textColorDarkGray,
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
       ),
       extensions: [
         const FireplaceColors(
@@ -483,6 +537,7 @@ class RpgTheme {
           borderColor: accentDarkGray,
           mutedText: mutedDarkGray,
         ),
+        GlassTheme.dark,
       ],
     );
   }
@@ -503,6 +558,14 @@ class RpgTheme {
         onSurface: textColorLight,
         onError: Colors.white,
       ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: boxBgLight,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: boxBgLight,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
       appBarTheme: AppBarTheme(
         backgroundColor: boxBgLight,
         elevation: 0,
@@ -518,7 +581,10 @@ class RpgTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: inputBgLight,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderSide: const BorderSide(color: tabBorderLight, width: 1.5),
           borderRadius: BorderRadius.circular(8),
@@ -583,9 +649,21 @@ class RpgTheme {
           fontWeight: FontWeight.w600,
           letterSpacing: -0.25,
         ),
-        titleMedium: GoogleFonts.inter(color: textColorLight, fontSize: 16, fontWeight: FontWeight.w600),
-        titleSmall: GoogleFonts.inter(color: textColorLight, fontSize: 14, fontWeight: FontWeight.w600),
-        labelLarge: GoogleFonts.inter(color: textColorLight, fontSize: 14, fontWeight: FontWeight.w500),
+        titleMedium: GoogleFonts.inter(
+          color: textColorLight,
+          fontSize: 16,
+          fontWeight: FontWeight.w600,
+        ),
+        titleSmall: GoogleFonts.inter(
+          color: textColorLight,
+          fontSize: 14,
+          fontWeight: FontWeight.w600,
+        ),
+        labelLarge: GoogleFonts.inter(
+          color: textColorLight,
+          fontSize: 14,
+          fontWeight: FontWeight.w500,
+        ),
       ),
       extensions: [
         const FireplaceColors(
@@ -601,6 +679,7 @@ class RpgTheme {
           borderColor: primaryLight,
           mutedText: textSecondaryLight,
         ),
+        GlassTheme.light,
       ],
     );
   }
@@ -619,6 +698,14 @@ class RpgTheme {
         onSurface: textColorTealStone,
         onError: Colors.white,
       ),
+      popupMenuTheme: PopupMenuThemeData(
+        color: surfaceTealStone,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
+      ),
+      dialogTheme: DialogThemeData(
+        backgroundColor: surfaceTealStone,
+        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
+      ),
       appBarTheme: AppBarTheme(
         backgroundColor: surfaceTealStone,
         elevation: 0,
@@ -634,7 +721,10 @@ class RpgTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: inputBgTealStone,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderSide: const BorderSide(color: borderTealStone, width: 1.5),
           borderRadius: BorderRadius.circular(8),
@@ -729,6 +819,7 @@ class RpgTheme {
           borderColor: primaryTealStone,
           mutedText: mutedTealStone,
         ),
+        GlassTheme.teal,
       ],
     );
   }
@@ -740,7 +831,7 @@ class RpgTheme {
   }) {
     final iconColor = context != null
         ? (Theme.of(context).extension<FireplaceColors>()?.mutedText ??
-            (isDark(context) ? mutedDark : textSecondaryLight))
+              (isDark(context) ? mutedDark : textSecondaryLight))
         : mutedText;
     return InputDecoration(
       hintText: hintText,

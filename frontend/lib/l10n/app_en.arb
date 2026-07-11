@@ -21,7 +21,7 @@
   "deleteAccount": "Delete Account",
   "logout": "Logout",
   "uninstallWarning": "Uninstalling or clearing site data permanently erases your message history — to refresh, just fully close and reopen the app.",
-  "chat": "Chat",
+  "chat": "Chats",
   "contacts": "Contacts",
   "profilePictureUpdated": "Profile picture updated",
   "uploadFailed": "Upload failed",
@@ -226,6 +226,8 @@
     }
   },
   "antiQuantumNoteCardDestroyed": "This note has self-destructed",
+  "antiQuantumNoteBurnedTitle": "Note destroyed",
+  "antiQuantumNoteBurnedSubtitle": "it was read",
   "privacyAntiQuantumNoteTitle": "Anti-Quantum Notes",
   "privacyAntiQuantumNoteDescription": "Notes are encrypted on your device before upload — the server stores only unreadable ciphertext, and the decryption key travels solely inside the link's #fragment, which browsers never send to any server. A note can be revealed exactly once, then it is permanently deleted. Unopened notes self-destruct when their timer (1h–24h) runs out, and the chat message disappears with them.",
 

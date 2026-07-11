@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../l10n/app_localizations.dart';
+import '../theme/glass_theme.dart';
 import '../theme/rpg_theme.dart';
 
 class MessageDateSeparator extends StatelessWidget {
@@ -13,8 +14,7 @@ class MessageDateSeparator extends StatelessWidget {
     final now = DateTime.now();
     final today = DateTime(now.year, now.month, now.day);
     final localDate = date.toLocal();
-    final messageDay =
-        DateTime(localDate.year, localDate.month, localDate.day);
+    final messageDay = DateTime(localDate.year, localDate.month, localDate.day);
     final diff = today.difference(messageDay).inDays;
 
     if (diff == 0) return l10n.chatDateToday;
@@ -24,26 +24,27 @@ class MessageDateSeparator extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = RpgTheme.isDark(context);
-    final borderColor =
-        FireplaceColors.of(context).convItemBorder;
-    final textColor =
-        isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight;
-
+    // Liquid Glass spec §5: over the wallpaper a divider reads as noise —
+    // dates sit in a solid centered mini-pill (content layer, NOT glass).
+    final glass = GlassTheme.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(vertical: 12),
-      child: Row(
-        children: [
-          Expanded(child: Divider(color: borderColor, thickness: 1)),
-          Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12),
-            child: Text(
-              _formatDate(context),
-              style: RpgTheme.bodyFont(fontSize: 11, color: textColor),
+      padding: const EdgeInsets.symmetric(vertical: 10),
+      child: Center(
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+          decoration: BoxDecoration(
+            color: glass.datePillBg,
+            borderRadius: BorderRadius.circular(12),
+          ),
+          child: Text(
+            _formatDate(context),
+            style: RpgTheme.bodyFont(
+              fontSize: 11,
+              color: glass.datePillText,
+              fontWeight: FontWeight.w600,
             ),
           ),
-          Expanded(child: Divider(color: borderColor, thickness: 1)),
-        ],
+        ),
       ),
     );
   }

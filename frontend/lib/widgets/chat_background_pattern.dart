@@ -1,99 +1,171 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
-/// Draws a subtle dot pattern for chat background. Covers entire area.
-class ChatBackgroundPattern extends StatelessWidget {
+import '../theme/glass_theme.dart';
+import 'hieroglyph_glyphs.g.dart';
+
+/// Chat wallpaper (owner-locked design v3.5, 2026-07-11): "temple columns" —
+/// hieroglyphs stacked in vertical registers with faint column separators,
+/// over the base color + a subtle radial top glow.
+///
+/// Layout rules (locked in the design session):
+/// - columns of centered glyphs, ~3 across a phone width;
+/// - weighted-random rotation, re-seeded ONCE per screen mount (owner choice:
+///   a fresh arrangement every chat entry; layout is baked at construction so
+///   nothing reshuffles during scrolling/repaints);
+/// - no glyph repeats within the last 5 picks;
+/// - never two non-wide glyphs consecutively in a column ("pen-stroke" rule);
+/// - the leaf hero appears with a guaranteed cadence (~once per screen
+///   height) but never twice in a row.
+class ChatBackgroundPattern extends StatefulWidget {
   final Widget child;
-  final Color? dotColor;
+
+  /// Doodle stroke color (opacity baked in). Defaults to the theme's
+  /// `GlassTheme.wallpaperTint`.
+  final Color? patternColor;
   final Color? backgroundColor;
 
   const ChatBackgroundPattern({
     super.key,
     required this.child,
-    this.dotColor,
+    this.patternColor,
     this.backgroundColor,
   });
 
   @override
+  State<ChatBackgroundPattern> createState() => _ChatBackgroundPatternState();
+}
+
+class _ChatBackgroundPatternState extends State<ChatBackgroundPattern> {
+  /// One seed per screen mount — the owner-picked "random per chat entry".
+  final int _seed = math.Random().nextInt(1 << 31);
+
+  @override
   Widget build(BuildContext context) {
-    final color = dotColor ??
-        (Theme.of(context).brightness == Brightness.dark
-            ? Colors.white.withValues(alpha: 0.03)
-            : Colors.black.withValues(alpha: 0.02));
-    final dpr = MediaQuery.devicePixelRatioOf(context);
-    return LayoutBuilder(
-      builder: (context, constraints) {
-        final w = constraints.maxWidth;
-        final h = constraints.maxHeight;
-        return Container(
-          width: w,
-          height: h,
-          color: backgroundColor,
-          child: Stack(
-            fit: StackFit.expand,
-            children: [
-              CustomPaint(
-                size: Size(w, h),
-                painter: _DotPatternPainter(
-                  color: color,
-                  devicePixelRatio: dpr,
-                ),
+    final glass = GlassTheme.of(context);
+    final color = widget.patternColor ?? glass.wallpaperTint;
+    final bg = widget.backgroundColor ?? Colors.transparent;
+    return Container(
+      color: bg,
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          // Subtle depth glow behind the pattern (spec: gradient under tile).
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: const Alignment(0, -1.1),
+                radius: 1.3,
+                colors: [
+                  Color.lerp(bg, color.withValues(alpha: 1.0), 0.05)!,
+                  bg.withValues(alpha: 0.0),
+                ],
               ),
-              child,
-            ],
+            ),
           ),
-        );
-      },
+          RepaintBoundary(
+            child: CustomPaint(
+              painter: _TempleColumnsPainter(color: color, seed: _seed),
+            ),
+          ),
+          widget.child,
+        ],
+      ),
     );
   }
 }
 
-class _DotPatternPainter extends CustomPainter {
+class _TempleColumnsPainter extends CustomPainter {
   final Color color;
-  final double devicePixelRatio;
+  final int seed;
 
-  _DotPatternPainter({
-    required this.color,
-    required this.devicePixelRatio,
-  });
+  _TempleColumnsPainter({required this.color, required this.seed});
 
-  static const double _spacing = 18;
-  static const double _dotRadius = 0.9;
-
-  /// Map logical coordinates to the nearest device-pixel center so every dot
-  /// gets the same edge coverage (avoids brighter/darker columns when
-  /// spacing × DPR is not an integer).
-  Offset _snapLogicalToDevicePixel(double x, double y) {
-    final dpr = devicePixelRatio;
-    if (dpr <= 0) return Offset(x, y);
-    return Offset(
-      (x * dpr).round() / dpr,
-      (y * dpr).round() / dpr,
-    );
-  }
-
-  double _snapRadius() {
-    final dpr = devicePixelRatio;
-    if (dpr <= 0) return _dotRadius;
-    return ((_dotRadius * dpr).round().clamp(1, 0x7fffffff)) / dpr;
-  }
+  static const double _columnWidth = 118;
+  static const double _vStep = 56;
+  static const double _leafCadence = 620; // ~1 leaf per screen height
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
+    final stroke = Paint()
       ..color = color
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 2
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..isAntiAlias = true;
+    final fill = Paint()
+      ..color = color.withValues(alpha: (color.a * 1.15).clamp(0.0, 1.0))
       ..style = PaintingStyle.fill
       ..isAntiAlias = true;
-    final r = _snapRadius();
-    for (double y = 0; y < size.height + _spacing; y += _spacing) {
-      for (double x = 0; x < size.width + _spacing; x += _spacing) {
-        final o = _snapLogicalToDevicePixel(x, y);
-        canvas.drawCircle(o, r, paint);
+    final sepPaint = Paint()
+      ..color = color.withValues(alpha: color.a * 0.5)
+      ..strokeWidth = 1;
+
+    final rnd = math.Random(seed);
+    final cols = math.max(2, (size.width / _columnWidth).round());
+    final colW = size.width / cols;
+
+    // Column separators.
+    for (var i = 1; i < cols; i++) {
+      canvas.drawLine(
+        Offset(colW * i, 0),
+        Offset(colW * i, size.height),
+        sepPaint,
+      );
+    }
+
+    // Bag-shuffle (owner fix for "same symbols in 3 rows"): deal every glyph
+    // once before any repeats, scanning the bag for a wide glyph when the
+    // previous one was narrow.
+    final leaf = kHieroGlyphs.firstWhere((g) => g.isLeaf);
+    var bag = <HieroGlyph>[];
+    HieroGlyph deal(bool needWide) {
+      if (bag.isEmpty) {
+        bag = [
+          for (final g in kHieroGlyphs)
+            if (!g.isLeaf) g,
+        ]..shuffle(rnd);
+      }
+      if (needWide) {
+        final i = bag.indexWhere((g) => g.wide);
+        if (i != -1) return bag.removeAt(i);
+      }
+      return bag.removeAt(0);
+    }
+
+    final cols2 = cols;
+    for (var c = 0; c < cols2; c++) {
+      final cx = colW * c + colW / 2;
+      var y = 34 + rnd.nextDouble() * 12;
+      var sinceLeaf = rnd.nextDouble() * _leafCadence;
+      var prevNarrow = false;
+      while (y < size.height - 18) {
+        HieroGlyph g;
+        if (sinceLeaf > _leafCadence) {
+          g = leaf;
+          sinceLeaf = 0;
+        } else {
+          g = deal(prevNarrow);
+        }
+        prevNarrow = g.wide == false;
+
+        final scale = 0.85 + rnd.nextDouble() * 0.15;
+        canvas.save();
+        canvas.translate(cx, y);
+        canvas.scale(scale);
+        g.paintFn(canvas, stroke, fill);
+        canvas.restore();
+
+        final step = _vStep + (rnd.nextDouble() * 10 - 4);
+        y += step;
+        sinceLeaf += step;
       }
     }
   }
 
   @override
-  bool shouldRepaint(_DotPatternPainter oldDelegate) =>
-      oldDelegate.color != color ||
-      oldDelegate.devicePixelRatio != devicePixelRatio;
+  bool shouldRepaint(_TempleColumnsPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.seed != seed;
 }

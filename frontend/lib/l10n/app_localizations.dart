@@ -227,7 +227,7 @@ abstract class AppLocalizations {
   /// No description provided for @chat.
   ///
   /// In pl, this message translates to:
-  /// **'Czat'**
+  /// **'Czaty'**
   String get chat;
 
   /// No description provided for @contacts.
@@ -1081,6 +1081,18 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Ta notatka uległa samozniszczeniu'**
   String get antiQuantumNoteCardDestroyed;
+
+  /// No description provided for @antiQuantumNoteBurnedTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Notatka zniszczona'**
+  String get antiQuantumNoteBurnedTitle;
+
+  /// No description provided for @antiQuantumNoteBurnedSubtitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'została odczytana'**
+  String get antiQuantumNoteBurnedSubtitle;
 
   /// No description provided for @privacyAntiQuantumNoteTitle.
   ///

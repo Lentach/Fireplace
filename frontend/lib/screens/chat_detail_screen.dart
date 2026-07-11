@@ -10,6 +10,7 @@ import '../providers/friends_provider.dart';
 import '../providers/messaging_provider.dart';
 import '../services/voice_audio_coordinator.dart';
 import '../theme/rpg_theme.dart';
+import '../widgets/glass/glass_top_bar.dart';
 import '../widgets/message/chat_message_bubble.dart';
 import '../widgets/input/chat_input_bar.dart';
 import '../widgets/input/chat_composer_viewport.dart';
@@ -659,86 +660,88 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
   Widget _buildMessagesArea({
     required double listBottomPadding,
+    required bool topInsetHandled,
     required List<MessageModel> messages,
     required Color mutedColor,
     required Color messagesAreaBg,
     required int currentUserId,
   }) {
-    return SafeArea(
-      bottom: false,
-      child: ChatBackgroundPattern(
-        dotColor: mutedColor.withValues(alpha: 0.08),
-        backgroundColor: messagesAreaBg,
-        child: messages.isEmpty
-            ? Center(
-                child: Text(
-                  AppLocalizations.of(context).noMessagesYet,
-                  style: RpgTheme.bodyFont(fontSize: 14, color: mutedColor),
-                ),
-              )
-            : Listener(
-                behavior: HitTestBehavior.translucent,
-                onPointerDown: (_) {
-                  _composerKey.currentState?.dismissForChatSurfaceTap();
+    // Wallpaper runs full-bleed behind the floating top chrome
+    // (extendBodyBehindAppBar); the list clears it via top padding unless a
+    // pinned banner already consumed the top inset.
+    final topClearance = topInsetHandled
+        ? 8.0
+        : MediaQuery.paddingOf(context).top + 8.0;
+    return ChatBackgroundPattern(
+      backgroundColor: messagesAreaBg,
+      child: messages.isEmpty
+          ? Center(
+              child: Text(
+                AppLocalizations.of(context).noMessagesYet,
+                style: RpgTheme.bodyFont(fontSize: 14, color: mutedColor),
+              ),
+            )
+          : Listener(
+              behavior: HitTestBehavior.translucent,
+              onPointerDown: (_) {
+                _composerKey.currentState?.dismissForChatSurfaceTap();
+              },
+              child: NotificationListener<ScrollStartNotification>(
+                onNotification: (notification) {
+                  dismissMessageContextMenu();
+                  return false;
                 },
-                child: NotificationListener<ScrollStartNotification>(
+                child: NotificationListener<UserScrollNotification>(
                   onNotification: (notification) {
-                    dismissMessageContextMenu();
+                    _userHasScrolledChat = true;
                     return false;
                   },
-                  child: NotificationListener<UserScrollNotification>(
-                    onNotification: (notification) {
-                      _userHasScrolledChat = true;
-                      return false;
-                    },
-                    child: ListView.builder(
-                      reverse: true,
-                      controller: _scrollController,
-                      findChildIndexCallback: (Key key) {
-                        if (key is ValueKey<int>) {
-                          final idx = messages.indexWhere(
-                            (m) => m.id == key.value,
-                          );
-                          if (idx == -1) return null;
-                          return messages.length - 1 - idx;
-                        }
-                        return null;
-                      },
-                      padding: EdgeInsets.only(
-                        left: 16,
-                        right: 20,
-                        top: 8,
-                        bottom: 8 + listBottomPadding,
-                      ),
-                      itemCount:
-                          messages.length + (_isLoadingMoreLocal ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (_isLoadingMoreLocal && index == messages.length) {
-                          return const Padding(
-                            padding: EdgeInsets.symmetric(vertical: 8),
-                            child: Center(child: CircularProgressIndicator()),
-                          );
-                        }
-                        final msgIndex = messages.length - 1 - index;
-                        final msg = messages[msgIndex];
-                        final showDate =
-                            msgIndex == 0 ||
-                            _isDifferentDay(
-                              messages[msgIndex - 1].createdAt,
-                              msg.createdAt,
-                            );
-                        return _buildMessageListItem(
-                          listIndex: index,
-                          msg: msg,
-                          showDate: showDate,
-                          isMine: msg.senderId == currentUserId,
+                  child: ListView.builder(
+                    reverse: true,
+                    controller: _scrollController,
+                    findChildIndexCallback: (Key key) {
+                      if (key is ValueKey<int>) {
+                        final idx = messages.indexWhere(
+                          (m) => m.id == key.value,
                         );
-                      },
+                        if (idx == -1) return null;
+                        return messages.length - 1 - idx;
+                      }
+                      return null;
+                    },
+                    padding: EdgeInsets.only(
+                      left: 16,
+                      right: 20,
+                      top: topClearance,
+                      bottom: 8 + listBottomPadding,
                     ),
+                    itemCount: messages.length + (_isLoadingMoreLocal ? 1 : 0),
+                    itemBuilder: (context, index) {
+                      if (_isLoadingMoreLocal && index == messages.length) {
+                        return const Padding(
+                          padding: EdgeInsets.symmetric(vertical: 8),
+                          child: Center(child: CircularProgressIndicator()),
+                        );
+                      }
+                      final msgIndex = messages.length - 1 - index;
+                      final msg = messages[msgIndex];
+                      final showDate =
+                          msgIndex == 0 ||
+                          _isDifferentDay(
+                            messages[msgIndex - 1].createdAt,
+                            msg.createdAt,
+                          );
+                      return _buildMessageListItem(
+                        listIndex: index,
+                        msg: msg,
+                        showDate: showDate,
+                        isMine: msg.senderId == currentUserId,
+                      );
+                    },
                   ),
                 ),
               ),
-      ),
+            ),
     );
   }
 
@@ -875,11 +878,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       );
     } else if (widget.isEmbedded) {
       // Pinned banner is rendered by the embedded shell above this [body].
+      // Embedded header/banner are in-flow — no floating chrome to clear.
       body = Column(
         children: [
           Expanded(
             child: _buildMessagesArea(
               listBottomPadding: 0,
+              topInsetHandled: true,
               messages: messages,
               mutedColor: mutedColor,
               messagesAreaBg: messagesAreaBg,
@@ -890,13 +895,19 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         ],
       );
     } else {
+      // Non-embedded: pinned banner clears the floating top chrome via the
+      // body's MediaQuery top padding (extendBodyBehindAppBar exposes the
+      // GlassTopBar height there); the list then skips its own clearance.
+      final hasInFlowTopBanner = pinnedBanner != null;
       body = Column(
         children: [
-          ?pinnedBanner,
+          if (pinnedBanner != null)
+            SafeArea(bottom: false, child: pinnedBanner),
           Expanded(
             child: ChatComposerViewport(
               messageListBuilder: (listBottomPadding) => _buildMessagesArea(
                 listBottomPadding: listBottomPadding,
+                topInsetHandled: hasInFlowTopBanner,
                 messages: messages,
                 mutedColor: mutedColor,
                 messagesAreaBg: messagesAreaBg,
@@ -958,17 +969,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
     return Scaffold(
       resizeToAvoidBottomInset: false,
-      appBar: AppBar(
-        centerTitle: true,
+      extendBodyBehindAppBar: true,
+      appBar: GlassTopBar(
         leading: IconButton(
           icon: const Icon(Icons.arrow_back),
+          tooltip: MaterialLocalizations.of(context).backButtonTooltip,
           onPressed: () {
             _clearActiveConversationIfThisChat();
             Navigator.of(context).pop();
           },
         ),
         title: headerTitle,
-        actions: [
+        trailing: [
           if (otherUser != null)
             PopupMenuButton<String>(
               icon: const Icon(Icons.more_vert),
@@ -987,7 +999,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               ],
             ),
           Padding(
-            padding: const EdgeInsets.only(right: 12),
+            padding: const EdgeInsets.only(right: 4),
             child: GestureDetector(
               onTap: _onAvatarTap,
               child: AvatarCircle(

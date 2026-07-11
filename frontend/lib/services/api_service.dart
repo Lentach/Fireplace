@@ -322,6 +322,22 @@ class ApiService {
     return data['token'] as String;
   }
 
+  /// Whether an Anti-Quantum Note still exists server-side. `false` means the
+  /// note is gone — read (burned) or expired; the caller disambiguates with
+  /// the link's own `e=` clock. Throws on transport/HTTP failure so callers
+  /// can fail open instead of falsely reporting a live note as destroyed.
+  Future<bool> isNoteAlive(String token, String noteToken) async {
+    final response = await _httpClient.get(
+      Uri.parse('$baseUrl/note/$noteToken/status'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    if (response.statusCode != 200) {
+      throw Exception('Note status check failed: ${response.statusCode}');
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return data['alive'] == true;
+  }
+
   /// Proxy link preview fetch (for web where CORS blocks direct requests).
   Future<Map<String, String?>?> fetchLinkPreview(String token, String text) async {
     final response = await _httpClient.post(

@@ -21,7 +21,7 @@
   "deleteAccount": "Usuń konto",
   "logout": "Wyloguj",
   "uninstallWarning": "Odinstalowanie aplikacji lub wyczyszczenie danych witryny trwale usuwa historię wiadomości — aby odświeżyć, po prostu całkowicie zamknij i otwórz aplikację ponownie.",
-  "chat": "Czat",
+  "chat": "Czaty",
   "contacts": "Kontakty",
   "profilePictureUpdated": "Zdjęcie profilowe zaktualizowane",
   "uploadFailed": "Nie udało się przesłać",
@@ -214,6 +214,8 @@
     }
   },
   "antiQuantumNoteCardDestroyed": "Ta notatka uległa samozniszczeniu",
+  "antiQuantumNoteBurnedTitle": "Notatka zniszczona",
+  "antiQuantumNoteBurnedSubtitle": "została odczytana",
   "privacyAntiQuantumNoteTitle": "Notatki antykwantowe",
   "privacyAntiQuantumNoteDescription": "Notatki są szyfrowane na Twoim urządzeniu przed wysłaniem — serwer przechowuje wyłącznie nieczytelny szyfrogram, a klucz deszyfrujący podróżuje jedynie we fragmencie linku (#), którego przeglądarki nigdy nie wysyłają do żadnego serwera. Notatkę można odczytać dokładnie raz, po czym jest trwale usuwana. Nieotwarte notatki niszczą się same po upływie timera (1h–24h), a wiadomość w czacie znika razem z nimi.",
 

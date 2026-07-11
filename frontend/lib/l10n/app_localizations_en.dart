@@ -76,7 +76,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Uninstalling or clearing site data permanently erases your message history — to refresh, just fully close and reopen the app.';
 
   @override
-  String get chat => 'Chat';
+  String get chat => 'Chats';
 
   @override
   String get contacts => 'Contacts';
@@ -576,6 +576,12 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get antiQuantumNoteCardDestroyed => 'This note has self-destructed';
+
+  @override
+  String get antiQuantumNoteBurnedTitle => 'Note destroyed';
+
+  @override
+  String get antiQuantumNoteBurnedSubtitle => 'it was read';
 
   @override
   String get privacyAntiQuantumNoteTitle => 'Anti-Quantum Notes';

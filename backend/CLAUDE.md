@@ -152,6 +152,7 @@ Gateway throttles are source-truth in `chat.gateway.ts`:
 - `POST /notes` (JWT) stores ciphertext and returns a random 16-byte hex token. `expiresIn` is constrained to 2h/6h/12h, default 6h. Ciphertext max 65536 chars.
 - `GET /note/:token` is public server-rendered HTML. AES-GCM key is in URL fragment (`#key`), never sent to server.
 - `POST /note/:token/reveal` is public read-once: atomic `DELETE ... WHERE token AND expires_at > NOW() RETURNING ciphertext`.
+- `GET /note/:token/status` (JWT, 120/min) returns `{ alive }` for the in-chat banner: the client flips the card to "burned — it was read" when the note is gone before its `e=` fragment clock ran out. Legacy links without `e=` cannot distinguish read-vs-expired and keep the generic destroyed state; after the clock passes, read-vs-expired is indistinguishable by design (the row is deleted on reveal).
 - Expired notes are lazy-deleted on reveal and daily at 03:00.
 
 ## 12. REST/media/auth additions checklist

@@ -76,7 +76,7 @@ class AppLocalizationsPl extends AppLocalizations {
       'Odinstalowanie aplikacji lub wyczyszczenie danych witryny trwale usuwa historię wiadomości — aby odświeżyć, po prostu całkowicie zamknij i otwórz aplikację ponownie.';
 
   @override
-  String get chat => 'Czat';
+  String get chat => 'Czaty';
 
   @override
   String get contacts => 'Kontakty';
@@ -585,6 +585,12 @@ class AppLocalizationsPl extends AppLocalizations {
   @override
   String get antiQuantumNoteCardDestroyed =>
       'Ta notatka uległa samozniszczeniu';
+
+  @override
+  String get antiQuantumNoteBurnedTitle => 'Notatka zniszczona';
+
+  @override
+  String get antiQuantumNoteBurnedSubtitle => 'została odczytana';
 
   @override
   String get privacyAntiQuantumNoteTitle => 'Notatki antykwantowe';
