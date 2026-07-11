@@ -66,13 +66,13 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
 
   /// `blue` theme — Nightfall dark.
   static const blue = GlassTheme(
-    fill: Color(0x851A2632),
+    fill: Color(0x541A2632),
     border: Color(0x24AAD7FF),
     highlight: Color(0x12FFFFFF),
     activeCapsule: Color(0x3D2AABEE),
-    onGlassMuted: Color(0xFFB9C6CF),
-    onGlassAccent: Color(0xFF8FD0FF),
-    wallpaperTint: Color(0x0D7FB8E8),
+    onGlassMuted: Color(0xFFC6D2DA),
+    onGlassAccent: Color(0xFFA5DBFF),
+    wallpaperTint: Color(0x1F7FB8E8),
     datePillBg: Color(0xB80C141C),
     datePillText: Color(0xFF9FB4C4),
     shadow: _shadowDark,
@@ -81,13 +81,13 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
 
   /// `dark` theme (Wire gray, default) — Teal Smoke dark.
   static const dark = GlassTheme(
-    fill: Color(0x85202428),
+    fill: Color(0x54202428),
     border: Color(0x21BEE1EB),
     highlight: Color(0x0FFFFFFF),
     activeCapsule: Color(0x3D6FB4C4),
     onGlassMuted: Color(0xFFB9C6CF),
     onGlassAccent: Color(0xFF6FB4C4),
-    wallpaperTint: Color(0x0D8FC4D0),
+    wallpaperTint: Color(0x1F8FC4D0),
     datePillBg: Color(0xB80C0D0F),
     datePillText: Color(0xFFA3ACB0),
     shadow: _shadowDark,
@@ -96,13 +96,13 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
 
   /// `light` theme (ember) — Hearthglow light.
   static const light = GlassTheme(
-    fill: Color(0x8CFFFAF6),
+    fill: Color(0x6BFFFAF6),
     border: Color(0xBFFFFFFF),
     highlight: Color(0xE6FFFFFF),
     activeCapsule: Color(0x29C2410C),
     onGlassMuted: Color(0xFF5E5852),
-    onGlassAccent: Color(0xFFC2410C),
-    wallpaperTint: Color(0x13B0563A),
+    onGlassAccent: Color(0xFFA03D0C),
+    wallpaperTint: Color(0x24B0563A),
     datePillBg: Color(0xCCFFFCF9),
     datePillText: Color(0xFF8A6A58),
     shadow: BoxShadow(
@@ -115,13 +115,13 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
 
   /// `teal` theme — Teal Smoke light.
   static const teal = GlassTheme(
-    fill: Color(0x8CFCFDFC),
+    fill: Color(0x6BFCFDFC),
     border: Color(0xBFFFFFFF),
     highlight: Color(0xE6FFFFFF),
     activeCapsule: Color(0x240F766E),
-    onGlassMuted: Color(0xFF484440),
-    onGlassAccent: Color(0xFF0A4F4A),
-    wallpaperTint: Color(0x123E7A74),
+    onGlassMuted: Color(0xFF3E3936),
+    onGlassAccent: Color(0xFF083E3A),
+    wallpaperTint: Color(0x243E7A74),
     datePillBg: Color(0xCCFDFEFD),
     datePillText: Color(0xFF5C6B66),
     shadow: BoxShadow(

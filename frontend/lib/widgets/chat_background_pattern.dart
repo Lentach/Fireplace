@@ -1,12 +1,24 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 
 import '../theme/glass_theme.dart';
+import 'hieroglyph_glyphs.g.dart';
 
-/// Chat wallpaper (accepted Liquid Glass spec §6): base color + a tiled
-/// 240px flame-doodle pattern (flames, sparks, crossed logs, embers, smoke,
-/// marshmallow stick) at whisper contrast. Tint comes from
-/// `GlassTheme.wallpaperTint` unless overridden.
-class ChatBackgroundPattern extends StatelessWidget {
+/// Chat wallpaper (owner-locked design v3.5, 2026-07-11): "temple columns" —
+/// hieroglyphs stacked in vertical registers with faint column separators,
+/// over the base color + a subtle radial top glow.
+///
+/// Layout rules (locked in the design session):
+/// - columns of centered glyphs, ~3 across a phone width;
+/// - weighted-random rotation, re-seeded ONCE per screen mount (owner choice:
+///   a fresh arrangement every chat entry; layout is baked at construction so
+///   nothing reshuffles during scrolling/repaints);
+/// - no glyph repeats within the last 5 picks;
+/// - never two non-wide glyphs consecutively in a column ("pen-stroke" rule);
+/// - the leaf hero appears with a guaranteed cadence (~once per screen
+///   height) but never twice in a row.
+class ChatBackgroundPattern extends StatefulWidget {
   final Widget child;
 
   /// Doodle stroke color (opacity baked in). Defaults to the theme's
@@ -22,116 +34,135 @@ class ChatBackgroundPattern extends StatelessWidget {
   });
 
   @override
+  State<ChatBackgroundPattern> createState() => _ChatBackgroundPatternState();
+}
+
+class _ChatBackgroundPatternState extends State<ChatBackgroundPattern> {
+  /// One seed per screen mount — the owner-picked "random per chat entry".
+  final int _seed = math.Random().nextInt(1 << 31);
+
+  @override
   Widget build(BuildContext context) {
-    final color = patternColor ?? GlassTheme.of(context).wallpaperTint;
+    final glass = GlassTheme.of(context);
+    final color = widget.patternColor ?? glass.wallpaperTint;
+    final bg = widget.backgroundColor ?? Colors.transparent;
     return Container(
-      color: backgroundColor,
+      color: bg,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          RepaintBoundary(
-            child: CustomPaint(painter: _FlameDoodlePainter(color: color)),
+          // Subtle depth glow behind the pattern (spec: gradient under tile).
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: const Alignment(0, -1.1),
+                radius: 1.3,
+                colors: [
+                  Color.lerp(bg, color.withValues(alpha: 1.0), 0.05)!,
+                  bg.withValues(alpha: 0.0),
+                ],
+              ),
+            ),
           ),
-          child,
+          RepaintBoundary(
+            child: CustomPaint(
+              painter: _TempleColumnsPainter(color: color, seed: _seed),
+            ),
+          ),
+          widget.child,
         ],
       ),
     );
   }
 }
 
-class _FlameDoodlePainter extends CustomPainter {
+class _TempleColumnsPainter extends CustomPainter {
   final Color color;
+  final int seed;
 
-  _FlameDoodlePainter({required this.color});
+  _TempleColumnsPainter({required this.color, required this.seed});
 
-  static const double _tile = 240;
+  static const double _columnWidth = 118;
+  static const double _vStep = 56;
+  static const double _leafCadence = 700; // ~1 leaf per this many px per col
 
   @override
   void paint(Canvas canvas, Size size) {
-    final paint = Paint()
+    final stroke = Paint()
       ..color = color
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 2.2
+      ..strokeWidth = 2
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..isAntiAlias = true;
+    final fill = Paint()
+      ..color = color.withValues(alpha: (color.a * 1.15).clamp(0.0, 1.0))
+      ..style = PaintingStyle.fill
+      ..isAntiAlias = true;
+    final sepPaint = Paint()
+      ..color = color.withValues(alpha: color.a * 0.5)
+      ..strokeWidth = 1;
 
-    for (double ty = 0; ty < size.height; ty += _tile) {
-      for (double tx = 0; tx < size.width; tx += _tile) {
+    final rnd = math.Random(seed);
+    final cols = math.max(2, (size.width / _columnWidth).round());
+    final colW = size.width / cols;
+
+    // Column separators.
+    for (var i = 1; i < cols; i++) {
+      canvas.drawLine(
+        Offset(colW * i, 0),
+        Offset(colW * i, size.height),
+        sepPaint,
+      );
+    }
+
+    final pool = <HieroGlyph>[
+      for (final g in kHieroGlyphs)
+        for (var i = 0; i < g.weight; i++)
+          if (!g.isLeaf) g,
+    ];
+    final leaf = kHieroGlyphs.firstWhere((g) => g.isLeaf);
+
+    final recent = <String>[];
+    for (var c = 0; c < cols; c++) {
+      final cx = colW * c + colW / 2;
+      var y = 34 + rnd.nextDouble() * 12;
+      var sinceLeaf = rnd.nextDouble() * _leafCadence;
+      var prevNarrow = false;
+      while (y < size.height - 18) {
+        HieroGlyph g;
+        if (sinceLeaf > _leafCadence) {
+          g = leaf;
+          sinceLeaf = 0;
+        } else {
+          g = pool[rnd.nextInt(pool.length)];
+          for (
+            var tries = 0;
+            tries < 24 && (recent.contains(g.name) || (prevNarrow && !g.wide));
+            tries++
+          ) {
+            g = pool[rnd.nextInt(pool.length)];
+          }
+        }
+        recent.add(g.name);
+        if (recent.length > 5) recent.removeAt(0);
+        prevNarrow = !g.wide;
+
+        final scale = 0.85 + rnd.nextDouble() * 0.15;
         canvas.save();
-        canvas.translate(tx, ty);
-        canvas.clipRect(const Rect.fromLTWH(0, 0, _tile, _tile));
-        _paintTile(canvas, paint);
+        canvas.translate(cx, y);
+        canvas.scale(scale);
+        g.paintFn(canvas, stroke, fill);
         canvas.restore();
+
+        final step = _vStep + (rnd.nextDouble() * 10 - 4);
+        y += step;
+        sinceLeaf += step;
       }
     }
   }
 
-  void _paintTile(Canvas c, Paint p) {
-    _flame(c, p, const Offset(46, 28), 1.0);
-    _spark(c, p, const Offset(150, 43), 13);
-    _spark(c, p, const Offset(206, 48), 8);
-    // Crossed logs.
-    c.drawLine(const Offset(26, 118), const Offset(68, 140), p);
-    c.drawLine(const Offset(24, 136), const Offset(70, 126), p);
-    _flame(c, p, const Offset(118, 104), 0.72);
-    // Smoke curl.
-    final smoke = Path()..moveTo(190, 100);
-    smoke.relativeCubicTo(-6, 8, 6, 12, 0, 20);
-    smoke.relativeCubicTo(-6, 8, 6, 12, 0, 20);
-    c.drawPath(smoke, p);
-    // Embers.
-    c.drawCircle(const Offset(222, 146), 3, p);
-    c.drawCircle(const Offset(210, 160), 2.2, p);
-    c.drawCircle(const Offset(106, 216), 3, p);
-    c.drawCircle(const Offset(92, 200), 2.2, p);
-    // Marshmallow on a stick.
-    c.drawLine(const Offset(40, 190), const Offset(70, 160), p);
-    c.drawCircle(const Offset(77, 163), 8, p);
-    _spark(c, p, const Offset(136, 198), 12);
-    _flame(c, p, const Offset(188, 196), 0.85);
-  }
-
-  /// Campfire flame doodle: outer lick, inner cut, base arc.
-  void _flame(Canvas c, Paint p, Offset o, double s) {
-    c.save();
-    c.translate(o.dx, o.dy);
-    c.scale(s);
-    final flame = Path()..moveTo(0, 0);
-    flame.relativeCubicTo(10, 8, 6, 16, 2, 21);
-    flame.relativeCubicTo(-3, 4, -3, 10, 3, 13);
-    flame.relativeCubicTo(9, -3, 15, -12, 15, -21);
-    flame.relativeCubicTo(0, -14, -11, -24, -20, -28);
-    flame.relativeCubicTo(2, 5, 2, 11, 0, 15);
-    flame.close();
-    c.drawPath(flame, p);
-    final base = Path()..moveTo(0, 34);
-    base.arcToPoint(
-      const Offset(20, 34),
-      radius: const Radius.circular(16),
-      clockwise: false,
-    );
-    c.drawPath(base, p);
-    c.restore();
-  }
-
-  /// Four-point spark star.
-  void _spark(Canvas c, Paint p, Offset center, double r) {
-    final w = r * 0.28;
-    final path = Path()
-      ..moveTo(center.dx, center.dy - r)
-      ..lineTo(center.dx + w, center.dy - w)
-      ..lineTo(center.dx + r, center.dy)
-      ..lineTo(center.dx + w, center.dy + w)
-      ..lineTo(center.dx, center.dy + r)
-      ..lineTo(center.dx - w, center.dy + w)
-      ..lineTo(center.dx - r, center.dy)
-      ..lineTo(center.dx - w, center.dy - w)
-      ..close();
-    c.drawPath(path, p);
-  }
-
   @override
-  bool shouldRepaint(_FlameDoodlePainter oldDelegate) =>
-      oldDelegate.color != color;
+  bool shouldRepaint(_TempleColumnsPainter oldDelegate) =>
+      oldDelegate.color != color || oldDelegate.seed != seed;
 }

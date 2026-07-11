@@ -116,3 +116,10 @@ All ≥ 4.5:1. Computation script lives in the session eval history; recompute o
 | Popup menus + alert dialogs | Rounded per-theme surfaces — NOT glass (framework-owned Material routes; treated as §7 fallback surfaces; true glass menus = possible follow-up, owner to ratify at PR review) |
 | Settings tiles / auth screen | UNTOUCHED BY DESIGN (content surfaces; chrome above them is glassed) |
 | Embedded desktop chat header | In-flow, solid (desktop pane header; glass floats only over scrollable content) |
+
+## 10. Round-2 owner revisions (2026-07-11, device-test feedback — supersede §3/§5/§6 where they conflict)
+
+- **Glass fills more transparent** (owner: "not transparent enough", zengi reference): dark themes `0x85`→`0x54` (~33%), light themes `0x8C`→`0x6B` (~42%). On-glass colors retuned to keep ≥4.5:1 worst-case: blue muted `#C6D2DA` / accent `#A5DBFF`; light accent `#A03D0C`; teal muted `#3E3936` / accent `#083E3A` (dark theme unchanged). All recomputed ≥4.5.
+- **No title pills** (Telegram parity): chat contact name and tab titles render as plain floating text with a soft scaffold-tinted halo; only back/add/⋮/avatar capsules remain glass.
+- **Wallpaper replaced** (owner-locked v3.5 "temple columns"): hieroglyphs stacked in vertical registers, 25-glyph registry (`hieroglyph_glyphs.g.dart`, generated from SVG masters; leaf silhouette CC0 from Wikimedia "Cannabis icon.svg"), weighted-random rotation **re-seeded per chat entry** (owner choice; baked at mount, zero scroll cost), no-repeat-last-5, never two narrow glyphs consecutively, leaf cadence ~1/screen. Tint raised to Telegram level: dark/blue 12%, light/teal 14% alpha. Subtle radial top glow under the pattern.
+- Pinned-banner "overlap" from the first device test was re-diagnosed: it was a received PING bubble scrolling under the top chrome (intended scroll-behind); the pinned banner itself clears the chrome (harness-verified with a pinned fixture).

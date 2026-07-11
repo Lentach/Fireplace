@@ -54,20 +54,28 @@ class MainTabScreenHeader extends StatelessWidget {
                 ),
                 const SizedBox(width: 10),
               ],
+              // Owner ruling (2026-07-11): plain floating title, no pill.
               Expanded(
-                child: GlassPill(
-                  height: capsuleHeight,
-                  child: Center(
-                    child: Text(
-                      title,
-                      style: RpgTheme.screenHeaderTitle(
-                        color: colorScheme.onSurface,
-                        fontSize: 17,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      textAlign: TextAlign.center,
-                    ),
+                child: Center(
+                  child: Text(
+                    title,
+                    style:
+                        RpgTheme.screenHeaderTitle(
+                          color: colorScheme.onSurface,
+                          fontSize: 17,
+                        ).copyWith(
+                          shadows: [
+                            Shadow(
+                              color: Theme.of(
+                                context,
+                              ).scaffoldBackgroundColor.withValues(alpha: 0.7),
+                              blurRadius: 12,
+                            ),
+                          ],
+                        ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
                   ),
                 ),
               ),

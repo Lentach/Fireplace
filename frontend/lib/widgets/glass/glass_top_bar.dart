@@ -38,12 +38,10 @@ class GlassTopBar extends StatelessWidget implements PreferredSizeWidget {
               ),
               const SizedBox(width: 10),
             ],
-            Expanded(
-              child: GlassPill(
-                height: capsuleHeight,
-                child: Center(child: title),
-              ),
-            ),
+            // Owner ruling (2026-07-11, Telegram parity): the title floats as
+            // plain text — no pill. A soft scaffold-tinted halo keeps it
+            // readable when content scrolls beneath.
+            Expanded(child: Center(child: _haloed(context, title))),
             if (trailing.isNotEmpty) ...[
               const SizedBox(width: 10),
               GlassPill(
@@ -57,4 +55,17 @@ class GlassTopBar extends StatelessWidget implements PreferredSizeWidget {
       ),
     );
   }
+}
+
+Widget _haloed(BuildContext context, Widget child) {
+  final halo = Theme.of(context).scaffoldBackgroundColor;
+  return DecoratedBox(
+    decoration: BoxDecoration(
+      borderRadius: BorderRadius.circular(14),
+      boxShadow: [
+        BoxShadow(color: halo.withValues(alpha: 0.55), blurRadius: 14),
+      ],
+    ),
+    child: child,
+  );
 }

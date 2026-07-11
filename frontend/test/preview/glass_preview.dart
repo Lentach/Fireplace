@@ -49,6 +49,7 @@ class GlassPreviewApp extends StatelessWidget {
     final themeName = Uri.base.queryParameters['theme'] ?? 'dark';
     final screen = Uri.base.queryParameters['screen'] ?? 'list';
 
+    final pinned = Uri.base.queryParameters['pinned'] == '1';
     final conversations = ConversationsProvider()..setCurrentUserId(1);
     conversations.onConversationsList([
       {
@@ -58,6 +59,18 @@ class GlassPreviewApp extends StatelessWidget {
         'createdAt': '2026-01-01T00:00:00.000Z',
         'unreadCount': 0,
         'lastMessage': null,
+        if (pinned) 'pinnedMessageId': 1002,
+        if (pinned)
+          'pinnedMessage': {
+            'id': 1002,
+            'content': 'YES. Two bags.',
+            'senderId': 2,
+            'senderUsername': 'Zosia',
+            'conversationId': 10,
+            'deliveryStatus': 'READ',
+            'messageType': 'TEXT',
+            'createdAt': '2026-07-10T10:44:00.000Z',
+          },
       },
     ]);
     conversations.openConversation(10, notify: false);
@@ -89,8 +102,13 @@ class GlassPreviewApp extends StatelessWidget {
           'conversationId': 10,
           'deliveryStatus': 'READ',
           'messageType': 'TEXT',
-          'createdAt': DateTime.utc(2026, 7, 10, 6, (42 + i) % 60)
-              .toIso8601String(),
+          'createdAt': DateTime.utc(
+            2026,
+            7,
+            10,
+            6,
+            (42 + i) % 60,
+          ).toIso8601String(),
         }),
     ]);
     messaging.loadCachedMessages(10);
