@@ -7,6 +7,7 @@ import '../providers/conversations_provider.dart';
 import '../providers/settings_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../utils/message_expiry.dart';
+import 'glass/glass_sheet.dart';
 import 'hearth_fade_arc.dart';
 
 const double kDisappearingPickerHeight = 216;
@@ -18,9 +19,8 @@ void showDisappearingTimerSheet(BuildContext context) {
   final convs = context.read<ConversationsProvider>();
   final settings = context.read<SettingsProvider>();
   final initialSeconds = convs.conversationDisappearingTimer;
-  showModalBottomSheet<void>(
-    context: context,
-    backgroundColor: Colors.transparent,
+  showGlassSheet<void>(
+    context,
     isScrollControlled: true,
     builder: (ctx) => MultiProvider(
       providers: [
@@ -77,11 +77,11 @@ class _DisappearingTimerSheetState extends State<DisappearingTimerSheet> {
   }
 
   int get _totalSeconds => combineDisappearingSeconds(
-        days: _days,
-        hours: _hours,
-        minutes: _minutes,
-        seconds: _seconds,
-      );
+    days: _days,
+    hours: _hours,
+    minutes: _minutes,
+    seconds: _seconds,
+  );
 
   void _turnOff() {
     _submit(null);
@@ -202,7 +202,6 @@ class _DisappearingTimerSheetState extends State<DisappearingTimerSheet> {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
     final fc = FireplaceColors.of(context);
-    final sheetColor = colorScheme.surface;
     final titleColor = colorScheme.onSurface;
     final labelColor = fc.mutedText;
     final accent = colorScheme.primary;
@@ -218,230 +217,214 @@ class _DisappearingTimerSheetState extends State<DisappearingTimerSheet> {
         brightness: theme.brightness,
         primaryColor: accent,
         textTheme: CupertinoTextThemeData(
-          pickerTextStyle: TextStyle(
-            fontSize: 22,
-            color: titleColor,
-          ),
+          pickerTextStyle: TextStyle(fontSize: 22, color: titleColor),
         ),
       ),
-      child: Container(
-        decoration: BoxDecoration(
-          color: sheetColor,
-          borderRadius: const BorderRadius.vertical(top: Radius.circular(16)),
-        ),
-        child: SafeArea(
-          top: false,
-          child: SingleChildScrollView(
-            child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
-              child: Column(
-                mainAxisSize: MainAxisSize.min,
-                crossAxisAlignment: CrossAxisAlignment.stretch,
-                children: [
-                  Center(
-                    child: Container(
-                      width: 36,
-                      height: 4,
-                      margin: const EdgeInsets.only(bottom: 12),
-                      decoration: BoxDecoration(
-                        color: labelColor.withValues(alpha: 0.35),
-                        borderRadius: BorderRadius.circular(2),
-                      ),
-                    ),
-                  ),
-                  Center(
-                    child: HearthFadeArcHero(
-                      color: ephemeral,
-                      trackColor: ephemeral.withValues(alpha: 0.22),
-                      progress: _heroProgress(),
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-                  Text(
-                    l10n.disappearingTimerTitle,
-                    textAlign: TextAlign.center,
-                    style: TextStyle(
-                      fontSize: 20,
-                      fontWeight: FontWeight.w700,
-                      color: titleColor,
-                      letterSpacing: -0.2,
-                    ),
-                  ),
-                  const SizedBox(height: 14),
-                  Container(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 14,
-                      vertical: 12,
-                    ),
+      child: SafeArea(
+        top: false,
+        child: SingleChildScrollView(
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(20, 8, 20, 20),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.stretch,
+              children: [
+                Center(
+                  child: Container(
+                    width: 36,
+                    height: 4,
+                    margin: const EdgeInsets.only(bottom: 12),
                     decoration: BoxDecoration(
-                      color: fc.inputBg,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(
-                        color: fc.convItemBorder.withValues(alpha: 0.8),
-                      ),
-                    ),
-                    child: Column(
-                      crossAxisAlignment: CrossAxisAlignment.start,
-                      children: [
-                        Text(
-                          l10n.disappearingTimerExplainerLine1,
-                          style: RpgTheme.bodyFont(
-                            fontSize: 13,
-                            color: titleColor.withValues(alpha: 0.92),
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          l10n.disappearingTimerExplainerLine2,
-                          style: RpgTheme.bodyFont(
-                            fontSize: 13,
-                            color: labelColor,
-                          ),
-                        ),
-                        const SizedBox(height: 6),
-                        Text(
-                          l10n.disappearingTimerExplainerLine3,
-                          style: RpgTheme.bodyFont(
-                            fontSize: 13,
-                            color: labelColor,
-                          ),
-                        ),
-                      ],
+                      color: labelColor.withValues(alpha: 0.35),
+                      borderRadius: BorderRadius.circular(2),
                     ),
                   ),
-                  const SizedBox(height: 16),
-                  Semantics(
-                    liveRegion: true,
-                    label: l10n.disappearingTimerSummarySemantics(summary),
-                    child: Text(
-                      summary,
-                      textAlign: TextAlign.center,
-                      style: RpgTheme.bodyFont(
-                        fontSize: 22,
-                        fontWeight: FontWeight.w600,
-                        color: titleColor,
-                      ),
+                ),
+                Center(
+                  child: HearthFadeArcHero(
+                    color: ephemeral,
+                    trackColor: ephemeral.withValues(alpha: 0.22),
+                    progress: _heroProgress(),
+                  ),
+                ),
+                const SizedBox(height: 12),
+                Text(
+                  l10n.disappearingTimerTitle,
+                  textAlign: TextAlign.center,
+                  style: TextStyle(
+                    fontSize: 20,
+                    fontWeight: FontWeight.w700,
+                    color: titleColor,
+                    letterSpacing: -0.2,
+                  ),
+                ),
+                const SizedBox(height: 14),
+                Container(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 14,
+                    vertical: 12,
+                  ),
+                  decoration: BoxDecoration(
+                    color: fc.inputBg,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(
+                      color: fc.convItemBorder.withValues(alpha: 0.8),
                     ),
                   ),
-                  const SizedBox(height: 4),
-                  Text(
-                    l10n.disappearingTimerRangeHint,
-                    textAlign: TextAlign.center,
-                    style: RpgTheme.bodyFont(
-                      fontSize: 12,
-                      color: labelColor,
-                    ),
-                  ),
-                  if (_errorText != null) ...[
-                    const SizedBox(height: 10),
-                    Text(
-                      _errorText!,
-                      textAlign: TextAlign.center,
-                      style: TextStyle(
-                        color: colorScheme.error,
-                        fontSize: 14,
-                      ),
-                    ),
-                  ],
-                  const SizedBox(height: 12),
-                  Container(
-                    decoration: BoxDecoration(
-                      color: fc.inputBg,
-                      borderRadius: BorderRadius.circular(12),
-                      border: Border.all(color: fc.convItemBorder),
-                    ),
-                    child: Column(
-                      children: [
-                        Padding(
-                          padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
-                          child: Row(
-                            children: [
-                              _columnLabel(
-                                l10n.disappearingTimerDaysLabel,
-                                labelColor,
-                              ),
-                              _columnLabel(
-                                l10n.disappearingTimerHoursLabel,
-                                labelColor,
-                              ),
-                              _columnLabel(
-                                l10n.disappearingTimerMinutesLabel,
-                                labelColor,
-                              ),
-                              _columnLabel(
-                                l10n.disappearingTimerSecondsLabel,
-                                labelColor,
-                              ),
-                            ],
-                          ),
-                        ),
-                        SizedBox(
-                          height: kDisappearingPickerHeight,
-                          child: Row(
-                            children: [
-                              _durationPicker(
-                                semanticsLabel: l10n.disappearingTimerDaysLabel,
-                                maxValue: kDisappearingPickerMaxDays,
-                                controller: _daysController,
-                                onSelectedItemChanged: _onDaysChanged,
-                              ),
-                              _durationPicker(
-                                semanticsLabel:
-                                    l10n.disappearingTimerHoursLabel,
-                                maxValue: 23,
-                                controller: _hoursController,
-                                onSelectedItemChanged: _onHoursChanged,
-                              ),
-                              _durationPicker(
-                                semanticsLabel:
-                                    l10n.disappearingTimerMinutesLabel,
-                                maxValue: 59,
-                                controller: _minutesController,
-                                onSelectedItemChanged: _onMinutesChanged,
-                              ),
-                              _durationPicker(
-                                semanticsLabel:
-                                    l10n.disappearingTimerSecondsLabel,
-                                maxValue: 59,
-                                controller: _secondsController,
-                                onSelectedItemChanged: _onSecondsChanged,
-                              ),
-                            ],
-                          ),
-                        ),
-                      ],
-                    ),
-                  ),
-                  const SizedBox(height: 20),
-                  Row(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
                     children: [
-                      Expanded(
-                        child: OutlinedButton(
-                          onPressed: _turnOff,
-                          style: OutlinedButton.styleFrom(
-                            foregroundColor: labelColor,
-                            side: BorderSide(color: fc.convItemBorder),
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                          child: Text(l10n.disappearingTimerTurnOff),
+                      Text(
+                        l10n.disappearingTimerExplainerLine1,
+                        style: RpgTheme.bodyFont(
+                          fontSize: 13,
+                          color: titleColor.withValues(alpha: 0.92),
                         ),
                       ),
-                      const SizedBox(width: 12),
-                      Expanded(
-                        child: FilledButton(
-                          onPressed: _setTimer,
-                          style: FilledButton.styleFrom(
-                            backgroundColor: accent,
-                            foregroundColor: colorScheme.onPrimary,
-                            padding: const EdgeInsets.symmetric(vertical: 14),
-                          ),
-                          child: Text(l10n.disappearingTimerSetTimer),
+                      const SizedBox(height: 6),
+                      Text(
+                        l10n.disappearingTimerExplainerLine2,
+                        style: RpgTheme.bodyFont(
+                          fontSize: 13,
+                          color: labelColor,
+                        ),
+                      ),
+                      const SizedBox(height: 6),
+                      Text(
+                        l10n.disappearingTimerExplainerLine3,
+                        style: RpgTheme.bodyFont(
+                          fontSize: 13,
+                          color: labelColor,
                         ),
                       ),
                     ],
                   ),
+                ),
+                const SizedBox(height: 16),
+                Semantics(
+                  liveRegion: true,
+                  label: l10n.disappearingTimerSummarySemantics(summary),
+                  child: Text(
+                    summary,
+                    textAlign: TextAlign.center,
+                    style: RpgTheme.bodyFont(
+                      fontSize: 22,
+                      fontWeight: FontWeight.w600,
+                      color: titleColor,
+                    ),
+                  ),
+                ),
+                const SizedBox(height: 4),
+                Text(
+                  l10n.disappearingTimerRangeHint,
+                  textAlign: TextAlign.center,
+                  style: RpgTheme.bodyFont(fontSize: 12, color: labelColor),
+                ),
+                if (_errorText != null) ...[
+                  const SizedBox(height: 10),
+                  Text(
+                    _errorText!,
+                    textAlign: TextAlign.center,
+                    style: TextStyle(color: colorScheme.error, fontSize: 14),
+                  ),
                 ],
-              ),
+                const SizedBox(height: 12),
+                Container(
+                  decoration: BoxDecoration(
+                    color: fc.inputBg,
+                    borderRadius: BorderRadius.circular(12),
+                    border: Border.all(color: fc.convItemBorder),
+                  ),
+                  child: Column(
+                    children: [
+                      Padding(
+                        padding: const EdgeInsets.fromLTRB(4, 8, 4, 0),
+                        child: Row(
+                          children: [
+                            _columnLabel(
+                              l10n.disappearingTimerDaysLabel,
+                              labelColor,
+                            ),
+                            _columnLabel(
+                              l10n.disappearingTimerHoursLabel,
+                              labelColor,
+                            ),
+                            _columnLabel(
+                              l10n.disappearingTimerMinutesLabel,
+                              labelColor,
+                            ),
+                            _columnLabel(
+                              l10n.disappearingTimerSecondsLabel,
+                              labelColor,
+                            ),
+                          ],
+                        ),
+                      ),
+                      SizedBox(
+                        height: kDisappearingPickerHeight,
+                        child: Row(
+                          children: [
+                            _durationPicker(
+                              semanticsLabel: l10n.disappearingTimerDaysLabel,
+                              maxValue: kDisappearingPickerMaxDays,
+                              controller: _daysController,
+                              onSelectedItemChanged: _onDaysChanged,
+                            ),
+                            _durationPicker(
+                              semanticsLabel: l10n.disappearingTimerHoursLabel,
+                              maxValue: 23,
+                              controller: _hoursController,
+                              onSelectedItemChanged: _onHoursChanged,
+                            ),
+                            _durationPicker(
+                              semanticsLabel:
+                                  l10n.disappearingTimerMinutesLabel,
+                              maxValue: 59,
+                              controller: _minutesController,
+                              onSelectedItemChanged: _onMinutesChanged,
+                            ),
+                            _durationPicker(
+                              semanticsLabel:
+                                  l10n.disappearingTimerSecondsLabel,
+                              maxValue: 59,
+                              controller: _secondsController,
+                              onSelectedItemChanged: _onSecondsChanged,
+                            ),
+                          ],
+                        ),
+                      ),
+                    ],
+                  ),
+                ),
+                const SizedBox(height: 20),
+                Row(
+                  children: [
+                    Expanded(
+                      child: OutlinedButton(
+                        onPressed: _turnOff,
+                        style: OutlinedButton.styleFrom(
+                          foregroundColor: labelColor,
+                          side: BorderSide(color: fc.convItemBorder),
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: Text(l10n.disappearingTimerTurnOff),
+                      ),
+                    ),
+                    const SizedBox(width: 12),
+                    Expanded(
+                      child: FilledButton(
+                        onPressed: _setTimer,
+                        style: FilledButton.styleFrom(
+                          backgroundColor: accent,
+                          foregroundColor: colorScheme.onPrimary,
+                          padding: const EdgeInsets.symmetric(vertical: 14),
+                        ),
+                        child: Text(l10n.disappearingTimerSetTimer),
+                      ),
+                    ),
+                  ],
+                ),
+              ],
             ),
           ),
         ),

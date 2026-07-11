@@ -7,6 +7,7 @@ import '../providers/conversations_provider.dart';
 import '../providers/friends_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
+import '../widgets/glass/glass_sheet.dart';
 import '../widgets/main_tab_screen_header.dart';
 import '../utils/instant_opaque_route.dart';
 import 'chat_detail_screen.dart';
@@ -45,12 +46,8 @@ class ContactsScreen extends StatelessWidget {
   void _showContactContextMenu(BuildContext context, UserModel user) {
     final colorScheme = Theme.of(context).colorScheme;
 
-    showModalBottomSheet<void>(
-      context: context,
-      backgroundColor: colorScheme.surface,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(12)),
-      ),
+    showGlassSheet<void>(
+      context,
       builder: (sheetContext) {
         return SafeArea(
           child: Padding(
@@ -167,12 +164,14 @@ class ContactsScreen extends StatelessWidget {
         }
       });
     }
+    // Same floating-chrome treatment as the Chats tab (owner, round 4b):
+    // the list runs full-bleed behind the transparent header capsule area
+    // and the bottom nav; clearance is padding, not a layout slot.
     return Scaffold(
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: Stack(
         children: [
-          _buildHeader(context),
-          Expanded(child: _buildContactsList(context)),
+          Positioned.fill(child: _buildContactsList(context)),
+          Positioned(top: 0, left: 0, right: 0, child: _buildHeader(context)),
         ],
       ),
     );
@@ -203,10 +202,19 @@ class ContactsScreen extends StatelessWidget {
     final isDark = RpgTheme.isDark(context);
     final mutedColor = FireplaceColors.of(context).mutedText;
 
+    final media = MediaQuery.paddingOf(context);
+    final bottomClearance = media.bottom;
+    final topClearance = media.top + MainTabScreenHeader.clearance;
+
     if (friends.isEmpty) {
       return Center(
         child: Padding(
-          padding: const EdgeInsets.all(32),
+          padding: EdgeInsets.fromLTRB(
+            32,
+            32 + topClearance,
+            32,
+            32 + bottomClearance,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -235,7 +243,7 @@ class ContactsScreen extends StatelessWidget {
     final borderColor = FireplaceColors.of(context).convItemBorder;
 
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+      padding: EdgeInsets.fromLTRB(8, topClearance, 8, bottomClearance + 8),
       itemCount: friends.length,
       separatorBuilder: (_, index) => Divider(height: 1, color: borderColor),
       itemBuilder: (context, index) {
@@ -260,11 +268,14 @@ class ContactsScreen extends StatelessWidget {
           context,
         ).colorScheme.primary.withValues(alpha: 0.2),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          // Matches ConversationTile metrics exactly (owner: rows must be
+          // the same height as the Chats tab): v10 + 44px avatar = 64px.
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
               AvatarCircle(
                 displayName: user.username,
+                radius: 22,
                 profilePictureUrl: user.profilePictureUrl,
               ),
               const SizedBox(width: 12),

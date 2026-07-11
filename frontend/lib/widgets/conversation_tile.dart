@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
+import '../theme/glass_theme.dart';
 import '../models/message_model.dart';
 import '../models/user_model.dart';
 import '../providers/messaging_provider.dart';
@@ -51,7 +52,9 @@ class ConversationTile extends StatelessWidget {
       return l10n.attachment;
     }
     if (lastMessage.messageType == MessageType.gif) return 'GIF';
-    if (lastMessage.messageType == MessageType.file) return l10n.attachmentOptionDocument;
+    if (lastMessage.messageType == MessageType.file) {
+      return l10n.attachmentOptionDocument;
+    }
     if (lastMessage.displayAsEncryptedPlaceholder ||
         lastMessage.content == 'Encrypted message') {
       return l10n.encryptedMessage;
@@ -99,10 +102,7 @@ class ConversationTile extends StatelessWidget {
         if (unreadCount > 0)
           Container(
             margin: const EdgeInsets.only(right: 6),
-            padding: const EdgeInsets.symmetric(
-              horizontal: 6,
-              vertical: 2,
-            ),
+            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
             decoration: BoxDecoration(
               color: Theme.of(context).colorScheme.primary,
               borderRadius: BorderRadius.circular(10),
@@ -121,10 +121,7 @@ class ConversationTile extends StatelessWidget {
         if (lastMessage != null)
           Text(
             _formatTime(lastMessage!.createdAt),
-            style: RpgTheme.bodyFont(
-              fontSize: 11,
-              color: secondaryColor,
-            ),
+            style: RpgTheme.bodyFont(fontSize: 11, color: secondaryColor),
           ),
       ],
     );
@@ -160,19 +157,18 @@ class ConversationTile extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
     final themePref = context.watch<SettingsProvider>().themePreference;
     final ephemeralColor = RpgTheme.ephemeralAccent(
       context,
       themePreference: themePref,
     );
-    final activeBg = isDark
-        ? RpgTheme.activeTabBgDark
-        : (themePref == 'teal'
-            ? RpgTheme.activeTabBgTealStone
-            : RpgTheme.activeTabBgLight);
-    final secondaryColor = isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
+    // Active-row tint comes from the glass theme so every theme highlights
+    // with its own accent (spec: activeCapsule), not a hardcoded palette.
+    final activeBg = GlassTheme.of(context).activeCapsule;
+    // Per-theme muted (FireplaceColors) instead of the legacy warm gray that
+    // tinted blue/teal dark themes orange-ish.
+    final secondaryColor = FireplaceColors.of(context).mutedText;
 
     return Dismissible(
       key: ValueKey<int>(conversationId),
@@ -184,11 +180,7 @@ class ConversationTile extends StatelessWidget {
           color: Colors.red,
           borderRadius: BorderRadius.circular(8),
         ),
-        child: const Icon(
-          Icons.delete,
-          color: Colors.white,
-          size: 28,
-        ),
+        child: const Icon(Icons.delete, color: Colors.white, size: 28),
       ),
       confirmDismiss: (direction) async {
         return await showDialog<bool>(
@@ -196,8 +188,9 @@ class ConversationTile extends StatelessWidget {
           builder: (dialogContext) {
             final colorScheme = Theme.of(dialogContext).colorScheme;
             final isDark = RpgTheme.isDark(dialogContext);
-            final mutedColor =
-                isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
+            final mutedColor = isDark
+                ? RpgTheme.mutedDark
+                : RpgTheme.textSecondaryLight;
             final l10n = AppLocalizations.of(dialogContext);
             return AlertDialog(
               backgroundColor: colorScheme.surface,
@@ -242,77 +235,79 @@ class ConversationTile extends StatelessWidget {
       },
       onDismissed: (direction) => onDelete(),
       child: Material(
-      color: isActive ? activeBg : Colors.transparent,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: onTap,
+        color: isActive ? activeBg : Colors.transparent,
         borderRadius: BorderRadius.circular(8),
-        splashColor: Theme.of(context).colorScheme.primary.withValues(alpha: 0.2),
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            children: [
-              AvatarCircle(
-                displayName: displayName,
-                profilePictureUrl: otherUser?.profilePictureUrl,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      displayName,
-                      style: RpgTheme.bodyFont(
-                        fontSize: 14,
-                        color: colorScheme.onSurface,
-                        fontWeight: FontWeight.w600,
-                      ),
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                    ),
-                    if (isTyping) ...[
-                      const SizedBox(height: 3),
+        child: InkWell(
+          onTap: onTap,
+          borderRadius: BorderRadius.circular(8),
+          splashColor: Theme.of(
+            context,
+          ).colorScheme.primary.withValues(alpha: 0.2),
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+            child: Row(
+              children: [
+                AvatarCircle(
+                  displayName: displayName,
+                  profilePictureUrl: otherUser?.profilePictureUrl,
+                ),
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Column(
+                    crossAxisAlignment: CrossAxisAlignment.start,
+                    children: [
                       Text(
-                        AppLocalizations.of(context).typing,
+                        displayName,
                         style: RpgTheme.bodyFont(
-                          fontSize: 13,
-                          color: Theme.of(context).colorScheme.primary,
-                        ).copyWith(fontStyle: FontStyle.italic),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                    ] else if (lastMessage != null) ...[
-                      const SizedBox(height: 3),
-                      Text(
-                        _lastMessagePreview(context, lastMessage!),
-                        style: RpgTheme.bodyFont(
-                          fontSize: 13,
-                          color: secondaryColor,
+                          fontSize: 14,
+                          color: colorScheme.onSurface,
+                          fontWeight: FontWeight.w600,
                         ),
                         maxLines: 1,
                         overflow: TextOverflow.ellipsis,
                       ),
+                      if (isTyping) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          AppLocalizations.of(context).typing,
+                          style: RpgTheme.bodyFont(
+                            fontSize: 13,
+                            color: Theme.of(context).colorScheme.primary,
+                          ).copyWith(fontStyle: FontStyle.italic),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ] else if (lastMessage != null) ...[
+                        const SizedBox(height: 3),
+                        Text(
+                          _lastMessagePreview(context, lastMessage!),
+                          style: RpgTheme.bodyFont(
+                            fontSize: 13,
+                            color: secondaryColor,
+                          ),
+                          maxLines: 1,
+                          overflow: TextOverflow.ellipsis,
+                        ),
+                      ],
                     ],
+                  ),
+                ),
+                Column(
+                  crossAxisAlignment: CrossAxisAlignment.end,
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    _buildTrailingMetaRow(
+                      context,
+                      ephemeralColor,
+                      secondaryColor,
+                    ),
                   ],
                 ),
-              ),
-              Column(
-                crossAxisAlignment: CrossAxisAlignment.end,
-                mainAxisSize: MainAxisSize.min,
-                children: [
-                  _buildTrailingMetaRow(
-                    context,
-                    ephemeralColor,
-                    secondaryColor,
-                  ),
-                ],
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),
-    ),
     );
   }
 }

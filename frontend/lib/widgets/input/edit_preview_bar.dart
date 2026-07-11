@@ -18,38 +18,41 @@ class EditPreviewBar extends StatelessWidget {
     final borderColor = Theme.of(context).colorScheme.primary;
     final mutedColor = isDark ? Colors.white60 : Colors.black54;
 
+    // Mirrors ReplyPreviewBar's rounded floating card.
     return Container(
       width: double.infinity,
-      padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
+      margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+      clipBehavior: Clip.antiAlias,
       decoration: BoxDecoration(
-        color: (isDark ? Colors.white : Colors.black).withValues(alpha: 0.06),
-        border: Border(
-          left: BorderSide(color: borderColor, width: 4),
-          bottom: BorderSide(color: fc.tabBorder),
-        ),
+        color: Theme.of(context).colorScheme.surface,
+        borderRadius: BorderRadius.circular(16),
+        border: Border.all(color: fc.tabBorder),
       ),
-      child: Row(
-        children: [
-          Icon(Icons.edit_outlined, size: 16, color: borderColor),
-          const SizedBox(width: 8),
-          Expanded(
-            child: Text(
-              l10n.messageEditingTitle,
-              style: RpgTheme.bodyFont(
-                fontSize: 12,
-                color: borderColor,
-                fontWeight: FontWeight.w600,
+      child: Padding(
+        padding: const EdgeInsetsDirectional.fromSTEB(12, 8, 8, 8),
+        child: Row(
+          children: [
+            Icon(Icons.edit_outlined, size: 16, color: borderColor),
+            const SizedBox(width: 8),
+            Expanded(
+              child: Text(
+                l10n.messageEditingTitle,
+                style: RpgTheme.bodyFont(
+                  fontSize: 12,
+                  color: borderColor,
+                  fontWeight: FontWeight.w600,
+                ),
               ),
             ),
-          ),
-          IconButton(
-            icon: const Icon(Icons.close, size: 20),
-            onPressed: onDismiss,
-            padding: EdgeInsets.zero,
-            constraints: const BoxConstraints(minWidth: 36, minHeight: 36),
-            color: mutedColor,
-          ),
-        ],
+            IconButton(
+              icon: const Icon(Icons.close, size: 20),
+              onPressed: onDismiss,
+              padding: EdgeInsets.zero,
+              constraints: const BoxConstraints(minWidth: 48, minHeight: 48),
+              color: mutedColor,
+            ),
+          ],
+        ),
       ),
     );
   }

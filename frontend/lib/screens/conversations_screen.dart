@@ -125,11 +125,13 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   }
 
   Widget _buildMobileLayout() {
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
+    // Floating glass chrome: the list runs full-bleed behind the header
+    // capsules (and behind the bottom nav via MainShell's extendBody);
+    // clearance is applied as list padding, not layout slots.
+    return Stack(
       children: [
-        _buildCustomHeader(),
-        Expanded(child: _buildConversationList()),
+        Positioned.fill(child: _buildConversationList(floatingChrome: true)),
+        Positioned(top: 0, left: 0, right: 0, child: _buildCustomHeader()),
       ],
     );
   }
@@ -247,7 +249,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     );
   }
 
-  Widget _buildConversationList() {
+  Widget _buildConversationList({bool floatingChrome = false}) {
     final convs = context.watch<ConversationsProvider>();
     final conversations = convs.sortedConversations;
     final isDark = RpgTheme.isDark(context);
@@ -255,30 +257,43 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         ? RpgTheme.mutedDark
         : RpgTheme.textSecondaryLight;
 
+    final media = MediaQuery.paddingOf(context);
+    final listPadding = floatingChrome
+        ? EdgeInsets.fromLTRB(
+            8,
+            media.top + MainTabScreenHeader.clearance,
+            8,
+            media.bottom + 8,
+          )
+        : EdgeInsets.fromLTRB(8, 8, 8, media.bottom + 8);
+
     if (conversations.isEmpty) {
-      return Center(
-        child: Padding(
-          padding: const EdgeInsets.all(32),
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            children: [
-              Icon(Icons.forum_outlined, size: 48, color: mutedColor),
-              const SizedBox(height: 16),
-              Text(
-                AppLocalizations.of(context).noConversationsYet,
-                style: RpgTheme.bodyFont(fontSize: 16, color: mutedColor),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                AppLocalizations.of(context).startNewChatToBegin,
-                style: RpgTheme.bodyFont(
-                  fontSize: 13,
-                  color: isDark
-                      ? RpgTheme.timeColorDark
-                      : RpgTheme.textSecondaryLight,
+      return Padding(
+        padding: listPadding,
+        child: Center(
+          child: Padding(
+            padding: const EdgeInsets.all(24),
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                Icon(Icons.forum_outlined, size: 48, color: mutedColor),
+                const SizedBox(height: 16),
+                Text(
+                  AppLocalizations.of(context).noConversationsYet,
+                  style: RpgTheme.bodyFont(fontSize: 16, color: mutedColor),
                 ),
-              ),
-            ],
+                const SizedBox(height: 8),
+                Text(
+                  AppLocalizations.of(context).startNewChatToBegin,
+                  style: RpgTheme.bodyFont(
+                    fontSize: 13,
+                    color: isDark
+                        ? RpgTheme.timeColorDark
+                        : RpgTheme.textSecondaryLight,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       );
@@ -286,7 +301,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 
     final borderColor = FireplaceColors.of(context).convItemBorder;
     return ListView.separated(
-      padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+      padding: listPadding,
       itemCount: conversations.length,
       separatorBuilder: (_, index) => Divider(height: 1, color: borderColor),
       itemBuilder: (context, index) {
