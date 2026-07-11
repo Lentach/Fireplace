@@ -305,9 +305,13 @@ class EncryptionProvider extends ChangeNotifier {
       if (_encryptionService.needsKeyUpload) {
         final keys = _encryptionService.getKeysForUpload();
         if (keys != null) {
-          _emit?.call('uploadKeyBundle', keys['keyBundle'] as Map<String, dynamic>);
+          final keyBundle = keys['keyBundle'] as Map<String, dynamic>;
+          _emit?.call('uploadKeyBundle', keyBundle);
           _emit?.call('uploadOneTimePreKeys', {
             'keys': (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
+            // Bind these OTPs to the identity epoch that generated them so the
+            // server never serves them under a later (regenerated) identity.
+            'identityPublicKey': keyBundle['identityPublicKey'],
           });
           debugPrint('[E2E] Uploaded key bundle + one-time pre-keys');
           _e2eFlowLog('E2E_KEYS_UPLOADED', {});
@@ -374,8 +378,16 @@ class EncryptionProvider extends ChangeNotifier {
     if (_generatingMoreKeys) return;
     _generatingMoreKeys = true;
     debugPrint('[E2E] Server reports pre-keys low, generating more...');
-    _encryptionService.generateMorePreKeys().then((keys) {
-      _emit?.call('uploadOneTimePreKeys', {'keys': keys});
+    _encryptionService.generateMorePreKeys().then((keys) async {
+      // Tag replenished OTPs with the current identity epoch (same guard as the
+      // initial upload) so a low-pool refill can never be served under a stale
+      // identity after a regeneration.
+      final identity =
+          await _encryptionService.currentIdentityPublicKeyBase64();
+      _emit?.call('uploadOneTimePreKeys', {
+        'keys': keys,
+        'identityPublicKey': ?identity,
+      });
       debugPrint('[E2E] Uploaded ${keys.length} new one-time pre-keys');
     }).catchError((e) {
       debugPrint('[E2E] Failed to generate more pre-keys: $e');

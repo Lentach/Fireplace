@@ -44,17 +44,53 @@ export class KeyBundlesService {
       { userId, ...data },
       { conflictPaths: ['userId'] },
     );
+    // Purge unused OTPs from any SUPERSEDED identity epoch (or untagged legacy
+    // rows). Belt-and-suspenders with the fetch identity filter: the filter
+    // already refuses to serve them; this reclaims the slots so replenishment
+    // refills the current epoch. New clients tag their OTPs with this same
+    // identity, so a re-upload in either order survives (their tag matches)
+    // while genuinely stale rows are removed. This is the durable fix for the
+    // 2026-07-11 stale-OTP bad-MAC wave (see migrations 0003-0005).
+    await this.otpRepo
+      .createQueryBuilder()
+      .delete()
+      .where('"userId" = :userId', { userId })
+      .andWhere('used = false')
+      .andWhere(
+        '("identityPublicKey" IS NULL OR "identityPublicKey" != :identity)',
+        { identity: data.identityPublicKey },
+      )
+      .execute();
     this.logger.debug(`Key bundle upserted for userId=${userId}`);
   }
 
   async uploadOneTimePreKeys(
     userId: number,
     keys: OneTimePreKeyData[],
+    identityPublicKey?: string,
   ): Promise<void> {
-    const entities = keys.map((k) =>
-      this.otpRepo.create({ userId, keyId: k.keyId, publicKey: k.publicKey }),
+    // Bind each OTP to the identity epoch that generated it. New clients pass it
+    // explicitly; old clients omit it, so back-fill from the current bundle. The
+    // fetch identity filter is the load-bearing guard either way — an OTP whose
+    // tag does not match the current bundle identity is never served.
+    let identity = identityPublicKey ?? null;
+    if (!identity) {
+      const bundle = await this.keyBundleRepo.findOne({ where: { userId } });
+      identity = bundle?.identityPublicKey ?? null;
+    }
+    // UPSERT on (userId, keyId): a regenerated epoch reuses keyId slots 0..N, so
+    // collapse onto the existing row and refresh publicKey + identity + used
+    // rather than piling up duplicate rows the oldest-first claim would serve.
+    await this.otpRepo.upsert(
+      keys.map((k) => ({
+        userId,
+        keyId: k.keyId,
+        publicKey: k.publicKey,
+        identityPublicKey: identity,
+        used: false,
+      })),
+      { conflictPaths: ['userId', 'keyId'] },
     );
-    await this.otpRepo.save(entities);
     this.logger.debug(
       `Uploaded ${keys.length} one-time pre-keys for userId=${userId}`,
     );
@@ -67,7 +103,16 @@ export class KeyBundlesService {
     if (!bundle) return null;
 
     // Atomic claim: UPDATE ... WHERE id = (SELECT id ... LIMIT 1) RETURNING *
-    // Prevents race condition where two concurrent calls serve the same OTP.
+    // Prevents a race where two concurrent calls serve the same OTP.
+    //
+    // The "identityPublicKey" = $2 filter is the DURABLE fix for the stale-OTP
+    // bad-MAC wave (2026-07-11): only claim OTPs minted under the CURRENT
+    // identity epoch. A row from a superseded epoch (whose private half the
+    // device discarded on regeneration) or an untagged legacy row is never
+    // served, so PreKey/X3DH can never build on a dead key. Safe regardless of
+    // upload order — the tag, not timing, decides. Proven RED->GREEN on real
+    // Postgres (backend/otp_epoch_repro.mjs) and end-to-end via the wire harness.
+    //
     // Postgres repo.query() returns [rows, rowCount] for UPDATE ... RETURNING
     // (see backend/CLAUDE.md §4) — destructuring the row directly reads the
     // rows ARRAY and silently serves oneTimePreKey* as null while still
@@ -77,12 +122,12 @@ export class KeyBundlesService {
          SET used = true
        WHERE id = (
          SELECT id FROM one_time_pre_keys
-         WHERE "userId" = $1 AND used = false
+         WHERE "userId" = $1 AND used = false AND "identityPublicKey" = $2
          ORDER BY id ASC
          LIMIT 1
        )
        RETURNING id, "keyId", "publicKey"`,
-      [userId],
+      [userId, bundle.identityPublicKey],
     )) as [Array<{ id: number; keyId: number; publicKey: string }>, number];
     const otp = rows[0];
 
@@ -104,7 +149,18 @@ export class KeyBundlesService {
   }
 
   async countUnusedPreKeys(userId: number): Promise<number> {
-    return this.otpRepo.count({ where: { userId, used: false } });
+    // Count only the CURRENT epoch — stale rows from a superseded identity are
+    // never served, so they must not inflate the count and suppress the
+    // preKeysLow replenishment signal.
+    const bundle = await this.keyBundleRepo.findOne({ where: { userId } });
+    if (!bundle) return 0;
+    return this.otpRepo.count({
+      where: {
+        userId,
+        used: false,
+        identityPublicKey: bundle.identityPublicKey,
+      },
+    });
   }
 
   async deleteByUserId(userId: number): Promise<void> {

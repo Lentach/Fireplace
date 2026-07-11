@@ -114,13 +114,29 @@ describe('ChatKeyExchangeService', () => {
     it('should call uploadOneTimePreKeys and emit oneTimePreKeysUploaded', async () => {
       await service.handleUploadOneTimePreKeys(mockClient as Socket, validData);
 
+      // Third arg is the optional identity epoch tag; undefined when the client
+      // omits it (legacy clients) — the service back-fills from the bundle.
       expect(keyBundlesService.uploadOneTimePreKeys).toHaveBeenCalledWith(
         1,
         validData.keys,
+        undefined,
       );
       expect(mockClient.emit).toHaveBeenCalledWith('oneTimePreKeysUploaded', {
         count: 2,
       });
+    });
+
+    it('forwards the identity epoch tag when a new client supplies it', async () => {
+      await service.handleUploadOneTimePreKeys(mockClient as Socket, {
+        ...validData,
+        identityPublicKey: 'epoch-2-identity',
+      });
+
+      expect(keyBundlesService.uploadOneTimePreKeys).toHaveBeenCalledWith(
+        1,
+        validData.keys,
+        'epoch-2-identity',
+      );
     });
 
     it('should emit error when DTO validation fails', async () => {

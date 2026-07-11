@@ -370,6 +370,19 @@ class EncryptionService {
     return groups.join(' ');
   }
 
+  /// Current identity public key (base64) — the epoch tag sent with one-time
+  /// pre-key uploads so the server binds each OTP to this identity and never
+  /// serves a stale key from a superseded epoch. Null before init.
+  Future<String?> currentIdentityPublicKeyBase64() async {
+    if (!_initialized) return null;
+    try {
+      final keyPair = await _identityStore.getIdentityKeyPair();
+      return base64Encode(keyPair.getPublicKey().serialize());
+    } catch (_) {
+      return null;
+    }
+  }
+
   static Map<String, dynamic> _preKeyToUploadFormat(PreKeyRecord pk) => {
         'keyId': pk.id,
         'publicKey': base64Encode(pk.getKeyPair().publicKey.serialize()),
