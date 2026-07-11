@@ -83,10 +83,14 @@ class DecryptionFailureDecision {
 /// Decides the outcome of a failed inbound decrypt.
 ///
 /// Precedence (mirrors the original if-chain exactly):
-/// 1. `duplicate` / `badMac` → terminal + persist, no retry. These win even when
-///    [hadIdentityReset] is true. `badMac` also asks the peer to re-key, because
-///    repeated Bad-MAC type-2 messages mean their sending ratchet is stale for
-///    our current session.
+/// 1. `badMac` → terminal + persist, no retry, and asks the peer to re-key
+///    (repeated Bad-MAC type-2 messages mean their sending ratchet is stale for
+///    our current session). `duplicate` → terminal IN MEMORY only, NOT persisted:
+///    the ratchet key is already consumed, so the plaintext is only recoverable
+///    from the durable decrypted-content cache; persisting `[Decryption failed]`
+///    would poison that cache and make a merely-transiently-unreadable (or
+///    late-written) plaintext unrecoverable forever. Both win even when
+///    [hadIdentityReset] is true. `duplicate` never asks the peer to re-key.
 /// 2. `hadIdentityReset` → terminal, NOT persisted, no retry. All messages for the
 ///    old identity are unrecoverable; a fresh session will be built by the next
 ///    PreKey message.
@@ -100,9 +104,20 @@ DecryptionFailureDecision decideDecryptionFailure(
 }) {
   switch (kind) {
     case DecryptionFailureKind.duplicate:
+      // Ratchet already consumed this key; the caller already tried the cache,
+      // the in-memory row, and the persisted plaintext before reaching here.
+      // Mark failed IN MEMORY (so this session's history pass doesn't loop on
+      // it) but DO NOT persist: a persisted `[Decryption failed]` poisons the
+      // durable cache so a plaintext row that was only transiently unreadable
+      // (silent write failure, reconnect churn, late write) could never be
+      // restored. With persist=false the next launch re-reads the durable cache
+      // and RECOVERS the message when its plaintext is present, falling back to
+      // failed only when it is genuinely lost. Safe: duplicate never triggers a
+      // session reset (notifyPeerRebuild stays false), so re-attempting on a
+      // later launch cannot reintroduce the Bad-MAC reset loop.
       return const DecryptionFailureDecision(
         rule: DecryptionFailureRule.duplicate,
-        persistTerminalFailure: true,
+        persistTerminalFailure: false,
         markContentFailed: true,
         retryAction: DecryptionRetryAction.none,
       );

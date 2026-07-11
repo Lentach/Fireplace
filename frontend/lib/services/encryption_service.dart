@@ -436,7 +436,29 @@ class EncryptionService {
           } catch (_) {}
         }
       }
-      await prefs.setString(key, jsonEncode(data));
+      final payload = jsonEncode(data);
+      // A dropped write is how a decrypted message later re-decrypts, throws
+      // DuplicateMessage (ratchet key consumed), and becomes a permanent
+      // [Decryption failed] (the 2026-07-11 bob210 report — storage was
+      // granted-persistent yet the plaintext was gone). setString returns
+      // whether the backend commit succeeded (false on quota/exception); a
+      // read-back would be vacuous because getString serves the plugin's
+      // in-memory cache and matches even when the localStorage write dropped.
+      // Retry once on failure, then surface a hard loss instead of swallowing it.
+      var ok = false;
+      try {
+        ok = await prefs.setString(key, payload);
+        if (!ok) ok = await prefs.setString(key, payload);
+      } catch (_) {
+        ok = false; // some backends throw (quota/exception) instead of false
+      }
+      if (!ok) {
+        // Surface the hard loss even when the backend threw — otherwise the
+        // outer catch swallows it and the message silently becomes a future
+        // DuplicateMessage → permanent [Decryption failed].
+        E2ePersistentDiag.record('DECRYPT_PERSIST_FAILED', {'msgId': id});
+        return; // don't prune on a failed write
+      }
       await _pruneDecryptedContentCache(prefs, userId);
     } catch (_) {}
   }
