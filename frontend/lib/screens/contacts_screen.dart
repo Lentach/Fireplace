@@ -164,12 +164,14 @@ class ContactsScreen extends StatelessWidget {
         }
       });
     }
+    // Same floating-chrome treatment as the Chats tab (owner, round 4b):
+    // the list runs full-bleed behind the transparent header capsule area
+    // and the bottom nav; clearance is padding, not a layout slot.
     return Scaffold(
-      body: Column(
-        crossAxisAlignment: CrossAxisAlignment.stretch,
+      body: Stack(
         children: [
-          _buildHeader(context),
-          Expanded(child: _buildContactsList(context)),
+          Positioned.fill(child: _buildContactsList(context)),
+          Positioned(top: 0, left: 0, right: 0, child: _buildHeader(context)),
         ],
       ),
     );
@@ -200,12 +202,19 @@ class ContactsScreen extends StatelessWidget {
     final isDark = RpgTheme.isDark(context);
     final mutedColor = FireplaceColors.of(context).mutedText;
 
-    final bottomClearance = MediaQuery.paddingOf(context).bottom;
+    final media = MediaQuery.paddingOf(context);
+    final bottomClearance = media.bottom;
+    final topClearance = media.top + MainTabScreenHeader.clearance;
 
     if (friends.isEmpty) {
       return Center(
         child: Padding(
-          padding: EdgeInsets.fromLTRB(32, 32, 32, 32 + bottomClearance),
+          padding: EdgeInsets.fromLTRB(
+            32,
+            32 + topClearance,
+            32,
+            32 + bottomClearance,
+          ),
           child: Column(
             mainAxisSize: MainAxisSize.min,
             children: [
@@ -234,7 +243,7 @@ class ContactsScreen extends StatelessWidget {
     final borderColor = FireplaceColors.of(context).convItemBorder;
 
     return ListView.separated(
-      padding: EdgeInsets.fromLTRB(8, 8, 8, bottomClearance + 8),
+      padding: EdgeInsets.fromLTRB(8, topClearance, 8, bottomClearance + 8),
       itemCount: friends.length,
       separatorBuilder: (_, index) => Divider(height: 1, color: borderColor),
       itemBuilder: (context, index) {

@@ -10,7 +10,6 @@ import '../providers/friends_provider.dart';
 import '../providers/messaging_provider.dart';
 import '../services/voice_audio_coordinator.dart';
 import '../theme/rpg_theme.dart';
-import '../widgets/glass/chat_top_fade.dart';
 import '../widgets/glass/glass_top_bar.dart';
 import '../widgets/message/chat_message_bubble.dart';
 import '../widgets/input/chat_input_bar.dart';
@@ -1015,8 +1014,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       body: Stack(
         children: [
           body,
-          // zengi-style progressive fade under the floating chrome.
-          const ChatTopFade(),
 
           // Ping effect overlay
           if (messaging.showPingEffect)

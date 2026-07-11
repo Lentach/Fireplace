@@ -34,12 +34,23 @@ class GlassTopBar extends StatelessWidget implements PreferredSizeWidget {
           // Title centers against the FULL bar width (a Row slot would skew
           // it toward the narrower side — owner-reported). The Row above it
           // only hit-tests on the capsules, so title long-press still works.
+          // Owner ruling (2026-07-11, round 4b): the title DOES get a glass
+          // pill — "more visible with glassy bubble"; the blur lives under
+          // the bubble itself, not as a band under the whole panel.
           child: Stack(
             children: [
               Positioned.fill(
                 child: Padding(
                   padding: const EdgeInsets.symmetric(horizontal: 106),
-                  child: Center(child: _haloed(context, title)),
+                  child: Center(
+                    child: GlassPill(
+                      height: capsuleHeight,
+                      padding: const EdgeInsets.symmetric(horizontal: 18),
+                      child: Center(
+                        child: FittedBox(fit: BoxFit.scaleDown, child: title),
+                      ),
+                    ),
+                  ),
                 ),
               ),
               Row(
@@ -67,17 +78,4 @@ class GlassTopBar extends StatelessWidget implements PreferredSizeWidget {
       ),
     );
   }
-}
-
-Widget _haloed(BuildContext context, Widget child) {
-  final halo = Theme.of(context).scaffoldBackgroundColor;
-  return DecoratedBox(
-    decoration: BoxDecoration(
-      borderRadius: BorderRadius.circular(14),
-      boxShadow: [
-        BoxShadow(color: halo.withValues(alpha: 0.55), blurRadius: 14),
-      ],
-    ),
-    child: child,
-  );
 }
