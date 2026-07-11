@@ -3,6 +3,7 @@ import {
   IsNumber,
   IsOptional,
   IsString,
+  MaxLength,
   Min,
   MinLength,
   ValidateNested,
@@ -32,5 +33,8 @@ export class UploadOneTimePreKeysDto {
   @IsOptional()
   @IsString()
   @MinLength(1)
+  // A Curve25519 identity public key is ~44 base64 chars; 255 is generous
+  // headroom while bounding the per-OTP write surface (defense in depth).
+  @MaxLength(255)
   identityPublicKey?: string;
 }

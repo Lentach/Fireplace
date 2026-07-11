@@ -16,9 +16,16 @@
 //     purge kept the new keys and dropped the dead ones);
 //   * both directions work.
 //
-// This FAILS CLOSED: remove the server's identityPublicKey fetch filter and the
-// pre-fix server serves the oldest (stale) OTP -> alice's decrypt throws Bad Mac
-// -> this test goes red. That is the wire-level RED for the fix.
+// Scope of this test (precise): it pins the end-to-end PURGE + identity-TAGGING
+// path — after regeneration the epoch-2 OTPs reuse keyId slots 0..N (UPSERT
+// overwrites epoch-1) and upsertKeyBundle purges the rest, so no stale row
+// physically survives here. It does NOT by itself isolate the fetch filter
+// (a filter-less server would still serve only epoch-2 in this scenario).
+// The identity fetch filter is pinned FAIL-CLOSED elsewhere: the backend unit
+// spec asserts the SQL carries `"identityPublicKey" = $2` + exact params, and
+// backend/otp_epoch_repro.mjs GUARD serves against non-overlapping, UNPURGED
+// stale rows and proves they are never returned. Together: filter + purge +
+// tagging are each guarded.
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
