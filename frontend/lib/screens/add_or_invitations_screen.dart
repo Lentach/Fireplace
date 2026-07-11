@@ -5,6 +5,8 @@ import '../providers/connection_provider.dart';
 import '../providers/conversations_provider.dart';
 import '../providers/friends_provider.dart';
 import '../theme/rpg_theme.dart';
+import '../theme/glass_theme.dart';
+import '../widgets/glass/glass_surface.dart';
 import '../widgets/top_snackbar.dart';
 
 /// Single screen with tabs: Add user, Friend requests.
@@ -18,6 +20,8 @@ class AddOrInvitationsScreen extends StatelessWidget {
       length: 2,
       child: Scaffold(
         appBar: AppBar(
+          backgroundColor: GlassTheme.of(context).fill,
+          elevation: 0,
           title: Text(
             AppLocalizations.of(context).addInvitations,
             style: RpgTheme.bodyFont(
@@ -69,10 +73,7 @@ class AddOrInvitationsScreen extends StatelessWidget {
           ),
         ),
         body: const TabBarView(
-          children: [
-            _AddByUsernameTab(),
-            _FriendRequestsTab(),
-          ],
+          children: [_AddByUsernameTab(), _FriendRequestsTab()],
         ),
       ),
     );
@@ -171,15 +172,11 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            Container(
+            GlassSurface(
+              borderRadius: BorderRadius.circular(16),
+              blur: false,
+              shadow: false,
               padding: const EdgeInsets.all(12),
-              decoration: BoxDecoration(
-                color: Theme.of(context).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-                borderRadius: BorderRadius.circular(8),
-                border: Border.all(
-                  color: Theme.of(context).colorScheme.outline.withValues(alpha: 0.3),
-                ),
-              ),
               child: Text(
                 AppLocalizations.of(context).addNewUserHint,
                 style: RpgTheme.bodyFont(
@@ -272,13 +269,10 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
     final convs = context.watch<ConversationsProvider>();
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
-    final cardBg = FireplaceColors.of(context).convItemBg;
-    final borderColor = isDark
-        ? RpgTheme.convItemBorderDarkGray
-        : colorScheme.outline.withValues(alpha: 0.5);
     final textColor = colorScheme.onSurface;
-    final secondaryColor =
-        isDark ? RpgTheme.mutedDarkGray : RpgTheme.textSecondaryLight;
+    final secondaryColor = isDark
+        ? RpgTheme.mutedDarkGray
+        : RpgTheme.textSecondaryLight;
 
     // Listen for pending open conversation to navigate
     final pendingId = convs.consumePendingOpen();
@@ -306,10 +300,7 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
                 const SizedBox(height: 16),
                 Text(
                   AppLocalizations.of(context).noPendingRequests,
-                  style: RpgTheme.bodyFont(
-                    fontSize: 16,
-                    color: secondaryColor,
-                  ),
+                  style: RpgTheme.bodyFont(fontSize: 16, color: secondaryColor),
                 ),
               ],
             ),
@@ -322,17 +313,16 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
           itemBuilder: (context, index) {
             final request = chatConsumer.friendRequests[index];
             final displayName = request.sender.displayHandle;
-            final firstLetter =
-                displayName.isNotEmpty ? displayName[0].toUpperCase() : '?';
+            final firstLetter = displayName.isNotEmpty
+                ? displayName[0].toUpperCase()
+                : '?';
 
-            return Card(
-              margin: const EdgeInsets.symmetric(vertical: 8),
-              color: cardBg,
-              shape: RoundedRectangleBorder(
-                borderRadius: BorderRadius.circular(12),
-                side: BorderSide(color: borderColor, width: 2),
-              ),
-              child: Padding(
+            return Padding(
+              padding: const EdgeInsets.symmetric(vertical: 8),
+              child: GlassSurface(
+                borderRadius: BorderRadius.circular(16),
+                blur: false,
+                shadow: false,
                 padding: const EdgeInsets.all(12),
                 child: Column(
                   children: [
@@ -365,7 +355,9 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
                               ),
                               const SizedBox(height: 4),
                               Text(
-                                AppLocalizations.of(context).wantsToAddYouAsFriend,
+                                AppLocalizations.of(
+                                  context,
+                                ).wantsToAddYouAsFriend,
                                 style: RpgTheme.bodyFont(
                                   fontSize: 12,
                                   color: secondaryColor,
@@ -382,10 +374,16 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
                       children: [
                         ElevatedButton.icon(
                           onPressed: () {
-                            context
-                                .read<FriendsProvider>()
-                                .acceptFriendRequest(request.id);
-                            showTopSnackBar(context, AppLocalizations.of(context).friendAdded(displayName), backgroundColor: Colors.green);
+                            context.read<FriendsProvider>().acceptFriendRequest(
+                              request.id,
+                            );
+                            showTopSnackBar(
+                              context,
+                              AppLocalizations.of(
+                                context,
+                              ).friendAdded(displayName),
+                              backgroundColor: Colors.green,
+                            );
                           },
                           icon: const Icon(Icons.check),
                           label: Text(AppLocalizations.of(context).accept),
@@ -396,10 +394,14 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
                         ),
                         ElevatedButton.icon(
                           onPressed: () {
-                            context
-                                .read<FriendsProvider>()
-                                .rejectFriendRequest(request.id);
-                            showTopSnackBar(context, AppLocalizations.of(context).requestRejected, backgroundColor: Colors.red);
+                            context.read<FriendsProvider>().rejectFriendRequest(
+                              request.id,
+                            );
+                            showTopSnackBar(
+                              context,
+                              AppLocalizations.of(context).requestRejected,
+                              backgroundColor: Colors.red,
+                            );
                           },
                           icon: const Icon(Icons.close),
                           label: Text(AppLocalizations.of(context).reject),

@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import 'package:image_picker/image_picker.dart';
 import '../theme/rpg_theme.dart';
+import '../widgets/glass/glass_surface.dart';
 import '../providers/auth_provider.dart';
 import '../providers/connection_provider.dart';
 import '../providers/encryption_provider.dart';
@@ -213,19 +214,24 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  /// ListTile ink needs a [Material] ancestor; border/background live on Material, not an outer DecoratedBox.
+  /// Liquid Glass (owner, 2026-07-11): tiles are tinted glass cards.
+  /// `blur: false` — over the flat settings background a backdrop blur is
+  /// invisible and per-tile filters on a scrolling list are a perf trap;
+  /// the translucent fill/border reads identically. ListTile ink still
+  /// needs a [Material] ancestor inside the surface.
   Widget _settingsTileShell(Widget child) {
-    final fc = FireplaceColors.of(context);
     return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 3),
-      child: Material(
-        color: fc.settingsTileBg,
-        shape: RoundedRectangleBorder(
-          borderRadius: BorderRadius.circular(10),
-          side: BorderSide(color: fc.settingsTileBorder, width: 1.2),
+      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 4),
+      child: GlassSurface(
+        borderRadius: BorderRadius.circular(16),
+        blur: false,
+        shadow: false,
+        child: Material(
+          type: MaterialType.transparency,
+          clipBehavior: Clip.antiAlias,
+          borderRadius: BorderRadius.circular(16),
+          child: child,
         ),
-        clipBehavior: Clip.antiAlias,
-        child: child,
       ),
     );
   }

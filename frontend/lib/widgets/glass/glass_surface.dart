@@ -40,6 +40,12 @@ class GlassSurface extends StatelessWidget {
   /// large backdrop blur buys nothing visually (e.g. the GIF grid sheet).
   final bool forceOpaque;
 
+  /// Tint-only mode: translucent fill/border WITHOUT a BackdropFilter.
+  /// For cards over flat backgrounds (settings/invitations tiles) — looks
+  /// identical there and costs nothing; per-tile backdrop blurs on scrolling
+  /// lists were never perf-gated.
+  final bool blur;
+
   const GlassSurface({
     super.key,
     required this.borderRadius,
@@ -49,6 +55,7 @@ class GlassSurface extends StatelessWidget {
     this.padding,
     this.shadow = true,
     this.forceOpaque = false,
+    this.blur = true,
   });
 
   /// Blur sigma from the accepted spec.
@@ -103,7 +110,9 @@ class GlassSurface extends StatelessWidget {
       );
       surface = ClipRRect(
         borderRadius: borderRadius,
-        child: BackdropFilter(filter: _backdropFilter, child: surface),
+        child: blur
+            ? BackdropFilter(filter: _backdropFilter, child: surface)
+            : surface,
       );
     }
 

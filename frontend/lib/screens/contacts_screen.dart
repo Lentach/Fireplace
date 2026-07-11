@@ -259,11 +259,14 @@ class ContactsScreen extends StatelessWidget {
           context,
         ).colorScheme.primary.withValues(alpha: 0.2),
         child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 12),
+          // Matches ConversationTile metrics exactly (owner: rows must be
+          // the same height as the Chats tab): v10 + 44px avatar = 64px.
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
           child: Row(
             children: [
               AvatarCircle(
                 displayName: user.username,
+                radius: 22,
                 profilePictureUrl: user.profilePictureUrl,
               ),
               const SizedBox(width: 12),
