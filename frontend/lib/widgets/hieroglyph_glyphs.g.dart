@@ -2,6 +2,11 @@
 // codegen (docs/design/liquid-glass/wallpapers/). Do not edit by hand;
 // regenerate from the SVG masters instead.
 //
+// v4 set (owner-approved 2026-07-11): red-marked glyphs deleted; 13 authentic
+// Gardiner-list signs added (akhet N27, dju N26, pet N1, nefer F35,
+// netjer R8, seba N14, sedge M23, wick V28, sun disc N5, per O1,
+// door bolt O34, foot D58, folded cloth S29).
+//
 // Leaf silhouette traced from Wikimedia Commons "Cannabis icon.svg"
 // (source: svgsilh.com, CC0 / public domain — no attribution required).
 //
@@ -18,7 +23,7 @@ class HieroGlyph {
   /// row within a column (avoids "pen-stroke" stacks).
   final bool wide;
 
-  /// Selection weight in the random rotation.
+  /// Legacy selection weight (bag-shuffle ignores it; kept for tooling).
   final int weight;
 
   /// The rare hero glyph (guaranteed cadence handled by the painter).
@@ -35,71 +40,42 @@ class HieroGlyph {
   });
 }
 
-/// Full glyph registry (23 stroke glyphs + fat fills + CC0 leaf).
+/// Owner-approved v4 registry: 27 sign glyphs + the CC0 leaf hero.
 final List<HieroGlyph> kHieroGlyphs = <HieroGlyph>[
   HieroGlyph(
     'horus',
     wide: true,
-    weight: 3,
+    weight: 1,
     isLeaf: false,
     paintFn: _paintHorus,
   ),
   HieroGlyph(
     'ankh',
     wide: false,
-    weight: 2,
+    weight: 1,
     isLeaf: false,
     paintFn: _paintAnkh,
   ),
   HieroGlyph(
-    'scarab',
-    wide: true,
-    weight: 1,
-    isLeaf: false,
-    paintFn: _paintScarab,
-  ),
-  HieroGlyph(
-    'scarab_fat',
-    wide: true,
-    weight: 2,
-    isLeaf: false,
-    paintFn: _paintScarabFat,
-  ),
-  HieroGlyph(
     'pyramids',
     wide: true,
-    weight: 2,
+    weight: 1,
     isLeaf: false,
     paintFn: _paintPyramids,
   ),
   HieroGlyph(
     'cobra',
     wide: false,
-    weight: 2,
+    weight: 1,
     isLeaf: false,
     paintFn: _paintCobra,
   ),
   HieroGlyph(
     'water',
     wide: true,
-    weight: 2,
-    isLeaf: false,
-    paintFn: _paintWater,
-  ),
-  HieroGlyph('sun', wide: true, weight: 1, isLeaf: false, paintFn: _paintSun),
-  HieroGlyph(
-    'sun_fat',
-    wide: true,
-    weight: 2,
-    isLeaf: false,
-    paintFn: _paintSunFat,
-  ),
-  HieroGlyph(
-    'cartouche',
-    wide: true,
     weight: 1,
     isLeaf: false,
-    paintFn: _paintCartouche,
+    paintFn: _paintWater,
   ),
   HieroGlyph(
     'obelisk',
@@ -116,25 +92,11 @@ final List<HieroGlyph> kHieroGlyphs = <HieroGlyph>[
     paintFn: _paintLotus,
   ),
   HieroGlyph(
-    'falcon_fat',
-    wide: true,
-    weight: 2,
-    isLeaf: false,
-    paintFn: _paintFalconFat,
-  ),
-  HieroGlyph(
     'feather',
     wide: false,
     weight: 1,
     isLeaf: false,
     paintFn: _paintFeather,
-  ),
-  HieroGlyph(
-    'seba',
-    wide: false,
-    weight: 2,
-    isLeaf: false,
-    paintFn: _paintSeba,
   ),
   HieroGlyph(
     'djed',
@@ -143,32 +105,90 @@ final List<HieroGlyph> kHieroGlyphs = <HieroGlyph>[
     isLeaf: false,
     paintFn: _paintDjed,
   ),
-  HieroGlyph('was', wide: false, weight: 1, isLeaf: false, paintFn: _paintWas),
-  HieroGlyph('neb', wide: true, weight: 2, isLeaf: false, paintFn: _paintNeb),
+  HieroGlyph('neb', wide: true, weight: 1, isLeaf: false, paintFn: _paintNeb),
+  HieroGlyph('boat', wide: true, weight: 1, isLeaf: false, paintFn: _paintBoat),
+  HieroGlyph('ka', wide: true, weight: 1, isLeaf: false, paintFn: _paintKa),
   HieroGlyph(
-    'mouth_fat',
-    wide: true,
-    weight: 2,
-    isLeaf: false,
-    paintFn: _paintMouthFat,
-  ),
-  HieroGlyph('shen', wide: true, weight: 1, isLeaf: false, paintFn: _paintShen),
-  HieroGlyph('ka', wide: true, weight: 2, isLeaf: false, paintFn: _paintKa),
-  HieroGlyph('boat', wide: true, weight: 2, isLeaf: false, paintFn: _paintBoat),
-  HieroGlyph(
-    'bread_fat',
+    'scarab',
     wide: true,
     weight: 1,
     isLeaf: false,
-    paintFn: _paintBreadFat,
+    paintFn: _paintScarab,
   ),
-  HieroGlyph('bee', wide: false, weight: 1, isLeaf: false, paintFn: _paintBee),
+  HieroGlyph('bee', wide: true, weight: 1, isLeaf: false, paintFn: _paintBee),
   HieroGlyph(
     'leafreal',
     wide: true,
-    weight: 2,
+    weight: 1,
     isLeaf: true,
     paintFn: _paintLeafreal,
+  ),
+  HieroGlyph(
+    'akhet',
+    wide: true,
+    weight: 1,
+    isLeaf: false,
+    paintFn: _paintAkhet,
+  ),
+  HieroGlyph('dju', wide: true, weight: 1, isLeaf: false, paintFn: _paintDju),
+  HieroGlyph('pet', wide: true, weight: 1, isLeaf: false, paintFn: _paintPet),
+  HieroGlyph(
+    'nefer',
+    wide: false,
+    weight: 1,
+    isLeaf: false,
+    paintFn: _paintNefer,
+  ),
+  HieroGlyph(
+    'netjer',
+    wide: false,
+    weight: 1,
+    isLeaf: false,
+    paintFn: _paintNetjer,
+  ),
+  HieroGlyph(
+    'seba2',
+    wide: false,
+    weight: 1,
+    isLeaf: false,
+    paintFn: _paintSeba2,
+  ),
+  HieroGlyph(
+    'sedge',
+    wide: false,
+    weight: 1,
+    isLeaf: false,
+    paintFn: _paintSedge,
+  ),
+  HieroGlyph(
+    'wick',
+    wide: false,
+    weight: 1,
+    isLeaf: false,
+    paintFn: _paintWick,
+  ),
+  HieroGlyph(
+    'sundisc',
+    wide: true,
+    weight: 1,
+    isLeaf: false,
+    paintFn: _paintSundisc,
+  ),
+  HieroGlyph('per', wide: true, weight: 1, isLeaf: false, paintFn: _paintPer),
+  HieroGlyph('bolt', wide: true, weight: 1, isLeaf: false, paintFn: _paintBolt),
+  HieroGlyph(
+    'foot',
+    wide: false,
+    weight: 1,
+    isLeaf: false,
+    paintFn: _paintFoot,
+  ),
+  HieroGlyph(
+    'cloth',
+    wide: false,
+    weight: 1,
+    isLeaf: false,
+    paintFn: _paintCloth,
   ),
 ];
 
@@ -214,68 +234,6 @@ void _paintAnkh(Canvas c, Paint s, Paint f) {
   final p2 = Path()
     ..moveTo(-10, 4)
     ..lineTo(10, 4);
-  c.drawPath(p2, s);
-}
-
-void _paintScarab(Canvas c, Paint s, Paint f) {
-  c.drawOval(
-    Rect.fromCenter(center: const Offset(0, 2), width: 20, height: 24),
-    s,
-  );
-  final p1 = Path()
-    ..moveTo(0, -10)
-    ..lineTo(0, 14)
-    ..moveTo(-10, -1)
-    ..lineTo(10, -1);
-  c.drawPath(p1, s);
-  final p2 = Path()
-    ..moveTo(-6, -12)
-    ..cubicTo(-6, -16, 6, -16, 6, -12);
-  c.drawPath(p2, s);
-  final p3 = Path()
-    ..moveTo(-9, -6)
-    ..lineTo(-17, -12)
-    ..moveTo(-10, 2)
-    ..lineTo(-18, 2)
-    ..moveTo(-8, 9)
-    ..lineTo(-15, 15)
-    ..moveTo(9, -6)
-    ..lineTo(17, -12)
-    ..moveTo(10, 2)
-    ..lineTo(18, 2)
-    ..moveTo(8, 9)
-    ..lineTo(15, 15);
-  c.drawPath(p3, s);
-}
-
-void _paintScarabFat(Canvas c, Paint s, Paint f) {
-  final p0 = Path()
-    ..moveTo(0, -10)
-    ..cubicTo(7, -10, 10, -4, 10, 2)
-    ..cubicTo(10, 9, 6, 14, 0, 14)
-    ..cubicTo(-6, 14, -10, 9, -10, 2)
-    ..cubicTo(-10, -4, -7, -10, 0, -10)
-    ..close();
-  c.drawPath(p0, f);
-  final p1 = Path()
-    ..moveTo(-6, -12)
-    ..cubicTo(-6, -16, 6, -16, 6, -12)
-    ..cubicTo(4, -10, -4, -10, -6, -12)
-    ..close();
-  c.drawPath(p1, f);
-  final p2 = Path()
-    ..moveTo(-9, -6)
-    ..lineTo(-17, -12)
-    ..moveTo(-10, 2)
-    ..lineTo(-18, 2)
-    ..moveTo(-8, 9)
-    ..lineTo(-15, 15)
-    ..moveTo(9, -6)
-    ..lineTo(17, -12)
-    ..moveTo(10, 2)
-    ..lineTo(18, 2)
-    ..moveTo(8, 9)
-    ..lineTo(15, 15);
   c.drawPath(p2, s);
 }
 
@@ -343,60 +301,6 @@ void _paintWater(Canvas c, Paint s, Paint f) {
   c.drawPath(p2, s);
 }
 
-void _paintSun(Canvas c, Paint s, Paint f) {
-  c.drawOval(
-    Rect.fromCenter(center: const Offset(0, 0), width: 14, height: 14),
-    s,
-  );
-  final p1 = Path()
-    ..moveTo(-7, 2)
-    ..cubicTo(-14, -2, -20, -2, -26, 2)
-    ..cubicTo(-20, 5, -13, 6, -7, 4);
-  c.drawPath(p1, s);
-  final p2 = Path()
-    ..moveTo(7, 2)
-    ..cubicTo(14, -2, 20, -2, 26, 2)
-    ..cubicTo(20, 5, 13, 6, 7, 4);
-  c.drawPath(p2, s);
-}
-
-void _paintSunFat(Canvas c, Paint s, Paint f) {
-  c.drawOval(
-    Rect.fromCenter(center: const Offset(0, 0), width: 14, height: 14),
-    f,
-  );
-  final p1 = Path()
-    ..moveTo(-7, 2)
-    ..cubicTo(-14, -2, -20, -2, -26, 2)
-    ..cubicTo(-20, 5, -13, 6, -7, 4);
-  c.drawPath(p1, s);
-  final p2 = Path()
-    ..moveTo(7, 2)
-    ..cubicTo(14, -2, 20, -2, 26, 2)
-    ..cubicTo(20, 5, 13, 6, 7, 4);
-  c.drawPath(p2, s);
-}
-
-void _paintCartouche(Canvas c, Paint s, Paint f) {
-  c.drawRRect(RRect.fromLTRBR(-20, -9, 20, 9, const Radius.circular(0)), s);
-  final p1 = Path()
-    ..moveTo(-24, -9)
-    ..lineTo(-24, 9);
-  c.drawPath(p1, s);
-  c.drawOval(
-    Rect.fromCenter(center: const Offset(10, -0), width: 0, height: 0),
-    s,
-  );
-  final p3 = Path()
-    ..moveTo(-0, -4)
-    ..lineTo(0, 4);
-  c.drawPath(p3, s);
-  c.drawOval(
-    Rect.fromCenter(center: const Offset(-10, 0), width: 0, height: 0),
-    s,
-  );
-}
-
 void _paintObelisk(Canvas c, Paint s, Paint f) {
   final p0 = Path()
     ..moveTo(-5, 16)
@@ -441,23 +345,6 @@ void _paintLotus(Canvas c, Paint s, Paint f) {
   c.drawPath(p3, s);
 }
 
-void _paintFalconFat(Canvas c, Paint s, Paint f) {
-  final p0 = Path()
-    ..moveTo(-8, 16)
-    ..lineTo(-8, 4)
-    ..cubicTo(-14, -2, -12, -12, -4, -14)
-    ..cubicTo(0, -15, 4, -13, 5, -9)
-    ..cubicTo(10, -9, 12, -6, 10, -4)
-    ..lineTo(6, -3)
-    ..cubicTo(8, 6, 4, 12, 10, 16)
-    ..close();
-  c.drawPath(p0, f);
-  final p1 = Path()
-    ..moveTo(-12, 16)
-    ..lineTo(14, 16);
-  c.drawPath(p1, s);
-}
-
 void _paintFeather(Canvas c, Paint s, Paint f) {
   final p0 = Path()
     ..moveTo(0, 16)
@@ -465,22 +352,6 @@ void _paintFeather(Canvas c, Paint s, Paint f) {
     ..cubicTo(8, -12, 9, 2, 1, 8)
     ..moveTo(0, -14)
     ..cubicTo(-3, -10, -3, 0, 0, 8);
-  c.drawPath(p0, s);
-}
-
-void _paintSeba(Canvas c, Paint s, Paint f) {
-  final p0 = Path()
-    ..moveTo(0, -11)
-    ..lineTo(3.2, -3.4)
-    ..lineTo(11, -3.4)
-    ..lineTo(4.8, 1.6)
-    ..lineTo(7.4, 9.4)
-    ..lineTo(0, 4.8)
-    ..lineTo(-7.4, 9.4)
-    ..lineTo(-4.8, 1.6)
-    ..lineTo(-11, -3.4)
-    ..lineTo(-3.2, -3.4)
-    ..close();
   c.drawPath(p0, s);
 }
 
@@ -512,24 +383,6 @@ void _paintDjed(Canvas c, Paint s, Paint f) {
   c.drawPath(p4, s);
 }
 
-void _paintWas(Canvas c, Paint s, Paint f) {
-  final p0 = Path()
-    ..moveTo(0, -12)
-    ..lineTo(0, 14);
-  c.drawPath(p0, s);
-  final p1 = Path()
-    ..moveTo(0, -12)
-    ..cubicTo(4, -16, 9, -14, 9, -10)
-    ..cubicTo(9, -7, 5, -7, 3, -9);
-  c.drawPath(p1, s);
-  final p2 = Path()
-    ..moveTo(0, 14)
-    ..lineTo(-4, 18)
-    ..moveTo(0, 14)
-    ..lineTo(4, 18);
-  c.drawPath(p2, s);
-}
-
 void _paintNeb(Canvas c, Paint s, Paint f) {
   final p0 = Path()
     ..moveTo(-13, 2)
@@ -540,45 +393,6 @@ void _paintNeb(Canvas c, Paint s, Paint f) {
     ..moveTo(-13, 5)
     ..lineTo(13, 5);
   c.drawPath(p0, s);
-}
-
-void _paintMouthFat(Canvas c, Paint s, Paint f) {
-  final p0 = Path()
-    ..moveTo(-13, 0)
-    ..cubicTo(-7, -6, 7, -6, 13, 0)
-    ..cubicTo(7, 6, -7, 6, -13, 0)
-    ..close();
-  c.drawPath(p0, f);
-}
-
-void _paintShen(Canvas c, Paint s, Paint f) {
-  c.drawOval(
-    Rect.fromCenter(center: const Offset(0, -3), width: 16, height: 16),
-    s,
-  );
-  final p1 = Path()
-    ..moveTo(-11, 9)
-    ..lineTo(11, 9);
-  c.drawPath(p1, s);
-  final p2 = Path()
-    ..moveTo(0, 5)
-    ..lineTo(0, 9);
-  c.drawPath(p2, s);
-}
-
-void _paintKa(Canvas c, Paint s, Paint f) {
-  final p0 = Path()
-    ..moveTo(-12, 12)
-    ..lineTo(12, 12);
-  c.drawPath(p0, s);
-  final p1 = Path()
-    ..moveTo(-9, 12)
-    ..lineTo(-9, -4)
-    ..cubicTo(-9, -9, -6, -12, -3, -13)
-    ..moveTo(9, 12)
-    ..lineTo(9, -4)
-    ..cubicTo(9, -9, 6, -12, 3, -13);
-  c.drawPath(p1, s);
 }
 
 void _paintBoat(Canvas c, Paint s, Paint f) {
@@ -598,12 +412,50 @@ void _paintBoat(Canvas c, Paint s, Paint f) {
   c.drawPath(p2, s);
 }
 
-void _paintBreadFat(Canvas c, Paint s, Paint f) {
+void _paintKa(Canvas c, Paint s, Paint f) {
   final p0 = Path()
-    ..moveTo(-9, 4)
-    ..cubicTo(-9, -5, 9, -5, 9, 4)
-    ..close();
-  c.drawPath(p0, f);
+    ..moveTo(-12, 12)
+    ..lineTo(12, 12);
+  c.drawPath(p0, s);
+  final p1 = Path()
+    ..moveTo(-9, 12)
+    ..lineTo(-9, -4)
+    ..cubicTo(-9, -9, -6, -12, -3, -13)
+    ..moveTo(9, 12)
+    ..lineTo(9, -4)
+    ..cubicTo(9, -9, 6, -12, 3, -13);
+  c.drawPath(p1, s);
+}
+
+void _paintScarab(Canvas c, Paint s, Paint f) {
+  c.drawOval(
+    Rect.fromCenter(center: const Offset(0, 2), width: 20, height: 24),
+    s,
+  );
+  final p1 = Path()
+    ..moveTo(0, -10)
+    ..lineTo(0, 14)
+    ..moveTo(-10, -1)
+    ..lineTo(10, -1);
+  c.drawPath(p1, s);
+  final p2 = Path()
+    ..moveTo(-6, -12)
+    ..cubicTo(-6, -16, 6, -16, 6, -12);
+  c.drawPath(p2, s);
+  final p3 = Path()
+    ..moveTo(-9, -6)
+    ..lineTo(-17, -12)
+    ..moveTo(-10, 2)
+    ..lineTo(-18, 2)
+    ..moveTo(-8, 9)
+    ..lineTo(-15, 15)
+    ..moveTo(9, -6)
+    ..lineTo(17, -12)
+    ..moveTo(10, 2)
+    ..lineTo(18, 2)
+    ..moveTo(8, 9)
+    ..lineTo(15, 15);
+  c.drawPath(p3, s);
 }
 
 void _paintBee(Canvas c, Paint s, Paint f) {
@@ -1170,4 +1022,206 @@ void _paintLeafreal(Canvas c, Paint s, Paint f) {
     ..cubicTo(-0.01, -17.95, -0.06, -17.87, -0.11, -17.79)
     ..close();
   c.drawPath(p0, f);
+}
+
+void _paintAkhet(Canvas c, Paint s, Paint f) {
+  final p0 = Path()
+    ..moveTo(-20, 8)
+    ..cubicTo(-12, 8, -10, 4, -6, 4)
+    ..lineTo(6, 4)
+    ..cubicTo(10, 4, 12, 8, 20, 8);
+  c.drawPath(p0, s);
+  c.drawOval(
+    Rect.fromCenter(center: const Offset(0, -3), width: 14, height: 14),
+    s,
+  );
+  final p2 = Path()
+    ..moveTo(-6, 4)
+    ..cubicTo(-4, 1, 4, 1, 6, 4);
+  c.drawPath(p2, s);
+}
+
+void _paintDju(Canvas c, Paint s, Paint f) {
+  final p0 = Path()
+    ..moveTo(-18, 8)
+    ..cubicTo(-16, 0, -10, -6, -5, -6)
+    ..cubicTo(-2, -6, -1, -3, 0, 0)
+    ..cubicTo(1, -3, 2, -6, 5, -6)
+    ..cubicTo(10, -6, 16, 0, 18, 8)
+    ..close();
+  c.drawPath(p0, s);
+}
+
+void _paintPet(Canvas c, Paint s, Paint f) {
+  final p0 = Path()
+    ..moveTo(-18, -4)
+    ..lineTo(18, -4)
+    ..lineTo(18, 0)
+    ..lineTo(-18, 0)
+    ..close();
+  c.drawPath(p0, s);
+  final p1 = Path()
+    ..moveTo(-18, 0)
+    ..lineTo(-15, 7)
+    ..moveTo(18, 0)
+    ..lineTo(15, 7);
+  c.drawPath(p1, s);
+}
+
+void _paintNefer(Canvas c, Paint s, Paint f) {
+  c.drawOval(
+    Rect.fromCenter(center: const Offset(0, 9), width: 12, height: 14),
+    s,
+  );
+  final p1 = Path()
+    ..moveTo(0, 2)
+    ..lineTo(0, -16);
+  c.drawPath(p1, s);
+  final p2 = Path()
+    ..moveTo(-5, -10)
+    ..lineTo(5, -10);
+  c.drawPath(p2, s);
+  final p3 = Path()
+    ..moveTo(-5, -6)
+    ..lineTo(5, -6);
+  c.drawPath(p3, s);
+}
+
+void _paintNetjer(Canvas c, Paint s, Paint f) {
+  final p0 = Path()
+    ..moveTo(-2, -16)
+    ..lineTo(-2, 16);
+  c.drawPath(p0, s);
+  final p1 = Path()
+    ..moveTo(-2, -16)
+    ..lineTo(10, -13)
+    ..lineTo(-2, -7);
+  c.drawPath(p1, s);
+}
+
+void _paintSeba2(Canvas c, Paint s, Paint f) {
+  final p0 = Path()
+    ..moveTo(0, 0)
+    ..lineTo(0, -11);
+  c.drawPath(p0, s);
+  final p1 = Path()
+    ..moveTo(0, 0)
+    ..lineTo(10.46, -3.4);
+  c.drawPath(p1, s);
+  final p2 = Path()
+    ..moveTo(0, 0)
+    ..lineTo(6.47, 8.9);
+  c.drawPath(p2, s);
+  final p3 = Path()
+    ..moveTo(0, 0)
+    ..lineTo(-6.47, 8.9);
+  c.drawPath(p3, s);
+  final p4 = Path()
+    ..moveTo(0, 0)
+    ..lineTo(-10.46, -3.4);
+  c.drawPath(p4, s);
+  c.drawOval(
+    Rect.fromCenter(center: const Offset(0, 0), width: 4, height: 4),
+    s,
+  );
+}
+
+void _paintSedge(Canvas c, Paint s, Paint f) {
+  final p0 = Path()
+    ..moveTo(0, 16)
+    ..lineTo(0, -6);
+  c.drawPath(p0, s);
+  final p1 = Path()
+    ..moveTo(0, -6)
+    ..cubicTo(-6, -8, -8, -14, -6, -18)
+    ..cubicTo(-2, -16, 0, -11, 0, -6)
+    ..close();
+  c.drawPath(p1, s);
+  final p2 = Path()
+    ..moveTo(0, -8)
+    ..cubicTo(3, -12, 7, -13, 9, -11)
+    ..cubicTo(7, -8, 3, -7, 0, -8);
+  c.drawPath(p2, s);
+}
+
+void _paintWick(Canvas c, Paint s, Paint f) {
+  final p0 = Path()
+    ..moveTo(-2, 16)
+    ..cubicTo(-7, 12, -7, 7, -2, 4)
+    ..cubicTo(3, 1, 3, -4, -2, -7)
+    ..cubicTo(-7, -10, -7, -15, -2, -18);
+  c.drawPath(p0, s);
+  final p1 = Path()
+    ..moveTo(2, 16)
+    ..cubicTo(7, 12, 7, 7, 2, 4)
+    ..cubicTo(-3, 1, -3, -4, 2, -7)
+    ..cubicTo(7, -10, 7, -15, 2, -18);
+  c.drawPath(p1, s);
+}
+
+void _paintSundisc(Canvas c, Paint s, Paint f) {
+  c.drawOval(
+    Rect.fromCenter(center: const Offset(0, 0), width: 18, height: 18),
+    s,
+  );
+  c.drawOval(
+    Rect.fromCenter(center: const Offset(0, 0), width: 4.4, height: 4.4),
+    s,
+  );
+}
+
+void _paintPer(Canvas c, Paint s, Paint f) {
+  final p0 = Path()
+    ..moveTo(-12, -9)
+    ..lineTo(12, -9)
+    ..lineTo(12, 9)
+    ..lineTo(3, 9)
+    ..lineTo(3, 1)
+    ..lineTo(-3, 1)
+    ..lineTo(-3, 9)
+    ..lineTo(-12, 9)
+    ..close();
+  c.drawPath(p0, s);
+}
+
+void _paintBolt(Canvas c, Paint s, Paint f) {
+  final p0 = Path()
+    ..moveTo(-16, 0)
+    ..lineTo(16, 0);
+  c.drawPath(p0, s);
+  final p1 = Path()
+    ..moveTo(-6, -4)
+    ..lineTo(-6, 4);
+  c.drawPath(p1, s);
+  final p2 = Path()
+    ..moveTo(6, -4)
+    ..lineTo(6, 4);
+  c.drawPath(p2, s);
+}
+
+void _paintFoot(Canvas c, Paint s, Paint f) {
+  final p0 = Path()
+    ..moveTo(-4, -16)
+    ..lineTo(-4, 8)
+    ..lineTo(8, 8)
+    ..lineTo(8, 12)
+    ..lineTo(-8, 12)
+    ..lineTo(-8, -16)
+    ..close();
+  c.drawPath(p0, s);
+}
+
+void _paintCloth(Canvas c, Paint s, Paint f) {
+  final p0 = Path()
+    ..moveTo(0, -14)
+    ..lineTo(0, 14);
+  c.drawPath(p0, s);
+  final p1 = Path()
+    ..moveTo(0, -14)
+    ..lineTo(6, -8)
+    ..lineTo(0, -2)
+    ..moveTo(0, 0)
+    ..lineTo(6, 6)
+    ..lineTo(0, 12);
+  c.drawPath(p1, s);
 }

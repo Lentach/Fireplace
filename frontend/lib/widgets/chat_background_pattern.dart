@@ -84,7 +84,7 @@ class _TempleColumnsPainter extends CustomPainter {
 
   static const double _columnWidth = 118;
   static const double _vStep = 56;
-  static const double _leafCadence = 700; // ~1 leaf per this many px per col
+  static const double _leafCadence = 620; // ~1 leaf per screen height
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -116,15 +116,27 @@ class _TempleColumnsPainter extends CustomPainter {
       );
     }
 
-    final pool = <HieroGlyph>[
-      for (final g in kHieroGlyphs)
-        for (var i = 0; i < g.weight; i++)
-          if (!g.isLeaf) g,
-    ];
+    // Bag-shuffle (owner fix for "same symbols in 3 rows"): deal every glyph
+    // once before any repeats, scanning the bag for a wide glyph when the
+    // previous one was narrow.
     final leaf = kHieroGlyphs.firstWhere((g) => g.isLeaf);
+    var bag = <HieroGlyph>[];
+    HieroGlyph deal(bool needWide) {
+      if (bag.isEmpty) {
+        bag = [
+          for (final g in kHieroGlyphs)
+            if (!g.isLeaf) g,
+        ]..shuffle(rnd);
+      }
+      if (needWide) {
+        final i = bag.indexWhere((g) => g.wide);
+        if (i != -1) return bag.removeAt(i);
+      }
+      return bag.removeAt(0);
+    }
 
-    final recent = <String>[];
-    for (var c = 0; c < cols; c++) {
+    final cols2 = cols;
+    for (var c = 0; c < cols2; c++) {
       final cx = colW * c + colW / 2;
       var y = 34 + rnd.nextDouble() * 12;
       var sinceLeaf = rnd.nextDouble() * _leafCadence;
@@ -135,18 +147,9 @@ class _TempleColumnsPainter extends CustomPainter {
           g = leaf;
           sinceLeaf = 0;
         } else {
-          g = pool[rnd.nextInt(pool.length)];
-          for (
-            var tries = 0;
-            tries < 24 && (recent.contains(g.name) || (prevNarrow && !g.wide));
-            tries++
-          ) {
-            g = pool[rnd.nextInt(pool.length)];
-          }
+          g = deal(prevNarrow);
         }
-        recent.add(g.name);
-        if (recent.length > 5) recent.removeAt(0);
-        prevNarrow = !g.wide;
+        prevNarrow = g.wide == false;
 
         final scale = 0.85 + rnd.nextDouble() * 0.15;
         canvas.save();
