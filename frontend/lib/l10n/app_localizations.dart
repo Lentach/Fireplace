@@ -227,7 +227,7 @@ abstract class AppLocalizations {
   /// No description provided for @chat.
   ///
   /// In pl, this message translates to:
-  /// **'Czat'**
+  /// **'Czaty'**
   String get chat;
 
   /// No description provided for @contacts.

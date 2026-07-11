@@ -1,5 +1,7 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+
+import 'glass/glass_sheet.dart';
 import '../services/gif_service.dart';
 import '../l10n/app_localizations.dart';
 
@@ -11,14 +13,16 @@ class GifPickerSheet extends StatefulWidget {
   @override
   State<GifPickerSheet> createState() => _GifPickerSheetState();
 
-  static Future<void> show(BuildContext context, {required void Function(String) onGifSelected}) {
-    return showModalBottomSheet(
-      context: context,
+  static Future<void> show(
+    BuildContext context, {
+    required void Function(String) onGifSelected,
+  }) {
+    // Media-dense grid: opaque sheet surface (spec §7 per-surface fallback);
+    // a 60%-viewport backdrop blur would be pure cost under the grid.
+    return showGlassSheet(
+      context,
       isScrollControlled: true,
-      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
-      shape: const RoundedRectangleBorder(
-        borderRadius: BorderRadius.vertical(top: Radius.circular(16)),
-      ),
+      opaque: true,
       builder: (_) => SizedBox(
         height: MediaQuery.of(context).size.height * 0.6,
         child: GifPickerSheet(onGifSelected: onGifSelected),
@@ -56,7 +60,12 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
   }
 
   Future<void> _loadTrending() async {
-    setState(() { _loading = true; _error = null; _offset = 0; _lastQuery = ''; });
+    setState(() {
+      _loading = true;
+      _error = null;
+      _offset = 0;
+      _lastQuery = '';
+    });
     final results = await _gifService.fetchTrending();
     if (!mounted) return;
     setState(() {
@@ -72,11 +81,19 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
       _loadTrending();
       return;
     }
-    _debounce = Timer(const Duration(milliseconds: 500), () => _doSearch(query.trim()));
+    _debounce = Timer(
+      const Duration(milliseconds: 500),
+      () => _doSearch(query.trim()),
+    );
   }
 
   Future<void> _doSearch(String query) async {
-    setState(() { _loading = true; _error = null; _offset = 0; _lastQuery = query; });
+    setState(() {
+      _loading = true;
+      _error = null;
+      _offset = 0;
+      _lastQuery = query;
+    });
     final results = await _gifService.search(query);
     if (!mounted) return;
     setState(() {
@@ -88,7 +105,8 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
 
   void _onScroll() {
     if (_loadingMore) return;
-    if (_scrollController.position.pixels >= _scrollController.position.maxScrollExtent - 200) {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200) {
       _loadMore();
     }
   }
@@ -115,7 +133,8 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
       children: [
         const SizedBox(height: 8),
         Container(
-          width: 40, height: 4,
+          width: 40,
+          height: 4,
           decoration: BoxDecoration(
             color: theme.dividerColor,
             borderRadius: BorderRadius.circular(2),
@@ -129,7 +148,9 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
             decoration: InputDecoration(
               hintText: l10n.gifSearchHint,
               prefixIcon: const Icon(Icons.search),
-              border: OutlineInputBorder(borderRadius: BorderRadius.circular(12)),
+              border: OutlineInputBorder(
+                borderRadius: BorderRadius.circular(12),
+              ),
               contentPadding: const EdgeInsets.symmetric(horizontal: 16),
               isDense: true,
             ),
@@ -139,40 +160,47 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
           child: _loading
               ? const Center(child: CircularProgressIndicator())
               : _error == 'no_results'
-                  ? Center(child: Text(l10n.gifNoResults, style: theme.textTheme.bodyMedium))
-                  : GridView.builder(
-                      controller: _scrollController,
-                      padding: const EdgeInsets.symmetric(horizontal: 8),
-                      gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-                        crossAxisCount: 2,
-                        crossAxisSpacing: 6,
-                        mainAxisSpacing: 6,
-                      ),
-                      itemCount: _gifs.length + (_loadingMore ? 1 : 0),
-                      itemBuilder: (context, index) {
-                        if (index == _gifs.length) {
-                          return const Center(child: CircularProgressIndicator(strokeWidth: 2));
-                        }
-                        final gif = _gifs[index];
-                        return GestureDetector(
-                          onTap: () {
-                            Navigator.pop(context);
-                            widget.onGifSelected(gif.fullUrl);
-                          },
-                          child: ClipRRect(
-                            borderRadius: BorderRadius.circular(8),
-                            child: Image.network(
-                              gif.previewUrl,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, e, st) => Container(
-                                color: theme.colorScheme.surfaceContainerHighest,
-                                child: const Icon(Icons.broken_image, size: 32),
-                              ),
-                            ),
-                          ),
-                        );
+              ? Center(
+                  child: Text(
+                    l10n.gifNoResults,
+                    style: theme.textTheme.bodyMedium,
+                  ),
+                )
+              : GridView.builder(
+                  controller: _scrollController,
+                  padding: const EdgeInsets.symmetric(horizontal: 8),
+                  gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
+                    crossAxisCount: 2,
+                    crossAxisSpacing: 6,
+                    mainAxisSpacing: 6,
+                  ),
+                  itemCount: _gifs.length + (_loadingMore ? 1 : 0),
+                  itemBuilder: (context, index) {
+                    if (index == _gifs.length) {
+                      return const Center(
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      );
+                    }
+                    final gif = _gifs[index];
+                    return GestureDetector(
+                      onTap: () {
+                        Navigator.pop(context);
+                        widget.onGifSelected(gif.fullUrl);
                       },
-                    ),
+                      child: ClipRRect(
+                        borderRadius: BorderRadius.circular(8),
+                        child: Image.network(
+                          gif.previewUrl,
+                          fit: BoxFit.cover,
+                          errorBuilder: (_, e, st) => Container(
+                            color: theme.colorScheme.surfaceContainerHighest,
+                            child: const Icon(Icons.broken_image, size: 32),
+                          ),
+                        ),
+                      ),
+                    );
+                  },
+                ),
         ),
         Padding(
           padding: const EdgeInsets.only(bottom: 8),

@@ -76,7 +76,7 @@ class AppLocalizationsEn extends AppLocalizations {
       'Uninstalling or clearing site data permanently erases your message history — to refresh, just fully close and reopen the app.';
 
   @override
-  String get chat => 'Chat';
+  String get chat => 'Chats';
 
   @override
   String get contacts => 'Contacts';
