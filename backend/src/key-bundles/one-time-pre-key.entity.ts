@@ -29,9 +29,11 @@ export class OneTimePreKey {
   @Column('text')
   publicKey: string;
 
-  /// Public identity key (base64) of the epoch that uploaded this OTP. Nullable
-  /// for legacy/pre-migration rows; fetchPreKeyBundle only serves rows matching
-  /// the current key bundle identity, so a null or superseded tag is never served.
+  /**
+   * Public identity key (base64) of the epoch that uploaded this OTP. Nullable
+   * for legacy/pre-migration rows; fetchPreKeyBundle only serves rows matching
+   * the current key bundle identity, so a null or superseded tag is never served.
+   */
   @Column({ type: 'text', nullable: true })
   identityPublicKey: string | null;
 

@@ -26,10 +26,12 @@ export class UploadOneTimePreKeysDto {
   @Type(() => OneTimePreKeyDto)
   keys: OneTimePreKeyDto[];
 
-  /// Optional identity epoch tag (base64 public identity key) these OTPs were
-  /// generated under. New clients send it so the server binds each OTP to the
-  /// correct epoch regardless of upload ordering; old clients omit it and the
-  /// server back-fills from the current bundle.
+  /**
+   * Optional identity epoch tag (base64 public identity key) these OTPs were
+   * generated under. New clients send it so the server binds each OTP to the
+   * correct epoch regardless of upload ordering; old clients omit it and the
+   * server back-fills from the current bundle.
+   */
   @IsOptional()
   @IsString()
   @MinLength(1)

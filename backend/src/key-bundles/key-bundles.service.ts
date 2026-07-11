@@ -51,6 +51,11 @@ export class KeyBundlesService {
     // identity, so a re-upload in either order survives (their tag matches)
     // while genuinely stale rows are removed. This is the durable fix for the
     // 2026-07-11 stale-OTP bad-MAC wave (see migrations 0003-0005).
+    //
+    // IDENTITY-EPOCH INVARIANT is enforced at THREE sites that MUST stay in
+    // sync: (1) here — purge non-current-epoch unused rows; (2) fetchPreKeyBundle
+    // — claim only current-epoch rows; (3) countUnusedPreKeys — count only
+    // current-epoch rows. Change the epoch semantics in all three or none.
     await this.otpRepo
       .createQueryBuilder()
       .delete()
@@ -110,8 +115,8 @@ export class KeyBundlesService {
     // identity epoch. A row from a superseded epoch (whose private half the
     // device discarded on regeneration) or an untagged legacy row is never
     // served, so PreKey/X3DH can never build on a dead key. Safe regardless of
-    // upload order — the tag, not timing, decides. Proven RED->GREEN on real
-    // Postgres (backend/otp_epoch_repro.mjs) and end-to-end via the wire harness.
+    // upload order — the tag, not timing, decides. See the identity-epoch
+    // invariant note in upsertKeyBundle; fail-closed pinned by the unit spec.
     //
     // Postgres repo.query() returns [rows, rowCount] for UPDATE ... RETURNING
     // (see backend/CLAUDE.md §4) — destructuring the row directly reads the

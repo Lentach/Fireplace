@@ -21,11 +21,11 @@
 // overwrites epoch-1) and upsertKeyBundle purges the rest, so no stale row
 // physically survives here. It does NOT by itself isolate the fetch filter
 // (a filter-less server would still serve only epoch-2 in this scenario).
-// The identity fetch filter is pinned FAIL-CLOSED elsewhere: the backend unit
-// spec asserts the SQL carries `"identityPublicKey" = $2` + exact params, and
-// backend/otp_epoch_repro.mjs GUARD serves against non-overlapping, UNPURGED
-// stale rows and proves they are never returned. Together: filter + purge +
-// tagging are each guarded.
+// The identity fetch filter is pinned FAIL-CLOSED by the backend unit spec
+// (key-bundles.service.spec.ts) — it asserts fetchPreKeyBundle's SQL carries
+// `"identityPublicKey" = $2` with params [userId, bundle.identityPublicKey],
+// so removing the filter reddens CI. Together: filter (unit spec) + purge +
+// tagging (this test) are each guarded.
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
