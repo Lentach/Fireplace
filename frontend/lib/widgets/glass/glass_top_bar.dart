@@ -29,28 +29,40 @@ class GlassTopBar extends StatelessWidget implements PreferredSizeWidget {
       bottom: false,
       child: Padding(
         padding: const EdgeInsets.fromLTRB(14, 8, 14, 8),
-        child: Row(
-          children: [
-            if (leading != null) ...[
-              GlassCircle(
-                size: capsuleHeight,
-                child: Center(child: leading),
+        child: SizedBox(
+          height: capsuleHeight,
+          // Title centers against the FULL bar width (a Row slot would skew
+          // it toward the narrower side — owner-reported). The Row above it
+          // only hit-tests on the capsules, so title long-press still works.
+          child: Stack(
+            children: [
+              Positioned.fill(
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(horizontal: 106),
+                  child: Center(child: _haloed(context, title)),
+                ),
               ),
-              const SizedBox(width: 10),
-            ],
-            // Owner ruling (2026-07-11, Telegram parity): the title floats as
-            // plain text — no pill. A soft scaffold-tinted halo keeps it
-            // readable when content scrolls beneath.
-            Expanded(child: Center(child: _haloed(context, title))),
-            if (trailing.isNotEmpty) ...[
-              const SizedBox(width: 10),
-              GlassPill(
-                height: capsuleHeight,
-                padding: const EdgeInsets.symmetric(horizontal: 4),
-                child: Row(mainAxisSize: MainAxisSize.min, children: trailing),
+              Row(
+                children: [
+                  if (leading != null)
+                    GlassCircle(
+                      size: capsuleHeight,
+                      child: Center(child: leading),
+                    ),
+                  const Spacer(),
+                  if (trailing.isNotEmpty)
+                    GlassPill(
+                      height: capsuleHeight,
+                      padding: const EdgeInsets.symmetric(horizontal: 4),
+                      child: Row(
+                        mainAxisSize: MainAxisSize.min,
+                        children: trailing,
+                      ),
+                    ),
+                ],
               ),
             ],
-          ],
+          ),
         ),
       ),
     );
