@@ -49,15 +49,17 @@ Future<void> requireBackendUp(String baseUrl) async {
     await res.drain<void>();
     if (res.statusCode != 200) {
       throw StateError(
-          'Backend /health returned ${res.statusCode} at $baseUrl');
+        'Backend /health returned ${res.statusCode} at $baseUrl',
+      );
     }
   } on StateError {
     rethrow;
   } catch (e) {
     throw StateError(
-        'Backend not reachable at $baseUrl ($e).\n'
-        'Start it first: `docker-compose up` from the repo root, '
-        'then re-run `flutter test test_e2e`.');
+      'Backend not reachable at $baseUrl ($e).\n'
+      'Start it first: `docker-compose up` from the repo root, '
+      'then re-run `flutter test test_e2e`.',
+    );
   } finally {
     client.close(force: true);
   }
@@ -115,17 +117,21 @@ class EventLog {
     final completer = Completer<dynamic>();
     final waiter = _Waiter(event, where, completer);
     _waiters.add(waiter);
-    return completer.future.timeout(timeout, onTimeout: () {
-      _waiters.remove(waiter);
-      final seen = _buffer.entries
-          .map((e) => '${e.key} x${e.value.length}')
-          .join(', ');
-      throw TimeoutException(
+    return completer.future.timeout(
+      timeout,
+      onTimeout: () {
+        _waiters.remove(waiter);
+        final seen = _buffer.entries
+            .map((e) => '${e.key} x${e.value.length}')
+            .join(', ');
+        throw TimeoutException(
           'Timed out waiting for "$event"'
           '${reason != null ? ' ($reason)' : ''}. '
           'Buffered events: [$seen]. '
-          'Socket errors so far: $errors');
-    });
+          'Socket errors so far: $errors',
+        );
+      },
+    );
   }
 }
 
@@ -188,6 +194,65 @@ class E2eClient {
     accessToken = login['access_token'] as String;
   }
 
+  /// Reuses [other]'s authenticated server account with an independent
+  /// client/service instance. Incident harnesses use this to model two app
+  /// installations competing for one single-device account.
+  void adoptAccountFrom(E2eClient other) {
+    userId = other.userId;
+    username = other.username;
+    tag = other.tag;
+    accessToken = other.accessToken;
+  }
+
+  /// Generates or loads this instance's Signal state and returns the exact
+  /// public upload payload without touching the server.
+  Future<Map<String, dynamic>> initializeKeys() async {
+    await encryption.initialize(userId);
+    final keys = encryption.getKeysForUpload();
+    if (keys == null) {
+      throw StateError(
+        '$label: fresh EncryptionService produced no keys for upload',
+      );
+    }
+    return keys;
+  }
+
+  /// Uploads a staged key bundle and waits for the server acknowledgement.
+  Future<void> uploadKeyBundle(Map<String, dynamic> keys) async {
+    socketService.uploadKeyBundle(
+      (keys['keyBundle'] as Map).cast<String, dynamic>(),
+    );
+    await events.next('keyBundleUploaded', reason: '$label key bundle');
+  }
+
+  /// Uploads staged OTPs. [tagIdentityEpoch] selects the current client wire
+  /// shape; false deliberately reproduces a pre-epoch legacy client.
+  Future<void> uploadOneTimePreKeys(
+    Map<String, dynamic> keys, {
+    required bool tagIdentityEpoch,
+    bool expectRejection = false,
+  }) async {
+    final preKeys = (keys['oneTimePreKeys'] as List)
+        .cast<Map<String, dynamic>>();
+    if (tagIdentityEpoch) {
+      final bundle = (keys['keyBundle'] as Map).cast<String, dynamic>();
+      socketService.socket!.emit('uploadOneTimePreKeys', {
+        'keys': preKeys,
+        'identityPublicKey': bundle['identityPublicKey'],
+      });
+    } else {
+      socketService.uploadOneTimePreKeys(preKeys);
+    }
+    if (expectRejection) {
+      final error = await events.next('error', reason: '$label OTP rejection');
+      if (!error.toString().contains('identity_epoch_required')) {
+        throw StateError('Unexpected OTP rejection: $error');
+      }
+      return;
+    }
+    await events.next('oneTimePreKeysUploaded', reason: '$label OTPs');
+  }
+
   /// Connects the real Socket.IO client and waits for the server's
   /// `socketReady` (auth complete) before returning.
   Future<void> connectSocket() async {
@@ -205,7 +270,8 @@ class E2eClient {
     });
     try {
       final firstError = await Future.any<dynamic>([
-        events.next('socketReady', reason: '$label socket auth')
+        events
+            .next('socketReady', reason: '$label socket auth')
             .then((_) => null),
         connectError.future,
       ]);
@@ -225,13 +291,17 @@ class E2eClient {
     final keys = encryption.getKeysForUpload();
     if (keys == null) {
       throw StateError(
-          '$label: fresh EncryptionService produced no keys for upload');
+        '$label: fresh EncryptionService produced no keys for upload',
+      );
     }
-    socketService
-        .uploadKeyBundle((keys['keyBundle'] as Map).cast<String, dynamic>());
+    socketService.uploadKeyBundle(
+      (keys['keyBundle'] as Map).cast<String, dynamic>(),
+    );
     await events.next('keyBundleUploaded', reason: '$label key bundle');
-    socketService.uploadOneTimePreKeys(
-        (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>());
+    socketService.socket!.emit('uploadOneTimePreKeys', {
+      'keys': (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
+      'identityPublicKey': (keys['keyBundle'] as Map)['identityPublicKey'],
+    });
     await events.next('oneTimePreKeysUploaded', reason: '$label OTPs');
   }
 
@@ -253,15 +323,18 @@ class E2eClient {
     }
     _lastBundleFetch[peerUserId] = DateTime.now();
     socketService.fetchPreKeyBundle(peerUserId);
-    final payload = await events.next(
-      'preKeyBundleResponse',
-      where: (p) => p is Map && p['userId'] == peerUserId,
-      reason: '$label fetching bundle for user $peerUserId',
-    ) as Map;
+    final payload =
+        await events.next(
+              'preKeyBundleResponse',
+              where: (p) => p is Map && p['userId'] == peerUserId,
+              reason: '$label fetching bundle for user $peerUserId',
+            )
+            as Map;
     final bundle = payload['bundle'];
     if (bundle is! Map) {
       throw StateError(
-          '$label: no key bundle on server for user $peerUserId: $payload');
+        '$label: no key bundle on server for user $peerUserId: $payload',
+      );
     }
     return bundle.cast<String, dynamic>();
   }
@@ -291,22 +364,26 @@ class E2eClient {
       tempId: tempId,
       encryptedContent: ciphertext,
     );
-    final payload = await events.next(
-      'messageSent',
-      where: (p) => p is Map && p['tempId'] == tempId,
-      reason: '$label sendMessage tempId=$tempId',
-    ) as Map;
+    final payload =
+        await events.next(
+              'messageSent',
+              where: (p) => p is Map && p['tempId'] == tempId,
+              reason: '$label sendMessage tempId=$tempId',
+            )
+            as Map;
     return payload.cast<String, dynamic>();
   }
 
   /// Waits for an inbound `newMessage` matching [tempId] (the mapper echoes
   /// the sender's tempId to both sides).
   Future<Map<String, dynamic>> awaitNewMessage(String tempId) async {
-    final payload = await events.next(
-      'newMessage',
-      where: (p) => p is Map && p['tempId'] == tempId,
-      reason: '$label newMessage tempId=$tempId',
-    ) as Map;
+    final payload =
+        await events.next(
+              'newMessage',
+              where: (p) => p is Map && p['tempId'] == tempId,
+              reason: '$label newMessage tempId=$tempId',
+            )
+            as Map;
     return payload.cast<String, dynamic>();
   }
 
@@ -327,7 +404,9 @@ class E2eClient {
 
   static String _randomHex(int chars) {
     final rng = Random.secure();
-    return List.generate(chars, (_) => rng.nextInt(16).toRadixString(16))
-        .join();
+    return List.generate(
+      chars,
+      (_) => rng.nextInt(16).toRadixString(16),
+    ).join();
   }
 }

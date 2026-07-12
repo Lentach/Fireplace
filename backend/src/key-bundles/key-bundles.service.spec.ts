@@ -139,33 +139,24 @@ describe('KeyBundlesService', () => {
       );
     });
 
-    it('back-fills the identity from the current bundle when a legacy client omits it', async () => {
+    it('rejects untagged OTP uploads instead of inferring the current identity epoch', async () => {
       keyBundleRepo.findOne.mockResolvedValue({
         userId: 5,
         ...mockKeyBundleData,
       });
-      otpRepo.upsert.mockResolvedValue({ raw: [] });
 
-      await service.uploadOneTimePreKeys(5, keys);
-
-      expect(keyBundleRepo.findOne).toHaveBeenCalledWith({
-        where: { userId: 5 },
+      await expect(service.uploadOneTimePreKeys(5, keys)).rejects.toMatchObject({
+        message: 'identity_epoch_required',
       });
-      const [rows] = otpRepo.upsert.mock.calls[0];
-      expect(rows.every((r) => r.identityPublicKey === mockKeyBundleData.identityPublicKey)).toBe(
-        true,
-      );
+
+      expect(otpRepo.upsert).not.toHaveBeenCalled();
     });
 
-    it('tags OTPs null when a legacy client omits identity and no bundle exists yet', async () => {
-      keyBundleRepo.findOne.mockResolvedValue(null);
-      otpRepo.upsert.mockResolvedValue({ raw: [] });
-
-      await service.uploadOneTimePreKeys(5, keys);
-
-      const [rows] = otpRepo.upsert.mock.calls[0];
-      // Null-tagged rows are never served (fetch identity filter), so this is safe.
-      expect(rows.every((r) => r.identityPublicKey === null)).toBe(true);
+    it('preserves existing valid current-epoch rows when rejecting a legacy upload', async () => {
+      await expect(service.uploadOneTimePreKeys(5, keys)).rejects.toThrow(
+        'identity_epoch_required',
+      );
+      expect(otpRepo.upsert).not.toHaveBeenCalled();
     });
   });
 

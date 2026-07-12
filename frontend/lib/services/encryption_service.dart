@@ -505,7 +505,8 @@ class EncryptionService {
       }
     } catch (_) {}
 
-    // Pending-send records hold plaintext at rest too — same privacy scope.
+    // Pending-send records are required for lost-ack reconciliation and are
+    // not part of the user-facing audio-cache action.
     try {
       final prefs = await _sharedPrefs;
       final pendPrefix = _pendingSendPrefix(userId);

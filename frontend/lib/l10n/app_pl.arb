@@ -46,8 +46,8 @@
   "serverStoresMetadata": "Co przechowuje serwer (metadane)",
   "serverStoresMetadataDescription": "Aby dostarczać wiadomości, serwer przechowuje: kto jest w danej rozmowie, kiedy wiadomości zostały wysłane oraz status dostarczenia. Treść wiadomości nigdy nie jest widoczna dla serwera.",
   "localMessageCache": "Lokalna pamięć wiadomości",
-  "localMessageCacheDescription": "Dla niezawodności to urządzenie może lokalnie przechowywać odszyfrowane podglądy wiadomości i pobrane wiadomości głosowe. Wyczyszczenie tej pamięci nie usuwa kluczy szyfrowania ani historii z serwera.",
-  "clearLocalMessageCache": "Wyczyść lokalną pamięć wiadomości",
+  "localMessageCacheDescription": "To urządzenie może przechowywać lokalnie pobrane wiadomości głosowe. Wyczyszczenie usuwa tylko pobrane audio; nie usuwa czytelnej historii, kluczy mediów, kluczy szyfrowania, sesji ani pamięci przeglądarki.",
+  "clearLocalMessageCache": "Wyczyść pobrane audio",
   "yourIdentityFingerprint": "Twój odcisk tożsamości",
   "shareFingerprintHint": "To unikalna reprezentacja Twojego klucza szyfrowania.",
 

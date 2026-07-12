@@ -22,6 +22,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
   bool _loading = true;
   bool _clearingLocalCache = false;
   bool _diagLogUnlocked = false;
+  String _diagFilter = 'current';
 
   @override
   void initState() {
@@ -30,7 +31,9 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
   }
 
   Future<void> _loadFingerprint() async {
-    final fp = await context.read<EncryptionProvider>().getIdentityFingerprint();
+    final fp = await context
+        .read<EncryptionProvider>()
+        .getIdentityFingerprint();
     if (mounted) {
       setState(() {
         _fingerprint = fp;
@@ -43,14 +46,19 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = RpgTheme.isDark(context);
-    final mutedColor =
-        isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
+    final mutedColor = isDark
+        ? RpgTheme.mutedDark
+        : RpgTheme.textSecondaryLight;
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       appBar: AppBar(
         centerTitle: true,
-        title: Text(_diagLogUnlocked ? '🔓 hacker mode' : AppLocalizations.of(context).privacySafetyTitle),
+        title: Text(
+          _diagLogUnlocked
+              ? '🔓 hacker mode'
+              : AppLocalizations.of(context).privacySafetyTitle,
+        ),
         backgroundColor: theme.colorScheme.surface,
         elevation: 0,
         iconTheme: IconThemeData(color: theme.colorScheme.primary),
@@ -105,10 +113,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
             // Description
             Text(
               AppLocalizations.of(context).e2eEncryptionDescription,
-              style: RpgTheme.bodyFont(
-                fontSize: 14,
-                color: mutedColor,
-              ),
+              style: RpgTheme.bodyFont(fontSize: 14, color: mutedColor),
               textAlign: TextAlign.center,
             ),
             const SizedBox(height: 32),
@@ -118,7 +123,9 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
               context,
               icon: Icons.key,
               title: AppLocalizations.of(context).yourEncryptionKeys,
-              description: AppLocalizations.of(context).yourEncryptionKeysDescription,
+              description: AppLocalizations.of(
+                context,
+              ).yourEncryptionKeysDescription,
             ),
             const SizedBox(height: 16),
 
@@ -126,7 +133,9 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
               context,
               icon: Icons.devices,
               title: AppLocalizations.of(context).singleDeviceEncryption,
-              description: AppLocalizations.of(context).singleDeviceEncryptionDescription,
+              description: AppLocalizations.of(
+                context,
+              ).singleDeviceEncryptionDescription,
             ),
             if (kIsWeb) ...[
               const SizedBox(height: 16),
@@ -134,7 +143,9 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
                 context,
                 icon: Icons.laptop,
                 title: AppLocalizations.of(context).webKeyStorage,
-                description: AppLocalizations.of(context).webKeyStorageDescription,
+                description: AppLocalizations.of(
+                  context,
+                ).webKeyStorageDescription,
               ),
             ],
             const SizedBox(height: 16),
@@ -142,7 +153,9 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
               context,
               icon: Icons.photo_library_outlined,
               title: AppLocalizations.of(context).whatIsEncrypted,
-              description: AppLocalizations.of(context).whatIsEncryptedDescription,
+              description: AppLocalizations.of(
+                context,
+              ).whatIsEncryptedDescription,
             ),
             const SizedBox(height: 16),
 
@@ -150,7 +163,9 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
               context,
               icon: Icons.info_outline,
               title: AppLocalizations.of(context).serverStoresMetadata,
-              description: AppLocalizations.of(context).serverStoresMetadataDescription,
+              description: AppLocalizations.of(
+                context,
+              ).serverStoresMetadataDescription,
             ),
             const SizedBox(height: 16),
 
@@ -158,8 +173,9 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
               context,
               icon: Icons.science_outlined,
               title: AppLocalizations.of(context).privacyAntiQuantumNoteTitle,
-              description: AppLocalizations.of(context)
-                  .privacyAntiQuantumNoteDescription,
+              description: AppLocalizations.of(
+                context,
+              ).privacyAntiQuantumNoteDescription,
             ),
             const SizedBox(height: 16),
             _buildLocalCacheCard(context),
@@ -187,9 +203,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
                 decoration: BoxDecoration(
                   color: theme.colorScheme.surfaceContainerHighest,
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(
-                    color: theme.colorScheme.outlineVariant,
-                  ),
+                  border: Border.all(color: theme.colorScheme.outlineVariant),
                 ),
                 child: SelectableText(
                   _fingerprint!,
@@ -227,8 +241,9 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
   }) {
     final theme = Theme.of(context);
     final isDark = RpgTheme.isDark(context);
-    final mutedColor =
-        isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
+    final mutedColor = isDark
+        ? RpgTheme.mutedDark
+        : RpgTheme.textSecondaryLight;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -256,10 +271,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
                 const SizedBox(height: 4),
                 Text(
                   description,
-                  style: RpgTheme.bodyFont(
-                    fontSize: 13,
-                    color: mutedColor,
-                  ),
+                  style: RpgTheme.bodyFont(fontSize: 13, color: mutedColor),
                 ),
               ],
             ),
@@ -273,8 +285,9 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
     final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
     final isDark = RpgTheme.isDark(context);
-    final mutedColor =
-        isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
+    final mutedColor = isDark
+        ? RpgTheme.mutedDark
+        : RpgTheme.textSecondaryLight;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -288,8 +301,11 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
           Row(
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
-              Icon(Icons.cleaning_services_outlined,
-                  size: 24, color: theme.colorScheme.primary),
+              Icon(
+                Icons.cleaning_services_outlined,
+                size: 24,
+                color: theme.colorScheme.primary,
+              ),
               const SizedBox(width: 12),
               Expanded(
                 child: Column(
@@ -336,9 +352,23 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
   Widget _buildDiagLogPanel(BuildContext context) {
     final theme = Theme.of(context);
     final isDark = RpgTheme.isDark(context);
-    final mutedColor = isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
-    final entries = E2eDiagLog.entries.reversed.toList();
+    final mutedColor = isDark
+        ? RpgTheme.mutedDark
+        : RpgTheme.textSecondaryLight;
+    final allEntries = E2eDiagLog.entries.reversed.toList();
     final durable = E2ePersistentDiag.entries.reversed.toList();
+    final entries = switch (_diagFilter) {
+      'historical' => durable,
+      '24h' => E2eDiagLog.since(const Duration(hours: 24)).reversed.toList(),
+      'build' => E2eDiagLog.since(
+        DateTime.now().difference(E2eDiagLog.sessionStartedAt),
+      ).reversed.toList(),
+      'full' => [...durable, ...allEntries],
+      _ => allEntries,
+    };
+    final failures = entries
+        .where((e) => e.contains('FAIL') || e.contains('DECRYPT_DECISION'))
+        .length;
 
     return Container(
       padding: const EdgeInsets.all(16),
@@ -350,6 +380,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(Icons.terminal, size: 20, color: theme.colorScheme.primary),
               const SizedBox(width: 8),
@@ -363,31 +394,72 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
                   ),
                 ),
               ),
-              TextButton(
-                onPressed: () async {
-                  final all = '== DURABLE FAILURES (survives restart) ==\n'
-                      '${E2ePersistentDiag.entries.join('\n')}\n\n'
-                      '== LIVE LOG ==\n'
-                      '${E2eDiagLog.entries.join('\n')}';
-                  await Clipboard.setData(ClipboardData(text: all));
-                  if (!mounted) return;
-                  // ignore: use_build_context_synchronously
-                  showTopSnackBar(context, 'Log copied to clipboard');
-                },
-                child: const Text('Copy'),
-              ),
-              TextButton(
-                onPressed: () async {
-                  E2eDiagLog.clear();
-                  await E2ePersistentDiag.clear();
-                  if (!mounted) return;
-                  setState(() {});
-                },
-                child: const Text('Clear'),
-              ),
             ],
           ),
           const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 4,
+              runSpacing: 0,
+              children: [
+                TextButton(
+                  onPressed: () async {
+                    final all =
+                        '== DURABLE FAILURES (survives restart) ==\n'
+                        '${E2ePersistentDiag.entries.join('\n')}\n\n'
+                        '== LIVE LOG ==\n'
+                        '${E2eDiagLog.entries.join('\n')}';
+                    await Clipboard.setData(ClipboardData(text: all));
+                    if (!mounted) return;
+                    showTopSnackBar(context, 'Log copied to clipboard');
+                  },
+                  child: const Text('Copy'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    E2eDiagLog.clear();
+                    await E2ePersistentDiag.clear();
+                    if (!mounted) return;
+                    setState(() {});
+                  },
+                  child: const Text('Clear diagnostic logs only'),
+                ),
+              ],
+            ),
+          ),
+          Text(
+            'Current session: ${allEntries.length} events · failures: $failures',
+          ),
+          DropdownButton<String>(
+            value: _diagFilter,
+            items: const [
+              DropdownMenuItem(
+                value: 'current',
+                child: Text('Current session'),
+              ),
+              DropdownMenuItem(
+                value: 'build',
+                child: Text('Since current build'),
+              ),
+              DropdownMenuItem(value: '24h', child: Text('Last 24 hours')),
+              DropdownMenuItem(value: 'historical', child: Text('Historical')),
+              DropdownMenuItem(value: 'full', child: Text('Full raw log')),
+            ],
+            onChanged: (value) {
+              if (value != null) setState(() => _diagFilter = value);
+            },
+          ),
+          if (E2eDiagLog.groupedFailures(entries).isNotEmpty) ...[
+            const Text('Grouped failures'),
+            ...E2eDiagLog.groupedFailures(entries).map(Text.new),
+          ],
+          const SizedBox(height: 8),
+          const Text(
+            'Clears diagnostic logs only. Does not clear messages, encryption keys, sessions, or browser storage.',
+            style: TextStyle(fontSize: 11),
+          ),
           if (durable.isNotEmpty) ...[
             Text(
               'Durable failures (survives restart)',
@@ -451,10 +523,8 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
 
   Future<void> _clearLocalMessageCache() async {
     final l10n = AppLocalizations.of(context);
-    final encryptionProvider = context.read<EncryptionProvider>();
     setState(() => _clearingLocalCache = true);
     try {
-      await encryptionProvider.clearLocalDecryptedContentCache();
       await PlaybackController.clearAudioCache();
       if (!mounted) return;
       showTopSnackBar(context, l10n.snackbarLocalMessageCacheCleared);

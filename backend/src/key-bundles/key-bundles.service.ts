@@ -74,24 +74,25 @@ export class KeyBundlesService {
     keys: OneTimePreKeyData[],
     identityPublicKey?: string,
   ): Promise<void> {
-    // Bind each OTP to the identity epoch that generated it. New clients pass it
-    // explicitly; old clients omit it, so back-fill from the current bundle. The
-    // fetch identity filter is the load-bearing guard either way — an OTP whose
-    // tag does not match the current bundle identity is never served.
-    let identity = identityPublicKey ?? null;
-    if (!identity) {
-      const bundle = await this.keyBundleRepo.findOne({ where: { userId } });
-      identity = bundle?.identityPublicKey ?? null;
+    // Untagged OTPs are cryptographic material whose identity epoch cannot be
+    // proven. Never infer an epoch from the currently stored bundle: a legacy
+    // client can upload an old private half after another device rotated the
+    // account identity, creating a false {current identity, stale OTP} pair.
+    if (!identityPublicKey) {
+      this.logger.warn(
+        `Rejected untagged one-time pre-keys userId=${userId} reason=identity_epoch_required`,
+      );
+      throw new Error('identity_epoch_required');
     }
-    // UPSERT on (userId, keyId): a regenerated epoch reuses keyId slots 0..N, so
-    // collapse onto the existing row and refresh publicKey + identity + used
-    // rather than piling up duplicate rows the oldest-first claim would serve.
+
+    // UPSERT on (userId, keyId): a regenerated epoch reuses keyId slots 0..N,
+    // so refresh the existing row rather than piling up duplicates.
     await this.otpRepo.upsert(
       keys.map((k) => ({
         userId,
         keyId: k.keyId,
         publicKey: k.publicKey,
-        identityPublicKey: identity,
+        identityPublicKey,
         used: false,
       })),
       { conflictPaths: ['userId', 'keyId'] },
