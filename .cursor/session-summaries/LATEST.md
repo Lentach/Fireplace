@@ -1,5 +1,14 @@
 # Latest session summary
 
+**Date:** 2026-07-12 (release candidate 0.0.109 — stale OTP hardening, cache durability, diagnostics)
+
+**Topic:** Untagged legacy OTP uploads now fail closed with `identity_epoch_required`; frontend replenishment defers when identity lookup is unavailable and later uploads tagged OTPs. The incident harness covers the legacy identity race, the preserved replay boundary, and a two-party audio-cache durability/reload path. The production cache action clears downloaded audio only, preserving decrypted history, media keys, Signal sessions, and pending-send plaintext. Diagnostics provide current-session, current-build, 24-hour, historical, and full-log filters plus repeated-failure grouping and explicit diagnostic-only clearing. Release semver is now `0.0.109` (deployed `0.0.108` remains unchanged).
+
+**Verification:** Backend Jest **462 passed / 43 suites**; root test-count verifier passed; full Flutter suite **667 passed**; local and production-mode staging wire harnesses **11 tests passed each**; diagnostic utility tests **2 passed**; diagnostic widget test **1 passed**; analyze has no errors except the pre-existing regex info in `jumbo_emoji.dart`.
+
+**Safety:** No merge, deployment, rollback, browser-data clearing, identity regeneration, session deletion, or history deletion. Production remains owner-gated.
+
+**Previous:** 2026-07-11 (incident harness extension — legacy/new identity epoch invariant RED; production code frozen)
 
 **Date:** 2026-07-11 (stale-OTP E2E fix + duplicate/durability hardening — **DEPLOYED to prod, 0.0.108 / `59191f2`, both tiers**; branch `fix/stale-otp-epoch`, NOT yet merged to master)
 

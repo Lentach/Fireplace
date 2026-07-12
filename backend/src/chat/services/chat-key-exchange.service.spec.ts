@@ -114,8 +114,8 @@ describe('ChatKeyExchangeService', () => {
     it('should call uploadOneTimePreKeys and emit oneTimePreKeysUploaded', async () => {
       await service.handleUploadOneTimePreKeys(mockClient as Socket, validData);
 
-      // Third arg is the optional identity epoch tag; undefined when the client
-      // omits it (legacy clients) — the service back-fills from the bundle.
+      // Legacy payloads remain observable at this boundary, but the key-bundle
+      // service must reject them rather than infer an identity epoch.
       expect(keyBundlesService.uploadOneTimePreKeys).toHaveBeenCalledWith(
         1,
         validData.keys,

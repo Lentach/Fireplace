@@ -5,18 +5,21 @@ import 'package:flutter/foundation.dart';
 import '../models/message_model.dart';
 import '../services/encryption_service.dart';
 import '../utils/e2e_diag_log.dart';
+import '../utils/e2e_persistent_diag.dart';
 import '../utils/storage_persist.dart';
 
 /// EncryptionProvider — owns all E2E encryption state, initialization,
-/// key exchange, and session management.
 class EncryptionProvider extends ChangeNotifier {
+  EncryptionProvider({EncryptionService? service})
+    : _encryptionService = service ?? EncryptionService();
+
   static void _e2eFlowLog(String step, [Map<String, dynamic>? data]) {
     E2eDiagLog.add(step, data ?? {});
     if (kDebugMode) debugPrint('[E2E-FLOW] $step | ${data ?? {}}');
   }
 
   // ---------- E2E Encryption State ----------
-  final EncryptionService _encryptionService = EncryptionService();
+  final EncryptionService _encryptionService;
   bool _e2eInitialized = false;
   final Map<int, Completer<Map<String, dynamic>>> _pendingPreKeyFetches = {};
   bool _generatingMoreKeys = false;
@@ -100,7 +103,11 @@ class EncryptionProvider extends ChangeNotifier {
     }
     final needsRebuild = _forceSessionRebuild.remove(recipientId);
     final hasSession = await _encryptionService.hasSession(recipientId);
-    _e2eFlowLog('SESSION_ENSURE', {'recipientId': recipientId, 'hasSession': hasSession, 'needsRebuild': needsRebuild});
+    _e2eFlowLog('SESSION_ENSURE', {
+      'recipientId': recipientId,
+      'hasSession': hasSession,
+      'needsRebuild': needsRebuild,
+    });
     if (hasSession && !needsRebuild) return;
 
     // Rebuild = build OVER the existing record, never delete it first.
@@ -128,11 +135,15 @@ class EncryptionProvider extends ChangeNotifier {
     _emit?.call('fetchPreKeyBundle', {'userId': recipientId});
 
     // Wait for the server response with a timeout
-    final bundle = await completer.future
-        .timeout(const Duration(seconds: 10), onTimeout: () {
-      _pendingPreKeyFetches.remove(recipientId);
-      throw TimeoutException('Pre-key bundle fetch timed out for user $recipientId');
-    });
+    final bundle = await completer.future.timeout(
+      const Duration(seconds: 10),
+      onTimeout: () {
+        _pendingPreKeyFetches.remove(recipientId);
+        throw TimeoutException(
+          'Pre-key bundle fetch timed out for user $recipientId',
+        );
+      },
+    );
 
     await _encryptionService.buildSession(recipientId, bundle);
     debugPrint('[E2E] Session established with userId=$recipientId');
@@ -194,7 +205,9 @@ class EncryptionProvider extends ChangeNotifier {
   /// Delegates to [EncryptionService.saveDecryptedContent].
   /// Silent on failure (matches service behavior).
   Future<void> saveDecryptedContent(
-      int messageId, Map<String, dynamic> data) async {
+    int messageId,
+    Map<String, dynamic> data,
+  ) async {
     await _encryptionService.saveDecryptedContent(messageId, data);
   }
 
@@ -207,7 +220,9 @@ class EncryptionProvider extends ChangeNotifier {
   /// Record an emitted send for lost-ack reconciliation (keyed by the exact
   /// emitted ciphertext). Delegates to [EncryptionService.savePendingSendRecord].
   Future<void> savePendingSendRecord(
-      String ciphertext, Map<String, dynamic> data) async {
+    String ciphertext,
+    Map<String, dynamic> data,
+  ) async {
     await _encryptionService.savePendingSendRecord(ciphertext, data);
   }
 
@@ -231,7 +246,10 @@ class EncryptionProvider extends ChangeNotifier {
     // Scope on record: plaintext cache only — identity, sessions and pre-keys
     // are untouched. If a user report says "cleared cache" and sessions died,
     // it was NOT this path (browser site-data clear / reinstall wipes those).
-    _e2eFlowLog('CACHE_CLEAR', {'scope': 'decryptedContent', 'removed': removed});
+    _e2eFlowLog('CACHE_CLEAR', {
+      'scope': 'decryptedContent',
+      'removed': removed,
+    });
     notifyListeners();
     return removed;
   }
@@ -287,7 +305,9 @@ class EncryptionProvider extends ChangeNotifier {
         await _encryptionService.initialize(userId);
         _e2eInitialized = true;
         debugPrint('[E2E] Encryption service initialized');
-        _e2eFlowLog('E2E_INIT_DONE', {'needsKeyUpload': _encryptionService.needsKeyUpload});
+        _e2eFlowLog('E2E_INIT_DONE', {
+          'needsKeyUpload': _encryptionService.needsKeyUpload,
+        });
       } else {
         // Reconnect: stores are already valid — skip re-initialization to avoid
         // the window where _identityStore._identityKeyPair is null and to prevent
@@ -306,12 +326,19 @@ class EncryptionProvider extends ChangeNotifier {
         final keys = _encryptionService.getKeysForUpload();
         if (keys != null) {
           final keyBundle = keys['keyBundle'] as Map<String, dynamic>;
+          final identity = keyBundle['identityPublicKey'];
+          if (identity is! String || identity.isEmpty) {
+            const reason = 'identity_epoch_required';
+            debugPrint('[E2E] Key upload deferred: $reason');
+            E2ePersistentDiag.record('KEY_UPLOAD_DEFERRED', {'reason': reason});
+            _e2eFlowLog('E2E_KEYS_UPLOAD_DEFERRED', {'reason': reason});
+            return;
+          }
           _emit?.call('uploadKeyBundle', keyBundle);
           _emit?.call('uploadOneTimePreKeys', {
-            'keys': (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
-            // Bind these OTPs to the identity epoch that generated them so the
-            // server never serves them under a later (regenerated) identity.
-            'identityPublicKey': keyBundle['identityPublicKey'],
+            'keys': (keys['oneTimePreKeys'] as List)
+                .cast<Map<String, dynamic>>(),
+            'identityPublicKey': identity,
           });
           debugPrint('[E2E] Uploaded key bundle + one-time pre-keys');
           _e2eFlowLog('E2E_KEYS_UPLOADED', {});
@@ -324,7 +351,9 @@ class EncryptionProvider extends ChangeNotifier {
           debugPrint('[E2E] Re-uploaded key bundle on connect');
           _e2eFlowLog('E2E_KEYS_REUPLOADED', {});
         } else {
-          debugPrint('[E2E] Re-upload skipped: could not build key bundle from storage');
+          debugPrint(
+            '[E2E] Re-upload skipped: could not build key bundle from storage',
+          );
         }
       }
     } catch (e) {
@@ -358,11 +387,12 @@ class EncryptionProvider extends ChangeNotifier {
     final map = data as Map<String, dynamic>;
     final userId = map['userId'] as int;
     final bundle = map['bundle'];
-    _e2eFlowLog('PREKEY_RESP', {'userId': userId, 'hasBundle': bundle != null && bundle is Map<String, dynamic>});
-
+    _e2eFlowLog('PREKEY_RESP', {
+      'userId': userId,
+      'hasBundle': bundle != null && bundle is Map<String, dynamic>,
+    });
     final completer = _pendingPreKeyFetches.remove(userId);
     if (completer == null || completer.isCompleted) return;
-
     if (bundle == null || bundle is! Map<String, dynamic>) {
       completer.completeError(
         StateError('Recipient has no key bundle (userId=$userId)'),
@@ -372,26 +402,36 @@ class EncryptionProvider extends ChangeNotifier {
     completer.complete(bundle);
   }
 
-  /// Handler for `preKeysLow` server event.
-  /// Generates more one-time pre-keys and uploads them.
   void onPreKeysLow(dynamic data) {
     if (_generatingMoreKeys) return;
     _generatingMoreKeys = true;
     debugPrint('[E2E] Server reports pre-keys low, generating more...');
-    _encryptionService.generateMorePreKeys().then((keys) async {
-      // Tag replenished OTPs with the current identity epoch (same guard as the
-      // initial upload) so a low-pool refill can never be served under a stale
-      // identity after a regeneration.
-      final identity =
-          await _encryptionService.currentIdentityPublicKeyBase64();
-      _emit?.call('uploadOneTimePreKeys', {
-        'keys': keys,
-        'identityPublicKey': ?identity,
-      });
-      debugPrint('[E2E] Uploaded ${keys.length} new one-time pre-keys');
-    }).catchError((e) {
-      debugPrint('[E2E] Failed to generate more pre-keys: $e');
-    }).whenComplete(() => _generatingMoreKeys = false);
+    Future<void>(() async {
+          final identity = await _encryptionService
+              .currentIdentityPublicKeyBase64();
+          if (identity == null || identity.isEmpty) {
+            const reason = 'identity_epoch_required';
+            debugPrint('[E2E] OTP replenishment deferred: $reason');
+            E2ePersistentDiag.record('OTP_REPLENISH_DEFERRED', {
+              'reason': reason,
+            });
+            _e2eFlowLog('OTP_REPLENISH_DEFERRED', {'reason': reason});
+            return;
+          }
+          final keys = await _encryptionService.generateMorePreKeys();
+          _emit?.call('uploadOneTimePreKeys', {
+            'keys': keys,
+            'identityPublicKey': identity,
+          });
+          debugPrint('[E2E] Uploaded ${keys.length} new one-time pre-keys');
+        })
+        .catchError((e) {
+          debugPrint('[E2E] Failed to replenish pre-keys: $e');
+          E2ePersistentDiag.record('OTP_REPLENISH_FAILED', {
+            'reason': e.toString(),
+          });
+        })
+        .whenComplete(() => _generatingMoreKeys = false);
   }
 
   /// Handler for `sessionRebuildNeeded` server event.

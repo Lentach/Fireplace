@@ -46,8 +46,8 @@
   "serverStoresMetadata": "What the server stores (metadata)",
   "serverStoresMetadataDescription": "To deliver messages, the server stores: who is in each conversation, when messages were sent, and delivery status. Message content is never visible to the server.",
   "localMessageCache": "Local message cache",
-  "localMessageCacheDescription": "For reliability, this device may keep decrypted message previews and downloaded voice audio locally. Clearing this cache does not delete your encryption keys or server history.",
-  "clearLocalMessageCache": "Clear local message cache",
+  "localMessageCacheDescription": "This device may keep downloaded voice audio locally. Clearing this cache removes downloaded audio only; it does not delete readable message history, media keys, encryption keys, sessions, or browser storage.",
+  "clearLocalMessageCache": "Clear downloaded audio cache",
   "yourIdentityFingerprint": "Your identity fingerprint",
   "shareFingerprintHint": "This is a unique representation of your encryption key.",
 
