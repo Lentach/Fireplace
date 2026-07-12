@@ -380,6 +380,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           Row(
+            crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(Icons.terminal, size: 20, color: theme.colorScheme.primary),
               const SizedBox(width: 8),
@@ -393,30 +394,40 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
                   ),
                 ),
               ),
-              TextButton(
-                onPressed: () async {
-                  final all =
-                      '== DURABLE FAILURES (survives restart) ==\n'
-                      '${E2ePersistentDiag.entries.join('\n')}\n\n'
-                      '== LIVE LOG ==\n'
-                      '${E2eDiagLog.entries.join('\n')}';
-                  await Clipboard.setData(ClipboardData(text: all));
-                  if (!mounted) return;
-                  // ignore: use_build_context_synchronously
-                  showTopSnackBar(context, 'Log copied to clipboard');
-                },
-                child: const Text('Copy'),
-              ),
-              TextButton(
-                onPressed: () async {
-                  E2eDiagLog.clear();
-                  await E2ePersistentDiag.clear();
-                  if (!mounted) return;
-                  setState(() {});
-                },
-                child: const Text('Clear diagnostic logs only'),
-              ),
             ],
+          ),
+          const SizedBox(height: 8),
+          Align(
+            alignment: Alignment.centerRight,
+            child: Wrap(
+              alignment: WrapAlignment.end,
+              spacing: 4,
+              runSpacing: 0,
+              children: [
+                TextButton(
+                  onPressed: () async {
+                    final all =
+                        '== DURABLE FAILURES (survives restart) ==\n'
+                        '${E2ePersistentDiag.entries.join('\n')}\n\n'
+                        '== LIVE LOG ==\n'
+                        '${E2eDiagLog.entries.join('\n')}';
+                    await Clipboard.setData(ClipboardData(text: all));
+                    if (!mounted) return;
+                    showTopSnackBar(context, 'Log copied to clipboard');
+                  },
+                  child: const Text('Copy'),
+                ),
+                TextButton(
+                  onPressed: () async {
+                    E2eDiagLog.clear();
+                    await E2ePersistentDiag.clear();
+                    if (!mounted) return;
+                    setState(() {});
+                  },
+                  child: const Text('Clear diagnostic logs only'),
+                ),
+              ],
+            ),
           ),
           Text(
             'Current session: ${allEntries.length} events · failures: $failures',
