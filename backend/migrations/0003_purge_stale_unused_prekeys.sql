@@ -1,0 +1,23 @@
+-- Stop the stale-OTP bad-MAC wave (2026-07-11 incident).
+--
+-- Timeline: commit bfbbe4e (0.0.96, 2026-07-08) fixed a Postgres tuple bug in
+-- fetchPreKeyBundle so it finally SERVES real one-time pre-keys. Before that,
+-- every OTP was burned (used=true) but returned null, so sessions ran OTP-less
+-- X3DH and the accumulated stale rows stayed hidden. After the fix, the server
+-- began serving the OLDEST unused OTP first — and the oldest rows were dead keys
+-- from identity epochs users had regenerated weeks earlier (fresh install / key
+-- loss reused the same keyId slots, but only the newest private key survives
+-- on-device). A PreKey (ctype 3) message built on a dead OTP is undecryptable →
+-- "Bad Mac" → the persistent [Decryption failed] loop the field is reporting.
+--
+-- Emergency stop-the-bleed: drop EVERY unused OTP. At this point NONE of them
+-- carry an identity tag (0005 adds the column), so all are pre-epoch and
+-- suspect. X3DH still completes without a one-time pre-key (that is exactly how
+-- every session worked pre-0.0.96), so an empty pool is safe: fetchPreKeyBundle
+-- serves an OTP-less bundle and clients replenish (preKeysLow) with
+-- identity-tagged keys under the new epoch-filtered path.
+--
+-- Schema-qualified: the baseline dump clears search_path when it runs first on a
+-- fresh database. Idempotent: re-running deletes nothing once the pool is clean.
+
+DELETE FROM public.one_time_pre_keys WHERE used = false;

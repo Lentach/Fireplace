@@ -59,7 +59,11 @@ export class ChatKeyExchangeService {
 
     try {
       const dto = validateDto(UploadOneTimePreKeysDto, data);
-      await this.keyBundlesService.uploadOneTimePreKeys(userId, dto.keys);
+      await this.keyBundlesService.uploadOneTimePreKeys(
+        userId,
+        dto.keys,
+        dto.identityPublicKey,
+      );
       client.emit('oneTimePreKeysUploaded', { count: dto.keys.length });
     } catch (error) {
       this.logger.error(

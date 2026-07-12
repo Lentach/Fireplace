@@ -7,7 +7,8 @@ import 'package:flutter_test/flutter_test.dart';
 void main() {
   group('decideDecryptionFailure', () {
     test(
-      'duplicate → persist + terminal, no retry (regardless of reset/history)',
+      'duplicate → terminal in memory but NOT persisted, no retry '
+      '(so a later launch can still recover the plaintext from the durable cache)',
       () {
         for (final hadReset in [false, true]) {
           for (final isHistory in [false, true]) {
@@ -17,9 +18,13 @@ void main() {
               isHistory: isHistory,
             );
             expect(d.rule, DecryptionFailureRule.duplicate);
-            expect(d.persistTerminalFailure, isTrue);
+            // Must NOT persist: persisting [Decryption failed] would poison the
+            // durable decrypted-content cache and make a transiently-unreadable
+            // plaintext unrecoverable forever (the 2026-07-11 bob210 report).
+            expect(d.persistTerminalFailure, isFalse);
             expect(d.markContentFailed, isTrue);
             expect(d.retryAction, DecryptionRetryAction.none);
+            // Never asks the peer to re-key → cannot reintroduce the reset loop.
             expect(d.notifyPeerRebuild, isFalse);
           }
         }

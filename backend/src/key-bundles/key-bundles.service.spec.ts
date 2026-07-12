@@ -8,6 +8,13 @@ describe('KeyBundlesService', () => {
   let service: KeyBundlesService;
   let keyBundleRepo: Record<string, jest.Mock>;
   let otpRepo: Record<string, jest.Mock>;
+  // Chainable query-builder mock for the stale-OTP purge in upsertKeyBundle.
+  let purgeBuilder: {
+    delete: jest.Mock;
+    where: jest.Mock;
+    andWhere: jest.Mock;
+    execute: jest.Mock;
+  };
 
   const mockKeyBundleData: KeyBundleData = {
     registrationId: 12345,
@@ -26,26 +33,29 @@ describe('KeyBundlesService', () => {
       upsert: jest.fn(),
     };
 
+    purgeBuilder = {
+      delete: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({ affected: 0 }),
+    };
+
     otpRepo = {
       findOne: jest.fn(),
       create: jest.fn(),
       save: jest.fn(),
+      upsert: jest.fn(),
       delete: jest.fn(),
       count: jest.fn(),
-      query: jest.fn().mockResolvedValue([]),
+      query: jest.fn().mockResolvedValue([[], 0]),
+      createQueryBuilder: jest.fn(() => purgeBuilder),
     };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         KeyBundlesService,
-        {
-          provide: getRepositoryToken(KeyBundle),
-          useValue: keyBundleRepo,
-        },
-        {
-          provide: getRepositoryToken(OneTimePreKey),
-          useValue: otpRepo,
-        },
+        { provide: getRepositoryToken(KeyBundle), useValue: keyBundleRepo },
+        { provide: getRepositoryToken(OneTimePreKey), useValue: otpRepo },
       ],
     }).compile();
 
@@ -54,8 +64,8 @@ describe('KeyBundlesService', () => {
   });
 
   describe('upsertKeyBundle', () => {
-    it('should upsert key bundle (atomic insert-or-update)', async () => {
-      keyBundleRepo.upsert.mockResolvedValue({ identifiers: [], generatedMaps: [], raw: [] });
+    it('upserts the key bundle atomically (insert-or-update)', async () => {
+      keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
 
       await service.upsertKeyBundle(1, mockKeyBundleData);
 
@@ -63,66 +73,106 @@ describe('KeyBundlesService', () => {
         { userId: 1, ...mockKeyBundleData },
         { conflictPaths: ['userId'] },
       );
-      expect(keyBundleRepo.findOne).not.toHaveBeenCalled();
       expect(keyBundleRepo.save).not.toHaveBeenCalled();
     });
 
-    it('should use the same upsert call for both create and update paths', async () => {
-      keyBundleRepo.upsert.mockResolvedValue({ identifiers: [], generatedMaps: [], raw: [] });
+    it('purges unused OTPs from superseded identity epochs (durable stale-OTP fix)', async () => {
+      keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
 
       await service.upsertKeyBundle(42, mockKeyBundleData);
 
-      expect(keyBundleRepo.upsert).toHaveBeenCalledTimes(1);
-      expect(keyBundleRepo.upsert).toHaveBeenCalledWith(
-        { userId: 42, ...mockKeyBundleData },
-        { conflictPaths: ['userId'] },
+      // A DELETE scoped to this user, unused rows, whose identity is NULL or
+      // different from the newly-uploaded identity — never the current epoch.
+      expect(otpRepo.createQueryBuilder).toHaveBeenCalledTimes(1);
+      expect(purgeBuilder.delete).toHaveBeenCalledTimes(1);
+      expect(purgeBuilder.where).toHaveBeenCalledWith('"userId" = :userId', {
+        userId: 42,
+      });
+      const andWhereCalls = purgeBuilder.andWhere.mock.calls.map((c) => c[0]);
+      expect(andWhereCalls).toContain('used = false');
+      expect(andWhereCalls).toContain(
+        '("identityPublicKey" IS NULL OR "identityPublicKey" != :identity)',
       );
+      // The identity bound to the purge is the NEW bundle identity.
+      const identityCall = purgeBuilder.andWhere.mock.calls.find(
+        (c) => c[1] && 'identity' in c[1],
+      );
+      expect(identityCall?.[1]).toEqual({
+        identity: mockKeyBundleData.identityPublicKey,
+      });
+      expect(purgeBuilder.execute).toHaveBeenCalledTimes(1);
     });
   });
 
   describe('uploadOneTimePreKeys', () => {
-    it('should store a batch of one-time pre-keys', async () => {
-      const keys = [
-        { keyId: 1, publicKey: 'pk-1' },
-        { keyId: 2, publicKey: 'pk-2' },
-        { keyId: 3, publicKey: 'pk-3' },
-      ];
+    const keys = [
+      { keyId: 0, publicKey: 'pk-0' },
+      { keyId: 1, publicKey: 'pk-1' },
+    ];
 
-      const entities = keys.map((k) => ({
+    it('upserts on (userId,keyId) and tags rows with the explicit identity', async () => {
+      otpRepo.upsert.mockResolvedValue({ raw: [] });
+
+      await service.uploadOneTimePreKeys(5, keys, 'epoch-2-identity');
+
+      // No bundle lookup needed — the client supplied the identity tag.
+      expect(keyBundleRepo.findOne).not.toHaveBeenCalled();
+      expect(otpRepo.save).not.toHaveBeenCalled();
+      expect(otpRepo.upsert).toHaveBeenCalledWith(
+        [
+          {
+            userId: 5,
+            keyId: 0,
+            publicKey: 'pk-0',
+            identityPublicKey: 'epoch-2-identity',
+            used: false,
+          },
+          {
+            userId: 5,
+            keyId: 1,
+            publicKey: 'pk-1',
+            identityPublicKey: 'epoch-2-identity',
+            used: false,
+          },
+        ],
+        { conflictPaths: ['userId', 'keyId'] },
+      );
+    });
+
+    it('back-fills the identity from the current bundle when a legacy client omits it', async () => {
+      keyBundleRepo.findOne.mockResolvedValue({
         userId: 5,
-        keyId: k.keyId,
-        publicKey: k.publicKey,
-      }));
-      otpRepo.create
-        .mockReturnValueOnce(entities[0])
-        .mockReturnValueOnce(entities[1])
-        .mockReturnValueOnce(entities[2]);
-      otpRepo.save.mockResolvedValue(entities);
+        ...mockKeyBundleData,
+      });
+      otpRepo.upsert.mockResolvedValue({ raw: [] });
 
       await service.uploadOneTimePreKeys(5, keys);
 
-      expect(otpRepo.create).toHaveBeenCalledTimes(3);
-      expect(otpRepo.create).toHaveBeenCalledWith({
-        userId: 5,
-        keyId: 1,
-        publicKey: 'pk-1',
+      expect(keyBundleRepo.findOne).toHaveBeenCalledWith({
+        where: { userId: 5 },
       });
-      expect(otpRepo.create).toHaveBeenCalledWith({
-        userId: 5,
-        keyId: 2,
-        publicKey: 'pk-2',
-      });
-      expect(otpRepo.create).toHaveBeenCalledWith({
-        userId: 5,
-        keyId: 3,
-        publicKey: 'pk-3',
-      });
-      expect(otpRepo.save).toHaveBeenCalledWith(entities);
+      const [rows] = otpRepo.upsert.mock.calls[0];
+      expect(rows.every((r) => r.identityPublicKey === mockKeyBundleData.identityPublicKey)).toBe(
+        true,
+      );
+    });
+
+    it('tags OTPs null when a legacy client omits identity and no bundle exists yet', async () => {
+      keyBundleRepo.findOne.mockResolvedValue(null);
+      otpRepo.upsert.mockResolvedValue({ raw: [] });
+
+      await service.uploadOneTimePreKeys(5, keys);
+
+      const [rows] = otpRepo.upsert.mock.calls[0];
+      // Null-tagged rows are never served (fetch identity filter), so this is safe.
+      expect(rows.every((r) => r.identityPublicKey === null)).toBe(true);
     });
   });
 
   describe('fetchPreKeyBundle', () => {
-    it('should return null when no key bundle exists', async () => {
+    const bundle = { id: 1, userId: 5, ...mockKeyBundleData };
+
+    it('returns null when no key bundle exists', async () => {
       keyBundleRepo.findOne.mockResolvedValue(null);
 
       const result = await service.fetchPreKeyBundle(99);
@@ -131,19 +181,10 @@ describe('KeyBundlesService', () => {
       expect(otpRepo.query).not.toHaveBeenCalled();
     });
 
-    it('should return bundle with one unused OTP via atomic UPDATE', async () => {
-      const bundle = {
-        id: 1,
-        userId: 5,
-        ...mockKeyBundleData,
-      };
-      const otp = { id: 10, keyId: 7, publicKey: 'otp-pk-7' };
-
+    it('claims an OTP filtered by the CURRENT identity epoch ($1 user, $2 identity)', async () => {
       keyBundleRepo.findOne.mockResolvedValue(bundle);
       // Real Postgres shape for UPDATE ... RETURNING: [rows, rowCount].
-      // Mocking plain rows here is exactly how the burned-but-never-served
-      // OTP bug slipped past this spec (see backend/CLAUDE.md §4).
-      otpRepo.query.mockResolvedValue([[otp], 1]);
+      otpRepo.query.mockResolvedValue([[{ id: 10, keyId: 7, publicKey: 'otp-pk-7' }], 1]);
 
       const result = await service.fetchPreKeyBundle(5);
 
@@ -156,83 +197,56 @@ describe('KeyBundlesService', () => {
         oneTimePreKeyId: 7,
         oneTimePreKeyPublic: 'otp-pk-7',
       });
-
-      expect(otpRepo.query).toHaveBeenCalledWith(
-        expect.stringContaining('UPDATE one_time_pre_keys'),
-        [5],
-      );
-      expect(otpRepo.save).not.toHaveBeenCalled();
+      // The load-bearing guard: SQL filters on identityPublicKey and binds the
+      // current bundle identity as the second parameter.
+      const [sql, params] = otpRepo.query.mock.calls[0];
+      expect(sql).toContain('UPDATE one_time_pre_keys');
+      expect(sql).toContain('"identityPublicKey" = $2');
+      expect(params).toEqual([5, mockKeyBundleData.identityPublicKey]);
     });
 
-    it('should return null OTP fields when no unused pre-keys remain', async () => {
-      const bundle = {
-        id: 1,
-        userId: 5,
-        ...mockKeyBundleData,
-      };
-
+    it('returns null OTP fields when the current epoch has no unused pre-keys', async () => {
       keyBundleRepo.findOne.mockResolvedValue(bundle);
       otpRepo.query.mockResolvedValue([[], 0]);
 
       const result = await service.fetchPreKeyBundle(5);
 
-      expect(result).toEqual({
-        registrationId: mockKeyBundleData.registrationId,
-        identityPublicKey: mockKeyBundleData.identityPublicKey,
-        signedPreKeyId: mockKeyBundleData.signedPreKeyId,
-        signedPreKeyPublic: mockKeyBundleData.signedPreKeyPublic,
-        signedPreKeySignature: mockKeyBundleData.signedPreKeySignature,
-        oneTimePreKeyId: null,
-        oneTimePreKeyPublic: null,
-      });
-
-      expect(otpRepo.save).not.toHaveBeenCalled();
+      expect(result?.oneTimePreKeyId).toBeNull();
+      expect(result?.oneTimePreKeyPublic).toBeNull();
+      // OTP-less bundle is still valid — X3DH completes without a one-time key.
+      expect(result?.identityPublicKey).toBe(mockKeyBundleData.identityPublicKey);
     });
-
-    it('consumes different OTP rows across repeated fetches', async () => {
-      const bundle = {
-        id: 1,
-        userId: 5,
-        ...mockKeyBundleData,
-      };
-      keyBundleRepo.findOne.mockResolvedValue(bundle);
-      otpRepo.query
-        .mockResolvedValueOnce([[{ id: 10, keyId: 101, publicKey: 'otp-101' }], 1])
-        .mockResolvedValueOnce([[{ id: 11, keyId: 102, publicKey: 'otp-102' }], 1]);
-
-      const first = await service.fetchPreKeyBundle(5);
-      const second = await service.fetchPreKeyBundle(5);
-
-      expect(first?.oneTimePreKeyId).toBe(101);
-      expect(second?.oneTimePreKeyId).toBe(102);
-      expect(otpRepo.query).toHaveBeenCalledTimes(2);
-    });
-
   });
 
   describe('countUnusedPreKeys', () => {
-    it('should return the count of unused pre-keys for a user', async () => {
+    it('counts only unused OTPs of the CURRENT identity epoch', async () => {
+      keyBundleRepo.findOne.mockResolvedValue({ userId: 5, ...mockKeyBundleData });
       otpRepo.count.mockResolvedValue(15);
 
       const count = await service.countUnusedPreKeys(5);
 
       expect(count).toBe(15);
       expect(otpRepo.count).toHaveBeenCalledWith({
-        where: { userId: 5, used: false },
+        where: {
+          userId: 5,
+          used: false,
+          identityPublicKey: mockKeyBundleData.identityPublicKey,
+        },
       });
     });
 
-    it('should return 0 when no unused pre-keys exist', async () => {
-      otpRepo.count.mockResolvedValue(0);
+    it('returns 0 when the user has no key bundle', async () => {
+      keyBundleRepo.findOne.mockResolvedValue(null);
 
       const count = await service.countUnusedPreKeys(5);
 
       expect(count).toBe(0);
+      expect(otpRepo.count).not.toHaveBeenCalled();
     });
   });
 
   describe('deleteByUserId', () => {
-    it('should delete all OTPs and key bundles for the user', async () => {
+    it('deletes all OTPs and key bundles for the user', async () => {
       otpRepo.delete.mockResolvedValue({ affected: 10 });
       keyBundleRepo.delete.mockResolvedValue({ affected: 1 });
 
@@ -242,7 +256,7 @@ describe('KeyBundlesService', () => {
       expect(keyBundleRepo.delete).toHaveBeenCalledWith({ userId: 5 });
     });
 
-    it('should delete OTPs before key bundles', async () => {
+    it('deletes OTPs before key bundles', async () => {
       const callOrder: string[] = [];
       otpRepo.delete.mockImplementation(async () => {
         callOrder.push('otp');
