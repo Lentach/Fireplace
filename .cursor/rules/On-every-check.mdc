@@ -1,5 +1,0 @@
----
-alwaysApply: true
----
-
-Always read `CLAUDE.md` first; for tier-specific work also read `backend/CLAUDE.md` or `frontend/CLAUDE.md`.
