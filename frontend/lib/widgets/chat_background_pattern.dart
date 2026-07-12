@@ -3,7 +3,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import '../theme/glass_theme.dart';
-import 'hieroglyph_glyphs.g.dart';
+import 'hieroglyph_glyphs.dart';
 
 /// Chat wallpaper (owner-locked design v3.5, 2026-07-11): "temple columns" —
 /// hieroglyphs stacked in vertical registers with faint column separators,
