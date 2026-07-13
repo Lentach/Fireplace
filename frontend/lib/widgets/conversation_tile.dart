@@ -16,6 +16,7 @@ class ConversationTile extends StatelessWidget {
   final MessageModel? lastMessage;
   final bool isActive;
   final int unreadCount;
+  final bool isMuted;
   final VoidCallback onTap;
   final VoidCallback onDelete;
   final UserModel? otherUser;
@@ -28,6 +29,7 @@ class ConversationTile extends StatelessWidget {
     this.lastMessage,
     this.isActive = false,
     this.unreadCount = 0,
+    this.isMuted = false,
     required this.onTap,
     required this.onDelete,
     this.otherUser,
@@ -99,6 +101,18 @@ class ConversationTile extends StatelessWidget {
     final staticTrailing = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
+        if (isMuted)
+          Padding(
+            padding: const EdgeInsets.only(right: 6),
+            child: Tooltip(
+              message: AppLocalizations.of(context).userCardNotificationsMuted,
+              child: Icon(
+                Icons.notifications_off_outlined,
+                size: 14,
+                color: secondaryColor,
+              ),
+            ),
+          ),
         if (unreadCount > 0)
           Container(
             margin: const EdgeInsets.only(right: 6),

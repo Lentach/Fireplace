@@ -20,6 +20,7 @@ import { FriendsModule } from '../friends/friends.module';
 import { BlockedModule } from '../blocked/blocked.module';
 import { KeyBundlesModule } from '../key-bundles/key-bundles.module';
 import { PushNotificationsModule } from '../push-notifications/push-notifications.module';
+import { ConversationNotificationPreferencesModule } from '../conversation-notification-preferences/conversation-notification-preferences.module';
 
 @Module({
   imports: [
@@ -33,6 +34,7 @@ import { PushNotificationsModule } from '../push-notifications/push-notification
     KeyBundlesModule,
     LinkPreviewModule,
     PushNotificationsModule,
+    ConversationNotificationPreferencesModule,
   ],
   providers: [
     ChatGateway,

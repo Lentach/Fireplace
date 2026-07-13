@@ -4,7 +4,9 @@ import {
   Column,
   CreateDateColumn,
   Unique,
+  OneToMany,
 } from 'typeorm';
+import { ProfilePhoto } from './profile-photo.entity';
 
 @Entity('users')
 @Unique(['username', 'tag'])
@@ -23,10 +25,17 @@ export class User {
   password: string;
 
   @Column({ nullable: true })
-  profilePictureUrl: string;
+  profilePictureUrl: string | null;
 
   @Column({ nullable: true })
-  profilePicturePublicId: string;
+  profilePicturePublicId: string | null;
+
+  @Column({ length: 80, nullable: true })
+  about: string | null;
+
+  @OneToMany(() => ProfilePhoto, (photo) => photo.user)
+  profilePhotos: ProfilePhoto[];
+
 
   @CreateDateColumn()
   createdAt: Date;

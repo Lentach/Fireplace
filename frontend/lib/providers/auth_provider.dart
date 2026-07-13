@@ -402,11 +402,49 @@ class AuthProvider extends ChangeNotifier {
     }
   }
 
+  Future<void> setPrimaryProfilePhoto(int photoId) async {
+    if (_token == null || _currentUser == null) {
+      throw Exception('Not authenticated');
+    }
+    final photos = await _api.setPrimaryProfilePhoto(_token!, photoId);
+    final primary = photos.firstWhere((photo) => photo.isPrimary);
+    _currentUser = _currentUser!.copyWith(
+      profilePhotos: photos,
+      profilePictureUrl: primary.url,
+    );
+    notifyListeners();
+  }
+
+  Future<void> deleteProfilePhoto(int photoId) async {
+    if (_token == null || _currentUser == null) {
+      throw Exception('Not authenticated');
+    }
+    final photos = await _api.deleteProfilePhoto(_token!, photoId);
+    final primary = photos.where((photo) => photo.isPrimary).firstOrNull;
+    _currentUser = _currentUser!.copyWith(
+      profilePhotos: photos,
+      profilePictureUrl: primary?.url,
+      clearProfilePicture: primary == null,
+    );
+    notifyListeners();
+  }
+
+  Future<void> updateProfileAbout(String? about) async {
+    if (_token == null || _currentUser == null) {
+      throw Exception('Not authenticated');
+    }
+    final savedAbout = await _api.updateProfileAbout(_token!, about);
+    _currentUser = _currentUser!.copyWith(
+      about: savedAbout,
+      clearAbout: savedAbout == null,
+    );
+    notifyListeners();
+  }
+
   Future<void> resetPassword(String oldPassword, String newPassword) async {
     if (_token == null) {
       throw Exception('Not authenticated');
     }
-
     try {
       await _api.resetPassword(_token!, oldPassword, newPassword);
       await _clearLocalAuthState('password_changed', source: 'resetPassword');

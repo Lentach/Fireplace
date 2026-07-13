@@ -428,6 +428,9 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.on('disappearingTimerUpdated', (data) {
       _conversationsProvider?.onDisappearingTimerUpdated(data);
     });
+    _socketService.on('conversationMuteUpdated', (data) {
+      _conversationsProvider?.onConversationMuteUpdated(data);
+    });
     _socketService.on('messagePinned', (data) {
       final m = data as Map<String, dynamic>;
       final pinnedId = m['pinnedMessageId'] as int?;

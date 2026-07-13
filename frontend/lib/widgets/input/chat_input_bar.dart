@@ -152,6 +152,9 @@ class ChatInputBarState extends State<ChatInputBar> {
     showSoftKeyboardIfHidden(context: context, hasFocus: true);
   }
 
+  /// Restores the composer after a transient surface such as User Card closes.
+  void focusComposer() => _requestComposerFocus();
+
   void _handleComposerTapOutside(PointerDownEvent _) {
     if (_ignoreComposerTapOutsideForChatSurfaceTap) return;
     if (kIsWeb && isIOSWebKit()) return;

@@ -16,6 +16,8 @@ import { ConversationMapper } from '../mappers/conversation.mapper';
 import { MediaCleanupService } from '../../media/media-cleanup.service';
 import { MessageMapper } from '../../messages/message.mapper';
 import { isMessageExpired } from '../../messages/message-expiry.util';
+import { SetConversationMuteDto } from '../dto/set-conversation-mute.dto';
+import { ConversationNotificationPreferencesService } from '../../conversation-notification-preferences/conversation-notification-preferences.service';
 
 @Injectable()
 export class ChatConversationService {
@@ -28,6 +30,7 @@ export class ChatConversationService {
     private readonly blockedService: BlockedService,
     private readonly chatValidationService: ChatValidationService,
     private readonly mediaCleanup: MediaCleanupService,
+    private readonly notificationPreferences: ConversationNotificationPreferencesService,
   ) {}
 
   async handleStartConversation(
@@ -121,7 +124,7 @@ export class ChatConversationService {
     const convIds = conversations
       .map((c) => Number(c.id))
       .filter((id) => !Number.isNaN(id));
-    const [unreadMap, lastMsgMap, pinnedMsgMap] = await Promise.all([
+    const [unreadMap, lastMsgMap, pinnedMsgMap, muteStates] = await Promise.all([
       this.messagesService.countUnreadForRecipientBatch(convIds, userId),
       this.messagesService.getLastMessagesBatch(convIds, userId),
       this.messagesService.getPinnedMessagesBatch(
@@ -131,14 +134,18 @@ export class ChatConversationService {
         })),
         userId,
       ),
+      this.notificationPreferences.getMuteStates(userId, convIds),
     ]);
 
     const results = conversations.map((conv) => {
       const convId = Number(conv.id);
+      const muteState = muteStates.get(convId);
       return ConversationMapper.toPayload(conv, {
         unreadCount: unreadMap.get(convId) ?? 0,
         lastMessage: lastMsgMap.get(convId) ?? null,
         pinnedMessage: pinnedMsgMap.get(convId) ?? null,
+        muted: muteState?.muted ?? false,
+        mutedUntil: muteState?.until ?? null,
       });
     });
 
@@ -464,5 +471,35 @@ export class ChatConversationService {
     this.logger.debug(
       `User ${userId} unpinned conversation ${dto.conversationId}`,
     );
+  }
+  async handleSetConversationMute(client: Socket, data: unknown) {
+    const userId: number | undefined = client.data.user?.id;
+    if (!userId) return;
+    let dto: SetConversationMuteDto;
+    try {
+      dto = validateDto(SetConversationMuteDto, data);
+    } catch (error) {
+      client.emit('error', { message: error.message });
+      return;
+    }
+    const conversation = await this.conversationsService.findById(dto.conversationId);
+    if (!conversation) {
+      client.emit('error', { message: 'Conversation not found' });
+      return;
+    }
+    if (conversation.userOne.id !== userId && conversation.userTwo.id !== userId) {
+      client.emit('error', { message: 'Unauthorized' });
+      return;
+    }
+    const state = await this.notificationPreferences.setMute(
+      userId,
+      dto.conversationId,
+      dto.duration,
+    );
+    client.emit('conversationMuteUpdated', {
+      conversationId: dto.conversationId,
+      muted: state.muted,
+      mutedUntil: state.until,
+    });
   }
 }

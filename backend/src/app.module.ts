@@ -33,6 +33,9 @@ import { RefreshToken } from './auth/refresh-token.entity';
 import { APP_GUARD } from '@nestjs/core';
 import { HttpThrottlerGuard } from './common/http-throttler.guard';
 
+import { ConversationNotificationPreference } from './conversation-notification-preferences/conversation-notification-preference.entity';
+import { ConversationNotificationPreferencesModule } from './conversation-notification-preferences/conversation-notification-preferences.module';
+import { ProfilePhoto } from './users/profile-photo.entity';
 @Module({
   imports: [
     // Load and validate environment variables
@@ -74,6 +77,8 @@ import { HttpThrottlerGuard } from './common/http-throttler.guard';
           KeyBundle,
           OneTimePreKey,
           SecretNote,
+          ConversationNotificationPreference,
+          ProfilePhoto,
         ],
         synchronize: process.env.NODE_ENV !== 'production',
       }),
@@ -90,6 +95,7 @@ import { HttpThrottlerGuard } from './common/http-throttler.guard';
     KeyBundlesModule,
     PushNotificationsModule,
     ChatModule,
+    ConversationNotificationPreferencesModule,
     SecretNotesModule,
     HealthModule,
     VersionModule,

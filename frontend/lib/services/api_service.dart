@@ -6,6 +6,7 @@ import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
 
 import 'session_refresh_exception.dart';
+import '../models/user_model.dart';
 
 class ApiService {
   final String baseUrl;
@@ -158,6 +159,56 @@ class ApiService {
     }
 
     return data['profilePictureUrl'] as String;
+  }
+
+  Future<List<UserProfilePhoto>> setPrimaryProfilePhoto(
+    String token,
+    int photoId,
+  ) async {
+    final response = await _httpClient.post(
+      Uri.parse('$baseUrl/users/profile-photos/$photoId/main'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 200) {
+      throw Exception(data['message'] ?? 'Unable to set primary photo');
+    }
+    return (data['profilePhotos'] as List<dynamic>)
+        .map((value) => UserProfilePhoto.fromJson(value as Map<String, dynamic>))
+        .toList(growable: false);
+  }
+
+  Future<List<UserProfilePhoto>> deleteProfilePhoto(
+    String token,
+    int photoId,
+  ) async {
+    final response = await _httpClient.delete(
+      Uri.parse('$baseUrl/users/profile-photos/$photoId'),
+      headers: {'Authorization': 'Bearer $token'},
+    );
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 200) {
+      throw Exception(data['message'] ?? 'Unable to delete profile photo');
+    }
+    return (data['profilePhotos'] as List<dynamic>)
+        .map((value) => UserProfilePhoto.fromJson(value as Map<String, dynamic>))
+        .toList(growable: false);
+  }
+
+  Future<String?> updateProfileAbout(String token, String? about) async {
+    final response = await _httpClient.patch(
+      Uri.parse('$baseUrl/users/profile-about'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'about': about}),
+    );
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    if (response.statusCode != 200) {
+      throw Exception(data['message'] ?? 'Unable to update profile');
+    }
+    return data['about'] as String?;
   }
 
   Future<void> resetPassword(

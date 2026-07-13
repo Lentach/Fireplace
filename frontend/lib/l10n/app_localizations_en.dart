@@ -784,4 +784,110 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get pinnedMessageBannerSemantics => 'Pinned message';
+
+  @override
+  String get userCardAbout => 'About';
+
+  @override
+  String get userCardMyProfile => 'My profile';
+
+  @override
+  String get userCardEditAbout => 'Edit About';
+
+  @override
+  String get userCardAddPhoto => 'Add photo';
+
+  @override
+  String get userCardPhotoLimitReached => 'Photo limit reached';
+
+  @override
+  String get userCardSetMainPhoto => 'Set viewed photo as main';
+
+  @override
+  String get userCardDeletePhoto => 'Delete viewed photo';
+
+  @override
+  String get userCardSave => 'Save';
+
+  @override
+  String get userCardCancel => 'Cancel';
+
+  @override
+  String get userCardBack => 'Back';
+
+  @override
+  String get userCardNotifications => 'Notifications';
+
+  @override
+  String get userCardNotificationsOn => 'Notifications on';
+
+  @override
+  String get userCardMuteOneHour => 'Mute for 1 hour';
+
+  @override
+  String get userCardMuteEightHours => 'Mute for 8 hours';
+
+  @override
+  String get userCardMuteOneWeek => 'Mute for 1 week';
+
+  @override
+  String get userCardMuteForever => 'Mute forever';
+
+  @override
+  String get userCardChatBackground => 'Chat background';
+
+  @override
+  String get userCardBackgroundPrivate =>
+      'Only you see this background in this conversation.';
+
+  @override
+  String get userCardMessage => 'Message';
+
+  @override
+  String get userCardTypeMessage => 'Type a message';
+
+  @override
+  String get userCardDefaultBackground => 'Default';
+
+  @override
+  String get userCardGlyphsBackground => 'Glyphs';
+
+  @override
+  String get userCardCopyHandle => 'Copy username and tag';
+
+  @override
+  String userCardCopiedHandle(Object handle) {
+    return 'Copied $handle';
+  }
+
+  @override
+  String get userCardNoProfilePhoto => 'No profile photo';
+
+  @override
+  String get userCardBackgroundPreviewMessage => 'See you by the fire.';
+
+  @override
+  String get userCardNotificationsMuted => 'Notifications muted';
+
+  @override
+  String userCardBlockTitle(Object handle) {
+    return 'Block $handle?';
+  }
+
+  @override
+  String get userCardBlockConfirm =>
+      'You will no longer be able to message this contact.';
+
+  @override
+  String get userCardDeletePhotoTitle => 'Delete photo?';
+
+  @override
+  String get userCardDeletePhotoConfirm =>
+      'This permanently deletes this profile photo.';
+
+  @override
+  String get userCardSafety => 'Safety';
+
+  @override
+  String get userCardRemoveContact => 'Remove contact';
 }

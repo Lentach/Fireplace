@@ -5,12 +5,14 @@ import '../l10n/app_localizations.dart';
 import '../models/user_model.dart';
 import '../providers/conversations_provider.dart';
 import '../providers/friends_provider.dart';
+import '../providers/auth_provider.dart';
+import '../providers/settings_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
-import '../widgets/glass/glass_sheet.dart';
 import '../widgets/main_tab_screen_header.dart';
 import '../utils/instant_opaque_route.dart';
 import 'chat_detail_screen.dart';
+import 'user_card_screen.dart';
 
 class ContactsScreen extends StatelessWidget {
   const ContactsScreen({super.key});
@@ -43,109 +45,70 @@ class ContactsScreen extends StatelessWidget {
     }
   }
 
-  void _showContactContextMenu(BuildContext context, UserModel user) {
-    final colorScheme = Theme.of(context).colorScheme;
+  void _openContactCard(BuildContext context, UserModel user) {
+    final convs = context.read<ConversationsProvider>();
+    final existingConversation = convs.conversations.where(
+      (conversation) => convs.getOtherUser(conversation)?.id == user.id,
+    ).firstOrNull;
+    final hasConversation = existingConversation != null;
 
-    showGlassSheet<void>(
-      context,
-      builder: (sheetContext) {
-        return SafeArea(
-          child: Padding(
-            padding: const EdgeInsets.symmetric(vertical: 8),
-            child: Column(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                ListTile(
-                  leading: Icon(Icons.person_remove, color: colorScheme.error),
-                  title: Text(
-                    AppLocalizations.of(
-                      context,
-                    ).removeFriendTitle.replaceAll('?', ''),
-                    style: RpgTheme.bodyFont(
-                      fontSize: 14,
-                      color: colorScheme.onSurface,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    _unfriendContact(context, user.id, user.username);
-                  },
-                ),
-                ListTile(
-                  leading: Icon(Icons.block, color: colorScheme.error),
-                  title: Text(
-                    AppLocalizations.of(context).block,
-                    style: RpgTheme.bodyFont(
-                      fontSize: 14,
-                      color: colorScheme.onSurface,
-                      fontWeight: FontWeight.w500,
-                    ),
-                  ),
-                  onTap: () {
-                    Navigator.pop(sheetContext);
-                    context.read<FriendsProvider>().blockUser(user.id);
-                  },
-                ),
-              ],
+    Navigator.of(context).push(
+      instantOpaqueRoute(
+        builder: (cardContext) => UserCardScreen(
+          data: UserCardVisualData.fromUser(
+            user,
+            isSelf: false,
+            hasConversation: hasConversation,
+            mute: UserCardMute.fromConversation(
+              muted: existingConversation?.muted ?? false,
+              mutedUntil: existingConversation?.mutedUntil,
             ),
+            wallpaper: existingConversation != null &&
+                    context
+                            .read<SettingsProvider>()
+                            .conversationWallpaper(
+                              context.read<AuthProvider>().currentUser!.id,
+                              existingConversation.id,
+                            ) ==
+                        ConversationWallpaper.glyphs
+                ? UserCardWallpaper.glyphs
+                : UserCardWallpaper.defaultBackground,
           ),
-        );
-      },
+          onMessage: () {
+            Navigator.of(cardContext).pop();
+            _openChatWithContact(context, user.id);
+          },
+          onMuteChanged: existingConversation == null
+              ? null
+              : (mute) {
+                  convs.setConversationMute(
+                    existingConversation.id,
+                    switch (mute) {
+                      UserCardMute.off => 'off',
+                      UserCardMute.oneHour => '1h',
+                      UserCardMute.eightHours => '8h',
+                      UserCardMute.oneWeek => '1w',
+                      UserCardMute.forever => 'forever',
+                    },
+                  );
+                },
+          onWallpaperChanged: existingConversation == null
+              ? null
+              : (wallpaper) {
+                  context.read<SettingsProvider>().setConversationWallpaper(
+                        context.read<AuthProvider>().currentUser!.id,
+                        existingConversation.id,
+                        wallpaper == UserCardWallpaper.glyphs
+                            ? ConversationWallpaper.glyphs
+                            : ConversationWallpaper.defaultBackground,
+                      );
+                },
+        ),
+      ),
     );
   }
 
-  void _unfriendContact(BuildContext context, int userId, String username) {
-    showDialog(
-      context: context,
-      builder: (dialogContext) {
-        final l10n = AppLocalizations.of(dialogContext);
-        final colorScheme = Theme.of(dialogContext).colorScheme;
-        final mutedColor = FireplaceColors.of(dialogContext).mutedText;
-        return AlertDialog(
-          backgroundColor: colorScheme.surface,
-          title: Text(
-            l10n.removeFriendTitle,
-            style: RpgTheme.bodyFont(
-              fontSize: 16,
-              color: colorScheme.primary,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          content: Text(
-            l10n.removeFriendConfirm(username),
-            style: RpgTheme.bodyFont(
-              fontSize: 14,
-              color: colorScheme.onSurface.withValues(alpha: 0.8),
-            ),
-          ),
-          actions: [
-            TextButton(
-              onPressed: () => Navigator.pop(dialogContext),
-              child: Text(
-                l10n.cancel,
-                style: RpgTheme.bodyFont(fontSize: 14, color: mutedColor),
-              ),
-            ),
-            TextButton(
-              onPressed: () {
-                Navigator.pop(dialogContext);
-                context.read<FriendsProvider>().unfriend(userId);
-              },
-              child: Text(
-                l10n.remove,
-                style: RpgTheme.bodyFont(
-                  fontSize: 14,
-                  color: Colors.red,
-                  fontWeight: FontWeight.w600,
-                ),
-              ),
-            ),
-          ],
-        );
-      },
-    );
-  }
+
 
   @override
   Widget build(BuildContext context) {
@@ -261,8 +224,7 @@ class ContactsScreen extends StatelessWidget {
       color: Colors.transparent,
       borderRadius: BorderRadius.circular(8),
       child: InkWell(
-        onTap: () => _openChatWithContact(context, user.id),
-        onLongPress: () => _showContactContextMenu(context, user),
+        onTap: () => _openContactCard(context, user),
         borderRadius: BorderRadius.circular(8),
         splashColor: Theme.of(
           context,
@@ -290,6 +252,11 @@ class ContactsScreen extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
+              ),
+              TextButton.icon(
+                onPressed: () => _openChatWithContact(context, user.id),
+                icon: const Icon(Icons.chat_bubble_outline, size: 18),
+                label: Text(AppLocalizations.of(context).userCardMessage),
               ),
             ],
           ),

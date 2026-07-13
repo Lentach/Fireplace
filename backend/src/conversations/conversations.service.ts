@@ -45,8 +45,8 @@ export class ConversationsService {
     return this.convRepo.findOne({
       where: { id },
       relations: {
-        userOne: true,
-        userTwo: true
+        userOne: { profilePhotos: true },
+        userTwo: { profilePhotos: true },
       },
     });
   }
@@ -56,8 +56,8 @@ export class ConversationsService {
     return this.convRepo.find({
       where: [{ userOne: { id: userId } }, { userTwo: { id: userId } }],
       relations: {
-        userOne: true,
-        userTwo: true
+        userOne: { profilePhotos: true },
+        userTwo: { profilePhotos: true },
       },
     });
   }

@@ -4,6 +4,7 @@ import {
   IsOptional,
   IsString,
   MinLength,
+  MaxLength,
   Matches,
   ValidateNested,
 } from 'class-validator';
@@ -31,6 +32,13 @@ export class DeleteAccountDto {
   @IsString()
   @MinLength(1)
   password: string;
+}
+
+export class UpdateProfileAboutDto {
+  @IsOptional()
+  @IsString()
+  @MaxLength(80)
+  about?: string | null;
 }
 
 export class RegisterFcmTokenDto {

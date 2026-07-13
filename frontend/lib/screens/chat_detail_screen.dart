@@ -1,4 +1,3 @@
-import 'dart:async';
 
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
@@ -8,6 +7,7 @@ import '../providers/auth_provider.dart';
 import '../providers/conversations_provider.dart';
 import '../providers/friends_provider.dart';
 import '../providers/messaging_provider.dart';
+import '../providers/settings_provider.dart';
 import '../services/voice_audio_coordinator.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_top_bar.dart';
@@ -37,6 +37,8 @@ import '../providers/encryption_provider.dart';
 import '../services/notification_cleaner_stub.dart'
     if (dart.library.html) '../services/notification_cleaner_web.dart'
     if (dart.library.io) '../services/notification_cleaner_io.dart';
+import '../utils/instant_opaque_route.dart';
+import 'user_card_screen.dart';
 
 class ChatDetailScreen extends StatefulWidget {
   final int conversationId;
@@ -61,9 +63,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
 
   final _scrollController = ScrollController();
   final _composerKey = GlobalKey<ChatInputBarState>();
-  Timer? _showFullHandleTimer;
   bool _showScrollToBottomButton = false;
-  bool _showingFullHandle = false;
   int _newMessagesCount = 0;
   int _lastMessageCount = 0;
   int _lastLinkPreviewCount = 0;
@@ -355,6 +355,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       _conversations.notifyActiveConversationChanged();
       _messaging.loadCachedMessages(widget.conversationId);
       _messaging.getMessages(widget.conversationId);
+      final userId = context.read<AuthProvider>().currentUser?.id;
+      if (userId != null) {
+        context
+            .read<SettingsProvider>()
+            .loadConversationWallpaper(userId, widget.conversationId);
+      }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted) return;
@@ -378,8 +384,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   void didUpdateWidget(ChatDetailScreen oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.conversationId != widget.conversationId) {
-      _showFullHandleTimer?.cancel();
-      _showingFullHandle = false;
       _knownMessageIds.clear();
       _lastMessageCount = 0;
       _lastLinkPreviewCount = 0;
@@ -466,17 +470,73 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     _clearActiveConversationIfThisChat();
     _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
-    _showFullHandleTimer?.cancel();
     super.dispose();
   }
 
-  void _onAvatarTap() {
-    _showFullHandleTimer?.cancel();
-    if (!mounted) return;
-    setState(() => _showingFullHandle = true);
-    _showFullHandleTimer = Timer(const Duration(seconds: 5), () {
-      if (mounted) setState(() => _showingFullHandle = false);
-    });
+  Future<void> _onAvatarTap() async {
+    final otherUser = _getOtherUser();
+    if (otherUser == null) return;
+
+    await Navigator.of(context).push(
+      instantOpaqueRoute(
+        builder: (cardContext) => UserCardScreen(
+          data: UserCardVisualData.fromUser(
+            otherUser,
+            isSelf: false,
+            hasConversation: true,
+            mute: UserCardMute.fromConversation(
+              muted: _conversations.conversations
+                      .where((conversation) =>
+                          conversation.id == widget.conversationId)
+                      .firstOrNull
+                      ?.muted ??
+                  false,
+              mutedUntil: _conversations.conversations
+                  .where((conversation) =>
+                      conversation.id == widget.conversationId)
+                  .firstOrNull
+                  ?.mutedUntil,
+            ),
+            wallpaper: context
+                        .read<SettingsProvider>()
+                        .conversationWallpaper(
+                          context.read<AuthProvider>().currentUser!.id,
+                          widget.conversationId,
+                        ) ==
+                    ConversationWallpaper.glyphs
+                ? UserCardWallpaper.glyphs
+                : UserCardWallpaper.defaultBackground,
+          ),
+          onMessage: () {
+            Navigator.of(cardContext).pop();
+            WidgetsBinding.instance.addPostFrameCallback((_) {
+              _composerKey.currentState?.focusComposer();
+            });
+          },
+          onMuteChanged: (mute) {
+            _conversations.setConversationMute(
+              widget.conversationId,
+              switch (mute) {
+                UserCardMute.off => 'off',
+                UserCardMute.oneHour => '1h',
+                UserCardMute.eightHours => '8h',
+                UserCardMute.oneWeek => '1w',
+                UserCardMute.forever => 'forever',
+              },
+            );
+          },
+          onWallpaperChanged: (wallpaper) {
+            context.read<SettingsProvider>().setConversationWallpaper(
+                  context.read<AuthProvider>().currentUser!.id,
+                  widget.conversationId,
+                  wallpaper == UserCardWallpaper.glyphs
+                      ? ConversationWallpaper.glyphs
+                      : ConversationWallpaper.defaultBackground,
+                );
+          },
+        ),
+      ),
+    );
   }
 
   void _scrollToBottom() {
@@ -571,59 +631,14 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
   ) {
     final colorScheme = Theme.of(context).colorScheme;
     final accentColor = Theme.of(context).colorScheme.primary;
-    final baseStyle = RpgTheme.bodyFont(
-      fontSize: 16,
-      color: colorScheme.onSurface,
-      fontWeight: FontWeight.w600,
-    );
-    final nameWidget = AnimatedSwitcher(
-      duration: const Duration(milliseconds: 250),
-      switchInCurve: Curves.easeOut,
-      switchOutCurve: Curves.easeIn,
-      transitionBuilder: (Widget child, Animation<double> animation) {
-        return FadeTransition(
-          opacity: animation,
-          child: SlideTransition(
-            position:
-                Tween<Offset>(
-                  begin: const Offset(0.25, 0),
-                  end: Offset.zero,
-                ).animate(
-                  CurvedAnimation(
-                    parent: animation,
-                    curve: Curves.easeOut,
-                    reverseCurve: Curves.easeIn,
-                  ),
-                ),
-            child: child,
-          ),
-        );
-      },
-      child: _showingFullHandle && otherUser != null
-          ? Text.rich(
-              key: const ValueKey<bool>(true),
-              TextSpan(
-                style: baseStyle,
-                children: [
-                  TextSpan(text: otherUser.username),
-                  TextSpan(
-                    text: '#${otherUser.tag}',
-                    style: RpgTheme.bodyFont(
-                      fontSize: 16,
-                      color: accentColor,
-                      fontWeight: FontWeight.w600,
-                    ),
-                  ),
-                ],
-              ),
-              overflow: TextOverflow.ellipsis,
-            )
-          : Text(
-              key: const ValueKey<bool>(false),
-              contactName,
-              style: baseStyle,
-              overflow: TextOverflow.ellipsis,
-            ),
+    final nameWidget = Text(
+      contactName,
+      style: RpgTheme.bodyFont(
+        fontSize: 16,
+        color: colorScheme.onSurface,
+        fontWeight: FontWeight.w600,
+      ),
+      overflow: TextOverflow.ellipsis,
     );
     if (statusText == null || statusText.isEmpty) return nameWidget;
     return Column(
@@ -672,8 +687,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final topClearance = topInsetHandled
         ? 8.0
         : MediaQuery.paddingOf(context).top + 8.0;
+    final currentUserId = context.read<AuthProvider>().currentUser?.id;
+    final showGlyphs = currentUserId != null &&
+        context.watch<SettingsProvider>().conversationWallpaper(
+              currentUserId,
+              widget.conversationId,
+            ) ==
+            ConversationWallpaper.glyphs;
     return ChatBackgroundPattern(
       backgroundColor: messagesAreaBg,
+      enabled: showGlyphs,
       child: messages.isEmpty
           ? Center(
               child: Text(

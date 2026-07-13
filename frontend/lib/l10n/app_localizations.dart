@@ -1465,6 +1465,204 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Przypięta wiadomość'**
   String get pinnedMessageBannerSemantics;
+
+  /// No description provided for @userCardAbout.
+  ///
+  /// In pl, this message translates to:
+  /// **'O mnie'**
+  String get userCardAbout;
+
+  /// No description provided for @userCardMyProfile.
+  ///
+  /// In pl, this message translates to:
+  /// **'Mój profil'**
+  String get userCardMyProfile;
+
+  /// No description provided for @userCardEditAbout.
+  ///
+  /// In pl, this message translates to:
+  /// **'Edytuj opis'**
+  String get userCardEditAbout;
+
+  /// No description provided for @userCardAddPhoto.
+  ///
+  /// In pl, this message translates to:
+  /// **'Dodaj zdjęcie'**
+  String get userCardAddPhoto;
+
+  /// No description provided for @userCardPhotoLimitReached.
+  ///
+  /// In pl, this message translates to:
+  /// **'Osiągnięto limit zdjęć'**
+  String get userCardPhotoLimitReached;
+
+  /// No description provided for @userCardSetMainPhoto.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ustaw oglądane zdjęcie jako główne'**
+  String get userCardSetMainPhoto;
+
+  /// No description provided for @userCardDeletePhoto.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń oglądane zdjęcie'**
+  String get userCardDeletePhoto;
+
+  /// No description provided for @userCardSave.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zapisz'**
+  String get userCardSave;
+
+  /// No description provided for @userCardCancel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Anuluj'**
+  String get userCardCancel;
+
+  /// No description provided for @userCardBack.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wstecz'**
+  String get userCardBack;
+
+  /// No description provided for @userCardNotifications.
+  ///
+  /// In pl, this message translates to:
+  /// **'Powiadomienia'**
+  String get userCardNotifications;
+
+  /// No description provided for @userCardNotificationsOn.
+  ///
+  /// In pl, this message translates to:
+  /// **'Powiadomienia włączone'**
+  String get userCardNotificationsOn;
+
+  /// No description provided for @userCardMuteOneHour.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wycisz na 1 godzinę'**
+  String get userCardMuteOneHour;
+
+  /// No description provided for @userCardMuteEightHours.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wycisz na 8 godzin'**
+  String get userCardMuteEightHours;
+
+  /// No description provided for @userCardMuteOneWeek.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wycisz na tydzień'**
+  String get userCardMuteOneWeek;
+
+  /// No description provided for @userCardMuteForever.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wycisz na zawsze'**
+  String get userCardMuteForever;
+
+  /// No description provided for @userCardChatBackground.
+  ///
+  /// In pl, this message translates to:
+  /// **'Tło czatu'**
+  String get userCardChatBackground;
+
+  /// No description provided for @userCardBackgroundPrivate.
+  ///
+  /// In pl, this message translates to:
+  /// **'Tylko Ty widzisz to tło w tej rozmowie.'**
+  String get userCardBackgroundPrivate;
+
+  /// No description provided for @userCardMessage.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wiadomość'**
+  String get userCardMessage;
+
+  /// No description provided for @userCardTypeMessage.
+  ///
+  /// In pl, this message translates to:
+  /// **'Napisz wiadomość'**
+  String get userCardTypeMessage;
+
+  /// No description provided for @userCardDefaultBackground.
+  ///
+  /// In pl, this message translates to:
+  /// **'Domyślne'**
+  String get userCardDefaultBackground;
+
+  /// No description provided for @userCardGlyphsBackground.
+  ///
+  /// In pl, this message translates to:
+  /// **'Glify'**
+  String get userCardGlyphsBackground;
+
+  /// No description provided for @userCardCopyHandle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kopiuj nazwę użytkownika i tag'**
+  String get userCardCopyHandle;
+
+  /// No description provided for @userCardCopiedHandle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Skopiowano {handle}'**
+  String userCardCopiedHandle(Object handle);
+
+  /// No description provided for @userCardNoProfilePhoto.
+  ///
+  /// In pl, this message translates to:
+  /// **'Brak zdjęcia profilowego'**
+  String get userCardNoProfilePhoto;
+
+  /// No description provided for @userCardBackgroundPreviewMessage.
+  ///
+  /// In pl, this message translates to:
+  /// **'Do zobaczenia przy ogniu.'**
+  String get userCardBackgroundPreviewMessage;
+
+  /// No description provided for @userCardNotificationsMuted.
+  ///
+  /// In pl, this message translates to:
+  /// **'Powiadomienia wyciszone'**
+  String get userCardNotificationsMuted;
+
+  /// No description provided for @userCardBlockTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zablokować {handle}?'**
+  String userCardBlockTitle(Object handle);
+
+  /// No description provided for @userCardBlockConfirm.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie będzie można wysyłać wiadomości do tego kontaktu.'**
+  String get userCardBlockConfirm;
+
+  /// No description provided for @userCardDeletePhotoTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usunąć zdjęcie?'**
+  String get userCardDeletePhotoTitle;
+
+  /// No description provided for @userCardDeletePhotoConfirm.
+  ///
+  /// In pl, this message translates to:
+  /// **'To trwale usuwa to zdjęcie profilowe.'**
+  String get userCardDeletePhotoConfirm;
+
+  /// No description provided for @userCardSafety.
+  ///
+  /// In pl, this message translates to:
+  /// **'Bezpieczeństwo'**
+  String get userCardSafety;
+
+  /// No description provided for @userCardRemoveContact.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń kontakt'**
+  String get userCardRemoveContact;
 }
 
 class _AppLocalizationsDelegate

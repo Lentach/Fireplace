@@ -25,12 +25,14 @@ class ChatBackgroundPattern extends StatefulWidget {
   /// `GlassTheme.wallpaperTint`.
   final Color? patternColor;
   final Color? backgroundColor;
+  final bool enabled;
 
   const ChatBackgroundPattern({
     super.key,
     required this.child,
     this.patternColor,
     this.backgroundColor,
+    this.enabled = true,
   });
 
   @override
@@ -51,24 +53,25 @@ class _ChatBackgroundPatternState extends State<ChatBackgroundPattern> {
       child: Stack(
         fit: StackFit.expand,
         children: [
-          // Subtle depth glow behind the pattern (spec: gradient under tile).
-          DecoratedBox(
-            decoration: BoxDecoration(
-              gradient: RadialGradient(
-                center: const Alignment(0, -1.1),
-                radius: 1.3,
-                colors: [
-                  Color.lerp(bg, color.withValues(alpha: 1.0), 0.05)!,
-                  bg.withValues(alpha: 0.0),
-                ],
+          if (widget.enabled)
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: RadialGradient(
+                  center: const Alignment(0, -1.1),
+                  radius: 1.3,
+                  colors: [
+                    Color.lerp(bg, color.withValues(alpha: 1.0), 0.05)!,
+                    bg.withValues(alpha: 0.0),
+                  ],
+                ),
               ),
             ),
-          ),
-          RepaintBoundary(
-            child: CustomPaint(
-              painter: _TempleColumnsPainter(color: color, seed: _seed),
+          if (widget.enabled)
+            RepaintBoundary(
+              child: CustomPaint(
+                painter: _TempleColumnsPainter(color: color, seed: _seed),
+              ),
             ),
-          ),
           widget.child,
         ],
       ),

@@ -1,7 +1,6 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'package:image_picker/image_picker.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_surface.dart';
 import '../providers/auth_provider.dart';
@@ -20,6 +19,8 @@ import '../widgets/top_snackbar.dart';
 import '../l10n/app_localizations.dart';
 import 'blocked_users_screen.dart';
 import 'privacy_safety_screen.dart';
+import '../utils/instant_opaque_route.dart';
+import 'user_card_screen.dart';
 
 class SettingsScreen extends StatefulWidget {
   const SettingsScreen({super.key});
@@ -72,31 +73,20 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  Future<void> _showProfilePictureDialog() async {
-    final picker = ImagePicker();
-    final image = await picker.pickImage(source: ImageSource.gallery);
-    if (image == null || !mounted) return;
-
-    try {
-      final auth = context.read<AuthProvider>();
-      await auth.updateProfilePicture(image);
-
-      if (mounted) {
-        showTopSnackBar(
-          context,
-          AppLocalizations.of(context).profilePictureUpdated,
-          backgroundColor: Theme.of(context).colorScheme.primary,
-        );
-      }
-    } catch (e) {
-      if (mounted) {
-        showTopSnackBar(
-          context,
-          '${AppLocalizations.of(context).uploadFailed}: ${e.toString()}',
-          backgroundColor: const Color(0xFFFF6666),
-        );
-      }
-    }
+  void _openMyProfile() {
+    final user = context.read<AuthProvider>().currentUser;
+    if (user == null) return;
+    Navigator.of(context).push(
+      instantOpaqueRoute(
+        builder: (_) => UserCardScreen(
+          data: UserCardVisualData.fromUser(
+            user,
+            isSelf: true,
+            hasConversation: false,
+          ),
+        ),
+      ),
+    );
   }
 
   Future<void> _showResetPasswordDialog() async {
@@ -444,7 +434,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                             bottom: 0,
                             right: 0,
                             child: GestureDetector(
-                              onTap: _showProfilePictureDialog,
+                              onTap: _openMyProfile,
                               child: Container(
                                 width: 36,
                                 height: 36,
@@ -457,7 +447,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                                   ),
                                 ),
                                 child: const Icon(
-                                  Icons.camera_alt,
+                                  Icons.person_outline,
                                   color: Colors.white,
                                   size: 18,
                                 ),

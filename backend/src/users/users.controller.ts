@@ -2,6 +2,7 @@ import {
   Controller,
   Post,
   Delete,
+  Patch,
   Get,
   Body,
   UseGuards,
@@ -11,6 +12,8 @@ import {
   BadRequestException,
   UnauthorizedException,
   Logger,
+  Param,
+  ParseIntPipe,
 } from '@nestjs/common';
 import { FileInterceptor } from '@nestjs/platform-express';
 import { Throttle } from '@nestjs/throttler';
@@ -23,6 +26,7 @@ import {
   DeleteAccountDto,
   RegisterFcmTokenDto,
   RemoveFcmTokenDto,
+  UpdateProfileAboutDto,
   RegisterWebPushSubscriptionDto,
   RemoveWebPushSubscriptionDto,
 } from './dto/user.dto';
@@ -71,6 +75,9 @@ export class UsersController {
     validateAvatarMagicBytes(file.buffer);
 
     const userId = req.user.id;
+    if ((await this.usersService.getProfilePhotos(userId)).length >= 3) {
+      throw new BadRequestException('A profile can have at most three photos');
+    }
 
     const { secureUrl, publicId } = await this.storageService.uploadAvatar(
       userId,
@@ -80,28 +87,113 @@ export class UsersController {
 
     this.logger.debug(`User ${userId} uploaded profile picture`);
 
-    const user = await this.usersService.updateProfilePicture(
-      userId,
-      secureUrl,
-      publicId,
-    );
+    try {
+      const photos = await this.usersService.addProfilePhoto(
+        userId,
+        secureUrl,
+        publicId,
+      );
+      const primaryPhoto = photos.find((photo) => photo.isPrimary);
+      return {
+        profilePictureUrl: primaryPhoto?.url ?? null,
+        profilePhotos: photos.map((photo) => ({
+          id: photo.id,
+          url: photo.url,
+          isPrimary: photo.isPrimary,
+          createdAt: photo.createdAt,
+        })),
+      };
+    } catch (error) {
+      try {
+        await this.storageService.deleteAvatar(publicId);
+      } catch (cleanupError) {
+        this.logger.warn(
+          `uploadProfilePicture: failed to clean up ${publicId}: ${(cleanupError as Error).message}`,
+        );
+      }
+      throw error;
+    }
+  }
 
+  @Post('profile-photos/:photoId/main')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  async setPrimaryProfilePhoto(
+    @Param('photoId', ParseIntPipe) photoId: number,
+    @Request() req: { user: { id: number } },
+  ) {
+    const photos = await this.usersService.setPrimaryProfilePhoto(
+      req.user.id,
+      photoId,
+    );
     return {
-      profilePictureUrl: user.profilePictureUrl,
+      profilePhotos: photos.map((photo) => ({
+        id: photo.id,
+        url: photo.url,
+        isPrimary: photo.isPrimary,
+        createdAt: photo.createdAt,
+      })),
+    };
+  }
+
+  @Delete('profile-photos/:photoId')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  async deleteProfilePhoto(
+    @Param('photoId', ParseIntPipe) photoId: number,
+    @Request() req: { user: { id: number } },
+  ) {
+    const photos = await this.usersService.deleteProfilePhoto(
+      req.user.id,
+      photoId,
+    );
+    return {
+      profilePhotos: photos.map((photo) => ({
+        id: photo.id,
+        url: photo.url,
+        isPrimary: photo.isPrimary,
+        createdAt: photo.createdAt,
+      })),
     };
   }
 
   @Get('me')
   @UseGuards(JwtAuthGuard)
   async getMe(@Request() req) {
-    const user = await this.usersService.findById(req.user.id);
+    const user = await this.usersService.findProfileById(req.user.id);
     if (!user) throw new UnauthorizedException();
     return {
       id: user.id,
       username: user.username,
       tag: user.tag,
       profilePictureUrl: user.profilePictureUrl ?? null,
+      about: user.about ?? null,
+      profilePhotos: [...user.profilePhotos]
+        .sort((left, right) => {
+          if (left.isPrimary !== right.isPrimary) return left.isPrimary ? -1 : 1;
+          return left.createdAt.getTime() - right.createdAt.getTime();
+        })
+        .map((photo) => ({
+          id: photo.id,
+          url: photo.url,
+          isPrimary: photo.isPrimary,
+          createdAt: photo.createdAt,
+        })),
     };
+  }
+
+  @Patch('profile-about')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  async updateProfileAbout(
+    @Body() dto: UpdateProfileAboutDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    const user = await this.usersService.updateProfileAbout(
+      req.user.id,
+      dto.about ?? null,
+    );
+    return { about: user.about };
   }
 
   @Post('reset-password')

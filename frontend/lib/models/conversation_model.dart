@@ -9,6 +9,8 @@ class ConversationModel {
   final int? disappearingTimer; // Timer in seconds, null = off
   final int? pinnedMessageId;
   final MessageModel? pinnedMessagePreview;
+  final bool muted;
+  final DateTime? mutedUntil;
 
   ConversationModel({
     required this.id,
@@ -18,7 +20,15 @@ class ConversationModel {
     this.disappearingTimer,
     this.pinnedMessageId,
     this.pinnedMessagePreview,
+    this.muted = false,
+    this.mutedUntil,
   });
+
+  bool isMutedAt(DateTime now) {
+    return muted && (mutedUntil == null || mutedUntil!.isAfter(now));
+  }
+
+  bool get isNotificationMuted => isMutedAt(DateTime.now());
 
   factory ConversationModel.fromJson(Map<String, dynamic> json) {
     return ConversationModel(
@@ -31,6 +41,30 @@ class ConversationModel {
       pinnedMessagePreview: json['pinnedMessage'] != null
           ? MessageModel.fromJson(json['pinnedMessage'] as Map<String, dynamic>)
           : null,
+      muted: json['muted'] as bool? ?? false,
+      mutedUntil: json['mutedUntil'] != null
+          ? DateTime.parse(json['mutedUntil'] as String)
+          : null,
+    );
+  }
+
+  ConversationModel copyWith({
+    int? disappearingTimer,
+    int? pinnedMessageId,
+    MessageModel? pinnedMessagePreview,
+    bool? muted,
+    DateTime? mutedUntil,
+  }) {
+    return ConversationModel(
+      id: id,
+      userOne: userOne,
+      userTwo: userTwo,
+      createdAt: createdAt,
+      disappearingTimer: disappearingTimer ?? this.disappearingTimer,
+      pinnedMessageId: pinnedMessageId ?? this.pinnedMessageId,
+      pinnedMessagePreview: pinnedMessagePreview ?? this.pinnedMessagePreview,
+      muted: muted ?? this.muted,
+      mutedUntil: mutedUntil ?? this.mutedUntil,
     );
   }
 }

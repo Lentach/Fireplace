@@ -256,14 +256,8 @@ class ConversationsProvider extends ChangeNotifier {
     final index = _conversations.indexWhere((c) => c.id == conversationId);
     if (index != -1) {
       final oldConv = _conversations[index];
-      _conversations[index] = ConversationModel(
-        id: oldConv.id,
-        userOne: oldConv.userOne,
-        userTwo: oldConv.userTwo,
-        createdAt: oldConv.createdAt,
+      _conversations[index] = oldConv.copyWith(
         disappearingTimer: seconds,
-        pinnedMessageId: oldConv.pinnedMessageId,
-        pinnedMessagePreview: oldConv.pinnedMessagePreview,
       );
     }
 
@@ -390,6 +384,36 @@ class ConversationsProvider extends ChangeNotifier {
       'conversationId': conversationId,
       'seconds': timer,
     });
+  }
+
+  void setConversationMute(int conversationId, String duration) {
+    _emit?.call('setConversationMute', {
+      'conversationId': conversationId,
+      'duration': duration,
+    });
+  }
+
+  void onConversationMuteUpdated(dynamic data) {
+    final payload = data as Map<String, dynamic>;
+    final conversationId = payload['conversationId'] as int;
+    final index = _conversations.indexWhere((c) => c.id == conversationId);
+    if (index == -1) return;
+    final old = _conversations[index];
+    final muted = payload['muted'] as bool;
+    _conversations[index] = ConversationModel(
+      id: old.id,
+      userOne: old.userOne,
+      userTwo: old.userTwo,
+      createdAt: old.createdAt,
+      disappearingTimer: old.disappearingTimer,
+      pinnedMessageId: old.pinnedMessageId,
+      pinnedMessagePreview: old.pinnedMessagePreview,
+      muted: muted,
+      mutedUntil: payload['mutedUntil'] == null
+          ? null
+          : DateTime.parse(payload['mutedUntil'] as String),
+    );
+    notifyListeners();
   }
 
   /// Sets active conversation ID and clears unread count.

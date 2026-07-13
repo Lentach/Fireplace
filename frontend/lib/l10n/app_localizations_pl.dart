@@ -794,4 +794,110 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get pinnedMessageBannerSemantics => 'Przypięta wiadomość';
+
+  @override
+  String get userCardAbout => 'O mnie';
+
+  @override
+  String get userCardMyProfile => 'Mój profil';
+
+  @override
+  String get userCardEditAbout => 'Edytuj opis';
+
+  @override
+  String get userCardAddPhoto => 'Dodaj zdjęcie';
+
+  @override
+  String get userCardPhotoLimitReached => 'Osiągnięto limit zdjęć';
+
+  @override
+  String get userCardSetMainPhoto => 'Ustaw oglądane zdjęcie jako główne';
+
+  @override
+  String get userCardDeletePhoto => 'Usuń oglądane zdjęcie';
+
+  @override
+  String get userCardSave => 'Zapisz';
+
+  @override
+  String get userCardCancel => 'Anuluj';
+
+  @override
+  String get userCardBack => 'Wstecz';
+
+  @override
+  String get userCardNotifications => 'Powiadomienia';
+
+  @override
+  String get userCardNotificationsOn => 'Powiadomienia włączone';
+
+  @override
+  String get userCardMuteOneHour => 'Wycisz na 1 godzinę';
+
+  @override
+  String get userCardMuteEightHours => 'Wycisz na 8 godzin';
+
+  @override
+  String get userCardMuteOneWeek => 'Wycisz na tydzień';
+
+  @override
+  String get userCardMuteForever => 'Wycisz na zawsze';
+
+  @override
+  String get userCardChatBackground => 'Tło czatu';
+
+  @override
+  String get userCardBackgroundPrivate =>
+      'Tylko Ty widzisz to tło w tej rozmowie.';
+
+  @override
+  String get userCardMessage => 'Wiadomość';
+
+  @override
+  String get userCardTypeMessage => 'Napisz wiadomość';
+
+  @override
+  String get userCardDefaultBackground => 'Domyślne';
+
+  @override
+  String get userCardGlyphsBackground => 'Glify';
+
+  @override
+  String get userCardCopyHandle => 'Kopiuj nazwę użytkownika i tag';
+
+  @override
+  String userCardCopiedHandle(Object handle) {
+    return 'Skopiowano $handle';
+  }
+
+  @override
+  String get userCardNoProfilePhoto => 'Brak zdjęcia profilowego';
+
+  @override
+  String get userCardBackgroundPreviewMessage => 'Do zobaczenia przy ogniu.';
+
+  @override
+  String get userCardNotificationsMuted => 'Powiadomienia wyciszone';
+
+  @override
+  String userCardBlockTitle(Object handle) {
+    return 'Zablokować $handle?';
+  }
+
+  @override
+  String get userCardBlockConfirm =>
+      'Nie będzie można wysyłać wiadomości do tego kontaktu.';
+
+  @override
+  String get userCardDeletePhotoTitle => 'Usunąć zdjęcie?';
+
+  @override
+  String get userCardDeletePhotoConfirm =>
+      'To trwale usuwa to zdjęcie profilowe.';
+
+  @override
+  String get userCardSafety => 'Bezpieczeństwo';
+
+  @override
+  String get userCardRemoveContact => 'Usuń kontakt';
 }

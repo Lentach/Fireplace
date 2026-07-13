@@ -5,6 +5,7 @@ import {
 } from '@nestjs/common';
 import { PushNotificationsService } from './push-notifications.service';
 import { MessagesService } from '../messages/messages.service';
+import { ConversationNotificationPreferencesService } from '../conversation-notification-preferences/conversation-notification-preferences.service';
 
 /** Trailing debounce window before firing one push for a burst in the same chat. */
 const DEBOUNCE_MS = 2500;
@@ -43,6 +44,7 @@ export class PushNotificationCoalescingService implements OnModuleDestroy {
   constructor(
     private readonly pushNotificationsService: PushNotificationsService,
     private readonly messagesService: MessagesService,
+    private readonly notificationPreferences: ConversationNotificationPreferencesService,
   ) {}
 
   /**
@@ -93,6 +95,10 @@ export class PushNotificationCoalescingService implements OnModuleDestroy {
       !Number.isFinite(conversationId)
     ) {
       this.logger.warn(`Push coalesce flush skipped: invalid key ${key}`);
+      return;
+    }
+
+    if (await this.notificationPreferences.isMuted(recipientUserId, conversationId)) {
       return;
     }
 

@@ -291,5 +291,48 @@
   "snackbarPastedImageUnsupported": "Nie można wkleić tego typu obrazu",
   "snackbarPastedImageUnavailable": "Nie udało się odczytać wklejonego obrazu",
   "pinnedMessageUnpinTooltip": "Odepnij",
-  "pinnedMessageBannerSemantics": "Przypięta wiadomość"
+  "pinnedMessageBannerSemantics": "Przypięta wiadomość",
+  "userCardAbout": "O mnie",
+  "userCardMyProfile": "Mój profil",
+  "userCardEditAbout": "Edytuj opis",
+  "userCardAddPhoto": "Dodaj zdjęcie",
+  "userCardPhotoLimitReached": "Osiągnięto limit zdjęć",
+  "userCardSetMainPhoto": "Ustaw oglądane zdjęcie jako główne",
+  "userCardDeletePhoto": "Usuń oglądane zdjęcie",
+  "userCardSave": "Zapisz",
+  "userCardCancel": "Anuluj",
+  "userCardBack": "Wstecz",
+  "userCardNotifications": "Powiadomienia",
+  "userCardNotificationsOn": "Powiadomienia włączone",
+  "userCardMuteOneHour": "Wycisz na 1 godzinę",
+  "userCardMuteEightHours": "Wycisz na 8 godzin",
+  "userCardMuteOneWeek": "Wycisz na tydzień",
+  "userCardMuteForever": "Wycisz na zawsze",
+  "userCardChatBackground": "Tło czatu",
+  "userCardBackgroundPrivate": "Tylko Ty widzisz to tło w tej rozmowie.",
+  "userCardMessage": "Wiadomość",
+  "userCardTypeMessage": "Napisz wiadomość",
+  "userCardDefaultBackground": "Domyślne",
+  "userCardGlyphsBackground": "Glify",
+  "userCardCopyHandle": "Kopiuj nazwę użytkownika i tag",
+  "userCardCopiedHandle": "Skopiowano {handle}",
+  "@userCardCopiedHandle": {
+    "placeholders": {
+      "handle": {}
+    }
+  },
+  "userCardNoProfilePhoto": "Brak zdjęcia profilowego",
+  "userCardBackgroundPreviewMessage": "Do zobaczenia przy ogniu.",
+  "userCardNotificationsMuted": "Powiadomienia wyciszone",
+  "userCardBlockTitle": "Zablokować {handle}?",
+  "@userCardBlockTitle": {
+    "placeholders": {
+      "handle": {}
+    }
+  },
+  "userCardBlockConfirm": "Nie będzie można wysyłać wiadomości do tego kontaktu.",
+  "userCardDeletePhotoTitle": "Usunąć zdjęcie?",
+  "userCardDeletePhotoConfirm": "To trwale usuwa to zdjęcie profilowe.",
+  "userCardSafety": "Bezpieczeństwo",
+  "userCardRemoveContact": "Usuń kontakt"
 }

@@ -2,6 +2,8 @@ import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/rpg_theme.dart';
 
+
+enum ConversationWallpaper { defaultBackground, glyphs }
 class SettingsProvider extends ChangeNotifier {
   /// 'light' | 'teal' (Teal + stone, light) | 'dark' (Wire gray) | 'blue' (Telegram-style dark)
   String _themePreference = 'dark';
@@ -114,5 +116,47 @@ class SettingsProvider extends ChangeNotifier {
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('theme_preference', preference);
+  }
+
+  ConversationWallpaper conversationWallpaper(int userId, int conversationId) {
+    final value = _conversationWallpapers['$userId:$conversationId'];
+    return value == 'glyphs'
+        ? ConversationWallpaper.glyphs
+        : ConversationWallpaper.defaultBackground;
+  }
+
+  final Map<String, String> _conversationWallpapers = {};
+
+  Future<void> loadConversationWallpaper(int userId, int conversationId) async {
+    final key = '$userId:$conversationId';
+    final prefs = await SharedPreferences.getInstance();
+    final value = prefs.getString('conversation_wallpaper_$key');
+    if (value == 'glyphs') {
+      _conversationWallpapers[key] = value!;
+    } else {
+      _conversationWallpapers.remove(key);
+    }
+    notifyListeners();
+  }
+
+  Future<void> setConversationWallpaper(
+    int userId,
+    int conversationId,
+    ConversationWallpaper wallpaper,
+  ) async {
+    final key = '$userId:$conversationId';
+    if (wallpaper == ConversationWallpaper.glyphs) {
+      _conversationWallpapers[key] = 'glyphs';
+    } else {
+      _conversationWallpapers.remove(key);
+    }
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    final preferenceKey = 'conversation_wallpaper_$key';
+    if (wallpaper == ConversationWallpaper.glyphs) {
+      await prefs.setString(preferenceKey, 'glyphs');
+    } else {
+      await prefs.remove(preferenceKey);
+    }
   }
 }

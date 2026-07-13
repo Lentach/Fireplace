@@ -15,8 +15,22 @@ describe('FriendRequestMapper', () => {
     const payload = FriendRequestMapper.toPayload(request);
     expect(payload).toEqual({
       id: 1,
-      sender: { id: 10, username: 'alice', tag: '0427', profilePictureUrl: null },
-      receiver: { id: 20, username: 'bob', tag: '1234', profilePictureUrl: null },
+      sender: {
+        id: 10,
+        username: 'alice',
+        tag: '0427',
+        about: null,
+        profilePictureUrl: null,
+        profilePhotos: [],
+      },
+      receiver: {
+        id: 20,
+        username: 'bob',
+        tag: '1234',
+        about: null,
+        profilePictureUrl: null,
+        profilePhotos: [],
+      },
       status: FriendRequestStatus.PENDING,
       createdAt: request.createdAt,
       respondedAt: null,

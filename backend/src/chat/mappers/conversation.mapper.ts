@@ -10,6 +10,8 @@ export class ConversationMapper {
       unreadCount?: number;
       lastMessage?: Message | null;
       pinnedMessage?: Message | null;
+      muted?: boolean;
+      mutedUntil?: Date | null;
     },
   ) {
     return {
@@ -22,6 +24,8 @@ export class ConversationMapper {
       pinnedAt: conversation.pinnedAt ?? null,
       pinnedByUserId: conversation.pinnedByUserId ?? null,
       unreadCount: options?.unreadCount ?? 0,
+      muted: options?.muted ?? false,
+      mutedUntil: options?.mutedUntil ?? null,
       lastMessage: options?.lastMessage
         ? MessageMapper.toPayload(options.lastMessage, {
             conversationId: conversation.id,

@@ -63,6 +63,24 @@ void main() {
       expect(find.text('1m'), findsNothing);
     });
 
+    testWidgets('shows a muted indicator only when the conversation is muted',
+        (tester) async {
+      await tester.pumpWidget(
+        _wrap(
+          ConversationTile(
+            conversationId: 10,
+            displayName: 'Alice',
+            isMuted: true,
+            onTap: () {},
+            onDelete: () {},
+          ),
+        ),
+      );
+
+      expect(find.byIcon(Icons.notifications_off_outlined), findsOneWidget);
+      expect(find.byTooltip('Notifications muted'), findsOneWidget);
+    });
+
     testWidgets('shows filled arc for post-read last message', (tester) async {
       final expiresAt =
           DateTime.now().add(const Duration(hours: 2, minutes: 10));

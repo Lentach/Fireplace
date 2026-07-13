@@ -29,8 +29,22 @@ describe('ConversationMapper', () => {
       pinnedMessage: null,
       disappearingTimer: 86400,
     });
-    expect(payload.userOne).toEqual({ id: 1, username: 'alice', tag: '0427', profilePictureUrl: null });
-    expect(payload.userTwo).toEqual({ id: 2, username: 'bob', tag: '1234', profilePictureUrl: null });
+    expect(payload.userOne).toEqual({
+      id: 1,
+      username: 'alice',
+      tag: '0427',
+      about: null,
+      profilePictureUrl: null,
+      profilePhotos: [],
+    });
+    expect(payload.userTwo).toEqual({
+      id: 2,
+      username: 'bob',
+      tag: '1234',
+      about: null,
+      profilePictureUrl: null,
+      profilePhotos: [],
+    });
   });
 
   it('should include unreadCount and lastMessage when provided', () => {

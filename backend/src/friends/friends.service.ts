@@ -227,8 +227,8 @@ export class FriendsService {
         },
       ],
       relations: {
-        sender: true,
-        receiver: true
+        sender: { profilePhotos: true },
+        receiver: { profilePhotos: true },
       },
     });
 

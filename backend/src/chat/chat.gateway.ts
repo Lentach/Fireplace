@@ -441,6 +441,16 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
 
   @UseGuards(WsThrottlerGuard)
   @Throttle({ default: { limit: 60, ttl: 900000 } })
+  @SubscribeMessage('setConversationMute')
+  async handleSetConversationMute(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: unknown,
+  ) {
+    return this.chatConversationService.handleSetConversationMute(client, data);
+  }
+
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 900000 } })
   @SubscribeMessage('pinMessage')
   async handlePinMessage(
     @ConnectedSocket() client: Socket,

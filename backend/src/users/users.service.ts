@@ -3,12 +3,14 @@ import {
   ConflictException,
   UnauthorizedException,
   NotFoundException,
+  BadRequestException,
   Logger,
 } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { DataSource, Repository } from 'typeorm';
 import * as bcrypt from 'bcrypt';
 import { User } from './user.entity';
+import { ProfilePhoto } from './profile-photo.entity';
 import { LocalStorageService } from '../media/local-storage.service';
 import { Conversation } from '../conversations/conversation.entity';
 import { Message } from '../messages/message.entity';
@@ -27,6 +29,8 @@ export class UsersService {
   constructor(
     @InjectRepository(User)
     private usersRepo: Repository<User>,
+    @InjectRepository(ProfilePhoto)
+    private profilePhotoRepo: Repository<ProfilePhoto>,
     private storageService: LocalStorageService,
     private fcmTokensService: FcmTokensService,
     private webPushSubscriptionsService: WebPushSubscriptionsService,
@@ -60,6 +64,13 @@ export class UsersService {
     return this.usersRepo.findOne({ where: { id } });
   }
 
+  async findProfileById(id: number): Promise<User | null> {
+    return this.usersRepo.findOne({
+      where: { id },
+      relations: { profilePhotos: true },
+    });
+  }
+
   async findByUsername(username: string): Promise<User[]> {
     return this.usersRepo
       .createQueryBuilder('user')
@@ -75,23 +86,114 @@ export class UsersService {
       .getOne();
   }
 
-  async updateProfilePicture(
-    userId: number,
-    secureUrl: string,
-    publicId: string,
-  ): Promise<User> {
+
+  async updateProfileAbout(userId: number, about: string | null): Promise<User> {
     const user = await this.findById(userId);
-    if (!user) {
-      throw new NotFoundException('User not found');
-    }
-
-    if (user.profilePicturePublicId && user.profilePicturePublicId !== publicId) {
-      await this.storageService.deleteAvatar(user.profilePicturePublicId);
-    }
-
-    user.profilePictureUrl = secureUrl;
-    user.profilePicturePublicId = publicId;
+    if (!user) throw new NotFoundException('User not found');
+    user.about = about?.trim() || null;
     return this.usersRepo.save(user);
+  }
+
+  async getProfilePhotos(userId: number): Promise<ProfilePhoto[]> {
+    return this.profilePhotoRepo.find({
+      where: { userId },
+      order: { isPrimary: 'DESC', createdAt: 'ASC', id: 'ASC' },
+    });
+  }
+
+  async addProfilePhoto(
+    userId: number,
+    url: string,
+    storageKey: string,
+  ): Promise<ProfilePhoto[]> {
+    return this.dataSource.transaction(async (manager) => {
+      const user = await manager.findOne(User, {
+        where: { id: userId },
+        lock: { mode: 'pessimistic_write' },
+      });
+      if (!user) throw new NotFoundException('User not found');
+
+      const photosRepo = manager.getRepository(ProfilePhoto);
+      const photos = await photosRepo.find({
+        where: { userId },
+        order: { isPrimary: 'DESC', createdAt: 'ASC', id: 'ASC' },
+      });
+      if (photos.length >= 3) {
+        throw new BadRequestException('A profile can have at most three photos');
+      }
+      const saved = await photosRepo.save(
+        photosRepo.create({
+          userId,
+          url,
+          storageKey,
+          isPrimary: photos.length === 0,
+        }),
+      );
+      if (saved.isPrimary) {
+        await manager.update(User, userId, {
+          profilePictureUrl: saved.url,
+          profilePicturePublicId: saved.storageKey,
+        });
+      }
+      return photosRepo.find({
+        where: { userId },
+        order: { isPrimary: 'DESC', createdAt: 'ASC', id: 'ASC' },
+      });
+    });
+  }
+
+  async setPrimaryProfilePhoto(
+    userId: number,
+    photoId: number,
+  ): Promise<ProfilePhoto[]> {
+    const photo = await this.profilePhotoRepo.findOne({
+      where: { id: photoId, userId },
+    });
+    if (!photo) throw new NotFoundException('Profile photo not found');
+    await this.dataSource.transaction(async (manager) => {
+      await manager.update(ProfilePhoto, { userId }, { isPrimary: false });
+      await manager.update(ProfilePhoto, { id: photoId, userId }, { isPrimary: true });
+      await manager.update(User, userId, {
+        profilePictureUrl: photo.url,
+        profilePicturePublicId: photo.storageKey,
+      });
+    });
+    return this.getProfilePhotos(userId);
+  }
+
+  async deleteProfilePhoto(
+    userId: number,
+    photoId: number,
+  ): Promise<ProfilePhoto[]> {
+    const photo = await this.profilePhotoRepo.findOne({
+      where: { id: photoId, userId },
+    });
+    if (!photo) throw new NotFoundException('Profile photo not found');
+    if (photo.storageKey) await this.storageService.deleteAvatar(photo.storageKey);
+    await this.dataSource.transaction(async (manager) => {
+      await manager.delete(ProfilePhoto, { id: photoId, userId });
+      if (photo.isPrimary) {
+        const replacement = await manager.findOne(ProfilePhoto, {
+          where: { userId },
+          order: { createdAt: 'ASC', id: 'ASC' },
+        });
+        if (replacement) {
+          await manager.update(ProfilePhoto, replacement.id, { isPrimary: true });
+          await manager.update(User, userId, {
+            profilePictureUrl: replacement.url,
+            profilePicturePublicId: replacement.storageKey,
+          });
+          return;
+        }
+      }
+      if (photo.isPrimary) {
+        await manager.update(User, userId, {
+          profilePictureUrl: null,
+          profilePicturePublicId: null,
+        });
+      }
+    });
+    return this.getProfilePhotos(userId);
   }
 
   async resetPassword(
@@ -130,10 +232,20 @@ export class UsersService {
       throw new UnauthorizedException('Invalid password');
     }
 
-    // External I/O before transaction (non-transactional by nature)
-    if (user.profilePicturePublicId) {
-      await this.storageService.deleteAvatar(user.profilePicturePublicId);
-    }
+    // External I/O before transaction (non-transactional by nature).
+    // A photo's file must not outlive its account even though its row cascades.
+    const profilePhotos = await this.getProfilePhotos(userId);
+    const storageKeys = new Set(
+      [
+        user.profilePicturePublicId,
+        ...profilePhotos.map((photo) => photo.storageKey),
+      ].filter((storageKey): storageKey is string => storageKey != null),
+    );
+    await Promise.all(
+      [...storageKeys].map((storageKey) =>
+        this.storageService.deleteAvatar(storageKey),
+      ),
+    );
 
     // Push tokens/subscriptions and key bundles use their own repos — delete outside transaction
     await this.fcmTokensService.removeByUserId(userId);

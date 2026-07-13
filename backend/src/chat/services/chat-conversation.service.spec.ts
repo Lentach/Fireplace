@@ -6,6 +6,7 @@ import { UsersService } from '../../users/users.service';
 import { BlockedService } from '../../blocked/blocked.service';
 import { ChatValidationService } from './chat-validation.service';
 import { MediaCleanupService } from '../../media/media-cleanup.service';
+import { ConversationNotificationPreferencesService } from '../../conversation-notification-preferences/conversation-notification-preferences.service';
 import { Socket, Server } from 'socket.io';
 
 describe('ChatConversationService', () => {
@@ -15,6 +16,7 @@ describe('ChatConversationService', () => {
   let conversationsService: jest.Mocked<ConversationsService>;
   let messagesService: jest.Mocked<MessagesService>;
   let mockClient: Partial<Socket>;
+  let notificationPreferences: jest.Mocked<ConversationNotificationPreferencesService>;
   let mockServer: Partial<Server>;
 
   beforeEach(async () => {
@@ -61,6 +63,10 @@ describe('ChatConversationService', () => {
             deleteMediaFile: jest.fn().mockResolvedValue(undefined),
           },
         },
+        {
+          provide: ConversationNotificationPreferencesService,
+          useValue: { setMute: jest.fn() },
+        },
       ],
     }).compile();
 
@@ -69,6 +75,9 @@ describe('ChatConversationService', () => {
     usersService = module.get(UsersService) as jest.Mocked<UsersService>;
     conversationsService = module.get(ConversationsService) as jest.Mocked<ConversationsService>;
     messagesService = module.get(MessagesService) as jest.Mocked<MessagesService>;
+    notificationPreferences = module.get(
+      ConversationNotificationPreferencesService,
+    ) as jest.Mocked<ConversationNotificationPreferencesService>;
   });
 
   describe('handleStartConversation', () => {
@@ -222,6 +231,49 @@ describe('ChatConversationService', () => {
         { message: 'Cannot pin expired message' },
       );
       expect(conversationsService.setPinnedMessage).not.toHaveBeenCalled();
+    });
+  });
+  describe('handleSetConversationMute', () => {
+    it('rejects a mute request from a non-member', async () => {
+      conversationsService.findById.mockResolvedValue({
+        id: 10,
+        userOne: { id: 2 },
+        userTwo: { id: 3 },
+      } as never);
+
+      await service.handleSetConversationMute(
+        mockClient as unknown as Socket,
+        { conversationId: 10, duration: '8h' },
+      );
+
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'Unauthorized',
+      });
+      expect(notificationPreferences.setMute).not.toHaveBeenCalled();
+    });
+
+    it('stores an allowed viewer-private duration and emits only to that viewer', async () => {
+      conversationsService.findById.mockResolvedValue({
+        id: 10,
+        userOne: { id: 1 },
+        userTwo: { id: 2 },
+      } as never);
+      notificationPreferences.setMute.mockResolvedValue({
+        muted: true,
+        until: new Date('2026-07-13T10:00:00.000Z'),
+      });
+
+      await service.handleSetConversationMute(
+        mockClient as unknown as Socket,
+        { conversationId: 10, duration: '8h' },
+      );
+
+      expect(notificationPreferences.setMute).toHaveBeenCalledWith(1, 10, '8h');
+      expect(mockClient.emit).toHaveBeenCalledWith('conversationMuteUpdated', {
+        conversationId: 10,
+        muted: true,
+        mutedUntil: new Date('2026-07-13T10:00:00.000Z'),
+      });
     });
   });
 });

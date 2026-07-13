@@ -14,6 +14,8 @@ describe('UserMapper', () => {
       id: 1,
       username: 'alice',
       tag: '0427',
+      about: null,
+      profilePhotos: [],
       profilePictureUrl: 'https://example.com/avatar.png',
     });
   });
@@ -30,6 +32,8 @@ describe('UserMapper', () => {
       id: 2,
       username: 'bob',
       tag: '1234',
+      about: null,
+      profilePhotos: [],
       profilePictureUrl: null,
     });
   });

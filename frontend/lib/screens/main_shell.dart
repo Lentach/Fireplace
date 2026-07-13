@@ -22,6 +22,7 @@ import '../services/unread_badge_sync.dart';
 import '../widgets/top_snackbar.dart';
 import '../theme/glass_theme.dart';
 import '../widgets/glass/glass_bottom_nav.dart';
+import 'user_card_screen.dart';
 
 /// Shell after login: bottom nav with Conversations, Contacts, Settings.
 class MainShell extends StatefulWidget {
@@ -82,6 +83,22 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         }());
       });
     }
+  }
+
+  void _openMyProfile() {
+    final user = context.read<AuthProvider>().currentUser;
+    if (user == null) return;
+    Navigator.of(context).push(
+      instantOpaqueRoute(
+        builder: (_) => UserCardScreen(
+          data: UserCardVisualData.fromUser(
+            user,
+            isSelf: true,
+            hasConversation: false,
+          ),
+        ),
+      ),
+    );
   }
 
   @override
@@ -217,9 +234,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          ConversationsScreen(
-            onAvatarTap: () => setState(() => _selectedIndex = 2),
-          ),
+          ConversationsScreen(onAvatarTap: _openMyProfile),
           const ContactsScreen(),
           const SettingsScreen(),
         ],

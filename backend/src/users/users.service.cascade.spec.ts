@@ -22,6 +22,9 @@ describe('UsersService.deleteAccount – cascade', () => {
       find: jest.fn().mockResolvedValue([]),
     },
   };
+  const mockProfilePhotoRepo = {
+    find: jest.fn().mockResolvedValue([]),
+  };
   const mockStorage = { deleteAvatar: jest.fn() };
   const mockFcm = { removeByUserId: jest.fn().mockResolvedValue(undefined) };
   const mockWebPush = { removeByUserId: jest.fn().mockResolvedValue(undefined) };
@@ -49,11 +52,13 @@ describe('UsersService.deleteAccount – cascade', () => {
     jest.clearAllMocks();
     mockRepo.manager.find.mockResolvedValue([]);
     mockManager.find.mockResolvedValue([]);
+    mockProfilePhotoRepo.find.mockResolvedValue([]);
     mockManager.delete.mockResolvedValue(undefined);
     mockManager.remove.mockResolvedValue(undefined);
 
     service = new UsersService(
       mockRepo as any,
+      mockProfilePhotoRepo as unknown as never,
       mockStorage as any,
       mockFcm as any,
       mockWebPush as any,

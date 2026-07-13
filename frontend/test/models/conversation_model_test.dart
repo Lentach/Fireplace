@@ -1,4 +1,5 @@
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fireplace/models/user_model.dart';
 import 'package:fireplace/models/conversation_model.dart';
 
 void main() {
@@ -60,6 +61,28 @@ void main() {
       expect(conv.disappearingTimer, isNull);
       expect(conv.pinnedMessageId, isNull);
       expect(conv.pinnedMessagePreview, isNull);
+    });
+
+    test('isMutedAt ignores an expired mute while retaining forever mute', () {
+      final conversation = ConversationModel(
+        id: 4,
+        userOne: UserModel(id: 10, username: 'alice', tag: '0001'),
+        userTwo: UserModel(id: 20, username: 'bob', tag: '0002'),
+        createdAt: DateTime.utc(2026, 2, 1),
+        muted: true,
+        mutedUntil: DateTime.utc(2026, 7, 13, 11, 59, 59),
+      );
+      final foreverMuted = ConversationModel(
+        id: 5,
+        userOne: UserModel(id: 10, username: 'alice', tag: '0001'),
+        userTwo: UserModel(id: 20, username: 'bob', tag: '0002'),
+        createdAt: DateTime.utc(2026, 2, 1),
+        muted: true,
+      );
+      final now = DateTime.utc(2026, 7, 13, 12);
+
+      expect(conversation.isMutedAt(now), isFalse);
+      expect(foreverMuted.isMutedAt(now), isTrue);
     });
   });
 }

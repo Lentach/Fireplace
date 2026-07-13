@@ -2,12 +2,14 @@ import { Test, TestingModule } from '@nestjs/testing';
 import { PushNotificationCoalescingService } from './push-notification-coalescing.service';
 import { PushNotificationsService } from './push-notifications.service';
 import { MessagesService } from '../messages/messages.service';
+import { ConversationNotificationPreferencesService } from '../conversation-notification-preferences/conversation-notification-preferences.service';
 
 describe('PushNotificationCoalescingService', () => {
   let service: PushNotificationCoalescingService;
   let notify: jest.Mock;
   let getUnreadSummary: jest.Mock;
 
+  let isMuted: jest.Mock;
   const makeUnreadSummary = (convId: number, convCount: number, total: number) => ({
     unreadTotal: total,
     unreadConversationIds: [convId],
@@ -18,12 +20,17 @@ describe('PushNotificationCoalescingService', () => {
     jest.useFakeTimers();
     notify = jest.fn().mockResolvedValue(undefined);
     getUnreadSummary = jest.fn().mockResolvedValue(makeUnreadSummary(10, 3, 3));
+    isMuted = jest.fn().mockResolvedValue(false);
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         PushNotificationCoalescingService,
         { provide: PushNotificationsService, useValue: { notify } },
         { provide: MessagesService, useValue: { getUnreadSummaryForUser: getUnreadSummary } },
+        {
+          provide: ConversationNotificationPreferencesService,
+          useValue: { isMuted },
+        },
       ],
     }).compile();
 
@@ -181,6 +188,18 @@ describe('PushNotificationCoalescingService', () => {
     await Promise.resolve();
     await Promise.resolve();
     expect(notify).toHaveBeenCalledTimes(2);
+  });
+
+  it('suppresses a server-originated push for a muted conversation', async () => {
+    isMuted.mockResolvedValue(true);
+    await service.scheduleMessagePush(2, 10);
+    jest.advanceTimersByTime(2500);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(isMuted).toHaveBeenCalledWith(2, 10);
+    expect(getUnreadSummary).not.toHaveBeenCalled();
+    expect(notify).not.toHaveBeenCalled();
   });
 
   it('calls getUnreadSummaryForUser at flush time (not at schedule time)', async () => {
