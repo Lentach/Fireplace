@@ -8,6 +8,7 @@ import '../theme/rpg_theme.dart';
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
 import '../widgets/audio/playback_controller.dart';
+import '../widgets/glass/glass_top_bar.dart';
 import '../widgets/top_snackbar.dart';
 
 class PrivacySafetyScreen extends StatefulWidget {
@@ -52,19 +53,31 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        centerTitle: true,
+      extendBodyBehindAppBar: true,
+      appBar: GlassTopBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
         title: Text(
           _diagLogUnlocked
               ? '🔓 hacker mode'
               : AppLocalizations.of(context).privacySafetyTitle,
+          style: RpgTheme.bodyFont(
+            fontSize: 16,
+            color: theme.colorScheme.onSurface,
+            fontWeight: FontWeight.w600,
+          ),
         ),
-        backgroundColor: theme.colorScheme.surface,
-        elevation: 0,
-        iconTheme: IconThemeData(color: theme.colorScheme.primary),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(24),
+        padding: EdgeInsets.fromLTRB(
+          24,
+          MediaQuery.paddingOf(context).top + GlassTopBar.capsuleHeight + 16,
+          24,
+          MediaQuery.paddingOf(context).bottom + 24,
+        ),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [

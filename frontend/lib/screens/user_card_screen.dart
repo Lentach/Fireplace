@@ -9,6 +9,7 @@ import '../providers/friends_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
+import '../widgets/glass/glass_surface.dart';
 import '../widgets/chat_background_pattern.dart';
 import '../widgets/top_snackbar.dart' show showTopSnackBar;
 
@@ -191,9 +192,9 @@ class _UserCardScreenState extends State<UserCardScreen> {
     );
     controller.dispose();
     if (next == null || !mounted) return;
-    await context
-        .read<AuthProvider>()
-        .updateProfileAbout(next.trim().isEmpty ? null : next.trim());
+    await context.read<AuthProvider>().updateProfileAbout(
+      next.trim().isEmpty ? null : next.trim(),
+    );
     if (!mounted) return;
     Navigator.of(context).pop();
   }
@@ -211,7 +212,8 @@ class _UserCardScreenState extends State<UserCardScreen> {
             _PhotoHero(
               data: data,
               activeIndex: _activePhotoIndex,
-              onPageChanged: (index) => setState(() => _activePhotoIndex = index),
+              onPageChanged: (index) =>
+                  setState(() => _activePhotoIndex = index),
               onCopy: _copyHandle,
             )
           else
@@ -220,7 +222,6 @@ class _UserCardScreenState extends State<UserCardScreen> {
               backgroundColor: theme.scaffoldBackgroundColor,
               surfaceTintColor: Colors.transparent,
               leading: IconButton(
-
                 tooltip: AppLocalizations.of(context).userCardBack,
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () => Navigator.maybePop(context),
@@ -338,23 +339,24 @@ class UserCardVisualData {
   }) {
     final profilePhotos = user.profilePhotos;
     final photos = profilePhotos.isEmpty
-        ? (user.profilePictureUrl == null || user.profilePictureUrl!.trim().isEmpty
-            ? const <UserCardPhoto>[]
-            : [
-                UserCardPhoto(
-                  url: user.profilePictureUrl!,
+        ? (user.profilePictureUrl == null ||
+                  user.profilePictureUrl!.trim().isEmpty
+              ? const <UserCardPhoto>[]
+              : [
+                  UserCardPhoto(
+                    url: user.profilePictureUrl!,
+                    semanticLabel: user.displayHandle,
+                  ),
+                ])
+        : profilePhotos
+              .map(
+                (photo) => UserCardPhoto(
+                  id: photo.id,
+                  url: photo.url,
                   semanticLabel: user.displayHandle,
                 ),
-              ])
-        : profilePhotos
-            .map(
-              (photo) => UserCardPhoto(
-                id: photo.id,
-                url: photo.url,
-                semanticLabel: user.displayHandle,
-              ),
-            )
-            .toList(growable: false);
+              )
+              .toList(growable: false);
     return UserCardVisualData(
       userId: user.id,
       username: user.username,
@@ -382,6 +384,7 @@ class UserCardVisualData {
 
   String get handle => '$username#$tag';
 }
+
 enum UserCardMute {
   off,
   oneHour,
@@ -403,6 +406,7 @@ enum UserCardMute {
     return UserCardMute.oneWeek;
   }
 }
+
 class UserCardPhoto {
   final int? id;
   final String url;
@@ -416,7 +420,6 @@ class UserCardPhoto {
 }
 
 enum UserCardWallpaper { defaultBackground, glyphs }
-
 
 class _PhotoHero extends StatelessWidget {
   final UserCardVisualData data;
@@ -443,17 +446,23 @@ class _PhotoHero extends StatelessWidget {
       expandedHeight: _expandedHeight,
       backgroundColor: theme.scaffoldBackgroundColor,
       surfaceTintColor: Colors.transparent,
-      leading: IconButton(
-        tooltip: l10n.userCardBack,
-        icon: const Icon(Icons.arrow_back, color: Colors.white),
-        onPressed: () => Navigator.maybePop(context),
+      leading: GlassCircle(
+        size: 52,
+        child: Center(
+          child: IconButton(
+            tooltip: l10n.userCardBack,
+            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            onPressed: () => Navigator.maybePop(context),
+          ),
+        ),
       ),
       flexibleSpace: LayoutBuilder(
         builder: (context, constraints) {
           final toolbarHeight = kToolbarHeight + topInset;
-          final collapsed = ((_expandedHeight - constraints.maxHeight) /
-                  (_expandedHeight - toolbarHeight))
-              .clamp(0.0, 1.0);
+          final collapsed =
+              ((_expandedHeight - constraints.maxHeight) /
+                      (_expandedHeight - toolbarHeight))
+                  .clamp(0.0, 1.0);
           final heroOpacity = 1 - collapsed;
 
           return Stack(
@@ -546,7 +555,9 @@ class _PhotoHero extends StatelessWidget {
                         ),
                       ),
                       IconButton(
-                        tooltip: AppLocalizations.of(context).userCardCopyHandle,
+                        tooltip: AppLocalizations.of(
+                          context,
+                        ).userCardCopyHandle,
                         onPressed: onCopy,
                         color: Colors.white,
                         icon: const Icon(Icons.copy_outlined),
@@ -916,7 +927,6 @@ class _ConversationPreview extends StatelessWidget {
   }
 }
 
-
 class _Section extends StatelessWidget {
   final String title;
   final Widget child;
@@ -972,13 +982,22 @@ class _ActionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = danger ? theme.colorScheme.error : theme.colorScheme.onSurface;
+    final color = danger
+        ? theme.colorScheme.error
+        : theme.colorScheme.onSurface;
     return ListTile(
       contentPadding: EdgeInsets.zero,
       dense: true,
       minVerticalPadding: 0,
       leading: Icon(icon, color: color),
-      title: Text(label, style: RpgTheme.bodyFont(fontSize: 15, color: color, fontWeight: FontWeight.w600)),
+      title: Text(
+        label,
+        style: RpgTheme.bodyFont(
+          fontSize: 15,
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
       trailing: Icon(Icons.chevron_right, color: color.withValues(alpha: 0.7)),
       onTap: onTap,
     );
