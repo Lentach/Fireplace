@@ -21,6 +21,7 @@ import 'package:fireplace/screens/conversations_screen.dart';
 import 'package:fireplace/screens/blocked_users_screen.dart';
 import 'package:fireplace/screens/privacy_safety_screen.dart';
 import 'package:fireplace/screens/add_or_invitations_screen.dart';
+import 'package:fireplace/screens/auth_screen.dart';
 import 'package:fireplace/providers/connection_provider.dart';
 
 import 'package:fireplace/l10n/app_localizations.dart';
@@ -148,6 +149,7 @@ class GlassPreviewApp extends StatelessWidget {
           'blocked' => const BlockedUsersScreen(),
           'privacy' => const PrivacySafetyScreen(),
           'add' => const AddOrInvitationsScreen(),
+          'auth' => const AuthScreen(),
           _ => const _ChatListPreview(),
         },
       ),
