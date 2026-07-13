@@ -23,7 +23,7 @@ export class ProfilePhoto {
   @Column()
   url: string;
 
-  @Column({ nullable: true })
+  @Column({ type: 'text', nullable: true })
   storageKey: string | null;
 
   @Column({ default: false })
