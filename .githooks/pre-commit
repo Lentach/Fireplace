@@ -1,0 +1,56 @@
+#!/bin/sh
+# Fireplace pre-commit hook. Activate once per clone:  git config core.hooksPath .githooks
+# Bypass in a real emergency with:  git commit --no-verify
+# Two gates: (1) secret scan on staged content, (2) LATEST.md 5-entry cap.
+
+set -u
+fail=0
+
+# --- Gate 1: secret scan -------------------------------------------------
+# Prefer gitleaks if installed (full entropy + rule coverage); else fall back
+# to a high-signal regex scan of staged additions. This repo is PUBLIC — a
+# leaked key here is public the instant it is pushed.
+if command -v gitleaks >/dev/null 2>&1; then
+  if ! gitleaks protect --staged --redact >/dev/null 2>&1; then
+    echo "BLOCKED: gitleaks found a secret in staged changes."
+    gitleaks protect --staged --redact -v 2>&1 | tail -30
+    fail=1
+  fi
+else
+  # Regex fallback: scan only ADDED lines in staged tracked files.
+  added=$(git diff --cached --diff-filter=ACM -U0 | grep '^+' | grep -v '^+++')
+  # Unambiguous secret shapes (kept tight to avoid false positives).
+  hits=$(printf '%s\n' "$added" | grep -nEi \
+    -e '-----BEGIN [A-Z ]*PRIVATE KEY-----' \
+    -e 'AKIA[0-9A-Z]{16}' \
+    -e 'cfat_[A-Za-z0-9_-]{20,}' \
+    -e 'gh[porsu]_[A-Za-z0-9]{36,}' \
+    -e 'github_pat_[A-Za-z0-9_]{40,}' \
+    -e 'xox[baprs]-[A-Za-z0-9-]{10,}' \
+    -e '"(private_key|client_secret)"[[:space:]]*:' \
+    || true)
+  if [ -n "$hits" ]; then
+    echo "BLOCKED: possible secret in staged changes (regex fallback; install gitleaks for full coverage):"
+    printf '%s\n' "$hits" | head -20
+    echo "If this is a false positive, commit with --no-verify."
+    fail=1
+  fi
+fi
+
+# --- Gate 2: LATEST.md 5-entry cap --------------------------------------
+LATEST=.cursor/session-summaries/LATEST.md
+if git diff --cached --name-only | grep -qx "$LATEST"; then
+  # Count **Date:** entry markers in the staged version.
+  n=$(git show ":$LATEST" 2>/dev/null | grep -cE '^\*\*Date:\*\*' || echo 0)
+  if [ "$n" -gt 5 ]; then
+    echo "BLOCKED: $LATEST has $n entries (cap is 5). Move older entries to their dated files."
+    echo "See CLAUDE.md 1 (LATEST is the skim layer, not the archive)."
+    fail=1
+  fi
+fi
+
+if [ "$fail" -ne 0 ]; then
+  echo "pre-commit: rejected. Fix the above or use --no-verify to override."
+  exit 1
+fi
+exit 0
