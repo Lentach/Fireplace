@@ -24,7 +24,7 @@
 
 ## Notes for next session
 - Authenticated manual User Card actions were not exercised in production because no production test account was available. The deployed unauthenticated PWA boot and all server/schema contracts passed.
-- Full handoff: [`2026-07-13-user-card-implementation.md`](./2026-07-13-user-card-implementation.md).
+- The detailed dated handoff remains local-only by repository policy; this tracked summary is the public cross-session record.
 
 ## Previous
 - 2026-07-12: stale-OTP identity-epoch hardening, cache durability, and diagnostics landed before this release. The merged wallpaper glyph work and its migration sequence are already included in `0.0.112`.
