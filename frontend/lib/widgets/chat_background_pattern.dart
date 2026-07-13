@@ -106,6 +106,10 @@ class _TempleColumnsPainter extends CustomPainter {
     final rnd = math.Random(seed);
     final cols = math.max(2, (size.width / _columnWidth).round());
     final colW = size.width / cols;
+    // One leaf per screen height across ALL columns (not per column): each
+    // column is a parallel vertical walk, so the per-column spacing must be
+    // multiplied by the column count to keep the on-screen total at ~1.
+    final leafEvery = _leafCadence * cols;
 
     // Column separators.
     for (var i = 1; i < cols; i++) {
@@ -139,11 +143,11 @@ class _TempleColumnsPainter extends CustomPainter {
     for (var c = 0; c < cols2; c++) {
       final cx = colW * c + colW / 2;
       var y = 34 + rnd.nextDouble() * 12;
-      var sinceLeaf = rnd.nextDouble() * _leafCadence;
+      var sinceLeaf = rnd.nextDouble() * leafEvery;
       var prevNarrow = false;
       while (y < size.height - 18) {
         HieroGlyph g;
-        if (sinceLeaf > _leafCadence) {
+        if (sinceLeaf > leafEvery) {
           g = leaf;
           sinceLeaf = 0;
         } else {
