@@ -1,2 +1,4 @@
 # Ensure shell scripts always use LF (Unix line endings) even on Windows
 *.sh text eol=lf
+# Git hooks run via sh; CRLF would break the shebang. Force LF regardless of extension.
+.githooks/** text eol=lf
