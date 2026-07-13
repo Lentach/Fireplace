@@ -371,13 +371,13 @@ abstract class AppLocalizations {
   /// No description provided for @localMessageCacheDescription.
   ///
   /// In pl, this message translates to:
-  /// **'Dla niezawodności to urządzenie może lokalnie przechowywać odszyfrowane podglądy wiadomości i pobrane wiadomości głosowe. Wyczyszczenie tej pamięci nie usuwa kluczy szyfrowania ani historii z serwera.'**
+  /// **'To urządzenie może przechowywać lokalnie pobrane wiadomości głosowe. Wyczyszczenie usuwa tylko pobrane audio; nie usuwa czytelnej historii, kluczy mediów, kluczy szyfrowania, sesji ani pamięci przeglądarki.'**
   String get localMessageCacheDescription;
 
   /// No description provided for @clearLocalMessageCache.
   ///
   /// In pl, this message translates to:
-  /// **'Wyczyść lokalną pamięć wiadomości'**
+  /// **'Wyczyść pobrane audio'**
   String get clearLocalMessageCache;
 
   /// No description provided for @yourIdentityFingerprint.

@@ -155,10 +155,10 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get localMessageCacheDescription =>
-      'Dla niezawodności to urządzenie może lokalnie przechowywać odszyfrowane podglądy wiadomości i pobrane wiadomości głosowe. Wyczyszczenie tej pamięci nie usuwa kluczy szyfrowania ani historii z serwera.';
+      'To urządzenie może przechowywać lokalnie pobrane wiadomości głosowe. Wyczyszczenie usuwa tylko pobrane audio; nie usuwa czytelnej historii, kluczy mediów, kluczy szyfrowania, sesji ani pamięci przeglądarki.';
 
   @override
-  String get clearLocalMessageCache => 'Wyczyść lokalną pamięć wiadomości';
+  String get clearLocalMessageCache => 'Wyczyść pobrane audio';
 
   @override
   String get yourIdentityFingerprint => 'Twój odcisk tożsamości';

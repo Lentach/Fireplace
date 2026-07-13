@@ -155,10 +155,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get localMessageCacheDescription =>
-      'For reliability, this device may keep decrypted message previews and downloaded voice audio locally. Clearing this cache does not delete your encryption keys or server history.';
+      'This device may keep downloaded voice audio locally. Clearing this cache removes downloaded audio only; it does not delete readable message history, media keys, encryption keys, sessions, or browser storage.';
 
   @override
-  String get clearLocalMessageCache => 'Clear local message cache';
+  String get clearLocalMessageCache => 'Clear downloaded audio cache';
 
   @override
   String get yourIdentityFingerprint => 'Your identity fingerprint';
