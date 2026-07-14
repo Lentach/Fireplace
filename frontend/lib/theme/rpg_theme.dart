@@ -44,17 +44,11 @@ class FireplaceColors extends ThemeExtension<FireplaceColors> {
 }
 
 class RpgTheme {
-  static const Color background = Color(0xFF0A0A2E);
   static const Color boxBg = Color(0xFF0F0F3D);
-  static const Color inputBg = Color(0xFF0A0A24);
   static const Color textColor = Color(0xFFE0E0E0);
   static const Color mutedText = Color(0xFF6A6AB0);
   static const Color errorColor = Color(0xFFFF4444);
   static const Color successColor = Color(0xFF44FF44);
-  static const Color messagesAreaBg = Color(0xFF08081E);
-  // Blue theme: red accent -> sent = dark red-brown, received = dark gray (legacy; blue theme now uses Telegram palette)
-  static const Color mineMsgBg = Color(0xFF4A2A35);
-  static const Color theirsMsgBg = Color(0xFF1E2028);
 
   // Telegram-style blue theme (default dark) – official Telegram colors
   // Background: #17212B, accent: #2AABEE, sent bubble: #2481CC, received: #2B2B2B
@@ -541,9 +535,6 @@ class RpgTheme {
       ],
     );
   }
-
-  /// Backwards compatibility alias.
-  static ThemeData get themeData => themeDataBlue;
 
   static ThemeData get themeDataLight {
     return ThemeData.light().copyWith(

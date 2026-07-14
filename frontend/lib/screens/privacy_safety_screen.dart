@@ -425,7 +425,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
                         '== LIVE LOG ==\n'
                         '${E2eDiagLog.entries.join('\n')}';
                     await Clipboard.setData(ClipboardData(text: all));
-                    if (!mounted) return;
+                    if (!context.mounted) return;
                     showTopSnackBar(context, 'Log copied to clipboard');
                   },
                   child: const Text('Copy'),

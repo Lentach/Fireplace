@@ -45,10 +45,11 @@ class PushService {
   /// Drained once by ConnectionProvider._onSocketReady().
   int? coldStartConversationId;
 
-  // VAPID key for web push — get from:
-  // Firebase Console → Project Settings → Cloud Messaging → Web Push certificates
-  // → Generate key pair → copy the public key.
-  // TODO: Replace with your real VAPID key.
+  // VAPID public key for web push. Supplied via the WEB_PUSH_VAPID_PUBLIC_KEY
+  // dart-define at build time; the defaultValue below is the real production
+  // fallback key. It MUST match the backend VAPID key pair — a mismatch causes
+  // silent web-push subscribe/delivery failure (CLAUDE.md §3, §5). To rotate:
+  // Firebase Console → Project Settings → Cloud Messaging → Web Push certificates.
   static const String _vapidKey = String.fromEnvironment(
     'WEB_PUSH_VAPID_PUBLIC_KEY',
     defaultValue:

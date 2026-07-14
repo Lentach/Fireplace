@@ -92,11 +92,8 @@ class MessageActionPanel extends StatelessWidget {
     VoidCallback onTap, {
     required bool enabled,
     bool destructive = false,
-    bool muted = false,
   }) {
-    final color = muted
-        ? Theme.of(context).disabledColor
-        : !enabled
+    final color = !enabled
         ? Theme.of(context).disabledColor
         : destructive
         ? Colors.red.shade700
