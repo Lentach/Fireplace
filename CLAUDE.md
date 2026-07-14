@@ -61,7 +61,7 @@ cd frontend && flutter run -d chrome
 
 ## 4. Production deploy and safety
 
-Production: `https://fireplace.ignorelist.com`, **OVH VPS** `ubuntu@51.68.138.13` (Warszawa, 4 GB + 2G swap, Ubuntu 24.04, key-only SSH), repo `~/fireplace`. Migrated off the GCP VM 2026-07-08; the GCP box only relays stale-DNS traffic to the VPS pending decommission — never redeploy to it.
+Production: `https://fireplace.ignorelist.com`, **OVH VPS** `ubuntu@51.68.138.13` (Warszawa, 4 GB + 2G swap, Ubuntu 24.04, key-only SSH), repo `~/fireplace`. Migrated off GCP 2026-07-08; the GCP project is **fully decommissioned** (instance, disk, snapshots, static IP deleted 2026-07-14) — treat any `gcloud`/GCP instructions in older docs as historical.
 
 Full runbook (paths, verification table, backup/restore, troubleshooting): `.cursor/rules/production-vm-deploy.mdc` — read it before non-trivial prod ops.
 
