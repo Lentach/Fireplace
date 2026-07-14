@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-14 (Frontend quality review — full audit + Bucket 1 safe fixes; PRs #71/#72/#73 UNMERGED)
+**Date:** 2026-07-14 (Frontend quality review — full audit + Bucket 1 safe fixes + Bucket 2 recommended refactors; PRs #71–#76 UNMERGED)
 
 ## What was done
 Senior quality audit of the ENTIRE Flutter frontend (208 files, ~36.5k LOC, 14 chunks, 100% coverage — 10 read-only scouts opened every file in leaf/low-risk chunks + lead read the crown jewels). **Verdict: NOT a band-aid stack** — E2E/send/decrypt/composer/shims/theme are intentional scar-tissue with documented field-incident rationale + regression tests; debt is outer-UI duplication + a few plain bugs + localization gaps + resume/decrypt timer-accretion. Then executed Bucket 1 (owner green-lit) as 3 PRs off `master` (`1904c85`):
@@ -8,17 +8,21 @@ Senior quality audit of the ENTIRE Flutter frontend (208 files, ~36.5k LOC, 14 c
 - **PR #72 `fix/localize-auth-screen`:** auth screen/form hardcoded English → ARB (en+pl); _handleSubmit loading `finally`.
 - **PR #73 `chore/frontend-cleanup`:** avatar per-mount cache-bust removed (URLs unique-UUID); dead app_config_web/io deleted; analyzer **0 issues** (jumbo `\p{}` ignore + context.mounted); shared isIOSWebKit; VAPID comment; dead muted param/_isLoading/RpgTheme statics+themeData alias.
 
+Then executed the two owner-recommended Bucket 2 refactors as 2 more PRs off `master`:
+- **PR #75 `refactor/encrypted-media-loader`:** extracted the triplicated fetch+size-guard+decrypt pipeline (image/gif/file) to `utils/encrypted_media_loader.dart`; each call site keeps its exact failure UI. +3 unit tests. Behavior-preserving (builds untouched).
+- **PR #76 `refactor/theme-factory`:** collapsed the 4 near-identical ThemeData builders into `RpgTheme._buildTheme(_ThemeSpec)` + 4 const specs (rpg_theme.dart 844→600). Proven behavior-preserving by a new field-by-field golden test (`test/theme/rpg_theme_golden_test.dart`) locking all 4 themes — green before AND after the refactor. Golden is also the theme layer's first drift guard.
+
 ## Key files
 - Audit (LOCAL-ONLY, gitignored): `.planning/frontend-quality-review/{QUALITY_REPORT,REFACTOR_PLAN,findings,progress,task_plan}.md`.
 - Code: the 3 PRs. Version `0.0.116` (PR#71 only; #72/#73 don't touch pubspec).
 - Full write-up: `2026-07-14-session-frontend-quality-review.md`.
 
 ## Verification
-- PR#71 `flutter test` = **681** (679+2 new); PR#72 = **679**; PR#73 = analyze **0 issues** + **679** tests. Baseline was 2 infos / 679. `graphify update .` run (8675 nodes).
+- PR#71 `flutter test` = **681** (679+2); PR#72 = **679**; PR#73 = analyze **0 issues** + **679**; PR#75 = **682** (679+3); PR#76 = **683** (679+4 golden). Baseline 2 infos / 679. `graphify update .` run.
 
 ## Notes for next session
 - **3 Bucket-1 PRs UNMERGED** off master. Only #71 bumps 0.0.116; #72/#73 don't touch pubspec (no merge collision).
-- **Bucket 2 (owner-approve, NOT executed)** in `REFACTOR_PLAN.md`: resume/decrypt 4-trigger consolidation (HIGH risk, crown path, needs `test_e2e`); shared encrypted-media loader (image/gif/file triplication); rpg_theme 4×-ThemeData→factory; add_or_invitations logic-out-of-build; bubble twin-branch dedup; auth boot-pyramid flatten.
+- **Bucket 2:** PR#75 (media loader) + PR#76 (theme factory) DONE. Still owner-approve/NOT done (see `REFACTOR_PLAN.md`): resume/decrypt 4-trigger consolidation (HIGH risk, crown path, needs `test_e2e`); add_or_invitations logic-out-of-build; bubble twin-branch dedup; auth boot-pyramid flatten.
 - **Deferred to a §9 visual-verification pass:** GlassDialog migration + delete-dialog light-theme contrast + `FireplaceColors.copyWith/lerp` no-ops.
 - `edit` tool can't disambiguate root vs tier `CLAUDE.md` — edit by exact path.
 
