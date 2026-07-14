@@ -1,0 +1,163 @@
+import 'dart:convert';
+
+import 'package:flutter_test/flutter_test.dart';
+import 'package:http/http.dart' as http;
+import 'package:http/testing.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import 'package:fireplace/providers/auth_provider.dart';
+import 'package:fireplace/services/api_service.dart';
+
+// exp 1516239022 (expired); exp 9999999999 (valid). Signature not verified client-side.
+const _expiredAccessJwt =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInVzZXJuYW1lIjoidGVzdCIsInRhZyI6IjAwMDAiLCJleHAiOjE1MTYyMzkwMjJ9.4Adcj3UFYzPUBaY63_UWOshvRZQZjm7uI9uWGQ8RrXc';
+const _validAccessJwt =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInVzZXJuYW1lIjoidGVzdCIsInRhZyI6IjAwMDAiLCJleHAiOjk5OTk5OTk5OTl9.abc';
+
+http.Response _userOk() => http.Response(
+      jsonEncode({'id': 1, 'username': 'test', 'tag': '0000', 'profilePictureUrl': null}),
+      200,
+      headers: {'Content-Type': 'application/json'},
+    );
+
+http.Response _tokensOk() => http.Response(
+      jsonEncode({'access_token': _validAccessJwt, 'refresh_token': 'rotated'}),
+      200,
+      headers: {'Content-Type': 'application/json'},
+    );
+
+Future<void> _settled(AuthProvider auth, {required bool expectLoggedIn}) async {
+  for (var i = 0; i < 40; i++) {
+    await Future<void>.delayed(const Duration(milliseconds: 50));
+    if (!auth.isRestoringSession && auth.isLoggedIn == expectLoggedIn) return;
+  }
+  fail('AuthProvider did not settle '
+      '(restoring=${auth.isRestoringSession}, loggedIn=${auth.isLoggedIn}, want=$expectLoggedIn)');
+}
+
+void main() {
+  const base = 'http://localhost:3999';
+
+  group('AuthProvider boot restore (characterization)', () {
+    test('valid saved access + fetchMe OK -> logged in without refreshing', () async {
+      SharedPreferences.setMockInitialValues({
+        'jwt_token': _validAccessJwt,
+        'refresh_token': 'opaque_refresh',
+      });
+      var refreshCalls = 0;
+      final mock = MockClient((req) async {
+        if (req.url.path == '/auth/refresh') {
+          refreshCalls++;
+          return http.Response('{}', 500);
+        }
+        if (req.url.path == '/users/me') return _userOk();
+        throw Exception('Unexpected ${req.url.path}');
+      });
+
+      final auth = AuthProvider(api: ApiService(baseUrl: base, httpClient: mock));
+      await _settled(auth, expectLoggedIn: true);
+
+      expect(auth.currentUser?.username, 'test');
+      expect(refreshCalls, 0, reason: 'valid access must not trigger a refresh');
+    });
+
+    test('expired access + valid refresh + fetchMe OK -> refreshes and logs in',
+        () async {
+      SharedPreferences.setMockInitialValues({
+        'jwt_token': _expiredAccessJwt,
+        'refresh_token': 'opaque_refresh',
+      });
+      var refreshCalls = 0;
+      final mock = MockClient((req) async {
+        if (req.url.path == '/auth/refresh') {
+          refreshCalls++;
+          return _tokensOk();
+        }
+        if (req.url.path == '/users/me') return _userOk();
+        throw Exception('Unexpected ${req.url.path}');
+      });
+
+      final auth = AuthProvider(api: ApiService(baseUrl: base, httpClient: mock));
+      await _settled(auth, expectLoggedIn: true);
+
+      expect(refreshCalls, 1);
+      expect(auth.isLoggedIn, isTrue);
+    });
+
+    test('valid access, fetchMe 401 once, refresh recovers -> logged in', () async {
+      SharedPreferences.setMockInitialValues({
+        'jwt_token': _validAccessJwt,
+        'refresh_token': 'opaque_refresh',
+      });
+      var meCalls = 0;
+      final mock = MockClient((req) async {
+        if (req.url.path == '/users/me') {
+          meCalls++;
+          if (meCalls == 1) {
+            return http.Response(jsonEncode({'message': 'unauthorized'}), 401,
+                headers: {'Content-Type': 'application/json'});
+          }
+          return _userOk();
+        }
+        if (req.url.path == '/auth/refresh') return _tokensOk();
+        throw Exception('Unexpected ${req.url.path}');
+      });
+
+      final auth = AuthProvider(api: ApiService(baseUrl: base, httpClient: mock));
+      await _settled(auth, expectLoggedIn: true);
+
+      expect(meCalls, 2, reason: 'first fetchMe 401 -> refresh -> second fetchMe');
+      expect(auth.currentUser?.username, 'test');
+    });
+
+    test('fetchMe 401 + refresh invalid -> clears session with reason', () async {
+      SharedPreferences.setMockInitialValues({
+        'jwt_token': _validAccessJwt,
+        'refresh_token': 'opaque_refresh',
+      });
+      final mock = MockClient((req) async {
+        if (req.url.path == '/users/me') {
+          return http.Response(jsonEncode({'message': 'unauthorized'}), 401,
+              headers: {'Content-Type': 'application/json'});
+        }
+        if (req.url.path == '/auth/refresh') {
+          return http.Response(jsonEncode({'message': 'Invalid refresh token'}), 401,
+              headers: {'Content-Type': 'application/json'});
+        }
+        throw Exception('Unexpected ${req.url.path}');
+      });
+
+      final auth = AuthProvider(api: ApiService(baseUrl: base, httpClient: mock));
+      await _settled(auth, expectLoggedIn: false);
+
+      expect(auth.lastSessionEndReason, 'refresh_invalid_after_access_401');
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.getString('jwt_token'), isNull);
+    });
+
+    test('fetchMe 401 + refresh transient -> stays logged in via JWT user', () async {
+      SharedPreferences.setMockInitialValues({
+        'jwt_token': _validAccessJwt,
+        'refresh_token': 'opaque_refresh',
+      });
+      final mock = MockClient((req) async {
+        if (req.url.path == '/users/me') {
+          return http.Response(jsonEncode({'message': 'unauthorized'}), 401,
+              headers: {'Content-Type': 'application/json'});
+        }
+        if (req.url.path == '/auth/refresh') {
+          return http.Response(jsonEncode({'message': 'Service unavailable'}), 503,
+              headers: {'Content-Type': 'application/json'});
+        }
+        throw Exception('Unexpected ${req.url.path}');
+      });
+
+      final auth = AuthProvider(api: ApiService(baseUrl: base, httpClient: mock));
+      await _settled(auth, expectLoggedIn: true);
+
+      // Transient refresh failure after a 401 keeps the (still-present) access
+      // token and rebuilds the user from its JWT claims rather than logging out.
+      expect(auth.currentUser?.username, 'test');
+    });
+  });
+}

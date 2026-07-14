@@ -242,80 +242,95 @@ class AuthProvider extends ChangeNotifier {
 
       if (savedToken == null && savedRefresh == null) return;
 
-      if (savedRefresh != null &&
-          (savedToken == null || _isAccessExpired(savedToken))) {
-        try {
-          await _refreshSessionLocked();
-        } on SessionRefreshInvalidException catch (e) {
-          await _clearLocalAuthState(
-            'refresh_invalid',
-            source: 'boot',
-            error: e,
-          );
-          return;
-        } on SessionRefreshTransientException {
-          if (savedToken != null) {
-            _restoreSavedAccessToken(savedToken);
-          }
-        } catch (e) {
-          if (savedToken != null) {
-            _restoreSavedAccessToken(savedToken);
-          } else {
-            debugPrint(
-              '[auth-session-restore] source=boot outcome=transient_without_access '
-              'hasRefresh=true errorType=${e.runtimeType}',
-            );
-          }
-        }
-      } else if (savedToken != null) {
-        _restoreSavedAccessToken(savedToken);
-      }
-
+      // Phase 1: get a usable access token (refresh if missing/expired).
+      if (await _restoreAccessOnBoot(savedToken)) return;
       if (_token == null) return;
 
-      try {
-        final userData = await _api.fetchMe(_token!);
-        _currentUser = UserModel.fromJson(userData);
-      } on Exception catch (e) {
-        if (e.toString().startsWith('Exception: HTTP_401')) {
-          if (_refreshToken != null) {
-            try {
-              await _refreshSessionLocked();
-              if (_token != null) {
-                final userData = await _api.fetchMe(_token!);
-                _currentUser = UserModel.fromJson(userData);
-              }
-            } on SessionRefreshInvalidException catch (refreshError) {
-              await _clearLocalAuthState(
-                'refresh_invalid_after_access_401',
-                source: 'boot_fetch_me',
-                error: refreshError,
-              );
-              return;
-            } on SessionRefreshTransientException {
-              if (_token != null) {
-                _restoreUserFromAccessJwt(_token!);
-              }
-            } catch (_) {
-              if (_token != null) {
-                _restoreUserFromAccessJwt(_token!);
-              }
-            }
-          } else {
-            await _clearLocalAuthState(
-              'access_401_without_refresh',
-              source: 'boot_fetch_me',
-              error: e,
-            );
-            return;
-          }
-        }
-      }
+      // Phase 2: hydrate the current user (one refresh retry on a 401).
+      if (await _hydrateCurrentUserOnBoot()) return;
+
       _startSessionRefreshTimer();
       notifyListeners();
     } finally {
       _finishRestoringSession();
     }
+  }
+
+  /// Boot phase 1: ensure [_token] holds a usable access JWT. When a refresh
+  /// token exists and the saved access is missing/expired, refresh; otherwise
+  /// restore the saved access. Returns true if the session was cleared and the
+  /// caller must abort. [savedToken] is the persisted (possibly expired) access.
+  Future<bool> _restoreAccessOnBoot(String? savedToken) async {
+    if (_refreshToken != null &&
+        (savedToken == null || _isAccessExpired(savedToken))) {
+      try {
+        await _refreshSessionLocked();
+      } on SessionRefreshInvalidException catch (e) {
+        await _clearLocalAuthState('refresh_invalid', source: 'boot', error: e);
+        return true;
+      } on SessionRefreshTransientException {
+        if (savedToken != null) {
+          _restoreSavedAccessToken(savedToken);
+        }
+      } catch (e) {
+        if (savedToken != null) {
+          _restoreSavedAccessToken(savedToken);
+        } else {
+          debugPrint(
+            '[auth-session-restore] source=boot outcome=transient_without_access '
+            'hasRefresh=true errorType=${e.runtimeType}',
+          );
+        }
+      }
+    } else if (savedToken != null) {
+      _restoreSavedAccessToken(savedToken);
+    }
+    return false;
+  }
+
+  /// Boot phase 2: fetch the current user for the restored [_token]. On a 401,
+  /// try exactly one refresh + refetch; a transient failure falls back to the
+  /// JWT claims. Returns true if the session was cleared and the caller must abort.
+  Future<bool> _hydrateCurrentUserOnBoot() async {
+    try {
+      final userData = await _api.fetchMe(_token!);
+      _currentUser = UserModel.fromJson(userData);
+    } on Exception catch (e) {
+      if (e.toString().startsWith('Exception: HTTP_401')) {
+        if (_refreshToken != null) {
+          try {
+            await _refreshSessionLocked();
+            if (_token != null) {
+              final userData = await _api.fetchMe(_token!);
+              _currentUser = UserModel.fromJson(userData);
+            }
+          } on SessionRefreshInvalidException catch (refreshError) {
+            await _clearLocalAuthState(
+              'refresh_invalid_after_access_401',
+              source: 'boot_fetch_me',
+              error: refreshError,
+            );
+            return true;
+          } on SessionRefreshTransientException {
+            if (_token != null) {
+              _restoreUserFromAccessJwt(_token!);
+            }
+          } catch (_) {
+            if (_token != null) {
+              _restoreUserFromAccessJwt(_token!);
+            }
+          }
+        } else {
+          await _clearLocalAuthState(
+            'access_401_without_refresh',
+            source: 'boot_fetch_me',
+            error: e,
+          );
+          return true;
+        }
+      }
+    }
+    return false;
   }
 
   Future<bool> register(String username, String password) async {
