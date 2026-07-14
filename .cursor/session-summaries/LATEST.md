@@ -1,29 +1,30 @@
 # Latest session summary
 
-**Date:** 2026-07-14 (Emote button removal + red-heart-renders-white root-cause fix; branch `fix/emote-button-and-red-heart`, 0.0.115, UNMERGED)
+**Date:** 2026-07-14 (Frontend quality review — full audit + Bucket 1 safe fixes; PRs #71/#72/#73 UNMERGED)
 
 ## What was done
-Two surgical chat-emote fixes on `fix/emote-button-and-red-heart` (off `feat/glass-theme-migration`).
-- **Removed the composer emoji button** — traced it as a pure keyboard-duplicate panel (no stickers/GIFs/quantum-note/attachments), removed button + all provably-dead wiring, the orphaned `composer_emoji_text_editing.dart`(+test), two unused l10n keys, and the now-dead `composerBottomPanelPinned` bottom-pin (viewport now always uses `_keyboardInset`). `FireplaceEmojiPicker` stays (reaction picker still uses it).
-- **Red heart rendered white = FONT, not data.** Hexdump proved both curated hearts already carry `U+2764 U+FE0F` and no `U+1F90D` exists (hypotheses a+b false). Case (c): ambient `GoogleFonts.inter` has a monochrome U+2764 glyph and Flutter-web CanvasKit uses the primary font's glyph, ignoring VS16 → white outline; `fontFamilyFallback` alone doesn't fix it. Added `kEmojiFontFamily`/`kEmojiFontFamilyFallback`/`withEmojiFont` in `jumbo_emoji.dart` and applied an emoji-PRIMARY font to every emoji render site (picker rows+grid, reaction quick row+chips, jumbo bubble + `buildInlineEmojiSpans` + replica, conversation preview). Data untouched → old bare-heart messages still display (also red once emoji font is primary).
+Senior quality audit of the ENTIRE Flutter frontend (208 files, ~36.5k LOC, 14 chunks, 100% coverage — 10 read-only scouts opened every file in leaf/low-risk chunks + lead read the crown jewels). **Verdict: NOT a band-aid stack** — E2E/send/decrypt/composer/shims/theme are intentional scar-tissue with documented field-incident rationale + regression tests; debt is outer-UI duplication + a few plain bugs + localization gaps + resume/decrypt timer-accretion. Then executed Bucket 1 (owner green-lit) as 3 PRs off `master` (`1904c85`):
+- **PR #71 `fix/frontend-correctness-bugs` (0.0.116):** ConversationModel.copyWith clear-to-null (disappearing-timer OFF was ignored on the non-initiating peer; +2 tests); recorder stop/dispose guarded (bar-wedge); main.dart Firebase init non-fatal (was blank-screen crash); api_service status-before-decode ×9 (opaque FormatException on 502/timeout).
+- **PR #72 `fix/localize-auth-screen`:** auth screen/form hardcoded English → ARB (en+pl); _handleSubmit loading `finally`.
+- **PR #73 `chore/frontend-cleanup`:** avatar per-mount cache-bust removed (URLs unique-UUID); dead app_config_web/io deleted; analyzer **0 issues** (jumbo `\p{}` ignore + context.mounted); shared isIOSWebKit; VAPID comment; dead muted param/_isLoading/RpgTheme statics+themeData alias.
 
 ## Key files
-- `frontend/lib/utils/jumbo_emoji.dart`; `widgets/emoji/fireplace_emoji_picker.dart`; `widgets/message/{reaction_chips_row,message_context_menu_overlay,message_context_menu_bubble_highlight,text_message_content}.dart`; `widgets/conversation_tile.dart`
-- `frontend/lib/widgets/input/{chat_input_bar,chat_composer_viewport,composer_keyboard_signals}.dart`
-- new `test/utils/emoji_font_test.dart`; `tool/heart_preview.dart` (proof harness); `frontend/CLAUDE.md` §6/§7; `pubspec.yaml` 0.0.115
-- Full write-up: `2026-07-14-session-emote-button-red-heart.md`
+- Audit (LOCAL-ONLY, gitignored): `.planning/frontend-quality-review/{QUALITY_REPORT,REFACTOR_PLAN,findings,progress,task_plan}.md`.
+- Code: the 3 PRs. Version `0.0.116` (PR#71 only; #72/#73 don't touch pubspec).
+- Full write-up: `2026-07-14-session-frontend-quality-review.md`.
 
 ## Verification
-- `flutter analyze --no-fatal-infos`: no new issues (2 pre-existing infos only). `flutter test`: **679 passed**, exit 0.
-- Visual RED-heart proof on web (CanvasKit/Inter harness) AND Pixel 7 Android emulator — jumbo bubble, inline/preview, picker row; owner confirmed on device. After-removal composer screenshot clean (`[⌄] Type a message… [🎤]`). `graphify update .` run.
+- PR#71 `flutter test` = **681** (679+2 new); PR#72 = **679**; PR#73 = analyze **0 issues** + **679** tests. Baseline was 2 infos / 679. `graphify update .` run (8675 nodes).
 
 ## Notes for next session
-- **`fix/emote-button-and-red-heart` UNMERGED**, based on the glass branch (live prod 0.0.114). PR base = `feat/glass-theme-migration` so the diff is only this fix. Not deployed.
-- Red-heart bug is web-CanvasKit-specific; any NEW emoji render site MUST use `withEmojiFont`/`buildInlineEmojiSpans` (CLAUDE §6) or hearts go white on web.
-- The `edit` tool cannot disambiguate the two `CLAUDE.md` files (root vs tier) — edit `frontend/CLAUDE.md` by exact path if it misfires.
+- **3 Bucket-1 PRs UNMERGED** off master. Only #71 bumps 0.0.116; #72/#73 don't touch pubspec (no merge collision).
+- **Bucket 2 (owner-approve, NOT executed)** in `REFACTOR_PLAN.md`: resume/decrypt 4-trigger consolidation (HIGH risk, crown path, needs `test_e2e`); shared encrypted-media loader (image/gif/file triplication); rpg_theme 4×-ThemeData→factory; add_or_invitations logic-out-of-build; bubble twin-branch dedup; auth boot-pyramid flatten.
+- **Deferred to a §9 visual-verification pass:** GlassDialog migration + delete-dialog light-theme contrast + `FireplaceColors.copyWith/lerp` no-ops.
+- `edit` tool can't disambiguate root vs tier `CLAUDE.md` — edit by exact path.
 
 ## Previous
-- 2026-07-14: Frontend design capability + Liquid Glass completion; glass deployed to prod as **0.0.114** (commit `baf7aed`), still UNMERGED (next master `deploy-web.ps1` overwrites it). **PR #67** opened (`feat/frontend-design-doctrine`, off master): playbook + `CLAUDE.md` §9 + `skeletonizer` only. Backend untouched (0.0.112 / a10ae1c). Full: `2026-07-14-session.md`.
-- 2026-07-13: User Card / My Profile vertical slice + local wallpaper/mute prefs; production release `0.0.112`; recovered first prod backend deploy after a TypeORM nullable-profile-column metadata fix.
-- 2026-07-12: stale-OTP identity-epoch hardening, cache durability, diagnostics; wallpaper glyph work + migration sequence in `0.0.112`.
-- Production VM tracks `master` at `0.0.112`; do not switch it to a stale feature branch. Local `master` in the ping-deploy worktree is behind origin/master.
+- 2026-07-14: Emote button removal + red-heart-renders-white FONT root-cause fix (`withEmojiFont`/`kEmojiFontFamily`); `fix/emote-button-and-red-heart` 0.0.115 UNMERGED. Full: `2026-07-14-session-emote-button-red-heart.md`.
+- 2026-07-14: Frontend design capability + Liquid Glass; glass prod `0.0.114` (`baf7aed`), PR #67. Full: `2026-07-14-session.md`.
+- 2026-07-13: User Card / My Profile slice + local wallpaper/mute prefs; prod release `0.0.112`.
+- 2026-07-12: stale-OTP identity-epoch hardening, cache durability, diagnostics; `0.0.112`.
+- Production VM tracks `master`; local `master` in the ping-deploy worktree is behind origin/master.
