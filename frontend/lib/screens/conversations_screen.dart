@@ -14,6 +14,7 @@ import '../providers/messaging_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/conversation_tile.dart';
+import '../widgets/conversation_list_skeleton.dart';
 import '../widgets/main_tab_screen_header.dart';
 import '../utils/instant_opaque_route.dart';
 import 'add_or_invitations_screen.dart';
@@ -266,6 +267,14 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
             media.bottom + 8,
           )
         : EdgeInsets.fromLTRB(8, 8, 8, media.bottom + 8);
+
+    // Show the loading skeleton only while the first fetch is plausibly in
+    // flight; on a known connection error fall through to the empty state so it
+    // never shimmers forever.
+    if (!convs.hasLoadedConversationsOnce &&
+        context.watch<ConnectionProvider>().errorMessage == null) {
+      return ConversationListSkeleton(padding: listPadding);
+    }
 
     if (conversations.isEmpty) {
       return Padding(
