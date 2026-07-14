@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-14 (Frontend design capability + Liquid Glass completion)
+**Date:** 2026-07-14 (Frontend design capability + Liquid Glass completion; glass deployed to prod as 0.0.113)
 
 ## What was done
 Two shipped workstreams on two branches (both pushed, PR-ready; NOT merged):
@@ -29,7 +29,7 @@ Two shipped workstreams on two branches (both pushed, PR-ready; NOT merged):
 - Design-review checkpoint (designer agent) on the tooling showcase: SHIP-WITH-NITS, nits fixed.
 
 ## Notes for next session
-- No version bump; neither branch is merged/deployed. Merge order: design-tooling then glass (or vice-versa) — expect a trivial LATEST.md conflict.
+- **Glass branch DEPLOYED to production frontend as `0.0.113` (commit `2278fe2`), still UNMERGED** (owner asked for a branch deploy). Verified live: `/version.json`=0.0.113, `/health` ok, served `main.dart.js` contains `2278fe2`. Backend untouched (0.0.112 / a10ae1c). **NOT permanent** — the next `master` `deploy-web.ps1` overwrites it; merge the branch to master to make it stick. The design-tooling branch is NOT deployed. Expect a trivial LATEST.md merge conflict.
 - The `edit` tool cannot disambiguate two files named `CLAUDE.md` (root vs tier); edit `frontend/CLAUDE.md` via filesystem if it misfires.
 - The main `Fireplace` worktree was on `autoresearch/session-20260713` (== origin/master); this session moved work onto proper feature branches. Local `master` in the ping-deploy worktree is stale (behind origin/master).
 
