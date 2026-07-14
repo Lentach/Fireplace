@@ -20,27 +20,12 @@ class AvatarCircle extends StatefulWidget {
 
 class _AvatarCircleState extends State<AvatarCircle> {
   bool _imageLoadError = false;
-  /// Stable cache-bust per profilePictureUrl so parent rebuilds don't change URL and reload image.
-  int? _urlCacheBust;
-
-  @override
-  void initState() {
-    super.initState();
-    if (widget.profilePictureUrl != null &&
-        widget.profilePictureUrl!.trim().isNotEmpty) {
-      _urlCacheBust = DateTime.now().millisecondsSinceEpoch;
-    }
-  }
 
   @override
   void didUpdateWidget(AvatarCircle oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.profilePictureUrl != widget.profilePictureUrl) {
       _imageLoadError = false;
-      _urlCacheBust = widget.profilePictureUrl != null &&
-              widget.profilePictureUrl!.trim().isNotEmpty
-          ? DateTime.now().millisecondsSinceEpoch
-          : null;
     }
   }
 
@@ -50,8 +35,10 @@ class _AvatarCircleState extends State<AvatarCircle> {
     final isAbsolute =
         url.startsWith('http://') || url.startsWith('https://');
     final base = isAbsolute ? url : '${AppConfig.baseUrl}$url';
-    final t = _urlCacheBust ?? 0;
-    return '$base?t=$t';
+    // Avatar URLs are unique per upload (server filename = randomUUID().ext),
+    // so the URL itself is the cache key; a ?t= bust only forced a re-download
+    // on every remount and defeated the browser cache.
+    return base;
   }
 
   @override

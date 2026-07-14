@@ -4,6 +4,7 @@ import 'dart:js_interop_unsafe';
 import 'dart:typed_data';
 
 import 'package:web/web.dart' as web;
+import '../utils/web_ios_webkit_web.dart';
 
 @JS()
 extension type _NavigatorStandalone(JSObject _) {
@@ -29,7 +30,7 @@ class WebPushBridge {
   /// Comet on desktop and Android) can subscribe from a regular tab in any
   /// secure context, so we let them through.
   bool isStandaloneOrNotRequired() {
-    if (!_isIOSWebKit()) return true;
+    if (!isIOSWebKit()) return true;
     if (web.window.matchMedia('(display-mode: standalone)').matches) {
       return true;
     }
@@ -40,18 +41,6 @@ class WebPushBridge {
       }
     } catch (_) {
       // navigator.standalone is iOS Safari–only; ignore on engines that lack it.
-    }
-    return false;
-  }
-
-  bool _isIOSWebKit() {
-    final ua = web.window.navigator.userAgent.toLowerCase();
-    if (ua.contains('iphone') || ua.contains('ipad') || ua.contains('ipod')) {
-      return true;
-    }
-    // iPadOS 13+ reports a Mac UA but exposes touch points > 1.
-    if (ua.contains('macintosh') && web.window.navigator.maxTouchPoints > 1) {
-      return true;
     }
     return false;
   }

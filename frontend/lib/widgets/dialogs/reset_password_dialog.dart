@@ -13,7 +13,6 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
   final _formKey = GlobalKey<FormState>();
   final _oldPasswordController = TextEditingController();
   final _newPasswordController = TextEditingController();
-  final bool _isLoading = false;
 
   @override
   void dispose() {
@@ -146,7 +145,7 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
                 children: [
                   Expanded(
                     child: OutlinedButton(
-                      onPressed: _isLoading ? null : () => Navigator.of(context).pop(),
+                      onPressed: () => Navigator.of(context).pop(),
                       style: OutlinedButton.styleFrom(
                         side: BorderSide(color: borderColor, width: 1.5),
                         padding: const EdgeInsets.symmetric(vertical: 12),
@@ -160,24 +159,15 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
                   const SizedBox(width: 12),
                   Expanded(
                     child: ElevatedButton(
-                      onPressed: _isLoading ? null : _submit,
+                      onPressed: _submit,
                       style: ElevatedButton.styleFrom(
                         backgroundColor: colorScheme.primary,
                         padding: const EdgeInsets.symmetric(vertical: 12),
                       ),
-                      child: _isLoading
-                          ? const SizedBox(
-                              height: 20,
-                              width: 20,
-                              child: CircularProgressIndicator(
-                                strokeWidth: 2,
-                                valueColor: AlwaysStoppedAnimation(Colors.white),
-                              ),
-                            )
-                          : Text(
-                              l10n.resetButton,
-                              style: RpgTheme.bodyFont(color: Colors.white),
-                            ),
+                      child: Text(
+                        l10n.resetButton,
+                        style: RpgTheme.bodyFont(color: Colors.white),
+                      ),
                     ),
                   ),
                 ],
