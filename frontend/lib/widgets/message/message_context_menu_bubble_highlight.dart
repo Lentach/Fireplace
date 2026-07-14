@@ -215,9 +215,8 @@ class MessageContextMenuBubbleHighlight extends StatelessWidget {
           body = jumboSize != null
               ? Text(
                   displayContent,
-                  style: RpgTheme.bodyFont(
-                    fontSize: jumboSize,
-                    color: textColor,
+                  style: withEmojiFont(
+                    RpgTheme.bodyFont(fontSize: jumboSize, color: textColor),
                   ),
                 )
               : Text.rich(

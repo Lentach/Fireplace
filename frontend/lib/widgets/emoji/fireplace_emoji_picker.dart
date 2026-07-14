@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 
 import '../../l10n/app_localizations.dart';
 import '../../theme/rpg_theme.dart';
+import '../../utils/jumbo_emoji.dart';
 
 const kFireplaceSuggestedEmoji = <String>[
   '👍',
@@ -74,6 +75,8 @@ class FireplaceEmojiPicker extends StatelessWidget {
                                 TargetPlatform.iOS
                             ? 30
                             : 28,
+                        fontFamily: kEmojiFontFamily,
+                        fontFamilyFallback: kEmojiFontFamilyFallback,
                       ),
                       emojiViewConfig: EmojiViewConfig(
                         columns: MediaQuery.sizeOf(context).width < 420
@@ -171,7 +174,14 @@ class _SuggestedEmojiRow extends StatelessWidget {
                   width: 40,
                   height: 40,
                   child: Center(
-                    child: Text(emoji, style: const TextStyle(fontSize: 24)),
+                    child: Text(
+                      emoji,
+                      style: const TextStyle(
+                        fontSize: 24,
+                        fontFamily: kEmojiFontFamily,
+                        fontFamilyFallback: kEmojiFontFamilyFallback,
+                      ),
+                    ),
                   ),
                 ),
               ),

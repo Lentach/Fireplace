@@ -10,7 +10,6 @@ void main() {
   // override after each test.
   tearDown(() {
     composerKeyboardCollapseGuard.value = false;
-    composerBottomPanelPinned.value = false;
     setSharedKeyboardInsetSourceForTest(null);
   });
 

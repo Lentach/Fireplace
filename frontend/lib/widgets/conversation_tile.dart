@@ -10,6 +10,7 @@ import '../providers/settings_provider.dart';
 import 'avatar_circle.dart';
 import 'glass/glass_dialog.dart';
 import 'hearth_fade_arc.dart';
+import '../utils/jumbo_emoji.dart';
 
 class ConversationTile extends StatelessWidget {
   final int conversationId;
@@ -293,11 +294,16 @@ class ConversationTile extends StatelessWidget {
                         ),
                       ] else if (lastMessage != null) ...[
                         const SizedBox(height: 3),
-                        Text(
-                          _lastMessagePreview(context, lastMessage!),
-                          style: RpgTheme.bodyFont(
-                            fontSize: 13,
-                            color: secondaryColor,
+                        Text.rich(
+                          TextSpan(
+                            children: buildInlineEmojiSpans(
+                              _lastMessagePreview(context, lastMessage!),
+                              textStyle: RpgTheme.bodyFont(
+                                fontSize: 13,
+                                color: secondaryColor,
+                              ),
+                              emojiFontSize: 13,
+                            ),
                           ),
                           maxLines: 1,
                           overflow: TextOverflow.ellipsis,
