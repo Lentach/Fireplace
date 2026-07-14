@@ -732,7 +732,7 @@ void main() {
     expect(find.text('Edit'), findsOneWidget);
     expect(find.text('Pin'), findsOneWidget);
     expect(find.text('Delete'), findsOneWidget);
-    expect(find.byType(BackdropFilter), findsOneWidget);
+    expect(find.byKey(const Key('context-menu-scrim')), findsOneWidget);
     expect(find.byType(MessageContextMenuBubbleHighlight), findsOneWidget);
   });
 
@@ -789,7 +789,7 @@ void main() {
     expect(find.text('Edit'), findsOneWidget);
     expect(find.text('Pin'), findsOneWidget);
     expect(find.text('Delete'), findsOneWidget);
-    expect(find.byType(BackdropFilter), findsOneWidget);
+    expect(find.byKey(const Key('context-menu-scrim')), findsOneWidget);
   });
 
   Future<void> pumpBubble(WidgetTester tester, MessageModel msg) async {

@@ -18,6 +18,11 @@ import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/screens/chat_detail_screen.dart';
 import 'package:fireplace/screens/conversations_screen.dart';
+import 'package:fireplace/screens/blocked_users_screen.dart';
+import 'package:fireplace/screens/privacy_safety_screen.dart';
+import 'package:fireplace/screens/add_or_invitations_screen.dart';
+import 'package:fireplace/screens/auth_screen.dart';
+import 'package:fireplace/providers/connection_provider.dart';
 
 import 'package:fireplace/l10n/app_localizations.dart';
 
@@ -124,6 +129,7 @@ class GlassPreviewApp extends StatelessWidget {
           create: (_) => AuthProvider()..setAccessTokenForTest(_jwt),
         ),
         ChangeNotifierProvider(create: (_) => FriendsProvider()),
+        ChangeNotifierProvider(create: (_) => ConnectionProvider()),
         ChangeNotifierProvider.value(value: EncryptionProvider()),
         ChangeNotifierProvider(
           create: (_) => SettingsProvider(initialThemePreference: themeName),
@@ -141,6 +147,10 @@ class GlassPreviewApp extends StatelessWidget {
           // Real ConversationsScreen: at >=600px width it renders the
           // desktop sidebar/detail split (the production breakpoint branch).
           'desktop' => ConversationsScreen(onAvatarTap: () {}),
+          'blocked' => const BlockedUsersScreen(),
+          'privacy' => const PrivacySafetyScreen(),
+          'add' => const AddOrInvitationsScreen(),
+          'auth' => const AuthScreen(),
           // Loading skeleton (?screen=skeleton[&reduceMotion=1]): the pure
           // ConversationListSkeleton widget, no backend/providers needed.
           'skeleton' => _SkeletonPreview(

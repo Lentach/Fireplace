@@ -1,31 +1,42 @@
 # Latest session summary
 
-**Date:** 2026-07-13 (User Card / My Profile — production release `0.0.112`)
+**Date:** 2026-07-14 (Frontend design capability + Liquid Glass completion + post-deploy review fixes; glass deployed to prod as 0.0.114)
 
 ## What was done
-- Delivered the approved User Card / My Profile vertical slice: Contact-row card entry with direct Message action, chat-header card entry, My Profile, compact no-avatar identity, photo hero/collapse, immutable copyable `username#tag`, optional About, and three-photo gallery.
-- Added local per-viewer/per-conversation Default/Glyphs wallpaper and private timed mute preferences that suppress server-side push coalescing.
-- Rebased onto current `master`, fixed migration-number collisions by using `0006` and `0007`, and released `0.0.112`.
-- Recovered the first production backend deploy after TypeORM rejected reflected `Object` metadata for nullable profile strings. All affected profile columns now declare explicit PostgreSQL types; `profile-photo.entity.spec.ts` makes metadata initialization a regression contract.
+Two shipped workstreams on two branches (both pushed, PR-ready; NOT merged):
+
+**`feat/frontend-design-tooling`** — raise agent UI quality:
+- Added `flutter_animate`, `animations`, `skeletonizer`.
+- Conversation-list showcase: one-shot staggered entrance (reduce-motion aware) + `ConversationListSkeleton` shimmer loader (fetch-gated, static under reduce-motion).
+- `docs/design/flutter-ui-playbook.md` + `frontend/CLAUDE.md` §9 (anti-slop doctrine: render→screenshot loop, token discipline, motion spec, banned zones).
+- Created a Flutter design skill at `~/.claude/skills/flutter-frontend-design/` (user-level; leaves the shared web `frontend-design` plugin intact, overrides it for Flutter; defers to each project's deps).
+
+**`feat/glass-theme-migration`** — finish the Liquid Glass look the previous agent left partial (owner ratified Tier A+B+C via an in-session ask):
+- Tier A: blocked-users, privacy-safety, add/invitations (bounded floating tabbed-glass header), user-card hero → glass chrome.
+- Tier B: auth screen → floating glass card over the hieroglyph wallpaper.
+- Tier C: `GlassDialog` (drop-in for AlertDialog) + `showGlassMenu` (real PopupRoute glass menu); migrated AlertDialog callsites + block/mute popups; context-menu reaction bar + action panel → glass.
+- `SPEC.md` §9/§11 updated to record the ratified completion.
 
 ## Key files
-- `backend/migrations/0006_conversation_notification_preferences.sql`
-- `backend/migrations/0007_user_profile_about_and_photos.sql`
-- `backend/src/users/profile-photo.entity.ts`
-- `backend/src/users/profile-photo.entity.spec.ts`
-- `frontend/lib/screens/user_card_screen.dart`
+- `frontend/lib/widgets/glass/glass_dialog.dart`, `glass_menu.dart` (new)
+- `frontend/lib/screens/{blocked_users,privacy_safety,add_or_invitations,auth,user_card}_screen.dart`
+- `frontend/lib/widgets/message/{message_context_menu_overlay,message_action_panel}.dart`
+- `docs/design/flutter-ui-playbook.md`, `docs/design/liquid-glass/SPEC.md`
 
 ## Verification
-- Backend: `npm run build`; full Jest **47 suites / 470 tests**; documented-count verifier passed.
-- Frontend: full `flutter test` **679 tests**; analyze reports only two pre-existing non-User-Card infos at `privacy_safety_screen.dart:416` and `jumbo_emoji.dart:24`.
-- Production: encrypted PostgreSQL/media/`.env` backup completed before release; both new migrations are recorded in production `schema_migrations`.
-- Public `/health` is `{"status":"ok","db":"ok"}`; frontend `/version.json` is `0.0.112`; backend `/version` is `0.0.112` / runtime commit `a10ae1c`.
-- `scripts/smoke/post-deploy-smoke.mjs --commit a10ae1c` passed endpoint checks, served-bundle SHA, and a fresh Chromium Flutter boot.
+- `flutter analyze` clean on all touched files; full `flutter test` **684 passed**, exit 0 (fixed 8 theme-dependent test regressions from the glass change; added `glass_components_test`).
+- Rendered (browser, preview harness) across themes: Tier A screens (dark+light), auth (dark+light), and the interactive glass block-menu + context-menu (dark).
+- Design-review checkpoint (designer agent) on the tooling showcase: SHIP-WITH-NITS, nits fixed.
+- **Post-deploy review of the glass migration:** code review (`reviewer`) = SHIP-WITH-NITS, no blockers; design review (`designer`) HUNG on its own render server (~40 min) and was aborted with no verdict, so the design pass was done inline. Applied 5 fixes: GlassDialog AlertDialog route semantics (P2 a11y regression), GlassMenu 48px tap target, add-tab `SafeArea(top:false)`, user_card mute `mounted` guard, user_card back-arrow `onSurface` contrast. Added a GlassDialog route-semantics regression test. Full `flutter test` **685 passed**, exit 0.
 
 ## Notes for next session
-- Authenticated manual User Card actions were not exercised in production because no production test account was available. The deployed unauthenticated PWA boot and all server/schema contracts passed.
-- The detailed dated handoff remains local-only by repository policy; this tracked summary is the public cross-session record.
+- **PR #67 opened** (`feat/frontend-design-doctrine`, off master): the trimmed design tooling — playbook + `CLAUDE.md` §9 + `skeletonizer` skeleton ONLY (dropped `flutter_animate`/`animations`); CI green locally (683 tests), overlaps glass on `pubspec.yaml` + `glass_preview.dart` (+ this LATEST once merged). Supersedes `feat/frontend-design-tooling` — close that branch.
+
+- **Glass branch DEPLOYED to production frontend as `0.0.114` (commit `baf7aed`), still UNMERGED** (owner asked for a branch deploy; first deploy was 0.0.113/2278fe2, redeployed after review fixes). Verified live: `/version.json`=0.0.114, `/health` ok, served `main.dart.js` contains `baf7aed`, fresh Chromium boots the glass auth. Backend untouched (0.0.112 / a10ae1c). **NOT permanent** — the next `master` `deploy-web.ps1` overwrites it; merge the branch to master to make it stick. The design-tooling branch is NOT deployed. Expect a trivial LATEST.md merge conflict.
+- The `edit` tool cannot disambiguate two files named `CLAUDE.md` (root vs tier); edit `frontend/CLAUDE.md` via filesystem if it misfires.
+- The main `Fireplace` worktree was on `autoresearch/session-20260713` (== origin/master); this session moved work onto proper feature branches. Local `master` in the ping-deploy worktree is stale (behind origin/master).
 
 ## Previous
-- 2026-07-12: stale-OTP identity-epoch hardening, cache durability, and diagnostics landed before this release. The merged wallpaper glyph work and its migration sequence are already included in `0.0.112`.
-- Production VM previously tracked `fix/stale-otp-epoch`; this release restored `~/fireplace` to `master` before deployment. Do not switch it back to a stale feature branch.
+- 2026-07-13: User Card / My Profile vertical slice + local wallpaper/mute prefs; production release `0.0.112`; recovered the first prod backend deploy after a TypeORM nullable-profile-column metadata fix.
+- 2026-07-12: stale-OTP identity-epoch hardening, cache durability, diagnostics; wallpaper glyph work + migration sequence included in `0.0.112`.
+- Production VM previously tracked `fix/stale-otp-epoch`; `0.0.112` restored `~/fireplace` to `master`. Do not switch it back to a stale feature branch.

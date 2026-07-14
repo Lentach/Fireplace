@@ -4,6 +4,7 @@ import 'package:provider/provider.dart';
 import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/screens/privacy_safety_screen.dart';
+import 'package:fireplace/theme/rpg_theme.dart';
 
 void main() {
   testWidgets('diagnostic panel exposes filters and safe clear wording', (
@@ -13,6 +14,7 @@ void main() {
       ChangeNotifierProvider(
         create: (_) => EncryptionProvider(),
         child: MaterialApp(
+          theme: RpgTheme.themeDataDarkGray,
           localizationsDelegates: AppLocalizations.localizationsDelegates,
           supportedLocales: AppLocalizations.supportedLocales,
           home: const PrivacySafetyScreen(),

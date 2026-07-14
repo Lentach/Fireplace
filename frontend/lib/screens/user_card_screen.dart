@@ -9,6 +9,9 @@ import '../providers/friends_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
+import '../widgets/glass/glass_dialog.dart';
+import '../widgets/glass/glass_surface.dart';
+import '../widgets/glass/glass_menu.dart';
 import '../widgets/chat_background_pattern.dart';
 import '../widgets/top_snackbar.dart' show showTopSnackBar;
 
@@ -96,7 +99,7 @@ class _UserCardScreenState extends State<UserCardScreen> {
       context: context,
       builder: (dialogContext) {
         final l10n = AppLocalizations.of(dialogContext);
-        return AlertDialog(
+        return GlassDialog(
           title: Text(title),
           content: Text(message),
           actions: [
@@ -169,7 +172,7 @@ class _UserCardScreenState extends State<UserCardScreen> {
     final l10n = AppLocalizations.of(context);
     final next = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => GlassDialog(
         title: Text(l10n.userCardAbout),
         content: TextField(
           controller: controller,
@@ -191,9 +194,9 @@ class _UserCardScreenState extends State<UserCardScreen> {
     );
     controller.dispose();
     if (next == null || !mounted) return;
-    await context
-        .read<AuthProvider>()
-        .updateProfileAbout(next.trim().isEmpty ? null : next.trim());
+    await context.read<AuthProvider>().updateProfileAbout(
+      next.trim().isEmpty ? null : next.trim(),
+    );
     if (!mounted) return;
     Navigator.of(context).pop();
   }
@@ -211,7 +214,8 @@ class _UserCardScreenState extends State<UserCardScreen> {
             _PhotoHero(
               data: data,
               activeIndex: _activePhotoIndex,
-              onPageChanged: (index) => setState(() => _activePhotoIndex = index),
+              onPageChanged: (index) =>
+                  setState(() => _activePhotoIndex = index),
               onCopy: _copyHandle,
             )
           else
@@ -220,7 +224,6 @@ class _UserCardScreenState extends State<UserCardScreen> {
               backgroundColor: theme.scaffoldBackgroundColor,
               surfaceTintColor: Colors.transparent,
               leading: IconButton(
-
                 tooltip: AppLocalizations.of(context).userCardBack,
                 icon: const Icon(Icons.arrow_back),
                 onPressed: () => Navigator.maybePop(context),
@@ -338,23 +341,24 @@ class UserCardVisualData {
   }) {
     final profilePhotos = user.profilePhotos;
     final photos = profilePhotos.isEmpty
-        ? (user.profilePictureUrl == null || user.profilePictureUrl!.trim().isEmpty
-            ? const <UserCardPhoto>[]
-            : [
-                UserCardPhoto(
-                  url: user.profilePictureUrl!,
+        ? (user.profilePictureUrl == null ||
+                  user.profilePictureUrl!.trim().isEmpty
+              ? const <UserCardPhoto>[]
+              : [
+                  UserCardPhoto(
+                    url: user.profilePictureUrl!,
+                    semanticLabel: user.displayHandle,
+                  ),
+                ])
+        : profilePhotos
+              .map(
+                (photo) => UserCardPhoto(
+                  id: photo.id,
+                  url: photo.url,
                   semanticLabel: user.displayHandle,
                 ),
-              ])
-        : profilePhotos
-            .map(
-              (photo) => UserCardPhoto(
-                id: photo.id,
-                url: photo.url,
-                semanticLabel: user.displayHandle,
-              ),
-            )
-            .toList(growable: false);
+              )
+              .toList(growable: false);
     return UserCardVisualData(
       userId: user.id,
       username: user.username,
@@ -382,6 +386,7 @@ class UserCardVisualData {
 
   String get handle => '$username#$tag';
 }
+
 enum UserCardMute {
   off,
   oneHour,
@@ -403,6 +408,7 @@ enum UserCardMute {
     return UserCardMute.oneWeek;
   }
 }
+
 class UserCardPhoto {
   final int? id;
   final String url;
@@ -416,7 +422,6 @@ class UserCardPhoto {
 }
 
 enum UserCardWallpaper { defaultBackground, glyphs }
-
 
 class _PhotoHero extends StatelessWidget {
   final UserCardVisualData data;
@@ -443,17 +448,23 @@ class _PhotoHero extends StatelessWidget {
       expandedHeight: _expandedHeight,
       backgroundColor: theme.scaffoldBackgroundColor,
       surfaceTintColor: Colors.transparent,
-      leading: IconButton(
-        tooltip: l10n.userCardBack,
-        icon: const Icon(Icons.arrow_back, color: Colors.white),
-        onPressed: () => Navigator.maybePop(context),
+      leading: GlassCircle(
+        size: 52,
+        child: Center(
+          child: IconButton(
+            tooltip: l10n.userCardBack,
+            icon: Icon(Icons.arrow_back, color: theme.colorScheme.onSurface),
+            onPressed: () => Navigator.maybePop(context),
+          ),
+        ),
       ),
       flexibleSpace: LayoutBuilder(
         builder: (context, constraints) {
           final toolbarHeight = kToolbarHeight + topInset;
-          final collapsed = ((_expandedHeight - constraints.maxHeight) /
-                  (_expandedHeight - toolbarHeight))
-              .clamp(0.0, 1.0);
+          final collapsed =
+              ((_expandedHeight - constraints.maxHeight) /
+                      (_expandedHeight - toolbarHeight))
+                  .clamp(0.0, 1.0);
           final heroOpacity = 1 - collapsed;
 
           return Stack(
@@ -546,7 +557,9 @@ class _PhotoHero extends StatelessWidget {
                         ),
                       ),
                       IconButton(
-                        tooltip: AppLocalizations.of(context).userCardCopyHandle,
+                        tooltip: AppLocalizations.of(
+                          context,
+                        ).userCardCopyHandle,
                         onPressed: onCopy,
                         color: Colors.white,
                         icon: const Icon(Icons.copy_outlined),
@@ -699,34 +712,40 @@ class _ContactActions extends StatelessWidget {
                     ),
                   ),
                 ),
-                PopupMenuButton<UserCardMute>(
-                  tooltip: l10n.userCardNotifications,
-                  onSelected: onMuteChanged,
-                  itemBuilder: (_) => [
-                    PopupMenuItem(
-                      value: UserCardMute.off,
-                      child: Text(l10n.userCardNotificationsOn),
-                    ),
-                    PopupMenuItem(
-                      value: UserCardMute.oneHour,
-                      child: Text(l10n.userCardMuteOneHour),
-                    ),
-                    PopupMenuItem(
-                      value: UserCardMute.eightHours,
-                      child: Text(l10n.userCardMuteEightHours),
-                    ),
-                    PopupMenuItem(
-                      value: UserCardMute.oneWeek,
-                      child: Text(l10n.userCardMuteOneWeek),
-                    ),
-                    PopupMenuItem(
-                      value: UserCardMute.forever,
-                      child: Text(l10n.userCardMuteForever),
-                    ),
-                  ],
-                  child: const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Icon(Icons.chevron_right),
+                Builder(
+                  builder: (btnContext) => IconButton(
+                    tooltip: l10n.userCardNotifications,
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: () async {
+                      final selected = await showGlassMenu<UserCardMute>(
+                        context: btnContext,
+                        entries: [
+                          GlassMenuEntry(
+                            value: UserCardMute.off,
+                            child: Text(l10n.userCardNotificationsOn),
+                          ),
+                          GlassMenuEntry(
+                            value: UserCardMute.oneHour,
+                            child: Text(l10n.userCardMuteOneHour),
+                          ),
+                          GlassMenuEntry(
+                            value: UserCardMute.eightHours,
+                            child: Text(l10n.userCardMuteEightHours),
+                          ),
+                          GlassMenuEntry(
+                            value: UserCardMute.oneWeek,
+                            child: Text(l10n.userCardMuteOneWeek),
+                          ),
+                          GlassMenuEntry(
+                            value: UserCardMute.forever,
+                            child: Text(l10n.userCardMuteForever),
+                          ),
+                        ],
+                      );
+                      if (selected != null && btnContext.mounted) {
+                        onMuteChanged(selected);
+                      }
+                    },
                   ),
                 ),
               ],
@@ -916,7 +935,6 @@ class _ConversationPreview extends StatelessWidget {
   }
 }
 
-
 class _Section extends StatelessWidget {
   final String title;
   final Widget child;
@@ -972,13 +990,22 @@ class _ActionRow extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final color = danger ? theme.colorScheme.error : theme.colorScheme.onSurface;
+    final color = danger
+        ? theme.colorScheme.error
+        : theme.colorScheme.onSurface;
     return ListTile(
       contentPadding: EdgeInsets.zero,
       dense: true,
       minVerticalPadding: 0,
       leading: Icon(icon, color: color),
-      title: Text(label, style: RpgTheme.bodyFont(fontSize: 15, color: color, fontWeight: FontWeight.w600)),
+      title: Text(
+        label,
+        style: RpgTheme.bodyFont(
+          fontSize: 15,
+          color: color,
+          fontWeight: FontWeight.w600,
+        ),
+      ),
       trailing: Icon(Icons.chevron_right, color: color.withValues(alpha: 0.7)),
       onTap: onTap,
     );

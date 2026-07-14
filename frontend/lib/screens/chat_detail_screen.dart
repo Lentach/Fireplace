@@ -1,4 +1,3 @@
-
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 import 'package:provider/provider.dart';
@@ -11,6 +10,7 @@ import '../providers/settings_provider.dart';
 import '../services/voice_audio_coordinator.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_top_bar.dart';
+import '../widgets/glass/glass_menu.dart';
 import '../widgets/message/chat_message_bubble.dart';
 import '../widgets/input/chat_input_bar.dart';
 import '../widgets/input/chat_composer_viewport.dart';
@@ -357,9 +357,10 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       _messaging.getMessages(widget.conversationId);
       final userId = context.read<AuthProvider>().currentUser?.id;
       if (userId != null) {
-        context
-            .read<SettingsProvider>()
-            .loadConversationWallpaper(userId, widget.conversationId);
+        context.read<SettingsProvider>().loadConversationWallpaper(
+          userId,
+          widget.conversationId,
+        );
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -485,24 +486,27 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             isSelf: false,
             hasConversation: true,
             mute: UserCardMute.fromConversation(
-              muted: _conversations.conversations
-                      .where((conversation) =>
-                          conversation.id == widget.conversationId)
+              muted:
+                  _conversations.conversations
+                      .where(
+                        (conversation) =>
+                            conversation.id == widget.conversationId,
+                      )
                       .firstOrNull
                       ?.muted ??
                   false,
               mutedUntil: _conversations.conversations
-                  .where((conversation) =>
-                      conversation.id == widget.conversationId)
+                  .where(
+                    (conversation) => conversation.id == widget.conversationId,
+                  )
                   .firstOrNull
                   ?.mutedUntil,
             ),
-            wallpaper: context
-                        .read<SettingsProvider>()
-                        .conversationWallpaper(
-                          context.read<AuthProvider>().currentUser!.id,
-                          widget.conversationId,
-                        ) ==
+            wallpaper:
+                context.read<SettingsProvider>().conversationWallpaper(
+                      context.read<AuthProvider>().currentUser!.id,
+                      widget.conversationId,
+                    ) ==
                     ConversationWallpaper.glyphs
                 ? UserCardWallpaper.glyphs
                 : UserCardWallpaper.defaultBackground,
@@ -527,12 +531,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           },
           onWallpaperChanged: (wallpaper) {
             context.read<SettingsProvider>().setConversationWallpaper(
-                  context.read<AuthProvider>().currentUser!.id,
-                  widget.conversationId,
-                  wallpaper == UserCardWallpaper.glyphs
-                      ? ConversationWallpaper.glyphs
-                      : ConversationWallpaper.defaultBackground,
-                );
+              context.read<AuthProvider>().currentUser!.id,
+              widget.conversationId,
+              wallpaper == UserCardWallpaper.glyphs
+                  ? ConversationWallpaper.glyphs
+                  : ConversationWallpaper.defaultBackground,
+            );
           },
         ),
       ),
@@ -688,7 +692,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         ? 8.0
         : MediaQuery.paddingOf(context).top + 8.0;
     final currentUserId = context.read<AuthProvider>().currentUser?.id;
-    final showGlyphs = currentUserId != null &&
+    final showGlyphs =
+        currentUserId != null &&
         context.watch<SettingsProvider>().conversationWallpaper(
               currentUserId,
               widget.conversationId,
@@ -1005,21 +1010,28 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         title: headerTitle,
         trailing: [
           if (otherUser != null)
-            PopupMenuButton<String>(
-              icon: const Icon(Icons.more_vert),
-              onSelected: (value) {
-                if (value == 'block') {
-                  context.read<FriendsProvider>().blockUser(otherUser.id);
-                  _clearActiveConversationIfThisChat();
-                  Navigator.of(context).pop();
-                }
-              },
-              itemBuilder: (context) => [
-                PopupMenuItem<String>(
-                  value: 'block',
-                  child: Text(AppLocalizations.of(context).blockUser),
-                ),
-              ],
+            Builder(
+              builder: (btnContext) => IconButton(
+                icon: const Icon(Icons.more_vert),
+                tooltip: MaterialLocalizations.of(btnContext).showMenuTooltip,
+                onPressed: () async {
+                  final selected = await showGlassMenu<String>(
+                    context: btnContext,
+                    entries: [
+                      GlassMenuEntry<String>(
+                        value: 'block',
+                        destructive: true,
+                        child: Text(AppLocalizations.of(context).blockUser),
+                      ),
+                    ],
+                  );
+                  if (selected == 'block' && btnContext.mounted) {
+                    btnContext.read<FriendsProvider>().blockUser(otherUser.id);
+                    _clearActiveConversationIfThisChat();
+                    Navigator.of(btnContext).pop();
+                  }
+                },
+              ),
             ),
           Padding(
             padding: const EdgeInsets.only(right: 4),

@@ -5,6 +5,7 @@ import '../models/user_model.dart';
 import '../providers/friends_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
+import '../widgets/glass/glass_top_bar.dart';
 
 class BlockedUsersScreen extends StatelessWidget {
   const BlockedUsersScreen({super.key});
@@ -15,38 +16,63 @@ class BlockedUsersScreen extends StatelessWidget {
     final blocked = friends.blockedUsers;
     final theme = Theme.of(context);
     final isDark = RpgTheme.isDark(context);
-    final mutedColor =
-        isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
+    final mutedColor = isDark
+        ? RpgTheme.mutedDark
+        : RpgTheme.textSecondaryLight;
+    final media = MediaQuery.paddingOf(context);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      appBar: AppBar(
-        centerTitle: true,
-        title: Text(AppLocalizations.of(context).blocked),
-        backgroundColor: theme.colorScheme.surface,
-        elevation: 0,
-        iconTheme: IconThemeData(color: theme.colorScheme.primary),
+      extendBodyBehindAppBar: true,
+      appBar: GlassTopBar(
+        leading: IconButton(
+          icon: const Icon(Icons.arrow_back),
+          tooltip: MaterialLocalizations.of(context).backButtonTooltip,
+          onPressed: () => Navigator.of(context).pop(),
+        ),
+        title: Text(
+          AppLocalizations.of(context).blocked,
+          style: RpgTheme.bodyFont(
+            fontSize: 16,
+            color: theme.colorScheme.onSurface,
+            fontWeight: FontWeight.w600,
+          ),
+        ),
       ),
       body: blocked.isEmpty
-          ? Center(
-              child: Padding(
-                padding: const EdgeInsets.all(32),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(Icons.block, size: 48, color: mutedColor),
-                    const SizedBox(height: 16),
-                    Text(
-                      AppLocalizations.of(context).noBlockedUsers,
-                      style: RpgTheme.bodyFont(fontSize: 16, color: mutedColor),
-                      textAlign: TextAlign.center,
-                    ),
-                  ],
+          ? Padding(
+              padding: EdgeInsets.only(
+                top: media.top + GlassTopBar.capsuleHeight + 16,
+                bottom: media.bottom,
+              ),
+              child: Center(
+                child: Padding(
+                  padding: const EdgeInsets.all(32),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      Icon(Icons.block, size: 48, color: mutedColor),
+                      const SizedBox(height: 16),
+                      Text(
+                        AppLocalizations.of(context).noBlockedUsers,
+                        style: RpgTheme.bodyFont(
+                          fontSize: 16,
+                          color: mutedColor,
+                        ),
+                        textAlign: TextAlign.center,
+                      ),
+                    ],
+                  ),
                 ),
               ),
             )
           : ListView.separated(
-              padding: const EdgeInsets.symmetric(vertical: 8, horizontal: 8),
+              padding: EdgeInsets.fromLTRB(
+                8,
+                media.top + GlassTopBar.capsuleHeight + 16,
+                8,
+                media.bottom + 8,
+              ),
               itemCount: blocked.length,
               separatorBuilder: (_, _) => Divider(
                 height: 1,

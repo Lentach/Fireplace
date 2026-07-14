@@ -16,65 +16,164 @@ class AddOrInvitationsScreen extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
+    final glass = GlassTheme.of(context);
     return DefaultTabController(
       length: 2,
-      child: Scaffold(
-        appBar: AppBar(
-          backgroundColor: GlassTheme.of(context).fill,
-          elevation: 0,
-          title: Text(
-            AppLocalizations.of(context).addInvitations,
-            style: RpgTheme.bodyFont(
-              fontSize: 18,
-              color: colorScheme.onSurface,
-              fontWeight: FontWeight.w600,
-            ),
-          ),
-          bottom: TabBar(
-            tabs: [
-              Tab(text: AppLocalizations.of(context).addUser),
-              Tab(
-                child: Consumer<FriendsProvider>(
-                  builder: (context, friends, _) => Row(
-                    mainAxisSize: MainAxisSize.min,
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    children: [
-                      Text(AppLocalizations.of(context).friendRequests),
-                      if (friends.pendingRequestsCount > 0) ...[
-                        const SizedBox(width: 6),
-                        Container(
-                          padding: const EdgeInsets.symmetric(
-                            horizontal: 6,
-                            vertical: 2,
+      child: Builder(
+        builder: (context) {
+          final topInset = MediaQuery.paddingOf(context).top;
+          const rowHeight = 52.0;
+          const tabHeight = 54.0;
+          final headerHeight = topInset + 8 + rowHeight + 8 + tabHeight + 8;
+          return Scaffold(
+            extendBodyBehindAppBar: true,
+            body: Stack(
+              children: [
+                // Tab content clears the floating header. These tabs are a
+                // short form + a request list, so a padded (not scroll-behind)
+                // body is fine here.
+                Padding(
+                  padding: EdgeInsets.only(top: headerHeight),
+                  child: const TabBarView(
+                    children: [_AddByUsernameTab(), _FriendRequestsTab()],
+                  ),
+                ),
+                // Floating glass chrome: back circle + title pill + an inset
+                // tab capsule — bounded pills per SPEC §1/§5, never a band.
+                Positioned(
+                  top: 0,
+                  left: 0,
+                  right: 0,
+                  child: Padding(
+                    padding: EdgeInsets.fromLTRB(14, topInset + 8, 14, 0),
+                    child: Column(
+                      children: [
+                        SizedBox(
+                          height: rowHeight,
+                          child: Stack(
+                            children: [
+                              Positioned.fill(
+                                child: Padding(
+                                  padding: const EdgeInsets.symmetric(
+                                    horizontal: 60,
+                                  ),
+                                  child: Center(
+                                    child: GlassPill(
+                                      height: rowHeight,
+                                      padding: const EdgeInsets.symmetric(
+                                        horizontal: 18,
+                                      ),
+                                      child: Center(
+                                        child: Text(
+                                          AppLocalizations.of(
+                                            context,
+                                          ).addInvitations,
+                                          style: RpgTheme.bodyFont(
+                                            fontSize: 16,
+                                            color: colorScheme.onSurface,
+                                            fontWeight: FontWeight.w600,
+                                          ),
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                              Align(
+                                alignment: Alignment.centerLeft,
+                                child: GlassCircle(
+                                  size: rowHeight,
+                                  child: Center(
+                                    child: IconButton(
+                                      icon: const Icon(Icons.arrow_back),
+                                      tooltip: MaterialLocalizations.of(
+                                        context,
+                                      ).backButtonTooltip,
+                                      onPressed: () =>
+                                          Navigator.of(context).pop(),
+                                    ),
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
-                          decoration: BoxDecoration(
-                            color: Colors.red,
-                            borderRadius: BorderRadius.circular(10),
-                          ),
-                          constraints: const BoxConstraints(minWidth: 18),
-                          child: Text(
-                            friends.pendingRequestsCount > 99
-                                ? '99+'
-                                : '${friends.pendingRequestsCount}',
-                            style: RpgTheme.bodyFont(
-                              fontSize: 11,
-                              color: Colors.white,
+                        ),
+                        const SizedBox(height: 8),
+                        GlassPill(
+                          height: tabHeight,
+                          padding: const EdgeInsets.all(4),
+                          child: TabBar(
+                            indicator: BoxDecoration(
+                              color: glass.activeCapsule,
+                              borderRadius: BorderRadius.circular(
+                                (tabHeight - 8) / 2,
+                              ),
+                            ),
+                            indicatorSize: TabBarIndicatorSize.tab,
+                            dividerColor: Colors.transparent,
+                            labelColor: glass.onGlassAccent,
+                            unselectedLabelColor: glass.onGlassMuted,
+                            labelStyle: RpgTheme.bodyFont(
+                              fontSize: 13,
                               fontWeight: FontWeight.w600,
                             ),
-                            textAlign: TextAlign.center,
+                            tabs: [
+                              Tab(text: AppLocalizations.of(context).addUser),
+                              Tab(
+                                child: Consumer<FriendsProvider>(
+                                  builder: (context, friends, _) => Row(
+                                    mainAxisSize: MainAxisSize.min,
+                                    mainAxisAlignment: MainAxisAlignment.center,
+                                    children: [
+                                      Text(
+                                        AppLocalizations.of(
+                                          context,
+                                        ).friendRequests,
+                                      ),
+                                      if (friends.pendingRequestsCount > 0) ...[
+                                        const SizedBox(width: 6),
+                                        Container(
+                                          padding: const EdgeInsets.symmetric(
+                                            horizontal: 6,
+                                            vertical: 2,
+                                          ),
+                                          decoration: BoxDecoration(
+                                            color: Colors.red,
+                                            borderRadius: BorderRadius.circular(
+                                              10,
+                                            ),
+                                          ),
+                                          constraints: const BoxConstraints(
+                                            minWidth: 18,
+                                          ),
+                                          child: Text(
+                                            friends.pendingRequestsCount > 99
+                                                ? '99+'
+                                                : '${friends.pendingRequestsCount}',
+                                            style: RpgTheme.bodyFont(
+                                              fontSize: 11,
+                                              color: Colors.white,
+                                              fontWeight: FontWeight.w600,
+                                            ),
+                                            textAlign: TextAlign.center,
+                                          ),
+                                        ),
+                                      ],
+                                    ],
+                                  ),
+                                ),
+                              ),
+                            ],
                           ),
                         ),
                       ],
-                    ],
+                    ),
                   ),
                 ),
-              ),
-            ],
-          ),
-        ),
-        body: const TabBarView(
-          children: [_AddByUsernameTab(), _FriendRequestsTab()],
-        ),
+              ],
+            ),
+          );
+        },
       ),
     );
   }
@@ -167,6 +266,7 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
     }
 
     return SafeArea(
+      top: false,
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(
