@@ -262,356 +262,105 @@ class RpgTheme {
     );
   }
 
-  /// Blue theme – Telegram-style (dark blue background, blue accent and sent bubbles).
-  static ThemeData get themeDataBlue {
-    return ThemeData.dark().copyWith(
-      scaffoldBackgroundColor: backgroundBlue,
-      colorScheme: const ColorScheme.dark(
-        primary: accentBlue,
-        secondary: accentBlueDark,
-        surface: boxBgBlue,
-        error: errorColor,
-        onPrimary: Colors.white,
-        onSecondary: Colors.white,
-        onSurface: textColorBlue,
-        onError: Colors.white,
-      ),
-      popupMenuTheme: PopupMenuThemeData(
-        color: boxBgBlue,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-      dialogTheme: DialogThemeData(
-        backgroundColor: boxBgBlue,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      ),
-      appBarTheme: AppBarTheme(
-        backgroundColor: boxBgBlue,
-        elevation: 0,
-        centerTitle: false,
-        titleTextStyle: GoogleFonts.inter(
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-          color: accentBlue,
-          letterSpacing: -0.25,
-        ),
-        iconTheme: const IconThemeData(color: textColorBlue),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: inputBgBlue,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-        border: OutlineInputBorder(
-          borderSide: const BorderSide(color: tabBorderBlue, width: 1.5),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: tabBorderBlue, width: 1.5),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: accentBlue, width: 2),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: errorColor, width: 1.5),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        hintStyle: GoogleFonts.inter(color: mutedTextBlue, fontSize: 14),
-        labelStyle: GoogleFonts.inter(color: mutedTextBlue, fontSize: 14),
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: buttonBgBlue,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: const BorderSide(color: accentBlue, width: 2),
-          ),
-          textStyle: GoogleFonts.inter(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-      textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(
-          foregroundColor: accentBlue,
-          textStyle: GoogleFonts.inter(fontSize: 14),
-        ),
-      ),
-      floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: accentBlue,
-        foregroundColor: Colors.white,
-      ),
-      listTileTheme: ListTileThemeData(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        tileColor: Colors.transparent,
-        selectedTileColor: activeTabBgBlue,
-      ),
-      dividerTheme: const DividerThemeData(
-        color: convItemBorderBlue,
-        thickness: 1,
-      ),
-      textTheme: TextTheme(
-        bodyLarge: GoogleFonts.inter(color: textColorBlue, fontSize: 16),
-        bodyMedium: GoogleFonts.inter(color: textColorBlue, fontSize: 14),
-        bodySmall: GoogleFonts.inter(color: mutedTextBlue, fontSize: 12),
-        titleLarge: GoogleFonts.inter(
-          color: accentBlue,
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.25,
-        ),
-        titleMedium: GoogleFonts.inter(
-          color: textColorBlue,
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-        ),
-        titleSmall: GoogleFonts.inter(
-          color: textColorBlue,
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-        ),
-        labelLarge: GoogleFonts.inter(
-          color: textColorBlue,
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      extensions: [
-        const FireplaceColors(
-          inputBg: inputBgBlue,
-          convItemBorder: convItemBorderBlue,
-          convItemBg: convItemBgBlue,
-          messagesAreaBg: messagesAreaBgBlue,
-          mineMsgBg: mineMsgBgBlue,
-          theirsMsgBg: theirsMsgBgBlue,
-          settingsTileBg: boxBgBlue,
-          settingsTileBorder: settingsTileBorderBlue,
-          tabBorder: tabBorderBlue,
-          borderColor: borderBlue,
-          mutedText: mutedTextBlue,
-        ),
-        GlassTheme.blue,
-      ],
-    );
-  }
+  /// Blue theme – Telegram-style (dark blue background, blue accent + sent bubbles).
+  static ThemeData get themeDataBlue => _buildTheme(_blueSpec);
 
   /// Dark gray theme – Wire-style neutral.
-  static ThemeData get themeDataDarkGray {
-    return ThemeData.dark().copyWith(
-      scaffoldBackgroundColor: backgroundDarkGray,
-      colorScheme: const ColorScheme.dark(
-        primary: accentDarkGray,
-        secondary: accentDarkGray,
-        surface: boxBgDarkGray,
-        error: errorColor,
-        onPrimary: backgroundDarkGray,
-        onSecondary: textColorDarkGray,
-        onSurface: textColorDarkGray,
-        onError: Colors.white,
-      ),
-      popupMenuTheme: PopupMenuThemeData(
-        color: boxBgDarkGray,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-      dialogTheme: DialogThemeData(
-        backgroundColor: boxBgDarkGray,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      ),
-      appBarTheme: AppBarTheme(
-        backgroundColor: boxBgDarkGray,
-        elevation: 0,
-        centerTitle: false,
-        titleTextStyle: GoogleFonts.inter(
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-          color: accentDarkGray,
-          letterSpacing: -0.25,
-        ),
-        iconTheme: const IconThemeData(color: textColorDarkGray),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: inputBgDarkGray,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-        border: OutlineInputBorder(
-          borderSide: const BorderSide(color: tabBorderDarkGray, width: 1.5),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: tabBorderDarkGray, width: 1.5),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: accentDarkGray, width: 2),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: errorColor, width: 1.5),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        hintStyle: GoogleFonts.inter(color: mutedDarkGray, fontSize: 14),
-        labelStyle: GoogleFonts.inter(color: mutedDarkGray, fontSize: 14),
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: accentDarkGray,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: const BorderSide(color: accentDarkGray, width: 2),
-          ),
-          textStyle: GoogleFonts.inter(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-      textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(
-          foregroundColor: accentDarkGray,
-          textStyle: GoogleFonts.inter(fontSize: 14),
-        ),
-      ),
-      floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: accentDarkGray,
-        foregroundColor: Colors.white,
-      ),
-      listTileTheme: ListTileThemeData(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        tileColor: Colors.transparent,
-        selectedTileColor: activeTabBgDarkGray,
-      ),
-      dividerTheme: const DividerThemeData(
-        color: convItemBorderDarkGray,
-        thickness: 1,
-      ),
-      textTheme: TextTheme(
-        bodyLarge: GoogleFonts.inter(color: textColorDarkGray, fontSize: 16),
-        bodyMedium: GoogleFonts.inter(color: textColorDarkGray, fontSize: 14),
-        bodySmall: GoogleFonts.inter(color: mutedDarkGray, fontSize: 12),
-        titleLarge: GoogleFonts.inter(
-          color: accentDarkGray,
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.25,
-        ),
-        titleMedium: GoogleFonts.inter(
-          color: textColorDarkGray,
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-        ),
-        titleSmall: GoogleFonts.inter(
-          color: textColorDarkGray,
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-        ),
-        labelLarge: GoogleFonts.inter(
-          color: textColorDarkGray,
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      extensions: [
-        const FireplaceColors(
-          inputBg: inputBgDarkGray,
-          convItemBorder: convItemBorderDarkGray,
-          convItemBg: convItemBgDarkGray,
-          messagesAreaBg: messagesAreaBgDarkGray,
-          mineMsgBg: mineMsgBgDarkGray,
-          theirsMsgBg: theirsMsgBgDarkGray,
-          settingsTileBg: Color(0xFF25262B),
-          settingsTileBorder: settingsTileBorderDarkGray,
-          tabBorder: tabBorderDarkGray,
-          borderColor: accentDarkGray,
-          mutedText: mutedDarkGray,
-        ),
-        GlassTheme.dark,
-      ],
-    );
-  }
+  static ThemeData get themeDataDarkGray => _buildTheme(_darkGraySpec);
 
   /// Backwards compatibility alias.
   static ThemeData get themeData => themeDataBlue;
 
-  static ThemeData get themeDataLight {
-    return ThemeData.light().copyWith(
-      scaffoldBackgroundColor: backgroundLight,
-      colorScheme: const ColorScheme.light(
-        primary: primaryLight,
-        secondary: primaryLightHover,
-        surface: boxBgLight,
-        error: errorColor,
-        onPrimary: Colors.white,
-        onSecondary: Colors.white,
-        onSurface: textColorLight,
-        onError: Colors.white,
-      ),
+  /// Light theme – warm paper neutrals + ember accent (Fireplace brand).
+  static ThemeData get themeDataLight => _buildTheme(_lightSpec);
+
+  /// Teal + stone – light modern messenger (stone neutrals, teal accent).
+  static ThemeData get themeDataTealStone => _buildTheme(_tealStoneSpec);
+
+  // ── Theme factory ────────────────────────────────────────────────────────
+  // The four themes share one structure and differ only by a color set
+  // ([_ThemeSpec]). Non-color metrics (radii, padding, font sizes/weights) live
+  // here once. Golden-locked field-by-field per theme in
+  // test/theme/rpg_theme_golden_test.dart.
+  static ThemeData _buildTheme(_ThemeSpec s) {
+    final base =
+        s.brightness == Brightness.dark ? ThemeData.dark() : ThemeData.light();
+    final scheme = s.brightness == Brightness.dark
+        ? ColorScheme.dark(
+            primary: s.primary,
+            secondary: s.secondary,
+            surface: s.surface,
+            error: errorColor,
+            onPrimary: s.onPrimary,
+            onSecondary: s.onSecondary,
+            onSurface: s.onSurface,
+            onError: Colors.white,
+          )
+        : ColorScheme.light(
+            primary: s.primary,
+            secondary: s.secondary,
+            surface: s.surface,
+            error: errorColor,
+            onPrimary: s.onPrimary,
+            onSecondary: s.onSecondary,
+            onSurface: s.onSurface,
+            onError: Colors.white,
+          );
+    final fc = s.fireplace;
+    return base.copyWith(
+      scaffoldBackgroundColor: s.background,
+      colorScheme: scheme,
       popupMenuTheme: PopupMenuThemeData(
-        color: boxBgLight,
+        color: s.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
       ),
       dialogTheme: DialogThemeData(
-        backgroundColor: boxBgLight,
+        backgroundColor: s.surface,
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
       ),
       appBarTheme: AppBarTheme(
-        backgroundColor: boxBgLight,
+        backgroundColor: s.surface,
         elevation: 0,
         centerTitle: false,
         titleTextStyle: GoogleFonts.inter(
           fontSize: 18,
           fontWeight: FontWeight.w600,
-          color: primaryLight,
+          color: s.primary,
           letterSpacing: -0.25,
         ),
-        iconTheme: const IconThemeData(color: textColorLight),
+        iconTheme: IconThemeData(color: s.onSurface),
       ),
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
-        fillColor: inputBgLight,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
+        fillColor: fc.inputBg,
+        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
         border: OutlineInputBorder(
-          borderSide: const BorderSide(color: tabBorderLight, width: 1.5),
+          borderSide: BorderSide(color: fc.tabBorder, width: 1.5),
           borderRadius: BorderRadius.circular(8),
         ),
         enabledBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: tabBorderLight, width: 1.5),
+          borderSide: BorderSide(color: fc.tabBorder, width: 1.5),
           borderRadius: BorderRadius.circular(8),
         ),
         focusedBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: primaryLight, width: 2),
+          borderSide: BorderSide(color: s.primary, width: 2),
           borderRadius: BorderRadius.circular(8),
         ),
         errorBorder: OutlineInputBorder(
           borderSide: const BorderSide(color: errorColor, width: 1.5),
           borderRadius: BorderRadius.circular(8),
         ),
-        hintStyle: GoogleFonts.inter(color: mutedTextLight, fontSize: 14),
-        labelStyle: GoogleFonts.inter(color: labelTextLight, fontSize: 14),
+        hintStyle: GoogleFonts.inter(color: s.hint, fontSize: 14),
+        labelStyle: GoogleFonts.inter(color: s.label, fontSize: 14),
       ),
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
-          backgroundColor: primaryLight,
+          backgroundColor: s.buttonBg,
           foregroundColor: Colors.white,
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
-            side: const BorderSide(color: primaryLight, width: 2),
+            side: BorderSide(color: s.buttonSide, width: 2),
           ),
           textStyle: GoogleFonts.inter(
             fontSize: 16,
@@ -621,208 +370,174 @@ class RpgTheme {
       ),
       textButtonTheme: TextButtonThemeData(
         style: TextButton.styleFrom(
-          foregroundColor: primaryLight,
+          foregroundColor: s.primary,
           textStyle: GoogleFonts.inter(fontSize: 14),
         ),
       ),
-      floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: primaryLight,
+      floatingActionButtonTheme: FloatingActionButtonThemeData(
+        backgroundColor: s.fab,
         foregroundColor: Colors.white,
       ),
       listTileTheme: ListTileThemeData(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
         shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
         tileColor: Colors.transparent,
-        selectedTileColor: activeTabBgLight,
+        selectedTileColor: s.selectedTile,
       ),
-      dividerTheme: const DividerThemeData(
-        color: convItemBorderLight,
-        thickness: 1,
-      ),
+      dividerTheme: DividerThemeData(color: fc.convItemBorder, thickness: 1),
       textTheme: TextTheme(
-        bodyLarge: GoogleFonts.inter(color: textColorLight, fontSize: 16),
-        bodyMedium: GoogleFonts.inter(color: textColorLight, fontSize: 14),
-        bodySmall: GoogleFonts.inter(color: textSecondaryLight, fontSize: 12),
+        bodyLarge: GoogleFonts.inter(color: s.onSurface, fontSize: 16),
+        bodyMedium: GoogleFonts.inter(color: s.onSurface, fontSize: 14),
+        bodySmall: GoogleFonts.inter(color: fc.mutedText, fontSize: 12),
         titleLarge: GoogleFonts.inter(
-          color: primaryLight,
+          color: s.primary,
           fontSize: 20,
           fontWeight: FontWeight.w600,
           letterSpacing: -0.25,
         ),
         titleMedium: GoogleFonts.inter(
-          color: textColorLight,
+          color: s.onSurface,
           fontSize: 16,
           fontWeight: FontWeight.w600,
         ),
         titleSmall: GoogleFonts.inter(
-          color: textColorLight,
+          color: s.onSurface,
           fontSize: 14,
           fontWeight: FontWeight.w600,
         ),
         labelLarge: GoogleFonts.inter(
-          color: textColorLight,
+          color: s.onSurface,
           fontSize: 14,
           fontWeight: FontWeight.w500,
         ),
       ),
-      extensions: [
-        const FireplaceColors(
-          inputBg: inputBgLight,
-          convItemBorder: convItemBorderLight,
-          convItemBg: convItemBgLight,
-          messagesAreaBg: messagesAreaBgLight,
-          mineMsgBg: mineMsgBgLight,
-          theirsMsgBg: theirsMsgBgLight,
-          settingsTileBg: boxBgLight,
-          settingsTileBorder: convItemBorderLight,
-          tabBorder: tabBorderLight,
-          borderColor: primaryLight,
-          mutedText: textSecondaryLight,
-        ),
-        GlassTheme.light,
-      ],
+      extensions: [fc, s.glass],
     );
   }
 
-  /// Teal + stone — light modern messenger (stone neutrals, teal accent, solid teal sent bubble + white text).
-  static ThemeData get themeDataTealStone {
-    return ThemeData.light().copyWith(
-      scaffoldBackgroundColor: backgroundTealStone,
-      colorScheme: const ColorScheme.light(
-        primary: primaryTealStone,
-        secondary: secondaryTealStone,
-        surface: surfaceTealStone,
-        error: errorColor,
-        onPrimary: Colors.white,
-        onSecondary: Colors.white,
-        onSurface: textColorTealStone,
-        onError: Colors.white,
-      ),
-      popupMenuTheme: PopupMenuThemeData(
-        color: surfaceTealStone,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
-      ),
-      dialogTheme: DialogThemeData(
-        backgroundColor: surfaceTealStone,
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(20)),
-      ),
-      appBarTheme: AppBarTheme(
-        backgroundColor: surfaceTealStone,
-        elevation: 0,
-        centerTitle: false,
-        titleTextStyle: GoogleFonts.inter(
-          fontSize: 18,
-          fontWeight: FontWeight.w600,
-          color: primaryTealStone,
-          letterSpacing: -0.25,
-        ),
-        iconTheme: const IconThemeData(color: textColorTealStone),
-      ),
-      inputDecorationTheme: InputDecorationTheme(
-        filled: true,
-        fillColor: inputBgTealStone,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 14,
-        ),
-        border: OutlineInputBorder(
-          borderSide: const BorderSide(color: borderTealStone, width: 1.5),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        enabledBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: borderTealStone, width: 1.5),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        focusedBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: primaryTealStone, width: 2),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        errorBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: errorColor, width: 1.5),
-          borderRadius: BorderRadius.circular(8),
-        ),
-        hintStyle: GoogleFonts.inter(color: mutedTealStone, fontSize: 14),
-        labelStyle: GoogleFonts.inter(color: mutedTealStone, fontSize: 14),
-      ),
-      elevatedButtonTheme: ElevatedButtonThemeData(
-        style: ElevatedButton.styleFrom(
-          backgroundColor: secondaryTealStone,
-          foregroundColor: Colors.white,
-          padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
-          shape: RoundedRectangleBorder(
-            borderRadius: BorderRadius.circular(8),
-            side: const BorderSide(color: secondaryTealStone, width: 2),
-          ),
-          textStyle: GoogleFonts.inter(
-            fontSize: 16,
-            fontWeight: FontWeight.w600,
-          ),
-        ),
-      ),
-      textButtonTheme: TextButtonThemeData(
-        style: TextButton.styleFrom(
-          foregroundColor: primaryTealStone,
-          textStyle: GoogleFonts.inter(fontSize: 14),
-        ),
-      ),
-      floatingActionButtonTheme: const FloatingActionButtonThemeData(
-        backgroundColor: secondaryTealStone,
-        foregroundColor: Colors.white,
-      ),
-      listTileTheme: ListTileThemeData(
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
-        shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(8)),
-        tileColor: Colors.transparent,
-        selectedTileColor: activeTabBgTealStone,
-      ),
-      dividerTheme: const DividerThemeData(
-        color: borderTealStone,
-        thickness: 1,
-      ),
-      textTheme: TextTheme(
-        bodyLarge: GoogleFonts.inter(color: textColorTealStone, fontSize: 16),
-        bodyMedium: GoogleFonts.inter(color: textColorTealStone, fontSize: 14),
-        bodySmall: GoogleFonts.inter(color: mutedTealStone, fontSize: 12),
-        titleLarge: GoogleFonts.inter(
-          color: primaryTealStone,
-          fontSize: 20,
-          fontWeight: FontWeight.w600,
-          letterSpacing: -0.25,
-        ),
-        titleMedium: GoogleFonts.inter(
-          color: textColorTealStone,
-          fontSize: 16,
-          fontWeight: FontWeight.w600,
-        ),
-        titleSmall: GoogleFonts.inter(
-          color: textColorTealStone,
-          fontSize: 14,
-          fontWeight: FontWeight.w600,
-        ),
-        labelLarge: GoogleFonts.inter(
-          color: textColorTealStone,
-          fontSize: 14,
-          fontWeight: FontWeight.w500,
-        ),
-      ),
-      extensions: [
-        FireplaceColors(
-          inputBg: inputBgTealStone,
-          convItemBorder: borderTealStone,
-          convItemBg: convItemBgTealStone,
-          messagesAreaBg: messagesAreaTealStone,
-          mineMsgBg: mineMsgBgTealStone,
-          theirsMsgBg: theirsMsgBgTealStone,
-          settingsTileBg: surfaceTealStone,
-          settingsTileBorder: settingsTileBorderTealStone,
-          tabBorder: borderTealStone,
-          borderColor: primaryTealStone,
-          mutedText: mutedTealStone,
-        ),
-        GlassTheme.teal,
-      ],
-    );
-  }
+  static const _ThemeSpec _blueSpec = _ThemeSpec(
+    brightness: Brightness.dark,
+    background: backgroundBlue,
+    primary: accentBlue,
+    secondary: accentBlueDark,
+    surface: boxBgBlue,
+    onPrimary: Colors.white,
+    onSecondary: Colors.white,
+    onSurface: textColorBlue,
+    hint: mutedTextBlue,
+    label: mutedTextBlue,
+    buttonBg: buttonBgBlue,
+    buttonSide: accentBlue,
+    fab: accentBlue,
+    selectedTile: activeTabBgBlue,
+    fireplace: FireplaceColors(
+      inputBg: inputBgBlue,
+      convItemBorder: convItemBorderBlue,
+      convItemBg: convItemBgBlue,
+      messagesAreaBg: messagesAreaBgBlue,
+      mineMsgBg: mineMsgBgBlue,
+      theirsMsgBg: theirsMsgBgBlue,
+      settingsTileBg: boxBgBlue,
+      settingsTileBorder: settingsTileBorderBlue,
+      tabBorder: tabBorderBlue,
+      borderColor: borderBlue,
+      mutedText: mutedTextBlue,
+    ),
+    glass: GlassTheme.blue,
+  );
+
+  static const _ThemeSpec _darkGraySpec = _ThemeSpec(
+    brightness: Brightness.dark,
+    background: backgroundDarkGray,
+    primary: accentDarkGray,
+    secondary: accentDarkGray,
+    surface: boxBgDarkGray,
+    onPrimary: backgroundDarkGray,
+    onSecondary: textColorDarkGray,
+    onSurface: textColorDarkGray,
+    hint: mutedDarkGray,
+    label: mutedDarkGray,
+    buttonBg: accentDarkGray,
+    buttonSide: accentDarkGray,
+    fab: accentDarkGray,
+    selectedTile: activeTabBgDarkGray,
+    fireplace: FireplaceColors(
+      inputBg: inputBgDarkGray,
+      convItemBorder: convItemBorderDarkGray,
+      convItemBg: convItemBgDarkGray,
+      messagesAreaBg: messagesAreaBgDarkGray,
+      mineMsgBg: mineMsgBgDarkGray,
+      theirsMsgBg: theirsMsgBgDarkGray,
+      settingsTileBg: Color(0xFF25262B),
+      settingsTileBorder: settingsTileBorderDarkGray,
+      tabBorder: tabBorderDarkGray,
+      borderColor: accentDarkGray,
+      mutedText: mutedDarkGray,
+    ),
+    glass: GlassTheme.dark,
+  );
+
+  static const _ThemeSpec _lightSpec = _ThemeSpec(
+    brightness: Brightness.light,
+    background: backgroundLight,
+    primary: primaryLight,
+    secondary: primaryLightHover,
+    surface: boxBgLight,
+    onPrimary: Colors.white,
+    onSecondary: Colors.white,
+    onSurface: textColorLight,
+    hint: mutedTextLight,
+    label: labelTextLight,
+    buttonBg: primaryLight,
+    buttonSide: primaryLight,
+    fab: primaryLight,
+    selectedTile: activeTabBgLight,
+    fireplace: FireplaceColors(
+      inputBg: inputBgLight,
+      convItemBorder: convItemBorderLight,
+      convItemBg: convItemBgLight,
+      messagesAreaBg: messagesAreaBgLight,
+      mineMsgBg: mineMsgBgLight,
+      theirsMsgBg: theirsMsgBgLight,
+      settingsTileBg: boxBgLight,
+      settingsTileBorder: convItemBorderLight,
+      tabBorder: tabBorderLight,
+      borderColor: primaryLight,
+      mutedText: textSecondaryLight,
+    ),
+    glass: GlassTheme.light,
+  );
+
+  static const _ThemeSpec _tealStoneSpec = _ThemeSpec(
+    brightness: Brightness.light,
+    background: backgroundTealStone,
+    primary: primaryTealStone,
+    secondary: secondaryTealStone,
+    surface: surfaceTealStone,
+    onPrimary: Colors.white,
+    onSecondary: Colors.white,
+    onSurface: textColorTealStone,
+    hint: mutedTealStone,
+    label: mutedTealStone,
+    buttonBg: secondaryTealStone,
+    buttonSide: secondaryTealStone,
+    fab: secondaryTealStone,
+    selectedTile: activeTabBgTealStone,
+    fireplace: FireplaceColors(
+      inputBg: inputBgTealStone,
+      convItemBorder: borderTealStone,
+      convItemBg: convItemBgTealStone,
+      messagesAreaBg: messagesAreaTealStone,
+      mineMsgBg: mineMsgBgTealStone,
+      theirsMsgBg: theirsMsgBgTealStone,
+      settingsTileBg: surfaceTealStone,
+      settingsTileBorder: settingsTileBorderTealStone,
+      tabBorder: borderTealStone,
+      borderColor: primaryTealStone,
+      mutedText: mutedTealStone,
+    ),
+    glass: GlassTheme.teal,
+  );
 
   static InputDecoration rpgInputDecoration({
     String? hintText,
@@ -840,4 +555,45 @@ class RpgTheme {
           : null,
     );
   }
+}
+
+/// Immutable per-theme color set consumed by [RpgTheme._buildTheme]. Holds only
+/// what differs between the four themes; shared structure/metrics live in the
+/// factory. Field-by-field golden-locked in test/theme/rpg_theme_golden_test.dart.
+class _ThemeSpec {
+  final Brightness brightness;
+  final Color background;
+  final Color primary;
+  final Color secondary;
+  final Color surface;
+  final Color onPrimary;
+  final Color onSecondary;
+  final Color onSurface;
+  final Color hint;
+  final Color label;
+  final Color buttonBg;
+  final Color buttonSide;
+  final Color fab;
+  final Color selectedTile;
+  final FireplaceColors fireplace;
+  final GlassTheme glass;
+
+  const _ThemeSpec({
+    required this.brightness,
+    required this.background,
+    required this.primary,
+    required this.secondary,
+    required this.surface,
+    required this.onPrimary,
+    required this.onSecondary,
+    required this.onSurface,
+    required this.hint,
+    required this.label,
+    required this.buttonBg,
+    required this.buttonSide,
+    required this.fab,
+    required this.selectedTile,
+    required this.fireplace,
+    required this.glass,
+  });
 }
