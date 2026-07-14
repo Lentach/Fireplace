@@ -190,10 +190,85 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
   final _handleController = TextEditingController();
   bool _loading = false;
   bool _requestSent = false;
-  bool _loadingResetScheduled = false;
+  bool _handling = false;
+
+  FriendsProvider? _friends;
+  ConversationsProvider? _convs;
+  ConnectionProvider? _conn;
+
+  @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final friends = context.read<FriendsProvider>();
+    final convs = context.read<ConversationsProvider>();
+    final conn = context.read<ConnectionProvider>();
+    if (friends == _friends && convs == _convs && conn == _conn) return;
+    _friends?.removeListener(_onProvidersChanged);
+    _convs?.removeListener(_onProvidersChanged);
+    _conn?.removeListener(_onProvidersChanged);
+    _friends = friends;
+    _convs = convs;
+    _conn = conn;
+    _friends!.addListener(_onProvidersChanged);
+    _convs!.addListener(_onProvidersChanged);
+    _conn!.addListener(_onProvidersChanged);
+    // Catch state already pending before this tab mounted.
+    WidgetsBinding.instance.addPostFrameCallback((_) => _onProvidersChanged());
+  }
+
+  /// Provider-driven side effects (navigation, auto-send, snackbar). Kept OUT of
+  /// build(): these notifications originate from socket handlers, so acting here
+  /// is safe and build() stays pure. Consume-once flags fire on the notify that
+  /// set them.
+  void _onProvidersChanged() {
+    if (!mounted || _handling) return;
+    _handling = true;
+    try {
+      final convs = _convs!;
+      final friends = _friends!;
+      final conn = _conn!;
+
+      final pendingId = convs.consumePendingOpen();
+      if (pendingId != null) {
+        Navigator.of(context).pop(pendingId);
+        return;
+      }
+
+      if (friends.consumeFriendRequestSent() && !_requestSent) {
+        _requestSent = true;
+        if (_loading) setState(() => _loading = false);
+        final displayHandle = _handleController.text.trim();
+        showTopSnackBar(
+          context,
+          AppLocalizations.of(context).friendRequestSentTo(displayHandle),
+          backgroundColor: Colors.green,
+        );
+        Navigator.pop(context);
+        return;
+      }
+
+      if (_loading &&
+          (conn.errorMessage != null || friends.searchResults != null)) {
+        final results = friends.searchResults;
+        setState(() => _loading = false);
+        // Auto-send when the search resolves to exactly one user.
+        // clearSearchResults() notifies synchronously and re-enters this
+        // callback; the _handling guard makes that re-entry a no-op.
+        if (results != null && results.length == 1) {
+          friends.sendFriendRequest(results.first.id);
+          friends.clearSearchResults();
+        }
+      }
+    } finally {
+      _handling = false;
+    }
+  }
 
   @override
   void dispose() {
+    _friends?.removeListener(_onProvidersChanged);
+    _convs?.removeListener(_onProvidersChanged);
+    _conn?.removeListener(_onProvidersChanged);
     _handleController.dispose();
     super.dispose();
   }
@@ -205,7 +280,6 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
     setState(() {
       _loading = true;
       _requestSent = false;
-      _loadingResetScheduled = false;
     });
     context.read<FriendsProvider>().clearSearchResults();
     context.read<FriendsProvider>().searchUsers(handle);
@@ -214,56 +288,11 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
   @override
   Widget build(BuildContext context) {
     final friends = context.watch<FriendsProvider>();
-    final convs = context.watch<ConversationsProvider>();
     final conn = context.watch<ConnectionProvider>();
     final searchResults = friends.searchResults;
-
-    final pendingId = convs.consumePendingOpen();
-    if (pendingId != null) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) Navigator.of(context).pop(pendingId);
-      });
-    }
-
-    if (friends.consumeFriendRequestSent() && !_requestSent) {
-      _requestSent = true;
-      _loading = false;
-      final displayHandle = _handleController.text.trim();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          showTopSnackBar(
-            context,
-            AppLocalizations.of(context).friendRequestSentTo(displayHandle),
-            backgroundColor: Colors.green,
-          );
-          Navigator.pop(context);
-        }
-      });
-    }
-
     final errorMessage = conn.errorMessage;
     final showButtonLoading =
         _loading && errorMessage == null && searchResults == null;
-
-    if ((errorMessage != null || searchResults != null) &&
-        _loading &&
-        !_loadingResetScheduled) {
-      _loadingResetScheduled = true;
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) setState(() => _loading = false);
-      });
-    }
-
-    // Auto-send when exactly one result
-    if (searchResults != null && searchResults.length == 1 && _loading) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          final user = searchResults.first;
-          context.read<FriendsProvider>().sendFriendRequest(user.id);
-          context.read<FriendsProvider>().clearSearchResults();
-        }
-      });
-    }
 
     return SafeArea(
       top: false,
@@ -355,6 +384,7 @@ class _FriendRequestsTab extends StatefulWidget {
 
 class _FriendRequestsTabState extends State<_FriendRequestsTab> {
   bool _navigatingToChat = false;
+  ConversationsProvider? _convs;
 
   @override
   void initState() {
@@ -365,25 +395,42 @@ class _FriendRequestsTabState extends State<_FriendRequestsTab> {
   }
 
   @override
+  void didChangeDependencies() {
+    super.didChangeDependencies();
+    final convs = context.read<ConversationsProvider>();
+    if (convs == _convs) return;
+    _convs?.removeListener(_onConversationsChanged);
+    _convs = convs;
+    _convs!.addListener(_onConversationsChanged);
+    WidgetsBinding.instance
+        .addPostFrameCallback((_) => _onConversationsChanged());
+  }
+
+  /// Navigate on a pending-open conversation. Out of build(): the notify comes
+  /// from the socket handler, so popping here is safe.
+  void _onConversationsChanged() {
+    if (!mounted || _navigatingToChat) return;
+    final pendingId = _convs!.consumePendingOpen();
+    if (pendingId != null) {
+      _navigatingToChat = true;
+      Navigator.of(context).pop(pendingId);
+    }
+  }
+
+  @override
+  void dispose() {
+    _convs?.removeListener(_onConversationsChanged);
+    super.dispose();
+  }
+
+  @override
   Widget build(BuildContext context) {
-    final convs = context.watch<ConversationsProvider>();
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
     final textColor = colorScheme.onSurface;
     final secondaryColor = isDark
         ? RpgTheme.mutedDarkGray
         : RpgTheme.textSecondaryLight;
-
-    // Listen for pending open conversation to navigate
-    final pendingId = convs.consumePendingOpen();
-    if (pendingId != null && !_navigatingToChat) {
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (mounted) {
-          _navigatingToChat = true;
-          Navigator.of(context).pop(pendingId);
-        }
-      });
-    }
 
     return Consumer<FriendsProvider>(
       builder: (context, chatConsumer, _) {
