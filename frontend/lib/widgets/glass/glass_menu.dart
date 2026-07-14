@@ -165,26 +165,32 @@ class _GlassMenuBody<T> extends StatelessWidget {
               for (final entry in entries)
                 InkWell(
                   onTap: () => Navigator.of(context).pop(entry.value),
-                  child: Padding(
-                    padding: const EdgeInsets.symmetric(
-                      horizontal: 16,
-                      vertical: 12,
-                    ),
-                    child: DefaultTextStyle.merge(
-                      style: RpgTheme.bodyFont(
-                        fontSize: 14,
-                        color: entry.destructive
-                            ? colorScheme.error
-                            : colorScheme.onSurface,
+                  child: ConstrainedBox(
+                    constraints: const BoxConstraints(minHeight: 48),
+                    child: Padding(
+                      padding: const EdgeInsets.symmetric(
+                        horizontal: 16,
+                        vertical: 12,
                       ),
-                      child: IconTheme.merge(
-                        data: IconThemeData(
-                          size: 20,
-                          color: entry.destructive
-                              ? colorScheme.error
-                              : colorScheme.onSurface,
+                      child: Align(
+                        alignment: AlignmentDirectional.centerStart,
+                        child: DefaultTextStyle.merge(
+                          style: RpgTheme.bodyFont(
+                            fontSize: 14,
+                            color: entry.destructive
+                                ? colorScheme.error
+                                : colorScheme.onSurface,
+                          ),
+                          child: IconTheme.merge(
+                            data: IconThemeData(
+                              size: 20,
+                              color: entry.destructive
+                                  ? colorScheme.error
+                                  : colorScheme.onSurface,
+                            ),
+                            child: entry.child,
+                          ),
                         ),
-                        child: entry.child,
                       ),
                     ),
                   ),

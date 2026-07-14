@@ -266,6 +266,7 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
     }
 
     return SafeArea(
+      top: false,
       child: Padding(
         padding: const EdgeInsets.all(24),
         child: Column(

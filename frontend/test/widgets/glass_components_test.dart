@@ -1,3 +1,4 @@
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -98,6 +99,39 @@ void main() {
       expect(find.text('Body copy'), findsOneWidget);
       expect(find.text('OK'), findsOneWidget);
       expect(tester.takeException(), isNull);
+    });
+
+    testWidgets('exposes a scoped, named alert-dialog route in the tree', (
+      tester,
+    ) async {
+      // Android so GlassDialog emits the labelled route wrapper (null on iOS).
+      debugDefaultTargetPlatformOverride = TargetPlatform.android;
+      final handle = tester.ensureSemantics();
+      try {
+        await tester.pumpWidget(
+          _host((context) {
+            showDialog<void>(
+              context: context,
+              builder: (_) => const GlassDialog(
+                title: Text('Delete message?'),
+                content: Text('This cannot be undone.'),
+              ),
+            );
+          }),
+        );
+        await tester.tap(find.text('open'));
+        await tester.pumpAndSettle();
+
+        // Regression guard for the base-Dialog swap: the computed node must be
+        // a scoped + named route (base Dialog omits these; AlertDialog set them)
+        // so screen readers announce it as a dialog route.
+        final node = tester.getSemantics(find.bySemanticsLabel('Alert'));
+        expect(node.flagsCollection.scopesRoute, isTrue);
+        expect(node.flagsCollection.namesRoute, isTrue);
+      } finally {
+        handle.dispose();
+        debugDefaultTargetPlatformOverride = null;
+      }
     });
   });
 

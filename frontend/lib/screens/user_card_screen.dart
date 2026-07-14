@@ -453,7 +453,7 @@ class _PhotoHero extends StatelessWidget {
         child: Center(
           child: IconButton(
             tooltip: l10n.userCardBack,
-            icon: const Icon(Icons.arrow_back, color: Colors.white),
+            icon: Icon(Icons.arrow_back, color: theme.colorScheme.onSurface),
             onPressed: () => Navigator.maybePop(context),
           ),
         ),
@@ -742,7 +742,9 @@ class _ContactActions extends StatelessWidget {
                           ),
                         ],
                       );
-                      if (selected != null) onMuteChanged(selected);
+                      if (selected != null && btnContext.mounted) {
+                        onMuteChanged(selected);
+                      }
                     },
                   ),
                 ),
