@@ -34,7 +34,9 @@ class TextMessageContent extends StatelessWidget {
         textAlign: TextAlign.left,
         textWidthBasis: TextWidthBasis.longestLine,
         text: TextSpan(
-          style: RpgTheme.bodyFont(fontSize: jumboSize, color: textColor),
+          style: withEmojiFont(
+            RpgTheme.bodyFont(fontSize: jumboSize, color: textColor),
+          ),
           children: [TextSpan(text: text)],
         ),
       );

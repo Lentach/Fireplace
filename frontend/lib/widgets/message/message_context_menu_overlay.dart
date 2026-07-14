@@ -6,6 +6,7 @@ import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
 import '../emoji/fireplace_emoji_picker.dart';
 import '../../models/message_model.dart';
+import '../../utils/jumbo_emoji.dart';
 import '../top_snackbar.dart';
 import 'context_menu_bubble_anchor.dart';
 import 'message_action_panel.dart';
@@ -663,7 +664,11 @@ class _ContextMenuReactionEmojiBar extends StatelessWidget {
                         ),
                         child: Text(
                           emoji,
-                          style: const TextStyle(fontSize: 22),
+                          style: const TextStyle(
+                            fontSize: 22,
+                            fontFamily: kEmojiFontFamily,
+                            fontFamilyFallback: kEmojiFontFamilyFallback,
+                          ),
                         ),
                       ),
                     ),
