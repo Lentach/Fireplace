@@ -258,6 +258,7 @@ class ConversationsProvider extends ChangeNotifier {
       final oldConv = _conversations[index];
       _conversations[index] = oldConv.copyWith(
         disappearingTimer: seconds,
+        clearDisappearingTimer: seconds == null,
       );
     }
 

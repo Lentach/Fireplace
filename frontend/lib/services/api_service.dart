@@ -15,6 +15,19 @@ class ApiService {
   ApiService({required this.baseUrl, http.Client? httpClient})
       : _httpClient = httpClient ?? http.Client();
 
+  /// Extract a human error message from a (possibly non-JSON) error response
+  /// WITHOUT throwing. A gateway 502 (HTML), empty 5xx, or timeout body must
+  /// surface the HTTP status, not an opaque FormatException from decoding it.
+  String _errorMessage(http.Response response, String fallback) {
+    try {
+      final data = jsonDecode(response.body);
+      if (data is Map && data['message'] != null) {
+        return data['message'].toString();
+      }
+    } catch (_) {}
+    return '$fallback (${response.statusCode})';
+  }
+
   Future<Map<String, dynamic>> register(
     String username,
     String password,
@@ -27,11 +40,10 @@ class ApiService {
       body: jsonEncode(body),
     );
 
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode != 201) {
-      throw Exception(data['message'] ?? 'Registration failed');
+      throw Exception(_errorMessage(response, 'Registration failed'));
     }
-    return data;
+    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
   /// Login returns access + refresh tokens (refresh enables long-lived sessions).
@@ -42,10 +54,10 @@ class ApiService {
       body: jsonEncode({'identifier': identifier, 'password': password}),
     );
 
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode != 201 && response.statusCode != 200) {
-      throw Exception(data['message'] ?? 'Login failed');
+      throw Exception(_errorMessage(response, 'Login failed'));
     }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
     final access = data['access_token'] as String?;
     final refresh = data['refresh_token'] as String?;
     if (access == null || refresh == null) {
@@ -153,11 +165,10 @@ class ApiService {
     final streamedResponse = await _httpClient.send(request);
     final response = await http.Response.fromStream(streamedResponse);
 
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode != 201 && response.statusCode != 200) {
-      throw Exception(data['message'] ?? 'Upload failed');
+      throw Exception(_errorMessage(response, 'Upload failed'));
     }
-
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
     return data['profilePictureUrl'] as String;
   }
 
@@ -169,10 +180,10 @@ class ApiService {
       Uri.parse('$baseUrl/users/profile-photos/$photoId/main'),
       headers: {'Authorization': 'Bearer $token'},
     );
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode != 200) {
-      throw Exception(data['message'] ?? 'Unable to set primary photo');
+      throw Exception(_errorMessage(response, 'Unable to set primary photo'));
     }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
     return (data['profilePhotos'] as List<dynamic>)
         .map((value) => UserProfilePhoto.fromJson(value as Map<String, dynamic>))
         .toList(growable: false);
@@ -186,10 +197,10 @@ class ApiService {
       Uri.parse('$baseUrl/users/profile-photos/$photoId'),
       headers: {'Authorization': 'Bearer $token'},
     );
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode != 200) {
-      throw Exception(data['message'] ?? 'Unable to delete profile photo');
+      throw Exception(_errorMessage(response, 'Unable to delete profile photo'));
     }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
     return (data['profilePhotos'] as List<dynamic>)
         .map((value) => UserProfilePhoto.fromJson(value as Map<String, dynamic>))
         .toList(growable: false);
@@ -204,10 +215,10 @@ class ApiService {
       },
       body: jsonEncode({'about': about}),
     );
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode != 200) {
-      throw Exception(data['message'] ?? 'Unable to update profile');
+      throw Exception(_errorMessage(response, 'Unable to update profile'));
     }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
     return data['about'] as String?;
   }
 
@@ -229,8 +240,7 @@ class ApiService {
     );
 
     if (response.statusCode != 201 && response.statusCode != 200) {
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      throw Exception(data['message'] ?? 'Password reset failed');
+      throw Exception(_errorMessage(response, 'Password reset failed'));
     }
   }
 
@@ -245,8 +255,7 @@ class ApiService {
     );
 
     if (response.statusCode != 200) {
-      final data = jsonDecode(response.body) as Map<String, dynamic>;
-      throw Exception(data['message'] ?? 'Account deletion failed');
+      throw Exception(_errorMessage(response, 'Account deletion failed'));
     }
   }
 
@@ -350,11 +359,10 @@ class ApiService {
 
     final streamedResponse = await _httpClient.send(request);
     final response = await http.Response.fromStream(streamedResponse);
-    final data = jsonDecode(response.body) as Map<String, dynamic>;
     if (response.statusCode != 200 && response.statusCode != 201) {
-      throw Exception(data['message'] ?? 'Upload failed');
+      throw Exception(_errorMessage(response, 'Upload failed'));
     }
-    return data;
+    return jsonDecode(response.body) as Map<String, dynamic>;
   }
 
   Future<String> createSecretNote(String token, String ciphertext, int expiresIn) async {

@@ -425,11 +425,18 @@ class RecordingControllerState extends State<RecordingController>
 
     String? path;
     final recorder = _audioRecorder;
-    if (recorder != null) {
-      path = await recorder.stop();
-      await recorder.dispose();
-    }
     _audioRecorder = null;
+    if (recorder != null) {
+      // Best-effort teardown: if stop()/dispose() throws (hardware quirk), we
+      // must still fall through so the finally resets _isStopping and the bar
+      // doesn't wedge. A null path routes to the failed-to-read branch below.
+      try {
+        path = await recorder.stop();
+      } catch (_) {}
+      try {
+        await recorder.dispose();
+      } catch (_) {}
+    }
 
     setState(() => _isRecording = false);
     widget.onRecordingStateChanged(false);
@@ -515,26 +522,35 @@ class RecordingControllerState extends State<RecordingController>
     if (_waveformController.isAnimating) _waveformController.stop();
 
     final recorder = _audioRecorder;
-    if (recorder != null) {
-      await recorder.stop();
-      await recorder.dispose();
-    }
     _audioRecorder = null;
+    try {
+      if (recorder != null) {
+        // Best-effort teardown — a throwing stop()/dispose() must not strand
+        // _isStopping/_isRecording and wedge the recording bar.
+        try {
+          await recorder.stop();
+        } catch (_) {}
+        try {
+          await recorder.dispose();
+        } catch (_) {}
+      }
 
-    if (!kIsWeb && _recordingPath != null) {
-      try {
-        final file = File(_recordingPath!);
-        if (await file.exists()) await file.delete();
-      } catch (_) {}
+      if (!kIsWeb && _recordingPath != null) {
+        try {
+          final file = File(_recordingPath!);
+          if (await file.exists()) await file.delete();
+        } catch (_) {}
+      }
+
+      setState(() {
+        _isRecording = false;
+        _recordingPath = null;
+      });
+      widget.onRecordingStateChanged(false);
+      _showNotSentSnackBar(canceledMessage);
+    } finally {
+      _isStopping = false;
     }
-
-    setState(() {
-      _isRecording = false;
-      _recordingPath = null;
-    });
-    widget.onRecordingStateChanged(false);
-    _showNotSentSnackBar(canceledMessage);
-    _isStopping = false;
   }
 
   // ── helpers ──
