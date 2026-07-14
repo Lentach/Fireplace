@@ -11,7 +11,9 @@ import '../../services/api_service.dart';
 import '../../services/media_crypto_service.dart';
 import '../../theme/rpg_theme.dart';
 import '../../utils/download_utils_web.dart'
-    if (dart.library.io) '../../utils/download_utils_io.dart' as download_utils;
+    if (dart.library.io) '../../utils/download_utils_io.dart'
+    as download_utils;
+import '../glass/glass_dialog.dart';
 import '../top_snackbar.dart';
 
 /// FILE/document message: legacy direct URL download or fetch+decrypt+save.
@@ -83,7 +85,7 @@ class _FileMessageContentState extends State<FileMessageContent> {
         final l10n = AppLocalizations.of(context);
         showDialog<void>(
           context: context,
-          builder: (ctx) => AlertDialog(
+          builder: (ctx) => GlassDialog(
             title: Text(l10n.documentDownloadConfirmTitle),
             content: Text(l10n.documentDownloadConfirmMessage),
             actions: [
@@ -106,10 +108,9 @@ class _FileMessageContentState extends State<FileMessageContent> {
         padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
         decoration: BoxDecoration(
           borderRadius: BorderRadius.circular(8),
-          color: Theme.of(context)
-              .colorScheme
-              .surfaceContainerHighest
-              .withValues(alpha: 0.5),
+          color: Theme.of(
+            context,
+          ).colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
         ),
         child: Row(
           mainAxisSize: MainAxisSize.min,

@@ -8,6 +8,7 @@ import '../models/user_model.dart';
 import '../providers/messaging_provider.dart';
 import '../providers/settings_provider.dart';
 import 'avatar_circle.dart';
+import 'glass/glass_dialog.dart';
 import 'hearth_fade_arc.dart';
 
 class ConversationTile extends StatelessWidget {
@@ -206,8 +207,7 @@ class ConversationTile extends StatelessWidget {
                 ? RpgTheme.mutedDark
                 : RpgTheme.textSecondaryLight;
             final l10n = AppLocalizations.of(dialogContext);
-            return AlertDialog(
-              backgroundColor: colorScheme.surface,
+            return GlassDialog(
               title: Text(
                 l10n.deleteConversationTitle,
                 style: RpgTheme.bodyFont(

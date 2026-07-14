@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
 import '../../theme/rpg_theme.dart';
+import '../glass/glass_surface.dart';
 
 class MessageActionPanel extends StatelessWidget {
   const MessageActionPanel({
@@ -29,47 +30,56 @@ class MessageActionPanel extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return Material(
-      elevation: 8,
+    return GlassSurface(
       borderRadius: BorderRadius.circular(12),
-      color: Theme.of(context).colorScheme.surface,
-      child: IntrinsicWidth(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            _row(context, l10n.messageActionReply, Icons.reply, onReply, enabled: true),
-            if (onCopy != null)
+      child: Material(
+        type: MaterialType.transparency,
+        borderRadius: BorderRadius.circular(12),
+        clipBehavior: Clip.antiAlias,
+        child: IntrinsicWidth(
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
               _row(
                 context,
-                l10n.messageActionCopy,
-                Icons.copy_outlined,
-                onCopy!,
+                l10n.messageActionReply,
+                Icons.reply,
+                onReply,
                 enabled: true,
               ),
-            if (onEdit != null)
+              if (onCopy != null)
+                _row(
+                  context,
+                  l10n.messageActionCopy,
+                  Icons.copy_outlined,
+                  onCopy!,
+                  enabled: true,
+                ),
+              if (onEdit != null)
+                _row(
+                  context,
+                  l10n.messageActionEdit,
+                  Icons.edit_outlined,
+                  onEdit!,
+                  enabled: true,
+                ),
               _row(
                 context,
-                l10n.messageActionEdit,
-                Icons.edit_outlined,
-                onEdit!,
-                enabled: true,
+                l10n.messageActionPin,
+                Icons.push_pin_outlined,
+                onPin,
+                enabled: canPinOrDeleteForEveryone,
               ),
-            _row(
-              context,
-              l10n.messageActionPin,
-              Icons.push_pin_outlined,
-              onPin,
-              enabled: canPinOrDeleteForEveryone,
-            ),
-            _row(
-              context,
-              l10n.messageActionDelete,
-              Icons.delete_outline,
-              onDelete,
-              enabled: true,
-              destructive: true,
-            ),
-          ],
+              _row(
+                context,
+                l10n.messageActionDelete,
+                Icons.delete_outline,
+                onDelete,
+                enabled: true,
+                destructive: true,
+              ),
+            ],
+          ),
         ),
       ),
     );
@@ -87,10 +97,10 @@ class MessageActionPanel extends StatelessWidget {
     final color = muted
         ? Theme.of(context).disabledColor
         : !enabled
-            ? Theme.of(context).disabledColor
-            : destructive
-                ? Colors.red.shade700
-                : Theme.of(context).colorScheme.onSurface;
+        ? Theme.of(context).disabledColor
+        : destructive
+        ? Colors.red.shade700
+        : Theme.of(context).colorScheme.onSurface;
     return InkWell(
       onTap: enabled ? onTap : null,
       child: Padding(

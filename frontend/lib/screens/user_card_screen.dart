@@ -9,7 +9,9 @@ import '../providers/friends_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
+import '../widgets/glass/glass_dialog.dart';
 import '../widgets/glass/glass_surface.dart';
+import '../widgets/glass/glass_menu.dart';
 import '../widgets/chat_background_pattern.dart';
 import '../widgets/top_snackbar.dart' show showTopSnackBar;
 
@@ -97,7 +99,7 @@ class _UserCardScreenState extends State<UserCardScreen> {
       context: context,
       builder: (dialogContext) {
         final l10n = AppLocalizations.of(dialogContext);
-        return AlertDialog(
+        return GlassDialog(
           title: Text(title),
           content: Text(message),
           actions: [
@@ -170,7 +172,7 @@ class _UserCardScreenState extends State<UserCardScreen> {
     final l10n = AppLocalizations.of(context);
     final next = await showDialog<String>(
       context: context,
-      builder: (dialogContext) => AlertDialog(
+      builder: (dialogContext) => GlassDialog(
         title: Text(l10n.userCardAbout),
         content: TextField(
           controller: controller,
@@ -710,34 +712,38 @@ class _ContactActions extends StatelessWidget {
                     ),
                   ),
                 ),
-                PopupMenuButton<UserCardMute>(
-                  tooltip: l10n.userCardNotifications,
-                  onSelected: onMuteChanged,
-                  itemBuilder: (_) => [
-                    PopupMenuItem(
-                      value: UserCardMute.off,
-                      child: Text(l10n.userCardNotificationsOn),
-                    ),
-                    PopupMenuItem(
-                      value: UserCardMute.oneHour,
-                      child: Text(l10n.userCardMuteOneHour),
-                    ),
-                    PopupMenuItem(
-                      value: UserCardMute.eightHours,
-                      child: Text(l10n.userCardMuteEightHours),
-                    ),
-                    PopupMenuItem(
-                      value: UserCardMute.oneWeek,
-                      child: Text(l10n.userCardMuteOneWeek),
-                    ),
-                    PopupMenuItem(
-                      value: UserCardMute.forever,
-                      child: Text(l10n.userCardMuteForever),
-                    ),
-                  ],
-                  child: const Padding(
-                    padding: EdgeInsets.all(8),
-                    child: Icon(Icons.chevron_right),
+                Builder(
+                  builder: (btnContext) => IconButton(
+                    tooltip: l10n.userCardNotifications,
+                    icon: const Icon(Icons.chevron_right),
+                    onPressed: () async {
+                      final selected = await showGlassMenu<UserCardMute>(
+                        context: btnContext,
+                        entries: [
+                          GlassMenuEntry(
+                            value: UserCardMute.off,
+                            child: Text(l10n.userCardNotificationsOn),
+                          ),
+                          GlassMenuEntry(
+                            value: UserCardMute.oneHour,
+                            child: Text(l10n.userCardMuteOneHour),
+                          ),
+                          GlassMenuEntry(
+                            value: UserCardMute.eightHours,
+                            child: Text(l10n.userCardMuteEightHours),
+                          ),
+                          GlassMenuEntry(
+                            value: UserCardMute.oneWeek,
+                            child: Text(l10n.userCardMuteOneWeek),
+                          ),
+                          GlassMenuEntry(
+                            value: UserCardMute.forever,
+                            child: Text(l10n.userCardMuteForever),
+                          ),
+                        ],
+                      );
+                      if (selected != null) onMuteChanged(selected);
+                    },
                   ),
                 ),
               ],

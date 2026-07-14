@@ -1,11 +1,13 @@
 import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/widgets/dialogs/message_delete_dialog.dart';
+import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
   Widget wrap({required bool isMine, required int messageId}) {
     return MaterialApp(
+      theme: RpgTheme.themeDataDarkGray,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: Builder(

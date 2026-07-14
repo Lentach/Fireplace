@@ -113,8 +113,11 @@ All ≥ 4.5:1. Computation script lives in the session eval history; recompute o
 | Emoji picker panel | OPAQUE BY DESIGN (package-rendered dense grid; readability) |
 | Reply/edit/timer banners | Rounded solid cards (content layer) |
 | Date separators | Solid mini-pills (content layer) |
-| Popup menus + alert dialogs | Rounded per-theme surfaces — NOT glass (framework-owned Material routes; treated as §7 fallback surfaces; true glass menus = possible follow-up, owner to ratify at PR review) |
-| Settings tiles / auth screen | UNTOUCHED BY DESIGN (content surfaces; chrome above them is glassed) |
+| Popup menus + alert dialogs | GLASS — `GlassDialog` / `showGlassMenu` (owner-ratified 2026-07-14; real PopupRoute keeps back + barrier-dismiss + edge-collision, opaque §7 fallback) |
+| Message context menu | GLASS reaction-bar + action-panel (GlassSurface); reaction-picker emoji grid stays OPAQUE |
+| Utility screens (blocked / privacy / add-invitations / user-card) | GLASS chrome (GlassTopBar / GlassCircle / bounded tabbed-glass header); content opaque, scrolls behind |
+| Settings tiles | GlassSurface tint-only cards |
+| Auth screen | GLASS (form card over the wallpaper, ratified 2026-07-14; §9 "UNTOUCHED" superseded) |
 | Embedded desktop chat header | In-flow, solid (desktop pane header; glass floats only over scrollable content) |
 
 ## 10. Round-2 owner revisions (2026-07-11, device-test feedback — supersede §3/§5/§6 where they conflict)
@@ -123,3 +126,11 @@ All ≥ 4.5:1. Computation script lives in the session eval history; recompute o
 - **No title pills** (Telegram parity): chat contact name and tab titles render as plain floating text with a soft scaffold-tinted halo; only back/add/⋮/avatar capsules remain glass.
 - **Wallpaper replaced** (owner-locked "temple columns", glyph set updated to v7 2026-07-12): hieroglyphs stacked in vertical registers, 36-glyph registry (`hieroglyph_glyphs.dart`; 30 authentic hieroglyph signs + 5 Diablo II high runes (Vex, Lo, Jah, Cham, Zod) + the CC0 leaf hero from Wikimedia "Cannabis icon.svg"), weighted-random rotation **re-seeded per chat entry** (owner choice; baked at mount, zero scroll cost), no-repeat-last-5, never two narrow glyphs consecutively, leaf cadence ~1/screen. Tint raised to Telegram level: dark/blue 12%, light/teal 14% alpha. Subtle radial top glow under the pattern.
 - Pinned-banner "overlap" from the first device test was re-diagnosed: it was a received PING bubble scrolling under the top chrome (intended scroll-behind); the pinned banner itself clears the chrome (harness-verified with a pinned fixture).
+
+## 11. Glass completion (2026-07-14, owner-ratified follow-up)
+
+Owner ratified (Tier A+B+C) extending glass to the surfaces §9 deferred or left solid; §9 rows above updated in place. Grammar unchanged: glass is floating chrome only, content stays opaque.
+
+- **Utility screens** pushed from Settings/contacts (blocked users, privacy & safety, add/invitations, user-card hero buttons): plain Material `AppBar`s / bare buttons → floating glass chrome. `GlassTopBar` for simple screens; a bounded floating **tabbed-glass header** (back circle + title pill + inset tab capsule — never a full-width band) for add/invitations; `GlassCircle` capsules over the user-card photo hero. Body clears the floating chrome and scrolls behind it.
+- **Auth screen**: login/register form wrapped in a floating `GlassSurface` card over the hieroglyph wallpaper (the blur needs texture behind it to read as glass).
+- **Dialogs → `GlassDialog`** (drop-in for `AlertDialog` title/content/actions; content is `Flexible`+scrollable so a keyboard inset never overflows it). **Popup menus → `showGlassMenu`** (a real `PopupRoute`: system back and barrier-tap dismiss, screen-edge collision-avoided by its layout delegate; transparent barrier; `GlassSurface` body + a transparent `Material` with matching rounded clip for ink). **Message context menu** reaction bar + action panel → `GlassSurface` (each wraps a transparent `Material` so `InkWell`/`IconButton` rows keep ink); the reaction-picker emoji grid stays opaque (§9 readability). Reply/edit banners, date pills, message bubbles, and the embedded desktop header remain opaque by grammar.

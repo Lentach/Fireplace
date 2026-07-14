@@ -9,6 +9,7 @@ import '../../models/message_model.dart';
 import '../top_snackbar.dart';
 import 'context_menu_bubble_anchor.dart';
 import 'message_action_panel.dart';
+import '../glass/glass_surface.dart';
 
 OverlayEntry? _activeMessageContextMenu;
 
@@ -411,6 +412,7 @@ void openMessageContextMenu({
                   behavior: HitTestBehavior.opaque,
                   child: ClipRect(
                     child: BackdropFilter(
+                      key: const Key('context-menu-scrim'),
                       filter: ImageFilter.blur(
                         sigmaX: _kScrimBlurSigma,
                         sigmaY: _kScrimBlurSigma,
@@ -612,75 +614,82 @@ class _ContextMenuReactionEmojiBar extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    return Material(
-      elevation: 8,
+    return GlassSurface(
       borderRadius: BorderRadius.circular(24),
-      color: Theme.of(context).colorScheme.surface,
-      child: SizedBox(
-        height: kMessageContextMenuEmojiRowHeight,
-        child: Padding(
-          padding: const EdgeInsets.symmetric(horizontal: 8),
-          child: Row(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.center,
-            children: [
-              ..._kReactionEmojis.map((emoji) {
-                final alreadyReacted =
-                    currentUserId != null &&
-                    (message.reactions[emoji]?.contains(currentUserId) ??
-                        false);
-                return Semantics(
-                  button: true,
-                  selected: alreadyReacted,
-                  label: l10n.messageReactionSemantics(
-                    emoji,
-                    alreadyReacted
-                        ? l10n.messageReactionSelected
-                        : l10n.messageReactionNotSelected,
-                  ),
-                  excludeSemantics: true,
-                  child: GestureDetector(
-                    onTap: () {
-                      onReaction(emoji, alreadyReacted);
-                      dismissMessageContextMenu();
-                    },
-                    child: Container(
-                      width: 36,
-                      height: 36,
-                      alignment: Alignment.center,
-                      decoration: BoxDecoration(
-                        color: alreadyReacted
-                            ? Theme.of(
-                                context,
-                              ).colorScheme.primary.withValues(alpha: 0.15)
-                            : Colors.transparent,
-                        shape: BoxShape.circle,
+      height: kMessageContextMenuEmojiRowHeight,
+      child: Material(
+        type: MaterialType.transparency,
+        borderRadius: BorderRadius.circular(24),
+        clipBehavior: Clip.antiAlias,
+        child: SizedBox(
+          height: double.infinity,
+          child: Padding(
+            padding: const EdgeInsets.symmetric(horizontal: 8),
+            child: Row(
+              mainAxisSize: MainAxisSize.min,
+              crossAxisAlignment: CrossAxisAlignment.center,
+              children: [
+                ..._kReactionEmojis.map((emoji) {
+                  final alreadyReacted =
+                      currentUserId != null &&
+                      (message.reactions[emoji]?.contains(currentUserId) ??
+                          false);
+                  return Semantics(
+                    button: true,
+                    selected: alreadyReacted,
+                    label: l10n.messageReactionSemantics(
+                      emoji,
+                      alreadyReacted
+                          ? l10n.messageReactionSelected
+                          : l10n.messageReactionNotSelected,
+                    ),
+                    excludeSemantics: true,
+                    child: GestureDetector(
+                      onTap: () {
+                        onReaction(emoji, alreadyReacted);
+                        dismissMessageContextMenu();
+                      },
+                      child: Container(
+                        width: 36,
+                        height: 36,
+                        alignment: Alignment.center,
+                        decoration: BoxDecoration(
+                          color: alreadyReacted
+                              ? Theme.of(
+                                  context,
+                                ).colorScheme.primary.withValues(alpha: 0.15)
+                              : Colors.transparent,
+                          shape: BoxShape.circle,
+                        ),
+                        child: Text(
+                          emoji,
+                          style: const TextStyle(fontSize: 22),
+                        ),
                       ),
-                      child: Text(emoji, style: const TextStyle(fontSize: 22)),
                     ),
-                  ),
-                );
-              }),
-              Semantics(
-                button: true,
-                label: l10n.messageReactionMoreEmoji,
-                excludeSemantics: true,
-                child: Tooltip(
-                  message: l10n.messageReactionMoreEmoji,
-                  child: IconButton(
-                    key: const ValueKey('context-menu-expand-reactions'),
-                    onPressed: onExpand,
-                    constraints: const BoxConstraints(
-                      minWidth: 36,
-                      minHeight: 36,
+                  );
+                }),
+                Semantics(
+                  button: true,
+                  label: l10n.messageReactionMoreEmoji,
+                  excludeSemantics: true,
+                  child: Tooltip(
+                    message: l10n.messageReactionMoreEmoji,
+                    child: IconButton(
+                      key: const ValueKey('context-menu-expand-reactions'),
+                      onPressed: onExpand,
+                      constraints: const BoxConstraints(
+                        minWidth: 36,
+                        minHeight: 36,
+                      ),
+                      padding: EdgeInsets.zero,
+                      iconSize: 22,
+                      icon: const Icon(Icons.keyboard_arrow_down),
                     ),
-                    padding: EdgeInsets.zero,
-                    iconSize: 22,
-                    icon: const Icon(Icons.keyboard_arrow_down),
                   ),
                 ),
-              ),
-            ],
+              ],
+            ),
           ),
         ),
       ),

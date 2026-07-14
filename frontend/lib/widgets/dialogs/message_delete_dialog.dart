@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
+import '../glass/glass_dialog.dart';
 
 Future<void> showMessageDeleteDialog({
   required BuildContext context,
@@ -12,7 +13,7 @@ Future<void> showMessageDeleteDialog({
   final showForEveryone = isMine && messageId > 0;
   return showDialog<void>(
     context: context,
-    builder: (ctx) => AlertDialog(
+    builder: (ctx) => GlassDialog(
       title: Text(l10n.messageDeleteDialogTitle),
       actions: [
         TextButton(
