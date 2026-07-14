@@ -513,6 +513,33 @@ class AppLocalizationsPl extends AppLocalizations {
   String get resetButton => 'Zmień';
 
   @override
+  String get authTagline => 'Wejdź do krainy';
+
+  @override
+  String get authLoginTab => 'LOGOWANIE';
+
+  @override
+  String get authRegisterTab => 'REJESTRACJA';
+
+  @override
+  String get authUsernameHint => 'Nazwa użytkownika';
+
+  @override
+  String get authUsernameRequired => 'Nazwa użytkownika jest wymagana';
+
+  @override
+  String get authPasswordHint => 'Hasło';
+
+  @override
+  String get authPasswordHintRegister => 'Hasło (min. 8 znaków)';
+
+  @override
+  String get authLoginButton => 'Zaloguj się';
+
+  @override
+  String get authCreateAccountButton => 'Utwórz konto';
+
+  @override
   String get deleteAccountDialogTitle => 'Usuń konto';
 
   @override

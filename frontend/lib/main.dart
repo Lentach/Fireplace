@@ -33,6 +33,9 @@ Future<void> main() async {
   // Firebase + FCM background handler must be ready before [runApp] (native only).
   // Android auto-init from google-services can exist before Dart sees Firebase.apps.
   if (!kIsWeb) {
+    // Push is a NON-CRITICAL dependency: a Firebase/FCM init failure must never
+    // crash the whole app to a blank screen before runApp. Record it and boot
+    // without push instead of rethrowing.
     try {
       if (Firebase.apps.isEmpty) {
         await Firebase.initializeApp(
@@ -40,11 +43,23 @@ Future<void> main() async {
         );
       }
     } on FirebaseException catch (e) {
-      if (e.code != 'duplicate-app') rethrow;
+      // duplicate-app is benign (Android google-services auto-init races Dart).
+      if (e.code != 'duplicate-app') {
+        debugPrint('[main] Firebase init failed (booting without push): $e');
+      }
+    } catch (e) {
+      debugPrint('[main] Firebase init failed (booting without push): $e');
     }
-    FirebaseMessaging.onBackgroundMessage(
-      fcm_background.firebaseMessagingBackgroundHandler,
-    );
+    // Only wire the background handler if Firebase actually came up.
+    if (Firebase.apps.isNotEmpty) {
+      try {
+        FirebaseMessaging.onBackgroundMessage(
+          fcm_background.firebaseMessagingBackgroundHandler,
+        );
+      } catch (e) {
+        debugPrint('[main] FCM background handler wiring failed: $e');
+      }
+    }
   }
   // Always consume the SW-written IndexedDB record (read + delete) so it can
   // never re-fire on a later launch; iOS killed-PWA cold start arrives with no

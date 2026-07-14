@@ -506,6 +506,33 @@ class AppLocalizationsEn extends AppLocalizations {
   String get resetButton => 'Reset';
 
   @override
+  String get authTagline => 'Enter the realm';
+
+  @override
+  String get authLoginTab => 'LOGIN';
+
+  @override
+  String get authRegisterTab => 'REGISTER';
+
+  @override
+  String get authUsernameHint => 'Username';
+
+  @override
+  String get authUsernameRequired => 'Username is required';
+
+  @override
+  String get authPasswordHint => 'Password';
+
+  @override
+  String get authPasswordHintRegister => 'Password (min 8 chars)';
+
+  @override
+  String get authLoginButton => 'Login';
+
+  @override
+  String get authCreateAccountButton => 'Create Account';
+
+  @override
   String get deleteAccountDialogTitle => 'Delete Account';
 
   @override

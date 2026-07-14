@@ -1,3 +1,6 @@
+// ignore_for_file: valid_regexps
+// The Dart analyzer mis-parses \p{...} Unicode property escapes in _emojiGrapheme;
+// the regex is runtime-valid with unicode:true (exercised by the jumbo emoji tests).
 import 'package:characters/characters.dart';
 import 'package:flutter/foundation.dart' show visibleForTesting;
 import 'package:flutter/painting.dart' show InlineSpan, TextSpan, TextStyle;

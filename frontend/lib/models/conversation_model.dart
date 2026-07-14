@@ -50,6 +50,7 @@ class ConversationModel {
 
   ConversationModel copyWith({
     int? disappearingTimer,
+    bool clearDisappearingTimer = false,
     int? pinnedMessageId,
     MessageModel? pinnedMessagePreview,
     bool? muted,
@@ -60,7 +61,9 @@ class ConversationModel {
       userOne: userOne,
       userTwo: userTwo,
       createdAt: createdAt,
-      disappearingTimer: disappearingTimer ?? this.disappearingTimer,
+      disappearingTimer: clearDisappearingTimer
+          ? null
+          : disappearingTimer ?? this.disappearingTimer,
       pinnedMessageId: pinnedMessageId ?? this.pinnedMessageId,
       pinnedMessagePreview: pinnedMessagePreview ?? this.pinnedMessagePreview,
       muted: muted ?? this.muted,

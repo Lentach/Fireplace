@@ -950,6 +950,60 @@ abstract class AppLocalizations {
   /// **'Zmień'**
   String get resetButton;
 
+  /// No description provided for @authTagline.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wejdź do krainy'**
+  String get authTagline;
+
+  /// No description provided for @authLoginTab.
+  ///
+  /// In pl, this message translates to:
+  /// **'LOGOWANIE'**
+  String get authLoginTab;
+
+  /// No description provided for @authRegisterTab.
+  ///
+  /// In pl, this message translates to:
+  /// **'REJESTRACJA'**
+  String get authRegisterTab;
+
+  /// No description provided for @authUsernameHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nazwa użytkownika'**
+  String get authUsernameHint;
+
+  /// No description provided for @authUsernameRequired.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nazwa użytkownika jest wymagana'**
+  String get authUsernameRequired;
+
+  /// No description provided for @authPasswordHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Hasło'**
+  String get authPasswordHint;
+
+  /// No description provided for @authPasswordHintRegister.
+  ///
+  /// In pl, this message translates to:
+  /// **'Hasło (min. 8 znaków)'**
+  String get authPasswordHintRegister;
+
+  /// No description provided for @authLoginButton.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zaloguj się'**
+  String get authLoginButton;
+
+  /// No description provided for @authCreateAccountButton.
+  ///
+  /// In pl, this message translates to:
+  /// **'Utwórz konto'**
+  String get authCreateAccountButton;
+
   /// No description provided for @deleteAccountDialogTitle.
   ///
   /// In pl, this message translates to:
