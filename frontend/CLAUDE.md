@@ -135,3 +135,13 @@ git pull ; .\deploy-web.ps1
 - Fire-and-forget futures use `.ignore()`, not empty `catchError` hacks.
 - Use `showTopSnackBar()` and ARB keys; `ScaffoldMessenger` covers chat input and hardcoded English is a regression.
 - Native `MediaCryptoService` round-trip tests may require `flutter pub run webcrypto:setup`/CMake; size-guard tests skip gracefully.
+
+## 9. UI design quality (anti-slop)
+
+Full doctrine: `docs/design/flutter-ui-playbook.md` — read it before building or changing any UI. Load-bearing rules:
+
+- **Look at it.** Every UI change closes the loop `build → flutter run -d chrome → screenshot (browser tool) → compare to docs/design/liquid-glass/after/*.png → iterate`, across every theme touched (`blue`/`dark`/`light`/`teal`). Widget tests are not visual verification. The acting agent runs the render server as a BACKGROUND job and cancels it in cleanup — NEVER block / `job poll`-to-finish on `flutter run` (it never exits; a subagent that waited on it hung 40 min). Readiness is NOT `/` returning 200 (that's the shell before the bundle compiles — the screenshot is blank): wait for the job's compile/"serving" log AND a non-blank rendered screenshot (first compile 40–90s), bounded (~120s). A design-review subagent stays READ-ONLY and is handed already-captured screenshots; it must never launch `flutter run`.
+- **Never invent values.** Use `RpgTheme` / `FireplaceColors.of(context)` / `GlassTheme.of(context)` tokens and `SPEC.md` metrics; no hardcoded `Color(0x...)` or font families in screens/widgets (spacing literals are fine).
+- **Motion is capped and reduce-motion-aware.** Entrances 180–280 ms, `easeOut(Cubic)`, subtle distance; play entrances ONCE (not per provider rebuild); always honor `MediaQuery.disableAnimationsOf(context)`. Prefer Flutter built-ins (`AnimatedContainer`/`AnimatedSwitcher`/`Hero`); the only added UI dep is `skeletonizer` (loading skeletons). Reference impl: `conversation_list_skeleton.dart` (fetch-gated shimmer, static under reduce-motion) wired into `conversations_screen.dart`.
+- **Motion BANNED zones** (§7 device-proven): composer/keyboard-adjacent blocks, the zero-duration `instant_opaque_route` chat entry, and message/emoji content. Animate lists, cards, buttons, loading, hero avatars instead.
+- **The global `frontend-design` plugin skill is HTML/CSS/React — ignore its stack advice here;** the playbook (and the user-level `flutter-frontend-design` skill) override it for Flutter.

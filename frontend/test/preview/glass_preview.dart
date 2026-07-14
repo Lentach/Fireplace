@@ -31,6 +31,7 @@ import 'package:fireplace/models/message_model.dart';
 import 'package:fireplace/models/user_model.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/conversation_tile.dart';
+import 'package:fireplace/widgets/conversation_list_skeleton.dart';
 import 'package:fireplace/widgets/glass/glass_bottom_nav.dart';
 import 'package:fireplace/widgets/main_tab_screen_header.dart';
 
@@ -150,6 +151,11 @@ class GlassPreviewApp extends StatelessWidget {
           'privacy' => const PrivacySafetyScreen(),
           'add' => const AddOrInvitationsScreen(),
           'auth' => const AuthScreen(),
+          // Loading skeleton (?screen=skeleton[&reduceMotion=1]): the pure
+          // ConversationListSkeleton widget, no backend/providers needed.
+          'skeleton' => _SkeletonPreview(
+            reduceMotion: Uri.base.queryParameters['reduceMotion'] == '1',
+          ),
           _ => const _ChatListPreview(),
         },
       ),
@@ -408,4 +414,24 @@ class _MaybeBenchState extends State<_MaybeBench> {
 
   @override
   Widget build(BuildContext context) => widget.child;
+}
+
+/// Dev preview for the conversation-list loading skeleton. Builds under the
+/// Navigator so it inherits the selected theme's `FireplaceColors`.
+class _SkeletonPreview extends StatelessWidget {
+  final bool reduceMotion;
+  const _SkeletonPreview({required this.reduceMotion});
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      backgroundColor: Theme.of(context).scaffoldBackgroundColor,
+      body: MediaQuery(
+        data: MediaQuery.of(context).copyWith(disableAnimations: reduceMotion),
+        child: const ConversationListSkeleton(
+          padding: EdgeInsets.fromLTRB(8, 32, 8, 8),
+        ),
+      ),
+    );
+  }
 }
