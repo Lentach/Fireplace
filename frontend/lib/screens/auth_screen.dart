@@ -5,6 +5,7 @@ import '../providers/auth_provider.dart';
 import '../widgets/auth_form.dart';
 import '../widgets/glass/glass_surface.dart';
 import '../widgets/chat_background_pattern.dart';
+import '../l10n/app_localizations.dart';
 
 class AuthScreen extends StatefulWidget {
   const AuthScreen({super.key});
@@ -19,6 +20,7 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
+    final l10n = AppLocalizations.of(context);
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
     final primaryColor = colorScheme.primary;
@@ -67,7 +69,7 @@ class _AuthScreenState extends State<AuthScreen> {
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      'Enter the realm',
+                      l10n.authTagline,
                       style: RpgTheme.bodyFont(
                         fontSize: 14,
                         color: primaryColor,
@@ -110,7 +112,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                       ),
                                       alignment: Alignment.center,
                                       child: Text(
-                                        'LOGIN',
+                                        l10n.authLoginTab,
                                         style: RpgTheme.bodyFont(
                                           fontSize: 14,
                                           color: _isLogin
@@ -140,7 +142,7 @@ class _AuthScreenState extends State<AuthScreen> {
                                       ),
                                       alignment: Alignment.center,
                                       child: Text(
-                                        'REGISTER',
+                                        l10n.authRegisterTab,
                                         style: RpgTheme.bodyFont(
                                           fontSize: 14,
                                           color: !_isLogin
