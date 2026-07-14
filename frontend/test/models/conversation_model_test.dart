@@ -84,5 +84,27 @@ void main() {
       expect(conversation.isMutedAt(now), isFalse);
       expect(foreverMuted.isMutedAt(now), isTrue);
     });
+
+    test('copyWith clears disappearingTimer to null via clearDisappearingTimer',
+        () {
+      final base = ConversationModel(
+        id: 6,
+        userOne: UserModel(id: 10, username: 'alice', tag: '0001'),
+        userTwo: UserModel(id: 20, username: 'bob', tag: '0002'),
+        createdAt: DateTime.utc(2026, 2, 1),
+        disappearingTimer: 3600,
+      );
+
+      // Not touched -> preserved.
+      expect(base.copyWith(muted: true).disappearingTimer, 3600);
+      // Set to a new value.
+      expect(base.copyWith(disappearingTimer: 60).disappearingTimer, 60);
+      // Turn OFF: without the clear flag the null-merge idiom would keep 3600
+      // (the disappearing-timer-OFF-not-honored-on-peer bug). The flag clears it.
+      expect(
+        base.copyWith(clearDisappearingTimer: true).disappearingTimer,
+        isNull,
+      );
+    });
   });
 }

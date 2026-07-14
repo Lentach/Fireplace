@@ -342,6 +342,21 @@ void main() {
       expect(provider.conversationDisappearingTimer, 300);
     });
 
+    test('onDisappearingTimerUpdated turning OFF (seconds null) clears the timer',
+        () {
+      final provider = buildProviderWithSampleData();
+      provider.openConversation(10);
+
+      // Peer turns it ON, then OFF. Before the copyWith clear-flag fix the OFF
+      // echo (seconds: null) was swallowed by the null-merge idiom and the old
+      // timer persisted locally — the non-initiating device kept stamping TTLs.
+      provider.onDisappearingTimerUpdated({'conversationId': 10, 'seconds': 300});
+      expect(provider.conversationDisappearingTimer, 300);
+
+      provider.onDisappearingTimerUpdated({'conversationId': 10, 'seconds': null});
+      expect(provider.conversationDisappearingTimer, isNull);
+    });
+
     group('pushClientState (server push suppression)', () {
       test('setClientVisible false emits pushClientState with clientVisible false', () {
         final provider = ConversationsProvider();
