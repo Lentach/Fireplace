@@ -3,14 +3,12 @@ import 'dart:typed_data';
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../config/app_config.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/api_service.dart';
-import '../../services/media_crypto_service.dart';
 import '../../theme/rpg_theme.dart';
 import 'media_preview_frame.dart';
+import '../../utils/encrypted_media_loader.dart';
 
 /// IMAGE message: fetch URL, optional AES-GCM decrypt, display with fullscreen viewer.
 class ImageMessageContent extends StatefulWidget {
@@ -45,26 +43,19 @@ class _ImageMessageContentState extends State<ImageMessageContent> {
   Future<Uint8List?> _loadDecryptedBytes() async {
     final url = widget.message.mediaUrl;
     if (url == null || url.isEmpty) return null;
-
     final token = context.read<AuthProvider>().token ?? '';
-    final raw = await ApiService(
-      baseUrl: AppConfig.baseUrl,
-    ).fetchMediaBytes(url, token);
-    if (raw.length > MediaCryptoService.maxBytes) {
-      throw Exception('Media too large');
+    try {
+      return await loadDecryptedMediaBytes(
+        url: url,
+        token: token,
+        key: widget.message.mediaKey,
+        iv: widget.message.mediaIv,
+      );
+    } catch (_) {
+      // Any failure (fetch, oversize, decrypt) renders the same failure text
+      // via the FutureBuilder null/error branch below.
+      return null;
     }
-
-    final key = widget.message.mediaKey;
-    final iv = widget.message.mediaIv;
-    if (key != null && iv != null) {
-      try {
-        final service = MediaCryptoService();
-        return service.decrypt(Uint8List.fromList(raw), key, iv);
-      } catch (_) {
-        return null;
-      }
-    }
-    return Uint8List.fromList(raw);
   }
 
   void _showFullscreen(BuildContext context, Uint8List bytes) {

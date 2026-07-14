@@ -1,20 +1,16 @@
-import 'dart:typed_data';
-
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../config/app_config.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/api_service.dart';
-import '../../services/media_crypto_service.dart';
 import '../../theme/rpg_theme.dart';
 import '../../utils/download_utils_web.dart'
     if (dart.library.io) '../../utils/download_utils_io.dart'
     as download_utils;
 import '../glass/glass_dialog.dart';
 import '../top_snackbar.dart';
+import '../../utils/encrypted_media_loader.dart';
 
 /// FILE/document message: legacy direct URL download or fetch+decrypt+save.
 class FileMessageContent extends StatefulWidget {
@@ -45,16 +41,11 @@ class _FileMessageContentState extends State<FileMessageContent> {
       final key = widget.message.mediaKey;
       final iv = widget.message.mediaIv;
       if (key != null && iv != null) {
-        final raw = await ApiService(
-          baseUrl: AppConfig.baseUrl,
-        ).fetchMediaBytes(url, token);
-        if (raw.length > MediaCryptoService.maxBytes) {
-          throw Exception('File too large');
-        }
-        final plain = await MediaCryptoService().decrypt(
-          Uint8List.fromList(raw),
-          key,
-          iv,
+        final plain = await loadDecryptedMediaBytes(
+          url: url,
+          token: token,
+          key: key,
+          iv: iv,
         );
         await download_utils.saveBytesAsDownload(plain, _filename);
       } else {
