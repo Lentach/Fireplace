@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-14 (Frontend design capability + Liquid Glass completion; glass deployed to prod as 0.0.113)
+**Date:** 2026-07-14 (Frontend design capability + Liquid Glass completion + post-deploy review fixes; glass deployed to prod as 0.0.114)
 
 ## What was done
 Two shipped workstreams on two branches (both pushed, PR-ready; NOT merged):
@@ -27,9 +27,10 @@ Two shipped workstreams on two branches (both pushed, PR-ready; NOT merged):
 - `flutter analyze` clean on all touched files; full `flutter test` **684 passed**, exit 0 (fixed 8 theme-dependent test regressions from the glass change; added `glass_components_test`).
 - Rendered (browser, preview harness) across themes: Tier A screens (dark+light), auth (dark+light), and the interactive glass block-menu + context-menu (dark).
 - Design-review checkpoint (designer agent) on the tooling showcase: SHIP-WITH-NITS, nits fixed.
+- **Post-deploy review of the glass migration:** code review (`reviewer`) = SHIP-WITH-NITS, no blockers; design review (`designer`) HUNG on its own render server (~40 min) and was aborted with no verdict, so the design pass was done inline. Applied 5 fixes: GlassDialog AlertDialog route semantics (P2 a11y regression), GlassMenu 48px tap target, add-tab `SafeArea(top:false)`, user_card mute `mounted` guard, user_card back-arrow `onSurface` contrast. Added a GlassDialog route-semantics regression test. Full `flutter test` **685 passed**, exit 0.
 
 ## Notes for next session
-- **Glass branch DEPLOYED to production frontend as `0.0.113` (commit `2278fe2`), still UNMERGED** (owner asked for a branch deploy). Verified live: `/version.json`=0.0.113, `/health` ok, served `main.dart.js` contains `2278fe2`. Backend untouched (0.0.112 / a10ae1c). **NOT permanent** — the next `master` `deploy-web.ps1` overwrites it; merge the branch to master to make it stick. The design-tooling branch is NOT deployed. Expect a trivial LATEST.md merge conflict.
+- **Glass branch DEPLOYED to production frontend as `0.0.114` (commit `baf7aed`), still UNMERGED** (owner asked for a branch deploy; first deploy was 0.0.113/2278fe2, redeployed after review fixes). Verified live: `/version.json`=0.0.114, `/health` ok, served `main.dart.js` contains `baf7aed`, fresh Chromium boots the glass auth. Backend untouched (0.0.112 / a10ae1c). **NOT permanent** — the next `master` `deploy-web.ps1` overwrites it; merge the branch to master to make it stick. The design-tooling branch is NOT deployed. Expect a trivial LATEST.md merge conflict.
 - The `edit` tool cannot disambiguate two files named `CLAUDE.md` (root vs tier); edit `frontend/CLAUDE.md` via filesystem if it misfires.
 - The main `Fireplace` worktree was on `autoresearch/session-20260713` (== origin/master); this session moved work onto proper feature branches. Local `master` in the ping-deploy worktree is stale (behind origin/master).
 
