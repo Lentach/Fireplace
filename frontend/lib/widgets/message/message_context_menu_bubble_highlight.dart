@@ -1,5 +1,5 @@
 import 'package:flutter/material.dart';
-import '../../l10n/app_localizations.dart';
+import '../../utils/message_display_text.dart';
 import '../../models/message_model.dart';
 import '../../theme/rpg_theme.dart';
 import '../../utils/jumbo_emoji.dart';
@@ -23,15 +23,8 @@ class MessageContextMenuBubbleHighlight extends StatelessWidget {
   final double maxWidth;
   final String themePreference;
 
-  String _displayContent(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    if (message.content == '[Decryption failed]') return l10n.decryptionFailed;
-    if (message.content == '[Encryption not initialized]') {
-      return l10n.encryptionNotInitialized;
-    }
-    if (message.content.isNotEmpty) return message.content;
-    return l10n.unsupportedMessageType;
-  }
+  String _displayContent(BuildContext context) =>
+      messageDisplayContent(context, message);
 
   Widget _metadataRow(BuildContext context, Color timeColor) {
     IconData? deliveryIcon;

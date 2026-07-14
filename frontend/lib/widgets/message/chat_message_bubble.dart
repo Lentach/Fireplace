@@ -11,6 +11,7 @@ import '../../theme/rpg_theme.dart';
 import '../../utils/reply_preview_helper.dart';
 import '../../utils/message_edit_eligibility.dart';
 import '../../utils/jumbo_emoji.dart';
+import '../../utils/message_display_text.dart';
 import '../message_swipe_wrapper.dart';
 import '../dialogs/message_delete_dialog.dart';
 import '../top_snackbar.dart';
@@ -35,15 +36,8 @@ class ChatMessageBubble extends StatelessWidget {
     required this.isMine,
   });
 
-  String _displayContent(BuildContext context) {
-    final l10n = AppLocalizations.of(context);
-    if (message.content == '[Decryption failed]') return l10n.decryptionFailed;
-    if (message.content == '[Encryption not initialized]') {
-      return l10n.encryptionNotInitialized;
-    }
-    if (message.content.isNotEmpty) return message.content;
-    return l10n.unsupportedMessageType;
-  }
+  String _displayContent(BuildContext context) =>
+      messageDisplayContent(context, message);
 
   Widget _buildReplyQuote(
     BuildContext context,
@@ -382,56 +376,15 @@ class ChatMessageBubble extends StatelessWidget {
                         mediaTimeOverlay,
                       ],
                     );
-                  } else if (useTextOverlay) {
-                    final displayContent = _displayContent(context);
-                    if (messageBubbleUsesInlineTime(
-                      message: message,
-                      displayContent: displayContent,
-                    )) {
-                      child = Wrap(
-                        alignment: isMine
-                            ? WrapAlignment.end
-                            : WrapAlignment.start,
-                        crossAxisAlignment: WrapCrossAlignment.end,
-                        spacing: 6,
-                        runSpacing: 2,
-                        children: [
-                          _buildContentColumn(
-                            context,
-                            isDark,
-                            textColor,
-                            borderColor,
-                            contentAreaWidth: contentAreaWidth,
-                          ),
-                          standardTimeWidget,
-                        ],
-                      );
-                    } else {
-                      child = Column(
-                        mainAxisSize: MainAxisSize.min,
-                        crossAxisAlignment: isMine
-                            ? CrossAxisAlignment.end
-                            : CrossAxisAlignment.start,
-                        children: [
-                          _buildContentColumn(
-                            context,
-                            isDark,
-                            textColor,
-                            borderColor,
-                            contentAreaWidth: contentAreaWidth,
-                          ),
-                          const SizedBox(height: 4),
-                          standardTimeWidget,
-                        ],
-                      );
-                    }
                   } else {
+                    // Text bubble (with or without link preview): identical
+                    // inline-vs-stacked time layout regardless of useTextOverlay,
+                    // which now only gates isEmojiOnlyText above.
                     final displayContent = _displayContent(context);
                     final useInlineTime = messageBubbleUsesInlineTime(
                       message: message,
                       displayContent: displayContent,
                     );
-
                     if (useInlineTime) {
                       child = Wrap(
                         alignment: isMine
