@@ -4,15 +4,13 @@ import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
-import '../../config/app_config.dart';
 import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
-import '../../services/api_service.dart';
-import '../../services/media_crypto_service.dart';
 import '../../utils/gif_blob_url_stub.dart'
     if (dart.library.html) '../../utils/gif_blob_url_web.dart'
     as gif_blob;
 import 'media_preview_frame.dart';
+import '../../utils/encrypted_media_loader.dart';
 
 /// GIF message: fetch, optional decrypt; web uses blob URL for animation.
 class GifMessageContent extends StatefulWidget {
@@ -64,33 +62,16 @@ class _GifMessageContentState extends State<GifMessageContent> {
     }
 
     final token = context.read<AuthProvider>().token ?? '';
-    Uint8List raw;
+    Uint8List bytes;
     try {
-      raw = await ApiService(
-        baseUrl: AppConfig.baseUrl,
-      ).fetchMediaBytes(url, token);
+      bytes = await loadDecryptedMediaBytes(
+        url: url,
+        token: token,
+        key: widget.message.mediaKey,
+        iv: widget.message.mediaIv,
+      );
     } catch (_) {
       return const _GifDisplay.error();
-    }
-    if (raw.length > MediaCryptoService.maxBytes) {
-      return const _GifDisplay.error();
-    }
-
-    Uint8List bytes;
-    final key = widget.message.mediaKey;
-    final iv = widget.message.mediaIv;
-    if (key != null && iv != null) {
-      try {
-        bytes = await MediaCryptoService().decrypt(
-          Uint8List.fromList(raw),
-          key,
-          iv,
-        );
-      } catch (_) {
-        return const _GifDisplay.error();
-      }
-    } else {
-      bytes = Uint8List.fromList(raw);
     }
 
     if (kIsWeb) {
