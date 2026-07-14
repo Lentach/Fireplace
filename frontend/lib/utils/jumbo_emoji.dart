@@ -69,6 +69,31 @@ const double kInlineEmojiFontSize = 18;
 /// True when [grapheme] is a single emoji cluster (same matcher as [emojiOnlyCount]).
 bool isEmojiGrapheme(String grapheme) => _emojiGrapheme.hasMatch(grapheme);
 
+/// Color-emoji font stack. Emoji [TextStyle]/spans MUST set [kEmojiFontFamily]
+/// as the PRIMARY [TextStyle.fontFamily] — a fallback alone is not enough.
+///
+/// The app's ambient text font (Inter, via GoogleFonts in RpgTheme) ships a
+/// monochrome U+2764 glyph. On Flutter-web CanvasKit the primary font's glyph
+/// wins and the VS16 emoji-presentation request (U+FE0F) is ignored, so ❤️
+/// renders as a white outline while SMP emoji (👍🔥) fall through to the color
+/// emoji font. Setting an emoji family as PRIMARY forces the color glyph.
+/// Proven visually via tool/heart_preview.dart: fallback-only stays white; an
+/// emoji primary family renders red. Fallbacks cover platforms without Noto
+/// Color Emoji (iOS → Apple Color Emoji).
+const String kEmojiFontFamily = 'Noto Color Emoji';
+const List<String> kEmojiFontFamilyFallback = <String>[
+  'Apple Color Emoji',
+  'Segoe UI Emoji',
+  'Segoe UI Symbol',
+];
+
+/// Applies the color-emoji font family (primary + fallbacks) to [base] for
+/// rendering emoji glyphs. Use on isolated-emoji or emoji-only text.
+TextStyle withEmojiFont(TextStyle base) => base.copyWith(
+  fontFamily: kEmojiFontFamily,
+  fontFamilyFallback: kEmojiFontFamilyFallback,
+);
+
 /// Splits [text] into inline spans so emoji clusters render at [emojiFontSize]
 /// while the rest keeps [textStyle]. Emoji stay inline in the text run (never
 /// jumbo — that path is emoji-only). Consecutive same-kind graphemes coalesce
@@ -88,7 +113,11 @@ List<InlineSpan> buildInlineEmojiSpans(
       TextSpan(
         text: buffer.toString(),
         style: bufferIsEmoji
-            ? textStyle.copyWith(fontSize: emojiFontSize)
+            ? textStyle.copyWith(
+                fontSize: emojiFontSize,
+                fontFamily: kEmojiFontFamily,
+                fontFamilyFallback: kEmojiFontFamilyFallback,
+              )
             : textStyle,
       ),
     );

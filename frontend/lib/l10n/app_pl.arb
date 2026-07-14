@@ -89,8 +89,6 @@
   "chatMessageHint": "Napisz wiadomość…",
   "chatComposerSendTooltip": "Wyślij",
   "chatComposerSendSemantics": "Wyślij wiadomość",
-  "chatComposerEmojiTooltip": "Emoji",
-  "chatComposerEmojiSemantics": "Otwórz panel emoji",
   "emojiPickerSemantics": "Panel emoji",
   "emojiPickerSearchHint": "Szukaj emoji",
   "emojiPickerNoRecents": "Brak ostatnich emoji",

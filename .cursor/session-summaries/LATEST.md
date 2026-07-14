@@ -1,42 +1,29 @@
 # Latest session summary
 
-**Date:** 2026-07-14 (Frontend design capability + Liquid Glass completion + post-deploy review fixes; glass deployed to prod as 0.0.114)
+**Date:** 2026-07-14 (Emote button removal + red-heart-renders-white root-cause fix; branch `fix/emote-button-and-red-heart`, 0.0.115, UNMERGED)
 
 ## What was done
-Two shipped workstreams on two branches (both pushed, PR-ready; NOT merged):
-
-**`feat/frontend-design-tooling`** — raise agent UI quality:
-- Added `flutter_animate`, `animations`, `skeletonizer`.
-- Conversation-list showcase: one-shot staggered entrance (reduce-motion aware) + `ConversationListSkeleton` shimmer loader (fetch-gated, static under reduce-motion).
-- `docs/design/flutter-ui-playbook.md` + `frontend/CLAUDE.md` §9 (anti-slop doctrine: render→screenshot loop, token discipline, motion spec, banned zones).
-- Created a Flutter design skill at `~/.claude/skills/flutter-frontend-design/` (user-level; leaves the shared web `frontend-design` plugin intact, overrides it for Flutter; defers to each project's deps).
-
-**`feat/glass-theme-migration`** — finish the Liquid Glass look the previous agent left partial (owner ratified Tier A+B+C via an in-session ask):
-- Tier A: blocked-users, privacy-safety, add/invitations (bounded floating tabbed-glass header), user-card hero → glass chrome.
-- Tier B: auth screen → floating glass card over the hieroglyph wallpaper.
-- Tier C: `GlassDialog` (drop-in for AlertDialog) + `showGlassMenu` (real PopupRoute glass menu); migrated AlertDialog callsites + block/mute popups; context-menu reaction bar + action panel → glass.
-- `SPEC.md` §9/§11 updated to record the ratified completion.
+Two surgical chat-emote fixes on `fix/emote-button-and-red-heart` (off `feat/glass-theme-migration`).
+- **Removed the composer emoji button** — traced it as a pure keyboard-duplicate panel (no stickers/GIFs/quantum-note/attachments), removed button + all provably-dead wiring, the orphaned `composer_emoji_text_editing.dart`(+test), two unused l10n keys, and the now-dead `composerBottomPanelPinned` bottom-pin (viewport now always uses `_keyboardInset`). `FireplaceEmojiPicker` stays (reaction picker still uses it).
+- **Red heart rendered white = FONT, not data.** Hexdump proved both curated hearts already carry `U+2764 U+FE0F` and no `U+1F90D` exists (hypotheses a+b false). Case (c): ambient `GoogleFonts.inter` has a monochrome U+2764 glyph and Flutter-web CanvasKit uses the primary font's glyph, ignoring VS16 → white outline; `fontFamilyFallback` alone doesn't fix it. Added `kEmojiFontFamily`/`kEmojiFontFamilyFallback`/`withEmojiFont` in `jumbo_emoji.dart` and applied an emoji-PRIMARY font to every emoji render site (picker rows+grid, reaction quick row+chips, jumbo bubble + `buildInlineEmojiSpans` + replica, conversation preview). Data untouched → old bare-heart messages still display (also red once emoji font is primary).
 
 ## Key files
-- `frontend/lib/widgets/glass/glass_dialog.dart`, `glass_menu.dart` (new)
-- `frontend/lib/screens/{blocked_users,privacy_safety,add_or_invitations,auth,user_card}_screen.dart`
-- `frontend/lib/widgets/message/{message_context_menu_overlay,message_action_panel}.dart`
-- `docs/design/flutter-ui-playbook.md`, `docs/design/liquid-glass/SPEC.md`
+- `frontend/lib/utils/jumbo_emoji.dart`; `widgets/emoji/fireplace_emoji_picker.dart`; `widgets/message/{reaction_chips_row,message_context_menu_overlay,message_context_menu_bubble_highlight,text_message_content}.dart`; `widgets/conversation_tile.dart`
+- `frontend/lib/widgets/input/{chat_input_bar,chat_composer_viewport,composer_keyboard_signals}.dart`
+- new `test/utils/emoji_font_test.dart`; `tool/heart_preview.dart` (proof harness); `frontend/CLAUDE.md` §6/§7; `pubspec.yaml` 0.0.115
+- Full write-up: `2026-07-14-session-emote-button-red-heart.md`
 
 ## Verification
-- `flutter analyze` clean on all touched files; full `flutter test` **684 passed**, exit 0 (fixed 8 theme-dependent test regressions from the glass change; added `glass_components_test`).
-- Rendered (browser, preview harness) across themes: Tier A screens (dark+light), auth (dark+light), and the interactive glass block-menu + context-menu (dark).
-- Design-review checkpoint (designer agent) on the tooling showcase: SHIP-WITH-NITS, nits fixed.
-- **Post-deploy review of the glass migration:** code review (`reviewer`) = SHIP-WITH-NITS, no blockers; design review (`designer`) HUNG on its own render server (~40 min) and was aborted with no verdict, so the design pass was done inline. Applied 5 fixes: GlassDialog AlertDialog route semantics (P2 a11y regression), GlassMenu 48px tap target, add-tab `SafeArea(top:false)`, user_card mute `mounted` guard, user_card back-arrow `onSurface` contrast. Added a GlassDialog route-semantics regression test. Full `flutter test` **685 passed**, exit 0.
+- `flutter analyze --no-fatal-infos`: no new issues (2 pre-existing infos only). `flutter test`: **679 passed**, exit 0.
+- Visual RED-heart proof on web (CanvasKit/Inter harness) AND Pixel 7 Android emulator — jumbo bubble, inline/preview, picker row; owner confirmed on device. After-removal composer screenshot clean (`[⌄] Type a message… [🎤]`). `graphify update .` run.
 
 ## Notes for next session
-- **PR #67 opened** (`feat/frontend-design-doctrine`, off master): the trimmed design tooling — playbook + `CLAUDE.md` §9 + `skeletonizer` skeleton ONLY (dropped `flutter_animate`/`animations`); CI green locally (683 tests), overlaps glass on `pubspec.yaml` + `glass_preview.dart` (+ this LATEST once merged). Supersedes `feat/frontend-design-tooling` — close that branch.
-
-- **Glass branch DEPLOYED to production frontend as `0.0.114` (commit `baf7aed`), still UNMERGED** (owner asked for a branch deploy; first deploy was 0.0.113/2278fe2, redeployed after review fixes). Verified live: `/version.json`=0.0.114, `/health` ok, served `main.dart.js` contains `baf7aed`, fresh Chromium boots the glass auth. Backend untouched (0.0.112 / a10ae1c). **NOT permanent** — the next `master` `deploy-web.ps1` overwrites it; merge the branch to master to make it stick. The design-tooling branch is NOT deployed. Expect a trivial LATEST.md merge conflict.
-- The `edit` tool cannot disambiguate two files named `CLAUDE.md` (root vs tier); edit `frontend/CLAUDE.md` via filesystem if it misfires.
-- The main `Fireplace` worktree was on `autoresearch/session-20260713` (== origin/master); this session moved work onto proper feature branches. Local `master` in the ping-deploy worktree is stale (behind origin/master).
+- **`fix/emote-button-and-red-heart` UNMERGED**, based on the glass branch (live prod 0.0.114). PR base = `feat/glass-theme-migration` so the diff is only this fix. Not deployed.
+- Red-heart bug is web-CanvasKit-specific; any NEW emoji render site MUST use `withEmojiFont`/`buildInlineEmojiSpans` (CLAUDE §6) or hearts go white on web.
+- The `edit` tool cannot disambiguate the two `CLAUDE.md` files (root vs tier) — edit `frontend/CLAUDE.md` by exact path if it misfires.
 
 ## Previous
-- 2026-07-13: User Card / My Profile vertical slice + local wallpaper/mute prefs; production release `0.0.112`; recovered the first prod backend deploy after a TypeORM nullable-profile-column metadata fix.
-- 2026-07-12: stale-OTP identity-epoch hardening, cache durability, diagnostics; wallpaper glyph work + migration sequence included in `0.0.112`.
-- Production VM previously tracked `fix/stale-otp-epoch`; `0.0.112` restored `~/fireplace` to `master`. Do not switch it back to a stale feature branch.
+- 2026-07-14: Frontend design capability + Liquid Glass completion; glass deployed to prod as **0.0.114** (commit `baf7aed`), still UNMERGED (next master `deploy-web.ps1` overwrites it). **PR #67** opened (`feat/frontend-design-doctrine`, off master): playbook + `CLAUDE.md` §9 + `skeletonizer` only. Backend untouched (0.0.112 / a10ae1c). Full: `2026-07-14-session.md`.
+- 2026-07-13: User Card / My Profile vertical slice + local wallpaper/mute prefs; production release `0.0.112`; recovered first prod backend deploy after a TypeORM nullable-profile-column metadata fix.
+- 2026-07-12: stale-OTP identity-epoch hardening, cache durability, diagnostics; wallpaper glyph work + migration sequence in `0.0.112`.
+- Production VM tracks `master` at `0.0.112`; do not switch it to a stale feature branch. Local `master` in the ping-deploy worktree is behind origin/master.

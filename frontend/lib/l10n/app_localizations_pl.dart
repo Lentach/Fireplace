@@ -254,12 +254,6 @@ class AppLocalizationsPl extends AppLocalizations {
   String get chatComposerSendSemantics => 'Wyślij wiadomość';
 
   @override
-  String get chatComposerEmojiTooltip => 'Emoji';
-
-  @override
-  String get chatComposerEmojiSemantics => 'Otwórz panel emoji';
-
-  @override
   String get emojiPickerSemantics => 'Panel emoji';
 
   @override

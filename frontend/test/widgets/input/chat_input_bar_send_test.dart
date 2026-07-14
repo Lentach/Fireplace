@@ -5,7 +5,6 @@ import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/chat_action_tiles.dart';
 import 'package:fireplace/widgets/ping_glyph.dart';
-import 'package:fireplace/widgets/emoji/fireplace_emoji_picker.dart';
 import 'package:fireplace/widgets/input/chat_input_bar.dart';
 import 'package:fireplace/widgets/input/composer_keyboard_signals.dart';
 import 'package:fireplace/utils/web_keyboard_inset.dart';
@@ -232,17 +231,10 @@ Future<ChatInputBarState> _pumpWithChatSurfaceAndOutside(
   return key.currentState!;
 }
 
-Future<void> _openEmojiPanel(WidgetTester tester) async {
-  await tester.tap(find.byKey(const ValueKey('composer-emoji-toggle')));
-  await tester.pumpAndSettle();
-  expect(find.byType(FireplaceEmojiPicker), findsOneWidget);
-}
-
 void main() {
   setUp(() => composerKeyboardCollapseGuard.value = false);
   tearDown(() {
     composerKeyboardCollapseGuard.value = false;
-    composerBottomPanelPinned.value = false;
     setSharedKeyboardInsetSourceForTest(null);
   });
 
@@ -267,42 +259,6 @@ void main() {
     state.sendForTest();
     await tester.pump();
     expect(composerKeyboardCollapseGuard.value, isTrue);
-  });
-
-  // Regression: the composer emoji picker must mutate the actual draft field,
-  // not just render a detached picker.
-  testWidgets('emoji picker opens and inserts a suggested emoji', (
-    tester,
-  ) async {
-    await _pump(tester);
-    await tester.enterText(find.byType(TextField), 'Fire ');
-
-    await tester.tap(find.byKey(const ValueKey('composer-emoji-toggle')));
-    await tester.pumpAndSettle();
-
-    final suggestedFire = find.byKey(const ValueKey('emoji-picker-option-🔥'));
-    expect(suggestedFire, findsOneWidget);
-
-    await tester.tap(suggestedFire);
-    await tester.pump();
-
-    expect(find.widgetWithText(TextField, 'Fire 🔥'), findsOneWidget);
-  });
-
-  // Telegram parity: focusing the text field swaps the emoji panel for the
-  // keyboard — they must never be stacked at the same time.
-  testWidgets('composer focus gain closes the emoji panel', (tester) async {
-    await _pump(tester);
-    await _openEmojiPanel(tester);
-
-    await tester.tap(find.byType(TextField));
-    await tester.pumpAndSettle();
-
-    expect(find.byType(FireplaceEmojiPicker), findsNothing);
-    expect(
-      tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
-      isTrue,
-    );
   });
 
   // Android/desktop web parity: tapping the chat surface outside the composer
@@ -370,51 +326,6 @@ void main() {
   );
 
   testWidgets(
-    'emoji toggle keeps the lower action panel visible when opening emoji',
-    (tester) async {
-      final state = await _pump(tester);
-      await tester.enterText(find.byType(TextField), 'stack panels');
-      await tester.tap(find.byType(TextField));
-      await tester.pump();
-      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
-      await tester.pumpAndSettle();
-
-      expect(state.isActionPanelOpenForTest, isTrue);
-      expect(find.byType(ChatActionTiles), findsOneWidget);
-
-      await tester.tap(find.byKey(const ValueKey('composer-emoji-toggle')));
-      await tester.pumpAndSettle();
-
-      expect(state.isActionPanelOpenForTest, isTrue);
-      expect(find.byType(ChatActionTiles), findsOneWidget);
-      expect(find.byType(FireplaceEmojiPicker), findsOneWidget);
-      expect(
-        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
-        isFalse,
-      );
-    },
-  );
-
-  testWidgets(
-    'action panel toggle keeps the emoji panel visible when opening actions',
-    (tester) async {
-      final state = await _pump(tester);
-      await _openEmojiPanel(tester);
-
-      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
-      await tester.pumpAndSettle();
-
-      expect(state.isActionPanelOpenForTest, isTrue);
-      expect(find.byType(ChatActionTiles), findsOneWidget);
-      expect(find.byType(FireplaceEmojiPicker), findsOneWidget);
-      expect(
-        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
-        isFalse,
-      );
-    },
-  );
-
-  testWidgets(
     'plain outside tap closes the action panel and unfocuses composer',
     (tester) async {
       final state = await _pumpWithPlainOutsideSurface(tester);
@@ -471,122 +382,6 @@ void main() {
       );
     },
   );
-
-  testWidgets(
-    'chat surface tap closes emoji while keeping the action panel visible',
-    (tester) async {
-      final state = await _pumpWithChatSurface(tester);
-      await tester.tap(find.byType(TextField));
-      await tester.pump();
-      await tester.tap(find.byIcon(Icons.keyboard_arrow_down));
-      await tester.pumpAndSettle();
-      await tester.tap(find.byKey(const ValueKey('composer-emoji-toggle')));
-      await tester.pumpAndSettle();
-
-      expect(state.isActionPanelOpenForTest, isTrue);
-      expect(find.byType(ChatActionTiles), findsOneWidget);
-      expect(find.byType(FireplaceEmojiPicker), findsOneWidget);
-
-      await tester.tap(find.byKey(const ValueKey('chat-surface')));
-      await tester.pumpAndSettle();
-
-      expect(state.isActionPanelOpenForTest, isTrue);
-      expect(find.byType(ChatActionTiles), findsOneWidget);
-      expect(find.byType(FireplaceEmojiPicker), findsNothing);
-      expect(
-        tester.widget<TextField>(find.byType(TextField)).focusNode!.hasFocus,
-        isFalse,
-      );
-    },
-  );
-
-  // System back with the panel open must be consumed by the panel
-  // (Telegram/Signal parity); only the next back leaves the chat route.
-  testWidgets('system back closes the emoji panel before popping the route', (
-    tester,
-  ) async {
-    final key = GlobalKey<ChatInputBarState>();
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: RpgTheme.themeDataLight,
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        locale: const Locale('en'),
-        home: const Scaffold(body: Center(child: Text('conversations-root'))),
-      ),
-    );
-    final navigator = tester.state<NavigatorState>(find.byType(Navigator));
-    navigator.push(
-      MaterialPageRoute<void>(
-        builder: (_) => Scaffold(
-          body: _providerScope(child: ChatInputBar(key: key)),
-        ),
-      ),
-    );
-    await tester.pumpAndSettle();
-    await _openEmojiPanel(tester);
-
-    // First back: consumed by the panel — the chat route must survive.
-    await navigator.maybePop();
-    await tester.pumpAndSettle();
-    expect(find.byType(FireplaceEmojiPicker), findsNothing);
-    expect(find.byType(ChatInputBar), findsOneWidget);
-
-    // Second back: nothing left to close, the route pops normally.
-    await navigator.maybePop();
-    await tester.pumpAndSettle();
-    expect(find.byType(ChatInputBar), findsNothing);
-    expect(find.text('conversations-root'), findsOneWidget);
-  });
-
-  // Sending from the emoji panel keeps the panel up and the keyboard down:
-  // no refocus may sneak in (a refocus would also close the panel via the
-  // focus-gain listener).
-  testWidgets('send with the emoji panel open keeps it open and unfocused', (
-    tester,
-  ) async {
-    final state = await _pump(tester);
-    await tester.enterText(find.byType(TextField), 'from the panel');
-    await _openEmojiPanel(tester);
-
-    state.sendForTest();
-    await tester.pumpAndSettle();
-
-    final field = tester.widget<TextField>(find.byType(TextField));
-    expect(find.byType(FireplaceEmojiPicker), findsOneWidget);
-    expect(field.focusNode!.hasFocus, isFalse);
-    // Draft consumed proves the send actually ran (not an early no-op return).
-    expect(field.controller!.text, isEmpty);
-  });
-
-  testWidgets(
-    'chat surface tap closes emoji panel and leaves composer unfocused',
-    (tester) async {
-      await _pumpWithChatSurface(tester);
-      await _openEmojiPanel(tester);
-
-      await tester.tap(find.byKey(const ValueKey('chat-surface')));
-      await tester.pumpAndSettle();
-
-      final field = tester.widget<TextField>(find.byType(TextField));
-      expect(find.byType(FireplaceEmojiPicker), findsNothing);
-      expect(field.focusNode!.hasFocus, isFalse);
-    },
-  );
-
-  // Recording replaces the composer row; a stacked emoji panel must drop
-  // with it (mic tap dismisses the panel, Telegram parity).
-  testWidgets('starting voice recording closes the emoji panel', (
-    tester,
-  ) async {
-    final state = await _pump(tester);
-    await _openEmojiPanel(tester);
-
-    state.setRecordingForTest(true);
-    await tester.pump();
-
-    expect(find.byType(FireplaceEmojiPicker), findsNothing);
-  });
 
   // D2 fix: MediaQuery.viewInsets reads 0 on iOS WebKit with the keyboard up,
   // so keyboardVisible folds in the shared visualViewport inset. The ergonomic
