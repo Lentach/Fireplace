@@ -932,4 +932,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get userCardRemoveContact => 'Remove contact';
+
+  @override
+  String get messageReadMore => 'Read more';
+
+  @override
+  String get messageShowLess => 'Show less';
 }

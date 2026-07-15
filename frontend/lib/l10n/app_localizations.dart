@@ -1747,6 +1747,18 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Usuń kontakt'**
   String get userCardRemoveContact;
+
+  /// No description provided for @messageReadMore.
+  ///
+  /// In pl, this message translates to:
+  /// **'Czytaj więcej'**
+  String get messageReadMore;
+
+  /// No description provided for @messageShowLess.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zwiń'**
+  String get messageShowLess;
 }
 
 class _AppLocalizationsDelegate

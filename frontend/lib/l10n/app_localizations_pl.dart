@@ -942,4 +942,10 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get userCardRemoveContact => 'Usuń kontakt';
+
+  @override
+  String get messageReadMore => 'Czytaj więcej';
+
+  @override
+  String get messageShowLess => 'Zwiń';
 }
