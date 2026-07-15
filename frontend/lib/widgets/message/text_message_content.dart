@@ -127,9 +127,9 @@ class _TextMessageContentState extends State<TextMessageContent> {
     if (!overflows) return textWidget;
 
     final l10n = AppLocalizations.of(context);
-    final toggleColor = widget.isMine
-        ? widget.textColor
-        : Theme.of(context).colorScheme.primary;
+    // Accent color on both sides so the toggle never blends into the body text
+    // (which is white on sent bubbles); mirrors the app's link/tab treatment.
+    final toggleColor = Theme.of(context).colorScheme.primary;
     return Column(
       mainAxisSize: MainAxisSize.min,
       crossAxisAlignment: CrossAxisAlignment.start,
