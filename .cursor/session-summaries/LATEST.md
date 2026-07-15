@@ -25,7 +25,8 @@ Also: global chat wallpaper (`SettingsProvider.chatWallpaper`, Settings → "Tł
 - **DO NOT run `dart format`** on the tree — reflows repo (Dart 3 tall); hand-format.
 
 ## Notes for next session
-- `feat/user-card-rework` UNMERGED; merge needs explicit owner OK, then frontend deploy from PC.
+- `feat/user-card-rework` **DEPLOYED TO PROD for branch-testing** (2026-07-16): `/version.json` 0.0.120, served `main.dart.js` contains `296894f`, post-deploy smoke PASSED. Ephemeral — prod reverts to master on next master deploy; merge PR #84 (reviewer verdict SHIP) needs explicit owner OK.
+- Deploy tooling note: this worktree had no local `deploy-web.ps1` (per-worktree, gitignored) — copy it from a sibling worktree first; the script Set-Locations to its own dir. One run died silently with PTY exit 21 between scp and the swap — the staged bundle on the VM was intact (version.json + sha verified), and re-running the script's own guarded atomic-swap command over ssh completed it (`PUBLISHED_OK`).
 - iOS PWA device confirmations pending: About-edit keyboard, collapse feel, crop gestures.
 - Collapse engages only when content scrolls (short profiles don't collapse — Telegram parity; forced scroll extent rejected as dead space).
 
