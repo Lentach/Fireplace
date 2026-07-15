@@ -21,11 +21,17 @@ class GlassDialog extends StatelessWidget {
   final Widget? content;
   final List<Widget> actions;
 
+  /// Caps the dialog width on wide (desktop) layouts. Applied INSIDE the
+  /// [Dialog] because route pages are laid out with tight full-screen
+  /// constraints — an outer ConstrainedBox around the dialog is a no-op.
+  final double? maxWidth;
+
   const GlassDialog({
     super.key,
     this.title,
     this.content,
     this.actions = const [],
+    this.maxWidth,
   });
 
   @override
@@ -86,6 +92,13 @@ class GlassDialog extends StatelessWidget {
         ],
       ),
     );
+
+    if (maxWidth != null) {
+      dialogChild = ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: maxWidth!),
+        child: dialogChild,
+      );
+    }
 
     if (label != null) {
       dialogChild = Semantics(

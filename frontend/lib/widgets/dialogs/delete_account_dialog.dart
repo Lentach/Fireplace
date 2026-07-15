@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
 import '../../theme/rpg_theme.dart';
+import '../glass/glass_dialog.dart';
 
 class DeleteAccountDialog extends StatefulWidget {
   const DeleteAccountDialog({super.key});
@@ -28,126 +29,76 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
-    final fillColor = FireplaceColors.of(context).inputBg;
-    final textColor = colorScheme.onSurface;
-    final mutedColor =
-        isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
-    final borderColor = FireplaceColors.of(context).borderColor;
+    final fc = FireplaceColors.of(context);
 
-    return Dialog(
-      backgroundColor: colorScheme.surface,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: colorScheme.primary, width: 2),
-      ),
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        constraints: const BoxConstraints(maxWidth: 400),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                l10n.deleteAccountDialogTitle,
-                style: RpgTheme.screenHeaderTitle(
-                  fontSize: 18,
+    return GlassDialog(
+      maxWidth: 400,
+      title: Text(l10n.deleteAccountDialogTitle),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            // Destructive warning: theme-aware tile tokens (the old
+            // hardwired *Dark tokens broke light-theme contrast).
+            Container(
+              padding: const EdgeInsets.all(12),
+              decoration: BoxDecoration(
+                color: fc.settingsTileBg,
+                borderRadius: BorderRadius.circular(8),
+                border: Border.all(color: fc.settingsTileBorder),
+              ),
+              child: Text(
+                l10n.deleteAccountWarning,
+                style: RpgTheme.bodyFont(
                   color: colorScheme.primary,
+                  fontSize: 13,
                 ),
                 textAlign: TextAlign.center,
               ),
-              const SizedBox(height: 16),
-
-              // Warning Text
-              Container(
-                padding: const EdgeInsets.all(12),
-                decoration: BoxDecoration(
-                  color: RpgTheme.settingsTileBgDark,
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _passwordController,
+              obscureText: true,
+              decoration: InputDecoration(
+                labelText: l10n.enterPasswordToConfirm,
+                labelStyle: RpgTheme.bodyFont(color: fc.mutedText),
+                filled: true,
+                fillColor: fc.inputBg,
+                border: OutlineInputBorder(
                   borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: RpgTheme.settingsTileBorderDark),
+                  borderSide: BorderSide(color: fc.borderColor),
                 ),
-                child: Text(
-                  l10n.deleteAccountWarning,
-                  style: RpgTheme.bodyFont(
-                    color: colorScheme.primary,
-                    fontSize: 13,
-                  ),
-                  textAlign: TextAlign.center,
+                enabledBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: fc.borderColor),
+                ),
+                focusedBorder: OutlineInputBorder(
+                  borderRadius: BorderRadius.circular(8),
+                  borderSide: BorderSide(color: colorScheme.primary, width: 2),
                 ),
               ),
-              const SizedBox(height: 16),
-
-              // Password Confirmation
-              TextFormField(
-                controller: _passwordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: l10n.enterPasswordToConfirm,
-                  labelStyle: RpgTheme.bodyFont(color: mutedColor),
-                  filled: true,
-                  fillColor: fillColor,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: borderColor),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: borderColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: colorScheme.primary, width: 2),
-                  ),
-                ),
-                style: RpgTheme.bodyFont(color: textColor),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return l10n.passwordRequired;
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 24),
-
-              // Buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: borderColor, width: 1.5),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: Text(
-                        l10n.cancel,
-                        style: RpgTheme.bodyFont(color: mutedColor),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _submit,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: colorScheme.primary,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: Text(
-                        l10n.delete,
-                        style: RpgTheme.bodyFont(color: Colors.white),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+              style: RpgTheme.bodyFont(color: colorScheme.onSurface),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return l10n.passwordRequired;
+                }
+                return null;
+              },
+            ),
+          ],
         ),
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.cancel),
+        ),
+        FilledButton(onPressed: _submit, child: Text(l10n.delete)),
+      ],
     );
   }
 }

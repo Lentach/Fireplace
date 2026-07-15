@@ -34,13 +34,56 @@ class FireplaceColors extends ThemeExtension<FireplaceColors> {
       Theme.of(context).extension<FireplaceColors>()!;
 
   @override
-  ThemeExtension<FireplaceColors> copyWith() => this;
+  FireplaceColors copyWith({
+    Color? inputBg,
+    Color? convItemBorder,
+    Color? convItemBg,
+    Color? messagesAreaBg,
+    Color? mineMsgBg,
+    Color? theirsMsgBg,
+    Color? settingsTileBg,
+    Color? settingsTileBorder,
+    Color? tabBorder,
+    Color? borderColor,
+    Color? mutedText,
+  }) => FireplaceColors(
+    inputBg: inputBg ?? this.inputBg,
+    convItemBorder: convItemBorder ?? this.convItemBorder,
+    convItemBg: convItemBg ?? this.convItemBg,
+    messagesAreaBg: messagesAreaBg ?? this.messagesAreaBg,
+    mineMsgBg: mineMsgBg ?? this.mineMsgBg,
+    theirsMsgBg: theirsMsgBg ?? this.theirsMsgBg,
+    settingsTileBg: settingsTileBg ?? this.settingsTileBg,
+    settingsTileBorder: settingsTileBorder ?? this.settingsTileBorder,
+    tabBorder: tabBorder ?? this.tabBorder,
+    borderColor: borderColor ?? this.borderColor,
+    mutedText: mutedText ?? this.mutedText,
+  );
 
   @override
-  ThemeExtension<FireplaceColors> lerp(
+  FireplaceColors lerp(
     covariant ThemeExtension<FireplaceColors>? other,
     double t,
-  ) => this;
+  ) {
+    if (other is! FireplaceColors) return this;
+    return FireplaceColors(
+      inputBg: Color.lerp(inputBg, other.inputBg, t)!,
+      convItemBorder: Color.lerp(convItemBorder, other.convItemBorder, t)!,
+      convItemBg: Color.lerp(convItemBg, other.convItemBg, t)!,
+      messagesAreaBg: Color.lerp(messagesAreaBg, other.messagesAreaBg, t)!,
+      mineMsgBg: Color.lerp(mineMsgBg, other.mineMsgBg, t)!,
+      theirsMsgBg: Color.lerp(theirsMsgBg, other.theirsMsgBg, t)!,
+      settingsTileBg: Color.lerp(settingsTileBg, other.settingsTileBg, t)!,
+      settingsTileBorder: Color.lerp(
+        settingsTileBorder,
+        other.settingsTileBorder,
+        t,
+      )!,
+      tabBorder: Color.lerp(tabBorder, other.tabBorder, t)!,
+      borderColor: Color.lerp(borderColor, other.borderColor, t)!,
+      mutedText: Color.lerp(mutedText, other.mutedText, t)!,
+    );
+  }
 }
 
 class RpgTheme {

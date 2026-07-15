@@ -34,6 +34,8 @@ import 'package:fireplace/widgets/conversation_tile.dart';
 import 'package:fireplace/widgets/conversation_list_skeleton.dart';
 import 'package:fireplace/widgets/glass/glass_bottom_nav.dart';
 import 'package:fireplace/widgets/main_tab_screen_header.dart';
+import 'package:fireplace/widgets/dialogs/delete_account_dialog.dart';
+import 'package:fireplace/widgets/dialogs/reset_password_dialog.dart';
 
 void main() => runApp(const GlassPreviewApp());
 
@@ -156,11 +158,43 @@ class GlassPreviewApp extends StatelessWidget {
           'skeleton' => _SkeletonPreview(
             reduceMotion: Uri.base.queryParameters['reduceMotion'] == '1',
           ),
+          // Settings dialogs (?screen=dialogs&dialog=reset|delete): opens the
+          // real dialog over the chat-list backdrop so the glass blur samples
+          // real content.
+          'dialogs' => _DialogPreview(
+            dialog: Uri.base.queryParameters['dialog'] ?? 'reset',
+          ),
           _ => const _ChatListPreview(),
         },
       ),
     );
   }
+}
+
+class _DialogPreview extends StatefulWidget {
+  final String dialog;
+  const _DialogPreview({required this.dialog});
+
+  @override
+  State<_DialogPreview> createState() => _DialogPreviewState();
+}
+
+class _DialogPreviewState extends State<_DialogPreview> {
+  @override
+  void initState() {
+    super.initState();
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      showDialog<Object?>(
+        context: context,
+        builder: (_) => widget.dialog == 'delete'
+            ? const DeleteAccountDialog()
+            : const ResetPasswordDialog(),
+      );
+    });
+  }
+
+  @override
+  Widget build(BuildContext context) => const _ChatListPreview();
 }
 
 class _ChatListPreview extends StatefulWidget {
