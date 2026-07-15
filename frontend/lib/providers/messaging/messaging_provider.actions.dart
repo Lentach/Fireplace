@@ -92,6 +92,12 @@ extension MessagingActions on MessagingProvider {
       await _encryptionProvider!.ensureSession(recipientId);
       final ciphertext =
           await _encryptionProvider!.encrypt(recipientId, envelopeJson);
+      // Mirror send: enforce the server's encryptedContent cap so an over-long
+      // edit fails clearly here instead of bouncing back from validation.
+      if (ciphertext.length > 65536) {
+        _revertPendingEdit(messageId, 'Message is too long to send');
+        return;
+      }
       _emit?.call('editMessage', {
         'messageId': messageId,
         'content': '[encrypted]',

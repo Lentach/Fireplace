@@ -636,6 +636,24 @@ class AppLocalizationsPl extends AppLocalizations {
   String get download => 'Pobierz';
 
   @override
+  String get saveImage => 'Zapisz obraz';
+
+  @override
+  String get copyImage => 'Kopiuj obraz';
+
+  @override
+  String get imageSaved => 'Zapisano obraz';
+
+  @override
+  String get imageSaveFailed => 'Nie udało się zapisać obrazu';
+
+  @override
+  String get imageCopied => 'Skopiowano obraz';
+
+  @override
+  String get imageCopyFailed => 'Nie udało się skopiować obrazu';
+
+  @override
   String get snackbarCouldNotReadFile => 'Nie udało się odczytać pliku';
 
   @override
@@ -655,6 +673,9 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get snackbarOpenConversationFirst => 'Najpierw otwórz rozmowę';
+
+  @override
+  String get messageTooLong => 'Wiadomość jest za długa, aby ją wysłać';
 
   @override
   String get snackbarChatHistoryDeleted => 'Historia czatu została usunięta';

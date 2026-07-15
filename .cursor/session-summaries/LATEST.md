@@ -1,31 +1,36 @@
 # Latest session summary
 
-**Date:** 2026-07-15 (Deferred §9 visual pass + polish batch + contrast fix. PR #81 MERGED + DEPLOYED, 0.0.117 live)
+**Date:** 2026-07-14 (Chat minor-bugs batch — composer, notifications, messaging. Branch `fix/chat-minor-bugs`, 0.0.118, UNMERGED)
 
 ## What was done
-Three commits on **PR #81 `refactor/glass-dialog-migration` (0.0.117)**:
-
-1. **GlassDialog migration:** ResetPasswordDialog + DeleteAccountDialog raw `Dialog` scaffolds → `GlassDialog` (token decorations, `fc.mutedText` labels); delete warning box hardwired dark tokens → theme-aware tile tokens (M9 light contrast bug); `GlassDialog.maxWidth` applied INSIDE the Dialog (route pages get tight constraints — outer ConstrainedBox is a silent no-op, caught at 1100px); `FireplaceColors.copyWith/lerp` no-ops → real per-field impls.
-2. **Polish batch (owner approved "all of them"):** per-brightness `colorScheme.error` (dark #FF4444 / light brick `RpgTheme.errorColorLight` #C0392B) + dark `onError` black (white on #FF4444 was 3.4:1), golden updated per brightness; Delete Account confirm = error/onError filled; GlassDialog default `maxWidth: 560` + 200ms easeOutCubic scale-in entrance (reduce-motion skips, widget-tested); `showTopSnackBar` foreground computed from fill luminance; settings/auth/add-invitations #FF6666 + static errorColor → `colorScheme.error`; anti_quantum sheet fully tokenized (emoji title via `withEmojiFont`; its test wrapper now needs `RpgTheme.themeDataLight` for `FireplaceColors`).
-3. **Bright-accent contrast fix (owner: "fix that flag"):** `RpgTheme.readableOn(bg)` — white only when it clears 4.5:1 (exact math; Flutter's `estimateBrightnessForColor` is laxer and wrong on #5C9EAD/#0D9488). Blue `onPrimary`/`onSecondary` → black (#2AABEE was 2.6:1); darkGray `onSecondary` → bg; teal `onSecondary` → black; elevated/FAB foregrounds → `readableOn(fill)` (fixes teal #0D9488 buttons too); snackbar/AQ migrated to the helper; golden now asserts resolved `elevatedFg`/`fabFg` on all 4 themes.
+Eight reported chat bugs fixed (frontend + two NestJS DTOs), each scout-root-caused first:
+- **Auto-capitalize** — added `TextCapitalization.sentences` (mobile-IME hint).
+- **Notification blocks back arrow** — wrapped opaque `showTopSnackBar` in `IgnorePointer` (universal; it's app-wide).
+- **Send button** — bare 26px icon → 42px filled circular button (48×48 target unchanged); verified on web.
+- **Composer expand** — `maxLines` 6→12, height `*6`→`*12`.
+- **Copy/save image from chat** (paste-in worked; re-tap-paste retracted) — Save + Copy in the fullscreen viewer. Save reuses cross-platform `saveBytesAsDownload`; Copy is web-only (`image_clipboard_web`, Async Clipboard, PNG canvas re-encode); MIME sniffed from magic bytes.
+- **Notifications while viewing that chat** — page posts `active-conversation` to the web-push SW (via `PushSwChannel`, from `_emitPushClientState`, keyed by client id); push handler suppresses ONLY the banner (badge/sweep still run), fails open.
+- **Unread badges never clear** — replaced `max(prev,server)` merge with server-trust (open conv = 0); rejected a guard that would hide offline-received unread.
+- **Very long messages + broken retry** — raised server `encryptedContent` cap 10000/20000 → **65536** (notes precedent; `text` column, no migration); client UTF-8 envelope-byte budget (`maxEnvelopeBytes=45000`, `isMessageWithinByteLimit` on the JSON envelope — escaping/emoji-correct) + friendly pre-send error + exact post-encryption guard; fixed TEXT retry (was silent data loss / wrong-conversation send → now in-place resend to the message's recipient).
 
 ## Key files
-- `frontend/lib/theme/rpg_theme.dart`, `widgets/glass/glass_dialog.dart`, `widgets/dialogs/{reset_password,delete_account}_dialog.dart`, `widgets/anti_quantum_note_dialog.dart`, `widgets/top_snackbar.dart`, `screens/{settings,auth,add_or_invitations}_screen.dart`, `test/preview/glass_preview.dart` (`?screen=dialogs&dialog=reset|delete|aq`).
-- Tests: `test/theme/fireplace_colors_extension_test.dart`, `test/widgets/glass_dialog_max_width_test.dart` (560 default + reduce-motion), golden per-brightness error + `elevatedFg`/`fabFg` foreground assertions.
-- Full write-up: `2026-07-15-session-glass-dialog-visual-pass.md`.
+- `widgets/input/chat_input_bar.dart`, `widgets/top_snackbar.dart`, `widgets/message/image_message_content.dart`
+- `providers/conversations_provider.dart`, `providers/messaging/messaging_provider.{send,actions}.dart`, `web/web-push-sw.js`, `constants/app_constants.dart`
+- new `utils/{message_length,image_clipboard,image_clipboard_stub,image_clipboard_web}.dart`; `backend/src/chat/dto/{chat,edit-message}.dto.ts`; l10n en/pl; new tests (`message_length_test`, provider badge/SW tests)
+- Full write-up: `2026-07-14-session-chat-minor-bugs.md`
 
 ## Verification
-Analyze 0 issues · **707 tests green, exit 0** (after each commit) · screenshot loop: reset/delete/AQ × blue/dark/light/teal at 420px + 1100px + validation-error + enabled-send states · onError and blue-button labels pixel-sampled (0 white px on red/blue fills) · `graphify update .` run.
+- `flutter analyze` 0 issues · `flutter test` **714 passed** · backend `nest build` + `chat.dto.spec` (59) green · send button confirmed on web.
+- **DO NOT run `dart format` on the tree** — Dart 3 "tall" style reflows 141 files; repo uses old style, CI doesn't enforce format. Hand-format to match surroundings.
 
 ## Notes for next session
-- **PR #81 MERGED to master (`51cfca0`) and DEPLOYED**: `deploy-web.ps1` from the ping-deploy worktree; post-deploy smoke 5/5 PASS (health, /version.json 0.0.117, bundle contains `51cfca0`, fresh-browser boot). Backend NOT redeployed — zero `backend/` diff a10ae1c..master, so VM backend runs the newest backend code; its `/version` label (0.0.112/a10ae1c) is just stale deploy metadata, cosmetic. Next backend deploy will refresh it.
-- Blue white-on-#2AABEE flag FIXED in commit 3 — blue buttons/FilledButtons now black-on-blue, golden-locked via `elevatedFg`/`fabFg` assertions.
-- Windows `launch` gotcha: `C:\Windows\System32\cmd.exe` + `pty:false` for `flutter run`; no pty ⇒ no hot-restart key — restart the process. First page hit after start compiles: reload once if the screenshot is blank.
-- Muted floating labels on focused fields are the app-wide convention (global inputDecorationTheme sets only labelStyle) — checked, left alone.
-- Bucket 2 item A (resume/decrypt consolidation) still owner-skipped as too risky.
+- `fix/chat-minor-bugs` UNMERGED off current master (0.0.117 → 0.0.118). PR to master.
+- Not verified end-to-end (needs live authed session): image dialog, in-app notification overlap, badge-in-list — covered by unit/widget tests + code.
+- Pre-upload media retry (failed before upload completes) still a no-op — separate edge, not reported, left as-is.
+- Backup patch at `C:/Users/Lentach/Desktop/cmb-tracked.patch` (deletable).
 
 ## Previous
-- 2026-07-14: Frontend quality review — full audit + Buckets 1/2; #71–#75 MERGED, #76–#79 open + reviewed. Full: `2026-07-14-session-frontend-quality-review.md`.
-- 2026-07-14: Emote button removal + red-heart-renders-white FONT root-cause fix (`withEmojiFont`/`kEmojiFontFamily`); `fix/emote-button-and-red-heart` 0.0.115 UNMERGED. Full: `2026-07-14-session-emote-button-red-heart.md`.
-- 2026-07-14: Frontend design capability + Liquid Glass; glass prod `0.0.114` (`baf7aed`), PR #67. Full: `2026-07-14-session.md`.
-- 2026-07-13: User Card / My Profile slice + local wallpaper/mute prefs; prod release `0.0.112`.
+- 2026-07-15: Deferred §9 visual pass + polish + bright-accent contrast fix; **PR #81 MERGED + DEPLOYED, 0.0.117 live** (`readableOn` helper, GlassDialog migration, per-brightness error). Full: `2026-07-15-session-glass-dialog-visual-pass.md`.
+- 2026-07-14: Frontend quality review — audit + Buckets 1/2; #71–#75 MERGED, #76–#79 open. Full: `2026-07-14-session-frontend-quality-review.md`.
+- 2026-07-14: Emote button removal + red-heart FONT root-cause (`withEmojiFont`); `fix/emote-button-and-red-heart` 0.0.115. Full: `2026-07-14-session-emote-button-red-heart.md`.
+- 2026-07-14: Frontend design + Liquid Glass; glass prod `0.0.114` (`baf7aed`), PR #67. Full: `2026-07-14-session.md`.

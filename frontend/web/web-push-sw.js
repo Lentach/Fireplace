@@ -131,6 +131,42 @@ function storePendingDeepLink(conversationId) {
 
 // ---------- Push handler ----------
 
+// Which conversation each focused client is viewing (set via the page's
+// 'active-conversation' message, keyed by client id — multi-tab safe). Used to
+// suppress a push banner for a chat the user is already looking at. In-memory
+// only: after an SW restart it is empty until the page re-posts on next focus.
+var focusedConvByClient = {};
+
+// Resolves true when a focused, visible client is viewing [convId]; also prunes
+// entries for clients that have gone away. Fails open (false) on any error so a
+// client-query failure never blocks delivery.
+function shouldSuppressForFocusedConversation(convId) {
+  if (convId == null) return Promise.resolve(false);
+  return clients
+    .matchAll({ type: 'window', includeUncontrolled: true })
+    .then(function (all) {
+      var present = {};
+      for (var i = 0; i < all.length; i++) present[all[i].id] = true;
+      Object.keys(focusedConvByClient).forEach(function (id) {
+        if (!present[id]) delete focusedConvByClient[id];
+      });
+      for (var j = 0; j < all.length; j++) {
+        var c = all[j];
+        if (
+          c.focused &&
+          c.visibilityState === 'visible' &&
+          focusedConvByClient[c.id] === convId
+        ) {
+          return true;
+        }
+      }
+      return false;
+    })
+    .catch(function () {
+      return false;
+    });
+}
+
 self.addEventListener('push', function (event) {
   var payload = {};
   try { payload = event.data ? event.data.json() : {}; } catch (_) {}
@@ -178,20 +214,28 @@ self.addEventListener('push', function (event) {
   };
 
   event.waitUntil(
-    closeNotificationsForTag(tag)
-      .then(function () {
-        return self.registration.showNotification(title, notificationOptions);
-      })
-      .then(function () {
-        return unreadConvIds != null
-          ? sweepStaleNotifications(unreadConvIds)
-          : Promise.resolve();
-      })
-      .then(function () {
-        return hasUnreadTotal
-          ? setBadgeFromSW(payload.unreadTotal)
-          : Promise.resolve();
-      })
+    shouldSuppressForFocusedConversation(convId).then(function (suppress) {
+      var chain = closeNotificationsForTag(tag);
+      // Suppress ONLY the banner when the user is already viewing this chat;
+      // the sweep + badge writes below must still run so other conversations'
+      // tray cards and the app badge stay correct.
+      if (!suppress) {
+        chain = chain.then(function () {
+          return self.registration.showNotification(title, notificationOptions);
+        });
+      }
+      return chain
+        .then(function () {
+          return unreadConvIds != null
+            ? sweepStaleNotifications(unreadConvIds)
+            : Promise.resolve();
+        })
+        .then(function () {
+          return hasUnreadTotal
+            ? setBadgeFromSW(payload.unreadTotal)
+            : Promise.resolve();
+        });
+    })
   );
 });
 
@@ -275,6 +319,17 @@ self.addEventListener('message', function (event) {
     if (typeof data.unreadTotal === 'number') {
       var totalAfterSweep = data.unreadTotal;
       work = work.then(function () { return setBadgeFromSW(totalAfterSweep); });
+    }
+  } else if (data.type === 'active-conversation') {
+    // Record which conversation this client is viewing (or clear it). Keyed by
+    // client id so multiple tabs don't clobber each other; pruned on push.
+    if (event.source && event.source.id) {
+      var acId = data.conversationId != null ? Number(data.conversationId) : null;
+      if (acId == null || isNaN(acId)) {
+        delete focusedConvByClient[event.source.id];
+      } else {
+        focusedConvByClient[event.source.id] = acId;
+      }
     }
   }
 

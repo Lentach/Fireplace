@@ -17,6 +17,7 @@ import '../../theme/rpg_theme.dart';
 import '../glass/glass_surface.dart';
 import '../../utils/composer_paste.dart';
 import '../../utils/message_expiry.dart';
+import '../../utils/message_length.dart';
 import '../../utils/reply_preview_helper.dart';
 import '../../utils/soft_keyboard.dart';
 import '../../utils/web_keyboard_inset.dart';
@@ -365,6 +366,10 @@ class ChatInputBarState extends State<ChatInputBar> {
     }
     final text = _controller.text.trim();
     if (text.isEmpty) return;
+    if (!isMessageWithinByteLimit(text)) {
+      showTopSnackBar(context, AppLocalizations.of(context).messageTooLong);
+      return;
+    }
     _armComposerCollapseGuard();
 
     final messaging = context.read<MessagingProvider>();
@@ -647,13 +652,22 @@ class ChatInputBarState extends State<ChatInputBar> {
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            // Centered send icon, paint only — no hit test (the mic
-                            // GestureDetector below handles hold-to-record).
+                            // Filled circular send button — big, obvious tap
+                            // affordance (paint only; the overlay below hits).
                             IgnorePointer(
-                              child: Icon(
-                                Icons.send_rounded,
-                                size: 26,
-                                color: RpgTheme.primaryColor(context),
+                              child: Container(
+                                width: 42,
+                                height: 42,
+                                alignment: Alignment.center,
+                                decoration: BoxDecoration(
+                                  color: RpgTheme.primaryColor(context),
+                                  shape: BoxShape.circle,
+                                ),
+                                child: const Icon(
+                                  Icons.send_rounded,
+                                  size: 22,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
                             // Full 48×48 opaque tap target (was a left-nudged 22×22,
@@ -809,9 +823,9 @@ class ChatInputBarState extends State<ChatInputBar> {
     // Cap multiline growth: Row/Expanded can still pass a tall maxHeight; keep the
     // composer Telegram-like even under large text scale or IME quirks.
     final textScaler = MediaQuery.textScalerOf(context);
-    final maxComposerHeight = (textScaler.scale(22.0) * 6 + 36).clamp(
+    final maxComposerHeight = (textScaler.scale(22.0) * 12 + 36).clamp(
       120.0,
-      400.0,
+      480.0,
     );
 
     return TapRegion(
@@ -967,6 +981,8 @@ class ChatInputBarState extends State<ChatInputBar> {
                                 child: TextField(
                                   controller: _controller,
                                   focusNode: _focusNode,
+                                  textCapitalization:
+                                      TextCapitalization.sentences,
                                   style: RpgTheme.bodyFont(
                                     fontSize: 14,
                                     color: colorScheme.onSurface,
@@ -993,7 +1009,7 @@ class ChatInputBarState extends State<ChatInputBar> {
                                   // Cap height so the composer does not consume the whole screen (matches
                                   // WhatsApp/Telegram-style behavior: grow to a few lines, then scroll inside).
                                   minLines: 1,
-                                  maxLines: 6,
+                                  maxLines: 12,
                                   // Send via IME action (mobile) or Ctrl/Cmd+Enter (web/desktop).
                                   // Plain Enter still inserts '\n' in this multiline field.
                                   textInputAction: TextInputAction.send,
