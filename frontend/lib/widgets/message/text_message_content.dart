@@ -1,6 +1,8 @@
 import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
+import '../../constants/app_constants.dart';
+import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../services/link_preview_service.dart';
 import '../../theme/rpg_theme.dart';
@@ -8,8 +10,10 @@ import '../../utils/anti_quantum_note_link.dart';
 import '../../utils/jumbo_emoji.dart';
 import 'anti_quantum_note_card.dart';
 
-/// Content widget for TEXT message type, including link detection and link preview card.
-class TextMessageContent extends StatelessWidget {
+/// Content widget for TEXT message type, including link detection, link preview
+/// card, and Telegram-parity "Read more" collapse for long messages so one
+/// long message cannot fill the whole screen.
+class TextMessageContent extends StatefulWidget {
   final MessageModel message;
   final bool isMine;
   final Color textColor;
@@ -23,29 +27,30 @@ class TextMessageContent extends StatelessWidget {
     required this.isDark,
     required this.maxWidth,
   });
-  Widget _buildTextWithLinks(BuildContext context) {
-    final text = message.content;
-    // Telegram-parity jumbo rendering for emoji-only messages. Size tiers live
-    // in jumbo_emoji.dart so this comment does not fossilize another copy.
-    // Emoji-only content cannot contain URLs, so the link pipeline below is safely skipped.
-    final jumboSize = jumboEmojiFontSize(text);
-    if (jumboSize != null) {
-      return RichText(
-        textAlign: TextAlign.left,
-        textWidthBasis: TextWidthBasis.longestLine,
-        text: TextSpan(
-          style: withEmojiFont(
-            RpgTheme.bodyFont(fontSize: jumboSize, color: textColor),
-          ),
-          children: [TextSpan(text: text)],
-        ),
-      );
-    }
+
+  @override
+  State<TextMessageContent> createState() => _TextMessageContentState();
+}
+
+class _TextMessageContentState extends State<TextMessageContent> {
+  bool _expanded = false;
+
+  @override
+  void didUpdateWidget(covariant TextMessageContent oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // A recycled bubble (list virtualization) now shows a different message:
+    // drop any expansion so it does not leak onto an unrelated message.
+    if (oldWidget.message.id != widget.message.id) _expanded = false;
+  }
+
+  /// Builds the non-jumbo body spans: plain text + inline emoji + tappable URLs.
+  List<InlineSpan> _buildBodySpans(BuildContext context) {
+    final text = widget.message.content;
     final urlRegex = RegExp(r'https?://[^\s]+', caseSensitive: false);
     final spans = <InlineSpan>[];
     int last = 0;
-    final linkColor = isMine
-        ? textColor
+    final linkColor = widget.isMine
+        ? widget.textColor
         : Theme.of(context).colorScheme.primary;
 
     for (final match in urlRegex.allMatches(text)) {
@@ -53,7 +58,7 @@ class TextMessageContent extends StatelessWidget {
         spans.addAll(
           buildInlineEmojiSpans(
             text.substring(last, match.start),
-            textStyle: RpgTheme.bodyFont(fontSize: 14, color: textColor),
+            textStyle: RpgTheme.bodyFont(fontSize: 14, color: widget.textColor),
           ),
         );
       }
@@ -76,29 +81,84 @@ class TextMessageContent extends StatelessWidget {
       spans.addAll(
         buildInlineEmojiSpans(
           text.substring(last),
-          textStyle: RpgTheme.bodyFont(fontSize: 14, color: textColor),
+          textStyle: RpgTheme.bodyFont(fontSize: 14, color: widget.textColor),
         ),
       );
     }
+    return spans;
+  }
 
-    return RichText(
-      // Text always reads left-to-right inside the bubble, regardless of which
-      // side the bubble sits on — matches WhatsApp/iMessage/Telegram/Signal.
-      // The bubble itself is still right-aligned for sent messages (see the
-      // Align in ChatMessageBubble); only the wrapped text lines align left.
+  /// Renders the body with a "Read more"/"Show less" toggle when it exceeds
+  /// [AppConstants.maxCollapsedMessageLines] wrapped lines at the bubble width.
+  Widget _buildCollapsibleText(BuildContext context) {
+    final spans = _buildBodySpans(context);
+    // Text always reads left-to-right inside the bubble, regardless of which
+    // side the bubble sits on — matches WhatsApp/iMessage/Telegram/Signal.
+    // The bubble itself is still right-aligned for sent messages (see the Align
+    // in ChatMessageBubble); only the wrapped text lines align left.
+    final rootSpan = TextSpan(children: spans);
+    final direction = Directionality.of(context);
+
+    // Measure with the SAME config the RichText below renders with, so the
+    // toggle appears exactly when the collapsed view would clip.
+    final painter = TextPainter(
+      text: rootSpan,
+      textDirection: direction,
       textAlign: TextAlign.left,
       textWidthBasis: TextWidthBasis.longestLine,
-      text: TextSpan(children: spans),
+      maxLines: AppConstants.maxCollapsedMessageLines,
+    )..layout(maxWidth: widget.maxWidth);
+    final overflows = painter.didExceedMaxLines;
+    painter.dispose();
+
+    final collapsed = overflows && !_expanded;
+
+    final textWidget = ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: widget.maxWidth),
+      child: RichText(
+        textAlign: TextAlign.left,
+        textWidthBasis: TextWidthBasis.longestLine,
+        maxLines: collapsed ? AppConstants.maxCollapsedMessageLines : null,
+        overflow: collapsed ? TextOverflow.ellipsis : TextOverflow.clip,
+        text: rootSpan,
+      ),
+    );
+
+    if (!overflows) return textWidget;
+
+    final l10n = AppLocalizations.of(context);
+    // Accent color on both sides so the toggle never blends into the body text
+    // (which is white on sent bubbles); mirrors the app's link/tab treatment.
+    final toggleColor = Theme.of(context).colorScheme.primary;
+    return Column(
+      mainAxisSize: MainAxisSize.min,
+      crossAxisAlignment: CrossAxisAlignment.start,
+      children: [
+        textWidget,
+        const SizedBox(height: 2),
+        GestureDetector(
+          behavior: HitTestBehavior.opaque,
+          onTap: () => setState(() => _expanded = !_expanded),
+          child: Text(
+            _expanded ? l10n.messageShowLess : l10n.messageReadMore,
+            style: RpgTheme.bodyFont(
+              fontSize: 13,
+              color: toggleColor,
+            ).copyWith(fontWeight: FontWeight.w600),
+          ),
+        ),
+      ],
     );
   }
 
   Widget _buildLinkPreviewCard(BuildContext context) {
-    final cardBg = isDark
+    final message = widget.message;
+    final cardBg = widget.isDark
         ? Colors.white.withValues(alpha: 0.06)
         : Colors.black.withValues(alpha: 0.04);
-    final urlColor = isMine
-        ? textColor
-        : (isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight);
+    final urlColor = widget.isMine
+        ? widget.textColor
+        : (widget.isDark ? RpgTheme.timeColorDark : RpgTheme.textSecondaryLight);
 
     return Padding(
       padding: const EdgeInsets.only(top: 8),
@@ -139,7 +199,7 @@ class TextMessageContent extends StatelessWidget {
                         message.linkPreviewTitle!,
                         style: RpgTheme.bodyFont(
                           fontSize: 13,
-                          color: textColor,
+                          color: widget.textColor,
                           fontWeight: FontWeight.w600,
                         ),
                         maxLines: 2,
@@ -164,33 +224,55 @@ class TextMessageContent extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final message = widget.message;
     // An Anti-Quantum Note link renders as a trusted banner card, not as a
     // raw URL + generic preview. Tap behavior matches the plain-link path.
     if (isAntiQuantumNoteUrl(message.content)) {
       return AntiQuantumNoteCard(
         noteUrl: message.content.trim(),
-        isMine: isMine,
-        textColor: textColor,
-        isDark: isDark,
-        maxWidth: maxWidth,
+        isMine: widget.isMine,
+        textColor: widget.textColor,
+        isDark: widget.isDark,
+        maxWidth: widget.maxWidth,
       );
     }
 
-    final textWidget = ConstrainedBox(
-      constraints: BoxConstraints(maxWidth: maxWidth),
-      child: _buildTextWithLinks(context),
-    );
+    // Telegram-parity jumbo rendering for emoji-only messages. Emoji-only
+    // content is short by definition and never collapses. Size tiers live in
+    // jumbo_emoji.dart. Emoji-only content cannot contain URLs, so the link
+    // pipeline is safely skipped.
+    final jumboSize = jumboEmojiFontSize(message.content);
+    final Widget body;
+    if (jumboSize != null) {
+      body = ConstrainedBox(
+        constraints: BoxConstraints(maxWidth: widget.maxWidth),
+        child: RichText(
+          textAlign: TextAlign.left,
+          textWidthBasis: TextWidthBasis.longestLine,
+          text: TextSpan(
+            style: withEmojiFont(
+              RpgTheme.bodyFont(fontSize: jumboSize, color: widget.textColor),
+            ),
+            children: [TextSpan(text: message.content)],
+          ),
+        ),
+      );
+    } else {
+      body = _buildCollapsibleText(context);
+    }
 
     return Column(
       mainAxisSize: MainAxisSize.min,
-      crossAxisAlignment: isMine
+      crossAxisAlignment: widget.isMine
           ? CrossAxisAlignment.end
           : CrossAxisAlignment.start,
       children: [
-        textWidget,
+        body,
         if (message.linkPreviewUrl != null)
           Align(
-            alignment: isMine ? Alignment.centerRight : Alignment.centerLeft,
+            alignment: widget.isMine
+                ? Alignment.centerRight
+                : Alignment.centerLeft,
             child: _buildLinkPreviewCard(context),
           ),
       ],

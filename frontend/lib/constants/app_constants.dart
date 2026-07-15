@@ -22,6 +22,11 @@ class AppConstants {
   /// and multi-byte emoji — a raw character/byte count would not.
   static const int maxEnvelopeBytes = 45000;
 
+  /// A TEXT message longer than this many wrapped lines collapses in the chat
+  /// bubble behind a "Read more" toggle so one long message cannot fill the
+  /// screen (Telegram-parity). Tapping expands to the full text.
+  static const int maxCollapsedMessageLines = 12;
+
   /// WebSocket reconnection
   static const int reconnectMaxAttempts = 5;
   static const Duration reconnectInitialDelay = Duration(seconds: 1);

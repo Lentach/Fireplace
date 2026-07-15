@@ -366,5 +366,7 @@
   "userCardDeletePhotoTitle": "Delete photo?",
   "userCardDeletePhotoConfirm": "This permanently deletes this profile photo.",
   "userCardSafety": "Safety",
-  "userCardRemoveContact": "Remove contact"
+  "userCardRemoveContact": "Remove contact",
+  "messageReadMore": "Read more",
+  "messageShowLess": "Show less"
 }

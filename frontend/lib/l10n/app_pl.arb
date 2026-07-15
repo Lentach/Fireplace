@@ -348,5 +348,7 @@
   "userCardDeletePhotoTitle": "Usunąć zdjęcie?",
   "userCardDeletePhotoConfirm": "To trwale usuwa to zdjęcie profilowe.",
   "userCardSafety": "Bezpieczeństwo",
-  "userCardRemoveContact": "Usuń kontakt"
+  "userCardRemoveContact": "Usuń kontakt",
+  "messageReadMore": "Czytaj więcej",
+  "messageShowLess": "Zwiń"
 }
