@@ -91,6 +91,8 @@ class RpgTheme {
   static const Color textColor = Color(0xFFE0E0E0);
   static const Color mutedText = Color(0xFF6A6AB0);
   static const Color errorColor = Color(0xFFFF4444);
+  // Light-theme destructive red (warm brick; ~5.9:1 on white both directions).
+  static const Color errorColorLight = Color(0xFFC0392B);
   static const Color successColor = Color(0xFF44FF44);
 
   // Telegram-style blue theme (default dark) – official Telegram colors
@@ -317,24 +319,31 @@ class RpgTheme {
   // here once. Golden-locked field-by-field per theme in
   // test/theme/rpg_theme_golden_test.dart.
   static ThemeData _buildTheme(_ThemeSpec s) {
-    final base =
-        s.brightness == Brightness.dark ? ThemeData.dark() : ThemeData.light();
+    final base = s.brightness == Brightness.dark
+        ? ThemeData.dark()
+        : ThemeData.light();
+    // Destructive red per brightness: #FF4444 needs a dark backdrop; on light
+    // surfaces it fails contrast (~3.1:1), so light themes get brick red.
+    final errorC = s.brightness == Brightness.dark
+        ? errorColor
+        : errorColorLight;
     final scheme = s.brightness == Brightness.dark
         ? ColorScheme.dark(
             primary: s.primary,
             secondary: s.secondary,
             surface: s.surface,
-            error: errorColor,
+            error: errorC,
             onPrimary: s.onPrimary,
             onSecondary: s.onSecondary,
             onSurface: s.onSurface,
-            onError: Colors.white,
+            // Bright #FF4444 fill needs a DARK label (white on it is ~3.4:1).
+            onError: Colors.black,
           )
         : ColorScheme.light(
             primary: s.primary,
             secondary: s.secondary,
             surface: s.surface,
-            error: errorColor,
+            error: errorC,
             onPrimary: s.onPrimary,
             onSecondary: s.onSecondary,
             onSurface: s.onSurface,
@@ -367,7 +376,10 @@ class RpgTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: fc.inputBg,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderSide: BorderSide(color: fc.tabBorder, width: 1.5),
           borderRadius: BorderRadius.circular(8),
@@ -381,7 +393,7 @@ class RpgTheme {
           borderRadius: BorderRadius.circular(8),
         ),
         errorBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: errorColor, width: 1.5),
+          borderSide: BorderSide(color: errorC, width: 1.5),
           borderRadius: BorderRadius.circular(8),
         ),
         hintStyle: GoogleFonts.inter(color: s.hint, fontSize: 14),

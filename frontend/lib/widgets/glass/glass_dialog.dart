@@ -21,17 +21,18 @@ class GlassDialog extends StatelessWidget {
   final Widget? content;
   final List<Widget> actions;
 
-  /// Caps the dialog width on wide (desktop) layouts. Applied INSIDE the
-  /// [Dialog] because route pages are laid out with tight full-screen
-  /// constraints — an outer ConstrainedBox around the dialog is a no-op.
-  final double? maxWidth;
+  /// Caps the dialog width on wide (desktop) layouts (M3 dialogs cap at 560).
+  /// Applied INSIDE the [Dialog] because route pages are laid out with tight
+  /// full-screen constraints — an outer ConstrainedBox around the dialog is a
+  /// no-op.
+  final double maxWidth;
 
   const GlassDialog({
     super.key,
     this.title,
     this.content,
     this.actions = const [],
-    this.maxWidth,
+    this.maxWidth = 560,
   });
 
   @override
@@ -93,10 +94,22 @@ class GlassDialog extends StatelessWidget {
       ),
     );
 
-    if (maxWidth != null) {
-      dialogChild = ConstrainedBox(
-        constraints: BoxConstraints(maxWidth: maxWidth!),
+    dialogChild = ConstrainedBox(
+      constraints: BoxConstraints(maxWidth: maxWidth),
+      child: dialogChild,
+    );
+
+    // Entrance: a subtle scale-in on top of the route's own fade (playbook §2:
+    // 180-280 ms, easeOutCubic, played once per mount). Skipped entirely under
+    // reduce-motion.
+    if (!MediaQuery.disableAnimationsOf(context)) {
+      dialogChild = TweenAnimationBuilder<double>(
+        tween: Tween(begin: 0.96, end: 1.0),
+        duration: const Duration(milliseconds: 200),
+        curve: Curves.easeOutCubic,
         child: dialogChild,
+        builder: (_, scale, child) =>
+            Transform.scale(scale: scale, child: child),
       );
     }
 

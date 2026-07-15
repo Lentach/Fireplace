@@ -36,6 +36,8 @@ import 'package:fireplace/widgets/glass/glass_bottom_nav.dart';
 import 'package:fireplace/widgets/main_tab_screen_header.dart';
 import 'package:fireplace/widgets/dialogs/delete_account_dialog.dart';
 import 'package:fireplace/widgets/dialogs/reset_password_dialog.dart';
+import 'package:fireplace/widgets/anti_quantum_note_dialog.dart';
+import 'package:fireplace/widgets/glass/glass_sheet.dart';
 
 void main() => runApp(const GlassPreviewApp());
 
@@ -184,6 +186,14 @@ class _DialogPreviewState extends State<_DialogPreview> {
   void initState() {
     super.initState();
     WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (widget.dialog == 'aq') {
+        showGlassSheet<void>(
+          context,
+          isScrollControlled: true,
+          builder: (_) => AntiQuantumNoteDialog(onSend: (_, _) async {}),
+        );
+        return;
+      }
       showDialog<Object?>(
         context: context,
         builder: (_) => widget.dialog == 'delete'

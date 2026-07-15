@@ -68,7 +68,12 @@ void main() {
     expect(t.colorScheme.onPrimary, onPrimary);
     expect(t.colorScheme.onSecondary, onSecondary);
     expect(t.colorScheme.onSurface, onSurface);
-    expect(t.colorScheme.error, RpgTheme.errorColor);
+    expect(
+      t.colorScheme.error,
+      brightness == Brightness.dark
+          ? RpgTheme.errorColor
+          : RpgTheme.errorColorLight,
+    );
 
     expect(t.appBarTheme.backgroundColor, appBarBg);
     expect(t.appBarTheme.titleTextStyle!.color, appBarTitle);

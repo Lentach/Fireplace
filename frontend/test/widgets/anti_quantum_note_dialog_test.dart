@@ -1,9 +1,13 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fireplace/l10n/app_localizations.dart';
+import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/anti_quantum_note_dialog.dart';
 
+// The dialog reads FireplaceColors.of(context), so the wrapper needs a real
+// RpgTheme ThemeData (bare MaterialApp has no FireplaceColors extension).
 Widget _wrap(Widget child) => MaterialApp(
+      theme: RpgTheme.themeDataLight,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
       supportedLocales: AppLocalizations.supportedLocales,
       home: Scaffold(body: child),

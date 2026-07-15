@@ -16,8 +16,9 @@ void main() {
           builder: (context) => TextButton(
             onPressed: () => showDialog<void>(
               context: context,
-              builder: (_) =>
-                  GlassDialog(maxWidth: maxWidth, title: const Text('t')),
+              builder: (_) => maxWidth == null
+                  ? const GlassDialog(title: Text('t'))
+                  : GlassDialog(maxWidth: maxWidth, title: const Text('t')),
             ),
             child: const Text('open'),
           ),
@@ -28,7 +29,10 @@ void main() {
     await tester.pumpAndSettle();
   }
 
-  testWidgets('maxWidth caps the glass surface on wide layouts', (
+  Finder inDialog(Type type) =>
+      find.descendant(of: find.byType(Dialog), matching: find.byType(type));
+
+  testWidgets('explicit maxWidth caps the glass surface on wide layouts', (
     tester,
   ) async {
     await pumpDialog(tester, maxWidth: 400);
@@ -36,12 +40,26 @@ void main() {
     expect(width, lessThanOrEqualTo(400));
   });
 
-  testWidgets('without maxWidth the dialog fills the inset width', (
+  testWidgets('default maxWidth caps at 560 instead of the inset width', (
     tester,
   ) async {
     await pumpDialog(tester);
     final width = tester.getSize(find.byType(GlassSurface)).width;
-    // 1100 minus Dialog insetPadding (40 per side).
-    expect(width, greaterThan(400));
+    expect(width, lessThanOrEqualTo(560));
+  });
+
+  testWidgets('entrance scale animation mounts by default', (tester) async {
+    await pumpDialog(tester);
+    expect(inDialog(TweenAnimationBuilder<double>), findsOneWidget);
+  });
+
+  testWidgets('reduce-motion skips the entrance animation', (tester) async {
+    tester.binding.platformDispatcher.accessibilityFeaturesTestValue =
+        const FakeAccessibilityFeatures(disableAnimations: true);
+    addTearDown(
+      tester.binding.platformDispatcher.clearAccessibilityFeaturesTestValue,
+    );
+    await pumpDialog(tester);
+    expect(inDialog(TweenAnimationBuilder<double>), findsNothing);
   });
 }

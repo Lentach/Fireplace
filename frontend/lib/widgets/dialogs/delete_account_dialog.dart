@@ -97,7 +97,14 @@ class _DeleteAccountDialogState extends State<DeleteAccountDialog> {
           onPressed: () => Navigator.of(context).pop(),
           child: Text(l10n.cancel),
         ),
-        FilledButton(onPressed: _submit, child: Text(l10n.delete)),
+        FilledButton(
+          onPressed: _submit,
+          style: FilledButton.styleFrom(
+            backgroundColor: colorScheme.error,
+            foregroundColor: colorScheme.onError,
+          ),
+          child: Text(l10n.delete),
+        ),
       ],
     );
   }

@@ -12,7 +12,13 @@ void showTopSnackBar(
   final overlay = Overlay.of(context);
   final theme = Theme.of(context);
   final bg = backgroundColor ?? theme.colorScheme.inverseSurface;
-  final textColor = backgroundColor != null ? Colors.white : theme.colorScheme.onInverseSurface;
+  // Pick the readable foreground for the actual fill: hardwired white failed
+  // 4.5:1 on bright fills (#FF4444, #2AABEE).
+  final textColor = backgroundColor == null
+      ? theme.colorScheme.onInverseSurface
+      : (ThemeData.estimateBrightnessForColor(bg) == Brightness.dark
+            ? Colors.white
+            : Colors.black);
 
   late OverlayEntry entry;
   entry = OverlayEntry(
