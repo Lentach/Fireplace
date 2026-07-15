@@ -5,8 +5,6 @@ import '../l10n/app_localizations.dart';
 import '../models/user_model.dart';
 import '../providers/conversations_provider.dart';
 import '../providers/friends_provider.dart';
-import '../providers/auth_provider.dart';
-import '../providers/settings_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/main_tab_screen_header.dart';
@@ -63,16 +61,6 @@ class ContactsScreen extends StatelessWidget {
               muted: existingConversation?.muted ?? false,
               mutedUntil: existingConversation?.mutedUntil,
             ),
-            wallpaper: existingConversation != null &&
-                    context
-                            .read<SettingsProvider>()
-                            .conversationWallpaper(
-                              context.read<AuthProvider>().currentUser!.id,
-                              existingConversation.id,
-                            ) ==
-                        ConversationWallpaper.glyphs
-                ? UserCardWallpaper.glyphs
-                : UserCardWallpaper.defaultBackground,
           ),
           onMessage: () {
             Navigator.of(cardContext).pop();
@@ -91,17 +79,6 @@ class ContactsScreen extends StatelessWidget {
                       UserCardMute.forever => 'forever',
                     },
                   );
-                },
-          onWallpaperChanged: existingConversation == null
-              ? null
-              : (wallpaper) {
-                  context.read<SettingsProvider>().setConversationWallpaper(
-                        context.read<AuthProvider>().currentUser!.id,
-                        existingConversation.id,
-                        wallpaper == UserCardWallpaper.glyphs
-                            ? ConversationWallpaper.glyphs
-                            : ConversationWallpaper.defaultBackground,
-                      );
                 },
         ),
       ),
@@ -252,11 +229,6 @@ class ContactsScreen extends StatelessWidget {
                   maxLines: 1,
                   overflow: TextOverflow.ellipsis,
                 ),
-              ),
-              TextButton.icon(
-                onPressed: () => _openChatWithContact(context, user.id),
-                icon: const Icon(Icons.chat_bubble_outline, size: 18),
-                label: Text(AppLocalizations.of(context).userCardMessage),
               ),
             ],
           ),

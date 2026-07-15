@@ -41,6 +41,10 @@ class _SettingsScreenState extends State<SettingsScreen> {
     super.initState();
     _loadDeviceName();
     _loadAppVersion();
+    final userId = context.read<AuthProvider>().currentUser?.id;
+    if (userId != null) {
+      context.read<SettingsProvider>().loadChatWallpaper(userId);
+    }
   }
 
   Future<void> _loadAppVersion() async {
@@ -296,6 +300,87 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  /// Global chat background (owner 2026-07-15): ONE wallpaper for all
+  /// conversations — replaced the per-conversation control on the user card.
+  Widget _buildWallpaperTile(BuildContext context, SettingsProvider settings) {
+    final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final fc = FireplaceColors.of(context);
+    final l10n = AppLocalizations.of(context);
+    final current = settings.chatWallpaper;
+
+    Widget wallpaperBtn(ChatWallpaper value, IconData icon, String tooltip) {
+      final isSelected = current == value;
+      return Tooltip(
+        message: tooltip,
+        child: InkWell(
+          onTap: () {
+            final userId = context.read<AuthProvider>().currentUser?.id;
+            if (userId != null) {
+              settings.setChatWallpaper(userId, value);
+            }
+          },
+          customBorder: const CircleBorder(),
+          child: Container(
+            width: 44,
+            height: 44,
+            decoration: BoxDecoration(
+              color: isSelected
+                  ? colorScheme.primary.withValues(alpha: 0.2)
+                  : Colors.transparent,
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: isSelected ? colorScheme.primary : fc.settingsTileBorder,
+                width: isSelected ? 2 : 1,
+              ),
+            ),
+            child: Icon(
+              icon,
+              size: 24,
+              color: isSelected
+                  ? colorScheme.primary
+                  : colorScheme.onSurfaceVariant,
+            ),
+          ),
+        ),
+      );
+    }
+
+    return _settingsTileShell(
+      ListTile(
+        leading: Icon(
+          Icons.wallpaper_outlined,
+          color: colorScheme.primary,
+          size: 24,
+        ),
+        title: Text(
+          l10n.settingsChatBackground,
+          style: RpgTheme.bodyFont(
+            fontSize: 14,
+            color: colorScheme.onSurface,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        trailing: Row(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            wallpaperBtn(
+              ChatWallpaper.defaultBackground,
+              Icons.rectangle_outlined,
+              l10n.settingsWallpaperDefault,
+            ),
+            const SizedBox(width: 8),
+            wallpaperBtn(
+              ChatWallpaper.glyphs,
+              Icons.auto_awesome_outlined,
+              l10n.settingsWallpaperGlyphs,
+            ),
+          ],
+        ),
+      ),
+    );
+  }
+
   Widget _buildLanguageTile(BuildContext context, SettingsProvider settings) {
     final theme = Theme.of(context);
     final colorScheme = theme.colorScheme;
@@ -472,6 +557,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   // Settings Tiles
                   _buildThemeTile(context, settings),
                   _buildLanguageTile(context, settings),
+                  _buildWallpaperTile(context, settings),
 
                   _buildSettingsTile(
                     icon: Icons.security,

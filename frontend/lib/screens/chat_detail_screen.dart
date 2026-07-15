@@ -10,7 +10,6 @@ import '../providers/settings_provider.dart';
 import '../services/voice_audio_coordinator.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_top_bar.dart';
-import '../widgets/glass/glass_menu.dart';
 import '../widgets/message/chat_message_bubble.dart';
 import '../widgets/input/chat_input_bar.dart';
 import '../widgets/input/chat_composer_viewport.dart';
@@ -357,10 +356,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       _messaging.getMessages(widget.conversationId);
       final userId = context.read<AuthProvider>().currentUser?.id;
       if (userId != null) {
-        context.read<SettingsProvider>().loadConversationWallpaper(
-          userId,
-          widget.conversationId,
-        );
+        context.read<SettingsProvider>().loadChatWallpaper(userId);
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -502,14 +498,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                   .firstOrNull
                   ?.mutedUntil,
             ),
-            wallpaper:
-                context.read<SettingsProvider>().conversationWallpaper(
-                      context.read<AuthProvider>().currentUser!.id,
-                      widget.conversationId,
-                    ) ==
-                    ConversationWallpaper.glyphs
-                ? UserCardWallpaper.glyphs
-                : UserCardWallpaper.defaultBackground,
           ),
           onMessage: () {
             Navigator.of(cardContext).pop();
@@ -527,15 +515,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                 UserCardMute.oneWeek => '1w',
                 UserCardMute.forever => 'forever',
               },
-            );
-          },
-          onWallpaperChanged: (wallpaper) {
-            context.read<SettingsProvider>().setConversationWallpaper(
-              context.read<AuthProvider>().currentUser!.id,
-              widget.conversationId,
-              wallpaper == UserCardWallpaper.glyphs
-                  ? ConversationWallpaper.glyphs
-                  : ConversationWallpaper.defaultBackground,
             );
           },
         ),
@@ -694,11 +673,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final currentUserId = context.read<AuthProvider>().currentUser?.id;
     final showGlyphs =
         currentUserId != null &&
-        context.watch<SettingsProvider>().conversationWallpaper(
-              currentUserId,
-              widget.conversationId,
-            ) ==
-            ConversationWallpaper.glyphs;
+        context.watch<SettingsProvider>().chatWallpaper == ChatWallpaper.glyphs;
     return ChatBackgroundPattern(
       backgroundColor: messagesAreaBg,
       enabled: showGlyphs,
@@ -1009,30 +984,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         ),
         title: headerTitle,
         trailing: [
-          if (otherUser != null)
-            Builder(
-              builder: (btnContext) => IconButton(
-                icon: const Icon(Icons.more_vert),
-                tooltip: MaterialLocalizations.of(btnContext).showMenuTooltip,
-                onPressed: () async {
-                  final selected = await showGlassMenu<String>(
-                    context: btnContext,
-                    entries: [
-                      GlassMenuEntry<String>(
-                        value: 'block',
-                        destructive: true,
-                        child: Text(AppLocalizations.of(context).blockUser),
-                      ),
-                    ],
-                  );
-                  if (selected == 'block' && btnContext.mounted) {
-                    btnContext.read<FriendsProvider>().blockUser(otherUser.id);
-                    _clearActiveConversationIfThisChat();
-                    Navigator.of(btnContext).pop();
-                  }
-                },
-              ),
-            ),
           Padding(
             padding: const EdgeInsets.only(right: 4),
             child: GestureDetector(

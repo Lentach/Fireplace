@@ -1,0 +1,403 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<title>Fireplace — User Card Rework, Round 1</title>
+<style>
+  /* Tokens from docs/design/liquid-glass/SPEC.md §3/§4/§10 (dark=TealSmoke-dark, light=Hearthglow) */
+  :root{
+    --d-bg:#16171A; --d-surface:#24262B; --d-text:#F0F2F3; --d-muted:#93999C;
+    --d-accent:#6FB4C4; --d-glass:rgba(32,36,40,.33); --d-border:rgba(190,225,235,.13);
+    --d-capsule:rgba(111,180,196,.24); --d-onglassmuted:#B9C6CF; --d-danger:#E5484D;
+    --l-bg:#F7F1EA; --l-surface:#FFFFFF; --l-text:#241C17; --l-muted:#8A7A70;
+    --l-accent:#C2410C; --l-glass:rgba(255,250,246,.42); --l-border:rgba(255,255,255,.75);
+    --l-capsule:rgba(194,65,12,.16); --l-onglassmuted:#5E5852; --l-danger:#B3261E;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{background:#0C0D0F;color:#E7EDF2;font-family:Inter,system-ui,sans-serif;padding:32px}
+  h1{font-size:22px;margin-bottom:6px} h2{font-size:17px;margin:40px 0 4px;color:#8FC4D0}
+  p.note{color:#93999C;font-size:13px;max-width:980px;line-height:1.5;margin-bottom:14px}
+  .row{display:flex;gap:22px;flex-wrap:wrap;align-items:flex-start}
+  .phone{width:300px;height:650px;border-radius:34px;overflow:hidden;position:relative;
+    border:1px solid #2A2E33;box-shadow:0 14px 40px rgba(0,0,0,.5);flex-shrink:0}
+  .phone .cap{position:absolute;left:0;right:0;bottom:-26px;text-align:center;font-size:11px;color:#767C80}
+  .wrap{margin-bottom:44px}
+  .lbl{font-size:11.5px;color:#9AA3A7;margin:8px 2px 18px;text-align:center;width:300px}
+
+  /* ============ shared chrome ============ */
+  .dark{background:var(--d-bg);color:var(--d-text)}
+  .light{background:var(--l-bg);color:var(--l-text)}
+  .status{height:26px;display:flex;justify-content:space-between;align-items:center;
+    padding:0 18px;font-size:11px;font-weight:600;opacity:.85;position:relative;z-index:9}
+  .glasscircle{width:38px;height:38px;border-radius:19px;display:flex;align-items:center;justify-content:center;
+    backdrop-filter:blur(10px);font-size:16px}
+  .dark .glasscircle{background:var(--d-glass);border:1px solid var(--d-border);color:var(--d-text)}
+  .light .glasscircle{background:var(--l-glass);border:1px solid var(--l-border);color:var(--l-text)}
+  .sect{border-radius:18px;padding:13px 14px;margin:0 14px 12px}
+  .dark .sect{background:rgba(36,38,43,.82);border:1px solid rgba(190,225,235,.13)}
+  .light .sect{background:rgba(255,255,255,.82);border:1px solid rgba(36,23,17,.08)}
+  .sect .t{font-size:9.5px;font-weight:800;letter-spacing:.9px;margin-bottom:8px}
+  .dark .sect .t{color:var(--d-muted)} .light .sect .t{color:var(--l-muted)}
+  .rowitem{display:flex;align-items:center;gap:11px;padding:8px 0;font-size:13.5px;font-weight:600}
+  .rowitem .chev{margin-left:auto;opacity:.55;font-size:15px}
+  .danger{color:var(--d-danger)} .light .danger{color:var(--l-danger)}
+  .seg{position:absolute;top:32px;left:56px;right:14px;display:flex;gap:4px;z-index:8}
+  .seg i{flex:1;height:2.5px;border-radius:99px;background:rgba(255,255,255,.34)}
+  .seg i.on{background:#fff}
+
+  /* action pill row (Telegram-style square tiles) */
+  .tiles{display:flex;gap:8px;margin:0 14px 12px}
+  .tile{flex:1;border-radius:14px;padding:9px 4px;text-align:center;font-size:10.5px;font-weight:700;
+    display:flex;flex-direction:column;gap:3px;align-items:center;cursor:default}
+  .tile b{font-size:16px;font-weight:400}
+  .dark .tile{background:rgba(36,38,43,.82);border:1px solid rgba(190,225,235,.13);color:var(--d-accent)}
+  .light .tile{background:rgba(255,255,255,.82);border:1px solid rgba(36,23,17,.08);color:var(--l-accent)}
+
+  /* ============ D1: full-bleed telegram hero ============ */
+  .hero1{position:relative;height:300px;overflow:hidden}
+  .hero1 img{width:100%;height:100%;object-fit:cover;display:block}
+  .hero1 .scrim{position:absolute;inset:0;background:linear-gradient(rgba(0,0,0,.35),transparent 40%,rgba(0,0,0,.62))}
+  .hero1 .id{position:absolute;left:16px;bottom:12px;right:14px}
+  .hero1 .id .n{font-size:21px;font-weight:800;color:#fff;letter-spacing:.2px}
+  .hero1 .id .s{font-size:12px;color:rgba(255,255,255,.75);margin-top:1px}
+  .hero1 .back{position:absolute;top:32px;left:12px;z-index:9}
+  .hero1 .edit{position:absolute;right:12px;bottom:12px;z-index:9}
+
+  /* ============ D2: circle identity ============ */
+  .hero2{padding-top:14px;text-align:center;position:relative}
+  .hero2 .ava{width:116px;height:116px;border-radius:58px;margin:6px auto 0;overflow:hidden;position:relative}
+  .hero2 .ava img{width:100%;height:100%;object-fit:cover}
+  .hero2 .dots{display:flex;gap:5px;justify-content:center;margin-top:9px}
+  .hero2 .dots i{width:5px;height:5px;border-radius:3px;background:rgba(147,153,156,.45)}
+  .hero2 .dots i.on{width:14px;background:var(--d-accent)}
+  .light .hero2 .dots i.on{background:var(--l-accent)}
+  .hero2 .n{font-size:20px;font-weight:800;margin-top:8px}
+  .hero2 .handle{display:inline-flex;align-items:center;gap:5px;font-size:12px;margin-top:3px;
+    padding:3px 10px;border-radius:99px}
+  .dark .hero2 .handle{background:rgba(111,180,196,.13);color:var(--d-accent)}
+  .light .hero2 .handle{background:rgba(194,65,12,.1);color:var(--l-accent)}
+  .hero2 .back{position:absolute;top:6px;left:12px}
+
+  /* ============ D3: inset card hero ============ */
+  .hero3{margin:8px 14px 12px;border-radius:22px;overflow:hidden;position:relative;height:270px}
+  .hero3 img{width:100%;height:100%;object-fit:cover}
+  .hero3 .scrim{position:absolute;inset:0;background:linear-gradient(transparent 55%,rgba(0,0,0,.6))}
+  .hero3 .id{position:absolute;left:14px;bottom:10px}
+  .hero3 .id .n{font-size:19px;font-weight:800;color:#fff}
+  .hero3 .id .s{font-size:11.5px;color:rgba(255,255,255,.75)}
+  .hero3 .seg3{position:absolute;top:10px;left:12px;right:12px;display:flex;gap:4px}
+  .hero3 .seg3 i{flex:1;height:2.5px;border-radius:99px;background:rgba(255,255,255,.34)}
+  .hero3 .seg3 i.on{background:#fff}
+  .d3top{display:flex;align-items:center;gap:10px;padding:6px 14px 4px}
+
+  /* avatar mgmt sheet */
+  .sheetveil{position:absolute;inset:0;background:rgba(0,0,0,.4);z-index:20}
+  .sheet{position:absolute;left:8px;right:8px;bottom:8px;border-radius:24px;padding:14px;z-index:21;
+    backdrop-filter:blur(10px)}
+  .dark .sheet{background:rgba(32,36,40,.88);border:1px solid var(--d-border)}
+  .slots{display:flex;gap:10px;margin:8px 0 12px}
+  .slot{width:76px;height:76px;border-radius:16px;overflow:hidden;position:relative;flex-shrink:0}
+  .slot img{width:100%;height:100%;object-fit:cover}
+  .slot.primary{outline:2.5px solid var(--d-accent);outline-offset:2px}
+  .slot .star{position:absolute;right:4px;top:4px;width:17px;height:17px;border-radius:9px;background:var(--d-accent);
+    color:#0C0D0F;font-size:10px;display:flex;align-items:center;justify-content:center}
+  .slot.empty{border:1.5px dashed rgba(147,153,156,.5);display:flex;align-items:center;justify-content:center;
+    color:var(--d-muted);font-size:22px;background:transparent}
+  .sheetrow{display:flex;align-items:center;gap:11px;padding:9px 2px;font-size:13.5px;font-weight:600;color:var(--d-text)}
+  .annot{width:220px;font-size:12px;color:#9AA3A7;line-height:1.55;padding-top:40px}
+  .annot b{color:#D5DBDE}
+</style>
+</head>
+<body>
+<h1>User Card / Profile — Round 1 directions</h1>
+<p class="note">All three directions share: no per-card Chat Background control (moves to Settings → Appearance),
+live data (changes apply in place, no nav bounce), working 3-photo gallery with segment indicator, and a
+Telegram-style collapse — scrolling down shrinks the photo into the small circle avatar in the top bar.
+Differences are the identity hero and the avatar-management model.</p>
+
+<!-- ==================== DIRECTION 1 ==================== -->
+<h2>Direction 1 — “Telegram Full-Bleed”</h2>
+<p class="note">Square full-bleed hero (shorter than today: 300 logical px, not 390), scrim only at the edges,
+segment strip top-right, name+status pinned to the photo. Self profile: the gallery IS the manager —
+the ✎ button on the photo opens a glass sheet with actions for the <i>viewed</i> photo. Collapse: photo shrinks
+to the 38px circle in the bar (Hero-style), title fades in.</p>
+<div class="row wrap">
+  <div>
+    <div class="phone dark">
+      <div class="hero1">
+        <img src="https://picsum.photos/seed/fireplace2/600/600" alt="">
+        <div class="scrim"></div>
+        <div class="seg" style="top:34px"><i class="on"></i><i></i><i></i></div>
+        <div class="back glasscircle">←</div>
+        <div class="id"><div class="n">maoi</div><div class="s">maoi#3049 · online</div></div>
+      </div>
+      <div style="height:12px"></div>
+      <div class="tiles">
+        <div class="tile"><b>💬</b>Message</div>
+        <div class="tile"><b>🔔</b>Mute</div>
+        <div class="tile"><b>📋</b>Copy&nbsp;tag</div>
+      </div>
+      <div class="sect"><div class="t">ABOUT</div>
+        <div style="font-size:13.5px">see you by the fire</div></div>
+      <div class="sect">
+        <div class="rowitem danger">⛔ Remove contact<span class="chev">›</span></div>
+        <div class="rowitem danger">🚫 Block<span class="chev">›</span></div>
+      </div>
+    </div>
+    <div class="lbl">Other user · dark</div>
+  </div>
+  <div>
+    <div class="phone light">
+      <div class="hero1">
+        <img src="https://picsum.photos/seed/fireplace2/600/600" alt="">
+        <div class="scrim"></div>
+        <div class="seg" style="top:34px"><i class="on"></i><i></i><i></i></div>
+        <div class="back glasscircle">←</div>
+        <div class="id"><div class="n">maoi</div><div class="s">maoi#3049 · online</div></div>
+      </div>
+      <div style="height:12px"></div>
+      <div class="tiles">
+        <div class="tile"><b>💬</b>Message</div>
+        <div class="tile"><b>🔔</b>Mute</div>
+        <div class="tile"><b>📋</b>Copy&nbsp;tag</div>
+      </div>
+      <div class="sect"><div class="t">ABOUT</div>
+        <div style="font-size:13.5px">see you by the fire</div></div>
+      <div class="sect">
+        <div class="rowitem danger">⛔ Remove contact<span class="chev">›</span></div>
+        <div class="rowitem danger">🚫 Block<span class="chev">›</span></div>
+      </div>
+    </div>
+    <div class="lbl">Other user · light</div>
+  </div>
+  <div>
+    <div class="phone dark">
+      <div class="hero1">
+        <img src="https://picsum.photos/seed/fireplace1/600/600" alt="">
+        <div class="scrim"></div>
+        <div class="seg" style="top:34px"><i></i><i class="on"></i><i></i></div>
+        <div class="back glasscircle">←</div>
+        <div class="edit glasscircle">✎</div>
+        <div class="id"><div class="n">bob208</div><div class="s">bob208#9939</div></div>
+      </div>
+      <div style="height:12px"></div>
+      <div class="sect"><div class="t">ABOUT</div>
+        <div style="font-size:13.5px">just a random bob</div></div>
+      <div class="sect">
+        <div class="rowitem">✏️ Edit About<span class="chev">›</span></div>
+        <div class="rowitem">🖼 Add photo <span style="opacity:.5;font-weight:400;font-size:12px">(2 of 3)</span><span class="chev">›</span></div>
+      </div>
+    </div>
+    <div class="lbl">Self · dark (viewing photo 2)</div>
+  </div>
+  <div>
+    <div class="phone dark">
+      <div class="hero1" style="filter:brightness(.75)">
+        <img src="https://picsum.photos/seed/fireplace1/600/600" alt="">
+      </div>
+      <div class="sheetveil"></div>
+      <div class="sheet">
+        <div style="font-size:11px;font-weight:800;letter-spacing:.8px;color:var(--d-muted)">PHOTO 2 OF 3</div>
+        <div class="slots">
+          <div class="slot primary"><img src="https://picsum.photos/seed/fireplace2/200/200"><div class="star">★</div></div>
+          <div class="slot"><img src="https://picsum.photos/seed/fireplace1/200/200"></div>
+          <div class="slot"><img src="https://picsum.photos/seed/fireplace3/200/200"></div>
+        </div>
+        <div class="sheetrow">★ Set as main photo</div>
+        <div class="sheetrow">🖼 Add photo</div>
+        <div class="sheetrow danger">🗑 Delete this photo</div>
+      </div>
+    </div>
+    <div class="lbl">Self · photo actions sheet (✎)</div>
+  </div>
+  <div class="annot">
+    <b>Collapse behavior:</b> scroll down → hero shrinks and morphs into the 38px circle beside the back
+    button; name slides into the bar. Reduce-motion: crossfade.<br><br>
+    <b>Gallery:</b> swipe photos in place; tap left/right edges also pages (Telegram parity).<br><br>
+    <b>Avatar mgmt:</b> one ✎ entry point; the sheet shows all 3 slots (primary ringed + starred),
+    actions apply to the viewed photo. Add opens picker → square crop with circle mask.
+  </div>
+</div>
+
+<!-- ==================== DIRECTION 2 ==================== -->
+<h2>Direction 2 — “Circle Identity”</h2>
+<p class="note">No full-bleed photo: a large 116px circle avatar over the scaffold, swipeable in place with
+dots. Feels closer to Signal/Fireplace-today; zero crop surprises, works beautifully with no photo at all.
+Tap avatar → fullscreen viewer. Self: slot tray sits right under the avatar — the management UI is always
+visible, no hidden menu.</p>
+<div class="row wrap">
+  <div>
+    <div class="phone dark">
+      <div class="status"><span>22:38</span><span>81%</span></div>
+      <div class="hero2">
+        <div class="back glasscircle">←</div>
+        <div class="ava"><img src="https://picsum.photos/seed/fireplace2/300/300"></div>
+        <div class="dots"><i class="on"></i><i></i><i></i></div>
+        <div class="n">maoi</div>
+        <div class="handle">maoi#3049 ⧉</div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="tiles">
+        <div class="tile"><b>💬</b>Message</div>
+        <div class="tile"><b>🔔</b>Mute</div>
+      </div>
+      <div class="sect"><div class="t">ABOUT</div>
+        <div style="font-size:13.5px">see you by the fire</div></div>
+      <div class="sect">
+        <div class="rowitem danger">⛔ Remove contact<span class="chev">›</span></div>
+        <div class="rowitem danger">🚫 Block<span class="chev">›</span></div>
+      </div>
+    </div>
+    <div class="lbl">Other user · dark</div>
+  </div>
+  <div>
+    <div class="phone light">
+      <div class="status"><span>22:38</span><span>81%</span></div>
+      <div class="hero2">
+        <div class="back glasscircle">←</div>
+        <div class="ava"><img src="https://picsum.photos/seed/fireplace2/300/300"></div>
+        <div class="dots"><i class="on"></i><i></i><i></i></div>
+        <div class="n">maoi</div>
+        <div class="handle">maoi#3049 ⧉</div>
+      </div>
+      <div style="height:14px"></div>
+      <div class="tiles">
+        <div class="tile"><b>💬</b>Message</div>
+        <div class="tile"><b>🔔</b>Mute</div>
+      </div>
+      <div class="sect"><div class="t">ABOUT</div>
+        <div style="font-size:13.5px">see you by the fire</div></div>
+      <div class="sect">
+        <div class="rowitem danger">⛔ Remove contact<span class="chev">›</span></div>
+        <div class="rowitem danger">🚫 Block<span class="chev">›</span></div>
+      </div>
+    </div>
+    <div class="lbl">Other user · light</div>
+  </div>
+  <div>
+    <div class="phone dark">
+      <div class="status"><span>22:38</span><span>82%</span></div>
+      <div class="hero2">
+        <div class="back glasscircle">←</div>
+        <div class="ava"><img src="https://picsum.photos/seed/fireplace1/300/300"></div>
+        <div class="dots"><i></i><i class="on"></i><i></i></div>
+        <div class="n">bob208</div>
+        <div class="handle">bob208#9939 ⧉</div>
+      </div>
+      <div class="slots" style="justify-content:center;margin:14px 0 4px">
+        <div class="slot primary"><img src="https://picsum.photos/seed/fireplace2/200/200"><div class="star">★</div></div>
+        <div class="slot"><img src="https://picsum.photos/seed/fireplace1/200/200"></div>
+        <div class="slot empty">+</div>
+      </div>
+      <div style="text-align:center;font-size:11px;color:var(--d-muted);margin-bottom:12px">
+        tap a photo: view · long-press: set main / delete</div>
+      <div class="sect"><div class="t">ABOUT</div>
+        <div style="font-size:13.5px;display:flex;align-items:center">just a random bob
+          <span style="margin-left:auto;color:var(--d-accent)">✏️</span></div></div>
+    </div>
+    <div class="lbl">Self · dark (slot tray always visible)</div>
+  </div>
+  <div class="annot">
+    <b>Collapse behavior:</b> avatar scales 116→38px into the top bar on scroll — same shrink-to-circle,
+    simpler geometry (circle→circle).<br><br>
+    <b>Gallery:</b> swipe the circle; dots below. Tap → fullscreen viewer with the same pager.<br><br>
+    <b>Avatar mgmt:</b> tray of 3 slots directly under the avatar; ★ badge = main; empty slot = add
+    (picker → crop). Long-press a slot for set-main/delete menu. Most discoverable model.
+  </div>
+</div>
+
+<!-- ==================== DIRECTION 3 ==================== -->
+<h2>Direction 3 — “Inset Card Hero”</h2>
+<p class="note">Photo lives in a rounded inset card below a normal glass top bar — the app bar never fights
+the photo, no scrim over faces, status bar always legible. Indicator inside the card. Collapse: the card
+parallax-shrinks under the bar; the bar avatar fades in.</p>
+<div class="row wrap">
+  <div>
+    <div class="phone dark">
+      <div class="status"><span>22:38</span><span>81%</span></div>
+      <div class="d3top">
+        <div class="glasscircle">←</div>
+        <div style="font-weight:800;font-size:15.5px">maoi</div>
+        <div style="margin-left:auto" class="glasscircle">⧉</div>
+      </div>
+      <div class="hero3">
+        <img src="https://picsum.photos/seed/fireplace2/600/600" alt="">
+        <div class="scrim"></div>
+        <div class="seg3"><i class="on"></i><i></i><i></i></div>
+        <div class="id"><div class="n">maoi#3049</div><div class="s">online</div></div>
+      </div>
+      <div class="tiles">
+        <div class="tile"><b>💬</b>Message</div>
+        <div class="tile"><b>🔔</b>Mute</div>
+      </div>
+      <div class="sect"><div class="t">ABOUT</div>
+        <div style="font-size:13.5px">see you by the fire</div></div>
+      <div class="sect">
+        <div class="rowitem danger">⛔ Remove contact<span class="chev">›</span></div>
+        <div class="rowitem danger">🚫 Block<span class="chev">›</span></div>
+      </div>
+    </div>
+    <div class="lbl">Other user · dark</div>
+  </div>
+  <div>
+    <div class="phone light">
+      <div class="status"><span>22:38</span><span>81%</span></div>
+      <div class="d3top">
+        <div class="glasscircle">←</div>
+        <div style="font-weight:800;font-size:15.5px">maoi</div>
+        <div style="margin-left:auto" class="glasscircle">⧉</div>
+      </div>
+      <div class="hero3">
+        <img src="https://picsum.photos/seed/fireplace2/600/600" alt="">
+        <div class="scrim"></div>
+        <div class="seg3"><i class="on"></i><i></i><i></i></div>
+        <div class="id"><div class="n">maoi#3049</div><div class="s">online</div></div>
+      </div>
+      <div class="tiles">
+        <div class="tile"><b>💬</b>Message</div>
+        <div class="tile"><b>🔔</b>Mute</div>
+      </div>
+      <div class="sect"><div class="t">ABOUT</div>
+        <div style="font-size:13.5px">see you by the fire</div></div>
+      <div class="sect">
+        <div class="rowitem danger">⛔ Remove contact<span class="chev">›</span></div>
+        <div class="rowitem danger">🚫 Block<span class="chev">›</span></div>
+      </div>
+    </div>
+    <div class="lbl">Other user · light</div>
+  </div>
+  <div>
+    <div class="phone dark">
+      <div class="status"><span>22:38</span><span>82%</span></div>
+      <div class="d3top">
+        <div class="glasscircle">←</div>
+        <div style="font-weight:800;font-size:15.5px">My profile</div>
+        <div style="margin-left:auto" class="glasscircle">✎</div>
+      </div>
+      <div class="hero3">
+        <img src="https://picsum.photos/seed/fireplace1/600/600" alt="">
+        <div class="scrim"></div>
+        <div class="seg3"><i></i><i class="on"></i><i></i></div>
+        <div class="id"><div class="n">bob208#9939</div><div class="s">photo 2 · main is photo 1</div></div>
+      </div>
+      <div class="sect"><div class="t">ABOUT</div>
+        <div style="font-size:13.5px">just a random bob</div></div>
+      <div class="sect">
+        <div class="rowitem">✏️ Edit About<span class="chev">›</span></div>
+        <div class="rowitem">🖼 Add photo<span class="chev">›</span></div>
+        <div class="rowitem">★ Set viewed photo as main<span class="chev">›</span></div>
+        <div class="rowitem danger">🗑 Delete viewed photo<span class="chev">›</span></div>
+      </div>
+    </div>
+    <div class="lbl">Self · dark (closest to today’s IA)</div>
+  </div>
+  <div class="annot">
+    <b>Collapse behavior:</b> card parallaxes and fades under the pinned glass bar; bar title
+    swaps to avatar+name.<br><br>
+    <b>Gallery:</b> swipe within the card.<br><br>
+    <b>Avatar mgmt:</b> keeps today’s action-row model but bound to the viewed photo with an explicit
+    “photo N · main is M” caption so state is never ambiguous.
+  </div>
+</div>
+</body>
+</html>

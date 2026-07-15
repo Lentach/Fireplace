@@ -329,8 +329,8 @@
   "userCardEditAbout": "Edit About",
   "userCardAddPhoto": "Add photo",
   "userCardPhotoLimitReached": "Photo limit reached",
-  "userCardSetMainPhoto": "Set viewed photo as main",
-  "userCardDeletePhoto": "Delete viewed photo",
+  "userCardSetMainPhoto": "Set as main photo",
+  "userCardDeletePhoto": "Delete this photo",
   "userCardSave": "Save",
   "userCardCancel": "Cancel",
   "userCardBack": "Back",
@@ -340,12 +340,24 @@
   "userCardMuteEightHours": "Mute for 8 hours",
   "userCardMuteOneWeek": "Mute for 1 week",
   "userCardMuteForever": "Mute forever",
-  "userCardChatBackground": "Chat background",
-  "userCardBackgroundPrivate": "Only you see this background in this conversation.",
   "userCardMessage": "Message",
-  "userCardTypeMessage": "Type a message",
-  "userCardDefaultBackground": "Default",
-  "userCardGlyphsBackground": "Glyphs",
+  "userCardMute": "Mute",
+  "userCardMuted": "Muted",
+  "userCardCopyTag": "Copy tag",
+  "userCardManagePhotos": "Manage photos",
+  "userCardPhotoOfCount": "Photo {index} of {count}",
+  "@userCardPhotoOfCount": {
+    "placeholders": {
+      "index": {},
+      "count": {}
+    }
+  },
+  "userCardMainPhotoHint": "This is your main photo — contacts see it in chats.",
+  "userCardAboutHint": "A few words about you",
+  "userCardCropPhoto": "Crop photo",
+  "settingsChatBackground": "Chat background",
+  "settingsWallpaperDefault": "Default",
+  "settingsWallpaperGlyphs": "Glyphs",
   "userCardCopyHandle": "Copy username and tag",
   "userCardCopiedHandle": "Copied {handle}",
   "@userCardCopiedHandle": {
@@ -354,7 +366,6 @@
     }
   },
   "userCardNoProfilePhoto": "No profile photo",
-  "userCardBackgroundPreviewMessage": "See you by the fire.",
   "userCardNotificationsMuted": "Notifications muted",
   "userCardBlockTitle": "Block {handle}?",
   "@userCardBlockTitle": {

@@ -1,6 +1,5 @@
 import 'dart:convert';
 import 'dart:typed_data';
-import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:http/http.dart' as http;
 import 'package:http_parser/http_parser.dart';
 import 'package:image_picker/image_picker.dart';
@@ -140,27 +139,20 @@ class ApiService {
 
     request.headers['Authorization'] = 'Bearer $token';
 
-    // Handle web vs native platforms
-    if (kIsWeb) {
-      // Web: use readAsBytes with proper MIME type
-      final bytes = await imageFile.readAsBytes();
-      final extension = imageFile.name.toLowerCase().split('.').last;
-      final mimeType = extension == 'png' ? 'image/png' : 'image/jpeg';
+    // Bytes on ALL platforms: the crop flow hands over XFile.fromData, which
+    // has no filesystem path on native — fromPath would throw there.
+    final bytes = await imageFile.readAsBytes();
+    final extension = imageFile.name.toLowerCase().split('.').last;
+    final mimeType = extension == 'png' ? 'image/png' : 'image/jpeg';
 
-      request.files.add(
-        http.MultipartFile.fromBytes(
-          'file',
-          bytes,
-          filename: imageFile.name,
-          contentType: http.MediaType.parse(mimeType),
-        ),
-      );
-    } else {
-      // Native: use fromPath
-      request.files.add(
-        await http.MultipartFile.fromPath('file', imageFile.path),
-      );
-    }
+    request.files.add(
+      http.MultipartFile.fromBytes(
+        'file',
+        bytes,
+        filename: imageFile.name,
+        contentType: http.MediaType.parse(mimeType),
+      ),
+    );
 
     final streamedResponse = await _httpClient.send(request);
     final response = await http.Response.fromStream(streamedResponse);

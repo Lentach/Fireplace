@@ -853,10 +853,10 @@ class AppLocalizationsPl extends AppLocalizations {
   String get userCardPhotoLimitReached => 'Osiągnięto limit zdjęć';
 
   @override
-  String get userCardSetMainPhoto => 'Ustaw oglądane zdjęcie jako główne';
+  String get userCardSetMainPhoto => 'Ustaw jako główne zdjęcie';
 
   @override
-  String get userCardDeletePhoto => 'Usuń oglądane zdjęcie';
+  String get userCardDeletePhoto => 'Usuń to zdjęcie';
 
   @override
   String get userCardSave => 'Zapisz';
@@ -886,23 +886,43 @@ class AppLocalizationsPl extends AppLocalizations {
   String get userCardMuteForever => 'Wycisz na zawsze';
 
   @override
-  String get userCardChatBackground => 'Tło czatu';
-
-  @override
-  String get userCardBackgroundPrivate =>
-      'Tylko Ty widzisz to tło w tej rozmowie.';
-
-  @override
   String get userCardMessage => 'Wiadomość';
 
   @override
-  String get userCardTypeMessage => 'Napisz wiadomość';
+  String get userCardMute => 'Wycisz';
 
   @override
-  String get userCardDefaultBackground => 'Domyślne';
+  String get userCardMuted => 'Wyciszono';
 
   @override
-  String get userCardGlyphsBackground => 'Glify';
+  String get userCardCopyTag => 'Kopiuj tag';
+
+  @override
+  String get userCardManagePhotos => 'Zarządzaj zdjęciami';
+
+  @override
+  String userCardPhotoOfCount(Object index, Object count) {
+    return 'Zdjęcie $index z $count';
+  }
+
+  @override
+  String get userCardMainPhotoHint =>
+      'To jest Twoje główne zdjęcie — kontakty widzą je na czatach.';
+
+  @override
+  String get userCardAboutHint => 'Kilka słów o Tobie';
+
+  @override
+  String get userCardCropPhoto => 'Przytnij zdjęcie';
+
+  @override
+  String get settingsChatBackground => 'Tło czatu';
+
+  @override
+  String get settingsWallpaperDefault => 'Domyślne';
+
+  @override
+  String get settingsWallpaperGlyphs => 'Glify';
 
   @override
   String get userCardCopyHandle => 'Kopiuj nazwę użytkownika i tag';
@@ -914,9 +934,6 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get userCardNoProfilePhoto => 'Brak zdjęcia profilowego';
-
-  @override
-  String get userCardBackgroundPreviewMessage => 'Do zobaczenia przy ogniu.';
 
   @override
   String get userCardNotificationsMuted => 'Powiadomienia wyciszone';

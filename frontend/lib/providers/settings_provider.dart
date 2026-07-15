@@ -3,7 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/rpg_theme.dart';
 
 
-enum ConversationWallpaper { defaultBackground, glyphs }
+enum ChatWallpaper { defaultBackground, glyphs }
 class SettingsProvider extends ChangeNotifier {
   /// 'light' | 'teal' (Teal + stone, light) | 'dark' (Wire gray) | 'blue' (Telegram-style dark)
   String _themePreference = 'dark';
@@ -118,45 +118,51 @@ class SettingsProvider extends ChangeNotifier {
     await prefs.setString('theme_preference', preference);
   }
 
-  ConversationWallpaper conversationWallpaper(int userId, int conversationId) {
-    final value = _conversationWallpapers['$userId:$conversationId'];
-    return value == 'glyphs'
-        ? ConversationWallpaper.glyphs
-        : ConversationWallpaper.defaultBackground;
-  }
+  /// Global chat wallpaper — ONE background for all conversations
+  /// (owner ruling 2026-07-15; replaced the per-conversation setting).
+  ChatWallpaper _chatWallpaper = ChatWallpaper.defaultBackground;
 
-  final Map<String, String> _conversationWallpapers = {};
+  ChatWallpaper get chatWallpaper => _chatWallpaper;
 
-  Future<void> loadConversationWallpaper(int userId, int conversationId) async {
-    final key = '$userId:$conversationId';
+  static String _wallpaperKey(int userId) => 'chat_wallpaper_$userId';
+
+  /// Loads the per-user global wallpaper, migrating legacy per-conversation
+  /// keys once: any conversation set to glyphs turns the global setting on,
+  /// then the legacy keys are deleted.
+  Future<void> loadChatWallpaper(int userId) async {
     final prefs = await SharedPreferences.getInstance();
-    final value = prefs.getString('conversation_wallpaper_$key');
-    if (value == 'glyphs') {
-      _conversationWallpapers[key] = value!;
-    } else {
-      _conversationWallpapers.remove(key);
+    final legacyPrefix = 'conversation_wallpaper_$userId:';
+    final legacyKeys = prefs
+        .getKeys()
+        .where((key) => key.startsWith(legacyPrefix))
+        .toList(growable: false);
+    if (legacyKeys.isNotEmpty) {
+      final anyGlyphs = legacyKeys.any(
+        (key) => prefs.getString(key) == 'glyphs',
+      );
+      if (anyGlyphs && !prefs.containsKey(_wallpaperKey(userId))) {
+        await prefs.setString(_wallpaperKey(userId), 'glyphs');
+      }
+      for (final key in legacyKeys) {
+        await prefs.remove(key);
+      }
     }
+    final next = prefs.getString(_wallpaperKey(userId)) == 'glyphs'
+        ? ChatWallpaper.glyphs
+        : ChatWallpaper.defaultBackground;
+    if (next == _chatWallpaper) return;
+    _chatWallpaper = next;
     notifyListeners();
   }
 
-  Future<void> setConversationWallpaper(
-    int userId,
-    int conversationId,
-    ConversationWallpaper wallpaper,
-  ) async {
-    final key = '$userId:$conversationId';
-    if (wallpaper == ConversationWallpaper.glyphs) {
-      _conversationWallpapers[key] = 'glyphs';
-    } else {
-      _conversationWallpapers.remove(key);
-    }
+  Future<void> setChatWallpaper(int userId, ChatWallpaper wallpaper) async {
+    _chatWallpaper = wallpaper;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
-    final preferenceKey = 'conversation_wallpaper_$key';
-    if (wallpaper == ConversationWallpaper.glyphs) {
-      await prefs.setString(preferenceKey, 'glyphs');
+    if (wallpaper == ChatWallpaper.glyphs) {
+      await prefs.setString(_wallpaperKey(userId), 'glyphs');
     } else {
-      await prefs.remove(preferenceKey);
+      await prefs.remove(_wallpaperKey(userId));
     }
   }
 }
