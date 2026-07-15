@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-15 (Two fixes the 0.0.118 batch failed to deliver: long-message "Read more" collapse + toast back-arrow reposition. Branch `fix/msg-collapse-toast-position`, 0.0.119, UNMERGED)
+**Date:** 2026-07-15 (Two fixes the 0.0.118 batch failed to deliver: long-message "Read more" collapse + toast back-arrow reposition. **PR #83 MERGED + frontend DEPLOYED, 0.0.119 live** — `/version.json` 0.0.119, `main.dart.js` carries `25027e1`. Backend unchanged, `/version` still 0.0.118.)
 
 ## What was done
 The previous chat-minor-bugs batch (0.0.118, PR #82 merged) shipped 6/8; two failed. Root-caused + fixed both:
