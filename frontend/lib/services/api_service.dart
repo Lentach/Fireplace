@@ -172,7 +172,8 @@ class ApiService {
       Uri.parse('$baseUrl/users/profile-photos/$photoId/main'),
       headers: {'Authorization': 'Bearer $token'},
     );
-    if (response.statusCode != 200) {
+    // Nest returns 201 for POST by default.
+    if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception(_errorMessage(response, 'Unable to set primary photo'));
     }
     final data = jsonDecode(response.body) as Map<String, dynamic>;

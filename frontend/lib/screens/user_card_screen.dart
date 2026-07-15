@@ -92,6 +92,20 @@ class _UserCardScreenState extends State<UserCardScreen> {
     _showFeedback(AppLocalizations.of(context).userCardCopiedHandle(handle));
   }
 
+  /// Profile mutations must FAIL LOUDLY: a swallowed exception here is how
+  /// the broken 201-status check shipped unnoticed (bug-2 postmortem).
+  Future<bool> _runProfileAction(Future<void> Function() action) async {
+    try {
+      await action();
+      return true;
+    } catch (e) {
+      if (mounted) {
+        _showFeedback(e.toString().replaceFirst('Exception: ', ''));
+      }
+      return false;
+    }
+  }
+
   Future<void> _addProfilePhoto() async {
     final auth = context.read<AuthProvider>();
     final image = await ImagePicker().pickImage(source: ImageSource.gallery);
@@ -104,7 +118,9 @@ class _UserCardScreenState extends State<UserCardScreen> {
       ),
     );
     if (cropped == null || !mounted) return;
-    await auth.updateProfilePicture(cropped);
+    if (!await _runProfileAction(() => auth.updateProfilePicture(cropped))) {
+      return;
+    }
     if (!mounted) return;
     // Jump the pager to the newly added photo (appended after the primary
     // sort) so the change is visible immediately.
@@ -117,7 +133,10 @@ class _UserCardScreenState extends State<UserCardScreen> {
   }
 
   Future<void> _setPhotoAsPrimary(int photoId) async {
-    await context.read<AuthProvider>().setPrimaryProfilePhoto(photoId);
+    final auth = context.read<AuthProvider>();
+    if (!await _runProfileAction(() => auth.setPrimaryProfilePhoto(photoId))) {
+      return;
+    }
     if (!mounted) return;
     // Primary sorts first — follow it so "main" state stays visible.
     if (_pageController.hasClients) _pageController.jumpToPage(0);
@@ -162,7 +181,10 @@ class _UserCardScreenState extends State<UserCardScreen> {
       return;
     }
     if (!mounted) return;
-    await context.read<AuthProvider>().deleteProfilePhoto(photoId);
+    final auth = context.read<AuthProvider>();
+    if (!await _runProfileAction(() => auth.deleteProfilePhoto(photoId))) {
+      return;
+    }
     if (!mounted) return;
     final photos = _effectiveData(context, listen: false).photos;
     final target = photos.isEmpty ? 0 : _activePhotoIndex.clamp(0, photos.length - 1);
@@ -213,7 +235,9 @@ class _UserCardScreenState extends State<UserCardScreen> {
     );
     if (next == null || !mounted) return;
     final trimmed = next.trim();
-    await auth.updateProfileAbout(trimmed.isEmpty ? null : trimmed);
+    await _runProfileAction(
+      () => auth.updateProfileAbout(trimmed.isEmpty ? null : trimmed),
+    );
     // Stay on the card — the watched provider refreshes the About section.
   }
 
