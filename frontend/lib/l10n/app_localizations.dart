@@ -1730,12 +1730,6 @@ abstract class AppLocalizations {
   /// **'Skopiowano {handle}'**
   String userCardCopiedHandle(Object handle);
 
-  /// No description provided for @userCardNoProfilePhoto.
-  ///
-  /// In pl, this message translates to:
-  /// **'Brak zdjęcia profilowego'**
-  String get userCardNoProfilePhoto;
-
   /// No description provided for @userCardNotificationsMuted.
   ///
   /// In pl, this message translates to:

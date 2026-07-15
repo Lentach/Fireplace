@@ -12,7 +12,6 @@ import '../providers/friends_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
 import '../theme/glass_theme.dart';
-import '../widgets/avatar_circle.dart';
 import '../widgets/glass/glass_dialog.dart';
 import '../widgets/glass/glass_surface.dart';
 import '../widgets/glass/glass_menu.dart';
@@ -397,65 +396,34 @@ class _UserCardScreenState extends State<UserCardScreen> {
       backgroundColor: theme.scaffoldBackgroundColor,
       body: CustomScrollView(
         slivers: [
-          if (hasPhotos)
-            SliverPersistentHeader(
-              pinned: true,
-              delegate: _ProfileHeroDelegate(
-                data: data,
-                activeIndex: activeIndex,
-                pageController: _pageController,
-                topInset: MediaQuery.paddingOf(context).top,
-                onPageChanged: (index) =>
-                    setState(() => _activePhotoIndex = index),
-                onCopy: () => _copyHandle(data.handle),
-                onEditPhotos: data.isSelf ? () => _showPhotoSheet(data) : null,
-                scaffoldColor: theme.scaffoldBackgroundColor,
-                onSurface: theme.colorScheme.onSurface,
-              ),
-            )
-          else
-            SliverAppBar(
-              pinned: true,
-              backgroundColor: theme.scaffoldBackgroundColor,
-              surfaceTintColor: Colors.transparent,
-              leading: IconButton(
-                tooltip: l10n.userCardBack,
-                icon: const Icon(Icons.arrow_back),
-                onPressed: () => Navigator.maybePop(context),
-              ),
-              titleSpacing: 0,
-              title: Row(
-                children: [
-                  AvatarCircle(displayName: data.username, radius: 18),
-                  const SizedBox(width: 10),
-                  Expanded(
-                    child: Text(
-                      data.handle,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: RpgTheme.bodyFont(
-                        fontSize: 16,
-                        color: theme.colorScheme.onSurface,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                  ),
-                ],
-              ),
+          // The hero renders ALWAYS — photo-less profiles get a gradient +
+          // initials placeholder with the same collapse. The old compact
+          // SliverAppBar fallback looked identical to the pre-rework card,
+          // so every avatar-less account "kept the old view" (owner report
+          // post branch-deploy).
+          SliverPersistentHeader(
+            pinned: true,
+            delegate: _ProfileHeroDelegate(
+              data: data,
+              activeIndex: activeIndex,
+              pageController: _pageController,
+              topInset: MediaQuery.paddingOf(context).top,
+              onPageChanged: (index) =>
+                  setState(() => _activePhotoIndex = index),
+              onCopy: () => _copyHandle(data.handle),
+              onEditPhotos: data.isSelf && hasPhotos
+                  ? () => _showPhotoSheet(data)
+                  : null,
+              scaffoldColor: theme.scaffoldBackgroundColor,
+              onSurface: theme.colorScheme.onSurface,
             ),
+          ),
           SliverToBoxAdapter(
             child: Padding(
               padding: const EdgeInsets.fromLTRB(16, 14, 16, 44),
               child: Column(
                 crossAxisAlignment: CrossAxisAlignment.stretch,
                 children: [
-                  if (!hasPhotos) ...[
-                    _CompactIdentity(
-                      data: data,
-                      onCopy: () => _copyHandle(data.handle),
-                    ),
-                    const SizedBox(height: 14),
-                  ],
                   if (!data.isSelf) ...[
                     _ActionTilesRow(
                       hasConversation: data.hasConversation,
@@ -725,31 +693,64 @@ class _ProfileHeroDelegate extends SliverPersistentHeaderDelegate {
                 child: Stack(
                   fit: StackFit.expand,
                   children: [
-                    PageView.builder(
-                      controller: pageController,
-                      itemCount: data.photos.length,
-                      onPageChanged: onPageChanged,
-                      itemBuilder: (context, index) {
-                        final photo = data.photos[index];
-                        return Semantics(
-                          image: true,
-                          label: photo.semanticLabel,
-                          child: Image.network(
-                            photo.url,
-                            fit: BoxFit.cover,
-                            errorBuilder: (_, _, _) => Container(
-                              color: Theme.of(context).colorScheme.primary,
-                              alignment: Alignment.center,
-                              child: const Icon(
-                                Icons.image_outlined,
-                                size: 54,
-                                color: Colors.white,
+                    if (data.photos.isEmpty)
+                      // Telegram-style placeholder: same gradient family as
+                      // AvatarCircle, big initial, scaled down with the morph
+                      // so the collapsed circle reads like a normal avatar.
+                      Container(
+                        decoration: BoxDecoration(
+                          gradient: LinearGradient(
+                            begin: Alignment.topLeft,
+                            end: Alignment.bottomRight,
+                            colors: RpgTheme.isDark(context)
+                                ? [
+                                    Theme.of(context).colorScheme.secondary,
+                                    Theme.of(context).colorScheme.primary,
+                                  ]
+                                : [
+                                    Theme.of(context).colorScheme.primary,
+                                    Theme.of(context).colorScheme.secondary,
+                                  ],
+                          ),
+                        ),
+                        alignment: Alignment.center,
+                        child: Text(
+                          data.username.isNotEmpty
+                              ? data.username[0].toUpperCase()
+                              : '?',
+                          style: RpgTheme.bodyFont(
+                            fontSize: lerpDouble(96, 22, morphT)!,
+                            color: Colors.white,
+                            fontWeight: FontWeight.w800,
+                          ),
+                        ),
+                      )
+                    else
+                      PageView.builder(
+                        controller: pageController,
+                        itemCount: data.photos.length,
+                        onPageChanged: onPageChanged,
+                        itemBuilder: (context, index) {
+                          final photo = data.photos[index];
+                          return Semantics(
+                            image: true,
+                            label: photo.semanticLabel,
+                            child: Image.network(
+                              photo.url,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => Container(
+                                color: Theme.of(context).colorScheme.primary,
+                                alignment: Alignment.center,
+                                child: const Icon(
+                                  Icons.image_outlined,
+                                  size: 54,
+                                  color: Colors.white,
+                                ),
                               ),
                             ),
-                          ),
-                        );
-                      },
-                    ),
+                          );
+                        },
+                      ),
                     // Edge scrim for status-bar icons and the identity block.
                     // MUST stay pointer-transparent: a full-bleed BoxDecoration
                     // hit-tests as a solid rectangle and would swallow the
@@ -918,52 +919,6 @@ class _ProfileHeroDelegate extends SliverPersistentHeaderDelegate {
   }
 }
 
-class _CompactIdentity extends StatelessWidget {
-  final UserCardVisualData data;
-  final VoidCallback onCopy;
-
-  const _CompactIdentity({required this.data, required this.onCopy});
-
-  @override
-  Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = FireplaceColors.of(context);
-    final l10n = AppLocalizations.of(context);
-    return Row(
-      children: [
-        AvatarCircle(displayName: data.username, radius: 34),
-        const SizedBox(width: 14),
-        Expanded(
-          child: Column(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Text(
-                data.handle,
-                maxLines: 1,
-                overflow: TextOverflow.ellipsis,
-                style: RpgTheme.bodyFont(
-                  fontSize: 20,
-                  color: theme.colorScheme.onSurface,
-                  fontWeight: FontWeight.w800,
-                ),
-              ),
-              const SizedBox(height: 4),
-              Text(
-                l10n.userCardNoProfilePhoto,
-                style: RpgTheme.bodyFont(fontSize: 13, color: colors.mutedText),
-              ),
-            ],
-          ),
-        ),
-        IconButton(
-          tooltip: l10n.userCardCopyHandle,
-          onPressed: onCopy,
-          icon: const Icon(Icons.copy_outlined),
-        ),
-      ],
-    );
-  }
-}
 
 /// D1 action tiles: Message / Mute / Copy tag as equal glass-tinted cards.
 class _ActionTilesRow extends StatelessWidget {

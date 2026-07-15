@@ -347,7 +347,6 @@
       "handle": {}
     }
   },
-  "userCardNoProfilePhoto": "Brak zdjęcia profilowego",
   "userCardNotificationsMuted": "Powiadomienia wyciszone",
   "userCardBlockTitle": "Zablokować {handle}?",
   "@userCardBlockTitle": {

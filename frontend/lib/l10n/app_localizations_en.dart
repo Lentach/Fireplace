@@ -923,9 +923,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get userCardNoProfilePhoto => 'No profile photo';
-
-  @override
   String get userCardNotificationsMuted => 'Notifications muted';
 
   @override

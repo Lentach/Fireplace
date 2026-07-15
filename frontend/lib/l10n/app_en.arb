@@ -365,7 +365,6 @@
       "handle": {}
     }
   },
-  "userCardNoProfilePhoto": "No profile photo",
   "userCardNotificationsMuted": "Notifications muted",
   "userCardBlockTitle": "Block {handle}?",
   "@userCardBlockTitle": {
