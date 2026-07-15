@@ -16,9 +16,7 @@ void showTopSnackBar(
   // 4.5:1 on bright fills (#FF4444, #2AABEE).
   final textColor = backgroundColor == null
       ? theme.colorScheme.onInverseSurface
-      : (ThemeData.estimateBrightnessForColor(bg) == Brightness.dark
-            ? Colors.white
-            : Colors.black);
+      : RpgTheme.readableOn(bg);
 
   late OverlayEntry entry;
   entry = OverlayEntry(

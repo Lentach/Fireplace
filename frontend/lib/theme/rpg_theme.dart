@@ -301,6 +301,15 @@ class RpgTheme {
     );
   }
 
+  /// White or black — whichever is WCAG-readable on [bg]. White wins only when
+  /// it clears 4.5:1; bright accents (#2AABEE, #5C9EAD, #0D9488) get black.
+  /// Exact contrast math on purpose: Flutter's estimateBrightnessForColor uses
+  /// a laxer threshold and keeps white on fills where it fails 4.5:1.
+  static Color readableOn(Color bg) {
+    final whiteContrast = 1.05 / (bg.computeLuminance() + 0.05);
+    return whiteContrast >= 4.5 ? Colors.white : Colors.black;
+  }
+
   /// Blue theme – Telegram-style (dark blue background, blue accent + sent bubbles).
   static ThemeData get themeDataBlue => _buildTheme(_blueSpec);
 
@@ -402,7 +411,7 @@ class RpgTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: s.buttonBg,
-          foregroundColor: Colors.white,
+          foregroundColor: readableOn(s.buttonBg),
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
@@ -422,7 +431,7 @@ class RpgTheme {
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: s.fab,
-        foregroundColor: Colors.white,
+        foregroundColor: readableOn(s.fab),
       ),
       listTileTheme: ListTileThemeData(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -467,8 +476,9 @@ class RpgTheme {
     primary: accentBlue,
     secondary: accentBlueDark,
     surface: boxBgBlue,
-    onPrimary: Colors.white,
-    onSecondary: Colors.white,
+    // Telegram-blue accents are too bright for white (2.6:1 / 3.0:1).
+    onPrimary: Colors.black,
+    onSecondary: Colors.black,
     onSurface: textColorBlue,
     hint: mutedTextBlue,
     label: mutedTextBlue,
@@ -499,7 +509,7 @@ class RpgTheme {
     secondary: accentDarkGray,
     surface: boxBgDarkGray,
     onPrimary: backgroundDarkGray,
-    onSecondary: textColorDarkGray,
+    onSecondary: backgroundDarkGray,
     onSurface: textColorDarkGray,
     hint: mutedDarkGray,
     label: mutedDarkGray,
@@ -561,7 +571,7 @@ class RpgTheme {
     secondary: secondaryTealStone,
     surface: surfaceTealStone,
     onPrimary: Colors.white,
-    onSecondary: Colors.white,
+    onSecondary: Colors.black,
     onSurface: textColorTealStone,
     hint: mutedTealStone,
     label: mutedTealStone,

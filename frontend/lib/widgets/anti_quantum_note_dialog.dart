@@ -47,14 +47,9 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
     final fc = FireplaceColors.of(context);
     final l10n = AppLocalizations.of(context);
     final isEmpty = _controller.text.trim().isEmpty;
-    // Readable label for a primary-filled surface. Some theme accents are
-    // bright (#2AABEE, #5C9EAD) where the schemes' white onPrimary fails
-    // 4.5:1 — same computed-foreground rule as showTopSnackBar.
-    final onAccent =
-        ThemeData.estimateBrightnessForColor(colorScheme.primary) ==
-            Brightness.dark
-        ? Colors.white
-        : Colors.black;
+    // Readable label on the primary fill — some theme accents are bright
+    // (#2AABEE, #5C9EAD) where white fails 4.5:1.
+    final onAccent = RpgTheme.readableOn(colorScheme.primary);
 
     return Padding(
       padding: EdgeInsets.only(
