@@ -321,7 +321,7 @@ class ChatActionTiles extends StatelessWidget {
               showTopSnackBar(
                 context,
                 l10n.antiQuantumNoteSendFailed(e.toString()),
-                backgroundColor: Colors.red,
+                backgroundColor: Theme.of(context).colorScheme.error,
               );
             }
           }

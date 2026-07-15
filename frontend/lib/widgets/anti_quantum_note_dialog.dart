@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
 import '../l10n/app_localizations.dart';
+import '../theme/rpg_theme.dart';
+import '../utils/jumbo_emoji.dart';
 
 class AntiQuantumNoteDialog extends StatefulWidget {
   final Future<void> Function(String content, int expiresInSeconds) onSend;
@@ -41,8 +43,13 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
+    final colorScheme = theme.colorScheme;
+    final fc = FireplaceColors.of(context);
     final l10n = AppLocalizations.of(context);
     final isEmpty = _controller.text.trim().isEmpty;
+    // Readable label on the primary fill — some theme accents are bright
+    // (#2AABEE, #5C9EAD) where white fails 4.5:1.
+    final onAccent = RpgTheme.readableOn(colorScheme.primary);
 
     return Padding(
       padding: EdgeInsets.only(
@@ -57,17 +64,22 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
         children: [
           Row(
             children: [
-              const Text('\u26db\ufe0f', style: TextStyle(fontSize: 20)),
+              Text(
+                '\u26db\ufe0f',
+                style: withEmojiFont(const TextStyle(fontSize: 20)),
+              ),
               const SizedBox(width: 8),
               Text(
                 l10n.antiQuantumNoteTitle,
-                style: theme.textTheme.titleMedium?.copyWith(fontWeight: FontWeight.w700),
+                style: theme.textTheme.titleMedium?.copyWith(
+                  fontWeight: FontWeight.w700,
+                ),
               ),
               const Spacer(),
               IconButton(
                 icon: const Icon(Icons.close, size: 20),
                 onPressed: () => Navigator.of(context).pop(),
-                color: Colors.grey,
+                color: fc.mutedText,
               ),
             ],
           ),
@@ -82,11 +94,11 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
               fillColor: theme.colorScheme.surface,
               border: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: Colors.grey.shade700),
+                borderSide: BorderSide(color: fc.borderColor),
               ),
               enabledBorder: OutlineInputBorder(
                 borderRadius: BorderRadius.circular(10),
-                borderSide: BorderSide(color: Colors.grey.shade700),
+                borderSide: BorderSide(color: fc.borderColor),
               ),
             ),
           ),
@@ -109,10 +121,14 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
                     child: Container(
                       padding: const EdgeInsets.symmetric(vertical: 8),
                       decoration: BoxDecoration(
-                        color: selected ? const Color(0xFFC0392B) : theme.colorScheme.surface,
+                        color: selected
+                            ? colorScheme.primary
+                            : theme.colorScheme.surface,
                         borderRadius: BorderRadius.circular(8),
                         border: Border.all(
-                          color: selected ? const Color(0xFFC0392B) : Colors.grey.shade700,
+                          color: selected
+                              ? colorScheme.primary
+                              : fc.borderColor,
                         ),
                       ),
                       child: Text(
@@ -121,7 +137,7 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
                         style: TextStyle(
                           fontSize: 13,
                           fontWeight: FontWeight.w600,
-                          color: selected ? Colors.white : Colors.grey,
+                          color: selected ? onAccent : fc.mutedText,
                         ),
                       ),
                     ),
@@ -136,25 +152,33 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
             child: ElevatedButton(
               onPressed: (isEmpty || _sending) ? null : _handleSend,
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFC0392B),
-                foregroundColor: Colors.white,
+                backgroundColor: colorScheme.primary,
+                foregroundColor: onAccent,
                 padding: const EdgeInsets.symmetric(vertical: 13),
-                shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+                shape: RoundedRectangleBorder(
+                  borderRadius: BorderRadius.circular(10),
+                ),
               ),
               child: _sending
-                  ? const SizedBox(
+                  ? SizedBox(
                       width: 18,
                       height: 18,
-                      child: CircularProgressIndicator(strokeWidth: 2, color: Colors.white),
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: onAccent,
+                      ),
                     )
-                  : Text(l10n.antiQuantumNoteGenerateAndSend, style: const TextStyle(fontWeight: FontWeight.w700)),
+                  : Text(
+                      l10n.antiQuantumNoteGenerateAndSend,
+                      style: const TextStyle(fontWeight: FontWeight.w700),
+                    ),
             ),
           ),
           const SizedBox(height: 8),
           Center(
             child: Text(
               l10n.antiQuantumNoteFooter,
-              style: const TextStyle(fontSize: 10, color: Colors.grey),
+              style: TextStyle(fontSize: 10, color: fc.mutedText),
             ),
           ),
         ],

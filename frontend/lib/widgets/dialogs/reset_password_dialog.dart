@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import '../../l10n/app_localizations.dart';
 import '../../theme/rpg_theme.dart';
+import '../glass/glass_dialog.dart';
 
 class ResetPasswordDialog extends StatefulWidget {
   const ResetPasswordDialog({super.key});
@@ -44,138 +45,76 @@ class _ResetPasswordDialogState extends State<ResetPasswordDialog> {
     }
   }
 
+  InputDecoration _passwordDecoration(
+    BuildContext context, {
+    required String label,
+  }) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final fc = FireplaceColors.of(context);
+    return InputDecoration(
+      labelText: label,
+      labelStyle: RpgTheme.bodyFont(color: fc.mutedText),
+      filled: true,
+      fillColor: fc.inputBg,
+      border: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide(color: fc.borderColor),
+      ),
+      enabledBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide(color: fc.borderColor),
+      ),
+      focusedBorder: OutlineInputBorder(
+        borderRadius: BorderRadius.circular(8),
+        borderSide: BorderSide(color: colorScheme.primary, width: 2),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
-    final isDark = RpgTheme.isDark(context);
-    final colorScheme = Theme.of(context).colorScheme;
-    final bgColor = colorScheme.surface;
-    final borderColor = FireplaceColors.of(context).borderColor;
-    final fillColor = FireplaceColors.of(context).inputBg;
-    final textColor = colorScheme.onSurface;
-    final mutedColor =
-        isDark ? RpgTheme.mutedDark : RpgTheme.textSecondaryLight;
+    final textColor = Theme.of(context).colorScheme.onSurface;
 
-    return Dialog(
-      backgroundColor: bgColor,
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(12),
-        side: BorderSide(color: borderColor, width: 2),
-      ),
-      child: Container(
-        padding: const EdgeInsets.all(24),
-        constraints: const BoxConstraints(maxWidth: 400),
-        child: Form(
-          key: _formKey,
-          child: Column(
-            mainAxisSize: MainAxisSize.min,
-            crossAxisAlignment: CrossAxisAlignment.stretch,
-            children: [
-              Text(
-                l10n.resetPasswordDialogTitle,
-                style: RpgTheme.screenHeaderTitle(
-                  fontSize: 18,
-                  color: colorScheme.primary,
-                ),
-                textAlign: TextAlign.center,
-              ),
-              const SizedBox(height: 24),
-
-              // Old Password
-              TextFormField(
-                controller: _oldPasswordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: l10n.oldPassword,
-                  labelStyle: RpgTheme.bodyFont(color: mutedColor),
-                  filled: true,
-                  fillColor: fillColor,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: borderColor),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: borderColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: colorScheme.primary, width: 2),
-                  ),
-                ),
-                style: RpgTheme.bodyFont(color: textColor),
-                validator: (value) {
-                  if (value == null || value.isEmpty) {
-                    return l10n.oldPasswordRequired;
-                  }
-                  return null;
-                },
-              ),
-              const SizedBox(height: 16),
-
-              // New Password
-              TextFormField(
-                controller: _newPasswordController,
-                obscureText: true,
-                decoration: InputDecoration(
-                  labelText: l10n.newPassword,
-                  labelStyle: RpgTheme.bodyFont(color: mutedColor),
-                  filled: true,
-                  fillColor: fillColor,
-                  border: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: borderColor),
-                  ),
-                  enabledBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: borderColor),
-                  ),
-                  focusedBorder: OutlineInputBorder(
-                    borderRadius: BorderRadius.circular(8),
-                    borderSide: BorderSide(color: colorScheme.primary, width: 2),
-                  ),
-                ),
-                style: RpgTheme.bodyFont(color: textColor),
-                validator: (value) => _validatePassword(context, value),
-              ),
-              const SizedBox(height: 24),
-
-              // Buttons
-              Row(
-                children: [
-                  Expanded(
-                    child: OutlinedButton(
-                      onPressed: () => Navigator.of(context).pop(),
-                      style: OutlinedButton.styleFrom(
-                        side: BorderSide(color: borderColor, width: 1.5),
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: Text(
-                        l10n.cancel,
-                        style: RpgTheme.bodyFont(color: mutedColor),
-                      ),
-                    ),
-                  ),
-                  const SizedBox(width: 12),
-                  Expanded(
-                    child: ElevatedButton(
-                      onPressed: _submit,
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: colorScheme.primary,
-                        padding: const EdgeInsets.symmetric(vertical: 12),
-                      ),
-                      child: Text(
-                        l10n.resetButton,
-                        style: RpgTheme.bodyFont(color: Colors.white),
-                      ),
-                    ),
-                  ),
-                ],
-              ),
-            ],
-          ),
+    return GlassDialog(
+      maxWidth: 400,
+      title: Text(l10n.resetPasswordDialogTitle),
+      content: Form(
+        key: _formKey,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
+          children: [
+            TextFormField(
+              controller: _oldPasswordController,
+              obscureText: true,
+              decoration: _passwordDecoration(context, label: l10n.oldPassword),
+              style: RpgTheme.bodyFont(color: textColor),
+              validator: (value) {
+                if (value == null || value.isEmpty) {
+                  return l10n.oldPasswordRequired;
+                }
+                return null;
+              },
+            ),
+            const SizedBox(height: 16),
+            TextFormField(
+              controller: _newPasswordController,
+              obscureText: true,
+              decoration: _passwordDecoration(context, label: l10n.newPassword),
+              style: RpgTheme.bodyFont(color: textColor),
+              validator: (value) => _validatePassword(context, value),
+            ),
+          ],
         ),
       ),
+      actions: [
+        TextButton(
+          onPressed: () => Navigator.of(context).pop(),
+          child: Text(l10n.cancel),
+        ),
+        FilledButton(onPressed: _submit, child: Text(l10n.resetButton)),
+      ],
     );
   }
 }

@@ -113,7 +113,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         showTopSnackBar(
           context,
           '${AppLocalizations.of(context).passwordResetFailed}: ${e.toString()}',
-          backgroundColor: const Color(0xFFFF6666),
+          backgroundColor: Theme.of(context).colorScheme.error,
         );
       }
     }
@@ -144,7 +144,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         showTopSnackBar(
           context,
           '${AppLocalizations.of(context).accountDeletionFailed}: ${e.toString()}',
-          backgroundColor: const Color(0xFFFF6666),
+          backgroundColor: Theme.of(context).colorScheme.error,
         );
       }
     }
@@ -170,21 +170,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
         showTopSnackBar(
           context,
           l10n.webPushPermissionDenied,
-          backgroundColor: const Color(0xFFFF6666),
+          backgroundColor: Theme.of(context).colorScheme.error,
         );
         break;
       case WebPushRequestStatus.requiresStandalone:
         showTopSnackBar(
           context,
           l10n.webPushInstallRequired,
-          backgroundColor: const Color(0xFFFF6666),
+          backgroundColor: Theme.of(context).colorScheme.error,
         );
         break;
       case WebPushRequestStatus.unsupported:
         showTopSnackBar(
           context,
           l10n.webPushNotSupported,
-          backgroundColor: const Color(0xFFFF6666),
+          backgroundColor: Theme.of(context).colorScheme.error,
         );
         break;
       case WebPushRequestStatus.noChange:
@@ -198,7 +198,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
         showTopSnackBar(
           context,
           '${l10n.webPushEnableFailed}: ${result.details ?? ''}',
-          backgroundColor: const Color(0xFFFF6666),
+          backgroundColor: Theme.of(context).colorScheme.error,
         );
         break;
     }
@@ -549,7 +549,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       color: theme.colorScheme.onSurfaceVariant,
                     ),
                     onTap: _showDeleteAccountDialog,
-                    textColor: const Color(0xFFFF6666),
+                    textColor: theme.colorScheme.error,
                   ),
 
                   const SizedBox(height: 24),

@@ -17,6 +17,8 @@ void main() {
       t.elevatedButtonTheme.style!.shape!.resolve(const {})!.side.color;
   Color textBtnFg(ThemeData t) =>
       t.textButtonTheme.style!.foregroundColor!.resolve(const {})!;
+  Color elevFg(ThemeData t) =>
+      t.elevatedButtonTheme.style!.foregroundColor!.resolve(const {})!;
 
   Future<ThemeData> capture(WidgetTester tester, ThemeData theme) async {
     late ThemeData captured;
@@ -51,8 +53,10 @@ void main() {
     required Color inputFocused,
     required Color elevatedBg,
     required Color elevatedSide,
+    required Color elevatedFg,
     required Color textButtonFg,
     required Color fab,
+    required Color fabFg,
     required Color selectedTile,
     required Color divider,
     required Color titleLarge,
@@ -68,7 +72,12 @@ void main() {
     expect(t.colorScheme.onPrimary, onPrimary);
     expect(t.colorScheme.onSecondary, onSecondary);
     expect(t.colorScheme.onSurface, onSurface);
-    expect(t.colorScheme.error, RpgTheme.errorColor);
+    expect(
+      t.colorScheme.error,
+      brightness == Brightness.dark
+          ? RpgTheme.errorColor
+          : RpgTheme.errorColorLight,
+    );
 
     expect(t.appBarTheme.backgroundColor, appBarBg);
     expect(t.appBarTheme.titleTextStyle!.color, appBarTitle);
@@ -85,8 +94,10 @@ void main() {
 
     expect(elevBg(t), elevatedBg);
     expect(elevSide(t), elevatedSide);
+    expect(elevFg(t), elevatedFg);
     expect(textBtnFg(t), textButtonFg);
     expect(t.floatingActionButtonTheme.backgroundColor, fab);
+    expect(t.floatingActionButtonTheme.foregroundColor, fabFg);
     expect(t.listTileTheme.selectedTileColor, selectedTile);
     expect(t.dividerTheme.color, divider);
 
@@ -117,8 +128,9 @@ void main() {
       primary: RpgTheme.accentBlue,
       secondary: RpgTheme.accentBlueDark,
       surface: RpgTheme.boxBgBlue,
-      onPrimary: Colors.white,
-      onSecondary: Colors.white,
+      // Bright Telegram-blue accents: black foregrounds (white fails 4.5:1).
+      onPrimary: Colors.black,
+      onSecondary: Colors.black,
       onSurface: RpgTheme.textColorBlue,
       appBarBg: RpgTheme.boxBgBlue,
       appBarTitle: RpgTheme.accentBlue,
@@ -128,8 +140,10 @@ void main() {
       inputFocused: RpgTheme.accentBlue,
       elevatedBg: RpgTheme.buttonBgBlue,
       elevatedSide: RpgTheme.accentBlue,
+      elevatedFg: Colors.black,
       textButtonFg: RpgTheme.accentBlue,
       fab: RpgTheme.accentBlue,
+      fabFg: Colors.black,
       selectedTile: RpgTheme.activeTabBgBlue,
       divider: RpgTheme.convItemBorderBlue,
       titleLarge: RpgTheme.accentBlue,
@@ -160,7 +174,7 @@ void main() {
       secondary: RpgTheme.accentDarkGray,
       surface: RpgTheme.boxBgDarkGray,
       onPrimary: RpgTheme.backgroundDarkGray,
-      onSecondary: RpgTheme.textColorDarkGray,
+      onSecondary: RpgTheme.backgroundDarkGray,
       onSurface: RpgTheme.textColorDarkGray,
       appBarBg: RpgTheme.boxBgDarkGray,
       appBarTitle: RpgTheme.accentDarkGray,
@@ -170,8 +184,10 @@ void main() {
       inputFocused: RpgTheme.accentDarkGray,
       elevatedBg: RpgTheme.accentDarkGray,
       elevatedSide: RpgTheme.accentDarkGray,
+      elevatedFg: Colors.black,
       textButtonFg: RpgTheme.accentDarkGray,
       fab: RpgTheme.accentDarkGray,
+      fabFg: Colors.black,
       selectedTile: RpgTheme.activeTabBgDarkGray,
       divider: RpgTheme.convItemBorderDarkGray,
       titleLarge: RpgTheme.accentDarkGray,
@@ -212,8 +228,10 @@ void main() {
       inputFocused: RpgTheme.primaryLight,
       elevatedBg: RpgTheme.primaryLight,
       elevatedSide: RpgTheme.primaryLight,
+      elevatedFg: Colors.white,
       textButtonFg: RpgTheme.primaryLight,
       fab: RpgTheme.primaryLight,
+      fabFg: Colors.white,
       selectedTile: RpgTheme.activeTabBgLight,
       divider: RpgTheme.convItemBorderLight,
       titleLarge: RpgTheme.primaryLight,
@@ -244,7 +262,7 @@ void main() {
       secondary: RpgTheme.secondaryTealStone,
       surface: RpgTheme.surfaceTealStone,
       onPrimary: Colors.white,
-      onSecondary: Colors.white,
+      onSecondary: Colors.black,
       onSurface: RpgTheme.textColorTealStone,
       appBarBg: RpgTheme.surfaceTealStone,
       appBarTitle: RpgTheme.primaryTealStone,
@@ -254,8 +272,10 @@ void main() {
       inputFocused: RpgTheme.primaryTealStone,
       elevatedBg: RpgTheme.secondaryTealStone,
       elevatedSide: RpgTheme.secondaryTealStone,
+      elevatedFg: Colors.black,
       textButtonFg: RpgTheme.primaryTealStone,
       fab: RpgTheme.secondaryTealStone,
+      fabFg: Colors.black,
       selectedTile: RpgTheme.activeTabBgTealStone,
       divider: RpgTheme.borderTealStone,
       titleLarge: RpgTheme.primaryTealStone,

@@ -363,7 +363,7 @@ class _AddByUsernameTabState extends State<_AddByUsernameTab> {
                 errorMessage,
                 style: RpgTheme.bodyFont(
                   fontSize: 13,
-                  color: RpgTheme.errorColor,
+                  color: Theme.of(context).colorScheme.error,
                 ),
                 textAlign: TextAlign.center,
               ),

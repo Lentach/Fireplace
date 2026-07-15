@@ -34,13 +34,56 @@ class FireplaceColors extends ThemeExtension<FireplaceColors> {
       Theme.of(context).extension<FireplaceColors>()!;
 
   @override
-  ThemeExtension<FireplaceColors> copyWith() => this;
+  FireplaceColors copyWith({
+    Color? inputBg,
+    Color? convItemBorder,
+    Color? convItemBg,
+    Color? messagesAreaBg,
+    Color? mineMsgBg,
+    Color? theirsMsgBg,
+    Color? settingsTileBg,
+    Color? settingsTileBorder,
+    Color? tabBorder,
+    Color? borderColor,
+    Color? mutedText,
+  }) => FireplaceColors(
+    inputBg: inputBg ?? this.inputBg,
+    convItemBorder: convItemBorder ?? this.convItemBorder,
+    convItemBg: convItemBg ?? this.convItemBg,
+    messagesAreaBg: messagesAreaBg ?? this.messagesAreaBg,
+    mineMsgBg: mineMsgBg ?? this.mineMsgBg,
+    theirsMsgBg: theirsMsgBg ?? this.theirsMsgBg,
+    settingsTileBg: settingsTileBg ?? this.settingsTileBg,
+    settingsTileBorder: settingsTileBorder ?? this.settingsTileBorder,
+    tabBorder: tabBorder ?? this.tabBorder,
+    borderColor: borderColor ?? this.borderColor,
+    mutedText: mutedText ?? this.mutedText,
+  );
 
   @override
-  ThemeExtension<FireplaceColors> lerp(
+  FireplaceColors lerp(
     covariant ThemeExtension<FireplaceColors>? other,
     double t,
-  ) => this;
+  ) {
+    if (other is! FireplaceColors) return this;
+    return FireplaceColors(
+      inputBg: Color.lerp(inputBg, other.inputBg, t)!,
+      convItemBorder: Color.lerp(convItemBorder, other.convItemBorder, t)!,
+      convItemBg: Color.lerp(convItemBg, other.convItemBg, t)!,
+      messagesAreaBg: Color.lerp(messagesAreaBg, other.messagesAreaBg, t)!,
+      mineMsgBg: Color.lerp(mineMsgBg, other.mineMsgBg, t)!,
+      theirsMsgBg: Color.lerp(theirsMsgBg, other.theirsMsgBg, t)!,
+      settingsTileBg: Color.lerp(settingsTileBg, other.settingsTileBg, t)!,
+      settingsTileBorder: Color.lerp(
+        settingsTileBorder,
+        other.settingsTileBorder,
+        t,
+      )!,
+      tabBorder: Color.lerp(tabBorder, other.tabBorder, t)!,
+      borderColor: Color.lerp(borderColor, other.borderColor, t)!,
+      mutedText: Color.lerp(mutedText, other.mutedText, t)!,
+    );
+  }
 }
 
 class RpgTheme {
@@ -48,6 +91,8 @@ class RpgTheme {
   static const Color textColor = Color(0xFFE0E0E0);
   static const Color mutedText = Color(0xFF6A6AB0);
   static const Color errorColor = Color(0xFFFF4444);
+  // Light-theme destructive red (warm brick; ~5.9:1 on white both directions).
+  static const Color errorColorLight = Color(0xFFC0392B);
   static const Color successColor = Color(0xFF44FF44);
 
   // Telegram-style blue theme (default dark) – official Telegram colors
@@ -256,6 +301,15 @@ class RpgTheme {
     );
   }
 
+  /// White or black — whichever is WCAG-readable on [bg]. White wins only when
+  /// it clears 4.5:1; bright accents (#2AABEE, #5C9EAD, #0D9488) get black.
+  /// Exact contrast math on purpose: Flutter's estimateBrightnessForColor uses
+  /// a laxer threshold and keeps white on fills where it fails 4.5:1.
+  static Color readableOn(Color bg) {
+    final whiteContrast = 1.05 / (bg.computeLuminance() + 0.05);
+    return whiteContrast >= 4.5 ? Colors.white : Colors.black;
+  }
+
   /// Blue theme – Telegram-style (dark blue background, blue accent + sent bubbles).
   static ThemeData get themeDataBlue => _buildTheme(_blueSpec);
 
@@ -274,24 +328,31 @@ class RpgTheme {
   // here once. Golden-locked field-by-field per theme in
   // test/theme/rpg_theme_golden_test.dart.
   static ThemeData _buildTheme(_ThemeSpec s) {
-    final base =
-        s.brightness == Brightness.dark ? ThemeData.dark() : ThemeData.light();
+    final base = s.brightness == Brightness.dark
+        ? ThemeData.dark()
+        : ThemeData.light();
+    // Destructive red per brightness: #FF4444 needs a dark backdrop; on light
+    // surfaces it fails contrast (~3.1:1), so light themes get brick red.
+    final errorC = s.brightness == Brightness.dark
+        ? errorColor
+        : errorColorLight;
     final scheme = s.brightness == Brightness.dark
         ? ColorScheme.dark(
             primary: s.primary,
             secondary: s.secondary,
             surface: s.surface,
-            error: errorColor,
+            error: errorC,
             onPrimary: s.onPrimary,
             onSecondary: s.onSecondary,
             onSurface: s.onSurface,
-            onError: Colors.white,
+            // Bright #FF4444 fill needs a DARK label (white on it is ~3.4:1).
+            onError: Colors.black,
           )
         : ColorScheme.light(
             primary: s.primary,
             secondary: s.secondary,
             surface: s.surface,
-            error: errorColor,
+            error: errorC,
             onPrimary: s.onPrimary,
             onSecondary: s.onSecondary,
             onSurface: s.onSurface,
@@ -324,7 +385,10 @@ class RpgTheme {
       inputDecorationTheme: InputDecorationTheme(
         filled: true,
         fillColor: fc.inputBg,
-        contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 14,
+        ),
         border: OutlineInputBorder(
           borderSide: BorderSide(color: fc.tabBorder, width: 1.5),
           borderRadius: BorderRadius.circular(8),
@@ -338,7 +402,7 @@ class RpgTheme {
           borderRadius: BorderRadius.circular(8),
         ),
         errorBorder: OutlineInputBorder(
-          borderSide: const BorderSide(color: errorColor, width: 1.5),
+          borderSide: BorderSide(color: errorC, width: 1.5),
           borderRadius: BorderRadius.circular(8),
         ),
         hintStyle: GoogleFonts.inter(color: s.hint, fontSize: 14),
@@ -347,7 +411,7 @@ class RpgTheme {
       elevatedButtonTheme: ElevatedButtonThemeData(
         style: ElevatedButton.styleFrom(
           backgroundColor: s.buttonBg,
-          foregroundColor: Colors.white,
+          foregroundColor: readableOn(s.buttonBg),
           padding: const EdgeInsets.symmetric(vertical: 16, horizontal: 24),
           shape: RoundedRectangleBorder(
             borderRadius: BorderRadius.circular(8),
@@ -367,7 +431,7 @@ class RpgTheme {
       ),
       floatingActionButtonTheme: FloatingActionButtonThemeData(
         backgroundColor: s.fab,
-        foregroundColor: Colors.white,
+        foregroundColor: readableOn(s.fab),
       ),
       listTileTheme: ListTileThemeData(
         contentPadding: const EdgeInsets.symmetric(horizontal: 16, vertical: 4),
@@ -412,8 +476,9 @@ class RpgTheme {
     primary: accentBlue,
     secondary: accentBlueDark,
     surface: boxBgBlue,
-    onPrimary: Colors.white,
-    onSecondary: Colors.white,
+    // Telegram-blue accents are too bright for white (2.6:1 / 3.0:1).
+    onPrimary: Colors.black,
+    onSecondary: Colors.black,
     onSurface: textColorBlue,
     hint: mutedTextBlue,
     label: mutedTextBlue,
@@ -444,7 +509,7 @@ class RpgTheme {
     secondary: accentDarkGray,
     surface: boxBgDarkGray,
     onPrimary: backgroundDarkGray,
-    onSecondary: textColorDarkGray,
+    onSecondary: backgroundDarkGray,
     onSurface: textColorDarkGray,
     hint: mutedDarkGray,
     label: mutedDarkGray,
@@ -506,7 +571,7 @@ class RpgTheme {
     secondary: secondaryTealStone,
     surface: surfaceTealStone,
     onPrimary: Colors.white,
-    onSecondary: Colors.white,
+    onSecondary: Colors.black,
     onSurface: textColorTealStone,
     hint: mutedTealStone,
     label: mutedTealStone,

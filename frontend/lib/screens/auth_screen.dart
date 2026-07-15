@@ -182,7 +182,7 @@ class _AuthScreenState extends State<AuthScreen> {
                               style: RpgTheme.bodyFont(
                                 fontSize: 13,
                                 color: authProvider.isError
-                                    ? RpgTheme.errorColor
+                                    ? Theme.of(context).colorScheme.error
                                     : RpgTheme.successColor,
                               ),
                             ),
