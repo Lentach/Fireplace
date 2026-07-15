@@ -6,7 +6,7 @@
 Executed the visual pass deferred from the quality review as **PR #81 `refactor/glass-dialog-migration` (0.0.117)**: ResetPasswordDialog + DeleteAccountDialog migrated from raw copy-pasted `Dialog` scaffolds to `GlassDialog` (TextButton/FilledButton action convention, token decorations, `fc.mutedText` labels); delete-account warning box's hardwired dark tokens → theme-aware tile tokens (light-theme contrast bug M9, now ember-on-white ~5.5:1); new `GlassDialog.maxWidth` applied INSIDE the Dialog (route pages get tight constraints — an outer ConstrainedBox is a silent no-op; caught at 1100px) keeps the 400px desktop cap; `FireplaceColors.copyWith/lerp` no-ops replaced with real per-field copyWith + `Color.lerp` (AnimatedTheme switches now interpolate); glass_preview gained `?screen=dialogs&dialog=reset|delete`.
 
 ## Key files
-- `frontend/lib/widgets/dialogs/{reset_password,delete_account}_dialog.dart`, `widgets/glass/glass_dialog.dart`, `theme/rpg_theme.dart` (extension), `test/preview/glass_preview.dart`; +8 tests (`test/theme/fireplace_colors_extension_test.dart`, `test/widgets/glass_dialog_max_width_test.dart`).
+- `frontend/lib/widgets/dialogs/{reset_password,delete_account}_dialog.dart`, `widgets/glass/glass_dialog.dart`, `theme/rpg_theme.dart` (extension), `test/preview/glass_preview.dart`; +7 tests (`test/theme/fireplace_colors_extension_test.dart`, `test/widgets/glass_dialog_max_width_test.dart`).
 - Full write-up: `2026-07-15-session-glass-dialog-visual-pass.md`.
 
 ## Verification
