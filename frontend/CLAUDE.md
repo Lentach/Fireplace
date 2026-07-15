@@ -106,7 +106,7 @@ git pull ; .\deploy-web.ps1
 - Reply preview uses type labels for encrypted media; never leak plaintext to backend snapshots.
 - Provider cannot navigate directly. Use pending-consume patterns (`consumePendingOpen`, notification request/consume, friend request sent/accepted flags).
 - Do not call `getConversations()`/`getFriends()` inside `onFriendRequestAccepted`; it races and can overwrite fresh state with stale snapshots.
-- `conversationsList` unread merge uses `max(prev, server)` so stale snapshots do not wipe local unread increments.
+- `conversationsList` unread merge trusts the server count (open conversation forced to 0). It replaced an old `max(prev, server)` merge that could only raise counts and left a badge permanently stuck after the conversation was read. Tradeoff: a stale snapshot can briefly reset a just-incremented local count, but the next snapshot restores it (and the message is already in the loaded list).
 - On reconnect for the same user, preserve conversations/friends and active conversation. Ignore empty payloads when lists are already populated. `socketReady` and resume resync must re-emit `pushClientState` for the active chat before fetching latest messages; backend push-skip state lives on the fresh socket and is otherwise lost.
 
 ## 7. Composer, media, and platform gotchas

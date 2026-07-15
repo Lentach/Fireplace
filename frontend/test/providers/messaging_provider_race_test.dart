@@ -780,6 +780,46 @@ void main() {
     );
 
     test(
+      'TEXT retry resends to the original conversation while another chat is active',
+      () {
+        fakeAsync((async) {
+          // A TEXT message in conv 10 fails (session bootstrap throws once).
+          provider.sendMessage('hello');
+          async.flushMicrotasks();
+          final failed = provider.messages.firstWhere(
+            (m) => m.deliveryStatus.name == 'failed',
+          );
+          final failedTempId = failed.tempId!;
+          emitted.clear();
+
+          // User navigates to a DIFFERENT conversation before retrying.
+          conversations.openConversation(11);
+
+          provider.retryFailedMessage(failedTempId);
+          async.flushMicrotasks();
+
+          // Regression: the old path removed the bubble and only re-sent when
+          // conv 10 was active — retrying from elsewhere silently DELETED it and
+          // never resent. The fix keeps the message and resends to conv 10's
+          // recipient (user 2), not the active conversation.
+          expect(
+            provider.messages.any((m) => m.tempId == failedTempId),
+            isTrue,
+            reason: 'retry must not delete the message',
+          );
+          final sendEvents = emitted
+              .where((e) => e['event'] == 'sendMessage')
+              .toList();
+          expect(sendEvents.length, 1);
+          final payload = sendEvents.first['data'] as Map<String, dynamic>;
+          expect(payload['recipientId'], 2);
+          expect(payload['content'], '[encrypted]');
+          expect(payload['encryptedContent'], 'ciphertext');
+        });
+      },
+    );
+
+    test(
       'encrypted sendMessage includes messageType and mediaUrl for IMAGE',
       () async {
         encryption.failEnsureSession = false;
