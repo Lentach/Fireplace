@@ -698,7 +698,9 @@ class _ProfileHeroDelegate extends SliverPersistentHeaderDelegate {
     );
     // Overlays (segment strip, name, scrim, edit button) fade out early.
     final heroOpacity = (1 - t / 0.55).clamp(0.0, 1.0);
-    final barOpacity = ((morphT - 0.55) / 0.45).clamp(0.0, 1.0);
+    // Bar title fades in across the whole morph (review nit: thresholding
+    // morphT AGAIN made the title pop in abruptly near full collapse).
+    final barOpacity = morphT;
 
     return LayoutBuilder(
       builder: (context, constraints) {
