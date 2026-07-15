@@ -14,6 +14,14 @@ class AppConstants {
   /// Default number of messages loaded per page
   static const int messagePageSize = 50;
 
+  /// Max UTF-8 byte size of the JSON-encoded E2E envelope for a sendable
+  /// message. The server caps the resulting base64 ciphertext
+  /// (`encryptedContent`) at 65536 chars; base64 is ~4/3 of the Signal
+  /// ciphertext (the envelope plus Signal/prekey overhead). Budgeting the
+  /// ENVELOPE bytes (via `isMessageWithinByteLimit`) accounts for JSON escaping
+  /// and multi-byte emoji — a raw character/byte count would not.
+  static const int maxEnvelopeBytes = 45000;
+
   /// WebSocket reconnection
   static const int reconnectMaxAttempts = 5;
   static const Duration reconnectInitialDelay = Duration(seconds: 1);

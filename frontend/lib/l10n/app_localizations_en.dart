@@ -628,6 +628,24 @@ class AppLocalizationsEn extends AppLocalizations {
   String get download => 'Download';
 
   @override
+  String get saveImage => 'Save image';
+
+  @override
+  String get copyImage => 'Copy image';
+
+  @override
+  String get imageSaved => 'Image saved';
+
+  @override
+  String get imageSaveFailed => 'Failed to save image';
+
+  @override
+  String get imageCopied => 'Image copied';
+
+  @override
+  String get imageCopyFailed => 'Failed to copy image';
+
+  @override
   String get snackbarCouldNotReadFile => 'Could not read file';
 
   @override
@@ -647,6 +665,9 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get snackbarOpenConversationFirst => 'Open a conversation first';
+
+  @override
+  String get messageTooLong => 'Message is too long to send';
 
   @override
   String get snackbarChatHistoryDeleted => 'Chat history deleted';

@@ -24,19 +24,26 @@ void showTopSnackBar(
       top: 0,
       left: 0,
       right: 0,
-      child: SafeArea(
-        bottom: false,
-        child: Padding(
-          padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
-          child: Material(
-            elevation: 6,
-            borderRadius: BorderRadius.circular(8),
-            color: bg,
-            child: Padding(
-              padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 14),
-              child: Text(
-                message,
-                style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
+      // Informational only — must never intercept taps, or its opaque fill
+      // blocks the app-bar back arrow it overlaps for the whole duration.
+      child: IgnorePointer(
+        child: SafeArea(
+          bottom: false,
+          child: Padding(
+            padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+            child: Material(
+              elevation: 6,
+              borderRadius: BorderRadius.circular(8),
+              color: bg,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 14,
+                ),
+                child: Text(
+                  message,
+                  style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
+                ),
               ),
             ),
           ),

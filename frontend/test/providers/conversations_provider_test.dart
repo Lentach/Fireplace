@@ -3,6 +3,16 @@ import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/models/conversation_model.dart';
 import 'package:fireplace/models/user_model.dart';
 import 'package:fireplace/models/message_model.dart';
+import 'package:fireplace/services/push_sw_channel_stub.dart';
+
+class _RecordingPushSwChannel implements PushSwChannel {
+  final List<Map<String, Object?>> messages = [];
+  @override
+  Future<bool> postMessage(Map<String, Object?> message) async {
+    messages.add(message);
+    return true;
+  }
+}
 
 void main() {
   group('ConversationsProvider', () {
@@ -224,86 +234,58 @@ void main() {
       expect(provider.conversations.length, 2);
     });
 
+    Map<String, dynamic> convJson(int id, UserModel a, UserModel b, int unread) {
+      return {
+        'id': id,
+        'userOne': {'id': a.id, 'username': a.username, 'tag': a.tag},
+        'userTwo': {'id': b.id, 'username': b.username, 'tag': b.tag},
+        'createdAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+        'unreadCount': unread,
+      };
+    }
+
     test(
-        'onConversationsList keeps higher local unread when ahead of stale snapshot',
+        'onConversationsList trusts server unread so a read clears a stale-high count',
         () {
       final provider = ConversationsProvider();
       final userA = UserModel(id: 1, username: 'alice', tag: '0001');
       final userB = UserModel(id: 2, username: 'bob', tag: '0002');
-
       provider.onConnect(false);
-      provider.onConversationsList([
-        {
-          'id': 10,
-          'userOne': {
-            'id': userA.id,
-            'username': userA.username,
-            'tag': userA.tag,
-          },
-          'userTwo': {
-            'id': userB.id,
-            'username': userB.username,
-            'tag': userB.tag,
-          },
-          'createdAt': DateTime.utc(2026, 1, 1).toIso8601String(),
-          'unreadCount': 0,
-        },
-      ]);
+      provider.onConversationsList([convJson(10, userA, userB, 3)]);
+      expect(provider.getUnreadCount(10), 3);
+      // Read on the server (unread -> 0) must clear the badge, not stick at 3
+      // (the old max() merge left it stuck — the reported bug).
+      provider.onConversationsList([convJson(10, userA, userB, 0)]);
+      expect(provider.getUnreadCount(10), 0);
+    });
 
-      provider.incrementUnreadCount(10);
-      provider.incrementUnreadCount(10);
-      expect(provider.getUnreadCount(10), 2);
-
-      provider.onConversationsList([
-        {
-          'id': 10,
-          'userOne': {
-            'id': userA.id,
-            'username': userA.username,
-            'tag': userA.tag,
-          },
-          'userTwo': {
-            'id': userB.id,
-            'username': userB.username,
-            'tag': userB.tag,
-          },
-          'createdAt': DateTime.utc(2026, 1, 1).toIso8601String(),
-          'unreadCount': 1,
-        },
-      ]);
-
-      expect(provider.getUnreadCount(10), 2);
+    test('onConversationsList keeps the active conversation badge at 0', () {
+      final provider = ConversationsProvider();
+      final userA = UserModel(id: 1, username: 'alice', tag: '0001');
+      final userB = UserModel(id: 2, username: 'bob', tag: '0002');
+      provider.onConnect(false);
+      provider.setActiveConversation(10);
+      // Even a snapshot reporting unread for the open chat shows 0 (being read).
+      provider.onConversationsList([convJson(10, userA, userB, 3)]);
+      expect(provider.getUnreadCount(10), 0);
     });
 
     test(
-        'onConversationsList applies server unread when local is not ahead of snapshot',
+        'onConversationsList surfaces unread received after reading (no missed mail)',
         () {
       final provider = ConversationsProvider();
       final userA = UserModel(id: 1, username: 'alice', tag: '0001');
       final userB = UserModel(id: 2, username: 'bob', tag: '0002');
-
       provider.onConnect(false);
-      provider.setActiveConversation(10);
-
-      provider.onConversationsList([
-        {
-          'id': 10,
-          'userOne': {
-            'id': userA.id,
-            'username': userA.username,
-            'tag': userA.tag,
-          },
-          'userTwo': {
-            'id': userB.id,
-            'username': userB.username,
-            'tag': userB.tag,
-          },
-          'createdAt': DateTime.utc(2026, 1, 1).toIso8601String(),
-          'unreadCount': 3,
-        },
-      ]);
-
-      expect(provider.getUnreadCount(10), 3);
+      // Opened & read, then left the conversation.
+      provider
+        ..openConversation(10)
+        ..closeConversation();
+      expect(provider.getUnreadCount(10), 0);
+      // A message arrives while backgrounded (surfaced only via a snapshot, no
+      // live newMessage event): the badge MUST show it, never be held at 0.
+      provider.onConversationsList([convJson(10, userA, userB, 1)]);
+      expect(provider.getUnreadCount(10), 1);
     });
 
     test('openConversation(notify: false) sets active id without notifying listeners', () {
@@ -427,6 +409,28 @@ void main() {
         provider.notifyActiveConversationChanged();
         expect(listenerCalls, 1);
       });
+      test('posts active conversation to the push SW; background posts null', () {
+        final channel = _RecordingPushSwChannel();
+        final provider = ConversationsProvider(pushSwChannel: channel);
+        provider.onConnect(false);
+        channel.messages.clear();
+
+        provider.openConversation(42);
+        provider.setClientVisible(false);
+        provider.setClientVisible(true);
+
+        final active = channel.messages
+            .where((m) => m['type'] == 'active-conversation')
+            .toList();
+        expect(active.first['conversationId'], 42);
+        expect(
+          active.any((m) => m['conversationId'] == null),
+          isTrue,
+          reason: 'backgrounded (clientVisible=false) must post null',
+        );
+        expect(active.last['conversationId'], 42);
+      });
+
     });
   });
 }

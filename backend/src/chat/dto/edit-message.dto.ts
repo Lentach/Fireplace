@@ -14,6 +14,6 @@ export class EditMessageDto {
    * permanently undecryptable '[encrypted]' placeholder for both parties. */
   @IsString()
   @IsNotEmpty()
-  @MaxLength(20000)
+  @MaxLength(65536)
   encryptedContent: string;
 }

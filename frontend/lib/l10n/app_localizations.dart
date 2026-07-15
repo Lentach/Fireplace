@@ -1178,6 +1178,42 @@ abstract class AppLocalizations {
   /// **'Pobierz'**
   String get download;
 
+  /// No description provided for @saveImage.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zapisz obraz'**
+  String get saveImage;
+
+  /// No description provided for @copyImage.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kopiuj obraz'**
+  String get copyImage;
+
+  /// No description provided for @imageSaved.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zapisano obraz'**
+  String get imageSaved;
+
+  /// No description provided for @imageSaveFailed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się zapisać obrazu'**
+  String get imageSaveFailed;
+
+  /// No description provided for @imageCopied.
+  ///
+  /// In pl, this message translates to:
+  /// **'Skopiowano obraz'**
+  String get imageCopied;
+
+  /// No description provided for @imageCopyFailed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się skopiować obrazu'**
+  String get imageCopyFailed;
+
   /// No description provided for @snackbarCouldNotReadFile.
   ///
   /// In pl, this message translates to:
@@ -1219,6 +1255,12 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Najpierw otwórz rozmowę'**
   String get snackbarOpenConversationFirst;
+
+  /// No description provided for @messageTooLong.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wiadomość jest za długa, aby ją wysłać'**
+  String get messageTooLong;
 
   /// No description provided for @snackbarChatHistoryDeleted.
   ///

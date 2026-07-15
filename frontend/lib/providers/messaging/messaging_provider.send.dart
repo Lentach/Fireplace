@@ -874,25 +874,28 @@ extension MessagingSend on MessagingProvider {
 
     if (message.messageType == MessageType.text) {
       final content = message.content;
-      final conversationId = message.conversationId;
-      _messages.removeAt(index);
-      final stillInConv = _messages
-          .where((m) => m.conversationId == conversationId)
-          .toList();
-      if (stillInConv.isNotEmpty) {
-        stillInConv.sort((a, b) => a.createdAt.compareTo(b.createdAt));
-        _conversationsProvider?.updateLastMessage(
-          conversationId,
-          stillInConv.last,
-        );
-      } else {
-        _conversationsProvider?.updateLastMessage(conversationId, null);
-      }
+      if (content.isEmpty) return;
+      // Retry in place against the message's OWN conversation. The old path
+      // removed the bubble and only re-sent when it was the active chat — so a
+      // retry from anywhere else silently DELETED the message, and even when
+      // active it re-sent via sendMessage() (which targets the active conv, not
+      // necessarily this one). Re-encrypt + resend to recipientId instead.
+      _messages[index] = _messages[index].copyWith(
+        deliveryStatus: MessageDeliveryStatus.sending,
+      );
+      _pendingSendContent[tempId] = <String, dynamic>{
+        'content': content,
+        'messageType': 'TEXT',
+      };
       notifyListeners();
-      final activeConversationId = _conversationsProvider?.activeConversationId;
-      if (activeConversationId == conversationId && content.isNotEmpty) {
-        sendMessage(content, replyToMessageId: message.replyToMessageId);
-      }
+      _encryptAndSend(
+        recipientId: recipientId,
+        content: content,
+        tempId: tempId,
+        effectiveExpiresIn: conv.disappearingTimer,
+        effectiveReplyToId: message.replyToMessageId,
+        messageType: 'TEXT',
+      );
     }
   }
 
@@ -1028,6 +1031,16 @@ extension MessagingSend on MessagingProvider {
             ? ciphertext.substring(0, ciphertext.indexOf(':'))
             : '?',
       });
+
+      // Authoritative size guard mirroring SendMessageDto.encryptedContent
+      // @MaxLength(65536): the composer's envelope estimate is only an early UX
+      // guard, so enforce the exact ciphertext length here too — retry and any
+      // programmatic send path can't slip an over-limit payload past server
+      // validation and bounce back as a mystery 'failed'.
+      if (ciphertext.length > 65536) {
+        _markMessageFailed(tempId, 'Message is too long to send.');
+        return false;
+      }
 
       // 5b. Durable lost-ack insurance: snapshot the plaintext payload keyed
       // by the EXACT emitted ciphertext. If the `messageSent` ack is lost to a

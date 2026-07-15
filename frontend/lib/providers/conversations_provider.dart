@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../models/conversation_model.dart';
@@ -10,6 +12,8 @@ import '../models/user_model.dart';
 import '../services/notification_cleaner_stub.dart'
     if (dart.library.html) '../services/notification_cleaner_web.dart'
     if (dart.library.io) '../services/notification_cleaner_io.dart';
+import '../services/push_sw_channel_stub.dart'
+    if (dart.library.html) '../services/push_sw_channel_web.dart';
 
 /// ConversationsProvider — owns conversation list state, active conversation,
 /// unread counts, and pending-open navigation pattern.
@@ -40,6 +44,15 @@ class ConversationsProvider extends ChangeNotifier {
   int? _currentUserId;
 
   final _notificationCleaner = createNotificationCleaner();
+
+  /// Push-SW channel (web only; no-op elsewhere) for the focused-conversation
+  /// notification guard.
+  final PushSwChannel _pushSwChannel;
+
+  /// [pushSwChannel] is injectable for tests; production uses the real push-SW
+  /// channel (web) or a no-op (other platforms).
+  ConversationsProvider({PushSwChannel? pushSwChannel})
+    : _pushSwChannel = pushSwChannel ?? createPushSwChannel();
 
   // ---------- Emit Callback ----------
 
@@ -73,6 +86,16 @@ class ConversationsProvider extends ChangeNotifier {
       'activeConversationId': _activeConversationId,
       'clientVisible': _clientVisible,
     });
+    // Defense-in-depth for the PWA: tell the push SW which chat is open so it
+    // suppresses a banner for a conversation the user is already viewing, even
+    // if the server-side skip races a socket reconnect. Backgrounded → null so
+    // notifications still show.
+    _pushSwChannel
+        .postMessage({
+          'type': 'active-conversation',
+          'conversationId': _clientVisible ? _activeConversationId : null,
+        })
+        .ignore();
   }
 
   // ---------- Public Getters ----------
@@ -165,7 +188,6 @@ class ConversationsProvider extends ChangeNotifier {
   void onConversationsList(dynamic data) {
     final list = data as List<dynamic>;
     _conversationsListReceivedOnce = true;
-    final previousUnread = Map<int, int>.from(_unreadCounts);
     final newConvs = list
         .map((c) => ConversationModel.fromJson(c as Map<String, dynamic>))
         .toList();
@@ -197,12 +219,15 @@ class ConversationsProvider extends ChangeNotifier {
       final m = c as Map<String, dynamic>;
       final convId = m['id'] as int;
       final serverUnread = (m['unreadCount'] as num?)?.toInt() ?? 0;
-      final prev = previousUnread[convId] ?? 0;
-      // [newMessage] + incrementUnreadCount may run before this snapshot includes the
-      // latest DB counts (reconnect, delayed getConversations, friend flows). Prefer the
-      // higher of local vs server so we do not wipe badge/UI unread.
-      final merged = prev > serverUnread ? prev : serverUnread;
-      _unreadCounts[convId] = merged;
+      // The open conversation is fully read (0). For every other conversation
+      // trust the server snapshot so a read-driven decrease actually lowers the
+      // badge — replacing the old max() merge, which could only raise counts and
+      // left a badge permanently stuck after the conversation was read. Tradeoff:
+      // a stale snapshot can briefly reset a just-incremented local count, but the
+      // next snapshot restores it (and the message is already in the loaded list).
+      _unreadCounts[convId] = convId == _activeConversationId
+          ? 0
+          : serverUnread;
 
       // Update last message from backend data
       final lastMsgData = m['lastMessage'];
