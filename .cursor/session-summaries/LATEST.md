@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-15 (Deferred §9 visual pass + polish batch + bright-accent contrast fix. PR #81 open, 0.0.117)
+**Date:** 2026-07-15 (Deferred §9 visual pass + polish batch + contrast fix. PR #81 MERGED + DEPLOYED, 0.0.117 live)
 
 ## What was done
 Three commits on **PR #81 `refactor/glass-dialog-migration` (0.0.117)**:
@@ -18,7 +18,7 @@ Three commits on **PR #81 `refactor/glass-dialog-migration` (0.0.117)**:
 Analyze 0 issues · **707 tests green, exit 0** (after each commit) · screenshot loop: reset/delete/AQ × blue/dark/light/teal at 420px + 1100px + validation-error + enabled-send states · onError and blue-button labels pixel-sampled (0 white px on red/blue fills) · `graphify update .` run.
 
 ## Notes for next session
-- **PR #81 OPEN** (no merge without owner OK). #76–#79 still open from the quality review.
+- **PR #81 MERGED to master (`51cfca0`) and DEPLOYED**: `deploy-web.ps1` from the ping-deploy worktree; post-deploy smoke 5/5 PASS (health, /version.json 0.0.117, bundle contains `51cfca0`, fresh-browser boot). Backend NOT redeployed — zero `backend/` diff a10ae1c..master, so VM backend runs the newest backend code; its `/version` label (0.0.112/a10ae1c) is just stale deploy metadata, cosmetic. Next backend deploy will refresh it.
 - Blue white-on-#2AABEE flag FIXED in commit 3 — blue buttons/FilledButtons now black-on-blue, golden-locked via `elevatedFg`/`fabFg` assertions.
 - Windows `launch` gotcha: `C:\Windows\System32\cmd.exe` + `pty:false` for `flutter run`; no pty ⇒ no hot-restart key — restart the process. First page hit after start compiles: reload once if the screenshot is blank.
 - Muted floating labels on focused fields are the app-wide convention (global inputDecorationTheme sets only labelStyle) — checked, left alone.
