@@ -1,0 +1,202 @@
+---
+import '../styles/landing.css';
+const app = 'https://fireplace.ignorelist.com/';
+const repo = 'https://github.com/Lentach/Fireplace';
+---
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Fireplace — messages only two people can read</title>
+  <meta name="description" content="End-to-end encrypted chat. Signal protocol on every message, self-hosted media, deleting actually deletes. Follow one message end to end and see exactly what our server sees: nothing." />
+  <meta property="og:title" content="Fireplace — messages only two people can read" />
+  <meta property="og:description" content="E2E encrypted chat built by two friends. Follow one message end to end — including the only stop we own." />
+  <meta property="og:type" content="website" />
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet" />
+</head>
+<body>
+<div class="grain"></div>
+
+<nav>
+  <span class="mark">FIRE<b>PLACE</b></span>
+  <div class="links">
+    <a href="#journey">How it works</a>
+    <a href="#features">Privacy</a>
+    <a href={repo}>GitHub</a>
+    <a class="cta" href={app}>Open app</a>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<section class="hero">
+  <canvas></canvas>
+  <div class="content">
+    <p class="tag">E2E encrypted chat · public source · self-hosted</p>
+    <h1>Messages only<br /><span>two people</span><br />can read.</h1>
+    <p class="sub">Every message is sealed on your device with the Signal protocol before it touches the network. Our server relays ciphertext between the people you trust — and understands none of it.</p>
+    <div class="enc" data-encrypt></div>
+  </div>
+  <span class="scroll-cue">scroll — follow one message ↓</span>
+</section>
+
+<!-- ============ THE JOURNEY ============ -->
+<section class="journey" id="journey">
+  <div class="stage">
+    <canvas></canvas>
+
+    <div class="prompt">
+      <h1>Where does a message<br /><span>actually go?</span></h1>
+      <p>press send — or just keep scrolling</p>
+    </div>
+
+    <!-- sender phone -->
+    <div class="phone sender">
+      <div class="screen">
+        <div class="bar"><span class="ava">K</span><span class="who">Kasia<small>online · encrypted</small></span><span class="lock">🔒</span></div>
+        <div class="msgs sender-msgs">
+          <div class="m them">no i jak, działa ta wasza apka? 😄<div class="meta">08:11</div></div>
+          <div class="m me">zaraz się przekonasz<div class="meta">08:11 ✓✓</div></div>
+        </div>
+        <div class="compose">
+          <input value="meet me at eight" maxlength="40" spellcheck="false" />
+          <button title="send">➤</button>
+        </div>
+      </div>
+    </div>
+    <span class="keytag sender-key">🔑 your key — never leaves this device</span>
+
+    <!-- the relay machine -->
+    <div class="machine">
+      <div class="mc-head">
+        <span class="lbl"><span class="dotpulse"></span> fireplace relay nº1 · the only stop we own</span>
+        <div class="mc-rotors">
+          <div class="rotor" data-rotor>I</div>
+          <div class="rotor" data-rotor>II</div>
+          <div class="rotor" data-rotor>III</div>
+        </div>
+      </div>
+      <div class="mc-body">
+        <div class="slot in"><div class="slit"></div><span class="tag">in</span><div class="scan scan-in"></div></div>
+        <div class="mc-inner"><div class="sv-stream"></div></div>
+        <div class="slot out"><div class="slit"></div><span class="tag">out</span><div class="scan scan-out"></div></div>
+      </div>
+      <div class="mc-stamp">routes everything · reads nothing</div>
+    </div>
+
+    <!-- recipient phone -->
+    <div class="phone recipient">
+      <div class="screen">
+        <div class="bar"><span class="ava warm">Y</span><span class="who">you<small>online · encrypted</small></span><span class="lock">🔒</span></div>
+        <div class="msgs recipient-msgs">
+          <div class="m me">no i jak, działa ta wasza apka? 😄<div class="meta">08:11 ✓✓</div></div>
+          <div class="m them">zaraz się przekonasz<div class="meta">08:11</div></div>
+        </div>
+        <div class="compose"><input value="" placeholder="Message…" disabled /><button disabled style="opacity:.4">➤</button></div>
+      </div>
+    </div>
+    <span class="keytag recipient-key">🔑 her key — the only other one in existence</span>
+
+    <div class="traveler"></div>
+
+    <!-- captions -->
+    <div class="cap" data-a="0.02" data-b="0.13">
+      <span class="num">01 / LIFT-OFF</span>
+      <h2>Sent. But not<br />like the others.</h2>
+      <p>Before your message touches any network, something happens right here on your device.</p>
+    </div>
+    <div class="cap" data-a="0.15" data-b="0.30">
+      <span class="num">02 / SEALED</span>
+      <h2>Encrypted where<br />it was written.</h2>
+      <p>Signal double-ratchet. A fresh key for every message. The "3:" envelope is all that survives — and the key stays on your phone.</p>
+    </div>
+    <div class="cap" data-a="0.32" data-b="0.46">
+      <span class="num">03 / IN TRANSIT</span>
+      <h2>Ciphertext,<br />inside TLS.</h2>
+      <p>Two layers of locks cross the wire. Anyone listening — provider, wifi, anyone — records noise.</p>
+    </div>
+    <div class="cap" data-a="0.48" data-b="0.66">
+      <span class="num">04 / THE RELAY MACHINE</span>
+      <h2>In sealed.<br />Out sealed.</h2>
+      <p>Our machine shuffles envelopes, never opens them. Every row in its window looks exactly like yours: ciphertext and routing metadata. No key exists here — nothing to read, leak, sell, or subpoena.</p>
+    </div>
+    <div class="cap" data-a="0.68" data-b="0.80">
+      <span class="num">05 / RELAYED</span>
+      <h2>We pass the letter.<br />Still sealed.</h2>
+      <p>The envelope moves on the instant she's reachable. We keep ciphertext for delivery — never a readable word.</p>
+    </div>
+    <div class="cap" data-a="0.84" data-b="0.97">
+      <span class="num">06 / UNSEALED</span>
+      <h2>Only her phone<br />can do this.</h2>
+      <p>Her device holds the only matching key in existence. The ratchet turns, the seal opens — and it lands on her screen.</p>
+    </div>
+
+    <div class="rail">
+      <div class="stop" data-p="0.02"><div class="d"></div><span>your device</span></div><div class="seg"></div>
+      <div class="stop" data-p="0.32"><div class="d"></div><span>wire</span></div><div class="seg"></div>
+      <div class="stop" data-p="0.48"><div class="d"></div><span>relay</span></div><div class="seg"></div>
+      <div class="stop" data-p="0.68"><div class="d"></div><span>wire</span></div><div class="seg"></div>
+      <div class="stop" data-p="0.86"><div class="d"></div><span>her device</span></div>
+    </div>
+
+    <span class="journey-hint">scroll — your message is on its way ↓</span>
+  </div>
+</section>
+
+<!-- ============ LIGHT ZONE ============ -->
+<div id="lightZone">
+  <div class="bridge"></div>
+  <section class="features" id="features">
+    <h2>Private by construction,<br />not by promise.</h2>
+    <div class="grid">
+      <div class="card">
+        <span class="k">Sealed</span>
+        <h3>Signal protocol, every message</h3>
+        <p>Double-ratchet end-to-end encryption by default — there is no unencrypted mode. Keys are generated and stay on your device; the server never sees them.</p>
+      </div>
+      <div class="card">
+        <span class="k">Yours</span>
+        <h3>Self-hosted, no data brokers</h3>
+        <p>Media lives on our own disk, not big-tech clouds. No ads, no analytics resale, no "partners". The code is public — read it instead of trusting us.</p>
+      </div>
+      <div class="card">
+        <span class="k">Ephemeral</span>
+        <h3>Deleting actually deletes</h3>
+        <p>Delete for everyone removes the message on both sides — server included. Edit window of 15 minutes, re-encrypted end-to-end like everything else.</p>
+      </div>
+    </div>
+  </section>
+  <section class="ledger">
+    <div class="strip">
+      <span><b>0</b> plaintext stored</span>
+      <span><b>E2E</b> on by default</span>
+      <span><b>public</b> source code</span>
+      <span><b>self</b>-hosted</span>
+      <span>built by <b>two friends</b></span>
+    </div>
+  </section>
+</div>
+<div class="bridge-up"></div>
+
+<!-- ============ OUTRO ============ -->
+<section class="outro">
+  <canvas></canvas>
+  <div class="content">
+    <h2>That's the whole story.<br /><span>We're just the courier.</span></h2>
+    <a class="cta" href={app}>Open Fireplace</a>
+    <p class="fine">runs in your browser · installs as an app · free</p>
+  </div>
+</section>
+
+<footer>
+  <span>Fireplace — E2E encrypted chat</span>
+  <a href={repo}>github.com/Lentach/Fireplace</a>
+</footer>
+
+<script>
+  import '../scripts/main';
+</script>
+</body>
+</html>
