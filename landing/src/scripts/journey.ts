@@ -34,9 +34,9 @@ export function initJourney(section: HTMLElement) {
   const canvas = $<HTMLCanvasElement>('canvas');
   let ctx = fit(canvas);
   let W = canvas.clientWidth, H = canvas.clientHeight;
-  window.addEventListener('resize', () => { ctx = fit(canvas); W = canvas.clientWidth; H = canvas.clientHeight; });
+  window.addEventListener('resize', () => { ctx = fit(canvas); W = canvas.clientWidth; H = canvas.clientHeight; stars = makeStars(W, H, 240); });
 
-  const stars = makeStars(W, H, 240);
+  let stars = makeStars(W, H, 240);
   const trail: Pt[] = [];
   let sent = false, landed = false, plain = '';
   let cipherChars: string[] = [];
@@ -60,23 +60,25 @@ export function initJourney(section: HTMLElement) {
     const intake = rectC($('.slot.in'));
     const outlet = rectC($('.slot.out'));
     const holdY = mobile ? H * 0.76 : H * 0.55;
+    // Clean mirrored wire curves: leave the hold horizontally, bend up into
+    // the slit. Single-bend quadratics, symmetric by construction.
+    const sealP = { x: mobile ? W * 0.5 : W * 0.38, y: holdY };
+    const unsealP = { x: mobile ? W * 0.5 : W * 0.62, y: holdY };
     return {
-      mobile, senderC, recipC, intake, outlet,
+      mobile, senderC, recipC, intake, outlet, sealP, unsealP,
       phoneS: mobile ? 0.68 : 0.58,
-      sealP: { x: mobile ? W * 0.5 : W * 0.38, y: holdY },
-      unsealP: { x: mobile ? W * 0.5 : W * 0.62, y: holdY },    // mirror of sealP
       liftStart: { x: W * 0.5 + (mobile ? 30 : 40), y: H * 0.60 + (mobile ? 40 : 60) },
       liftCp: mobile ? { x: W * 0.30, y: H * 0.64 } : { x: W * 0.45, y: H * 0.48 },
       dropCp: mobile ? { x: W * 0.66, y: H * 0.58 } : { x: W * 0.66, y: holdY - H * 0.03 },
-      cp1: mobile ? { x: W * 0.18, y: H * 0.62 } : { x: intake.x - 90, y: H * 0.52 },
-      cp2: mobile ? { x: W * 0.82, y: H * 0.62 } : { x: outlet.x + 90, y: H * 0.52 },  // mirror of cp1
-      landPt: mobile ? { x: W * 0.5 - 25, y: H * 0.42 } : { x: recipC.x - 45, y: recipC.y + 25 },
-      keyDy: mobile ? 175 : 190,
+      cp1: { x: (sealP.x + intake.x) / 2, y: sealP.y },
+      cp2: { x: (unsealP.x + outlet.x) / 2, y: unsealP.y },
+      keyDy: mobile ? 200 : Math.min(190, H * 0.23),   // clamp so the tag clears the rail on short viewports
     };
   }
 
-  /* machine window stream */
-  const streamRows: { el: HTMLElement; phase: number; sp: number }[] = [];
+  /* machine window stream — uniform speed + even spacing: a queue, no lapping */
+  const streamRows: { el: HTMLElement; idx: number }[] = [];
+  const STREAM_SP = 14;
   {
     const stream = $('.sv-stream');
     for (let i = 0; i < 9; i++) {
@@ -85,7 +87,7 @@ export function initJourney(section: HTMLElement) {
       const hh = 8 + ((Math.random() * 2) | 0), mm = (Math.random() * 60) | 0, ss = (Math.random() * 60) | 0;
       el.innerHTML = `<span class="t">${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}</span>${Math.random() < 0.8 ? '2:' : '3:'}${fake(38)}`;
       stream.appendChild(el);
-      streamRows.push({ el, phase: i * 46 + Math.random() * 18, sp: 13 + Math.random() * 5 });
+      streamRows.push({ el, idx: i });
     }
     const mine = document.createElement('div');
     mine.className = 'sv-row mine';
@@ -151,8 +153,10 @@ export function initJourney(section: HTMLElement) {
 
     /* ambient stream flows bottom → top */
     const streamH = A.mobile ? 140 : 170, loop = streamH + 50;
+    const visN = A.mobile ? 7 : 9;
     for (const r of streamRows) {
-      const y = streamH + 20 - ((t * r.sp + r.phase) % loop);
+      if (r.idx >= visN) { r.el.style.opacity = '0'; continue; }
+      const y = streamH + 20 - ((t * STREAM_SP + r.idx * (loop / visN)) % loop);
       r.el.style.transform = `translateY(${y}px)`;
       r.el.style.opacity = String(clamp(Math.min(y / 26, (streamH - y) / 26), 0, 0.85));
     }
@@ -164,7 +168,7 @@ export function initJourney(section: HTMLElement) {
       requestAnimationFrame(update);
       return;
     }
-    $('.prompt').style.opacity = String(1 - seg(p, 0, 0.06));
+    $('.prompt').style.opacity = String(1 - seg(p, 0, 0.035));
 
     /* dashed routes, mirrored */
     const pathAlpha = seg(p, 0.24, 0.32) * (1 - seg(p, 0.95, 1));
@@ -179,34 +183,39 @@ export function initJourney(section: HTMLElement) {
       ctx.setLineDash([]);
     }
 
-    /* phones */
+    /* phones — the journey ends the way it began: a full-size device.
+       The recipient arrives small for the unseal, then GROWS to match the
+       opening shot as the message lands. */
+    const grow = ease(seg(p, 0.945, 0.985));
+    const rpX = lerp(
+      lerp(W * (A.mobile ? 1.35 : 1.15), A.recipC.x, ease(seg(p, A.mobile ? 0.70 : 0.60, A.mobile ? 0.80 : 0.74))),
+      W * (A.mobile ? 0.5 : 0.62), grow);
+    const rpY = lerp(A.recipC.y, H * (A.mobile ? 0.58 : 0.56), grow);
+    const rpS = lerp(A.phoneS, A.mobile ? 1 : 0.95, grow);
+    const recIn = ease(seg(p, A.mobile ? 0.70 : 0.60, A.mobile ? 0.80 : 0.74));
+    phonePose($('.phone.recipient'), rpX, rpY, rpS, recIn);
+    const landPt = { x: rpX - 60 * rpS, y: rpY + 12 * rpS };   // tracks the growing phone's chat area
     if (A.mobile) {
-      // sender: center pre-send → top-center (large) through the seal → exits
-      // left as the wire takes over; recipient mirrors it for the finale
       const toTop = ease(seg(p, T.lift[0], T.lift[1]));
       const exitL = ease(seg(p, 0.28, 0.38));   // fully out before the capsule crosses its lane
       phonePose($('.phone.sender'),
         lerp(lerp(W * 0.5, A.senderC.x, toTop), -W * 0.35, exitL),
         lerp(H * 0.60, A.senderC.y, toTop),
         lerp(1, A.phoneS, toTop), 1);
-      const recIn = ease(seg(p, 0.70, 0.80));
-      phonePose($('.phone.recipient'), lerp(W * 1.35, A.recipC.x, recIn), A.recipC.y, A.phoneS, recIn);
     } else {
       const moveOut = ease(seg(p, T.lift[0], T.lift[1]));
       phonePose($('.phone.sender'), lerp(W * 0.5, A.senderC.x, moveOut), lerp(H * 0.60, A.senderC.y, moveOut), lerp(1, A.phoneS, moveOut), 1);
-      const recIn = ease(seg(p, 0.60, 0.74));
-      phonePose($('.phone.recipient'), lerp(W * 1.15, A.recipC.x, recIn), A.recipC.y, A.phoneS, recIn);
     }
 
     const sk = $('.keytag.sender-key');
     sk.style.opacity = String(seg(p, 0.15, 0.19) * (1 - seg(p, A.mobile ? 0.27 : 0.32, A.mobile ? 0.31 : 0.38)));
     sk.style.left = `${A.senderC.x - 80}px`; sk.style.top = `${A.senderC.y + A.keyDy}px`;
     const rk = $('.keytag.recipient-key');
-    rk.style.opacity = String(seg(p, 0.83, 0.87) * (1 - seg(p, 0.96, 1)));
+    rk.style.opacity = String(seg(p, 0.83, 0.87) * (1 - seg(p, 0.925, 0.95)));
     rk.style.left = `${A.recipC.x - 90}px`; rk.style.top = `${A.recipC.y + A.keyDy}px`;
 
     /* machine */
-    $('.machine').style.opacity = String(seg(p, 0.40, 0.46) * (A.mobile ? 1 - seg(p, 0.68, 0.76) : 1 - seg(p, 0.92, 0.98) * 0.7));
+    $('.machine').style.opacity = String(seg(p, 0.40, 0.46) * (A.mobile ? 1 - seg(p, 0.68, 0.76) : 1 - seg(p, 0.90, 0.96)));
     const spin = ease(seg(p, T.swallow[0], T.wire2[0]));
     rotors.forEach((r, i) => { r.style.transform = `rotate(${spin * (360 + i * 220) + t * 8}deg)`; });
     $('.scan-in').style.opacity = String(seg(p, 0.465, 0.485) * (1 - seg(p, 0.50, 0.52)));
@@ -251,7 +260,7 @@ export function initJourney(section: HTMLElement) {
       capsule = p < 0.85;                        // chrome fades as plaintext returns
     } else {
       const k = ease(seg(p, T.drop[0], T.drop[1]));
-      pos = bez(A.unsealP, A.dropCp, A.landPt, k);
+      pos = bez(A.unsealP, A.dropCp, landPt, k);
       scale = lerp(0.9, 0.62, k);
     }
 
@@ -278,7 +287,7 @@ export function initJourney(section: HTMLElement) {
 
     ring(ctx, A.intake, seg(p, 0.46, 0.515), 40, '143,216,255');
     ring(ctx, A.outlet, seg(p, 0.585, 0.635), 40, '143,216,255');
-    ring(ctx, A.landPt, seg(p, 0.965, 1), 34, '255,217,138');
+    ring(ctx, landPt, seg(p, 0.965, 1), 34, '255,217,138');
 
     /* char states — seal and unseal share the same staggered mechanics */
     for (let i = 0; i < spans.length; i++) {

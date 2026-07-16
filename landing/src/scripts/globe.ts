@@ -7,7 +7,7 @@ import { fit, makeStars, drawStars, clamp, lerp } from './util';
 export function initGlobe(canvas: HTMLCanvasElement) {
   let ctx = fit(canvas);
   let W = canvas.clientWidth, H = canvas.clientHeight;
-  window.addEventListener('resize', () => { ctx = fit(canvas); W = canvas.clientWidth; H = canvas.clientHeight; });
+  window.addEventListener('resize', () => { ctx = fit(canvas); W = canvas.clientWidth; H = canvas.clientHeight; stars = makeStars(W, H, 240); });
 
   const N = 850;
   const pts: [number, number, number][] = [];
@@ -17,7 +17,7 @@ export function initGlobe(canvas: HTMLCanvasElement) {
   }
   const pick = () => pts[(Math.random() * N) | 0];
   const arcs = Array.from({ length: 8 }, () => ({ p1: pick(), p2: pick(), u: Math.random(), sp: 0.002 + Math.random() * 0.003 }));
-  const stars = makeStars(W, H, 240);
+  let stars = makeStars(W, H, 240);
   const F = 2.6;
 
   let ang = 0, tilt = 0.38, zoom = 1, vel = 0, lastT = performance.now();

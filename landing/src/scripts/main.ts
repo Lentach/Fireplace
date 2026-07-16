@@ -27,8 +27,8 @@ const outCanvas = document.querySelector<HTMLCanvasElement>('.outro canvas');
 if (outCanvas) {
   let ctx = fit(outCanvas);
   let W = outCanvas.clientWidth, H = outCanvas.clientHeight;
-  window.addEventListener('resize', () => { ctx = fit(outCanvas); W = outCanvas.clientWidth; H = outCanvas.clientHeight; });
-  const stars = makeStars(W, H, 200);
+  window.addEventListener('resize', () => { ctx = fit(outCanvas); W = outCanvas.clientWidth; H = outCanvas.clientHeight; stars = makeStars(W, H, 200); });
+  let stars = makeStars(W, H, 200);
   (function frame() {
     ctx.clearRect(0, 0, W, H);
     drawStars(ctx, stars, performance.now() / 1000, '190,220,240', 22);
