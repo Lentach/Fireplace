@@ -1,11 +1,13 @@
 # Latest session summary
 
-**Date:** 2026-07-16 (User card ROUND 3 — adaptive full-bleed hero + bigger manage-photos sheet — committed `219dcaa`, **branch-deployed to prod**)
+**Date:** 2026-07-16 (User card ROUND 3 + 4 — adaptive full-bleed hero, bigger manage-photos sheet, then owner nits: transparent drag proxy, chat-header avatar fills its circle, 44px tab plus — `219dcaa` + `c505049`, **branch-deployed to prod**)
 
 ## What was done
 On `feat/user-card-rework` (PR #84, still unmerged): owner rejected the round-2 contain-over-blur pillarboxing ("spaces left and right") and called the manage sheet too small. Hero now **sizes itself to the active photo's aspect** — `photoExtent = (width/aspect).clamp(220, max(260, min(width*4/3, 62%·height)))` — so within the clamp the photo fills the full width with ZERO crop and zero bars; extremes get a modest Telegram-style cover crop. Aspects resolved async (`NetworkImage.resolve` + listener, `_photoAspects` map; failures keep the 300 default). Pager simplified: blurred backdrop + contain layer + crossfade DELETED — one `BoxFit.cover` image per page; height changes animate via `TweenAnimationBuilder` around the scroll view. `BoxFit.fill` (distorts) and `fitWidth` (letterboxes landscape) considered + rejected.
 
 Manage sheet: `isScrollControlled`, "Manage photos" title, tray tiles 64px → responsive `((maxWidth-36)/3).clamp(84,148)` via `LayoutBuilder` (~105px on phone), `_PhotoSlot(size:)`, `_ActionRow(large:)` rows. Reorder/set-main/add/delete + optimistic order unchanged.
+
+Round 4 (owner nits, `c505049`): (1) manage-sheet drag proxy white box → `proxyDecorator` transparent Material; (2) chat-header avatar "halo not equal / circle not a circle" — r18 avatar inside a 48w×52h GlassPill → new bare `GlassTopBar.avatar` slot, photo fills the 52px circle Telegram-style ([INFERENCE] surface identified by geometry, not reproduced — confirm with owner); (3) chats-tab plus GlassCircle 52 → 44 (matches user-card action circles).
 
 ## Key files
 - `frontend/lib/screens/user_card_screen.dart` (aspect resolver, `photoExtent` delegate param, single-cover pager, sheet rework), `test/screens/user_card_screen_test.dart`, `test/preview/user_card_preview.dart` (mixed-aspect photos 1:1 / 2:3 / 12:7).
@@ -17,7 +19,7 @@ Manage sheet: `isScrollControlled`, "Manage photos" title, tray tiles 64px → r
 - Lint trap: `LayoutBuilder`'s `context` param shadowing the State's `context` breaks the `mounted` guard for `use_build_context_synchronously` → param renamed `_`.
 
 ## Notes for next session
-- Round 3 committed (`219dcaa`) + pushed + **branch-deployed to prod** (`/version.json` 0.0.120, bundle contains `219dcaa`, smoke PASSED). **`deploy-web.ps1` ran CLEAN for the first time — no exit-21; owner's Kaspersky exclusions likely fixed it.** Version deliberately kept at 0.0.120 (PR's unreleased version until merge; footer sha disambiguates). **Prod backend still master 0.0.118 — drag-reorder fails loudly on prod until merge.**
+- Rounds 3+4 committed (`219dcaa`, `c505049`) + pushed + **branch-deployed to prod** (`/version.json` 0.0.120, bundle contains `c505049`, smoke PASSED). **`deploy-web.ps1` ran CLEAN twice — no exit-21; owner's Kaspersky exclusions likely fixed it.** Version deliberately kept at 0.0.120 (PR's unreleased version until merge; footer sha disambiguates). **Prod backend still master 0.0.118 — drag-reorder fails loudly on prod until merge.**
 - Owner device confirmations pending (round-3 hero feel, sheet size, bug-3 keyboard, tap zones) → merge PR #84 (explicit OK) → master deploy web + backend (migration 0008 + reorder endpoint).
 - If styles settled: delete `UserCardStyle.glassPanels`/`auroraTint` + `?style=` switch before merge.
 - Reviewer nit still open: card block-path could pop the underlying chat.
