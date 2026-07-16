@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-16 (User card ROUND 3 + 4 — adaptive full-bleed hero, bigger manage-photos sheet, then owner nits: transparent drag proxy, chat-header avatar fills its circle, 44px tab plus — `219dcaa` + `c505049`, **branch-deployed to prod**)
+**Date:** 2026-07-16 (User card rounds 3+4 + **PR #84 MERGED (`077ce38`) — 0.0.120 LIVE on prod, web AND backend** (migration 0008 applied, drag-reorder endpoint live))
 
 ## What was done
 On `feat/user-card-rework` (PR #84, still unmerged): owner rejected the round-2 contain-over-blur pillarboxing ("spaces left and right") and called the manage sheet too small. Hero now **sizes itself to the active photo's aspect** — `photoExtent = (width/aspect).clamp(220, max(260, min(width*4/3, 62%·height)))` — so within the clamp the photo fills the full width with ZERO crop and zero bars; extremes get a modest Telegram-style cover crop. Aspects resolved async (`NetworkImage.resolve` + listener, `_photoAspects` map; failures keep the 300 default). Pager simplified: blurred backdrop + contain layer + crossfade DELETED — one `BoxFit.cover` image per page; height changes animate via `TweenAnimationBuilder` around the scroll view. `BoxFit.fill` (distorts) and `fitWidth` (letterboxes landscape) considered + rejected.
@@ -8,6 +8,8 @@ On `feat/user-card-rework` (PR #84, still unmerged): owner rejected the round-2 
 Manage sheet: `isScrollControlled`, "Manage photos" title, tray tiles 64px → responsive `((maxWidth-36)/3).clamp(84,148)` via `LayoutBuilder` (~105px on phone), `_PhotoSlot(size:)`, `_ActionRow(large:)` rows. Reorder/set-main/add/delete + optimistic order unchanged.
 
 Round 4 (owner nits, `c505049`): (1) manage-sheet drag proxy white box → `proxyDecorator` transparent Material; (2) chat-header avatar "halo not equal / circle not a circle" — r18 avatar inside a 48w×52h GlassPill → new bare `GlassTopBar.avatar` slot, photo fills the 52px circle Telegram-style ([INFERENCE] surface identified by geometry, not reproduced — confirm with owner); (3) chats-tab plus GlassCircle 52 → 44 (matches user-card action circles).
+
+**Merge + full deploy (owner OK "if its ok merge it")**: owner's "conflicts" were actually the failing `verify-claude-backend-test-counts` CI guard (branch added 4 backend tests → CLAUDE.md said 470, Jest has 474; fixed to 474) — branch was strictly ahead of master, MERGEABLE. Pre-merge cleanup done: `UserCardStyle` enum + `?style=` preview switch + `_StyledPanel`/`_ActionTile(sRow)`/`_Section` style params stripped (S2 frosted hardcoded), commit `02d58a6`. CI green → PR #84 merged (`077ce38`) → backend deployed on VM (`./deploy-backend.sh`, health ok, **migration 0008 applied**, `/version` 0.0.120/077ce38) → web deployed from the master worktree (`fireplace-ping-deploy`) → smoke PASSED with `--commit 077ce38` (NB: smoke defaults to the CURRENT worktree HEAD sha — pass `--commit` when deploying from another worktree).
 
 ## Key files
 - `frontend/lib/screens/user_card_screen.dart` (aspect resolver, `photoExtent` delegate param, single-cover pager, sheet rework), `test/screens/user_card_screen_test.dart`, `test/preview/user_card_preview.dart` (mixed-aspect photos 1:1 / 2:3 / 12:7).
