@@ -36,16 +36,16 @@ export function initJourney(section: HTMLElement) {
   function anchors() {
     const senderC = { x: W * 0.20, y: H * 0.66 };
     const recipC = { x: W * 0.80, y: H * 0.66 };
+    const intake = rectC($('.slot.in'));
+    const outlet = rectC($('.slot.out'));
     return {
-      senderC, recipC,
-      sealP: { x: W * 0.31, y: H * 0.42 },
+      senderC, recipC, intake, outlet,
+      sealP: { x: W * 0.38, y: H * 0.55 },
       liftStart: { x: W * 0.5 + 40, y: H * 0.60 + 60 },
-      liftCp: { x: W * 0.40, y: H * 0.38 },
-      intake: rectC($('.slot.in')),
-      outlet: rectC($('.slot.out')),
-      cp1: { x: W * 0.30, y: H * 0.14 },
-      cp2: { x: W * 0.72, y: H * 0.16 },
-      recipDock: { x: recipC.x, y: recipC.y - 190 },
+      liftCp: { x: W * 0.45, y: H * 0.42 },
+      cp1: { x: intake.x - 90, y: H * 0.52 },   // approach the IN slit from below — clear of the caption column
+      cp2: { x: W * 0.74, y: H * 0.24 },
+      holdP: { x: W * 0.60, y: H * 0.55 },      // the "watch it decrypt" spot: big, unhurried
       landPt: { x: recipC.x - 45, y: recipC.y + 25 },
     };
   }
@@ -97,7 +97,7 @@ export function initJourney(section: HTMLElement) {
       else { el.textContent = cipherChars[i]; el.className = 'x'; }
       tr.appendChild(el); spans.push(el);
       sealAt.push(0.16 + 0.12 * Math.random());
-      openAt.push(0.86 + 0.08 * Math.random());
+      openAt.push(0.82 + 0.09 * Math.random());   // decrypt during the held stage, staggered
     }
     $('.sv-row.mine').innerHTML = `<span class="lbl">yours →</span><span class="t">08:12:03</span>${cipherChars.join('')}`;
 
@@ -144,7 +144,7 @@ export function initJourney(section: HTMLElement) {
     if (pathAlpha > 0) {
       ctx.setLineDash([2, 7]);
       ctx.strokeStyle = `rgba(143,216,255,${0.28 * pathAlpha})`; ctx.lineWidth = 1;
-      for (const [P1, CP, P2] of [[A.sealP, A.cp1, A.intake], [A.outlet, A.cp2, A.recipDock]] as [Pt, Pt, Pt][]) {
+      for (const [P1, CP, P2] of [[A.sealP, A.cp1, A.intake], [A.outlet, A.cp2, A.holdP]] as [Pt, Pt, Pt][]) {
         ctx.beginPath();
         for (let k = 0; k <= 40; k++) { const q = bez(P1, CP, P2, k / 40); k === 0 ? ctx.moveTo(q.x, q.y) : ctx.lineTo(q.x, q.y); }
         ctx.stroke();
@@ -154,14 +154,14 @@ export function initJourney(section: HTMLElement) {
 
     const moveOut = ease(seg(p, 0.02, 0.16));
     phonePose($('.phone.sender'), lerp(W * 0.5, A.senderC.x, moveOut), lerp(H * 0.60, A.senderC.y, moveOut), lerp(1, 0.58, moveOut), 1);
-    const recIn = ease(seg(p, 0.64, 0.78));
+    const recIn = ease(seg(p, 0.60, 0.74));
     phonePose($('.phone.recipient'), lerp(W * 1.15, A.recipC.x, recIn), A.recipC.y, 0.58, recIn);
 
     const sk = $('.keytag.sender-key');
     sk.style.opacity = String(seg(p, 0.16, 0.20) * (1 - seg(p, 0.34, 0.40)));
     sk.style.left = `${A.senderC.x - 80}px`; sk.style.top = `${A.senderC.y + 190}px`;
     const rk = $('.keytag.recipient-key');
-    rk.style.opacity = String(seg(p, 0.84, 0.88) * (1 - seg(p, 0.98, 1)));
+    rk.style.opacity = String(seg(p, 0.81, 0.85) * (1 - seg(p, 0.97, 1)));
     rk.style.left = `${A.recipC.x - 90}px`; rk.style.top = `${A.recipC.y + 190}px`;
 
     $('.machine').style.opacity = String(seg(p, 0.42, 0.48) * (1 - seg(p, 0.92, 0.98) * 0.7));
@@ -169,10 +169,13 @@ export function initJourney(section: HTMLElement) {
     rotors.forEach((r, i) => { r.style.transform = `rotate(${spin * (360 + i * 220) + t * 8}deg)`; });
     $('.scan-in').style.opacity = String(seg(p, 0.495, 0.515) * (1 - seg(p, 0.53, 0.55)));
     $('.scan-out').style.opacity = String(seg(p, 0.615, 0.635) * (1 - seg(p, 0.655, 0.675)));
+    /* my row: slides IN through the intake side, joins the queue, then slides
+       OUT the outlet side and vanishes as the machine relays it onward */
     const mine = $('.sv-row.mine');
-    const dockT = seg(p, 0.53, 0.58);
-    mine.style.opacity = String(dockT * (p < 0.68 ? 1 : 0.55));
-    mine.style.transform = `translateY(${lerp(150, 76, ease(dockT))}px)`;
+    const dockT = ease(seg(p, 0.53, 0.58));
+    const exitT = ease(seg(p, 0.615, 0.655));
+    mine.style.opacity = String(dockT * (1 - exitT));
+    mine.style.transform = `translate(${(1 - dockT) * -340 + exitT * 360}px, ${lerp(150, 76, dockT)}px)`;
 
     const tr = $('.traveler');
     let pos: Pt, scale = 1, capsule = false, inside = false;
@@ -194,19 +197,24 @@ export function initJourney(section: HTMLElement) {
     } else if (p < 0.66) {
       pos = A.outlet; capsule = true;
       scale = 0.58 * ease(seg(p, 0.615, 0.66));
-    } else if (p < 0.84) {
-      const t2 = ease(seg(p, 0.66, 0.84));
-      pos = bez(A.outlet, A.cp2, A.recipDock, t2);
+    } else if (p < 0.80) {
+      const t2 = ease(seg(p, 0.66, 0.80));
+      pos = bez(A.outlet, A.cp2, A.holdP, t2);
       scale = 0.58; capsule = true;
+    } else if (p < 0.93) {
+      // UNSEAL HOLD — grow large and decrypt char by char, unhurried
+      pos = A.holdP;
+      scale = lerp(0.58, 0.95, ease(seg(p, 0.80, 0.84)));
+      capsule = p < 0.86;                       // capsule chrome fades as plaintext returns
     } else {
-      const t3 = ease(seg(p, 0.84, 0.95));
-      pos = { x: lerp(A.recipDock.x, A.landPt.x, t3), y: lerp(A.recipDock.y, A.landPt.y, t3) };
-      scale = lerp(0.58, 0.62, t3);
+      const t3 = ease(seg(p, 0.93, 0.965));
+      pos = { x: lerp(A.holdP.x, A.landPt.x, t3), y: lerp(A.holdP.y, A.landPt.y, t3) };
+      scale = lerp(0.95, 0.62, t3);
     }
 
-    if (p > 0.955 && !landed) { landed = true; $('.recipient-msgs').appendChild(landedBubble!); }
-    if (p <= 0.955 && landed) { landed = false; landedBubble!.remove(); }
-    if (sentMeta) sentMeta.textContent = p > 0.96 ? '08:12 ✓✓' : '08:12 ✓';
+    if (p > 0.968 && !landed) { landed = true; $('.recipient-msgs').appendChild(landedBubble!); }
+    if (p <= 0.968 && landed) { landed = false; landedBubble!.remove(); }
+    if (sentMeta) sentMeta.textContent = p > 0.972 ? '08:12 ✓✓' : '08:12 ✓';
 
     tr.classList.toggle('capsule', capsule);
     tr.style.opacity = String(seg(p, 0.015, 0.04) * (landed || inside ? 0 : 1));
@@ -227,7 +235,8 @@ export function initJourney(section: HTMLElement) {
 
     ring(ctx, A.intake, seg(p, 0.49, 0.545), 40, '143,216,255');
     ring(ctx, A.outlet, seg(p, 0.615, 0.665), 40, '143,216,255');
-    ring(ctx, A.landPt, seg(p, 0.945, 0.985), 34, '255,217,138');
+    ring(ctx, A.holdP, seg(p, 0.795, 0.845), 44, '143,216,255');
+    ring(ctx, A.landPt, seg(p, 0.958, 0.995), 34, '255,217,138');
 
     for (let i = 0; i < spans.length; i++) {
       const el = spans[i];
