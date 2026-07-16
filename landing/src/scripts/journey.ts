@@ -82,18 +82,36 @@ export function initJourney(section: HTMLElement) {
     };
   }
 
-  /* machine window stream — uniform speed + even spacing: a queue, no lapping */
-  const streamRows: { el: HTMLElement; idx: number }[] = [];
+  /* machine window stream — uniform speed + even spacing: a queue, no lapping.
+     Each row periodically "refreshes" with a NEW envelope: fresh timestamp +
+     a staggered hero-style re-scramble. The machine never rewrites anything —
+     the slot just shows the next arrival. The visitor's own row stays frozen. */
+  const stamp = () => {
+    const hh = 8 + ((Math.random() * 2) | 0), mm = (Math.random() * 60) | 0, ss = (Math.random() * 60) | 0;
+    return `${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}`;
+  };
+  type Cell = { el: HTMLSpanElement; final: string; settleAt: number };
+  const streamRows: { el: HTMLElement; idx: number; tEl: HTMLSpanElement; cells: Cell[]; nextAt: number }[] = [];
   const STREAM_SP = 14;
   {
     const stream = $('.sv-stream');
     for (let i = 0; i < 9; i++) {
       const el = document.createElement('div');
       el.className = 'sv-row';
-      const hh = 8 + ((Math.random() * 2) | 0), mm = (Math.random() * 60) | 0, ss = (Math.random() * 60) | 0;
-      el.innerHTML = `<span class="t">${String(hh).padStart(2, '0')}:${String(mm).padStart(2, '0')}:${String(ss).padStart(2, '0')}</span>${Math.random() < 0.8 ? '2:' : '3:'}${fake(38)}`;
+      const tEl = document.createElement('span');
+      tEl.className = 't'; tEl.textContent = stamp();
+      el.appendChild(tEl);
+      const prefix = Math.random() < 0.8 ? '2:' : '3:';
+      const cells: Cell[] = [];
+      for (let c = 0; c < 40; c++) {
+        const s = document.createElement('span');
+        const final = c < 2 ? prefix[c] : rnd(B64);
+        s.textContent = final;
+        el.appendChild(s);
+        cells.push({ el: s, final, settleAt: 0 });
+      }
       stream.appendChild(el);
-      streamRows.push({ el, idx: i });
+      streamRows.push({ el, idx: i, tEl, cells, nextAt: performance.now() + 1000 + Math.random() * 6000 });
     }
     const mine = document.createElement('div');
     mine.className = 'sv-row mine';
@@ -181,6 +199,19 @@ export function initJourney(section: HTMLElement) {
       const y = streamH + 20 - ((t * STREAM_SP + r.idx * (loop / visN)) % loop);
       r.el.style.transform = `translateY(${y}px)`;
       r.el.style.opacity = String(clamp(Math.min(y / 26, (streamH - y) / 26), 0, 0.85));
+      // slot refresh: a NEW envelope takes the row — fresh stamp, staggered scramble
+      if (now >= r.nextAt) {
+        r.nextAt = now + 2500 + Math.random() * 6000;
+        r.tEl.textContent = stamp();
+        for (let c = 2; c < r.cells.length; c++) {
+          r.cells[c].final = rnd(B64);
+          r.cells[c].settleAt = now + 120 + Math.random() * 520;
+        }
+      }
+      for (const cell of r.cells) {
+        if (cell.settleAt > now) { cell.el.textContent = rnd(B64); cell.el.className = 'hot'; }
+        else if (cell.el.className) { cell.el.textContent = cell.final; cell.el.className = ''; }
+      }
     }
 
     if (!sent) {
@@ -253,7 +284,7 @@ export function initJourney(section: HTMLElement) {
     const mineY = lerp(streamH * 0.66, streamH * 0.18, driftT);
     const mineO = Math.min(inT, 1 - outT) * 0.95;
     mine.style.opacity = String(mineO);
-    mine.style.transform = `translate(${(1 - inT) * -360 - outT * 360}px, ${mineY}px)`;
+    mine.style.transform = `translate(${(1 - inT) * -360 + outT * 360}px, ${mineY}px)`;
     const mineTag = $('.mine-tag');
     const streamR = $('.sv-stream').getBoundingClientRect();
     const machR = $('.machine').getBoundingClientRect();

@@ -158,6 +158,7 @@ nav.on-light .links a.cta { color: #fff; background: var(--blue); }
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; will-change: transform;
 }
 .sv-row .t { color: #33475a; margin-right: 8px; }
+.sv-row .hot { color: #9fc8e6; text-shadow: 0 0 6px rgba(143, 216, 255, .55); }
 .sv-row.mine {
   /* indistinguishable from the queue — same color, same metrics; solid
      panel-color background so passing rows occlude cleanly */
