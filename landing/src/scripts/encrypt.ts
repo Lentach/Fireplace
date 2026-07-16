@@ -41,6 +41,9 @@ export function initEncrypt(root: HTMLElement) {
       spans[i].final = rnd(B64);
       spans[i].settleAt = now + 120 + Math.random() * 520;
     }
+    // feed the journey: whatever the visitor types here becomes the draft
+    // on the sender phone (until they type there directly)
+    document.dispatchEvent(new CustomEvent('fp:plain', { detail: input.value }));
   });
   setLen(0);
 }

@@ -72,7 +72,13 @@ export function initJourney(section: HTMLElement) {
       dropCp: mobile ? { x: W * 0.66, y: H * 0.58 } : { x: W * 0.66, y: holdY - H * 0.03 },
       cp1: { x: (sealP.x + intake.x) / 2, y: sealP.y },
       cp2: { x: (unsealP.x + outlet.x) / 2, y: unsealP.y },
-      keyDy: mobile ? 200 : Math.min(190, H * 0.23),   // clamp so the tag clears the rail on short viewports
+      // keytag sits BELOW the device on mobile. phonePose keeps the visual
+      // bottom at y + h/2 regardless of scale (center-origin compensation),
+      // so the clearance is half the UNSCALED height + margin. Desktop keeps
+      // the clamp: short viewports have no room between phone and rail.
+      keyDy: mobile
+        ? ($('.phone.sender').offsetHeight || 560) / 2 + 16
+        : Math.min(190, H * 0.23),
     };
   }
 
@@ -92,6 +98,12 @@ export function initJourney(section: HTMLElement) {
     const mine = document.createElement('div');
     mine.className = 'sv-row mine';
     stream.appendChild(mine);
+    // "yours →" marker lives OUTSIDE the clipped stream, pinned to the
+    // machine's left edge (over the IN slot) and tracks the row each frame.
+    const tag = document.createElement('span');
+    tag.className = 'mine-tag';
+    tag.textContent = 'yours →';
+    $('.machine').appendChild(tag);
   }
   const rotors = [...section.querySelectorAll<HTMLElement>('[data-rotor]')];
 
@@ -100,6 +112,14 @@ export function initJourney(section: HTMLElement) {
   const sendBtn = $<HTMLButtonElement>('.phone.sender .compose button');
   sendBtn.addEventListener('click', () => doSend(false));
   draft.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSend(false); });
+  // hero "type something private" box feeds the draft until the visitor
+  // types here or the message is sent
+  let draftTouched = false;
+  draft.addEventListener('input', () => { draftTouched = true; });
+  document.addEventListener('fp:plain', (e) => {
+    const v = (e as CustomEvent<string>).detail.trim();
+    if (!sent && !draftTouched && v) draft.value = v.slice(0, 40);
+  });
 
   function doSend(auto: boolean) {
     if (sent) return;
@@ -126,7 +146,9 @@ export function initJourney(section: HTMLElement) {
       sealAt.push(0.16 + 0.10 * Math.random());   // scramble inside the seal hold
       openAt.push(0.83 + 0.10 * Math.random());   // unscramble inside the unseal hold — same dynamics
     }
-    $('.sv-row.mine').innerHTML = `<span class="lbl">yours →</span><span class="t">08:12:03</span>${cipherChars.join('')}`;
+    // padded to the ambient rows' length so it blends into the queue —
+    // only the external "yours →" tag gives it away
+    $('.sv-row.mine').innerHTML = `<span class="t">08:12:03</span>${cipherChars.join('')}${fake(Math.max(0, 40 - total))}`;
 
     landedBubble = document.createElement('div');
     landedBubble.className = 'm them landing';
@@ -209,10 +231,10 @@ export function initJourney(section: HTMLElement) {
 
     const sk = $('.keytag.sender-key');
     sk.style.opacity = String(seg(p, 0.15, 0.19) * (1 - seg(p, A.mobile ? 0.27 : 0.32, A.mobile ? 0.31 : 0.38)));
-    sk.style.left = `${A.senderC.x - 80}px`; sk.style.top = `${A.senderC.y + A.keyDy}px`;
+    sk.style.left = `${A.senderC.x - sk.offsetWidth / 2}px`; sk.style.top = `${A.senderC.y + A.keyDy}px`;
     const rk = $('.keytag.recipient-key');
     rk.style.opacity = String(seg(p, 0.83, 0.87) * (1 - seg(p, 0.925, 0.95)));
-    rk.style.left = `${A.recipC.x - 90}px`; rk.style.top = `${A.recipC.y + A.keyDy}px`;
+    rk.style.left = `${A.recipC.x - rk.offsetWidth / 2}px`; rk.style.top = `${A.recipC.y + A.keyDy}px`;
 
     /* machine */
     $('.machine').style.opacity = String(seg(p, 0.40, 0.46) * (A.mobile ? 1 - seg(p, 0.68, 0.76) : 1 - seg(p, 0.90, 0.96)));
@@ -222,13 +244,21 @@ export function initJourney(section: HTMLElement) {
     $('.scan-out').style.opacity = String(seg(p, 0.585, 0.605) * (1 - seg(p, 0.625, 0.645)));
 
     /* my row: slides in at the bottom of the window, drifts UP with the flow
-       like every other row, then fades away as the machine relays it on */
+       like every other row, then slides back out — the exact mirror of how it
+       entered. The external "yours →" tag tracks it from the machine's edge. */
     const mine = $('.sv-row.mine');
     const inT = ease(seg(p, 0.50, 0.545));
     const driftT = seg(p, 0.545, 0.62);
-    const fadeT = ease(seg(p, 0.60, 0.64));
-    mine.style.opacity = String(inT * 0.95 * (1 - fadeT));
-    mine.style.transform = `translate(${(1 - inT) * -360 + fadeT * 40}px, ${lerp(streamH * 0.66, streamH * 0.18, driftT)}px)`;
+    const outT = ease(seg(p, 0.60, 0.645));
+    const mineY = lerp(streamH * 0.66, streamH * 0.18, driftT);
+    const mineO = Math.min(inT, 1 - outT) * 0.95;
+    mine.style.opacity = String(mineO);
+    mine.style.transform = `translate(${(1 - inT) * -360 - outT * 360}px, ${mineY}px)`;
+    const mineTag = $('.mine-tag');
+    const streamR = $('.sv-stream').getBoundingClientRect();
+    const machR = $('.machine').getBoundingClientRect();
+    mineTag.style.top = `${streamR.top - machR.top + mineY}px`;
+    mineTag.style.opacity = String(mineO);
 
     /* traveler — symmetric two-act structure */
     const tr = $('.traveler');
