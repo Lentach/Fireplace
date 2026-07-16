@@ -81,11 +81,11 @@ class MainTabScreenHeader extends StatelessWidget {
               ),
               if (trailing != null) ...[
                 const SizedBox(width: 10),
-                // 44 matches the user card's action circles (owner round-4:
-                // the 52px halo around the chats-tab plus was bigger than
-                // the user tab's circles / Telegram's snug chrome).
-                GlassCircle(
-                  size: 44,
+                // Bare icon, no glass circle (owner round-5: "remove halo
+                // around plus icon"); the row keeps capsule height so the
+                // icon centers against the leading circle.
+                SizedBox(
+                  height: capsuleHeight,
                   child: Center(child: trailing),
                 ),
               ],
