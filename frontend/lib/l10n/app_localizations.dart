@@ -1583,13 +1583,13 @@ abstract class AppLocalizations {
   /// No description provided for @userCardSetMainPhoto.
   ///
   /// In pl, this message translates to:
-  /// **'Ustaw oglądane zdjęcie jako główne'**
+  /// **'Ustaw jako główne zdjęcie'**
   String get userCardSetMainPhoto;
 
   /// No description provided for @userCardDeletePhoto.
   ///
   /// In pl, this message translates to:
-  /// **'Usuń oglądane zdjęcie'**
+  /// **'Usuń to zdjęcie'**
   String get userCardDeletePhoto;
 
   /// No description provided for @userCardSave.
@@ -1646,41 +1646,83 @@ abstract class AppLocalizations {
   /// **'Wycisz na zawsze'**
   String get userCardMuteForever;
 
-  /// No description provided for @userCardChatBackground.
-  ///
-  /// In pl, this message translates to:
-  /// **'Tło czatu'**
-  String get userCardChatBackground;
-
-  /// No description provided for @userCardBackgroundPrivate.
-  ///
-  /// In pl, this message translates to:
-  /// **'Tylko Ty widzisz to tło w tej rozmowie.'**
-  String get userCardBackgroundPrivate;
-
   /// No description provided for @userCardMessage.
   ///
   /// In pl, this message translates to:
   /// **'Wiadomość'**
   String get userCardMessage;
 
-  /// No description provided for @userCardTypeMessage.
+  /// No description provided for @userCardMute.
   ///
   /// In pl, this message translates to:
-  /// **'Napisz wiadomość'**
-  String get userCardTypeMessage;
+  /// **'Wycisz'**
+  String get userCardMute;
 
-  /// No description provided for @userCardDefaultBackground.
+  /// No description provided for @userCardMuted.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wyciszono'**
+  String get userCardMuted;
+
+  /// No description provided for @userCardCopyTag.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kopiuj tag'**
+  String get userCardCopyTag;
+
+  /// No description provided for @userCardManagePhotos.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zarządzaj zdjęciami'**
+  String get userCardManagePhotos;
+
+  /// No description provided for @userCardPhotoOfCount.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zdjęcie {index} z {count}'**
+  String userCardPhotoOfCount(Object index, Object count);
+
+  /// No description provided for @userCardMainPhotoHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'To jest Twoje główne zdjęcie — kontakty widzą je na czatach.'**
+  String get userCardMainPhotoHint;
+
+  /// No description provided for @userCardAboutHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kilka słów o Tobie'**
+  String get userCardAboutHint;
+
+  /// No description provided for @userCardSharedMedia.
+  ///
+  /// In pl, this message translates to:
+  /// **'Udostępnione multimedia'**
+  String get userCardSharedMedia;
+
+  /// No description provided for @userCardDragReorderHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Przytrzymaj i przeciągnij, aby zmienić kolejność — pierwsze zdjęcie jest Twoim głównym.'**
+  String get userCardDragReorderHint;
+
+  /// No description provided for @settingsChatBackground.
+  ///
+  /// In pl, this message translates to:
+  /// **'Tło czatu'**
+  String get settingsChatBackground;
+
+  /// No description provided for @settingsWallpaperDefault.
   ///
   /// In pl, this message translates to:
   /// **'Domyślne'**
-  String get userCardDefaultBackground;
+  String get settingsWallpaperDefault;
 
-  /// No description provided for @userCardGlyphsBackground.
+  /// No description provided for @settingsWallpaperGlyphs.
   ///
   /// In pl, this message translates to:
   /// **'Glify'**
-  String get userCardGlyphsBackground;
+  String get settingsWallpaperGlyphs;
 
   /// No description provided for @userCardCopyHandle.
   ///
@@ -1693,18 +1735,6 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Skopiowano {handle}'**
   String userCardCopiedHandle(Object handle);
-
-  /// No description provided for @userCardNoProfilePhoto.
-  ///
-  /// In pl, this message translates to:
-  /// **'Brak zdjęcia profilowego'**
-  String get userCardNoProfilePhoto;
-
-  /// No description provided for @userCardBackgroundPreviewMessage.
-  ///
-  /// In pl, this message translates to:
-  /// **'Do zobaczenia przy ogniu.'**
-  String get userCardBackgroundPreviewMessage;
 
   /// No description provided for @userCardNotificationsMuted.
   ///

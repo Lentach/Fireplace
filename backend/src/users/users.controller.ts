@@ -30,6 +30,7 @@ import {
   RegisterWebPushSubscriptionDto,
   RemoveWebPushSubscriptionDto,
 } from './dto/user.dto';
+import { ReorderProfilePhotosDto } from './dto/reorder-profile-photos.dto';
 import { FcmTokensService } from '../fcm-tokens/fcm-tokens.service';
 import { WebPushSubscriptionsService } from '../web-push-subscriptions/web-push-subscriptions.service';
 import { validateAvatarMagicBytes } from '../media/magic-bytes.validator';
@@ -136,6 +137,27 @@ export class UsersController {
     };
   }
 
+  @Post('profile-photos/order')
+  @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 20, ttl: 60000 } })
+  async reorderProfilePhotos(
+    @Body() dto: ReorderProfilePhotosDto,
+    @Request() req: { user: { id: number } },
+  ) {
+    const photos = await this.usersService.reorderProfilePhotos(
+      req.user.id,
+      dto.orderedIds,
+    );
+    return {
+      profilePhotos: photos.map((photo) => ({
+        id: photo.id,
+        url: photo.url,
+        isPrimary: photo.isPrimary,
+        createdAt: photo.createdAt,
+      })),
+    };
+  }
+
   @Delete('profile-photos/:photoId')
   @UseGuards(JwtAuthGuard)
   @Throttle({ default: { limit: 20, ttl: 60000 } })
@@ -169,10 +191,7 @@ export class UsersController {
       profilePictureUrl: user.profilePictureUrl ?? null,
       about: user.about ?? null,
       profilePhotos: [...user.profilePhotos]
-        .sort((left, right) => {
-          if (left.isPrimary !== right.isPrimary) return left.isPrimary ? -1 : 1;
-          return left.createdAt.getTime() - right.createdAt.getTime();
-        })
+        .sort((left, right) => left.position - right.position || left.id - right.id)
         .map((photo) => ({
           id: photo.id,
           url: photo.url,

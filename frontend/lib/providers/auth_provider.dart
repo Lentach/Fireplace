@@ -430,6 +430,21 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Persists an explicit photo order; the first id becomes the primary
+  /// photo (backend contract for POST /users/profile-photos/order).
+  Future<void> reorderProfilePhotos(List<int> orderedIds) async {
+    if (_token == null || _currentUser == null) {
+      throw Exception('Not authenticated');
+    }
+    final photos = await _api.reorderProfilePhotos(_token!, orderedIds);
+    final primary = photos.firstWhere((photo) => photo.isPrimary);
+    _currentUser = _currentUser!.copyWith(
+      profilePhotos: photos,
+      profilePictureUrl: primary.url,
+    );
+    notifyListeners();
+  }
+
   Future<void> deleteProfilePhoto(int photoId) async {
     if (_token == null || _currentUser == null) {
       throw Exception('Not authenticated');

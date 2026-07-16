@@ -5,6 +5,7 @@ describe('UsersController', () => {
   const usersService = {
     getProfilePhotos: jest.fn(),
     addProfilePhoto: jest.fn(),
+    reorderProfilePhotos: jest.fn(),
   };
   const storageService = {
     uploadAvatar: jest.fn(),
@@ -45,5 +46,47 @@ describe('UsersController', () => {
     expect(storageService.deleteAvatar).toHaveBeenCalledWith(
       'avatars/new-photo.jpg',
     );
+  });
+  it('forwards the requested photo order and returns the fresh primary-first list', async () => {
+    const createdAt = new Date('2026-07-16T00:00:00.000Z');
+    usersService.reorderProfilePhotos.mockResolvedValue([
+      {
+        id: 3,
+        url: '/avatars/three.jpg',
+        isPrimary: true,
+        position: 0,
+        createdAt,
+      },
+      {
+        id: 1,
+        url: '/avatars/one.jpg',
+        isPrimary: false,
+        position: 1,
+        createdAt,
+      },
+    ]);
+
+    await expect(
+      controller.reorderProfilePhotos(
+        { orderedIds: [3, 1] },
+        { user: { id: 7 } },
+      ),
+    ).resolves.toEqual({
+      profilePhotos: [
+        {
+          id: 3,
+          url: '/avatars/three.jpg',
+          isPrimary: true,
+          createdAt,
+        },
+        {
+          id: 1,
+          url: '/avatars/one.jpg',
+          isPrimary: false,
+          createdAt,
+        },
+      ],
+    });
+    expect(usersService.reorderProfilePhotos).toHaveBeenCalledWith(7, [3, 1]);
   });
 });

@@ -1,29 +1,31 @@
 # Latest session summary
 
-**Date:** 2026-07-15 (Two fixes the 0.0.118 batch failed to deliver: long-message "Read more" collapse + toast back-arrow reposition. **PR #83 MERGED + frontend DEPLOYED, 0.0.119 live** — `/version.json` 0.0.119, `main.dart.js` carries `25027e1`. Backend unchanged, `/version` still 0.0.118.)
+**Date:** 2026-07-16 (User card ROUND 3 + 4 — adaptive full-bleed hero, bigger manage-photos sheet, then owner nits: transparent drag proxy, chat-header avatar fills its circle, 44px tab plus — `219dcaa` + `c505049`, **branch-deployed to prod**)
 
 ## What was done
-The previous chat-minor-bugs batch (0.0.118, PR #82 merged) shipped 6/8; two failed. Root-caused + fixed both:
-- **Notification covered back arrow** — previous `IgnorePointer` only made taps pass through; the opaque toast still sat at `top:0` over the arrow. Fixed: `showTopSnackBar` now positions at `topInset + GlassTopBar.capsuleHeight + 16 + 8` (below the app-bar band), `topInset` snapshotted from the caller context. `IgnorePointer` kept.
-- **Long messages don't "wrap up"** — the 0.0.118 commit touched zero text renderers; item was dropped. Literal wrap already works; the real ask (image1 = Telegram) is a **Read-more collapse** for long normal chat messages. Implemented: `TextMessageContent` now stateful, `TextPainter`-measures against `AppConstants.maxCollapsedMessageLines=12` (spans reused for measure + render), collapses to 12 lines + ellipsis with **Read more** / **Show less** toggle. `didUpdateWidget` resets on `message.id` (recycling). Jumbo/AQ-note paths untouched. l10n en/pl added.
+On `feat/user-card-rework` (PR #84, still unmerged): owner rejected the round-2 contain-over-blur pillarboxing ("spaces left and right") and called the manage sheet too small. Hero now **sizes itself to the active photo's aspect** — `photoExtent = (width/aspect).clamp(220, max(260, min(width*4/3, 62%·height)))` — so within the clamp the photo fills the full width with ZERO crop and zero bars; extremes get a modest Telegram-style cover crop. Aspects resolved async (`NetworkImage.resolve` + listener, `_photoAspects` map; failures keep the 300 default). Pager simplified: blurred backdrop + contain layer + crossfade DELETED — one `BoxFit.cover` image per page; height changes animate via `TweenAnimationBuilder` around the scroll view. `BoxFit.fill` (distorts) and `fitWidth` (letterboxes landscape) considered + rejected.
+
+Manage sheet: `isScrollControlled`, "Manage photos" title, tray tiles 64px → responsive `((maxWidth-36)/3).clamp(84,148)` via `LayoutBuilder` (~105px on phone), `_PhotoSlot(size:)`, `_ActionRow(large:)` rows. Reorder/set-main/add/delete + optimistic order unchanged.
+
+Round 4 (owner nits, `c505049`): (1) manage-sheet drag proxy white box → `proxyDecorator` transparent Material; (2) chat-header avatar "halo not equal / circle not a circle" — r18 avatar inside a 48w×52h GlassPill → new bare `GlassTopBar.avatar` slot, photo fills the 52px circle Telegram-style ([INFERENCE] surface identified by geometry, not reproduced — confirm with owner); (3) chats-tab plus GlassCircle 52 → 44 (matches user-card action circles).
 
 ## Key files
-- `widgets/top_snackbar.dart`, `widgets/message/text_message_content.dart`, `constants/app_constants.dart`
-- l10n en/pl arb + generated; new tests `test/widgets/{top_snackbar_position,text_message_collapse}_test.dart`; `pubspec.yaml` → 0.0.119
-- Full write-up: `2026-07-15-session-msg-collapse-toast.md`
+- `frontend/lib/screens/user_card_screen.dart` (aspect resolver, `photoExtent` delegate param, single-cover pager, sheet rework), `test/screens/user_card_screen_test.dart`, `test/preview/user_card_preview.dart` (mixed-aspect photos 1:1 / 2:3 / 12:7).
+- Full write-up: `2026-07-16-session-user-card-round3.md`.
 
 ## Verification
-- Both **visually verified** in Chrome (390×844) via throwaway preview harnesses (deleted): toast below back arrow; long log collapses + expands.
-- `flutter analyze` 0 issues · `flutter test` **718 passed**.
-- **DO NOT run `dart format`** on the tree — reflows repo (Dart 3 tall); hand-format.
+- `flutter analyze` 0 issues; **full suite 729 passed**. Collapse test now pins "single cover image, no contain/backdrop"; reorder test measures tile pitch (`getSize + 12`) instead of hardcoding 74px. Test images never load ⇒ adaptive extent stays 300 in widget tests — adaptive path verified visually only.
+- Harness 390×844: square → 390px hero, portrait → clamped 520px (slight crop), landscape → 228px uncropped; sheet correct in dark + light.
+- Lint trap: `LayoutBuilder`'s `context` param shadowing the State's `context` breaks the `mounted` guard for `use_build_context_synchronously` → param renamed `_`.
 
 ## Notes for next session
-- `fix/msg-collapse-toast-position` off master (0.0.118 → 0.0.119), UNMERGED, not deployed. PR to master; merge needs explicit OK.
-- Collapse fold = 12 wrapped lines (`AppConstants.maxCollapsedMessageLines`); tune on device if needed.
-- Diag hacker-mode panel code-inspected as wrapping (not render-tested); ask was scoped to normal chat messages.
+- Rounds 3+4 committed (`219dcaa`, `c505049`) + pushed + **branch-deployed to prod** (`/version.json` 0.0.120, bundle contains `c505049`, smoke PASSED). **`deploy-web.ps1` ran CLEAN twice — no exit-21; owner's Kaspersky exclusions likely fixed it.** Version deliberately kept at 0.0.120 (PR's unreleased version until merge; footer sha disambiguates). **Prod backend still master 0.0.118 — drag-reorder fails loudly on prod until merge.**
+- Owner device confirmations pending (round-3 hero feel, sheet size, bug-3 keyboard, tap zones) → merge PR #84 (explicit OK) → master deploy web + backend (migration 0008 + reorder endpoint).
+- If styles settled: delete `UserCardStyle.glassPanels`/`auroraTint` + `?style=` switch before merge.
+- Reviewer nit still open: card block-path could pop the underlying chat.
 
 ## Previous
-- 2026-07-14: Chat minor-bugs batch (8 fixes) — `fix/chat-minor-bugs` 0.0.118, **PR #82 MERGED**; 2 items failed (fixed this session). Full: `2026-07-14-session-chat-minor-bugs.md`.
-- 2026-07-15: Deferred §9 visual pass + polish + bright-accent contrast fix; **PR #81 MERGED + DEPLOYED, 0.0.117 live** (`readableOn` helper, GlassDialog migration, per-brightness error). Full: `2026-07-15-session-glass-dialog-visual-pass.md`.
-- 2026-07-14: Frontend quality review — audit + Buckets 1/2; #71–#75 MERGED, #76–#79 open. Full: `2026-07-14-session-frontend-quality-review.md`.
-- 2026-07-14: Emote button removal + red-heart FONT root-cause (`withEmojiFont`); `fix/emote-button-and-red-heart` 0.0.115. Full: `2026-07-14-session-emote-button-red-heart.md`.
+- 2026-07-15: User card ROUND 2 — full-picture hero, tap-zone pager, **S2 "Frosted Backdrop" WON** (default style), shared-media strip (cache-only), drag-reorder photos (optimistic + backend `position`/migration 0008/`POST /users/profile-photos/order`), linkified About; crop-at-upload removed. Committed `0087150`, branch-deployed to prod. Full: `2026-07-15-session-user-card-round2.md`.
+- 2026-07-16: Landing page prototypes, 3 rounds: fire dropped → **B "Dot Globe" WON** (+drag/Ctrl-zoom) → **round 3 full-page skeleton built, verdict pending**. Prototypes untracked in `docs/design/landing-prototype/`, NOT committed. Next: owner flow verdict → build real `/welcome` (Astro + GSAP + Lenis). Full: `2026-07-16-session-landing-prototype.md`.
+- 2026-07-15: User card / profile rework D1 "Telegram Full-Bleed" — branch `feat/user-card-rework` 0.0.120, **PR #84 (SHIP verdict) UNMERGED, branch-deployed to prod at `7ded775`** (ephemeral; reverts on next master deploy). No-photo hero fallback fixed in `7ded775`. iOS PWA device confirmations pending (About-edit keyboard, collapse feel, crop gestures). Per-worktree `deploy-web.ps1` is gitignored — copy from sibling worktree; under agent harness it dies silently (exit 21) between scp and swap — finish with the guarded swap over ssh. Full: `2026-07-15-session-user-card-rework.md`.
+- 2026-07-15: "Read more" collapse + toast reposition — **PR #83 MERGED + DEPLOYED, 0.0.119 live**. Full: `2026-07-15-session-msg-collapse-toast.md`.

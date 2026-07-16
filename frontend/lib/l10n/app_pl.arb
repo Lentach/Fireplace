@@ -311,8 +311,8 @@
   "userCardEditAbout": "Edytuj opis",
   "userCardAddPhoto": "Dodaj zdjęcie",
   "userCardPhotoLimitReached": "Osiągnięto limit zdjęć",
-  "userCardSetMainPhoto": "Ustaw oglądane zdjęcie jako główne",
-  "userCardDeletePhoto": "Usuń oglądane zdjęcie",
+  "userCardSetMainPhoto": "Ustaw jako główne zdjęcie",
+  "userCardDeletePhoto": "Usuń to zdjęcie",
   "userCardSave": "Zapisz",
   "userCardCancel": "Anuluj",
   "userCardBack": "Wstecz",
@@ -322,12 +322,25 @@
   "userCardMuteEightHours": "Wycisz na 8 godzin",
   "userCardMuteOneWeek": "Wycisz na tydzień",
   "userCardMuteForever": "Wycisz na zawsze",
-  "userCardChatBackground": "Tło czatu",
-  "userCardBackgroundPrivate": "Tylko Ty widzisz to tło w tej rozmowie.",
   "userCardMessage": "Wiadomość",
-  "userCardTypeMessage": "Napisz wiadomość",
-  "userCardDefaultBackground": "Domyślne",
-  "userCardGlyphsBackground": "Glify",
+  "userCardMute": "Wycisz",
+  "userCardMuted": "Wyciszono",
+  "userCardCopyTag": "Kopiuj tag",
+  "userCardManagePhotos": "Zarządzaj zdjęciami",
+  "userCardPhotoOfCount": "Zdjęcie {index} z {count}",
+  "@userCardPhotoOfCount": {
+    "placeholders": {
+      "index": {},
+      "count": {}
+    }
+  },
+  "userCardMainPhotoHint": "To jest Twoje główne zdjęcie — kontakty widzą je na czatach.",
+  "userCardAboutHint": "Kilka słów o Tobie",
+  "userCardSharedMedia": "Udostępnione multimedia",
+  "userCardDragReorderHint": "Przytrzymaj i przeciągnij, aby zmienić kolejność — pierwsze zdjęcie jest Twoim głównym.",
+  "settingsChatBackground": "Tło czatu",
+  "settingsWallpaperDefault": "Domyślne",
+  "settingsWallpaperGlyphs": "Glify",
   "userCardCopyHandle": "Kopiuj nazwę użytkownika i tag",
   "userCardCopiedHandle": "Skopiowano {handle}",
   "@userCardCopiedHandle": {
@@ -335,8 +348,6 @@
       "handle": {}
     }
   },
-  "userCardNoProfilePhoto": "Brak zdjęcia profilowego",
-  "userCardBackgroundPreviewMessage": "Do zobaczenia przy ogniu.",
   "userCardNotificationsMuted": "Powiadomienia wyciszone",
   "userCardBlockTitle": "Zablokować {handle}?",
   "@userCardBlockTitle": {

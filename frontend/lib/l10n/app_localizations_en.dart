@@ -843,10 +843,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get userCardPhotoLimitReached => 'Photo limit reached';
 
   @override
-  String get userCardSetMainPhoto => 'Set viewed photo as main';
+  String get userCardSetMainPhoto => 'Set as main photo';
 
   @override
-  String get userCardDeletePhoto => 'Delete viewed photo';
+  String get userCardDeletePhoto => 'Delete this photo';
 
   @override
   String get userCardSave => 'Save';
@@ -876,23 +876,47 @@ class AppLocalizationsEn extends AppLocalizations {
   String get userCardMuteForever => 'Mute forever';
 
   @override
-  String get userCardChatBackground => 'Chat background';
-
-  @override
-  String get userCardBackgroundPrivate =>
-      'Only you see this background in this conversation.';
-
-  @override
   String get userCardMessage => 'Message';
 
   @override
-  String get userCardTypeMessage => 'Type a message';
+  String get userCardMute => 'Mute';
 
   @override
-  String get userCardDefaultBackground => 'Default';
+  String get userCardMuted => 'Muted';
 
   @override
-  String get userCardGlyphsBackground => 'Glyphs';
+  String get userCardCopyTag => 'Copy tag';
+
+  @override
+  String get userCardManagePhotos => 'Manage photos';
+
+  @override
+  String userCardPhotoOfCount(Object index, Object count) {
+    return 'Photo $index of $count';
+  }
+
+  @override
+  String get userCardMainPhotoHint =>
+      'This is your main photo — contacts see it in chats.';
+
+  @override
+  String get userCardAboutHint => 'A few words about you';
+
+  @override
+  String get userCardSharedMedia => 'Shared media';
+
+  @override
+  String get userCardDragReorderHint =>
+      'Hold and drag to reorder — the first photo is your main photo.';
+
+  @override
+  String get settingsChatBackground => 'Chat background';
+
+  @override
+  String get settingsWallpaperDefault => 'Default';
+
+  @override
+  String get settingsWallpaperGlyphs => 'Glyphs';
 
   @override
   String get userCardCopyHandle => 'Copy username and tag';
@@ -901,12 +925,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String userCardCopiedHandle(Object handle) {
     return 'Copied $handle';
   }
-
-  @override
-  String get userCardNoProfilePhoto => 'No profile photo';
-
-  @override
-  String get userCardBackgroundPreviewMessage => 'See you by the fire.';
 
   @override
   String get userCardNotificationsMuted => 'Notifications muted';
