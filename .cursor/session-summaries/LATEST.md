@@ -11,6 +11,8 @@ Round 4 (owner nits, `c505049`): (1) manage-sheet drag proxy white box → `prox
 
 **Merge + full deploy (owner OK "if its ok merge it")**: owner's "conflicts" were actually the failing `verify-claude-backend-test-counts` CI guard (branch added 4 backend tests → CLAUDE.md said 470, Jest has 474; fixed to 474) — branch was strictly ahead of master, MERGEABLE. Pre-merge cleanup done: `UserCardStyle` enum + `?style=` preview switch + `_StyledPanel`/`_ActionTile(sRow)`/`_Section` style params stripped (S2 frosted hardcoded), commit `02d58a6`. CI green → PR #84 merged (`077ce38`) → backend deployed on VM (`./deploy-backend.sh`, health ok, **migration 0008 applied**, `/version` 0.0.120/077ce38) → web deployed from the master worktree (`fireplace-ping-deploy`) → smoke PASSED with `--commit 077ce38` (NB: smoke defaults to the CURRENT worktree HEAD sha — pass `--commit` when deploying from another worktree).
 
+Round 5 (post-merge, direct on master `1c60cf6`, deployed + smoke PASSED): chats-tab plus icon halo removed entirely — `MainTabScreenHeader` trailing renders BARE (no GlassCircle), centered in the capsule row.
+
 ## Key files
 - `frontend/lib/screens/user_card_screen.dart` (aspect resolver, `photoExtent` delegate param, single-cover pager, sheet rework), `test/screens/user_card_screen_test.dart`, `test/preview/user_card_preview.dart` (mixed-aspect photos 1:1 / 2:3 / 12:7).
 - Full write-up: `2026-07-16-session-user-card-round3.md`.
