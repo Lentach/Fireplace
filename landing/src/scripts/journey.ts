@@ -184,7 +184,7 @@ export function initJourney(section: HTMLElement) {
       // sender: center pre-send → top-center (large) through the seal → exits
       // left as the wire takes over; recipient mirrors it for the finale
       const toTop = ease(seg(p, T.lift[0], T.lift[1]));
-      const exitL = ease(seg(p, 0.30, 0.42));
+      const exitL = ease(seg(p, 0.28, 0.38));   // fully out before the capsule crosses its lane
       phonePose($('.phone.sender'),
         lerp(lerp(W * 0.5, A.senderC.x, toTop), -W * 0.35, exitL),
         lerp(H * 0.60, A.senderC.y, toTop),
