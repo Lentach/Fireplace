@@ -1,5 +1,5 @@
 import 'dart:math' as math;
-import 'dart:ui' show lerpDouble;
+import 'dart:ui' show ImageFilter, lerpDouble;
 
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
@@ -9,16 +9,35 @@ import 'package:provider/provider.dart';
 import '../models/user_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/friends_provider.dart';
+import '../providers/messaging_provider.dart';
 import '../l10n/app_localizations.dart';
 import '../theme/rpg_theme.dart';
+import '../utils/linkify.dart';
 import '../theme/glass_theme.dart';
 import '../widgets/glass/glass_dialog.dart';
 import '../widgets/glass/glass_surface.dart';
 import '../widgets/glass/glass_menu.dart';
 import '../widgets/glass/glass_sheet.dart';
 import '../widgets/top_snackbar.dart' show showTopSnackBar;
-import 'avatar_crop_screen.dart';
+import '../widgets/user_card/shared_media_section.dart';
 import 'edit_about_screen.dart';
+
+/// Round-2 body styling directions (owner pick pending — render all three in
+/// the preview harness via `?style=`). The hero is shared; styles change how
+/// the body sections and action tiles read against the scaffold.
+enum UserCardStyle {
+  /// Liquid-glass panels: GlassSurface tint + border + top highlight over
+  /// the flat scaffold (tint-only, no backdrop blur cost).
+  glassPanels,
+
+  /// Ambient blurred primary photo washes the whole body; sections are true
+  /// backdrop-blur glass floating over it.
+  frostedBackdrop,
+
+  /// Sections carry a soft primary-to-secondary gradient tint behind a
+  /// glass border ("aurora").
+  auroraTint,
+}
 
 /// Relationship-aware card presentation for a contact or the current user
 /// (accepted round-1 direction D1 "Telegram Full-Bleed", 2026-07-15).
@@ -31,12 +50,15 @@ class UserCardScreen extends StatefulWidget {
   final UserCardVisualData data;
   final VoidCallback? onMessage;
   final ValueChanged<UserCardMute>? onMuteChanged;
+  final UserCardStyle style;
 
   const UserCardScreen({
     super.key,
     required this.data,
     this.onMessage,
     this.onMuteChanged,
+    // Owner pick 2026-07-15 (round 2): S2 "Frosted Backdrop" ships.
+    this.style = UserCardStyle.frostedBackdrop,
   });
 
   @override
@@ -109,15 +131,10 @@ class _UserCardScreenState extends State<UserCardScreen> {
     final auth = context.read<AuthProvider>();
     final image = await ImagePicker().pickImage(source: ImageSource.gallery);
     if (image == null || !mounted) return;
-    final bytes = await image.readAsBytes();
-    if (!mounted) return;
-    final cropped = await Navigator.of(context).push<XFile>(
-      MaterialPageRoute(
-        builder: (_) => AvatarCropScreen(imageBytes: bytes, fallback: image),
-      ),
-    );
-    if (cropped == null || !mounted) return;
-    if (!await _runProfileAction(() => auth.updateProfilePicture(cropped))) {
+    // Upload the ORIGINAL file — no forced crop. The card hero shows the
+    // full picture (contain over blurred backdrop); circle avatars cover-crop
+    // at render time, so nothing is destroyed at upload (owner round-2 ask).
+    if (!await _runProfileAction(() => auth.updateProfilePicture(image))) {
       return;
     }
     if (!mounted) return;
@@ -272,18 +289,31 @@ class _UserCardScreenState extends State<UserCardScreen> {
     widget.onMuteChanged?.call(selected);
   }
 
+  /// Persist an explicit photo order; index 0 becomes the main photo
+  /// (backend contract). Errors surface via [_runProfileAction].
+  Future<bool> _persistPhotoOrder(List<UserCardPhoto> ordered) {
+    final auth = context.read<AuthProvider>();
+    return _runProfileAction(
+      () => auth.reorderProfilePhotos([for (final p in ordered) p.id!]),
+    );
+  }
+
   Future<void> _showPhotoSheet(UserCardVisualData data) async {
+    // Optimistic order shown while a drag-reorder persists: the live
+    // provider list only changes when the POST lands, so rebuilding from it
+    // right after the drop would visibly snap the tray back, then jump.
+    List<UserCardPhoto>? optimisticOrder;
     await showGlassSheet(
       context,
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) {
           final live = _effectiveData(context, listen: false);
-          final photos = live.photos;
+          final photos = optimisticOrder ?? live.photos;
           if (photos.isEmpty) {
             // Everything deleted from within the sheet.
             return const SizedBox(height: 80);
           }
-          final index = _clampedIndex(live);
+          final index = _activePhotoIndex.clamp(0, photos.length - 1);
           final photo = photos[index];
           final l10n = AppLocalizations.of(sheetContext);
           final theme = Theme.of(sheetContext);
@@ -310,29 +340,97 @@ class _UserCardScreenState extends State<UserCardScreen> {
                     ).copyWith(letterSpacing: 0.9),
                   ),
                   const SizedBox(height: 12),
-                  Row(
-                    children: [
-                      for (var i = 0; i < 3; i++) ...[
-                        if (i > 0) const SizedBox(width: 10),
-                        _PhotoSlot(
-                          photo: i < photos.length ? photos[i] : null,
-                          selected: i == index,
-                          onTap: i < photos.length
-                              ? () {
+                  SizedBox(
+                    height: 64,
+                    child: Row(
+                      children: [
+                        SizedBox(
+                          width: photos.length * 74.0,
+                          child: ReorderableListView.builder(
+                            scrollDirection: Axis.horizontal,
+                            shrinkWrap: true,
+                            physics: const NeverScrollableScrollPhysics(),
+                            buildDefaultDragHandles: false,
+                            itemCount: photos.length,
+                            onReorderItem: (oldIndex, newIndex) {
+                              // newIndex is already removal-adjusted.
+                              if (oldIndex == newIndex ||
+                                  photos.any((p) => p.id == null)) {
+                                return;
+                              }
+                              final next = List.of(photos);
+                              final moved = next.removeAt(oldIndex);
+                              next.insert(newIndex, moved);
+                              optimisticOrder = next;
+                              // Follow the dragged photo immediately.
+                              if (_pageController.hasClients) {
+                                _pageController.jumpToPage(newIndex);
+                              }
+                              setState(() => _activePhotoIndex = newIndex);
+                              setSheetState(() {});
+                              _persistPhotoOrder(next).then((ok) {
+                                optimisticOrder = null;
+                                if (!ok && mounted) {
+                                  // Roll back to the live order.
+                                  final reverted = _clampedIndex(
+                                    _effectiveData(context, listen: false),
+                                  );
                                   if (_pageController.hasClients) {
-                                    _pageController.jumpToPage(i);
+                                    _pageController.jumpToPage(reverted);
                                   }
-                                  setState(() => _activePhotoIndex = i);
+                                  setState(
+                                    () => _activePhotoIndex = reverted,
+                                  );
+                                }
+                                if (sheetContext.mounted) {
                                   setSheetState(() {});
                                 }
-                              : () async {
-                                  Navigator.of(sheetContext).pop();
-                                  await _addProfilePhoto();
-                                },
+                              });
+                            },
+                            itemBuilder: (context, i) =>
+                                ReorderableDelayedDragStartListener(
+                              key: ValueKey(photos[i].id ?? photos[i].url),
+                              index: i,
+                              child: Padding(
+                                padding: const EdgeInsets.only(right: 10),
+                                child: _PhotoSlot(
+                                  photo: photos[i],
+                                  selected: i == index,
+                                  onTap: () {
+                                    if (_pageController.hasClients) {
+                                      _pageController.jumpToPage(i);
+                                    }
+                                    setState(() => _activePhotoIndex = i);
+                                    setSheetState(() {});
+                                  },
+                                ),
+                              ),
+                            ),
+                          ),
                         ),
+                        if (photos.length < 3)
+                          _PhotoSlot(
+                            photo: null,
+                            selected: false,
+                            onTap: () async {
+                              Navigator.of(sheetContext).pop();
+                              await _addProfilePhoto();
+                            },
+                          ),
                       ],
-                    ],
+                    ),
                   ),
+                  if (photos.length > 1 && photos.every((p) => p.id != null))
+                    Padding(
+                      padding: const EdgeInsets.only(top: 6),
+                      child: Text(
+                        l10n.userCardDragReorderHint,
+                        style: RpgTheme.bodyFont(
+                          fontSize: 12,
+                          color: GlassTheme.of(sheetContext).onGlassMuted,
+                        ),
+                      ),
+                    ),
                   const SizedBox(height: 8),
                   if (!photo.isPrimary && photo.id != null)
                     _ActionRow(
@@ -392,9 +490,7 @@ class _UserCardScreenState extends State<UserCardScreen> {
     final activeIndex = _clampedIndex(data);
     final l10n = AppLocalizations.of(context);
 
-    return Scaffold(
-      backgroundColor: theme.scaffoldBackgroundColor,
-      body: CustomScrollView(
+    final scrollView = CustomScrollView(
         slivers: [
           // The hero renders ALWAYS — photo-less profiles get a gradient +
           // initials placeholder with the same collapse. The old compact
@@ -426,29 +522,68 @@ class _UserCardScreenState extends State<UserCardScreen> {
                 children: [
                   if (!data.isSelf) ...[
                     _ActionTilesRow(
+                      style: widget.style,
                       hasConversation: data.hasConversation,
                       mute: _mute,
                       onMessage: widget.onMessage,
                       onMute: data.hasConversation ? _pickMute : null,
-                      onCopy: () => _copyHandle(data.handle),
                     ),
                     const SizedBox(height: 14),
                   ],
                   if (data.about != null) ...[
                     _Section(
+                      style: widget.style,
                       title: l10n.userCardAbout,
-                      child: Text(
-                        data.about!,
-                        style: RpgTheme.bodyFont(
-                          fontSize: 15,
-                          color: theme.colorScheme.onSurface,
-                        ).copyWith(height: 1.35),
+                      child: Text.rich(
+                        TextSpan(
+                          children: buildLinkifiedSpans(
+                            data.about!,
+                            style: RpgTheme.bodyFont(
+                              fontSize: 15,
+                              color: theme.colorScheme.onSurface,
+                            ).copyWith(height: 1.35),
+                            linkStyle: RpgTheme.bodyFont(
+                              fontSize: 15,
+                              color: theme.colorScheme.primary,
+                            ).copyWith(
+                              height: 1.35,
+                              decoration: TextDecoration.underline,
+                              decorationColor: theme.colorScheme.primary,
+                            ),
+                          ),
+                        ),
                       ),
                     ),
                     const SizedBox(height: 14),
                   ],
+                  // Shared media: cache-only (E2E — server can't decrypt, so
+                  // the client's fetched history is the only source). Cold
+                  // cache or media-less chat -> section absent.
+                  if (!data.isSelf && data.conversationId != null)
+                    Builder(
+                      builder: (context) {
+                        final media = SharedMediaStrip.mediaMessagesOf(
+                          context
+                              .watch<MessagingProvider>()
+                              .cachedMessagesFor(data.conversationId!),
+                        );
+                        if (media.isEmpty) return const SizedBox.shrink();
+                        return Column(
+                          crossAxisAlignment: CrossAxisAlignment.stretch,
+                          children: [
+                            _Section(
+                              style: widget.style,
+                              title: l10n.userCardSharedMedia,
+                              child: SharedMediaStrip(mediaMessages: media),
+                            ),
+                            const SizedBox(height: 14),
+                          ],
+                        );
+                      },
+                    ),
                   if (data.isSelf)
                     _Section(
+                      style: widget.style,
                       title: l10n.userCardMyProfile,
                       child: Column(
                         children: [
@@ -477,6 +612,7 @@ class _UserCardScreenState extends State<UserCardScreen> {
                     ),
                   if (!data.isSelf && data.userId != null)
                     _Section(
+                      style: widget.style,
                       title: l10n.userCardSafety,
                       child: Column(
                         children: [
@@ -499,8 +635,23 @@ class _UserCardScreenState extends State<UserCardScreen> {
               ),
             ),
           ),
-        ],
-      ),
+      ],
+    );
+    return Scaffold(
+      backgroundColor: theme.scaffoldBackgroundColor,
+      // Frosted style: an ambient blur of the primary photo washes the
+      // whole body behind true backdrop-blur glass sections.
+      body: widget.style == UserCardStyle.frostedBackdrop
+          ? Stack(
+              fit: StackFit.expand,
+              children: [
+                _AmbientBackdrop(
+                  photoUrl: hasPhotos ? data.photos.first.url : null,
+                ),
+                scrollView,
+              ],
+            )
+          : scrollView,
     );
   }
 }
@@ -512,6 +663,10 @@ class UserCardVisualData {
   final String? about;
   final bool isSelf;
   final bool hasConversation;
+
+  /// Conversation with this contact when one exists — feeds the shared-media
+  /// section. Always null for self cards.
+  final int? conversationId;
   final List<UserCardPhoto> photos;
   final UserCardMute mute;
 
@@ -519,6 +674,7 @@ class UserCardVisualData {
     UserModel user, {
     required bool isSelf,
     required bool hasConversation,
+    int? conversationId,
     UserCardMute mute = UserCardMute.off,
   }) {
     final profilePhotos = user.profilePhotos;
@@ -550,6 +706,7 @@ class UserCardVisualData {
       tag: user.tag,
       isSelf: isSelf,
       hasConversation: hasConversation,
+      conversationId: conversationId,
       photos: photos,
       mute: mute,
     );
@@ -562,6 +719,7 @@ class UserCardVisualData {
     this.about,
     required this.isSelf,
     required this.hasConversation,
+    this.conversationId,
     this.photos = const [],
     this.mute = UserCardMute.off,
   });
@@ -661,9 +819,15 @@ class _ProfileHeroDelegate extends SliverPersistentHeaderDelegate {
     final t = (shrinkOffset / (maxExtent - minExtent)).clamp(0.0, 1.0);
     // Photo stays full-bleed for the first 55% of the collapse, then morphs
     // into the bar circle over the remaining 45%.
-    final morphT = Curves.easeInOut.transform(
+    // Snap the endpoints: (1 - 0.55) / 0.45 is 0.9999999999999999 in FP, so
+    // without this the `morphT == 1` state (contain layer unmounted, cover
+    // fully in) is never reached even at full collapse.
+    final rawMorphT = Curves.easeInOut.transform(
       ((t - 0.55) / 0.45).clamp(0.0, 1.0),
     );
+    final morphT = rawMorphT > 0.999
+        ? 1.0
+        : (rawMorphT < 0.001 ? 0.0 : rawMorphT);
     // Overlays (segment strip, name, scrim, edit button) fade out early.
     final heroOpacity = (1 - t / 0.55).clamp(0.0, 1.0);
     // Bar title fades in across the whole morph (review nit: thresholding
@@ -728,6 +892,10 @@ class _ProfileHeroDelegate extends SliverPersistentHeaderDelegate {
                     else
                       PageView.builder(
                         controller: pageController,
+                        // Navigation is tap-zone based (owner round-2 ask);
+                        // swipe is disabled so horizontal drags never fight
+                        // the sliver's vertical scroll.
+                        physics: const NeverScrollableScrollPhysics(),
                         itemCount: data.photos.length,
                         onPageChanged: onPageChanged,
                         itemBuilder: (context, index) {
@@ -735,18 +903,64 @@ class _ProfileHeroDelegate extends SliverPersistentHeaderDelegate {
                           return Semantics(
                             image: true,
                             label: photo.semanticLabel,
-                            child: Image.network(
-                              photo.url,
-                              fit: BoxFit.cover,
-                              errorBuilder: (_, _, _) => Container(
-                                color: Theme.of(context).colorScheme.primary,
-                                alignment: Alignment.center,
-                                child: const Icon(
-                                  Icons.image_outlined,
-                                  size: 54,
-                                  color: Colors.white,
+                            child: Stack(
+                              fit: StackFit.expand,
+                              children: [
+                                // Blurred cover backdrop fills the hero so a
+                                // non-3:2 photo shown in full (contain) never
+                                // letterboxes against flat bars.
+                                ImageFiltered(
+                                  imageFilter: ImageFilter.blur(
+                                    sigmaX: 24,
+                                    sigmaY: 24,
+                                    tileMode: TileMode.clamp,
+                                  ),
+                                  child: Image.network(
+                                    photo.url,
+                                    fit: BoxFit.cover,
+                                    errorBuilder: (_, _, _) => ColoredBox(
+                                      color:
+                                          Theme.of(context).colorScheme.primary,
+                                    ),
+                                  ),
                                 ),
-                              ),
+                                // Full picture while expanded; crossfades to
+                                // a sharp cover as the hero morphs into the
+                                // 40px bar circle (contain would letterbox
+                                // portrait photos inside the tiny circle).
+                                if (morphT < 1)
+                                  Opacity(
+                                    opacity: 1 - morphT,
+                                    child: Image.network(
+                                      photo.url,
+                                      fit: BoxFit.contain,
+                                      errorBuilder: (_, _, _) => Container(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.primary,
+                                        alignment: Alignment.center,
+                                        child: const Icon(
+                                          Icons.image_outlined,
+                                          size: 54,
+                                          color: Colors.white,
+                                        ),
+                                      ),
+                                    ),
+                                  ),
+                                if (morphT > 0)
+                                  Opacity(
+                                    opacity: morphT,
+                                    child: Image.network(
+                                      photo.url,
+                                      fit: BoxFit.cover,
+                                      errorBuilder: (_, _, _) => ColoredBox(
+                                        color: Theme.of(
+                                          context,
+                                        ).colorScheme.primary,
+                                      ),
+                                    ),
+                                  ),
+                              ],
                             ),
                           );
                         },
@@ -774,6 +988,29 @@ class _ProfileHeroDelegate extends SliverPersistentHeaderDelegate {
                         ),
                       ),
                     ),
+                    // Story-style navigation: left half = previous photo,
+                    // right half = next (wraps). Swipe is disabled on the
+                    // pager, so this layer is the ONLY pager input.
+                    if (data.photos.length > 1 && morphT < 1)
+                      Positioned.fill(
+                        child: GestureDetector(
+                          behavior: HitTestBehavior.translucent,
+                          onTapUp: (details) {
+                            final count = data.photos.length;
+                            final back =
+                                details.localPosition.dx < photoRect.width / 2;
+                            final target =
+                                (activeIndex + (back ? -1 : 1) + count) % count;
+                            if (pageController.hasClients) {
+                              pageController.animateToPage(
+                                target,
+                                duration: const Duration(milliseconds: 220),
+                                curve: Curves.easeOutCubic,
+                              );
+                            }
+                          },
+                        ),
+                      ),
                   ],
                 ),
               ),
@@ -831,14 +1068,18 @@ class _ProfileHeroDelegate extends SliverPersistentHeaderDelegate {
                                 fontWeight: FontWeight.w800,
                               ),
                             ),
-                            Text(
-                              data.handle,
-                              maxLines: 1,
-                              overflow: TextOverflow.ellipsis,
-                              style: RpgTheme.bodyFont(
-                                fontSize: 12.5,
-                                color: Colors.white.withValues(alpha: 0.78),
-                                fontWeight: FontWeight.w600,
+                            GestureDetector(
+                              behavior: HitTestBehavior.opaque,
+                              onTap: onCopy,
+                              child: Text(
+                                data.handle,
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: RpgTheme.bodyFont(
+                                  fontSize: 12.5,
+                                  color: Colors.white.withValues(alpha: 0.78),
+                                  fontWeight: FontWeight.w600,
+                                ),
                               ),
                             ),
                           ],
@@ -920,20 +1161,22 @@ class _ProfileHeroDelegate extends SliverPersistentHeaderDelegate {
 }
 
 
-/// D1 action tiles: Message / Mute / Copy tag as equal glass-tinted cards.
+/// D1 action tiles: Message / Mute as equal glass-tinted cards. Copy-tag
+/// lives ONLY on the hero photo (icon + tappable handle) — the tile version
+/// duplicated it (owner round-2 ask).
 class _ActionTilesRow extends StatelessWidget {
+  final UserCardStyle style;
   final bool hasConversation;
   final UserCardMute mute;
   final VoidCallback? onMessage;
   final void Function(BuildContext anchorContext)? onMute;
-  final VoidCallback onCopy;
 
   const _ActionTilesRow({
+    required this.style,
     required this.hasConversation,
     required this.mute,
     required this.onMessage,
     required this.onMute,
-    required this.onCopy,
   });
 
   @override
@@ -943,6 +1186,7 @@ class _ActionTilesRow extends StatelessWidget {
       children: [
         Expanded(
           child: _ActionTile(
+            style: style,
             icon: Icons.chat_bubble_outline,
             label: l10n.userCardMessage,
             onTap: onMessage,
@@ -953,6 +1197,7 @@ class _ActionTilesRow extends StatelessWidget {
           Expanded(
             child: Builder(
               builder: (tileContext) => _ActionTile(
+                style: style,
                 icon: mute == UserCardMute.off
                     ? Icons.notifications_outlined
                     : Icons.notifications_off_outlined,
@@ -964,40 +1209,34 @@ class _ActionTilesRow extends StatelessWidget {
             ),
           ),
         ],
-        const SizedBox(width: 8),
-        Expanded(
-          child: _ActionTile(
-            icon: Icons.copy_outlined,
-            label: l10n.userCardCopyTag,
-            onTap: onCopy,
-          ),
-        ),
       ],
     );
   }
 }
 
 class _ActionTile extends StatelessWidget {
+  final UserCardStyle style;
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
 
-  const _ActionTile({required this.icon, required this.label, this.onTap});
+  const _ActionTile({
+    required this.style,
+    required this.icon,
+    required this.label,
+    this.onTap,
+  });
 
   @override
   Widget build(BuildContext context) {
-    final theme = Theme.of(context);
-    final colors = FireplaceColors.of(context);
-    final accent = theme.colorScheme.primary;
-    return Material(
-      color: theme.colorScheme.surface.withValues(alpha: 0.82),
-      shape: RoundedRectangleBorder(
-        borderRadius: BorderRadius.circular(14),
-        side: BorderSide(color: colors.borderColor),
-      ),
+    final glass = GlassTheme.of(context);
+    final accent = glass.onGlassAccent;
+    final radius = BorderRadius.circular(14);
+    final inner = Material(
+      type: MaterialType.transparency,
       child: InkWell(
         onTap: onTap,
-        borderRadius: BorderRadius.circular(14),
+        borderRadius: radius,
         child: Padding(
           padding: const EdgeInsets.symmetric(vertical: 11),
           child: Column(
@@ -1019,6 +1258,7 @@ class _ActionTile extends StatelessWidget {
         ),
       ),
     );
+    return _StyledPanel(style: style, borderRadius: radius, child: inner);
   }
 }
 
@@ -1098,39 +1338,150 @@ class _PhotoSlot extends StatelessWidget {
   }
 }
 
-class _Section extends StatelessWidget {
-  final String title;
+/// Shared container for the three round-2 style directions: glass panel
+/// (tint-only), true backdrop-blur glass, or aurora gradient tint. The ONE
+/// place body chrome styling lives — sections and action tiles both route
+/// through it.
+class _StyledPanel extends StatelessWidget {
+  final UserCardStyle style;
+  final BorderRadius borderRadius;
   final Widget child;
 
-  const _Section({required this.title, required this.child});
+  const _StyledPanel({
+    required this.style,
+    required this.borderRadius,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    // GlassSurface's highlight Stack passes LOOSE constraints down, so its
+    // fill Container shrink-wraps; panels must fill their slot instead.
+    final full = SizedBox(width: double.infinity, child: child);
+    switch (style) {
+      case UserCardStyle.glassPanels:
+        return GlassSurface(
+          borderRadius: borderRadius,
+          shadow: false,
+          blur: false,
+          child: full,
+        );
+      case UserCardStyle.frostedBackdrop:
+        return GlassSurface(
+          borderRadius: borderRadius,
+          shadow: false,
+          child: full,
+        );
+      case UserCardStyle.auroraTint:
+        final scheme = Theme.of(context).colorScheme;
+        final glass = GlassTheme.of(context);
+        return Container(
+          decoration: BoxDecoration(
+            borderRadius: borderRadius,
+            gradient: LinearGradient(
+              begin: Alignment.topLeft,
+              end: Alignment.bottomRight,
+              colors: [
+                scheme.primary.withValues(alpha: 0.26),
+                scheme.secondary.withValues(alpha: 0.12),
+              ],
+            ),
+            border: Border.all(color: glass.border),
+          ),
+          clipBehavior: Clip.antiAlias,
+          child: child,
+        );
+    }
+  }
+}
+
+/// Frosted-backdrop style only: the primary photo, heavily blurred and
+/// scrimmed back toward the scaffold color, washes the area behind the
+/// glass sections (photo-less profiles get a theme-gradient wash instead).
+class _AmbientBackdrop extends StatelessWidget {
+  final String? photoUrl;
+
+  const _AmbientBackdrop({required this.photoUrl});
 
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final colors = FireplaceColors.of(context);
-    final borderRadius = BorderRadius.circular(18);
-    return Material(
-      color: theme.colorScheme.surface.withValues(alpha: 0.82),
-      shape: RoundedRectangleBorder(
-        borderRadius: borderRadius,
-        side: BorderSide(color: colors.borderColor),
-      ),
-      child: Padding(
-        padding: const EdgeInsets.all(16),
-        child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
-          children: [
-            Text(
-              title.toUpperCase(),
-              style: RpgTheme.bodyFont(
-                fontSize: 11,
-                color: colors.mutedText,
-                fontWeight: FontWeight.w800,
-              ).copyWith(letterSpacing: 0.9),
+    return IgnorePointer(
+      child: Stack(
+        fit: StackFit.expand,
+        children: [
+          if (photoUrl != null)
+            ImageFiltered(
+              imageFilter: ImageFilter.blur(
+                sigmaX: 60,
+                sigmaY: 60,
+                tileMode: TileMode.clamp,
+              ),
+              child: Image.network(
+                photoUrl!,
+                fit: BoxFit.cover,
+                errorBuilder: (_, _, _) => const SizedBox.shrink(),
+              ),
+            )
+          else
+            DecoratedBox(
+              decoration: BoxDecoration(
+                gradient: LinearGradient(
+                  begin: Alignment.topCenter,
+                  end: Alignment.bottomCenter,
+                  colors: [
+                    theme.colorScheme.primary.withValues(alpha: 0.22),
+                    theme.colorScheme.secondary.withValues(alpha: 0.10),
+                  ],
+                ),
+              ),
             ),
-            const SizedBox(height: 12),
-            child,
-          ],
+          // Scrim back toward the scaffold so section text keeps contrast.
+          ColoredBox(
+            color: theme.scaffoldBackgroundColor.withValues(alpha: 0.55),
+          ),
+        ],
+      ),
+    );
+  }
+}
+
+class _Section extends StatelessWidget {
+  final UserCardStyle style;
+  final String title;
+  final Widget child;
+
+  const _Section({
+    required this.style,
+    required this.title,
+    required this.child,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    final glass = GlassTheme.of(context);
+    return _StyledPanel(
+      style: style,
+      borderRadius: BorderRadius.circular(18),
+      child: Material(
+        type: MaterialType.transparency,
+        child: Padding(
+          padding: const EdgeInsets.all(16),
+          child: Column(
+            crossAxisAlignment: CrossAxisAlignment.start,
+            children: [
+              Text(
+                title.toUpperCase(),
+                style: RpgTheme.bodyFont(
+                  fontSize: 11,
+                  color: glass.onGlassMuted,
+                  fontWeight: FontWeight.w800,
+                ).copyWith(letterSpacing: 0.9),
+              ),
+              const SizedBox(height: 12),
+              child,
+            ],
+          ),
         ),
       ),
     );

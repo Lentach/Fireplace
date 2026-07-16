@@ -57,6 +57,7 @@ class ContactsScreen extends StatelessWidget {
             user,
             isSelf: false,
             hasConversation: hasConversation,
+            conversationId: existingConversation?.id,
             mute: UserCardMute.fromConversation(
               muted: existingConversation?.muted ?? false,
               mutedUntil: existingConversation?.mutedUntil,

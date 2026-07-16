@@ -5,6 +5,7 @@ import 'package:fireplace/providers/friends_provider.dart';
 import 'package:fireplace/screens/edit_about_screen.dart';
 import 'package:fireplace/screens/user_card_screen.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
+import 'package:flutter/gestures.dart' show kLongPressTimeout, kPressTimeout;
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -53,6 +54,28 @@ class _FakeAuthProvider extends AuthProvider {
           createdAt: photo.createdAt,
         ),
     ]..sort((a, b) => a.isPrimary == b.isPrimary ? 0 : (a.isPrimary ? -1 : 1));
+    _user = _user!.copyWith(
+      profilePhotos: photos,
+      profilePictureUrl: photos.first.url,
+    );
+    notifyListeners();
+  }
+
+  List<int>? lastReorder;
+
+  @override
+  Future<void> reorderProfilePhotos(List<int> orderedIds) async {
+    lastReorder = orderedIds;
+    final byId = {for (final photo in _user!.profilePhotos) photo.id: photo};
+    final photos = [
+      for (var i = 0; i < orderedIds.length; i++)
+        UserProfilePhoto(
+          id: orderedIds[i],
+          url: byId[orderedIds[i]]!.url,
+          isPrimary: i == 0,
+          createdAt: byId[orderedIds[i]]!.createdAt,
+        ),
+    ];
     _user = _user!.copyWith(
       profilePhotos: photos,
       profilePictureUrl: photos.first.url,
@@ -138,44 +161,121 @@ void main() {
   });
 
   group('photo gallery pager', () {
-    testWidgets('swipe cycles all photos and the segment indicator follows', (
-      tester,
-    ) async {
-      final auth = _FakeAuthProvider(_selfUser());
-      await tester.pumpWidget(
-        _wrap(
-          UserCardVisualData.fromUser(
-            auth.currentUser!,
-            isSelf: true,
-            hasConversation: false,
+    testWidgets(
+      'tap zones page the gallery (right = next, left = prev, wraps); '
+      'swipe is disabled',
+      (tester) async {
+        final auth = _FakeAuthProvider(_selfUser());
+        await tester.pumpWidget(
+          _wrap(
+            UserCardVisualData.fromUser(
+              auth.currentUser!,
+              isSelf: true,
+              hasConversation: false,
+            ),
+            auth: auth,
           ),
-          auth: auth,
-        ),
-      );
-      await tester.pump();
+        );
+        await tester.pump();
 
-      final pageView = find.byType(PageView);
-      expect(pageView, findsOneWidget);
+        final pageView = find.byType(PageView);
+        expect(pageView, findsOneWidget);
 
-      PageController controllerOf(Finder finder) =>
-          (tester.widget<PageView>(finder)).controller!;
-      expect(controllerOf(pageView).page, 0);
+        PageController controllerOf(Finder finder) =>
+            (tester.widget<PageView>(finder)).controller!;
+        expect(controllerOf(pageView).page, 0);
 
-      // The pre-rework bug: the hero scrim absorbed pointers and swiping did
-      // nothing. Drag ON the photo area must page.
-      await tester.drag(pageView, const Offset(-600, 0));
-      await tester.pumpAndSettle();
-      expect(controllerOf(pageView).page, 1);
+        // Right half advances (test viewport is 800 wide; avoid the back
+        // button top-left and the identity row at the hero's bottom).
+        await tester.tapAt(const Offset(600, 150));
+        await tester.pumpAndSettle();
+        expect(controllerOf(pageView).page, 1);
 
-      await tester.drag(pageView, const Offset(-600, 0));
-      await tester.pumpAndSettle();
-      expect(controllerOf(pageView).page, 2);
+        await tester.tapAt(const Offset(600, 150));
+        await tester.pumpAndSettle();
+        expect(controllerOf(pageView).page, 2);
 
-      // No fourth page.
-      await tester.drag(pageView, const Offset(-600, 0));
-      await tester.pumpAndSettle();
-      expect(controllerOf(pageView).page, 2);
-    });
+        // Wraps past the last photo.
+        await tester.tapAt(const Offset(600, 150));
+        await tester.pumpAndSettle();
+        expect(controllerOf(pageView).page, 0);
+
+        // Left half goes back, wrapping to the end.
+        await tester.tapAt(const Offset(300, 150));
+        await tester.pumpAndSettle();
+        expect(controllerOf(pageView).page, 2);
+
+        // Owner round-2 contract: swipe must NOT page.
+        await tester.drag(pageView, const Offset(-600, 0));
+        await tester.pumpAndSettle();
+        expect(controllerOf(pageView).page, 2);
+      },
+    );
+
+    testWidgets(
+      'collapse crossfades the full picture (contain) into a cover crop and '
+      'shows the bar title',
+      (tester) async {
+        // Shrink the viewport so the body provides >= 232px of scroll
+        // extent (photoExtent 300 - barHeight 68); otherwise jumpTo clamps
+        // to a partial collapse and morphT never reaches 1.
+        tester.view.physicalSize = const Size(800, 400);
+        tester.view.devicePixelRatio = 1;
+        addTearDown(tester.view.reset);
+        final auth = _FakeAuthProvider(
+          // About adds body height so the sliver really reaches full
+          // collapse in the shrunken viewport.
+          _selfUser(about: 'sits by the fire and keeps the embers warm'),
+        );
+        await tester.pumpWidget(
+          _wrap(
+            UserCardVisualData.fromUser(
+              auth.currentUser!,
+              isSelf: true,
+              hasConversation: false,
+            ),
+            auth: auth,
+          ),
+        );
+        await tester.pump();
+
+        bool pagerImageWithFit(BoxFit fit) => tester
+            .widgetList<Image>(
+              find.descendant(
+                of: find.byType(PageView),
+                matching: find.byType(Image),
+              ),
+            )
+            .any((image) => image.fit == fit);
+
+        // The bar title is the fontSize-16 copy of the handle; the hero
+        // identity block shows a 12.5px copy while expanded.
+        bool barTitleShown() => tester
+            .widgetList<Text>(find.text('ember#7004'))
+            .any((text) => text.style?.fontSize == 16);
+
+        // Expanded: full picture visible, no cover layer yet (beyond the
+        // blurred backdrop, which lives outside the crossfade pair), no bar
+        // title.
+        expect(pagerImageWithFit(BoxFit.contain), isTrue);
+        expect(barTitleShown(), isFalse);
+
+        // Force full collapse (photoExtent 300 -> barHeight 68 = 232 plus
+        // margin) directly on the scroll position.
+        final position = tester
+            .state<ScrollableState>(find.byType(Scrollable).first)
+            .position;
+        position.jumpTo(300);
+        await tester.pumpAndSettle();
+
+        // Collapsed: the contain layer is gone (it would letterbox inside
+        // the 40px circle), the sharp cover layer is in, and the bar title
+        // with the handle faded in.
+        expect(pagerImageWithFit(BoxFit.contain), isFalse);
+        expect(pagerImageWithFit(BoxFit.cover), isTrue);
+        expect(barTitleShown(), isTrue);
+      },
+    );
   });
 
   group('self card stays in place (nav-bounce regression)', () {
@@ -231,7 +331,7 @@ void main() {
         await tester.pump();
 
         // View photo 2, then delete it through the manage sheet.
-        await tester.drag(find.byType(PageView), const Offset(-600, 0));
+        await tester.tapAt(const Offset(600, 150));
         await tester.pumpAndSettle();
 
         await tester.dragFrom(
@@ -273,7 +373,7 @@ void main() {
       );
       await tester.pump();
 
-      await tester.drag(find.byType(PageView), const Offset(-600, 0));
+      await tester.tapAt(const Offset(600, 150));
       await tester.pumpAndSettle();
 
       await tester.dragFrom(
@@ -291,6 +391,53 @@ void main() {
       final pageView = tester.widget<PageView>(find.byType(PageView));
       expect(pageView.controller!.page, 0);
     });
+
+    testWidgets(
+      'drag reorder in the manage sheet persists the exact id order '
+      '(first id becomes main)',
+      (tester) async {
+        final auth = _FakeAuthProvider(_selfUser(photoCount: 3));
+        await tester.pumpWidget(
+          _wrap(
+            UserCardVisualData.fromUser(
+              auth.currentUser!,
+              isSelf: true,
+              hasConversation: false,
+            ),
+            auth: auth,
+          ),
+        );
+        await tester.pump();
+
+        await tester.dragFrom(
+          tester.getCenter(find.byType(CustomScrollView)),
+          const Offset(0, -400),
+        );
+        await tester.pumpAndSettle();
+        await tester.tap(find.text('Manage photos'));
+        await tester.pumpAndSettle();
+
+        // Long-press-drag photo 1 one slot to the right (slots are 64px +
+        // 10px gap). Expected order: [2, 1, 3] — an unadjusted-newIndex
+        // regression would persist [2, 3, 1] instead.
+        final slot = find.byKey(const ValueKey<Object>(1));
+        expect(slot, findsOneWidget);
+        final gesture = await tester.startGesture(tester.getCenter(slot));
+        await tester.pump(kLongPressTimeout + kPressTimeout);
+        await gesture.moveBy(const Offset(40, 0));
+        await tester.pump();
+        await gesture.moveBy(const Offset(40, 0));
+        await tester.pump();
+        await gesture.up();
+        await tester.pumpAndSettle();
+
+        expect(auth.lastReorder, [2, 1, 3]);
+        // Provider applied the order: photo 2 is now primary.
+        expect(auth.currentUser!.profilePhotos.first.id, 2);
+        expect(auth.currentUser!.profilePhotos.first.isPrimary, isTrue);
+        expect(find.byType(UserCardScreen), findsOneWidget);
+      },
+    );
   });
 
   testWidgets('requires confirmation before deleting a profile photo', (

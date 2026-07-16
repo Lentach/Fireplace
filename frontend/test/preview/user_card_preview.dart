@@ -1,7 +1,8 @@
 // Throwaway visual harness for the user card rework (dev-only, NOT part of
 // the test suite; run:
 //   flutter run -d web-server -t test/preview/user_card_preview.dart
-// ?theme=blue|dark|light|teal picks the theme; ?variant=self|other|noPhoto.
+// ?theme=blue|dark|light|teal picks the theme; ?variant=self|other|noPhoto;
+// ?style=panels|frosted|aurora picks the round-2 body style.
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
@@ -28,6 +29,11 @@ class UserCardPreviewApp extends StatelessWidget {
     final params = Uri.base.queryParameters;
     final themeName = params['theme'] ?? 'dark';
     final variant = params['variant'] ?? 'self';
+    final style = switch (params['style']) {
+      'panels' => UserCardStyle.glassPanels,
+      'aurora' => UserCardStyle.auroraTint,
+      _ => UserCardStyle.frostedBackdrop,
+    };
 
     final photos = [
       const UserCardPhoto(
@@ -86,7 +92,7 @@ class UserCardPreviewApp extends StatelessWidget {
         theme: _theme(themeName),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: UserCardScreen(data: data, onMessage: () {}),
+        home: UserCardScreen(data: data, onMessage: () {}, style: style),
       ),
     );
   }

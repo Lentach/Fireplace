@@ -481,6 +481,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             otherUser,
             isSelf: false,
             hasConversation: true,
+            conversationId: widget.conversationId,
             mute: UserCardMute.fromConversation(
               muted:
                   _conversations.conversations

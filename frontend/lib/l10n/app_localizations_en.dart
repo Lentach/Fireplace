@@ -903,7 +903,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get userCardAboutHint => 'A few words about you';
 
   @override
-  String get userCardCropPhoto => 'Crop photo';
+  String get userCardSharedMedia => 'Shared media';
+
+  @override
+  String get userCardDragReorderHint =>
+      'Hold and drag to reorder — the first photo is your main photo.';
 
   @override
   String get settingsChatBackground => 'Chat background';

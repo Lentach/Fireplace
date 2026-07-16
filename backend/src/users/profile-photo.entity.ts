@@ -29,6 +29,9 @@ export class ProfilePhoto {
   @Column({ default: false })
   isPrimary: boolean;
 
+  @Column({ type: 'int', default: 0 })
+  position: number;
+
   @CreateDateColumn()
   createdAt: Date;
 }

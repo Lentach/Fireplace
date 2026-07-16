@@ -913,7 +913,11 @@ class AppLocalizationsPl extends AppLocalizations {
   String get userCardAboutHint => 'Kilka słów o Tobie';
 
   @override
-  String get userCardCropPhoto => 'Przytnij zdjęcie';
+  String get userCardSharedMedia => 'Udostępnione multimedia';
+
+  @override
+  String get userCardDragReorderHint =>
+      'Przytrzymaj i przeciągnij, aby zmienić kolejność — pierwsze zdjęcie jest Twoim głównym.';
 
   @override
   String get settingsChatBackground => 'Tło czatu';

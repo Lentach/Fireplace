@@ -12,6 +12,13 @@ extension MessagingHistory on MessagingProvider {
   bool hasCachedMessages(int conversationId) =>
       _conversationCache.containsKey(conversationId);
 
+  /// Read-only snapshot of the RAM cache for [conversationId] (empty when
+  /// cold). Unlike [loadCachedMessages] this NEVER touches [_messages] or
+  /// pagination state, so passive consumers (user-card shared media) can't
+  /// disturb the active chat.
+  List<MessageModel> cachedMessagesFor(int conversationId) =>
+      List.unmodifiable(_conversationCache[conversationId] ?? const []);
+
   /// Immediately populates [_messages] from RAM cache if available and calls notifyListeners().
   /// Returns true if cache was used — caller can then skip expensive initial scroll setup.
   /// Always follow this with getMessages() to sync new messages from server.

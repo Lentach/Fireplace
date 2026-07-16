@@ -1694,11 +1694,17 @@ abstract class AppLocalizations {
   /// **'Kilka słów o Tobie'**
   String get userCardAboutHint;
 
-  /// No description provided for @userCardCropPhoto.
+  /// No description provided for @userCardSharedMedia.
   ///
   /// In pl, this message translates to:
-  /// **'Przytnij zdjęcie'**
-  String get userCardCropPhoto;
+  /// **'Udostępnione multimedia'**
+  String get userCardSharedMedia;
+
+  /// No description provided for @userCardDragReorderHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Przytrzymaj i przeciągnij, aby zmienić kolejność — pierwsze zdjęcie jest Twoim głównym.'**
+  String get userCardDragReorderHint;
 
   /// No description provided for @settingsChatBackground.
   ///

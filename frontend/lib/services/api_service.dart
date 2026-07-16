@@ -199,6 +199,28 @@ class ApiService {
         .toList(growable: false);
   }
 
+  Future<List<UserProfilePhoto>> reorderProfilePhotos(
+    String token,
+    List<int> orderedIds,
+  ) async {
+    final response = await _httpClient.post(
+      Uri.parse('$baseUrl/users/profile-photos/order'),
+      headers: {
+        'Content-Type': 'application/json',
+        'Authorization': 'Bearer $token',
+      },
+      body: jsonEncode({'orderedIds': orderedIds}),
+    );
+    // Nest returns 201 for POST by default.
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception(_errorMessage(response, 'Unable to reorder photos'));
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return (data['profilePhotos'] as List<dynamic>)
+        .map((value) => UserProfilePhoto.fromJson(value as Map<String, dynamic>))
+        .toList(growable: false);
+  }
+
   Future<String?> updateProfileAbout(String token, String? about) async {
     final response = await _httpClient.patch(
       Uri.parse('$baseUrl/users/profile-about'),

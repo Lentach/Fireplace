@@ -61,7 +61,6 @@ dependencies:
   emoji_picker_flutter: ^4.4.0
   characters: ^1.4.1
   skeletonizer: ^2.1.3
-  crop_your_image: ^2.0.0
 
 dependency_overrides:
   record_linux: ^1.3.0

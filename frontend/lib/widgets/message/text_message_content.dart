@@ -1,10 +1,10 @@
-import 'package:flutter/gestures.dart';
 import 'package:flutter/material.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../../constants/app_constants.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../services/link_preview_service.dart';
+import '../../utils/linkify.dart';
 import '../../theme/rpg_theme.dart';
 import '../../utils/anti_quantum_note_link.dart';
 import '../../utils/jumbo_emoji.dart';
@@ -45,47 +45,24 @@ class _TextMessageContentState extends State<TextMessageContent> {
 
   /// Builds the non-jumbo body spans: plain text + inline emoji + tappable URLs.
   List<InlineSpan> _buildBodySpans(BuildContext context) {
-    final text = widget.message.content;
-    final urlRegex = RegExp(r'https?://[^\s]+', caseSensitive: false);
-    final spans = <InlineSpan>[];
-    int last = 0;
+    final textStyle = RpgTheme.bodyFont(
+      fontSize: 14,
+      color: widget.textColor,
+    );
     final linkColor = widget.isMine
         ? widget.textColor
         : Theme.of(context).colorScheme.primary;
 
-    for (final match in urlRegex.allMatches(text)) {
-      if (match.start > last) {
-        spans.addAll(
-          buildInlineEmojiSpans(
-            text.substring(last, match.start),
-            textStyle: RpgTheme.bodyFont(fontSize: 14, color: widget.textColor),
-          ),
-        );
-      }
-      final url = match.group(0)!;
-      spans.add(
-        TextSpan(
-          text: url,
-          style: RpgTheme.bodyFont(
-            fontSize: 14,
-            color: linkColor,
-          ).copyWith(decoration: TextDecoration.underline),
-          recognizer: TapGestureRecognizer()
-            ..onTap = () =>
-                launchUrl(Uri.parse(url), mode: LaunchMode.externalApplication),
-        ),
-      );
-      last = match.end;
-    }
-    if (last < text.length) {
-      spans.addAll(
-        buildInlineEmojiSpans(
-          text.substring(last),
-          textStyle: RpgTheme.bodyFont(fontSize: 14, color: widget.textColor),
-        ),
-      );
-    }
-    return spans;
+    return buildLinkifiedSpans(
+      widget.message.content,
+      style: textStyle,
+      linkStyle: RpgTheme.bodyFont(
+        fontSize: 14,
+        color: linkColor,
+      ).copyWith(decoration: TextDecoration.underline),
+      runBuilder: (run, style) =>
+          TextSpan(children: buildInlineEmojiSpans(run, textStyle: style)),
+    );
   }
 
   /// Renders the body with a "Read more"/"Show less" toggle when it exceeds
