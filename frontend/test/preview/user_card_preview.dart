@@ -29,11 +29,7 @@ class UserCardPreviewApp extends StatelessWidget {
     final params = Uri.base.queryParameters;
     final themeName = params['theme'] ?? 'dark';
     final variant = params['variant'] ?? 'self';
-    final style = switch (params['style']) {
-      'panels' => UserCardStyle.glassPanels,
-      'aurora' => UserCardStyle.auroraTint,
-      _ => UserCardStyle.frostedBackdrop,
-    };
+    // ?style= removed: S2 "Frosted Backdrop" shipped; losing styles stripped.
 
     // Deliberately mixed aspects: square, portrait, landscape — the round-3
     // adaptive hero must size itself to each without bars or crop.
@@ -94,7 +90,7 @@ class UserCardPreviewApp extends StatelessWidget {
         theme: _theme(themeName),
         localizationsDelegates: AppLocalizations.localizationsDelegates,
         supportedLocales: AppLocalizations.supportedLocales,
-        home: UserCardScreen(data: data, onMessage: () {}, style: style),
+        home: UserCardScreen(data: data, onMessage: () {}),
       ),
     );
   }

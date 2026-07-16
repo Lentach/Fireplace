@@ -22,23 +22,6 @@ import '../widgets/top_snackbar.dart' show showTopSnackBar;
 import '../widgets/user_card/shared_media_section.dart';
 import 'edit_about_screen.dart';
 
-/// Round-2 body styling directions (owner pick pending — render all three in
-/// the preview harness via `?style=`). The hero is shared; styles change how
-/// the body sections and action tiles read against the scaffold.
-enum UserCardStyle {
-  /// Liquid-glass panels: GlassSurface tint + border + top highlight over
-  /// the flat scaffold (tint-only, no backdrop blur cost).
-  glassPanels,
-
-  /// Ambient blurred primary photo washes the whole body; sections are true
-  /// backdrop-blur glass floating over it.
-  frostedBackdrop,
-
-  /// Sections carry a soft primary-to-secondary gradient tint behind a
-  /// glass border ("aurora").
-  auroraTint,
-}
-
 /// Relationship-aware card presentation for a contact or the current user
 /// (accepted round-1 direction D1 "Telegram Full-Bleed", 2026-07-15).
 ///
@@ -50,15 +33,12 @@ class UserCardScreen extends StatefulWidget {
   final UserCardVisualData data;
   final VoidCallback? onMessage;
   final ValueChanged<UserCardMute>? onMuteChanged;
-  final UserCardStyle style;
 
   const UserCardScreen({
     super.key,
     required this.data,
     this.onMessage,
     this.onMuteChanged,
-    // Owner pick 2026-07-15 (round 2): S2 "Frosted Backdrop" ships.
-    this.style = UserCardStyle.frostedBackdrop,
   });
 
   @override
@@ -619,7 +599,6 @@ class _UserCardScreenState extends State<UserCardScreen> {
                 children: [
                   if (!data.isSelf) ...[
                     _ActionTilesRow(
-                      style: widget.style,
                       hasConversation: data.hasConversation,
                       mute: _mute,
                       onMessage: widget.onMessage,
@@ -629,7 +608,6 @@ class _UserCardScreenState extends State<UserCardScreen> {
                   ],
                   if (data.about != null) ...[
                     _Section(
-                      style: widget.style,
                       title: l10n.userCardAbout,
                       child: Text.rich(
                         TextSpan(
@@ -669,7 +647,6 @@ class _UserCardScreenState extends State<UserCardScreen> {
                           crossAxisAlignment: CrossAxisAlignment.stretch,
                           children: [
                             _Section(
-                              style: widget.style,
                               title: l10n.userCardSharedMedia,
                               child: SharedMediaStrip(mediaMessages: media),
                             ),
@@ -680,7 +657,6 @@ class _UserCardScreenState extends State<UserCardScreen> {
                     ),
                   if (data.isSelf)
                     _Section(
-                      style: widget.style,
                       title: l10n.userCardMyProfile,
                       child: Column(
                         children: [
@@ -709,7 +685,6 @@ class _UserCardScreenState extends State<UserCardScreen> {
                     ),
                   if (!data.isSelf && data.userId != null)
                     _Section(
-                      style: widget.style,
                       title: l10n.userCardSafety,
                       child: Column(
                         children: [
@@ -744,19 +719,18 @@ class _UserCardScreenState extends State<UserCardScreen> {
     );
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
-      // Frosted style: an ambient blur of the primary photo washes the
-      // whole body behind true backdrop-blur glass sections.
-      body: widget.style == UserCardStyle.frostedBackdrop
-          ? Stack(
-              fit: StackFit.expand,
-              children: [
-                _AmbientBackdrop(
-                  photoUrl: hasPhotos ? data.photos.first.url : null,
-                ),
-                scrollView,
-              ],
-            )
-          : scrollView,
+      // S2 "Frosted Backdrop" (owner pick, round 2): an ambient blur of the
+      // primary photo washes the whole body behind true backdrop-blur glass
+      // sections. Losing round-2 styles stripped at merge.
+      body: Stack(
+        fit: StackFit.expand,
+        children: [
+          _AmbientBackdrop(
+            photoUrl: hasPhotos ? data.photos.first.url : null,
+          ),
+          scrollView,
+        ],
+      ),
     );
   }
 }
@@ -1231,14 +1205,12 @@ class _ProfileHeroDelegate extends SliverPersistentHeaderDelegate {
 /// lives ONLY on the hero photo (icon + tappable handle) — the tile version
 /// duplicated it (owner round-2 ask).
 class _ActionTilesRow extends StatelessWidget {
-  final UserCardStyle style;
   final bool hasConversation;
   final UserCardMute mute;
   final VoidCallback? onMessage;
   final void Function(BuildContext anchorContext)? onMute;
 
   const _ActionTilesRow({
-    required this.style,
     required this.hasConversation,
     required this.mute,
     required this.onMessage,
@@ -1252,7 +1224,6 @@ class _ActionTilesRow extends StatelessWidget {
       children: [
         Expanded(
           child: _ActionTile(
-            style: style,
             icon: Icons.chat_bubble_outline,
             label: l10n.userCardMessage,
             onTap: onMessage,
@@ -1263,7 +1234,6 @@ class _ActionTilesRow extends StatelessWidget {
           Expanded(
             child: Builder(
               builder: (tileContext) => _ActionTile(
-                style: style,
                 icon: mute == UserCardMute.off
                     ? Icons.notifications_outlined
                     : Icons.notifications_off_outlined,
@@ -1281,13 +1251,11 @@ class _ActionTilesRow extends StatelessWidget {
 }
 
 class _ActionTile extends StatelessWidget {
-  final UserCardStyle style;
   final IconData icon;
   final String label;
   final VoidCallback? onTap;
 
   const _ActionTile({
-    required this.style,
     required this.icon,
     required this.label,
     this.onTap,
@@ -1324,7 +1292,7 @@ class _ActionTile extends StatelessWidget {
         ),
       ),
     );
-    return _StyledPanel(style: style, borderRadius: radius, child: inner);
+    return _StyledPanel(borderRadius: radius, child: inner);
   }
 }
 
@@ -1410,17 +1378,13 @@ class _PhotoSlot extends StatelessWidget {
   }
 }
 
-/// Shared container for the three round-2 style directions: glass panel
-/// (tint-only), true backdrop-blur glass, or aurora gradient tint. The ONE
-/// place body chrome styling lives — sections and action tiles both route
-/// through it.
+/// The ONE place body chrome styling lives — sections and action tiles both
+/// route through it (S2 frosted: true backdrop-blur glass).
 class _StyledPanel extends StatelessWidget {
-  final UserCardStyle style;
   final BorderRadius borderRadius;
   final Widget child;
 
   const _StyledPanel({
-    required this.style,
     required this.borderRadius,
     required this.child,
   });
@@ -1430,44 +1394,15 @@ class _StyledPanel extends StatelessWidget {
     // GlassSurface's highlight Stack passes LOOSE constraints down, so its
     // fill Container shrink-wraps; panels must fill their slot instead.
     final full = SizedBox(width: double.infinity, child: child);
-    switch (style) {
-      case UserCardStyle.glassPanels:
-        return GlassSurface(
-          borderRadius: borderRadius,
-          shadow: false,
-          blur: false,
-          child: full,
-        );
-      case UserCardStyle.frostedBackdrop:
-        return GlassSurface(
-          borderRadius: borderRadius,
-          shadow: false,
-          child: full,
-        );
-      case UserCardStyle.auroraTint:
-        final scheme = Theme.of(context).colorScheme;
-        final glass = GlassTheme.of(context);
-        return Container(
-          decoration: BoxDecoration(
-            borderRadius: borderRadius,
-            gradient: LinearGradient(
-              begin: Alignment.topLeft,
-              end: Alignment.bottomRight,
-              colors: [
-                scheme.primary.withValues(alpha: 0.26),
-                scheme.secondary.withValues(alpha: 0.12),
-              ],
-            ),
-            border: Border.all(color: glass.border),
-          ),
-          clipBehavior: Clip.antiAlias,
-          child: child,
-        );
-    }
+    return GlassSurface(
+      borderRadius: borderRadius,
+      shadow: false,
+      child: full,
+    );
   }
 }
 
-/// Frosted-backdrop style only: the primary photo, heavily blurred and
+/// The primary photo, heavily blurred and
 /// scrimmed back toward the scaffold color, washes the area behind the
 /// glass sections (photo-less profiles get a theme-gradient wash instead).
 class _AmbientBackdrop extends StatelessWidget {
@@ -1519,12 +1454,10 @@ class _AmbientBackdrop extends StatelessWidget {
 }
 
 class _Section extends StatelessWidget {
-  final UserCardStyle style;
   final String title;
   final Widget child;
 
   const _Section({
-    required this.style,
     required this.title,
     required this.child,
   });
@@ -1533,7 +1466,6 @@ class _Section extends StatelessWidget {
   Widget build(BuildContext context) {
     final glass = GlassTheme.of(context);
     return _StyledPanel(
-      style: style,
       borderRadius: BorderRadius.circular(18),
       child: Material(
         type: MaterialType.transparency,
