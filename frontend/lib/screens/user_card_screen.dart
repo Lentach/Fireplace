@@ -103,6 +103,39 @@ class _UserCardScreenState extends State<UserCardScreen> {
   int _clampedIndex(UserCardVisualData data) =>
       data.photos.isEmpty ? 0 : _activePhotoIndex.clamp(0, data.photos.length - 1);
 
+  /// Natural width/height aspect per photo URL, resolved off the image
+  /// stream so the hero can size itself to the active photo (full width,
+  /// uncropped — round-3 owner ask). Unresolved or failed -> null -> the
+  /// 300px default extent.
+  final Map<String, double> _photoAspects = {};
+  final Set<String> _aspectRequests = {};
+
+  void _resolvePhotoAspects(List<UserCardPhoto> photos) {
+    for (final photo in photos) {
+      final url = photo.url;
+      if (_photoAspects.containsKey(url) || _aspectRequests.contains(url)) {
+        continue;
+      }
+      _aspectRequests.add(url);
+      final stream = NetworkImage(url).resolve(ImageConfiguration.empty);
+      late final ImageStreamListener listener;
+      listener = ImageStreamListener(
+        (info, _) {
+          stream.removeListener(listener);
+          final aspect = info.image.width / info.image.height;
+          info.dispose();
+          if (mounted && aspect > 0) {
+            setState(() => _photoAspects[url] = aspect);
+          }
+        },
+        // Failed loads keep the default extent; the pager's errorBuilder
+        // already renders the failure state.
+        onError: (_, _) => stream.removeListener(listener),
+      );
+      stream.addListener(listener);
+    }
+  }
+
   void _showFeedback(String message) {
     showTopSnackBar(context, message);
   }
@@ -305,6 +338,7 @@ class _UserCardScreenState extends State<UserCardScreen> {
     List<UserCardPhoto>? optimisticOrder;
     await showGlassSheet(
       context,
+      isScrollControlled: true,
       builder: (sheetContext) => StatefulBuilder(
         builder: (sheetContext, setSheetState) {
           final live = _effectiveData(context, listen: false);
@@ -324,11 +358,20 @@ class _UserCardScreenState extends State<UserCardScreen> {
             child: SafeArea(
               top: false,
               child: Padding(
-              padding: const EdgeInsets.fromLTRB(20, 18, 20, 10),
+              padding: const EdgeInsets.fromLTRB(20, 20, 20, 12),
               child: Column(
                 mainAxisSize: MainAxisSize.min,
                 crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
+                  Text(
+                    l10n.userCardManagePhotos,
+                    style: RpgTheme.bodyFont(
+                      fontSize: 18,
+                      color: theme.colorScheme.onSurface,
+                      fontWeight: FontWeight.w800,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
                   Text(
                     l10n
                         .userCardPhotoOfCount('${index + 1}', '${photos.length}')
@@ -339,86 +382,110 @@ class _UserCardScreenState extends State<UserCardScreen> {
                       fontWeight: FontWeight.w800,
                     ).copyWith(letterSpacing: 0.9),
                   ),
-                  const SizedBox(height: 12),
-                  SizedBox(
-                    height: 64,
-                    child: Row(
-                      children: [
-                        SizedBox(
-                          width: photos.length * 74.0,
-                          child: ReorderableListView.builder(
-                            scrollDirection: Axis.horizontal,
-                            shrinkWrap: true,
-                            physics: const NeverScrollableScrollPhysics(),
-                            buildDefaultDragHandles: false,
-                            itemCount: photos.length,
-                            onReorderItem: (oldIndex, newIndex) {
-                              // newIndex is already removal-adjusted.
-                              if (oldIndex == newIndex ||
-                                  photos.any((p) => p.id == null)) {
-                                return;
-                              }
-                              final next = List.of(photos);
-                              final moved = next.removeAt(oldIndex);
-                              next.insert(newIndex, moved);
-                              optimisticOrder = next;
-                              // Follow the dragged photo immediately.
-                              if (_pageController.hasClients) {
-                                _pageController.jumpToPage(newIndex);
-                              }
-                              setState(() => _activePhotoIndex = newIndex);
-                              setSheetState(() {});
-                              _persistPhotoOrder(next).then((ok) {
-                                optimisticOrder = null;
-                                if (!ok && mounted) {
-                                  // Roll back to the live order.
-                                  final reverted = _clampedIndex(
-                                    _effectiveData(context, listen: false),
-                                  );
+                  const SizedBox(height: 14),
+                  LayoutBuilder(
+                    // `_` not `context`: the rollback closure below must see
+                    // the STATE's context (guarded by `mounted`), not the
+                    // LayoutBuilder element's.
+                    builder: (_, constraints) {
+                      // Round-3 rework: tiles fill the sheet as a 3-column
+                      // row (3 = photo cap) instead of the old fixed 64px
+                      // strip the owner called too small; drag-to-reorder
+                      // semantics are unchanged.
+                      const gap = 12.0;
+                      final tile = ((constraints.maxWidth - 3 * gap) / 3)
+                          .clamp(84.0, 148.0);
+                      return SizedBox(
+                        height: tile,
+                        child: Row(
+                          children: [
+                            SizedBox(
+                              width: photos.length * (tile + gap),
+                              child: ReorderableListView.builder(
+                                scrollDirection: Axis.horizontal,
+                                shrinkWrap: true,
+                                physics: const NeverScrollableScrollPhysics(),
+                                buildDefaultDragHandles: false,
+                                itemCount: photos.length,
+                                onReorderItem: (oldIndex, newIndex) {
+                                  // newIndex is already removal-adjusted.
+                                  if (oldIndex == newIndex ||
+                                      photos.any((p) => p.id == null)) {
+                                    return;
+                                  }
+                                  final next = List.of(photos);
+                                  final moved = next.removeAt(oldIndex);
+                                  next.insert(newIndex, moved);
+                                  optimisticOrder = next;
+                                  // Follow the dragged photo immediately.
                                   if (_pageController.hasClients) {
-                                    _pageController.jumpToPage(reverted);
+                                    _pageController.jumpToPage(newIndex);
                                   }
                                   setState(
-                                    () => _activePhotoIndex = reverted,
+                                    () => _activePhotoIndex = newIndex,
                                   );
-                                }
-                                if (sheetContext.mounted) {
                                   setSheetState(() {});
-                                }
-                              });
-                            },
-                            itemBuilder: (context, i) =>
-                                ReorderableDelayedDragStartListener(
-                              key: ValueKey(photos[i].id ?? photos[i].url),
-                              index: i,
-                              child: Padding(
-                                padding: const EdgeInsets.only(right: 10),
-                                child: _PhotoSlot(
-                                  photo: photos[i],
-                                  selected: i == index,
-                                  onTap: () {
-                                    if (_pageController.hasClients) {
-                                      _pageController.jumpToPage(i);
+                                  _persistPhotoOrder(next).then((ok) {
+                                    optimisticOrder = null;
+                                    if (!ok && mounted) {
+                                      // Roll back to the live order.
+                                      final reverted = _clampedIndex(
+                                        _effectiveData(
+                                          context,
+                                          listen: false,
+                                        ),
+                                      );
+                                      if (_pageController.hasClients) {
+                                        _pageController.jumpToPage(reverted);
+                                      }
+                                      setState(
+                                        () => _activePhotoIndex = reverted,
+                                      );
                                     }
-                                    setState(() => _activePhotoIndex = i);
-                                    setSheetState(() {});
-                                  },
+                                    if (sheetContext.mounted) {
+                                      setSheetState(() {});
+                                    }
+                                  });
+                                },
+                                itemBuilder: (context, i) =>
+                                    ReorderableDelayedDragStartListener(
+                                  key: ValueKey(photos[i].id ?? photos[i].url),
+                                  index: i,
+                                  child: Padding(
+                                    padding:
+                                        const EdgeInsets.only(right: gap),
+                                    child: _PhotoSlot(
+                                      photo: photos[i],
+                                      selected: i == index,
+                                      size: tile,
+                                      onTap: () {
+                                        if (_pageController.hasClients) {
+                                          _pageController.jumpToPage(i);
+                                        }
+                                        setState(
+                                          () => _activePhotoIndex = i,
+                                        );
+                                        setSheetState(() {});
+                                      },
+                                    ),
+                                  ),
                                 ),
                               ),
                             ),
-                          ),
+                            if (photos.length < 3)
+                              _PhotoSlot(
+                                photo: null,
+                                selected: false,
+                                size: tile,
+                                onTap: () async {
+                                  Navigator.of(sheetContext).pop();
+                                  await _addProfilePhoto();
+                                },
+                              ),
+                          ],
                         ),
-                        if (photos.length < 3)
-                          _PhotoSlot(
-                            photo: null,
-                            selected: false,
-                            onTap: () async {
-                              Navigator.of(sheetContext).pop();
-                              await _addProfilePhoto();
-                            },
-                          ),
-                      ],
-                    ),
+                      );
+                    },
                   ),
                   if (photos.length > 1 && photos.every((p) => p.id != null))
                     Padding(
@@ -436,6 +503,7 @@ class _UserCardScreenState extends State<UserCardScreen> {
                     _ActionRow(
                       icon: Icons.star_outline,
                       label: l10n.userCardSetMainPhoto,
+                      large: true,
                       onTap: () async {
                         Navigator.of(sheetContext).pop();
                         await _setPhotoAsPrimary(photo.id!);
@@ -445,6 +513,7 @@ class _UserCardScreenState extends State<UserCardScreen> {
                     _ActionRow(
                       icon: Icons.add_photo_alternate_outlined,
                       label: l10n.userCardAddPhoto,
+                      large: true,
                       onTap: () async {
                         Navigator.of(sheetContext).pop();
                         await _addProfilePhoto();
@@ -454,6 +523,7 @@ class _UserCardScreenState extends State<UserCardScreen> {
                     _ActionRow(
                       icon: Icons.delete_outline,
                       label: l10n.userCardDeletePhoto,
+                      large: true,
                       danger: true,
                       onTap: () async {
                         Navigator.of(sheetContext).pop();
@@ -490,7 +560,26 @@ class _UserCardScreenState extends State<UserCardScreen> {
     final activeIndex = _clampedIndex(data);
     final l10n = AppLocalizations.of(context);
 
-    final scrollView = CustomScrollView(
+    _resolvePhotoAspects(data.photos);
+    // Hero height follows the active photo's aspect so the photo fills the
+    // full width UNCROPPED (round-3 owner ask; the round-2 contain-over-blur
+    // pillarboxing was rejected). Clamped so panoramas don't pancake the
+    // hero and tall portraits don't eat the screen — outside the clamp the
+    // cover fit crops modestly, Telegram-style. Unresolved aspect -> 300.
+    final screen = MediaQuery.sizeOf(context);
+    double targetExtent = 300;
+    final aspect = hasPhotos
+        ? _photoAspects[data.photos[activeIndex].url]
+        : null;
+    if (aspect != null && screen.width > 0) {
+      final maxH = math.max(
+        260.0,
+        math.min(screen.width * 4 / 3, screen.height * 0.62),
+      );
+      targetExtent = (screen.width / aspect).clamp(220.0, maxH);
+    }
+
+    Widget scrollViewFor(double photoExtent) => CustomScrollView(
         slivers: [
           // The hero renders ALWAYS — photo-less profiles get a gradient +
           // initials placeholder with the same collapse. The old compact
@@ -512,6 +601,7 @@ class _UserCardScreenState extends State<UserCardScreen> {
                   : null,
               scaffoldColor: theme.scaffoldBackgroundColor,
               onSurface: theme.colorScheme.onSurface,
+              photoExtent: photoExtent,
             ),
           ),
           SliverToBoxAdapter(
@@ -636,6 +726,14 @@ class _UserCardScreenState extends State<UserCardScreen> {
             ),
           ),
       ],
+    );
+    // Animate hero height changes (paging to a different-aspect photo, or
+    // the aspect resolving after load) instead of snapping the sliver.
+    final scrollView = TweenAnimationBuilder<double>(
+      tween: Tween<double>(end: targetExtent),
+      duration: const Duration(milliseconds: 260),
+      curve: Curves.easeOutCubic,
+      builder: (context, extent, _) => scrollViewFor(extent),
     );
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -779,6 +877,7 @@ class _ProfileHeroDelegate extends SliverPersistentHeaderDelegate {
   final VoidCallback? onEditPhotos;
   final Color scaffoldColor;
   final Color onSurface;
+  final double photoExtent;
 
   const _ProfileHeroDelegate({
     required this.data,
@@ -790,14 +889,14 @@ class _ProfileHeroDelegate extends SliverPersistentHeaderDelegate {
     required this.onEditPhotos,
     required this.scaffoldColor,
     required this.onSurface,
+    required this.photoExtent,
   });
 
-  static const double _photoExtent = 300;
   static const double _barHeight = 68;
   static const double _circleSize = 40;
 
   @override
-  double get maxExtent => topInset + _photoExtent;
+  double get maxExtent => topInset + photoExtent;
 
   @override
   double get minExtent => topInset + _barHeight;
@@ -807,7 +906,8 @@ class _ProfileHeroDelegate extends SliverPersistentHeaderDelegate {
       oldDelegate.data != data ||
       oldDelegate.activeIndex != activeIndex ||
       oldDelegate.topInset != topInset ||
-      oldDelegate.scaffoldColor != scaffoldColor;
+      oldDelegate.scaffoldColor != scaffoldColor ||
+      oldDelegate.photoExtent != photoExtent;
 
   @override
   Widget build(
@@ -820,8 +920,8 @@ class _ProfileHeroDelegate extends SliverPersistentHeaderDelegate {
     // Photo stays full-bleed for the first 55% of the collapse, then morphs
     // into the bar circle over the remaining 45%.
     // Snap the endpoints: (1 - 0.55) / 0.45 is 0.9999999999999999 in FP, so
-    // without this the `morphT == 1` state (contain layer unmounted, cover
-    // fully in) is never reached even at full collapse.
+    // without this the `morphT == 1` state (tap-zone layer unmounted, rect
+    // exactly the bar circle) is never reached even at full collapse.
     final rawMorphT = Curves.easeInOut.transform(
       ((t - 0.55) / 0.45).clamp(0.0, 1.0),
     );
@@ -900,67 +1000,26 @@ class _ProfileHeroDelegate extends SliverPersistentHeaderDelegate {
                         onPageChanged: onPageChanged,
                         itemBuilder: (context, index) {
                           final photo = data.photos[index];
+                          // Single cover layer: the hero box follows the
+                          // photo's aspect (photoExtent), so cover fills the
+                          // full width with no crop and no bars while
+                          // expanded, and crops naturally as the rect morphs
+                          // into the 40px bar circle.
                           return Semantics(
                             image: true,
                             label: photo.semanticLabel,
-                            child: Stack(
-                              fit: StackFit.expand,
-                              children: [
-                                // Blurred cover backdrop fills the hero so a
-                                // non-3:2 photo shown in full (contain) never
-                                // letterboxes against flat bars.
-                                ImageFiltered(
-                                  imageFilter: ImageFilter.blur(
-                                    sigmaX: 24,
-                                    sigmaY: 24,
-                                    tileMode: TileMode.clamp,
-                                  ),
-                                  child: Image.network(
-                                    photo.url,
-                                    fit: BoxFit.cover,
-                                    errorBuilder: (_, _, _) => ColoredBox(
-                                      color:
-                                          Theme.of(context).colorScheme.primary,
-                                    ),
-                                  ),
+                            child: Image.network(
+                              photo.url,
+                              fit: BoxFit.cover,
+                              errorBuilder: (_, _, _) => Container(
+                                color: Theme.of(context).colorScheme.primary,
+                                alignment: Alignment.center,
+                                child: const Icon(
+                                  Icons.image_outlined,
+                                  size: 54,
+                                  color: Colors.white,
                                 ),
-                                // Full picture while expanded; crossfades to
-                                // a sharp cover as the hero morphs into the
-                                // 40px bar circle (contain would letterbox
-                                // portrait photos inside the tiny circle).
-                                if (morphT < 1)
-                                  Opacity(
-                                    opacity: 1 - morphT,
-                                    child: Image.network(
-                                      photo.url,
-                                      fit: BoxFit.contain,
-                                      errorBuilder: (_, _, _) => Container(
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.primary,
-                                        alignment: Alignment.center,
-                                        child: const Icon(
-                                          Icons.image_outlined,
-                                          size: 54,
-                                          color: Colors.white,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                if (morphT > 0)
-                                  Opacity(
-                                    opacity: morphT,
-                                    child: Image.network(
-                                      photo.url,
-                                      fit: BoxFit.cover,
-                                      errorBuilder: (_, _, _) => ColoredBox(
-                                        color: Theme.of(
-                                          context,
-                                        ).colorScheme.primary,
-                                      ),
-                                    ),
-                                  ),
-                              ],
+                              ),
                             ),
                           );
                         },
@@ -1262,16 +1321,18 @@ class _ActionTile extends StatelessWidget {
   }
 }
 
-/// 64px photo slot in the manage-photos sheet; ring + star = main photo.
+/// Photo tile in the manage-photos sheet; ring + star = main photo.
 class _PhotoSlot extends StatelessWidget {
   final UserCardPhoto? photo;
   final bool selected;
   final VoidCallback onTap;
+  final double size;
 
   const _PhotoSlot({
     required this.photo,
     required this.selected,
     required this.onTap,
+    required this.size,
   });
 
   @override
@@ -1287,17 +1348,21 @@ class _PhotoSlot extends StatelessWidget {
           );
     return InkWell(
       onTap: onTap,
-      borderRadius: BorderRadius.circular(16),
+      borderRadius: BorderRadius.circular(18),
       child: Container(
-        width: 64,
-        height: 64,
+        width: size,
+        height: size,
         decoration: BoxDecoration(
-          borderRadius: BorderRadius.circular(16),
+          borderRadius: BorderRadius.circular(18),
           border: Border.fromBorderSide(side),
         ),
         clipBehavior: Clip.antiAlias,
         child: photo == null
-            ? Icon(Icons.add, color: FireplaceColors.of(context).mutedText)
+            ? Icon(
+                Icons.add,
+                size: 30,
+                color: FireplaceColors.of(context).mutedText,
+              )
             : Stack(
                 fit: StackFit.expand,
                 children: [
@@ -1315,18 +1380,18 @@ class _PhotoSlot extends StatelessWidget {
                   ),
                   if (photo!.isPrimary)
                     Positioned(
-                      top: 3,
-                      right: 3,
+                      top: 6,
+                      right: 6,
                       child: Container(
-                        width: 16,
-                        height: 16,
+                        width: 22,
+                        height: 22,
                         decoration: BoxDecoration(
                           color: accent,
                           shape: BoxShape.circle,
                         ),
                         child: const Icon(
                           Icons.star,
-                          size: 11,
+                          size: 14,
                           color: Colors.white,
                         ),
                       ),
@@ -1493,6 +1558,7 @@ class _ActionRow extends StatelessWidget {
   final String label;
   final String? detail;
   final bool danger;
+  final bool large;
   final VoidCallback? onTap;
 
   const _ActionRow({
@@ -1500,6 +1566,7 @@ class _ActionRow extends StatelessWidget {
     required this.label,
     this.detail,
     this.danger = false,
+    this.large = false,
     required this.onTap,
   });
 
@@ -1511,13 +1578,13 @@ class _ActionRow extends StatelessWidget {
         : theme.colorScheme.onSurface;
     return ListTile(
       contentPadding: EdgeInsets.zero,
-      dense: true,
-      minVerticalPadding: 0,
+      dense: !large,
+      minVerticalPadding: large ? 10 : 0,
       leading: Icon(icon, color: color),
       title: Text(
         label,
         style: RpgTheme.bodyFont(
-          fontSize: 15,
+          fontSize: large ? 16 : 15,
           color: color,
           fontWeight: FontWeight.w600,
         ),

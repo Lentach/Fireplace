@@ -35,6 +35,8 @@ class UserCardPreviewApp extends StatelessWidget {
       _ => UserCardStyle.frostedBackdrop,
     };
 
+    // Deliberately mixed aspects: square, portrait, landscape — the round-3
+    // adaptive hero must size itself to each without bars or crop.
     final photos = [
       const UserCardPhoto(
         id: 1,
@@ -44,12 +46,12 @@ class UserCardPreviewApp extends StatelessWidget {
       ),
       const UserCardPhoto(
         id: 2,
-        url: 'https://picsum.photos/seed/fireplace2/900/900',
+        url: 'https://picsum.photos/seed/fireplace2/800/1200',
         semanticLabel: 'bob208#9939',
       ),
       const UserCardPhoto(
         id: 3,
-        url: 'https://picsum.photos/seed/fireplace3/900/900',
+        url: 'https://picsum.photos/seed/fireplace3/1200/700',
         semanticLabel: 'bob208#9939',
       ),
     ];

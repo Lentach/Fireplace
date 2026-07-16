@@ -213,12 +213,14 @@ void main() {
     );
 
     testWidgets(
-      'collapse crossfades the full picture (contain) into a cover crop and '
-      'shows the bar title',
+      'hero renders a single full-bleed cover image (round 3: no contain '
+      'layer, no blurred backdrop) and collapse fades the bar title in',
       (tester) async {
         // Shrink the viewport so the body provides >= 232px of scroll
-        // extent (photoExtent 300 - barHeight 68); otherwise jumpTo clamps
-        // to a partial collapse and morphT never reaches 1.
+        // extent (default photoExtent 300 - barHeight 68; test images never
+        // resolve, so the adaptive extent stays at the 300 default);
+        // otherwise jumpTo clamps to a partial collapse and morphT never
+        // reaches 1.
         tester.view.physicalSize = const Size(800, 400);
         tester.view.devicePixelRatio = 1;
         addTearDown(tester.view.reset);
@@ -239,14 +241,14 @@ void main() {
         );
         await tester.pump();
 
-        bool pagerImageWithFit(BoxFit fit) => tester
+        List<Image> pagerImages() => tester
             .widgetList<Image>(
               find.descendant(
                 of: find.byType(PageView),
                 matching: find.byType(Image),
               ),
             )
-            .any((image) => image.fit == fit);
+            .toList();
 
         // The bar title is the fontSize-16 copy of the handle; the hero
         // identity block shows a 12.5px copy while expanded.
@@ -254,10 +256,12 @@ void main() {
             .widgetList<Text>(find.text('ember#7004'))
             .any((text) => text.style?.fontSize == 16);
 
-        // Expanded: full picture visible, no cover layer yet (beyond the
-        // blurred backdrop, which lives outside the crossfade pair), no bar
-        // title.
-        expect(pagerImageWithFit(BoxFit.contain), isTrue);
+        // Expanded: ONE cover image per page (the hero box tracks the
+        // photo's aspect, so cover means full-bleed AND uncropped — the
+        // rejected round-2 contain/blur-backdrop pair must stay gone), no
+        // bar title yet.
+        expect(pagerImages().map((i) => i.fit), everyElement(BoxFit.cover));
+        expect(pagerImages().length, 1);
         expect(barTitleShown(), isFalse);
 
         // Force full collapse (photoExtent 300 -> barHeight 68 = 232 plus
@@ -268,11 +272,8 @@ void main() {
         position.jumpTo(300);
         await tester.pumpAndSettle();
 
-        // Collapsed: the contain layer is gone (it would letterbox inside
-        // the 40px circle), the sharp cover layer is in, and the bar title
-        // with the handle faded in.
-        expect(pagerImageWithFit(BoxFit.contain), isFalse);
-        expect(pagerImageWithFit(BoxFit.cover), isTrue);
+        // Collapsed: same single cover layer, bar title faded in.
+        expect(pagerImages().map((i) => i.fit), everyElement(BoxFit.cover));
         expect(barTitleShown(), isTrue);
       },
     );
@@ -417,16 +418,19 @@ void main() {
         await tester.tap(find.text('Manage photos'));
         await tester.pumpAndSettle();
 
-        // Long-press-drag photo 1 one slot to the right (slots are 64px +
-        // 10px gap). Expected order: [2, 1, 3] — an unadjusted-newIndex
-        // regression would persist [2, 3, 1] instead.
+        // Long-press-drag photo 1 one slot to the right (slot pitch = tile
+        // size + 12px gap; tiles are responsive since the round-3 sheet
+        // rework, so measure instead of hardcoding). Expected order:
+        // [2, 1, 3] — an unadjusted-newIndex regression would persist
+        // [2, 3, 1] instead.
         final slot = find.byKey(const ValueKey<Object>(1));
         expect(slot, findsOneWidget);
+        final pitch = tester.getSize(slot).width + 12;
         final gesture = await tester.startGesture(tester.getCenter(slot));
         await tester.pump(kLongPressTimeout + kPressTimeout);
-        await gesture.moveBy(const Offset(40, 0));
+        await gesture.moveBy(Offset(pitch / 2 + 4, 0));
         await tester.pump();
-        await gesture.moveBy(const Offset(40, 0));
+        await gesture.moveBy(Offset(pitch / 2 + 4, 0));
         await tester.pump();
         await gesture.up();
         await tester.pumpAndSettle();
