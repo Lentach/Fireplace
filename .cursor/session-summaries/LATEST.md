@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-15 (User card ROUND 2 — owner feedback batch: full-picture hero, tap-zone pager, frosted-glass restyle **S2 WON**, shared media, drag-reorder, linkified About — NOT committed)
+**Date:** 2026-07-15 (User card ROUND 2 — owner feedback batch: full-picture hero, tap-zone pager, frosted-glass restyle **S2 WON**, shared media, drag-reorder, linkified About — committed `0087150`, **branch-deployed to prod**)
 
 ## What was done
 On `feat/user-card-rework` (PR #84, still unmerged): implemented the owner's round-2 feedback. Crop-at-upload REMOVED (`avatar_crop_screen.dart` + `crop_your_image` deleted) — hero shows the full picture (contain over blurred backdrop, crossfades to cover during the collapse morph). Gallery swipe replaced by tap zones (left=prev/right=next, wraps). Copy-tag tile removed (hero icon + tap-on-handle only). Body restyle: 3 glass directions behind `UserCardStyle`; owner picked **S2 "Frosted Backdrop"** (blurred primary photo washes the body; true backdrop-blur `GlassSurface` sections) — now the default; S1/S3 kept for iteration, strip at merge.
@@ -18,7 +18,7 @@ New: shared-media strip (E2E ⇒ RAM-cache-only via new `MessagingProvider.cache
 - Trap: hot-restart `R` sent in the same parallel batch as an edit compiles the pre-edit tree (stale byte-identical screenshots). `hub start` on Windows needs `cmd /c flutter`.
 
 ## Notes for next session
-- UNCOMMITTED. Commit on this branch, deploy branch build to prod for owner device test (prod currently serves round-1 `7ded775`), then owner iOS confirmations (bug-3 keyboard, tap zones, crop-free upload, frosted feel) → merge PR #84 (explicit OK required) → master deploy.
+- Round 2 committed (`0087150`) + pushed + **branch-deployed to prod** (`/version.json` 0.0.120, bundle contains `0087150`, smoke PASSED; deploy-web.ps1 exit-21 trap hit again → manual guarded swap). **Prod backend is still master 0.0.118 — drag-reorder will fail loudly on prod (endpoint + position column ship at merge via deploy-backend.sh); everything else testable now.** Owner iOS confirmations pending → merge PR #84 (explicit OK) → master deploy web + backend.
 - If no round-3 style iteration: delete `UserCardStyle.glassPanels`/`auroraTint` + `?style=` switch before merge.
 - Reviewer nit still open: card block-path could pop the underlying chat.
 
