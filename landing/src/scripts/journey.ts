@@ -52,23 +52,26 @@ export function initJourney(section: HTMLElement) {
 
   function anchors() {
     const mobile = W < 700;
-    const senderC = mobile ? { x: W * 0.26, y: H * 0.82 } : { x: W * 0.20, y: H * 0.66 };
-    const recipC = mobile ? { x: W * 0.70, y: H * 0.82 } : { x: W * 0.80, y: H * 0.66 };
+    // Mobile: the phone is the protagonist on each side — top-center and LARGE
+    // (sender through the seal, recipient through the unseal/finale); the
+    // machine owns the middle act and fades out before the recipient arrives.
+    const senderC = mobile ? { x: W * 0.5, y: H * 0.40 } : { x: W * 0.20, y: H * 0.66 };
+    const recipC = mobile ? { x: W * 0.5, y: H * 0.40 } : { x: W * 0.80, y: H * 0.66 };
     const intake = rectC($('.slot.in'));
     const outlet = rectC($('.slot.out'));
-    const holdY = mobile ? H * 0.66 : H * 0.55;
+    const holdY = mobile ? H * 0.76 : H * 0.55;
     return {
       mobile, senderC, recipC, intake, outlet,
-      phoneS: mobile ? 0.5 : 0.58,
-      sealP: { x: mobile ? W * 0.30 : W * 0.38, y: holdY },
-      unsealP: { x: mobile ? W * 0.66 : W * 0.62, y: holdY },   // mirror of sealP
+      phoneS: mobile ? 0.68 : 0.58,
+      sealP: { x: mobile ? W * 0.5 : W * 0.38, y: holdY },
+      unsealP: { x: mobile ? W * 0.5 : W * 0.62, y: holdY },    // mirror of sealP
       liftStart: { x: W * 0.5 + (mobile ? 30 : 40), y: H * 0.60 + (mobile ? 40 : 60) },
-      liftCp: { x: W * 0.45, y: H * 0.48 },
-      dropCp: { x: W * 0.66, y: holdY - H * 0.03 },             // gentle mirror of the lift
-      cp1: { x: intake.x - (mobile ? 40 : 90), y: H * (mobile ? 0.58 : 0.52) },
-      cp2: { x: outlet.x + (mobile ? 40 : 90), y: H * (mobile ? 0.58 : 0.52) },  // mirror of cp1
-      landPt: { x: recipC.x - (mobile ? 30 : 45), y: recipC.y + (mobile ? 15 : 25) },
-      keyDy: mobile ? 140 : 190,
+      liftCp: mobile ? { x: W * 0.30, y: H * 0.64 } : { x: W * 0.45, y: H * 0.48 },
+      dropCp: mobile ? { x: W * 0.66, y: H * 0.58 } : { x: W * 0.66, y: holdY - H * 0.03 },
+      cp1: mobile ? { x: W * 0.18, y: H * 0.62 } : { x: intake.x - 90, y: H * 0.52 },
+      cp2: mobile ? { x: W * 0.82, y: H * 0.62 } : { x: outlet.x + 90, y: H * 0.52 },  // mirror of cp1
+      landPt: mobile ? { x: W * 0.5 - 25, y: H * 0.42 } : { x: recipC.x - 45, y: recipC.y + 25 },
+      keyDy: mobile ? 175 : 190,
     };
   }
 
@@ -177,20 +180,33 @@ export function initJourney(section: HTMLElement) {
     }
 
     /* phones */
-    const moveOut = ease(seg(p, T.lift[0], T.lift[1]));
-    phonePose($('.phone.sender'), lerp(W * 0.5, A.senderC.x, moveOut), lerp(H * 0.60, A.senderC.y, moveOut), lerp(1, A.phoneS, moveOut), 1);
-    const recIn = ease(seg(p, 0.60, 0.74));
-    phonePose($('.phone.recipient'), lerp(W * 1.15, A.recipC.x, recIn), A.recipC.y, A.phoneS, recIn);
+    if (A.mobile) {
+      // sender: center pre-send → top-center (large) through the seal → exits
+      // left as the wire takes over; recipient mirrors it for the finale
+      const toTop = ease(seg(p, T.lift[0], T.lift[1]));
+      const exitL = ease(seg(p, 0.30, 0.42));
+      phonePose($('.phone.sender'),
+        lerp(lerp(W * 0.5, A.senderC.x, toTop), -W * 0.35, exitL),
+        lerp(H * 0.60, A.senderC.y, toTop),
+        lerp(1, A.phoneS, toTop), 1);
+      const recIn = ease(seg(p, 0.70, 0.80));
+      phonePose($('.phone.recipient'), lerp(W * 1.35, A.recipC.x, recIn), A.recipC.y, A.phoneS, recIn);
+    } else {
+      const moveOut = ease(seg(p, T.lift[0], T.lift[1]));
+      phonePose($('.phone.sender'), lerp(W * 0.5, A.senderC.x, moveOut), lerp(H * 0.60, A.senderC.y, moveOut), lerp(1, A.phoneS, moveOut), 1);
+      const recIn = ease(seg(p, 0.60, 0.74));
+      phonePose($('.phone.recipient'), lerp(W * 1.15, A.recipC.x, recIn), A.recipC.y, A.phoneS, recIn);
+    }
 
     const sk = $('.keytag.sender-key');
-    sk.style.opacity = String(seg(p, 0.15, 0.19) * (1 - seg(p, 0.32, 0.38)));
+    sk.style.opacity = String(seg(p, 0.15, 0.19) * (1 - seg(p, A.mobile ? 0.27 : 0.32, A.mobile ? 0.31 : 0.38)));
     sk.style.left = `${A.senderC.x - 80}px`; sk.style.top = `${A.senderC.y + A.keyDy}px`;
     const rk = $('.keytag.recipient-key');
     rk.style.opacity = String(seg(p, 0.83, 0.87) * (1 - seg(p, 0.96, 1)));
     rk.style.left = `${A.recipC.x - 90}px`; rk.style.top = `${A.recipC.y + A.keyDy}px`;
 
     /* machine */
-    $('.machine').style.opacity = String(seg(p, 0.40, 0.46) * (1 - seg(p, 0.92, 0.98) * 0.7));
+    $('.machine').style.opacity = String(seg(p, 0.40, 0.46) * (A.mobile ? 1 - seg(p, 0.68, 0.76) : 1 - seg(p, 0.92, 0.98) * 0.7));
     const spin = ease(seg(p, T.swallow[0], T.wire2[0]));
     rotors.forEach((r, i) => { r.style.transform = `rotate(${spin * (360 + i * 220) + t * 8}deg)`; });
     $('.scan-in').style.opacity = String(seg(p, 0.465, 0.485) * (1 - seg(p, 0.50, 0.52)));
