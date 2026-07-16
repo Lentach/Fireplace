@@ -11,11 +11,18 @@ class GlassTopBar extends StatelessWidget implements PreferredSizeWidget {
   final Widget title;
   final List<Widget> trailing;
 
+  /// Telegram-style trailing avatar: rendered BARE at [capsuleHeight] so the
+  /// photo fills the whole circle. Owner round-4 (2026-07-16): the glass
+  /// pill around the 36px header avatar read as an uneven, non-circular
+  /// "halo" — the avatar must be its own circle, no ring.
+  final Widget? avatar;
+
   const GlassTopBar({
     super.key,
     this.leading,
     required this.title,
     this.trailing = const [],
+    this.avatar,
   });
 
   static const double capsuleHeight = 52;
@@ -70,6 +77,10 @@ class GlassTopBar extends StatelessWidget implements PreferredSizeWidget {
                         children: trailing,
                       ),
                     ),
+                  if (avatar != null) ...[
+                    if (trailing.isNotEmpty) const SizedBox(width: 10),
+                    SizedBox.square(dimension: capsuleHeight, child: avatar),
+                  ],
                 ],
               ),
             ],

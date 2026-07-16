@@ -406,6 +406,13 @@ class _UserCardScreenState extends State<UserCardScreen> {
                                 shrinkWrap: true,
                                 physics: const NeverScrollableScrollPhysics(),
                                 buildDefaultDragHandles: false,
+                                // Default proxy wraps the lifted tile in an
+                                // opaque elevated Material — a white box
+                                // around the rounded tile (owner round-4).
+                                proxyDecorator: (child, _, _) => Material(
+                                  type: MaterialType.transparency,
+                                  child: child,
+                                ),
                                 itemCount: photos.length,
                                 onReorderItem: (oldIndex, newIndex) {
                                   // newIndex is already removal-adjusted.

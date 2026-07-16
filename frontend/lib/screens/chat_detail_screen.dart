@@ -984,19 +984,16 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           },
         ),
         title: headerTitle,
-        trailing: [
-          Padding(
-            padding: const EdgeInsets.only(right: 4),
-            child: GestureDetector(
-              onTap: _onAvatarTap,
-              child: AvatarCircle(
-                displayName: contactName,
-                radius: 18,
-                profilePictureUrl: otherUser?.profilePictureUrl,
-              ),
-            ),
+        // Bare avatar slot: the photo fills the whole 52px circle with no
+        // glass ring (owner round-4 — Telegram reference).
+        avatar: GestureDetector(
+          onTap: _onAvatarTap,
+          child: AvatarCircle(
+            displayName: contactName,
+            radius: GlassTopBar.capsuleHeight / 2,
+            profilePictureUrl: otherUser?.profilePictureUrl,
           ),
-        ],
+        ),
       ),
       body: Stack(
         children: [
