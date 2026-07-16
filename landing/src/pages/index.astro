@@ -71,7 +71,7 @@ const repo = 'https://github.com/Lentach/Fireplace';
     <!-- the relay machine -->
     <div class="machine">
       <div class="mc-head">
-        <span class="lbl"><span class="dotpulse"></span> fireplace relay nº1 · the only stop we own</span>
+        <span class="lbl"><span class="dotpulse"></span> fireplace relay nº1<span class="lbl-tail"> · the only stop we own</span></span>
         <div class="mc-rotors">
           <div class="rotor" data-rotor>I</div>
           <div class="rotor" data-rotor>II</div>
@@ -107,27 +107,27 @@ const repo = 'https://github.com/Lentach/Fireplace';
       <h2>Sent. But not<br />like the others.</h2>
       <p>Before your message touches any network, something happens right here on your device.</p>
     </div>
-    <div class="cap" data-a="0.15" data-b="0.30">
+    <div class="cap" data-a="0.14" data-b="0.27">
       <span class="num">02 / SEALED</span>
       <h2>Encrypted where<br />it was written.</h2>
       <p>Signal double-ratchet. A fresh key for every message. The "3:" envelope is all that survives — and the key stays on your phone.</p>
     </div>
-    <div class="cap" data-a="0.32" data-b="0.46">
+    <div class="cap" data-a="0.30" data-b="0.45">
       <span class="num">03 / IN TRANSIT</span>
       <h2>Ciphertext,<br />inside TLS.</h2>
       <p>Two layers of locks cross the wire. Anyone listening — provider, wifi, anyone — records noise.</p>
     </div>
-    <div class="cap" data-a="0.48" data-b="0.66">
+    <div class="cap" data-a="0.47" data-b="0.62">
       <span class="num">04 / THE RELAY MACHINE</span>
       <h2>In sealed.<br />Out sealed.</h2>
       <p>Our machine shuffles envelopes, never opens them. Every row in its window looks exactly like yours: ciphertext and routing metadata. No key exists here — nothing to read, leak, sell, or subpoena.</p>
     </div>
-    <div class="cap" data-a="0.68" data-b="0.78">
+    <div class="cap" data-a="0.64" data-b="0.80">
       <span class="num">05 / RELAYED</span>
       <h2>We pass the letter.<br />Still sealed.</h2>
       <p>The envelope moves on the instant she's reachable. We keep ciphertext for delivery — never a readable word.</p>
     </div>
-    <div class="cap" data-a="0.80" data-b="0.965">
+    <div class="cap" data-a="0.82" data-b="0.955">
       <span class="num">06 / UNSEALED</span>
       <h2>Only her phone<br />can do this.</h2>
       <p>Her device holds the only matching key in existence. The ratchet turns, the seal opens — and it lands on her screen.</p>
@@ -135,10 +135,10 @@ const repo = 'https://github.com/Lentach/Fireplace';
 
     <div class="rail">
       <div class="stop" data-p="0.02"><div class="d"></div><span>your device</span></div><div class="seg"></div>
-      <div class="stop" data-p="0.32"><div class="d"></div><span>wire</span></div><div class="seg"></div>
-      <div class="stop" data-p="0.48"><div class="d"></div><span>relay</span></div><div class="seg"></div>
-      <div class="stop" data-p="0.68"><div class="d"></div><span>wire</span></div><div class="seg"></div>
-      <div class="stop" data-p="0.86"><div class="d"></div><span>her device</span></div>
+      <div class="stop" data-p="0.28"><div class="d"></div><span>wire</span></div><div class="seg"></div>
+      <div class="stop" data-p="0.47"><div class="d"></div><span>relay</span></div><div class="seg"></div>
+      <div class="stop" data-p="0.63"><div class="d"></div><span>wire</span></div><div class="seg"></div>
+      <div class="stop" data-p="0.84"><div class="d"></div><span>her device</span></div>
     </div>
 
     <span class="journey-hint">scroll — your message is on its way ↓</span>
