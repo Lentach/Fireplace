@@ -12,20 +12,23 @@
 import { B64, bez, clamp, drawStars, ease, fake, fit, lerp, makeStars, rectC, ring, rnd, seg, type Pt } from './util';
 
 declare global {
-  interface Window { __journey?: { p: number; sent: boolean; landed: boolean } }
+  interface Window { __journey?: { p: number; sent: boolean; landed: boolean; raw0: number } }
 }
 
-/* ---- symmetric timeline (p ranges) ---- */
+/* ---- symmetric timeline (p ranges) ----
+   The relay act owns ~31% of the track (owner: showcase the machine —
+   the visitor should scroll a while with the message inside). Symmetry
+   invariants: wire1 == wire2, sealHold == unsealHold, swallow == emit. */
 const T = {
-  lift: [0.02, 0.15],
-  sealHold: [0.15, 0.28],
-  wire1: [0.28, 0.47],
-  swallow: [0.47, 0.515],
-  inside: [0.515, 0.585],
-  emit: [0.585, 0.63],
-  wire2: [0.63, 0.82],       // same length as wire1
-  unsealHold: [0.82, 0.945], // same feel as sealHold
-  drop: [0.945, 0.972],
+  lift: [0.02, 0.14],
+  sealHold: [0.14, 0.26],
+  wire1: [0.26, 0.39],
+  swallow: [0.39, 0.435],
+  inside: [0.435, 0.655],    // the long ride through the window
+  emit: [0.655, 0.70],       // same length as swallow
+  wire2: [0.70, 0.83],       // same length as wire1
+  unsealHold: [0.83, 0.95],  // same length as sealHold
+  drop: [0.95, 0.972],
   land: 0.972,
 } as const;
 
@@ -39,6 +42,8 @@ export function initJourney(section: HTMLElement) {
   let stars = makeStars(W, H, 240);
   const trail: Pt[] = [];
   let sent = false, landed = false, plain = '';
+  let raw0 = 0;      // raw scroll progress at the moment of send — p normalizes over the remainder
+  let lastRaw = 0;
   let cipherChars: string[] = [];
   let spans: HTMLSpanElement[] = [], sealAt: number[] = [], openAt: number[] = [];
   let sentMeta: HTMLElement | null = null, landedBubble: HTMLElement | null = null;
@@ -137,6 +142,8 @@ export function initJourney(section: HTMLElement) {
   const sendBtn = $<HTMLButtonElement>('.phone.sender .compose button');
   sendBtn.addEventListener('click', () => doSend(false));
   draft.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSend(false); });
+  // click/tap the compose → whole draft selected, one keystroke replaces it
+  draft.addEventListener('focus', () => draft.select());
   // hero "type something private" box and this compose are the SAME draft —
   // last writer wins, until the message is sent
   document.addEventListener('fp:plain', (e) => {
@@ -146,6 +153,7 @@ export function initJourney(section: HTMLElement) {
   function doSend(auto: boolean) {
     if (sent) return;
     sent = true;
+    raw0 = Math.min(lastRaw, 0.06);   // clamp: a teleport-scroll must not compress the track
     plain = (draft.value.trim() || 'meet me at eight').slice(0, 40);
     draft.disabled = true; sendBtn.disabled = true; sendBtn.style.opacity = '.4';
 
@@ -165,8 +173,8 @@ export function initJourney(section: HTMLElement) {
       if (i < plain.length) el.textContent = plain[i];
       else { el.textContent = cipherChars[i]; el.className = 'x'; }
       tr.appendChild(el); spans.push(el);
-      sealAt.push(0.16 + 0.10 * Math.random());   // scramble inside the seal hold
-      openAt.push(0.83 + 0.10 * Math.random());   // unscramble inside the unseal hold — same dynamics
+      sealAt.push(0.15 + 0.09 * Math.random());   // scramble inside the seal hold
+      openAt.push(0.84 + 0.09 * Math.random());   // unscramble inside the unseal hold — same dynamics
     }
     // padded to the ambient rows' length so it blends into the queue —
     // only the external "yours →" tag gives it away
@@ -187,9 +195,12 @@ export function initJourney(section: HTMLElement) {
     const now = performance.now(), t = now / 1000;
     const top = section.offsetTop;
     const raw = clamp((scrollY - top) / (section.offsetHeight - innerHeight), 0, 1);
-    if (!sent && raw > 0.015) doSend(true);
-    const p = sent ? raw : 0;
-    window.__journey = { p, sent, landed };
+    lastRaw = raw;
+    // roomy top zone: the visitor can stop and type; skimmers auto-send.
+    // p restarts from 0 at the send point (no mid-lift pop on auto-send).
+    if (!sent && raw > 0.06) doSend(true);
+    const p = sent ? clamp((raw - raw0) / (1 - raw0), 0, 1) : 0;
+    window.__journey = { p, sent, landed, raw0 };
     const A = anchors();
 
     ctx.clearRect(0, 0, W, H);
@@ -205,8 +216,8 @@ export function initJourney(section: HTMLElement) {
        the queue, and slides out through OUT before the capsule re-emerges —
        the mirror of how it entered. */
     const rowY = (idx: number) => streamH + 20 - ((t * STREAM_SP + idx * (loop / visN)) % loop);
-    const mineIn = ease(seg(p, 0.50, 0.545));
-    const mineOut = ease(seg(p, 0.555, 0.60));
+    const mineIn = ease(seg(p, 0.42, 0.465));
+    const mineOut = ease(seg(p, 0.625, 0.67));
     const minePres = Math.min(mineIn, 1 - mineOut);
     if (minePres <= 0) mineSlot = -1;
     else if (mineSlot < 0) {
@@ -248,7 +259,7 @@ export function initJourney(section: HTMLElement) {
     $('.prompt').style.opacity = String(1 - seg(p, 0, 0.035));
 
     /* dashed routes, mirrored */
-    const pathAlpha = seg(p, 0.24, 0.32) * (1 - seg(p, 0.95, 1));
+    const pathAlpha = seg(p, 0.22, 0.30) * (1 - seg(p, 0.95, 1));
     if (pathAlpha > 0) {
       ctx.setLineDash([2, 7]);
       ctx.strokeStyle = `rgba(143,216,255,${0.28 * pathAlpha})`; ctx.lineWidth = 1;
@@ -265,7 +276,7 @@ export function initJourney(section: HTMLElement) {
        opening shot as the message lands. */
     const grow = ease(seg(p, 0.945, 0.985));
     const rpX = lerp(
-      lerp(W * (A.mobile ? 1.35 : 1.15), A.recipC.x, ease(seg(p, A.mobile ? 0.70 : 0.60, A.mobile ? 0.80 : 0.74))),
+      lerp(W * (A.mobile ? 1.35 : 1.15), A.recipC.x, ease(seg(p, A.mobile ? 0.75 : 0.67, A.mobile ? 0.82 : 0.78))),
       W * (A.mobile ? 0.5 : 0.62), grow);
     const rpY = lerp(A.recipC.y, H * (A.mobile ? 0.58 : 0.56), grow);
     const rpS = lerp(A.phoneS, A.mobile ? 1 : 0.95, grow);
@@ -274,7 +285,7 @@ export function initJourney(section: HTMLElement) {
     const landPt = { x: rpX - 60 * rpS, y: rpY + 12 * rpS };   // tracks the growing phone's chat area
     if (A.mobile) {
       const toTop = ease(seg(p, T.lift[0], T.lift[1]));
-      const exitL = ease(seg(p, 0.28, 0.38));   // fully out before the capsule crosses its lane
+      const exitL = ease(seg(p, 0.26, 0.36));   // fully out before the capsule crosses its lane
       phonePose($('.phone.sender'),
         lerp(lerp(W * 0.5, A.senderC.x, toTop), -W * 0.35, exitL),
         lerp(H * 0.60, A.senderC.y, toTop),
@@ -285,18 +296,18 @@ export function initJourney(section: HTMLElement) {
     }
 
     const sk = $('.keytag.sender-key');
-    sk.style.opacity = String(seg(p, 0.15, 0.19) * (1 - seg(p, A.mobile ? 0.27 : 0.32, A.mobile ? 0.31 : 0.38)));
+    sk.style.opacity = String(seg(p, 0.14, 0.18) * (1 - seg(p, A.mobile ? 0.25 : 0.30, A.mobile ? 0.29 : 0.36)));
     sk.style.left = `${A.senderC.x - sk.offsetWidth / 2}px`; sk.style.top = `${A.senderC.y + A.keyDy}px`;
     const rk = $('.keytag.recipient-key');
-    rk.style.opacity = String(seg(p, 0.83, 0.87) * (1 - seg(p, 0.925, 0.95)));
+    rk.style.opacity = String(seg(p, 0.84, 0.88) * (1 - seg(p, 0.925, 0.95)));
     rk.style.left = `${A.recipC.x - rk.offsetWidth / 2}px`; rk.style.top = `${A.recipC.y + A.keyDy}px`;
 
     /* machine */
-    $('.machine').style.opacity = String(seg(p, 0.40, 0.46) * (A.mobile ? 1 - seg(p, 0.68, 0.76) : 1 - seg(p, 0.90, 0.96)));
+    $('.machine').style.opacity = String(seg(p, 0.32, 0.38) * (A.mobile ? 1 - seg(p, 0.71, 0.79) : 1 - seg(p, 0.90, 0.96)));
     const spin = ease(seg(p, T.swallow[0], T.wire2[0]));
     rotors.forEach((r, i) => { r.style.transform = `rotate(${spin * (360 + i * 220) + t * 8}deg)`; });
-    $('.scan-in').style.opacity = String(seg(p, 0.465, 0.485) * (1 - seg(p, 0.50, 0.52)));
-    $('.scan-out').style.opacity = String(seg(p, 0.585, 0.605) * (1 - seg(p, 0.625, 0.645)));
+    $('.scan-in').style.opacity = String(seg(p, 0.385, 0.405) * (1 - seg(p, 0.42, 0.44)));
+    $('.scan-out').style.opacity = String(seg(p, 0.655, 0.675) * (1 - seg(p, 0.695, 0.715)));
 
     const mine = $('.sv-row.mine');
     const mineO = clamp(Math.min(mineFlowY / 26, (streamH - mineFlowY) / 26), 0, 0.85) * minePres;
@@ -320,7 +331,7 @@ export function initJourney(section: HTMLElement) {
     } else if (p < T.wire1[1]) {
       const k = ease(seg(p, T.wire1[0], T.wire1[1]));
       pos = bez(A.sealP, A.cp1, A.intake, k);
-      scale = lerp(0.9, 0.58, ease(seg(p, 0.28, 0.36))); capsule = true;
+      scale = lerp(0.9, 0.58, ease(seg(p, 0.26, 0.35))); capsule = true;
     } else if (p < T.swallow[1]) {
       pos = A.intake; capsule = true;
       scale = 0.58 * (1 - ease(seg(p, T.swallow[0], T.swallow[1])));
@@ -332,10 +343,10 @@ export function initJourney(section: HTMLElement) {
     } else if (p < T.wire2[1]) {
       const k = ease(seg(p, T.wire2[0], T.wire2[1]));
       pos = bez(A.outlet, A.cp2, A.unsealP, k);
-      scale = lerp(0.58, 0.9, ease(seg(p, 0.74, 0.82))); capsule = true;   // grows on approach, mirror of wire1 shrink
+      scale = lerp(0.58, 0.9, ease(seg(p, 0.74, 0.83))); capsule = true;   // grows on approach, mirror of wire1 shrink
     } else if (p < T.unsealHold[1]) {
       pos = A.unsealP; scale = 0.9;
-      capsule = p < 0.85;                        // chrome fades as plaintext returns
+      capsule = p < 0.86;                        // chrome fades as plaintext returns
     } else {
       const k = ease(seg(p, T.drop[0], T.drop[1]));
       pos = bez(A.unsealP, A.dropCp, landPt, k);
@@ -363,8 +374,8 @@ export function initJourney(section: HTMLElement) {
       ctx.fillStyle = gg; ctx.fill();
     } else if (trail.length) trail.pop();
 
-    ring(ctx, A.intake, seg(p, 0.46, 0.515), 40, '143,216,255');
-    ring(ctx, A.outlet, seg(p, 0.585, 0.635), 40, '143,216,255');
+    ring(ctx, A.intake, seg(p, 0.38, 0.435), 40, '143,216,255');
+    ring(ctx, A.outlet, seg(p, 0.655, 0.705), 40, '143,216,255');
     ring(ctx, landPt, seg(p, 0.965, 1), 34, '255,217,138');
 
     /* char states — seal and unseal share the same staggered mechanics */
@@ -390,7 +401,7 @@ export function initJourney(section: HTMLElement) {
     }
     $('.rail').style.opacity = p > 0.015 ? '1' : '0';
     stops.forEach((s) => s.classList.toggle('on', p >= +s.dataset.p!));
-    $('.journey-hint').style.opacity = sent && p > 0.005 && p < 0.02 ? '1' : '0';
+    $('.journey-hint').style.opacity = sent && p > 0.005 && p < 0.04 ? '1' : '0';
 
     requestAnimationFrame(update);
   }
