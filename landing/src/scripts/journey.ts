@@ -143,6 +143,7 @@ export function initJourney(section: HTMLElement) {
   /* send — manual (button/Enter) or auto (visitor scrolls past without clicking) */
   const draft = $<HTMLInputElement>('.phone.sender .compose input');
   const sendBtn = $<HTMLButtonElement>('.phone.sender .compose button');
+  const caret = $('.phone.sender .c-caret');
   sendBtn.addEventListener('click', () => doSend(false));
   draft.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSend(false); });
   // click/tap the compose → whole draft selected, one keystroke replaces it
@@ -164,27 +165,21 @@ export function initJourney(section: HTMLElement) {
     if (sent && !typed0) return;      // real chat: an empty send is a no-op
     sent = true;
     raw0 = Math.min(lastRaw, 0.06);   // clamp: a teleport-scroll must not compress the track
-    // no newly-typed text → replay of the PREVIOUS message (never a surprise
-    // default). Only genuinely new text stacks a new bubble; a plain replay
-    // re-animates the existing one — no duplicate spam in the thread.
-    const isNew = typed0 !== '' && typed0 !== plain;
+    // every send stacks a fresh bubble — a real chat happily repeats the
+    // same text. (Scroll-replays never pass through here, so no dupe spam.)
     plain = (typed0 || plain || DEFAULT_MSG).slice(0, 40);
     // like a real chat: the message leaves the input and lives in the thread
     draft.value = '';
 
-    if (isNew || !sentBubble) {
-      sentBubble = document.createElement('div');
-      sentBubble.className = 'm me'; sentBubble.textContent = plain;
-      sentMeta = document.createElement('div');
-      sentMeta.className = 'meta'; sentMeta.textContent = '08:12 ✓';
-      sentBubble.appendChild(sentMeta);
-      const thread = $('.sender-msgs');
-      // like a real chat the thread STACKS; oldest scroll away past 5 bubbles
-      while (thread.children.length >= 5) thread.firstElementChild!.remove();
-      thread.appendChild(sentBubble);
-    } else {
-      sentMeta = sentBubble.querySelector<HTMLElement>('.meta');
-    }
+    sentBubble = document.createElement('div');
+    sentBubble.className = 'm me'; sentBubble.textContent = plain;
+    sentMeta = document.createElement('div');
+    sentMeta.className = 'meta'; sentMeta.textContent = '08:12 ✓';
+    sentBubble.appendChild(sentMeta);
+    const thread = $('.sender-msgs');
+    // like a real chat the thread STACKS; oldest scroll away past 5 bubbles
+    while (thread.children.length >= 5) thread.firstElementChild!.remove();
+    thread.appendChild(sentBubble);
 
     const total = 2 + Math.ceil(plain.length * 4 / 3) + 10;
     cipherChars = Array.from({ length: total }, (_, i) => i === 0 ? '3' : i === 1 ? ':' : rnd(B64));
@@ -235,6 +230,9 @@ export function initJourney(section: HTMLElement) {
       draft.disabled = lock; sendBtn.disabled = lock;
       sendBtn.style.opacity = lock ? '.4' : '';
     }
+    // fake caret blinks in an empty, typable, unfocused compose (focused
+    // inputs get the real caret)
+    caret.classList.toggle('off', !(draft.value === '' && !lock && document.activeElement !== draft));
     // reversing ALL the way out (crossing into the very top) clears both
     // inputs — a stale message must not greet the next pass. Transition-
     // triggered, so nobody's active typing is ever stomped.
@@ -366,7 +364,9 @@ export function initJourney(section: HTMLElement) {
     let pos: Pt, scale = 1, capsule = false, inside = false;
     if (p < T.lift[1]) {
       const k = ease(seg(p, T.lift[0], T.lift[1]));
-      pos = bez(A.liftStart, A.liftCp, A.sealP, k);
+      // detach from the REAL bubble in the thread — the capsule materializes
+      // on the sent message and flies out of the chat itself
+      pos = bez(sentBubble ? rectC(sentBubble) : A.liftStart, A.liftCp, A.sealP, k);
       scale = lerp(1, 0.9, k);
     } else if (p < T.sealHold[1]) {
       pos = A.sealP; scale = 0.9;

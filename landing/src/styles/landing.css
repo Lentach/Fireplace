@@ -104,6 +104,11 @@ nav.on-light .links a.cta { color: #fff; background: var(--blue); }
   flex: 1; min-width: 0; background: none; border: none; outline: none;
   font-size: 10px; color: #dfeefb; font-family: 'IBM Plex Mono', monospace;
 }
+/* fake caret: blinks in the empty, unfocused compose — "you can type here".
+   visibility (not display) so toggling never shifts the placeholder. */
+.phone .c-caret { width: 1.5px; height: 12px; margin-right: -5px; background: #9fd6f5; flex: 0 0 auto; animation: caretblink 1.1s steps(2, start) infinite; }
+.phone .c-caret.off { visibility: hidden; }
+@keyframes caretblink { 50% { opacity: 0 } }
 .phone .compose svg { width: 13px; height: 13px; flex: 0 0 auto; fill: none; stroke: #7093a6; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
 .phone .compose svg .dot { fill: var(--ice); stroke: none; }
 .phone .compose svg .giftxt { fill: #7093a6; stroke: none; font-size: 8px; font-weight: 700; font-family: 'Archivo', sans-serif; letter-spacing: .04em; }
