@@ -130,7 +130,7 @@ export function initJourney(section: HTMLElement) {
   let mineSlot = -1;   // queue slot my row takes over while inside the machine (picked at entry)
   {
     const stream = $('.sv-stream');
-    for (let i = 0; i < 9; i++) {
+    for (let i = 0; i < 18; i++) {
       const el = document.createElement('div');
       el.className = 'sv-row';
       const tEl = document.createElement('span');
@@ -138,7 +138,7 @@ export function initJourney(section: HTMLElement) {
       el.appendChild(tEl);
       const prefix = Math.random() < 0.8 ? '2:' : '3:';
       const cells: Cell[] = [];
-      for (let c = 0; c < 40; c++) {
+      for (let c = 0; c < 60; c++) {
         const s = document.createElement('span');
         const final = c < 2 ? prefix[c] : rnd(B64);
         s.textContent = final;
@@ -204,9 +204,9 @@ export function initJourney(section: HTMLElement) {
       sealAt.push(0.15 + 0.09 * Math.random());   // scramble inside the seal hold
       openAt.push(0.84 + 0.09 * Math.random());   // unscramble inside the unseal hold — same dynamics
     }
-    // clamped AND padded to the ambient rows' 40 chars so it blends into the
+    // clamped AND padded to the ambient rows' 60 chars so it blends into the
     // queue no matter the message length — only the "yours →" tag gives it away
-    $('.sv-row.mine').innerHTML = `<span class="t">${ts}</span>${(cipherChars.join('') + fake(40)).slice(0, 40)}`;
+    $('.sv-row.mine').innerHTML = `<span class="t">${ts}</span>${(cipherChars.join('') + fake(60)).slice(0, 60)}`;
   }
 
   // like a real chat the thread STACKS: the oldest bubbles fall away the
@@ -351,9 +351,20 @@ export function initJourney(section: HTMLElement) {
     ctx.clearRect(0, 0, W, H);
     drawStars(ctx, stars, t, '190,220,240', 16);
 
-    /* ambient stream flows bottom → top */
-    const streamH = A.mobile ? 140 : 170, loop = streamH + 50;
-    const visN = A.mobile ? 7 : 9;
+    /* ambient stream flows bottom → top, filling the WHOLE core: each row's
+       width follows the sphere's chord at its height — short slivers at the
+       poles, widest at the equator — so the text lives INSIDE the volume */
+    const streamEl = $('.sv-stream');
+    const streamH = streamEl.clientHeight || (A.mobile ? 140 : 170);
+    const coreHalf = streamEl.clientWidth / 2;
+    const faceR = ($('.core').offsetWidth || 300) / 2 - 8;   // stay inside the clip face
+    const rowH = streamRows[0].el.offsetHeight || 15;
+    const loop = streamH + 50;
+    const visN = Math.min(streamRows.length, Math.max(5, Math.round(loop / (A.mobile ? 27 : 26))));
+    const chord = (yTop: number) => {
+      const dy = yTop + rowH / 2 - streamH / 2;
+      return Math.sqrt(Math.max(faceR * faceR - dy * dy, 1));
+    };
     /* my row is a REAL queue member: at entry it takes over whichever slot
        currently sits in the lower-visible zone — that ambient row yields and
        mine adopts its exact phase, so spacing, speed, drift, edge-fade, and
@@ -377,6 +388,9 @@ export function initJourney(section: HTMLElement) {
       if (r.idx >= visN) { r.el.style.opacity = '0'; continue; }
       const y = rowY(r.idx);
       if (r.idx === mineSlot) mineFlowY = y;
+      const ch = chord(y);
+      r.el.style.left = `${coreHalf - ch}px`;
+      r.el.style.width = `${2 * ch}px`;
       r.el.style.transform = `translateY(${y}px)`;
       r.el.style.opacity = String(clamp(Math.min(y / 26, (streamH - y) / 26), 0, 0.85) * (r.idx === mineSlot ? 1 - minePres : 1));
       // slot refresh: a NEW envelope takes the row — fresh stamp, staggered scramble
@@ -490,12 +504,18 @@ export function initJourney(section: HTMLElement) {
 
     const mine = $('.sv-row.mine');
     const mineO = clamp(Math.min(mineFlowY / 26, (streamH - mineFlowY) / 26), 0, 0.85) * minePres;
+    const chM = chord(mineFlowY);
+    mine.style.left = `${coreHalf - chM}px`;
+    mine.style.width = `${2 * chM}px`;
     mine.style.opacity = String(mineO);
     mine.style.transform = `translate(${(1 - mineIn) * -360 + mineOut * 360}px, ${mineFlowY}px)`;
+    /* the tag glides along the sphere's inner wall, pinned to its row's
+       curved left edge — hanging out over the shell dots */
     const mineTag = $('.mine-tag');
     const streamR = $('.sv-stream').getBoundingClientRect();
     const machR = $('.machine').getBoundingClientRect();
     mineTag.style.top = `${streamR.top - machR.top + mineFlowY}px`;
+    mineTag.style.left = `${streamR.left - machR.left + coreHalf - chM - mineTag.offsetWidth - 6}px`;
     mineTag.style.opacity = String(mineO);
 
     /* traveler — symmetric two-act structure */
