@@ -49,3 +49,47 @@ export function makeShell(N = 500) {
     }
   };
 }
+
+// The CONTAINED singularity: glimpsed through the closed shell — a small
+// black hole that looks barely stable. Brightness is scroll-gated (a, from
+// presence × sealed-ness); the instability texture — flicker, wander,
+// flares, orbiting debris — is ambient time, same class as the stars.
+// Drawn UNDER the shell dots, so the lattice passes in front: caged.
+export function drawSingularity(ctx: CanvasRenderingContext2D, cx: number, cy: number, r: number, a: number, t: number) {
+  if (a <= 0.02 || r <= 2) return;
+  // irregular flicker (two beating sines) + slow breath + rare flare spikes
+  const fl = 0.55 + 0.30 * Math.sin(t * 7.3) * Math.sin(t * 3.1 + 1.7) + 0.15 * Math.sin(t * 1.2);
+  const flare = Math.pow(Math.max(0, Math.sin(t * 0.83 + 0.6)), 24);
+  const jx = cx + 1.6 * Math.sin(t * 9.7), jy = cy + 1.6 * Math.cos(t * 8.3 + 2);
+  const rw = r * (1 + 0.035 * Math.sin(t * 5.9) + 0.10 * flare);
+  const glow = ctx.createRadialGradient(jx, jy, rw * 0.55, jx, jy, rw * (1.9 + 1.1 * flare));
+  glow.addColorStop(0, 'rgba(0,0,0,0)');
+  glow.addColorStop(0.3, `rgba(255,160,80,${(0.16 + 0.30 * flare) * fl * a})`);
+  glow.addColorStop(1, 'rgba(0,0,0,0)');
+  ctx.fillStyle = glow;
+  ctx.fillRect(jx - rw * 3.2, jy - rw * 3.2, rw * 6.4, rw * 6.4);
+  // the hole itself — swallows even the shell's own light
+  ctx.beginPath(); ctx.arc(jx, jy, rw, 0, 6.28);
+  ctx.fillStyle = `rgba(0,0,0,${0.92 * a})`; ctx.fill();
+  // flickering horizon ring
+  ctx.beginPath(); ctx.arc(jx, jy, rw, 0, 6.28);
+  ctx.strokeStyle = `rgba(255,205,150,${(0.55 + 0.35 * flare) * fl * a})`;
+  ctx.lineWidth = 1.6 + 1.4 * flare;
+  ctx.shadowColor = 'rgba(255,180,110,.95)'; ctx.shadowBlur = 12 + 26 * flare;
+  ctx.stroke();
+  // wandering doppler hot-spot — the bright side never sits still
+  const da = t * 0.9;
+  ctx.beginPath(); ctx.arc(jx, jy, rw, da, da + 1.5 + 0.7 * Math.sin(t * 2.3));
+  ctx.strokeStyle = `rgba(255,242,220,${(0.5 + 0.5 * flare) * fl * a})`;
+  ctx.lineWidth = 2.2 + 1.6 * flare;
+  ctx.shadowBlur = 18 + 30 * flare; ctx.stroke(); ctx.shadowBlur = 0;
+  // debris sparks on tight decaying orbits
+  for (let i = 0; i < 3; i++) {
+    const sp = 1.6 + i * 0.53, ph = i * 2.1;
+    const orr = rw * (1.25 + 0.18 * Math.sin(t * 0.7 + ph) + 0.12 * i);
+    const ang = t * sp + ph;
+    ctx.beginPath(); ctx.arc(jx + Math.cos(ang) * orr, jy + Math.sin(ang) * orr * 0.92, 1.3, 0, 6.28);
+    ctx.fillStyle = `rgba(255,220,170,${0.8 * fl * a})`;
+    ctx.shadowColor = 'rgba(255,190,120,.9)'; ctx.shadowBlur = 8; ctx.fill(); ctx.shadowBlur = 0;
+  }
+}

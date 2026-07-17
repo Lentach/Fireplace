@@ -10,7 +10,7 @@
 // Mid-page integration: no scroll lock. Sending is interactive at the top of
 // the section; if the visitor just keeps scrolling, the message auto-sends.
 import { B64, bez, clamp, drawStars, ease, fake, fit, lerp, makeStars, rectC, ring, rnd, seg, type Pt } from './util';
-import { makeShell } from './shell';
+import { drawSingularity, makeShell } from './shell';
 
 declare global {
   interface Window { __journey?: { p: number; sent: boolean; landed: boolean; raw0: number; dir: number } }
@@ -424,6 +424,11 @@ export function initJourney(section: HTMLElement) {
        All p-keyed, so the reply re-opens it in mirror on the way back. */
     const presence = seg(p, 0.28, 0.33) * (A.mobile ? 1 - seg(p, 0.72, 0.80) : 1 - seg(p, 0.90, 0.96));
     const open = ease(seg(p, 0.425, 0.46)) * (1 - ease(seg(p, 0.665, 0.705)));
+    /* the CONTAINED singularity: while the shell is closed (approach, and
+       the desktop sealed-mini afterwards) the small unstable black hole is
+       visible through the lattice — drawn UNDER the dots, so the shell
+       cages it; it hands off to the full horizon exactly as the iris opens */
+    drawSingularity(ctx, A.coreC.x, A.coreC.y, A.shellR * 0.34, presence * (1 - open), t);
     shellDraw(ctx, A.coreC.x, A.coreC.y, A.shellR, open, presence, t);
     /* EVENT HORIZON — the exposed core is a black hole: the face swallows
        all light, so everything visible lives at the edge — a warm photon
