@@ -5,7 +5,7 @@ import { B64, rnd } from './util';
 export function initEncrypt(root: HTMLElement) {
   root.innerHTML = `
     <label>Type something private</label>
-    <input type="text" spellcheck="false" autocomplete="off" placeholder="Hey, are you there?…" maxlength="64">
+    <input type="text" spellcheck="false" autocomplete="off" placeholder="sending very sensitive data…" maxlength="64">
     <div class="server-line">
       <span class="server-tag">what our server sees</span>
       <code class="cipher"></code>
@@ -44,6 +44,12 @@ export function initEncrypt(root: HTMLElement) {
     // feed the journey: whatever the visitor types here becomes the draft
     // on the sender phone (until they type there directly)
     document.dispatchEvent(new CustomEvent('fp:plain', { detail: input.value }));
+  });
+  // journey top-reverse clears this demo too — never stomps active typing
+  document.addEventListener('fp:clear', () => {
+    if (document.activeElement === input) return;
+    input.value = '';
+    setLen(0);
   });
   setLen(0);
 }

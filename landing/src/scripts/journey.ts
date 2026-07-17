@@ -15,7 +15,7 @@ declare global {
   interface Window { __journey?: { p: number; sent: boolean; landed: boolean; raw0: number } }
 }
 
-const DEFAULT_MSG = 'Hey, are you there?';
+const DEFAULT_MSG = 'sending very sensitive data — safe here';
 
 /* ---- symmetric timeline (p ranges) ----
    The relay act owns ~23% of the track (owner-tuned: doubled first, then
@@ -46,7 +46,6 @@ export function initJourney(section: HTMLElement) {
   let sent = false, landed = false, plain = '';
   let raw0 = 0;      // raw scroll progress at the moment of send — p normalizes over the remainder
   let lastRaw = 0;
-  let maxP = 0;      // how deep this send's journey got — gates the reverse-reset
   let cipherChars: string[] = [];
   let spans: HTMLSpanElement[] = [], sealAt: number[] = [], openAt: number[] = [];
   let sentMeta: HTMLElement | null = null, landedBubble: HTMLElement | null = null;
@@ -149,24 +148,29 @@ export function initJourney(section: HTMLElement) {
   // click/tap the compose → whole draft selected, one keystroke replaces it
   draft.addEventListener('focus', () => draft.select());
   // hero "type something private" box and this compose are the SAME draft —
-  // last writer wins, until the message is sent
+  // last writer wins, whenever the phone is docked
   document.addEventListener('fp:plain', (e) => {
-    if (!sent) draft.value = (e as CustomEvent<string>).detail.slice(0, 40);
+    if (docked()) draft.value = (e as CustomEvent<string>).detail.slice(0, 40);
   });
+  // the composer is POSITION-locked, not send-locked: whenever the phone is
+  // docked (journey start, or reversed back to it) it behaves like a real
+  // chat — type and send as often as you like; the journey flies the latest.
+  const docked = () => !sent || clamp((lastRaw - raw0) / (1 - raw0), 0, 1) <= 0.02;
 
   function doSend(auto: boolean) {
-    if (sent) return;
+    if (sent && auto) return;         // auto-send only arms the FIRST journey
+    if (!docked()) return;            // in flight — the message can't change
+    const typed0 = draft.value.trim();
+    if (sent && !typed0) return;      // real chat: an empty send is a no-op
     sent = true;
     raw0 = Math.min(lastRaw, 0.06);   // clamp: a teleport-scroll must not compress the track
     // no newly-typed text → replay of the PREVIOUS message (never a surprise
     // default). Only genuinely new text stacks a new bubble; a plain replay
     // re-animates the existing one — no duplicate spam in the thread.
-    const typed = draft.value.trim();
-    const isNew = typed !== '' && typed !== plain;
-    plain = (typed || plain || DEFAULT_MSG).slice(0, 40);
+    const isNew = typed0 !== '' && typed0 !== plain;
+    plain = (typed0 || plain || DEFAULT_MSG).slice(0, 40);
     // like a real chat: the message leaves the input and lives in the thread
     draft.value = '';
-    draft.disabled = true; sendBtn.disabled = true; sendBtn.style.opacity = '.4';
 
     if (isNew || !sentBubble) {
       sentBubble = document.createElement('div');
@@ -206,19 +210,6 @@ export function initJourney(section: HTMLElement) {
     if (!auto) $('.journey-hint').style.opacity = '1';
   }
 
-  /* reverse back to the device → the send unlocks for a NEW message. The
-     thread keeps the old bubbles (a real chat stacks); only the in-flight
-     delivery (recipient copy) un-lands via the normal reverse logic. */
-  function resetSend() {
-    sent = false; landed = false; maxP = 0;
-    sentMeta = null;   // sentBubble is KEPT — a textless replay re-animates it
-    landedBubble?.remove(); landedBubble = null;
-    draft.value = '';
-    draft.disabled = false; sendBtn.disabled = false; sendBtn.style.opacity = '';
-    const tr = $('.traveler');
-    tr.innerHTML = ''; tr.style.opacity = '0';
-    spans = [];
-  }
 
   const caps = [...section.querySelectorAll<HTMLElement>('.cap')];
   const stops = [...section.querySelectorAll<HTMLElement>('.rail .stop')];
@@ -229,24 +220,28 @@ export function initJourney(section: HTMLElement) {
     const raw = clamp((scrollY - top) / (section.offsetHeight - innerHeight), 0, 1);
     const prevRaw = lastRaw;
     lastRaw = raw;
-    // roomy top zone: the visitor can stop and type; skimmers auto-send.
+    // roomy top zone: the visitor can stop and type; skimmers auto-send once.
     // p restarts from 0 at the send point (no mid-lift pop on auto-send).
-    // NEVER auto-send while the compose is focused — after a device-reset the
-    // visitor sits ON the boundary, and keyboard/scroll drift must not fire a
-    // half-typed message. Blur + scroll = replay as usual.
+    // NEVER auto-send while the compose is focused — keyboard/scroll drift
+    // must not fire a half-typed message. Blur + scroll = journey as usual.
     if (!sent && raw > 0.06 && document.activeElement !== draft) doSend(true);
-    // reverse back to the send point (phone docked at its start pose) → the
-    // send undoes and the compose reopens. Fires when the journey actually
-    // progressed (maxP) OR the visitor clearly retreated below the send point
-    // (sent-then-scrolled-straight-up). Boundary jitter stays protected: a
-    // fresh send within 2% of its own send point never un-sends itself.
-    if (sent && raw <= raw0 && (maxP > 0.05 || raw < raw0 - 0.02)) resetSend();
-    // reversing ALL the way out (crossing into the very top) restores the
-    // default draft — a stale typed message must not greet the next pass.
-    // Transition-triggered, so hero typing at the top is never stomped.
-    if (!sent && raw <= 0.005 && prevRaw > 0.005 && document.activeElement !== draft) draft.value = DEFAULT_MSG;
     const p = sent ? clamp((raw - raw0) / (1 - raw0), 0, 1) : 0;
-    maxP = Math.max(maxP, p);
+    // the composer locks by POSITION: live whenever the phone is docked,
+    // locked only while the message is actually in flight. A focused input
+    // is NEVER disabled — mobile keyboard-open scroll drift must not kick
+    // the visitor out mid-type (doSend itself is docked-gated anyway).
+    const lock = sent && p > 0.02 && document.activeElement !== draft;
+    if (draft.disabled !== lock) {
+      draft.disabled = lock; sendBtn.disabled = lock;
+      sendBtn.style.opacity = lock ? '.4' : '';
+    }
+    // reversing ALL the way out (crossing into the very top) clears both
+    // inputs — a stale message must not greet the next pass. Transition-
+    // triggered, so nobody's active typing is ever stomped.
+    if (raw <= 0.005 && prevRaw > 0.005 && document.activeElement !== draft) {
+      draft.value = '';
+      document.dispatchEvent(new CustomEvent('fp:clear'));
+    }
     window.__journey = { p, sent, landed, raw0 };
     const A = anchors();
 
