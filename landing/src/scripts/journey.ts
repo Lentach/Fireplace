@@ -9,7 +9,7 @@
 //
 // Mid-page integration: no scroll lock. Sending is interactive at the top of
 // the section; if the visitor just keeps scrolling, the message auto-sends.
-import { B64, bez, clamp, drawStars, ease, fake, fit, lerp, makeStars, rectC, ring, rnd, seg, type Pt } from './util';
+import { autoGrow, B64, bez, clamp, drawStars, ease, fake, fit, lerp, makeStars, rectC, ring, rnd, seg, type Pt } from './util';
 import { drawHorizon, drawPorts, drawSingularity, makeShell } from './shell';
 
 declare global {
@@ -172,24 +172,42 @@ export function initJourney(section: HTMLElement) {
   const shellDraw = makeShell();
 
   /* send — manual (button/Enter) or auto (visitor scrolls past without clicking) */
-  const draft = $<HTMLInputElement>('.phone.sender .compose input');
+  const draft = $<HTMLTextAreaElement>('.phone.sender .compose textarea');
   const sendBtn = $<HTMLButtonElement>('.phone.sender .compose button');
   const caret = $('.phone.sender .c-caret');
-  const draftR = $<HTMLInputElement>('.phone.recipient .compose input');
+  const draftR = $<HTMLTextAreaElement>('.phone.recipient .compose textarea');
   const sendBtnR = $<HTMLButtonElement>('.phone.recipient .compose button');
   const caretR = $('.phone.recipient .c-caret');
   const hintEl = $('.journey-hint');
   sendBtn.addEventListener('click', () => doSend(false));
-  draft.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSend(false); });
   sendBtnR.addEventListener('click', () => doSendBack());
-  draftR.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSendBack(); });
-  // click/tap a compose → whole draft selected, one keystroke replaces it
-  draft.addEventListener('focus', () => draft.select());
-  draftR.addEventListener('focus', () => draftR.select());
+  // chat-style composers: a long draft WRAPS and the pill grows with it —
+  // Enter always sends (swallowed so the textarea never gains a newline);
+  // pasted newlines become spaces before anything downstream sees the value
+  for (const el of [draft, draftR]) {
+    el.addEventListener('keydown', (e) => {
+      if (e.key !== 'Enter') return;
+      e.preventDefault();
+      el === draft ? doSend(false) : doSendBack();
+    });
+    el.addEventListener('input', () => {
+      if (el.value.includes('\n')) el.value = el.value.replace(/\n+/g, ' ');
+      autoGrow(el);
+      // the growing pill eats thread space — trim so the NEWEST bubbles
+      // stay visible, exactly like the send-time stacking rule
+      trimThread(el === draft ? $('.sender-msgs') : $('.recipient-msgs'));
+    });
+    // click/tap a compose → whole draft selected, one keystroke replaces it
+    el.addEventListener('focus', () => el.select());
+  }
+  // the sender ships with a prefilled draft — size its pill NOW, and again
+  // once the mono font arrives (glyph metrics change the wrap points)
+  autoGrow(draft); autoGrow(draftR);
+  document.fonts?.ready.then(() => { autoGrow(draft); autoGrow(draftR); });
   // hero "type something private" box and this compose are the SAME draft —
   // last writer wins, whenever the phone is docked
   document.addEventListener('fp:plain', (e) => {
-    if (docked()) draft.value = (e as CustomEvent<string>).detail.slice(0, 120);
+    if (docked()) { draft.value = (e as CustomEvent<string>).detail.slice(0, 120); autoGrow(draft); }
   });
   // composers are POSITION-locked, not send-locked: each is live whenever its
   // phone is docked — the sender at the start of the track, the recipient at
@@ -241,6 +259,7 @@ export function initJourney(section: HTMLElement) {
     plain = (typed0 || plain || DEFAULT_MSG).slice(0, 120);
     // like a real chat: the message leaves the input and lives in the thread
     draft.value = '';
+    autoGrow(draft);
 
     sentBubble = document.createElement('div');
     sentBubble.className = 'm me'; sentBubble.textContent = plain;
@@ -272,6 +291,7 @@ export function initJourney(section: HTMLElement) {
     dir = -1; landed = false;         // the delivered original stays behind as history
     plain = typed.slice(0, 120);
     draftR.value = '';
+    autoGrow(draftR);
 
     sentBubble = document.createElement('div');
     sentBubble.className = 'm me'; sentBubble.textContent = plain;
@@ -351,9 +371,10 @@ export function initJourney(section: HTMLElement) {
     if (raw <= 0.005 && prevRaw > 0.005) {
       if (document.activeElement !== draft) {
         draft.value = '';
+        autoGrow(draft);
         document.dispatchEvent(new CustomEvent('fp:clear'));
       }
-      if (document.activeElement !== draftR) draftR.value = '';
+      if (document.activeElement !== draftR) { draftR.value = ''; autoGrow(draftR); }
     }
     window.__journey = { p, sent, landed, raw0, dir };
     const A = anchors(p);

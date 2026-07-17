@@ -1,16 +1,16 @@
 // Hero demo: type plaintext, watch the "what our server sees" line re-encrypt
 // with a staggered scramble. Uses the real "3:" PreKey envelope prefix.
-import { B64, rnd } from './util';
+import { autoGrow, B64, rnd } from './util';
 
 export function initEncrypt(root: HTMLElement) {
   root.innerHTML = `
     <label>Type something private</label>
-    <input type="text" spellcheck="false" autocomplete="off" placeholder="sending very sensitive data…" maxlength="120">
+    <textarea rows="1" spellcheck="false" autocomplete="off" placeholder="sending very sensitive data…" maxlength="120"></textarea>
     <div class="server-line">
       <span class="server-tag">what our server sees</span>
       <code class="cipher"></code>
     </div>`;
-  const input = root.querySelector('input')!;
+  const input = root.querySelector('textarea')!;
   const cipher = root.querySelector('.cipher')!;
   const spans: { el: HTMLSpanElement; final: string; settleAt: number }[] = [];
 
@@ -34,7 +34,13 @@ export function initEncrypt(root: HTMLElement) {
     }
     requestAnimationFrame(frame);
   })();
+  // a long message wraps and the box grows with it — never scrolls out of
+  // view (single logical line: Enter is swallowed, pasted newlines become
+  // spaces before anything downstream sees the value)
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
   input.addEventListener('input', () => {
+    if (input.value.includes('\n')) input.value = input.value.replace(/\n+/g, ' ');
+    autoGrow(input);
     setLen(input.value.length);
     const now = performance.now();
     for (let i = 2; i < spans.length; i++) {
@@ -49,6 +55,7 @@ export function initEncrypt(root: HTMLElement) {
   document.addEventListener('fp:clear', () => {
     if (document.activeElement === input) return;
     input.value = '';
+    autoGrow(input);
     setLen(0);
   });
   setLen(0);

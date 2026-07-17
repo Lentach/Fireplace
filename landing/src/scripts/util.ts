@@ -66,3 +66,11 @@ export const rectC = (el: Element): Pt => {
   const r = el.getBoundingClientRect();
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 };
+
+/** Chat-style auto-grow: a one-line textarea expands to fit its wrapped
+ *  content (CSS max-height caps it). Call after EVERY value change —
+ *  user input and programmatic writes alike. */
+export function autoGrow(el: HTMLTextAreaElement) {
+  el.style.height = 'auto';
+  el.style.height = `${el.scrollHeight}px`;
+}
