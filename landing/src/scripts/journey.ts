@@ -197,10 +197,14 @@ export function initJourney(section: HTMLElement) {
     $('.sv-row.mine').innerHTML = `<span class="t">${ts}</span>${(cipherChars.join('') + fake(40)).slice(0, 40)}`;
   }
 
-  // like a real chat the thread STACKS; oldest scroll away past 5 bubbles
+  // like a real chat the thread STACKS: the oldest bubbles fall away the
+  // moment the column would overflow into the compose panel
+  const trimThread = (thread: HTMLElement) => {
+    while (thread.scrollHeight > thread.clientHeight + 1 && thread.children.length > 1) thread.firstElementChild!.remove();
+  };
   const stack = (thread: HTMLElement, el: HTMLElement) => {
-    while (thread.children.length >= 5) thread.firstElementChild!.remove();
     thread.appendChild(el);
+    trimThread(thread);
   };
 
   function doSend(auto: boolean) {
@@ -404,14 +408,16 @@ export function initJourney(section: HTMLElement) {
        The recipient arrives small for the unseal, then GROWS to match the
        opening shot as the message lands. */
     const grow = ease(seg(p, 0.945, 0.985));
-    const rpX = lerp(
-      lerp(W * (A.mobile ? 1.35 : 1.15), A.recipC.x, ease(seg(p, A.mobile ? 0.72 : 0.62, A.mobile ? 0.82 : 0.76))),
-      A.mobile ? W * 0.5 : A.finRx, grow);
+    // Reverse (desktop): her device does NOT replay its arrival — it stays
+    // side-stage while the reply flies back, and only dismisses once the
+    // reply is docking on YOUR grown device (owner call, round 15).
+    const stayR = dir === -1 && !A.mobile;
+    const arrive = stayR ? 1 : ease(seg(p, A.mobile ? 0.72 : 0.62, A.mobile ? 0.82 : 0.76));
+    const rpX = lerp(lerp(W * (A.mobile ? 1.35 : 1.15), A.recipC.x, arrive), A.mobile ? W * 0.5 : A.finRx, grow);
     const rpY = lerp(A.recipC.y, H * (A.mobile ? 0.58 : 0.56), grow);
     const rpS = lerp(A.phoneS, A.mobile ? 1 : A.finS, grow);
-    const recIn = ease(seg(p, A.mobile ? 0.70 : 0.60, A.mobile ? 0.80 : 0.74));
+    const recIn = stayR ? ease(seg(p, 0.03, 0.10)) : ease(seg(p, A.mobile ? 0.70 : 0.60, A.mobile ? 0.80 : 0.74));
     phonePose($('.phone.recipient'), rpX, rpY, rpS, recIn);
-    const landPt = { x: rpX - 60 * rpS, y: rpY + 12 * rpS };   // tracks the growing phone's chat area
     let spX: number, spY: number, spS: number;
     if (A.mobile) {
       const toTop = ease(seg(p, T.lift[0], T.lift[1]));
@@ -427,8 +433,6 @@ export function initJourney(section: HTMLElement) {
       spS = lerp(lerp(1, A.phoneS, moveOut), A.finS, grow);
     }
     phonePose($('.phone.sender'), spX, spY, spS, 1);
-    // where a reply lands in YOUR thread (them-bubbles sit on the left)
-    const landPtBack = { x: spX - 60 * spS, y: spY + 12 * spS };
 
     const sk = $('.keytag.sender-key');
     sk.style.opacity = String(seg(p, 0.14, 0.18) * (1 - seg(p, A.mobile ? 0.25 : 0.30, A.mobile ? 0.29 : 0.36)));
@@ -457,6 +461,23 @@ export function initJourney(section: HTMLElement) {
     /* traveler — symmetric two-act structure */
     const tr = $('.traveler');
     let pos: Pt, scale = 1, capsule = false, inside = false;
+    // The REAL landing slot: exactly where the next bubble pops in the target
+    // thread — one gap below its last child, left-aligned like a them-bubble.
+    // getBoundingClientRect folds the phone's live transform in; the traveler
+    // footprint is offsetWidth × its final scale (center origin). Fixes the
+    // overshoot of the old "phone center + offset" approximation.
+    const slotFor = (thread: HTMLElement, s: number): Pt => {
+      if (landed && landedBubble && landedBubble.parentElement === thread) {
+        const br = landedBubble.getBoundingClientRect();
+        return { x: br.left + br.width / 2, y: br.top + br.height / 2 };
+      }
+      const r = thread.getBoundingClientRect();
+      const vs = thread.offsetWidth ? r.width / thread.offsetWidth : 1;
+      const last = thread.lastElementChild;
+      const yTop = last ? last.getBoundingClientRect().bottom + 7 * vs : r.top + 10 * vs;
+      return { x: r.left + 10 * vs + tr.offsetWidth * s / 2, y: yTop + tr.offsetHeight * s / 2 };
+    };
+    const landSlot = dir === 1 ? slotFor($('.recipient-msgs'), 0.62) : slotFor($('.sender-msgs'), 1);
     if (p < T.lift[1]) {
       const k = ease(seg(p, T.lift[0], T.lift[1]));
       // detach from the REAL bubble in the thread — the copy materializes
@@ -467,11 +488,14 @@ export function initJourney(section: HTMLElement) {
         const br = sentBubble.getBoundingClientRect();
         start = { x: br.left + br.width / 2, y: br.top + tr.offsetHeight / 2 };
       } else if (dir === -1) {
-        // the reply's landing spot on YOUR phone — same approximation the
-        // forward drop uses on hers
-        start = landPtBack;
+        // the reply's REAL landing slot on YOUR phone
+        start = landSlot;
       }
-      pos = bez(start, A.liftCp, A.sealP, k);
+      // reverse: control x at the midpoint → x(t) is LINEAR, so the arrival
+      // can never bulge past the slot; the swoop lives in y (forward keeps
+      // the wide liftCp swing out of the me-bubble)
+      const cp = dir === 1 ? A.liftCp : { x: (start.x + A.sealP.x) / 2, y: A.liftCp.y };
+      pos = bez(start, cp, A.sealP, k);
       scale = lerp(1, 0.9, k);
     } else if (p < T.sealHold[1]) {
       pos = A.sealP; scale = 0.9;
@@ -496,23 +520,26 @@ export function initJourney(section: HTMLElement) {
       capsule = p < 0.86;                        // chrome fades as plaintext returns
     } else {
       const k = ease(seg(p, T.drop[0], T.drop[1]));
-      let end = landPt;
+      let end = landSlot;
       if (dir === -1 && sentBubble) {
         // reverse: detach from the REAL reply bubble in her thread — twins,
         // exactly like the forward lift
         const br = sentBubble.getBoundingClientRect();
         end = { x: br.left + br.width / 2, y: br.top + tr.offsetHeight / 2 };
       }
-      pos = bez(A.unsealP, A.dropCp, end, k);
+      // control x at the midpoint of hold→slot: x(t) is LINEAR — the capsule
+      // descends onto the slot without ever swinging past it (the owner's
+      // "overshoot"); the drop arc survives in y via dropCp's height
+      pos = bez(A.unsealP, { x: (A.unsealP.x + end.x) / 2, y: A.dropCp.y }, end, k);
       scale = lerp(0.9, dir === -1 ? 1 : 0.62, k);
     }
 
     if (dir === 1) {
-      if (p > T.land && !landed) { landed = true; $('.recipient-msgs').appendChild(landedBubble!); }
+      if (p > T.land && !landed) { landed = true; const th = $('.recipient-msgs'); th.appendChild(landedBubble!); trimThread(th); }
       if (p <= T.land && landed) { landed = false; landedBubble!.remove(); }
       if (sentMeta) sentMeta.textContent = p > 0.975 ? '08:12 ✓✓' : '08:12 ✓';
     } else {
-      if (p < REV_LAND && !landed) { landed = true; $('.sender-msgs').appendChild(landedBubble!); }
+      if (p < REV_LAND && !landed) { landed = true; const th = $('.sender-msgs'); th.appendChild(landedBubble!); trimThread(th); }
       if (p >= REV_LAND && landed) { landed = false; landedBubble!.remove(); }
       if (sentMeta) sentMeta.textContent = p < 0.025 ? '08:13 ✓✓' : '08:13 ✓';
     }
@@ -536,8 +563,7 @@ export function initJourney(section: HTMLElement) {
 
     ring(ctx, A.intake, seg(p, 0.42, 0.475), 40, '143,216,255');
     ring(ctx, A.outlet, seg(p, 0.615, 0.665), 40, '143,216,255');
-    if (dir === 1) ring(ctx, landPt, seg(p, 0.965, 1), 34, '255,217,138');
-    else ring(ctx, landPtBack, 1 - seg(p, 0.005, 0.05), 34, '255,217,138');
+    ring(ctx, landSlot, dir === 1 ? seg(p, 0.965, 1) : 1 - seg(p, 0.005, 0.05), 34, '255,217,138');
 
     /* char states — seal and unseal share the same staggered mechanics */
     for (let i = 0; i < spans.length; i++) {
@@ -562,7 +588,7 @@ export function initJourney(section: HTMLElement) {
     }
     $('.rail').style.opacity = p > 0.015 ? '1' : '0';
     stops.forEach((s) => s.classList.toggle('on', p >= +s.dataset.p!));
-    hintEl.style.opacity = sent && (dir === 1 ? p > 0.005 && p < 0.04 : p > 0.96 && p < 0.995) ? '1' : '0';
+    hintEl.style.opacity = sent && (dir === 1 ? p > 0.005 && p < 0.04 : p > 0.955) ? '1' : '0';
 
     requestAnimationFrame(update);
   }

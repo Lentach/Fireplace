@@ -85,7 +85,9 @@ nav.on-light .links a.cta { color: #fff; background: var(--blue); }
 .phone .who { font-size: 10.5px; color: #dfeefb; }
 .phone .who small { display: block; font-size: 7.5px; color: #5d788f; letter-spacing: .1em; }
 .phone .lock { margin-left: auto; font-size: 9px; color: var(--ice); }
-.phone .msgs { flex: 1; padding: 10px; display: flex; flex-direction: column; gap: 7px; font-size: 10px; line-height: 1.5; }
+/* min-height 0 + hidden: a tall thread may NEVER push the compose panel out
+   of the screen — overflow clips and the JS trims oldest bubbles away */
+.phone .msgs { flex: 1; min-height: 0; overflow: hidden; padding: 10px; display: flex; flex-direction: column; gap: 7px; font-size: 10px; line-height: 1.5; }
 .phone .m { max-width: 80%; padding: 7px 10px; border-radius: 12px; overflow-wrap: anywhere; }
 .phone .them { align-self: flex-start; background: #16222e; color: #cfe2f2; border-bottom-left-radius: 4px; }
 .phone .me { align-self: flex-end; background: #1d6fd6; color: #eaf4ff; border-bottom-right-radius: 4px; }
