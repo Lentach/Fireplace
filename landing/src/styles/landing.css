@@ -163,7 +163,7 @@ nav.on-light .links a.cta { color: #fff; background: var(--blue); }
 .core {
   position: relative; width: var(--coreD); height: var(--coreD);
   display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(circle at 50% 44%, #12202f 0%, #0b1017 62%, #060a10 100%);
+  background: radial-gradient(circle at 50% 44%, #17293c 0%, #0e1724 62%, #081019 100%);
   clip-path: circle(0% at 50% 50%);
 }
 .core .ring { position: absolute; border-radius: 50%; border: 1px dashed rgba(143, 216, 255, .30); will-change: transform; }
@@ -171,7 +171,7 @@ nav.on-light .links a.cta { color: #fff; background: var(--blue); }
 .core .ring.r2 { inset: 10%; border-color: rgba(143, 216, 255, .18); }
 .core .nucleus {
   position: absolute; left: 50%; top: 50%; width: 58%; height: 58%; border-radius: 50%;
-  background: radial-gradient(circle, rgba(143, 216, 255, .16) 0%, rgba(143, 216, 255, .05) 45%, transparent 70%);
+  background: radial-gradient(circle, rgba(143, 216, 255, .22) 0%, rgba(143, 216, 255, .08) 45%, transparent 70%);
   animation: nuc 3.2s ease-in-out infinite;
 }
 @keyframes nuc {
@@ -192,11 +192,12 @@ nav.on-light .links a.cta { color: #fff; background: var(--blue); }
 .sv-row.mine {
   /* indistinguishable from the queue — same color, same metrics; solid
      panel-color background so passing rows occlude cleanly */
-  z-index: 2; opacity: 0; background: #0b1017;
+  z-index: 2; opacity: 0; background: #101c2b;
 }
 .mine-tag {
-  /* the only giveaway: pinned left of the clipped stream, toward the IN port */
-  position: absolute; left: 8px; z-index: 7; font-size: 10.5px; line-height: 1.4;
+  /* the only giveaway: hangs LEFT of the stream, over the shell dots —
+     never on the row's timestamp (owner round 18) */
+  position: absolute; left: -10px; z-index: 7; font-size: 10.5px; line-height: 1.4;
   color: #ffd98a; white-space: nowrap; opacity: 0; pointer-events: none;
 }
 .mc-stamp { margin-top: 22px; text-align: center; font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: #ffd98a; }
@@ -286,7 +287,7 @@ footer a { color: inherit; text-decoration: none; }
   .machine { --coreD: min(72vw, 38vh); left: 50%; top: 46%; }
   .sv-stream { height: 140px; width: min(270px, 92%); }
   .sv-row { font-size: 9px; }
-  .mine-tag { font-size: 9px; left: 4px; }
+  .mine-tag { font-size: 9px; left: -34px; }
   .mc-stamp { margin-top: 12px; font-size: 8px; }
   .phone { width: 230px; }
   .traveler { max-width: 74vw; }
