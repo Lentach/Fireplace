@@ -7,6 +7,20 @@ the real `CosmicBackdrop` theme extension. Frame stats from
 `SchedulerBinding.addTimingsCallback` (same `FrameTiming` data DevTools shows).
 Budget = 16.7 ms (60 fps). All ms.
 
+### Measurement caveats (read before trusting the numbers)
+- Metrics are from `SchedulerBinding.addTimingsCallback` — the SAME `FrameTiming`
+  build/raster data DevTools' Performance view plots — surfaced via the harness
+  (on-screen overlay on web, stdout on Android). This is NOT an interactive
+  DevTools Performance trace / timeline capture.
+- Surface is the harness (`tool/starfield_spike.dart`), which drives the real
+  cosmic `ThemeData` → `ChatBackgroundPattern` → `StarfieldBackground` + a real
+  scrolling `ListView` of bubbles. It is NOT the authenticated `ChatDetailScreen`
+  (that needs a live backend + accounts, unavailable in this environment).
+  ChatDetail adds opaque bubble/chrome widgets on top of the same field, so its
+  extra cost is additive-and-opaque, not starfield-related.
+- Web raster on CanvasKit is often under-reported vs real hardware; the Android
+  emulator over-reports raster (weak host GPU). Both are noted where they matter.
+
 ## Flutter web — Chrome profile, 390×844 viewport
 
 | density | build p50 | build p95 | build max | raster p50 | raster p95 | jank>16.7 |
