@@ -16,17 +16,17 @@ declare global {
 }
 
 /* ---- symmetric timeline (p ranges) ----
-   The relay act owns ~31% of the track (owner: showcase the machine —
-   the visitor should scroll a while with the message inside). Symmetry
-   invariants: wire1 == wire2, sealHold == unsealHold, swallow == emit. */
+   The relay act owns ~23% of the track (owner-tuned: doubled first, then
+   trimmed 25% — long enough to showcase, short enough to keep moving).
+   Symmetry invariants: wire1 == wire2, sealHold == unsealHold, swallow == emit. */
 const T = {
   lift: [0.02, 0.14],
   sealHold: [0.14, 0.26],
-  wire1: [0.26, 0.39],
-  swallow: [0.39, 0.435],
-  inside: [0.435, 0.655],    // the long ride through the window
-  emit: [0.655, 0.70],       // same length as swallow
-  wire2: [0.70, 0.83],       // same length as wire1
+  wire1: [0.26, 0.43],
+  swallow: [0.43, 0.475],
+  inside: [0.475, 0.615],    // the ride through the window
+  emit: [0.615, 0.66],       // same length as swallow
+  wire2: [0.66, 0.83],       // same length as wire1
   unsealHold: [0.83, 0.95],  // same length as sealHold
   drop: [0.95, 0.972],
   land: 0.972,
@@ -44,9 +44,11 @@ export function initJourney(section: HTMLElement) {
   let sent = false, landed = false, plain = '';
   let raw0 = 0;      // raw scroll progress at the moment of send — p normalizes over the remainder
   let lastRaw = 0;
+  let maxP = 0;      // how deep this send's journey got — gates the reverse-reset
   let cipherChars: string[] = [];
   let spans: HTMLSpanElement[] = [], sealAt: number[] = [], openAt: number[] = [];
   let sentMeta: HTMLElement | null = null, landedBubble: HTMLElement | null = null;
+  let sentBubble: HTMLElement | null = null;
 
   const phonePose = (el: HTMLElement, x: number, y: number, s: number, o: number) => {
     const h = el.offsetHeight || 560;
@@ -155,14 +157,16 @@ export function initJourney(section: HTMLElement) {
     sent = true;
     raw0 = Math.min(lastRaw, 0.06);   // clamp: a teleport-scroll must not compress the track
     plain = (draft.value.trim() || 'meet me at eight').slice(0, 40);
+    // like a real chat: the message leaves the input and lives in the thread
+    draft.value = '';
     draft.disabled = true; sendBtn.disabled = true; sendBtn.style.opacity = '.4';
 
-    const m = document.createElement('div');
-    m.className = 'm me'; m.textContent = plain;
+    sentBubble = document.createElement('div');
+    sentBubble.className = 'm me'; sentBubble.textContent = plain;
     sentMeta = document.createElement('div');
     sentMeta.className = 'meta'; sentMeta.textContent = '08:12 ✓';
-    m.appendChild(sentMeta);
-    $('.sender-msgs').appendChild(m);
+    sentBubble.appendChild(sentMeta);
+    $('.sender-msgs').appendChild(sentBubble);
 
     const total = 2 + Math.ceil(plain.length * 4 / 3) + 10;
     cipherChars = Array.from({ length: total }, (_, i) => i === 0 ? '3' : i === 1 ? ':' : rnd(B64));
@@ -176,9 +180,9 @@ export function initJourney(section: HTMLElement) {
       sealAt.push(0.15 + 0.09 * Math.random());   // scramble inside the seal hold
       openAt.push(0.84 + 0.09 * Math.random());   // unscramble inside the unseal hold — same dynamics
     }
-    // padded to the ambient rows' length so it blends into the queue —
-    // only the external "yours →" tag gives it away
-    $('.sv-row.mine').innerHTML = `<span class="t">08:12:03</span>${cipherChars.join('')}${fake(Math.max(0, 40 - total))}`;
+    // clamped AND padded to the ambient rows' 40 chars so it blends into the
+    // queue no matter the message length — only the "yours →" tag gives it away
+    $('.sv-row.mine').innerHTML = `<span class="t">08:12:03</span>${(cipherChars.join('') + fake(40)).slice(0, 40)}`;
 
     landedBubble = document.createElement('div');
     landedBubble.className = 'm them landing';
@@ -186,6 +190,20 @@ export function initJourney(section: HTMLElement) {
     landedBubble.insertAdjacentHTML('beforeend', '<div class="meta">08:12</div>');
 
     if (!auto) $('.journey-hint').style.opacity = '1';
+  }
+
+  /* scroll all the way back to the top → the send undoes: the bubble lifts
+     out of the thread, the compose unlocks EMPTY (type something new), and
+     the whole journey can be replayed with a fresh message */
+  function resetSend() {
+    sent = false; landed = false; maxP = 0;
+    sentBubble?.remove(); sentBubble = null; sentMeta = null;
+    landedBubble?.remove(); landedBubble = null;
+    draft.value = '';
+    draft.disabled = false; sendBtn.disabled = false; sendBtn.style.opacity = '';
+    const tr = $('.traveler');
+    tr.innerHTML = ''; tr.style.opacity = '0';
+    spans = [];
   }
 
   const caps = [...section.querySelectorAll<HTMLElement>('.cap')];
@@ -199,7 +217,11 @@ export function initJourney(section: HTMLElement) {
     // roomy top zone: the visitor can stop and type; skimmers auto-send.
     // p restarts from 0 at the send point (no mid-lift pop on auto-send).
     if (!sent && raw > 0.06) doSend(true);
+    // reset ONLY at the absolute top — well below the 0.06 send trigger,
+    // so the two gates can never oscillate (hysteresis gap ≈ 4% of track)
+    if (sent && maxP > 0.05 && raw <= 0.02) resetSend();
     const p = sent ? clamp((raw - raw0) / (1 - raw0), 0, 1) : 0;
+    maxP = Math.max(maxP, p);
     window.__journey = { p, sent, landed, raw0 };
     const A = anchors();
 
@@ -216,8 +238,8 @@ export function initJourney(section: HTMLElement) {
        the queue, and slides out through OUT before the capsule re-emerges —
        the mirror of how it entered. */
     const rowY = (idx: number) => streamH + 20 - ((t * STREAM_SP + idx * (loop / visN)) % loop);
-    const mineIn = ease(seg(p, 0.42, 0.465));
-    const mineOut = ease(seg(p, 0.625, 0.67));
+    const mineIn = ease(seg(p, 0.46, 0.505));
+    const mineOut = ease(seg(p, 0.585, 0.63));
     const minePres = Math.min(mineIn, 1 - mineOut);
     if (minePres <= 0) mineSlot = -1;
     else if (mineSlot < 0) {
@@ -276,7 +298,7 @@ export function initJourney(section: HTMLElement) {
        opening shot as the message lands. */
     const grow = ease(seg(p, 0.945, 0.985));
     const rpX = lerp(
-      lerp(W * (A.mobile ? 1.35 : 1.15), A.recipC.x, ease(seg(p, A.mobile ? 0.75 : 0.67, A.mobile ? 0.82 : 0.78))),
+      lerp(W * (A.mobile ? 1.35 : 1.15), A.recipC.x, ease(seg(p, A.mobile ? 0.72 : 0.62, A.mobile ? 0.82 : 0.76))),
       W * (A.mobile ? 0.5 : 0.62), grow);
     const rpY = lerp(A.recipC.y, H * (A.mobile ? 0.58 : 0.56), grow);
     const rpS = lerp(A.phoneS, A.mobile ? 1 : 0.95, grow);
@@ -303,11 +325,11 @@ export function initJourney(section: HTMLElement) {
     rk.style.left = `${A.recipC.x - rk.offsetWidth / 2}px`; rk.style.top = `${A.recipC.y + A.keyDy}px`;
 
     /* machine */
-    $('.machine').style.opacity = String(seg(p, 0.32, 0.38) * (A.mobile ? 1 - seg(p, 0.71, 0.79) : 1 - seg(p, 0.90, 0.96)));
+    $('.machine').style.opacity = String(seg(p, 0.36, 0.42) * (A.mobile ? 1 - seg(p, 0.67, 0.75) : 1 - seg(p, 0.90, 0.96)));
     const spin = ease(seg(p, T.swallow[0], T.wire2[0]));
     rotors.forEach((r, i) => { r.style.transform = `rotate(${spin * (360 + i * 220) + t * 8}deg)`; });
-    $('.scan-in').style.opacity = String(seg(p, 0.385, 0.405) * (1 - seg(p, 0.42, 0.44)));
-    $('.scan-out').style.opacity = String(seg(p, 0.655, 0.675) * (1 - seg(p, 0.695, 0.715)));
+    $('.scan-in').style.opacity = String(seg(p, 0.425, 0.445) * (1 - seg(p, 0.46, 0.48)));
+    $('.scan-out').style.opacity = String(seg(p, 0.615, 0.635) * (1 - seg(p, 0.655, 0.675)));
 
     const mine = $('.sv-row.mine');
     const mineO = clamp(Math.min(mineFlowY / 26, (streamH - mineFlowY) / 26), 0, 0.85) * minePres;
@@ -331,7 +353,7 @@ export function initJourney(section: HTMLElement) {
     } else if (p < T.wire1[1]) {
       const k = ease(seg(p, T.wire1[0], T.wire1[1]));
       pos = bez(A.sealP, A.cp1, A.intake, k);
-      scale = lerp(0.9, 0.58, ease(seg(p, 0.26, 0.35))); capsule = true;
+      scale = lerp(0.9, 0.58, ease(seg(p, 0.26, 0.38))); capsule = true;
     } else if (p < T.swallow[1]) {
       pos = A.intake; capsule = true;
       scale = 0.58 * (1 - ease(seg(p, T.swallow[0], T.swallow[1])));
@@ -343,7 +365,7 @@ export function initJourney(section: HTMLElement) {
     } else if (p < T.wire2[1]) {
       const k = ease(seg(p, T.wire2[0], T.wire2[1]));
       pos = bez(A.outlet, A.cp2, A.unsealP, k);
-      scale = lerp(0.58, 0.9, ease(seg(p, 0.74, 0.83))); capsule = true;   // grows on approach, mirror of wire1 shrink
+      scale = lerp(0.58, 0.9, ease(seg(p, 0.71, 0.83))); capsule = true;   // grows on approach, mirror of wire1 shrink
     } else if (p < T.unsealHold[1]) {
       pos = A.unsealP; scale = 0.9;
       capsule = p < 0.86;                        // chrome fades as plaintext returns
@@ -374,8 +396,8 @@ export function initJourney(section: HTMLElement) {
       ctx.fillStyle = gg; ctx.fill();
     } else if (trail.length) trail.pop();
 
-    ring(ctx, A.intake, seg(p, 0.38, 0.435), 40, '143,216,255');
-    ring(ctx, A.outlet, seg(p, 0.655, 0.705), 40, '143,216,255');
+    ring(ctx, A.intake, seg(p, 0.42, 0.475), 40, '143,216,255');
+    ring(ctx, A.outlet, seg(p, 0.615, 0.665), 40, '143,216,255');
     ring(ctx, landPt, seg(p, 0.965, 1), 34, '255,217,138');
 
     /* char states — seal and unseal share the same staggered mechanics */
