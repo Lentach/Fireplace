@@ -4,6 +4,8 @@ import 'package:flutter/material.dart';
 
 import '../theme/glass_theme.dart';
 import 'hieroglyph_glyphs.dart';
+import '../theme/cosmic_theme.dart';
+import 'starfield_background.dart';
 
 /// Chat wallpaper (owner-locked design v3.5, 2026-07-11): "temple columns" —
 /// hieroglyphs stacked in vertical registers with faint column separators,
@@ -45,6 +47,33 @@ class _ChatBackgroundPatternState extends State<ChatBackgroundPattern> {
 
   @override
   Widget build(BuildContext context) {
+    // Cosmic theme: the animated starfield IS the chat background — it renders
+    // through this same wallpaper system (never a second, conflicting one) and
+    // ignores the glyph/default toggle, since the starfield is the theme's
+    // identity, not an optional doodle.
+    final cosmic = CosmicBackdrop.maybeOf(context);
+    if (cosmic != null) {
+      final bg = widget.backgroundColor ?? cosmic.baseColor;
+      return Container(
+        color: bg,
+        child: Stack(
+          fit: StackFit.expand,
+          children: [
+            // enabled == false → plain opaque space base (the Cosmic
+            // "Starfield background" setting turned off). When on, the field
+            // pauses off-screen and renders STATIC under OS reduced-motion —
+            // both handled inside StarfieldBackground.
+            if (widget.enabled)
+              StarfieldBackground(
+                starColor: cosmic.starColor,
+                density: cosmic.density,
+              ),
+            widget.child,
+          ],
+        ),
+      );
+    }
+
     final glass = GlassTheme.of(context);
     final color = widget.patternColor ?? glass.wallpaperTint;
     final bg = widget.backgroundColor ?? Colors.transparent;

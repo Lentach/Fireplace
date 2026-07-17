@@ -284,17 +284,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
             fontWeight: FontWeight.w500,
           ),
         ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            themeIconBtn('light', Icons.light_mode, l10n.themeOptionLight),
-            const SizedBox(width: 8),
-            themeIconBtn('teal', Icons.eco, l10n.themeOptionTealStone),
-            const SizedBox(width: 8),
-            themeIconBtn('dark', Icons.dark_mode, l10n.themeOptionDark),
-            const SizedBox(width: 8),
-            themeIconBtn('blue', Icons.water_drop, l10n.themeOptionBlue),
-          ],
+        subtitle: Padding(
+          padding: const EdgeInsets.only(top: 12),
+          // Wrap (not a trailing Row): 5 themes overflow a narrow trailing
+          // Row; wrapping keeps every 44px tap target on any phone width.
+          child: Wrap(
+            spacing: 8,
+            runSpacing: 8,
+            children: [
+              themeIconBtn('light', Icons.light_mode, l10n.themeOptionLight),
+              themeIconBtn('teal', Icons.eco, l10n.themeOptionTealStone),
+              themeIconBtn('dark', Icons.dark_mode, l10n.themeOptionDark),
+              themeIconBtn('blue', Icons.water_drop, l10n.themeOptionBlue),
+              themeIconBtn('cosmic', Icons.auto_awesome, l10n.themeOptionCosmic),
+            ],
+          ),
         ),
       ),
     );
@@ -376,6 +380,48 @@ class _SettingsScreenState extends State<SettingsScreen> {
               l10n.settingsWallpaperGlyphs,
             ),
           ],
+        ),
+      ),
+    );
+  }
+
+  /// Cosmic-only: explicit animated-starfield on/off. OFF = plain opaque space
+  /// background (the simple/opaque fallback). Independent of OS reduced-motion,
+  /// which renders the field static rather than off.
+  Widget _buildCosmicStarfieldTile(
+    BuildContext context,
+    SettingsProvider settings,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
+    return _settingsTileShell(
+      SwitchListTile(
+        secondary: Icon(
+          Icons.auto_awesome,
+          color: colorScheme.primary,
+          size: 24,
+        ),
+        title: Text(
+          l10n.settingsCosmicStarfield,
+          style: RpgTheme.bodyFont(
+            fontSize: 14,
+            color: colorScheme.onSurface,
+            fontWeight: FontWeight.w500,
+          ),
+        ),
+        subtitle: Text(
+          l10n.settingsCosmicStarfieldSubtitle,
+          style: RpgTheme.bodyFont(
+            fontSize: 12,
+            color: colorScheme.onSurfaceVariant,
+          ),
+        ),
+        value: settings.cosmicStarfield,
+        onChanged: settings.setCosmicStarfield,
+        activeThumbColor: colorScheme.primary,
+        contentPadding: const EdgeInsets.symmetric(
+          horizontal: 16,
+          vertical: 4,
         ),
       ),
     );
@@ -558,6 +604,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   _buildThemeTile(context, settings),
                   _buildLanguageTile(context, settings),
                   _buildWallpaperTile(context, settings),
+                  if (settings.themePreference == 'cosmic')
+                    _buildCosmicStarfieldTile(context, settings),
 
                   _buildSettingsTile(
                     icon: Icons.security,

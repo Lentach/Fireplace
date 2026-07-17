@@ -291,6 +291,9 @@
   "themeOptionDark": "Dark gray + teal accent",
   "themeOptionBlue": "Telegram-style blue (dark)",
   "themeOptionTealStone": "Teal + stone (modern light)",
+  "themeOptionCosmic": "Cosmic (starfield, dark)",
+  "settingsCosmicStarfield": "Starfield background",
+  "settingsCosmicStarfieldSubtitle": "Animated stars behind chats (off = plain space)",
 
   "rotateDeviceTitle": "Rotate your device",
   "@rotateDeviceTitle": {

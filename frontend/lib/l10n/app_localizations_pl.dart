@@ -758,6 +758,16 @@ class AppLocalizationsPl extends AppLocalizations {
   String get themeOptionTealStone => 'Turkus i kamień (nowoczesny jasny)';
 
   @override
+  String get themeOptionCosmic => 'Kosmos (gwiazdy, ciemny)';
+
+  @override
+  String get settingsCosmicStarfield => 'Tło z gwiazdami';
+
+  @override
+  String get settingsCosmicStarfieldSubtitle =>
+      'Animowane gwiazdy za czatami (wył. = zwykły kosmos)';
+
+  @override
   String get rotateDeviceTitle => 'Obróć urządzenie';
 
   @override

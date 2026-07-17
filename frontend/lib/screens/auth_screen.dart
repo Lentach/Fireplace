@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 import '../theme/rpg_theme.dart';
 import '../providers/auth_provider.dart';
+import '../providers/settings_provider.dart';
 import '../widgets/auth_form.dart';
 import '../widgets/glass/glass_surface.dart';
 import '../widgets/chat_background_pattern.dart';
@@ -20,6 +21,7 @@ class _AuthScreenState extends State<AuthScreen> {
   @override
   Widget build(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
+    final settings = context.watch<SettingsProvider>();
     final l10n = AppLocalizations.of(context);
     final isDark = RpgTheme.isDark(context);
     final colorScheme = Theme.of(context).colorScheme;
@@ -38,6 +40,11 @@ class _AuthScreenState extends State<AuthScreen> {
 
     return Scaffold(
       body: ChatBackgroundPattern(
+        // Cosmic honors the explicit "Starfield background" setting; other
+        // themes keep the auth screen's default patterned background.
+        enabled: settings.themePreference == 'cosmic'
+            ? settings.cosmicStarfield
+            : true,
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(

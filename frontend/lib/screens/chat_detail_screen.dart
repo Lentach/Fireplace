@@ -672,12 +672,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         ? 8.0
         : MediaQuery.paddingOf(context).top + 8.0;
     final currentUserId = context.read<AuthProvider>().currentUser?.id;
+    final settings = context.watch<SettingsProvider>();
+    // Cosmic: the starfield is the background; its explicit "Starfield
+    // background" setting is the opaque escape hatch. Non-cosmic themes use the
+    // glyph wallpaper toggle unchanged.
     final showGlyphs =
         currentUserId != null &&
-        context.watch<SettingsProvider>().chatWallpaper == ChatWallpaper.glyphs;
+        settings.chatWallpaper == ChatWallpaper.glyphs;
     return ChatBackgroundPattern(
       backgroundColor: messagesAreaBg,
-      enabled: showGlyphs,
+      enabled: settings.themePreference == 'cosmic'
+          ? settings.cosmicStarfield
+          : showGlyphs,
       child: messages.isEmpty
           ? Center(
               child: Text(

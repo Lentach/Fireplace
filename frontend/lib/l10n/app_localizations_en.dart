@@ -747,6 +747,16 @@ class AppLocalizationsEn extends AppLocalizations {
   String get themeOptionTealStone => 'Teal + stone (modern light)';
 
   @override
+  String get themeOptionCosmic => 'Cosmic (starfield, dark)';
+
+  @override
+  String get settingsCosmicStarfield => 'Starfield background';
+
+  @override
+  String get settingsCosmicStarfieldSubtitle =>
+      'Animated stars behind chats (off = plain space)';
+
+  @override
   String get rotateDeviceTitle => 'Rotate your device';
 
   @override

@@ -132,6 +132,23 @@ class GlassTheme extends ThemeExtension<GlassTheme> {
     opaqueFill: Color(0xFFFFFFFF),
   );
 
+  /// `cosmic` theme — Starfield dark (ported from the landing hero). Glass
+  /// chrome sits over the near-black starfield; fill alpha bumped vs blue so
+  /// content stays ≥4.5:1 even over the brightest twinkle.
+  static const cosmic = GlassTheme(
+    fill: Color(0x800E1826),
+    border: Color(0x2A8FD8FF),
+    highlight: Color(0x14FFFFFF),
+    activeCapsule: Color(0x3D1D6FD6),
+    onGlassMuted: Color(0xFFC6D6E2),
+    onGlassAccent: Color(0xFFA5DBFF),
+    wallpaperTint: Color(0x1F7FB8E8),
+    datePillBg: Color(0xC004060C),
+    datePillText: Color(0xFF9FB4C4),
+    shadow: _shadowDark,
+    opaqueFill: Color(0xFF0E1826),
+  );
+
   @override
   ThemeExtension<GlassTheme> copyWith() => this;
 

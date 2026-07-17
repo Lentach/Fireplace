@@ -279,6 +279,9 @@
   "themeOptionDark": "Ciemny szary z turkusowym akcentem",
   "themeOptionBlue": "Niebieski w stylu Telegram (ciemny)",
   "themeOptionTealStone": "Turkus i kamień (nowoczesny jasny)",
+  "themeOptionCosmic": "Kosmos (gwiazdy, ciemny)",
+  "settingsCosmicStarfield": "Tło z gwiazdami",
+  "settingsCosmicStarfieldSubtitle": "Animowane gwiazdy za czatami (wył. = zwykły kosmos)",
 
   "rotateDeviceTitle": "Obróć urządzenie",
   "rotateDeviceMessage": "Fireplace działa tylko w trybie pionowym.",

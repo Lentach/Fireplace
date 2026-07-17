@@ -1400,6 +1400,24 @@ abstract class AppLocalizations {
   /// **'Turkus i kamień (nowoczesny jasny)'**
   String get themeOptionTealStone;
 
+  /// No description provided for @themeOptionCosmic.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kosmos (gwiazdy, ciemny)'**
+  String get themeOptionCosmic;
+
+  /// No description provided for @settingsCosmicStarfield.
+  ///
+  /// In pl, this message translates to:
+  /// **'Tło z gwiazdami'**
+  String get settingsCosmicStarfield;
+
+  /// No description provided for @settingsCosmicStarfieldSubtitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Animowane gwiazdy za czatami (wył. = zwykły kosmos)'**
+  String get settingsCosmicStarfieldSubtitle;
+
   /// No description provided for @rotateDeviceTitle.
   ///
   /// In pl, this message translates to:

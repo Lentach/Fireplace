@@ -5,7 +5,8 @@ import '../theme/rpg_theme.dart';
 
 enum ChatWallpaper { defaultBackground, glyphs }
 class SettingsProvider extends ChangeNotifier {
-  /// 'light' | 'teal' (Teal + stone, light) | 'dark' (Wire gray) | 'blue' (Telegram-style dark)
+  /// 'light' | 'teal' (Teal+stone, light) | 'dark' (Wire gray) | 'blue'
+  /// (Telegram dark) | 'cosmic' (starfield dark)
   String _themePreference = 'dark';
 
   /// 'pl' | 'en' — app UI language (default Polish)
@@ -40,28 +41,38 @@ class SettingsProvider extends ChangeNotifier {
         return RpgTheme.themeDataTealStone;
       case 'dark':
         return RpgTheme.themeDataDarkGray;
+      case 'cosmic':
+        return RpgTheme.themeDataCosmic;
       case 'blue':
       default:
         return RpgTheme.themeDataBlue;
     }
   }
 
-  ThemeData get darkTheme =>
-      _themePreference == 'dark'
-          ? RpgTheme.themeDataDarkGray
-          : RpgTheme.themeDataBlue;
+  ThemeData get darkTheme {
+    switch (_themePreference) {
+      case 'dark':
+        return RpgTheme.themeDataDarkGray;
+      case 'cosmic':
+        return RpgTheme.themeDataCosmic;
+      default:
+        return RpgTheme.themeDataBlue;
+    }
+  }
 
   /// [initialThemePreference] sets theme synchronously (widget tests); otherwise loads from prefs.
   SettingsProvider({String? initialThemePreference}) {
     if (initialThemePreference == 'light' ||
         initialThemePreference == 'teal' ||
         initialThemePreference == 'dark' ||
+        initialThemePreference == 'cosmic' ||
         initialThemePreference == 'blue') {
       _themePreference = initialThemePreference!;
     } else {
       _loadThemePreference();
     }
     _loadLocalePreference();
+    _loadCosmicStarfield();
   }
 
   Future<void> _loadLocalePreference() async {
@@ -97,6 +108,7 @@ class SettingsProvider extends ChangeNotifier {
     if (saved == 'light' ||
         saved == 'teal' ||
         saved == 'dark' ||
+        saved == 'cosmic' ||
         saved == 'blue') {
       _themePreference = saved!;
     } else {
@@ -109,6 +121,7 @@ class SettingsProvider extends ChangeNotifier {
     if (preference != 'light' &&
         preference != 'teal' &&
         preference != 'dark' &&
+        preference != 'cosmic' &&
         preference != 'blue') {
       return;
     }
@@ -164,5 +177,31 @@ class SettingsProvider extends ChangeNotifier {
     } else {
       await prefs.remove(_wallpaperKey(userId));
     }
+  }
+
+  /// Cosmic theme only: animated starfield background on/off (default ON).
+  /// OFF = plain opaque space base (the simple/opaque fallback path). This is
+  /// independent of the OS reduced-motion signal, which renders the field
+  /// STATIC (not off) regardless of this toggle.
+  bool _cosmicStarfield = true;
+
+  bool get cosmicStarfield => _cosmicStarfield;
+
+  static const String _cosmicStarfieldKey = 'cosmic_starfield_enabled';
+
+  Future<void> _loadCosmicStarfield() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getBool(_cosmicStarfieldKey) ?? true;
+    if (saved == _cosmicStarfield) return;
+    _cosmicStarfield = saved;
+    notifyListeners();
+  }
+
+  Future<void> setCosmicStarfield(bool enabled) async {
+    if (enabled == _cosmicStarfield) return;
+    _cosmicStarfield = enabled;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_cosmicStarfieldKey, enabled);
   }
 }

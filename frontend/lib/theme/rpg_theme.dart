@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'glass_theme.dart';
+import 'cosmic_theme.dart';
 
 /// Theme-specific colors for chat UI. Use via `Theme.of(context).extension<FireplaceColors>()!`
 class FireplaceColors extends ThemeExtension<FireplaceColors> {
@@ -192,6 +193,29 @@ class RpgTheme {
   static const Color activeTabBgTealStone = Color(0xFFF0FDFA); // teal-50
   static const Color settingsTileBorderTealStone = borderTealStone;
 
+  // Cosmic (dark) — from the landing starfield hero
+  // (landing/src/styles/landing.css :root/.phone/.enc). Site-EXACT: accent
+  // #8fd8ff (--ice), blue #1d6fd6 (--blue + .me), text #eef6fb (--txt), input
+  // #0b1017 (--ink), conv bg #0a0f16 (.phone .screen), borders #1a2531 (.bar),
+  // theirs #16222e (.them). DERIVED for app-only chrome the site has no
+  // equivalent for (appbar/scaffold/active-tab/muted): extrapolated from the
+  // site's near-#000 space + ink, contrast-gated — NOT 1:1.
+  static const Color accentCosmic = Color(0xFF8FD8FF); // --ice (site)
+  static const Color secondaryCosmic = Color(0xFF1D6FD6); // --blue (site)
+  static const Color backgroundCosmic = Color(0xFF05070D); // derived: deep space chrome
+  static const Color surfaceCosmic = Color(0xFF0F1926); // derived: appbar/card lift
+  static const Color messagesAreaBgCosmic = Color(0xFF04060C); // derived: near-#000 starfield base
+  static const Color textColorCosmic = Color(0xFFEEF6FB); // --txt (site)
+  static const Color mutedTextCosmic = Color(0xFF859096); // derived: txt·.55 flattened on base, ≥4.5:1
+  static const Color mineMsgBgCosmic = Color(0xFF1D6FD6); // .phone .me (site; white 4.95:1)
+  static const Color theirsMsgBgCosmic = Color(0xFF16222E); // .phone .them (site)
+  static const Color inputBgCosmic = Color(0xFF0B1017); // --ink (site)
+  static const Color tabBorderCosmic = Color(0xFF1A2531); // .phone .bar border (site)
+  static const Color convItemBgCosmic = Color(0xFF0A0F16); // .phone .screen (site)
+  static const Color convItemBorderCosmic = Color(0xFF1A2531); // .phone .bar border (site)
+  static const Color activeTabBgCosmic = Color(0xFF12283A); // derived: ice-tinted selection
+  static const Color settingsTileBorderCosmic = Color(0xFF1A2531); // .bar border (site)
+
   static bool isDark(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark;
 
@@ -209,7 +233,9 @@ class RpgTheme {
     required bool isMine,
     required String themePreference,
   }) {
-    if (themePreference == 'blue' || themePreference == 'teal') {
+    if (themePreference == 'blue' ||
+        themePreference == 'teal' ||
+        themePreference == 'cosmic') {
       if (isMine) {
         return isDark(context)
             ? Colors.white.withValues(alpha: 0.86)
@@ -236,6 +262,8 @@ class RpgTheme {
         return accentBlue;
       case 'dark':
         return accentDarkGray;
+      case 'cosmic':
+        return accentCosmic;
       default:
         return Theme.of(context).colorScheme.primary;
     }
@@ -321,6 +349,9 @@ class RpgTheme {
 
   /// Teal + stone – light modern messenger (stone neutrals, teal accent).
   static ThemeData get themeDataTealStone => _buildTheme(_tealStoneSpec);
+
+  /// Cosmic – dark starfield (ported from the landing hero); ice accent.
+  static ThemeData get themeDataCosmic => _buildTheme(_cosmicSpec);
 
   // ── Theme factory ────────────────────────────────────────────────────────
   // The four themes share one structure and differ only by a color set
@@ -466,7 +497,7 @@ class RpgTheme {
           fontWeight: FontWeight.w500,
         ),
       ),
-      extensions: [fc, s.glass],
+      extensions: [fc, s.glass, if (s.backdrop != null) s.backdrop!],
     );
   }
 
@@ -595,6 +626,39 @@ class RpgTheme {
     glass: GlassTheme.teal,
   );
 
+  static const _ThemeSpec _cosmicSpec = _ThemeSpec(
+    brightness: Brightness.dark,
+    background: backgroundCosmic,
+    primary: accentCosmic,
+    secondary: secondaryCosmic,
+    surface: surfaceCosmic,
+    // Ice #8FD8FF is too bright for white (1.6:1) → black foreground.
+    onPrimary: Colors.black,
+    onSecondary: Colors.white, // white on #1D6FD6 is 4.95:1
+    onSurface: textColorCosmic,
+    hint: mutedTextCosmic,
+    label: mutedTextCosmic,
+    buttonBg: accentCosmic,
+    buttonSide: accentCosmic,
+    fab: accentCosmic,
+    selectedTile: activeTabBgCosmic,
+    fireplace: FireplaceColors(
+      inputBg: inputBgCosmic,
+      convItemBorder: convItemBorderCosmic,
+      convItemBg: convItemBgCosmic,
+      messagesAreaBg: messagesAreaBgCosmic,
+      mineMsgBg: mineMsgBgCosmic,
+      theirsMsgBg: theirsMsgBgCosmic,
+      settingsTileBg: surfaceCosmic,
+      settingsTileBorder: settingsTileBorderCosmic,
+      tabBorder: tabBorderCosmic,
+      borderColor: secondaryCosmic,
+      mutedText: mutedTextCosmic,
+    ),
+    glass: GlassTheme.cosmic,
+    backdrop: CosmicBackdrop.starfield,
+  );
+
   static InputDecoration rpgInputDecoration({
     String? hintText,
     IconData? prefixIcon,
@@ -633,6 +697,7 @@ class _ThemeSpec {
   final Color selectedTile;
   final FireplaceColors fireplace;
   final GlassTheme glass;
+  final CosmicBackdrop? backdrop;
 
   const _ThemeSpec({
     required this.brightness,
@@ -651,5 +716,6 @@ class _ThemeSpec {
     required this.selectedTile,
     required this.fireplace,
     required this.glass,
+    this.backdrop,
   });
 }

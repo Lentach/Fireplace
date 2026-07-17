@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/theme/glass_theme.dart';
+import 'package:fireplace/theme/cosmic_theme.dart';
 
 /// Golden lock for the four RpgTheme ThemeData builders. Captures every resolved
 /// field the themeDataBlue/DarkGray/Light/TealStone builders produce today, so a
@@ -296,5 +297,56 @@ void main() {
       ),
       glass: GlassTheme.teal,
     );
+  });
+
+  testWidgets('themeDataCosmic golden', (tester) async {
+    final t = await capture(tester, RpgTheme.themeDataCosmic);
+    checkTheme(
+      t,
+      brightness: Brightness.dark,
+      primary: RpgTheme.accentCosmic,
+      secondary: RpgTheme.secondaryCosmic,
+      surface: RpgTheme.surfaceCosmic,
+      // Ice #8FD8FF too bright for white; #1D6FD6 takes white (4.95:1).
+      onPrimary: Colors.black,
+      onSecondary: Colors.white,
+      onSurface: RpgTheme.textColorCosmic,
+      appBarBg: RpgTheme.surfaceCosmic,
+      appBarTitle: RpgTheme.accentCosmic,
+      inputFill: RpgTheme.inputBgCosmic,
+      inputHint: RpgTheme.mutedTextCosmic,
+      inputLabel: RpgTheme.mutedTextCosmic,
+      inputFocused: RpgTheme.accentCosmic,
+      elevatedBg: RpgTheme.accentCosmic,
+      elevatedSide: RpgTheme.accentCosmic,
+      elevatedFg: Colors.black,
+      textButtonFg: RpgTheme.accentCosmic,
+      fab: RpgTheme.accentCosmic,
+      fabFg: Colors.black,
+      selectedTile: RpgTheme.activeTabBgCosmic,
+      divider: RpgTheme.convItemBorderCosmic,
+      titleLarge: RpgTheme.accentCosmic,
+      bodyMedium: RpgTheme.textColorCosmic,
+      bodySmall: RpgTheme.mutedTextCosmic,
+      fc: const FireplaceColors(
+        inputBg: RpgTheme.inputBgCosmic,
+        convItemBorder: RpgTheme.convItemBorderCosmic,
+        convItemBg: RpgTheme.convItemBgCosmic,
+        messagesAreaBg: RpgTheme.messagesAreaBgCosmic,
+        mineMsgBg: RpgTheme.mineMsgBgCosmic,
+        theirsMsgBg: RpgTheme.theirsMsgBgCosmic,
+        settingsTileBg: RpgTheme.surfaceCosmic,
+        settingsTileBorder: RpgTheme.settingsTileBorderCosmic,
+        tabBorder: RpgTheme.tabBorderCosmic,
+        borderColor: RpgTheme.secondaryCosmic,
+        mutedText: RpgTheme.mutedTextCosmic,
+      ),
+      glass: GlassTheme.cosmic,
+    );
+    // Cosmic is the ONLY theme carrying the starfield backdrop marker.
+    expect(t.extension<CosmicBackdrop>(), isNotNull);
+    expect(t.extension<CosmicBackdrop>()!.density, 120);
+    expect(RpgTheme.themeDataBlue.extension<CosmicBackdrop>(), isNull);
+    expect(RpgTheme.themeDataDarkGray.extension<CosmicBackdrop>(), isNull);
   });
 }
