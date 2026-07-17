@@ -1,5 +1,38 @@
 # Cosmic starfield — performance spike results
 
+## DevTools frame-time capture (VM Service `Flutter.Frame` stream) — Android emulator
+
+Captured the authentic DevTools frame-times source: the profile app's Dart VM
+Service `Extension` stream `Flutter.Frame` events (build + raster + total elapsed
+per frame) — the exact data DevTools' "Flutter Frames" chart plots — read
+programmatically over the VM-service websocket while the cosmic starfield
+scrolled behind the chat. Android x86 emulator (gphone64, API 34), profile.
+
+| config | frames | build p50/p95 | raster p50/p95 | elapsed p50/p95 | jank (elapsed>16.7) |
+|--------|-------:|--------------:|---------------:|----------------:|--------------------:|
+| starfield d=120 (shipped) | 3314 | 1.72 / 4.56 | 15.06 / 28.97 | 26.85 / 54.38 | **93.6%** |
+| starfield d=60 | 2223 | 1.76 / 8.31 | 14.95 / 29.39 | 27.32 / 58.80 | **94.2%** |
+| opaque d=0 (NO field) | 6098 | 1.53 / 3.95 | 14.39 / 26.90 | 25.70 / 48.11 | **85.1%** |
+
+**Honest reading:** the emulator janks on the MAJORITY of frames even with NO
+starfield (85.1% at the opaque baseline) — its software/host-GPU raster floor
+(~14 ms p50) alone eats almost the whole 16.7 ms budget. The animated-field
+configuration adds a real but small increment: ~+9 pp jank over opaque,
+d=120 93.6% and d=60 94.2%. That increment is DENSITY-independent (60 ≈ 120), so
+cutting star count is not the lever. Going STATIC (reduced-motion) removes the
+ticker-driven repaints — expected to land near the opaque baseline, though it
+keeps one cached static layer and was NOT separately captured on this stream, so
+it is not claimed equal to d=0. The opaque baseline itself STILL janks (85.1%),
+because the jank is scroll-raster bound. Conclusions:
+- Density 60 vs 120 has no material effect; any ANIMATED field carries a
+  measurable incremental cost (~+9 pp) over opaque on this emulator.
+- The x86 emulator is not a valid 60 fps proxy for this scrolling UI (it fails at
+  the opaque baseline and density knobs don't move it).
+- On a real-GPU surface (web, below) the same field is 0.0% jank.
+- **Mobile 60 fps is NOT validated.** The only mobile target available here is the
+  x86 emulator, which cannot validate it either way. A physical-device capture is
+  the outstanding, unresolved confirmation — NOT performed (no device available).
+
 Harness: `tool/starfield_spike.dart` (profile mode). Drives the PRODUCTION path
 `RpgTheme.themeDataCosmic → ChatBackgroundPattern → StarfieldBackground` behind a
 continuously auto-scrolling 200-item chat bubble list. Density overridden through
