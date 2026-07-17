@@ -432,19 +432,19 @@ export function initJourney(section: HTMLElement) {
     const eh = open * presence;
     if (eh > 0.02) {
       const rr = open * (A.coreR + 4);   // just outside the DOM face edge
-      const halo = ctx.createRadialGradient(A.coreC.x, A.coreC.y, rr * 0.8, A.coreC.x, A.coreC.y, rr * 1.4);
+      const halo = ctx.createRadialGradient(A.coreC.x, A.coreC.y, rr * 0.78, A.coreC.x, A.coreC.y, rr * 1.62);
       halo.addColorStop(0, 'rgba(0,0,0,0)');
-      halo.addColorStop(0.33, `rgba(255,178,102,${0.14 * eh})`);
+      halo.addColorStop(0.28, `rgba(255,178,102,${0.20 * eh})`);
       halo.addColorStop(1, 'rgba(0,0,0,0)');
       ctx.fillStyle = halo;
-      ctx.fillRect(A.coreC.x - rr * 1.5, A.coreC.y - rr * 1.5, rr * 3, rr * 3);
+      ctx.fillRect(A.coreC.x - rr * 1.7, A.coreC.y - rr * 1.7, rr * 3.4, rr * 3.4);
       ctx.beginPath(); ctx.arc(A.coreC.x, A.coreC.y, rr, 0, 6.28);
-      ctx.strokeStyle = `rgba(255,214,166,${0.5 * eh})`; ctx.lineWidth = 1.8;
-      ctx.shadowColor = 'rgba(255,190,120,.9)'; ctx.shadowBlur = 14; ctx.stroke();
+      ctx.strokeStyle = `rgba(255,214,166,${0.6 * eh})`; ctx.lineWidth = 2.4;
+      ctx.shadowColor = 'rgba(255,190,120,.95)'; ctx.shadowBlur = 22; ctx.stroke();
       // doppler beaming: the side spinning toward the viewer burns brighter
       ctx.beginPath(); ctx.arc(A.coreC.x, A.coreC.y, rr, 2.2, 4.35);
-      ctx.strokeStyle = `rgba(255,238,214,${0.75 * eh})`; ctx.lineWidth = 2.6;
-      ctx.shadowBlur = 22; ctx.stroke(); ctx.shadowBlur = 0;
+      ctx.strokeStyle = `rgba(255,240,218,${0.85 * eh})`; ctx.lineWidth = 3.4;
+      ctx.shadowBlur = 34; ctx.stroke(); ctx.shadowBlur = 0;
     }
     /* IN/OUT ports live ON the shell equator — glowing slits + tags; they
        flare while the traveler is scanned through (old slot-scan windows) */
