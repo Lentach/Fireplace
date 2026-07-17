@@ -82,20 +82,16 @@ const repo = 'https://github.com/Lentach/Fireplace';
     </div>
     <span class="keytag sender-key">🔑 your key — never leaves this device</span>
 
-    <!-- the relay machine -->
+    <!-- the relay node — the canvas draws a dot-shell around this core;
+         the journey reveals it through a clip-circle synced to the shell's
+         iris. IN/OUT ports live on the shell (canvas), not in the DOM. -->
     <div class="machine">
-      <div class="mc-head">
-        <span class="lbl"><span class="dotpulse"></span> fireplace relay nº1<span class="lbl-tail"> · the only stop we own</span></span>
-        <div class="mc-rotors">
-          <div class="rotor" data-rotor>I</div>
-          <div class="rotor" data-rotor>II</div>
-          <div class="rotor" data-rotor>III</div>
-        </div>
-      </div>
-      <div class="mc-body">
-        <div class="slot in"><div class="slit"></div><span class="tag">in</span><div class="scan scan-in"></div></div>
-        <div class="mc-inner"><div class="sv-stream"></div></div>
-        <div class="slot out"><div class="slit"></div><span class="tag">out</span><div class="scan scan-out"></div></div>
+      <div class="mc-head"><span class="lbl"><span class="dotpulse"></span> fireplace relay nº1<span class="lbl-tail"> · the only stop we own</span></span></div>
+      <div class="core">
+        <div class="ring r1" data-rotor></div>
+        <div class="ring r2" data-rotor></div>
+        <div class="nucleus"></div>
+        <div class="sv-stream"></div>
       </div>
       <div class="mc-stamp">routes everything · reads nothing</div>
     </div>

@@ -10,6 +10,7 @@
 // Mid-page integration: no scroll lock. Sending is interactive at the top of
 // the section; if the visitor just keeps scrolling, the message auto-sends.
 import { B64, bez, clamp, drawStars, ease, fake, fit, lerp, makeStars, rectC, ring, rnd, seg, type Pt } from './util';
+import { makeShell } from './shell';
 
 declare global {
   interface Window { __journey?: { p: number; sent: boolean; landed: boolean; raw0: number; dir: number } }
@@ -61,7 +62,7 @@ export function initJourney(section: HTMLElement) {
     el.style.opacity = String(o);
   };
 
-  function anchors() {
+  function anchors(p: number) {
     const mobile = W < 700;
     // phonePose keeps the visual bottom at y + h/2 regardless of scale
     // (center-origin compensation), so clearances use the UNSCALED height.
@@ -76,15 +77,25 @@ export function initJourney(section: HTMLElement) {
     const sideY = mobile ? H * 0.40 : Math.min(H * 0.66, railTop - ph / 2 - 56);
     const senderC = mobile ? { x: W * 0.5, y: sideY } : { x: W * 0.20, y: sideY };
     const recipC = mobile ? { x: W * 0.5, y: sideY } : { x: W * 0.80, y: sideY };
-    const intake = rectC($('.slot.in'));
-    const outlet = rectC($('.slot.out'));
+    // the relay node: sphere geometry derived from the DOM core's box — the
+    // dot-shell wraps it, the IN/OUT ports sit on the shell's equator, and
+    // the wires plug in there. The radius follows the journey: materializes
+    // mid-size, grows to full for the act, and (desktop) shrinks back to a
+    // sealed mini that lingers where the machine used to sit.
+    const coreEl = $('.core');
+    const coreC = rectC(coreEl);
+    const grow = ease(seg(p, 0.33, 0.425));
+    const shrink = mobile ? 0 : ease(seg(p, 0.71, 0.78));
+    const shellR = (coreEl.offsetWidth || 300) / 2 * 1.16 * (0.55 + 0.45 * grow) * (1 - 0.55 * shrink);
+    const intake = { x: coreC.x - shellR, y: coreC.y };
+    const outlet = { x: coreC.x + shellR, y: coreC.y };
     const holdY = mobile ? H * 0.76 : H * 0.55;
     // Clean mirrored wire curves: leave the hold horizontally, bend up into
-    // the slit. Single-bend quadratics, symmetric by construction.
+    // the shell port. Single-bend quadratics, symmetric by construction.
     const sealP = { x: mobile ? W * 0.5 : W * 0.38, y: holdY };
     const unsealP = { x: mobile ? W * 0.5 : W * 0.62, y: holdY };
     return {
-      mobile, senderC, recipC, intake, outlet, sealP, unsealP,
+      mobile, senderC, recipC, intake, outlet, sealP, unsealP, coreC, shellR,
       // Desktop hold scale adapts to the free band between the caption
       // column (~0.15H + 270px) and the rail: on short screens the phone
       // shrinks instead of colliding with caption above or keytag/rail below
@@ -148,6 +159,7 @@ export function initJourney(section: HTMLElement) {
     $('.machine').appendChild(tag);
   }
   const rotors = [...section.querySelectorAll<HTMLElement>('[data-rotor]')];
+  const shellDraw = makeShell();
 
   /* send — manual (button/Enter) or auto (visitor scrolls past without clicking) */
   const draft = $<HTMLInputElement>('.phone.sender .compose input');
@@ -334,7 +346,7 @@ export function initJourney(section: HTMLElement) {
       if (document.activeElement !== draftR) draftR.value = '';
     }
     window.__journey = { p, sent, landed, raw0, dir };
-    const A = anchors();
+    const A = anchors(p);
 
     ctx.clearRect(0, 0, W, H);
     drawStars(ctx, stars, t, '190,220,240', 16);
@@ -391,6 +403,33 @@ export function initJourney(section: HTMLElement) {
     }
     $('.prompt').style.opacity = String(1 - seg(p, 0, 0.035));
 
+    /* the relay node — a dot-shell around the core: materializes mid-size on
+       approach, grows to full, parts open for the message, seals after it
+       leaves. Desktop keeps a sealed mini-sphere behind; mobile fades out.
+       All p-keyed, so the reply re-opens it in mirror on the way back. */
+    const presence = seg(p, 0.28, 0.33) * (A.mobile ? 1 - seg(p, 0.72, 0.80) : 1 - seg(p, 0.90, 0.96));
+    const open = ease(seg(p, 0.425, 0.46)) * (1 - ease(seg(p, 0.665, 0.705)));
+    shellDraw(ctx, A.coreC.x, A.coreC.y, A.shellR, open, presence, t);
+    /* IN/OUT ports live ON the shell equator — glowing slits + tags; they
+       flare while the traveler is scanned through (old slot-scan windows) */
+    const portA = presence * ease(seg(p, 0.40, 0.44)) * (1 - ease(seg(p, 0.70, 0.745)));
+    if (portA > 0.02) {
+      const scanI = seg(p, 0.425, 0.445) * (1 - seg(p, 0.46, 0.48));
+      const scanO = seg(p, 0.615, 0.635) * (1 - seg(p, 0.655, 0.675));
+      ctx.font = '7px IBM Plex Mono'; ctx.textAlign = 'center';
+      for (const [q, lbl, scan] of [[A.intake, 'in', scanI], [A.outlet, 'out', scanO]] as [Pt, string, number][]) {
+        const h = 8 + scan * 3;
+        ctx.beginPath(); ctx.moveTo(q.x, q.y - h); ctx.lineTo(q.x, q.y + h);
+        ctx.strokeStyle = `rgba(143,216,255,${(0.5 + 0.5 * scan) * portA})`;
+        ctx.lineWidth = 2 + scan * 1.5;
+        ctx.shadowColor = 'rgba(143,216,255,.9)'; ctx.shadowBlur = scan * 14;
+        ctx.stroke(); ctx.shadowBlur = 0;
+        ctx.fillStyle = `rgba(120,160,190,${0.8 * portA})`;
+        ctx.fillText(lbl, q.x, q.y + 22);
+      }
+      ctx.textAlign = 'left';
+    }
+
     /* dashed routes, mirrored */
     const pathAlpha = seg(p, 0.22, 0.30) * (1 - seg(p, 0.95, 1));
     if (pathAlpha > 0) {
@@ -441,12 +480,13 @@ export function initJourney(section: HTMLElement) {
     rk.style.opacity = String(seg(p, 0.84, 0.88) * (1 - seg(p, 0.925, 0.95)));
     rk.style.left = `${A.recipC.x - rk.offsetWidth / 2}px`; rk.style.top = `${A.recipC.y + A.keyDy}px`;
 
-    /* machine */
-    $('.machine').style.opacity = String(seg(p, 0.36, 0.42) * (A.mobile ? 1 - seg(p, 0.67, 0.75) : 1 - seg(p, 0.90, 0.96)));
+    /* the exposed core — DOM revealed through a clip-circle synced to the
+       shell's iris (aperture is slightly wider, so the rim dots always sit
+       outside the face); rings are the old rotors, reborn as core machinery */
+    $('.machine').style.opacity = String(open);
+    $('.core').style.clipPath = `circle(${(open * 50.5).toFixed(2)}% at 50% 50%)`;
     const spin = ease(seg(p, T.swallow[0], T.wire2[0]));
     rotors.forEach((r, i) => { r.style.transform = `rotate(${spin * (360 + i * 220) + t * 8}deg)`; });
-    $('.scan-in').style.opacity = String(seg(p, 0.425, 0.445) * (1 - seg(p, 0.46, 0.48)));
-    $('.scan-out').style.opacity = String(seg(p, 0.615, 0.635) * (1 - seg(p, 0.655, 0.675)));
 
     const mine = $('.sv-row.mine');
     const mineO = clamp(Math.min(mineFlowY / 26, (streamH - mineFlowY) / 26), 0, 0.85) * minePres;

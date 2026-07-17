@@ -144,40 +144,45 @@ nav.on-light .links a.cta { color: #fff; background: var(--blue); }
 .traveler .x { display: none; }
 .traveler .hot { color: #fff; text-shadow: 0 0 8px rgba(174, 228, 255, 1); }
 
-/* the relay machine */
+/* the relay node — the canvas draws the dot-shell; this DOM is the exposed
+   core, revealed through a clip-circle the journey drives in sync with the
+   shell's iris (so the face never outruns the parting dots) */
 .machine {
-  position: absolute; z-index: 6; left: 55%; top: 27%; transform: translate(-50%, -50%);
-  width: min(620px, 88vw); opacity: 0; transition: opacity .5s;
+  --coreD: min(420px, 46vh);
+  /* center-anchored at 34%, but never so high the head label ducks under the
+     nav: the column is symmetric (head 34px ≈ stamp 34px around the core),
+     so top ≥ coreD/2 + 102px keeps the head at the 64px nav's bottom edge */
+  position: absolute; z-index: 6; left: 55%; top: max(34%, calc(var(--coreD) / 2 + 102px));
+  transform: translate(-50%, -50%);
+  width: var(--coreD); opacity: 0;
 }
-.mc-head { display: flex; justify-content: space-between; align-items: flex-end; padding: 0 6px 10px; }
+.mc-head { display: flex; justify-content: center; padding: 0 6px 22px; }
 .mc-head .lbl { font-size: 10px; letter-spacing: .26em; text-transform: uppercase; color: var(--ice); display: flex; align-items: center; gap: 10px; }
 .mc-head .dotpulse { width: 7px; height: 7px; border-radius: 50%; background: var(--ice); animation: dp 1.6s ease-in-out infinite; }
 @keyframes dp { 0%, 100% { opacity: .4 } 50% { opacity: 1 } }
-.mc-rotors { display: flex; gap: 12px; }
-.rotor {
-  width: 36px; height: 36px; border-radius: 50%; border: 1px dashed rgba(143, 216, 255, .45);
-  background: #0d1622; position: relative; display: flex; align-items: center; justify-content: center;
-  font-size: 9px; color: rgba(143, 216, 255, .8); will-change: transform;
+.core {
+  position: relative; width: var(--coreD); height: var(--coreD);
+  display: flex; align-items: center; justify-content: center;
+  background: radial-gradient(circle at 50% 44%, #12202f 0%, #0b1017 62%, #060a10 100%);
+  clip-path: circle(0% at 50% 50%);
 }
-.rotor::after { content: ''; position: absolute; top: 2px; left: calc(50% - 1px); width: 2px; height: 7px; background: var(--ice); }
-.mc-body {
-  display: flex; align-items: stretch; background: #0b1017; border: 1px solid #2a3a4c;
-  box-shadow: 0 34px 80px rgba(10, 30, 50, .55), inset 0 1px 0 rgba(143, 216, 255, .08);
+.core .ring { position: absolute; border-radius: 50%; border: 1px dashed rgba(143, 216, 255, .30); will-change: transform; }
+.core .ring.r1 { inset: 4%; }
+.core .ring.r2 { inset: 10%; border-color: rgba(143, 216, 255, .18); }
+.core .nucleus {
+  position: absolute; left: 50%; top: 50%; width: 58%; height: 58%; border-radius: 50%;
+  background: radial-gradient(circle, rgba(143, 216, 255, .16) 0%, rgba(143, 216, 255, .05) 45%, transparent 70%);
+  animation: nuc 3.2s ease-in-out infinite;
 }
-.slot { width: 38px; position: relative; background: #070c12; display: flex; align-items: center; justify-content: center; }
-.slot.in { border-right: 1px solid #22303e; }
-.slot.out { border-left: 1px solid #22303e; }
-.slot .slit { width: 4px; height: 62%; background: #02060a; border: 1px solid #1c2938; border-radius: 2px; }
-.slot .tag { position: absolute; bottom: 7px; font-size: 7px; letter-spacing: .14em; color: #3d5266; text-transform: uppercase; }
-.slot .scan {
-  position: absolute; left: 5px; right: 5px; top: 50%; height: 2px; background: var(--ice);
-  box-shadow: 0 0 14px var(--ice); opacity: 0;
+@keyframes nuc {
+  0%, 100% { opacity: .55; transform: translate(-50%, -50%) scale(.94); }
+  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
 }
-.mc-inner { flex: 1; padding: 12px 16px 10px; min-width: 0; }
-.sv-stream { position: relative; height: 170px; overflow: hidden; }
-.sv-stream::before, .sv-stream::after { content: ''; position: absolute; left: 0; right: 0; height: 32px; z-index: 3; pointer-events: none; }
-.sv-stream::before { top: 0; background: linear-gradient(180deg, #0b1017, transparent); }
-.sv-stream::after { bottom: 0; background: linear-gradient(0deg, #0b1017, transparent); }
+.sv-stream {
+  position: relative; z-index: 2; height: 170px; width: min(330px, 82%); overflow: hidden;
+  -webkit-mask-image: linear-gradient(180deg, transparent, #000 22%, #000 78%, transparent);
+  mask-image: linear-gradient(180deg, transparent, #000 22%, #000 78%, transparent);
+}
 .sv-row {
   position: absolute; left: 0; right: 0; font-size: 10.5px; line-height: 1.4; color: #4c6478;
   white-space: nowrap; overflow: hidden; text-overflow: ellipsis; will-change: transform;
@@ -190,11 +195,11 @@ nav.on-light .links a.cta { color: #fff; background: var(--blue); }
   z-index: 2; opacity: 0; background: #0b1017;
 }
 .mine-tag {
-  /* the only giveaway: pinned outside the clipped stream, over the IN slot */
-  position: absolute; left: -4px; z-index: 7; font-size: 10.5px; line-height: 1.4;
+  /* the only giveaway: pinned left of the clipped stream, toward the IN port */
+  position: absolute; left: 8px; z-index: 7; font-size: 10.5px; line-height: 1.4;
   color: #ffd98a; white-space: nowrap; opacity: 0; pointer-events: none;
 }
-.mc-stamp { margin-top: 10px; text-align: center; font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: #ffd98a; }
+.mc-stamp { margin-top: 22px; text-align: center; font-size: 10px; letter-spacing: .22em; text-transform: uppercase; color: #ffd98a; }
 
 /* journey captions / rail / prompt */
 .cap { position: absolute; z-index: 20; left: 5vw; top: 15vh; max-width: 300px; opacity: 0; }
@@ -275,16 +280,14 @@ footer a { color: inherit; text-decoration: none; }
   .enc { max-width: none; }
   .cap h2 { font-size: clamp(19px, 6vw, 26px); }
   .cap p { font-size: 10.5px; line-height: 1.7; }
-  .mc-head .lbl-tail { display: none; }
-  .machine { left: 50%; top: 42%; width: 94vw; }
-  .mc-head .lbl { font-size: 8px; letter-spacing: .18em; }
-  .mc-rotors { gap: 8px; }
-  .rotor { width: 26px; height: 26px; font-size: 8px; }
-  .sv-stream { height: 140px; }
+  /* the caption already names the relay — the head label would collide with
+     its last line on small screens */
+  .mc-head { display: none; }
+  .machine { --coreD: min(72vw, 38vh); left: 50%; top: 46%; }
+  .sv-stream { height: 140px; width: min(270px, 92%); }
   .sv-row { font-size: 9px; }
-  .mine-tag { font-size: 9px; }
-  .mc-stamp { font-size: 8px; }
-  .slot { width: 26px; }
+  .mine-tag { font-size: 9px; left: 4px; }
+  .mc-stamp { margin-top: 12px; font-size: 8px; }
   .phone { width: 230px; }
   .traveler { max-width: 74vw; }
   .keytag { font-size: 8px; padding: 5px 8px; }
