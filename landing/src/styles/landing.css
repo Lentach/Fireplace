@@ -86,7 +86,7 @@ nav.on-light .links a.cta { color: #fff; background: var(--blue); }
 .phone .who small { display: block; font-size: 7.5px; color: #5d788f; letter-spacing: .1em; }
 .phone .lock { margin-left: auto; font-size: 9px; color: var(--ice); }
 .phone .msgs { flex: 1; padding: 10px; display: flex; flex-direction: column; gap: 7px; font-size: 10px; line-height: 1.5; }
-.phone .m { max-width: 80%; padding: 7px 10px; border-radius: 12px; }
+.phone .m { max-width: 80%; padding: 7px 10px; border-radius: 12px; overflow-wrap: anywhere; }
 .phone .them { align-self: flex-start; background: #16222e; color: #cfe2f2; border-bottom-left-radius: 4px; }
 .phone .me { align-self: flex-end; background: #1d6fd6; color: #eaf4ff; border-bottom-right-radius: 4px; }
 .phone .meta { font-size: 7px; opacity: .55; margin-top: 2px; text-align: right; }
@@ -103,10 +103,12 @@ nav.on-light .links a.cta { color: #fff; background: var(--blue); }
 .phone .c-pill input {
   flex: 1; min-width: 0; background: none; border: none; outline: none;
   font-size: 10px; color: #dfeefb; font-family: 'IBM Plex Mono', monospace;
+  caret-color: #9fd6f5;   /* native caret == the fake one */
 }
 /* fake caret: blinks in the empty, unfocused compose — "you can type here".
-   visibility (not display) so toggling never shifts the placeholder. */
-.phone .c-caret { width: 1.5px; height: 12px; margin-right: -5px; background: #9fd6f5; flex: 0 0 auto; animation: caretblink 1.1s steps(2, start) infinite; }
+   visibility (not display) so toggling never shifts the placeholder.
+   Same color/height as the native caret (font-size × line-height ≈ 11px). */
+.phone .c-caret { width: 1px; height: 11px; margin-right: -5px; background: #9fd6f5; flex: 0 0 auto; animation: caretblink 1.1s steps(2, start) infinite; }
 .phone .c-caret.off { visibility: hidden; }
 @keyframes caretblink { 50% { opacity: 0 } }
 .phone .compose svg { width: 13px; height: 13px; flex: 0 0 auto; fill: none; stroke: #7093a6; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
@@ -127,9 +129,10 @@ nav.on-light .links a.cta { color: #fff; background: var(--blue); }
 }
 
 .traveler {
-  position: absolute; z-index: 10; background: #1d6fd6; color: #eaf4ff; font-size: 13px;
-  padding: 10px 14px; border-radius: 14px; border-bottom-right-radius: 5px; max-width: 340px;
-  line-height: 1.5; opacity: 0; will-change: transform; word-break: break-all; transform-origin: center;
+  /* identical to a .phone .m.me bubble — at detach they must be twins */
+  position: absolute; z-index: 10; background: #1d6fd6; color: #eaf4ff; font-size: 10px;
+  padding: 7px 10px; border-radius: 12px; border-bottom-right-radius: 4px; max-width: 260px;
+  line-height: 1.5; opacity: 0; will-change: transform; overflow-wrap: anywhere; transform-origin: center;
 }
 .traveler.capsule {
   background: rgba(13, 20, 32, .92); border: 1px solid var(--ice);
@@ -280,7 +283,7 @@ footer a { color: inherit; text-decoration: none; }
   .mc-stamp { font-size: 8px; }
   .slot { width: 26px; }
   .phone { width: 230px; }
-  .traveler { font-size: 11px; max-width: 74vw; padding: 8px 11px; }
+  .traveler { max-width: 74vw; }
   .keytag { font-size: 8px; padding: 5px 8px; }
   .prompt { top: 9%; width: 90vw; }
   .rail { bottom: 2vh; }

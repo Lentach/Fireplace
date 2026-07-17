@@ -184,6 +184,8 @@ export function initJourney(section: HTMLElement) {
     const total = 2 + Math.ceil(plain.length * 4 / 3) + 10;
     cipherChars = Array.from({ length: total }, (_, i) => i === 0 ? '3' : i === 1 ? ':' : rnd(B64));
     const tr = $('.traveler');
+    // same wrap width as the real bubble → the detaching copy is its twin
+    tr.style.maxWidth = `${sentBubble.offsetWidth}px`;
     tr.innerHTML = ''; spans = []; sealAt = []; openAt = [];
     for (let i = 0; i < total; i++) {
       const el = document.createElement('span');
@@ -220,6 +222,15 @@ export function initJourney(section: HTMLElement) {
     // NEVER auto-send while the compose is focused — keyboard/scroll drift
     // must not fire a half-typed message. Blur + scroll = journey as usual.
     if (!sent && raw > 0.06 && document.activeElement !== draft) doSend(true);
+    // scrolling past lift-off with a freshly typed draft = implicit send —
+    // the journey ALWAYS flies the newest message, no button needed (exactly
+    // like the first-visit auto-send). Crossing-triggered so fast flicks
+    // can't skip it; disarm + re-arm keeps the p-normalization clean.
+    const liftRaw = raw0 + 0.02 * (1 - raw0);
+    if (sent && prevRaw <= liftRaw && raw > liftRaw && draft.value.trim() && document.activeElement !== draft) {
+      sent = false;
+      doSend(true);
+    }
     const p = sent ? clamp((raw - raw0) / (1 - raw0), 0, 1) : 0;
     // the composer locks by POSITION: live whenever the phone is docked,
     // locked only while the message is actually in flight. A focused input
@@ -332,7 +343,12 @@ export function initJourney(section: HTMLElement) {
         lerp(1, A.phoneS, toTop), 1);
     } else {
       const moveOut = ease(seg(p, T.lift[0], T.lift[1]));
-      phonePose($('.phone.sender'), lerp(W * 0.5, A.senderC.x, moveOut), lerp(H * 0.60, A.senderC.y, moveOut), lerp(1, A.phoneS, moveOut), 1);
+      // finale: BOTH devices end even — the sender grows in mirror with the
+      // recipient (0.38W / 0.62W, same y, same scale) and they leave together
+      phonePose($('.phone.sender'),
+        lerp(lerp(W * 0.5, A.senderC.x, moveOut), W * 0.38, grow),
+        lerp(lerp(H * 0.60, A.senderC.y, moveOut), H * 0.56, grow),
+        lerp(lerp(1, A.phoneS, moveOut), 0.95, grow), 1);
     }
 
     const sk = $('.keytag.sender-key');
@@ -364,9 +380,15 @@ export function initJourney(section: HTMLElement) {
     let pos: Pt, scale = 1, capsule = false, inside = false;
     if (p < T.lift[1]) {
       const k = ease(seg(p, T.lift[0], T.lift[1]));
-      // detach from the REAL bubble in the thread — the capsule materializes
-      // on the sent message and flies out of the chat itself
-      pos = bez(sentBubble ? rectC(sentBubble) : A.liftStart, A.liftCp, A.sealP, k);
+      // detach from the REAL bubble in the thread — the copy materializes
+      // exactly ON the sent message (tops aligned: the bubble's meta line
+      // sits below the text, so center-alignment would offset the twins)
+      let start = A.liftStart;
+      if (sentBubble) {
+        const br = sentBubble.getBoundingClientRect();
+        start = { x: br.left + br.width / 2, y: br.top + tr.offsetHeight / 2 };
+      }
+      pos = bez(start, A.liftCp, A.sealP, k);
       scale = lerp(1, 0.9, k);
     } else if (p < T.sealHold[1]) {
       pos = A.sealP; scale = 0.9;
