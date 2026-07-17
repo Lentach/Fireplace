@@ -10,7 +10,7 @@
 // Mid-page integration: no scroll lock. Sending is interactive at the top of
 // the section; if the visitor just keeps scrolling, the message auto-sends.
 import { B64, bez, clamp, drawStars, ease, fake, fit, lerp, makeStars, rectC, ring, rnd, seg, type Pt } from './util';
-import { drawSingularity, makeShell } from './shell';
+import { drawHorizon, drawPorts, drawSingularity, makeShell } from './shell';
 
 declare global {
   interface Window { __journey?: { p: number; sent: boolean; landed: boolean; raw0: number; dir: number } }
@@ -79,24 +79,33 @@ export function initJourney(section: HTMLElement) {
     const recipC = mobile ? { x: W * 0.5, y: sideY } : { x: W * 0.80, y: sideY };
     // the relay node: sphere geometry derived from the DOM core's box — the
     // dot-shell wraps it, the IN/OUT ports sit on the shell's equator, and
-    // the wires plug in there. The radius follows the journey: materializes
-    // mid-size, grows to full for the act, and (desktop) shrinks back to a
-    // sealed mini that lingers where the machine used to sit.
+    // the wires plug in there. The visual radius follows the journey
+    // (materializes mid-size, grows to full, desktop shrinks to a sealed
+    // mini) — but the FLIGHT geometry (wires, traveler, rings) anchors on
+    // the FULL-size ports: grow (.33–.425) and shrink (.71–.78) overlap the
+    // wire windows, and a bezier endpoint that recedes mid-flight warps the
+    // path (independent-review P2). The live port docks with the frozen
+    // rail exactly while the node is full-size (.425–.71), which covers
+    // every swallow/emit/ring window — so the seam is invisible; during
+    // grow the port visibly travels OUT to meet the incoming message.
     const coreEl = $('.core');
     const coreC = rectC(coreEl);
     const coreR = (coreEl.offsetWidth || 300) / 2;
     const grow = ease(seg(p, 0.33, 0.425));
     const shrink = mobile ? 0 : ease(seg(p, 0.71, 0.78));
-    const shellR = coreR * 1.16 * (0.55 + 0.45 * grow) * (1 - 0.55 * shrink);
-    const intake = { x: coreC.x - shellR, y: coreC.y };
-    const outlet = { x: coreC.x + shellR, y: coreC.y };
+    const shellRF = coreR * 1.16;   // full-size shell — flight geometry
+    const shellR = shellRF * (0.55 + 0.45 * grow) * (1 - 0.55 * shrink);
+    const intake = { x: coreC.x - shellRF, y: coreC.y };    // frozen: wires/flight
+    const outlet = { x: coreC.x + shellRF, y: coreC.y };
+    const intakeL = { x: coreC.x - shellR, y: coreC.y };    // live: port slits
+    const outletL = { x: coreC.x + shellR, y: coreC.y };
     const holdY = mobile ? H * 0.76 : H * 0.55;
     // Clean mirrored wire curves: leave the hold horizontally, bend up into
     // the shell port. Single-bend quadratics, symmetric by construction.
     const sealP = { x: mobile ? W * 0.5 : W * 0.38, y: holdY };
     const unsealP = { x: mobile ? W * 0.5 : W * 0.62, y: holdY };
     return {
-      mobile, senderC, recipC, intake, outlet, sealP, unsealP, coreC, coreR, shellR,
+      mobile, senderC, recipC, intake, outlet, intakeL, outletL, sealP, unsealP, coreC, coreR, shellR,
       // Desktop hold scale adapts to the free band between the caption
       // column (~0.15H + 270px) and the rail: on short screens the phone
       // shrinks instead of colliding with caption above or keytag/rail below
@@ -366,6 +375,21 @@ export function initJourney(section: HTMLElement) {
       const dy = yTop + rowH / 2 - streamH / 2;
       return Math.sqrt(Math.max(faceR * faceR - dy * dy, 1));
     };
+    // chord-fit a row into the sphere at its height (ambient AND mine rows
+    // must place identically — lockstep by construction, not by copy)
+    const fitRow = (el: HTMLElement, yTop: number) => {
+      const ch = chord(yTop);
+      el.style.left = `${coreHalf - ch}px`;
+      el.style.width = `${2 * ch}px`;
+      return ch;
+    };
+    // layout reads batched HERE, before any style write this frame — the
+    // mine-tag placement below must not force a second synchronous reflow
+    const mine = $('.sv-row.mine');
+    const mineTag = $('.mine-tag');
+    const tagW = mineTag.offsetWidth;
+    const streamR = streamEl.getBoundingClientRect();
+    const machR = $('.machine').getBoundingClientRect();
     /* my row is a REAL queue member: at entry it takes over whichever slot
        currently sits in the lower-visible zone — that ambient row yields and
        mine adopts its exact phase, so spacing, speed, drift, edge-fade, and
@@ -389,9 +413,7 @@ export function initJourney(section: HTMLElement) {
       if (r.idx >= visN) { r.el.style.opacity = '0'; continue; }
       const y = rowY(r.idx);
       if (r.idx === mineSlot) mineFlowY = y;
-      const ch = chord(y);
-      r.el.style.left = `${coreHalf - ch}px`;
-      r.el.style.width = `${2 * ch}px`;
+      fitRow(r.el, y);
       r.el.style.transform = `translateY(${y}px)`;
       r.el.style.opacity = String(clamp(Math.min(y / 26, (streamH - y) / 26), 0, 0.85) * (r.idx === mineSlot ? 1 - minePres : 1));
       // slot refresh: a NEW envelope takes the row — fresh stamp, staggered scramble
@@ -417,68 +439,46 @@ export function initJourney(section: HTMLElement) {
       return;
     }
     $('.prompt').style.opacity = String(1 - seg(p, 0, 0.035));
-
     /* the relay node — a dot-shell around the core: materializes mid-size on
        approach, grows to full, parts open for the message, seals after it
        leaves. Desktop keeps a sealed mini-sphere behind; mobile fades out.
        All p-keyed, so the reply re-opens it in mirror on the way back. */
     const presence = seg(p, 0.28, 0.33) * (A.mobile ? 1 - seg(p, 0.72, 0.80) : 1 - seg(p, 0.90, 0.96));
     const open = ease(seg(p, 0.425, 0.46)) * (1 - ease(seg(p, 0.665, 0.705)));
+    const q = A.mobile ? 0.6 : 1;   // mobile: cheaper glow (blur only — never dots)
     /* the CONTAINED singularity: while the shell is closed (approach, and
        the desktop sealed-mini afterwards) the small unstable black hole is
        visible through the lattice — drawn UNDER the dots, so the shell
        cages it; it hands off to the full horizon exactly as the iris opens */
-    drawSingularity(ctx, A.coreC.x, A.coreC.y, A.shellR * 0.34, presence * (1 - open), t);
+    drawSingularity(ctx, A.coreC.x, A.coreC.y, A.shellR * 0.34, presence * (1 - open), t, q);
     shellDraw(ctx, A.coreC.x, A.coreC.y, A.shellR, open, presence, t);
-    /* EVENT HORIZON — the exposed core is a black hole: the face swallows
-       all light, so everything visible lives at the edge — a warm photon
-       ring hugging the clip circle, doppler-bright on the approaching side,
-       plus a soft accretion halo bleeding outward. p-keyed like the iris. */
-    const eh = open * presence;
-    if (eh > 0.02) {
-      const rr = open * (A.coreR + 4);   // just outside the DOM face edge
-      const halo = ctx.createRadialGradient(A.coreC.x, A.coreC.y, rr * 0.78, A.coreC.x, A.coreC.y, rr * 1.62);
-      halo.addColorStop(0, 'rgba(0,0,0,0)');
-      halo.addColorStop(0.28, `rgba(255,178,102,${0.20 * eh})`);
-      halo.addColorStop(1, 'rgba(0,0,0,0)');
-      ctx.fillStyle = halo;
-      ctx.fillRect(A.coreC.x - rr * 1.7, A.coreC.y - rr * 1.7, rr * 3.4, rr * 3.4);
-      ctx.beginPath(); ctx.arc(A.coreC.x, A.coreC.y, rr, 0, 6.28);
-      ctx.strokeStyle = `rgba(255,214,166,${0.6 * eh})`; ctx.lineWidth = 2.4;
-      ctx.shadowColor = 'rgba(255,190,120,.95)'; ctx.shadowBlur = 22; ctx.stroke();
-      // doppler beaming: the side spinning toward the viewer burns brighter
-      ctx.beginPath(); ctx.arc(A.coreC.x, A.coreC.y, rr, 2.2, 4.35);
-      ctx.strokeStyle = `rgba(255,240,218,${0.85 * eh})`; ctx.lineWidth = 3.4;
-      ctx.shadowBlur = 34; ctx.stroke(); ctx.shadowBlur = 0;
-    }
-    /* IN/OUT ports live ON the shell equator — glowing slits + tags; they
-       flare while the traveler is scanned through (old slot-scan windows) */
+    // event horizon at the clip edge (rr just outside the DOM face)
+    drawHorizon(ctx, A.coreC.x, A.coreC.y, open * (A.coreR + 4), open * presence, q);
+    /* IN/OUT ports ride the LIVE shell equator; they flare while the
+       traveler is scanned through (the old slot-scan windows) */
     const portA = presence * ease(seg(p, 0.40, 0.44)) * (1 - ease(seg(p, 0.70, 0.745)));
-    if (portA > 0.02) {
-      const scanI = seg(p, 0.425, 0.445) * (1 - seg(p, 0.46, 0.48));
-      const scanO = seg(p, 0.615, 0.635) * (1 - seg(p, 0.655, 0.675));
-      ctx.font = '7px IBM Plex Mono'; ctx.textAlign = 'center';
-      for (const [q, lbl, scan] of [[A.intake, 'in', scanI], [A.outlet, 'out', scanO]] as [Pt, string, number][]) {
-        const h = 8 + scan * 3;
-        ctx.beginPath(); ctx.moveTo(q.x, q.y - h); ctx.lineTo(q.x, q.y + h);
-        ctx.strokeStyle = `rgba(143,216,255,${(0.5 + 0.5 * scan) * portA})`;
-        ctx.lineWidth = 2 + scan * 1.5;
-        ctx.shadowColor = 'rgba(143,216,255,.9)'; ctx.shadowBlur = scan * 14;
-        ctx.stroke(); ctx.shadowBlur = 0;
-        ctx.fillStyle = `rgba(120,160,190,${0.8 * portA})`;
-        ctx.fillText(lbl, q.x, q.y + 22);
-      }
-      ctx.textAlign = 'left';
-    }
+    drawPorts(ctx, A.intakeL, A.outletL, portA,
+      seg(p, 0.425, 0.445) * (1 - seg(p, 0.46, 0.48)),
+      seg(p, 0.615, 0.635) * (1 - seg(p, 0.655, 0.675)), q);
 
-    /* dashed routes, mirrored */
+    /* dashed routes, mirrored — drawn along the FLIGHT curves (frozen
+       ports, so the capsule never leaves its rail) but clipped at the LIVE
+       shell body: the rail always plugs into the node's surface wherever
+       it is NOW — grow/shrink never leave a floating rail start */
     const pathAlpha = seg(p, 0.22, 0.30) * (1 - seg(p, 0.95, 1));
     if (pathAlpha > 0) {
+      const rimR = A.shellR + 2;
       ctx.setLineDash([2, 7]);
       ctx.strokeStyle = `rgba(143,216,255,${0.28 * pathAlpha})`; ctx.lineWidth = 1;
       for (const [P1, CP, P2] of [[A.sealP, A.cp1, A.intake], [A.outlet, A.cp2, A.unsealP]] as [Pt, Pt, Pt][]) {
         ctx.beginPath();
-        for (let k = 0; k <= 40; k++) { const q = bez(P1, CP, P2, k / 40); k === 0 ? ctx.moveTo(q.x, q.y) : ctx.lineTo(q.x, q.y); }
+        let pen = false;
+        for (let k = 0; k <= 40; k++) {
+          const pt = bez(P1, CP, P2, k / 40);
+          if (Math.hypot(pt.x - A.coreC.x, pt.y - A.coreC.y) < rimR) { pen = false; continue; }
+          pen ? ctx.lineTo(pt.x, pt.y) : ctx.moveTo(pt.x, pt.y);
+          pen = true;
+        }
         ctx.stroke();
       }
       ctx.setLineDash([]);
@@ -529,20 +529,15 @@ export function initJourney(section: HTMLElement) {
     const spin = ease(seg(p, T.swallow[0], T.wire2[0]));
     rotors.forEach((r, i) => { r.style.transform = `rotate(${spin * (360 + i * 220) + t * 8}deg)`; });
 
-    const mine = $('.sv-row.mine');
     const mineO = clamp(Math.min(mineFlowY / 26, (streamH - mineFlowY) / 26), 0, 0.85) * minePres;
-    const chM = chord(mineFlowY);
-    mine.style.left = `${coreHalf - chM}px`;
-    mine.style.width = `${2 * chM}px`;
+    const chM = fitRow(mine, mineFlowY);
     mine.style.opacity = String(mineO);
     mine.style.transform = `translate(${(1 - mineIn) * -360 + mineOut * 360}px, ${mineFlowY}px)`;
     /* the tag glides along the sphere's inner wall, pinned to its row's
-       curved left edge — hanging out over the shell dots */
-    const mineTag = $('.mine-tag');
-    const streamR = $('.sv-stream').getBoundingClientRect();
-    const machR = $('.machine').getBoundingClientRect();
+       curved left edge — hanging out over the shell dots (rects and tag
+       width were read up top, before this frame's first style write) */
     mineTag.style.top = `${streamR.top - machR.top + mineFlowY}px`;
-    mineTag.style.left = `${streamR.left - machR.left + coreHalf - chM - mineTag.offsetWidth - 6}px`;
+    mineTag.style.left = `${streamR.left - machR.left + coreHalf - chM - tagW - 6}px`;
     mineTag.style.opacity = String(mineO);
 
     /* traveler — symmetric two-act structure */
