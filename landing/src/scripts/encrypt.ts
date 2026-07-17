@@ -5,7 +5,7 @@ import { B64, rnd } from './util';
 export function initEncrypt(root: HTMLElement) {
   root.innerHTML = `
     <label>Type something private</label>
-    <input type="text" spellcheck="false" autocomplete="off" placeholder="meet me at eight…" maxlength="64">
+    <input type="text" spellcheck="false" autocomplete="off" placeholder="Hey, are you there?…" maxlength="64">
     <div class="server-line">
       <span class="server-tag">what our server sees</span>
       <code class="cipher"></code>

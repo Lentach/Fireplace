@@ -92,15 +92,28 @@ nav.on-light .links a.cta { color: #fff; background: var(--blue); }
 .phone .meta { font-size: 7px; opacity: .55; margin-top: 2px; text-align: right; }
 .phone .m.landing { animation: land .45s cubic-bezier(.2, .9, .3, 1.2); }
 @keyframes land { 0% { transform: scale(.5) translateY(-14px); opacity: 0 } 100% { transform: none; opacity: 1 } }
-.phone .compose { display: flex; gap: 7px; padding: 9px 10px; border-top: 1px solid #1a2531; align-items: center; }
-.phone .compose .c-ic { font-size: 15px; line-height: 1; color: #55707f; opacity: .8; flex: 0 0 auto; user-select: none; }
-.phone .compose input {
-  flex: 1; background: #121c27; border: none; outline: none; border-radius: 999px;
-  padding: 8px 12px; font-size: 10px; color: #dfeefb; font-family: 'IBM Plex Mono', monospace;
+/* compose — 1:1 mirror of the app's lower panel: chevron+input(+mic) pill,
+   then the tool pill (trash/timer/burst/clip/GIF/flask). Icons decorative. */
+.phone .compose { display: flex; flex-direction: column; gap: 6px; padding: 8px 10px 10px; border-top: 1px solid #1a2531; }
+.phone .c-row { display: flex; gap: 7px; align-items: center; }
+.phone .c-pill {
+  flex: 1; display: flex; align-items: center; gap: 7px; min-width: 0;
+  background: #121c27; border: 1px solid #1d2a38; border-radius: 999px; padding: 7px 11px;
+}
+.phone .c-pill input {
+  flex: 1; min-width: 0; background: none; border: none; outline: none;
+  font-size: 10px; color: #dfeefb; font-family: 'IBM Plex Mono', monospace;
+}
+.phone .compose svg { width: 13px; height: 13px; flex: 0 0 auto; fill: none; stroke: #7093a6; stroke-width: 1.7; stroke-linecap: round; stroke-linejoin: round; }
+.phone .compose svg .dot { fill: var(--ice); stroke: none; }
+.phone .compose svg .giftxt { fill: #7093a6; stroke: none; font-size: 8px; font-weight: 700; font-family: 'Archivo', sans-serif; letter-spacing: .04em; }
+.phone .c-tools {
+  display: flex; justify-content: space-between; align-items: center;
+  background: #121c27; border: 1px solid #1d2a38; border-radius: 999px; padding: 7px 16px;
 }
 .phone .compose button {
-  width: 34px; height: 34px; border-radius: 50%; border: none; cursor: pointer;
-  background: var(--ice); color: #04121c; font-size: 14px; display: flex; align-items: center; justify-content: center;
+  width: 30px; height: 30px; border-radius: 50%; border: none; cursor: pointer; flex: 0 0 auto;
+  background: var(--ice); color: #04121c; font-size: 12px; display: flex; align-items: center; justify-content: center;
 }
 .phone .compose button:hover { transform: scale(1.06); }
 .keytag {

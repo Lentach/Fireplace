@@ -15,6 +15,8 @@ declare global {
   interface Window { __journey?: { p: number; sent: boolean; landed: boolean; raw0: number } }
 }
 
+const DEFAULT_MSG = 'Hey, are you there?';
+
 /* ---- symmetric timeline (p ranges) ----
    The relay act owns ~23% of the track (owner-tuned: doubled first, then
    trimmed 25% — long enough to showcase, short enough to keep moving).
@@ -156,19 +158,29 @@ export function initJourney(section: HTMLElement) {
     if (sent) return;
     sent = true;
     raw0 = Math.min(lastRaw, 0.06);   // clamp: a teleport-scroll must not compress the track
-    // empty input falls back to the PREVIOUS message (a replay without
-    // retyping resends "your" message), then to the default
-    plain = (draft.value.trim() || plain || 'meet me at eight').slice(0, 40);
+    // no newly-typed text → replay of the PREVIOUS message (never a surprise
+    // default). Only genuinely new text stacks a new bubble; a plain replay
+    // re-animates the existing one — no duplicate spam in the thread.
+    const typed = draft.value.trim();
+    const isNew = typed !== '' && typed !== plain;
+    plain = (typed || plain || DEFAULT_MSG).slice(0, 40);
     // like a real chat: the message leaves the input and lives in the thread
     draft.value = '';
     draft.disabled = true; sendBtn.disabled = true; sendBtn.style.opacity = '.4';
 
-    sentBubble = document.createElement('div');
-    sentBubble.className = 'm me'; sentBubble.textContent = plain;
-    sentMeta = document.createElement('div');
-    sentMeta.className = 'meta'; sentMeta.textContent = '08:12 ✓';
-    sentBubble.appendChild(sentMeta);
-    $('.sender-msgs').appendChild(sentBubble);
+    if (isNew || !sentBubble) {
+      sentBubble = document.createElement('div');
+      sentBubble.className = 'm me'; sentBubble.textContent = plain;
+      sentMeta = document.createElement('div');
+      sentMeta.className = 'meta'; sentMeta.textContent = '08:12 ✓';
+      sentBubble.appendChild(sentMeta);
+      const thread = $('.sender-msgs');
+      // like a real chat the thread STACKS; oldest scroll away past 5 bubbles
+      while (thread.children.length >= 5) thread.firstElementChild!.remove();
+      thread.appendChild(sentBubble);
+    } else {
+      sentMeta = sentBubble.querySelector<HTMLElement>('.meta');
+    }
 
     const total = 2 + Math.ceil(plain.length * 4 / 3) + 10;
     cipherChars = Array.from({ length: total }, (_, i) => i === 0 ? '3' : i === 1 ? ':' : rnd(B64));
@@ -194,12 +206,12 @@ export function initJourney(section: HTMLElement) {
     if (!auto) $('.journey-hint').style.opacity = '1';
   }
 
-  /* scroll all the way back to the top → the send undoes: the bubble lifts
-     out of the thread, the compose unlocks EMPTY (type something new), and
-     the whole journey can be replayed with a fresh message */
+  /* reverse back to the device → the send unlocks for a NEW message. The
+     thread keeps the old bubbles (a real chat stacks); only the in-flight
+     delivery (recipient copy) un-lands via the normal reverse logic. */
   function resetSend() {
     sent = false; landed = false; maxP = 0;
-    sentBubble?.remove(); sentBubble = null; sentMeta = null;
+    sentMeta = null;   // sentBubble is KEPT — a textless replay re-animates it
     landedBubble?.remove(); landedBubble = null;
     draft.value = '';
     draft.disabled = false; sendBtn.disabled = false; sendBtn.style.opacity = '';
@@ -215,6 +227,7 @@ export function initJourney(section: HTMLElement) {
     const now = performance.now(), t = now / 1000;
     const top = section.offsetTop;
     const raw = clamp((scrollY - top) / (section.offsetHeight - innerHeight), 0, 1);
+    const prevRaw = lastRaw;
     lastRaw = raw;
     // roomy top zone: the visitor can stop and type; skimmers auto-send.
     // p restarts from 0 at the send point (no mid-lift pop on auto-send).
@@ -223,10 +236,15 @@ export function initJourney(section: HTMLElement) {
     // half-typed message. Blur + scroll = replay as usual.
     if (!sent && raw > 0.06 && document.activeElement !== draft) doSend(true);
     // reverse back to the send point (phone docked at its start pose) → the
-    // send undoes and the compose reopens. The gates share the boundary but
-    // cannot oscillate: reset requires maxP > 0.05, and resetSend zeroes maxP,
-    // so a fresh boundary-jitter send can't immediately un-send itself.
-    if (sent && maxP > 0.05 && raw <= raw0) resetSend();
+    // send undoes and the compose reopens. Fires when the journey actually
+    // progressed (maxP) OR the visitor clearly retreated below the send point
+    // (sent-then-scrolled-straight-up). Boundary jitter stays protected: a
+    // fresh send within 2% of its own send point never un-sends itself.
+    if (sent && raw <= raw0 && (maxP > 0.05 || raw < raw0 - 0.02)) resetSend();
+    // reversing ALL the way out (crossing into the very top) restores the
+    // default draft — a stale typed message must not greet the next pass.
+    // Transition-triggered, so hero typing at the top is never stomped.
+    if (!sent && raw <= 0.005 && prevRaw > 0.005 && document.activeElement !== draft) draft.value = DEFAULT_MSG;
     const p = sent ? clamp((raw - raw0) / (1 - raw0), 0, 1) : 0;
     maxP = Math.max(maxP, p);
     window.__journey = { p, sent, landed, raw0 };
