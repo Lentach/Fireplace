@@ -84,9 +84,10 @@ export function initJourney(section: HTMLElement) {
     // sealed mini that lingers where the machine used to sit.
     const coreEl = $('.core');
     const coreC = rectC(coreEl);
+    const coreR = (coreEl.offsetWidth || 300) / 2;
     const grow = ease(seg(p, 0.33, 0.425));
     const shrink = mobile ? 0 : ease(seg(p, 0.71, 0.78));
-    const shellR = (coreEl.offsetWidth || 300) / 2 * 1.16 * (0.55 + 0.45 * grow) * (1 - 0.55 * shrink);
+    const shellR = coreR * 1.16 * (0.55 + 0.45 * grow) * (1 - 0.55 * shrink);
     const intake = { x: coreC.x - shellR, y: coreC.y };
     const outlet = { x: coreC.x + shellR, y: coreC.y };
     const holdY = mobile ? H * 0.76 : H * 0.55;
@@ -95,7 +96,7 @@ export function initJourney(section: HTMLElement) {
     const sealP = { x: mobile ? W * 0.5 : W * 0.38, y: holdY };
     const unsealP = { x: mobile ? W * 0.5 : W * 0.62, y: holdY };
     return {
-      mobile, senderC, recipC, intake, outlet, sealP, unsealP, coreC, shellR,
+      mobile, senderC, recipC, intake, outlet, sealP, unsealP, coreC, coreR, shellR,
       // Desktop hold scale adapts to the free band between the caption
       // column (~0.15H + 270px) and the rail: on short screens the phone
       // shrinks instead of colliding with caption above or keytag/rail below
@@ -424,6 +425,27 @@ export function initJourney(section: HTMLElement) {
     const presence = seg(p, 0.28, 0.33) * (A.mobile ? 1 - seg(p, 0.72, 0.80) : 1 - seg(p, 0.90, 0.96));
     const open = ease(seg(p, 0.425, 0.46)) * (1 - ease(seg(p, 0.665, 0.705)));
     shellDraw(ctx, A.coreC.x, A.coreC.y, A.shellR, open, presence, t);
+    /* EVENT HORIZON — the exposed core is a black hole: the face swallows
+       all light, so everything visible lives at the edge — a warm photon
+       ring hugging the clip circle, doppler-bright on the approaching side,
+       plus a soft accretion halo bleeding outward. p-keyed like the iris. */
+    const eh = open * presence;
+    if (eh > 0.02) {
+      const rr = open * (A.coreR + 4);   // just outside the DOM face edge
+      const halo = ctx.createRadialGradient(A.coreC.x, A.coreC.y, rr * 0.8, A.coreC.x, A.coreC.y, rr * 1.4);
+      halo.addColorStop(0, 'rgba(0,0,0,0)');
+      halo.addColorStop(0.33, `rgba(255,178,102,${0.14 * eh})`);
+      halo.addColorStop(1, 'rgba(0,0,0,0)');
+      ctx.fillStyle = halo;
+      ctx.fillRect(A.coreC.x - rr * 1.5, A.coreC.y - rr * 1.5, rr * 3, rr * 3);
+      ctx.beginPath(); ctx.arc(A.coreC.x, A.coreC.y, rr, 0, 6.28);
+      ctx.strokeStyle = `rgba(255,214,166,${0.5 * eh})`; ctx.lineWidth = 1.8;
+      ctx.shadowColor = 'rgba(255,190,120,.9)'; ctx.shadowBlur = 14; ctx.stroke();
+      // doppler beaming: the side spinning toward the viewer burns brighter
+      ctx.beginPath(); ctx.arc(A.coreC.x, A.coreC.y, rr, 2.2, 4.35);
+      ctx.strokeStyle = `rgba(255,238,214,${0.75 * eh})`; ctx.lineWidth = 2.6;
+      ctx.shadowBlur = 22; ctx.stroke(); ctx.shadowBlur = 0;
+    }
     /* IN/OUT ports live ON the shell equator — glowing slits + tags; they
        flare while the traveler is scanned through (old slot-scan windows) */
     const portA = presence * ease(seg(p, 0.40, 0.44)) * (1 - ease(seg(p, 0.70, 0.745)));

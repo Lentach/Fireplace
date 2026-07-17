@@ -161,22 +161,29 @@ nav.on-light .links a.cta { color: #fff; background: var(--blue); }
 .mc-head .dotpulse { width: 7px; height: 7px; border-radius: 50%; background: var(--ice); animation: dp 1.6s ease-in-out infinite; }
 @keyframes dp { 0%, 100% { opacity: .4 } 50% { opacity: 1 } }
 .core {
+  /* a BLACK HOLE: the face swallows all light — near-black with the
+     faintest depth; the photon ring lives on the canvas at the clip edge */
   position: relative; width: var(--coreD); height: var(--coreD);
   display: flex; align-items: center; justify-content: center;
-  background: radial-gradient(circle at 50% 44%, #17293c 0%, #0e1724 62%, #081019 100%);
+  background: radial-gradient(circle at 50% 50%, #05080d 0%, #010204 58%, #000 100%);
   clip-path: circle(0% at 50% 50%);
 }
-.core .ring { position: absolute; border-radius: 50%; border: 1px dashed rgba(143, 216, 255, .30); will-change: transform; }
+.core .ring {
+  /* orbiting debris — faint warm dashes circling the horizon */
+  position: absolute; border-radius: 50%; border: 1px dashed rgba(255, 190, 120, .13); will-change: transform;
+}
 .core .ring.r1 { inset: 4%; }
-.core .ring.r2 { inset: 10%; border-color: rgba(143, 216, 255, .18); }
+.core .ring.r2 { inset: 10%; border-color: rgba(255, 190, 120, .07); }
 .core .nucleus {
-  position: absolute; left: 50%; top: 50%; width: 58%; height: 58%; border-radius: 50%;
-  background: radial-gradient(circle, rgba(143, 216, 255, .22) 0%, rgba(143, 216, 255, .08) 45%, transparent 70%);
+  /* accretion glow: a warm breathing ring just inside the horizon —
+     the center stays black (nothing escapes it) */
+  position: absolute; left: 50%; top: 50%; width: 100%; height: 100%; border-radius: 50%;
+  background: radial-gradient(circle, transparent 0 58%, rgba(255, 170, 90, .05) 76%, rgba(255, 190, 120, .13) 93%, transparent 100%);
   animation: nuc 3.2s ease-in-out infinite;
 }
 @keyframes nuc {
-  0%, 100% { opacity: .55; transform: translate(-50%, -50%) scale(.94); }
-  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.05); }
+  0%, 100% { opacity: .5; transform: translate(-50%, -50%) scale(.985); }
+  50% { opacity: 1; transform: translate(-50%, -50%) scale(1.008); }
 }
 .sv-stream {
   /* fills the core; the journey chord-fits each row's left/width to the
@@ -186,16 +193,17 @@ nav.on-light .links a.cta { color: #fff; background: var(--blue); }
   mask-image: linear-gradient(180deg, transparent, #000 10%, #000 90%, transparent);
 }
 .sv-row {
-  /* plain cut at the chord (no ellipsis) — the text reads as curving away */
-  position: absolute; left: 0; font-size: 10.5px; line-height: 1.4; color: #4c6478;
+  /* plain cut at the chord (no ellipsis) — the text reads as curving away;
+     light cipher on black: the information falling in IS the light */
+  position: absolute; left: 0; font-size: 10.5px; line-height: 1.4; color: #b9cfe2;
   white-space: nowrap; overflow: hidden; will-change: transform;
 }
-.sv-row .t { color: #33475a; margin-right: 8px; }
-.sv-row .hot { color: #9fc8e6; text-shadow: 0 0 6px rgba(143, 216, 255, .55); }
+.sv-row .t { color: #587189; margin-right: 8px; }
+.sv-row .hot { color: #fff; text-shadow: 0 0 7px rgba(190, 228, 255, .8); }
 .sv-row.mine {
   /* indistinguishable from the queue — same color, same metrics; solid
      panel-color background so passing rows occlude cleanly */
-  z-index: 2; opacity: 0; background: #101c2b;
+  z-index: 2; opacity: 0; background: #010204;
 }
 .mine-tag {
   /* the only giveaway: glides along the sphere's inner wall next to its row
