@@ -123,6 +123,7 @@ nav.on-light .links a.cta { color: #fff; background: var(--blue); }
   background: var(--ice); color: #04121c; font-size: 12px; display: flex; align-items: center; justify-content: center;
 }
 .phone .compose button:hover { transform: scale(1.06); }
+.phone .compose button:disabled { cursor: default; transform: none; }
 .keytag {
   position: absolute; z-index: 5; font-size: 9px; letter-spacing: .08em; color: #ffd98a;
   background: #141008; border: 1px solid rgba(255, 217, 138, .35); padding: 6px 10px; opacity: 0; transition: opacity .5s;

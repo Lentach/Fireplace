@@ -12,7 +12,7 @@
 import { B64, bez, clamp, drawStars, ease, fake, fit, lerp, makeStars, rectC, ring, rnd, seg, type Pt } from './util';
 
 declare global {
-  interface Window { __journey?: { p: number; sent: boolean; landed: boolean; raw0: number } }
+  interface Window { __journey?: { p: number; sent: boolean; landed: boolean; raw0: number; dir: number } }
 }
 
 const DEFAULT_MSG = 'sending very sensitive data — safe here';
@@ -33,6 +33,8 @@ const T = {
   drop: [0.95, 0.972],
   land: 0.972,
 } as const;
+// the reply journey lands on the sender at the mirror point of T.land
+const REV_LAND = 1 - T.land;
 
 export function initJourney(section: HTMLElement) {
   const $ = <E extends HTMLElement = HTMLElement>(sel: string) => section.querySelector<E>(sel)!;
@@ -44,6 +46,7 @@ export function initJourney(section: HTMLElement) {
   let stars = makeStars(W, H, 240);
   const trail: Pt[] = [];
   let sent = false, landed = false, plain = '';
+  let dir: 1 | -1 = 1;   // the traveler's direction: 1 you→her, -1 her reply→you
   let raw0 = 0;      // raw scroll progress at the moment of send — p normalizes over the remainder
   let lastRaw = 0;
   let cipherChars: string[] = [];
@@ -63,6 +66,7 @@ export function initJourney(section: HTMLElement) {
     // phonePose keeps the visual bottom at y + h/2 regardless of scale
     // (center-origin compensation), so clearances use the UNSCALED height.
     const ph = $('.phone.sender').offsetHeight || 560;
+    const pw = $('.phone.sender').offsetWidth || 300;
     const railTop = $('.rail').getBoundingClientRect().top || H;
     // Mobile: the phone is the protagonist on each side — top-center and LARGE
     // (sender through the seal, recipient through the unseal/finale); the
@@ -86,6 +90,11 @@ export function initJourney(section: HTMLElement) {
       // shrinks instead of colliding with caption above or keytag/rail below
       // (visual top = bottom - ph*s, since the visual bottom is scale-free).
       phoneS: mobile ? 0.68 : clamp((railTop - 56 - (H * 0.15 + 270)) / ph, 0.34, 0.58),
+      // Desktop finale: both devices dock center-stage as LARGE as fits —
+      // width-limited so they can never collide (centers 0.30W apart, 24px
+      // gap), height-limited so the top edge clears the nav.
+      finS: mobile ? 1 : clamp(Math.min((W * 0.30 - 24) / pw, (H * 0.56 + ph / 2 - 76) / ph), 0.55, 1.2),
+      finSx: W * 0.35, finRx: W * 0.65,
       liftStart: { x: W * 0.5 + (mobile ? 30 : 40), y: H * 0.60 + (mobile ? 40 : 60) },
       liftCp: mobile ? { x: W * 0.30, y: H * 0.64 } : { x: W * 0.45, y: H * 0.48 },
       dropCp: mobile ? { x: W * 0.66, y: H * 0.58 } : { x: W * 0.66, y: holdY - H * 0.03 },
@@ -144,48 +153,36 @@ export function initJourney(section: HTMLElement) {
   const draft = $<HTMLInputElement>('.phone.sender .compose input');
   const sendBtn = $<HTMLButtonElement>('.phone.sender .compose button');
   const caret = $('.phone.sender .c-caret');
+  const draftR = $<HTMLInputElement>('.phone.recipient .compose input');
+  const sendBtnR = $<HTMLButtonElement>('.phone.recipient .compose button');
+  const caretR = $('.phone.recipient .c-caret');
+  const hintEl = $('.journey-hint');
   sendBtn.addEventListener('click', () => doSend(false));
   draft.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSend(false); });
-  // click/tap the compose → whole draft selected, one keystroke replaces it
+  sendBtnR.addEventListener('click', () => doSendBack());
+  draftR.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSendBack(); });
+  // click/tap a compose → whole draft selected, one keystroke replaces it
   draft.addEventListener('focus', () => draft.select());
+  draftR.addEventListener('focus', () => draftR.select());
   // hero "type something private" box and this compose are the SAME draft —
   // last writer wins, whenever the phone is docked
   document.addEventListener('fp:plain', (e) => {
-    if (docked()) draft.value = (e as CustomEvent<string>).detail.slice(0, 40);
+    if (docked()) draft.value = (e as CustomEvent<string>).detail.slice(0, 120);
   });
-  // the composer is POSITION-locked, not send-locked: whenever the phone is
-  // docked (journey start, or reversed back to it) it behaves like a real
-  // chat — type and send as often as you like; the journey flies the latest.
-  const docked = () => !sent || clamp((lastRaw - raw0) / (1 - raw0), 0, 1) <= 0.02;
+  // composers are POSITION-locked, not send-locked: each is live whenever its
+  // phone is docked — the sender at the start of the track, the recipient at
+  // the delivered end (that's where the reply journey launches from).
+  const pOf = () => sent ? clamp((lastRaw - raw0) / (1 - raw0), 0, 1) : 0;
+  const docked = () => !sent || pOf() <= 0.02;
+  const dockedR = () => sent && pOf() >= 0.95;
 
-  function doSend(auto: boolean) {
-    if (sent && auto) return;         // auto-send only arms the FIRST journey
-    if (!docked()) return;            // in flight — the message can't change
-    const typed0 = draft.value.trim();
-    if (sent && !typed0) return;      // real chat: an empty send is a no-op
-    sent = true;
-    raw0 = Math.min(lastRaw, 0.06);   // clamp: a teleport-scroll must not compress the track
-    // every send stacks a fresh bubble — a real chat happily repeats the
-    // same text. (Scroll-replays never pass through here, so no dupe spam.)
-    plain = (typed0 || plain || DEFAULT_MSG).slice(0, 40);
-    // like a real chat: the message leaves the input and lives in the thread
-    draft.value = '';
-
-    sentBubble = document.createElement('div');
-    sentBubble.className = 'm me'; sentBubble.textContent = plain;
-    sentMeta = document.createElement('div');
-    sentMeta.className = 'meta'; sentMeta.textContent = '08:12 ✓';
-    sentBubble.appendChild(sentMeta);
-    const thread = $('.sender-msgs');
-    // like a real chat the thread STACKS; oldest scroll away past 5 bubbles
-    while (thread.children.length >= 5) thread.firstElementChild!.remove();
-    thread.appendChild(sentBubble);
-
+  /* the traveler carries whatever was sent LAST, in either direction */
+  function buildTraveler(prefix: string, ts: string) {
     const total = 2 + Math.ceil(plain.length * 4 / 3) + 10;
-    cipherChars = Array.from({ length: total }, (_, i) => i === 0 ? '3' : i === 1 ? ':' : rnd(B64));
+    cipherChars = Array.from({ length: total }, (_, i) => i < 2 ? prefix[i] : rnd(B64));
     const tr = $('.traveler');
     // same wrap width as the real bubble → the detaching copy is its twin
-    tr.style.maxWidth = `${sentBubble.offsetWidth}px`;
+    tr.style.maxWidth = `${sentBubble!.offsetWidth}px`;
     tr.innerHTML = ''; spans = []; sealAt = []; openAt = [];
     for (let i = 0; i < total; i++) {
       const el = document.createElement('span');
@@ -197,14 +194,74 @@ export function initJourney(section: HTMLElement) {
     }
     // clamped AND padded to the ambient rows' 40 chars so it blends into the
     // queue no matter the message length — only the "yours →" tag gives it away
-    $('.sv-row.mine').innerHTML = `<span class="t">08:12:03</span>${(cipherChars.join('') + fake(40)).slice(0, 40)}`;
+    $('.sv-row.mine').innerHTML = `<span class="t">${ts}</span>${(cipherChars.join('') + fake(40)).slice(0, 40)}`;
+  }
+
+  // like a real chat the thread STACKS; oldest scroll away past 5 bubbles
+  const stack = (thread: HTMLElement, el: HTMLElement) => {
+    while (thread.children.length >= 5) thread.firstElementChild!.remove();
+    thread.appendChild(el);
+  };
+
+  function doSend(auto: boolean) {
+    if (sent && auto) return;         // auto-send only arms the FIRST journey
+    if (!docked()) return;            // in flight — the message can't change
+    const typed0 = draft.value.trim();
+    if (sent && !typed0) return;      // real chat: an empty send is a no-op
+    sent = true; dir = 1; landed = false;   // a delivered reply stays behind as history
+    raw0 = Math.min(lastRaw, 0.06);   // clamp: a teleport-scroll must not compress the track
+    // every send stacks a fresh bubble — a real chat happily repeats the
+    // same text. (Scroll-replays never pass through here, so no dupe spam.)
+    plain = (typed0 || plain || DEFAULT_MSG).slice(0, 120);
+    // like a real chat: the message leaves the input and lives in the thread
+    draft.value = '';
+
+    sentBubble = document.createElement('div');
+    sentBubble.className = 'm me'; sentBubble.textContent = plain;
+    sentMeta = document.createElement('div');
+    sentMeta.className = 'meta'; sentMeta.textContent = '08:12 ✓';
+    sentBubble.appendChild(sentMeta);
+    stack($('.sender-msgs'), sentBubble);
+
+    buildTraveler('3:', '08:12:03');
 
     landedBubble = document.createElement('div');
     landedBubble.className = 'm them landing';
     landedBubble.textContent = plain;
     landedBubble.insertAdjacentHTML('beforeend', '<div class="meta">08:12</div>');
 
-    if (!auto) $('.journey-hint').style.opacity = '1';
+    hintEl.textContent = 'scroll — your message is on its way ↓';
+    if (!auto) hintEl.style.opacity = '1';
+  }
+
+  /* the reply: typed on HER phone at the delivered end of the track, it flies
+     the SAME rail backwards — scroll up and every stage plays in mirror.
+     No default text here: an empty reply is a no-op, silence stays silence. */
+  function doSendBack(crossed = false) {
+    // launches only from the delivered end — the CROSSING is the proof for
+    // implicit sends (a fast flick may land many frames past the drop point)
+    if (!crossed && !dockedR()) return;
+    const typed = draftR.value.trim();
+    if (!typed) return;
+    dir = -1; landed = false;         // the delivered original stays behind as history
+    plain = typed.slice(0, 120);
+    draftR.value = '';
+
+    sentBubble = document.createElement('div');
+    sentBubble.className = 'm me'; sentBubble.textContent = plain;
+    sentMeta = document.createElement('div');
+    sentMeta.className = 'meta'; sentMeta.textContent = '08:13 ✓';
+    sentBubble.appendChild(sentMeta);
+    stack($('.recipient-msgs'), sentBubble);
+
+    buildTraveler('2:', '08:13:07');  // in-session ratchet envelope, not a PreKey one
+
+    landedBubble = document.createElement('div');
+    landedBubble.className = 'm them landing';
+    landedBubble.textContent = plain;
+    landedBubble.insertAdjacentHTML('beforeend', '<div class="meta">08:13</div>');
+
+    hintEl.textContent = 'scroll up — the reply is on its way ↑';
   }
 
 
@@ -213,6 +270,11 @@ export function initJourney(section: HTMLElement) {
 
   function update() {
     const now = performance.now(), t = now / 1000;
+    // self-heal on any viewport change the resize event missed (devtools
+    // device-toolbar toggles can land before layout settles)
+    if (canvas.clientWidth !== W || canvas.clientHeight !== H) {
+      ctx = fit(canvas); W = canvas.clientWidth; H = canvas.clientHeight; stars = makeStars(W, H, 240);
+    }
     const top = section.offsetTop;
     const raw = clamp((scrollY - top) / (section.offsetHeight - innerHeight), 0, 1);
     const prevRaw = lastRaw;
@@ -231,6 +293,10 @@ export function initJourney(section: HTMLElement) {
       sent = false;
       doSend(true);
     }
+    // the mirror: scrolling UP past the drop point with a freshly typed reply
+    // launches the reverse journey — no button needed
+    const dropRaw = raw0 + 0.98 * (1 - raw0);
+    if (sent && prevRaw >= dropRaw && raw < dropRaw && draftR.value.trim() && document.activeElement !== draftR) doSendBack(true);
     const p = sent ? clamp((raw - raw0) / (1 - raw0), 0, 1) : 0;
     // the composer locks by POSITION: live whenever the phone is docked,
     // locked only while the message is actually in flight. A focused input
@@ -241,17 +307,29 @@ export function initJourney(section: HTMLElement) {
       draft.disabled = lock; sendBtn.disabled = lock;
       sendBtn.style.opacity = lock ? '.4' : '';
     }
-    // fake caret blinks in an empty, typable, unfocused compose (focused
-    // inputs get the real caret)
+    // her composer unlocks at the delivered end — that's HER dock
+    const lockR = !(sent && p >= 0.98) && document.activeElement !== draftR;
+    if (draftR.disabled !== lockR) {
+      draftR.disabled = lockR; sendBtnR.disabled = lockR;
+      sendBtnR.style.opacity = lockR ? '.4' : '';
+    }
+    // ONE typing invitation at a time: each fake caret blinks only in ITS
+    // empty, typable, unfocused compose — the two unlock windows can never
+    // overlap, so at most one caret is ever visible (focused inputs get the
+    // native caret)
     caret.classList.toggle('off', !(draft.value === '' && !lock && document.activeElement !== draft));
+    caretR.classList.toggle('off', !(draftR.value === '' && !lockR && document.activeElement !== draftR));
     // reversing ALL the way out (crossing into the very top) clears both
     // inputs — a stale message must not greet the next pass. Transition-
     // triggered, so nobody's active typing is ever stomped.
-    if (raw <= 0.005 && prevRaw > 0.005 && document.activeElement !== draft) {
-      draft.value = '';
-      document.dispatchEvent(new CustomEvent('fp:clear'));
+    if (raw <= 0.005 && prevRaw > 0.005) {
+      if (document.activeElement !== draft) {
+        draft.value = '';
+        document.dispatchEvent(new CustomEvent('fp:clear'));
+      }
+      if (document.activeElement !== draftR) draftR.value = '';
     }
-    window.__journey = { p, sent, landed, raw0 };
+    window.__journey = { p, sent, landed, raw0, dir };
     const A = anchors();
 
     ctx.clearRect(0, 0, W, H);
@@ -328,28 +406,29 @@ export function initJourney(section: HTMLElement) {
     const grow = ease(seg(p, 0.945, 0.985));
     const rpX = lerp(
       lerp(W * (A.mobile ? 1.35 : 1.15), A.recipC.x, ease(seg(p, A.mobile ? 0.72 : 0.62, A.mobile ? 0.82 : 0.76))),
-      W * (A.mobile ? 0.5 : 0.62), grow);
+      A.mobile ? W * 0.5 : A.finRx, grow);
     const rpY = lerp(A.recipC.y, H * (A.mobile ? 0.58 : 0.56), grow);
-    const rpS = lerp(A.phoneS, A.mobile ? 1 : 0.95, grow);
+    const rpS = lerp(A.phoneS, A.mobile ? 1 : A.finS, grow);
     const recIn = ease(seg(p, A.mobile ? 0.70 : 0.60, A.mobile ? 0.80 : 0.74));
     phonePose($('.phone.recipient'), rpX, rpY, rpS, recIn);
     const landPt = { x: rpX - 60 * rpS, y: rpY + 12 * rpS };   // tracks the growing phone's chat area
+    let spX: number, spY: number, spS: number;
     if (A.mobile) {
       const toTop = ease(seg(p, T.lift[0], T.lift[1]));
       const exitL = ease(seg(p, 0.26, 0.36));   // fully out before the capsule crosses its lane
-      phonePose($('.phone.sender'),
-        lerp(lerp(W * 0.5, A.senderC.x, toTop), -W * 0.35, exitL),
-        lerp(H * 0.60, A.senderC.y, toTop),
-        lerp(1, A.phoneS, toTop), 1);
+      spX = lerp(lerp(W * 0.5, A.senderC.x, toTop), -W * 0.35, exitL);
+      spY = lerp(H * 0.60, A.senderC.y, toTop);
+      spS = lerp(1, A.phoneS, toTop);
     } else {
       const moveOut = ease(seg(p, T.lift[0], T.lift[1]));
-      // finale: BOTH devices end even — the sender grows in mirror with the
-      // recipient (0.38W / 0.62W, same y, same scale) and they leave together
-      phonePose($('.phone.sender'),
-        lerp(lerp(W * 0.5, A.senderC.x, moveOut), W * 0.38, grow),
-        lerp(lerp(H * 0.60, A.senderC.y, moveOut), H * 0.56, grow),
-        lerp(lerp(1, A.phoneS, moveOut), 0.95, grow), 1);
+      // finale: BOTH devices end even — center-stage, as large as fits
+      spX = lerp(lerp(W * 0.5, A.senderC.x, moveOut), A.finSx, grow);
+      spY = lerp(lerp(H * 0.60, A.senderC.y, moveOut), H * 0.56, grow);
+      spS = lerp(lerp(1, A.phoneS, moveOut), A.finS, grow);
     }
+    phonePose($('.phone.sender'), spX, spY, spS, 1);
+    // where a reply lands in YOUR thread (them-bubbles sit on the left)
+    const landPtBack = { x: spX - 60 * spS, y: spY + 12 * spS };
 
     const sk = $('.keytag.sender-key');
     sk.style.opacity = String(seg(p, 0.14, 0.18) * (1 - seg(p, A.mobile ? 0.25 : 0.30, A.mobile ? 0.29 : 0.36)));
@@ -384,9 +463,13 @@ export function initJourney(section: HTMLElement) {
       // exactly ON the sent message (tops aligned: the bubble's meta line
       // sits below the text, so center-alignment would offset the twins)
       let start = A.liftStart;
-      if (sentBubble) {
+      if (dir === 1 && sentBubble) {
         const br = sentBubble.getBoundingClientRect();
         start = { x: br.left + br.width / 2, y: br.top + tr.offsetHeight / 2 };
+      } else if (dir === -1) {
+        // the reply's landing spot on YOUR phone — same approximation the
+        // forward drop uses on hers
+        start = landPtBack;
       }
       pos = bez(start, A.liftCp, A.sealP, k);
       scale = lerp(1, 0.9, k);
@@ -413,16 +496,29 @@ export function initJourney(section: HTMLElement) {
       capsule = p < 0.86;                        // chrome fades as plaintext returns
     } else {
       const k = ease(seg(p, T.drop[0], T.drop[1]));
-      pos = bez(A.unsealP, A.dropCp, landPt, k);
-      scale = lerp(0.9, 0.62, k);
+      let end = landPt;
+      if (dir === -1 && sentBubble) {
+        // reverse: detach from the REAL reply bubble in her thread — twins,
+        // exactly like the forward lift
+        const br = sentBubble.getBoundingClientRect();
+        end = { x: br.left + br.width / 2, y: br.top + tr.offsetHeight / 2 };
+      }
+      pos = bez(A.unsealP, A.dropCp, end, k);
+      scale = lerp(0.9, dir === -1 ? 1 : 0.62, k);
     }
 
-    if (p > T.land && !landed) { landed = true; $('.recipient-msgs').appendChild(landedBubble!); }
-    if (p <= T.land && landed) { landed = false; landedBubble!.remove(); }
-    if (sentMeta) sentMeta.textContent = p > 0.975 ? '08:12 ✓✓' : '08:12 ✓';
+    if (dir === 1) {
+      if (p > T.land && !landed) { landed = true; $('.recipient-msgs').appendChild(landedBubble!); }
+      if (p <= T.land && landed) { landed = false; landedBubble!.remove(); }
+      if (sentMeta) sentMeta.textContent = p > 0.975 ? '08:12 ✓✓' : '08:12 ✓';
+    } else {
+      if (p < REV_LAND && !landed) { landed = true; $('.sender-msgs').appendChild(landedBubble!); }
+      if (p >= REV_LAND && landed) { landed = false; landedBubble!.remove(); }
+      if (sentMeta) sentMeta.textContent = p < 0.025 ? '08:13 ✓✓' : '08:13 ✓';
+    }
 
     tr.classList.toggle('capsule', capsule);
-    tr.style.opacity = String(seg(p, 0.015, 0.04) * (landed || inside ? 0 : 1));
+    tr.style.opacity = String((dir === 1 ? seg(p, 0.015, 0.04) : 1 - seg(p, 0.96, 0.985)) * (landed || inside ? 0 : 1));
     tr.style.transform = `translate(${pos.x - tr.offsetWidth / 2}px, ${pos.y - tr.offsetHeight / 2}px) scale(${Math.max(scale, 0.001)})`;
 
     if (capsule && !landed && !inside && scale > 0.2) {
@@ -440,7 +536,8 @@ export function initJourney(section: HTMLElement) {
 
     ring(ctx, A.intake, seg(p, 0.42, 0.475), 40, '143,216,255');
     ring(ctx, A.outlet, seg(p, 0.615, 0.665), 40, '143,216,255');
-    ring(ctx, landPt, seg(p, 0.965, 1), 34, '255,217,138');
+    if (dir === 1) ring(ctx, landPt, seg(p, 0.965, 1), 34, '255,217,138');
+    else ring(ctx, landPtBack, 1 - seg(p, 0.005, 0.05), 34, '255,217,138');
 
     /* char states — seal and unseal share the same staggered mechanics */
     for (let i = 0; i < spans.length; i++) {
@@ -465,7 +562,7 @@ export function initJourney(section: HTMLElement) {
     }
     $('.rail').style.opacity = p > 0.015 ? '1' : '0';
     stops.forEach((s) => s.classList.toggle('on', p >= +s.dataset.p!));
-    $('.journey-hint').style.opacity = sent && p > 0.005 && p < 0.04 ? '1' : '0';
+    hintEl.style.opacity = sent && (dir === 1 ? p > 0.005 && p < 0.04 : p > 0.96 && p < 0.995) ? '1' : '0';
 
     requestAnimationFrame(update);
   }
