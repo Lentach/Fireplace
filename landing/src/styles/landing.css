@@ -93,6 +93,7 @@ nav.on-light .links a.cta { color: #fff; background: var(--blue); }
 .phone .m.landing { animation: land .45s cubic-bezier(.2, .9, .3, 1.2); }
 @keyframes land { 0% { transform: scale(.5) translateY(-14px); opacity: 0 } 100% { transform: none; opacity: 1 } }
 .phone .compose { display: flex; gap: 7px; padding: 9px 10px; border-top: 1px solid #1a2531; align-items: center; }
+.phone .compose .c-ic { font-size: 15px; line-height: 1; color: #55707f; opacity: .8; flex: 0 0 auto; user-select: none; }
 .phone .compose input {
   flex: 1; background: #121c27; border: none; outline: none; border-radius: 999px;
   padding: 8px 12px; font-size: 10px; color: #dfeefb; font-family: 'IBM Plex Mono', monospace;

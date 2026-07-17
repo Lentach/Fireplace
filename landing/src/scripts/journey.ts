@@ -156,7 +156,9 @@ export function initJourney(section: HTMLElement) {
     if (sent) return;
     sent = true;
     raw0 = Math.min(lastRaw, 0.06);   // clamp: a teleport-scroll must not compress the track
-    plain = (draft.value.trim() || 'meet me at eight').slice(0, 40);
+    // empty input falls back to the PREVIOUS message (a replay without
+    // retyping resends "your" message), then to the default
+    plain = (draft.value.trim() || plain || 'meet me at eight').slice(0, 40);
     // like a real chat: the message leaves the input and lives in the thread
     draft.value = '';
     draft.disabled = true; sendBtn.disabled = true; sendBtn.style.opacity = '.4';
@@ -216,10 +218,15 @@ export function initJourney(section: HTMLElement) {
     lastRaw = raw;
     // roomy top zone: the visitor can stop and type; skimmers auto-send.
     // p restarts from 0 at the send point (no mid-lift pop on auto-send).
-    if (!sent && raw > 0.06) doSend(true);
-    // reset ONLY at the absolute top — well below the 0.06 send trigger,
-    // so the two gates can never oscillate (hysteresis gap ≈ 4% of track)
-    if (sent && maxP > 0.05 && raw <= 0.02) resetSend();
+    // NEVER auto-send while the compose is focused — after a device-reset the
+    // visitor sits ON the boundary, and keyboard/scroll drift must not fire a
+    // half-typed message. Blur + scroll = replay as usual.
+    if (!sent && raw > 0.06 && document.activeElement !== draft) doSend(true);
+    // reverse back to the send point (phone docked at its start pose) → the
+    // send undoes and the compose reopens. The gates share the boundary but
+    // cannot oscillate: reset requires maxP > 0.05, and resetSend zeroes maxP,
+    // so a fresh boundary-jitter send can't immediately un-send itself.
+    if (sent && maxP > 0.05 && raw <= raw0) resetSend();
     const p = sent ? clamp((raw - raw0) / (1 - raw0), 0, 1) : 0;
     maxP = Math.max(maxP, p);
     window.__journey = { p, sent, landed, raw0 };
