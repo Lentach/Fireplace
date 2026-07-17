@@ -52,11 +52,18 @@ export function initJourney(section: HTMLElement) {
 
   function anchors() {
     const mobile = W < 700;
+    // phonePose keeps the visual bottom at y + h/2 regardless of scale
+    // (center-origin compensation), so clearances use the UNSCALED height.
+    const ph = $('.phone.sender').offsetHeight || 560;
+    const railTop = $('.rail').getBoundingClientRect().top || H;
     // Mobile: the phone is the protagonist on each side — top-center and LARGE
     // (sender through the seal, recipient through the unseal/finale); the
     // machine owns the middle act and fades out before the recipient arrives.
-    const senderC = mobile ? { x: W * 0.5, y: H * 0.40 } : { x: W * 0.20, y: H * 0.66 };
-    const recipC = mobile ? { x: W * 0.5, y: H * 0.40 } : { x: W * 0.80, y: H * 0.66 };
+    // Desktop: anchored at 0.66H but pulled up on tall/short screens so the
+    // phone AND the keytag under it always clear the rail.
+    const sideY = mobile ? H * 0.40 : Math.min(H * 0.66, railTop - ph / 2 - 56);
+    const senderC = mobile ? { x: W * 0.5, y: sideY } : { x: W * 0.20, y: sideY };
+    const recipC = mobile ? { x: W * 0.5, y: sideY } : { x: W * 0.80, y: sideY };
     const intake = rectC($('.slot.in'));
     const outlet = rectC($('.slot.out'));
     const holdY = mobile ? H * 0.76 : H * 0.55;
@@ -66,19 +73,18 @@ export function initJourney(section: HTMLElement) {
     const unsealP = { x: mobile ? W * 0.5 : W * 0.62, y: holdY };
     return {
       mobile, senderC, recipC, intake, outlet, sealP, unsealP,
-      phoneS: mobile ? 0.68 : 0.58,
+      // Desktop hold scale adapts to the free band between the caption
+      // column (~0.15H + 270px) and the rail: on short screens the phone
+      // shrinks instead of colliding with caption above or keytag/rail below
+      // (visual top = bottom - ph*s, since the visual bottom is scale-free).
+      phoneS: mobile ? 0.68 : clamp((railTop - 56 - (H * 0.15 + 270)) / ph, 0.34, 0.58),
       liftStart: { x: W * 0.5 + (mobile ? 30 : 40), y: H * 0.60 + (mobile ? 40 : 60) },
       liftCp: mobile ? { x: W * 0.30, y: H * 0.64 } : { x: W * 0.45, y: H * 0.48 },
       dropCp: mobile ? { x: W * 0.66, y: H * 0.58 } : { x: W * 0.66, y: holdY - H * 0.03 },
       cp1: { x: (sealP.x + intake.x) / 2, y: sealP.y },
       cp2: { x: (unsealP.x + outlet.x) / 2, y: unsealP.y },
-      // keytag sits BELOW the device on mobile. phonePose keeps the visual
-      // bottom at y + h/2 regardless of scale (center-origin compensation),
-      // so the clearance is half the UNSCALED height + margin. Desktop keeps
-      // the clamp: short viewports have no room between phone and rail.
-      keyDy: mobile
-        ? ($('.phone.sender').offsetHeight || 560) / 2 + 16
-        : Math.min(190, H * 0.23),
+      // keytag always sits BELOW the device: half height + margin
+      keyDy: ph / 2 + 16,
     };
   }
 
@@ -93,6 +99,7 @@ export function initJourney(section: HTMLElement) {
   type Cell = { el: HTMLSpanElement; final: string; settleAt: number };
   const streamRows: { el: HTMLElement; idx: number; tEl: HTMLSpanElement; cells: Cell[]; nextAt: number }[] = [];
   const STREAM_SP = 14;
+  let mineSlot = -1;   // queue slot my row takes over while inside the machine (picked at entry)
   {
     const stream = $('.sv-stream');
     for (let i = 0; i < 9; i++) {
@@ -130,13 +137,10 @@ export function initJourney(section: HTMLElement) {
   const sendBtn = $<HTMLButtonElement>('.phone.sender .compose button');
   sendBtn.addEventListener('click', () => doSend(false));
   draft.addEventListener('keydown', (e) => { if (e.key === 'Enter') doSend(false); });
-  // hero "type something private" box feeds the draft until the visitor
-  // types here or the message is sent
-  let draftTouched = false;
-  draft.addEventListener('input', () => { draftTouched = true; });
+  // hero "type something private" box and this compose are the SAME draft —
+  // last writer wins, until the message is sent
   document.addEventListener('fp:plain', (e) => {
-    const v = (e as CustomEvent<string>).detail.trim();
-    if (!sent && !draftTouched && v) draft.value = v.slice(0, 40);
+    if (!sent) draft.value = (e as CustomEvent<string>).detail.slice(0, 40);
   });
 
   function doSend(auto: boolean) {
@@ -194,11 +198,31 @@ export function initJourney(section: HTMLElement) {
     /* ambient stream flows bottom → top */
     const streamH = A.mobile ? 140 : 170, loop = streamH + 50;
     const visN = A.mobile ? 7 : 9;
+    /* my row is a REAL queue member: at entry it takes over whichever slot
+       currently sits in the lower-visible zone — that ambient row yields and
+       mine adopts its exact phase, so spacing, speed, drift, edge-fade, and
+       even the wrap all match the flow. It slides in through IN, climbs with
+       the queue, and slides out through OUT before the capsule re-emerges —
+       the mirror of how it entered. */
+    const rowY = (idx: number) => streamH + 20 - ((t * STREAM_SP + idx * (loop / visN)) % loop);
+    const mineIn = ease(seg(p, 0.50, 0.545));
+    const mineOut = ease(seg(p, 0.555, 0.60));
+    const minePres = Math.min(mineIn, 1 - mineOut);
+    if (minePres <= 0) mineSlot = -1;
+    else if (mineSlot < 0) {
+      let best = Infinity;
+      for (let i = 0; i < visN; i++) {
+        const d = Math.abs(rowY(i) - streamH * 0.72);
+        if (d < best) { best = d; mineSlot = i; }
+      }
+    }
+    let mineFlowY = streamH * 0.5;
     for (const r of streamRows) {
       if (r.idx >= visN) { r.el.style.opacity = '0'; continue; }
-      const y = streamH + 20 - ((t * STREAM_SP + r.idx * (loop / visN)) % loop);
+      const y = rowY(r.idx);
+      if (r.idx === mineSlot) mineFlowY = y;
       r.el.style.transform = `translateY(${y}px)`;
-      r.el.style.opacity = String(clamp(Math.min(y / 26, (streamH - y) / 26), 0, 0.85));
+      r.el.style.opacity = String(clamp(Math.min(y / 26, (streamH - y) / 26), 0, 0.85) * (r.idx === mineSlot ? 1 - minePres : 1));
       // slot refresh: a NEW envelope takes the row — fresh stamp, staggered scramble
       if (now >= r.nextAt) {
         r.nextAt = now + 2500 + Math.random() * 6000;
@@ -274,21 +298,14 @@ export function initJourney(section: HTMLElement) {
     $('.scan-in').style.opacity = String(seg(p, 0.465, 0.485) * (1 - seg(p, 0.50, 0.52)));
     $('.scan-out').style.opacity = String(seg(p, 0.585, 0.605) * (1 - seg(p, 0.625, 0.645)));
 
-    /* my row: slides in at the bottom of the window, drifts UP with the flow
-       like every other row, then slides back out — the exact mirror of how it
-       entered. The external "yours →" tag tracks it from the machine's edge. */
     const mine = $('.sv-row.mine');
-    const inT = ease(seg(p, 0.50, 0.545));
-    const driftT = seg(p, 0.545, 0.62);
-    const outT = ease(seg(p, 0.60, 0.645));
-    const mineY = lerp(streamH * 0.66, streamH * 0.18, driftT);
-    const mineO = Math.min(inT, 1 - outT) * 0.95;
+    const mineO = clamp(Math.min(mineFlowY / 26, (streamH - mineFlowY) / 26), 0, 0.85) * minePres;
     mine.style.opacity = String(mineO);
-    mine.style.transform = `translate(${(1 - inT) * -360 + outT * 360}px, ${mineY}px)`;
+    mine.style.transform = `translate(${(1 - mineIn) * -360 + mineOut * 360}px, ${mineFlowY}px)`;
     const mineTag = $('.mine-tag');
     const streamR = $('.sv-stream').getBoundingClientRect();
     const machR = $('.machine').getBoundingClientRect();
-    mineTag.style.top = `${streamR.top - machR.top + mineY}px`;
+    mineTag.style.top = `${streamR.top - machR.top + mineFlowY}px`;
     mineTag.style.opacity = String(mineO);
 
     /* traveler — symmetric two-act structure */
