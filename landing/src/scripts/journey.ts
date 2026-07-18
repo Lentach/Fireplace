@@ -99,11 +99,15 @@ export function initJourney(section: HTMLElement) {
     const outlet = { x: coreC.x + shellRF, y: coreC.y };
     const intakeL = { x: coreC.x - shellR, y: coreC.y };    // live: port slits
     const outletL = { x: coreC.x + shellR, y: coreC.y };
-    const holdY = mobile ? H * 0.76 : H * 0.55;
-    // Clean mirrored wire curves: leave the hold horizontally, bend up into
-    // the shell port. Single-bend quadratics, symmetric by construction.
-    const sealP = { x: mobile ? W * 0.5 : W * 0.38, y: holdY };
-    const unsealP = { x: mobile ? W * 0.5 : W * 0.62, y: holdY };
+    // Both holds SHARE one point under the node (desktop now too — mobile
+    // always did): the seal and unseal moments never coexist, and a shared
+    // endpoint fuses the two wire curves into ONE parabola threading the
+    // sphere — the "connected tunnel" the owner liked on mobile. The old
+    // desktop .38W/.62W holds sat almost directly under the huge shell's
+    // ports, degenerating the rails into floating vertical stubs.
+    const holdY = mobile ? H * 0.76 : H * 0.70;
+    const sealP = { x: W * 0.5, y: holdY };
+    const unsealP = { x: W * 0.5, y: holdY };
     return {
       mobile, senderC, recipC, intake, outlet, intakeL, outletL, sealP, unsealP, coreC, coreR, shellR,
       // Desktop hold scale adapts to the free band between the caption
