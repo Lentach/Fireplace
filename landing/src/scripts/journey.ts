@@ -121,8 +121,16 @@ export function initJourney(section: HTMLElement) {
       phoneS: mobile ? 0.68 : clamp((railTop - 56 - (H * 0.15 + 270)) / ph, 0.34, 0.58),
       // Desktop finale: both devices dock center-stage as LARGE as fits —
       // width-limited so they can never collide (centers 0.30W apart, 24px
-      // gap), height-limited so the top edge clears the nav.
-      finS: mobile ? 1 : clamp(Math.min((W * 0.30 - 24) / pw, (H * 0.56 + ph / 2 - 76) / ph), 0.55, 1.2),
+      // gap), height-limited so the top edge clears the nav. finY pulls the
+      // pair UP whenever the base line would drop the scale-free bottom edge
+      // (y + ph/2) onto the rail — dots never show through the devices on
+      // short viewports; the scale term follows finY, so tops keep clearing
+      // the nav (devices trade a little size for a clean dock).
+      finY: Math.min(H * (mobile ? 0.58 : 0.56), railTop - 16 - ph / 2),
+      finS: mobile ? 1 : clamp(Math.min(
+        (W * 0.30 - 24) / pw,
+        (Math.min(H * 0.56, railTop - 16 - ph / 2) + ph / 2 - 76) / ph,
+      ), 0.55, 1.2),
       finSx: W * 0.35, finRx: W * 0.65,
       liftStart: { x: W * 0.5 + (mobile ? 30 : 40), y: H * 0.60 + (mobile ? 40 : 60) },
       liftCp: mobile ? { x: W * 0.30, y: H * 0.64 } : { x: W * 0.45, y: H * 0.48 },
@@ -578,7 +586,7 @@ export function initJourney(section: HTMLElement) {
     const stayR = dir === -1 && !A.mobile;
     const arrive = stayR ? 1 : ease(seg(p, A.mobile ? 0.72 : 0.62, A.mobile ? 0.82 : 0.76));
     const rpX = lerp(lerp(W * (A.mobile ? 1.35 : 1.15), A.recipC.x, arrive), A.mobile ? W * 0.5 : A.finRx, grow);
-    const rpY = lerp(A.recipC.y, H * (A.mobile ? 0.58 : 0.56), grow);
+    const rpY = lerp(A.recipC.y, A.finY, grow);
     const rpS = lerp(A.phoneS, A.mobile ? 1 : A.finS, grow);
     const recIn = stayR ? ease(seg(p, 0.03, 0.10)) : ease(seg(p, A.mobile ? 0.70 : 0.60, A.mobile ? 0.80 : 0.74));
     phonePose($('.phone.recipient'), rpX, rpY, rpS, recIn);
@@ -593,7 +601,7 @@ export function initJourney(section: HTMLElement) {
       const moveOut = ease(seg(p, T.lift[0], T.lift[1]));
       // finale: BOTH devices end even — center-stage, as large as fits
       spX = lerp(lerp(W * 0.5, A.senderC.x, moveOut), A.finSx, grow);
-      spY = lerp(lerp(H * 0.60, A.senderC.y, moveOut), H * 0.56, grow);
+      spY = lerp(lerp(H * 0.60, A.senderC.y, moveOut), A.finY, grow);
       spS = lerp(lerp(1, A.phoneS, moveOut), A.finS, grow);
     }
     phonePose($('.phone.sender'), spX, spY, spS, 1);
