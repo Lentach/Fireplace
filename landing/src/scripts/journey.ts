@@ -482,27 +482,72 @@ export function initJourney(section: HTMLElement) {
       seg(p, 0.425, 0.445) * (1 - seg(p, 0.46, 0.48)),
       seg(p, 0.615, 0.635) * (1 - seg(p, 0.655, 0.675)), q);
 
-    /* dashed routes, mirrored — drawn along the FLIGHT curves (frozen
-       ports, so the capsule never leaves its rail) but clipped at the LIVE
-       shell body: the rail always plugs into the node's surface wherever
-       it is NOW — grow/shrink never leave a floating rail start */
+    /* the TLS TUNNELS, mirrored — the caption says "ciphertext, inside TLS",
+       so the wire is drawn as a tunnel of light, not a dashed diagram line:
+       three layered strokes (halo → sheath → core) that brighten toward the
+       node (light bending into the well) with a slow ambient shimmer, plus a
+       few photons drifting the way the traffic actually flows (into the node
+       on the IN rail, out of it on the OUT rail). Geometry is unchanged from
+       the dashed version: FROZEN flight curves (the capsule never leaves its
+       rail) clipped at the LIVE shell body, so the tunnel always plugs into
+       the node's surface wherever it is now. Photons/shimmer are ambient
+       time (stars class); the tube itself stays a pure function of scroll. */
     const pathAlpha = seg(p, 0.22, 0.30) * (1 - seg(p, 0.95, 1));
     if (pathAlpha > 0) {
       const rimR = A.shellR + 2;
-      ctx.setLineDash([2, 7]);
-      ctx.strokeStyle = `rgba(143,216,255,${0.28 * pathAlpha})`; ctx.lineWidth = 1;
-      for (const [P1, CP, P2] of [[A.sealP, A.cp1, A.intake], [A.outlet, A.cp2, A.unsealP]] as [Pt, Pt, Pt][]) {
-        ctx.beginPath();
-        let pen = false;
+      const rails = [
+        [A.sealP, A.cp1, A.intake, 1],    // sphere at k=1 → flow: device → node
+        [A.outlet, A.cp2, A.unsealP, 0],  // sphere at k=0 → flow: node → device
+      ] as [Pt, Pt, Pt, number][];
+      ctx.lineCap = 'round';
+      for (let ri = 0; ri < rails.length; ri++) {
+        const [P1, CP, P2, sEnd] = rails[ri];
+        // contiguous visible runs (rim-clipped), each stroked ONCE per layer —
+        // per-segment strokes would double-alpha at every round-cap joint and
+        // bead the rail like the old dashes
+        const runs: { pts: Pt[]; u0: number; u1: number }[] = [];
+        let cur: Pt[] = [], u0 = 0;
         for (let k = 0; k <= 40; k++) {
           const pt = bez(P1, CP, P2, k / 40);
-          if (Math.hypot(pt.x - A.coreC.x, pt.y - A.coreC.y) < rimR) { pen = false; continue; }
-          pen ? ctx.lineTo(pt.x, pt.y) : ctx.moveTo(pt.x, pt.y);
-          pen = true;
+          if (Math.hypot(pt.x - A.coreC.x, pt.y - A.coreC.y) < rimR) {
+            if (cur.length > 1) runs.push({ pts: cur, u0, u1: (k - 1) / 40 });
+            cur = [];
+          } else {
+            if (!cur.length) u0 = k / 40;
+            cur.push(pt);
+          }
         }
-        ctx.stroke();
+        if (cur.length > 1) runs.push({ pts: cur, u0, u1: 1 });
+        const breath = 1 + 0.08 * Math.sin(t * 1.6 + ri * 3);   // whole-rail life, no beads
+        for (const run of runs) {
+          const first = run.pts[0], last = run.pts[run.pts.length - 1];
+          const glA = (0.65 + 0.35 * (sEnd ? run.u0 : 1 - run.u0)) * pathAlpha * breath;
+          const glB = (0.65 + 0.35 * (sEnd ? run.u1 : 1 - run.u1)) * pathAlpha * breath;
+          for (const [w, al] of [[10, 0.05], [4, 0.12], [1.4, 0.42]] as const) {
+            const lg = ctx.createLinearGradient(first.x, first.y, last.x, last.y);
+            lg.addColorStop(0, `rgba(143,216,255,${al * glA})`);
+            lg.addColorStop(1, `rgba(143,216,255,${al * glB})`);
+            ctx.beginPath();
+            run.pts.forEach((q2, i) => i === 0 ? ctx.moveTo(q2.x, q2.y) : ctx.lineTo(q2.x, q2.y));
+            ctx.lineWidth = w; ctx.strokeStyle = lg;
+            ctx.stroke();
+          }
+        }
+        // photons: ascending k drifts device→node on IN and node→device on
+        // OUT — the direction envelopes really move through the relay
+        for (let i = 0; i < 3; i++) {
+          const u = (t * 0.10 + i / 3 + ri * 0.17) % 1;
+          const pt = bez(P1, CP, P2, u);
+          if (Math.hypot(pt.x - A.coreC.x, pt.y - A.coreC.y) < rimR) continue;
+          const fade = Math.sin(u * Math.PI);   // born/absorbed softly at the ends
+          const g2 = ctx.createRadialGradient(pt.x, pt.y, 0.5, pt.x, pt.y, 7);
+          g2.addColorStop(0, `rgba(190,232,255,${0.55 * fade * pathAlpha})`);
+          g2.addColorStop(1, 'rgba(143,216,255,0)');
+          ctx.beginPath(); ctx.arc(pt.x, pt.y, 7, 0, 6.28);
+          ctx.fillStyle = g2; ctx.fill();
+        }
       }
-      ctx.setLineDash([]);
+      ctx.lineCap = 'butt';
     }
 
     /* phones — the journey ends the way it began: a full-size device.
