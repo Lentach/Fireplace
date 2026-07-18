@@ -533,10 +533,12 @@ export function initJourney(section: HTMLElement) {
             ctx.stroke();
           }
         }
-        // photons: ascending k drifts device→node on IN and node→device on
-        // OUT — the direction envelopes really move through the relay
+        // photons drift the way the CURRENT journey flows: forward =
+        // device→node on IN and node→device on OUT (ascending k); a reply
+        // reverses both — the tunnel never visibly opposes its capsule
         for (let i = 0; i < 3; i++) {
-          const u = (t * 0.10 + i / 3 + ri * 0.17) % 1;
+          const u0p = (t * 0.10 + i / 3 + ri * 0.17) % 1;
+          const u = dir === 1 ? u0p : 1 - u0p;
           const pt = bez(P1, CP, P2, u);
           if (Math.hypot(pt.x - A.coreC.x, pt.y - A.coreC.y) < rimR) continue;
           const fade = Math.sin(u * Math.PI);   // born/absorbed softly at the ends
