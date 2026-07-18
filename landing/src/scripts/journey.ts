@@ -95,19 +95,23 @@ export function initJourney(section: HTMLElement) {
     const shrink = mobile ? 0 : ease(seg(p, 0.71, 0.78));
     const shellRF = coreR * 1.16;   // full-size shell — flight geometry
     const shellR = shellRF * (0.55 + 0.45 * grow) * (1 - 0.55 * shrink);
-    const intake = { x: coreC.x - shellRF, y: coreC.y };    // frozen: wires/flight
-    const outlet = { x: coreC.x + shellRF, y: coreC.y };
-    const intakeL = { x: coreC.x - shellR, y: coreC.y };    // live: port slits
-    const outletL = { x: coreC.x + shellR, y: coreC.y };
-    // Both holds SHARE one point under the node (desktop now too — mobile
-    // always did): the seal and unseal moments never coexist, and a shared
-    // endpoint fuses the two wire curves into ONE parabola threading the
-    // sphere — the "connected tunnel" the owner liked on mobile. The old
-    // desktop .38W/.62W holds sat almost directly under the huge shell's
-    // ports, degenerating the rails into floating vertical stubs.
-    const holdY = mobile ? H * 0.76 : H * 0.70;
-    const sealP = { x: W * 0.5, y: holdY };
-    const unsealP = { x: W * 0.5, y: holdY };
+    // Ports sit on the LOWER flanks (~36° below the equator, owner round
+    // 27): the tunnel passes UNDER the sphere and enters each port RADIALLY
+    // (cp on the center→port ray) instead of skimming tangentially through
+    // the dot cloud on its way to an equator port.
+    const pdx = Math.cos(0.62), pdy = Math.sin(0.62);
+    const intake = { x: coreC.x - shellRF * pdx, y: coreC.y + shellRF * pdy };   // frozen: wires/flight
+    const outlet = { x: coreC.x + shellRF * pdx, y: coreC.y + shellRF * pdy };
+    const intakeL = { x: coreC.x - shellR * pdx, y: coreC.y + shellR * pdy };    // live: port slits
+    const outletL = { x: coreC.x + shellR * pdx, y: coreC.y + shellR * pdy };
+    // Both holds SHARE one point, centered UNDER THE NODE (coreC.x — the
+    // machine sits at .55W on desktop, so a .5W valley made the two arcs
+    // visibly uneven): seal and unseal never coexist, and the shared
+    // endpoint fuses the two wire curves into ONE symmetric parabola
+    // passing under the sphere. Desktop valley depth is sphere-relative.
+    const holdY = mobile ? H * 0.76 : coreC.y + shellRF + 84;
+    const sealP = { x: coreC.x, y: holdY };
+    const unsealP = { x: coreC.x, y: holdY };
     return {
       mobile, senderC, recipC, intake, outlet, intakeL, outletL, sealP, unsealP, coreC, coreR, shellR,
       // Desktop hold scale adapts to the free band between the caption
@@ -123,8 +127,12 @@ export function initJourney(section: HTMLElement) {
       liftStart: { x: W * 0.5 + (mobile ? 30 : 40), y: H * 0.60 + (mobile ? 40 : 60) },
       liftCp: mobile ? { x: W * 0.30, y: H * 0.64 } : { x: W * 0.45, y: H * 0.48 },
       dropCp: mobile ? { x: W * 0.66, y: H * 0.58 } : { x: W * 0.66, y: holdY - H * 0.03 },
-      cp1: { x: (sealP.x + intake.x) / 2, y: sealP.y },
-      cp2: { x: (unsealP.x + outlet.x) / 2, y: unsealP.y },
+      // cp x on the center→port ray (near-radial entry, never tangential);
+      // cp y averaged with the valley so both arcs leave the shared hold
+      // shallowly — a rounded U, not a pointed V (two quadratics meeting at
+      // steep tangents kink at the join)
+      cp1: { x: coreC.x + (intake.x - coreC.x) * 1.55, y: (coreC.y + (intake.y - coreC.y) * 1.55 + holdY) / 2 },
+      cp2: { x: coreC.x + (outlet.x - coreC.x) * 1.55, y: (coreC.y + (outlet.y - coreC.y) * 1.55 + holdY) / 2 },
       // keytag always sits BELOW the device: half height + margin
       keyDy: ph / 2 + 16,
     };
@@ -479,12 +487,12 @@ export function initJourney(section: HTMLElement) {
     shellDraw(ctx, A.coreC.x, A.coreC.y, A.shellR, open, presence, t);
     // event horizon at the clip edge (rr just outside the DOM face)
     drawHorizon(ctx, A.coreC.x, A.coreC.y, open * (A.coreR + 4), open * presence, q);
-    /* IN/OUT ports ride the LIVE shell equator; they flare while the
-       traveler is scanned through (the old slot-scan windows) */
+    /* IN/OUT ports ride the LIVE shell's lower flanks; they flare while
+       the traveler is scanned through (the old slot-scan windows) */
     const portA = presence * ease(seg(p, 0.40, 0.44)) * (1 - ease(seg(p, 0.70, 0.745)));
     drawPorts(ctx, A.intakeL, A.outletL, portA,
       seg(p, 0.425, 0.445) * (1 - seg(p, 0.46, 0.48)),
-      seg(p, 0.615, 0.635) * (1 - seg(p, 0.655, 0.675)), q);
+      seg(p, 0.615, 0.635) * (1 - seg(p, 0.655, 0.675)), q, 0.62);
 
     /* the TLS TUNNELS, mirrored — the caption says "ciphertext, inside TLS",
        so the wire is drawn as a tunnel of light, not a dashed diagram line:
@@ -496,7 +504,11 @@ export function initJourney(section: HTMLElement) {
        rail) clipped at the LIVE shell body, so the tunnel always plugs into
        the node's surface wherever it is now. Photons/shimmer are ambient
        time (stars class); the tube itself stays a pure function of scroll. */
-    const pathAlpha = seg(p, 0.22, 0.30) * (1 - seg(p, 0.95, 1));
+    // while the message rides INSIDE the node, the wire act rests: the
+    // tunnel dims to a trace so the open black hole owns the stage (owner
+    // round 27), and re-lights for the emit
+    const insideDip = seg(p, 0.475, 0.51) * (1 - seg(p, 0.585, 0.615));
+    const pathAlpha = seg(p, 0.22, 0.30) * (1 - seg(p, 0.95, 1)) * (1 - 0.85 * insideDip);
     if (pathAlpha > 0) {
       const rimR = A.shellR + 2;
       const rails = [

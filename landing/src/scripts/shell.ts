@@ -123,21 +123,30 @@ export function drawHorizon(ctx: CanvasRenderingContext2D, cx: number, cy: numbe
   glowArc(ctx, cx, cy, rr, 2.2, 4.35, '255,240,218', 0.85 * a, 3.4, 34 * q);
 }
 
-// IN/OUT ports on the LIVE shell equator — ice slits + tags (the cold
-// network family, not the warm accretion one); they flare while the
-// traveler is scanned through.
-export function drawPorts(ctx: CanvasRenderingContext2D, intake: Pt, outlet: Pt, a: number, scanIn: number, scanOut: number, q = 1) {
+// IN/OUT ports on the LIVE shell — ice slits + tags (the cold network
+// family, not the warm accretion one); they flare while the traveler is
+// scanned through. `ang` is the port's polar angle below the horizontal
+// (0 = equator side): the slit lies along the shell TANGENT at the port,
+// and the label sits just outside along the radial.
+export function drawPorts(ctx: CanvasRenderingContext2D, intake: Pt, outlet: Pt, a: number, scanIn: number, scanOut: number, q = 1, ang = 0) {
   if (a <= 0.02) return;
   ctx.font = '7px IBM Plex Mono'; ctx.textAlign = 'center';
+  const s = Math.sin(ang), c = Math.cos(ang);
+  // unit tangents at (∓cos ang, +sin ang)·R from center (screen y down)
+  const tang: Record<string, Pt> = { in: { x: s, y: c }, out: { x: -s, y: c } };
+  // outward radials — label offset direction
+  const rad: Record<string, Pt> = { in: { x: -c, y: s }, out: { x: c, y: s } };
   for (const [pt, lbl, scan] of [[intake, 'in', scanIn], [outlet, 'out', scanOut]] as [Pt, string, number][]) {
-    const h = 8 + scan * 3;
-    ctx.beginPath(); ctx.moveTo(pt.x, pt.y - h); ctx.lineTo(pt.x, pt.y + h);
+    const h = 8 + scan * 3, tg = tang[lbl], rd = rad[lbl];
+    ctx.beginPath();
+    ctx.moveTo(pt.x - tg.x * h, pt.y - tg.y * h);
+    ctx.lineTo(pt.x + tg.x * h, pt.y + tg.y * h);
     ctx.strokeStyle = `rgba(143,216,255,${(0.5 + 0.5 * scan) * a})`;
     ctx.lineWidth = 2 + scan * 1.5;
     ctx.shadowColor = 'rgba(143,216,255,.9)'; ctx.shadowBlur = scan * 14 * q;
     ctx.stroke(); ctx.shadowBlur = 0;
     ctx.fillStyle = `rgba(120,160,190,${0.8 * a})`;
-    ctx.fillText(lbl, pt.x, pt.y + 22);
+    ctx.fillText(lbl, pt.x + rd.x * 20, pt.y + rd.y * 20 + 3);
   }
   ctx.textAlign = 'left';
 }
