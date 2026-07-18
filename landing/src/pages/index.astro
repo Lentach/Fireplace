@@ -1,7 +1,6 @@
 ---
 import '../styles/landing.css';
 const app = 'https://fireplace.ignorelist.com/';
-const repo = 'https://github.com/Lentach/Fireplace';
 ---
 <!doctype html>
 <html lang="en">
@@ -9,9 +8,9 @@ const repo = 'https://github.com/Lentach/Fireplace';
   <meta charset="utf-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1" />
   <title>Fireplace — messages only two people can read</title>
-  <meta name="description" content="End-to-end encrypted chat. Signal protocol on every message, self-hosted media, deleting actually deletes. Follow one message end to end and see exactly what our server sees: nothing." />
+  <meta name="description" content="End-to-end encrypted chat. Signal protocol on every message, deleting actually deletes. Follow one message end to end and see exactly what our server sees: nothing readable." />
   <meta property="og:title" content="Fireplace — messages only two people can read" />
-  <meta property="og:description" content="E2E encrypted chat built by two friends. Follow one message end to end — including the only stop we own." />
+  <meta property="og:description" content="E2E encrypted chat built by one nerd. Follow one message end to end — including the only stop we own." />
   <meta property="og:type" content="website" />
   <link rel="preconnect" href="https://fonts.googleapis.com" />
   <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
@@ -25,7 +24,6 @@ const repo = 'https://github.com/Lentach/Fireplace';
   <div class="links">
     <a href="#journey">How it works</a>
     <a href="#features">Privacy</a>
-    <a href={repo}>GitHub</a>
     <a class="cta" href={app}>Open app</a>
   </div>
 </nav>
@@ -34,7 +32,7 @@ const repo = 'https://github.com/Lentach/Fireplace';
 <section class="hero">
   <canvas></canvas>
   <div class="content">
-    <p class="tag">E2E encrypted chat · public source · self-hosted</p>
+    <p class="tag">E2E encrypted chat · sealed on your device · your words never reach us readable</p>
     <h1>Messages only<br /><span>two people</span><br />can read.</h1>
     <p class="sub">Every message is sealed on your device with the Signal protocol before it touches the network. Our server relays ciphertext between the people you trust — and understands none of it.</p>
     <div class="enc" data-encrypt></div>
@@ -160,6 +158,11 @@ const repo = 'https://github.com/Lentach/Fireplace';
       <h2>Only her phone<br />can do this.</h2>
       <p>Her device holds the only matching key in existence. The ratchet turns, the seal opens — and it lands on her screen.</p>
     </div>
+    <div class="cap turn" data-a="0.955" data-b="1.2">
+      <span class="num">07 / HER TURN</span>
+      <h2>Now reply.</h2>
+      <p>Type in her composer — the answer rides the same rail back, sealed on her phone, opened only on yours. Scroll up and watch it fly.</p>
+    </div>
 
     <div class="rail">
       <div class="stop" data-p="0.02"><div class="d"></div><span>your device</span></div><div class="seg"></div>
@@ -185,9 +188,9 @@ const repo = 'https://github.com/Lentach/Fireplace';
         <p>Double-ratchet end-to-end encryption by default — there is no unencrypted mode. Keys are generated and stay on your device; the server never sees them.</p>
       </div>
       <div class="card">
-        <span class="k">Yours</span>
-        <h3>Self-hosted, no data brokers</h3>
-        <p>Media lives on our own disk, not big-tech clouds. No ads, no analytics resale, no "partners". The code is public — read it instead of trusting us.</p>
+        <span class="k">Blind</span>
+        <h3>A server that knows nothing</h3>
+        <p>Our relay stores sealed envelopes and routing metadata — your words cross it unreadable. No ads, no analytics resale, no "partners". Even our backups can't read your messages.</p>
       </div>
       <div class="card">
         <span class="k">Ephemeral</span>
@@ -198,11 +201,11 @@ const repo = 'https://github.com/Lentach/Fireplace';
   </section>
   <section class="ledger">
     <div class="strip">
-      <span><b>0</b> plaintext stored</span>
+      <span>message text: <b>ciphertext only</b></span>
       <span><b>E2E</b> on by default</span>
-      <span><b>public</b> source code</span>
-      <span><b>self</b>-hosted</span>
-      <span>built by <b>two friends</b></span>
+      <span><b>delete</b> means delete</span>
+      <span>keys <b>never leave</b> your device</span>
+      <span>built by <b>one nerd</b></span>
     </div>
   </section>
 </div>
@@ -212,15 +215,20 @@ const repo = 'https://github.com/Lentach/Fireplace';
 <section class="outro">
   <canvas></canvas>
   <div class="content">
+    <span class="kick"><span class="kdot"></span> relay nº1 · still humming</span>
     <h2>That's the whole story.<br /><span>We're just the courier.</span></h2>
-    <a class="cta" href={app}>Open Fireplace</a>
+    <a class="cta" href={app}><span class="slit" aria-hidden="true"></span>Open Fireplace</a>
     <p class="fine">runs in your browser · installs as an app · free</p>
   </div>
 </section>
 
 <footer>
-  <span>Fireplace — E2E encrypted chat</span>
-  <a href={repo}>github.com/Lentach/Fireplace</a>
+  <div class="f-wire" aria-hidden="true"><span class="f-photon"></span></div>
+  <div class="f-row">
+    <span class="f-mark">FIRE<b>PLACE</b> · end-to-end encrypted chat</span>
+    <span class="f-honest">no analytics on this page — your scroll stays yours</span>
+    <span class="f-made">built by one nerd · 2026</span>
+  </div>
 </footer>
 
 <script>
