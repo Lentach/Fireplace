@@ -29,11 +29,6 @@ nav .mark b { color: var(--ice); }
 nav .links { display: flex; gap: 30px; align-items: center; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; }
 nav .links a { color: rgba(238, 246, 251, .6); text-decoration: none; transition: color .35s; }
 nav .links a.cta { color: #04121c; background: var(--ice); padding: 10px 22px; font-weight: 500; }
-nav.on-light { background: rgba(242, 245, 248, .75); border-color: rgba(20, 32, 44, .08); }
-nav.on-light .mark { color: var(--txt-light); }
-nav.on-light .mark b { color: var(--blue); }
-nav.on-light .links a { color: rgba(20, 32, 44, .6); }
-nav.on-light .links a.cta { color: #fff; background: var(--blue); }
 
 /* ---------- hero ---------- */
 .hero { position: relative; min-height: 100vh; background: #000; overflow: hidden; }
@@ -247,26 +242,38 @@ nav.on-light .links a.cta { color: #fff; background: var(--blue); }
 .prompt h1 span { color: var(--ice); }
 .prompt p { margin-top: 12px; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: rgba(238, 246, 251, .45); }
 
-/* ---------- light zone: features + ledger ---------- */
-.bridge { height: 18vh; background: linear-gradient(180deg, #000, var(--paper)); }
-.bridge-up { height: 18vh; background: linear-gradient(180deg, var(--paper-2), #000); }
-.features { background: var(--paper); color: var(--txt-light); padding: 10vh 6vw; }
+/* ---------- the facts chapter: lifted dark, not a white flashbang ----------
+   After minutes of near-black space, a paper-white slab reads as a flash.
+   Same chapter-change rhythm, achieved with a LIFTED navy panel + ice
+   keylines instead of inverted luminance. */
+.bridge { height: 14vh; background: linear-gradient(180deg, #000, #0c141f); }
+.bridge-up { height: 14vh; background: linear-gradient(180deg, #0a111b, #000); }
+.features { background: #0c141f; color: #eef6fb; padding: 10vh 6vw; }
 .features h2 { font-weight: 900; text-transform: uppercase; font-size: clamp(26px, 3vw, 40px); letter-spacing: -.01em; }
+.features h2 br + span, .features h2 span { color: var(--ice); }
 .features .grid { margin-top: 6vh; display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 22px; }
-.features .card { background: #fff; border: 1px solid #dde5ec; padding: 30px 28px; }
-.features .card .k { font-size: 10px; letter-spacing: .3em; text-transform: uppercase; color: var(--blue); }
-.features .card h3 { margin-top: 14px; font-size: 19px; font-weight: 700; }
-.features .card p { margin-top: 12px; font-size: 12px; line-height: 1.9; color: #5c6b7a; }
-.ledger { background: var(--paper-2); color: var(--txt-light); padding: 8vh 6vw; }
-.ledger .strip {
-  border-top: 1px solid #c9d4de; border-bottom: 1px solid #c9d4de; padding: 26px 0;
-  display: flex; flex-wrap: wrap; gap: 16px 48px; justify-content: center;
-  font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: #5c6b7a;
+.features .card {
+  background: rgba(13, 20, 32, .72); border: 1px solid #1d2a38; padding: 30px 28px;
+  box-shadow: inset 0 1px 0 rgba(143, 216, 255, .06);
 }
-.ledger .strip b { color: var(--txt-light); }
+.features .card .k { font-size: 10px; letter-spacing: .3em; text-transform: uppercase; color: var(--ice); }
+.features .card h3 { margin-top: 14px; font-size: 19px; font-weight: 700; color: #dfeefb; }
+.features .card p { margin-top: 12px; font-size: 12px; line-height: 1.9; color: #8fa8bc; }
+.ledger { background: #0a111b; color: #eef6fb; padding: 8vh 6vw; }
+.ledger .strip {
+  border-top: 1px solid #1a2531; border-bottom: 1px solid #1a2531; padding: 26px 0;
+  display: flex; flex-wrap: wrap; gap: 16px 48px; justify-content: center;
+  font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: #54708a;
+}
+.ledger .strip b { color: var(--ice); }
+/* stage text layers are DISPLAY ONLY — they must never eat taps meant for
+   the phones under them (the 07 caption sits near Kasia's composer) */
+.cap, .prompt, .rail { pointer-events: none; }
 /* 07 caption survives the finale (data-b past 1): a slim column that fits
-   left of the docked sender device on desktop; mobile centers it as usual */
+   left of the docked sender device on desktop; on mobile the full caption
+   would sit ON the phone — swap to a one-liner pinned at the very top */
 .cap.turn { max-width: 190px; top: 30%; }
+.cap.turn .m-short { display: none; }
 
 /* ---------- outro: the last relay ---------- */
 .outro {
@@ -348,6 +355,10 @@ footer { background: #000; position: relative; }
   .enc { max-width: none; }
   .cap h2 { font-size: clamp(19px, 6vw, 26px); }
   .cap p { font-size: 10.5px; line-height: 1.7; }
+  /* the full 07 caption would sit ON the finale phone — one-liner up top */
+  .cap.turn { top: 6%; }
+  .cap.turn h2, .cap.turn p:not(.m-short) { display: none; }
+  .cap.turn .m-short { display: block; font-size: 10.5px; line-height: 1.7; }
   /* the caption already names the relay — the head label would collide with
      its last line on small screens */
   .mc-head { display: none; }

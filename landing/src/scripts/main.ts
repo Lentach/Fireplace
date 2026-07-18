@@ -64,14 +64,3 @@ if (outCanvas) {
   })();
 }
 
-/* nav flips dark→light while the light zone is under it */
-const nav = document.querySelector('nav');
-const lightZone = document.getElementById('lightZone');
-if (nav && lightZone) {
-  const check = () => {
-    const r = lightZone.getBoundingClientRect();
-    nav.classList.toggle('on-light', r.top < 70 && r.bottom > 0);
-    requestAnimationFrame(check);
-  };
-  check();
-}
