@@ -127,10 +127,10 @@ export function initJourney(section: HTMLElement) {
     const outlet = { x: coreC.x + shellRF * pdx, y: coreC.y + shellRF * pdy };
     const intakeL = { x: coreC.x - shellR * pdx, y: coreC.y + shellR * pdy };    // live: port slits
     const outletL = { x: coreC.x + shellR * pdx, y: coreC.y + shellR * pdy };
-    // Both holds SHARE one point, centered UNDER THE NODE (coreC.x — the
-    // machine sits at .55W on desktop, so a .5W valley made the two arcs
-    // visibly uneven): seal and unseal never coexist, and the shared
-    // endpoint fuses the two wire curves into ONE symmetric parabola
+    // Both holds SHARE one point, centered UNDER THE NODE. The relay itself
+    // sits on the viewport centerline, so its two wire arcs and the symmetric
+    // device anchors keep equal left/right spacing. Seal and unseal never
+    // coexist, and the shared endpoint fuses the curves into one parabola
     // passing under the sphere. Desktop valley depth is sphere-relative.
     const holdY = mobile ? H * 0.76 : coreC.y + shellRF + 84;
     // REST pose (pre-send / p≈0): on tall screens the composer sits at 0.60H
