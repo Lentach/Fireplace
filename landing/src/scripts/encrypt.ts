@@ -3,16 +3,36 @@
 import { autoGrow, B64, rnd } from './util';
 
 export function initEncrypt(root: HTMLElement) {
+  root.classList.add('enc-terminal');
   root.innerHTML = `
-    <label>Type something private</label>
-    <textarea rows="1" spellcheck="false" autocomplete="off" placeholder="sending very sensitive data…" maxlength="120"></textarea>
+    <div class="enc-label-row">
+      <label for="terminal-plain">Plaintext · your device</label>
+      <span class="enc-count">00/120</span>
+    </div>
+    <div class="enc-port">
+      <span class="enc-prompt" aria-hidden="true">›</span>
+      <span class="enc-rest-caret" aria-hidden="true"></span>
+      <textarea id="terminal-plain" rows="1" spellcheck="false" autocomplete="off" placeholder="type a secret — watch it seal" maxlength="120"></textarea>
+    </div>
+    <div class="enc-port-rail">
+      <span class="enc-status"><i></i><b>Ready</b></span>
+      <span class="enc-tap">Click / tap to type</span>
+    </div>
     <div class="server-line">
       <span class="server-tag">what our server sees</span>
       <code class="cipher"></code>
     </div>`;
   const input = root.querySelector('textarea')!;
   const cipher = root.querySelector('.cipher')!;
+  const count = root.querySelector<HTMLElement>('.enc-count')!;
+  const status = root.querySelector<HTMLElement>('.enc-status b')!;
+  const port = root.querySelector<HTMLElement>('.enc-port')!;
+  const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const spans: { el: HTMLSpanElement; final: string; settleAt: number }[] = [];
+
+  port.addEventListener('click', () => input.focus());
+  input.addEventListener('focus', () => { status.textContent = 'Live'; });
+  input.addEventListener('blur', () => { status.textContent = 'Ready'; });
 
   const setLen = (n: number) => {
     const total = n === 0 ? 0 : 2 + Math.ceil(n * 4 / 3) + 12;
@@ -34,29 +54,27 @@ export function initEncrypt(root: HTMLElement) {
     }
     requestAnimationFrame(frame);
   })();
-  // a long message wraps and the box grows with it — never scrolls out of
-  // view (single logical line: Enter is swallowed, pasted newlines become
-  // spaces before anything downstream sees the value)
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
   input.addEventListener('input', () => {
     if (input.value.includes('\n')) input.value = input.value.replace(/\n+/g, ' ');
     autoGrow(input);
     setLen(input.value.length);
+    root.classList.toggle('has-value', input.value.length > 0);
+    count.textContent = `${String(input.value.length).padStart(2, '0')}/120`;
     const now = performance.now();
     for (let i = 2; i < spans.length; i++) {
       spans[i].final = rnd(B64);
-      spans[i].settleAt = now + 120 + Math.random() * 520;
+      spans[i].settleAt = reducedMotion ? 0 : now + 120 + Math.random() * 520;
     }
-    // feed the journey: whatever the visitor types here becomes the draft
-    // on the sender phone (until they type there directly)
     document.dispatchEvent(new CustomEvent('fp:plain', { detail: input.value }));
   });
-  // journey top-reverse clears this demo too — never stomps active typing
   document.addEventListener('fp:clear', () => {
     if (document.activeElement === input) return;
     input.value = '';
     autoGrow(input);
     setLen(0);
+    root.classList.remove('has-value');
+    count.textContent = '00/120';
   });
   setLen(0);
 }
