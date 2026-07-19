@@ -159,7 +159,7 @@ nav .links a.cta { color: #04121c; background: var(--ice); padding: 10px 22px; f
   width: var(--coreD); opacity: 0;
 }
 .mc-head { display: flex; justify-content: center; padding: 0 6px 22px; }
-.mc-head .lbl { font-size: 10px; letter-spacing: .26em; text-transform: uppercase; color: var(--ice); display: flex; align-items: center; gap: 10px; }
+.mc-head .lbl { font-size: 10px; letter-spacing: .26em; text-transform: uppercase; color: var(--ice); display: flex; align-items: center; gap: 10px; white-space: nowrap; }
 .mc-head .dotpulse { width: 7px; height: 7px; border-radius: 50%; background: var(--ice); animation: dp 1.6s ease-in-out infinite; }
 @keyframes dp { 0%, 100% { opacity: .4 } 50% { opacity: 1 } }
 .core {

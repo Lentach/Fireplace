@@ -74,6 +74,9 @@ export function initJourney(section: HTMLElement) {
     el.style.opacity = String(o);
   };
 
+  // prompt-bottom cache: static block, but gBCR in the per-frame anchors()
+  // path would force layout — recompute only when the viewport changes
+  let promptBKey = -1, promptBCache = 0;
   function anchors(p: number) {
     const mobile = W < 700;
     // phonePose keeps the visual bottom at y + h/2 regardless of scale
@@ -122,6 +125,25 @@ export function initJourney(section: HTMLElement) {
     // endpoint fuses the two wire curves into ONE symmetric parabola
     // passing under the sphere. Desktop valley depth is sphere-relative.
     const holdY = mobile ? H * 0.76 : coreC.y + shellRF + 84;
+    // REST pose (pre-send / p≈0): on tall screens the composer sits at 0.60H
+    // full-size; on SHORT windows (landscape-ish desktop, e.g. 894×530) that
+    // put the phone top under the nav, buried the prompt, and pushed the
+    // composer row off-screen. restY lifts the scale-free bottom (y + ph/2)
+    // back above the viewport edge; restS shrinks the device until its
+    // visual top (bottom - ph*s) clears the prompt block.
+    const restY = Math.min(H * 0.60, H - 20 - ph / 2);
+    // offsetTop-based (relative to the sticky stage), NOT gBCR: a viewport-
+    // relative bottom measured while the journey is off-screen poisons the
+    // cache with a huge value and shrinks the rest phone to the clamp floor
+    if (promptBKey !== W * 100000 + H) {
+      promptBKey = W * 100000 + H;
+      const pe = $('.prompt');
+      promptBCache = pe.offsetTop + pe.offsetHeight;
+    }
+    const promptB = promptBCache;
+    const restS = mobile ? 1 : clamp((restY + ph / 2 - promptB - 10) / ph, 0.45, 1);
+    // phonePose centers only at s=1 (center = x + w(1-s)/2) — compensate
+    const restX = W * 0.5 - pw * (1 - restS) / 2;
     const sealP = { x: coreC.x, y: holdY };
     const unsealP = { x: coreC.x, y: holdY };
     return {
@@ -144,7 +166,8 @@ export function initJourney(section: HTMLElement) {
         (Math.min(H * 0.56, railTop - 16 - ph / 2) + ph / 2 - 76) / ph,
       ), 0.55, 1.2),
       finSx: W * 0.35, finRx: W * 0.65,
-      liftStart: { x: W * 0.5 + (mobile ? 30 : 40), y: H * 0.60 + (mobile ? 40 : 60) },
+      restX, restY, restS,
+      liftStart: { x: W * 0.5 + (mobile ? 30 : 40), y: restY + (mobile ? 40 : 60) },
       liftCp: mobile ? { x: W * 0.30, y: H * 0.64 } : { x: W * 0.45, y: H * 0.48 },
       dropCp: mobile ? { x: W * 0.66, y: H * 0.58 } : { x: W * 0.66, y: holdY - H * 0.03 },
       // cp x on the center→port ray (near-radial entry, never tangential);
@@ -485,7 +508,7 @@ export function initJourney(section: HTMLElement) {
     }
 
     if (!sent) {
-      phonePose($('.phone.sender'), W * 0.5, H * 0.60, 1, 1);
+      phonePose($('.phone.sender'), A.restX, A.restY, A.restS, 1);
       $('.phone.recipient').style.opacity = '0';
       $('.prompt').style.opacity = '1';
       requestAnimationFrame(update);
@@ -606,15 +629,15 @@ export function initJourney(section: HTMLElement) {
     if (A.mobile) {
       const toTop = ease(seg(p, T.lift[0], T.lift[1]));
       const exitL = ease(seg(p, 0.26, 0.36));   // fully out before the capsule crosses its lane
-      spX = lerp(lerp(W * 0.5, A.senderC.x, toTop), -W * 0.35, exitL);
-      spY = lerp(H * 0.60, A.senderC.y, toTop);
-      spS = lerp(1, A.phoneS, toTop);
+      spX = lerp(lerp(A.restX, A.senderC.x, toTop), -W * 0.35, exitL);
+      spY = lerp(A.restY, A.senderC.y, toTop);
+      spS = lerp(A.restS, A.phoneS, toTop);
     } else {
       const moveOut = ease(seg(p, T.lift[0], T.lift[1]));
       // finale: BOTH devices end even — center-stage, as large as fits
-      spX = lerp(lerp(W * 0.5, A.senderC.x, moveOut), A.finSx, grow);
-      spY = lerp(lerp(H * 0.60, A.senderC.y, moveOut), A.finY, grow);
-      spS = lerp(lerp(1, A.phoneS, moveOut), A.finS, grow);
+      spX = lerp(lerp(A.restX, A.senderC.x, moveOut), A.finSx, grow);
+      spY = lerp(lerp(A.restY, A.senderC.y, moveOut), A.finY, grow);
+      spS = lerp(lerp(A.restS, A.phoneS, moveOut), A.finS, grow);
     }
     phonePose($('.phone.sender'), spX, spY, spS, 1);
 
