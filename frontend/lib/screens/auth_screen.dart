@@ -1,5 +1,7 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../theme/glass_theme.dart';
 import '../theme/rpg_theme.dart';
 import '../providers/auth_provider.dart';
 import '../providers/settings_provider.dart';
@@ -18,30 +20,69 @@ class AuthScreen extends StatefulWidget {
 class _AuthScreenState extends State<AuthScreen> {
   bool _isLogin = true;
 
+  Widget _tab(
+    BuildContext context,
+    String label,
+    bool selected,
+    VoidCallback onTap,
+  ) {
+    final scheme = Theme.of(context).colorScheme;
+    final muted = FireplaceColors.of(context).mutedText;
+    return Expanded(
+      child: GestureDetector(
+        onTap: onTap,
+        child: Container(
+          padding: const EdgeInsets.symmetric(vertical: 12),
+          decoration: BoxDecoration(
+            color: selected
+                ? scheme.primary.withValues(alpha: 0.14)
+                : Colors.transparent,
+            borderRadius: BorderRadius.circular(6),
+          ),
+          alignment: Alignment.center,
+          child: Text(
+            label,
+            style: RpgTheme.bodyFont(
+              fontSize: 14,
+              color: selected ? scheme.primary : muted,
+              fontWeight: FontWeight.w600,
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
+    // The auth screen is the app's front door and ALWAYS wears the cosmic
+    // world (owner call 2026-07-18) — the same starfield + palette a visitor
+    // just scrolled through on the landing black-hole journey — regardless of
+    // the saved chat theme. Forcing the real `themeDataCosmic` here means the
+    // card (GlassTheme.cosmic), inputs/button (accentCosmic), and the animated
+    // starfield (CosmicBackdrop, rendered by ChatBackgroundPattern) all come
+    // from the ONE cosmic theme — no parallel login-only palette.
+    return Theme(
+      data: RpgTheme.themeDataCosmic,
+      child: Builder(builder: _buildBody),
+    );
+  }
+
+  Widget _buildBody(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
     final settings = context.watch<SettingsProvider>();
     final l10n = AppLocalizations.of(context);
-    final isDark = RpgTheme.isDark(context);
-    final colorScheme = Theme.of(context).colorScheme;
-    final primaryColor = colorScheme.primary;
-    final inputBg = FireplaceColors.of(context).inputBg;
-    final tabBorderColor = isDark
-        ? RpgTheme.tabBorderDark
-        : RpgTheme.tabBorderLight;
-    final activeTabBg = isDark
-        ? RpgTheme.activeTabBgDark
-        : RpgTheme.activeTabBgLight;
-    final activeTextColor = Theme.of(context).colorScheme.primary;
-    final mutedColor = isDark
-        ? RpgTheme.mutedDark
-        : RpgTheme.textSecondaryLight;
+    final scheme = Theme.of(context).colorScheme;
+    final fc = FireplaceColors.of(context);
+    // Wordmark accent = the app's cosmic-chrome blue (settings icons/toggles),
+    // the exact tone the owner picked from the variant board — a hair lighter
+    // than colorScheme.primary (#8FD8FF).
+    final accent = GlassTheme.of(context).onGlassAccent;
 
     return Scaffold(
       body: ChatBackgroundPattern(
-        // Cosmic honors the explicit "Starfield background" setting; other
-        // themes keep the auth screen's default patterned background.
+        // Front door shows the starfield for everyone; a returning cosmic user
+        // who turned the animated field off for battery keeps that choice.
         enabled: settings.themePreference == 'cosmic'
             ? settings.cosmicStarfield
             : true,
@@ -54,36 +95,42 @@ class _AuthScreenState extends State<AuthScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    Text(
-                      'Fireplace',
-                      style:
-                          RpgTheme.pressStart2P(
-                            fontSize: 20,
-                            color: primaryColor,
-                          ).copyWith(
-                            shadows: [
-                              const Shadow(
-                                offset: Offset(2, 2),
-                                color: Color(0xFFAA6600),
-                              ),
-                              const Shadow(
-                                blurRadius: 10,
-                                color: Color(0x66FFCC00),
-                              ),
-                            ],
-                            letterSpacing: 2,
+                    // The landing wordmark: Archivo 900, FIRE white + PLACE in
+                    // the cosmic-chrome accent (owner pick F6 + N split).
+                    Text.rich(
+                      TextSpan(
+                        text: 'FIRE',
+                        style: GoogleFonts.archivo(
+                          fontSize: 30,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 1.8,
+                          height: 1,
+                          color: scheme.onSurface,
+                        ),
+                        children: [
+                          TextSpan(
+                            text: 'PLACE',
+                            style: GoogleFonts.archivo(
+                              fontSize: 30,
+                              fontWeight: FontWeight.w900,
+                              letterSpacing: 1.8,
+                              height: 1,
+                              color: accent,
+                            ),
                           ),
+                        ],
+                      ),
                     ),
-                    const SizedBox(height: 8),
+                    const SizedBox(height: 12),
                     Text(
                       l10n.authTagline,
+                      textAlign: TextAlign.center,
                       style: RpgTheme.bodyFont(
                         fontSize: 14,
-                        color: primaryColor,
+                        color: fc.mutedText,
                       ),
                     ),
                     const SizedBox(height: 32),
-                    // Toggle
                     GlassSurface(
                       borderRadius: BorderRadius.circular(20),
                       padding: const EdgeInsets.all(20),
@@ -92,74 +139,27 @@ class _AuthScreenState extends State<AuthScreen> {
                         children: [
                           Container(
                             decoration: BoxDecoration(
-                              color: inputBg,
+                              color: fc.inputBg,
                               borderRadius: BorderRadius.circular(8),
                               border: Border.all(
-                                color: tabBorderColor,
+                                color: fc.tabBorder,
                                 width: 1.5,
                               ),
                             ),
                             child: Row(
                               children: [
-                                Expanded(
-                                  child: GestureDetector(
-                                    onTap: () {
-                                      setState(() => _isLogin = true);
-                                      authProvider.clearStatus();
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 12,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: _isLogin
-                                            ? activeTabBg
-                                            : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: Text(
-                                        l10n.authLoginTab,
-                                        style: RpgTheme.bodyFont(
-                                          fontSize: 14,
-                                          color: _isLogin
-                                              ? activeTextColor
-                                              : mutedColor,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
-                                ),
-                                Expanded(
-                                  child: GestureDetector(
-                                    onTap: () {
-                                      setState(() => _isLogin = false);
-                                      authProvider.clearStatus();
-                                    },
-                                    child: Container(
-                                      padding: const EdgeInsets.symmetric(
-                                        vertical: 12,
-                                      ),
-                                      decoration: BoxDecoration(
-                                        color: !_isLogin
-                                            ? activeTabBg
-                                            : Colors.transparent,
-                                        borderRadius: BorderRadius.circular(6),
-                                      ),
-                                      alignment: Alignment.center,
-                                      child: Text(
-                                        l10n.authRegisterTab,
-                                        style: RpgTheme.bodyFont(
-                                          fontSize: 14,
-                                          color: !_isLogin
-                                              ? activeTextColor
-                                              : mutedColor,
-                                          fontWeight: FontWeight.w600,
-                                        ),
-                                      ),
-                                    ),
-                                  ),
+                                _tab(context, l10n.authLoginTab, _isLogin, () {
+                                  setState(() => _isLogin = true);
+                                  authProvider.clearStatus();
+                                }),
+                                _tab(
+                                  context,
+                                  l10n.authRegisterTab,
+                                  !_isLogin,
+                                  () {
+                                    setState(() => _isLogin = false);
+                                    authProvider.clearStatus();
+                                  },
                                 ),
                               ],
                             ),
@@ -189,7 +189,7 @@ class _AuthScreenState extends State<AuthScreen> {
                               style: RpgTheme.bodyFont(
                                 fontSize: 13,
                                 color: authProvider.isError
-                                    ? Theme.of(context).colorScheme.error
+                                    ? scheme.error
                                     : RpgTheme.successColor,
                               ),
                             ),

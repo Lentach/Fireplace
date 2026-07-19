@@ -513,7 +513,7 @@ class AppLocalizationsPl extends AppLocalizations {
   String get resetButton => 'Zmień';
 
   @override
-  String get authTagline => 'Wejdź do krainy';
+  String get authTagline => 'Wiadomości, które przeczytają tylko dwie osoby';
 
   @override
   String get authLoginTab => 'LOGOWANIE';

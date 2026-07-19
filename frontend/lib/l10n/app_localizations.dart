@@ -953,7 +953,7 @@ abstract class AppLocalizations {
   /// No description provided for @authTagline.
   ///
   /// In pl, this message translates to:
-  /// **'Wejdź do krainy'**
+  /// **'Wiadomości, które przeczytają tylko dwie osoby'**
   String get authTagline;
 
   /// No description provided for @authLoginTab.

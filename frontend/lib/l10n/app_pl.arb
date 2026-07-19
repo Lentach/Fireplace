@@ -179,7 +179,7 @@
   "passwordMustContain": "Hasło musi zawierać wielką literę, małą literę i cyfrę",
   "oldPasswordRequired": "Obecne hasło jest wymagane",
   "resetButton": "Zmień",
-  "authTagline": "Wejdź do krainy",
+  "authTagline": "Wiadomości, które przeczytają tylko dwie osoby",
   "authLoginTab": "LOGOWANIE",
   "authRegisterTab": "REJESTRACJA",
   "authUsernameHint": "Nazwa użytkownika",
