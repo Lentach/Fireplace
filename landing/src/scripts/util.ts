@@ -67,10 +67,13 @@ export const rectC = (el: Element): Pt => {
   return { x: r.left + r.width / 2, y: r.top + r.height / 2 };
 };
 
-/** Chat-style auto-grow: a one-line textarea expands to fit its wrapped
- *  content (CSS max-height caps it). Call after EVERY value change —
- *  user input and programmatic writes alike. */
+/** Chat-style auto-grow: an empty textarea stays at its native one-row
+ *  height; entered content expands to fit its wrapped lines (CSS max-height
+ *  caps it). Ignoring empty scrollHeight matters because browsers measure a
+ *  wrapped placeholder as content — Kate's narrower mic-equipped composer
+ *  otherwise becomes two rows before anything is typed. */
 export function autoGrow(el: HTMLTextAreaElement) {
   el.style.height = 'auto';
+  if (el.value === '') return;
   el.style.height = `${el.scrollHeight}px`;
 }

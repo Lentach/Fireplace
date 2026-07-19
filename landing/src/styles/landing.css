@@ -151,10 +151,9 @@ nav .links a.cta { color: #04121c; background: var(--ice); padding: 10px 22px; f
    shell's iris (so the face never outruns the parting dots) */
 .machine {
   --coreD: min(420px, 46vh);
-  /* center-anchored at 34%, but never so high the head label ducks under the
-     nav: the column is symmetric (head 34px ≈ stamp 34px around the core),
-     so top ≥ coreD/2 + 102px keeps the head at the 64px nav's bottom edge */
-  position: absolute; z-index: 6; left: 50%; top: max(34%, calc(var(--coreD) / 2 + 102px));
+  /* Keep the title below the 71px fixed nav with a 12px breathing gap. The
+     full machine moves as one unit, preserving the title/core separation. */
+  position: absolute; z-index: 6; left: 50%; top: max(34%, calc(var(--coreD) / 2 + 118px));
   transform: translate(-50%, -50%);
   width: var(--coreD); opacity: 0;
 }
