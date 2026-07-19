@@ -83,6 +83,7 @@ export function initJourney(section: HTMLElement) {
     // call: hand narrow/tablet widths to the single-device mobile layout —
     // matches the CSS journey breakpoint (@media max-width:999px).
     const mobile = W < 1000;
+    const shortLandscape = mobile && W >= 700 && H <= 650;
     // phonePose keeps the visual bottom at y + h/2 regardless of scale
     // (center-origin compensation), so clearances use the UNSCALED height.
     const ph = $('.phone.sender').offsetHeight || 560;
@@ -157,7 +158,7 @@ export function initJourney(section: HTMLElement) {
     const sealP = { x: coreC.x, y: holdY };
     const unsealP = { x: coreC.x, y: holdY };
     return {
-      mobile, senderC, recipC, intake, outlet, intakeL, outletL, sealP, unsealP, coreC, coreR, shellR,
+      mobile, shortLandscape, senderC, recipC, intake, outlet, intakeL, outletL, sealP, unsealP, coreC, coreR, shellR,
       // Desktop hold scale adapts to the free band between the caption
       // column (~0.15H + 270px) and the rail: on short screens the phone
       // shrinks instead of colliding with caption above or keytag/rail below
@@ -639,7 +640,7 @@ export function initJourney(section: HTMLElement) {
     if (A.mobile) {
       const toTop = ease(seg(p, T.lift[0], T.lift[1]));
       const exitL = ease(seg(p, 0.26, 0.36));   // fully out before the capsule crosses its lane
-      spX = lerp(lerp(A.restX, A.senderC.x, toTop), -W * 0.35, exitL);
+      spX = lerp(lerp(A.restX, A.senderC.x, toTop), A.shortLandscape ? W * 1.35 : -W * 0.35, exitL);
       spY = lerp(A.restY, A.senderC.y, toTop);
       spS = lerp(A.restS, A.phoneS, toTop);
     } else {

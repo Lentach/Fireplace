@@ -269,10 +269,13 @@ nav .links a.cta { color: #04121c; background: var(--ice); padding: 10px 22px; f
 /* stage text layers are DISPLAY ONLY — they must never eat taps meant for
    the phones under them (the 07 caption sits near Kasia's composer) */
 .cap, .prompt, .rail { pointer-events: none; }
-/* 07 caption survives the finale (data-b past 1): a slim column that fits
-   left of the docked sender device on desktop; on mobile the full caption
-   would sit ON the phone — swap to a one-liner pinned at the very top */
-.cap.turn { max-width: 190px; top: 30%; }
+/* Finale keeps the shared caption anchor. Its desktop column and type are
+   smaller only to clear the docked sender device; mobile swaps the long copy. */
+.cap.turn { max-width: 145px; }
+@media (min-width: 1000px) {
+  .cap.turn h2 { font-size: clamp(19px, 2vw, 26px); }
+  .cap.turn p { font-size: 10.5px; line-height: 1.65; }
+}
 .cap.turn .m-short { display: none; }
 
 /* ---------- outro: the last relay ---------- */
@@ -365,14 +368,15 @@ footer { background: #000; position: relative; }
   .cap { left: 6vw; right: 6vw; max-width: none; top: 9.5%; text-align: center; }
   .cap h2 { font-size: clamp(19px, 6vw, 26px); }
   .cap p { font-size: 10.5px; line-height: 1.7; }
-  /* the full 07 caption would sit ON the finale phone — one-liner up top */
-  .cap.turn { top: 6%; }
-  .cap.turn h2, .cap.turn p:not(.m-short) { display: none; }
+  /* Finale uses the same caption anchor as every other step. Keep its copy
+     compact so the centered phone stays unobstructed without hiding the CTA. */
+  .cap.turn { top: 9.5%; max-width: none; }
+  .cap.turn p:not(.m-short) { display: none; }
   .cap.turn .m-short { display: block; font-size: 10.5px; line-height: 1.7; }
   /* the caption already names the relay — the head label would collide with
      its last line on small screens */
   .mc-head { display: none; }
-  .machine { --coreD: min(72vw, 38vh); left: 50%; top: 46%; }
+  .machine { --coreD: min(72vw, 38vh); left: 50%; top: 49%; }
   .sv-row { font-size: 9px; }
   .mine-tag { font-size: 9px; }
   .mc-stamp { margin-top: 12px; font-size: 8px; }
@@ -384,6 +388,15 @@ footer { background: #000; position: relative; }
   .rail .stop { width: 56px; }
   .rail .stop span { font-size: 6.5px; }
   .rail .seg { width: 14px; }
+}
+/* Short landscape screens cannot stack nav + caption + phone vertically.
+   Give every journey caption the same slim side lane; never special-case 07. */
+@media (min-width: 700px) and (max-width: 999px) and (max-height: 650px) {
+  .cap, .cap.turn {
+    left: 5vw; right: auto; top: 18%; max-width: 27vw; text-align: left;
+  }
+  .cap h2 { font-size: clamp(17px, 2.2vw, 21px); }
+  .cap p, .cap.turn .m-short { font-size: 9.5px; line-height: 1.55; }
 }
 /* hero/encrypt-demo stay desktop-styled down to phone width — they read fine
    at tablet sizes; only true phones need the full-bleed padding + card */
