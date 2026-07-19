@@ -356,11 +356,13 @@ footer { background: #000; position: relative; }
   .f-row { grid-template-columns: 1fr; justify-items: center; text-align: center; }
   .f-made { text-align: center; }
 }
-@media (max-width: 700px) {
+/* Journey hands over to the single-device mobile layout below 1000px: the
+   desktop side-by-side (caption | relay sphere | docked device) crowds on
+   narrow/tablet widths — captions overlap the sphere cyphers, a docked
+   device covers the wire arc. Mirrors journey.ts `mobile = W < 1000`. */
+@media (max-width: 999px) {
   /* journey: captions top-center, machine mid, hold points below, phones bottom */
   .cap { left: 6vw; right: 6vw; max-width: none; top: 9.5%; text-align: center; }
-  .hero .content { padding: 14vh 6vw 8vh; max-width: none; }
-  .enc { max-width: none; }
   .cap h2 { font-size: clamp(19px, 6vw, 26px); }
   .cap p { font-size: 10.5px; line-height: 1.7; }
   /* the full 07 caption would sit ON the finale phone — one-liner up top */
@@ -382,4 +384,10 @@ footer { background: #000; position: relative; }
   .rail .stop { width: 56px; }
   .rail .stop span { font-size: 6.5px; }
   .rail .seg { width: 14px; }
+}
+/* hero/encrypt-demo stay desktop-styled down to phone width — they read fine
+   at tablet sizes; only true phones need the full-bleed padding + card */
+@media (max-width: 700px) {
+  .hero .content { padding: 14vh 6vw 8vh; max-width: none; }
+  .enc { max-width: none; }
 }

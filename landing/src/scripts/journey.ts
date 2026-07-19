@@ -78,7 +78,11 @@ export function initJourney(section: HTMLElement) {
   // path would force layout — recompute only when the viewport changes
   let promptBKey = -1, promptBCache = 0;
   function anchors(p: number) {
-    const mobile = W < 700;
+    // Below 1000px the desktop side-by-side layout crowds (caption text
+    // overlaps the relay sphere, docked device covers the wire arc). Owner
+    // call: hand narrow/tablet widths to the single-device mobile layout —
+    // matches the CSS journey breakpoint (@media max-width:999px).
+    const mobile = W < 1000;
     // phonePose keeps the visual bottom at y + h/2 regardless of scale
     // (center-origin compensation), so clearances use the UNSCALED height.
     const ph = $('.phone.sender').offsetHeight || 560;
@@ -649,10 +653,8 @@ export function initJourney(section: HTMLElement) {
 
     const sk = $('.keytag.sender-key');
     sk.style.opacity = String(seg(p, 0.14, 0.18) * (1 - seg(p, A.mobile ? 0.25 : 0.30, A.mobile ? 0.29 : 0.36)));
-    sk.style.left = `${A.senderC.x - sk.offsetWidth / 2}px`; sk.style.top = `${A.senderC.y + A.keyDy}px`;
     const rk = $('.keytag.recipient-key');
     rk.style.opacity = String(seg(p, 0.84, 0.88) * (1 - seg(p, 0.925, 0.95)));
-    rk.style.left = `${A.recipC.x - rk.offsetWidth / 2}px`; rk.style.top = `${A.recipC.y + A.keyDy}px`;
 
     /* the exposed core — DOM revealed through a clip-circle synced to the
        shell's iris (aperture is slightly wider, so the rim dots always sit
@@ -762,6 +764,23 @@ export function initJourney(section: HTMLElement) {
     tr.classList.toggle('capsule', capsule);
     tr.style.opacity = String((dir === 1 ? seg(p, 0.015, 0.04) : 1 - seg(p, 0.96, 0.985)) * (landed || inside ? 0 : 1));
     tr.style.transform = `translate(${pos.x - tr.offsetWidth / 2}px, ${pos.y - tr.offsetHeight / 2}px) scale(${Math.max(scale, 0.001)})`;
+
+    // Keytags hug their flank device on desktop (the traveler holds dead-centre,
+    // far from either edge). In mobile every actor is centred, so a label parked
+    // under the device lands on the capsule holding mid-screen — shove it just
+    // below the LIVE capsule, but ONLY when they'd actually overlap (tall screens
+    // keep the tag hugging the device). Arrival-gated → smooth on scrub AND
+    // reverse; geometry is same-frame (pos/scale), never a guessed hold point.
+    const capTop = pos.y - tr.offsetHeight * scale / 2;
+    const capBot = pos.y + tr.offsetHeight * scale / 2;
+    const skTop = A.senderC.y + A.keyDy;
+    const skHit = A.mobile && skTop < capBot - 4 && skTop + sk.offsetHeight > capTop + 4;
+    sk.style.left = `${A.senderC.x - sk.offsetWidth / 2}px`;
+    sk.style.top = `${skTop + (skHit ? Math.max(0, capBot + 12 - skTop) * ease(seg(p, 0.08, 0.14)) : 0)}px`;
+    const rkTop = A.recipC.y + A.keyDy;
+    const rkHit = A.mobile && rkTop < capBot - 4 && rkTop + rk.offsetHeight > capTop + 4;
+    rk.style.left = `${A.recipC.x - rk.offsetWidth / 2}px`;
+    rk.style.top = `${rkTop + (rkHit ? Math.max(0, capBot + 12 - rkTop) * ease(seg(p, 0.78, 0.84)) : 0)}px`;
 
     if (capsule && !landed && !inside && scale > 0.2) {
       trail.unshift({ x: pos.x, y: pos.y });
