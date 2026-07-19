@@ -7,6 +7,8 @@
 // Mobile: flutter run -d <android> -t tool/starfield_preview.dart
 import 'package:flutter/material.dart';
 
+import 'package:fireplace/theme/cosmic_theme.dart';
+import 'package:fireplace/theme/glass_theme.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/chat_background_pattern.dart';
 
@@ -18,21 +20,31 @@ class _PreviewApp extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final q = Uri.base.queryParameters;
-    final theme = switch (q['theme']) {
+    var theme = switch (q['theme']) {
       'blue' => RpgTheme.themeDataBlue,
       'dark' => RpgTheme.themeDataDarkGray,
       _ => RpgTheme.themeDataCosmic,
     };
+    // ?density=N overrides the starfield star count (for the owner density A/B).
+    final d = int.tryParse(q['density'] ?? '');
+    if (d != null && theme.extension<CosmicBackdrop>() != null) {
+      theme = theme.copyWith(extensions: [
+        theme.extension<FireplaceColors>()!,
+        theme.extension<GlassTheme>()!,
+        CosmicBackdrop.starfield.copyWith(density: d),
+      ]);
+    }
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: theme,
-      home: const _PreviewPage(),
+      home: _PreviewPage(label: d != null ? 'density $d' : null),
     );
   }
 }
 
 class _PreviewPage extends StatelessWidget {
-  const _PreviewPage();
+  final String? label;
+  const _PreviewPage({this.label});
 
   @override
   Widget build(BuildContext context) {
@@ -59,7 +71,7 @@ class _PreviewPage extends StatelessWidget {
           ),
         );
     return Scaffold(
-      appBar: AppBar(title: const Text('Nova · Cosmic')),
+      appBar: AppBar(title: Text(label == null ? 'Nova · Cosmic' : 'Cosmic · $label')),
       body: ChatBackgroundPattern(
         backgroundColor: fc.messagesAreaBg,
         child: Column(
