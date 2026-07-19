@@ -29,9 +29,12 @@ because the jank is scroll-raster bound. Conclusions:
 - The x86 emulator is not a valid 60 fps proxy for this scrolling UI (it fails at
   the opaque baseline and density knobs don't move it).
 - On a real-GPU surface (web, below) the same field is 0.0% jank.
-- **Mobile 60 fps is NOT validated.** The only mobile target available here is the
-  x86 emulator, which cannot validate it either way. A physical-device capture is
-  the outstanding, unresolved confirmation — NOT performed (no device available).
+- **Mobile 60 fps: RESOLVED on a physical device.** The x86 emulator could not
+  validate it (fails at the opaque baseline, above). The branch was deployed to
+  production (frontend `fc8076f`) and the owner tested Cosmic on a real device —
+  **scrolling confirmed smooth** (2026-07-17). This closes the physical-device
+  gate the emulator left open; the emulator jank was an emulator artifact, as the
+  delta/web data indicated.
 
 Harness: `tool/starfield_spike.dart` (profile mode). Drives the PRODUCTION path
 `RpgTheme.themeDataCosmic → ChatBackgroundPattern → StarfieldBackground` behind a
