@@ -1,43 +1,30 @@
 # Latest session summary
 
-**Date:** 2026-07-17 (branch `feat/cosmic-theme` off master `02141d6`; PR pending, UNMERGED, not deployed)
+**Date:** 2026-07-19 (landing `/welcome` — narrow/tablet widths → mobile journey; keytag kept clear of the traveling capsule — master `228e0b6`, SHIPPED TO PROD)
 
 ## What was done
-Added **Cosmic** as a 5th first-class selectable theme (Settings → Appearance): a
-dark space palette + an animated dimming **starfield** chat background, ported 1:1
-from the landing site hero. Palette from `landing/src/styles/landing.css` (site-exact
-accent `#8fd8ff`, blue `#1d6fd6`, text `#eef6fb`, ink `#0b1017`, `.screen #0a0f16`,
-`.bar #1a2531`, `.them #16222e`; app-only chrome derived + contrast-gated). Twinkle
-from `landing/src/scripts/util.ts` (`alpha = 0.22 + 0.45·|sin(phase + t·speed)|`,
-`r 0.2–1.3px`, `speed 0.3–1.5`, tint `190,220,240`). Wired through `RpgTheme`
-(`themeDataCosmic` + `_cosmicSpec`), new `CosmicBackdrop` ThemeExtension +
-`GlassTheme.cosmic` (fill 50% so glass text stays ≥4.5:1 over bright stars),
-`SettingsProvider` (`'cosmic'` everywhere + persisted `cosmicStarfield` toggle).
-Animated bg = new `widgets/starfield_background.dart` (Ticker + CustomPainter,
-RepaintBoundary, off-screen pause via lifecycle + TickerMode, STATIC under OS
-reduced-motion), rendered through the existing `ChatBackgroundPattern` (no second
-mechanism; also on auth). Theme picker moved to a wrapping `Wrap` (5×44px overflowed).
+Owner reviewed the live landing journey at narrow desktop/tablet viewports: subtitles overlapped the relay black-hole cyphers (sec 04/05) and a docked device covered the wire arc (sec 06). Owner's call: "just make them mobile."
+
+1. **Journey mobile breakpoint 700 → 1000.** `journey.ts` `const mobile = W < 1000` + CSS journey block `@media (max-width: 999px)`. On current master the desktop side-by-side crowded below ~940w (caption overlapped the relay sphere by 83–93px at 754/774). Now 754/774/984 render the single-device mobile journey; 1213/1568 desktop unchanged. The two hero rules (`.hero .content`, `.enc`) stayed in their own `@media (max-width: 700px)` block — they read fine at tablet sizes; only the journey graduates to ≤999.
+2. **Keytag no longer covered by the encrypted capsule** (sec 02 + 06). In mobile every actor centers, so the keytag (parked under the centered device) landed on the traveler's hold point; on desktop it sits under the flank device, far from the center-held capsule. Fix (after the traveler `pos`/`scale` resolve, same-frame geometry): shove each keytag just below the LIVE capsule (`capBot+12`), gated by interval intersection so tall phones — tag naturally above the capsule — keep hugging the device, eased by arrival progress (`seg(p,0.08,0.14)` sender / `seg(p,0.78,0.84)` recipient). Owner chose the **clean fade-in** (capsule settles before the tag appears → collision-free, not an animated push).
 
 ## Key files
-- `frontend/lib/theme/{rpg_theme,cosmic_theme(NEW),glass_theme}.dart`
-- `frontend/lib/widgets/{starfield_background(NEW),chat_background_pattern}.dart`
-- `frontend/lib/providers/settings_provider.dart`, `frontend/lib/screens/{settings_screen,chat_detail_screen,auth_screen}.dart`, l10n (`themeOptionCosmic`, `settingsCosmicStarfield*`)
-- Tests `test/theme/{cosmic_theme_test(NEW),rpg_theme_golden_test}.dart`; tooling `frontend/tool/{starfield_spike,starfield_preview,STARFIELD_SPIKE_RESULTS.md}`; artifacts `docs/design/cosmic/*.png` + `cosmic-dimming.mp4`
-- Full write-up: `2026-07-17-session-cosmic-theme.md`.
+- `landing/src/scripts/journey.ts` — `mobile = W < 1000`; keytag positioning moved below the traveler-pose block, split from opacity.
+- `landing/src/styles/landing.css` — journey `@media (max-width: 999px)`; new `@media (max-width: 700px)` block holds only `.hero .content` + `.enc`.
+- Full write-up: `2026-07-19-session-landing-mobile-breakpoint.md`.
 
 ## Verification
-- `flutter analyze --no-fatal-infos`: 0 issues (lib+tool+test). `flutter test`: **735 passed** (729 + 6 new: cosmic golden, WCAG contrast over dim+bright star composites, starfield motion-gating).
-- **Spike (profile, real ChatBackgroundPattern path):** web (Chrome 390×844) 240 stars = build p50 3.3/p95 5.1ms, raster 0.9ms, **0.0% jank**. Android x86 emulator sweep: d60/d120 sit at the opaque GPU floor (~14ms raster p50); only d240 adds a starfield p95 rise (29–45 vs 24–28). **GO, shipped density 120** (floor-safe, still denser per-area than the site's desktop hero); 240 = documented owner variant. Numbers: `frontend/tool/STARFIELD_SPIKE_RESULTS.md`.
-- Contrast holds over darkest+brightest (bubbles/date-pill opaque; glass fill bumped to 50%). Screenshots + `cosmic-dimming.mp4` in `docs/design/cosmic/`.
+- Headless Chromium (cache-bypassed, `window.__journey.p` scrub): 754/774 crowded on the OLD desktop path (gap −93/−83px); after the change 754/774/984 engage mobile, no caption↔sphere overlap; 1213/1568 unchanged. Keytag↔capsule bbox intersection = false at 774×676, 984×547, 390×844 (sec 06) and sec 02 when visible; desktop keytag untouched (shove 0). `astro build` clean (44 kB). `graphify update .` run.
+- Prod (cache-busted): `/welcome/` references new bundle `CxSgh3lQ`; asset `200 application/javascript`; old bundle `404`; PWA `/` `200` (untouched); `/welcome` `301`→`/welcome/`.
 
 ## Notes for next session
-- **Version kept at 0.0.120** (PR unmerged). PATCH bump → 0.0.121 due AT RELEASE/merge, then deploy web.
-- **Taste calls for owner** (task: render 2 variants, owner picks): star density 120 (default, calm) vs 240 (site-faithful, dense); twinkle speed is the site's exact 0.3–1.5. Screenshots/recording provided.
-- Cosmic starfield replaces the glyph wallpaper (glyph toggle is a no-op under cosmic). Opaque fallback = the "Starfield background" setting off + reduced-motion static.
-- `graphify update .` run. NOT deployed. Next: owner review → merge → bump → deploy.
+- **Deploy hand-run** (mirrors `landing/deploy-landing.ps1`): `astro build` → scp `dist/*` to `~/fireplace/landing-staging-<stamp>/` → guarded atomic swap into `~/fireplace/landing-build/`. No nginx reload for content-only swap (`/welcome` block already installed).
+- **Prod truth:** PWA 0.0.122, backend `077ce38` (0.0.120), landing `/welcome` = master `228e0b6`. Landing is Astro — no pubspec bump (that semver is the Flutter PWA only).
+- Possible short-height edge (984×547 landscape): mobile top caption can lightly kiss the sphere top in sec 04/05 — pre-existing mobile vertical stacking, not owner-flagged; tall phones clean. If raised: nudge `.machine top` or shrink `.cap` at very short heights.
+- **Worktree summary divergence (pre-existing):** the `C:/Users/Lentach/Desktop/fireplace` feature worktree holds an uncommitted `LATEST.md` with landing rounds 1–34, cosmic-login (0.0.121) and app-logo (0.0.122) deploys never committed to master. This record is committed to **master** (git-truth). Reconcile if it matters.
 
 ## Previous
-- 2026-07-16: User card rounds 3+4 — **PR #84 MERGED (`077ce38`), 0.0.120 LIVE prod (web+backend, migration 0008)**. Aspect-sized hero, bigger manage sheet, round-5 plus-icon halo removed (`1c60cf6`). Full: `2026-07-16-session-user-card-round3.md`.
-- 2026-07-15: User card ROUND 2 — full-picture hero, tap-zone pager, **S2 "Frosted Backdrop" WON**, shared-media strip, drag-reorder photos (migration 0008/`POST /users/profile-photos/order`), linkified About. `0087150`. Full: `2026-07-15-session-user-card-round2.md`.
+- 2026-07-17: Cosmic theme — 5th selectable theme (space palette + animated dimming starfield chat bg, ported from the landing hero) via `RpgTheme.themeDataCosmic`/`CosmicBackdrop`/`GlassTheme.cosmic`/`starfield_background.dart`. MERGED to master + shipped as the cosmic front-door login (0.0.121). Full: `2026-07-17-session-cosmic-theme.md`.
+- 2026-07-16: User card rounds 3+4 — **PR #84 MERGED (`077ce38`), 0.0.120 LIVE prod (web+backend, migration 0008)**. Aspect-sized hero, bigger manage sheet, plus-icon halo removed (`1c60cf6`). Full: `2026-07-16-session-user-card-round3.md`.
 - 2026-07-16: Landing page prototypes → **B "Dot Globe" WON**, then MESSAGE JOURNEY won → production `/welcome` built (`landing/`, Astro + Lenis). Full: `2026-07-16-session-landing-prototype.md`.
-- 2026-07-15: User card / profile rework D1 "Telegram Full-Bleed" — branch `feat/user-card-rework` 0.0.120. Full: `2026-07-15-session-user-card-rework.md`.
+- 2026-07-15: User card ROUND 2 — full-picture hero, tap-zone pager, **S2 "Frosted Backdrop" WON**, shared-media strip, drag-reorder photos (migration 0008/`POST /users/profile-photos/order`), linkified About. `0087150`. Full: `2026-07-15-session-user-card-round2.md`.
