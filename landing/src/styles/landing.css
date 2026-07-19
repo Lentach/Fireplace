@@ -337,7 +337,7 @@ footer { background: #000; position: relative; }
 .f-row {
   /* true centering: 1fr | auto | 1fr — flex space-between let the wider
      left cell push the middle line off-axis */
-  display: grid; grid-template-columns: 1fr auto 1fr; align-items: center; gap: 12px 32px;
+  display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px 32px;
   padding: 26px 6vw 34px;
   font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: rgba(238, 246, 251, .3);
 }
