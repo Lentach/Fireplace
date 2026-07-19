@@ -506,7 +506,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get resetButton => 'Reset';
 
   @override
-  String get authTagline => 'Enter the realm';
+  String get authTagline => 'Messages only two people can read';
 
   @override
   String get authLoginTab => 'LOGIN';

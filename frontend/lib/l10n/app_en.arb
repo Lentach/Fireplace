@@ -191,7 +191,7 @@
   "passwordMustContain": "Password must contain uppercase, lowercase, and number",
   "oldPasswordRequired": "Old password is required",
   "resetButton": "Reset",
-  "authTagline": "Enter the realm",
+  "authTagline": "Messages only two people can read",
   "authLoginTab": "LOGIN",
   "authRegisterTab": "REGISTER",
   "authUsernameHint": "Username",
