@@ -1,4 +1,6 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
+<g transform="translate(256 256) scale(0.62) translate(-256 -256)">
+
 <!-- FIREPLACE — the network node: a pure fibonacci dot sphere.
      golden angle 2.39996323, N=500, perspective F=2.6, tilt .35. -->
 <defs>
@@ -8,7 +10,7 @@
     <stop offset="100%" stop-color="#3c78a0" stop-opacity="0"/>
   </radialGradient>
 </defs>
-<rect width="512" height="512" fill="#000"/>
+
 <circle cx="256" cy="256" r="245.76" fill="url(#glow)"/>
 <circle cx="263.3" cy="434.3" r="1.9" fill="#8fd8ff" fill-opacity="0.30"/>
 <circle cx="257.4" cy="415.3" r="1.9" fill="#8fd8ff" fill-opacity="0.23"/>
@@ -460,4 +462,6 @@
 <circle cx="243.7" cy="32.1" r="3.2" fill="#8fd8ff" fill-opacity="0.68"/>
 <circle cx="278.8" cy="33.0" r="3.2" fill="#8fd8ff" fill-opacity="0.60"/>
 <circle cx="241.5" cy="31.6" r="3.2" fill="#8fd8ff" fill-opacity="0.61"/>
+
+</g>
 </svg>
