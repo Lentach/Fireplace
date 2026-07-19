@@ -142,8 +142,11 @@ export function initJourney(section: HTMLElement) {
     }
     const promptB = promptBCache;
     const restS = mobile ? 1 : clamp((restY + ph / 2 - promptB - 10) / ph, 0.45, 1);
-    // phonePose centers only at s=1 (center = x + w(1-s)/2) — compensate
-    const restX = W * 0.5 - pw * (1 - restS) / 2;
+    // Desired VISUAL center. phonePose only centers at s=1 (visual center =
+    // x + pw*(1-s)/2), so every scaled beat is compensated at the call site
+    // (x - pw*(1-s)/2) with the LIVE scale — rest, flight (left/right), and
+    // the finale all center truly, with no rightward drift at s<1.
+    const restX = W * 0.5;
     const sealP = { x: coreC.x, y: holdY };
     const unsealP = { x: coreC.x, y: holdY };
     return {
@@ -166,7 +169,7 @@ export function initJourney(section: HTMLElement) {
         (Math.min(H * 0.56, railTop - 16 - ph / 2) + ph / 2 - 76) / ph,
       ), 0.55, 1.2),
       finSx: W * 0.35, finRx: W * 0.65,
-      restX, restY, restS,
+      restX, restY, restS, pw,
       liftStart: { x: W * 0.5 + (mobile ? 30 : 40), y: restY + (mobile ? 40 : 60) },
       liftCp: mobile ? { x: W * 0.30, y: H * 0.64 } : { x: W * 0.45, y: H * 0.48 },
       dropCp: mobile ? { x: W * 0.66, y: H * 0.58 } : { x: W * 0.66, y: holdY - H * 0.03 },
@@ -508,7 +511,7 @@ export function initJourney(section: HTMLElement) {
     }
 
     if (!sent) {
-      phonePose($('.phone.sender'), A.restX, A.restY, A.restS, 1);
+      phonePose($('.phone.sender'), A.restX - A.pw * (1 - A.restS) / 2, A.restY, A.restS, 1);
       $('.phone.recipient').style.opacity = '0';
       $('.prompt').style.opacity = '1';
       requestAnimationFrame(update);
@@ -624,7 +627,7 @@ export function initJourney(section: HTMLElement) {
     const rpY = lerp(A.recipC.y, A.finY, grow);
     const rpS = lerp(A.phoneS, A.mobile ? 1 : A.finS, grow);
     const recIn = stayR ? ease(seg(p, 0.03, 0.10)) : ease(seg(p, A.mobile ? 0.70 : 0.60, A.mobile ? 0.80 : 0.74));
-    phonePose($('.phone.recipient'), rpX, rpY, rpS, recIn);
+    phonePose($('.phone.recipient'), rpX - A.pw * (1 - rpS) / 2, rpY, rpS, recIn);
     let spX: number, spY: number, spS: number;
     if (A.mobile) {
       const toTop = ease(seg(p, T.lift[0], T.lift[1]));
@@ -639,7 +642,7 @@ export function initJourney(section: HTMLElement) {
       spY = lerp(lerp(A.restY, A.senderC.y, moveOut), A.finY, grow);
       spS = lerp(lerp(A.restS, A.phoneS, moveOut), A.finS, grow);
     }
-    phonePose($('.phone.sender'), spX, spY, spS, 1);
+    phonePose($('.phone.sender'), spX - A.pw * (1 - spS) / 2, spY, spS, 1);
 
     const sk = $('.keytag.sender-key');
     sk.style.opacity = String(seg(p, 0.14, 0.18) * (1 - seg(p, A.mobile ? 0.25 : 0.30, A.mobile ? 0.29 : 0.36)));

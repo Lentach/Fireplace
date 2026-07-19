@@ -7,7 +7,12 @@ import { fit, makeStars, drawStars, clamp, lerp } from './util';
 export function initGlobe(canvas: HTMLCanvasElement) {
   let ctx = fit(canvas);
   let W = canvas.clientWidth, H = canvas.clientHeight;
-  window.addEventListener('resize', () => { ctx = fit(canvas); W = canvas.clientWidth; H = canvas.clientHeight; stars = makeStars(W, H, 240); });
+  const refit = () => { ctx = fit(canvas); W = canvas.clientWidth; H = canvas.clientHeight; stars = makeStars(W, H, 240); };
+  window.addEventListener('resize', refit);
+  // The hero box can settle TALLER after init (fonts/layout/scrollbar), leaving
+  // a stale backing-store aspect that stretched the sphere vertically. Re-fit on
+  // ANY box change, not just window resize.
+  if (typeof ResizeObserver !== 'undefined') new ResizeObserver(refit).observe(canvas);
 
   const N = 850;
   const pts: [number, number, number][] = [];
