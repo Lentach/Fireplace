@@ -55,9 +55,21 @@ export function initJourney(section: HTMLElement) {
   let sentMeta: HTMLElement | null = null, landedBubble: HTMLElement | null = null;
   let sentBubble: HTMLElement | null = null;
 
+  // While a phone MOVES it needs its own layer (will-change) — but a hint
+  // held forever pins the raster made mid-journey at ~0.4× scale, and the
+  // docked phone shows that tiny bitmap upscaled: blurry text (owner's
+  // "low resolution" placeholder). At rest we release the hint so the
+  // browser re-rasters the layer at the TRUE scale — crisp at every dock.
+  const poseRest = new WeakMap<HTMLElement, { tf: string; still: number }>();
   const phonePose = (el: HTMLElement, x: number, y: number, s: number, o: number) => {
     const h = el.offsetHeight || 560;
-    el.style.transform = `translate(${x - el.offsetWidth / 2 * s}px, ${y - h * s / 2}px) scale(${s})`;
+    const tf = `translate(${x - el.offsetWidth / 2 * s}px, ${y - h * s / 2}px) scale(${s})`;
+    const st = poseRest.get(el) ?? { tf: '', still: 0 };
+    st.still = tf === st.tf ? st.still + 1 : 0;
+    st.tf = tf;
+    poseRest.set(el, st);
+    el.style.willChange = st.still > 20 ? 'auto' : 'transform';
+    el.style.transform = tf;
     el.style.transformOrigin = `${el.offsetWidth / 2}px ${h / 2}px`;
     el.style.opacity = String(o);
   };
