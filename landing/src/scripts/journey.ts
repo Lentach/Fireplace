@@ -90,25 +90,28 @@ export function initJourney(section: HTMLElement) {
     // Desktop: anchored at 0.66H but pulled up on tall/short screens so the
     // phone AND the keytag under it always clear the rail.
     const sideY = mobile ? H * 0.40 : Math.min(H * 0.66, railTop - ph / 2 - 56);
-    const senderC = mobile ? { x: W * 0.5, y: sideY } : { x: W * 0.20, y: sideY };
-    const recipC = mobile ? { x: W * 0.5, y: sideY } : { x: W * 0.80, y: sideY };
-    // the relay node: sphere geometry derived from the DOM core's box — the
-    // dot-shell wraps it, the IN/OUT ports sit on the shell's equator, and
-    // the wires plug in there. The visual radius follows the journey
-    // (materializes mid-size, grows to full, desktop shrinks to a sealed
-    // mini) — but the FLIGHT geometry (wires, traveler, rings) anchors on
-    // the FULL-size ports: grow (.33–.425) and shrink (.71–.78) overlap the
-    // wire windows, and a bezier endpoint that recedes mid-flight warps the
-    // path (independent-review P2). The live port docks with the frozen
-    // rail exactly while the node is full-size (.425–.71), which covers
-    // every swallow/emit/ring window — so the seam is invisible; during
-    // grow the port visibly travels OUT to meet the incoming message.
+    // the relay node: sphere geometry from the DOM core box — the dot-shell
+    // wraps it, the IN/OUT ports sit on the lower flanks, the wires plug in
+    // there. FLIGHT geometry anchors on the FULL-size ports (shellRF); the
+    // live shell (shellR) grows/shrinks across the journey.
     const coreEl = $('.core');
     const coreC = rectC(coreEl);
     const coreR = (coreEl.offsetWidth || 300) / 2;
+    const shellRF = coreR * 1.16;   // full-size shell — flight geometry
+    const phoneSv = mobile ? 0.68 : clamp((railTop - 56 - (H * 0.15 + 270)) / ph, 0.34, 0.58);
+    // Devices hug the edges (0.20 / 0.80). But the lower-flank ports are
+    // fixed-px (height-scaled), so on a NARROW desktop the %-split lets a
+    // docked device crowd its port and the tunnel clips behind it. Push the
+    // split OUTWARD symmetrically (about 0.5W → the pair stays even), just far
+    // enough to keep 44px between each device's inner edge and its port —
+    // clamped so it never slides off-screen; wide desktops keep 0.20/0.80.
+    const halfDev = pw * phoneSv / 2;
+    const portReach = shellRF * Math.cos(0.62);
+    const outFrac = mobile ? 0.5 : clamp(Math.max(0.80, (coreC.x + portReach + 44 + halfDev) / W), 0.80, (W - halfDev - 8) / W);
+    const senderC = { x: mobile ? W * 0.5 : W * (1 - outFrac), y: sideY };
+    const recipC = { x: mobile ? W * 0.5 : W * outFrac, y: sideY };
     const grow = ease(seg(p, 0.33, 0.425));
     const shrink = mobile ? 0 : ease(seg(p, 0.71, 0.78));
-    const shellRF = coreR * 1.16;   // full-size shell — flight geometry
     const shellR = shellRF * (0.55 + 0.45 * grow) * (1 - 0.55 * shrink);
     // Ports sit on the LOWER flanks (~36° below the equator, owner round
     // 27): the tunnel passes UNDER the sphere and enters each port RADIALLY
@@ -155,7 +158,7 @@ export function initJourney(section: HTMLElement) {
       // column (~0.15H + 270px) and the rail: on short screens the phone
       // shrinks instead of colliding with caption above or keytag/rail below
       // (visual top = bottom - ph*s, since the visual bottom is scale-free).
-      phoneS: mobile ? 0.68 : clamp((railTop - 56 - (H * 0.15 + 270)) / ph, 0.34, 0.58),
+      phoneS: phoneSv,
       // Desktop finale: both devices dock center-stage as LARGE as fits —
       // width-limited so they can never collide (centers 0.30W apart, 24px
       // gap), height-limited so the top edge clears the nav. finY pulls the
@@ -223,7 +226,7 @@ export function initJourney(section: HTMLElement) {
     // machine's left edge (over the IN slot) and tracks the row each frame.
     const tag = document.createElement('span');
     tag.className = 'mine-tag';
-    tag.textContent = 'yours →';
+    tag.textContent = "Bob's →";
     $('.machine').appendChild(tag);
   }
   const rotors = [...section.querySelectorAll<HTMLElement>('[data-rotor]')];
@@ -333,7 +336,7 @@ export function initJourney(section: HTMLElement) {
     landedBubble.textContent = plain;
     landedBubble.insertAdjacentHTML('beforeend', '<div class="meta">08:12</div>');
 
-    hintEl.textContent = 'scroll — your message is on its way ↓';
+    hintEl.textContent = 'scroll — the message is on its way ↓';
     if (!auto) hintEl.style.opacity = '1';
   }
 
