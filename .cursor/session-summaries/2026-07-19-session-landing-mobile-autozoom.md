@@ -1,45 +1,46 @@
-# Landing mobile automatic page-zoom fix
+# Landing mobile automatic shrink — footer overflow root fix
 
 **Date:** 2026-07-19
 
 ## What was done
 
-- Analyzed the 1.9-second, 720×1558 mobile Safari recording at 0.05-second intervals.
-- Measured fixed page elements, the section-04 caption, relay core, and journey rail. The whole document shrinks around the web viewport's top-left origin, then snaps back; Safari chrome does not scale.
-- Added both accessible browser-side mitigations under the existing mobile breakpoint:
-  - `touch-action: manipulation` disables double-tap page zoom while preserving one-finger panning and pinch zoom.
-  - Every focusable landing textarea now renders at 16px, preventing browser focus-zoom on undersized editable text. The phone composer uses a compact 1.05 line height and an 84px cap so multi-line input remains contained.
-- Kept the viewport metadata unchanged: `width=device-width, initial-scale=1`. No `maximum-scale`, `user-scalable=no`, or `touch-action: none` restriction was introduced.
-- Made the fixed navigation follow `visualViewport.offsetLeft/width`, so OPEN APP remains inside the actually visible page area during a browser scale transition instead of staying anchored to the wider layout viewport.
-- Checked the reported console output. `content-script.js`, `inpage.js`, MetaMask, `ObjectMultiplex`, and `runtime.lastError` messages are injected by browser extensions; a clean browser produced no landing console errors.
-- Removed all temporary frame extracts, contact sheets, and verification screenshots.
-- Deployed the landing to production after parallel standards/spec reviews returned no findings. Hardened the deploy script to normalize staging permissions and verify every emitted CSS/JS asset, after the first publish exposed an `assets/` directory mode of `700`.
+- Re-analyzed the 1.9-second, 720×1558 recording and reproduced the same whole-document shrink on Android Chrome: the layout viewport widened from 411px toward 500px, scaling the page toward the upper-left, then snapped back.
+- Isolated the behavior without assumptions:
+  - a minimal mobile page stayed at 411px;
+  - the full landing still oscillated with all JavaScript blocked;
+  - disabling CSS motion stopped it;
+  - disabling only `.f-photon` stopped it.
+- Found the exact 7-second source: `.f-photon` animates from `left: -8%` to `left: 104%` inside an overflow-visible wire. Mobile Chrome widened the layout viewport to contain the offscreen endpoint on every cycle.
+- Added `overflow-x: clip` to `footer`. The photon still traverses the wire, but its offscreen paint can no longer enlarge document overflow.
+- Removed the ineffective mobile `touch-action: manipulation` mitigation. Kept the 16px textarea rules because they independently prevent iOS editable-focus zoom, and kept visual-viewport-bound navigation because it preserves OPEN APP during legitimate pinch zoom.
+- Deployed the corrected landing to production using the hardened asset-verifying deploy script.
 
 ## Key files
 
-- `landing/src/styles/landing.css`, `landing/src/scripts/main.ts` — mobile zoom guards and visual-viewport-bound navigation.
+- `landing/src/styles/landing.css` — footer overflow containment; obsolete double-tap rule removed.
+- `landing/src/scripts/main.ts` — visual-viewport-bound navigation retained.
+- `landing/deploy-landing.ps1` — readable staging permissions and CSS/JS post-deploy verification retained.
 - `graphify-out/GRAPH_REPORT.md`, `graphify-out/graph.json` — refreshed after the source change.
-- `landing/deploy-landing.ps1` — readable staging permissions and asset-level post-deploy verification.
 
 ## Verification
 
-- Recording measurements: static logo width fell from 181px to 147px, CTA width from 208px to 169px, and relay width from 548px to 439px (about 0.81×), then the whole page returned to its original scale in one source frame at 1.4s. Browser chrome stayed fixed. This rules out a relay-only `vh`/canvas/CSS animation.
-- Browser verification at 390×844:
-  - computed `touch-action` is `manipulation`;
-  - hero and phone textareas compute to 16px;
-  - viewport metadata remains unrestricted;
-  - hero typing, sender send, section-04 scrolling, recipient typing, long-input capping, and clear/shrink behavior all completed at `visualViewport.scale === 1` with `scrollX === 0`.
-  - focused sender textarea remained active and enabled through the section-04 scroll path, exercising the focus-retention state that previously exposed browser focus zoom.
-- Short-landscape 984×547 render checked; the outer phone geometry remains unchanged because the fix only changes content inside the fixed-aspect phone.
-- Production `astro build` completed: one route, client bundle 45.38 kB / 15.80 kB gzip (`0X9nz401`).
-- Built-preview scale regression at 412×915 covered page scales 1.0, 1.23, and 1.5. OPEN APP stayed fully within the visual viewport at every scale; the 1.23 case changed from clipped (`right 376 > visible 323`) to contained (`right 302 < visible 323`).
-- Clean reload and scale transitions produced zero console messages/page errors. No landing source contains the extension error identifiers shown in the owner's console.
-- Production deploy published bundle `0X9nz401` and stylesheet `77H8Y7N2`. The hardened second deploy verified HTML, CSS, and JS as HTTP 200.
-- Production browser at 412×915 rendered the full styled page with zero console/page errors. OPEN APP remained contained at scales 1.0, 1.23, and 1.5; the focused sender→section-04 journey completed with `visualViewport.scale === 1` and `scrollX === 0`.
-- Post-deploy `/health` returned `{"status":"ok","db":"ok"}` and `/version.json` remained `0.0.122`, confirming the main app stayed intact.
-- `graphify update .` completed: 5,578 nodes, 7,306 edges, 418 communities.
+- Before the fix, Android Chrome repeatedly changed `innerWidth` from 411px up to 498–502px while `documentElement.clientWidth`, `visualViewport.width`, and `visualViewport.scale` stayed fixed.
+- A no-JavaScript landing still reproduced; a minimal page did not. Disabling all CSS animation stabilized it. Disabling only `.f-photon` also held `innerWidth` and `scrollWidth` at 411px for longer than its 7-second cycle.
+- With `footer { overflow-x: clip }`, the live `fphoton` animation continued across approximately `-32px` to `426px` while `innerWidth` and document `scrollWidth` remained 411px.
+- Final local Android build, full JavaScript enabled:
+  - 9 seconds idle: `innerWidth === clientWidth === scrollWidth === 411`;
+  - trusted Android double tap followed by 9 seconds: all three widths still 411, `visualViewport.scale === 1`;
+  - the `fphoton` animation remained active throughout.
+- Desktop 1440×900 visual check passed; the footer photon remained visible and animated, with no horizontal document overflow.
+- Production Astro build passed: one route, JS 45.38 kB / 15.80 kB gzip (`0X9nz401`).
+- Production deployed CSS `mco4AcQr` and JS `0X9nz401`; HTML, CSS, and JS returned HTTP 200.
+- Production Android Chrome repeated the 9-second idle and 9-second post-double-tap traces: `innerWidth`, `clientWidth`, and `scrollWidth` stayed 411px. ADB-delivered touch/click/`dblclick` events all reported `isTrusted === true`; zero runtime/log protocol errors occurred.
+- Parallel review: Standards returned no findings. Spec confirmed the source fix was compliant; its stale-doc/not-yet-deployed findings were resolved by this deploy and summary rewrite. Deploy hardening remains intentionally because the previous production publish exposed unreadable mode-700 assets.
+- `/health` returned `{"status":"ok","db":"ok"}`; main PWA `/version.json` remained `0.0.122`.
+- `graphify update .`: 5,578 nodes, 7,306 edges, 419 communities.
 
 ## Notes for next session
 
-- **LIVE:** `https://fireplace.ignorelist.com/welcome/` serves bundle `0X9nz401` with the mobile zoom and visual-viewport navigation fixes.
-- Trusted real-device gesture confirmation is still useful; if any device still scales, capture `visualViewport.scale/width/height`, `innerWidth/innerHeight`, `scrollY`, and `document.activeElement`.
+- **LIVE:** `https://fireplace.ignorelist.com/welcome/` serves CSS `mco4AcQr` with the footer-overflow root fix.
+- The relay, Lenis, textarea focus, and browser `visualViewport.scale` were not the automatic shrink source. The 7-second footer photon overflow was.
+- Ask the owner for one physical-device confirmation; the production artifact has passed a real Android Chrome target with trusted OS touch events.

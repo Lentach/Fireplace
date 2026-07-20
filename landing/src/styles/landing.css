@@ -376,7 +376,9 @@ nav .links a.cta { color: #04121c; background: var(--ice); padding: 10px 22px; f
 .outro .fine { margin-top: 36px; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: rgba(238, 246, 251, .3); }
 
 /* ---------- footer: the wire keeps going ---------- */
-footer { background: #000; position: relative; }
+/* The photon reaches left: 104%; clip that paint so mobile layout viewports
+   never widen to contain its offscreen keyframe. */
+footer { background: #000; position: relative; overflow-x: clip; }
 /* a live stretch of the TLS tunnel: faint sheath + a photon that crosses
    the page and is reborn — envelopes keep flowing after the story ends */
 .f-wire {
@@ -420,13 +422,7 @@ footer { background: #000; position: relative; }
    narrow/tablet widths — captions overlap the sphere cyphers, a docked
    device covers the wire arc. Mirrors journey.ts `mobile = W < 1000`. */
 @media (max-width: 999px) {
-  /* Keep one-finger scrolling and pinch zoom, but stop browsers treating an
-     accidental double tap as a page-zoom command. */
-  html, body { touch-action: manipulation; }
-  /* Mobile browsers may also page-zoom a focused editable control below
-     their readable-size threshold. Both journey composers are focusable only
-     while their phone is docked at scale(1), so 16px prevents that zoom
-     without changing the in-flight device geometry or restricting pinch zoom. */
+  /* Keep iOS from focus-zooming the two editable demos. */
   .enc textarea { font-size: 16px; }
   .phone .c-pill textarea { font-size: 16px; line-height: 1.05; max-height: 84px; }
   .phone .c-caret { height: 17px; }
