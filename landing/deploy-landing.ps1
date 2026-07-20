@@ -19,7 +19,7 @@ ssh $VM "mkdir -p $staging"
 scp -r dist/* "${VM}:$staging/"
 
 Write-Host '== guarded atomic swap =='
-ssh $VM "test -f $staging/index.html && rm -rf ~/fireplace/landing-build.old && (test -d ~/fireplace/landing-build && mv ~/fireplace/landing-build ~/fireplace/landing-build.old || true) && mv $staging ~/fireplace/landing-build && echo PUBLISHED_OK"
+ssh $VM "test -f $staging/index.html && chmod -R a+rX $staging && rm -rf ~/fireplace/landing-build.old && (test -d ~/fireplace/landing-build && mv ~/fireplace/landing-build ~/fireplace/landing-build.old || true) && mv $staging ~/fireplace/landing-build && echo PUBLISHED_OK"
 
 Write-Host '== verify =='
 $resp = Invoke-WebRequest -Uri 'https://fireplace.ignorelist.com/welcome/' -UseBasicParsing
@@ -27,4 +27,16 @@ if ($resp.StatusCode -eq 200 -and $resp.Content -match 'Fireplace') {
   Write-Host 'VERIFIED: /welcome/ serves the landing page.'
 } else {
   throw "verification failed: HTTP $($resp.StatusCode)"
+}
+
+$assetPaths = [regex]::Matches($resp.Content, '/welcome/assets/[^"> ]+\.(?:css|js)') |
+  ForEach-Object { $_.Value } |
+  Select-Object -Unique
+if ($assetPaths.Count -lt 2) { throw 'verification failed: expected CSS and JS asset URLs' }
+foreach ($assetPath in $assetPaths) {
+  $assetResp = Invoke-WebRequest -Uri "https://fireplace.ignorelist.com$assetPath" -UseBasicParsing
+  if ($assetResp.StatusCode -ne 200) {
+    throw "verification failed: HTTP $($assetResp.StatusCode) for $assetPath"
+  }
+  Write-Host "VERIFIED: $assetPath"
 }

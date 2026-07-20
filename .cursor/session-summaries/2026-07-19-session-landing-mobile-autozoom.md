@@ -13,11 +13,13 @@
 - Made the fixed navigation follow `visualViewport.offsetLeft/width`, so OPEN APP remains inside the actually visible page area during a browser scale transition instead of staying anchored to the wider layout viewport.
 - Checked the reported console output. `content-script.js`, `inpage.js`, MetaMask, `ObjectMultiplex`, and `runtime.lastError` messages are injected by browser extensions; a clean browser produced no landing console errors.
 - Removed all temporary frame extracts, contact sheets, and verification screenshots.
+- Deployed the landing to production after parallel standards/spec reviews returned no findings. Hardened the deploy script to normalize staging permissions and verify every emitted CSS/JS asset, after the first publish exposed an `assets/` directory mode of `700`.
 
 ## Key files
 
 - `landing/src/styles/landing.css`, `landing/src/scripts/main.ts` — mobile zoom guards and visual-viewport-bound navigation.
 - `graphify-out/GRAPH_REPORT.md`, `graphify-out/graph.json` — refreshed after the source change.
+- `landing/deploy-landing.ps1` — readable staging permissions and asset-level post-deploy verification.
 
 ## Verification
 
@@ -32,10 +34,12 @@
 - Production `astro build` completed: one route, client bundle 45.38 kB / 15.80 kB gzip (`0X9nz401`).
 - Built-preview scale regression at 412×915 covered page scales 1.0, 1.23, and 1.5. OPEN APP stayed fully within the visual viewport at every scale; the 1.23 case changed from clipped (`right 376 > visible 323`) to contained (`right 302 < visible 323`).
 - Clean reload and scale transitions produced zero console messages/page errors. No landing source contains the extension error identifiers shown in the owner's console.
-- `graphify update .` completed: 5,578 nodes, 7,306 edges, 421 communities.
+- Production deploy published bundle `0X9nz401` and stylesheet `77H8Y7N2`. The hardened second deploy verified HTML, CSS, and JS as HTTP 200.
+- Production browser at 412×915 rendered the full styled page with zero console/page errors. OPEN APP remained contained at scales 1.0, 1.23, and 1.5; the focused sender→section-04 journey completed with `visualViewport.scale === 1` and `scrollX === 0`.
+- Post-deploy `/health` returned `{"status":"ok","db":"ok"}` and `/version.json` remained `0.0.122`, confirming the main app stayed intact.
+- `graphify update .` completed: 5,578 nodes, 7,306 edges, 418 communities.
 
 ## Notes for next session
 
-- The source fix is committed/pushed but not deployed. Production deployment still requires explicit owner approval.
-- Headless Chromium cannot generate trusted browser double-tap/pinch/focus zoom, so the original iOS/Android device reproduction still needs one real-device confirmation after deployment or through a LAN preview.
-- If any real device still scales, capture `visualViewport.scale/width/height`, `innerWidth/innerHeight`, `scrollY`, and `document.activeElement` during the event before changing layout code again.
+- **LIVE:** `https://fireplace.ignorelist.com/welcome/` serves bundle `0X9nz401` with the mobile zoom and visual-viewport navigation fixes.
+- Trusted real-device gesture confirmation is still useful; if any device still scales, capture `visualViewport.scale/width/height`, `innerWidth/innerHeight`, `scrollY`, and `document.activeElement`.
