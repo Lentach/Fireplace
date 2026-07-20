@@ -5,6 +5,20 @@ import { initJourney } from './journey';
 import { drawSingularity, makeShell } from './shell';
 import { drawStars, fit, makeStars } from './util';
 
+/* Fixed elements otherwise stay sized to the layout viewport while browser
+   page zoom narrows/pans the visual viewport, which can push the CTA offscreen. */
+const visualViewport = window.visualViewport;
+if (visualViewport) {
+  const root = document.documentElement;
+  const syncVisualViewport = () => {
+    root.style.setProperty('--visual-viewport-left', `${visualViewport.offsetLeft}px`);
+    root.style.setProperty('--visual-viewport-width', `${visualViewport.width}px`);
+  };
+  syncVisualViewport();
+  visualViewport.addEventListener('resize', syncVisualViewport, { passive: true });
+  visualViewport.addEventListener('scroll', syncVisualViewport, { passive: true });
+}
+
 /* smooth scroll — Lenis animates native window scroll, so the journey engine's
    scrollY reads stay correct; Lenis ignores ctrl+wheel (globe zoom unaffected) */
 const lenis = new Lenis();

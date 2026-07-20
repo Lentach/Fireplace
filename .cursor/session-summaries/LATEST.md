@@ -8,17 +8,20 @@ The 1.9-second 720×1558 Safari recording proves a browser page-scale loop, not 
 1. Mobile `html`/`body` now use `touch-action: manipulation`, blocking double-tap page zoom while preserving one-finger scrolling and pinch zoom.
 2. Every mobile landing textarea renders at 16px, removing the undersized-editable focus-zoom path. The mock phone composer keeps compact multiline metrics and a bounded internal scroll area.
 3. Viewport metadata remains accessibility-safe: `width=device-width, initial-scale=1`; no scale cap or `user-scalable=no`.
+4. Fixed navigation now tracks the live visual viewport, keeping OPEN APP visible while browser page scale changes. The reported console errors are MetaMask/extension content-script failures, not landing errors.
 
 ## Key files
-- `landing/src/styles/landing.css` — mobile gesture and focus-zoom guards.
+- `landing/src/styles/landing.css`, `landing/src/scripts/main.ts` — mobile zoom guards and visual-viewport-bound navigation.
 - `graphify-out/GRAPH_REPORT.md`, `graphify-out/graph.json` — refreshed graph.
 - Full write-up: `2026-07-19-session-landing-mobile-autozoom.md`.
 
 ## Verification
 - Frame measurement: logo 181→147px, CTA 208→169px, relay 548→439px, then full reset at 1.4s; browser chrome unchanged.
 - Responsive browser at 390×844: hero/sender/recipient typing, long-input cap, clear/shrink, sender send, focused scroll to section 04, and fresh-page scroll. Computed `touch-action: manipulation`, both textarea classes 16px, `visualViewport.scale === 1`, `scrollX === 0`.
-- Built preview repeated the focused sender→relay flow. `astro build` clean: 45.08 kB / 15.69 kB gzip.
-- `graphify update .`: 5,577 nodes, 7,305 edges, 416 communities.
+- Reproduced OPEN APP clipping at 412×915 and scale 1.23 (`right 376 > visible 323`); after binding nav to the visual viewport, the CTA remained contained through scales 1.0–1.5 (`right 302 < visible 323` at 1.23).
+- Clean browser console: zero messages/page errors. Screenshot errors originate from extension `content-script.js`/`inpage.js`/MetaMask, not landing source.
+- Built preview repeated the focused sender→relay and scaled-nav flows. `astro build` clean: 45.38 kB / 15.80 kB gzip (`0X9nz401`).
+- `graphify update .`: 5,578 nodes, 7,306 edges, 421 communities.
 
 ## Notes for next session
 - Source fix is committed and pushed on master. Production remains unchanged pending explicit deploy approval.
