@@ -6,8 +6,6 @@
   --paper: #f2f5f8;
   --paper-2: #e8edf2;
   --txt-light: #14202c;
-  --visual-viewport-left: 0px;
-  --visual-viewport-width: 100%;
 }
 * { margin: 0; padding: 0; box-sizing: border-box; }
 html { scroll-behavior: auto; }
@@ -20,7 +18,7 @@ h1, h2, h3 { font-family: 'Archivo', sans-serif; }
 
 /* ---------- nav ---------- */
 nav {
-  position: fixed; top: 0; left: var(--visual-viewport-left); width: var(--visual-viewport-width); z-index: 40;
+  position: fixed; top: 0; left: 0; right: 0; z-index: 40;
   display: flex; align-items: center; justify-content: space-between;
   padding: 18px 5vw; backdrop-filter: blur(10px); -webkit-backdrop-filter: blur(10px);
   background: rgba(0, 0, 0, .35); border-bottom: 1px solid rgba(143, 216, 255, .08);
@@ -422,10 +420,6 @@ footer { background: #000; position: relative; overflow-x: clip; }
    narrow/tablet widths — captions overlap the sphere cyphers, a docked
    device covers the wire arc. Mirrors journey.ts `mobile = W < 1000`. */
 @media (max-width: 999px) {
-  /* Keep iOS from focus-zooming the two editable demos. */
-  .enc textarea { font-size: 16px; }
-  .phone .c-pill textarea { font-size: 16px; line-height: 1.05; max-height: 84px; }
-  .phone .c-caret { height: 17px; }
   /* journey: captions top-center, machine mid, hold points below, phones bottom */
   .cap { left: 6vw; right: 6vw; max-width: none; top: 9.5%; text-align: center; }
   .cap h2 { font-size: clamp(19px, 6vw, 26px); }
@@ -451,7 +445,6 @@ footer { background: #000; position: relative; overflow-x: clip; }
   .rail .stop span { font-size: 6.5px; }
   .rail .seg { width: 14px; }
 }
-
 /* Short landscape screens cannot stack nav + caption + phone vertically.
    Give every journey caption the same slim side lane; never special-case 07. */
 @media (min-width: 700px) and (max-width: 999px) and (max-height: 650px) {
