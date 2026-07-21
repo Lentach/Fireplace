@@ -436,8 +436,13 @@ export function initJourney(section: HTMLElement) {
     phonePose(phone, W / 2, vTop + vH - 6 - ph / 2, 1, 1);
     if (kbDone) kbDone.style.top = `${vTop + 14}px`;
   }
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let visible = true, resumed = false, rafId = 0;
+  const schedule = () => { if (!rafId) rafId = requestAnimationFrame(update); };
   function update() {
-    const now = performance.now(), t = now / 1000;
+    rafId = 0;                              // this frame consumed its scheduled slot
+    if (!visible) return;                   // paused off-screen; the observer restarts the loop on re-entry
+    const now = performance.now(), t = reduce ? 0 : now / 1000;
     // self-heal on any viewport change the resize event missed (devtools
     // device-toolbar toggles can land before layout settles)
     if (canvas.clientWidth !== W || canvas.clientHeight !== H) {
@@ -445,9 +450,10 @@ export function initJourney(section: HTMLElement) {
     }
     // keyboard freeze (mobile): a focused composer holds the journey still and
     // lifts its device above the keyboard; nothing else recomputes meanwhile
-    if (kbLift) { poseLifted(kbLift); requestAnimationFrame(update); return; }
+    if (kbLift) { poseLifted(kbLift); schedule(); return; }
     const top = section.offsetTop;
     const raw = clamp((scrollY - top) / (section.offsetHeight - innerHeight), 0, 1);
+    if (resumed) { resumed = false; lastRaw = raw; }   // resumed after a pause: no stale-crossing false send
     const prevRaw = lastRaw;
     lastRaw = raw;
     // roomy top zone: the visitor can stop and type; skimmers auto-send once.
@@ -563,7 +569,7 @@ export function initJourney(section: HTMLElement) {
       r.el.style.transform = `translateY(${y}px)`;
       r.el.style.opacity = String(clamp(Math.min(y / 26, (streamH - y) / 26), 0, 0.85) * (r.idx === mineSlot ? 1 - minePres : 1));
       // slot refresh: a NEW envelope takes the row — fresh stamp, staggered scramble
-      if (now >= r.nextAt) {
+      if (!reduce && now >= r.nextAt) {
         r.nextAt = now + 2500 + Math.random() * 6000;
         r.tEl.textContent = stamp();
         for (let c = 2; c < r.cells.length; c++) {
@@ -572,7 +578,7 @@ export function initJourney(section: HTMLElement) {
         }
       }
       for (const cell of r.cells) {
-        if (cell.settleAt > now) { cell.el.textContent = rnd(B64); cell.el.className = 'hot'; }
+        if (!reduce && cell.settleAt > now) { cell.el.textContent = rnd(B64); cell.el.className = 'hot'; }
         else if (cell.el.className) { cell.el.textContent = cell.final; cell.el.className = ''; }
       }
     }
@@ -581,7 +587,7 @@ export function initJourney(section: HTMLElement) {
       phonePose($('.phone.sender'), A.restX - A.pw * (1 - A.restS) / 2, A.restY, A.restS, 1);
       $('.phone.recipient').style.opacity = '0';
       $('.prompt').style.opacity = '1';
-      requestAnimationFrame(update);
+      schedule();
       return;
     }
     $('.prompt').style.opacity = String(1 - seg(p, 0, 0.035));
@@ -887,7 +893,12 @@ export function initJourney(section: HTMLElement) {
     stops.forEach((s) => s.classList.toggle('on', p >= +s.dataset.p!));
     hintEl.style.opacity = sent && (dir === 1 ? p > 0.005 && p < 0.04 : p > 0.955) ? '1' : '0';
 
-    requestAnimationFrame(update);
+    schedule();
   }
+  new IntersectionObserver((entries) => {
+    const vis = entries.some((e) => e.isIntersecting);
+    if (vis && !visible) { visible = true; resumed = true; schedule(); }
+    else if (!vis) { visible = false; if (rafId) { cancelAnimationFrame(rafId); rafId = 0; } }
+  }, { rootMargin: '0px' }).observe(section);   // heaviest loop — no preload bleed into the hero
   update();
 }

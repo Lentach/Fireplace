@@ -1,41 +1,41 @@
 # Latest session summary
 
-**Date:** 2026-07-20 (landing `/welcome` — six nits + six on-device revisions — LIVE `DPGsJey4`/`D4pSIiHL`, pending phone sign-off)
+**Date:** 2026-07-20 (landing `/welcome` — Revision 7: reduced-motion + off-screen rAF pause + social/SEO meta + a11y — LIVE `BmJLEC93`/`BKkQ4cC7`, committed + pushed)
 
-## What was done
-Six owner nits, then two rounds of physical-phone fixes. LIVE: JS `Ctz2gedD`, CSS `CKHp0JYY`.
+## What was done (Revision 7 — the four "what else can we improve" items)
+The four next-step improvements flagged after the nit work, done and shipped together.
 
-### Desktop
-1. Footer: dropped duplicate "built by one guy" (kept in ledger strip); footer shows only `github.com/Lentach`. Later evened/enlarged footer padding (`44px 6vw`).
-2. Skip the tour: now a **nav pill** (in `<nav>`, left of Open app) that shows only during the journey and jumps to `#features`. (Started as a floating pill; moved to nav after it collided with the composer/rail on mobile.)
-3. Relay "mine" tag: direction-aware — forward `"Bob's →"` (left/IN), reply `"← Kate's"` (right/OUT), row slide mirrored.
-
-### Mobile
-4. Hero terminal: `Done` button (on focus) + blur-on-Enter to dismiss keyboard.
-5. Composer placeholder: `"Type a message…"` → `"Message"` (fit); prompt sub shrunk so it never clips.
-6. Journey device keyboard (rebuilt after on-device test): focusing a composer enters **compose mode** — the phone is pinned at FULL size (`position:fixed .kb-lift`) with its composer just above the keyboard via `visualViewport`; surrounding chrome hidden (`body.kb-open`); send works (`mousedown`-preventDefault so the ➤ doesn't reflow away); **tap outside or Done dismisses**.
+1. **Reduced motion (`prefers-reduced-motion: reduce`).** The engine separates scroll-time (`p`, reversible, user-driven) from ambient-time (`t`, "stars class"); reduced motion freezes only `t`, keeping the scroll-driven journey live.
+   - Canvas: globe + outro paint a SINGLE static frame (no rAF loop); the globe still redraws on drag/zoom/resize. `journey.ts` freezes ambient `t` (twinkle, shell flicker, wire photons, rotor ambient spin) and skips cipher-scramble churn (`!reduce` guards) while still tracking scroll.
+   - CSS: one consolidated `@media (prefers-reduced-motion: reduce)` block stills the remaining ambient keyframes (`cue`, `caretblink` c-caret, `dp`, `nuc`, `fphoton`, `land`).
+2. **Off-screen rAF pause** (CPU/battery). New `rafOnScreen(target, frame, margin)` helper in `util.ts` (IntersectionObserver — loops only while on-screen). Wired to globe, outro, hero encrypt. The journey loop self-schedules, so it got an inline visibility gate + observer restart, **hardened** with an rAF-id guard (no duplicate loops) and a `resumed` flag (resets `lastRaw` → no stale-crossing false auto-send). Journey `rootMargin: 0` (heaviest loop — no bleed under the hero).
+3. **Social/SEO meta** (`index.astro` head): twitter card (+ title/desc/image/image:alt), `og:image:alt`, `og:site_name`, `theme-color=#000000`, `<link rel=canonical>`.
+4. **a11y:** wordmark `<span>` → `<button>` (keyboard-reachable, still `location.reload()`); `:focus-visible` ice-ring on nav mark/links, skip, kb-done, enc Done, composer send, outro CTA.
 
 ## Key files
-- `landing/src/pages/index.astro` — footer, placeholders, nav skip button, kb-done, viewport meta.
-- `landing/src/scripts/journey.ts` — relay tag direction; compose-mode freeze/lift/dismiss (`poseLifted`, `releaseKb`, tap-outside, send-button focus keep).
-- `landing/src/scripts/main.ts` — nav skip `.show` toggle + Lenis jump.
-- `landing/src/scripts/encrypt.ts` — hero Done + blur-on-Enter.
-- `landing/src/styles/landing.css` — `.skip-tour` (nav), `.enc-done`, `.kb-done`, `.phone.kb-lift`, `body.kb-open` compose-mode.
-- Full write-up: `2026-07-20-session-landing-nits.md` (see Revision 2 / 3).
+- `landing/src/scripts/util.ts` — new `rafOnScreen` (IntersectionObserver loop gate).
+- `landing/src/scripts/globe.ts` / `main.ts` (outro) / `encrypt.ts` — reduced-motion static + off-screen pause.
+- `landing/src/scripts/journey.ts` — freeze ambient `t`, guard cipher churn, visibility gate + rAF-id guard + `resumed`.
+- `landing/src/pages/index.astro` — social/SEO meta; wordmark button.
+- `landing/src/styles/landing.css` — reduced-motion block, `:focus-visible` rings, `nav .mark` button reset.
+- Full write-up incl. the six prior nits + on-device Revisions 2–6: `2026-07-20-session-landing-nits.md`.
 
 ## Verification
-- `npm run build` clean; live asset bytes verified (`kb-lift`, `body.kb-open nav`, nav `skip-tour`, `pointerdown`, `resizes-visual`).
-- Headless-verified: nav skip fits 320–1440 + jumps; both composers pin full-size/fixed/stable, chrome hides, tap-outside + Done + send all fire; prompt sub no longer clips.
-- Mobile keyboard behavior (nit 6) still needs the owner's **on-device sign-off** — headless can't emulate a real soft keyboard.
+- Build clean; no console/page errors in either motion mode.
+- Per-canvas `clearRect` frame counts by scroll zone prove the pause (hero→globe only; mid-journey→journey only; features→none; outro→outro only; re-entry→journey resumes; journey no longer runs under the hero).
+- Reduced-motion emulated: globe static (0 loop frames, canvas still painted), journey still tracks scroll, ambient CSS anims `none`.
+- Wordmark button reloads + focusable; live bytes verified — JS has `IntersectionObserver`/`prefers-reduced-motion`/`rootMargin`, HTML has the button + meta, CSS has the reduced-motion + focus-visible rules.
 
 ## Notes for next session
-- **DEPLOYED but NOT committed** to git — held for on-device sign-off. Commit + push once the owner confirms the composer feels right on their phone.
-- **Always stop the `landing` dev server before `deploy-landing.ps1`** (else `npm ci` EPERM ships a stale build). Verify live bytes, not just the script's VERIFIED lines.
+- **Prior nit work (Revisions 1–6) and Revision 7 are all committed + pushed to `origin master` and LIVE.** Repo == production.
+- **Always stop the `landing` dev/preview server before `deploy-landing.ps1`** (else `npm ci` EPERM ships a stale build). Verify live bytes, not just the script's VERIFIED lines.
 - This project's dev-server HMR does NOT reliably reload the client script/CSS — restart it after edits before trusting a browser check.
-- `interactive-widget=resizes-visual` is Chrome-only; the composer fix relies on `visualViewport` (iOS-honored). Kept the meta for Android.
+- Reduced motion keeps the scroll-driven journey by design (user drives it); only autoplay motion is calmed. `interactive-widget=resizes-visual` is Chrome-only; the composer fix relies on `visualViewport` (iOS-honored).
 - Retained: footer `overflow-x: clip` autozoom fix; deploy-script permission/asset hardening.
+- Aside (separate track): Dependabot reports 7 vulns (2 high) on the **main app** deps — not landing.
 
 ## Previous
+- 2026-07-20: Landing `/welcome` six owner nits + on-device Revisions 2–6 (skip control, mobile composer, relay tag, footer). Committed `7aabcea`. Full: `2026-07-20-session-landing-nits.md`.
 - 2026-07-19: Landing root-only mobile shrink fix (`footer { overflow-x: clip }`) — LIVE. Full: `2026-07-19-session-landing-mobile-autozoom.md`.
 - 2026-07-19: Landing responsive journey polish + terminal plaintext input. Full: `2026-07-19-session-landing-terminal-input.md`.
 - 2026-07-17: Cosmic theme — 5th selectable theme, shipped as 0.0.121. Full: `2026-07-17-session-cosmic-theme.md`.

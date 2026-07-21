@@ -2,12 +2,13 @@
 // Drag to rotate (inertia, auto-spin resumes). Ctrl+scroll to zoom — plain
 // scroll keeps scrolling the page (embedded-map convention; Lenis ignores
 // ctrl+wheel, so the two never fight).
-import { fit, makeStars, drawStars, clamp, lerp } from './util';
+import { clamp, drawStars, fit, lerp, makeStars, rafOnScreen } from './util';
 
 export function initGlobe(canvas: HTMLCanvasElement) {
+  const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let ctx = fit(canvas);
   let W = canvas.clientWidth, H = canvas.clientHeight;
-  const refit = () => { ctx = fit(canvas); W = canvas.clientWidth; H = canvas.clientHeight; stars = makeStars(W, H, 240); };
+  const refit = () => { ctx = fit(canvas); W = canvas.clientWidth; H = canvas.clientHeight; stars = makeStars(W, H, 240); if (reduce) draw(); };
   window.addEventListener('resize', refit);
   // The hero box can settle TALLER after init (fonts/layout/scrollbar), leaving
   // a stale backing-store aspect that stretched the sphere vertically. Re-fit on
@@ -45,12 +46,14 @@ export function initGlobe(canvas: HTMLCanvasElement) {
     px0 = e.clientX; py0 = e.clientY;
     ang += dx * 0.005; vel = dx * 0.005;
     tilt = clamp(tilt + dy * 0.004, -1.2, 1.2);
+    if (reduce) draw();
   });
   window.addEventListener('pointerup', () => { dragging = false; });
   window.addEventListener('wheel', (e) => {
     if (!e.ctrlKey || !over(e)) return;          // plain scroll keeps scrolling the page
     e.preventDefault(); interacted = true;
     zoom = clamp(zoom * (e.deltaY < 0 ? 1.09 : 0.92), 0.55, 2.3);
+    if (reduce) draw();
   }, { passive: false });
 
   function proj(v: [number, number, number], R: number, cx: number, cy: number) {
@@ -69,10 +72,10 @@ export function initGlobe(canvas: HTMLCanvasElement) {
     ];
   };
 
-  (function frame() {
-    const now = performance.now(), t = now / 1000, dt = Math.min(50, now - lastT);
+  function draw() {
+    const now = performance.now(), t = reduce ? 0 : now / 1000, dt = Math.min(50, now - lastT);
     lastT = now;
-    if (!dragging) { vel *= 0.94; ang += vel + 0.00012 * dt; }
+    if (!dragging) { vel *= 0.94; ang += vel + (reduce ? 0 : 0.00012 * dt); }
     const R = Math.min(W, H) * 0.36 * zoom, cx = W * 0.7, cy = H * 0.52;
     geo.cx = cx; geo.cy = cy; geo.R = R;
     ctx.clearRect(0, 0, W, H);
@@ -106,10 +109,11 @@ export function initGlobe(canvas: HTMLCanvasElement) {
     }
     if (!interacted) {
       ctx.font = '10px IBM Plex Mono'; ctx.textAlign = 'center';
-      ctx.fillStyle = `rgba(143,216,255,${0.35 + 0.2 * Math.sin(now / 500)})`;
+      ctx.fillStyle = `rgba(143,216,255,${reduce ? 0.45 : 0.35 + 0.2 * Math.sin(now / 500)})`;
       ctx.fillText('drag to rotate · ctrl+scroll to zoom', cx, Math.min(H - 16, cy + R + 28));
       ctx.textAlign = 'left';
     }
-    requestAnimationFrame(frame);
-  })();
+  }
+  if (reduce) draw();
+  else rafOnScreen(canvas, draw);
 }

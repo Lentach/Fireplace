@@ -3,7 +3,8 @@ import { initGlobe } from './globe';
 import { initEncrypt } from './encrypt';
 import { initJourney } from './journey';
 import { drawSingularity, makeShell } from './shell';
-import { drawStars, fit, makeStars } from './util';
+import { drawStars, fit, makeStars, rafOnScreen } from './util';
+const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
 
 /* smooth scroll — Lenis animates native window scroll, so the journey engine's
    scrollY reads stay correct; Lenis ignores ctrl+wheel (globe zoom unaffected) */
@@ -64,8 +65,8 @@ if (outCanvas) {
   window.addEventListener('resize', () => { ctx = fit(outCanvas); W = outCanvas.clientWidth; H = outCanvas.clientHeight; stars = makeStars(W, H, 200); });
   let stars = makeStars(W, H, 200);
   const shellDraw = makeShell(300);
-  (function frame() {
-    const t = performance.now() / 1000;
+  function frame() {
+    const t = reduce ? 0 : performance.now() / 1000;
     ctx.clearRect(0, 0, W, H);
     drawStars(ctx, stars, t, '190,220,240', 22);
     const cx = W * 0.82 + Math.sin(t * 0.05) * 10;
@@ -91,7 +92,8 @@ if (outCanvas) {
     }
     drawSingularity(ctx, cx, cy, r * 0.34, 0.85, t, 0.7);
     shellDraw(ctx, cx, cy, r, 0, 0.85, t);
-    requestAnimationFrame(frame);
-  })();
+  }
+  if (reduce) frame();
+  else rafOnScreen(outCanvas, frame);
 }
 

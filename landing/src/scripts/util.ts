@@ -77,3 +77,16 @@ export function autoGrow(el: HTMLTextAreaElement) {
   if (el.value === '') return;
   el.style.height = `${el.scrollHeight}px`;
 }
+
+/** Drives `frame` on requestAnimationFrame ONLY while `target` intersects the
+ *  viewport (grown by `margin`): the loop pauses once it scrolls off — saving
+ *  CPU/battery across the long page — and resumes with an immediate frame on
+ *  re-entry. Reduced-motion "paint once, don't loop" is the caller's call. */
+export function rafOnScreen(target: Element, frame: () => void, margin = '200px') {
+  let id = 0;
+  const tick = () => { frame(); id = requestAnimationFrame(tick); };
+  new IntersectionObserver((entries) => {
+    if (entries.some((e) => e.isIntersecting)) { if (!id) tick(); }
+    else if (id) { cancelAnimationFrame(id); id = 0; }
+  }, { rootMargin: margin }).observe(target);
+}

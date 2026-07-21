@@ -24,11 +24,24 @@ nav {
   background: rgba(0, 0, 0, .35); border-bottom: 1px solid rgba(143, 216, 255, .08);
   transition: background .35s, border-color .35s;
 }
-nav .mark { font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 15px; letter-spacing: .06em; color: var(--txt); transition: color .35s; cursor: pointer; }
+nav .mark { font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 15px; letter-spacing: .06em; color: var(--txt); transition: color .35s; cursor: pointer; background: none; border: 0; padding: 0; }
 nav .mark b { color: var(--ice); }
 nav .links { display: flex; gap: 30px; align-items: center; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; }
 nav .links a { color: rgba(238, 246, 251, .6); text-decoration: none; transition: color .35s; }
 nav .links a.cta { color: #04121c; background: var(--ice); padding: 10px 22px; font-weight: 500; }
+/* keyboard focus — a visible ice ring on every interactive control; mouse
+   clicks stay ringless (:focus-visible), matching the site's chrome-free feel */
+nav .mark:focus-visible,
+nav .links a:focus-visible,
+.skip-tour:focus-visible,
+.kb-done:focus-visible,
+.enc-terminal .enc-done:focus-visible,
+.phone .compose button:focus-visible,
+.outro .cta:focus-visible {
+  outline: 2px solid var(--ice);
+  outline-offset: 3px;
+  border-radius: 4px;
+}
 
 /* ---------- hero ---------- */
 .hero { position: relative; min-height: 100vh; background: #000; overflow: hidden; }
@@ -525,4 +538,22 @@ footer { background: #000; position: relative; overflow-x: clip; }
 @media (max-width: 700px) {
   .hero .content { padding: 14vh 6vw 8vh; max-width: none; }
   .enc { max-width: none; }
+}
+
+/* ---------- reduced motion ----------
+   The canvas loops (globe/journey/outro) freeze their ambient time layer in JS;
+   these rules quiet the leftover CSS keyframe pulses. Scroll-driven motion (the
+   journey) stays — the visitor drives it, not the page. */
+@media (prefers-reduced-motion: reduce) {
+  .scroll-cue,
+  .journey-hint,
+  .phone .c-caret,
+  .phone .m.landing,
+  .core .nucleus,
+  .mc-head .dotpulse,
+  .outro .kick .kdot,
+  .outro .cta .slit,
+  .f-photon {
+    animation: none !important;
+  }
 }

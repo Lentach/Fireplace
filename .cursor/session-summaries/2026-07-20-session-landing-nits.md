@@ -132,3 +132,49 @@ the heading, background-tap not dismissing. Rebuilt:
 - `.up` class rotates it 180° (skip back); main.ts toggles `.up` + aria-label instead of writing
   textContent (which would nuke the SVG). Applied the `frontend-design` skill.
 - LIVE: JS `DPGsJey4`, CSS `D4pSIiHL`. Still DEPLOYED-not-committed pending on-device sign-off.
+
+## Revision 7 — the four "what else can we improve" items (reduced-motion, off-screen rAF pause, social/SEO meta, a11y)
+Not owner nits — the four next-step improvements flagged at the end of the nit work, done together.
+
+1. **Reduced motion (`prefers-reduced-motion: reduce`).** The engine already separates
+   scroll-time (`p`, reversible, user-driven) from ambient-time (`t`, "stars class"); reduced
+   motion freezes only `t`, so the scroll-driven journey stays live.
+   - Canvas: globe + outro render a SINGLE static frame (no rAF loop); the globe still redraws
+     on drag/zoom/resize (user-driven motion kept). `journey.ts` freezes ambient `t` (stars
+     twinkle, shell flicker, wire photons, rotor ambient spin) and skips the cipher scramble
+     churn (`!reduce` guards on the two settle conditions) while STILL tracking scroll.
+     `const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches` in
+     `globe.ts` / `main.ts` / `journey.ts` (`encrypt.ts` already had it).
+   - CSS: one consolidated `@media (prefers-reduced-motion: reduce)` block stills the remaining
+     ambient keyframes (`cue`, `caretblink` c-caret, `dp` dotpulse/kdot/slit, `nuc`, `fphoton`,
+     `land`). The encrypt caret/status and the skip chevron were already covered.
+2. **Pause off-screen rAF loops** (CPU/battery). New `rafOnScreen(target, frame, margin)` in
+   `util.ts` runs a loop only while its element intersects the viewport (IntersectionObserver;
+   pauses off-screen, resumes with an immediate frame). Wired to globe (hero), outro, and the
+   hero encrypt loop. The journey loop self-schedules (3 reschedule points) so it got an inline
+   gate — `if (!visible) return` + an observer that restarts it — **hardened** with an rAF-id
+   guard (`schedule()` / `cancelAnimationFrame` on pause) so duplicate observer fires can't spawn
+   parallel loops, plus a `resumed` flag that resets `lastRaw` on re-entry to avoid a
+   stale-crossing false auto-send. Journey observer uses `rootMargin: 0` (heaviest loop — no
+   preload bleed into the hero; `journeyTop ≈ hero height`, so any positive px margin would run
+   the full cipher stream under the hero on taller viewports).
+3. **Social/SEO meta** (`index.astro` head): `twitter:card=summary_large_image` + title / desc /
+   image / image:alt, `og:image:alt`, `og:site_name`, `theme-color=#000000`, `<link rel=canonical>`.
+4. **a11y:** wordmark `<span class="mark">` → `<button class="mark" type="button">` (now
+   keyboard-reachable; still `location.reload()` on click; button reset added to `nav .mark`).
+   Added `:focus-visible` ice-ring rules for nav mark/links, skip chevron, kb-done, enc Done,
+   composer send, outro CTA.
+
+### Verification (headless Chromium, then live)
+- Build clean (JS 47.81 kB / gzip 16.62 kB), no console/page errors in either motion mode.
+- Per-canvas `clearRect` frame counts by scroll zone PROVE the pause: hero → globe runs,
+  journey/outro 0; mid-journey → journey runs, globe/outro 0; features → all 0; outro → outro
+  only; re-entry → journey resumes (155 frames). Journey no longer runs under the hero (margin 0).
+- Reduced-motion emulated: globe hero frames = 0 (static — but canvas painted, 733 non-blank
+  samples), journey still tracks scroll (`p` follows), `.scroll-cue`/`.f-photon`/skip anim = `none`.
+- Wordmark button reloads on click; `:focus-visible` outline present; tabIndex 0.
+- Deployed via `deploy-landing.ps1` (preview server stopped first → `npm ci` clean, no EPERM).
+- **LIVE + byte-verified:** JS `BmJLEC93`, CSS `BKkQ4cC7`. Live JS carries `IntersectionObserver`
+  ×2 / `prefers-reduced-motion` ×4 / `rootMargin` ×2; live HTML carries `<button class="mark">`
+  + all new meta; live CSS carries the reduced-motion block + `focus-visible` rules.
+- **Committed + pushed** to `origin master`.

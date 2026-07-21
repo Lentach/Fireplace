@@ -1,6 +1,6 @@
 // Hero demo: type plaintext, watch the "what our server sees" line re-encrypt
 // with a staggered scramble. Uses the real "3:" PreKey envelope prefix.
-import { autoGrow, B64, rnd } from './util';
+import { autoGrow, B64, rafOnScreen, rnd } from './util';
 
 export function initEncrypt(root: HTMLElement) {
   root.classList.add('enc-terminal');
@@ -52,14 +52,14 @@ export function initEncrypt(root: HTMLElement) {
       spans.push({ el, final, settleAt: 0 });
     }
   };
-  (function frame() {
+  function frame() {
     const now = performance.now();
     for (const s of spans) {
       if (s.settleAt > now) { s.el.textContent = rnd(B64); s.el.className = 'hot'; }
       else if (s.el.className !== 'cold') { s.el.textContent = s.final; s.el.className = 'cold'; }
     }
-    requestAnimationFrame(frame);
-  })();
+  }
+  rafOnScreen(root, frame);
   input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
   input.addEventListener('input', () => {
     if (input.value.includes('\n')) input.value = input.value.replace(/\n+/g, ' ');
