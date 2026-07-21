@@ -300,3 +300,23 @@ finale; image2 = the features section).
   up-arrow 97px clear of Kate. Mobile: Done `display:flex`, ↓ shows mid-tour, ↑ `display:none` at
   finale. LIVE + byte-verified: JS `TY8Ssk1P`, CSS `BJXz6M4T` (enc-done under max-width:999px;
   `.skip-tour.up{display:none}` mobile; JS has "Back to the start"/"Skip to the reply"). Committed + pushed.
+
+## Revision 13 — skip arrows on BOTH ends, mobile included (owner reversed the desktop-only call)
+Owner confirmed the ↑ lands them on the journey start (Bob's single device — image1 this round),
+and asked for the ↓ to also appear there, on mobile too, so the two arrows bookend the same jump.
+- **↓ now shows at the start.** Lowered its lower bound `raw 0.16 → 0.02`, so the ↓ "Skip to the
+  reply" appears on the opening "WHERE DOES A MESSAGE ACTUALLY GO" / Bob screen (and through
+  mid-tour). It jumps to the two-device reply finale — the same spot the mid-tour ↓ targets.
+- **↑ now shows on mobile.** Removed the Rev-11/12 `@media(max-width:999px){.skip-tour.up{display:none}}`
+  guard. So: ↓ at the start → finale; ↑ at the finale → start, on BOTH desktop and mobile — a
+  symmetric start↔finale round-trip in the one fixed bottom-right spot.
+- **Tradeoff (owner-accepted):** this is the mobile dock overlap we removed in Rev 11. It's clear
+  at both TAP points (the start screen; the ↓'s finale landing at raw≈0.97), and only grazes the
+  docked device's corner (~3–14px) if you scroll to the last ~2% (raw 0.98–1.0). Owner explicitly
+  wanted the arrows there, so shipped as-is rather than re-hiding. (Considered a top-anchored ↑ to
+  dodge it entirely, but that breaks the bottom-corner mental model from the images.)
+- Done button stays mobile-only (unchanged).
+- Verified (preview, 1280 + 390): ↓ shows at raw 0.05 both viewports; ↑ shows at raw 0.97 both
+  viewports (mobile no longer hidden); ↓@start click → raw 0.97 "07 / KATE'S TURN", both phones,
+  flips ↑. LIVE + byte-verified: JS `CN8bw2nn`, CSS `KqJS6kWo` (no `.skip-tour.up{display:none}`;
+  enc-done still under `@media(max-width:999px)`). Committed + pushed.

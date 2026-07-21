@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-20 (landing `/welcome` — Rev 7 reduced-motion + rAF pause + social meta + a11y; Rev 8 single h1 + contrast + sitemap; Rev 9 Dependabot triage (0 open); Rev 10–12 skip control: bottom-RIGHT, ↓ now skips to the two-device reply finale (not features), ↑ restored at the finale (desktop-only — no room on mobile); hero "Done" button made mobile-only. LIVE `TY8Ssk1P`/`BJXz6M4T`, committed + pushed.)
+**Date:** 2026-07-20 (landing `/welcome` — Rev 7 reduced-motion + rAF pause + social meta + a11y; Rev 8 single h1 + contrast + sitemap; Rev 9 Dependabot triage (0 open); Rev 10–13 skip control: bottom-RIGHT bidirectional bookends — ↓ "skip to reply" at the start + mid-tour → two-device finale; ↑ "back to start" at the finale → start; on BOTH desktop AND mobile; hero "Done" button mobile-only. LIVE `CN8bw2nn`/`KqJS6kWo`, committed + pushed.)
 
 ## What was done (Revision 7 — the four "what else can we improve" items)
 The four next-step improvements flagged after the nit work, done and shipped together.

@@ -45,7 +45,7 @@ if (skip && journey) {
   const syncSkip = () => {
     const raw = rawOf();
     const up = raw > 0.955 && raw < 1;         // at the reply finale → ↑
-    const down = raw > 0.16 && raw < 0.66;     // mid-tour, before the recipient reaches the corner → ↓
+    const down = raw > 0.02 && raw < 0.66;     // the start (Bob) + mid-tour → ↓ to the reply finale
     skip.classList.toggle('show', up || down);
     skip.classList.toggle('up', up);
     skip.setAttribute('aria-label', up ? 'Back to the start' : 'Skip to the reply');
