@@ -133,6 +133,56 @@ describe('ChatLinkPreviewService', () => {
     expect(mockMessagesService.updateLinkPreview).not.toHaveBeenCalled();
   });
 
+  it('should skip emit when updateLinkPreview returns false', async () => {
+    const preview = {
+      url: 'https://example.com',
+      title: 'Example',
+      imageUrl: 'https://example.com/img.png',
+    };
+    mockLinkPreviewService.fetchPreview.mockResolvedValue(preview);
+    mockMessagesService.updateLinkPreview.mockResolvedValue(false);
+
+    service.fetchAndEmitIfNeeded({
+      content: 'Check https://example.com',
+      encryptedContent: null,
+      messageType: 'TEXT',
+      messageId: 42,
+      conversationId: 10,
+      client: mockClient,
+      recipientSocketId: 'socket-2',
+      server: mockServer,
+    });
+
+    await new Promise((r) => process.nextTick(r));
+
+    expect(mockMessagesService.updateLinkPreview).toHaveBeenCalled();
+    expect(mockClient.emit).not.toHaveBeenCalledWith(
+      'linkPreviewReady',
+      expect.anything(),
+    );
+    expect(mockServer.to).not.toHaveBeenCalled();
+  });
+
+  it('should not update or emit when fetchPreview resolves null', async () => {
+    mockLinkPreviewService.fetchPreview.mockResolvedValue(null);
+
+    service.fetchAndEmitIfNeeded({
+      content: 'Check https://example.com',
+      encryptedContent: null,
+      messageType: 'TEXT',
+      messageId: 42,
+      conversationId: 10,
+      client: mockClient,
+      recipientSocketId: 'socket-2',
+      server: mockServer,
+    });
+
+    await new Promise((r) => process.nextTick(r));
+
+    expect(mockMessagesService.updateLinkPreview).not.toHaveBeenCalled();
+    expect(mockClient.emit).not.toHaveBeenCalled();
+  });
+
   it('should not emit to recipient when recipientSocketId is undefined', async () => {
     const preview = {
       url: 'https://example.com',

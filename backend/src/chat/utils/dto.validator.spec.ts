@@ -23,8 +23,9 @@ describe('validateDto', () => {
   });
 
   it('should accept numeric strings when they parse to valid numbers', () => {
-    const data = { id: 42, name: 'Bob' };
+    const data = { id: '42', name: 'Bob' };
     const result = validateDto(SimpleDto, data);
+    expect(typeof result.id).toBe('number');
     expect(result.id).toBe(42);
     expect(result.name).toBe('Bob');
   });

@@ -1,6 +1,15 @@
 import { ExecutionContext } from '@nestjs/common';
 import { WsThrottlerGuard } from './ws-throttler.guard';
 
+// Typed view of the two protected methods under test (avoids `as any`).
+type GuardInternals = {
+  getRequestResponse(context: ExecutionContext): {
+    req: Record<string, unknown>;
+    res: { header(name: string, value?: string | number): unknown };
+  };
+  getTracker(req: Record<string, unknown>): Promise<string>;
+};
+
 describe('WsThrottlerGuard', () => {
   let guard: WsThrottlerGuard;
 
@@ -59,6 +68,37 @@ describe('WsThrottlerGuard', () => {
       const req = { data: {}, handshake: {} };
       const tracker = await (guard as any).getTracker(req);
       expect(tracker).toBe('unknown');
+    });
+  });
+
+  describe('getRequestResponse -> getTracker integration', () => {
+    it('tracks the authenticated user id through the req produced by getRequestResponse', async () => {
+      const mockSocket = {
+        handshake: { headers: { 'x-forwarded-for': '1.2.3.4' }, address: '9.9.9.9' },
+        data: { user: { id: 42 } },
+      };
+      const context = {
+        switchToWs: () => ({ getClient: () => mockSocket }),
+      } as unknown as ExecutionContext;
+
+      const internals = guard as unknown as GuardInternals;
+      const { req } = internals.getRequestResponse(context);
+      // The spread must preserve `data` enumerability so getTracker can read the user.
+      expect(await internals.getTracker(req)).toBe('42');
+    });
+
+    it('falls back to handshake.address through the req when no user is set', async () => {
+      const mockSocket = {
+        handshake: { headers: {}, address: '5.6.7.8' },
+        data: {},
+      };
+      const context = {
+        switchToWs: () => ({ getClient: () => mockSocket }),
+      } as unknown as ExecutionContext;
+
+      const internals = guard as unknown as GuardInternals;
+      const { req } = internals.getRequestResponse(context);
+      expect(await internals.getTracker(req)).toBe('5.6.7.8');
     });
   });
 });

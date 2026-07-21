@@ -96,6 +96,11 @@ void main() {
         messageEditEligible(_msg(createdAt: old), isMine: true, now: now),
         isFalse,
       );
+      final exactCutoff = now.subtract(kMessageEditWindow);
+      expect(
+        messageEditEligible(_msg(createdAt: exactCutoff), isMine: true, now: now),
+        isFalse,
+      );
       final justInside = now.subtract(const Duration(minutes: 14, seconds: 59));
       expect(
         messageEditEligible(_msg(createdAt: justInside), isMine: true, now: now),

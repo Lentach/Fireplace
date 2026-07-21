@@ -149,11 +149,45 @@ void main() {
 
     test('refuses to edit a non-own / unsent / non-text row', () async {
       wire(_FakeEnc());
-      // peer message
+      // (1) non-own: a peer message may never be edited.
       provider.onNewMessage(
           _peerMsg(id: 7, cipher: 'c7', createdAt: DateTime.now().toUtc().toIso8601String()));
       await _settle();
       provider.editMessage(7, 'hack');
+      await _settle();
+      expect(emitted.where((e) => e['event'] == 'editMessage'), isEmpty);
+
+      // (2) unsent optimistic own row (negative/temp id) is not server-confirmed:
+      //     sendMessage creates a SENDING row with a monotonic negative id.
+      provider.sendMessage('optimistic');
+      await _settle();
+      final optimistic =
+          provider.messages.firstWhere((m) => m.id < 0 && m.senderId == 1);
+      emitted.clear(); // drop the sendMessage emit from the optimistic send
+      provider.editMessage(optimistic.id, 'edited');
+      await _settle();
+      expect(emitted.where((e) => e['event'] == 'editMessage'), isEmpty);
+
+      // (3) non-TEXT own row (IMAGE) is not editable.
+      provider.onMessageHistory({
+        'conversationId': 10,
+        'messages': [
+          {
+            'id': 200,
+            'content': '',
+            'senderId': 1,
+            'senderUsername': 'alice',
+            'conversationId': 10,
+            'deliveryStatus': 'READ',
+            'messageType': 'IMAGE',
+            'createdAt': DateTime.now().toUtc().toIso8601String(),
+          }
+        ],
+      });
+      await _settle();
+      expect(provider.messages.any((m) => m.id == 200), isTrue,
+          reason: 'image row must be present so the non-TEXT guard is exercised');
+      provider.editMessage(200, 'caption hack');
       await _settle();
       expect(emitted.where((e) => e['event'] == 'editMessage'), isEmpty);
     });

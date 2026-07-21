@@ -176,6 +176,22 @@ void main() {
       expect(size.width, 320);
       expect(size.height, MediaPreviewFrame.legacyHeight);
     });
+
+    test('binds height to viewportHeight*0.52 on short viewports', () {
+      // Short viewport: 500*0.52 = 260 < the 400px absolute cap, so the
+      // viewport-relative term governs (exercises the branch every other
+      // case skips because 800*0.52 = 416 > 400).
+      final size = MediaPreviewFrame.calculateSize(
+        availableWidth: 320,
+        viewportHeight: 500,
+        mediaWidth: 500,
+        mediaHeight: 2000,
+      );
+
+      // ratio clamps 0.25 -> 0.5, height caps at 260, width = 260 * 0.5.
+      expect(size.height, closeTo(260, 0.001));
+      expect(size.width, closeTo(260 * 0.5, 0.001));
+    });
   });
 
   group('media preview containment', () {

@@ -41,7 +41,10 @@ describe('PushNotificationsService payload', () => {
         PushNotificationsService,
         {
           provide: FcmTokensService,
-          useValue: { findTokensByUserId: jest.fn().mockResolvedValue([]) },
+          useValue: {
+            findTokensByUserId: jest.fn().mockResolvedValue([]),
+            removeByTokens: jest.fn().mockResolvedValue(undefined),
+          },
         },
         {
           provide: WebPushSubscriptionsService,
@@ -150,6 +153,11 @@ describe('PushNotificationsService payload', () => {
     await service.notify(1, options);
 
     expect(webPush.sendNotification).toHaveBeenCalled();
+    // Approved-metadata inclusion contract: senderName IS carried in the (E2E-encrypted)
+    // web-push body, unlike the FCM channel which strips it.
+    const rawPayload = (webPush.sendNotification as jest.Mock).mock.calls[0][1] as string;
+    const payload = JSON.parse(rawPayload);
+    expect(payload.senderName).toBe('Alice');
     const opts = (webPush.sendNotification as jest.Mock).mock.calls[0][2] as {
       TTL?: number;
       urgency?: string;
@@ -160,5 +168,65 @@ describe('PushNotificationsService payload', () => {
     // Delivery hints that are safe to expose over the transport stay put.
     expect(opts.TTL).toBe(120);
     expect(opts.urgency).toBe('high');
+  });
+
+  it('prunes a dead Web Push subscription when send rejects with 410 Gone', async () => {
+    interface WebPushInternals {
+      webPushSubscriptionsService: { removeByEndpoints: jest.Mock };
+    }
+    (webPush.sendNotification as jest.Mock).mockRejectedValueOnce({ statusCode: 410 });
+    const { removeByEndpoints } = (service as unknown as WebPushInternals)
+      .webPushSubscriptionsService;
+
+    await service.notify(1, { conversationId: 42 });
+
+    expect(removeByEndpoints).toHaveBeenCalledWith(['https://example.com/push/1']);
+  });
+
+  it('does NOT prune a Web Push subscription on a transient 500', async () => {
+    interface WebPushInternals {
+      webPushSubscriptionsService: { removeByEndpoints: jest.Mock };
+    }
+    (webPush.sendNotification as jest.Mock).mockRejectedValueOnce({ statusCode: 500 });
+    const { removeByEndpoints } = (service as unknown as WebPushInternals)
+      .webPushSubscriptionsService;
+
+    await service.notify(1, { conversationId: 42 });
+
+    expect(removeByEndpoints).not.toHaveBeenCalled();
+  });
+
+  it('prunes an unregistered FCM token reported by sendEachForMulticast', async () => {
+    interface ServiceInternals {
+      fcmInitialized: boolean;
+      fcmTokensService: {
+        findTokensByUserId: jest.Mock;
+        removeByTokens: jest.Mock;
+      };
+    }
+    const internals = service as unknown as ServiceInternals;
+    internals.fcmInitialized = true;
+    internals.fcmTokensService.findTokensByUserId.mockResolvedValue([
+      'good-token',
+      'dead-token',
+    ]);
+
+    (admin.messaging().sendEachForMulticast as jest.Mock).mockResolvedValueOnce({
+      responses: [
+        { success: true },
+        {
+          success: false,
+          error: { code: 'messaging/registration-token-not-registered' },
+        },
+      ],
+      successCount: 1,
+      failureCount: 1,
+    });
+
+    await service.notify(1, { conversationId: 42 });
+
+    expect(internals.fcmTokensService.removeByTokens).toHaveBeenCalledWith([
+      'dead-token',
+    ]);
   });
 });

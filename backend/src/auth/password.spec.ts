@@ -2,7 +2,7 @@ import { BadRequestException } from '@nestjs/common';
 import { validateDto } from '../chat/utils/dto.validator';
 import { RegisterDto } from './dto/register.dto';
 import { ResetPasswordDto } from '../users/dto/user.dto';
-import { PASSWORD_MIN_LENGTH } from './password.constants';
+import { PASSWORD_MIN_LENGTH, PASSWORD_REGEX_MESSAGE } from './password.constants';
 
 // Shared cases run against both DTOs that enforce the password policy
 const VALID_PASSWORDS = [
@@ -13,12 +13,23 @@ const VALID_PASSWORDS = [
   'CorrectHorse1Battery',                         // long passphrase
 ];
 
-const INVALID_PASSWORDS: Array<[string, RegExp]> = [
-  ['Short1',          /at least 8 characters/],
-  ['alllowercase1',   /uppercase/],
-  ['ALLUPPERCASE1',   /lowercase/],
-  ['NoNumbersHere',   /number/],
-  ['',                /at least 8 characters/],
+const INVALID_PASSWORDS: Array<[string, string]> = [
+  ['Short1',          `at least ${PASSWORD_MIN_LENGTH} characters`],
+  ['alllowercase1',   PASSWORD_REGEX_MESSAGE],
+  ['ALLUPPERCASE1',   PASSWORD_REGEX_MESSAGE],
+  ['NoNumbersHere',   PASSWORD_REGEX_MESSAGE],
+  ['',                `at least ${PASSWORD_MIN_LENGTH} characters`],
+];
+
+// Toggling exactly one character class must flip validity. Unlike the shared
+// generic PASSWORD_REGEX_MESSAGE (which cannot say *which* class failed), these
+// prove each requirement is independently enforced: if e.g. the digit rule were
+// dropped from PASSWORD_REGEX, the missing-digit password would be accepted and
+// the toThrow below would fail.
+const CLASS_TOGGLE_CASES: Array<[string, string, string]> = [
+  ['digit',     'NoNumbersHere',  'NoNumbersHere1'],
+  ['uppercase', 'alllowercase1',  'Alllowercase1'],
+  ['lowercase', 'ALLUPPERCASE1',  'ALLUPPERCASe1'],
 ];
 
 // Helper: build a valid RegisterDto payload
@@ -47,6 +58,20 @@ describe('RegisterDto — password validation', () => {
       expect(() => validateDto(RegisterDto, registerPayload(pw))).toThrow(
         expectedPattern,
       );
+    },
+  );
+
+  it.each(CLASS_TOGGLE_CASES)(
+    'enforces the %s requirement independently (rejected without it, accepted with it)',
+    (_label, rejected, accepted) => {
+      // Missing only this class -> rejected with the policy message.
+      expect(() => validateDto(RegisterDto, registerPayload(rejected))).toThrow(
+        PASSWORD_REGEX_MESSAGE,
+      );
+      // Adding only this class satisfies the whole policy -> accepted.
+      expect(() =>
+        validateDto(RegisterDto, registerPayload(accepted)),
+      ).not.toThrow();
     },
   );
 

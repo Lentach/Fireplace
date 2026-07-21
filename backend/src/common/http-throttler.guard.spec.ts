@@ -37,4 +37,23 @@ describe('HttpThrottlerGuard', () => {
     ).toBe('198.51.100.9');
     expect(await guard.getTracker({ headers: {}, ip: '192.0.2.5' })).toBe('192.0.2.5');
   });
+
+  it('takes the first hop when X-Real-IP arrives as a string[] (merged duplicate headers)', async () => {
+    const guard = makeGuard() as unknown as TrackerGuard;
+    expect(
+      await guard.getTracker({ headers: { 'x-real-ip': ['203.0.113.7', '::1'] } }),
+    ).toBe('203.0.113.7');
+  });
+
+  it('returns "unknown" when no forwarding headers and no req.ip are present', async () => {
+    const guard = makeGuard() as unknown as TrackerGuard;
+    expect(await guard.getTracker({ headers: {} })).toBe('unknown');
+  });
+
+  it('prefers X-Real-IP over X-Forwarded-For when both are present', async () => {
+    const guard = makeGuard() as unknown as TrackerGuard;
+    expect(
+      await guard.getTracker({ headers: { 'x-real-ip': 'A', 'x-forwarded-for': 'B' } }),
+    ).toBe('A');
+  });
 });

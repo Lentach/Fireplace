@@ -115,47 +115,32 @@ describe('MessageMapper', () => {
     });
   });
 
-  // --- E2E all message types: reply-to preview tests ---
-
-  it('should show "Encrypted message" for encrypted VOICE reply-to (not "Voice message")', () => {
-    const replyToMsg = {
-      id: 50,
-      content: '[encrypted]',
-      encryptedContent: '3:voiceCipher==',
-      messageType: MessageType.VOICE,
-      sender: { username: 'alice' },
-    } as unknown as Message;
-    const msg = createMockMessage({ replyTo: replyToMsg });
-    const payload = MessageMapper.toPayload(msg);
-    // encryptedContent takes priority — server can't know it's voice
-    expect((payload.replyTo as any).content).toBe('Encrypted message');
-  });
-
-  it('should show "Encrypted message" for encrypted IMAGE reply-to', () => {
-    const replyToMsg = {
-      id: 51,
-      content: '[encrypted]',
-      encryptedContent: '3:imageCipher==',
-      messageType: MessageType.IMAGE,
-      sender: { username: 'alice' },
-    } as unknown as Message;
-    const msg = createMockMessage({ replyTo: replyToMsg });
-    const payload = MessageMapper.toPayload(msg);
-    expect((payload.replyTo as any).content).toBe('Encrypted message');
-  });
-
-  it('should show "Encrypted message" for encrypted PING reply-to', () => {
-    const replyToMsg = {
-      id: 52,
-      content: '[encrypted]',
-      encryptedContent: '3:pingCipher==',
-      messageType: MessageType.PING,
-      sender: { username: 'alice' },
-    } as unknown as Message;
-    const msg = createMockMessage({ replyTo: replyToMsg });
-    const payload = MessageMapper.toPayload(msg);
-    expect((payload.replyTo as any).content).toBe('Encrypted message');
-  });
+  // E2E all message types: encryptedContent short-circuits the reply preview
+  // regardless of messageType — the server never reads messageType when the
+  // replied-to message is encrypted.
+  it.each([
+    MessageType.VOICE,
+    MessageType.IMAGE,
+    MessageType.PING,
+    MessageType.GIF,
+    MessageType.FILE,
+  ])(
+    'shows "Encrypted message" for encrypted %s reply-to (never a type label)',
+    (messageType) => {
+      const replyToMsg = {
+        id: 50,
+        content: '[encrypted]',
+        encryptedContent: '3:cipher==',
+        messageType,
+        sender: { username: 'alice' },
+      } as unknown as Message;
+      const msg = createMockMessage({ replyTo: replyToMsg });
+      const payload = MessageMapper.toPayload(msg);
+      // mapper returns Record<string, unknown>; reply preview shape is known here
+      const replyTo = payload.replyTo as { content: string };
+      expect(replyTo.content).toBe('Encrypted message');
+    },
+  );
 
   it('should show type-specific labels for unencrypted reply-to', () => {
     const cases = [
@@ -179,26 +164,21 @@ describe('MessageMapper', () => {
     }
   });
 
-  it('should show GIF label for GIF replyTo', () => {
-    const baseMock = {
-      id: 1,
-      content: '',
+  it('truncates unencrypted TEXT reply preview to the first 150 chars', () => {
+    const longContent = 'x'.repeat(300);
+    const replyToMsg = {
+      id: 70,
+      content: longContent,
       encryptedContent: null,
+      messageType: MessageType.TEXT,
       sender: { username: 'bob' },
-    };
-    const msg = {
-      ...createMockMessage(),
-      messageType: MessageType.GIF,
-      mediaUrl: 'https://res.cloudinary.com/demo/image/upload/v1/gif.gif',
-      replyTo: {
-        ...baseMock,
-        id: 50,
-        messageType: MessageType.GIF,
-        mediaUrl: 'https://res.cloudinary.com/demo/image/upload/v1/gif2.gif',
-      },
-    };
-    const payload = MessageMapper.toPayload(msg as any);
-    expect((payload.replyTo as any).content).toBe('GIF');
+    } as unknown as Message;
+    const msg = createMockMessage({ replyTo: replyToMsg });
+    const payload = MessageMapper.toPayload(msg);
+    // mapper returns Record<string, unknown>; reply preview shape is known here
+    const replyTo = payload.replyTo as { content: string };
+    expect(replyTo.content).toBe(longContent.substring(0, 150));
+    expect(replyTo.content).toHaveLength(150);
   });
 
   it('should include encryptedContent in payload when present', () => {

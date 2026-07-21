@@ -52,6 +52,32 @@ void main() {
       );
     });
 
+    test('returns false for IPv6 loopback and ULA hosts', () {
+      // Bracketed IPv6 hosts are normalised (brackets stripped) before the
+      // private-range check. ::1 is loopback; fd00::/8 is a ULA (fc00::/7).
+      expect(
+        LinkPreviewService.isSafeImageUrl('https://[::1]/x.png'),
+        false,
+      );
+      expect(
+        LinkPreviewService.isSafeImageUrl('https://[fd00::1]/x.png'),
+        false,
+      );
+    });
+
+    test('over-broad `fd` prefix also rejects a legitimate public host', () {
+      // KNOWN LIMITATION: the ULA alternative `fd` in the private-IP regex is
+      // not anchored to an IPv6 boundary, so it swallows any hostname starting
+      // with "fd" — including this legitimate public CDN. The intended result
+      // is `true`; fixing it needs a source-side regex boundary (out of scope
+      // for a test-only change). This case pins the current behaviour so the
+      // over-broad match is documented and any future fix must update it.
+      expect(
+        LinkPreviewService.isSafeImageUrl('https://fdcdn.example.com/x.png'),
+        false,
+      );
+    });
+
     test('resolves relative URL against pageUrl', () {
       expect(
         LinkPreviewService.isSafeImageUrl(

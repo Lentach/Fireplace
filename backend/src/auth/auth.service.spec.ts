@@ -17,7 +17,10 @@ describe('AuthService', () => {
   let usersService: jest.Mocked<UsersService>;
   let jwtService: jest.Mocked<JwtService>;
   let refreshTokensService: jest.Mocked<
-    Pick<RefreshTokensService, 'createToken' | 'consumeAndSlide'>
+    Pick<
+      RefreshTokensService,
+      'createToken' | 'consumeAndSlide' | 'revokeByPlain'
+    >
   >;
 
   const mockUser: Partial<User> = {
@@ -51,6 +54,7 @@ describe('AuthService', () => {
           useValue: {
             createToken: jest.fn(() => Promise.resolve('mock_refresh_plain')),
             consumeAndSlide: jest.fn(),
+            revokeByPlain: jest.fn(() => Promise.resolve()),
           },
         },
       ],
@@ -163,6 +167,20 @@ describe('AuthService', () => {
         'Invalid credentials',
       );
     });
+
+    it('treats an identifier with a "#" but empty tag as no-match via the timing-safe path', async () => {
+      // 'user#' splits to ['user', ''] -> the `if (u && t)` guard is false, so
+      // user stays null and we must fall through to the dummy bcrypt.compare
+      // without ever querying with an empty tag.
+      await expect(service.login('user#', 'ValidPass1')).rejects.toThrow(
+        new UnauthorizedException('Invalid credentials'),
+      );
+
+      expect(usersService.findByUsernameAndTag).not.toHaveBeenCalled();
+      expect(usersService.findByUsername).not.toHaveBeenCalled();
+      // Constant-time guard still runs a real compare to defeat enumeration.
+      expect(bcrypt.compare).toHaveBeenCalledTimes(1);
+    });
   });
 
   describe('refreshWithToken', () => {
@@ -193,6 +211,17 @@ describe('AuthService', () => {
 
       await expect(service.refreshWithToken('r')).rejects.toThrow(
         UnauthorizedException,
+      );
+    });
+  });
+
+  describe('logoutRefreshToken', () => {
+    it('forwards the plain token to refreshTokensService.revokeByPlain', async () => {
+      await service.logoutRefreshToken('plain-to-revoke');
+
+      expect(refreshTokensService.revokeByPlain).toHaveBeenCalledTimes(1);
+      expect(refreshTokensService.revokeByPlain).toHaveBeenCalledWith(
+        'plain-to-revoke',
       );
     });
   });

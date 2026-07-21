@@ -82,4 +82,22 @@ void main() {
       expect(notified, 1);
     });
   });
+
+  group('pastedFilenameForMime', () {
+    const cases = {
+      'image/png': 'pasted.png',
+      'image/jpeg': 'pasted.jpg',
+      'image/gif': 'pasted.gif',
+      'image/webp': 'pasted.webp',
+    };
+    cases.forEach((mime, expected) {
+      test('$mime -> $expected', () {
+        expect(pastedFilenameForMime(mime), expected);
+      });
+    });
+
+    test('unknown mime falls back to pasted.img', () {
+      expect(pastedFilenameForMime('application/octet-stream'), 'pasted.img');
+    });
+  });
 }

@@ -240,7 +240,11 @@ void main() {
           lessThanOrEqualTo(maxContentBottom),
         );
         expect(layout.panelTop, greaterThanOrEqualTo(viewPadding.top));
-        expect(layout.panelTop + panelHeight - layout.panelTop, panelHeight);
+        // The whole stack — not just the panel — must stay on-screen: the
+        // emoji row sits at/below the safe-area top and the bubble highlight
+        // sits strictly below the emoji row.
+        expect(layout.emojiTop, greaterThanOrEqualTo(viewPadding.top));
+        expect(layout.bubbleHighlightTop, greaterThan(layout.emojiTop));
       },
     );
 

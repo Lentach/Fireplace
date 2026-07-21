@@ -135,6 +135,32 @@ describe('MediaController', () => {
     });
   });
 
+  it('upload file returns mediaUrl + fileName from dto', async () => {
+    const result = await controller.upload(
+      fakeFile(),
+      { mediaType: 'file', fileName: 'doc.pdf' },
+      fakeReq,
+    );
+    expect(result).toEqual({
+      mediaUrl: expect.any(String),
+      fileName: 'doc.pdf',
+    });
+    expect(mockStorage.uploadRawFile).toHaveBeenCalled();
+  });
+
+  it('upload file falls back to originalname when fileName omitted', async () => {
+    const result = await controller.upload(
+      fakeFile(),
+      { mediaType: 'file' },
+      fakeReq,
+    );
+    expect(result).toEqual({
+      mediaUrl: expect.any(String),
+      fileName: 'test.bin',
+    });
+    expect(mockStorage.uploadRawFile).toHaveBeenCalled();
+  });
+
   it('upload without file throws BadRequestException', async () => {
     await expect(
       controller.upload(

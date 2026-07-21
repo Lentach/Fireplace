@@ -172,7 +172,7 @@ void main() {
       expect(state.isRecording, isFalse);
     });
 
-    testWidgets('stopAndSend then immediate cancel sends at most once',
+    testWidgets('stopAndSend then immediate cancel sends exactly once',
         (tester) async {
       var sent = 0;
       final state = await _pumpController(
@@ -191,7 +191,7 @@ void main() {
       await Future.wait([f1, f2]);
       await tester.pump();
 
-      expect(sent, lessThanOrEqualTo(1));
+      expect(sent, 1);
       expect(state.isRecording, isFalse);
     });
 

@@ -47,6 +47,27 @@ describe('UsersController', () => {
       'avatars/new-photo.jpg',
     );
   });
+  it('rejects before uploading when the gallery already holds three photos', async () => {
+    usersService.getProfilePhotos.mockResolvedValue([
+      { id: 1 },
+      { id: 2 },
+      { id: 3 },
+    ]);
+
+    await expect(
+      controller.uploadProfilePicture(
+        {
+          buffer: Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+          mimetype: 'image/png',
+        } as Express.Multer.File,
+        { user: { id: 7 } },
+      ),
+    ).rejects.toThrow('A profile can have at most three photos');
+
+    // The pre-check must short-circuit before any asset is uploaded, so a
+    // full gallery never orphans a freshly uploaded file.
+    expect(storageService.uploadAvatar).not.toHaveBeenCalled();
+  });
   it('forwards the requested photo order and returns the fresh primary-first list', async () => {
     const createdAt = new Date('2026-07-16T00:00:00.000Z');
     usersService.reorderProfilePhotos.mockResolvedValue([

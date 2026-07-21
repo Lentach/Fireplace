@@ -121,6 +121,28 @@ describe('ChatFriendRequestService', () => {
       expect(mockClient.emit).toHaveBeenCalledWith('friendRequestSent', expect.any(Object));
     });
 
+    it('runs auto-accept flow when request is accepted (mutual)', async () => {
+      usersService.findById
+        .mockResolvedValueOnce(mockSender as any)
+        .mockResolvedValueOnce(mockRecipient as any);
+      friendsService.sendRequest.mockResolvedValue({
+        ...mockFriendRequest,
+        status: 'accepted',
+      } as any);
+      onlineUsers.set(2, 'socket-2');
+
+      await service.handleSendFriendRequest(
+        mockClient as any,
+        { recipientId: 2 },
+        mockServer as any,
+        onlineUsers,
+      );
+
+      expect(mockClient.emit).toHaveBeenCalledWith('friendRequestAccepted', expect.any(Object));
+      expect(conversationsService.findOrCreate).toHaveBeenCalledWith(mockSender, mockRecipient);
+      expect(mockClient.emit).toHaveBeenCalledWith('openConversation', { conversationId: 100 });
+    });
+
     it('emits error when recipient blocked sender', async () => {
       usersService.findById
         .mockResolvedValueOnce(mockSender as any)
@@ -246,6 +268,20 @@ describe('ChatFriendRequestService', () => {
       expect(mockClient.emit).toHaveBeenCalledWith('unfriended', { userId: 1 });
     });
 
+    it('broadcasts unfriended to the other user when online', async () => {
+      onlineUsers.set(2, 'socket-2');
+
+      await service.handleUnfriend(
+        mockClient as any,
+        { userId: 2 },
+        mockServer as any,
+        onlineUsers,
+      );
+
+      expect(mockServer.to).toHaveBeenCalledWith('socket-2');
+      expect(mockServer.emit).toHaveBeenCalledWith('unfriended', { userId: 1 });
+    });
+
     it('emits error when unfriend fails', async () => {
       friendsService.unfriend.mockRejectedValue(new Error('Not friends'));
 
@@ -263,7 +299,18 @@ describe('ChatFriendRequestService', () => {
   });
 
   describe('handleGetFriends', () => {
-    it('emits friendsList excluding blocked users', async () => {
+    it('excludes blocked users from friendsList', async () => {
+      const friend = { id: 2, username: 'bob', tag: '0002', profilePictureUrl: null };
+      friendsService.getFriends.mockResolvedValue([friend] as any);
+      blockedService.getBlockedUserIds.mockResolvedValue([2]);
+      blockedService.getBlockedByUserIds.mockResolvedValue([]);
+
+      await service.handleGetFriends(mockClient as any);
+
+      expect(mockClient.emit).toHaveBeenCalledWith('friendsList', []);
+    });
+
+    it('emits mapped friend payload when no blocks', async () => {
       const friend = { id: 2, username: 'bob', tag: '0002', profilePictureUrl: null };
       friendsService.getFriends.mockResolvedValue([friend] as any);
       blockedService.getBlockedUserIds.mockResolvedValue([]);
@@ -271,7 +318,12 @@ describe('ChatFriendRequestService', () => {
 
       await service.handleGetFriends(mockClient as any);
 
-      expect(mockClient.emit).toHaveBeenCalledWith('friendsList', expect.any(Array));
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'friendsList',
+        expect.arrayContaining([
+          expect.objectContaining({ id: 2, username: 'bob', tag: '0002' }),
+        ]),
+      );
     });
   });
 

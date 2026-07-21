@@ -17,13 +17,14 @@ Widget _host(Widget child, {bool highContrast = false, ThemeData? theme}) {
 
 void main() {
   group('GlassTheme wiring', () {
-    testWidgets('all four ThemeDatas carry a GlassTheme extension',
+    testWidgets('all five themes carry a GlassTheme extension',
         (tester) async {
       final themes = {
         'blue': (RpgTheme.themeDataBlue, GlassTheme.blue),
         'dark': (RpgTheme.themeDataDarkGray, GlassTheme.dark),
         'light': (RpgTheme.themeDataLight, GlassTheme.light),
         'teal': (RpgTheme.themeDataTealStone, GlassTheme.teal),
+        'cosmic': (RpgTheme.themeDataCosmic, GlassTheme.cosmic),
       };
       for (final entry in themes.entries) {
         final (themeData, expected) = entry.value;
@@ -44,18 +45,23 @@ void main() {
   });
 
   group('GlassTheme.lerp', () {
-    test('interpolates colors field-wise at the midpoint', () {
-      final mid = GlassTheme.dark.lerp(GlassTheme.light, 0.5);
-      expect(mid.fill,
-          Color.lerp(GlassTheme.dark.fill, GlassTheme.light.fill, 0.5));
-      expect(
-          mid.onGlassMuted,
-          Color.lerp(GlassTheme.dark.onGlassMuted,
-              GlassTheme.light.onGlassMuted, 0.5));
-      expect(
-          mid.shadow,
-          BoxShadow.lerp(
-              GlassTheme.dark.shadow, GlassTheme.light.shadow, 0.5));
+    test('interpolates every field-wise at the midpoint', () {
+      const a = GlassTheme.dark;
+      const b = GlassTheme.light;
+      final mid = a.lerp(b, 0.5);
+      // Every Color field must be the field-wise midpoint. A field added to
+      // GlassTheme but forgotten in lerp would diverge here.
+      expect(mid.fill, Color.lerp(a.fill, b.fill, 0.5));
+      expect(mid.border, Color.lerp(a.border, b.border, 0.5));
+      expect(mid.highlight, Color.lerp(a.highlight, b.highlight, 0.5));
+      expect(mid.activeCapsule, Color.lerp(a.activeCapsule, b.activeCapsule, 0.5));
+      expect(mid.onGlassMuted, Color.lerp(a.onGlassMuted, b.onGlassMuted, 0.5));
+      expect(mid.onGlassAccent, Color.lerp(a.onGlassAccent, b.onGlassAccent, 0.5));
+      expect(mid.wallpaperTint, Color.lerp(a.wallpaperTint, b.wallpaperTint, 0.5));
+      expect(mid.datePillBg, Color.lerp(a.datePillBg, b.datePillBg, 0.5));
+      expect(mid.datePillText, Color.lerp(a.datePillText, b.datePillText, 0.5));
+      expect(mid.opaqueFill, Color.lerp(a.opaqueFill, b.opaqueFill, 0.5));
+      expect(mid.shadow, BoxShadow.lerp(a.shadow, b.shadow, 0.5));
     });
   });
 

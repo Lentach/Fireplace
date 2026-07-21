@@ -36,4 +36,19 @@ describe('FriendRequestMapper', () => {
       respondedAt: null,
     });
   });
+
+  it('passes through non-PENDING status with populated respondedAt', () => {
+    const respondedAt = new Date('2025-02-20T09:30:00Z');
+    const request = {
+      id: 2,
+      sender: { id: 10, username: 'alice', tag: '0427', profilePictureUrl: null },
+      receiver: { id: 20, username: 'bob', tag: '1234', profilePictureUrl: null },
+      status: FriendRequestStatus.ACCEPTED,
+      createdAt: new Date('2025-01-15T12:00:00Z'),
+      respondedAt,
+    } as unknown as FriendRequest;
+    const payload = FriendRequestMapper.toPayload(request);
+    expect(payload.status).toBe(FriendRequestStatus.ACCEPTED);
+    expect(payload.respondedAt).toBe(respondedAt);
+  });
 });

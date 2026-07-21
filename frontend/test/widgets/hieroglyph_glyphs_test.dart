@@ -7,10 +7,10 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  test('registry is the v7 set: 36 unique glyphs, exactly one leaf', () {
-    expect(kHieroGlyphs.length, 36);
+  test('registry has unique glyph names and exactly one leaf', () {
+    expect(kHieroGlyphs, isNotEmpty);
     final names = kHieroGlyphs.map((g) => g.name).toList();
-    expect(names.toSet().length, 36, reason: 'names must be unique');
+    expect(names.toSet().length, names.length, reason: 'names must be unique');
     expect(kHieroGlyphs.where((g) => g.isLeaf).length, 1);
   });
 

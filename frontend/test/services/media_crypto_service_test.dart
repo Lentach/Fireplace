@@ -23,7 +23,10 @@ void main() {
 
   group('MediaCryptoService', () {
     test('encrypt produces ciphertext different from input', () async {
-      if (!await _ensureWebcryptoAvailable()) return;
+      if (!await _ensureWebcryptoAvailable()) {
+        markTestSkipped('webcrypto native unavailable');
+        return;
+      }
       final input = Uint8List.fromList(List.generate(100, (i) => i));
       final result = await service.encrypt(input);
       expect(result.ciphertext, isNot(equals(input)));
@@ -32,7 +35,10 @@ void main() {
     });
 
     test('decrypt restores original bytes', () async {
-      if (!await _ensureWebcryptoAvailable()) return;
+      if (!await _ensureWebcryptoAvailable()) {
+        markTestSkipped('webcrypto native unavailable');
+        return;
+      }
       final input = Uint8List.fromList([1, 2, 3, 4, 5, 6, 7, 8]);
       final encrypted = await service.encrypt(input);
       final decrypted = await service.decrypt(
@@ -44,7 +50,10 @@ void main() {
     });
 
     test('each encrypt call produces unique key and IV', () async {
-      if (!await _ensureWebcryptoAvailable()) return;
+      if (!await _ensureWebcryptoAvailable()) {
+        markTestSkipped('webcrypto native unavailable');
+        return;
+      }
       final input = Uint8List.fromList([42, 43, 44]);
       final a = await service.encrypt(input);
       final b = await service.encrypt(input);
@@ -53,7 +62,10 @@ void main() {
     });
 
     test('decrypt with wrong key throws', () async {
-      if (!await _ensureWebcryptoAvailable()) return;
+      if (!await _ensureWebcryptoAvailable()) {
+        markTestSkipped('webcrypto native unavailable');
+        return;
+      }
       final input = Uint8List.fromList([1, 2, 3]);
       final encrypted = await service.encrypt(input);
       final other = await service.encrypt(input);
@@ -71,6 +83,26 @@ void main() {
       // Size check runs before webcrypto; no `webcrypto:setup` required.
       final huge = Uint8List(21 * 1024 * 1024);
       await expectLater(service.encrypt(huge), throwsA(isA<ArgumentError>()));
+    });
+
+    test('20MB boundary: maxBytes+1 throws, exactly maxBytes clears the guard',
+        () async {
+      // Source guard is `bytes.length > maxBytes`. One byte over MUST throw...
+      await expectLater(
+        service.encrypt(Uint8List(MediaCryptoService.maxBytes + 1)),
+        throwsA(isA<ArgumentError>()),
+      );
+      // ...while exactly maxBytes MUST clear the size guard (catches a `>=`
+      // off-by-one). It then proceeds to webcrypto, which either encrypts
+      // (native available) or throws a NON-ArgumentError (native missing) —
+      // both prove the size guard was passed.
+      try {
+        await service.encrypt(Uint8List(MediaCryptoService.maxBytes));
+      } on ArgumentError {
+        fail('exactly maxBytes must pass the size guard (off-by-one: >= vs >)');
+      } catch (_) {
+        // Non-ArgumentError (e.g. webcrypto native unavailable) is acceptable.
+      }
     });
   });
 }

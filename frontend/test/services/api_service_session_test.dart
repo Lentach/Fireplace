@@ -149,5 +149,54 @@ void main() {
         throwsA(isA<SessionRefreshTransientException>()),
       );
     });
+
+    test('refreshSession throws SessionRefreshInvalidException on 403', () async {
+      // Source treats 401||403 identically as an invalid session. Dropping 403
+      // from the invalid set would force a bad session into an endless
+      // transient-retry loop instead of surfacing re-login.
+      final mock = MockClient((request) async {
+        return http.Response(
+          jsonEncode({'message': 'Forbidden'}),
+          403,
+          headers: {'Content-Type': 'application/json'},
+        );
+      });
+
+      final api = ApiService(baseUrl: base, httpClient: mock);
+      expect(
+        () => api.refreshSession('rt'),
+        throwsA(isA<SessionRefreshInvalidException>()),
+      );
+    });
+
+    test('refreshSession 408 is transient', () async {
+      final mock = MockClient((request) async {
+        return http.Response(
+          jsonEncode({'message': 'Request timeout'}),
+          408,
+          headers: {'Content-Type': 'application/json'},
+        );
+      });
+
+      final api = ApiService(baseUrl: base, httpClient: mock);
+      expect(
+        () => api.refreshSession('rt'),
+        throwsA(isA<SessionRefreshTransientException>()),
+      );
+    });
+
+    test('refreshSession maps a network drop to transient', () async {
+      // A dropped connection (http.ClientException) is retryable, not an
+      // invalid session — it must map to the transient class.
+      final mock = MockClient((request) async {
+        throw http.ClientException('Connection reset by peer');
+      });
+
+      final api = ApiService(baseUrl: base, httpClient: mock);
+      expect(
+        () => api.refreshSession('rt'),
+        throwsA(isA<SessionRefreshTransientException>()),
+      );
+    });
   });
 }

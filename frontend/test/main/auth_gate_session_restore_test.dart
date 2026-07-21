@@ -1,9 +1,11 @@
 import 'dart:async';
 import 'dart:convert';
 
+import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/main.dart';
 import 'package:fireplace/providers/auth_provider.dart';
 import 'package:fireplace/providers/connection_provider.dart';
+import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/screens/auth_screen.dart';
 import 'package:fireplace/services/api_service.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
@@ -72,4 +74,73 @@ void main() {
     // Keep the refresh pending: the assertion is the boot/restoring frame before
     // auth resolution, which used to show the login screen.
   });
+
+  testWidgets(
+    'AuthGate swaps the boot spinner for the login screen once a failed '
+    'restore resolves',
+    (tester) async {
+      SharedPreferences.setMockInitialValues({
+        'jwt_token': _expiredAccessJwt,
+        'refresh_token': 'opaque_refresh',
+      });
+      final refreshStarted = Completer<void>();
+      final releaseRefresh = Completer<void>();
+      final mock = MockClient((request) async {
+        if (request.url.path == '/auth/refresh') {
+          refreshStarted.complete();
+          await releaseRefresh.future;
+          // Refresh token rejected -> the saved session cannot be restored.
+          return http.Response(
+            jsonEncode({'message': 'refresh token revoked'}),
+            401,
+            headers: {'Content-Type': 'application/json'},
+          );
+        }
+        return http.Response('unexpected ${request.url.path}', 500);
+      });
+      final auth = AuthProvider(
+        api: ApiService(baseUrl: 'http://localhost:3999', httpClient: mock),
+      );
+      addTearDown(auth.dispose);
+
+      await tester.pumpWidget(
+        MultiProvider(
+          providers: [
+            ChangeNotifierProvider<AuthProvider>.value(value: auth),
+            ChangeNotifierProvider(create: (_) => ConnectionProvider()),
+            ChangeNotifierProvider(create: (_) => SettingsProvider()),
+          ],
+          child: MaterialApp(
+            theme: RpgTheme.themeDataLight,
+            localizationsDelegates: AppLocalizations.localizationsDelegates,
+            supportedLocales: AppLocalizations.supportedLocales,
+            home: const AuthGate(),
+          ),
+        ),
+      );
+
+      // Boot frame: refresh still pending -> spinner, login screen hidden.
+      await refreshStarted.future;
+      await tester.pump();
+      expect(auth.isRestoringSession, isTrue);
+      expect(find.byType(CircularProgressIndicator), findsOneWidget);
+      expect(find.byType(AuthScreen), findsNothing);
+
+      // Restore resolves (refresh rejected): isRestoringSession must flip false
+      // and the tree must swap the spinner for the login screen. A regression
+      // that leaves the spinner up (or never resolves) fails here.
+      releaseRefresh.complete();
+      // AuthScreen runs continuous background animation, so pumpAndSettle would
+      // never quiesce — bounded-pump until the restore future has resolved.
+      for (var i = 0; i < 20 && auth.isRestoringSession; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+      }
+      await tester.pump();
+
+      expect(auth.isRestoringSession, isFalse);
+      expect(auth.isLoggedIn, isFalse);
+      expect(find.byType(CircularProgressIndicator), findsNothing);
+      expect(find.byType(AuthScreen), findsOneWidget);
+    },
+  );
 }

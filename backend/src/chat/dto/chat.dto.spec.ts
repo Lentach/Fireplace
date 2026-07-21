@@ -209,12 +209,13 @@ describe('SendMessageDto', () => {
       expect(errors).toHaveLength(0);
     });
 
-    it('should reject arbitrary non-allowlisted URLs', async () => {
+    it('should reject an internal/loopback SSRF target (metadata endpoint)', async () => {
       const dto = createDto({
         recipientId: 1,
         content: '',
         messageType: 'VOICE',
-        mediaUrl: 'https://evil.com/file.bin',
+        // Distinct SSRF vector: cloud metadata / link-local host, not a generic evil.com host.
+        mediaUrl: 'http://169.254.169.254/latest/meta-data/',
       });
       const errors = await validate(dto);
       const mediaUrlError = errors.find((e) => e.property === 'mediaUrl');

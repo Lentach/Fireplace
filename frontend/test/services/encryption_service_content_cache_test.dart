@@ -53,12 +53,11 @@ void main() {
       await service.saveDecryptedContent(1004, {'content': 'To be cleared'});
       await service.clearAllKeys();
 
-      // Re-initialize (simulating re-login)
-      FlutterSecureStorage.setMockInitialValues({});
-      SharedPreferences.setMockInitialValues({});
-      final fresh = EncryptionService();
-      await fresh.initialize(42);
-      final result = await fresh.getDecryptedContent(1004);
+      // Re-initialize the SAME service against the real post-clear store
+      // (like the pending-send Contract 7a) so a stale read here would fail
+      // if clearAllKeys left the content behind.
+      await service.initialize(42);
+      final result = await service.getDecryptedContent(1004);
       expect(result, isNull);
     });
 

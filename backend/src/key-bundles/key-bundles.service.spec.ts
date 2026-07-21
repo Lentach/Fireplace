@@ -153,10 +153,15 @@ describe('KeyBundlesService', () => {
     });
 
     it('preserves existing valid current-epoch rows when rejecting a legacy upload', async () => {
+      // A legacy (untagged) upload must be rejected WITHOUT touching any
+      // existing rows: no destructive delete/purge and no upsert may run,
+      // so previously-stored current-epoch OTPs survive intact.
       await expect(service.uploadOneTimePreKeys(5, keys)).rejects.toThrow(
         'identity_epoch_required',
       );
       expect(otpRepo.upsert).not.toHaveBeenCalled();
+      expect(otpRepo.delete).not.toHaveBeenCalled();
+      expect(otpRepo.createQueryBuilder).not.toHaveBeenCalled();
     });
   });
 
