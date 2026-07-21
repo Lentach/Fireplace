@@ -37,7 +37,7 @@ End-to-end encrypted messenger built with Flutter and NestJS.
 | Media storage | Cloudinary |
 | Push | FCM (native) + Web Push VAPID (PWA) |
 | Containerization | Docker + Docker Compose |
-| Production | Google Cloud VM + Nginx + Let'\''s Encrypt |
+| Production | OVH VPS (Ubuntu 24.04) + Nginx + Let's Encrypt |
 
 ---
 
@@ -190,15 +190,21 @@ Frontend (61 widget tests):
 
 ## Deployment
 
-Production runs on a Google Cloud e2-medium VM (Warsaw region).
+Production is an **OVH VPS** (`ubuntu@51.68.138.13`, Warsaw) serving
+`https://fireplace.ignorelist.com`. Deploy is **split** because the small VM
+cannot compile the Flutter web bundle (dart2js OOM):
 
-    # SSH to server (repo at ~/fireplace), then:
-    cd ~/fireplace && ./deploy.sh
-    cp -a frontend/build/web/. frontend-build/
-    curl -sS https://fireplace.ignorelist.com/version
-    # deploy.sh does NOT copy web to nginx root; reload nginx only if config changed
+    # Backend — on the VM (builds the Docker image, runs migrations, verifies /health):
+    cd ~/fireplace && ./deploy-backend.sh
 
-Stack: Docker + Nginx reverse proxy + Let'\''s Encrypt TLS.
+    # Frontend — on your PC (builds web, publishes via atomic swap to the VM):
+    git pull ; .\deploy-web.ps1
+
+Verify: `curl -sS https://fireplace.ignorelist.com/version` and `/health`.
+Full runbook: `.cursor/rules/production-vm-deploy.mdc`. (The legacy `deploy.sh`
+is disabled — it targeted the decommissioned GCP VM and the dev compose.)
+
+Stack: Docker + Nginx reverse proxy + Let's Encrypt TLS.
 
 ---
 

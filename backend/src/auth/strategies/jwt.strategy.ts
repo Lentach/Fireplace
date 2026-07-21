@@ -4,8 +4,6 @@ import { PassportStrategy } from '@nestjs/passport';
 import { ExtractJwt, Strategy } from 'passport-jwt';
 import { UsersService } from '../../users/users.service';
 
-const DEV_JWT_SECRET = 'super-secret-dev-key';
-
 // Passport strategy — automatically verifies the JWT token
 // and injects user data into request.user
 @Injectable()
@@ -14,8 +12,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
     private usersService: UsersService,
     configService: ConfigService,
   ) {
-    const secret =
-      configService.get<string>('JWT_SECRET') || DEV_JWT_SECRET;
+    const secret = configService.get<string>('JWT_SECRET');
+    if (!secret) {
+      throw new Error('JWT_SECRET is not configured');
+    }
     super({
       jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
       secretOrKey: secret,

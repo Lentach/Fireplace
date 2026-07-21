@@ -1,10 +1,12 @@
 import { plainToInstance } from 'class-transformer';
 import {
   IsEnum,
+  IsNotEmpty,
   IsNumber,
   IsOptional,
   IsString,
   MinLength,
+  ValidateIf,
   validateSync,
 } from 'class-validator';
 
@@ -40,8 +42,10 @@ export class EnvironmentVariables {
   @MinLength(32, { message: 'JWT_SECRET must be at least 32 characters' })
   JWT_SECRET: string;
 
+  @ValidateIf((o) => o.NODE_ENV === Environment.Production)
   @IsString()
-  ALLOWED_ORIGINS: string = 'http://localhost:3000,http://localhost:8080';
+  @IsNotEmpty({ message: 'ALLOWED_ORIGINS is required in production' })
+  ALLOWED_ORIGINS?: string;
 
   @IsOptional()
   @IsString()

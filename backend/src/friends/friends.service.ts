@@ -69,6 +69,24 @@ export class FriendsService {
         },
       });
 
+      // A prior REJECTED row for this exact (sender, receiver) pair collides
+      // with the UNIQUE(sender_id, receiver_id) index on re-send, which would
+      // surface as a generic "Failed to send friend request". Clear it so a
+      // previously-rejected user can be re-added as a fresh request.
+      await manager
+        .createQueryBuilder()
+        .delete()
+        .from(FriendRequest)
+        .where(
+          'sender_id = :senderId AND receiver_id = :receiverId AND status = :status',
+          {
+            senderId: sender.id,
+            receiverId: receiver.id,
+            status: FriendRequestStatus.REJECTED,
+          },
+        )
+        .execute();
+
       // Create the new request
       const newRequest = manager.create(FriendRequest, {
         sender,

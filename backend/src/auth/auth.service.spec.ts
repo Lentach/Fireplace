@@ -148,7 +148,9 @@ describe('AuthService', () => {
       await expect(service.login('unknown', 'ValidPass1')).rejects.toThrow(
         'Invalid credentials',
       );
-      expect(bcrypt.compare).not.toHaveBeenCalled();
+      // Not-found path now performs a constant-time dummy bcrypt.compare to
+      // defeat timing-based user enumeration.
+      expect(bcrypt.compare).toHaveBeenCalled();
     });
 
     it('should throw when password invalid', async () => {

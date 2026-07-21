@@ -194,9 +194,9 @@ class ContactsScreen extends StatelessWidget {
     );
   }
 
-  Widget _buildContactTile(BuildContext context, dynamic friend) {
+  Widget _buildContactTile(BuildContext context, UserModel friend) {
     final colorScheme = Theme.of(context).colorScheme;
-    final user = friend as UserModel;
+    final user = friend;
 
     return Material(
       color: Colors.transparent,
