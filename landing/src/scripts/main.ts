@@ -23,6 +23,37 @@ document.querySelectorAll<HTMLElement>('[data-encrypt]').forEach(initEncrypt);
 const journey = document.querySelector<HTMLElement>('.journey');
 if (journey) initJourney(journey);
 
+/* clicking the wordmark refreshes the page (owner request) */
+document.querySelector<HTMLElement>('nav .mark')?.addEventListener('click', () => location.reload());
+
+/* skip — a round arrow bubble sitting where the journey's "…on its way" hint
+   lives: ↓ jumps forward past the tour to the facts, ↑ jumps back to the start
+   (Bob's device). It appears when that hint isn't showing, so the two never
+   share the spot; the reply journey is long too, hence both directions. */
+const skip = document.querySelector<HTMLButtonElement>('.skip-tour');
+const features = document.querySelector<HTMLElement>('#features');
+if (skip && journey && features) {
+  const upZone = () => scrollY > journey.offsetTop + journey.offsetHeight * 0.7;
+  skip.addEventListener('click', () => {
+    if (upZone()) lenis.scrollTo(journey.offsetTop, { offset: 0 });
+    else lenis.scrollTo(features, { offset: -40 });
+  });
+  const syncSkip = () => {
+    const top = journey.offsetTop;
+    const bottom = top + journey.offsetHeight;
+    const inJourney = scrollY > top + innerHeight * 0.35 && scrollY < bottom - innerHeight * 0.1;
+    // hide while the journey's own "…on its way" hint occupies the same spot
+    const j = window.__journey;
+    const hintShowing = !!j && j.sent && (j.dir === 1 ? j.p > 0.005 && j.p < 0.04 : j.p > 0.955);
+    skip.classList.toggle('show', inJourney && !hintShowing);
+    const up = upZone();
+    skip.classList.toggle('up', up);
+    skip.setAttribute('aria-label', up ? 'Skip back to the start' : 'Skip the tour');
+  };
+  syncSkip();
+  window.addEventListener('scroll', syncSkip, { passive: true });
+}
+
 /* outro: the last relay — a SEALED node drifts on among the stars with a
    through-wire of ambient envelopes: the story ends, the network doesn't.
    Same renderers as the journey (shellDraw/drawSingularity), miniature. */

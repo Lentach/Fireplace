@@ -24,7 +24,7 @@ nav {
   background: rgba(0, 0, 0, .35); border-bottom: 1px solid rgba(143, 216, 255, .08);
   transition: background .35s, border-color .35s;
 }
-nav .mark { font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 15px; letter-spacing: .06em; color: var(--txt); transition: color .35s; }
+nav .mark { font-family: 'Archivo', sans-serif; font-weight: 900; font-size: 15px; letter-spacing: .06em; color: var(--txt); transition: color .35s; cursor: pointer; }
 nav .mark b { color: var(--ice); }
 nav .links { display: flex; gap: 30px; align-items: center; font-size: 11px; letter-spacing: .18em; text-transform: uppercase; }
 nav .links a { color: rgba(238, 246, 251, .6); text-decoration: none; transition: color .35s; }
@@ -102,6 +102,15 @@ nav .links a.cta { color: #04121c; background: var(--ice); padding: 10px 22px; f
 .enc-terminal .enc-port:focus-within .enc-prompt { opacity: 1; }
 .enc-terminal textarea:focus-visible { outline: none; }
 .enc-terminal.has-value .enc-rest-caret { visibility: hidden; }
+/* Done — the only keyboard exit on touch (Enter is swallowed to keep the box
+   one line). Hidden until the field is focused; rides the right end of the port. */
+.enc-terminal .enc-done {
+  display: none; flex: 0 0 auto; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace; font-size: 9px; letter-spacing: .16em;
+  text-transform: uppercase; color: #04121c; background: var(--ice);
+  border: 0; border-radius: 999px; padding: 5px 12px;
+}
+.enc-terminal .enc-port:focus-within .enc-done { display: inline-flex; }
 .enc-terminal .enc-port-rail {
   display: flex; justify-content: space-between; align-items: center; gap: 16px;
   margin-top: 7px; font-size: 8px; letter-spacing: .18em; text-transform: uppercase;
@@ -291,6 +300,60 @@ nav .links a.cta { color: #04121c; background: var(--ice); padding: 10px 22px; f
   font-size: 10px; letter-spacing: .3em; text-transform: uppercase; color: rgba(143, 216, 255, .8);
   opacity: 0; transition: opacity .6s; animation: cue 2.2s ease-in-out infinite; pointer-events: none;
 }
+
+/* skip — a double chevron that pulses like a photon flowing down the wire (the
+   site's core motif), sitting where the "…on its way" hint lives. `.up` flips it
+   to skip back to the start. No chrome — just signal + glow. */
+.skip-tour {
+  display: none; position: fixed; z-index: 45;
+  left: 50%; bottom: 12vh; transform: translateX(-50%);
+  padding: 11px 18px; background: none; border: 0; cursor: pointer;
+  color: var(--ice); line-height: 0; -webkit-tap-highlight-color: transparent;
+}
+.skip-tour.show { display: block; }
+.skip-tour::before {
+  content: ''; position: absolute; left: 50%; top: 50%;
+  width: 40px; height: 40px; transform: translate(-50%, -50%);
+  border-radius: 50%; opacity: 0; transition: opacity .35s;
+  background: radial-gradient(circle, rgba(143, 216, 255, .22), transparent 70%);
+}
+.skip-tour svg {
+  position: relative; width: 26px; height: 24px; display: block; overflow: visible;
+  fill: none; stroke: currentColor; stroke-width: 2.2; stroke-linecap: round; stroke-linejoin: round;
+  filter: drop-shadow(0 0 5px rgba(143, 216, 255, .55));
+  transition: transform .35s cubic-bezier(.2, .9, .3, 1);
+}
+.skip-tour.up svg { transform: rotate(180deg); }
+.skip-tour .c1 { animation: skipPulse 1.5s ease-in-out infinite; }
+.skip-tour .c2 { animation: skipPulse 1.5s ease-in-out .22s infinite; }
+@keyframes skipPulse { 0%, 100% { opacity: .18 } 45% { opacity: 1 } }
+.skip-tour:hover::before { opacity: 1; }
+.skip-tour:hover svg { transform: translateY(3px); }
+.skip-tour.up:hover svg { transform: rotate(180deg) translateY(3px); }
+.skip-tour:hover .c1, .skip-tour:hover .c2 { animation-duration: .9s; }
+@media (prefers-reduced-motion: reduce) {
+  .skip-tour .c1, .skip-tour .c2 { animation: none; opacity: .8; }
+}
+
+/* Done — mobile keyboard exit; a pill pinned to the top of the still-visible
+   band (journey.ts sets its top from visualViewport). Shown only in compose mode. */
+.kb-done {
+  position: fixed; z-index: 46; top: 62px; left: 50%; transform: translateX(-50%);
+  display: none; cursor: pointer;
+  font-family: 'IBM Plex Mono', monospace; font-size: 11px; letter-spacing: .18em;
+  text-transform: uppercase; color: #04121c; background: var(--ice);
+  border: 0; border-radius: 999px; padding: 9px 20px;
+  box-shadow: 0 8px 30px rgba(10, 30, 50, .5);
+}
+body.kb-open .kb-done { display: inline-flex; }
+/* compose mode (mobile keyboard up): the focused device is pinned full-size
+   above the keyboard; hide the surrounding chrome so nothing overlaps it */
+.phone.kb-lift { position: fixed; top: 0; left: 0; z-index: 44; }
+body.kb-open nav,
+body.kb-open .prompt,
+body.kb-open .cap,
+body.kb-open .rail,
+body.kb-open .journey-hint { opacity: 0 !important; pointer-events: none; }
 .prompt { position: absolute; z-index: 20; left: 50%; top: 16%; transform: translateX(-50%); text-align: center; transition: opacity .6s; width: max-content; max-width: 90vw; }
 .prompt h1 { font-weight: 900; text-transform: uppercase; font-size: clamp(26px, 3.4vw, 46px); line-height: 1.02; }
 .prompt h1 span { color: var(--ice); }
@@ -397,7 +460,7 @@ footer { background: #000; position: relative; overflow-x: clip; }
   /* true centering: 1fr | auto | 1fr — flex space-between let the wider
      left cell push the middle line off-axis */
   display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px 32px;
-  padding: 26px 6vw 34px;
+  padding: 44px 6vw;
   font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: rgba(238, 246, 251, .3);
 }
 .f-mark { color: rgba(238, 246, 251, .55); letter-spacing: .2em; }
@@ -440,6 +503,9 @@ footer { background: #000; position: relative; overflow-x: clip; }
   .traveler { max-width: 74vw; }
   .keytag { font-size: 8px; padding: 5px 8px; }
   .prompt { top: 9%; width: 90vw; }
+  /* the prompt sub is a long single line — tighten it so it never clips on
+     narrow phones */
+  .prompt p { font-size: 9.5px; letter-spacing: .08em; }
   .rail { bottom: 2vh; }
   .rail .stop { width: 56px; }
   .rail .stop span { font-size: 6.5px; }

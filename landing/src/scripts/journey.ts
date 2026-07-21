@@ -54,6 +54,8 @@ export function initJourney(section: HTMLElement) {
   let spans: HTMLSpanElement[] = [], sealAt: number[] = [], openAt: number[] = [];
   let sentMeta: HTMLElement | null = null, landedBubble: HTMLElement | null = null;
   let sentBubble: HTMLElement | null = null;
+  let kbLift: HTMLTextAreaElement | null = null;   // focused composer while the mobile keyboard is up
+  let kbSuppressUntil = 0;   // after a dismiss, reject the reflow-induced refocus for a beat
 
   // While a phone MOVES it needs its own layer (will-change) — but a hint
   // held forever pins the raster made mid-journey at ~0.4× scale, and the
@@ -245,8 +247,13 @@ export function initJourney(section: HTMLElement) {
   const sendBtnR = $<HTMLButtonElement>('.phone.recipient .compose button');
   const caretR = $('.phone.recipient .c-caret');
   const hintEl = $('.journey-hint');
-  sendBtn.addEventListener('click', () => doSend(false));
-  sendBtnR.addEventListener('click', () => doSendBack());
+  // keep focus while the ➤ is tapped — a blur here would unfreeze and reflow the
+  // phone out from under the finger before the click lands (mousedown-preventDefault
+  // is the classic "button that doesn't steal focus"); then send + dismiss keyboard
+  sendBtn.addEventListener('mousedown', (e) => e.preventDefault());
+  sendBtnR.addEventListener('mousedown', (e) => e.preventDefault());
+  sendBtn.addEventListener('click', () => { doSend(false); releaseKb()?.blur(); });
+  sendBtnR.addEventListener('click', () => { doSendBack(); releaseKb()?.blur(); });
   // chat-style composers: a long draft WRAPS and the pill grows with it —
   // Enter always sends (swallowed so the textarea never gains a newline);
   // pasted newlines become spaces before anything downstream sees the value
@@ -264,8 +271,36 @@ export function initJourney(section: HTMLElement) {
       trimThread(el === draft ? $('.sender-msgs') : $('.recipient-msgs'));
     });
     // click/tap a compose → whole draft selected, one keystroke replaces it
-    el.addEventListener('focus', () => el.select());
+    el.addEventListener('focus', () => {
+      // after a dismiss, the tap's synthesized click can land on the input as the
+      // phone reflows and re-open the keyboard — reject that refocus for a beat
+      if (performance.now() < kbSuppressUntil) { el.blur(); return; }
+      el.select();
+      // mobile: opening the keyboard shrinks the viewport and drifts scroll.
+      // Freeze the journey and pin this device above the keyboard (real chat).
+      if (innerWidth < 1000) { kbLift = el; document.body.classList.add('kb-open'); }
+    });
+    el.addEventListener('blur', () => { if (kbLift === el) releaseKb(); });
   }
+  // release the keyboard freeze: clear state + drop the fixed lift on both phones
+  function releaseKb() {
+    kbSuppressUntil = performance.now() + 600;
+    const el = kbLift;
+    kbLift = null;
+    document.body.classList.remove('kb-open');
+    $('.phone.sender').classList.remove('kb-lift');
+    $('.phone.recipient').classList.remove('kb-lift');
+    return el;
+  }
+  // Done pill AND any tap outside the composer dismiss the keyboard
+  const kbDone = document.querySelector<HTMLButtonElement>('.kb-done');
+  kbDone?.addEventListener('click', () => releaseKb()?.blur());
+  document.addEventListener('pointerdown', (e) => {
+    if (!kbLift) return;
+    const t = e.target as HTMLElement | null;
+    if (t && (t.closest('.compose') || t.closest('.kb-done'))) return;
+    releaseKb()?.blur();
+  }, true);
   // the sender ships with a prefilled draft — size its pill NOW, and again
   // once the mono font arrives (glyph metrics change the wrap points)
   autoGrow(draft); autoGrow(draftR);
@@ -301,6 +336,9 @@ export function initJourney(section: HTMLElement) {
     // clamped AND padded to the ambient rows' 60 chars so it blends into the
     // queue no matter the message length — only the "yours →" tag gives it away
     $('.sv-row.mine').innerHTML = `<span class="t">${ts}</span>${(cipherChars.join('') + fake(60)).slice(0, 60)}`;
+    // the giveaway tag names the real sender and points the way this journey
+    // flows: forward Bob→Kate (→, left of the row), reply Kate→Bob (←, right)
+    $('.mine-tag').textContent = dir === 1 ? "Bob's →" : "← Kate's";
   }
 
   // like a real chat the thread STACKS: the oldest bubbles fall away the
@@ -380,6 +418,24 @@ export function initJourney(section: HTMLElement) {
   const caps = [...section.querySelectorAll<HTMLElement>('.cap')];
   const stops = [...section.querySelectorAll<HTMLElement>('.rail .stop')];
 
+  /* keyboard lift (mobile): pin the focused device — at FULL size, readable —
+     with its composer just above the on-screen keyboard, using visualViewport's
+     un-obscured box. The phone goes position:fixed (.kb-lift) so scroll/sticky
+     drift can never move it; its top clips off-screen if the band is short,
+     exactly like a real chat. Compose-mode CSS hides the surrounding chrome. */
+  function poseLifted(el: HTMLTextAreaElement) {
+    const phone = $(el === draft ? '.phone.sender' : '.phone.recipient');
+    phone.classList.add('kb-lift');
+    const other = $(el === draft ? '.phone.recipient' : '.phone.sender');
+    other.classList.remove('kb-lift');
+    other.style.opacity = '0';
+    const vv = window.visualViewport;
+    const vTop = vv ? vv.offsetTop : 0;
+    const vH = vv ? vv.height : H;
+    const ph = phone.offsetHeight || 560;
+    phonePose(phone, W / 2, vTop + vH - 6 - ph / 2, 1, 1);
+    if (kbDone) kbDone.style.top = `${vTop + 14}px`;
+  }
   function update() {
     const now = performance.now(), t = now / 1000;
     // self-heal on any viewport change the resize event missed (devtools
@@ -387,6 +443,9 @@ export function initJourney(section: HTMLElement) {
     if (canvas.clientWidth !== W || canvas.clientHeight !== H) {
       ctx = fit(canvas); W = canvas.clientWidth; H = canvas.clientHeight; stars = makeStars(W, H, 240);
     }
+    // keyboard freeze (mobile): a focused composer holds the journey still and
+    // lifts its device above the keyboard; nothing else recomputes meanwhile
+    if (kbLift) { poseLifted(kbLift); requestAnimationFrame(update); return; }
     const top = section.offsetTop;
     const raw = clamp((scrollY - top) / (section.offsetHeight - innerHeight), 0, 1);
     const prevRaw = lastRaw;
@@ -668,12 +727,15 @@ export function initJourney(section: HTMLElement) {
     const mineO = clamp(Math.min(mineFlowY / 26, (streamH - mineFlowY) / 26), 0, 0.85) * minePres;
     const chM = fitRow(mine, mineFlowY);
     mine.style.opacity = String(mineO);
-    mine.style.transform = `translate(${(1 - mineIn) * -360 + mineOut * 360}px, ${mineFlowY}px)`;
-    /* the tag glides along the sphere's inner wall, pinned to its row's
-       curved left edge — hanging out over the shell dots (rects and tag
-       width were read up top, before this frame's first style write) */
+    // forward slides in through the left (IN) port; a reply enters from Kate's
+    // right (OUT) port — mirror the horizontal glide so it never opposes travel
+    const mineSlide = dir === 1 ? 1 : -1;
+    mine.style.transform = `translate(${((1 - mineIn) * -360 + mineOut * 360) * mineSlide}px, ${mineFlowY}px)`;
+    /* the tag glides along the sphere's inner wall, pinned to its row's curved
+       edge (left on the way out, right on a reply) — out over the shell dots
+       (rects and tag width were read up top, before this frame's first write) */
     mineTag.style.top = `${streamR.top - machR.top + mineFlowY}px`;
-    mineTag.style.left = `${streamR.left - machR.left + coreHalf - chM - tagW - 6}px`;
+    mineTag.style.left = `${streamR.left - machR.left + coreHalf + (dir === 1 ? -chM - tagW - 6 : chM + 6)}px`;
     mineTag.style.opacity = String(mineO);
 
     /* traveler — symmetric two-act structure */

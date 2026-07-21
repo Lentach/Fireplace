@@ -6,7 +6,7 @@ const app = 'https://fireplace.ignorelist.com/';
 <html lang="en">
 <head>
   <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <meta name="viewport" content="width=device-width, initial-scale=1, interactive-widget=resizes-visual" />
   <title>Fireplace — messages only two people can read</title>
   <meta name="description" content="End-to-end encrypted chat. Signal protocol on every message, delete removes both sides. Follow one message end to end and see exactly what our server sees: nothing readable." />
   <meta property="og:title" content="Fireplace — messages only two people can read" />
@@ -32,6 +32,14 @@ const app = 'https://fireplace.ignorelist.com/';
     <a class="cta" href={app} target="_blank" rel="noopener noreferrer">Open app</a>
   </div>
 </nav>
+
+<button class="skip-tour" type="button" aria-label="Skip the tour">
+  <svg viewBox="0 0 28 26" aria-hidden="true">
+    <path class="c1" d="M6 7 14 14 22 7" />
+    <path class="c2" d="M6 13 14 20 22 13" />
+  </svg>
+</button>
+<button class="kb-done" type="button">Done ✓</button>
 
 <!-- ============ HERO ============ -->
 <section class="hero">
@@ -68,7 +76,7 @@ const app = 'https://fireplace.ignorelist.com/';
             <div class="c-pill">
               <svg class="c-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14l6-6 6 6"/></svg>
               <span class="c-caret" aria-hidden="true"></span>
-              <textarea rows="1" placeholder="Type a message…" maxlength="120" spellcheck="false">sending very sensitive data — safe here</textarea>
+              <textarea rows="1" placeholder="Message" maxlength="120" spellcheck="false">sending very sensitive data — safe here</textarea>
             </div>
             <button title="send">➤</button>
           </div>
@@ -112,7 +120,7 @@ const app = 'https://fireplace.ignorelist.com/';
             <div class="c-pill">
               <svg class="c-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M6 14l6-6 6 6"/></svg>
               <span class="c-caret" aria-hidden="true"></span>
-              <textarea rows="1" placeholder="Type a message…" maxlength="120" spellcheck="false" disabled></textarea>
+              <textarea rows="1" placeholder="Message" maxlength="120" spellcheck="false" disabled></textarea>
               <svg class="c-ic" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3a3 3 0 0 1 3 3v5a3 3 0 0 1-6 0V6a3 3 0 0 1 3-3zM5 11a7 7 0 0 0 14 0M12 18v3"/></svg>
             </div>
             <button title="send" disabled>➤</button>
@@ -233,7 +241,7 @@ const app = 'https://fireplace.ignorelist.com/';
   <div class="f-row">
     <span class="f-mark">FIRE<b>PLACE</b> · end-to-end encrypted chat</span>
     <span class="f-honest">no analytics on this page — your scroll stays yours</span>
-    <span class="f-made">built by one guy · <a href="https://github.com/Lentach" rel="author">github.com/Lentach</a></span>
+    <span class="f-made"><a href="https://github.com/Lentach" rel="author">github.com/Lentach</a></span>
   </div>
 </footer>
 

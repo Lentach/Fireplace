@@ -13,6 +13,7 @@ export function initEncrypt(root: HTMLElement) {
       <span class="enc-prompt" aria-hidden="true">›</span>
       <span class="enc-rest-caret" aria-hidden="true"></span>
       <textarea id="terminal-plain" rows="1" spellcheck="false" autocomplete="off" placeholder="type a secret — watch it seal" maxlength="120"></textarea>
+      <button class="enc-done" type="button">Done</button>
     </div>
     <div class="enc-port-rail">
       <span class="enc-status"><i></i><b>Ready</b></span>
@@ -33,6 +34,11 @@ export function initEncrypt(root: HTMLElement) {
   port.addEventListener('click', () => input.focus());
   input.addEventListener('focus', () => { status.textContent = 'Live'; });
   input.addEventListener('blur', () => { status.textContent = 'Ready'; });
+  // Done dismisses the keyboard (mobile has no other exit — Enter is swallowed
+  // to keep the box one line). stopPropagation so the port's focus-on-click
+  // handler doesn't immediately reopen it.
+  const done = root.querySelector<HTMLButtonElement>('.enc-done')!;
+  done.addEventListener('click', (e) => { e.stopPropagation(); input.blur(); });
 
   const setLen = (n: number) => {
     const total = n === 0 ? 0 : 2 + Math.ceil(n * 4 / 3) + 12;
@@ -54,7 +60,7 @@ export function initEncrypt(root: HTMLElement) {
     }
     requestAnimationFrame(frame);
   })();
-  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
+  input.addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); input.blur(); } });
   input.addEventListener('input', () => {
     if (input.value.includes('\n')) input.value = input.value.replace(/\n+/g, ' ');
     autoGrow(input);

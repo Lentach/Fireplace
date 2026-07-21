@@ -1,36 +1,41 @@
 # Latest session summary
 
-**Date:** 2026-07-19 (landing `/welcome` — root-only mobile shrink fix — LIVE PRODUCTION)
+**Date:** 2026-07-20 (landing `/welcome` — six nits + six on-device revisions — LIVE `DPGsJey4`/`D4pSIiHL`, pending phone sign-off)
 
 ## What was done
-The recorded whole-page shrink was not relay animation or focus/double-tap zoom. Android Chrome reproduced it automatically with `visualViewport.scale === 1`: the layout viewport widened from 411px toward 500px and snapped back every seven seconds.
+Six owner nits, then two rounds of physical-phone fixes. LIVE: JS `Ctz2gedD`, CSS `CKHp0JYY`.
 
-1. Isolated the source with JavaScript blocked and CSS motion A/B tests: the footer photon animates from `left: -8%` to `left: 104%` inside an overflow-visible wire, forcing mobile layout overflow.
-2. Added `overflow-x: clip` to `footer`. The photon remains animated; its offscreen endpoint no longer widens the page.
-3. Owner confirmed the production fix works on the physical phone.
-4. Removed every superseded mitigation: mobile `touch-action`, forced textarea/composer sizing, visual-viewport CSS variables, and the JavaScript nav synchronizer. Only the footer clip remains as a page fix.
-5. Retained deploy permission normalization and asset verification because they prevent the independently observed mode-700/HTTP-403 publish failure.
+### Desktop
+1. Footer: dropped duplicate "built by one guy" (kept in ledger strip); footer shows only `github.com/Lentach`. Later evened/enlarged footer padding (`44px 6vw`).
+2. Skip the tour: now a **nav pill** (in `<nav>`, left of Open app) that shows only during the journey and jumps to `#features`. (Started as a floating pill; moved to nav after it collided with the composer/rail on mobile.)
+3. Relay "mine" tag: direction-aware — forward `"Bob's →"` (left/IN), reply `"← Kate's"` (right/OUT), row slide mirrored.
+
+### Mobile
+4. Hero terminal: `Done` button (on focus) + blur-on-Enter to dismiss keyboard.
+5. Composer placeholder: `"Type a message…"` → `"Message"` (fit); prompt sub shrunk so it never clips.
+6. Journey device keyboard (rebuilt after on-device test): focusing a composer enters **compose mode** — the phone is pinned at FULL size (`position:fixed .kb-lift`) with its composer just above the keyboard via `visualViewport`; surrounding chrome hidden (`body.kb-open`); send works (`mousedown`-preventDefault so the ➤ doesn't reflow away); **tap outside or Done dismisses**.
 
 ## Key files
-- `landing/src/styles/landing.css` — root-only footer overflow fix.
-- `landing/deploy-landing.ps1` — production permission normalization and asset verification.
-- Full write-up: `2026-07-19-session-landing-mobile-autozoom.md`.
+- `landing/src/pages/index.astro` — footer, placeholders, nav skip button, kb-done, viewport meta.
+- `landing/src/scripts/journey.ts` — relay tag direction; compose-mode freeze/lift/dismiss (`poseLifted`, `releaseKb`, tap-outside, send-button focus keep).
+- `landing/src/scripts/main.ts` — nav skip `.show` toggle + Lenis jump.
+- `landing/src/scripts/encrypt.ts` — hero Done + blur-on-Enter.
+- `landing/src/styles/landing.css` — `.skip-tour` (nav), `.enc-done`, `.kb-done`, `.phone.kb-lift`, `body.kb-open` compose-mode.
+- Full write-up: `2026-07-20-session-landing-nits.md` (see Revision 2 / 3).
 
 ## Verification
-- Before fix: `innerWidth` repeatedly grew 411→498–502px while `clientWidth`, `visualViewport.width`, and `visualViewport.scale` stayed fixed.
-- Minimal page: stable. Full landing without JavaScript: failed. All CSS motion disabled: stable. Only `.f-photon` disabled: stable.
-- Cleaned production trace ran longer than the 7-second animation: `innerWidth` stayed 412px, `clientWidth === scrollWidth === 397px`, and `fphoton` remained active.
-- Cleanup verified live: no visual-viewport custom property, nav restored to normal fixed edges, hero textarea 15px, phone textarea 10px.
-- Production serves JS `C8QXiHN_` + CSS `C5BUuC4w`; deploy verification returned HTTP 200 for HTML/CSS/JS.
-- Clean production browser console: zero messages/page errors.
-- `/health`: `{"status":"ok","db":"ok"}`. Main PWA `/version.json`: `0.0.122`.
-- `graphify update .`: 5,578 nodes, 7,306 edges, 420 communities.
+- `npm run build` clean; live asset bytes verified (`kb-lift`, `body.kb-open nav`, nav `skip-tour`, `pointerdown`, `resizes-visual`).
+- Headless-verified: nav skip fits 320–1440 + jumps; both composers pin full-size/fixed/stable, chrome hides, tap-outside + Done + send all fire; prompt sub no longer clips.
+- Mobile keyboard behavior (nit 6) still needs the owner's **on-device sign-off** — headless can't emulate a real soft keyboard.
 
 ## Notes for next session
-- **LIVE:** `https://fireplace.ignorelist.com/welcome/` serves the root-only footer fix (`C5BUuC4w`).
+- **DEPLOYED but NOT committed** to git — held for on-device sign-off. Commit + push once the owner confirms the composer feels right on their phone.
+- **Always stop the `landing` dev server before `deploy-landing.ps1`** (else `npm ci` EPERM ships a stale build). Verify live bytes, not just the script's VERIFIED lines.
+- This project's dev-server HMR does NOT reliably reload the client script/CSS — restart it after edits before trusting a browser check.
+- `interactive-widget=resizes-visual` is Chrome-only; the composer fix relies on `visualViewport` (iOS-honored). Kept the meta for Android.
+- Retained: footer `overflow-x: clip` autozoom fix; deploy-script permission/asset hardening.
 
 ## Previous
-- 2026-07-19: Landing responsive journey polish + terminal plaintext input; source committed/pushed, not deployed. Full: `2026-07-19-session-landing-terminal-input.md`.
-- 2026-07-19: Landing narrow/tablet journey switched to mobile below 1000px; master `228e0b6`, shipped to production (`CxSgh3lQ`). Full: `2026-07-19-session-landing-mobile-breakpoint.md`.
-- 2026-07-17: Cosmic theme — 5th selectable theme, merged and shipped as 0.0.121. Full: `2026-07-17-session-cosmic-theme.md`.
-- 2026-07-16: User card rounds 3+4 — PR #84 merged, 0.0.120 live. Full: `2026-07-16-session-user-card-round3.md`.
+- 2026-07-19: Landing root-only mobile shrink fix (`footer { overflow-x: clip }`) — LIVE. Full: `2026-07-19-session-landing-mobile-autozoom.md`.
+- 2026-07-19: Landing responsive journey polish + terminal plaintext input. Full: `2026-07-19-session-landing-terminal-input.md`.
+- 2026-07-17: Cosmic theme — 5th selectable theme, shipped as 0.0.121. Full: `2026-07-17-session-cosmic-theme.md`.
