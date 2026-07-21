@@ -207,3 +207,28 @@ Three of the five "ready to ship?" items done now; the 4th (Dependabot) is a sep
   define:vars) don't run in prod → prod exposure ≈ 0. The Astro fix is a 5.18.2 → 7.1.3 jump (TWO
   majors, breaking). Verdict: hygiene, not an emergency; do in a dedicated pass (esp. the Flutter
   side, which needs the app test suite) or dismiss-with-rationale the static-neutralized ones.
+
+## Revision 9 — Dependabot triage (the deferred item, done)
+Enumerated the real alerts via `gh api` instead of guessing. Ground truth: **all 7 are in the
+landing** (Astro ×6 + esbuild ×1) — ZERO Flutter/backend alerts (backend + scripts/smoke
+`npm audit` = 0; the Flutter pub deps have no Dependabot alerts). Two corrections to earlier
+notes: it was never "main-app deps only", and most fixes are a 5→6 bump (only the view-transition
+one needs 7.1.0), not exclusively 5→7.
+- **esbuild low — #83, dev-server arbitrary file read on Windows (GHSA-g7r4-m6w7-qqqr).** Astro
+  pins esbuild `^0.27.3` so there's no in-range patch (fix is 0.28.1). Added a **scoped npm
+  override** `overrides.astro.esbuild: "^0.28.1"` → esbuild 0.28.1 across the astro tree (vite
+  deduped to it). Build clean and the emitted dist is **byte-identical** (JS `BmJLEC93` / CSS
+  `D39osGPo` unchanged) — the fix is build-tooling only, so NO redeploy is needed; the alert
+  auto-closes once master's updated lockfile is scanned.
+- **6 Astro XSS/SSRF alerts — #81,82,84,85,86,87.** DISMISSED via `gh api` (`dismissed_reason:
+  not_used`, per-alert rationale comment). Each targets an Astro *runtime* feature this **static**
+  deploy never uses: prerendered-error-page SSR fetch (#85 high), unescaped slot name (#84 high),
+  view transitions (#87 med), spread-attr names (#86 med), define:vars (#81 med), server islands
+  (#82 low). Static prerender + nginx serving `dist/` means none of these code paths execute in
+  production → prod exposure = 0. Deliberately did NOT run the Astro 5→6/7 major migration
+  (breaking on a hand-tuned canvas site, zero prod payoff) — matches the recommended plan.
+- **Frontend (Flutter): no action** — it has no alerts. (The earlier "the other ~5 are Flutter"
+  hypothesis was wrong; corrected by the `gh` enumeration.)
+- Net: esbuild override committed + pushed; 6 alerts dismissed with a documented, accurate
+  rationale. Expected open Dependabot alerts after next scan: **0**. Re-open only if the landing
+  ever moves off static output / adopts SSR/islands/view-transitions — then actually upgrade Astro.

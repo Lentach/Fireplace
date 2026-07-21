@@ -10,5 +10,10 @@
   "dependencies": {
     "astro": "^5.0.0",
     "lenis": "^1.1.0"
+  },
+  "overrides": {
+    "astro": {
+      "esbuild": "^0.28.1"
+    }
   }
 }
