@@ -65,16 +65,17 @@ void main() {
       );
     });
 
-    test('over-broad `fd` prefix also rejects a legitimate public host', () {
-      // KNOWN LIMITATION: the ULA alternative `fd` in the private-IP regex is
-      // not anchored to an IPv6 boundary, so it swallows any hostname starting
-      // with "fd" — including this legitimate public CDN. The intended result
-      // is `true`; fixing it needs a source-side regex boundary (out of scope
-      // for a test-only change). This case pins the current behaviour so the
-      // over-broad match is documented and any future fix must update it.
+    test('allows a legitimate public host that merely starts with "fd"/"fc"', () {
+      // Regression guard: the ULA alternative is anchored to an IPv6 hextet
+      // boundary (`f[cd][0-9a-f]{0,2}:`), so a public hostname beginning with
+      // "fd"/"fc" is NOT mistaken for an fc00::/7 ULA address and stays safe.
       expect(
         LinkPreviewService.isSafeImageUrl('https://fdcdn.example.com/x.png'),
-        false,
+        true,
+      );
+      expect(
+        LinkPreviewService.isSafeImageUrl('https://fc-corp.example.com/x.png'),
+        true,
       );
     });
 
