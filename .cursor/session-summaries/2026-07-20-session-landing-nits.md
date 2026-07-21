@@ -178,3 +178,32 @@ Not owner nits — the four next-step improvements flagged at the end of the nit
   ×2 / `prefers-reduced-motion` ×4 / `rootMargin` ×2; live HTML carries `<button class="mark">`
   + all new meta; live CSS carries the reduced-motion block + `focus-visible` rules.
 - **Committed + pushed** to `origin master`.
+
+## Revision 8 — ship-readiness polish (single h1, caption contrast, sitemap)
+Three of the five "ready to ship?" items done now; the 4th (Dependabot) is a separate later pass, the 5th (on-device eyeball) is the owner's.
+- **Single `<h1>`.** The journey heading "Where does a message actually go?" was a 2nd `<h1>`
+  (competing with the hero for the page title) → demoted to `<h2>`; CSS `.prompt h1` → `.prompt h2`.
+  Page now has exactly one h1 (hero), rest h2/h3. JS only queries `.prompt` (container), unaffected.
+- **Caption contrast (WCAG).** Faint text nudged up for legibility while keeping the moody dark
+  look: `.scroll-cue` .35→.6, `.prompt p` .45→.62, `.outro .fine` .3→.55, `.f-row` .3→.55,
+  `.f-honest` ice .45→.62. Verified by screenshot (outro fine-print + footer honest line now read
+  clearly, aesthetic preserved).
+- **Sitemap.** `public/sitemap.xml` → served at `/welcome/sitemap.xml` (200 text/xml), lists the
+  canonical welcome URL. NOTE: a `robots.txt` was intentionally NOT added — at a `/welcome/`
+  subpath it would sit at `/welcome/robots.txt`, which crawlers ignore (they only read the domain
+  root `/robots.txt`, which is the PWA's territory). An effective robots + sitemap reference
+  belongs at the domain root — a small root/nginx change, owner's call.
+- LIVE + byte-verified: JS `BmJLEC93` (unchanged), CSS `D39osGPo`. Live HTML has one `<h1>`;
+  live CSS shows `#eef6fb99`/`#eef6fb8c`/`#8fd8ff9e` (the bumped alphas) + `.prompt h2`. Sitemap 200.
+  Committed + pushed to `origin master`.
+
+### Still open (deliberately later)
+- **Dependabot (7 alerts).** Grounded: `npm audit` → backend 0, scripts/smoke 0, **landing 2**
+  (1 high = Astro ≤7.0.9 chained XSS, 1 low = esbuild dev-server file read on Windows). The other
+  ~5 are almost certainly the **Flutter/frontend pub deps** (`pubspec.lock`, npm audit can't see).
+  Correction to an earlier note: the landing DOES carry a high alert (not "main-app only") — BUT
+  the landing deploys fully STATIC (astro `output: static`, nginx serves `dist/`), so the Astro
+  advisories (dev-server / SSR / server-islands / error-page fetch / view-transitions /
+  define:vars) don't run in prod → prod exposure ≈ 0. The Astro fix is a 5.18.2 → 7.1.3 jump (TWO
+  majors, breaking). Verdict: hygiene, not an emergency; do in a dedicated pass (esp. the Flutter
+  side, which needs the app test suite) or dismiss-with-rationale the static-neutralized ones.

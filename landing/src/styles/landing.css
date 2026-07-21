@@ -53,7 +53,7 @@ nav .links a:focus-visible,
 .hero .sub { margin-top: 24px; max-width: 44ch; font-size: 13px; line-height: 1.9; color: rgba(238, 246, 251, .55); }
 .hero .scroll-cue {
   position: absolute; z-index: 2; left: 6vw; bottom: 4vh; font-size: 10px; letter-spacing: .3em;
-  text-transform: uppercase; color: rgba(238, 246, 251, .35); animation: cue 2.4s ease-in-out infinite;
+  text-transform: uppercase; color: rgba(238, 246, 251, .6); animation: cue 2.4s ease-in-out infinite;
 }
 @keyframes cue { 0%, 100% { transform: translateY(0) } 50% { transform: translateY(6px) } }
 
@@ -368,9 +368,9 @@ body.kb-open .cap,
 body.kb-open .rail,
 body.kb-open .journey-hint { opacity: 0 !important; pointer-events: none; }
 .prompt { position: absolute; z-index: 20; left: 50%; top: 16%; transform: translateX(-50%); text-align: center; transition: opacity .6s; width: max-content; max-width: 90vw; }
-.prompt h1 { font-weight: 900; text-transform: uppercase; font-size: clamp(26px, 3.4vw, 46px); line-height: 1.02; }
-.prompt h1 span { color: var(--ice); }
-.prompt p { margin-top: 12px; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: rgba(238, 246, 251, .45); }
+.prompt h2 { font-weight: 900; text-transform: uppercase; font-size: clamp(26px, 3.4vw, 46px); line-height: 1.02; }
+.prompt h2 span { color: var(--ice); }
+.prompt p { margin-top: 12px; font-size: 11px; letter-spacing: .2em; text-transform: uppercase; color: rgba(238, 246, 251, .62); }
 
 /* ---------- the facts chapter: lifted dark, not a white flashbang ----------
    After minutes of near-black space, a paper-white slab reads as a flash.
@@ -447,7 +447,7 @@ body.kb-open .journey-hint { opacity: 0 !important; pointer-events: none; }
 }
 .outro .cta:hover { border-color: rgba(143, 216, 255, .95); color: #fff; box-shadow: 0 0 38px rgba(143, 216, 255, .35), inset 0 0 28px rgba(143, 216, 255, .12); }
 .outro .cta:hover::after { left: 115%; }
-.outro .fine { margin-top: 36px; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: rgba(238, 246, 251, .3); }
+.outro .fine { margin-top: 36px; font-size: 10px; letter-spacing: .2em; text-transform: uppercase; color: rgba(238, 246, 251, .55); }
 
 /* ---------- footer: the wire keeps going ---------- */
 /* The photon reaches left: 104%; clip that paint so mobile layout viewports
@@ -474,11 +474,11 @@ footer { background: #000; position: relative; overflow-x: clip; }
      left cell push the middle line off-axis */
   display: grid; grid-template-columns: minmax(0, 1fr) auto minmax(0, 1fr); align-items: center; gap: 12px 32px;
   padding: 44px 6vw;
-  font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: rgba(238, 246, 251, .3);
+  font-size: 10px; letter-spacing: .16em; text-transform: uppercase; color: rgba(238, 246, 251, .55);
 }
 .f-mark { color: rgba(238, 246, 251, .55); letter-spacing: .2em; }
 .f-mark b { color: var(--ice); }
-.f-honest { color: rgba(143, 216, 255, .45); text-align: center; }
+.f-honest { color: rgba(143, 216, 255, .62); text-align: center; }
 .f-made { text-align: right; }
 .f-made a { color: inherit; text-decoration: none; border-bottom: 1px solid rgba(143, 216, 255, .3); transition: color .3s; }
 .f-made a:hover { color: var(--ice); }

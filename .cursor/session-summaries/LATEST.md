@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-20 (landing `/welcome` — Revision 7: reduced-motion + off-screen rAF pause + social/SEO meta + a11y — LIVE `BmJLEC93`/`BKkQ4cC7`, committed + pushed)
+**Date:** 2026-07-20 (landing `/welcome` — Rev 7: reduced-motion + off-screen rAF pause + social meta + a11y; Rev 8: single h1 + caption contrast + sitemap — LIVE `BmJLEC93`/`D39osGPo`, committed + pushed. Dependabot deferred — see nits file "Still open".)
 
 ## What was done (Revision 7 — the four "what else can we improve" items)
 The four next-step improvements flagged after the nit work, done and shipped together.
