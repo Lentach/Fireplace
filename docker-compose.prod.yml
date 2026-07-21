@@ -26,6 +26,8 @@ services:
         max-size: "10m"
         max-file: "3"
     environment:
+      # NOTE: postgres applies POSTGRES_* only on FIRST init of an empty pgdata
+      # volume; rotating DB_* on an already-provisioned VM needs a manual ALTER ROLE.
       POSTGRES_USER: ${DB_USER:-postgres}
       POSTGRES_PASSWORD: ${DB_PASS:-postgres}
       POSTGRES_DB: ${DB_NAME:-chatdb}
