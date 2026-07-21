@@ -16,10 +16,6 @@ export class FcmTokensService {
     await this.fcmTokenRepo.upsert({ userId, token, platform }, ['token']);
   }
 
-  async removeByToken(token: string): Promise<void> {
-    await this.fcmTokenRepo.delete({ token });
-  }
-
   async removeByTokenForUser(userId: number, token: string): Promise<void> {
     await this.fcmTokenRepo.delete({ userId, token });
   }
@@ -38,19 +34,6 @@ export class FcmTokensService {
     }
     const allowed = new Set(platforms);
     return rows.filter((r) => allowed.has(r.platform)).map((r) => r.token);
-  }
-
-  async findRowsByUserId(userId: number): Promise<FcmToken[]> {
-    return this.fcmTokenRepo.find({ where: { userId } });
-  }
-
-  async findRowsByUserIdAndPlatforms(
-    userId: number,
-    platforms: string[],
-  ): Promise<FcmToken[]> {
-    const rows = await this.fcmTokenRepo.find({ where: { userId } });
-    const allowed = new Set(platforms);
-    return rows.filter((r) => allowed.has(r.platform));
   }
 
   async removeByTokens(tokens: string[]): Promise<void> {

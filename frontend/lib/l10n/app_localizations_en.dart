@@ -9,9 +9,6 @@ class AppLocalizationsEn extends AppLocalizations {
   AppLocalizationsEn([String locale = 'en']) : super(locale);
 
   @override
-  String get appTitle => 'Fireplace';
-
-  @override
   String get settings => 'Settings';
 
   @override
@@ -82,9 +79,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contacts => 'Contacts';
 
   @override
-  String get profilePictureUpdated => 'Profile picture updated';
-
-  @override
   String get uploadFailed => 'Upload failed';
 
   @override
@@ -95,9 +89,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get accountDeletionFailed => 'Account deletion failed';
-
-  @override
-  String get loading => 'Loading…';
 
   @override
   String get devicesLoading => 'Loading…';
@@ -309,13 +300,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get attachment => 'Attachment';
 
   @override
-  String get attachmentOptionPhoto => 'Photo';
-
-  @override
   String get attachmentOptionDocument => 'Document';
-
-  @override
-  String get actionTileTimer => 'Timer';
 
   @override
   String get actionTileDisappearingMessages => 'Disappearing messages';
@@ -361,11 +346,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String conversationDisappearingTimerHint(String duration) {
-    return 'Disappearing messages: $duration';
-  }
-
-  @override
   String get conversationLastMessageEphemeralPreRead => 'Disappears after read';
 
   @override
@@ -384,9 +364,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get disappearingTimerSecondsLabel => 'Seconds';
-
-  @override
-  String get disappearingTimerApply => 'Apply';
 
   @override
   String get disappearingTimerOff => 'Off';
@@ -550,9 +527,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get gifSearchHint => 'Search GIFs...';
-
-  @override
-  String get gifLoadError => 'Could not load GIFs';
 
   @override
   String get antiQuantumNoteTitle => 'Anti-Quantum Note';
@@ -866,9 +840,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get userCardBack => 'Back';
-
-  @override
-  String get userCardNotifications => 'Notifications';
 
   @override
   String get userCardNotificationsOn => 'Notifications on';

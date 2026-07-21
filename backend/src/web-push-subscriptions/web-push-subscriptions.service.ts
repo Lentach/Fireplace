@@ -34,10 +34,6 @@ export class WebPushSubscriptionsService {
     );
   }
 
-  async removeByEndpoint(endpoint: string): Promise<void> {
-    await this.subscriptionRepo.delete({ endpoint });
-  }
-
   async removeByEndpointForUser(userId: number, endpoint: string): Promise<void> {
     await this.subscriptionRepo.delete({ userId, endpoint });
   }

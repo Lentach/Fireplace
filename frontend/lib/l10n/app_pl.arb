@@ -1,6 +1,5 @@
 {
   "@@locale": "pl",
-  "appTitle": "Fireplace",
   "settings": "Ustawienia",
   "theme": "Motyw",
   "language": "Język",
@@ -23,12 +22,10 @@
   "uninstallWarning": "Odinstalowanie aplikacji lub wyczyszczenie danych witryny trwale usuwa historię wiadomości — aby odświeżyć, po prostu całkowicie zamknij i otwórz aplikację ponownie.",
   "chat": "Czaty",
   "contacts": "Kontakty",
-  "profilePictureUpdated": "Zdjęcie profilowe zaktualizowane",
   "uploadFailed": "Nie udało się przesłać",
   "passwordUpdatedSuccessfully": "Hasło zostało zmienione",
   "passwordResetFailed": "Nie udało się zmienić hasła",
   "accountDeletionFailed": "Nie udało się usunąć konta",
-  "loading": "Ładowanie…",
   "devicesLoading": "Ładowanie…",
   "settingsAppVersion": "Wersja aplikacji",
 
@@ -109,9 +106,7 @@
   "image": "Obraz",
   "ping": "Ping",
   "attachment": "Załącznik",
-  "attachmentOptionPhoto": "Zdjęcie",
   "attachmentOptionDocument": "Dokument",
-  "actionTileTimer": "Timer",
   "actionTileDisappearingMessages": "Znikające wiadomości",
   "disappearingTimerTitle": "Znikające wiadomości",
   "disappearingTimerExplainerLine1": "Wiadomości znikają po odczytaniu.",
@@ -132,10 +127,6 @@
   "@disappearingComposerBannerSemantics": {
     "placeholders": { "duration": { "type": "String" } }
   },
-  "conversationDisappearingTimerHint": "Znikające wiadomości: {duration}",
-  "@conversationDisappearingTimerHint": {
-    "placeholders": { "duration": { "type": "String" } }
-  },
   "conversationLastMessageEphemeralPreRead": "Znika po odczytaniu",
   "conversationLastMessageEphemeralRemaining": "Znika za {duration}",
   "@conversationLastMessageEphemeralRemaining": {
@@ -145,7 +136,6 @@
   "disappearingTimerHoursLabel": "Godziny",
   "disappearingTimerMinutesLabel": "Minuty",
   "disappearingTimerSecondsLabel": "Sekundy",
-  "disappearingTimerApply": "Zastosuj",
   "disappearingTimerOff": "Wyłączone",
   "disappearingTimerOutOfRange": "Timer: od 5 sekund do 30 dni albo same zera, aby wyłączyć.",
   "disappearingTimerDays": "{count, plural, one{1 dzień} few{{count} dni} many{{count} dni} other{{count} dnia}}",
@@ -196,7 +186,6 @@
   "clearingChat": "Czyszczenie…",
   "gifNoResults": "Nie znaleziono GIFów",
   "gifSearchHint": "Szukaj GIFów...",
-  "gifLoadError": "Nie udało się załadować GIFów",
 
   "antiQuantumNoteTitle": "Notatka antykwantowa",
   "antiQuantumNoteHint": "Napisz swoją tajną wiadomość...",
@@ -319,7 +308,6 @@
   "userCardSave": "Zapisz",
   "userCardCancel": "Anuluj",
   "userCardBack": "Wstecz",
-  "userCardNotifications": "Powiadomienia",
   "userCardNotificationsOn": "Powiadomienia włączone",
   "userCardMuteOneHour": "Wycisz na 1 godzinę",
   "userCardMuteEightHours": "Wycisz na 8 godzin",
