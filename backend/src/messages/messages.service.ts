@@ -55,10 +55,7 @@ export class MessagesService {
       replyTo,
     });
     const saved = await this.msgRepo.save(msg);
-    if (replyTo) {
-      saved.replyTo = replyTo;
-      return saved;
-    }
+    if (replyTo) saved.replyTo = replyTo;
     return saved;
   }
 
