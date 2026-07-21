@@ -1,41 +1,33 @@
 # Latest session summary
 
-**Date:** 2026-07-20 (landing `/welcome` — Rev 7 reduced-motion + rAF pause + social meta + a11y; Rev 8 single h1 + contrast + sitemap; Rev 9 Dependabot triage (0 open); Rev 10–13 skip control: bottom-RIGHT bidirectional bookends — ↓ "skip to reply" at the start + mid-tour → two-device finale; ↑ "back to start" at the finale → start; on BOTH desktop AND mobile; hero "Done" button mobile-only. LIVE `CN8bw2nn`/`KqJS6kWo`, committed + pushed.)
+**Date:** 2026-07-21 (pre-release audit-fix implementation on branch `fix/audit-bugs` off `origin/master`, v0.0.123. R2 chat-detail dedup + backend redundant-branch cleanup committed; R1 + R3 skipped per owner. **Commit-only — NOT pushed, NOT merged.**)
 
-## What was done (Revision 7 — the four "what else can we improve" items)
-The four next-step improvements flagged after the nit work, done and shipped together.
+## What was done
+Autonomous implementation of the pre-release audit findings against `master @ 9d80e25` (v0.0.122 — prod baseline), in worktree `fireplace-fixes`. Four commits on `fix/audit-bugs`:
 
-1. **Reduced motion (`prefers-reduced-motion: reduce`).** The engine separates scroll-time (`p`, reversible, user-driven) from ambient-time (`t`, "stars class"); reduced motion freezes only `t`, keeping the scroll-driven journey live.
-   - Canvas: globe + outro paint a SINGLE static frame (no rAF loop); the globe still redraws on drag/zoom/resize. `journey.ts` freezes ambient `t` (twinkle, shell flicker, wire photons, rotor ambient spin) and skips cipher-scramble churn (`!reduce` guards) while still tracking scroll.
-   - CSS: one consolidated `@media (prefers-reduced-motion: reduce)` block stills the remaining ambient keyframes (`cue`, `caretblink` c-caret, `dp`, `nuc`, `fphoton`, `land`).
-2. **Off-screen rAF pause** (CPU/battery). New `rafOnScreen(target, frame, margin)` helper in `util.ts` (IntersectionObserver — loops only while on-screen). Wired to globe, outro, hero encrypt. The journey loop self-schedules, so it got an inline visibility gate + observer restart, **hardened** with an rAF-id guard (no duplicate loops) and a `resumed` flag (resets `lastRaw` → no stale-crossing false auto-send). Journey `rootMargin: 0` (heaviest loop — no bleed under the hero).
-3. **Social/SEO meta** (`index.astro` head): twitter card (+ title/desc/image/image:alt), `og:image:alt`, `og:site_name`, `theme-color=#000000`, `<link rel=canonical>`.
-4. **a11y:** wordmark `<span>` → `<button>` (keyboard-reachable, still `location.reload()`); `:focus-visible` ice-ring on nav mark/links, skip, kb-done, enc Done, composer send, outro CTA.
+1. **`0c42e5b` `fix(audit)`** — SHOULD/NICE bug fixes: fail-closed `JWT_SECRET`, constant-time login, `ALLOWED_ORIGINS` prod-gate, reactions `parseReactions` guard, de-hardcoded Giphy key (+ `GIPHY_API_KEY` in `deploy-web.ps1`), VAPID fail-loud, friends reject-row cleanup, preKey-id fallback, manifest color, dead `kIsWeb?` ternary cleanups, `deploy.sh` hard-fail stub. Prior session.
+2. **`8f46d45` `chore(dead-code)`** — removed provably-dead backend/frontend methods, 3 audio util files (+ test), 9 dead ARB keys (l10n regenerated). Prior session.
+3. **`9da1d02` `refactor(chat-detail)`** — extracted `_buildChatBodyStack(body, messaging)`; both embedded/non-embedded `build()` branches shared an identical `Stack{ body, PingEffectOverlay, scroll-to-bottom }`.
+4. **`58dd39d` `refactor(messages)`** — collapsed a redundant `if(replyTo){…return saved} return saved` branch in `messages.service.ts` `create()` (behavior byte-identical).
+
+**Skipped per owner:** R1 (E2E sentinel DRY — working code, don't touch); R3 (extract `_showPhotoSheet` → widget — device-proven UX, tightly coupled to parent-owned `_activePhotoIndex`/`_pageController`; ~8 callbacks, no real decoupling, high-risk/low-reward).
 
 ## Key files
-- `landing/src/scripts/util.ts` — new `rafOnScreen` (IntersectionObserver loop gate).
-- `landing/src/scripts/globe.ts` / `main.ts` (outro) / `encrypt.ts` — reduced-motion static + off-screen pause.
-- `landing/src/scripts/journey.ts` — freeze ambient `t`, guard cipher churn, visibility gate + rAF-id guard + `resumed`.
-- `landing/src/pages/index.astro` — social/SEO meta; wordmark button.
-- `landing/src/styles/landing.css` — reduced-motion block, `:focus-visible` rings, `nav .mark` button reset.
-- Full write-up incl. the six prior nits + on-device Revisions 2–6: `2026-07-20-session-landing-nits.md`.
+- `frontend/lib/screens/chat_detail_screen.dart` — new `_buildChatBodyStack(body, messaging)`, called from both `build()` paths.
+- `backend/src/messages/messages.service.ts` — `create()` return-branch collapse.
 
 ## Verification
-- Build clean; no console/page errors in either motion mode.
-- Per-canvas `clearRect` frame counts by scroll zone prove the pause (hero→globe only; mid-journey→journey only; features→none; outro→outro only; re-entry→journey resumes; journey no longer runs under the hero).
-- Reduced-motion emulated: globe static (0 loop frames, canvas still painted), journey still tracks scroll, ambient CSS anims `none`.
-- Wordmark button reloads + focusable; live bytes verified — JS has `IntersectionObserver`/`prefers-reduced-motion`/`rootMargin`, HTML has the button + meta, CSS has the reduced-motion + focus-visible rules.
+- Backend `npm test` → **474 passed / 47 suites**.
+- Frontend `flutter analyze --no-fatal-infos` → **No issues**; `flutter test` → **727 passed**.
 
 ## Notes for next session
-- **Prior nit work (Revisions 1–6) and Revision 7 are all committed + pushed to `origin master` and LIVE.** Repo == production.
-- **Always stop the `landing` dev/preview server before `deploy-landing.ps1`** (else `npm ci` EPERM ships a stale build). Verify live bytes, not just the script's VERIFIED lines.
-- This project's dev-server HMR does NOT reliably reload the client script/CSS — restart it after edits before trusting a browser check.
-- Reduced motion keeps the scroll-driven journey by design (user drives it); only autoplay motion is calmed. `interactive-widget=resizes-visual` is Chrome-only; the composer fix relies on `visualViewport` (iOS-honored).
-- Retained: footer `overflow-x: clip` autozoom fix; deploy-script permission/asset hardening.
-- Aside (separate track): Dependabot reports 7 vulns (2 high) on the **main app** deps — not landing.
+- Branch `fix/audit-bugs` tracks `origin/master` — a bare `git push` targets master. **NEVER push/merge without explicit owner OK** (CLAUDE.md 4). Version 0.0.123.
+- **Left for owner (decisions):** TOFU/safety-numbers; removing TEMP E2E diagnostics (`E2ePersistentDiag`/`SESSION_STORE_*`); Giphy key rotation; unreferenced binary assets (`frontend/web/icons/notification-icon-192.png`, `landing/brand/*`); plus skipped R1/R3.
+- Audit source docs (reference, gitignored, *other* worktree): `.../fireplace/.planning/pre-release-audit/`. Original `Fireplace` dir is on stale `feat/user-card-rework` (80 commits behind) — do NOT work there.
+- Full write-up: `2026-07-21-session-audit-fix-refactors.md`.
 
 ## Previous
-- 2026-07-20: Landing `/welcome` six owner nits + on-device Revisions 2–6 (skip control, mobile composer, relay tag, footer). Committed `7aabcea`. Full: `2026-07-20-session-landing-nits.md`.
+- 2026-07-20: Landing `/welcome` Rev 7-13 — reduced-motion + off-screen rAF pause + social/SEO meta + a11y focus rings + bidirectional skip bookends. Committed + pushed, LIVE. Full: `2026-07-20-session-landing-nits.md`.
+- 2026-07-20: Landing six owner nits + on-device Revisions 2-6. Committed `7aabcea`. Full: `2026-07-20-session-landing-nits.md`.
 - 2026-07-19: Landing root-only mobile shrink fix (`footer { overflow-x: clip }`) — LIVE. Full: `2026-07-19-session-landing-mobile-autozoom.md`.
 - 2026-07-19: Landing responsive journey polish + terminal plaintext input. Full: `2026-07-19-session-landing-terminal-input.md`.
-- 2026-07-17: Cosmic theme — 5th selectable theme, shipped as 0.0.121. Full: `2026-07-17-session-cosmic-theme.md`.
