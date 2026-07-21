@@ -17,10 +17,11 @@ class EncryptionService {
   static const int _initialPreKeyBatchSize = 20;
   static const int _deviceId = 1;
 
-  /// DualStorage: writes to both flutter_secure_storage (IndexedDB on web) AND
-  /// SharedPreferences (localStorage on web). Reads try flutter_secure_storage
-  /// first, then falls back to SharedPreferences. This prevents data loss when
-  /// IndexedDB/WebCrypto keys are evicted by the browser.
+  /// DualStorage: platform-branched Signal-key storage (see
+  /// encryption/signal_stores.dart). On web, keys live ONLY in
+  /// SharedPreferences/localStorage — flutter_secure_storage's IndexedDB+
+  /// WebCrypto backing loses data when tabs close or the WebCrypto key is
+  /// evicted. On mobile, ONLY flutter_secure_storage (Keychain/Keystore).
   final DualStorage _storage = DualStorage(FlutterSecureStorage(
     webOptions: const WebOptions(dbName: 'FireplaceE2E'),
   ));
