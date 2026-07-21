@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-20 (landing `/welcome` — Rev 7 reduced-motion + rAF pause + social meta + a11y; Rev 8 single h1 + contrast + sitemap; Rev 9 Dependabot triage (0 open); Rev 10–11 skip chevron → bottom-RIGHT and made FORWARD-ONLY (bidirectional ↑ overlapped the docked phone; shows only mid-tour raw 0.16–0.66). LIVE `C21qRj_x`/`BRnDbUrD`, committed + pushed.)
+**Date:** 2026-07-20 (landing `/welcome` — Rev 7 reduced-motion + rAF pause + social meta + a11y; Rev 8 single h1 + contrast + sitemap; Rev 9 Dependabot triage (0 open); Rev 10–12 skip control: bottom-RIGHT, ↓ now skips to the two-device reply finale (not features), ↑ restored at the finale (desktop-only — no room on mobile); hero "Done" button made mobile-only. LIVE `TY8Ssk1P`/`BJXz6M4T`, committed + pushed.)
 
 ## What was done (Revision 7 — the four "what else can we improve" items)
 The four next-step improvements flagged after the nit work, done and shipped together.

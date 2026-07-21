@@ -123,7 +123,10 @@ nav .links a:focus-visible,
   text-transform: uppercase; color: #04121c; background: var(--ice);
   border: 0; border-radius: 999px; padding: 5px 12px;
 }
-.enc-terminal .enc-port:focus-within .enc-done { display: inline-flex; }
+/* touch only — a soft-keyboard exit; on desktop (no keyboard) it's noise */
+@media (max-width: 999px) {
+  .enc-terminal .enc-port:focus-within .enc-done { display: inline-flex; }
+}
 .enc-terminal .enc-port-rail {
   display: flex; justify-content: space-between; align-items: center; gap: 16px;
   margin-top: 7px; font-size: 8px; letter-spacing: .18em; text-transform: uppercase;
@@ -336,12 +339,17 @@ nav .links a:focus-visible,
   filter: drop-shadow(0 0 5px rgba(143, 216, 255, .55));
   transition: transform .35s cubic-bezier(.2, .9, .3, 1);
 }
+.skip-tour.up svg { transform: rotate(180deg); }
 .skip-tour .c1 { animation: skipPulse 1.5s ease-in-out infinite; }
 .skip-tour .c2 { animation: skipPulse 1.5s ease-in-out .22s infinite; }
 @keyframes skipPulse { 0%, 100% { opacity: .18 } 45% { opacity: 1 } }
 .skip-tour:hover::before { opacity: 1; }
 .skip-tour:hover svg { transform: translateY(3px); }
+.skip-tour.up:hover svg { transform: rotate(180deg) translateY(3px); }
 .skip-tour:hover .c1, .skip-tour:hover .c2 { animation-duration: .9s; }
+/* the ↑ (reply finale) is desktop-only: on phones the docked device fills the
+   lower-right with no clear corner for it — mobile users just swipe up */
+@media (max-width: 999px) { .skip-tour.up { display: none; } }
 @media (prefers-reduced-motion: reduce) {
   .skip-tour .c1, .skip-tour .c2 { animation: none; opacity: .8; }
 }

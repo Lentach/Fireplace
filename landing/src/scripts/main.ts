@@ -27,23 +27,28 @@ if (journey) initJourney(journey);
 /* clicking the wordmark refreshes the page (owner request) */
 document.querySelector<HTMLElement>('nav .mark')?.addEventListener('click', () => location.reload());
 
-/* skip — a photon-pulse ↓ chevron pinned to the bottom-RIGHT corner (a peripheral
-   control, not a central journey cue: dead-center it read as "continue" and got
-   mis-tapped, skipping the whole tour). Jumps forward past the tour to the facts;
-   hidden once the recipient device comes into play (the final third) — it flies
-   through and docks in the lower-right corner, exactly where the skip sits. */
+/* skip — a photon-pulse chevron in ONE fixed spot, the bottom-RIGHT corner (a
+   peripheral control, not a central journey cue: dead-center it got mis-tapped).
+   Bidirectional: ↓ skips forward to the two-device reply finale ("07 / Kate's
+   turn"); once there it flips to ↑ and jumps back to the start. Hidden through the
+   middle stretch, where the recipient flies through / docks in the corner. */
 const skip = document.querySelector<HTMLButtonElement>('.skip-tour');
-const features = document.querySelector<HTMLElement>('#features');
-if (skip && journey && features) {
-  skip.addEventListener('click', () => lenis.scrollTo(features, { offset: -40 }));
+if (skip && journey) {
+  const range = () => journey.offsetHeight - innerHeight;
+  const rawOf = () => (scrollY - journey.offsetTop) / range();
+  // the two-device reply finale sits near the tail of the 800vh track
+  const finaleY = () => journey.offsetTop + range() * 0.97;
+  skip.addEventListener('click', () => {
+    if (rawOf() > 0.955) lenis.scrollTo(journey.offsetTop, { offset: 0 });   // ↑ back to the start
+    else lenis.scrollTo(finaleY(), { offset: 0 });                            // ↓ to the reply
+  });
   const syncSkip = () => {
-    const top = journey.offsetTop;
-    // show only mid-tour: past the composing/lifting sender (≤~0.15) and before the
-    // recipient emerges (≥~0.66) — both dock in the lower-right where the skip sits
-    const range = journey.offsetHeight - innerHeight;
-    const raw = (scrollY - top) / range;
-    const inTour = raw > 0.16 && raw < 0.66;
-    skip.classList.toggle('show', inTour);
+    const raw = rawOf();
+    const up = raw > 0.955 && raw < 1;         // at the reply finale → ↑
+    const down = raw > 0.16 && raw < 0.66;     // mid-tour, before the recipient reaches the corner → ↓
+    skip.classList.toggle('show', up || down);
+    skip.classList.toggle('up', up);
+    skip.setAttribute('aria-label', up ? 'Back to the start' : 'Skip to the reply');
   };
   syncSkip();
   window.addEventListener('scroll', syncSkip, { passive: true });

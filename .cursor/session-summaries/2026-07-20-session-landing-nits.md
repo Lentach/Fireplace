@@ -276,3 +276,27 @@ position holds both on a phone-sized screen. Presented the tradeoff; owner chose
   to `#features` (scrollY→7384≈featTop). 
 - LIVE + byte-verified: JS `C21qRj_x`, CSS `BRnDbUrD` (`.skip-tour{…right:6vw;bottom:12vh…}`, no
   `.skip-tour.up`; JS has no "Skip back"). Committed + pushed.
+
+## Revision 12 — Done mobile-only + skip retargeted to the reply finale (bidirectional again, one fixed spot)
+Owner asked for three things, images provided (image1 = the two-device "07 / Kate's turn" reply
+finale; image2 = the features section).
+- **Done button → mobile-only.** The hero terminal's `.enc-done` showed on desktop focus (no soft
+  keyboard there → noise). Gated its `display:inline-flex` behind `@media (max-width:999px)`, so it
+  only appears in mobile view. (`.kb-done` was already mobile-only via `body.kb-open`.)
+- **↓ skip retargeted.** It scrolled OUT to `#features` (image2); now it scrolls to the two-device
+  reply finale (image1) — `lenis.scrollTo(journey.offsetTop + (offsetHeight-innerHeight)*0.97)`
+  (raw≈0.97 = caption 07, both devices docked). Verified: mid-tour click lands raw 0.97 / cap
+  "07 / KATE'S TURN".
+- **↑ restored, in ONE fixed spot.** The bottom-right chevron is bidirectional again: `↓` mid-tour
+  (raw 0.16–0.66) → finale; at the finale (raw 0.955–1) it flips to `↑` "Back to the start"
+  (`lenis.scrollTo(journey.offsetTop)`). Re-added the `.skip-tour.up` rotation CSS + dynamic aria.
+- **The ↑ is DESKTOP-ONLY** (`@media (max-width:999px){ .skip-tour.up{display:none} }`): this is
+  exactly the overlap that forced Rev 11's forward-only — at the mobile finale the docked device
+  fills the lower-right and the device↔rail band is ~33px on a 667-tall phone (no room for the
+  46px chevron). On desktop the finale centers both phones, leaving the corner 97px clear
+  (verified 1245w, matching image1). Mobile users swipe up. `↓` still works on mobile (mid-tour,
+  clear).
+- Verified (preview): desktop ↓@0.4 → raw 0.97 "07 KATE'S TURN" → flips ↑ → click → raw 0 (start),
+  up-arrow 97px clear of Kate. Mobile: Done `display:flex`, ↓ shows mid-tour, ↑ `display:none` at
+  finale. LIVE + byte-verified: JS `TY8Ssk1P`, CSS `BJXz6M4T` (enc-done under max-width:999px;
+  `.skip-tour.up{display:none}` mobile; JS has "Back to the start"/"Skip to the reply"). Committed + pushed.
