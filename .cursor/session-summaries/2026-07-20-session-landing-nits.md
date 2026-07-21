@@ -229,6 +229,12 @@ one needs 7.1.0), not exclusively 5→7.
   (breaking on a hand-tuned canvas site, zero prod payoff) — matches the recommended plan.
 - **Frontend (Flutter): no action** — it has no alerts. (The earlier "the other ~5 are Flutter"
   hypothesis was wrong; corrected by the `gh` enumeration.)
-- Net: esbuild override committed + pushed; 6 alerts dismissed with a documented, accurate
-  rationale. Expected open Dependabot alerts after next scan: **0**. Re-open only if the landing
-  ever moves off static output / adopts SSR/islands/view-transitions — then actually upgrade Astro.
+- Net (confirmed via `gh`): **0 open** Dependabot alerts — 8 dismissed (`not_used`), 3 fixed
+  (esbuild #83 + #87 + an older #70). Dependabot published a few more of the SAME
+  static-unreachable Astro XSS class mid-pass (#88 view-transitions, #89 transition:* on hydrated
+  islands, #90 spread-attr incomplete-fix) — dismissed with the same rationale.
+- **Recurrence caveat:** because we deferred the Astro upgrade, new advisories for astro 5.18.2
+  will keep appearing over time; each will be the same static-unreachable class (dismiss the same
+  way). The DURABLE fix is upgrading Astro (5→6 clears most; 7.1.x clears the view-transition one)
+  in a dedicated maintenance window with a full rebuild + browser smoke — worth doing eventually,
+  not urgent given the static deploy neutralizes prod exposure.
