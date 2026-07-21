@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-20 (landing `/welcome` — Rev 7 reduced-motion + rAF pause + social meta + a11y; Rev 8 single h1 + contrast + sitemap; Rev 9 Dependabot triage — esbuild patched via scoped override, 6 static-neutralized Astro alerts dismissed. LIVE `BmJLEC93`/`D39osGPo`, committed + pushed. Open alerts → 0 after scan.)
+**Date:** 2026-07-20 (landing `/welcome` — Rev 7 reduced-motion + rAF pause + social meta + a11y; Rev 8 single h1 + contrast + sitemap; Rev 9 Dependabot triage (0 open); Rev 10–11 skip chevron → bottom-RIGHT and made FORWARD-ONLY (bidirectional ↑ overlapped the docked phone; shows only mid-tour raw 0.16–0.66). LIVE `C21qRj_x`/`BRnDbUrD`, committed + pushed.)
 
 ## What was done (Revision 7 — the four "what else can we improve" items)
 The four next-step improvements flagged after the nit work, done and shipped together.

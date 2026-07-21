@@ -319,7 +319,7 @@ nav .links a:focus-visible,
    to skip back to the start. No chrome — just signal + glow. */
 .skip-tour {
   display: none; position: fixed; z-index: 45;
-  left: 50%; bottom: 12vh; transform: translateX(-50%);
+  right: 6vw; bottom: 12vh;
   padding: 11px 18px; background: none; border: 0; cursor: pointer;
   color: var(--ice); line-height: 0; -webkit-tap-highlight-color: transparent;
 }
@@ -336,13 +336,11 @@ nav .links a:focus-visible,
   filter: drop-shadow(0 0 5px rgba(143, 216, 255, .55));
   transition: transform .35s cubic-bezier(.2, .9, .3, 1);
 }
-.skip-tour.up svg { transform: rotate(180deg); }
 .skip-tour .c1 { animation: skipPulse 1.5s ease-in-out infinite; }
 .skip-tour .c2 { animation: skipPulse 1.5s ease-in-out .22s infinite; }
 @keyframes skipPulse { 0%, 100% { opacity: .18 } 45% { opacity: 1 } }
 .skip-tour:hover::before { opacity: 1; }
 .skip-tour:hover svg { transform: translateY(3px); }
-.skip-tour.up:hover svg { transform: rotate(180deg) translateY(3px); }
 .skip-tour:hover .c1, .skip-tour:hover .c2 { animation-duration: .9s; }
 @media (prefers-reduced-motion: reduce) {
   .skip-tour .c1, .skip-tour .c2 { animation: none; opacity: .8; }

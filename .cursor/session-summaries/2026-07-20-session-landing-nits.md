@@ -238,3 +238,41 @@ one needs 7.1.0), not exclusively 5→7.
   way). The DURABLE fix is upgrading Astro (5→6 clears most; 7.1.x clears the view-transition one)
   in a dedicated maintenance window with a full rebuild + browser smoke — worth doing eventually,
   not urgent given the static deploy neutralizes prod exposure.
+
+## Revision 10 — skip chevron moved bottom-center → bottom-RIGHT (owner: users mis-tap it, skipping the whole tour)
+The photon-pulse skip chevron sat dead-center at `bottom:12vh` (same height as the journey's own
+"…on its way" hint), so it read as a central "continue/scroll" cue and got tapped — skipping the
+entire tour. Moved to the bottom-right corner: `.skip-tour` `left:50%; transform:translateX(-50%)`
+→ `right:6vw` (kept `bottom:12vh`, which clears the center progress rail + hint on desktop AND
+mobile, where the rail is near-full-width).
+- It now reads as a peripheral control, not part of the journey flow.
+- Dropped the now-vestigial hint-coordination in `main.ts`: the `!hintShowing` carve-out (and the
+  only `window.__journey` read in main) existed ONLY because skip shared the hint's center spot —
+  irrelevant in the corner. Skip is now consistently visible through the journey. Refreshed the
+  stale comment (it still described the old Rev-5 "round arrow bubble … where the hint lives").
+- Verified (preview): skip renders bottom-right (~123px/119px from edges at 1280×800), shows
+  during the journey, flips ↓→↑ in the last ~30% (aria "Skip the tour" / "Skip back to the
+  start"), click still jumps to `#features` (scrollY 4112→7383), no collision with the center
+  rail (screenshot).
+- LIVE + byte-verified: JS `BFMsxPbf`, CSS `B5clvdmX` (`.skip-tour{…right:6vw;bottom:12vh…}`).
+  Committed + pushed.
+
+## Revision 11 — skip made FORWARD-ONLY (owner call: QA found the ↑ half overlapped the docked phone)
+After Rev 10's bottom-right move, cross-width QA found the control's bidirectional half was a
+problem: the `↑` "back to start" only shows in the high-scroll zone (`scrollY > 0.7·height`) —
+exactly where the recipient device docks and fills the lower-right — so on iPhone the chevron
+overlapped the docked phone (3–9px), and on narrow desktop the recipient's FLIGHT path crossed
+the corner at raw≈0.72. `↑` and the docked phone structurally share that zone; no clean bottom
+position holds both on a phone-sized screen. Presented the tradeoff; owner chose **forward-only**.
+- `main.ts`: removed the up-zone (`upZone`, `.up` toggle, dynamic aria, the scroll-to-top click
+  branch). Click always → `#features`. Skip shows only **mid-tour** (`raw 0.16 … 0.66`): past the
+  composing/lifting sender (overlaps ≤~0.15 on mobile) and before the recipient emerges from the
+  relay (~0.62) and flies through / docks in the lower-right (overlap onset raw≈0.72). Pure
+  scroll bounds — did NOT rebuild the `__journey`/`hintShowing` coupling removed in Rev 10.
+- `landing.css`: removed the now-dead `.skip-tour.up` rules. Position unchanged (`right:6vw;
+  bottom:12vh`). The button's static `aria-label="Skip the tour"` is now always correct.
+- Verified (preview, widths 375–1440 + iPhone 375/390/414): skip shows only ~0.16–0.66, hidden at
+  both dock ends, **zero overlap with either phone anywhere it's shown**; click at raw 0.4 jumps
+  to `#features` (scrollY→7384≈featTop). 
+- LIVE + byte-verified: JS `C21qRj_x`, CSS `BRnDbUrD` (`.skip-tour{…right:6vw;bottom:12vh…}`, no
+  `.skip-tour.up`; JS has no "Skip back"). Committed + pushed.

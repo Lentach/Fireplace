@@ -27,29 +27,23 @@ if (journey) initJourney(journey);
 /* clicking the wordmark refreshes the page (owner request) */
 document.querySelector<HTMLElement>('nav .mark')?.addEventListener('click', () => location.reload());
 
-/* skip — a round arrow bubble sitting where the journey's "…on its way" hint
-   lives: ↓ jumps forward past the tour to the facts, ↑ jumps back to the start
-   (Bob's device). It appears when that hint isn't showing, so the two never
-   share the spot; the reply journey is long too, hence both directions. */
+/* skip — a photon-pulse ↓ chevron pinned to the bottom-RIGHT corner (a peripheral
+   control, not a central journey cue: dead-center it read as "continue" and got
+   mis-tapped, skipping the whole tour). Jumps forward past the tour to the facts;
+   hidden once the recipient device comes into play (the final third) — it flies
+   through and docks in the lower-right corner, exactly where the skip sits. */
 const skip = document.querySelector<HTMLButtonElement>('.skip-tour');
 const features = document.querySelector<HTMLElement>('#features');
 if (skip && journey && features) {
-  const upZone = () => scrollY > journey.offsetTop + journey.offsetHeight * 0.7;
-  skip.addEventListener('click', () => {
-    if (upZone()) lenis.scrollTo(journey.offsetTop, { offset: 0 });
-    else lenis.scrollTo(features, { offset: -40 });
-  });
+  skip.addEventListener('click', () => lenis.scrollTo(features, { offset: -40 }));
   const syncSkip = () => {
     const top = journey.offsetTop;
-    const bottom = top + journey.offsetHeight;
-    const inJourney = scrollY > top + innerHeight * 0.35 && scrollY < bottom - innerHeight * 0.1;
-    // hide while the journey's own "…on its way" hint occupies the same spot
-    const j = window.__journey;
-    const hintShowing = !!j && j.sent && (j.dir === 1 ? j.p > 0.005 && j.p < 0.04 : j.p > 0.955);
-    skip.classList.toggle('show', inJourney && !hintShowing);
-    const up = upZone();
-    skip.classList.toggle('up', up);
-    skip.setAttribute('aria-label', up ? 'Skip back to the start' : 'Skip the tour');
+    // show only mid-tour: past the composing/lifting sender (≤~0.15) and before the
+    // recipient emerges (≥~0.66) — both dock in the lower-right where the skip sits
+    const range = journey.offsetHeight - innerHeight;
+    const raw = (scrollY - top) / range;
+    const inTour = raw > 0.16 && raw < 0.66;
+    skip.classList.toggle('show', inTour);
   };
   syncSkip();
   window.addEventListener('scroll', syncSkip, { passive: true });
