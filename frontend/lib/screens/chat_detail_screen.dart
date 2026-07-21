@@ -784,6 +784,27 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     return ChatInputBar(key: _composerKey);
   }
 
+  /// Wraps the message [body] with the ping-effect overlay and the
+  /// scroll-to-bottom button, shared by the embedded and non-embedded layouts.
+  Widget _buildChatBodyStack(Widget body, MessagingProvider messaging) {
+    return Stack(
+      children: [
+        body,
+
+        // Ping effect overlay
+        if (messaging.showPingEffect)
+          Positioned.fill(
+            child: PingEffectOverlay(
+              onComplete: () {
+                messaging.clearPingEffect();
+              },
+            ),
+          ),
+        if (_showScrollToBottomButton) _buildScrollToBottomButton(),
+      ],
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final messaging = context.watch<MessagingProvider>();
@@ -953,22 +974,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           ),
           ?pinnedBanner,
           Expanded(
-            child: Stack(
-              children: [
-                body,
-
-                // Ping effect overlay
-                if (messaging.showPingEffect)
-                  Positioned.fill(
-                    child: PingEffectOverlay(
-                      onComplete: () {
-                        messaging.clearPingEffect();
-                      },
-                    ),
-                  ),
-                if (_showScrollToBottomButton) _buildScrollToBottomButton(),
-              ],
-            ),
+            child: _buildChatBodyStack(body, messaging),
           ),
         ],
       );
@@ -998,22 +1004,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           ),
         ),
       ),
-      body: Stack(
-        children: [
-          body,
-
-          // Ping effect overlay
-          if (messaging.showPingEffect)
-            Positioned.fill(
-              child: PingEffectOverlay(
-                onComplete: () {
-                  messaging.clearPingEffect();
-                },
-              ),
-            ),
-          if (_showScrollToBottomButton) _buildScrollToBottomButton(),
-        ],
-      ),
+      body: _buildChatBodyStack(body, messaging),
     );
   }
 }
