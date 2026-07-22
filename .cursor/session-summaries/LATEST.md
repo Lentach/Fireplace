@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-22 (landing Rev 16 hero-Done fix + landing EXTRACTED to its own repo `Lentach/fireplace-landing` — the monorepo no longer contains `landing/`)
+**Date:** 2026-07-22 (landing Rev 16 hero-Done fix + landing EXTRACTED to its own repo — now **`Lentach/fireplaceWebsite`**, owner renamed it from `fireplace-landing` same day — the monorepo no longer contains `landing/`)
 
 ## What was done
 1. **Rev 16 — hero terminal `.enc-done` fixed** (Android: keyboard dismissed but button stayed — the tapped `<button>` held `.enc-port:focus-within` open through itself; iOS: nothing — `click` unreliable with keyboard up, `blur()` only honored inside a real touch gesture). Ported the Rev-15 pattern in `encrypt.ts`: `pointerdown` + `preventDefault` + `blur()`, 500ms suppress so the retargeted click can't refocus. Verified on LIVE prod with trusted `tap()`. Deployed JS `BBHOwiQk` / CSS `DJ-65XJU`, monorepo commit `180c5b9`. Awaiting owner on-device re-test (hard-refresh first).
@@ -17,7 +17,7 @@
 ## Notes for next session
 - **ALL landing work now lives in `C:/Users/Lentach/Desktop/fireplace-landing`** (branch `master`); read its `CLAUDE.md` for build/deploy gotchas + iOS keyboard-dismiss lore. Do NOT look for `landing/` in the monorepo.
 - Old Desktop `fireplace-landing` dir was a monorepo worktree on `feat/landing-page` (fully pushed) — renamed to `fireplace-landing-OLD-stale-clone`, worktree repaired; owner may `git worktree remove` it later.
-- New repo is **PUBLIC** (owner ask, history secret-scanned clean first) with a business-card README (`2e2e492`), homepage + topics set. Known-and-accepted exposure: `deploy-landing.ps1`/`CLAUDE.md` publish the VM SSH login `ubuntu@51.68.138.13` + `~/fireplace` layout (key-only SSH; stock Ubuntu user; DNS already resolves the IP). Dependabot live there — its PR #1 (Astro 7.1.0→7.1.3) merged within minutes; rebuilt+redeployed, asset hashes UNCHANGED (`BBHOwiQk`/`DJ-65XJU`), repo==prod. Still enable Dependabot alerts in its Settings → Code security.
+- New repo is **PUBLIC** (owner ask, history secret-scanned clean first) with a business-card README: pitch + live-site screenshot gallery (`docs/screens/*.webp`, captured from prod via puppeteer webp screenshots) + regenerated 1200×630 `og.png` social card (old one was the top-strip-cut shot; new one deployed live, JS/CSS hashes untouched). Homepage + topics set. Known-and-accepted exposure: `deploy-landing.ps1`/`CLAUDE.md` publish the VM SSH login `ubuntu@51.68.138.13` + `~/fireplace` layout (key-only SSH; stock Ubuntu user; DNS already resolves the IP). Dependabot live there — PR #1 (Astro 7.1.0→7.1.3) merged within minutes; rebuilt+redeployed, asset hashes UNCHANGED, repo==prod. Still enable Dependabot alerts in its Settings → Code security.
 - Full write-up: `2026-07-22-session-landing-extraction.md`.
 
 ## Previous
