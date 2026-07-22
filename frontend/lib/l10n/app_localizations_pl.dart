@@ -97,6 +97,9 @@ class AppLocalizationsPl extends AppLocalizations {
   String get settingsAppVersion => 'Wersja aplikacji';
 
   @override
+  String get settingsAboutFireplace => 'O projekcie';
+
+  @override
   String get privacySafetyTitle => 'Prywatność i bezpieczeństwo';
 
   @override
@@ -720,26 +723,75 @@ class AppLocalizationsPl extends AppLocalizations {
   }
 
   @override
-  String get themeOptionLight => 'Ciepły papier (jasny)';
+  String get appearance => 'Wygląd';
 
   @override
-  String get themeOptionDark => 'Ciemny szary z turkusowym akcentem';
+  String appearanceSummary(String theme, String background) {
+    return '$theme · $background';
+  }
 
   @override
-  String get themeOptionBlue => 'Niebieski w stylu Telegram (ciemny)';
+  String get appearanceColorTheme => 'MOTYW KOLORYSTYCZNY';
 
   @override
-  String get themeOptionTealStone => 'Turkus i kamień (nowoczesny jasny)';
+  String get appearanceThemeLight => 'Ciepły papier';
 
   @override
-  String get themeOptionCosmic => 'Kosmos (gwiazdy, ciemny)';
+  String get appearanceThemeTeal => 'Turkus i kamień';
 
   @override
-  String get settingsCosmicStarfield => 'Tło z gwiazdami';
+  String get appearanceThemeDark => 'Wire';
 
   @override
-  String get settingsCosmicStarfieldSubtitle =>
-      'Animowane gwiazdy za czatami (wył. = zwykły kosmos)';
+  String get appearanceThemeBlue => 'Niebieski';
+
+  @override
+  String get appearanceThemeCosmic => 'Kosmos';
+
+  @override
+  String get themeOptionLight => 'Ciepły papier z żarowymi akcentami';
+
+  @override
+  String get themeOptionDark => 'Neutralny grafit z turkusowymi akcentami';
+
+  @override
+  String get themeOptionBlue => 'Głęboki niebieski komunikatora';
+
+  @override
+  String get themeOptionTealStone => 'Chłodny kamień z nowoczesnym turkusem';
+
+  @override
+  String get themeOptionCosmic => 'Ciemny kosmos z lodowoniebieskim światłem';
+
+  @override
+  String get appearanceChatBackground => 'TŁO CZATU';
+
+  @override
+  String get appearanceBackgroundThemeDefault => 'Domyślne motywu';
+
+  @override
+  String get appearanceBackgroundThemeDefaultSubtitle =>
+      'Dopasowuje się do wybranego motywu';
+
+  @override
+  String get appearanceBackgroundThemeDefaultCosmicSubtitle =>
+      'Animowane gwiazdy dla motywu Kosmos';
+
+  @override
+  String get appearanceBackgroundPlain => 'Gładkie';
+
+  @override
+  String get appearanceBackgroundPlainSubtitle =>
+      'Jednolite tło w kolorach motywu';
+
+  @override
+  String get appearanceBackgroundGlyphs => 'Hieroglify';
+
+  @override
+  String get appearanceBackgroundGlyphsSubtitle => 'Wzór świątynnych kolumn';
+
+  @override
+  String get appearanceBackgroundStarfield => 'Gwiazdy';
 
   @override
   String get rotateDeviceTitle => 'Obróć urządzenie';
@@ -902,12 +954,6 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get settingsChatBackground => 'Tło czatu';
-
-  @override
-  String get settingsWallpaperDefault => 'Domyślne';
-
-  @override
-  String get settingsWallpaperGlyphs => 'Glify';
 
   @override
   String get userCardCopyHandle => 'Kopiuj nazwę użytkownika i tag';

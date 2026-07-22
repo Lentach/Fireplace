@@ -356,7 +356,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       _messaging.getMessages(widget.conversationId);
       final userId = context.read<AuthProvider>().currentUser?.id;
       if (userId != null) {
-        context.read<SettingsProvider>().loadChatWallpaper(userId);
+        context.read<SettingsProvider>().loadChatBackground(userId);
       }
     });
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -672,15 +672,9 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         ? 8.0
         : MediaQuery.paddingOf(context).top + 8.0;
     final settings = context.watch<SettingsProvider>();
-    // Cosmic: the starfield is the background; its explicit "Starfield
-    // background" setting is the opaque escape hatch. Non-cosmic themes use the
-    // glyph wallpaper toggle unchanged.
-    final showGlyphs = settings.chatWallpaper == ChatWallpaper.glyphs;
     return ChatBackgroundPattern(
       backgroundColor: messagesAreaBg,
-      enabled: settings.themePreference == 'cosmic'
-          ? settings.cosmicStarfield
-          : showGlyphs,
+      layer: settings.resolvedChatBackground,
       child: messages.isEmpty
           ? Center(
               child: Text(
@@ -973,9 +967,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
             ),
           ),
           ?pinnedBanner,
-          Expanded(
-            child: _buildChatBodyStack(body, messaging),
-          ),
+          Expanded(child: _buildChatBodyStack(body, messaging)),
         ],
       );
     }

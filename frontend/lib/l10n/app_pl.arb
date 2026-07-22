@@ -28,6 +28,7 @@
   "accountDeletionFailed": "Nie udało się usunąć konta",
   "devicesLoading": "Ładowanie…",
   "settingsAppVersion": "Wersja aplikacji",
+  "settingsAboutFireplace": "O projekcie",
 
   "privacySafetyTitle": "Prywatność i bezpieczeństwo",
   "e2eEncryptionEnabled": "Szyfrowanie end-to-end jest włączone",
@@ -264,13 +265,34 @@
       "name": { "type": "String" }
     }
   },
-  "themeOptionLight": "Ciepły papier (jasny)",
-  "themeOptionDark": "Ciemny szary z turkusowym akcentem",
-  "themeOptionBlue": "Niebieski w stylu Telegram (ciemny)",
-  "themeOptionTealStone": "Turkus i kamień (nowoczesny jasny)",
-  "themeOptionCosmic": "Kosmos (gwiazdy, ciemny)",
-  "settingsCosmicStarfield": "Tło z gwiazdami",
-  "settingsCosmicStarfieldSubtitle": "Animowane gwiazdy za czatami (wył. = zwykły kosmos)",
+  "appearance": "Wygląd",
+  "appearanceSummary": "{theme} · {background}",
+  "@appearanceSummary": {
+    "placeholders": {
+      "theme": { "type": "String" },
+      "background": { "type": "String" }
+    }
+  },
+  "appearanceColorTheme": "MOTYW KOLORYSTYCZNY",
+  "appearanceThemeLight": "Ciepły papier",
+  "appearanceThemeTeal": "Turkus i kamień",
+  "appearanceThemeDark": "Wire",
+  "appearanceThemeBlue": "Niebieski",
+  "appearanceThemeCosmic": "Kosmos",
+  "themeOptionLight": "Ciepły papier z żarowymi akcentami",
+  "themeOptionDark": "Neutralny grafit z turkusowymi akcentami",
+  "themeOptionBlue": "Głęboki niebieski komunikatora",
+  "themeOptionTealStone": "Chłodny kamień z nowoczesnym turkusem",
+  "themeOptionCosmic": "Ciemny kosmos z lodowoniebieskim światłem",
+  "appearanceChatBackground": "TŁO CZATU",
+  "appearanceBackgroundThemeDefault": "Domyślne motywu",
+  "appearanceBackgroundThemeDefaultSubtitle": "Dopasowuje się do wybranego motywu",
+  "appearanceBackgroundThemeDefaultCosmicSubtitle": "Animowane gwiazdy dla motywu Kosmos",
+  "appearanceBackgroundPlain": "Gładkie",
+  "appearanceBackgroundPlainSubtitle": "Jednolite tło w kolorach motywu",
+  "appearanceBackgroundGlyphs": "Hieroglify",
+  "appearanceBackgroundGlyphsSubtitle": "Wzór świątynnych kolumn",
+  "appearanceBackgroundStarfield": "Gwiazdy",
 
   "rotateDeviceTitle": "Obróć urządzenie",
   "rotateDeviceMessage": "Fireplace działa tylko w trybie pionowym.",
@@ -330,8 +352,6 @@
   "userCardSharedMedia": "Udostępnione multimedia",
   "userCardDragReorderHint": "Przytrzymaj i przeciągnij, aby zmienić kolejność — pierwsze zdjęcie jest Twoim głównym.",
   "settingsChatBackground": "Tło czatu",
-  "settingsWallpaperDefault": "Domyślne",
-  "settingsWallpaperGlyphs": "Glify",
   "userCardCopyHandle": "Kopiuj nazwę użytkownika i tag",
   "userCardCopiedHandle": "Skopiowano {handle}",
   "@userCardCopiedHandle": {

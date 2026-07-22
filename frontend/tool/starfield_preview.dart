@@ -7,6 +7,7 @@
 // Mobile: flutter run -d <android> -t tool/starfield_preview.dart
 import 'package:flutter/material.dart';
 
+import 'package:fireplace/models/chat_background_preference.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/chat_background_pattern.dart';
 
@@ -39,42 +40,48 @@ class _PreviewPage extends StatelessWidget {
     final fc = FireplaceColors.of(context);
     final cs = Theme.of(context).colorScheme;
     Widget bubble(String text, bool mine) => Align(
-          alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
-          child: Container(
-            margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
-            constraints: const BoxConstraints(maxWidth: 280),
-            decoration: BoxDecoration(
-              color: mine ? fc.mineMsgBg : fc.theirsMsgBg,
-              borderRadius: BorderRadius.circular(14),
-            ),
-            child: Text(
-              text,
-              style: TextStyle(
-                color: mine ? Colors.white : const Color(0xFFCFE2F2),
-                fontSize: 14,
-                height: 1.35,
-              ),
-            ),
+      alignment: mine ? Alignment.centerRight : Alignment.centerLeft,
+      child: Container(
+        margin: const EdgeInsets.symmetric(horizontal: 14, vertical: 5),
+        padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 9),
+        constraints: const BoxConstraints(maxWidth: 280),
+        decoration: BoxDecoration(
+          color: mine ? fc.mineMsgBg : fc.theirsMsgBg,
+          borderRadius: BorderRadius.circular(14),
+        ),
+        child: Text(
+          text,
+          style: TextStyle(
+            color: mine ? Colors.white : const Color(0xFFCFE2F2),
+            fontSize: 14,
+            height: 1.35,
           ),
-        );
+        ),
+      ),
+    );
     return Scaffold(
       appBar: AppBar(title: const Text('Nova · Cosmic')),
       body: ChatBackgroundPattern(
         backgroundColor: fc.messagesAreaBg,
+        layer: ChatBackgroundLayer.starfield,
         child: Column(
           mainAxisAlignment: MainAxisAlignment.center,
           children: [
             const SizedBox(height: 12),
             Center(
               child: Container(
-                padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 12,
+                  vertical: 5,
+                ),
                 decoration: BoxDecoration(
                   color: Colors.black.withValues(alpha: 0.35),
                   borderRadius: BorderRadius.circular(12),
                 ),
-                child: Text('Today',
-                    style: TextStyle(color: cs.onSurface, fontSize: 12)),
+                child: Text(
+                  'Today',
+                  style: TextStyle(color: cs.onSurface, fontSize: 12),
+                ),
               ),
             ),
             const Spacer(),

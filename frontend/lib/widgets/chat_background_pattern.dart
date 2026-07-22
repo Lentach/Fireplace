@@ -2,6 +2,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../models/chat_background_preference.dart';
 import '../theme/glass_theme.dart';
 import 'hieroglyph_glyphs.dart';
 import '../theme/cosmic_theme.dart';
@@ -27,14 +28,14 @@ class ChatBackgroundPattern extends StatefulWidget {
   /// `GlassTheme.wallpaperTint`.
   final Color? patternColor;
   final Color? backgroundColor;
-  final bool enabled;
+  final ChatBackgroundLayer layer;
 
   const ChatBackgroundPattern({
     super.key,
     required this.child,
     this.patternColor,
     this.backgroundColor,
-    this.enabled = true,
+    required this.layer,
   });
 
   @override
@@ -47,60 +48,54 @@ class _ChatBackgroundPatternState extends State<ChatBackgroundPattern> {
 
   @override
   Widget build(BuildContext context) {
-    // Cosmic theme: the animated starfield IS the chat background — it renders
-    // through this same wallpaper system (never a second, conflicting one) and
-    // ignores the glyph/default toggle, since the starfield is the theme's
-    // identity, not an optional doodle.
     final cosmic = CosmicBackdrop.maybeOf(context);
-    if (cosmic != null) {
-      final bg = widget.backgroundColor ?? cosmic.baseColor;
+    final bg =
+        widget.backgroundColor ?? cosmic?.baseColor ?? Colors.transparent;
+
+    if (widget.layer == ChatBackgroundLayer.starfield && cosmic != null) {
       return Container(
         color: bg,
         child: Stack(
           fit: StackFit.expand,
           children: [
-            // enabled == false → plain opaque space base (the Cosmic
-            // "Starfield background" setting turned off). When on, the field
-            // pauses off-screen and renders STATIC under OS reduced-motion —
-            // both handled inside StarfieldBackground.
-            if (widget.enabled)
-              StarfieldBackground(
-                starColor: cosmic.starColor,
-                density: cosmic.density,
-              ),
+            StarfieldBackground(
+              starColor: cosmic.starColor,
+              density: cosmic.density,
+            ),
             widget.child,
           ],
         ),
       );
     }
 
+    if (widget.layer != ChatBackgroundLayer.glyphs) {
+      return ColoredBox(color: bg, child: widget.child);
+    }
+
     final glass = GlassTheme.of(context);
     final color = widget.patternColor ?? glass.wallpaperTint;
-    final bg = widget.backgroundColor ?? Colors.transparent;
     return Container(
       color: bg,
       child: Stack(
         fit: StackFit.expand,
         children: [
-          if (widget.enabled)
-            DecoratedBox(
-              decoration: BoxDecoration(
-                gradient: RadialGradient(
-                  center: const Alignment(0, -1.1),
-                  radius: 1.3,
-                  colors: [
-                    Color.lerp(bg, color.withValues(alpha: 1.0), 0.05)!,
-                    bg.withValues(alpha: 0.0),
-                  ],
-                ),
+          DecoratedBox(
+            decoration: BoxDecoration(
+              gradient: RadialGradient(
+                center: const Alignment(0, -1.1),
+                radius: 1.3,
+                colors: [
+                  Color.lerp(bg, color.withValues(alpha: 1.0), 0.05)!,
+                  bg.withValues(alpha: 0.0),
+                ],
               ),
             ),
-          if (widget.enabled)
-            RepaintBoundary(
-              child: CustomPaint(
-                painter: _TempleColumnsPainter(color: color, seed: _seed),
-              ),
+          ),
+          RepaintBoundary(
+            child: CustomPaint(
+              painter: _TempleColumnsPainter(color: color, seed: _seed),
             ),
+          ),
           widget.child,
         ],
       ),

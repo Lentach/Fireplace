@@ -1,5 +1,44 @@
 # Latest session summary
 
+**Date:** 2026-07-22 — Added and ephemerally deployed the compact Settings footer link in frontend 0.0.125 (`8f9da91`).
+
+## What was done
+1. Added a restrained FIREPLACE wordmark + localized “About” / “O projekcie” footer action immediately above the app-version block.
+2. Wired `https://fireplace.ignorelist.com/welcome/` through `LaunchMode.externalApplication`, preserving the installed PWA.
+3. Bumped frontend 0.0.124 → 0.0.125 and deployed the feature-branch bundle.
+
+## Verification
+- Focused Settings tests: 3 passed. Flutter analyze: 0 issues.
+- Rendered Cosmic, Blue, Dark, Light, and Teal at 390×844 plus Light at 320×700.
+- Production smoke passed: health, frontend 0.0.125, bundle `8f9da91`, Flutter boot. `graphify update .`: 9089 nodes.
+
+## Notes for next session
+- Code commit `8f9da91` is live for testing. PR #94 remains unmerged; do not make the deployment permanent without owner approval.
+- Full: `2026-07-22-session-settings-about-link.md`.
+
+---
+### Prior latest ↓
+
+**Date:** 2026-07-22 — Appearance settings redesign completed and deployed for device testing from `feat/appearance-redesign` (`f5c9aa6`): one coherent theme/background model, real previews, and Cosmic Theme default → starfield.
+
+## What was done
+1. Replaced the cramped five-icon Theme tile, misleading Plain/Glyphs tile, and Cosmic-only Starfield switch with one preview-backed **Appearance** entry and a dedicated selector screen.
+2. Added one per-user preference: Theme default / Plain / Hieroglyphs. Cosmic + Theme default resolves to the animated starfield; explicit overrides persist across theme changes. Auth keeps its forced Cosmic starfield independently.
+3. Added real miniature chat previews, safe legacy migration, English/Polish strings, focused tests, narrow-width top-bar handling, and a scroll fade that prevents cross-theme previews bleeding through floating chrome.
+4. Published the feature-branch frontend bundle to production as an ephemeral test deploy; master/backend remain untouched.
+
+## Verification
+- Flutter analyze: 0 issues. Full Flutter suite: 775 passed, 4 existing skips. `graphify update .`: 9081 nodes.
+- Rendered all five themes at 390×844 and Cosmic at 320×700. Read-only design review: mergeable; follow-up confirmed both requested visual fixes.
+- Production smoke passed: `/health`, `/version.json`, `/version`, served bundle contains `f5c9aa6`, and Flutter boot rendered.
+
+## Notes for next session
+- Feature-branch bundle `f5c9aa6` is live for owner testing. No version bump and no master merge; production permanence still requires explicit approval.
+- Full: `2026-07-22-session-appearance-redesign.md`.
+
+---
+### Prior latest ↓
+
 **Date:** 2026-07-22 — landing iOS keyboard-bounce RESOLVED on device (real culprit was the HERO Done, not the journey pill) + `fireplace-inbox` anti-spam push cooldown + inbox Clear button (`14e99fe`, deployed).
 
 ## What was done
@@ -42,7 +81,3 @@
 
 ## Previous
 - 2026-07-22: Contact inbox EXTRACTED to standalone PRIVATE `Lentach/fireplace-inbox` (Fastify+SQLite on VM :3001, nginx flip, monorepo cutover `4609af2` v0.0.123, tests 534/47) + security-hardened `9efae5c` after independent review + landing "Anti-Quantum Notes" card. Full: `2026-07-22-session-inbox-extraction.md`.
-- 2026-07-22: Landing CONTACT FORM (cross-repo): backend `POST /contact` module (`contact_messages` mig 0009, throttle+honeypot, `notifyContact` account ping) + "Transmission · to the builder" panel on `/welcome`. Both LIVE (backend `8fe4951`, landing `12eb949`). **NOTE: this whole feature has since been extracted to `fireplace-inbox` (above) and removed from the monorepo.** Full: `2026-07-22-session-contact-form.md`.
-- 2026-07-22: Landing Rev 16 (hero `.enc-done` → pointerdown pattern) + landing EXTRACTED to standalone **PUBLIC** repo `Lentach/fireplaceWebsite` (subtree split, 67 commits; business-card README with live-shot gallery; regenerated 1200×630 og.png; monorepo `landing/` removed, CLAUDE.md §2 pointer). Accepted exposure: deploy script publishes VM SSH login (key-only). Full: `2026-07-22-session-landing-extraction.md`.
-- 2026-07-21: Pre-release audit-fix on branch `fix/audit-bugs`, v0.0.123 — R2 chat-detail dedup, backend branch cleanup, FULL test-suite audit (backend 474→534, frontend 727→770), link-preview ULA regex fix, MainShell nav-policy extraction. R1/R3 skipped per owner. Full: `2026-07-21-session-audit-fix-refactors.md`.
-- 2026-07-20 (+07-22 Rev 16): Landing `/welcome` Rev 7-16 — reduced-motion + rAF pause + SEO meta + a11y + skip bookends; `.kb-done` journey pill dismisses+hides on **pointerdown** (Rev 15); Rev 16: hero `.enc-done` same pattern. Astro 7.x (dependabot). Full: `2026-07-20-session-landing-nits.md`.

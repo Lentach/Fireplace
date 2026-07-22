@@ -97,6 +97,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsAppVersion => 'App version';
 
   @override
+  String get settingsAboutFireplace => 'About';
+
+  @override
   String get privacySafetyTitle => 'Privacy & Safety';
 
   @override
@@ -709,26 +712,74 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get themeOptionLight => 'Warm paper (light)';
+  String get appearance => 'Appearance';
 
   @override
-  String get themeOptionDark => 'Dark gray + teal accent';
+  String appearanceSummary(String theme, String background) {
+    return '$theme · $background';
+  }
 
   @override
-  String get themeOptionBlue => 'Telegram-style blue (dark)';
+  String get appearanceColorTheme => 'COLOR THEME';
 
   @override
-  String get themeOptionTealStone => 'Teal + stone (modern light)';
+  String get appearanceThemeLight => 'Warm Paper';
 
   @override
-  String get themeOptionCosmic => 'Cosmic (starfield, dark)';
+  String get appearanceThemeTeal => 'Teal Stone';
 
   @override
-  String get settingsCosmicStarfield => 'Starfield background';
+  String get appearanceThemeDark => 'Wire';
 
   @override
-  String get settingsCosmicStarfieldSubtitle =>
-      'Animated stars behind chats (off = plain space)';
+  String get appearanceThemeBlue => 'Blue';
+
+  @override
+  String get appearanceThemeCosmic => 'Cosmic';
+
+  @override
+  String get themeOptionLight => 'Warm paper with ember accents';
+
+  @override
+  String get themeOptionDark => 'Neutral charcoal with teal accents';
+
+  @override
+  String get themeOptionBlue => 'Deep blue messenger palette';
+
+  @override
+  String get themeOptionTealStone => 'Cool stone with modern teal';
+
+  @override
+  String get themeOptionCosmic => 'Dark space with ice-blue light';
+
+  @override
+  String get appearanceChatBackground => 'CHAT BACKGROUND';
+
+  @override
+  String get appearanceBackgroundThemeDefault => 'Theme default';
+
+  @override
+  String get appearanceBackgroundThemeDefaultSubtitle =>
+      'Follows the selected color theme';
+
+  @override
+  String get appearanceBackgroundThemeDefaultCosmicSubtitle =>
+      'Animated starfield for Cosmic';
+
+  @override
+  String get appearanceBackgroundPlain => 'Plain';
+
+  @override
+  String get appearanceBackgroundPlainSubtitle => 'Solid themed chat surface';
+
+  @override
+  String get appearanceBackgroundGlyphs => 'Hieroglyphs';
+
+  @override
+  String get appearanceBackgroundGlyphsSubtitle => 'Temple-column pattern';
+
+  @override
+  String get appearanceBackgroundStarfield => 'Starfield';
 
   @override
   String get rotateDeviceTitle => 'Rotate your device';
@@ -892,12 +943,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get settingsChatBackground => 'Chat background';
-
-  @override
-  String get settingsWallpaperDefault => 'Default';
-
-  @override
-  String get settingsWallpaperGlyphs => 'Glyphs';
 
   @override
   String get userCardCopyHandle => 'Copy username and tag';

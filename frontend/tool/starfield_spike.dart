@@ -12,6 +12,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:flutter/scheduler.dart';
 
+import 'package:fireplace/models/chat_background_preference.dart';
 import 'package:fireplace/theme/cosmic_theme.dart';
 import 'package:fireplace/theme/glass_theme.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
@@ -23,10 +24,10 @@ class _SpikeApp extends StatelessWidget {
   const _SpikeApp();
   @override
   Widget build(BuildContext context) => MaterialApp(
-        debugShowCheckedModeBanner: false,
-        theme: RpgTheme.themeDataCosmic,
-        home: const _SpikePage(),
-      );
+    debugShowCheckedModeBanner: false,
+    theme: RpgTheme.themeDataCosmic,
+    home: const _SpikePage(),
+  );
 }
 
 class _SpikePage extends StatefulWidget {
@@ -75,12 +76,13 @@ class _SpikePageState extends State<_SpikePage> {
 
   void _flush() {
     if (_buf.isEmpty) return;
-    final build =
-        _buf.map((t) => t.buildDuration.inMicroseconds / 1000.0).toList();
-    final raster =
-        _buf.map((t) => t.rasterDuration.inMicroseconds / 1000.0).toList();
-    final total =
-        _buf.map((t) => t.totalSpan.inMicroseconds / 1000.0).toList();
+    final build = _buf
+        .map((t) => t.buildDuration.inMicroseconds / 1000.0)
+        .toList();
+    final raster = _buf
+        .map((t) => t.rasterDuration.inMicroseconds / 1000.0)
+        .toList();
+    final total = _buf.map((t) => t.totalSpan.inMicroseconds / 1000.0).toList();
     final jank16 = total.where((ms) => ms > 16.7).length;
     final n = _buf.length;
     // ignore: avoid_print
@@ -96,13 +98,16 @@ class _SpikePageState extends State<_SpikePage> {
       '(${(100 * jank16 / total.length).toStringAsFixed(1)}%)',
     );
     if (mounted) {
-      setState(() => _stats = 'd=${_densities[_densityIdx]} '
-          'build p50/${_pct(build, .5).toStringAsFixed(1)} '
-          'p95/${_pct(build, .95).toStringAsFixed(1)} '
-          'max/${build.reduce((a, b) => a > b ? a : b).toStringAsFixed(1)}  '
-          'rast p50/${_pct(raster, .5).toStringAsFixed(1)} '
-          'p95/${_pct(raster, .95).toStringAsFixed(1)}  '
-          'jank ${(100 * jank16 / total.length).toStringAsFixed(1)}%');
+      setState(
+        () => _stats =
+            'd=${_densities[_densityIdx]} '
+            'build p50/${_pct(build, .5).toStringAsFixed(1)} '
+            'p95/${_pct(build, .95).toStringAsFixed(1)} '
+            'max/${build.reduce((a, b) => a > b ? a : b).toStringAsFixed(1)}  '
+            'rast p50/${_pct(raster, .5).toStringAsFixed(1)} '
+            'p95/${_pct(raster, .95).toStringAsFixed(1)}  '
+            'jank ${(100 * jank16 / total.length).toStringAsFixed(1)}%',
+      );
     }
     _buf.clear();
   }
@@ -167,12 +172,14 @@ class _SpikePageState extends State<_SpikePage> {
         children: [
           GestureDetector(
             onTap: _cycle,
-            // density 0 -> enabled:false -> opaque space base (real fallback).
+            // Density 0 uses the real opaque fallback layer.
             child: Theme(
               data: themed,
               child: ChatBackgroundPattern(
                 backgroundColor: RpgTheme.messagesAreaBgCosmic,
-                enabled: density > 0,
+                layer: density > 0
+                    ? ChatBackgroundLayer.starfield
+                    : ChatBackgroundLayer.plain,
                 child: list,
               ),
             ),
@@ -187,10 +194,10 @@ class _SpikePageState extends State<_SpikePage> {
                 color: Colors.black.withValues(alpha: 0.72),
                 child: Text(
                   _stats,
-                style: const TextStyle(
-                  color: Color(0xFF9EFF9E),
-                  fontSize: 12,
-                ),
+                  style: const TextStyle(
+                    color: Color(0xFF9EFF9E),
+                    fontSize: 12,
+                  ),
                 ),
               ),
             ),

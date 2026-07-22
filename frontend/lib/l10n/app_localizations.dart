@@ -266,6 +266,12 @@ abstract class AppLocalizations {
   /// **'Wersja aplikacji'**
   String get settingsAppVersion;
 
+  /// No description provided for @settingsAboutFireplace.
+  ///
+  /// In pl, this message translates to:
+  /// **'O projekcie'**
+  String get settingsAboutFireplace;
+
   /// No description provided for @privacySafetyTitle.
   ///
   /// In pl, this message translates to:
@@ -1328,47 +1334,137 @@ abstract class AppLocalizations {
   /// **'{name} zaakceptował(a) zaproszenie do znajomych'**
   String friendAcceptedYourRequest(String name);
 
+  /// No description provided for @appearance.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wygląd'**
+  String get appearance;
+
+  /// No description provided for @appearanceSummary.
+  ///
+  /// In pl, this message translates to:
+  /// **'{theme} · {background}'**
+  String appearanceSummary(String theme, String background);
+
+  /// No description provided for @appearanceColorTheme.
+  ///
+  /// In pl, this message translates to:
+  /// **'MOTYW KOLORYSTYCZNY'**
+  String get appearanceColorTheme;
+
+  /// No description provided for @appearanceThemeLight.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ciepły papier'**
+  String get appearanceThemeLight;
+
+  /// No description provided for @appearanceThemeTeal.
+  ///
+  /// In pl, this message translates to:
+  /// **'Turkus i kamień'**
+  String get appearanceThemeTeal;
+
+  /// No description provided for @appearanceThemeDark.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wire'**
+  String get appearanceThemeDark;
+
+  /// No description provided for @appearanceThemeBlue.
+  ///
+  /// In pl, this message translates to:
+  /// **'Niebieski'**
+  String get appearanceThemeBlue;
+
+  /// No description provided for @appearanceThemeCosmic.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kosmos'**
+  String get appearanceThemeCosmic;
+
   /// No description provided for @themeOptionLight.
   ///
   /// In pl, this message translates to:
-  /// **'Ciepły papier (jasny)'**
+  /// **'Ciepły papier z żarowymi akcentami'**
   String get themeOptionLight;
 
   /// No description provided for @themeOptionDark.
   ///
   /// In pl, this message translates to:
-  /// **'Ciemny szary z turkusowym akcentem'**
+  /// **'Neutralny grafit z turkusowymi akcentami'**
   String get themeOptionDark;
 
   /// No description provided for @themeOptionBlue.
   ///
   /// In pl, this message translates to:
-  /// **'Niebieski w stylu Telegram (ciemny)'**
+  /// **'Głęboki niebieski komunikatora'**
   String get themeOptionBlue;
 
   /// No description provided for @themeOptionTealStone.
   ///
   /// In pl, this message translates to:
-  /// **'Turkus i kamień (nowoczesny jasny)'**
+  /// **'Chłodny kamień z nowoczesnym turkusem'**
   String get themeOptionTealStone;
 
   /// No description provided for @themeOptionCosmic.
   ///
   /// In pl, this message translates to:
-  /// **'Kosmos (gwiazdy, ciemny)'**
+  /// **'Ciemny kosmos z lodowoniebieskim światłem'**
   String get themeOptionCosmic;
 
-  /// No description provided for @settingsCosmicStarfield.
+  /// No description provided for @appearanceChatBackground.
   ///
   /// In pl, this message translates to:
-  /// **'Tło z gwiazdami'**
-  String get settingsCosmicStarfield;
+  /// **'TŁO CZATU'**
+  String get appearanceChatBackground;
 
-  /// No description provided for @settingsCosmicStarfieldSubtitle.
+  /// No description provided for @appearanceBackgroundThemeDefault.
   ///
   /// In pl, this message translates to:
-  /// **'Animowane gwiazdy za czatami (wył. = zwykły kosmos)'**
-  String get settingsCosmicStarfieldSubtitle;
+  /// **'Domyślne motywu'**
+  String get appearanceBackgroundThemeDefault;
+
+  /// No description provided for @appearanceBackgroundThemeDefaultSubtitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Dopasowuje się do wybranego motywu'**
+  String get appearanceBackgroundThemeDefaultSubtitle;
+
+  /// No description provided for @appearanceBackgroundThemeDefaultCosmicSubtitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Animowane gwiazdy dla motywu Kosmos'**
+  String get appearanceBackgroundThemeDefaultCosmicSubtitle;
+
+  /// No description provided for @appearanceBackgroundPlain.
+  ///
+  /// In pl, this message translates to:
+  /// **'Gładkie'**
+  String get appearanceBackgroundPlain;
+
+  /// No description provided for @appearanceBackgroundPlainSubtitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Jednolite tło w kolorach motywu'**
+  String get appearanceBackgroundPlainSubtitle;
+
+  /// No description provided for @appearanceBackgroundGlyphs.
+  ///
+  /// In pl, this message translates to:
+  /// **'Hieroglify'**
+  String get appearanceBackgroundGlyphs;
+
+  /// No description provided for @appearanceBackgroundGlyphsSubtitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wzór świątynnych kolumn'**
+  String get appearanceBackgroundGlyphsSubtitle;
+
+  /// No description provided for @appearanceBackgroundStarfield.
+  ///
+  /// In pl, this message translates to:
+  /// **'Gwiazdy'**
+  String get appearanceBackgroundStarfield;
 
   /// No description provided for @rotateDeviceTitle.
   ///
@@ -1675,18 +1771,6 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Tło czatu'**
   String get settingsChatBackground;
-
-  /// No description provided for @settingsWallpaperDefault.
-  ///
-  /// In pl, this message translates to:
-  /// **'Domyślne'**
-  String get settingsWallpaperDefault;
-
-  /// No description provided for @settingsWallpaperGlyphs.
-  ///
-  /// In pl, this message translates to:
-  /// **'Glify'**
-  String get settingsWallpaperGlyphs;
 
   /// No description provided for @userCardCopyHandle.
   ///

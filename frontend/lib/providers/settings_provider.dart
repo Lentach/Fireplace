@@ -1,9 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 import '../theme/rpg_theme.dart';
+import '../models/chat_background_preference.dart';
 
-
-enum ChatWallpaper { defaultBackground, glyphs }
 class SettingsProvider extends ChangeNotifier {
   /// 'light' | 'teal' (Teal+stone, light) | 'dark' (Wire gray) | 'blue'
   /// (Telegram dark) | 'cosmic' (starfield dark)
@@ -72,7 +71,6 @@ class SettingsProvider extends ChangeNotifier {
       _loadThemePreference();
     }
     _loadLocalePreference();
-    _loadCosmicStarfield();
   }
 
   Future<void> _loadLocalePreference() async {
@@ -131,77 +129,111 @@ class SettingsProvider extends ChangeNotifier {
     await prefs.setString('theme_preference', preference);
   }
 
-  /// Global chat wallpaper — ONE background for all conversations
-  /// (owner ruling 2026-07-15; replaced the per-conversation setting).
-  ChatWallpaper _chatWallpaper = ChatWallpaper.defaultBackground;
+  /// One global chat-background choice per account. `themeDefault` follows
+  /// the selected color theme; explicit overrides survive theme changes.
+  ChatBackgroundPreference _chatBackground =
+      ChatBackgroundPreference.themeDefault;
 
-  ChatWallpaper get chatWallpaper => _chatWallpaper;
+  ChatBackgroundPreference get chatBackground => _chatBackground;
 
-  static String _wallpaperKey(int userId) => 'chat_wallpaper_$userId';
+  ChatBackgroundLayer get resolvedChatBackground => resolveChatBackground(
+    preference: _chatBackground,
+    isCosmicTheme: _themePreference == 'cosmic',
+  );
 
-  /// Loads the per-user global wallpaper, migrating legacy per-conversation
-  /// keys once: any conversation set to glyphs turns the global setting on,
-  /// then the legacy keys are deleted.
-  Future<void> loadChatWallpaper(int userId) async {
+  static String _backgroundKey(int userId) => 'chat_wallpaper_$userId';
+  static const String _legacyCosmicStarfieldKey = 'cosmic_starfield_enabled';
+
+  static String _serializeBackground(ChatBackgroundPreference preference) =>
+      switch (preference) {
+        ChatBackgroundPreference.themeDefault => 'theme_default',
+        ChatBackgroundPreference.plain => 'plain',
+        ChatBackgroundPreference.glyphs => 'hieroglyphs',
+      };
+
+  static ChatBackgroundPreference? _parseBackground(String? value) =>
+      switch (value) {
+        'theme_default' => ChatBackgroundPreference.themeDefault,
+        'plain' => ChatBackgroundPreference.plain,
+        'hieroglyphs' => ChatBackgroundPreference.glyphs,
+        _ => null,
+      };
+
+  String _storedThemePreference(SharedPreferences prefs) {
+    final saved = prefs.getString('theme_preference');
+    if (saved == 'light' ||
+        saved == 'teal' ||
+        saved == 'dark' ||
+        saved == 'cosmic' ||
+        saved == 'blue') {
+      return saved!;
+    }
+    final legacy = prefs.getString('dark_mode_preference');
+    if (legacy == 'light') return 'light';
+    if (legacy == 'dark' || legacy == 'system') return 'dark';
+    return _themePreference;
+  }
+
+  /// Loads the per-user background and migrates both legacy storage shapes:
+  /// per-conversation wallpaper keys and the global Cosmic starfield switch.
+  ///
+  /// The legacy starfield key stays in preferences as migration input for
+  /// other accounts that may not have logged in on this device yet. It is no
+  /// longer runtime state after this account gets an explicit new value.
+  Future<void> loadChatBackground(int userId) async {
     final prefs = await SharedPreferences.getInstance();
+    final key = _backgroundKey(userId);
+    final stored = prefs.getString(key);
+    var next = _parseBackground(stored);
+
     final legacyPrefix = 'conversation_wallpaper_$userId:';
     final legacyKeys = prefs
         .getKeys()
-        .where((key) => key.startsWith(legacyPrefix))
+        .where((candidate) => candidate.startsWith(legacyPrefix))
         .toList(growable: false);
-    if (legacyKeys.isNotEmpty) {
-      final anyGlyphs = legacyKeys.any(
-        (key) => prefs.getString(key) == 'glyphs',
-      );
-      if (anyGlyphs && !prefs.containsKey(_wallpaperKey(userId))) {
-        await prefs.setString(_wallpaperKey(userId), 'glyphs');
+
+    if (next == null) {
+      final legacyGlyphs =
+          stored == 'glyphs' ||
+          (stored == null &&
+              legacyKeys.any(
+                (candidate) => prefs.getString(candidate) == 'glyphs',
+              ));
+      final savedTheme = _storedThemePreference(prefs);
+      if (savedTheme == 'cosmic') {
+        final legacyStarfield =
+            prefs.getBool(_legacyCosmicStarfieldKey) ?? true;
+        next = legacyStarfield
+            ? ChatBackgroundPreference.themeDefault
+            : ChatBackgroundPreference.plain;
+      } else {
+        next = legacyGlyphs
+            ? ChatBackgroundPreference.glyphs
+            : ChatBackgroundPreference.themeDefault;
       }
-      for (final key in legacyKeys) {
-        await prefs.remove(key);
-      }
+      await prefs.setString(key, _serializeBackground(next));
     }
-    final next = prefs.getString(_wallpaperKey(userId)) == 'glyphs'
-        ? ChatWallpaper.glyphs
-        : ChatWallpaper.defaultBackground;
-    if (next == _chatWallpaper) return;
-    _chatWallpaper = next;
-    notifyListeners();
-  }
 
-  Future<void> setChatWallpaper(int userId, ChatWallpaper wallpaper) async {
-    _chatWallpaper = wallpaper;
-    notifyListeners();
-    final prefs = await SharedPreferences.getInstance();
-    if (wallpaper == ChatWallpaper.glyphs) {
-      await prefs.setString(_wallpaperKey(userId), 'glyphs');
-    } else {
-      await prefs.remove(_wallpaperKey(userId));
+    for (final legacyKey in legacyKeys) {
+      await prefs.remove(legacyKey);
     }
-  }
 
-  /// Cosmic theme only: animated starfield background on/off (default ON).
-  /// OFF = plain opaque space base (the simple/opaque fallback path). This is
-  /// independent of the OS reduced-motion signal, which renders the field
-  /// STATIC (not off) regardless of this toggle.
-  bool _cosmicStarfield = true;
-
-  bool get cosmicStarfield => _cosmicStarfield;
-
-  static const String _cosmicStarfieldKey = 'cosmic_starfield_enabled';
-
-  Future<void> _loadCosmicStarfield() async {
-    final prefs = await SharedPreferences.getInstance();
-    final saved = prefs.getBool(_cosmicStarfieldKey) ?? true;
-    if (saved == _cosmicStarfield) return;
-    _cosmicStarfield = saved;
+    if (next == _chatBackground) return;
+    _chatBackground = next;
     notifyListeners();
   }
 
-  Future<void> setCosmicStarfield(bool enabled) async {
-    if (enabled == _cosmicStarfield) return;
-    _cosmicStarfield = enabled;
+  Future<void> setChatBackground(
+    int userId,
+    ChatBackgroundPreference preference,
+  ) async {
+    if (preference == _chatBackground) return;
+    _chatBackground = preference;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();
-    await prefs.setBool(_cosmicStarfieldKey, enabled);
+    await prefs.setString(
+      _backgroundKey(userId),
+      _serializeBackground(preference),
+    );
   }
 }

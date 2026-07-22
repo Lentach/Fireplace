@@ -6,7 +6,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
 # App version: semver only (0.0.1, 0.0.2, 0.0.3, …). Bump PATCH by +1 on each release (see root CLAUDE.md §5).
 # Do not add a +suffix here — that is Flutter build metadata, not our user-visible version.
-version: 0.0.124
+version: 0.0.125
 
 environment:
   sdk: ^3.10.7
@@ -73,6 +73,7 @@ dev_dependencies:
   flutter_launcher_icons: ^0.14.3
   fake_async: ^1.3.3
   pointycastle: ^4.0.0
+  url_launcher_platform_interface: ^2.3.2
 
 # For information on the generic Dart part of this file, see the
 # following page: https://dart.dev/tools/pub/pubspec
