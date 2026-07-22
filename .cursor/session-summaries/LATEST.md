@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-22 — Appearance settings redesign completed on `feat/appearance-redesign`: one coherent theme/background model, real previews, and Cosmic Theme default → starfield.
+**Date:** 2026-07-22 — Appearance settings redesign completed on `feat/appearance-redesign` (`c11a105`): one coherent theme/background model, real previews, and Cosmic Theme default → starfield.
 
 ## What was done
 1. Replaced the cramped five-icon Theme tile, misleading Plain/Glyphs tile, and Cosmic-only Starfield switch with one preview-backed **Appearance** entry and a dedicated selector screen.
