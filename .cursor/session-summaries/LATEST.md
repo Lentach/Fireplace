@@ -17,7 +17,7 @@
 ## Notes for next session
 - **ALL landing work now lives in `C:/Users/Lentach/Desktop/fireplace-landing`** (branch `master`); read its `CLAUDE.md` for build/deploy gotchas + iOS keyboard-dismiss lore. Do NOT look for `landing/` in the monorepo.
 - Old Desktop `fireplace-landing` dir was a monorepo worktree on `feat/landing-page` (fully pushed) — renamed to `fireplace-landing-OLD-stale-clone`, worktree repaired; owner may `git worktree remove` it later.
-- New repo is private; landing claims "public source" — owner may want `gh repo edit Lentach/fireplace-landing --visibility public`. Enable Dependabot alerts in its Settings → Code security.
+- New repo is **PUBLIC** (owner ask, history secret-scanned clean first) with a business-card README (`2e2e492`), homepage + topics set. Known-and-accepted exposure: `deploy-landing.ps1`/`CLAUDE.md` publish the VM SSH login `ubuntu@51.68.138.13` + `~/fireplace` layout (key-only SSH; stock Ubuntu user; DNS already resolves the IP). Dependabot live there — its PR #1 (Astro 7.1.0→7.1.3) merged within minutes; rebuilt+redeployed, asset hashes UNCHANGED (`BBHOwiQk`/`DJ-65XJU`), repo==prod. Still enable Dependabot alerts in its Settings → Code security.
 - Full write-up: `2026-07-22-session-landing-extraction.md`.
 
 ## Previous
