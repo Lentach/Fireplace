@@ -53,6 +53,32 @@ into `~/fireplace/frontend-build/`. No nginx reload needed for an app-code-only 
 **`WEB_PUSH_VAPID_PUBLIC_KEY`** in the PC build must match the backend VAPID public key or PWA push
 subscribe fails (`push service error` / delivery `400`).
 
+## Contact inbox service (standalone, VM-only)
+
+The landing contact form + owner push inbox is a **separate** service — repo
+`Lentach/fireplace-inbox` (PRIVATE), NOT part of this monorepo/compose. It owns
+all of `/contact*`. Fastify + SQLite + web-push, one Docker container.
+
+- **Location:** `~/fireplace-inbox` on the VM (its own git clone). No dev-PC clone.
+- **Deploy / update:** `cd ~/fireplace-inbox && git pull && docker compose up -d --build`.
+  Listens on `127.0.0.1:3001`; SQLite persists in the `inbox-data` docker volume.
+- **Auth to clone:** repo-scoped read-only deploy key `~/.ssh/fireplace_inbox`
+  (`Host github-inbox` alias in `~/.ssh/config`). The main `id_ed25519` is locked
+  to `Fireplace` — GitHub forbids reusing one key across repos.
+- **`.env`** (`~/fireplace-inbox/.env`, gitignored, chmod 600): `PORT=3001`,
+  `DB_PATH=/app/data/inbox.db`, `CONTACT_INBOX_KEY`, and the **same**
+  `WEB_PUSH_VAPID_PUBLIC_KEY`/`_PRIVATE_KEY`/`_SUBJECT` as `~/fireplace/.env`
+  (reused so subscriptions + the landing form stay valid).
+- **nginx:** host `location /contact` in `/etc/nginx/sites-enabled/fireplace`
+  `proxy_pass http://127.0.0.1:3001;` (+ `X-Forwarded-For` for the per-IP throttle).
+  Edit config via a python replace, NEVER ssh-sed (mangles `$host`); `sudo nginx -t`
+  before `sudo systemctl reload nginx`.
+- **Verify:** `curl -o /dev/null -w '%{http_code}' https://fireplace.ignorelist.com/contact/inbox?key=<CONTACT_INBOX_KEY>` → 200 (bad key → 404);
+  `docker inspect -f '{{.State.Health.Status}}' fireplace-inbox` → healthy;
+  messages: `docker exec fireplace-inbox node -e "const D=require('better-sqlite3');console.log(new D('/app/data/inbox.db').prepare('select * from contact_messages order by id desc').all())"`.
+- **NOT in `backup-db.sh`** — that backs up the Fireplace Postgres/media only. The
+  inbox SQLite volume (`inbox-data`) is separate; back it up if messages matter.
+
 ## Verify production
 
 | Check | Expected |
