@@ -1,5 +1,23 @@
 # Latest session summary
 
+**Date:** 2026-07-22 — Appearance settings redesign completed on `feat/appearance-redesign`: one coherent theme/background model, real previews, and Cosmic Theme default → starfield.
+
+## What was done
+1. Replaced the cramped five-icon Theme tile, misleading Plain/Glyphs tile, and Cosmic-only Starfield switch with one preview-backed **Appearance** entry and a dedicated selector screen.
+2. Added one per-user preference: Theme default / Plain / Hieroglyphs. Cosmic + Theme default resolves to the animated starfield; explicit overrides persist across theme changes. Auth keeps its forced Cosmic starfield independently.
+3. Added real miniature chat previews, safe legacy migration, English/Polish strings, focused tests, narrow-width top-bar handling, and a scroll fade that prevents cross-theme previews bleeding through floating chrome.
+
+## Verification
+- Flutter analyze: 0 issues. Full Flutter suite: 775 passed, 4 existing skips. `graphify update .`: 9081 nodes.
+- Rendered all five themes at 390×844 and Cosmic at 320×700. Read-only design review: mergeable; follow-up confirmed both requested visual fixes.
+
+## Notes for next session
+- No version bump and no master merge: feature remains on `feat/appearance-redesign` pending explicit owner approval.
+- Full: `2026-07-22-session-appearance-redesign.md`.
+
+---
+### Prior latest ↓
+
 **Date:** 2026-07-22 — landing iOS keyboard-bounce RESOLVED on device (real culprit was the HERO Done, not the journey pill) + `fireplace-inbox` anti-spam push cooldown + inbox Clear button (`14e99fe`, deployed).
 
 ## What was done
@@ -43,6 +61,3 @@
 ## Previous
 - 2026-07-22: Contact inbox EXTRACTED to standalone PRIVATE `Lentach/fireplace-inbox` (Fastify+SQLite on VM :3001, nginx flip, monorepo cutover `4609af2` v0.0.123, tests 534/47) + security-hardened `9efae5c` after independent review + landing "Anti-Quantum Notes" card. Full: `2026-07-22-session-inbox-extraction.md`.
 - 2026-07-22: Landing CONTACT FORM (cross-repo): backend `POST /contact` module (`contact_messages` mig 0009, throttle+honeypot, `notifyContact` account ping) + "Transmission · to the builder" panel on `/welcome`. Both LIVE (backend `8fe4951`, landing `12eb949`). **NOTE: this whole feature has since been extracted to `fireplace-inbox` (above) and removed from the monorepo.** Full: `2026-07-22-session-contact-form.md`.
-- 2026-07-22: Landing Rev 16 (hero `.enc-done` → pointerdown pattern) + landing EXTRACTED to standalone **PUBLIC** repo `Lentach/fireplaceWebsite` (subtree split, 67 commits; business-card README with live-shot gallery; regenerated 1200×630 og.png; monorepo `landing/` removed, CLAUDE.md §2 pointer). Accepted exposure: deploy script publishes VM SSH login (key-only). Full: `2026-07-22-session-landing-extraction.md`.
-- 2026-07-21: Pre-release audit-fix on branch `fix/audit-bugs`, v0.0.123 — R2 chat-detail dedup, backend branch cleanup, FULL test-suite audit (backend 474→534, frontend 727→770), link-preview ULA regex fix, MainShell nav-policy extraction. R1/R3 skipped per owner. Full: `2026-07-21-session-audit-fix-refactors.md`.
-- 2026-07-20 (+07-22 Rev 16): Landing `/welcome` Rev 7-16 — reduced-motion + rAF pause + SEO meta + a11y + skip bookends; `.kb-done` journey pill dismisses+hides on **pointerdown** (Rev 15); Rev 16: hero `.enc-done` same pattern. Astro 7.x (dependabot). Full: `2026-07-20-session-landing-nits.md`.

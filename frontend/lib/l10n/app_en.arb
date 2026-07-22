@@ -276,13 +276,34 @@
       "name": { "type": "String" }
     }
   },
-  "themeOptionLight": "Warm paper (light)",
-  "themeOptionDark": "Dark gray + teal accent",
-  "themeOptionBlue": "Telegram-style blue (dark)",
-  "themeOptionTealStone": "Teal + stone (modern light)",
-  "themeOptionCosmic": "Cosmic (starfield, dark)",
-  "settingsCosmicStarfield": "Starfield background",
-  "settingsCosmicStarfieldSubtitle": "Animated stars behind chats (off = plain space)",
+  "appearance": "Appearance",
+  "appearanceSummary": "{theme} · {background}",
+  "@appearanceSummary": {
+    "placeholders": {
+      "theme": { "type": "String" },
+      "background": { "type": "String" }
+    }
+  },
+  "appearanceColorTheme": "COLOR THEME",
+  "appearanceThemeLight": "Warm Paper",
+  "appearanceThemeTeal": "Teal Stone",
+  "appearanceThemeDark": "Wire",
+  "appearanceThemeBlue": "Blue",
+  "appearanceThemeCosmic": "Cosmic",
+  "themeOptionLight": "Warm paper with ember accents",
+  "themeOptionDark": "Neutral charcoal with teal accents",
+  "themeOptionBlue": "Deep blue messenger palette",
+  "themeOptionTealStone": "Cool stone with modern teal",
+  "themeOptionCosmic": "Dark space with ice-blue light",
+  "appearanceChatBackground": "CHAT BACKGROUND",
+  "appearanceBackgroundThemeDefault": "Theme default",
+  "appearanceBackgroundThemeDefaultSubtitle": "Follows the selected color theme",
+  "appearanceBackgroundThemeDefaultCosmicSubtitle": "Animated starfield for Cosmic",
+  "appearanceBackgroundPlain": "Plain",
+  "appearanceBackgroundPlainSubtitle": "Solid themed chat surface",
+  "appearanceBackgroundGlyphs": "Hieroglyphs",
+  "appearanceBackgroundGlyphsSubtitle": "Temple-column pattern",
+  "appearanceBackgroundStarfield": "Starfield",
 
   "rotateDeviceTitle": "Rotate your device",
   "@rotateDeviceTitle": {
@@ -348,8 +369,6 @@
   "userCardSharedMedia": "Shared media",
   "userCardDragReorderHint": "Hold and drag to reorder — the first photo is your main photo.",
   "settingsChatBackground": "Chat background",
-  "settingsWallpaperDefault": "Default",
-  "settingsWallpaperGlyphs": "Glyphs",
   "userCardCopyHandle": "Copy username and tag",
   "userCardCopiedHandle": "Copied {handle}",
   "@userCardCopiedHandle": {

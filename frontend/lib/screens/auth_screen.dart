@@ -1,10 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:google_fonts/google_fonts.dart';
 import 'package:provider/provider.dart';
+import '../models/chat_background_preference.dart';
 import '../theme/glass_theme.dart';
 import '../theme/rpg_theme.dart';
 import '../providers/auth_provider.dart';
-import '../providers/settings_provider.dart';
 import '../widgets/auth_form.dart';
 import '../widgets/glass/glass_surface.dart';
 import '../widgets/chat_background_pattern.dart';
@@ -70,7 +70,6 @@ class _AuthScreenState extends State<AuthScreen> {
 
   Widget _buildBody(BuildContext context) {
     final authProvider = context.watch<AuthProvider>();
-    final settings = context.watch<SettingsProvider>();
     final l10n = AppLocalizations.of(context);
     final scheme = Theme.of(context).colorScheme;
     final fc = FireplaceColors.of(context);
@@ -81,11 +80,9 @@ class _AuthScreenState extends State<AuthScreen> {
 
     return Scaffold(
       body: ChatBackgroundPattern(
-        // Front door shows the starfield for everyone; a returning cosmic user
-        // who turned the animated field off for battery keeps that choice.
-        enabled: settings.themePreference == 'cosmic'
-            ? settings.cosmicStarfield
-            : true,
+        // The front door always shows the Cosmic world. Chat wallpaper is an
+        // authenticated per-user choice and must not leak into this screen.
+        layer: ChatBackgroundLayer.starfield,
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(

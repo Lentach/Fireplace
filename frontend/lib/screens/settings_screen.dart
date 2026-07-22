@@ -1,8 +1,10 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import '../models/chat_background_preference.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_surface.dart';
+import '../widgets/appearance_preview.dart';
 import '../providers/auth_provider.dart';
 import '../providers/connection_provider.dart';
 import '../providers/encryption_provider.dart';
@@ -17,6 +19,7 @@ import '../widgets/main_tab_screen_header.dart';
 import '../widgets/dialogs/delete_account_dialog.dart';
 import '../widgets/top_snackbar.dart';
 import '../l10n/app_localizations.dart';
+import 'appearance_screen.dart';
 import 'blocked_users_screen.dart';
 import 'privacy_safety_screen.dart';
 import '../utils/instant_opaque_route.dart';
@@ -43,7 +46,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     _loadAppVersion();
     final userId = context.read<AuthProvider>().currentUser?.id;
     if (userId != null) {
-      context.read<SettingsProvider>().loadChatWallpaper(userId);
+      context.read<SettingsProvider>().loadChatBackground(userId);
     }
   }
 
@@ -230,199 +233,61 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
-  Widget _buildThemeTile(BuildContext context, SettingsProvider settings) {
+  Widget _buildAppearanceTile(BuildContext context, SettingsProvider settings) {
     final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final fc = FireplaceColors.of(context);
-    final current = settings.themePreference;
     final l10n = AppLocalizations.of(context);
-
-    Widget themeIconBtn(String value, IconData icon, String tooltip) {
-      final isSelected = current == value;
-      return Tooltip(
-        message: tooltip,
-        child: InkWell(
-          onTap: () => settings.setThemePreference(value),
-          customBorder: const CircleBorder(),
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? colorScheme.primary.withValues(alpha: 0.2)
-                  : Colors.transparent,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: isSelected ? colorScheme.primary : fc.settingsTileBorder,
-                width: isSelected ? 2 : 1,
-              ),
-            ),
-            child: Icon(
-              icon,
-              size: 24,
-              color: isSelected
-                  ? colorScheme.primary
-                  : colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      );
-    }
+    final themeName = switch (settings.themePreference) {
+      'light' => l10n.appearanceThemeLight,
+      'teal' => l10n.appearanceThemeTeal,
+      'dark' => l10n.appearanceThemeDark,
+      'cosmic' => l10n.appearanceThemeCosmic,
+      _ => l10n.appearanceThemeBlue,
+    };
+    final backgroundName = switch (settings.chatBackground) {
+      ChatBackgroundPreference.themeDefault =>
+        settings.themePreference == 'cosmic'
+            ? l10n.appearanceBackgroundStarfield
+            : l10n.appearanceBackgroundPlain,
+      ChatBackgroundPreference.plain => l10n.appearanceBackgroundPlain,
+      ChatBackgroundPreference.glyphs => l10n.appearanceBackgroundGlyphs,
+    };
 
     return _settingsTileShell(
       ListTile(
-        leading: Icon(
-          Icons.palette_outlined,
-          color: colorScheme.primary,
-          size: 24,
+        leading: AppearancePreview(
+          themeData: settings.themeData,
+          background: settings.resolvedChatBackground,
+          width: 64,
+          height: 40,
         ),
         title: Text(
-          AppLocalizations.of(context).theme,
+          l10n.appearance,
           style: RpgTheme.bodyFont(
             fontSize: 14,
-            color: colorScheme.onSurface,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        subtitle: Padding(
-          padding: const EdgeInsets.only(top: 12),
-          // Wrap (not a trailing Row): 5 themes overflow a narrow trailing
-          // Row; wrapping keeps every 44px tap target on any phone width.
-          child: Wrap(
-            spacing: 8,
-            runSpacing: 8,
-            children: [
-              themeIconBtn('light', Icons.light_mode, l10n.themeOptionLight),
-              themeIconBtn('teal', Icons.eco, l10n.themeOptionTealStone),
-              themeIconBtn('dark', Icons.dark_mode, l10n.themeOptionDark),
-              themeIconBtn('blue', Icons.water_drop, l10n.themeOptionBlue),
-              themeIconBtn('cosmic', Icons.auto_awesome, l10n.themeOptionCosmic),
-            ],
-          ),
-        ),
-      ),
-    );
-  }
-
-  /// Global chat background (owner 2026-07-15): ONE wallpaper for all
-  /// conversations — replaced the per-conversation control on the user card.
-  Widget _buildWallpaperTile(BuildContext context, SettingsProvider settings) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final fc = FireplaceColors.of(context);
-    final l10n = AppLocalizations.of(context);
-    final current = settings.chatWallpaper;
-
-    Widget wallpaperBtn(ChatWallpaper value, IconData icon, String tooltip) {
-      final isSelected = current == value;
-      return Tooltip(
-        message: tooltip,
-        child: InkWell(
-          onTap: () {
-            final userId = context.read<AuthProvider>().currentUser?.id;
-            if (userId != null) {
-              settings.setChatWallpaper(userId, value);
-            }
-          },
-          customBorder: const CircleBorder(),
-          child: Container(
-            width: 44,
-            height: 44,
-            decoration: BoxDecoration(
-              color: isSelected
-                  ? colorScheme.primary.withValues(alpha: 0.2)
-                  : Colors.transparent,
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: isSelected ? colorScheme.primary : fc.settingsTileBorder,
-                width: isSelected ? 2 : 1,
-              ),
-            ),
-            child: Icon(
-              icon,
-              size: 24,
-              color: isSelected
-                  ? colorScheme.primary
-                  : colorScheme.onSurfaceVariant,
-            ),
-          ),
-        ),
-      );
-    }
-
-    return _settingsTileShell(
-      ListTile(
-        leading: Icon(
-          Icons.wallpaper_outlined,
-          color: colorScheme.primary,
-          size: 24,
-        ),
-        title: Text(
-          l10n.settingsChatBackground,
-          style: RpgTheme.bodyFont(
-            fontSize: 14,
-            color: colorScheme.onSurface,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            wallpaperBtn(
-              ChatWallpaper.defaultBackground,
-              Icons.rectangle_outlined,
-              l10n.settingsWallpaperDefault,
-            ),
-            const SizedBox(width: 8),
-            wallpaperBtn(
-              ChatWallpaper.glyphs,
-              Icons.auto_awesome_outlined,
-              l10n.settingsWallpaperGlyphs,
-            ),
-          ],
-        ),
-      ),
-    );
-  }
-
-  /// Cosmic-only: explicit animated-starfield on/off. OFF = plain opaque space
-  /// background (the simple/opaque fallback). Independent of OS reduced-motion,
-  /// which renders the field static rather than off.
-  Widget _buildCosmicStarfieldTile(
-    BuildContext context,
-    SettingsProvider settings,
-  ) {
-    final colorScheme = Theme.of(context).colorScheme;
-    final l10n = AppLocalizations.of(context);
-    return _settingsTileShell(
-      SwitchListTile(
-        secondary: Icon(
-          Icons.auto_awesome,
-          color: colorScheme.primary,
-          size: 24,
-        ),
-        title: Text(
-          l10n.settingsCosmicStarfield,
-          style: RpgTheme.bodyFont(
-            fontSize: 14,
-            color: colorScheme.onSurface,
+            color: theme.colorScheme.onSurface,
             fontWeight: FontWeight.w500,
           ),
         ),
         subtitle: Text(
-          l10n.settingsCosmicStarfieldSubtitle,
+          l10n.appearanceSummary(themeName, backgroundName),
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
           style: RpgTheme.bodyFont(
             fontSize: 12,
-            color: colorScheme.onSurfaceVariant,
+            color: theme.colorScheme.onSurfaceVariant,
           ),
         ),
-        value: settings.cosmicStarfield,
-        onChanged: settings.setCosmicStarfield,
-        activeThumbColor: colorScheme.primary,
-        contentPadding: const EdgeInsets.symmetric(
-          horizontal: 16,
-          vertical: 4,
+        trailing: Icon(
+          Icons.chevron_right,
+          color: theme.colorScheme.onSurfaceVariant,
         ),
+        onTap: () {
+          final userId = context.read<AuthProvider>().currentUser?.id;
+          if (userId == null) return;
+          Navigator.of(context).push(
+            MaterialPageRoute(builder: (_) => AppearanceScreen(userId: userId)),
+          );
+        },
       ),
     );
   }
@@ -601,11 +466,8 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
 
                   // Settings Tiles
-                  _buildThemeTile(context, settings),
+                  _buildAppearanceTile(context, settings),
                   _buildLanguageTile(context, settings),
-                  _buildWallpaperTile(context, settings),
-                  if (settings.themePreference == 'cosmic')
-                    _buildCosmicStarfieldTile(context, settings),
 
                   _buildSettingsTile(
                     icon: Icons.security,

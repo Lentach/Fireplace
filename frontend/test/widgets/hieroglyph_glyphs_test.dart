@@ -1,5 +1,6 @@
 import 'dart:ui';
 
+import 'package:fireplace/models/chat_background_preference.dart';
 import 'package:fireplace/theme/glass_theme.dart';
 import 'package:fireplace/widgets/chat_background_pattern.dart';
 import 'package:fireplace/widgets/hieroglyph_glyphs.dart';
@@ -32,39 +33,45 @@ void main() {
     for (final g in kHieroGlyphs) {
       final recorder = PictureRecorder();
       final canvas = Canvas(recorder);
-      expect(() => g.paintFn(canvas, stroke, fill), returnsNormally,
-          reason: 'glyph "${g.name}" must paint without error');
+      expect(
+        () => g.paintFn(canvas, stroke, fill),
+        returnsNormally,
+        reason: 'glyph "${g.name}" must paint without error',
+      );
       recorder.endRecording().dispose();
     }
   });
 
   testWidgets(
-      'ChatBackgroundPattern renders the real painter over a full tall column '
-      'without throwing', (tester) async {
-    // Tall surface so the real _TempleColumnsPainter deals many rows across
-    // several columns, exercising the actual bag-shuffle over the whole set.
-    tester.view.physicalSize = const Size(400, 2400);
-    tester.view.devicePixelRatio = 1.0;
-    addTearDown(tester.view.resetPhysicalSize);
-    addTearDown(tester.view.resetDevicePixelRatio);
+    'ChatBackgroundPattern renders the real painter over a full tall column '
+    'without throwing',
+    (tester) async {
+      // Tall surface so the real _TempleColumnsPainter deals many rows across
+      // several columns, exercising the actual bag-shuffle over the whole set.
+      tester.view.physicalSize = const Size(400, 2400);
+      tester.view.devicePixelRatio = 1.0;
+      addTearDown(tester.view.resetPhysicalSize);
+      addTearDown(tester.view.resetDevicePixelRatio);
 
-    await tester.pumpWidget(
-      MaterialApp(
-        theme: ThemeData(extensions: const <ThemeExtension<dynamic>>[
-          GlassTheme.dark,
-        ]),
-        home: const Scaffold(
-          body: ChatBackgroundPattern(
-            patternColor: Color(0xFF8FC4D0),
-            backgroundColor: Color(0xFF000000),
-            child: SizedBox.expand(),
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: ThemeData(
+            extensions: const <ThemeExtension<dynamic>>[GlassTheme.dark],
+          ),
+          home: const Scaffold(
+            body: ChatBackgroundPattern(
+              patternColor: Color(0xFF8FC4D0),
+              backgroundColor: Color(0xFF000000),
+              layer: ChatBackgroundLayer.glyphs,
+              child: SizedBox.expand(),
+            ),
           ),
         ),
-      ),
-    );
-    await tester.pump();
+      );
+      await tester.pump();
 
-    expect(tester.takeException(), isNull);
-    expect(find.byType(ChatBackgroundPattern), findsOneWidget);
-  });
+      expect(tester.takeException(), isNull);
+      expect(find.byType(ChatBackgroundPattern), findsOneWidget);
+    },
+  );
 }
