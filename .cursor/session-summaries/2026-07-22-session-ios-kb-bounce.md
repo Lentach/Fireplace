@@ -31,3 +31,6 @@ Hero fix **confirmed working on the physical iPhone**. Cleanup: removed the `?kb
 
 ## Follow-up shipped (`ed0b003`, live CSS `DBMb6rVT`)
 Hero `.enc-done` width-gate aligned with the journey pill: `landing.css` `@media (max-width: 999px)` → `and (pointer: coarse)`. Browser-verified live: 818px fine-pointer + focused → `display:none`; 390px coarse (mobile emulation) + focused → shown.
+
+## Related: iOS zoom persisting across refresh (`5b0c8be`)
+Small-font textareas (<16px) trigger iOS Safari's input-focus auto-zoom, which persists in the tab across refresh (screenshot from device). Fix: `maximum-scale=1` added to the viewport meta in `index.astro` — disables the focus auto-zoom; iOS ≥10 ignores it for manual pinch (a11y intact).
