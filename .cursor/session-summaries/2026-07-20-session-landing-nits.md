@@ -345,3 +345,32 @@ stays on screen a beat.
 - LIVE + byte-verified (Astro 7): JS `6oHf6wJ4`, CSS `DJ-65XJU`. Live JS carries
   ``q.addEventListener(`click`,()=>{q.style.display=`none`,K()?.blur()})`` and the poseLifted
   ``q.style.display=```` restore; live HTML references both new hashes. Committed + pushed.
+## Revision 15 — Done pill dismisses on POINTERDOWN, not click (Rev 14's real-device failure)
+On-device, Rev 14 was wrong: owner reported the pill still doesn't vanish on tap (BOTH platforms)
+and on **iOS Safari the keyboard doesn't dismiss at all** when tapping Done — only the keyboard's
+own send/return key dismisses (Android has one; iOS does NOT, so the Done pill is iOS's only exit).
+Background-tap dismiss works but is undiscoverable.
+- **Root cause (Rev 14's "repaint-lag" theory was wrong):** the background-tap path already proves
+  the CSS-class hide (`releaseKb()` → drop `body.kb-open`) dismisses AND hides reliably, iOS
+  included. The real failure: the Done pill dismissed on **`click`**, and was *excluded* from that
+  working `pointerdown` path (`t.closest('.kb-done')` short-circuit). A `click` on a `position:fixed`
+  element while the soft keyboard is up doesn't fire reliably on iOS Safari, and iOS only honors a
+  programmatic `blur()` from inside a real touch gesture — so tapping Done did nothing.
+- **Fix (journey.ts):** removed the `.kb-done` exclusion so tapping the pill runs the *exact* same
+  proven `pointerdown` → `releaseKb()?.blur()` path as a background tap; `releaseKb()` drops
+  `body.kb-open`, hiding the pill via CSS. Deleted the unreliable `click` handler AND the Rev-14
+  `style.display` hack (in the handler and the `poseLifted` reset) — the disproven theory it was
+  built on is gone. `.compose` stays excluded so taps on the field/send button keep the keyboard up.
+- **Caveat:** headless Chromium can't reproduce the iOS click-vs-pointerdown difference (that's why
+  Rev 14 looked green here yet failed on-device). Confidence comes from routing Done through the
+  *owner-confirmed-working* background-tap mechanism, not from a headless pass. Held two fallbacks:
+  (A) make the composer's Return key also dismiss (iOS "no send key" affordance — a typing-behavior
+  change, owner's call); (B) `readonly`-toggle nuke before `blur()` if plain blur STILL sticks on iOS.
+- Verified (preview, 390×844): focus → pill shown; pointerdown inside `.compose` → keeps keyboard;
+  pointerdown on pill → `body.kb-open` false + pill `display:none`; re-focus after the 600ms window →
+  pill shown again (no leftover inline style); background tap still dismisses; journey skip unaffected;
+  zero console/page errors.
+- LIVE + byte-verified (Astro 7): JS `CIPLNzgz`, CSS `DJ-65XJU` (unchanged). Live JS: dismiss handler
+  now ``t&&t.closest(`.compose`)||K()?.blur()`` (no `.kb-done` exclusion), `.kb-done` querySelector
+  flows straight into it, no `.kb-done` click handler. Committed + pushed. **Awaiting owner on-device
+  re-test on iPhone (hard-refresh first).**

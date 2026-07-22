@@ -32,7 +32,7 @@ Autonomous implementation of the pre-release audit findings against `master @ 9d
 - Full write-up: `2026-07-21-session-audit-fix-refactors.md`.
 
 ## Previous
-- 2026-07-20: Landing `/welcome` Rev 7-14 — reduced-motion + off-screen rAF pause + social/SEO meta + a11y focus rings + bidirectional skip bookends; Rev 14 mobile `.kb-done` pill hides on tap. Rebuilt + redeployed on the Astro 7.1.0 toolchain (dependabot PR #88 merged mid-session; smoke-tested clean). LIVE `6oHf6wJ4`/`DJ-65XJU`. Committed + pushed. Full: `2026-07-20-session-landing-nits.md`.
+- 2026-07-20: Landing `/welcome` Rev 7-15 — reduced-motion + off-screen rAF pause + social/SEO meta + a11y focus rings + bidirectional skip bookends; mobile `.kb-done` Done pill now dismisses the keyboard + hides on **pointerdown** (Rev 15 — Rev 14's `click`-based hide failed on real iOS Safari; routed through the proven background-tap path). Toolchain moved to Astro 7.1.0 mid-session (dependabot PR #88). LIVE `CIPLNzgz`/`DJ-65XJU`, committed + pushed; **awaiting owner iPhone re-test**. Full: `2026-07-20-session-landing-nits.md`.
 - 2026-07-20: Landing six owner nits + on-device Revisions 2-6. Committed `7aabcea`. Full: `2026-07-20-session-landing-nits.md`.
 - 2026-07-19: Landing root-only mobile shrink fix (`footer { overflow-x: clip }`) — LIVE. Full: `2026-07-19-session-landing-mobile-autozoom.md`.
 - 2026-07-19: Landing responsive journey polish + terminal plaintext input. Full: `2026-07-19-session-landing-terminal-input.md`.

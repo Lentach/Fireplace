@@ -292,17 +292,19 @@ export function initJourney(section: HTMLElement) {
     $('.phone.recipient').classList.remove('kb-lift');
     return el;
   }
-  // Done pill AND any tap outside the composer dismiss the keyboard. Hide the
-  // pill on the click itself (not just via body.kb-open) — on iOS the class
-  // toggle can't repaint through the keyboard-dismiss reflow fast enough, so
-  // the pill lingers and users re-tap thinking nothing happened. poseLifted
-  // clears the inline display when the pill is next lifted.
+  // The Done pill AND any tap outside the composer dismiss the keyboard, on
+  // POINTERDOWN — iOS Safari only honors a programmatic blur() from inside a
+  // real touch gesture, and a click on the fixed pill while the keyboard is up
+  // doesn't fire reliably (that was the "Done does nothing on iOS" bug). The
+  // pill is deliberately NOT excluded here: tapping it runs the exact same
+  // proven dismiss path as a background tap, and releaseKb() drops body.kb-open
+  // so the pill hides. .compose stays excluded so taps inside the composer
+  // (field, send button) keep the keyboard up.
   const kbDone = document.querySelector<HTMLButtonElement>('.kb-done');
-  if (kbDone) kbDone.addEventListener('click', () => { kbDone.style.display = 'none'; releaseKb()?.blur(); });
   document.addEventListener('pointerdown', (e) => {
     if (!kbLift) return;
     const t = e.target as HTMLElement | null;
-    if (t && (t.closest('.compose') || t.closest('.kb-done'))) return;
+    if (t && t.closest('.compose')) return;
     releaseKb()?.blur();
   }, true);
   // the sender ships with a prefilled draft — size its pill NOW, and again
@@ -438,7 +440,7 @@ export function initJourney(section: HTMLElement) {
     const vH = vv ? vv.height : H;
     const ph = phone.offsetHeight || 560;
     phonePose(phone, W / 2, vTop + vH - 6 - ph / 2, 1, 1);
-    if (kbDone) { kbDone.style.top = `${vTop + 14}px`; kbDone.style.display = ''; }
+    if (kbDone) kbDone.style.top = `${vTop + 14}px`;
   }
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let visible = true, resumed = false, rafId = 0;
