@@ -59,7 +59,7 @@ export class ContactController {
     const nonce = randomBytes(16).toString('base64');
     res.setHeader(
       'Content-Security-Policy',
-      `default-src 'self'; script-src 'nonce-${nonce}'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; manifest-src 'self'; base-uri 'none'`,
+      `default-src 'self'; script-src 'nonce-${nonce}'; worker-src 'self'; style-src 'unsafe-inline'; connect-src 'self'; img-src 'self' data:; manifest-src 'self'; base-uri 'none'`,
     );
     res.setHeader('Cache-Control', 'no-store');
     res.setHeader('Referrer-Policy', 'no-referrer');
