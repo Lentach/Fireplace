@@ -20,3 +20,8 @@ On iOS Safari, tapping the journey DONE pill dismissed the keyboard but it immed
 
 ## Notes
 - Hero `.enc-done` (encrypt.ts) has a similar but inline dismiss; not touched (change only what was asked; separate offer still pending owner yes/no re: coarse-pointer gate at `landing.css:127`).
+
+## UPDATE — real culprit found (`ecdda29`, live bundle `DekN37sV`)
+All three earlier fixes went into the JOURNEY pill — but the owner was hitting the **HERO** Done (`.enc-done`, `encrypt.ts`), which had the identical bug and NONE of the fixes. Mechanism: Done pointerdown → blur → pill hides (`:focus-within`) → iOS synthesizes the tap's click with a FRESH hit-test → lands on the textarea → **native** refocus (the `doneAt<500ms` guard only blocks the programmatic `input.focus()` in the port click handler — it cannot stop native click-focus). Desktop Chromium can't reproduce: Blink cancels compat mouse events on pointerdown-preventDefault; WebKit doesn't — hence iOS-physical-only.
+Fix in `encrypt.ts` Done pointerdown (touch only): one-shot capture `touchend` preventDefault (kills the synthesized click; disarmed on touchcancel) + `input.readOnly = true` for 700ms (keyboard physically cannot reopen). Chromium smoke: readOnly toggles true→false, no refocus after Done, normal tap afterwards refocuses fine.
+Also shipped `?kbdebug` on-page tracer (`main.ts`): fixed overlay logging focusin/focusout/pointerdown/touchend/touchcancel targets + visualViewport height — for on-device diagnosis if anything still bounces (no Mac/Web Inspector available). URL: `https://fireplace.ignorelist.com/welcome/?kbdebug`.
