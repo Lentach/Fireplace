@@ -25,9 +25,17 @@ export class ContactService {
     // fail the visitor's submission — the row is already saved.
     const notifyId = Number(process.env.CONTACT_NOTIFY_USER_ID);
     if (Number.isInteger(notifyId) && notifyId > 0) {
+      // `log` level (prod-visible) on purpose: the ONLY ground truth that the
+      // ping path ran — per-send web-push logs are debug (prod-silent) by the
+      // chat metadata-privacy contract, but a contact ping is not chat traffic.
+      this.logger.log('Contact message stored; owner ping dispatched');
       this.pushNotificationsService.notifyContact(notifyId).catch((err) => {
         this.logger.warn(`Contact notify failed: ${err?.message ?? err}`);
       });
+    } else {
+      this.logger.log(
+        'Contact message stored; ping skipped (CONTACT_NOTIFY_USER_ID unset)',
+      );
     }
   }
 }
