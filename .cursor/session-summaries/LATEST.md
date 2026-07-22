@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-22 (contact form + inbox EXTRACTED to standalone service `Lentach/fireplace-inbox` (PRIVATE), deployed; monorepo contact module removed — LIVE)
+**Date:** 2026-07-22 (contact form + inbox EXTRACTED to standalone service `Lentach/fireplace-inbox` (PRIVATE), deployed; monorepo contact module removed; then security-hardened (`9efae5c`) after an independent review; Anti-Quantum Notes added to the landing site — ALL LIVE)
 
 ## What was done
 1. **New repo `Lentach/fireplace-inbox` (PRIVATE)** — tiny self-hosted service owning all of `/contact*`: Fastify 5 + `better-sqlite3` + `web-push`, TS→dist, one Docker container on the VM at `127.0.0.1:3001`. Endpoints byte-compatible with the old NestJS ones (landing form + bookmarked inbox URL unchanged): `POST /contact` (honeypot, 5/15min throttle, trim, 400 empty), `GET /contact/inbox?key=` (key-guarded, 404 bad, CSP nonce), `/contact/sw.js`, `/contact/manifest.webmanifest?key=`, `/contact/icons/:name` (icons bundled → self-contained), `POST /contact/subscribe`. No account doorbell (standalone has no accounts). `/healthz`.
@@ -13,9 +13,11 @@
 - Backend-direct `127.0.0.1:3000/contact/inbox` → **404** (route gone). Both containers healthy; `/version`=`4609af2`, frontend `/version.json` 0.0.122 unchanged.
 
 ## Notes for next session
-- **Owner inbox URL unchanged**: `https://fireplace.ignorelist.com/contact/inbox?key=547ac8b6927b2c42969c6478cc3cde1054a93d2d3a244280d1f1d0226d071d95` (same key, now the new service). iPhone setup still pending: Safari → Add to Home Screen → open from icon → Enable notifications.
+- **Owner inbox URL unchanged**: `https://fireplace.ignorelist.com/contact/inbox?key=547ac8b6927b2c42969c6478cc3cde1054a93d2d3a244280d1f1d0226d071d95` (same key, now the new service). **iPhone is SUBSCRIBED ✓** — a real `web.push.apple.com` row sits in the inbox DB (created 2026-07-22T04:20Z): the owner completed Add-to-Home-Screen + Enable notifications, and it survives container rebuilds via the `inbox-data` volume. The previously-"unproven" iOS-push link is now proven.
 - **Account doorbell is GONE** with the cutover (it lived in the removed module). `CONTACT_NOTIFY_USER_ID` in `~/fireplace/.env` is now a no-op — deletable anytime, no redeploy.
 - **Update the inbox service**: on VM `cd ~/fireplace-inbox && git pull && docker compose up -d --build` (`.env` gitignored, holds reused secrets). Fresh SQLite (no data carried; old rows sit in orphaned Postgres tables if ever needed).
+- **Security hardening (`fireplace-inbox` `9efae5c`, after independent reviewer pass)**: `trustProxy: true`→`1` (per-IP throttle now keys on real client IP, not a spoofable XFF left entry); request-log serializer strips the `?key=` from app logs + nginx `location /contact` now `access_log off` + scrubbed 27 historical key lines from `access.log` (key absent from all logs); icon allowlist `in`→`hasOwnProperty.call` (no prototype-key bypass); `setNotFoundHandler` so a bad key 404 is byte-identical to an unknown route; `POST /contact/subscribe` now rejects non-https / private-host endpoints (key-gated SSRF hardening). Reviewer confirmed clean: key compare (constant-time), XSS/CSP, SQLi (parameterized), traversal, honeypot, input caps, Docker (non-root, no baked secrets).
+- **Landing site** (`fireplaceWebsite` `fa1a922`, live at `/welcome/`): added an "Anti-Quantum Notes" feature card (4th in the grid: Sealed/Blind/Ephemeral/**Vanishing**) + a "secret notes burn on read" ledger line. Copy grounded in the app's own privacy description. HTML-only change (asset hashes unchanged).
 - Three working areas now: `Desktop/Fireplace` (app monorepo, master), `Desktop/fireplace-landing` (repo `Lentach/fireplaceWebsite`), and the VM-only `~/fireplace-inbox` service (repo `Lentach/fireplace-inbox`, PRIVATE — no local Desktop clone yet).
 - Full write-up: `2026-07-22-session-inbox-extraction.md`.
 
