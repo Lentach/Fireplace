@@ -135,13 +135,6 @@ export class PushNotificationsService implements OnModuleInit {
     userId: number,
     options: NotifyOptions,
   ): Promise<void> {
-    if (!this.webPushInitialized) return;
-
-    const subscriptions = await this.webPushSubscriptionsService.findByUserId(
-      userId,
-    );
-    if (!subscriptions.length) return;
-
     const body: Record<string, unknown> = {
       type: 'new_message',
       conversationId: options.conversationId,
@@ -158,6 +151,31 @@ export class PushNotificationsService implements OnModuleInit {
     if (options.senderName != null) {
       body.senderName = options.senderName;
     }
+    await this.sendWebPushToUser(userId, body);
+  }
+
+  // Contact-form ping (landing page POST /contact). Web Push ONLY, on purpose:
+  // no conversationId — the deployed SW renders a payload without one as a
+  // generic "Contact form / New message" card with no deep-link — and no FCM,
+  // whose data payload is a typed new_message tap-routing contract.
+  async notifyContact(userId: number): Promise<void> {
+    await this.sendWebPushToUser(userId, {
+      type: 'contact',
+      senderName: 'Contact form',
+    });
+  }
+
+  private async sendWebPushToUser(
+    userId: number,
+    body: Record<string, unknown>,
+  ): Promise<void> {
+    if (!this.webPushInitialized) return;
+
+    const subscriptions = await this.webPushSubscriptionsService.findByUserId(
+      userId,
+    );
+    if (!subscriptions.length) return;
+
     // Deliberately NO `topic` (RFC 8030 collapse key): a `conv-<id>` topic is sent as a
     // CLEARTEXT header to the push relay (Mozilla/Apple/Google) and would leak per-
     // conversation activity + cadence. The payload body below is E2E-encrypted to the
