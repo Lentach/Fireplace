@@ -1,5 +1,24 @@
 # Latest session summary
 
+**Date:** 2026-07-22 — landing iOS keyboard-bounce RESOLVED on device (real culprit was the HERO Done, not the journey pill) + `fireplace-inbox` anti-spam push cooldown + inbox Clear button (`14e99fe`, deployed).
+
+## What was done
+1. **iOS keyboard bounce fixed for real** (`fireplaceWebsite` `ecdda29`, cleanup `4a158c8`, live JS `RXVEr5wJ`): the earlier journey-pill fixes were the wrong button — the HERO `.enc-done` (`encrypt.ts`) had the identical WebKit hole: pointerdown blur → pill hides → iOS synthesized click retargets to the textarea → NATIVE refocus (JS guards can't stop it; Blink cancels compat mouse events on pointerdown-preventDefault, WebKit doesn't — hence iOS-only). Fix: one-shot touchend `preventDefault` (disarmed on touchcancel) + 700ms `readOnly` hammer. **Confirmed working on the physical iPhone.** Journey-side guards kept (same hole there); `?kbdebug` tracer removed after confirmation.
+2. **Hero `.enc-done` touch-gated** (`ed0b003`, live CSS `DBMb6rVT`): `@media (max-width: 999px)` → `and (pointer: coarse)` — no Done pill on narrow desktop; browser-verified both ways.
+3. **fireplace-inbox anti-spam + Clear** (`14e99fe`, VM rebuilt, healthy): push cooldown max 1 ping/5min (suppressed messages still stored; next push says `(+N more)`; SW tag collapses banners) + key-gated `POST /contact/clear` (404 bad key / 204) + red-outline **Clear** button with confirm on the inbox page. `Store.clearMessages()` in db.ts.
+
+## Verification
+- Owner-device confirm on the hero fix; live-bundle greps each deploy; 818px/390px pill gating checked in browser.
+- Inbox live sweep via VM: Clear button rendered; bad-key clear 404; two rapid POSTs → `1/1 delivered` + `suppressed (cooldown, 1 held)` (exactly one iPhone buzz); good-key clear 204 → 0 rows; **iPhone push subscription intact (1 row)**.
+
+## Notes for next session
+- **Local clone of `fireplace-inbox` now EXISTS** at `Desktop/fireplace-inbox` (no longer VM-only). Windows: `npm ci --ignore-scripts` (better-sqlite3 needs MSVC; tsc doesn't). Deploy = push, then VM `cd ~/fireplace-inbox && git pull && docker compose up -d --build`.
+- Owner inbox URL unchanged (`/contact/inbox?key=547ac8b6…d071d95`); iPhone `web.push.apple.com` subscription lives in the `inbox-data` volume — do NOT delete.
+- Full write-ups: `2026-07-22-session-ios-kb-bounce.md`, `2026-07-22-session-inbox-antispam.md`.
+
+---
+### Prior latest ↓
+
 **Date:** 2026-07-22 — GIPHY attribution mark added to the GIF picker + web redeployed to **0.0.124** with a fresh, valid Giphy client key (GIF search restored on prod).
 
 ## What was done
@@ -20,33 +39,10 @@
 - Full write-up: `2026-07-22-session-giphy-attribution-web-deploy.md`.
 
 ---
-### Prior latest ↓
-
-**Date:** 2026-07-22 (contact form + inbox EXTRACTED to standalone service `Lentach/fireplace-inbox` (PRIVATE), deployed; monorepo contact module removed; then security-hardened (`9efae5c`) after an independent review; Anti-Quantum Notes added to the landing site; iOS journey-DONE keyboard-bounce fixed on the landing — ALL LIVE)
-
-## What was done
-1. **New repo `Lentach/fireplace-inbox` (PRIVATE)** — tiny self-hosted service owning all of `/contact*`: Fastify 5 + `better-sqlite3` + `web-push`, TS→dist, one Docker container on the VM at `127.0.0.1:3001`. Endpoints byte-compatible with the old NestJS ones (landing form + bookmarked inbox URL unchanged): `POST /contact` (honeypot, 5/15min throttle, trim, 400 empty), `GET /contact/inbox?key=` (key-guarded, 404 bad, CSP nonce), `/contact/sw.js`, `/contact/manifest.webmanifest?key=`, `/contact/icons/:name` (icons bundled → self-contained), `POST /contact/subscribe`. No account doorbell (standalone has no accounts). `/healthz`.
-2. **Deployed on VM** — repo-scoped read-only deploy key (`~/.ssh/fireplace_inbox` + `Host github-inbox` alias; the old `id_ed25519` is locked to Fireplace and GitHub blocks key reuse). Cloned `~/fireplace-inbox`; `.env` built on the box by copying `WEB_PUSH_VAPID_*` + `CONTACT_INBOX_KEY` from `~/fireplace/.env` (**reuse same VAPID**) + PORT/DB_PATH. `docker compose up -d --build` → healthy. **nginx flip** host `/contact` `proxy_pass` 3000→3001 (+`X-Forwarded-For`) via python replace (not sed → dodges `$host` mangling), backup + `nginx -t` + rollback. Reloaded OK.
-3. **Monorepo cutover (`4609af2`, deployed v0.0.123)** — deleted `backend/src/contact/` + `notifyContact`/`sendRawWebPush` + app.module wiring; `frontend/nginx.conf` template `/contact` → pointer comment; migrations `0009`/`0010` LEFT (immutable; tables now orphaned/harmless). Tests **555/49 → 534/47** (CLAUDE.md §3 + verifier OK). Deploy rule updated with the inbox-service runbook.
-
-## Verification
-- Local docker smoke (16 endpoints incl. path-traversal 404, trim/honeypot/empty, 6th POST=429, doorbell path).
-- VM-direct + public sweeps: inbox 200/404, sw/manifest/icon 200, e2e POST through `https://fireplace.ignorelist.com` → 204 → rendered → deleted (owner inbox back to 0).
-- Backend-direct `127.0.0.1:3000/contact/inbox` → **404** (route gone). Both containers healthy; `/version`=`4609af2`, frontend `/version.json` 0.0.122 unchanged.
-
-## Notes for next session
-- **Owner inbox URL unchanged**: `https://fireplace.ignorelist.com/contact/inbox?key=547ac8b6927b2c42969c6478cc3cde1054a93d2d3a244280d1f1d0226d071d95` (same key, now the new service). **iPhone is SUBSCRIBED ✓** — a real `web.push.apple.com` row sits in the inbox DB (created 2026-07-22T04:20Z): the owner completed Add-to-Home-Screen + Enable notifications, and it survives container rebuilds via the `inbox-data` volume. The previously-"unproven" iOS-push link is now proven.
-- **Account doorbell is GONE** with the cutover (it lived in the removed module). `CONTACT_NOTIFY_USER_ID` in `~/fireplace/.env` is now a no-op — deletable anytime, no redeploy.
-- **Update the inbox service**: on VM `cd ~/fireplace-inbox && git pull && docker compose up -d --build` (`.env` gitignored, holds reused secrets). Fresh SQLite (no data carried; old rows sit in orphaned Postgres tables if ever needed).
-- **Security hardening (`fireplace-inbox` `9efae5c`, after independent reviewer pass)**: `trustProxy: true`→`1` (per-IP throttle now keys on real client IP, not a spoofable XFF left entry); request-log serializer strips the `?key=` from app logs + nginx `location /contact` now `access_log off` + scrubbed 27 historical key lines from `access.log` (key absent from all logs); icon allowlist `in`→`hasOwnProperty.call` (no prototype-key bypass); `setNotFoundHandler` so a bad key 404 is byte-identical to an unknown route; `POST /contact/subscribe` now rejects non-https / private-host endpoints (key-gated SSRF hardening). Reviewer confirmed clean: key compare (constant-time), XSS/CSP, SQLi (parameterized), traversal, honeypot, input caps, Docker (non-root, no baked secrets).
-- **Landing site** (`fireplaceWebsite` `fa1a922`, live at `/welcome/`): added an "Anti-Quantum Notes" feature card (4th in the grid: Sealed/Blind/Ephemeral/**Vanishing**) + a "secret notes burn on read" ledger line. Copy grounded in the app's own privacy description. HTML-only change (asset hashes unchanged).
-- Three working areas now: `Desktop/Fireplace` (app monorepo, master), `Desktop/fireplace-landing` (repo `Lentach/fireplaceWebsite`), and the VM-only `~/fireplace-inbox` service (repo `Lentach/fireplace-inbox`, PRIVATE — no local Desktop clone yet).
-- Full write-up: `2026-07-22-session-inbox-extraction.md`.
-- **iOS keyboard bounce fixed** (`fireplaceWebsite` `52c74e1`→`9dc31db`→`ef42561`, live bundle `BBgyupuP`): journey DONE dismissed but keyboard bounced back on iOS. Fix layers: deferred blur in the suppress window, one-shot touchend `preventDefault` on the dismiss gesture (disarmed on touchcancel), and the decisive **readonly hammer** — `releaseKb()` sets both composers `readOnly` for 700ms (kb-lift-gated, desktop unaffected) so iOS cannot reopen the keyboard whatever refocuses. Details: `2026-07-22-session-ios-kb-bounce.md`. Awaiting owner iPhone confirm.
 
 ## Previous
+- 2026-07-22: Contact inbox EXTRACTED to standalone PRIVATE `Lentach/fireplace-inbox` (Fastify+SQLite on VM :3001, nginx flip, monorepo cutover `4609af2` v0.0.123, tests 534/47) + security-hardened `9efae5c` after independent review + landing "Anti-Quantum Notes" card. Full: `2026-07-22-session-inbox-extraction.md`.
 - 2026-07-22: Landing CONTACT FORM (cross-repo): backend `POST /contact` module (`contact_messages` mig 0009, throttle+honeypot, `notifyContact` account ping) + "Transmission · to the builder" panel on `/welcome`. Both LIVE (backend `8fe4951`, landing `12eb949`). **NOTE: this whole feature has since been extracted to `fireplace-inbox` (above) and removed from the monorepo.** Full: `2026-07-22-session-contact-form.md`.
 - 2026-07-22: Landing Rev 16 (hero `.enc-done` → pointerdown pattern) + landing EXTRACTED to standalone **PUBLIC** repo `Lentach/fireplaceWebsite` (subtree split, 67 commits; business-card README with live-shot gallery; regenerated 1200×630 og.png; monorepo `landing/` removed, CLAUDE.md §2 pointer). Accepted exposure: deploy script publishes VM SSH login (key-only). Full: `2026-07-22-session-landing-extraction.md`.
 - 2026-07-21: Pre-release audit-fix on branch `fix/audit-bugs`, v0.0.123 — R2 chat-detail dedup, backend branch cleanup, FULL test-suite audit (backend 474→534, frontend 727→770), link-preview ULA regex fix, MainShell nav-policy extraction. R1/R3 skipped per owner. Full: `2026-07-21-session-audit-fix-refactors.md`.
 - 2026-07-20 (+07-22 Rev 16): Landing `/welcome` Rev 7-16 — reduced-motion + rAF pause + SEO meta + a11y + skip bookends; `.kb-done` journey pill dismisses+hides on **pointerdown** (Rev 15); Rev 16: hero `.enc-done` same pattern. Astro 7.x (dependabot). Full: `2026-07-20-session-landing-nits.md`.
-- 2026-07-20: Landing six owner nits + on-device Revisions 2-6. Committed `7aabcea`. Full: `2026-07-20-session-landing-nits.md`.
