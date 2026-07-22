@@ -80,7 +80,7 @@ void main() {
     await tester.drag(find.byType(ListView), const Offset(0, -100));
     await tester.pump();
 
-    expect(find.text('About Fireplace'), findsOneWidget);
+    expect(find.text('About'), findsOneWidget);
     expect(tester.widget<InkWell>(link).onTap, isNotNull);
     await tester.tap(link);
     await tester.pump();
@@ -123,6 +123,6 @@ void main() {
       300,
       scrollable: find.byType(Scrollable).first,
     );
-    expect(find.text('O Fireplace'), findsOneWidget);
+    expect(find.text('O projekcie'), findsOneWidget);
   });
 }

@@ -28,7 +28,7 @@
   "accountDeletionFailed": "Account deletion failed",
   "devicesLoading": "Loading…",
   "settingsAppVersion": "App version",
-  "settingsAboutFireplace": "About Fireplace",
+  "settingsAboutFireplace": "About",
 
   "privacySafetyTitle": "Privacy & Safety",
   "e2eEncryptionEnabled": "End-to-end encryption is enabled",

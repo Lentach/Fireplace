@@ -269,7 +269,7 @@ abstract class AppLocalizations {
   /// No description provided for @settingsAboutFireplace.
   ///
   /// In pl, this message translates to:
-  /// **'O Fireplace'**
+  /// **'O projekcie'**
   String get settingsAboutFireplace;
 
   /// No description provided for @privacySafetyTitle.
