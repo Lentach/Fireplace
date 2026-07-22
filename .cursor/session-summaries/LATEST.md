@@ -1,5 +1,24 @@
 # Latest session summary
 
+**Date:** 2026-07-22 — Added a compact, localized About Fireplace footer link to Settings on `feat/appearance-redesign`.
+
+## What was done
+1. Added a restrained FIREPLACE wordmark + “About Fireplace” / “O Fireplace” footer action immediately above the app-version block.
+2. Wired `https://fireplace.ignorelist.com/welcome/` through `LaunchMode.externalApplication`, preserving the installed PWA.
+3. Added a focused launcher fake test that asserts the exact URL and external mode.
+
+## Verification
+- Focused Settings tests: 3 passed. Flutter analyze: 0 issues.
+- Rendered Cosmic, Blue, Dark, Light, and Teal at 390×844 plus Light at 320×700.
+- `graphify update .`: 9089 nodes, 12992 edges, 526 communities.
+
+## Notes for next session
+- No version bump, production deploy, or PR merge.
+- Full: `2026-07-22-session-settings-about-link.md`.
+
+---
+### Prior latest ↓
+
 **Date:** 2026-07-22 — Appearance settings redesign completed and deployed for device testing from `feat/appearance-redesign` (`f5c9aa6`): one coherent theme/background model, real previews, and Cosmic Theme default → starfield.
 
 ## What was done
@@ -62,4 +81,3 @@
 
 ## Previous
 - 2026-07-22: Contact inbox EXTRACTED to standalone PRIVATE `Lentach/fireplace-inbox` (Fastify+SQLite on VM :3001, nginx flip, monorepo cutover `4609af2` v0.0.123, tests 534/47) + security-hardened `9efae5c` after independent review + landing "Anti-Quantum Notes" card. Full: `2026-07-22-session-inbox-extraction.md`.
-- 2026-07-22: Landing CONTACT FORM (cross-repo): backend `POST /contact` module (`contact_messages` mig 0009, throttle+honeypot, `notifyContact` account ping) + "Transmission · to the builder" panel on `/welcome`. Both LIVE (backend `8fe4951`, landing `12eb949`). **NOTE: this whole feature has since been extracted to `fireplace-inbox` (above) and removed from the monorepo.** Full: `2026-07-22-session-contact-form.md`.

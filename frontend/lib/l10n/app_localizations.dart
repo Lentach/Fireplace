@@ -266,6 +266,12 @@ abstract class AppLocalizations {
   /// **'Wersja aplikacji'**
   String get settingsAppVersion;
 
+  /// No description provided for @settingsAboutFireplace.
+  ///
+  /// In pl, this message translates to:
+  /// **'O Fireplace'**
+  String get settingsAboutFireplace;
+
   /// No description provided for @privacySafetyTitle.
   ///
   /// In pl, this message translates to:

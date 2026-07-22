@@ -97,6 +97,9 @@ class AppLocalizationsPl extends AppLocalizations {
   String get settingsAppVersion => 'Wersja aplikacji';
 
   @override
+  String get settingsAboutFireplace => 'O Fireplace';
+
+  @override
   String get privacySafetyTitle => 'Prywatność i bezpieczeństwo';
 
   @override

@@ -28,6 +28,7 @@
   "accountDeletionFailed": "Nie udało się usunąć konta",
   "devicesLoading": "Ładowanie…",
   "settingsAppVersion": "Wersja aplikacji",
+  "settingsAboutFireplace": "O Fireplace",
 
   "privacySafetyTitle": "Prywatność i bezpieczeństwo",
   "e2eEncryptionEnabled": "Szyfrowanie end-to-end jest włączone",

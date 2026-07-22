@@ -1,6 +1,7 @@
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
+import 'package:url_launcher/url_launcher.dart';
 import '../models/chat_background_preference.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_surface.dart';
@@ -34,6 +35,9 @@ class SettingsScreen extends StatefulWidget {
 
 class _SettingsScreenState extends State<SettingsScreen> {
   String? _deviceName;
+  static final Uri _aboutFireplaceUri = Uri.parse(
+    'https://fireplace.ignorelist.com/welcome/',
+  );
   String? _appVersionLine;
   late final PushService _pushService = PushService(
     ApiService(baseUrl: AppConfig.baseUrl),
@@ -94,6 +98,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
         ),
       ),
     );
+  }
+
+  void _openAboutFireplace() {
+    launchUrl(
+      _aboutFireplaceUri,
+      mode: LaunchMode.externalApplication,
+    ).ignore();
   }
 
   Future<void> _showResetPasswordDialog() async {
@@ -390,6 +401,66 @@ class _SettingsScreenState extends State<SettingsScreen> {
     );
   }
 
+  Widget _buildAboutFireplaceLink() {
+    final colorScheme = Theme.of(context).colorScheme;
+    final label = AppLocalizations.of(context).settingsAboutFireplace;
+
+    return Semantics(
+      button: true,
+      link: true,
+      label: label,
+      child: Align(
+        child: InkWell(
+          key: const Key('settings-about-fireplace-link'),
+          borderRadius: BorderRadius.circular(8),
+          onTap: _openAboutFireplace,
+          child: ConstrainedBox(
+            constraints: const BoxConstraints(minHeight: 44),
+            child: Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 12),
+              child: ExcludeSemantics(
+                child: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    Text(
+                      'FIREPLACE',
+                      style: RpgTheme.bodyFont(
+                        fontSize: 10,
+                        color: colorScheme.primary,
+                        fontWeight: FontWeight.w700,
+                      ).copyWith(letterSpacing: 1.6),
+                    ),
+                    const SizedBox(width: 10),
+                    Container(
+                      width: 1,
+                      height: 12,
+                      color: colorScheme.outlineVariant,
+                    ),
+                    const SizedBox(width: 10),
+                    Text(
+                      label,
+                      style: RpgTheme.bodyFont(
+                        fontSize: 12,
+                        color: colorScheme.onSurfaceVariant,
+                        fontWeight: FontWeight.w600,
+                      ),
+                    ),
+                    const SizedBox(width: 4),
+                    Icon(
+                      Icons.north_east_rounded,
+                      size: 13,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                  ],
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final auth = context.watch<AuthProvider>();
@@ -549,6 +620,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   ),
 
                   const SizedBox(height: 24),
+                  _buildAboutFireplaceLink(),
+
+                  if (_appVersionLine != null) const SizedBox(height: 8),
 
                   if (_appVersionLine != null)
                     Padding(
