@@ -1,19 +1,19 @@
 # Latest session summary
 
-**Date:** 2026-07-22 — Added and ephemerally deployed the compact Settings footer link in frontend 0.0.125 (`8f9da91`).
+**Date:** 2026-07-22 — PR #94 merged into `master`; Appearance redesign and compact Settings website link released in frontend 0.0.125.
 
 ## What was done
 1. Added a restrained FIREPLACE wordmark + localized “About” / “O projekcie” footer action immediately above the app-version block.
 2. Wired `https://fireplace.ignorelist.com/welcome/` through `LaunchMode.externalApplication`, preserving the installed PWA.
-3. Bumped frontend 0.0.124 → 0.0.125 and deployed the feature-branch bundle.
+3. Bumped frontend 0.0.124 → 0.0.125, merged PR #94 (`eb4ba89`), and deployed the resulting `master` bundle.
 
 ## Verification
 - Focused Settings tests: 3 passed. Flutter analyze: 0 issues.
 - Rendered Cosmic, Blue, Dark, Light, and Teal at 390×844 plus Light at 320×700.
-- Production smoke passed: health, frontend 0.0.125, bundle `8f9da91`, Flutter boot. `graphify update .`: 9089 nodes.
+- CI passed backend tests plus Flutter analyze/tests. Production smoke passed after the master deploy: health, frontend 0.0.125, bundle commit, Flutter boot. `graphify update .`: 9089 nodes.
 
 ## Notes for next session
-- Code commit `8f9da91` is live for testing. PR #94 remains unmerged; do not make the deployment permanent without owner approval.
+- PR #94 is merged and the release is permanent on `master`; fully close/reopen the PWA after deployment, never clear site data.
 - Full: `2026-07-22-session-settings-about-link.md`.
 
 ---
