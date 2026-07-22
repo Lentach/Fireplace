@@ -13,6 +13,7 @@
 - Backend healthy, `/version` = `8fe4951`, migration 0009 applied.
 
 ## Notes for next session
+- **Worktree zoo consolidated (2026-07-22)**: `Desktop/Fireplace` is now THE working copy on `master`. Removed worktrees `fireplace-ping-deploy`, `fireplace-fixes` (audit branch fully merged, ahead 0), `fireplace-cosmic`, `fireplace-applogo`, `fireplace-e2e-fix` (merged; dirty files were regenerated l10n), `fireplace-landing-OLD-stale-clone` — every branch verified pushed/merged first. Untracked design docs (landing prototype + wordmark boards) committed to master (`1fdcd1a`). Local branch refs kept. Leftover: an EMPTY `fireplace-ping-deploy` folder pinned by a session process — delete it after reboot.
 - **PENDING: set `CONTACT_NOTIFY_USER_ID=<owner user id>` in VM `~/fireplace/.env`** (owner must name their username#tag; ~90 real accounts — do NOT guess), then `./deploy-backend.sh`. Until then: store-only; read via `docker compose -f docker-compose.prod.yml exec db psql -U postgres -d chatdb -c 'select * from contact_messages order by id desc'`.
 - Landing work lives in `Desktop/fireplace-landing` (repo `Lentach/fireplaceWebsite`); backend in the monorepo — the contact feature spans both.
 - Still awaiting owner on-device re-test of Rev 16 (hero Done pill).
