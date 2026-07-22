@@ -1,19 +1,19 @@
 # Latest session summary
 
-**Date:** 2026-07-22 — Added a compact, localized About Fireplace footer link to Settings on `feat/appearance-redesign`.
+**Date:** 2026-07-22 — Added and ephemerally deployed the compact Settings footer link in frontend 0.0.125 (`8f9da91`).
 
 ## What was done
-1. Added a restrained FIREPLACE wordmark + “About Fireplace” / “O Fireplace” footer action immediately above the app-version block.
+1. Added a restrained FIREPLACE wordmark + localized “About” / “O projekcie” footer action immediately above the app-version block.
 2. Wired `https://fireplace.ignorelist.com/welcome/` through `LaunchMode.externalApplication`, preserving the installed PWA.
-3. Added a focused launcher fake test that asserts the exact URL and external mode.
+3. Bumped frontend 0.0.124 → 0.0.125 and deployed the feature-branch bundle.
 
 ## Verification
 - Focused Settings tests: 3 passed. Flutter analyze: 0 issues.
 - Rendered Cosmic, Blue, Dark, Light, and Teal at 390×844 plus Light at 320×700.
-- `graphify update .`: 9089 nodes, 12992 edges, 526 communities.
+- Production smoke passed: health, frontend 0.0.125, bundle `8f9da91`, Flutter boot. `graphify update .`: 9089 nodes.
 
 ## Notes for next session
-- No version bump, production deploy, or PR merge.
+- Code commit `8f9da91` is live for testing. PR #94 remains unmerged; do not make the deployment permanent without owner approval.
 - Full: `2026-07-22-session-settings-about-link.md`.
 
 ---
