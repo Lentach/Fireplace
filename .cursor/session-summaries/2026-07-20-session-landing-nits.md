@@ -334,6 +334,14 @@ stays on screen a beat.
 - Verified (preview, 390×844 mobile): focus → pill `display:flex`; click → `body.kb-open` false
   AND inline `display:none` (hidden by both paths); re-focus after the 600ms suppress window →
   inline display cleared, pill `display:flex` again.
-- LIVE + byte-verified: JS `DQjQd-h8`, CSS `KqJS6kWo` (unchanged). Live JS carries
-  `zt.addEventListener("click",()=>{zt.style.display="none",at()?.blur()})` and the poseLifted
-  `zt.style.display=""` restore. Committed + pushed.
+- First shipped on the Astro-5 build (JS `DQjQd-h8`). While pushing, `origin/master` had moved:
+  a dependabot batch merged **Astro 5.18.2 → 7.1.0** in `/landing` (PR #88) plus sharp/backend
+  bumps. Rebased onto it (only `LATEST.md` conflicted — kept the newer audit-session header, folded
+  Rev 14 into its Previous list). Then **rebuilt from the rebased Astro-7 lockfile and redeployed**
+  so prod == repo (the earlier deploy was Astro-5-built). Astro 7 is a 2-major jump on this
+  hand-tuned canvas site — smoke-tested clean: zero console/page errors, all 3 canvases painting,
+  single h1, compose lift + Done-pill hide + bidirectional skip (↓@0.05 "Skip to the reply",
+  ↑@0.97 "Back to the start") all working.
+- LIVE + byte-verified (Astro 7): JS `6oHf6wJ4`, CSS `DJ-65XJU`. Live JS carries
+  ``q.addEventListener(`click`,()=>{q.style.display=`none`,K()?.blur()})`` and the poseLifted
+  ``q.style.display=```` restore; live HTML references both new hashes. Committed + pushed.
