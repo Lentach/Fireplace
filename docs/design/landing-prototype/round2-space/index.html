@@ -1,0 +1,505 @@
+<!DOCTYPE html>
+<!--
+  PROTOTYPE — THROWAWAY. Round 2 ("space / planet / connections", after fire was dropped).
+  Reference: fin.com via land-book 97118 — black, planet horizon, thin connection arcs,
+  quiet serif, tiny mono stats. Question: which staging of the space theme is right?
+  Variants: ?variant=A|B|C, floating bar, or arrow keys. Run: open file in browser.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fireplace — landing prototype · round 2 (space)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cormorant+Garamond:ital,wght@0,300;0,400;0,500;1,300;1,400&family=Archivo:wght@600;800;900&family=Spectral:ital,wght@0,200;0,300;1,200&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { height:100%; }
+  body { background:#000; color:#ece7de; overflow-x:hidden; font-family:'IBM Plex Mono', monospace; }
+  canvas.scene { position:fixed; inset:0; width:100%; height:100%; display:block; pointer-events:none; }
+  .grain {
+    position:fixed; inset:0; pointer-events:none; z-index:50; opacity:.05; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ============ encrypt demo skeleton ============ */
+  .enc label { display:block; font-size:10px; letter-spacing:.24em; text-transform:uppercase; opacity:.5; margin-bottom:10px; }
+  .enc input { width:100%; background:transparent; border:none; outline:none; color:inherit; font-family:'IBM Plex Mono', monospace; }
+  .enc .server-line { margin-top:14px; font-size:12px; line-height:1.7; word-break:break-all; }
+  .enc .server-tag { font-size:9px; letter-spacing:.24em; text-transform:uppercase; opacity:.4; display:block; margin-bottom:4px; }
+  .enc .cipher .hot { text-shadow:0 0 8px currentColor; }
+
+  /* ================= A — PLANET HORIZON (fin-faithful, warm gold) ================= */
+  .sa { position:relative; min-height:100vh; overflow:hidden; }
+  .sa .content { position:relative; z-index:3; text-align:center; padding:0 24px; }
+  .sa .kicker { padding-top:12vh; font-size:10px; letter-spacing:.42em; text-transform:uppercase; color:rgba(240,190,120,.55); }
+  .sa h1 { margin-top:26px; font-family:'Cormorant Garamond', serif; font-weight:400;
+    font-size:clamp(40px, 5.4vw, 78px); line-height:1.12; color:#f3ead9; letter-spacing:.01em; }
+  .sa h1 i { font-style:italic; color:#e8b36a; }
+  .sa .sub { margin:22px auto 0; max-width:52ch; font-size:12.5px; line-height:1.9; color:rgba(236,231,222,.55); }
+  .sa .ctas { margin-top:36px; display:flex; gap:16px; justify-content:center; }
+  .sa .ctas a { font-size:11px; letter-spacing:.2em; text-transform:uppercase; text-decoration:none; padding:14px 30px; }
+  .sa .ctas .primary { color:#120a02; background:#e8b36a; border-radius:2px; }
+  .sa .ctas .ghost { color:rgba(236,231,222,.8); border:1px solid rgba(236,231,222,.25); border-radius:2px; }
+  .sa .enc { margin:9vh auto 0; max-width:520px; text-align:left;
+    border-top:1px solid rgba(232,179,106,.25); border-bottom:1px solid rgba(232,179,106,.25); padding:20px 4px; }
+  .sa .enc input { font-size:16px; padding:6px 0; }
+  .sa .enc input::placeholder { color:rgba(236,231,222,.22); }
+  .sa .enc .cipher { color:#9b8a70; } .sa .enc .cipher .hot { color:#ffd9a0; }
+  .sa .stats { position:relative; z-index:3; margin-top:16vh; padding:22px 5vw 40px;
+    display:flex; justify-content:space-between; gap:18px; flex-wrap:wrap;
+    border-top:1px solid rgba(236,231,222,.14); }
+  .sa .stats div { font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:rgba(236,231,222,.42); }
+  .sa .stats b { display:block; font-family:'Cormorant Garamond', serif; font-size:22px; font-weight:400;
+    letter-spacing:0; text-transform:none; color:#f3ead9; margin-bottom:5px; }
+
+  /* ================= B — DOT GLOBE (cold, asymmetric split) ================= */
+  .sb { position:relative; min-height:100vh; overflow:hidden; }
+  .sb .content { position:relative; z-index:3; max-width:600px; padding:14vh 0 12vh 7vw; }
+  .sb .tag { font-size:10px; letter-spacing:.36em; text-transform:uppercase; color:rgba(143,216,255,.6); }
+  .sb h1 { margin-top:24px; font-family:'Archivo', sans-serif; font-weight:900; text-transform:uppercase;
+    font-size:clamp(38px, 4.8vw, 66px); line-height:1.0; letter-spacing:-.01em; color:#eef6fb; }
+  .sb h1 span { color:#8fd8ff; }
+  .sb .sub { margin-top:24px; max-width:44ch; font-size:12.5px; line-height:1.9; color:rgba(238,246,251,.5); }
+  .sb .enc { margin-top:6vh; max-width:460px; background:rgba(10,16,22,.55); border:1px solid rgba(143,216,255,.18);
+    padding:20px 22px; backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
+  .sb .enc input { font-size:15px; padding:6px 0; border-bottom:1px solid rgba(143,216,255,.25); }
+  .sb .enc input::placeholder { color:rgba(238,246,251,.2); }
+  .sb .enc .cipher { color:#5f7787; } .sb .enc .cipher .hot { color:#aee4ff; }
+  .sb .cta { display:inline-block; margin-top:44px; font-family:'Archivo'; font-weight:800; font-size:12px;
+    letter-spacing:.18em; text-transform:uppercase; color:#04121c; background:#8fd8ff; text-decoration:none;
+    padding:16px 40px; }
+  .sb .foot { position:absolute; z-index:3; left:7vw; bottom:5vh; display:flex; gap:34px; font-size:10px;
+    letter-spacing:.18em; text-transform:uppercase; color:rgba(238,246,251,.35); }
+
+  /* ================= C — CONSTELLATION (people as stars) ================= */
+  .sc { position:relative; min-height:100vh; overflow:hidden; display:flex; align-items:center; justify-content:center; }
+  .sc .content { position:relative; z-index:3; text-align:center; padding:0 24px; max-width:820px; }
+  .sc .tag { font-size:10px; letter-spacing:.4em; text-transform:uppercase; color:rgba(183,140,255,.6); }
+  .sc h1 { margin-top:26px; font-family:'Spectral', serif; font-weight:200;
+    font-size:clamp(36px, 4.8vw, 66px); line-height:1.2; color:#efeaf7; }
+  .sc h1 em { font-style:italic; color:#b78cff; }
+  .sc .sub { margin:22px auto 0; max-width:50ch; font-size:12.5px; line-height:1.9; color:rgba(239,234,247,.5); }
+  .sc .enc { margin:7vh auto 0; max-width:500px; text-align:left; padding:20px 4px;
+    border-top:1px solid rgba(183,140,255,.3); border-bottom:1px solid rgba(183,140,255,.3); }
+  .sc .enc input { font-size:16px; padding:6px 0; }
+  .sc .enc input::placeholder { color:rgba(239,234,247,.22); }
+  .sc .enc .cipher { color:#7d7391; } .sc .enc .cipher .hot { color:#d9c2ff; }
+  .sc .cta { display:inline-block; margin-top:44px; font-family:'Spectral', serif; font-style:italic; font-size:17px;
+    color:#efeaf7; text-decoration:none; border-bottom:1px solid #b78cff; padding-bottom:4px; }
+
+  /* ================= switcher ================= */
+  #switcher {
+    position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:100;
+    display:flex; align-items:center; gap:14px; background:#101418; color:#e8f0f6;
+    border:1px solid #2c3742; border-radius:999px; padding:8px 14px;
+    font:12px 'IBM Plex Mono', monospace; box-shadow:0 8px 30px rgba(0,0,0,.6);
+  }
+  #switcher button { background:none; border:none; color:#7fd4ff; font:inherit; font-size:15px; cursor:pointer; padding:2px 6px; }
+  #switcher .lbl { min-width:210px; text-align:center; letter-spacing:.04em; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="grain"></div>
+
+<template id="tpl-A">
+  <div class="sa">
+    <canvas class="scene" data-scene="horizon"></canvas>
+    <div class="content">
+      <p class="kicker">Fireplace · Private Messaging</p>
+      <h1>Every message crosses the world<br><i>already sealed.</i></h1>
+      <p class="sub">End-to-end encrypted with the Signal protocol. Keys never leave your device — between you and them there is only ciphertext in transit.</p>
+      <div class="ctas"><a class="primary" href="#">Open Fireplace</a><a class="ghost" href="#">How it works</a></div>
+      <div class="enc" data-encrypt></div>
+    </div>
+    <div class="stats">
+      <div><b>0</b>plaintext stored</div>
+      <div><b>Signal</b>double-ratchet, every message</div>
+      <div><b>Yours</b>self-hosted media</div>
+      <div><b>15 min</b>edit window</div>
+      <div><b>Both sides</b>delete for everyone</div>
+    </div>
+  </div>
+</template>
+
+<template id="tpl-B">
+  <div class="sb">
+    <canvas class="scene" data-scene="globe"></canvas>
+    <div class="content">
+      <p class="tag">E2E encrypted chat</p>
+      <h1>Sealed on your device.<br><span>Delivered anywhere.</span></h1>
+      <p class="sub">Fireplace relays ciphertext between the people you trust — and understands none of it. No plaintext, no third-party clouds, no exceptions.</p>
+      <div class="enc" data-encrypt></div>
+      <a class="cta" href="#">Launch app</a>
+    </div>
+    <div class="foot"><span>Signal protocol</span><span>Self-hosted</span><span>Open source</span></div>
+  </div>
+</template>
+
+<template id="tpl-C">
+  <div class="sc">
+    <canvas class="scene" data-scene="constellation"></canvas>
+    <div class="content">
+      <p class="tag">Fireplace</p>
+      <h1>A constellation of people<br>who <em>actually</em> trust each other.</h1>
+      <p class="sub">No feeds, no strangers, no data mining. Just encrypted lines between you and yours — and a server that only ever sees starlight.</p>
+      <div class="enc" data-encrypt></div>
+      <a class="cta" href="#">Find your people →</a>
+    </div>
+  </div>
+</template>
+
+<div id="switcher">
+  <button id="prev" title="previous variant">←</button>
+  <span class="lbl" id="lbl"></span>
+  <button id="next" title="next variant">→</button>
+</div>
+
+<script>
+'use strict';
+let rafHandles = [];
+let sceneAbort = new AbortController();   // scoped listeners per variant render
+const raf = fn => rafHandles.push(requestAnimationFrame(fn));
+let mouse = { x:.5, y:.5 };
+window.addEventListener('pointermove', e => { mouse.x = e.clientX/innerWidth; mouse.y = e.clientY/innerHeight; });
+
+/* ---------- shared: starfield onto a ctx ---------- */
+function makeStars(W, H, n){
+  const s = [];
+  for (let i=0;i<n;i++) s.push({ x:Math.random()*W, y:Math.random()*H, r:Math.random()*1.1+0.2,
+    tw:Math.random()*6.28, sp:0.3+Math.random()*1.2 });
+  return s;
+}
+function drawStars(ctx, stars, t, tint, parallax){
+  const dx = (mouse.x-.5)*parallax, dy = (mouse.y-.5)*parallax;
+  for (const st of stars){
+    const a = 0.25 + 0.5*Math.abs(Math.sin(st.tw + t*st.sp));
+    ctx.beginPath(); ctx.arc(st.x+dx*st.r, st.y+dy*st.r, st.r, 0, 6.28);
+    ctx.fillStyle = `rgba(${tint},${a})`; ctx.fill();
+  }
+}
+function fit(canvas){
+  const dpr = Math.min(devicePixelRatio||1, 1.5);
+  canvas.width = innerWidth*dpr; canvas.height = innerHeight*dpr;
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr,dpr);
+  return ctx;
+}
+
+/* ================= SCENE: horizon (variant A) =================
+   Huge warm planet limb rising from the bottom, thin arcs with pulses. */
+function sceneHorizon(canvas){
+  let ctx = fit(canvas), W = innerWidth, H = innerHeight;
+  window.addEventListener('resize', () => { ctx = fit(canvas); W = innerWidth; H = innerHeight; build(); });
+  let stars, R, cx, cy, arcs;
+  const limbPt = a => ({ x: cx + R*Math.sin(a), y: cy - R*Math.cos(a) });   // a=0 → top of limb
+  function build(){
+    stars = makeStars(W, H*0.75, 220);
+    R = Math.max(W, 900) * 0.78; cx = W/2; cy = H*0.60 + R;
+    arcs = [];
+    for (let i=0;i<7;i++){
+      const a1 = -1.05 + Math.random()*0.9, a2 = 0.15 + Math.random()*0.9;
+      arcs.push({ a1, a2, lift: 1.03 + Math.random()*0.09, u: Math.random(),
+                  sp: 0.0016 + Math.random()*0.0022 });
+    }
+  }
+  build();
+  function frame(){
+    const t = performance.now()/1000;
+    ctx.clearRect(0,0,W,H);
+    drawStars(ctx, stars, t, '236,220,190', 12);
+    // atmosphere glow behind limb
+    const top = cy - R;
+    let g = ctx.createRadialGradient(cx, cy, R*0.985, cx, cy, R*1.05);
+    g.addColorStop(0,'rgba(232,179,106,.35)'); g.addColorStop(.5,'rgba(180,110,40,.12)'); g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(0, top-140, W, 320);
+    // planet body
+    ctx.save();
+    ctx.beginPath(); ctx.arc(cx, cy, R, 0, 6.28); ctx.clip();
+    const body = ctx.createRadialGradient(cx, top+R*0.05, R*0.02, cx, top+R*0.05, R*0.9);
+    body.addColorStop(0,'#3d2a14'); body.addColorStop(.25,'#241708'); body.addColorStop(.6,'#0d0803'); body.addColorStop(1,'#000');
+    ctx.fillStyle = body; ctx.fillRect(0, top-10, W, H-top+10);
+    // faint surface speckle
+    ctx.globalAlpha = .5;
+    for (let i=0;i<160;i++){
+      const a = -1.25 + (i*137.5%251)/251*2.5, rr = R*(1 - Math.random()*0.035);
+      const p = { x: cx + rr*Math.sin(a), y: cy - rr*Math.cos(a) };
+      if (p.y > H) continue;
+      ctx.fillStyle = `rgba(232,179,106,${0.03+Math.random()*0.05})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, Math.random()*1.4+0.3, 0, 6.28); ctx.fill();
+    }
+    ctx.globalAlpha = 1; ctx.restore();
+    // bright limb line
+    ctx.beginPath(); ctx.arc(cx, cy, R, -Math.PI/2-1.25, -Math.PI/2+1.25);
+    ctx.strokeStyle = 'rgba(255,214,150,.6)'; ctx.lineWidth = 1.2;
+    ctx.shadowColor = 'rgba(232,179,106,.9)'; ctx.shadowBlur = 12; ctx.stroke(); ctx.shadowBlur = 0;
+    // connection arcs + pulses
+    for (const arc of arcs){
+      const p1 = limbPt(arc.a1), p2 = limbPt(arc.a2);
+      const am = (arc.a1+arc.a2)/2, lift = R*arc.lift;
+      const cp = { x: cx + lift*Math.sin(am), y: cy - lift*Math.cos(am) };
+      ctx.beginPath(); ctx.moveTo(p1.x,p1.y); ctx.quadraticCurveTo(cp.x,cp.y,p2.x,p2.y);
+      ctx.strokeStyle = 'rgba(236,220,190,.14)'; ctx.lineWidth = .8; ctx.stroke();
+      // endpoints
+      for (const p of [p1,p2]){ ctx.beginPath(); ctx.arc(p.x,p.y,1.6,0,6.28); ctx.fillStyle='rgba(255,214,150,.8)'; ctx.fill(); }
+      // pulse head + short trail
+      arc.u = (arc.u + arc.sp) % 1;
+      for (let k=0;k<6;k++){
+        const u = Math.max(0, arc.u - k*0.012);
+        const q = 1-u;
+        const x = q*q*p1.x + 2*q*u*cp.x + u*u*p2.x, y = q*q*p1.y + 2*q*u*cp.y + u*u*p2.y;
+        ctx.beginPath(); ctx.arc(x, y, k===0?2:1.4-(k*0.15), 0, 6.28);
+        ctx.fillStyle = `rgba(255,214,150,${k===0?0.95:0.4-(k*0.06)})`;
+        if (k===0){ ctx.shadowColor='rgba(255,190,110,1)'; ctx.shadowBlur=10; }
+        ctx.fill(); ctx.shadowBlur=0;
+      }
+    }
+    raf(frame);
+  }
+  frame();
+}
+
+/* ================= SCENE: globe (variant B) =================
+   Rotating fibonacci dot-sphere. Drag to rotate (inertia, auto-spin resumes),
+   scroll to zoom — both scoped to the globe's screen area. */
+function sceneGlobe(canvas){
+  let ctx = fit(canvas), W = innerWidth, H = innerHeight;
+  const sig = { signal: sceneAbort.signal };
+  window.addEventListener('resize', () => { ctx = fit(canvas); W = innerWidth; H = innerHeight; }, sig);
+  const N = 850, pts = [];
+  for (let i=0;i<N;i++){
+    const y = 1 - 2*(i+0.5)/N, r = Math.sqrt(1-y*y), phi = i*2.39996323;
+    pts.push([Math.cos(phi)*r, y, Math.sin(phi)*r]);
+  }
+  const pick = () => pts[(Math.random()*N)|0];
+  const arcs = [];
+  for (let i=0;i<8;i++) arcs.push({ p1:pick(), p2:pick(), u:Math.random(), sp:0.002+Math.random()*0.003 });
+  const stars = makeStars(innerWidth, innerHeight, 260);
+  const F = 2.6;
+  // ---- interaction state ----
+  let ang = 0, tilt = 0.38, zoom = 1, vel = 0, lastT = performance.now();
+  let dragging = false, px0 = 0, py0 = 0, interacted = false;
+  const geo = { cx:0, cy:0, R:1 };
+  const over = e => Math.hypot(e.clientX - geo.cx, e.clientY - geo.cy) < geo.R * 1.3;
+  const interactive = e => e.target.closest && e.target.closest('input, a, button, #switcher');
+  window.addEventListener('pointerdown', e => {
+    if (interactive(e) || !over(e)) return;
+    dragging = true; interacted = true; px0 = e.clientX; py0 = e.clientY; vel = 0;
+  }, sig);
+  window.addEventListener('pointermove', e => {
+    document.body.style.cursor = dragging ? 'grabbing' : (over(e) && !interactive(e) ? 'grab' : '');
+    if (!dragging) return;
+    const dx = e.clientX - px0, dy = e.clientY - py0; px0 = e.clientX; py0 = e.clientY;
+    ang += dx * 0.005; vel = dx * 0.005;
+    tilt = Math.max(-1.2, Math.min(1.2, tilt + dy * 0.004));
+  }, sig);
+  window.addEventListener('pointerup', () => { dragging = false; }, sig);
+  window.addEventListener('wheel', e => {
+    if (interactive(e) || !over(e)) return;
+    e.preventDefault(); interacted = true;
+    zoom = Math.max(0.55, Math.min(2.3, zoom * (e.deltaY < 0 ? 1.09 : 0.92)));
+  }, { passive:false, signal: sceneAbort.signal });
+  function proj(v, R, cx, cy){
+    const [x,y,z] = v;
+    const xr = x*Math.cos(ang) + z*Math.sin(ang), zr = -x*Math.sin(ang) + z*Math.cos(ang);
+    const yr = y*Math.cos(tilt) - zr*Math.sin(tilt), zt = y*Math.sin(tilt) + zr*Math.cos(tilt);
+    const s = F/(F+zt);
+    return { x: cx + xr*R*s, y: cy + yr*R*s, z: zt };
+  }
+  function bez(p1, cp, p2, u){
+    const q = 1-u;
+    return [ q*q*p1[0]+2*q*u*cp[0]+u*u*p2[0], q*q*p1[1]+2*q*u*cp[1]+u*u*p2[1], q*q*p1[2]+2*q*u*cp[2]+u*u*p2[2] ];
+  }
+  function frame(){
+    const now = performance.now(), t = now/1000, dt = Math.min(50, now - lastT); lastT = now;
+    if (!dragging){ vel *= 0.94; ang += vel + 0.00012 * dt; }   // inertia, then gentle auto-spin
+    const R = Math.min(W,H)*0.34 * zoom, cx = W*0.68, cy = H*0.52;
+    geo.cx = cx; geo.cy = cy; geo.R = R;
+    ctx.clearRect(0,0,W,H);
+    drawStars(ctx, stars, t, '190,220,240', 16);
+    // halo
+    let g = ctx.createRadialGradient(cx,cy,R*0.6,cx,cy,R*1.6);
+    g.addColorStop(0,'rgba(60,120,160,.10)'); g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle=g; ctx.fillRect(cx-R*1.7,cy-R*1.7,R*3.4,R*3.4);
+    // dots
+    for (const v of pts){
+      const p = proj(v, R, cx, cy);
+      const a = Math.max(0, 0.95 - (p.z+1)*0.5);
+      if (a <= 0.02) continue;
+      const zs = Math.pow(zoom, 0.7);
+      ctx.beginPath(); ctx.arc(p.x, p.y, (p.z < 0 ? 1.4 : 0.8) * zs, 0, 6.28);
+      ctx.fillStyle = `rgba(143,216,255,${a})`; ctx.fill();
+    }
+    // arcs
+    for (const arc of arcs){
+      const m = [(arc.p1[0]+arc.p2[0])/2,(arc.p1[1]+arc.p2[1])/2,(arc.p1[2]+arc.p2[2])/2];
+      const ml = Math.hypot(m[0],m[1],m[2]) || 1;
+      const cp = [m[0]/ml*1.5, m[1]/ml*1.5, m[2]/ml*1.5];
+      ctx.beginPath();
+      let started = false;
+      for (let k=0;k<=36;k++){
+        const p = proj(bez(arc.p1, cp, arc.p2, k/36), R, cx, cy);
+        if (!started){ ctx.moveTo(p.x,p.y); started=true; } else ctx.lineTo(p.x,p.y);
+      }
+      ctx.strokeStyle = 'rgba(174,228,255,.24)'; ctx.lineWidth = .8 * Math.sqrt(zoom); ctx.stroke();
+      arc.u = (arc.u + arc.sp) % 1;
+      const hp = proj(bez(arc.p1, cp, arc.p2, arc.u), R, cx, cy);
+      const ha = hp.z < 0 ? 0.95 : 0.35;
+      ctx.beginPath(); ctx.arc(hp.x, hp.y, 1.9 * Math.sqrt(zoom), 0, 6.28);
+      ctx.fillStyle = `rgba(214,240,255,${ha})`;
+      ctx.shadowColor='rgba(143,216,255,.9)'; ctx.shadowBlur=9; ctx.fill(); ctx.shadowBlur=0;
+    }
+    // hint until first interaction
+    if (!interacted){
+      ctx.font = '10px IBM Plex Mono'; ctx.textAlign = 'center';
+      ctx.fillStyle = `rgba(143,216,255,${0.35 + 0.2*Math.sin(now/500)})`;
+      ctx.fillText('drag to rotate · scroll to zoom', cx, Math.min(H-16, cy + R + 28));
+      ctx.textAlign = 'left';
+    }
+    window.__globe = { ang, tilt, zoom };   // prototype debug handle
+    raf(frame);
+  }
+  frame();
+}
+
+/* ================= SCENE: constellation (variant C) =================
+   People as named stars; encrypted lines pulse between them. */
+const NAMES = ['ala','tomek','kasia','mama','bartek','ola','staszek','magda','piotr','zuza','marek','ania'];
+function sceneConstellation(canvas){
+  let ctx = fit(canvas), W = innerWidth, H = innerHeight;
+  window.addEventListener('resize', () => { ctx = fit(canvas); W = innerWidth; H = innerHeight; build(); });
+  let stars, nodes, links;
+  function build(){
+    stars = makeStars(W, H, 300);
+    nodes = NAMES.map((name,i) => ({
+      name,
+      x: (0.08 + 0.84*((i*0.618)%1)) * W,
+      y: (0.08 + 0.8*(((i*0.618*7)%1))) * H,
+      wob: Math.random()*6.28, r: 1.6 + Math.random()*1.4,
+    }));
+    links = [];
+    for (let i=0;i<nodes.length;i++){
+      // connect each node to its 2 nearest neighbours
+      const d = nodes.map((n,j) => ({ j, dd: i===j?1e9:(n.x-nodes[i].x)**2+(n.y-nodes[i].y)**2 }))
+                     .sort((a,b)=>a.dd-b.dd).slice(0,2);
+      for (const {j} of d){
+        if (!links.some(l => (l.i===i&&l.j===j)||(l.i===j&&l.j===i)))
+          links.push({ i, j, u:Math.random(), sp:0.003+Math.random()*0.004, active: Math.random()<.5 });
+      }
+    }
+  }
+  build();
+  function frame(){
+    const t = performance.now()/1000;
+    ctx.clearRect(0,0,W,H);
+    drawStars(ctx, stars, t, '210,200,235', 20);
+    const px = (mouse.x-.5)*26, py = (mouse.y-.5)*26;
+    const pos = n => ({ x: n.x + Math.sin(n.wob+t*0.5)*6 + px, y: n.y + Math.cos(n.wob+t*0.4)*6 + py });
+    for (const l of links){
+      const a = pos(nodes[l.i]), b = pos(nodes[l.j]);
+      ctx.beginPath(); ctx.moveTo(a.x,a.y); ctx.lineTo(b.x,b.y);
+      ctx.strokeStyle = 'rgba(183,140,255,.13)'; ctx.lineWidth = .8; ctx.stroke();
+      if (l.active){
+        l.u = (l.u + l.sp) % 1;
+        const x = a.x + (b.x-a.x)*l.u, y = a.y + (b.y-a.y)*l.u;
+        ctx.beginPath(); ctx.arc(x,y,1.8,0,6.28);
+        ctx.fillStyle = 'rgba(217,194,255,.95)';
+        ctx.shadowColor='rgba(183,140,255,1)'; ctx.shadowBlur=9; ctx.fill(); ctx.shadowBlur=0;
+      } else if (Math.random() < 0.0008) l.active = true;
+    }
+    for (const n of nodes){
+      const p = pos(n);
+      ctx.beginPath(); ctx.arc(p.x,p.y,n.r,0,6.28);
+      ctx.fillStyle = 'rgba(239,234,247,.9)';
+      ctx.shadowColor='rgba(183,140,255,.8)'; ctx.shadowBlur=12; ctx.fill(); ctx.shadowBlur=0;
+      ctx.font = '9px IBM Plex Mono'; ctx.fillStyle = 'rgba(239,234,247,.35)';
+      ctx.fillText(n.name, p.x+8, p.y+3);
+    }
+    raf(frame);
+  }
+  frame();
+}
+
+/* ============ burn-to-ciphertext demo (round-1 machinery, retinted by CSS) ============ */
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+const rnd = a => a[(Math.random()*a.length)|0];
+function initEncrypt(root){
+  root.innerHTML = `
+    <label>Type something private</label>
+    <input type="text" spellcheck="false" autocomplete="off" placeholder="meet me at eight…" maxlength="64">
+    <div class="server-line">
+      <span class="server-tag">what our server sees</span>
+      <code class="cipher"></code>
+    </div>`;
+  const input = root.querySelector('input');
+  const cipher = root.querySelector('.cipher');
+  const spans = [];
+  const setLen = n => {
+    const total = n === 0 ? 0 : 2 + Math.ceil(n*4/3) + 12;
+    while (spans.length > total) spans.pop().el.remove();
+    while (spans.length < total){
+      const el = document.createElement('span');
+      const i = spans.length;
+      const final = i===0 ? '3' : i===1 ? ':' : rnd(B64);
+      el.textContent = final; cipher.appendChild(el);
+      spans.push({ el, final, settleAt:0 });
+    }
+  };
+  const reburn = () => {
+    const now = performance.now();
+    for (let i=2;i<spans.length;i++){ spans[i].final = rnd(B64); spans[i].settleAt = now + 120 + Math.random()*520; }
+  };
+  (function frame(){
+    const now = performance.now();
+    for (const s of spans){
+      if (s.settleAt > now){ s.el.textContent = rnd(B64); s.el.className = 'hot'; }
+      else if (s.el.className !== 'cold'){ s.el.textContent = s.final; s.el.className = 'cold'; }
+    }
+    raf(frame);
+  })();
+  input.addEventListener('input', () => { setLen(input.value.length); reburn(); });
+  setLen(0);
+}
+
+/* ============ variant switcher ============ */
+const VARIANTS = [
+  { key:'A', name:'Planet Horizon', scene: sceneHorizon },
+  { key:'B', name:'Dot Globe', scene: sceneGlobe },
+  { key:'C', name:'Constellation', scene: sceneConstellation },
+];
+function currentIdx(){
+  const k = new URLSearchParams(location.search).get('variant') || 'A';
+  const i = VARIANTS.findIndex(v => v.key === k.toUpperCase());
+  return i === -1 ? 0 : i;
+}
+function render(){
+  rafHandles.forEach(cancelAnimationFrame); rafHandles = [];
+  sceneAbort.abort(); sceneAbort = new AbortController();
+  document.body.style.cursor = '';
+  const v = VARIANTS[currentIdx()];
+  const app = document.getElementById('app');
+  app.replaceChildren(document.getElementById('tpl-' + v.key).content.cloneNode(true));
+  document.getElementById('lbl').textContent = `${v.key} — ${v.name}`;
+  v.scene(app.querySelector('[data-scene]'));
+  app.querySelectorAll('[data-encrypt]').forEach(initEncrypt);
+}
+function go(delta){
+  const next = VARIANTS[(currentIdx()+delta+VARIANTS.length)%VARIANTS.length];
+  const url = new URL(location.href);
+  url.searchParams.set('variant', next.key);
+  history.replaceState(null, '', url);
+  render();
+}
+document.getElementById('prev').addEventListener('click', () => go(-1));
+document.getElementById('next').addEventListener('click', () => go(1));
+window.addEventListener('keydown', e => {
+  const t = e.target;
+  if (t.matches && t.matches('input, textarea, [contenteditable]')) return;
+  if (e.key === 'ArrowLeft') go(-1);
+  if (e.key === 'ArrowRight') go(1);
+});
+render();
+</script>
+</body>
+</html>

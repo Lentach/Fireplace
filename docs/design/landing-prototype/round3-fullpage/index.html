@@ -1,0 +1,478 @@
+<!DOCTYPE html>
+<!--
+  PROTOTYPE — THROWAWAY. Round 3: full-page skeleton (after B "Dot Globe" won round 2).
+  Question: does the page FLOW work? Dark globe hero → light product reveal with
+  annotated app + live server view → feature trio → honest ledger → dark outro.
+  No variants this round — judging the composition, not the aesthetic (settled).
+  Notes: phone content is a stylized stand-in — production page uses REAL app
+  screenshots. No fake trust signals anywhere (no download counts, no testimonials).
+  Globe: drag to rotate, Ctrl+scroll to zoom (plain scroll keeps scrolling the page).
+  Run: open this file in a browser.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fireplace — landing prototype · round 3 (full page)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --ice: #8fd8ff; --ice-dim: rgba(143,216,255,.55);
+    --ink: #0b1017; --paper: #f2f5f8; --paper-2: #e8edf2;
+    --blue: #1d6fd6; --txt-dark: #eef6fb; --txt-light: #14202c;
+  }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html { scroll-behavior:smooth; }
+  body { background:#000; color:var(--txt-dark); font-family:'IBM Plex Mono', monospace; overflow-x:hidden; }
+  h1,h2,h3 { font-family:'Archivo', sans-serif; }
+  .grain {
+    position:fixed; inset:0; pointer-events:none; z-index:60; opacity:.05; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ---------- reveal-on-scroll ---------- */
+  .io { opacity:0; transform:translateY(26px); transition:opacity .8s ease, transform .8s cubic-bezier(.2,.7,.2,1); }
+  .io.in { opacity:1; transform:none; }
+  .io.d1 { transition-delay:.12s; } .io.d2 { transition-delay:.24s; } .io.d3 { transition-delay:.36s; }
+
+  /* ---------- nav ---------- */
+  nav {
+    position:fixed; top:0; left:0; right:0; z-index:40;
+    display:flex; align-items:center; justify-content:space-between;
+    padding:18px 5vw; backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px);
+    background:rgba(0,0,0,.35); border-bottom:1px solid rgba(143,216,255,.08);
+  }
+  nav .mark { font-family:'Archivo'; font-weight:900; font-size:15px; letter-spacing:.06em; color:var(--txt-dark); }
+  nav .mark b { color:var(--ice); }
+  nav .links { display:flex; gap:30px; align-items:center; font-size:11px; letter-spacing:.18em; text-transform:uppercase; }
+  nav .links a { color:rgba(238,246,251,.6); text-decoration:none; }
+  nav .links a.cta { color:#04121c; background:var(--ice); padding:10px 22px; font-weight:500; }
+
+  /* ---------- hero ---------- */
+  .hero { position:relative; min-height:100vh; background:#000; overflow:hidden; }
+  .hero canvas { position:absolute; inset:0; width:100%; height:100%; }
+  .hero .content { position:relative; z-index:2; max-width:640px; padding:20vh 0 10vh 6vw; }
+  .hero .tag { font-size:10px; letter-spacing:.36em; text-transform:uppercase; color:var(--ice-dim); }
+  .hero h1 { margin-top:22px; font-weight:900; text-transform:uppercase; line-height:.98;
+    font-size:clamp(40px, 5.2vw, 74px); letter-spacing:-.01em; }
+  .hero h1 span { color:var(--ice); }
+  .hero .sub { margin-top:24px; max-width:44ch; font-size:13px; line-height:1.9; color:rgba(238,246,251,.55); }
+  .enc { margin-top:5vh; max-width:480px; background:rgba(10,16,22,.6); border:1px solid rgba(143,216,255,.18);
+    padding:20px 22px; backdrop-filter:blur(10px); -webkit-backdrop-filter:blur(10px); }
+  .enc label { display:block; font-size:10px; letter-spacing:.24em; text-transform:uppercase; opacity:.5; margin-bottom:10px; }
+  .enc input { width:100%; background:transparent; border:none; outline:none; color:inherit;
+    font-family:'IBM Plex Mono', monospace; font-size:15px; padding:6px 0; border-bottom:1px solid rgba(143,216,255,.25); }
+  .enc input::placeholder { color:rgba(238,246,251,.2); }
+  .enc .server-line { margin-top:14px; font-size:12px; line-height:1.7; word-break:break-all; }
+  .enc .server-tag { font-size:9px; letter-spacing:.24em; text-transform:uppercase; opacity:.4; display:block; margin-bottom:4px; }
+  .enc .cipher { color:#5f7787; }
+  .enc .cipher .hot { color:#aee4ff; text-shadow:0 0 8px currentColor; }
+  .hero .scroll-cue { position:absolute; z-index:2; left:6vw; bottom:4vh; font-size:10px; letter-spacing:.3em;
+    text-transform:uppercase; color:rgba(238,246,251,.35); animation:cue 2.4s ease-in-out infinite; }
+  @keyframes cue { 0%,100%{transform:translateY(0)} 50%{transform:translateY(6px)} }
+
+  /* ---------- bridge (dark → light) ---------- */
+  .bridge { height:18vh; background:linear-gradient(180deg, #000, var(--paper)); }
+
+  /* ---------- product reveal ---------- */
+  .product { background:var(--paper); color:var(--txt-light); padding:10vh 6vw 12vh; }
+  .product .head { max-width:760px; }
+  .product .kicker { font-size:10px; letter-spacing:.34em; text-transform:uppercase; color:var(--blue); }
+  .product h2 { margin-top:16px; font-weight:900; font-size:clamp(30px, 3.8vw, 52px); line-height:1.04;
+    text-transform:uppercase; letter-spacing:-.01em; }
+  .product h2 em { font-style:normal; color:var(--blue); }
+  .product .duo { margin-top:8vh; display:grid; grid-template-columns: minmax(300px, 420px) 1fr; gap:6vw; align-items:start; }
+  @media (max-width: 900px){ .product .duo { grid-template-columns:1fr; } }
+
+  /* phone mockup (stylized stand-in — real screenshots on the production page) */
+  .phone-wrap { position:relative; }
+  .phone { width:100%; max-width:360px; aspect-ratio:9/19; margin:0 auto; background:#0d1420;
+    border-radius:36px; border:1px solid #23303f; padding:14px; box-shadow:0 40px 90px rgba(10,30,50,.25); }
+  .phone .screen { height:100%; border-radius:24px; background:#0a0f16; overflow:hidden; display:flex; flex-direction:column; }
+  .phone .bar { display:flex; align-items:center; gap:10px; padding:12px 14px; border-bottom:1px solid #1a2531; }
+  .phone .ava { width:26px; height:26px; border-radius:50%; background:linear-gradient(135deg,#8fd8ff,#1d6fd6);
+    font-size:11px; display:flex; align-items:center; justify-content:center; color:#04121c; font-weight:700; }
+  .phone .who { font-size:11px; color:#dfeefb; }
+  .phone .who small { display:block; font-size:8px; color:#5d788f; letter-spacing:.1em; }
+  .phone .lock { margin-left:auto; font-size:10px; color:#8fd8ff; }
+  .phone .msgs { flex:1; padding:12px; display:flex; flex-direction:column; gap:8px; font-size:10.5px; line-height:1.5; }
+  .phone .m { max-width:78%; padding:8px 11px; border-radius:13px; }
+  .phone .them { align-self:flex-start; background:#16222e; color:#cfe2f2; border-bottom-left-radius:4px; }
+  .phone .me { align-self:flex-end; background:#1d6fd6; color:#eaf4ff; border-bottom-right-radius:4px; }
+  .phone .meta { font-size:7.5px; opacity:.55; margin-top:3px; text-align:right; }
+  .phone .input { display:flex; gap:8px; padding:10px 12px; border-top:1px solid #1a2531; }
+  .phone .input .field { flex:1; background:#121c27; border-radius:999px; padding:7px 12px; font-size:9.5px; color:#54708a; }
+  /* zangi-style annotation callouts */
+  .callout { position:absolute; z-index:3; background:#0b1017; color:#aee4ff; font-size:9.5px;
+    letter-spacing:.06em; padding:8px 11px; border:1px solid rgba(143,216,255,.35);
+    box-shadow:0 10px 30px rgba(10,30,50,.35); max-width:170px; line-height:1.5; }
+  .callout::before { content:'●'; color:var(--ice); margin-right:6px; font-size:7px; vertical-align:1px; }
+  .co-1 { top:14%; left:-40px; } .co-2 { top:46%; right:-30px; } .co-3 { bottom:12%; left:-52px; }
+  @media (max-width: 900px){ .co-1{left:0} .co-3{left:0} .co-2{right:0} }
+
+  /* server view panel */
+  .server-view h3 { font-size:13px; letter-spacing:.2em; text-transform:uppercase; color:var(--txt-light); }
+  .server-view .hint { margin-top:8px; font-size:11.5px; line-height:1.8; color:#5c6b7a; max-width:44ch; }
+  .server-log { margin-top:22px; background:#0b1017; border:1px solid #22303e; padding:18px 20px;
+    font-size:11px; line-height:2; color:#54708a; min-height:220px; overflow:hidden; }
+  .server-log .row { white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .server-log .t { color:#33475a; margin-right:10px; }
+  .server-log .fresh { color:#aee4ff; }
+  .server-view .punch { margin-top:20px; font-size:12px; color:var(--txt-light); }
+  .server-view .punch b { color:var(--blue); }
+
+  /* ---------- features ---------- */
+  .features { background:var(--paper-2); color:var(--txt-light); padding:10vh 6vw; }
+  .features h2 { font-weight:900; text-transform:uppercase; font-size:clamp(26px,3vw,40px); letter-spacing:-.01em; }
+  .features .grid { margin-top:6vh; display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:22px; }
+  .features .card { background:#fff; border:1px solid #dde5ec; padding:30px 28px; }
+  .features .card .k { font-size:10px; letter-spacing:.3em; text-transform:uppercase; color:var(--blue); }
+  .features .card h3 { margin-top:14px; font-size:19px; font-weight:700; }
+  .features .card p { margin-top:12px; font-size:12px; line-height:1.9; color:#5c6b7a; }
+
+  /* ---------- honest ledger ---------- */
+  .ledger { background:var(--paper-2); color:var(--txt-light); padding:0 6vw 10vh; }
+  .ledger .strip { border-top:1px solid #c9d4de; border-bottom:1px solid #c9d4de; padding:26px 0;
+    display:flex; flex-wrap:wrap; gap:16px 48px; justify-content:center;
+    font-size:11px; letter-spacing:.2em; text-transform:uppercase; color:#5c6b7a; }
+  .ledger .strip b { color:var(--txt-light); }
+
+  /* ---------- outro ---------- */
+  .bridge-up { height:18vh; background:linear-gradient(180deg, var(--paper-2), #000); }
+  .outro { position:relative; background:#000; min-height:70vh; display:flex; align-items:center;
+    justify-content:center; text-align:center; overflow:hidden; }
+  .outro canvas { position:absolute; inset:0; width:100%; height:100%; }
+  .outro .content { position:relative; z-index:2; padding:10vh 24px; }
+  .outro h2 { font-weight:900; text-transform:uppercase; font-size:clamp(30px,4.2vw,58px); line-height:1; }
+  .outro h2 span { color:var(--ice); }
+  .outro .cta { display:inline-block; margin-top:42px; font-family:'Archivo'; font-weight:800; font-size:13px;
+    letter-spacing:.18em; text-transform:uppercase; color:#04121c; background:var(--ice);
+    text-decoration:none; padding:18px 52px; }
+  .outro .fine { margin-top:36px; font-size:10px; letter-spacing:.2em; text-transform:uppercase; color:rgba(238,246,251,.3); }
+  footer { background:#000; padding:26px 6vw 34px; display:flex; justify-content:space-between; flex-wrap:wrap; gap:12px;
+    font-size:10px; letter-spacing:.16em; text-transform:uppercase; color:rgba(238,246,251,.3);
+    border-top:1px solid rgba(143,216,255,.08); }
+</style>
+</head>
+<body>
+<div class="grain"></div>
+
+<nav>
+  <span class="mark">FIRE<b>PLACE</b></span>
+  <div class="links">
+    <a href="#product">How it works</a>
+    <a href="#features">Privacy</a>
+    <a href="https://github.com/Lentach/Fireplace">GitHub</a>
+    <a class="cta" href="#">Open app</a>
+  </div>
+</nav>
+
+<!-- ============ HERO ============ -->
+<section class="hero">
+  <canvas id="globe"></canvas>
+  <div class="content">
+    <p class="tag io">E2E encrypted chat · public source · self-hosted</p>
+    <h1 class="io d1">Messages only<br><span>two people</span><br>can read.</h1>
+    <p class="sub io d2">Every message is sealed on your device with the Signal protocol before it touches the network. Our server relays ciphertext between the people you trust — and understands none of it.</p>
+    <div class="enc io d3" data-encrypt></div>
+  </div>
+  <span class="scroll-cue">scroll ↓</span>
+</section>
+
+<div class="bridge"></div>
+
+<!-- ============ PRODUCT REVEAL ============ -->
+<section class="product" id="product">
+  <div class="head">
+    <p class="kicker io">The app</p>
+    <h2 class="io d1">You see the conversation.<br><em>We see noise.</em></h2>
+  </div>
+  <div class="duo">
+    <div class="phone-wrap io d1">
+      <!-- stylized stand-in — production page uses real app screenshots -->
+      <div class="phone">
+        <div class="screen">
+          <div class="bar">
+            <span class="ava">K</span>
+            <span class="who">Kasia<small>online · encrypted</small></span>
+            <span class="lock">🔒</span>
+          </div>
+          <div class="msgs">
+            <div class="m them">jesteś już w domu?<div class="meta">18:02</div></div>
+            <div class="m me">za 10 minut, kupić coś?<div class="meta">18:03 ✓✓</div></div>
+            <div class="m them">chleb! i coś słodkiego 🙂<div class="meta">18:03</div></div>
+            <div class="m me">jasne 👍<div class="meta">18:04 ✓✓</div></div>
+          </div>
+          <div class="input"><span class="field">Message…</span></div>
+        </div>
+      </div>
+      <span class="callout co-1 io d2">Signal double-ratchet on every message</span>
+      <span class="callout co-2 io d3">media on our own disk — no third-party clouds</span>
+      <span class="callout co-3 io d3">delete for everyone burns both copies</span>
+    </div>
+    <div class="server-view io d2">
+      <h3>Live: what the server stores</h3>
+      <p class="hint">This is the entire readable content of a conversation from the server's side. There is no key on our side to do better than this.</p>
+      <div class="server-log" id="serverlog"></div>
+      <p class="punch">No plaintext. No key escrow. <b>Nothing to leak, sell, or subpoena.</b></p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ FEATURES ============ -->
+<section class="features" id="features">
+  <h2 class="io">Private by construction,<br>not by promise.</h2>
+  <div class="grid">
+    <div class="card io d1">
+      <span class="k">Sealed</span>
+      <h3>Signal protocol, every message</h3>
+      <p>Double-ratchet end-to-end encryption by default — there is no unencrypted mode. Keys are generated and stay on your device; the server never sees them.</p>
+    </div>
+    <div class="card io d2">
+      <span class="k">Yours</span>
+      <h3>Self-hosted, no data brokers</h3>
+      <p>Media lives on our own disk, not big-tech clouds. No ads, no analytics resale, no "partners". The code is public — read it instead of trusting us.</p>
+    </div>
+    <div class="card io d3">
+      <span class="k">Ephemeral</span>
+      <h3>Deleting actually deletes</h3>
+      <p>Delete for everyone removes the message on both sides — server included. Edit window of 15 minutes, re-encrypted end-to-end like everything else.</p>
+    </div>
+  </div>
+</section>
+
+<!-- ============ HONEST LEDGER ============ -->
+<section class="ledger">
+  <div class="strip io">
+    <span><b>0</b> plaintext stored</span>
+    <span><b>E2E</b> on by default</span>
+    <span><b>public</b> source code</span>
+    <span><b>self</b>-hosted</span>
+    <span>built by <b>two friends</b></span>
+  </div>
+</section>
+
+<div class="bridge-up"></div>
+
+<!-- ============ OUTRO ============ -->
+<section class="outro">
+  <canvas id="outstars"></canvas>
+  <div class="content">
+    <h2 class="io">Talk like<br><span>no one's listening.</span></h2>
+    <a class="cta io d1" href="#">Open Fireplace</a>
+    <p class="fine io d2">runs in your browser · installs as an app · free</p>
+  </div>
+</section>
+
+<footer>
+  <span>Fireplace — E2E encrypted chat</span>
+  <span>github.com/Lentach/Fireplace</span>
+</footer>
+
+<script>
+'use strict';
+const mouse = { x:.5, y:.5 };
+window.addEventListener('pointermove', e => { mouse.x = e.clientX/innerWidth; mouse.y = e.clientY/innerHeight; });
+function fit(canvas){
+  const dpr = Math.min(devicePixelRatio||1, 1.5);
+  const w = canvas.clientWidth, h = canvas.clientHeight;
+  canvas.width = w*dpr; canvas.height = h*dpr;
+  const ctx = canvas.getContext('2d'); ctx.scale(dpr,dpr);
+  return ctx;
+}
+function makeStars(W,H,n){
+  const s=[]; for(let i=0;i<n;i++) s.push({x:Math.random()*W,y:Math.random()*H,r:Math.random()*1.1+.2,tw:Math.random()*6.28,sp:.3+Math.random()*1.2});
+  return s;
+}
+function drawStars(ctx,stars,t,tint,par){
+  const dx=(mouse.x-.5)*par, dy=(mouse.y-.5)*par;
+  for(const st of stars){
+    const a=.25+.5*Math.abs(Math.sin(st.tw+t*st.sp));
+    ctx.beginPath(); ctx.arc(st.x+dx*st.r, st.y+dy*st.r, st.r, 0, 6.28);
+    ctx.fillStyle=`rgba(${tint},${a})`; ctx.fill();
+  }
+}
+
+/* ============ hero globe — drag rotate, ctrl+scroll zoom ============ */
+(function(){
+  const canvas = document.getElementById('globe');
+  let ctx = fit(canvas), W = canvas.clientWidth, H = canvas.clientHeight;
+  window.addEventListener('resize', () => { ctx = fit(canvas); W = canvas.clientWidth; H = canvas.clientHeight; });
+  const N = 850, pts = [];
+  for (let i=0;i<N;i++){
+    const y = 1-2*(i+.5)/N, r = Math.sqrt(1-y*y), phi = i*2.39996323;
+    pts.push([Math.cos(phi)*r, y, Math.sin(phi)*r]);
+  }
+  const pick = () => pts[(Math.random()*N)|0];
+  const arcs = [];
+  for (let i=0;i<8;i++) arcs.push({ p1:pick(), p2:pick(), u:Math.random(), sp:.002+Math.random()*.003 });
+  const stars = makeStars(W, H, 240);
+  const F = 2.6;
+  let ang = 0, tilt = .38, zoom = 1, vel = 0, lastT = performance.now();
+  let dragging = false, px0 = 0, py0 = 0, interacted = false;
+  const geo = { cx:0, cy:0, R:1 };
+  const over = e => {
+    const r = canvas.getBoundingClientRect();
+    return Math.hypot(e.clientX-r.left-geo.cx, e.clientY-r.top-geo.cy) < geo.R*1.3;
+  };
+  const ui = e => e.target.closest && e.target.closest('input, a, button, nav');
+  window.addEventListener('pointerdown', e => {
+    if (ui(e) || !over(e)) return;
+    dragging = true; interacted = true; px0 = e.clientX; py0 = e.clientY; vel = 0;
+  });
+  window.addEventListener('pointermove', e => {
+    document.body.style.cursor = dragging ? 'grabbing' : (over(e) && !ui(e) ? 'grab' : '');
+    if (!dragging) return;
+    const dx = e.clientX-px0, dy = e.clientY-py0; px0 = e.clientX; py0 = e.clientY;
+    ang += dx*.005; vel = dx*.005;
+    tilt = Math.max(-1.2, Math.min(1.2, tilt + dy*.004));
+  });
+  window.addEventListener('pointerup', () => { dragging = false; });
+  window.addEventListener('wheel', e => {
+    if (!e.ctrlKey || !over(e)) return;      // plain scroll keeps scrolling the page
+    e.preventDefault(); interacted = true;
+    zoom = Math.max(.55, Math.min(2.3, zoom * (e.deltaY < 0 ? 1.09 : .92)));
+  }, { passive:false });
+  function proj(v, R, cx, cy){
+    const [x,y,z] = v;
+    const xr = x*Math.cos(ang)+z*Math.sin(ang), zr = -x*Math.sin(ang)+z*Math.cos(ang);
+    const yr = y*Math.cos(tilt)-zr*Math.sin(tilt), zt = y*Math.sin(tilt)+zr*Math.cos(tilt);
+    const s = F/(F+zt);
+    return { x: cx+xr*R*s, y: cy+yr*R*s, z: zt };
+  }
+  const bez = (p1,cp,p2,u) => {
+    const q = 1-u;
+    return [ q*q*p1[0]+2*q*u*cp[0]+u*u*p2[0], q*q*p1[1]+2*q*u*cp[1]+u*u*p2[1], q*q*p1[2]+2*q*u*cp[2]+u*u*p2[2] ];
+  };
+  (function frame(){
+    const now = performance.now(), t = now/1000, dt = Math.min(50, now-lastT); lastT = now;
+    if (!dragging){ vel *= .94; ang += vel + .00012*dt; }
+    const R = Math.min(W,H)*.36*zoom, cx = W*.7, cy = H*.52;
+    geo.cx = cx; geo.cy = cy; geo.R = R;
+    ctx.clearRect(0,0,W,H);
+    drawStars(ctx, stars, t, '190,220,240', 16);
+    let g = ctx.createRadialGradient(cx,cy,R*.6,cx,cy,R*1.6);
+    g.addColorStop(0,'rgba(60,120,160,.10)'); g.addColorStop(1,'rgba(0,0,0,0)');
+    ctx.fillStyle = g; ctx.fillRect(cx-R*1.7,cy-R*1.7,R*3.4,R*3.4);
+    const zs = Math.pow(zoom,.7);
+    for (const v of pts){
+      const p = proj(v, R, cx, cy);
+      const a = Math.max(0, .95-(p.z+1)*.5);
+      if (a <= .02) continue;
+      ctx.beginPath(); ctx.arc(p.x, p.y, (p.z<0?1.4:.8)*zs, 0, 6.28);
+      ctx.fillStyle = `rgba(143,216,255,${a})`; ctx.fill();
+    }
+    for (const arc of arcs){
+      const m = [(arc.p1[0]+arc.p2[0])/2,(arc.p1[1]+arc.p2[1])/2,(arc.p1[2]+arc.p2[2])/2];
+      const ml = Math.hypot(m[0],m[1],m[2])||1;
+      const cp = [m[0]/ml*1.5, m[1]/ml*1.5, m[2]/ml*1.5];
+      ctx.beginPath();
+      for (let k=0;k<=36;k++){
+        const p = proj(bez(arc.p1,cp,arc.p2,k/36), R, cx, cy);
+        k===0 ? ctx.moveTo(p.x,p.y) : ctx.lineTo(p.x,p.y);
+      }
+      ctx.strokeStyle = 'rgba(174,228,255,.24)'; ctx.lineWidth = .8*Math.sqrt(zoom); ctx.stroke();
+      arc.u = (arc.u+arc.sp)%1;
+      const hp = proj(bez(arc.p1,cp,arc.p2,arc.u), R, cx, cy);
+      ctx.beginPath(); ctx.arc(hp.x, hp.y, 1.9*Math.sqrt(zoom), 0, 6.28);
+      ctx.fillStyle = `rgba(214,240,255,${hp.z<0?.95:.35})`;
+      ctx.shadowColor = 'rgba(143,216,255,.9)'; ctx.shadowBlur = 9; ctx.fill(); ctx.shadowBlur = 0;
+    }
+    if (!interacted){
+      ctx.font = '10px IBM Plex Mono'; ctx.textAlign = 'center';
+      ctx.fillStyle = `rgba(143,216,255,${.35+.2*Math.sin(now/500)})`;
+      ctx.fillText('drag to rotate · ctrl+scroll to zoom', cx, Math.min(H-16, cy+R+28));
+      ctx.textAlign = 'left';
+    }
+    window.__globe = { ang, tilt, zoom };
+    requestAnimationFrame(frame);
+  })();
+})();
+
+/* ============ outro starfield ============ */
+(function(){
+  const canvas = document.getElementById('outstars');
+  let ctx = fit(canvas), W = canvas.clientWidth, H = canvas.clientHeight;
+  window.addEventListener('resize', () => { ctx = fit(canvas); W = canvas.clientWidth; H = canvas.clientHeight; });
+  const stars = makeStars(W, H, 200);
+  (function frame(){
+    ctx.clearRect(0,0,W,H);
+    drawStars(ctx, stars, performance.now()/1000, '190,220,240', 22);
+    requestAnimationFrame(frame);
+  })();
+})();
+
+/* ============ encrypt demo (hero) ============ */
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+const rnd = a => a[(Math.random()*a.length)|0];
+(function(){
+  const root = document.querySelector('[data-encrypt]');
+  root.innerHTML = `
+    <label>Type something private</label>
+    <input type="text" spellcheck="false" autocomplete="off" placeholder="meet me at eight…" maxlength="64">
+    <div class="server-line">
+      <span class="server-tag">what our server sees</span>
+      <code class="cipher"></code>
+    </div>`;
+  const input = root.querySelector('input');
+  const cipher = root.querySelector('.cipher');
+  const spans = [];
+  const setLen = n => {
+    const total = n===0 ? 0 : 2+Math.ceil(n*4/3)+12;
+    while (spans.length > total) spans.pop().el.remove();
+    while (spans.length < total){
+      const el = document.createElement('span');
+      const i = spans.length;
+      const final = i===0?'3':i===1?':':rnd(B64);
+      el.textContent = final; cipher.appendChild(el);
+      spans.push({ el, final, settleAt:0 });
+    }
+  };
+  (function frame(){
+    const now = performance.now();
+    for (const s of spans){
+      if (s.settleAt > now){ s.el.textContent = rnd(B64); s.el.className = 'hot'; }
+      else if (s.el.className !== 'cold'){ s.el.textContent = s.final; s.el.className = 'cold'; }
+    }
+    requestAnimationFrame(frame);
+  })();
+  input.addEventListener('input', () => {
+    setLen(input.value.length);
+    const now = performance.now();
+    for (let i=2;i<spans.length;i++){ spans[i].final = rnd(B64); spans[i].settleAt = now+120+Math.random()*520; }
+  });
+  setLen(0);
+})();
+
+/* ============ server log ticker (product section) ============ */
+(function(){
+  const log = document.getElementById('serverlog');
+  const pad = n => String(n).padStart(2,'0');
+  const line = () => {
+    const d = new Date();
+    const body = Array.from({length: 34+((Math.random()*22)|0)}, () => rnd(B64)).join('');
+    return { t: `${pad(d.getHours())}:${pad(d.getMinutes())}:${pad(d.getSeconds())}`, body: (Math.random()<.8?'2:':'3:')+body };
+  };
+  const push = () => {
+    const {t, body} = line();
+    const el = document.createElement('div');
+    el.className = 'row';
+    el.innerHTML = `<span class="t">${t}</span><span class="fresh">${body}</span>`;
+    log.prepend(el);
+    setTimeout(() => el.querySelector('.fresh').classList.remove('fresh'), 900);
+    while (log.children.length > 9) log.lastChild.remove();
+  };
+  for (let i=0;i<6;i++) push();
+  (function tick(){ push(); setTimeout(tick, 1200+Math.random()*2400); })();
+})();
+
+/* ============ scroll reveals ============ */
+const io = new IntersectionObserver(entries => {
+  for (const e of entries) if (e.isIntersecting){ e.target.classList.add('in'); io.unobserve(e.target); }
+}, { threshold: .18 });
+document.querySelectorAll('.io').forEach(el => io.observe(el));
+</script>
+</body>
+</html>

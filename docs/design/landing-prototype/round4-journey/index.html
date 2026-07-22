@@ -1,0 +1,540 @@
+<!DOCTYPE html>
+<!--
+  PROTOTYPE — THROWAWAY. Round 4 (iteration 3): "journey of a message".
+  Owner feedback: server stop = an "enigma"-style RELAY MACHINE. The sealed
+  capsule is fed into the intake slit, the machine's window shows the flowing
+  stream of everyone's ciphertext (rotors spin), and it spits the capsule out
+  the other side toward phone 2 — UNCHANGED. Honesty rule: unlike a real Enigma
+  the relay transforms nothing; copy says "routes everything, reads nothing".
+  Flow: locked chat → press send → scroll-driven journey (800vh sticky stage):
+  lift → seal (3:… scramble) → wire → MACHINE (intake scan → window/stream →
+  outtake scan) → wire → unseal → lands in her chat, ✓→✓✓. Reversible.
+  Run: open in a browser. Desktop-first. (Production: GSAP ScrollTrigger + Lenis.)
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fireplace — landing prototype · round 4 (message journey)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Archivo:wght@500;700;900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --ice:#8fd8ff; --blue:#1d6fd6; --txt:#eef6fb; }
+  * { margin:0; padding:0; box-sizing:border-box; }
+  body { background:#000; color:var(--txt); font-family:'IBM Plex Mono', monospace; overflow-x:hidden; }
+  body.locked { overflow:hidden; }
+  h1,h2 { font-family:'Archivo', sans-serif; }
+  .grain { position:fixed; inset:0; pointer-events:none; z-index:80; opacity:.05; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E"); }
+
+  .brand { position:fixed; top:22px; left:5vw; z-index:40; font-family:'Archivo'; font-weight:900; font-size:14px; letter-spacing:.06em; }
+  .brand b { color:var(--ice); }
+  .intro-tag { position:fixed; top:24px; right:5vw; z-index:40; font-size:10px; letter-spacing:.28em;
+    text-transform:uppercase; color:rgba(238,246,251,.4); transition:opacity .6s; }
+
+  .journey { height:800vh; position:relative; }
+  .stage { position:sticky; top:0; height:100vh; overflow:hidden; }
+  #scene { position:absolute; inset:0; width:100%; height:100%; }
+
+  /* ---------- phones ---------- */
+  .phone { position:absolute; width:300px; aspect-ratio:9/17; background:#0d1420;
+    border-radius:30px; border:1px solid #23303f; padding:11px;
+    box-shadow:0 30px 80px rgba(10,30,50,.45); will-change:transform; }
+  .phone .screen { height:100%; border-radius:20px; background:#0a0f16; display:flex; flex-direction:column; overflow:hidden; }
+  .phone .bar { display:flex; align-items:center; gap:9px; padding:11px 12px; border-bottom:1px solid #1a2531; }
+  .phone .ava { width:24px; height:24px; border-radius:50%; display:flex; align-items:center; justify-content:center;
+    font-size:10px; font-weight:700; color:#04121c; background:linear-gradient(135deg,#8fd8ff,#1d6fd6); }
+  .phone .who { font-size:10.5px; color:#dfeefb; }
+  .phone .who small { display:block; font-size:7.5px; color:#5d788f; letter-spacing:.1em; }
+  .phone .lock { margin-left:auto; font-size:9px; color:var(--ice); }
+  .phone .msgs { flex:1; padding:10px; display:flex; flex-direction:column; gap:7px; font-size:10px; line-height:1.5; }
+  .phone .m { max-width:80%; padding:7px 10px; border-radius:12px; }
+  .phone .them { align-self:flex-start; background:#16222e; color:#cfe2f2; border-bottom-left-radius:4px; }
+  .phone .me { align-self:flex-end; background:#1d6fd6; color:#eaf4ff; border-bottom-right-radius:4px; }
+  .phone .meta { font-size:7px; opacity:.55; margin-top:2px; text-align:right; }
+  .phone .m.landing { animation:land .45s cubic-bezier(.2,.9,.3,1.2); }
+  @keyframes land { 0%{transform:scale(.5) translateY(-14px); opacity:0} 100%{transform:none; opacity:1} }
+  .phone .compose { display:flex; gap:7px; padding:9px 10px; border-top:1px solid #1a2531; align-items:center; }
+  .phone .compose input { flex:1; background:#121c27; border:none; outline:none; border-radius:999px;
+    padding:8px 12px; font-size:10px; color:#dfeefb; font-family:'IBM Plex Mono', monospace; }
+  .phone .compose button { width:34px; height:34px; border-radius:50%; border:none; cursor:pointer;
+    background:var(--ice); color:#04121c; font-size:14px; display:flex; align-items:center; justify-content:center; }
+  .phone .compose button:hover { transform:scale(1.06); }
+  .keytag { position:absolute; z-index:5; font-size:9px; letter-spacing:.08em; color:#ffd98a;
+    background:#141008; border:1px solid rgba(255,217,138,.35); padding:6px 10px; opacity:0; transition:opacity .5s; }
+
+  /* ---------- traveler ---------- */
+  #traveler { position:absolute; z-index:10; background:#1d6fd6; color:#eaf4ff; font-size:13px;
+    padding:10px 14px; border-radius:14px; border-bottom-right-radius:5px; max-width:340px;
+    line-height:1.5; opacity:0; will-change:transform; word-break:break-all; transform-origin:center; }
+  #traveler.capsule { background:rgba(13,20,32,.92); border:1px solid var(--ice);
+    box-shadow:0 0 18px rgba(143,216,255,.55); color:#aee4ff; }
+  #traveler .x { display:none; }
+  #traveler .hot { color:#fff; text-shadow:0 0 8px rgba(174,228,255,1); }
+
+  /* ---------- THE RELAY MACHINE ---------- */
+  .server { position:absolute; z-index:6; left:50%; top:29%; transform:translate(-50%,-50%);
+    width:min(700px, 94vw); opacity:0; transition:opacity .5s; }
+  .mc-head { display:flex; justify-content:space-between; align-items:flex-end; padding:0 6px 10px; }
+  .mc-head .lbl { font-size:10px; letter-spacing:.26em; text-transform:uppercase; color:var(--ice);
+    display:flex; align-items:center; gap:10px; }
+  .mc-head .dotpulse { width:7px; height:7px; border-radius:50%; background:var(--ice); animation:dp 1.6s ease-in-out infinite; }
+  @keyframes dp { 0%,100%{opacity:.4} 50%{opacity:1} }
+  .mc-rotors { display:flex; gap:12px; }
+  .rotor { width:36px; height:36px; border-radius:50%; border:1px dashed rgba(143,216,255,.45);
+    background:#0d1622; position:relative; display:flex; align-items:center; justify-content:center;
+    font-size:9px; color:rgba(143,216,255,.8); will-change:transform; }
+  .rotor::after { content:''; position:absolute; top:2px; left:calc(50% - 1px); width:2px; height:7px; background:var(--ice); }
+  .mc-body { display:flex; align-items:stretch; background:#0b1017; border:1px solid #2a3a4c;
+    box-shadow:0 34px 80px rgba(10,30,50,.55), inset 0 1px 0 rgba(143,216,255,.08); }
+  .slot { width:38px; position:relative; background:#070c12; display:flex; align-items:center; justify-content:center; }
+  .slot.in  { border-right:1px solid #22303e; }
+  .slot.out { border-left:1px solid #22303e; }
+  .slot .slit { width:4px; height:62%; background:#02060a; border:1px solid #1c2938; border-radius:2px; }
+  .slot .tag { position:absolute; bottom:7px; font-size:7px; letter-spacing:.14em; color:#3d5266; text-transform:uppercase; }
+  .slot .scan { position:absolute; left:5px; right:5px; top:50%; height:2px; background:var(--ice);
+    box-shadow:0 0 14px var(--ice); opacity:0; }
+  .mc-inner { flex:1; padding:12px 16px 10px; min-width:0; }
+  .sv-stream { position:relative; height:170px; overflow:hidden; }
+  .sv-stream::before, .sv-stream::after { content:''; position:absolute; left:0; right:0; height:32px; z-index:3; pointer-events:none; }
+  .sv-stream::before { top:0; background:linear-gradient(180deg,#0b1017,transparent); }
+  .sv-stream::after { bottom:0; background:linear-gradient(0deg,#0b1017,transparent); }
+  .sv-row { position:absolute; left:0; right:0; font-size:10.5px; line-height:1.4; color:#4c6478;
+    white-space:nowrap; overflow:hidden; text-overflow:ellipsis; will-change:transform; }
+  .sv-row .t { color:#33475a; margin-right:8px; }
+  .sv-row.mine { z-index:2; color:#eaf4ff; background:#13202e; border:1px solid rgba(143,216,255,.55);
+    padding:6px 9px; font-size:11px; box-shadow:0 0 16px rgba(143,216,255,.3); opacity:0; }
+  .sv-row.mine .lbl { color:#ffd98a; margin-right:8px; }
+  .mc-stamp { margin-top:10px; text-align:center; font-size:10px; letter-spacing:.22em;
+    text-transform:uppercase; color:#ffd98a; }
+
+  /* ---------- captions ---------- */
+  .cap { position:absolute; z-index:20; left:5vw; top:15vh; max-width:340px; opacity:0; }
+  .cap .num { font-size:10px; letter-spacing:.34em; color:var(--ice); }
+  .cap h2 { margin-top:10px; font-weight:900; text-transform:uppercase; font-size:clamp(20px,2.3vw,32px); line-height:1.05; }
+  .cap p { margin-top:10px; font-size:11.5px; line-height:1.8; color:rgba(238,246,251,.55); }
+
+  /* ---------- rail ---------- */
+  .rail { position:absolute; z-index:20; bottom:5vh; left:50%; transform:translateX(-50%);
+    display:flex; align-items:center; opacity:0; transition:opacity .6s; }
+  .rail .stop { display:flex; flex-direction:column; align-items:center; gap:7px; width:92px; }
+  .rail .stop .d { width:8px; height:8px; border-radius:50%; background:#22303e; border:1px solid #3a4b5d; transition:all .3s; }
+  .rail .stop.on .d { background:var(--ice); box-shadow:0 0 10px rgba(143,216,255,.8); }
+  .rail .stop span { font-size:8px; letter-spacing:.16em; text-transform:uppercase; color:#54708a; }
+  .rail .stop.on span { color:var(--ice); }
+  .rail .seg { width:44px; height:1px; background:#22303e; margin-bottom:15px; }
+
+  .scroll-hint { position:fixed; z-index:30; bottom:4vh; left:50%; transform:translateX(-50%);
+    font-size:10px; letter-spacing:.3em; text-transform:uppercase; color:rgba(143,216,255,.8);
+    opacity:0; transition:opacity .6s; animation:cue 2.2s ease-in-out infinite; pointer-events:none; }
+  @keyframes cue { 0%,100%{transform:translate(-50%,0)} 50%{transform:translate(-50%,7px)} }
+  .prompt { position:absolute; z-index:20; left:50%; top:16%; transform:translateX(-50%); text-align:center; transition:opacity .6s; }
+  .prompt h1 { font-weight:900; text-transform:uppercase; font-size:clamp(26px,3.4vw,46px); line-height:1.02; }
+  .prompt h1 span { color:var(--ice); }
+  .prompt p { margin-top:12px; font-size:11px; letter-spacing:.2em; text-transform:uppercase; color:rgba(238,246,251,.45); }
+
+  /* ---------- end ---------- */
+  .end { position:relative; background:#000; min-height:90vh; display:flex; align-items:center; justify-content:center; text-align:center; }
+  .end .content { padding:12vh 24px; }
+  .end h2 { font-weight:900; text-transform:uppercase; font-size:clamp(30px,4vw,54px); line-height:1; }
+  .end h2 span { color:var(--ice); }
+  .end p { margin-top:20px; font-size:12px; line-height:1.9; color:rgba(238,246,251,.5); max-width:52ch; }
+  .end .cta { display:inline-block; margin-top:40px; font-family:'Archivo'; font-weight:800; font-size:13px;
+    letter-spacing:.18em; text-transform:uppercase; color:#04121c; background:var(--ice); text-decoration:none; padding:17px 48px; }
+  .end .replay { display:block; margin:26px auto 0; background:none; border:none; color:#54708a;
+    font:10px 'IBM Plex Mono'; letter-spacing:.24em; text-transform:uppercase; cursor:pointer; text-decoration:underline; }
+</style>
+</head>
+<body class="locked">
+<div class="grain"></div>
+<span class="brand">FIRE<b>PLACE</b></span>
+<span class="intro-tag" id="introTag">follow one message, end to end</span>
+<span class="scroll-hint" id="hint">scroll — your message is on its way ↓</span>
+
+<section class="journey" id="journey">
+  <div class="stage">
+    <canvas id="scene"></canvas>
+
+    <div class="prompt" id="prompt">
+      <h1>Where does a message<br><span>actually go?</span></h1>
+      <p>this is a live conversation window — press send to find out</p>
+    </div>
+
+    <!-- sender phone -->
+    <div class="phone" id="sender">
+      <div class="screen">
+        <div class="bar"><span class="ava">K</span><span class="who">Kasia<small>online · encrypted</small></span><span class="lock">🔒</span></div>
+        <div class="msgs" id="senderMsgs">
+          <div class="m them">no i jak, działa ta wasza apka? 😄<div class="meta">08:11</div></div>
+          <div class="m me">zaraz się przekonasz<div class="meta">08:11 ✓✓</div></div>
+        </div>
+        <div class="compose">
+          <input id="draft" value="meet me at eight" maxlength="40" spellcheck="false">
+          <button id="send" title="send">➤</button>
+        </div>
+      </div>
+    </div>
+    <span class="keytag" id="senderKey">🔑 your key — never leaves this device</span>
+
+    <!-- the relay machine -->
+    <div class="server" id="server">
+      <div class="mc-head">
+        <span class="lbl"><span class="dotpulse"></span> fireplace relay nº1 · the only stop we own</span>
+        <div class="mc-rotors">
+          <div class="rotor" data-rotor>I</div>
+          <div class="rotor" data-rotor>II</div>
+          <div class="rotor" data-rotor>III</div>
+        </div>
+      </div>
+      <div class="mc-body">
+        <div class="slot in" id="slotIn"><div class="slit"></div><span class="tag">in</span><div class="scan" id="scanIn"></div></div>
+        <div class="mc-inner"><div class="sv-stream" id="stream"></div></div>
+        <div class="slot out" id="slotOut"><div class="slit"></div><span class="tag">out</span><div class="scan" id="scanOut"></div></div>
+      </div>
+      <div class="mc-stamp">routes everything · reads nothing</div>
+    </div>
+
+    <!-- recipient phone -->
+    <div class="phone" id="recipient">
+      <div class="screen">
+        <div class="bar"><span class="ava" style="background:linear-gradient(135deg,#ffd98a,#d67e1d)">Y</span><span class="who">you<small>online · encrypted</small></span><span class="lock">🔒</span></div>
+        <div class="msgs" id="recipientMsgs">
+          <div class="m me">no i jak, działa ta wasza apka? 😄<div class="meta">08:11 ✓✓</div></div>
+          <div class="m them">zaraz się przekonasz<div class="meta">08:11</div></div>
+        </div>
+        <div class="compose"><input value="" placeholder="Message…" disabled><button disabled style="opacity:.4">➤</button></div>
+      </div>
+    </div>
+    <span class="keytag" id="recipientKey">🔑 her key — the only other one in existence</span>
+
+    <div id="traveler"></div>
+
+    <!-- captions -->
+    <div class="cap" data-a="0.02" data-b="0.13">
+      <span class="num">01 / LIFT-OFF</span>
+      <h2>Sent. But not<br>like the others.</h2>
+      <p>Before your message touches any network, something happens right here on your device.</p>
+    </div>
+    <div class="cap" data-a="0.15" data-b="0.30">
+      <span class="num">02 / SEALED</span>
+      <h2>Encrypted where<br>it was written.</h2>
+      <p>Signal double-ratchet. A fresh key for every message. The "3:" envelope is all that survives — and the key stays on your phone.</p>
+    </div>
+    <div class="cap" data-a="0.32" data-b="0.46">
+      <span class="num">03 / IN TRANSIT</span>
+      <h2>Ciphertext,<br>inside TLS.</h2>
+      <p>Two layers of locks cross the wire. Anyone listening — provider, wifi, anyone — records noise.</p>
+    </div>
+    <div class="cap" data-a="0.48" data-b="0.66">
+      <span class="num">04 / THE RELAY MACHINE</span>
+      <h2>In sealed.<br>Out sealed.</h2>
+      <p>Our machine shuffles envelopes, never opens them. Every row in its window looks exactly like yours: ciphertext and routing metadata. No key exists here — nothing to read, leak, sell, or subpoena.</p>
+    </div>
+    <div class="cap" data-a="0.68" data-b="0.80">
+      <span class="num">05 / RELAYED</span>
+      <h2>We pass the letter.<br>Still sealed.</h2>
+      <p>The envelope moves on the instant she's reachable. We keep ciphertext for delivery — never a readable word.</p>
+    </div>
+    <div class="cap" data-a="0.84" data-b="0.97">
+      <span class="num">06 / UNSEALED</span>
+      <h2>Only her phone<br>can do this.</h2>
+      <p>Her device holds the only matching key in existence. The ratchet turns, the seal opens — and it lands on her screen.</p>
+    </div>
+
+    <div class="rail" id="rail">
+      <div class="stop" data-p="0.02"><div class="d"></div><span>your device</span></div><div class="seg"></div>
+      <div class="stop" data-p="0.32"><div class="d"></div><span>wire</span></div><div class="seg"></div>
+      <div class="stop" data-p="0.48"><div class="d"></div><span>relay</span></div><div class="seg"></div>
+      <div class="stop" data-p="0.68"><div class="d"></div><span>wire</span></div><div class="seg"></div>
+      <div class="stop" data-p="0.86"><div class="d"></div><span>her device</span></div>
+    </div>
+  </div>
+</section>
+
+<section class="end">
+  <div class="content">
+    <h2>That's the whole story.<br><span>We're just the courier.</span></h2>
+    <p>Fireplace is an end-to-end encrypted chat built by two friends. Signal protocol on every message, self-hosted media, public source code, deleting actually deletes.</p>
+    <a class="cta" href="#">Open Fireplace</a>
+    <button class="replay" id="replay">↺ send another message</button>
+  </div>
+</section>
+
+<script>
+'use strict';
+const $ = id => document.getElementById(id);
+const clamp = (v,a,b) => Math.max(a, Math.min(b, v));
+const seg = (p,a,b) => clamp((p-a)/(b-a), 0, 1);
+const ease = t => t*t*(3-2*t);
+const lerp = (a,b,t) => a+(b-a)*t;
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+const rnd = a => a[(Math.random()*a.length)|0];
+const fake = n => Array.from({length:n}, () => rnd(B64)).join('');
+
+let sent = false, landed = false, plain = '', cipherChars = [], spans = [], sealAt = [], openAt = [];
+let sentMeta = null, landedBubble = null;
+let W = innerWidth, H = innerHeight;
+
+const canvas = $('scene');
+let ctx;
+function fitScene(){
+  const dpr = Math.min(devicePixelRatio||1, 1.5);
+  W = innerWidth; H = innerHeight;
+  canvas.width = W*dpr; canvas.height = H*dpr;
+  ctx = canvas.getContext('2d'); ctx.scale(dpr,dpr);
+}
+fitScene(); window.addEventListener('resize', fitScene);
+const stars = Array.from({length:240}, () => ({ x:Math.random(), y:Math.random(), r:Math.random()*1.1+.2, tw:Math.random()*6.28, sp:.3+Math.random()*1.2 }));
+const trail = [];
+
+function phonePose(el, x, y, s, o){
+  el.style.transform = `translate(${x - 150*s}px, ${y - (el.offsetHeight||560)*s/2}px) scale(${s})`;
+  el.style.transformOrigin = '150px ' + (el.offsetHeight||560)/2 + 'px';
+  el.style.opacity = o;
+}
+function bez(p1, cp, p2, t){
+  const q = 1-t;
+  return { x: q*q*p1.x + 2*q*t*cp.x + t*t*p2.x, y: q*q*p1.y + 2*q*t*cp.y + t*t*p2.y };
+}
+function ring(pos, t01, maxR, rgb){
+  if (t01 <= 0 || t01 >= 1) return;
+  ctx.beginPath(); ctx.arc(pos.x, pos.y, 6 + maxR*ease(t01), 0, 6.28);
+  ctx.strokeStyle = `rgba(${rgb},${.7*(1-t01)})`; ctx.lineWidth = 1.5*(1-t01)+.5; ctx.stroke();
+}
+const rectC = el => { const r = el.getBoundingClientRect(); return { x: r.left + r.width/2, y: r.top + r.height/2 }; };
+
+function anchors(){
+  const senderC = { x: W*0.20, y: H*0.66 };
+  const recipC  = { x: W*0.80, y: H*0.66 };
+  return {
+    senderC, recipC,
+    sealP:     { x: W*0.31, y: H*0.42 },
+    liftStart: { x: W*0.5 + 40, y: H*0.60 + 60 },
+    liftCp:    { x: W*0.40, y: H*0.38 },
+    intake:    rectC($('slotIn')),
+    outlet:    rectC($('slotOut')),
+    cp1: { x: W*0.30, y: H*0.14 },
+    cp2: { x: W*0.72, y: H*0.16 },
+    recipDock: { x: recipC.x, y: recipC.y - 190 },
+    landPt:    { x: recipC.x - 45, y: recipC.y + 25 },
+  };
+}
+
+/* ---------- machine stream ---------- */
+const streamRows = [];
+(function buildStream(){
+  const stream = $('stream');
+  for (let i=0;i<9;i++){
+    const el = document.createElement('div');
+    el.className = 'sv-row';
+    const hh = 8+((Math.random()*2)|0), mm = (Math.random()*60)|0, ss = (Math.random()*60)|0;
+    el.innerHTML = `<span class="t">${String(hh).padStart(2,'0')}:${String(mm).padStart(2,'0')}:${String(ss).padStart(2,'0')}</span>${Math.random()<.8?'2:':'3:'}${fake(38)}`;
+    stream.appendChild(el);
+    streamRows.push({ el, phase: i*46 + Math.random()*18, sp: 13 + Math.random()*5 });
+  }
+  const mine = document.createElement('div');
+  mine.className = 'sv-row mine'; mine.id = 'mineRow';
+  stream.appendChild(mine);
+})();
+const rotors = [...document.querySelectorAll('[data-rotor]')];
+
+/* ---------- send ---------- */
+$('send').addEventListener('click', doSend);
+$('draft').addEventListener('keydown', e => { if (e.key === 'Enter') doSend(); });
+function doSend(){
+  if (sent) return;
+  sent = true;
+  plain = ($('draft').value.trim() || 'meet me at eight').slice(0, 40);
+  $('draft').disabled = true; $('send').disabled = true; $('send').style.opacity = .4;
+
+  const m = document.createElement('div');
+  m.className = 'm me'; m.textContent = plain;
+  sentMeta = document.createElement('div');
+  sentMeta.className = 'meta'; sentMeta.textContent = '08:12 ✓';
+  m.appendChild(sentMeta);
+  $('senderMsgs').appendChild(m);
+
+  const total = 2 + Math.ceil(plain.length*4/3) + 10;
+  cipherChars = Array.from({length: total}, (_,i) => i===0?'3':i===1?':':rnd(B64));
+  const tr = $('traveler');
+  tr.innerHTML = ''; spans = []; sealAt = []; openAt = [];
+  for (let i=0;i<total;i++){
+    const el = document.createElement('span');
+    if (i < plain.length){ el.textContent = plain[i]; }
+    else { el.textContent = cipherChars[i]; el.className = 'x'; }
+    tr.appendChild(el); spans.push(el);
+    sealAt.push(0.16 + 0.12*Math.random());
+    openAt.push(0.86 + 0.08*Math.random());
+  }
+  $('mineRow').innerHTML = `<span class="lbl">yours →</span><span class="t">08:12:03</span>${cipherChars.join('')}`;
+
+  landedBubble = document.createElement('div');
+  landedBubble.className = 'm them landing'; landedBubble.textContent = plain;
+  landedBubble.insertAdjacentHTML('beforeend', '<div class="meta">08:12</div>');
+
+  document.body.classList.remove('locked');
+  $('hint').style.opacity = 1;
+  $('introTag').style.opacity = 0;
+  setTimeout(() => window.scrollTo({ top: innerHeight*0.55, behavior:'smooth' }), 550);
+}
+$('replay').addEventListener('click', () => { scrollTo(0,0); location.reload(); });
+
+/* ---------- frame ---------- */
+const caps = [...document.querySelectorAll('.cap')];
+const stops = [...document.querySelectorAll('.rail .stop')];
+const track = $('journey');
+
+function update(){
+  const now = performance.now(), t = now/1000;
+  const p = sent ? clamp(scrollY / (track.offsetHeight - H), 0, 1) : 0;
+  window.__journey = { p, sent, landed };
+  const A = anchors();
+
+  ctx.clearRect(0,0,W,H);
+  for (const st of stars){
+    const a = .22 + .45*Math.abs(Math.sin(st.tw + t*st.sp));
+    ctx.beginPath(); ctx.arc(st.x*W, st.y*H, st.r, 0, 6.28);
+    ctx.fillStyle = `rgba(190,220,240,${a})`; ctx.fill();
+  }
+
+  /* machine window stream (always flowing) */
+  const streamH = 170, loop = streamH + 50;
+  for (const r of streamRows){
+    const y = streamH + 20 - ((t*r.sp + r.phase) % loop);
+    r.el.style.transform = `translateY(${y}px)`;
+    r.el.style.opacity = clamp(Math.min(y/26, (streamH-y)/26), 0, .85);
+  }
+
+  if (!sent){
+    phonePose($('sender'), W*0.5, H*0.60, 1, 1);
+    $('recipient').style.opacity = 0;
+    $('prompt').style.opacity = 1;
+    requestAnimationFrame(update);
+    return;
+  }
+  $('prompt').style.opacity = String(1 - seg(p,0,.06));
+
+  /* dashed routes: seal → intake, outlet → her phone */
+  const pathAlpha = seg(p,.26,.34) * (1 - seg(p,.95,1));
+  if (pathAlpha > 0){
+    ctx.setLineDash([2,7]);
+    ctx.strokeStyle = `rgba(143,216,255,${.28*pathAlpha})`; ctx.lineWidth = 1;
+    for (const [P1,CP,P2] of [[A.sealP,A.cp1,A.intake],[A.outlet,A.cp2,A.recipDock]]){
+      ctx.beginPath();
+      for (let k=0;k<=40;k++){ const q = bez(P1,CP,P2,k/40); k===0?ctx.moveTo(q.x,q.y):ctx.lineTo(q.x,q.y); }
+      ctx.stroke();
+    }
+    ctx.setLineDash([]);
+  }
+
+  /* phones */
+  const moveOut = ease(seg(p, .02, .16));
+  phonePose($('sender'), lerp(W*0.5, A.senderC.x, moveOut), lerp(H*0.60, A.senderC.y, moveOut), lerp(1, .58, moveOut), 1);
+  const recIn = ease(seg(p, .64, .78));
+  phonePose($('recipient'), lerp(W*1.15, A.recipC.x, recIn), A.recipC.y, .58, recIn);
+
+  const sk = $('senderKey');
+  sk.style.opacity = seg(p,.16,.20) * (1-seg(p,.34,.40));
+  sk.style.left = (A.senderC.x - 80) + 'px'; sk.style.top = (A.senderC.y + 190) + 'px';
+  const rk = $('recipientKey');
+  rk.style.opacity = seg(p,.84,.88) * (1-seg(p,.98,1));
+  rk.style.left = (A.recipC.x - 90) + 'px'; rk.style.top = (A.recipC.y + 190) + 'px';
+
+  /* machine: visibility, rotors, scans, my row */
+  $('server').style.opacity = seg(p,.42,.48) * (1 - seg(p,.92,.98)*.7);
+  const spin = ease(seg(p,.48,.68));
+  rotors.forEach((r,i) => { r.style.transform = `rotate(${spin*(360 + i*220) + t*8}deg)`; });
+  $('scanIn').style.opacity  = seg(p,.495,.515) * (1 - seg(p,.53,.55));
+  $('scanOut').style.opacity = seg(p,.615,.635) * (1 - seg(p,.655,.675));
+  const mine = $('mineRow');
+  const dockT = seg(p,.53,.58);
+  mine.style.opacity = dockT * (p < .68 ? 1 : .55);
+  mine.style.transform = `translateY(${lerp(150, 76, ease(dockT))}px)`;
+
+  /* traveler: lift → seal → wire → INTAKE (swallowed) → hidden → OUTLET (emitted) → wire → unseal */
+  const tr = $('traveler');
+  let pos, scale = 1, capsule = false, inside = false;
+  if (p < .16){
+    const t1 = ease(seg(p,.02,.16));
+    pos = bez(A.liftStart, A.liftCp, A.sealP, t1);
+    scale = lerp(1, .9, t1);
+  } else if (p < .30){
+    pos = A.sealP; scale = .9;
+  } else if (p < .50){
+    const t1 = ease(seg(p,.30,.50));
+    pos = bez(A.sealP, A.cp1, A.intake, t1);
+    scale = lerp(.9, .58, ease(seg(p,.30,.38))); capsule = true;
+  } else if (p < .545){                       // swallowed by the intake slit
+    pos = A.intake; capsule = true;
+    scale = .58 * (1 - ease(seg(p,.50,.545)));
+  } else if (p < .615){                       // inside the machine
+    pos = A.intake; capsule = true; inside = true; scale = 0;
+  } else if (p < .66){                        // emitted from the outlet slit
+    pos = A.outlet; capsule = true;
+    scale = .58 * ease(seg(p,.615,.66));
+  } else if (p < .84){
+    const t2 = ease(seg(p,.66,.84));
+    pos = bez(A.outlet, A.cp2, A.recipDock, t2);
+    scale = .58; capsule = true;
+  } else {
+    const t3 = ease(seg(p,.84,.95));
+    pos = { x: lerp(A.recipDock.x, A.landPt.x, t3), y: lerp(A.recipDock.y, A.landPt.y, t3) };
+    scale = lerp(.58, .62, t3);
+  }
+
+  if (p > .955 && !landed){ landed = true; $('recipientMsgs').appendChild(landedBubble); }
+  if (p <= .955 && landed){ landed = false; landedBubble.remove(); }
+  if (sentMeta) sentMeta.textContent = p > .96 ? '08:12 ✓✓' : '08:12 ✓';
+
+  tr.classList.toggle('capsule', capsule);
+  tr.style.opacity = seg(p,.015,.04) * (landed || inside ? 0 : 1);
+  tr.style.transform = `translate(${pos.x - tr.offsetWidth/2}px, ${pos.y - tr.offsetHeight/2}px) scale(${Math.max(scale, .001)})`;
+
+  if (capsule && !landed && !inside && scale > .2){
+    trail.unshift({ x: pos.x, y: pos.y });
+    if (trail.length > 14) trail.pop();
+    for (let i=1;i<trail.length;i++){
+      ctx.beginPath(); ctx.arc(trail[i].x, trail[i].y, 3.4*(1-i/trail.length), 0, 6.28);
+      ctx.fillStyle = `rgba(143,216,255,${.30*(1-i/trail.length)})`; ctx.fill();
+    }
+    ctx.beginPath(); ctx.arc(pos.x, pos.y, 16, 0, 6.28);
+    const gg = ctx.createRadialGradient(pos.x,pos.y,2,pos.x,pos.y,16);
+    gg.addColorStop(0,'rgba(143,216,255,.5)'); gg.addColorStop(1,'rgba(143,216,255,0)');
+    ctx.fillStyle = gg; ctx.fill();
+  } else if (trail.length) trail.pop();
+
+  ring(A.intake,  seg(p,.49,.545), 40, '143,216,255');
+  ring(A.outlet,  seg(p,.615,.665), 40, '143,216,255');
+  ring(A.landPt,  seg(p,.945,.985), 34, '255,217,138');
+
+  for (let i=0;i<spans.length;i++){
+    const el = spans[i];
+    const sealed = p >= sealAt[i] && p < openAt[i];
+    const isGrow = i >= plain.length;
+    if (sealed){
+      el.className = Math.abs(p - sealAt[i]) < .015 || Math.abs(p - openAt[i]) < .015 ? 'hot' : '';
+      el.style.display = 'inline'; el.textContent = cipherChars[i];
+    } else if (isGrow){
+      el.className = 'x'; el.style.display = 'none';
+    } else {
+      el.className = p > .5 && Math.abs(p - openAt[i]) < .02 ? 'hot' : '';
+      el.style.display = 'inline'; el.textContent = plain[i];
+    }
+  }
+
+  for (const c of caps){
+    const a = +c.dataset.a, b = +c.dataset.b;
+    c.style.opacity = seg(p, a, a+.03) * (1 - seg(p, b-.03, b));
+    c.style.transform = `translateY(${(1-seg(p,a,a+.05))*18}px)`;
+  }
+  $('rail').style.opacity = p > .015 ? 1 : 0;
+  stops.forEach(s => s.classList.toggle('on', p >= +s.dataset.p));
+  $('hint').style.opacity = (p > .01 && p < .93) ? 0 : (sent && p <= .01 ? 1 : 0);
+
+  requestAnimationFrame(update);
+}
+update();
+</script>
+</body>
+</html>

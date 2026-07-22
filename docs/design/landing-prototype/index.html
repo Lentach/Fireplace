@@ -1,0 +1,443 @@
+<!DOCTYPE html>
+<!--
+  PROTOTYPE — THROWAWAY. Do not ship.
+  Question: does the "fire shader + burn-to-ciphertext" aesthetic feel right
+  for the Fireplace landing page (future /welcome)?
+  Three radically different variants on this single file, switchable via
+  ?variant=A|B|C or the floating bottom bar (also ← / → keys).
+  Run: open this file in a browser. No build, no server needed.
+-->
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Fireplace — landing prototype</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Unbounded:wght@400;700;900&family=Instrument+Serif:ital@0;1&family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  * { margin:0; padding:0; box-sizing:border-box; }
+  html, body { height:100%; }
+  body { background:#0a0605; color:#f5ede2; overflow-x:hidden; font-family:'IBM Plex Mono', monospace; }
+  canvas.fire-canvas, canvas.ember-canvas {
+    position:absolute; inset:0; width:100%; height:100%; display:block; pointer-events:none;
+  }
+  .grain {
+    position:fixed; inset:0; pointer-events:none; z-index:50; opacity:.06; mix-blend-mode:overlay;
+    background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='160' height='160' filter='url(%23n)'/%3E%3C/svg%3E");
+  }
+
+  /* ============ encrypt demo (shared skeleton, restyled per variant) ============ */
+  .enc label { display:block; font-size:11px; letter-spacing:.22em; text-transform:uppercase; opacity:.55; margin-bottom:10px; }
+  .enc input {
+    width:100%; background:transparent; border:none; outline:none; color:inherit;
+    font-family:'IBM Plex Mono', monospace;
+  }
+  .enc .server-line { margin-top:14px; font-size:13px; line-height:1.7; word-break:break-all; }
+  .enc .server-tag { font-size:10px; letter-spacing:.22em; text-transform:uppercase; opacity:.45; display:block; margin-bottom:4px; }
+  .enc .cipher { color:#8a7f74; }
+  .enc .cipher .hot { color:#ffb347; text-shadow:0 0 8px rgba(255,120,20,.9); }
+  .enc .cipher .cold { color:#7a6f63; }
+
+  /* ================= VARIANT A — INFERNO HERO ================= */
+  .va { position:relative; min-height:100vh; background:#070302; overflow:hidden; }
+  .va .fire-canvas { position:fixed; }
+  .va .ember-canvas { position:fixed; z-index:2; }
+  .va header {
+    position:relative; z-index:3; display:flex; justify-content:space-between; align-items:center;
+    padding:28px 40px; font-size:12px; letter-spacing:.3em; text-transform:uppercase;
+  }
+  .va header .mark { font-family:'Unbounded'; font-weight:900; letter-spacing:.1em; font-size:14px; color:#ffb347; }
+  .va header nav a { color:#f5ede2; opacity:.5; text-decoration:none; margin-left:28px; }
+  .va main { position:relative; z-index:3; padding:6vh 40px 0; text-align:center; }
+  .va h1 {
+    font-family:'Unbounded'; font-weight:900; font-size:clamp(44px, 9vw, 128px); line-height:.95;
+    background:linear-gradient(180deg, #fff8ec 20%, #ffc76a 60%, #ff7b1c 95%);
+    -webkit-background-clip:text; background-clip:text; color:transparent;
+    filter:drop-shadow(0 6px 40px rgba(255,110,20,.25));
+  }
+  .va .sub { margin:26px auto 0; max-width:520px; font-size:14px; line-height:1.8; opacity:.75; }
+  .va .enc {
+    margin:48px auto 0; max-width:560px; text-align:left; padding:26px 28px;
+    background:rgba(14,6,3,.72); border:1px solid rgba(255,170,80,.22); border-radius:18px;
+    backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px);
+    box-shadow:0 30px 80px rgba(0,0,0,.6);
+  }
+  .va .enc input { font-size:18px; border-bottom:1px solid rgba(255,170,80,.25); padding:8px 0; }
+  .va .enc input::placeholder { color:rgba(245,237,226,.25); }
+  .va .cta {
+    position:relative; z-index:3; display:inline-block; margin:44px 0 22vh;
+    font-family:'Unbounded'; font-weight:700; font-size:14px; letter-spacing:.12em; text-decoration:none;
+    color:#140903; background:linear-gradient(180deg,#ffd27a,#ff8a1f); padding:18px 46px; border-radius:999px;
+    box-shadow:0 10px 50px rgba(255,130,20,.45); transition:transform .2s ease;
+  }
+  .va .cta:hover { transform:translateY(-2px) scale(1.02); filter:url(#haze); }
+
+  /* ================= VARIANT B — ASH MINIMAL ================= */
+  .vb { position:relative; min-height:100vh; background:#050404; display:flex; flex-direction:column;
+        justify-content:center; align-items:center; padding:8vh 24px; overflow:hidden; }
+  .vb .ember-canvas { position:fixed; z-index:1; }
+  .vb .inner { position:relative; z-index:2; width:min(760px, 92vw); }
+  .vb h1 {
+    font-family:'Instrument Serif', serif; font-style:italic; font-weight:400;
+    font-size:clamp(40px, 6.5vw, 84px); line-height:1.08; color:#efe6d8; text-align:left;
+  }
+  .vb h1 em { font-style:italic; color:#ff9032; }
+  .vb .rule { height:1px; margin:56px 0 48px;
+    background:linear-gradient(90deg, transparent, rgba(255,140,40,.7), transparent);
+    animation:vb-flicker 3.2s ease-in-out infinite; }
+  @keyframes vb-flicker { 0%,100%{opacity:.5} 40%{opacity:1} 60%{opacity:.7} }
+  .vb .enc input { font-size:clamp(20px,3vw,30px); padding:10px 0; border-bottom:1px solid rgba(239,230,216,.2); }
+  .vb .enc input::placeholder { color:rgba(239,230,216,.22); }
+  .vb .foot { margin-top:72px; display:flex; gap:40px; flex-wrap:wrap; font-size:11px; letter-spacing:.18em;
+    text-transform:uppercase; color:rgba(239,230,216,.4); }
+  .vb .foot b { color:rgba(255,150,50,.8); font-weight:500; }
+  .vb .cta { display:inline-block; margin-top:64px; font-size:12px; letter-spacing:.3em; text-transform:uppercase;
+    color:#efe6d8; text-decoration:none; border:1px solid rgba(255,140,40,.4); padding:16px 36px;
+    transition:background .25s, color .25s; }
+  .vb .cta:hover { background:#ff8a1f; color:#140903; filter:url(#haze); }
+
+  /* ================= VARIANT C — WARM HEARTH EDITORIAL ================= */
+  .vc { position:relative; min-height:100vh; background:#1b120b; color:#f2e6d4; overflow:hidden;
+        display:grid; grid-template-columns: minmax(300px, 44%) 1fr; gap:0; }
+  .vc .hearth { position:relative; margin:6vh 0 6vh 5vw; align-self:center; aspect-ratio:3/4; max-height:82vh;
+    border:1px solid rgba(242,230,212,.25); padding:14px; }
+  .vc .hearth::after { content:''; position:absolute; inset:-11px; border:1px solid rgba(242,230,212,.12); pointer-events:none; }
+  .vc .hearth .frame-label { position:absolute; bottom:-34px; left:0; font-size:10px; letter-spacing:.3em;
+    text-transform:uppercase; color:rgba(242,230,212,.4); }
+  .vc .hearth .fire-wrap { position:relative; width:100%; height:100%; overflow:hidden; background:#000; }
+  .vc article { padding:9vh 6vw 9vh 5vw; align-self:center; position:relative; z-index:2; }
+  .vc .kicker { font-size:11px; letter-spacing:.34em; text-transform:uppercase; color:#e0862e; margin-bottom:22px; }
+  .vc h1 { font-family:'Fraunces', serif; font-weight:560; font-variation-settings:'opsz' 144;
+    font-size:clamp(38px, 4.6vw, 68px); line-height:1.06; letter-spacing:-.01em; }
+  .vc h1 i { font-style:italic; font-weight:400; color:#f0a04b; }
+  .vc .lede { margin-top:26px; max-width:46ch; font-size:14px; line-height:1.9; color:rgba(242,230,212,.72); }
+  .vc .features { margin:44px 0 0; list-style:none; border-top:1px solid rgba(242,230,212,.18); }
+  .vc .features li { display:flex; justify-content:space-between; gap:20px; padding:14px 0;
+    border-bottom:1px solid rgba(242,230,212,.18); font-size:12px; }
+  .vc .features .k { letter-spacing:.2em; text-transform:uppercase; color:#e0862e; white-space:nowrap; }
+  .vc .features .d { color:rgba(242,230,212,.65); text-align:right; }
+  .vc .enc { margin-top:46px; }
+  .vc .enc input { font-size:17px; border-bottom:1px solid rgba(240,160,75,.4); padding:8px 0; }
+  .vc .enc input::placeholder { color:rgba(242,230,212,.25); }
+  .vc .cta { display:inline-block; margin-top:48px; font-family:'Fraunces', serif; font-style:italic; font-size:18px;
+    color:#1b120b; background:#f0a04b; text-decoration:none; padding:14px 38px; border-radius:2px;
+    transition:transform .2s; }
+  .vc .cta:hover { transform:translateY(-2px); filter:url(#haze); }
+  @media (max-width: 860px){
+    .vc { grid-template-columns:1fr; }
+    .vc .hearth { margin:6vh auto 8vh; width:min(420px, 84vw); }
+  }
+
+  /* ================= switcher (not part of the design) ================= */
+  #switcher {
+    position:fixed; bottom:18px; left:50%; transform:translateX(-50%); z-index:100;
+    display:flex; align-items:center; gap:14px; background:#101418; color:#e8f0f6;
+    border:1px solid #2c3742; border-radius:999px; padding:8px 14px;
+    font:12px 'IBM Plex Mono', monospace; box-shadow:0 8px 30px rgba(0,0,0,.6);
+  }
+  #switcher button { background:none; border:none; color:#7fd4ff; font:inherit; font-size:15px; cursor:pointer; padding:2px 6px; }
+  #switcher .lbl { min-width:210px; text-align:center; letter-spacing:.04em; }
+</style>
+</head>
+<body>
+<div id="app"></div>
+<div class="grain"></div>
+
+<!-- heat-haze hover filter -->
+<svg width="0" height="0" style="position:absolute">
+  <filter id="haze"><feTurbulence id="hazeTurb" type="fractalNoise" baseFrequency="0.012 0.05" numOctaves="2" result="n"/>
+  <feDisplacementMap in="SourceGraphic" in2="n" scale="4"/></filter>
+</svg>
+
+<!-- ============ VARIANT TEMPLATES ============ -->
+<template id="tpl-A">
+  <div class="va">
+    <canvas class="fire-canvas" data-fire data-mode="0"></canvas>
+    <canvas class="ember-canvas" data-embers data-density="70"></canvas>
+    <header>
+      <span class="mark">FIREPLACE</span>
+      <nav><a href="#">Privacy</a><a href="#">How it works</a><a href="#">Open app</a></nav>
+    </header>
+    <main>
+      <h1>TALK LIKE<br>NO ONE'S<br>LISTENING</h1>
+      <p class="sub">Because no one can. Every message is sealed on your device with the Signal protocol — our server only ever relays the ashes.</p>
+      <div class="enc" data-encrypt></div>
+      <a class="cta" href="#">Step inside →</a>
+    </main>
+  </div>
+</template>
+
+<template id="tpl-B">
+  <div class="vb">
+    <canvas class="ember-canvas" data-embers data-density="34"></canvas>
+    <div class="inner">
+      <h1>Your words,<br>only <em>ashes</em> on the wire.</h1>
+      <div class="rule"></div>
+      <div class="enc" data-encrypt></div>
+      <div class="foot">
+        <span><b>E2E</b> Signal protocol</span>
+        <span><b>0</b> plaintext stored</span>
+        <span><b>15 min</b> edit window</span>
+        <span><b>burn</b> delete for everyone</span>
+      </div>
+      <a class="cta" href="#">Enter Fireplace</a>
+    </div>
+  </div>
+</template>
+
+<template id="tpl-C">
+  <div class="vc">
+    <aside class="hearth">
+      <div class="fire-wrap"><canvas class="fire-canvas" data-fire data-mode="1"></canvas></div>
+      <span class="frame-label">Fig. 01 — the hearth, always burning</span>
+    </aside>
+    <article>
+      <p class="kicker">Private messaging · est. by two friends</p>
+      <h1>A warmer place<br>to talk <i>in private.</i></h1>
+      <p class="lede">Fireplace is an end-to-end encrypted chat for the people you actually know. Keys never leave your device; the server keeps only ciphertext and silence.</p>
+      <ul class="features">
+        <li><span class="k">Sealed</span><span class="d">Signal double-ratchet on every message</span></li>
+        <li><span class="k">Ephemeral</span><span class="d">delete-for-everyone burns both copies</span></li>
+        <li><span class="k">Yours</span><span class="d">self-hosted media, no third-party clouds</span></li>
+      </ul>
+      <div class="enc" data-encrypt></div>
+      <a class="cta" href="#">Pull up a chair</a>
+    </article>
+  </div>
+</template>
+
+<!-- floating switcher -->
+<div id="switcher">
+  <button id="prev" title="previous variant">←</button>
+  <span class="lbl" id="lbl"></span>
+  <button id="next" title="next variant">→</button>
+</div>
+
+<script>
+'use strict';
+/* ============================================================
+   Fire shader — procedural fbm flame, two modes:
+   mode 0 = full-width fire wall (variant A, bottom of viewport)
+   mode 1 = single hearth flame  (variant C, framed portrait)
+   ============================================================ */
+const VERT = `attribute vec2 a; void main(){ gl_Position = vec4(a,0.,1.); }`;
+const FRAG = `
+precision highp float;
+uniform float u_time; uniform vec2 u_res; uniform float u_mouse; uniform float u_mode;
+float hash(vec2 p){ return fract(sin(dot(p, vec2(127.1,311.7)))*43758.5453123); }
+float noise(vec2 p){
+  vec2 i=floor(p), f=fract(p); f=f*f*(3.-2.*f);
+  return mix(mix(hash(i),hash(i+vec2(1.,0.)),f.x),
+             mix(hash(i+vec2(0.,1.)),hash(i+vec2(1.,1.)),f.x),f.y);
+}
+float fbm(vec2 p){
+  float v=0., a=.5;
+  for(int i=0;i<5;i++){ v+=a*noise(p); p=p*2.02+vec2(13.7,7.1); a*=.5; }
+  return v;
+}
+vec3 ramp(float t){
+  vec3 c = mix(vec3(0.01,0.0,0.0), vec3(0.48,0.05,0.01), smoothstep(0.0,0.42,t));
+  c = mix(c, vec3(1.0,0.42,0.05), smoothstep(0.38,0.74,t));
+  c = mix(c, vec3(1.0,0.92,0.6),  smoothstep(0.74,0.98,t));
+  return c;
+}
+void main(){
+  vec2 uv = gl_FragCoord.xy / u_res;          // 0..1, y up
+  float aspect = u_res.x / u_res.y;
+  vec2 q = (u_mode < 0.5)
+    ? vec2(uv.x * aspect * 2.6, uv.y * 5.2)
+    : vec2(uv.x * 4.2, uv.y * 4.6);           // portrait hearth needs more x-detail
+  float n = fbm(q + vec2(0.0, -u_time*1.7));
+  n += 0.55 * fbm(q*2.1 + vec2(u_time*0.25, -u_time*3.1));
+  n /= 1.55;
+  float shape;
+  if (u_mode < 0.5) {
+    // fire wall along the bottom
+    shape = pow(max(0.0, 1.0 - uv.y*1.45), 1.7);
+    shape += 0.28 * pow(max(0.0, 1.0 - uv.y*1.45), 1.7) *
+             exp(-pow((uv.x - u_mouse) * 5.0, 2.0));   // heat follows cursor
+  } else {
+    // single centered flame column — taller licks, no blown core
+    float gx = exp(-pow((uv.x - 0.5) * 2.7, 2.0));
+    shape = pow(max(0.0, 1.0 - uv.y*1.02), 1.2) * (gx*0.95 + 0.04);
+  }
+  float t = n * shape * mix(2.1, 1.75, u_mode) - 0.12;
+  vec3 col = ramp(clamp(t, 0.0, 1.0));
+  // faint hot floor glow (halved for the hearth so the base doesn't blow out)
+  col += vec3(0.30,0.07,0.01) * pow(max(0.0, 1.0 - uv.y*2.2), 3.0) * mix(1.0, 0.4, u_mode);
+  gl_FragColor = vec4(col, 1.0);
+}`;
+
+let rafHandles = [];
+function initFire(canvas){
+  const gl = canvas.getContext('webgl', { antialias:false });
+  if (!gl) { canvas.style.background = 'radial-gradient(ellipse at 50% 110%, #a33b06, #1a0500 60%)'; return; }
+  const mode = Number(canvas.dataset.mode || 0);
+  const compile = (type, src) => {
+    const s = gl.createShader(type); gl.shaderSource(s, src); gl.compileShader(s);
+    if (!gl.getShaderParameter(s, gl.COMPILE_STATUS)) console.error('[proto] shader:', gl.getShaderInfoLog(s));
+    return s;
+  };
+  const prog = gl.createProgram();
+  gl.attachShader(prog, compile(gl.VERTEX_SHADER, VERT));
+  gl.attachShader(prog, compile(gl.FRAGMENT_SHADER, FRAG));
+  gl.linkProgram(prog); gl.useProgram(prog);
+  const buf = gl.createBuffer();
+  gl.bindBuffer(gl.ARRAY_BUFFER, buf);
+  gl.bufferData(gl.ARRAY_BUFFER, new Float32Array([-1,-1, 3,-1, -1,3]), gl.STATIC_DRAW);
+  const loc = gl.getAttribLocation(prog, 'a');
+  gl.enableVertexAttribArray(loc); gl.vertexAttribPointer(loc, 2, gl.FLOAT, false, 0, 0);
+  const uTime = gl.getUniformLocation(prog,'u_time'), uRes = gl.getUniformLocation(prog,'u_res'),
+        uMouse = gl.getUniformLocation(prog,'u_mouse'), uMode = gl.getUniformLocation(prog,'u_mode');
+  let mouseX = 0.5;
+  window.addEventListener('pointermove', e => { mouseX = e.clientX / innerWidth; });
+  const resize = () => {
+    const dpr = Math.min(devicePixelRatio || 1, 1.5);
+    const w = canvas.clientWidth, h = canvas.clientHeight;
+    if (canvas.width !== w*dpr || canvas.height !== h*dpr) {
+      canvas.width = w*dpr; canvas.height = h*dpr;
+      gl.viewport(0, 0, canvas.width, canvas.height);
+    }
+  };
+  const t0 = performance.now();
+  (function frame(){
+    resize();
+    gl.uniform1f(uTime, (performance.now()-t0)/1000);
+    gl.uniform2f(uRes, canvas.width, canvas.height);
+    gl.uniform1f(uMouse, mouseX);
+    gl.uniform1f(uMode, mode);
+    gl.drawArrays(gl.TRIANGLES, 0, 3);
+    rafHandles.push(requestAnimationFrame(frame));
+  })();
+}
+
+/* ============ embers — canvas2d particles, additive ============ */
+const emberBursts = [];   // {x,y} bursts requested by the encrypt demo
+function initEmbers(canvas){
+  const ctx = canvas.getContext('2d');
+  const density = Number(canvas.dataset.density || 50);
+  let W, H;
+  const resize = () => { W = canvas.width = innerWidth; H = canvas.height = innerHeight; };
+  resize(); window.addEventListener('resize', resize);
+  const parts = [];
+  const spawn = (x, y, hot) => parts.push({
+    x, y, r: hot ? 1 + Math.random()*1.6 : 0.6 + Math.random()*1.8,
+    vx: (Math.random()-.5) * (hot ? 2.2 : 0.5),
+    vy: -(0.4 + Math.random() * (hot ? 2.4 : 1.2)),
+    life: 1, decay: 0.003 + Math.random()*0.006, wob: Math.random()*6.28,
+  });
+  for (let i=0;i<density;i++) spawn(Math.random()*innerWidth, innerHeight*(0.55+Math.random()*0.45), false);
+  (function frame(){
+    ctx.clearRect(0,0,W,H);
+    ctx.globalCompositeOperation = 'lighter';
+    while (emberBursts.length) { const b = emberBursts.pop(); for (let i=0;i<6;i++) spawn(b.x, b.y, true); }
+    if (parts.length < density && Math.random() < .5) spawn(Math.random()*W, H + 4, false);
+    for (let i=parts.length-1; i>=0; i--){
+      const p = parts[i];
+      p.wob += 0.02; p.x += p.vx + Math.sin(p.wob)*0.4; p.y += p.vy; p.life -= p.decay;
+      if (p.life <= 0 || p.y < -10) { parts.splice(i,1); continue; }
+      const a = p.life * 0.85;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, 6.28);
+      ctx.fillStyle = `rgba(255,${120 + (p.life*110)|0},40,${a})`;
+      ctx.shadowColor = 'rgba(255,120,20,.9)'; ctx.shadowBlur = 6;
+      ctx.fill();
+    }
+    ctx.shadowBlur = 0;
+    rafHandles.push(requestAnimationFrame(frame));
+  })();
+}
+
+/* ============ burn-to-ciphertext demo ============ */
+const B64 = 'ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/';
+const rnd = a => a[(Math.random()*a.length)|0];
+function initEncrypt(root){
+  root.innerHTML = `
+    <label>Type something private</label>
+    <input type="text" spellcheck="false" autocomplete="off" placeholder="meet me at eight…" maxlength="64">
+    <div class="server-line">
+      <span class="server-tag">what our server sees</span>
+      <code class="cipher"></code>
+    </div>`;
+  const input = root.querySelector('input');
+  const cipher = root.querySelector('.cipher');
+  const spans = [];   // { el, final, settleAt }
+  const setLen = n => {
+    // wire format from CLAUDE.md §7 — "3:" PreKey prefix + base64-looking body
+    const total = n === 0 ? 0 : 2 + Math.ceil(n * 4 / 3) + 12;
+    while (spans.length > total) { spans.pop().el.remove(); }
+    while (spans.length < total) {
+      const el = document.createElement('span');
+      const i = spans.length;
+      const final = i === 0 ? '3' : i === 1 ? ':' : rnd(B64);
+      el.textContent = final;
+      cipher.appendChild(el);
+      spans.push({ el, final, settleAt: 0 });
+    }
+  };
+  const reburn = () => {
+    const now = performance.now();
+    for (let i = 2; i < spans.length; i++) {
+      const s = spans[i];
+      s.final = rnd(B64);                              // fresh ciphertext every keystroke
+      s.settleAt = now + 120 + Math.random()*520;      // staggered settle
+    }
+  };
+  (function frame(){
+    const now = performance.now();
+    for (const s of spans) {
+      if (s.settleAt > now) { s.el.textContent = rnd(B64); s.el.className = 'hot'; }
+      else if (s.el.className !== 'cold') { s.el.textContent = s.final; s.el.className = 'cold'; }
+    }
+    rafHandles.push(requestAnimationFrame(frame));
+  })();
+  input.addEventListener('input', () => {
+    setLen(input.value.length);
+    reburn();
+    const r = input.getBoundingClientRect();           // ember burst at the caret area
+    emberBursts.push({ x: r.left + Math.min(input.value.length * 10 + 8, r.width - 8), y: r.top + r.height/2 });
+  });
+  setLen(0);
+}
+
+/* ============ variant switcher ============ */
+const VARIANTS = [
+  { key:'A', name:'Inferno Hero' },
+  { key:'B', name:'Ash Minimal' },
+  { key:'C', name:'Warm Hearth Editorial' },
+];
+function currentIdx(){
+  const k = new URLSearchParams(location.search).get('variant') || 'A';
+  const i = VARIANTS.findIndex(v => v.key === k.toUpperCase());
+  return i === -1 ? 0 : i;
+}
+function render(){
+  rafHandles.forEach(cancelAnimationFrame); rafHandles = [];
+  emberBursts.length = 0;
+  const v = VARIANTS[currentIdx()];
+  const app = document.getElementById('app');
+  app.replaceChildren(document.getElementById('tpl-' + v.key).content.cloneNode(true));
+  document.getElementById('lbl').textContent = `${v.key} — ${v.name}`;
+  app.querySelectorAll('[data-fire]').forEach(initFire);
+  app.querySelectorAll('[data-embers]').forEach(initEmbers);
+  app.querySelectorAll('[data-encrypt]').forEach(initEncrypt);
+}
+function go(delta){
+  const next = VARIANTS[(currentIdx() + delta + VARIANTS.length) % VARIANTS.length];
+  const url = new URL(location.href);
+  url.searchParams.set('variant', next.key);
+  history.replaceState(null, '', url);
+  render();
+}
+document.getElementById('prev').addEventListener('click', () => go(-1));
+document.getElementById('next').addEventListener('click', () => go(1));
+window.addEventListener('keydown', e => {
+  const t = e.target;
+  if (t.matches && t.matches('input, textarea, [contenteditable]')) return;
+  if (e.key === 'ArrowLeft') go(-1);
+  if (e.key === 'ArrowRight') go(1);
+});
+render();
+</script>
+</body>
+</html>
