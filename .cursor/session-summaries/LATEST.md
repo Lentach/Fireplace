@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-22 (contact form + inbox EXTRACTED to standalone service `Lentach/fireplace-inbox` (PRIVATE), deployed; monorepo contact module removed; then security-hardened (`9efae5c`) after an independent review; Anti-Quantum Notes added to the landing site — ALL LIVE)
+**Date:** 2026-07-22 (contact form + inbox EXTRACTED to standalone service `Lentach/fireplace-inbox` (PRIVATE), deployed; monorepo contact module removed; then security-hardened (`9efae5c`) after an independent review; Anti-Quantum Notes added to the landing site; iOS journey-DONE keyboard-bounce fixed on the landing — ALL LIVE)
 
 ## What was done
 1. **New repo `Lentach/fireplace-inbox` (PRIVATE)** — tiny self-hosted service owning all of `/contact*`: Fastify 5 + `better-sqlite3` + `web-push`, TS→dist, one Docker container on the VM at `127.0.0.1:3001`. Endpoints byte-compatible with the old NestJS ones (landing form + bookmarked inbox URL unchanged): `POST /contact` (honeypot, 5/15min throttle, trim, 400 empty), `GET /contact/inbox?key=` (key-guarded, 404 bad, CSP nonce), `/contact/sw.js`, `/contact/manifest.webmanifest?key=`, `/contact/icons/:name` (icons bundled → self-contained), `POST /contact/subscribe`. No account doorbell (standalone has no accounts). `/healthz`.
@@ -20,6 +20,7 @@
 - **Landing site** (`fireplaceWebsite` `fa1a922`, live at `/welcome/`): added an "Anti-Quantum Notes" feature card (4th in the grid: Sealed/Blind/Ephemeral/**Vanishing**) + a "secret notes burn on read" ledger line. Copy grounded in the app's own privacy description. HTML-only change (asset hashes unchanged).
 - Three working areas now: `Desktop/Fireplace` (app monorepo, master), `Desktop/fireplace-landing` (repo `Lentach/fireplaceWebsite`), and the VM-only `~/fireplace-inbox` service (repo `Lentach/fireplace-inbox`, PRIVATE — no local Desktop clone yet).
 - Full write-up: `2026-07-22-session-inbox-extraction.md`.
+- **iOS keyboard bounce fixed** (`fireplaceWebsite` `52c74e1`→`9dc31db`→`ef42561`, live bundle `BBgyupuP`): journey DONE dismissed but keyboard bounced back on iOS. Fix layers: deferred blur in the suppress window, one-shot touchend `preventDefault` on the dismiss gesture (disarmed on touchcancel), and the decisive **readonly hammer** — `releaseKb()` sets both composers `readOnly` for 700ms (kb-lift-gated, desktop unaffected) so iOS cannot reopen the keyboard whatever refocuses. Details: `2026-07-22-session-ios-kb-bounce.md`. Awaiting owner iPhone confirm.
 
 ## Previous
 - 2026-07-22: Landing CONTACT FORM (cross-repo): backend `POST /contact` module (`contact_messages` mig 0009, throttle+honeypot, `notifyContact` account ping) + "Transmission · to the builder" panel on `/welcome`. Both LIVE (backend `8fe4951`, landing `12eb949`). **NOTE: this whole feature has since been extracted to `fireplace-inbox` (above) and removed from the monorepo.** Full: `2026-07-22-session-contact-form.md`.
