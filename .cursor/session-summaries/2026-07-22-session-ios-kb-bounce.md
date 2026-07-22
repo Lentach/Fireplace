@@ -28,3 +28,6 @@ Also shipped `?kbdebug` on-page tracer (`main.ts`): fixed overlay logging focusi
 
 ## RESOLVED + cleanup (`4a158c8`, live bundle `RXVEr5wJ`)
 Hero fix **confirmed working on the physical iPhone**. Cleanup: removed the `?kbdebug` tracer (diagnostic scaffolding). Journey-side swallow + readonly hammer KEPT deliberately — the journey pill has the identical WebKit hole (pointerdown dismiss → reflow → synthesized click → native refocus); they are the same pattern as the proven hero fix, not dead layers. Live grep: `kbdebug`=0, `readOnly`=2 (hero + journey) in `RXVEr5wJ`.
+
+## Follow-up shipped (`ed0b003`, live CSS `DBMb6rVT`)
+Hero `.enc-done` width-gate aligned with the journey pill: `landing.css` `@media (max-width: 999px)` → `and (pointer: coarse)`. Browser-verified live: 818px fine-pointer + focused → `display:none`; 390px coarse (mobile emulation) + focused → shown.
