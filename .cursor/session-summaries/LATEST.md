@@ -1,18 +1,20 @@
 # Latest session summary
 
-**Date:** 2026-07-22 — Appearance settings redesign completed on `feat/appearance-redesign` (`c11a105`): one coherent theme/background model, real previews, and Cosmic Theme default → starfield.
+**Date:** 2026-07-22 — Appearance settings redesign completed and deployed for device testing from `feat/appearance-redesign` (`f5c9aa6`): one coherent theme/background model, real previews, and Cosmic Theme default → starfield.
 
 ## What was done
 1. Replaced the cramped five-icon Theme tile, misleading Plain/Glyphs tile, and Cosmic-only Starfield switch with one preview-backed **Appearance** entry and a dedicated selector screen.
 2. Added one per-user preference: Theme default / Plain / Hieroglyphs. Cosmic + Theme default resolves to the animated starfield; explicit overrides persist across theme changes. Auth keeps its forced Cosmic starfield independently.
 3. Added real miniature chat previews, safe legacy migration, English/Polish strings, focused tests, narrow-width top-bar handling, and a scroll fade that prevents cross-theme previews bleeding through floating chrome.
+4. Published the feature-branch frontend bundle to production as an ephemeral test deploy; master/backend remain untouched.
 
 ## Verification
 - Flutter analyze: 0 issues. Full Flutter suite: 775 passed, 4 existing skips. `graphify update .`: 9081 nodes.
 - Rendered all five themes at 390×844 and Cosmic at 320×700. Read-only design review: mergeable; follow-up confirmed both requested visual fixes.
+- Production smoke passed: `/health`, `/version.json`, `/version`, served bundle contains `f5c9aa6`, and Flutter boot rendered.
 
 ## Notes for next session
-- No version bump and no master merge: feature remains on `feat/appearance-redesign` pending explicit owner approval.
+- Feature-branch bundle `f5c9aa6` is live for owner testing. No version bump and no master merge; production permanence still requires explicit approval.
 - Full: `2026-07-22-session-appearance-redesign.md`.
 
 ---
