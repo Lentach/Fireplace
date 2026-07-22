@@ -36,9 +36,6 @@ import { HttpThrottlerGuard } from './common/http-throttler.guard';
 import { ConversationNotificationPreference } from './conversation-notification-preferences/conversation-notification-preference.entity';
 import { ConversationNotificationPreferencesModule } from './conversation-notification-preferences/conversation-notification-preferences.module';
 import { ProfilePhoto } from './users/profile-photo.entity';
-import { ContactMessage } from './contact/contact-message.entity';
-import { ContactPushSubscription } from './contact/contact-push-subscription.entity';
-import { ContactModule } from './contact/contact.module';
 @Module({
   imports: [
     // Load and validate environment variables
@@ -82,8 +79,6 @@ import { ContactModule } from './contact/contact.module';
           SecretNote,
           ConversationNotificationPreference,
           ProfilePhoto,
-          ContactMessage,
-          ContactPushSubscription,
         ],
         synchronize: process.env.NODE_ENV !== 'production',
       }),
@@ -102,7 +97,6 @@ import { ContactModule } from './contact/contact.module';
     ChatModule,
     ConversationNotificationPreferencesModule,
     SecretNotesModule,
-    ContactModule,
     HealthModule,
     VersionModule,
   ],

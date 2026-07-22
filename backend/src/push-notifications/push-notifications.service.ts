@@ -154,50 +154,6 @@ export class PushNotificationsService implements OnModuleInit {
     await this.sendWebPushToUser(userId, body);
   }
 
-  // Contact-form ping (landing page POST /contact). Web Push ONLY, on purpose:
-  // no conversationId — the deployed SW renders a payload without one as a
-  // generic "Contact form / New message" card with no deep-link — and no FCM,
-  // whose data payload is a typed new_message tap-routing contract.
-  async notifyContact(userId: number): Promise<void> {
-    await this.sendWebPushToUser(userId, {
-      type: 'contact',
-      senderName: 'Contact form',
-    });
-  }
-
-  // Raw Web Push to an arbitrary subscription (contact inbox — subscriptions
-  // that are NOT tied to a user account). Returns 'stale' when the push
-  // service says the subscription is gone/invalid so the caller can prune it.
-  async sendRawWebPush(
-    subscription: { endpoint: string; p256dh: string; auth: string },
-    body: Record<string, unknown>,
-  ): Promise<'ok' | 'stale' | 'failed' | 'disabled'> {
-    if (!this.webPushInitialized) return 'disabled';
-    try {
-      await webPush.sendNotification(
-        {
-          endpoint: subscription.endpoint,
-          keys: { p256dh: subscription.p256dh, auth: subscription.auth },
-        },
-        JSON.stringify(body),
-        { TTL: 3600, urgency: 'high' },
-      );
-      return 'ok';
-    } catch (err: unknown) {
-      const statusCode =
-        err && typeof err === 'object' && 'statusCode' in err
-          ? Number(err.statusCode)
-          : NaN;
-      if (statusCode === 400 || statusCode === 404 || statusCode === 410) {
-        return 'stale';
-      }
-      this.logger.warn(
-        `Raw Web Push delivery failed, status=${statusCode || 'unknown'}`,
-      );
-      return 'failed';
-    }
-  }
-
   private async sendWebPushToUser(
     userId: number,
     body: Record<string, unknown>,
