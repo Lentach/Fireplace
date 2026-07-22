@@ -31,14 +31,28 @@ export function initEncrypt(root: HTMLElement) {
   const reducedMotion = matchMedia('(prefers-reduced-motion: reduce)').matches;
   const spans: { el: HTMLSpanElement; final: string; settleAt: number }[] = [];
 
-  port.addEventListener('click', () => input.focus());
   input.addEventListener('focus', () => { status.textContent = 'Live'; });
   input.addEventListener('blur', () => { status.textContent = 'Ready'; });
   // Done dismisses the keyboard (mobile has no other exit — Enter is swallowed
-  // to keep the box one line). stopPropagation so the port's focus-on-click
-  // handler doesn't immediately reopen it.
+  // to keep the box one line). It works on POINTERDOWN, not click: iOS Safari
+  // only honors a programmatic blur() from inside a real touch gesture, and a
+  // click on the pill with the keyboard up doesn't fire reliably. preventDefault
+  // keeps the button from taking focus — otherwise Android holds
+  // .enc-port:focus-within through the button itself and the pill never hides.
+  // Once the pill hides mid-gesture the trailing click retargets to the port —
+  // swallow it for a beat so it can't refocus the field and reopen the keyboard.
   const done = root.querySelector<HTMLButtonElement>('.enc-done')!;
-  done.addEventListener('click', (e) => { e.stopPropagation(); input.blur(); });
+  let doneAt = 0;
+  port.addEventListener('click', () => {
+    if (performance.now() - doneAt < 500) return;
+    input.focus();
+  });
+  done.addEventListener('pointerdown', (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    doneAt = performance.now();
+    input.blur();
+  });
 
   const setLen = (n: number) => {
     const total = n === 0 ? 0 : 2 + Math.ceil(n * 4 / 3) + 12;

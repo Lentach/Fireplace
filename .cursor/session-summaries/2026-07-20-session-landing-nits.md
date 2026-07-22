@@ -374,3 +374,28 @@ Background-tap dismiss works but is undiscoverable.
   now ``t&&t.closest(`.compose`)||K()?.blur()`` (no `.kb-done` exclusion), `.kb-done` querySelector
   flows straight into it, no `.kb-done` click handler. Committed + pushed. **Awaiting owner on-device
   re-test on iPhone (hard-refresh first).**
+## Revision 16 — HERO terminal Done (`.enc-done`) ported to the Rev-15 pointerdown pattern
+Owner clarified the still-broken control is the **hero terminal** Done (`.enc-done`, encrypt.ts),
+not the journey pill: Android dismissed the keyboard but the button stayed; iOS did nothing
+(background tap worked). Two distinct bugs in the old `click` handler:
+- **Android (button never hides):** visibility is `.enc-port:focus-within .enc-done` and the button
+  sits inside `.enc-port` — Android Chrome focuses a tapped `<button>`, so after the textarea blurs
+  the *button itself* keeps `:focus-within` true. The pill held itself open.
+- **iOS (nothing happens):** same failure class as Rev 15 — `click` with the soft keyboard up is
+  unreliable and iOS only honors `blur()` inside a real touch gesture.
+- **Fix (encrypt.ts):** replaced the `click` handler with `pointerdown` → `preventDefault()`
+  (button never takes focus → `:focus-within` releases → pill hides, no CSS change) +
+  `stopPropagation()` + `input.blur()` (gesture-scoped, iOS-honored). Because the pill hides
+  mid-gesture, the trailing click retargets to `.enc-port` whose focus-on-click would reopen the
+  keyboard — added a 500ms `doneAt` suppress window in the port click handler (local analogue of
+  journey's `kbSuppressUntil`). Enter-blur (line 63) untouched. Audited journey.ts for slop from
+  Revs 14/15: clean — single dismiss path, no leftover display hacks, `kbDone` used only for
+  positioning.
+- Verified (preview then LIVE prod, trusted `elementHandle.tap()` @390×844 mobile+touch): focus →
+  Done `flex`, status Live; tap Done → activeElement BODY, Done `none`, status Ready; retargeted
+  click did NOT refocus (+400ms still BODY); port tap after the window refocuses normally; cipher
+  demo unaffected; zero console/page errors.
+- LIVE + byte-verified: JS `BBHOwiQk`, CSS `DJ-65XJU` (unchanged). Live JS:
+  ``c.addEventListener(`pointerdown`,e=>{e.preventDefault(),e.stopPropagation(),l=performance.now(),t.blur()})``
+  and ``performance.now()-l<500||t.focus()``. Same iOS caveat as Rev 15: headless can't show the
+  physical keyboard retracting — **awaiting owner on-device re-test (hard-refresh first)**.
