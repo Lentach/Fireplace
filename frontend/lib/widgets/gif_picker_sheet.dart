@@ -203,8 +203,29 @@ class _GifPickerSheetState extends State<GifPickerSheet> {
                 ),
         ),
         Padding(
-          padding: const EdgeInsets.only(bottom: 8),
-          child: Text('Powered by GIPHY', style: theme.textTheme.bodySmall),
+          padding: const EdgeInsets.only(top: 2, bottom: 8),
+          child: Row(
+            mainAxisSize: MainAxisSize.min,
+            mainAxisAlignment: MainAxisAlignment.center,
+            children: [
+              Text('Powered by', style: theme.textTheme.bodySmall),
+              const SizedBox(width: 6),
+              Image.asset(
+                theme.brightness == Brightness.dark
+                    ? 'assets/giphy/giphy_logo_white.png'
+                    : 'assets/giphy/giphy_logo_black.png',
+                height: 16,
+                filterQuality: FilterQuality.medium,
+                // Fallback keeps the required "Powered by GIPHY" wording if the
+                // asset ever fails to load.
+                errorBuilder: (_, _, _) => Text(
+                  'GIPHY',
+                  style: theme.textTheme.bodySmall
+                      ?.copyWith(fontWeight: FontWeight.w700),
+                ),
+              ),
+            ],
+          ),
         ),
       ],
     );
