@@ -1,14 +1,18 @@
 // backend/src/contact/contact.controller.spec.ts
-import { BadRequestException } from '@nestjs/common';
+import { BadRequestException, NotFoundException } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { ContactController } from './contact.controller';
 import { ContactService } from './contact.service';
 
 interface MockContactService {
   create: jest.Mock;
+  inboxKeyValid: jest.Mock;
+  subscribe: jest.Mock;
 }
 const mockService = (): MockContactService => ({
   create: jest.fn(),
+  inboxKeyValid: jest.fn(),
+  subscribe: jest.fn(),
 });
 
 describe('ContactController', () => {
@@ -28,6 +32,20 @@ describe('ContactController', () => {
   it('saves a trimmed message with null replyTo when none given', async () => {
     await controller.create({ message: '  hello there  ' });
     expect(service.create).toHaveBeenCalledWith('hello there', null);
+  });
+
+  it('subscribe 404s on a bad inbox key (inbox stays invisible)', async () => {
+    service.inboxKeyValid.mockReturnValue(false);
+    await expect(
+      controller.subscribe({ key: 'x'.repeat(32), endpoint: 'e', p256dh: 'p', auth: 'a' }),
+    ).rejects.toThrow(NotFoundException);
+    expect(service.subscribe).not.toHaveBeenCalled();
+  });
+
+  it('subscribe stores the subscription on a valid key', async () => {
+    service.inboxKeyValid.mockReturnValue(true);
+    await controller.subscribe({ key: 'k'.repeat(32), endpoint: 'e', p256dh: 'p', auth: 'a' });
+    expect(service.subscribe).toHaveBeenCalledWith('e', 'p', 'a');
   });
 
   it('passes a trimmed replyTo through', async () => {

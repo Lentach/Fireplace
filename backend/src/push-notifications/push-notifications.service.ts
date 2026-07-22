@@ -165,6 +165,39 @@ export class PushNotificationsService implements OnModuleInit {
     });
   }
 
+  // Raw Web Push to an arbitrary subscription (contact inbox — subscriptions
+  // that are NOT tied to a user account). Returns 'stale' when the push
+  // service says the subscription is gone/invalid so the caller can prune it.
+  async sendRawWebPush(
+    subscription: { endpoint: string; p256dh: string; auth: string },
+    body: Record<string, unknown>,
+  ): Promise<'ok' | 'stale' | 'failed' | 'disabled'> {
+    if (!this.webPushInitialized) return 'disabled';
+    try {
+      await webPush.sendNotification(
+        {
+          endpoint: subscription.endpoint,
+          keys: { p256dh: subscription.p256dh, auth: subscription.auth },
+        },
+        JSON.stringify(body),
+        { TTL: 3600, urgency: 'high' },
+      );
+      return 'ok';
+    } catch (err: unknown) {
+      const statusCode =
+        err && typeof err === 'object' && 'statusCode' in err
+          ? Number(err.statusCode)
+          : NaN;
+      if (statusCode === 400 || statusCode === 404 || statusCode === 410) {
+        return 'stale';
+      }
+      this.logger.warn(
+        `Raw Web Push delivery failed, status=${statusCode || 'unknown'}`,
+      );
+      return 'failed';
+    }
+  }
+
   private async sendWebPushToUser(
     userId: number,
     body: Record<string, unknown>,
