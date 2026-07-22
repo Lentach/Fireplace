@@ -292,9 +292,13 @@ export function initJourney(section: HTMLElement) {
     $('.phone.recipient').classList.remove('kb-lift');
     return el;
   }
-  // Done pill AND any tap outside the composer dismiss the keyboard
+  // Done pill AND any tap outside the composer dismiss the keyboard. Hide the
+  // pill on the click itself (not just via body.kb-open) — on iOS the class
+  // toggle can't repaint through the keyboard-dismiss reflow fast enough, so
+  // the pill lingers and users re-tap thinking nothing happened. poseLifted
+  // clears the inline display when the pill is next lifted.
   const kbDone = document.querySelector<HTMLButtonElement>('.kb-done');
-  kbDone?.addEventListener('click', () => releaseKb()?.blur());
+  if (kbDone) kbDone.addEventListener('click', () => { kbDone.style.display = 'none'; releaseKb()?.blur(); });
   document.addEventListener('pointerdown', (e) => {
     if (!kbLift) return;
     const t = e.target as HTMLElement | null;
@@ -434,7 +438,7 @@ export function initJourney(section: HTMLElement) {
     const vH = vv ? vv.height : H;
     const ph = phone.offsetHeight || 560;
     phonePose(phone, W / 2, vTop + vH - 6 - ph / 2, 1, 1);
-    if (kbDone) kbDone.style.top = `${vTop + 14}px`;
+    if (kbDone) { kbDone.style.top = `${vTop + 14}px`; kbDone.style.display = ''; }
   }
   const reduce = matchMedia('(prefers-reduced-motion: reduce)').matches;
   let visible = true, resumed = false, rafId = 0;

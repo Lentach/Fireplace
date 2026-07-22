@@ -320,3 +320,20 @@ and asked for the ↓ to also appear there, on mobile too, so the two arrows boo
   viewports (mobile no longer hidden); ↓@start click → raw 0.97 "07 / KATE'S TURN", both phones,
   flips ↑. LIVE + byte-verified: JS `CN8bw2nn`, CSS `KqJS6kWo` (no `.skip-tour.up{display:none}`;
   enc-done still under `@media(max-width:999px)`). Committed + pushed.
+## Revision 14 — Done pill hides on tap (owner: users re-tap it thinking nothing happened)
+On iPhone, tapping the mobile `.kb-done` pill DOES dismiss the keyboard, but the pill visually
+lingered, so users read it as dead and tapped again. Its visibility was driven purely by
+`body.kb-open` (CSS): `releaseKb()` removes that class on click, which hides it in Chromium — but
+on iOS the class-toggle → repaint can't keep up with the keyboard-dismiss reflow, so the pill
+stays on screen a beat.
+- **Fix (journey.ts):** hide the pill on the click itself, not just via `body.kb-open`. Click now
+  does `kbDone.style.display='none'` then `releaseKb()?.blur()` — instant, repaint-independent
+  visual feedback. `poseLifted()` clears the inline `display` (`kbDone.style.display=''`) whenever
+  the pill is next lifted, so it re-appears normally on the next compose focus (CSS resumes control).
+- No CSS change; `.enc-done` (hero terminal) left as-is — the owner's report was the upper compose pill.
+- Verified (preview, 390×844 mobile): focus → pill `display:flex`; click → `body.kb-open` false
+  AND inline `display:none` (hidden by both paths); re-focus after the 600ms suppress window →
+  inline display cleared, pill `display:flex` again.
+- LIVE + byte-verified: JS `DQjQd-h8`, CSS `KqJS6kWo` (unchanged). Live JS carries
+  `zt.addEventListener("click",()=>{zt.style.display="none",at()?.blur()})` and the poseLifted
+  `zt.style.display=""` restore. Committed + pushed.
