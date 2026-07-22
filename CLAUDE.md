@@ -41,6 +41,7 @@ Flutter web/mobile client ⇄ NestJS backend (:3000) ⇄ PostgreSQL 16 (:5433 ho
 - Client: `AuthGate` → `AuthScreen` or `MainShell` → `ChatDetailScreen`; state is provider-driven. See `frontend/CLAUDE.md`.
 - Backend: `AppModule` wires ~15 domain modules (auth, users, chat, messages, media, key-bundles, push, …) — authoritative full map in `backend/CLAUDE.md` §2; `ChatGateway` authenticates sockets and delegates to chat services.
 - Media: current media storage is self-hosted under `/app/media` (`avatars/`, `msgs/`). Cloudinary URLs remain accepted only as legacy/backward-compatible media URLs.
+- Landing page (`https://fireplace.ignorelist.com/welcome/`): **separate repo `Lentach/fireplace-landing`** (extracted from `landing/` 2026-07-22, git history preserved; local clone `C:/Users/Lentach/Desktop/fireplace-landing`). Astro static site, own `CLAUDE.md` + `deploy-landing.ps1`, deploys independently to `~/fireplace/landing-build/` on the same VM. Not part of this repo's CI/deploys.
 - Graph context: read `graphify-out/GRAPH_REPORT.md` before architecture/codebase answers. No `graphify-out/wiki/index.md` currently exists.
 
 ## 3. Local commands
