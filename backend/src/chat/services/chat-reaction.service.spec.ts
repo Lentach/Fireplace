@@ -95,6 +95,23 @@ describe('ChatReactionService', () => {
 
       expect(mockClient.emit).toHaveBeenCalledWith('error', expect.objectContaining({ message: expect.any(String) }));
     });
+
+    it('should emit Unauthorized and not react when user is not a conversation participant', async () => {
+      mockMessagesService.findByIdWithConversation.mockResolvedValue({
+        id: 5,
+        conversation: { id: 10, userOne: { id: 2 }, userTwo: { id: 3 } },
+      });
+
+      await service.handleAddReaction(
+        mockClient,
+        { messageId: 5, emoji: '👍' },
+        mockServer,
+        onlineUsers,
+      );
+
+      expect(mockClient.emit).toHaveBeenCalledWith('error', { message: 'Unauthorized' });
+      expect(mockMessagesService.addOrUpdateReaction).not.toHaveBeenCalled();
+    });
   });
 
   describe('handleRemoveReaction', () => {
@@ -152,6 +169,23 @@ describe('ChatReactionService', () => {
       );
 
       expect(mockMessagesService.findByIdWithConversation).not.toHaveBeenCalled();
+    });
+
+    it('should emit Unauthorized and not remove reaction when user is not a conversation participant', async () => {
+      mockMessagesService.findByIdWithConversation.mockResolvedValue({
+        id: 5,
+        conversation: { id: 10, userOne: { id: 2 }, userTwo: { id: 3 } },
+      });
+
+      await service.handleRemoveReaction(
+        mockClient,
+        { messageId: 5, emoji: '👍' },
+        mockServer,
+        onlineUsers,
+      );
+
+      expect(mockClient.emit).toHaveBeenCalledWith('error', { message: 'Unauthorized' });
+      expect(mockMessagesService.removeReaction).not.toHaveBeenCalled();
     });
   });
 });

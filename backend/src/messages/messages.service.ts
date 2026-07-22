@@ -55,10 +55,7 @@ export class MessagesService {
       replyTo,
     });
     const saved = await this.msgRepo.save(msg);
-    if (replyTo) {
-      saved.replyTo = replyTo;
-      return saved;
-    }
+    if (replyTo) saved.replyTo = replyTo;
     return saved;
   }
 
@@ -534,6 +531,19 @@ export class MessagesService {
     return true;
   }
 
+  private static parseReactions(raw: string | null): Record<string, number[]> {
+    if (!raw) return {};
+    try {
+      const parsed = JSON.parse(raw);
+      return parsed && typeof parsed === 'object'
+        ? (parsed as Record<string, number[]>)
+        : {};
+    } catch {
+      // Corrupt reactions JSON must not 500 the reaction handler.
+      return {};
+    }
+  }
+
   async addOrUpdateReaction(
     messageId: number,
     userId: number,
@@ -548,9 +558,7 @@ export class MessagesService {
     });
     if (!message) return null;
 
-    const reactions: Record<string, number[]> = message.reactions
-      ? JSON.parse(message.reactions)
-      : {};
+    const reactions = MessagesService.parseReactions(message.reactions);
 
     // Remove user's previous emoji (max 1 per user)
     for (const key of Object.keys(reactions)) {
@@ -580,9 +588,7 @@ export class MessagesService {
     });
     if (!message) return null;
 
-    const reactions: Record<string, number[]> = message.reactions
-      ? JSON.parse(message.reactions)
-      : {};
+    const reactions = MessagesService.parseReactions(message.reactions);
 
     if (reactions[emoji]) {
       reactions[emoji] = reactions[emoji].filter((id) => id !== userId);

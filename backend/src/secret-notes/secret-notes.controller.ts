@@ -16,7 +16,7 @@ class CreateNoteDto {
   ciphertext: string;
 
   @IsInt()
-  expiresIn: number; // seconds: 7200 | 21600 | 43200
+  expiresIn: number; // seconds; whitelist 3600 | 21600 | 43200 | 86400 (else -> 21600)
 }
 
 @Controller()

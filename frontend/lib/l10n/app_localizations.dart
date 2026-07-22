@@ -98,12 +98,6 @@ abstract class AppLocalizations {
     Locale('pl'),
   ];
 
-  /// No description provided for @appTitle.
-  ///
-  /// In pl, this message translates to:
-  /// **'Fireplace'**
-  String get appTitle;
-
   /// No description provided for @settings.
   ///
   /// In pl, this message translates to:
@@ -236,12 +230,6 @@ abstract class AppLocalizations {
   /// **'Kontakty'**
   String get contacts;
 
-  /// No description provided for @profilePictureUpdated.
-  ///
-  /// In pl, this message translates to:
-  /// **'Zdjęcie profilowe zaktualizowane'**
-  String get profilePictureUpdated;
-
   /// No description provided for @uploadFailed.
   ///
   /// In pl, this message translates to:
@@ -265,12 +253,6 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Nie udało się usunąć konta'**
   String get accountDeletionFailed;
-
-  /// No description provided for @loading.
-  ///
-  /// In pl, this message translates to:
-  /// **'Ładowanie…'**
-  String get loading;
 
   /// No description provided for @devicesLoading.
   ///
@@ -656,23 +638,11 @@ abstract class AppLocalizations {
   /// **'Załącznik'**
   String get attachment;
 
-  /// No description provided for @attachmentOptionPhoto.
-  ///
-  /// In pl, this message translates to:
-  /// **'Zdjęcie'**
-  String get attachmentOptionPhoto;
-
   /// No description provided for @attachmentOptionDocument.
   ///
   /// In pl, this message translates to:
   /// **'Dokument'**
   String get attachmentOptionDocument;
-
-  /// No description provided for @actionTileTimer.
-  ///
-  /// In pl, this message translates to:
-  /// **'Timer'**
-  String get actionTileTimer;
 
   /// No description provided for @actionTileDisappearingMessages.
   ///
@@ -740,12 +710,6 @@ abstract class AppLocalizations {
   /// **'Znikające wiadomości, {duration}'**
   String disappearingComposerBannerSemantics(String duration);
 
-  /// No description provided for @conversationDisappearingTimerHint.
-  ///
-  /// In pl, this message translates to:
-  /// **'Znikające wiadomości: {duration}'**
-  String conversationDisappearingTimerHint(String duration);
-
   /// No description provided for @conversationLastMessageEphemeralPreRead.
   ///
   /// In pl, this message translates to:
@@ -781,12 +745,6 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Sekundy'**
   String get disappearingTimerSecondsLabel;
-
-  /// No description provided for @disappearingTimerApply.
-  ///
-  /// In pl, this message translates to:
-  /// **'Zastosuj'**
-  String get disappearingTimerApply;
 
   /// No description provided for @disappearingTimerOff.
   ///
@@ -1039,12 +997,6 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Szukaj GIFów...'**
   String get gifSearchHint;
-
-  /// No description provided for @gifLoadError.
-  ///
-  /// In pl, this message translates to:
-  /// **'Nie udało się załadować GIFów'**
-  String get gifLoadError;
 
   /// No description provided for @antiQuantumNoteTitle.
   ///
@@ -1627,12 +1579,6 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Wstecz'**
   String get userCardBack;
-
-  /// No description provided for @userCardNotifications.
-  ///
-  /// In pl, this message translates to:
-  /// **'Powiadomienia'**
-  String get userCardNotifications;
 
   /// No description provided for @userCardNotificationsOn.
   ///

@@ -89,6 +89,40 @@ void main() {
       UserCardMute.eightHours,
     );
     expect(
+      UserCardMute.fromConversation(
+        muted: true,
+        mutedUntil: now.add(const Duration(hours: 1)),
+        now: now,
+      ),
+      UserCardMute.oneHour,
+    );
+    expect(
+      UserCardMute.fromConversation(
+        muted: true,
+        mutedUntil: now.add(const Duration(days: 3)),
+        now: now,
+      ),
+      UserCardMute.oneWeek,
+    );
+    // Pin the boundaries: exactly 2h is still oneHour (<=),
+    // exactly 12h is still eightHours (<=).
+    expect(
+      UserCardMute.fromConversation(
+        muted: true,
+        mutedUntil: now.add(const Duration(hours: 2)),
+        now: now,
+      ),
+      UserCardMute.oneHour,
+    );
+    expect(
+      UserCardMute.fromConversation(
+        muted: true,
+        mutedUntil: now.add(const Duration(hours: 12)),
+        now: now,
+      ),
+      UserCardMute.eightHours,
+    );
+    expect(
       UserCardMute.fromConversation(muted: true, mutedUntil: null, now: now),
       UserCardMute.forever,
     );

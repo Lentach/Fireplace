@@ -17,10 +17,11 @@ class EncryptionService {
   static const int _initialPreKeyBatchSize = 20;
   static const int _deviceId = 1;
 
-  /// DualStorage: writes to both flutter_secure_storage (IndexedDB on web) AND
-  /// SharedPreferences (localStorage on web). Reads try flutter_secure_storage
-  /// first, then falls back to SharedPreferences. This prevents data loss when
-  /// IndexedDB/WebCrypto keys are evicted by the browser.
+  /// DualStorage: platform-branched Signal-key storage (see
+  /// encryption/signal_stores.dart). On web, keys live ONLY in
+  /// SharedPreferences/localStorage — flutter_secure_storage's IndexedDB+
+  /// WebCrypto backing loses data when tabs close or the WebCrypto key is
+  /// evicted. On mobile, ONLY flutter_secure_storage (Keychain/Keystore).
   final DualStorage _storage = DualStorage(FlutterSecureStorage(
     webOptions: const WebOptions(dbName: 'FireplaceE2E'),
   ));
@@ -330,7 +331,11 @@ class EncryptionService {
     final uid = _userId;
     if (uid == null) return [];
     final nextIdStr = await _storage.read(key: 'e2e_${uid}_next_pre_key_id');
-    final nextId = int.parse(nextIdStr ?? '100');
+    final storedNext = int.tryParse(nextIdStr ?? '');
+    // If the counter was lost but pre-keys survive, derive the next id from the
+    // highest stored key so we never reuse an id — reusing one overwrites a live
+    // pre-key's private half while its public half is already on the server.
+    final nextId = storedNext ?? (await _highestStoredPreKeyId()) + 1;
 
     final preKeys = generatePreKeys(nextId, _preKeyBatchSize);
     // Parallel writes (chunked to avoid overwhelming secure storage)
@@ -351,6 +356,26 @@ class EncryptionService {
         '[EncryptionService] Generated ${preKeys.length} more pre-keys (nextId=${nextId + _preKeyBatchSize})');
 
     return preKeys.map(_preKeyToUploadFormat).toList();
+  }
+
+  /// Highest stored one-time pre-key id for the current user, or
+  /// [_initialPreKeyBatchSize] - 1 when none are found. Used only as the
+  /// fallback when the persisted next-id counter is missing, to avoid reusing a
+  /// pre-key id (which would strand the recipient on an unusable OTP).
+  Future<int> _highestStoredPreKeyId() async {
+    final uid = _userId;
+    if (uid == null) return _initialPreKeyBatchSize - 1;
+    final prefix = 'e2e_${uid}_pre_key_';
+    var maxId = -1;
+    try {
+      final all = await _storage.readAll();
+      for (final key in all.keys) {
+        if (!key.startsWith(prefix)) continue;
+        final id = int.tryParse(key.substring(prefix.length));
+        if (id != null && id > maxId) maxId = id;
+      }
+    } catch (_) {}
+    return maxId < 0 ? _initialPreKeyBatchSize - 1 : maxId;
   }
 
   /// Get the identity key fingerprint (for display in Privacy & Safety).

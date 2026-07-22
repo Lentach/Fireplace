@@ -1,155 +1,123 @@
-import 'package:fireplace/l10n/app_localizations.dart';
-import 'package:fireplace/providers/conversations_provider.dart';
-import 'package:flutter/material.dart';
+import 'package:fireplace/utils/notification_nav_decision.dart';
 import 'package:flutter_test/flutter_test.dart';
-import 'package:provider/provider.dart';
 
-/// Minimal widget replicating the notification-navigation branch from
-/// MainShell.build() (Option A): gated on the first conversations snapshot,
-/// navigates only when the conversation exists locally, and replaces any open
-/// chat route via pushAndRemoveUntil.
-class _NotificationNavHost extends StatefulWidget {
-  const _NotificationNavHost();
-
-  @override
-  State<_NotificationNavHost> createState() => _NotificationNavHostState();
-}
-
-class _NotificationNavHostState extends State<_NotificationNavHost> {
-  @override
-  Widget build(BuildContext context) {
-    return Consumer<ConversationsProvider>(
-      builder: (context, convs, _) {
-        if (convs.pendingNotificationConversationId != null &&
-            convs.hasLoadedConversationsOnce) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            if (!mounted) return;
-            final provider = context.read<ConversationsProvider>();
-            final id = provider.consumePendingNotificationConversationId();
-            if (id == null) return;
-            if (provider.getConversationById(id) == null) return;
-            if (provider.activeConversationId == id) return;
-            Navigator.of(context).pushAndRemoveUntil(
-              MaterialPageRoute<void>(
-                  builder: (_) => Scaffold(body: Text('chat-$id'))),
-              (route) => route.isFirst,
-            );
-          });
-        }
-        return const Scaffold(body: Text('main-shell'));
-      },
-    );
-  }
-}
-
-Map<String, dynamic> _convJson(int id) => {
-      'id': id,
-      'userOne': {'id': 1, 'username': 'alice', 'tag': '0001'},
-      'userTwo': {'id': 2, 'username': 'bob', 'tag': '0002'},
-      'createdAt': DateTime(2026, 1, 1).toIso8601String(),
-      'unreadCount': 0,
-    };
-
+/// Notification-navigation POLICY for MainShell.
+///
+/// These drive the SAME pure functions `MainShell.build()` calls
+/// (`shouldConsumeNotificationNav` + `decideNotificationNav`), so every branch
+/// is exercised against the real production logic: the first-snapshot gate,
+/// the always-land-on-the-list tab switch, a stale id, desktop vs mobile, and
+/// the mobile already-active no-op.
+///
+/// This replaces a hand-written `_NotificationNavHost` widget replica that had
+/// already DIVERGED from MainShell — it omitted the `_selectedIndex = 0` tab
+/// switch and the entire desktop `setActiveConversation` branch, so two of the
+/// four real branches were never covered. The remaining glue in MainShell
+/// (setState / Navigator.pushAndRemoveUntil / setActiveConversation) is thin
+/// and device-proven.
 void main() {
-  Widget buildApp(ConversationsProvider convs) {
-    return ChangeNotifierProvider<ConversationsProvider>.value(
-      value: convs,
-      child: MaterialApp(
-        localizationsDelegates: AppLocalizations.localizationsDelegates,
-        supportedLocales: AppLocalizations.supportedLocales,
-        home: const _NotificationNavHost(),
-      ),
-    );
-  }
-
-  testWidgets(
-      'notification nav to new conv replaces existing chat route (no stacking)',
-      (tester) async {
-    final convs = ConversationsProvider();
-    convs.onConversationsList([_convJson(1), _convJson(2)]);
-
-    await tester.pumpWidget(buildApp(convs));
-    await tester.pumpAndSettle();
-
-    // Simulate being already in Chat A (push it on top of the root).
-    final navState = tester.state<NavigatorState>(find.byType(Navigator));
-    navState.push(
-      MaterialPageRoute<void>(builder: (_) => const Scaffold(body: Text('chat-1'))),
-    );
-    await tester.pumpAndSettle();
-    expect(find.text('chat-1'), findsOneWidget);
-
-    // Trigger notification navigation to a different conversation (B = 2).
-    convs.requestNavigateToConversationFromNotification(2);
-    await tester.pumpAndSettle();
-
-    // Chat A must be gone — pushAndRemoveUntil removed it.
-    expect(find.text('chat-1'), findsNothing);
-    // Chat B is now shown.
-    expect(find.text('chat-2'), findsOneWidget);
-
-    // Stack depth: root (main-shell) + ChatB = 2, not 3.
-    int routeCount = 0;
-    navState.popUntil((_) {
-      routeCount++;
-      return false;
+  group('shouldConsumeNotificationNav (first-snapshot gate)', () {
+    test('does not consume when no id is pending', () {
+      expect(
+        shouldConsumeNotificationNav(
+          pendingConversationId: null,
+          hasLoadedConversationsOnce: true,
+        ),
+        isFalse,
+      );
     });
-    expect(routeCount, 2);
+
+    test('does not consume before the first conversations snapshot', () {
+      // Cold start: a tap arriving before the server list would otherwise
+      // mount a chat for an unverified id (empty screen, dead send).
+      expect(
+        shouldConsumeNotificationNav(
+          pendingConversationId: 3,
+          hasLoadedConversationsOnce: false,
+        ),
+        isFalse,
+      );
+    });
+
+    test('consumes once an id is pending AND the snapshot has arrived', () {
+      expect(
+        shouldConsumeNotificationNav(
+          pendingConversationId: 3,
+          hasLoadedConversationsOnce: true,
+        ),
+        isTrue,
+      );
+    });
   });
 
-  testWidgets('notification nav to same active conv is a no-op', (tester) async {
-    final convs = ConversationsProvider();
-    convs.onConversationsList([_convJson(5)]);
-    convs.setActiveConversation(5);
+  group('decideNotificationNav', () {
+    test('null consumed id (already consumed/raced): no tab switch, no nav', () {
+      final d = decideNotificationNav(
+        consumedId: null,
+        conversationExistsLocally: false,
+        isDesktop: false,
+        isAlreadyActive: false,
+      );
+      expect(d.switchToConversationsTab, isFalse);
+      expect(d.action, NotificationNavAction.none);
+    });
 
-    await tester.pumpWidget(buildApp(convs));
-    await tester.pumpAndSettle();
+    test('stale id (not in local list): switches to list, mounts nothing', () {
+      final d = decideNotificationNav(
+        consumedId: 99,
+        conversationExistsLocally: false,
+        isDesktop: false,
+        isAlreadyActive: false,
+      );
+      expect(d.switchToConversationsTab, isTrue);
+      expect(d.action, NotificationNavAction.none);
+    });
 
-    convs.requestNavigateToConversationFromNotification(5);
-    await tester.pumpAndSettle();
+    test('desktop + existing conv: switches to list and sets the active pane',
+        () {
+      final d = decideNotificationNav(
+        consumedId: 2,
+        conversationExistsLocally: true,
+        isDesktop: true,
+        isAlreadyActive: false,
+      );
+      expect(d.switchToConversationsTab, isTrue);
+      expect(d.action, NotificationNavAction.setActiveDesktop);
+    });
 
-    // Already active — no push happened; main-shell still visible.
-    expect(find.text('main-shell'), findsOneWidget);
-    expect(find.text('chat-5'), findsNothing);
-  });
+    test('desktop sets the active pane even when already active', () {
+      // Mirrors MainShell: the desktop branch calls setActiveConversation
+      // unconditionally (no already-active short-circuit, unlike mobile).
+      final d = decideNotificationNav(
+        consumedId: 2,
+        conversationExistsLocally: true,
+        isDesktop: true,
+        isAlreadyActive: true,
+      );
+      expect(d.action, NotificationNavAction.setActiveDesktop);
+    });
 
-  testWidgets(
-      'stale conversation id (not in local list) stays on the list — no broken chat mount',
-      (tester) async {
-    final convs = ConversationsProvider();
-    convs.onConversationsList([_convJson(1)]);
+    test('mobile + new conv: switches to list and pushes the chat route', () {
+      final d = decideNotificationNav(
+        consumedId: 2,
+        conversationExistsLocally: true,
+        isDesktop: false,
+        isAlreadyActive: false,
+      );
+      expect(d.switchToConversationsTab, isTrue);
+      expect(d.action, NotificationNavAction.pushMobileChat);
+    });
 
-    await tester.pumpWidget(buildApp(convs));
-    await tester.pumpAndSettle();
-
-    // Notification for a deleted/unknown conversation (id 99).
-    convs.requestNavigateToConversationFromNotification(99);
-    await tester.pumpAndSettle();
-
-    expect(find.text('chat-99'), findsNothing);
-    expect(find.text('main-shell'), findsOneWidget);
-    // Consumed — must not re-fire on later rebuilds.
-    expect(convs.pendingNotificationConversationId, isNull);
-  });
-
-  testWidgets(
-      'pending nav is retained until the first conversations snapshot, then fires',
-      (tester) async {
-    final convs = ConversationsProvider();
-
-    await tester.pumpWidget(buildApp(convs));
-    await tester.pumpAndSettle();
-
-    // Cold start: tap arrives before the server snapshot — must NOT navigate
-    // yet (an unverified id would mount an empty chat with dead send).
-    convs.requestNavigateToConversationFromNotification(3);
-    await tester.pumpAndSettle();
-    expect(find.text('chat-3'), findsNothing);
-    expect(convs.pendingNotificationConversationId, 3);
-
-    // Snapshot arrives containing the conversation — nav fires now.
-    convs.onConversationsList([_convJson(3)]);
-    await tester.pumpAndSettle();
-    expect(find.text('chat-3'), findsOneWidget);
+    test('mobile + already-active conv: switches to list but does not re-push',
+        () {
+      final d = decideNotificationNav(
+        consumedId: 5,
+        conversationExistsLocally: true,
+        isDesktop: false,
+        isAlreadyActive: true,
+      );
+      expect(d.switchToConversationsTab, isTrue);
+      expect(d.action, NotificationNavAction.none);
+    });
   });
 }

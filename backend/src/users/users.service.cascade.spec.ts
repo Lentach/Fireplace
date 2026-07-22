@@ -1,5 +1,10 @@
 import * as bcrypt from 'bcrypt';
 import { UsersService } from './users.service';
+import { UnauthorizedException } from '@nestjs/common';
+import { User } from './user.entity';
+import { Message } from '../messages/message.entity';
+import { Conversation } from '../conversations/conversation.entity';
+import { FriendRequest } from '../friends/friend-request.entity';
 
 jest.mock('bcrypt', () => ({
   compare: jest.fn(),
@@ -77,6 +82,12 @@ describe('UsersService.deleteAccount – cascade', () => {
     await service.deleteAccount(7, 'correct-password');
 
     expect(mockKeyBundles.deleteByUserId).toHaveBeenCalledWith(7);
+    // The user-removal transaction must run after side-service cleanup, so a
+    // regression that removes the User before purging key bundles is caught.
+    expect(mockManager.remove).toHaveBeenCalledWith(User, mockUser);
+    expect(
+      mockKeyBundles.deleteByUserId.mock.invocationCallOrder[0],
+    ).toBeLessThan(mockManager.remove.mock.invocationCallOrder[0]);
   });
 
   it('calls fcm removeByUserId', async () => {
@@ -101,6 +112,57 @@ describe('UsersService.deleteAccount – cascade', () => {
     (bcrypt.compare as jest.Mock).mockResolvedValue(false);
     mockRepo.findOne.mockResolvedValue(mockUser);
 
-    await expect(service.deleteAccount(7, 'wrong')).rejects.toThrow();
+    await expect(service.deleteAccount(7, 'wrong')).rejects.toThrow(
+      UnauthorizedException,
+    );
+
+    // A wrong password must abort before any destructive work fires.
+    expect(mockManager.remove).not.toHaveBeenCalled();
+    expect(mockKeyBundles.deleteByUserId).not.toHaveBeenCalled();
+    expect(mockStorage.deleteAvatar).not.toHaveBeenCalled();
+  });
+
+  it('deletes messages, conversations, friend requests, and the user inside the transaction', async () => {
+    (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+    mockRepo.findOne.mockResolvedValue(mockUser);
+    // First transactional manager.find is the Conversation lookup, second is
+    // the FriendRequest lookup.
+    const friendRequest = { id: 99 };
+    mockManager.find
+      .mockResolvedValueOnce([{ id: 11 }])
+      .mockResolvedValueOnce([friendRequest]);
+
+    await service.deleteAccount(7, 'correct-password');
+
+    expect(mockManager.delete).toHaveBeenCalledWith(Message, {
+      conversation: { id: 11 },
+    });
+    expect(mockManager.delete).toHaveBeenCalledWith(Conversation, { id: 11 });
+    expect(mockManager.find).toHaveBeenCalledWith(FriendRequest, expect.anything());
+    expect(mockManager.remove).toHaveBeenCalledWith([friendRequest]);
+    expect(mockManager.remove).toHaveBeenCalledWith(User, mockUser);
+    const userRemovals = mockManager.remove.mock.calls.filter(
+      (args) => args[0] === User,
+    );
+    expect(userRemovals).toHaveLength(1);
+  });
+
+  it('deletes every unique avatar/media storage key exactly once', async () => {
+    (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+    mockRepo.findOne.mockResolvedValue({
+      ...mockUser,
+      profilePicturePublicId: 'avatars/a.jpg',
+    });
+    mockProfilePhotoRepo.find.mockResolvedValue([
+      { storageKey: 'avatars/a.jpg' },
+      { storageKey: 'avatars/b.jpg' },
+    ]);
+
+    await service.deleteAccount(7, 'correct-password');
+
+    expect(mockStorage.deleteAvatar).toHaveBeenCalledWith('avatars/a.jpg');
+    expect(mockStorage.deleteAvatar).toHaveBeenCalledWith('avatars/b.jpg');
+    // De-dup: a.jpg is both the avatar id and a photo key, purged only once.
+    expect(mockStorage.deleteAvatar).toHaveBeenCalledTimes(2);
   });
 });

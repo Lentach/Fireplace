@@ -52,6 +52,33 @@ void main() {
       );
     });
 
+    test('returns false for IPv6 loopback and ULA hosts', () {
+      // Bracketed IPv6 hosts are normalised (brackets stripped) before the
+      // private-range check. ::1 is loopback; fd00::/8 is a ULA (fc00::/7).
+      expect(
+        LinkPreviewService.isSafeImageUrl('https://[::1]/x.png'),
+        false,
+      );
+      expect(
+        LinkPreviewService.isSafeImageUrl('https://[fd00::1]/x.png'),
+        false,
+      );
+    });
+
+    test('allows a legitimate public host that merely starts with "fd"/"fc"', () {
+      // Regression guard: the ULA alternative is anchored to an IPv6 hextet
+      // boundary (`f[cd][0-9a-f]{0,2}:`), so a public hostname beginning with
+      // "fd"/"fc" is NOT mistaken for an fc00::/7 ULA address and stays safe.
+      expect(
+        LinkPreviewService.isSafeImageUrl('https://fdcdn.example.com/x.png'),
+        true,
+      );
+      expect(
+        LinkPreviewService.isSafeImageUrl('https://fc-corp.example.com/x.png'),
+        true,
+      );
+    });
+
     test('resolves relative URL against pageUrl', () {
       expect(
         LinkPreviewService.isSafeImageUrl(

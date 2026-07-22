@@ -165,6 +165,7 @@ void main() {
 
     testWidgets('rebuilds arc when tick notifier updates', (tester) async {
       final messaging = MessagingProvider();
+      addTearDown(messaging.dispose);
       final expiresAt = DateTime.now().add(const Duration(seconds: 90));
 
       await tester.pumpWidget(
@@ -193,11 +194,39 @@ void main() {
         ),
       );
 
+      double arcProgress() {
+        final painter = tester
+            .widgetList<CustomPaint>(
+              find.descendant(
+                of: find.byType(HearthFadeArcIndicator),
+                matching: find.byType(CustomPaint),
+              ),
+            )
+            .map((w) => w.painter)
+            .whereType<HearthFadeArcPainter>()
+            .single;
+        return painter.progress;
+      }
+
       expect(find.byType(HearthFadeArcIndicator), findsOneWidget);
-      expect(find.text('1m'), findsNothing);
+      final before = arcProgress();
+
+      // Let real wall-clock time advance so the countdown actually moves, then
+      // bump the tick. The tile recomputes progress from DateTime.now() on
+      // rebuild; if the ValueListenableBuilder wiring were removed the tile
+      // would not rebuild and the painter would keep its stale progress.
+      await tester.runAsync(
+        () => Future<void>.delayed(const Duration(milliseconds: 1200)),
+      );
       messaging.countdownTickNotifier.value++;
       await tester.pump();
+
       expect(find.byType(HearthFadeArcIndicator), findsOneWidget);
+      expect(
+        arcProgress(),
+        lessThan(before),
+        reason: 'tick rebuild must recompute countdown progress',
+      );
     });
   });
 }

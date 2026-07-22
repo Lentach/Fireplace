@@ -14,7 +14,31 @@ void main() {
   });
 
   test('since filters entries by captured timestamp', () {
+    E2eDiagLog.clear();
     E2eDiagLog.add('RECENT', {});
-    expect(E2eDiagLog.since(const Duration(hours: 24)), contains(isNotEmpty));
+
+    // A wide window keeps the just-added entry.
+    expect(E2eDiagLog.since(const Duration(hours: 24)).length, 1);
+
+    // cutoff == now excludes an entry stamped at/just-before now.
+    expect(
+      E2eDiagLog.since(Duration.zero).any((e) => e.contains('RECENT')),
+      isFalse,
+    );
+
+    // Injected clock: a stale entry stamped before the cutoff is dropped,
+    // while a fresh one within the window is kept.
+    final anchor = DateTime.now();
+    expect(
+      E2eDiagLog.since(
+        const Duration(minutes: 1),
+        now: anchor.add(const Duration(hours: 2)),
+      ),
+      isEmpty,
+    );
+    expect(
+      E2eDiagLog.since(const Duration(hours: 2), now: anchor).length,
+      1,
+    );
   });
 }

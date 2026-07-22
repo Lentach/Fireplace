@@ -26,6 +26,9 @@ class FakeVoicePlayer implements VoicePlayer {
   void emitPlaying(bool playing) =>
       _state.add(VoicePlayerState(playing: playing, completed: false));
 
+  void emitCompleted() =>
+      _state.add(VoicePlayerState(playing: false, completed: true));
+
   @override
   Stream<VoicePlayerState> get stateStream => _state.stream;
   @override
@@ -194,6 +197,26 @@ void main() {
 
     // Starting b must pause a via the coordinator.
     expect(fake1.calls, contains('pause'));
+  });
+
+  testWidgets('completion resets isPlaying and rewinds to zero',
+      (tester) async {
+    final fake = FakeVoicePlayer(duration: const Duration(seconds: 10));
+    await tester.pumpWidget(_host(fake, _voiceMessage()));
+
+    await tester.tap(find.text('toggle'));
+    await tester.pump();
+    expect(find.text('playing:true'), findsOneWidget);
+
+    fake.emitCompleted();
+    // First pump processes the state event; a second lets the post-frame
+    // callback run stop()+seek(zero).
+    await tester.pump();
+    await tester.pump();
+
+    expect(find.text('playing:false'), findsOneWidget);
+    expect(fake.calls, contains('stop'));
+    expect(fake.lastSeek, Duration.zero);
   });
 }
 

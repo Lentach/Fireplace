@@ -18,6 +18,7 @@ import '../utils/pending_deep_link_stub.dart'
 import '../utils/e2e_diag_log.dart';
 import '../utils/tab_visibility.dart';
 import '../utils/instant_opaque_route.dart';
+import '../utils/notification_nav_decision.dart';
 import '../services/unread_badge_sync.dart';
 import '../widgets/top_snackbar.dart';
 import '../theme/glass_theme.dart';
@@ -171,23 +172,32 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         // id from an old notification (deleted conversation) — such a screen
         // renders empty and sendMessage finds no conversation, so typed text
         // vanished. Stale id ⇒ land on the conversations tab and stop.
-        if (convs.pendingNotificationConversationId != null &&
-            convs.hasLoadedConversationsOnce) {
+        if (shouldConsumeNotificationNav(
+          pendingConversationId: convs.pendingNotificationConversationId,
+          hasLoadedConversationsOnce: convs.hasLoadedConversationsOnce,
+        )) {
           WidgetsBinding.instance.addPostFrameCallback((_) {
             if (!mounted) return;
             final provider = context.read<ConversationsProvider>();
             final id = provider.consumePendingNotificationConversationId();
-            if (id == null) return;
-            setState(() => _selectedIndex = 0);
-            if (provider.getConversationById(id) == null) return;
-            final width = MediaQuery.of(context).size.width;
-            if (width >= AppConstants.layoutBreakpointDesktop) {
-              provider.setActiveConversation(id);
-            } else {
-              if (provider.activeConversationId == id) return;
+            final decision = decideNotificationNav(
+              consumedId: id,
+              conversationExistsLocally:
+                  id != null && provider.getConversationById(id) != null,
+              isDesktop: MediaQuery.of(context).size.width >=
+                  AppConstants.layoutBreakpointDesktop,
+              isAlreadyActive: provider.activeConversationId == id,
+            );
+            if (decision.switchToConversationsTab) {
+              setState(() => _selectedIndex = 0);
+            }
+            if (decision.action == NotificationNavAction.setActiveDesktop) {
+              provider.setActiveConversation(id!);
+            } else if (decision.action ==
+                NotificationNavAction.pushMobileChat) {
               Navigator.of(context).pushAndRemoveUntil(
                 instantOpaqueRoute<void>(
-                  builder: (_) => ChatDetailScreen(conversationId: id),
+                  builder: (_) => ChatDetailScreen(conversationId: id!),
                 ),
                 (route) => route.isFirst,
               );

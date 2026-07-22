@@ -5,7 +5,12 @@ import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 void main() {
-  Widget wrap({required bool isMine, required int messageId}) {
+  Widget wrap({
+    required bool isMine,
+    required int messageId,
+    VoidCallback? onDeleteForMe,
+    VoidCallback? onDeleteForEveryone,
+  }) {
     return MaterialApp(
       theme: RpgTheme.themeDataDarkGray,
       localizationsDelegates: AppLocalizations.localizationsDelegates,
@@ -17,8 +22,8 @@ void main() {
               context: ctx,
               isMine: isMine,
               messageId: messageId,
-              onDeleteForMe: () {},
-              onDeleteForEveryone: () {},
+              onDeleteForMe: onDeleteForMe ?? () {},
+              onDeleteForEveryone: onDeleteForEveryone ?? () {},
             ),
             child: const Text('open'),
           ),
@@ -47,6 +52,51 @@ void main() {
     await tester.pumpWidget(wrap(isMine: true, messageId: -1));
     await tester.tap(find.text('open'));
     await tester.pumpAndSettle();
+    expect(find.text('Delete for everyone'), findsNothing);
+  });
+
+  testWidgets('tapping delete for everyone fires callback and dismisses',
+      (tester) async {
+    var everyoneFired = false;
+    var meFired = false;
+    await tester.pumpWidget(wrap(
+      isMine: true,
+      messageId: 42,
+      onDeleteForMe: () => meFired = true,
+      onDeleteForEveryone: () => everyoneFired = true,
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Delete for everyone'));
+    await tester.pumpAndSettle();
+
+    expect(everyoneFired, isTrue);
+    expect(meFired, isFalse);
+    // Dialog dismissed: its buttons are gone.
+    expect(find.text('Delete for me'), findsNothing);
+    expect(find.text('Delete for everyone'), findsNothing);
+  });
+
+  testWidgets('tapping delete for me fires callback and dismisses',
+      (tester) async {
+    var everyoneFired = false;
+    var meFired = false;
+    await tester.pumpWidget(wrap(
+      isMine: true,
+      messageId: 42,
+      onDeleteForMe: () => meFired = true,
+      onDeleteForEveryone: () => everyoneFired = true,
+    ));
+    await tester.tap(find.text('open'));
+    await tester.pumpAndSettle();
+
+    await tester.tap(find.text('Delete for me'));
+    await tester.pumpAndSettle();
+
+    expect(meFired, isTrue);
+    expect(everyoneFired, isFalse);
+    expect(find.text('Delete for me'), findsNothing);
     expect(find.text('Delete for everyone'), findsNothing);
   });
 }

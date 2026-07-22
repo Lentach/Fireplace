@@ -9,7 +9,7 @@ class LinkPreviewService {
       RegExp(r'https?://[^\s<>"{}|\\^`\[\]]+', caseSensitive: false);
 
   static final _privateIpRegex = RegExp(
-    r'^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|::1|fc00:|fd)',
+    r'^(localhost|127\.|10\.|172\.(1[6-9]|2\d|3[01])\.|192\.168\.|::1|f[cd][0-9a-f]{0,2}:)',
     caseSensitive: false,
   );
 

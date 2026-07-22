@@ -50,6 +50,22 @@ void main() {
       final m = _msg(expiresAt: DateTime(2026, 5, 18, 12));
       expect(isMessageExpired(m, now), isFalse);
     });
+
+    test('future expiresAt wins over stale retention deadline', () {
+      final now = DateTime(2026, 5, 17, 12);
+      final m = _msg(
+        expiresAt: DateTime(2026, 5, 18, 12),
+        disappearAfterSeconds: 3600,
+        createdAt: DateTime(2026, 5, 15, 12),
+      );
+      expect(isMessageExpired(m, now), isFalse);
+    });
+
+    test('no expiry fields is never expired', () {
+      final now = DateTime(2026, 5, 17, 12);
+      final m = _msg(createdAt: DateTime(2026, 5, 15, 12));
+      expect(isMessageExpired(m, now), isFalse);
+    });
   });
 
   group('splitDisappearingSeconds / combineDisappearingSeconds', () {
@@ -75,11 +91,13 @@ void main() {
       );
     });
 
-    test('all zero combines to 0', () {
-      expect(
-        combineDisappearingSeconds(days: 0, hours: 0, minutes: 0, seconds: 0),
-        0,
-      );
+    test('mixed value splits to exact component tuple', () {
+      const total = 1 * 86400 + 2 * 3600 + 3 * 60 + 4;
+      final parts = splitDisappearingSeconds(total);
+      expect(parts.days, 1);
+      expect(parts.hours, 2);
+      expect(parts.minutes, 3);
+      expect(parts.seconds, 4);
     });
   });
 }

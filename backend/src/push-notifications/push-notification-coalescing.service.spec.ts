@@ -109,9 +109,27 @@ describe('PushNotificationCoalescingService', () => {
 
   it('forwards senderName to notify, keeping the latest across a burst', async () => {
     getUnreadSummary.mockResolvedValue(makeUnreadSummary(10, 2, 2));
-    await service.scheduleMessagePush(2, 10, 'bob');
+    await service.scheduleMessagePush(2, 10, 'alice');
     jest.advanceTimersByTime(1000);
     await service.scheduleMessagePush(2, 10, 'bob');
+    jest.advanceTimersByTime(2500);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(notify).toHaveBeenCalledTimes(1);
+    // The later name wins, not the first — distinguishes 'latest wins' from 'first wins'.
+    expect(notify).toHaveBeenCalledWith(
+      2,
+      expect.objectContaining({ conversationId: 10, senderName: 'bob' }),
+    );
+  });
+
+  it('preserves the last truthy senderName when a later burst message omits it', async () => {
+    getUnreadSummary.mockResolvedValue(makeUnreadSummary(10, 2, 2));
+    await service.scheduleMessagePush(2, 10, 'bob');
+    jest.advanceTimersByTime(1000);
+    // A later message with no name must NOT overwrite the established name.
+    await service.scheduleMessagePush(2, 10, undefined);
     jest.advanceTimersByTime(2500);
     await Promise.resolve();
     await Promise.resolve();
@@ -212,5 +230,24 @@ describe('PushNotificationCoalescingService', () => {
     await Promise.resolve();
 
     expect(getUnreadSummary).toHaveBeenCalledWith(2);
+  });
+
+  it('still notifies with undefined counts when the unread summary query fails', async () => {
+    // Degraded-but-still-notify: if the summary query throws, the wake-up push MUST
+    // still fire (swallowing it into a no-send would silently drop notifications).
+    getUnreadSummary.mockRejectedValue(new Error('db down'));
+    await service.scheduleMessagePush(2, 10);
+    jest.advanceTimersByTime(2500);
+    await Promise.resolve();
+    await Promise.resolve();
+
+    expect(notify).toHaveBeenCalledTimes(1);
+    expect(notify).toHaveBeenCalledWith(2, {
+      conversationId: 10,
+      unreadCount: undefined,
+      unreadTotal: undefined,
+      unreadConversationIds: undefined,
+      senderName: undefined,
+    });
   });
 });

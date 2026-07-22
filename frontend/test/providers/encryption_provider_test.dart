@@ -54,6 +54,7 @@ void main() {
       });
       final result = await provider.getDecryptedContent(1002);
       expect(result!['content'], 'Check this');
+      expect(result['messageType'], 'TEXT');
       expect(result['linkPreviewUrl'], 'https://example.com');
       expect(result['linkPreviewTitle'], 'Example');
     });

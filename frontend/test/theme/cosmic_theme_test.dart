@@ -72,11 +72,11 @@ void main() {
   });
 
   group('StarfieldBackground motion gating', () {
-    Widget wrap({required bool reduceMotion}) => MediaQuery(
+    Widget wrap({required bool reduceMotion, int density = 40}) => MediaQuery(
           data: MediaQueryData(disableAnimations: reduceMotion),
-          child: const Directionality(
+          child: Directionality(
             textDirection: TextDirection.ltr,
-            child: StarfieldBackground(starColor: starTint, density: 40),
+            child: StarfieldBackground(starColor: starTint, density: density),
           ),
         );
 
@@ -92,6 +92,30 @@ void main() {
       await tester.pumpWidget(wrap(reduceMotion: true));
       await tester.pump();
       // No ticker started -> no continuously scheduled frames.
+      expect(tester.binding.hasScheduledFrame, isFalse);
+    });
+
+    testWidgets('PAUSES the ticker when the app is backgrounded',
+        (tester) async {
+      await tester.pumpWidget(wrap(reduceMotion: false));
+      await tester.pump();
+      // Sanity: the ticker is running while the app is foregrounded.
+      expect(tester.binding.hasScheduledFrame, isTrue);
+
+      // Backgrounding the app (lifecycle != resumed) must stop the ticker so it
+      // no longer requests frames — the docstring's battery/jank guarantee.
+      tester.binding.handleAppLifecycleStateChanged(AppLifecycleState.paused);
+      await tester.pump();
+      expect(tester.binding.hasScheduledFrame, isFalse);
+
+      await tester.pumpWidget(const SizedBox()); // dispose ticker
+    });
+
+    testWidgets('never starts a ticker when density is 0', (tester) async {
+      // shouldRun requires density > 0: an empty field animates nothing, even
+      // with reduced-motion OFF.
+      await tester.pumpWidget(wrap(reduceMotion: false, density: 0));
+      await tester.pump();
       expect(tester.binding.hasScheduledFrame, isFalse);
     });
   });

@@ -28,6 +28,8 @@ describe('ConversationMapper', () => {
       pinnedByUserId: null,
       pinnedMessage: null,
       disappearingTimer: 86400,
+      muted: false,
+      mutedUntil: null,
     });
     expect(payload.userOne).toEqual({
       id: 1,
@@ -45,6 +47,14 @@ describe('ConversationMapper', () => {
       profilePictureUrl: null,
       profilePhotos: [],
     });
+  });
+
+  it('passes through muted and mutedUntil when provided', () => {
+    const conv = createMockConversation();
+    const mutedUntil = new Date('2025-06-01T00:00:00Z');
+    const payload = ConversationMapper.toPayload(conv, { muted: true, mutedUntil });
+    expect(payload.muted).toBe(true);
+    expect(payload.mutedUntil).toBe(mutedUntil);
   });
 
   it('should include unreadCount and lastMessage when provided', () => {

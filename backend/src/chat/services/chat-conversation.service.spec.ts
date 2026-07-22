@@ -177,6 +177,12 @@ describe('ChatConversationService', () => {
         new Map(),
       );
 
+      expect(conversationsService.setPinnedMessage).toHaveBeenNthCalledWith(
+        1,
+        10,
+        100,
+        1,
+      );
       expect(conversationsService.setPinnedMessage).toHaveBeenLastCalledWith(
         10,
         101,
@@ -184,8 +190,39 @@ describe('ChatConversationService', () => {
       );
       expect(mockClient.emit).toHaveBeenCalledWith(
         'messagePinned',
+        expect.objectContaining({ pinnedMessageId: 100 }),
+      );
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'messagePinned',
         expect.objectContaining({ pinnedMessageId: 101 }),
       );
+    });
+
+    it('rejects pin when message belongs to a different conversation', async () => {
+      const foreignMsg = {
+        id: 100,
+        content: 'foreign',
+        conversation: { id: 999, userOne: { id: 1 }, userTwo: { id: 2 } },
+        createdAt: new Date(),
+        expiresAt: null,
+        disappearAfterSeconds: null,
+      };
+      messagesService.findByIdWithConversation.mockResolvedValue(
+        foreignMsg as any,
+      );
+
+      await service.handlePinMessage(
+        mockClient as any,
+        { conversationId: 10, messageId: 100 },
+        mockServer as any,
+        new Map(),
+      );
+
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'error',
+        { message: 'Message not in conversation' },
+      );
+      expect(conversationsService.setPinnedMessage).not.toHaveBeenCalled();
     });
 
     it('rejects pin from non-member', async () => {

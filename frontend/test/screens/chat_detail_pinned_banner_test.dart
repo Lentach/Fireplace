@@ -60,6 +60,51 @@ void main() {
     expect(shouldShowPinnedMessageBanner(conv), isFalse);
   });
 
+  test('shouldShowPinnedMessageBanner false when pinned preview is expired', () {
+    final userA = UserModel(id: 1, username: 'alice', tag: '0001');
+    final userB = UserModel(id: 2, username: 'bob', tag: '0002');
+    final conv = ConversationModel(
+      id: 10,
+      userOne: userA,
+      userTwo: userB,
+      createdAt: DateTime.utc(2026, 1, 1),
+      pinnedMessageId: 999,
+      pinnedMessagePreview: MessageModel(
+        id: 999,
+        content: 'Pinned preview text',
+        senderId: userB.id,
+        senderUsername: userB.username,
+        conversationId: 10,
+        createdAt: DateTime.utc(2020, 1, 1),
+        expiresAt: DateTime.utc(2020, 1, 2),
+      ),
+    );
+
+    expect(shouldShowPinnedMessageBanner(conv), isFalse);
+  });
+
+  test('shouldShowPinnedMessageBanner false when pinnedMessageId is null', () {
+    final userA = UserModel(id: 1, username: 'alice', tag: '0001');
+    final userB = UserModel(id: 2, username: 'bob', tag: '0002');
+    final conv = ConversationModel(
+      id: 10,
+      userOne: userA,
+      userTwo: userB,
+      createdAt: DateTime.utc(2026, 1, 1),
+      pinnedMessageId: null,
+      pinnedMessagePreview: MessageModel(
+        id: 999,
+        content: 'Pinned preview text',
+        senderId: userB.id,
+        senderUsername: userB.username,
+        conversationId: 10,
+        createdAt: DateTime.utc(2026, 1, 2),
+      ),
+    );
+
+    expect(shouldShowPinnedMessageBanner(conv), isFalse);
+  });
+
   test('resolvePinnedPreviewMessage fixes pinner own E2E snapshot', () {
     const pinnedMessageId = 42;
     final server = MessageModel(

@@ -83,5 +83,52 @@ describe('BlockedService', () => {
       'https://example.com/media/msgs/b.bin',
     );
     expect(conversationsService.delete).toHaveBeenCalledWith(55);
+
+    // Ordering invariant: the media URLs must be resolved (and the files
+    // deleted) BEFORE the conversation is deleted — deleting the conversation
+    // cascades away the messages, after which the URLs can no longer be
+    // resolved and the files would be orphaned. A reorder must fail here.
+    const deleteConvOrder =
+      conversationsService.delete.mock.invocationCallOrder[0];
+    expect(
+      messagesService.findMediaUrlsByConversation.mock.invocationCallOrder[0],
+    ).toBeLessThan(deleteConvOrder);
+    for (const order of mediaCleanupService.deleteMediaFile.mock
+      .invocationCallOrder) {
+      expect(order).toBeLessThan(deleteConvOrder);
+    }
+  });
+
+  it('throws on self-block without touching repositories or side effects', async () => {
+    await expect(service.block(1, 1)).rejects.toThrow('Cannot block yourself');
+
+    expect(blockedRepo.save).not.toHaveBeenCalled();
+    expect(friendsService.unfriend).not.toHaveBeenCalled();
+    expect(conversationsService.delete).not.toHaveBeenCalled();
+  });
+
+  it('is idempotent on an already-blocked pair: returns the existing row without side effects', async () => {
+    const existing = { id: 7 } as BlockedUser;
+    blockedRepo.findOne.mockResolvedValueOnce(existing);
+
+    await expect(service.block(1, 2)).resolves.toBe(existing);
+
+    expect(blockedRepo.save).not.toHaveBeenCalled();
+    expect(friendsService.unfriend).not.toHaveBeenCalled();
+    expect(conversationsService.delete).not.toHaveBeenCalled();
+  });
+
+  it('treats conversation-cleanup failure as non-fatal and still returns the saved record', async () => {
+    messagesService.findMediaUrlsByConversation.mockRejectedValueOnce(
+      new Error('storage down'),
+    );
+
+    const result = await service.block(1, 2);
+
+    // The BlockedUser row is already persisted, so a cleanup failure must not
+    // reject: block resolves to the same record passed to save().
+    expect(blockedRepo.save).toHaveBeenCalled();
+    expect(result).toBe(blockedRepo.save.mock.calls[0][0]);
+    expect(conversationsService.delete).not.toHaveBeenCalled();
   });
 });

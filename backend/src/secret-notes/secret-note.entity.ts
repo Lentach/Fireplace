@@ -27,7 +27,7 @@ export class SecretNote {
   creatorId: number;
 
   // CASCADE, not SET NULL: account deletion destroys everything the account
-  // created (privacy contract); notes expire within 12h regardless.
+  // created (privacy contract); notes expire within 24h regardless.
   @ManyToOne(() => User, { onDelete: 'CASCADE', nullable: true })
   @JoinColumn({ name: 'creatorId' })
   creator: User | null;

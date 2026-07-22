@@ -20,6 +20,9 @@ void main() {
     messageType: MessageType.image,
     mediaUrl: 'http://localhost:3000/media/msgs/blob.bin',
     mediaDuration: 12,
+    mediaWidth: 1920,
+    mediaHeight: 1080,
+    mediaThumbHash: 'thumb-hash-b64',
     tempId: 'temp_123_7',
     reactions: const {
       '🔥': [7, 8],
@@ -59,6 +62,10 @@ void main() {
     expect(actual.mediaUrl, expected.mediaUrl, reason: 'mediaUrl');
     expect(actual.mediaDuration, expected.mediaDuration,
         reason: 'mediaDuration');
+    expect(actual.mediaWidth, expected.mediaWidth, reason: 'mediaWidth');
+    expect(actual.mediaHeight, expected.mediaHeight, reason: 'mediaHeight');
+    expect(actual.mediaThumbHash, expected.mediaThumbHash,
+        reason: 'mediaThumbHash');
     expect(actual.tempId, expected.tempId, reason: 'tempId');
     expect(actual.reactions, expected.reactions, reason: 'reactions');
     expect(actual.replyToMessageId, expected.replyToMessageId,

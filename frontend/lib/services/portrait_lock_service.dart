@@ -19,10 +19,4 @@ class PortraitLockService {
       DeviceOrientation.portraitUp,
     ]);
   }
-
-  /// Re-attempt web lock after tab becomes visible (optional hardening).
-  static Future<void> reapplyWebLockIfNeeded() async {
-    if (!kIsWeb) return;
-    await web_orientation.lockPortraitPrimaryIfSupported();
-  }
 }

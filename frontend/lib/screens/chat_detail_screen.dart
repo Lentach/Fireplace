@@ -671,14 +671,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     final topClearance = topInsetHandled
         ? 8.0
         : MediaQuery.paddingOf(context).top + 8.0;
-    final currentUserId = context.read<AuthProvider>().currentUser?.id;
     final settings = context.watch<SettingsProvider>();
     // Cosmic: the starfield is the background; its explicit "Starfield
     // background" setting is the opaque escape hatch. Non-cosmic themes use the
     // glyph wallpaper toggle unchanged.
-    final showGlyphs =
-        currentUserId != null &&
-        settings.chatWallpaper == ChatWallpaper.glyphs;
+    final showGlyphs = settings.chatWallpaper == ChatWallpaper.glyphs;
     return ChatBackgroundPattern(
       backgroundColor: messagesAreaBg,
       enabled: settings.themePreference == 'cosmic'
@@ -785,6 +782,27 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       );
     }
     return ChatInputBar(key: _composerKey);
+  }
+
+  /// Wraps the message [body] with the ping-effect overlay and the
+  /// scroll-to-bottom button, shared by the embedded and non-embedded layouts.
+  Widget _buildChatBodyStack(Widget body, MessagingProvider messaging) {
+    return Stack(
+      children: [
+        body,
+
+        // Ping effect overlay
+        if (messaging.showPingEffect)
+          Positioned.fill(
+            child: PingEffectOverlay(
+              onComplete: () {
+                messaging.clearPingEffect();
+              },
+            ),
+          ),
+        if (_showScrollToBottomButton) _buildScrollToBottomButton(),
+      ],
+    );
   }
 
   @override
@@ -956,22 +974,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           ),
           ?pinnedBanner,
           Expanded(
-            child: Stack(
-              children: [
-                body,
-
-                // Ping effect overlay
-                if (messaging.showPingEffect)
-                  Positioned.fill(
-                    child: PingEffectOverlay(
-                      onComplete: () {
-                        messaging.clearPingEffect();
-                      },
-                    ),
-                  ),
-                if (_showScrollToBottomButton) _buildScrollToBottomButton(),
-              ],
-            ),
+            child: _buildChatBodyStack(body, messaging),
           ),
         ],
       );
@@ -1001,22 +1004,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           ),
         ),
       ),
-      body: Stack(
-        children: [
-          body,
-
-          // Ping effect overlay
-          if (messaging.showPingEffect)
-            Positioned.fill(
-              child: PingEffectOverlay(
-                onComplete: () {
-                  messaging.clearPingEffect();
-                },
-              ),
-            ),
-          if (_showScrollToBottomButton) _buildScrollToBottomButton(),
-        ],
-      ),
+      body: _buildChatBodyStack(body, messaging),
     );
   }
 }

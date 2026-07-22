@@ -56,10 +56,21 @@ void main() {
       await store.isTrustedIdentity(
           address, newKeyPair.getPublicKey(), Direction.receiving);
 
-      // After rotation, subsequent messages from same peer also trusted
-      final result = await store.isTrustedIdentity(
-          address, newKeyPair.getPublicKey(), Direction.receiving);
-      expect(result, isTrue);
+      // The rotated identity must be PERSISTED, not just accepted: getIdentity
+      // returns the new key and no longer the old one. Fails if saveIdentity
+      // stopped writing the rotated key.
+      final stored = await store.getIdentity(address);
+      expect(stored, isNotNull);
+      expect(stored!.serialize(), newKeyPair.getPublicKey().serialize());
+      expect(stored.serialize(),
+          isNot(equals(oldKeyPair.getPublicKey().serialize())));
+    });
+
+    test('rejects null identity (does not trust or throw)', () async {
+      final address = SignalProtocolAddress('user1', 1);
+      final result =
+          await store.isTrustedIdentity(address, null, Direction.receiving);
+      expect(result, isFalse);
     });
   });
 }

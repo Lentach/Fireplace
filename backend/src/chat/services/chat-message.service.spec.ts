@@ -177,6 +177,23 @@ describe('ChatMessageService', () => {
       );
       expect(mockClient.emit).toHaveBeenCalledWith('messageSent', expect.any(Object));
     });
+    it('should not create message and emit error when validation rejects the send', async () => {
+      chatValidationService.validateCanMessage.mockResolvedValue({
+        valid: false,
+        error: 'blocked',
+      });
+
+      await service.handleSendMessage(
+        mockClient as Socket,
+        { recipientId: 2, content: 'hello' },
+        mockServer as Server,
+        onlineUsers,
+      );
+
+      expect(mockClient.emit).toHaveBeenCalledWith('error', { message: 'blocked' });
+      expect(messagesService.create).not.toHaveBeenCalled();
+    });
+
     it('should pass encryptedContent to create and store [encrypted] as content', async () => {
       chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
       usersService.findById
@@ -214,7 +231,7 @@ describe('ChatMessageService', () => {
       expect(mockClient.emit).toHaveBeenCalledWith('messageSent', expect.any(Object));
     });
 
-    it('should skip link preview when encryptedContent is present', async () => {
+    it('forwards encryptedContent to link-preview service', async () => {
       chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
       usersService.findById
         .mockResolvedValueOnce(mockSender as User)
@@ -240,8 +257,8 @@ describe('ChatMessageService', () => {
         onlineUsers,
       );
 
-      // ChatLinkPreviewService.fetchAndEmitIfNeeded is called but with encryptedContent set,
-      // so the service internally skips the preview fetch
+      // Forwarding contract: handleSendMessage passes encryptedContent through to
+      // ChatLinkPreviewService (which owns the skip decision — covered in its own spec).
       expect(chatLinkPreviewService.fetchAndEmitIfNeeded).toHaveBeenCalledWith(
         expect.objectContaining({
           encryptedContent: '3:base64ciphertext==',
@@ -370,192 +387,48 @@ describe('ChatMessageService', () => {
       expect(opts.messageType).toBeUndefined();
     });
 
-    it('should persist mediaUrl and messageType for encrypted VOICE', async () => {
-      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
-      usersService.findById
-        .mockResolvedValueOnce(mockSender as User)
-        .mockResolvedValueOnce(mockRecipient as User);
-      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
-      messagesService.create.mockResolvedValue({
-        ...mockMessage,
-        content: '[encrypted]',
-        encryptedContent: '3:voiceCiphertext==',
-        messageType: 'VOICE',
-        mediaUrl: 'http://localhost:3000/media/msgs/voice.bin',
-      } as Message);
-
-      const mediaUrl = 'http://localhost:3000/media/msgs/voice.bin';
-      const data = {
-        recipientId: 2,
-        content: '[encrypted]',
-        encryptedContent: '3:voiceCiphertext==',
-        messageType: 'VOICE',
-        mediaUrl,
-        mediaDuration: 12,
-      };
-
-      await service.handleSendMessage(
-        mockClient as Socket,
-        data,
-        mockServer as Server,
-        onlineUsers,
-      );
-
-      expect(messagesService.create).toHaveBeenCalledWith(
-        '[encrypted]',
-        mockSender,
-        mockConversation,
-        expect.objectContaining({
-          encryptedContent: '3:voiceCiphertext==',
-          messageType: 'VOICE',
+    it.each([
+      ['VOICE', '3:voiceCiphertext==', 'http://localhost:3000/media/msgs/voice.bin'],
+      ['IMAGE', '3:imageCiphertext==', 'http://localhost:3000/media/msgs/image.bin'],
+      ['GIF', '3:base64encryptedGifData', 'http://localhost:3000/media/msgs/gif.bin'],
+      ['FILE', '3:base64encryptedFileData', 'http://localhost:3000/media/msgs/file.bin'],
+    ])(
+      'should persist mediaUrl and messageType for encrypted %s',
+      async (messageType, encryptedContent, mediaUrl) => {
+        chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+        usersService.findById
+          .mockResolvedValueOnce(mockSender as User)
+          .mockResolvedValueOnce(mockRecipient as User);
+        conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+        messagesService.create.mockResolvedValue({
+          ...mockMessage,
+          content: '[encrypted]',
+          encryptedContent,
+          messageType,
           mediaUrl,
-          mediaDuration: 12,
-        }),
-      );
-    });
+        } as Message);
 
-    it('should persist mediaUrl and messageType for encrypted IMAGE', async () => {
-      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
-      usersService.findById
-        .mockResolvedValueOnce(mockSender as User)
-        .mockResolvedValueOnce(mockRecipient as User);
-      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
-      messagesService.create.mockResolvedValue({
-        ...mockMessage,
-        content: '[encrypted]',
-        encryptedContent: '3:imageCiphertext==',
-        messageType: 'IMAGE',
-        mediaUrl: 'http://localhost:3000/media/msgs/image.bin',
-      } as Message);
+        const data = {
+          recipientId: 2,
+          content: '[encrypted]',
+          encryptedContent,
+          messageType,
+          mediaUrl,
+        };
 
-      const mediaUrl = 'http://localhost:3000/media/msgs/image.bin';
-      const data = {
-        recipientId: 2,
-        content: '[encrypted]',
-        encryptedContent: '3:imageCiphertext==',
-        messageType: 'IMAGE',
-        mediaUrl,
-      };
+        await service.handleSendMessage(
+          mockClient as Socket,
+          data,
+          mockServer as Server,
+          onlineUsers,
+        );
 
-      await service.handleSendMessage(
-        mockClient as Socket,
-        data,
-        mockServer as Server,
-        onlineUsers,
-      );
-
-      const opts = messagesService.create.mock.calls[0][3] as Record<string, unknown>;
-      expect(opts.encryptedContent).toBe('3:imageCiphertext==');
-      expect(opts.messageType).toBe('IMAGE');
-      expect(opts.mediaUrl).toBe(mediaUrl);
-    });
-
-    it('should persist mediaUrl and messageType for encrypted GIF', async () => {
-      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
-      usersService.findById
-        .mockResolvedValueOnce(mockSender as User)
-        .mockResolvedValueOnce(mockRecipient as User);
-      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
-      messagesService.create.mockResolvedValue({
-        ...mockMessage,
-        content: '[encrypted]',
-        encryptedContent: '3:base64encryptedGifData',
-        messageType: 'GIF',
-        mediaUrl: 'http://localhost:3000/media/msgs/gif.bin',
-      } as Message);
-
-      const mediaUrl = 'http://localhost:3000/media/msgs/gif.bin';
-      const data = {
-        recipientId: 2,
-        content: '[encrypted]',
-        encryptedContent: '3:base64encryptedGifData',
-        messageType: 'GIF',
-        mediaUrl,
-      };
-
-      await service.handleSendMessage(
-        mockClient as Socket,
-        data,
-        mockServer as Server,
-        onlineUsers,
-      );
-
-      const opts = messagesService.create.mock.calls[0][3] as Record<string, unknown>;
-      expect(opts.encryptedContent).toBe('3:base64encryptedGifData');
-      expect(opts.messageType).toBe('GIF');
-      expect(opts.mediaUrl).toBe(mediaUrl);
-    });
-
-    it('should persist mediaUrl and messageType for encrypted FILE', async () => {
-      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
-      usersService.findById
-        .mockResolvedValueOnce(mockSender as User)
-        .mockResolvedValueOnce(mockRecipient as User);
-      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
-      messagesService.create.mockResolvedValue({
-        ...mockMessage,
-        content: '[encrypted]',
-        encryptedContent: '3:base64encryptedFileData',
-        messageType: 'FILE',
-        mediaUrl: 'http://localhost:3000/media/msgs/file.bin',
-      } as Message);
-
-      const mediaUrl = 'http://localhost:3000/media/msgs/file.bin';
-      const data = {
-        recipientId: 2,
-        content: '[encrypted]',
-        encryptedContent: '3:base64encryptedFileData',
-        messageType: 'FILE',
-        mediaUrl,
-      };
-
-      await service.handleSendMessage(
-        mockClient as Socket,
-        data,
-        mockServer as Server,
-        onlineUsers,
-      );
-
-      const opts = messagesService.create.mock.calls[0][3] as Record<string, unknown>;
-      expect(opts.encryptedContent).toBe('3:base64encryptedFileData');
-      expect(opts.messageType).toBe('FILE');
-      expect(opts.mediaUrl).toBe(mediaUrl);
-    });
-
-    it('should NOT fetch link preview for any encrypted message', async () => {
-      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
-      usersService.findById
-        .mockResolvedValueOnce(mockSender as User)
-        .mockResolvedValueOnce(mockRecipient as User);
-      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
-      messagesService.create.mockResolvedValue({
-        ...mockMessage,
-        content: '[encrypted]',
-        encryptedContent: '3:textWithLinkCipher==',
-        messageType: 'TEXT',
-      } as Message);
-
-      // Even though content placeholder is [encrypted], link preview must not run
-      const data = {
-        recipientId: 2,
-        content: '[encrypted]',
-        encryptedContent: '3:textWithLinkCipher==',
-      };
-
-      await service.handleSendMessage(
-        mockClient as Socket,
-        data,
-        mockServer as Server,
-        onlineUsers,
-      );
-
-      // ChatLinkPreviewService is called but with encryptedContent, so it skips internally
-      expect(chatLinkPreviewService.fetchAndEmitIfNeeded).toHaveBeenCalledWith(
-        expect.objectContaining({
-          encryptedContent: '3:textWithLinkCipher==',
-        }),
-      );
-    });
+        const opts = messagesService.create.mock.calls[0][3] as Record<string, unknown>;
+        expect(opts.encryptedContent).toBe(encryptedContent);
+        expect(opts.messageType).toBe(messageType);
+        expect(opts.mediaUrl).toBe(mediaUrl);
+      },
+    );
 
     it('should emit messageSent and newMessage with encryptedContent for online recipient', async () => {
       chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });

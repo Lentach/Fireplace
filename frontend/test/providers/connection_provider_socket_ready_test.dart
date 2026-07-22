@@ -214,5 +214,38 @@ void main() {
             'socketReady must preserve background visibility; states=$pushStates',
       );
     });
+
+    test(
+        'socketReady with no open conversation neither refetches messages nor '
+        'reasserts client state', () async {
+      final conversations = ConversationsProvider()
+        ..onConversationsList([_convJson(10)]);
+      final messaging = MessagingProvider()
+        ..setConversationsProvider(conversations);
+      connection.setProviders(
+        encryption: EncryptionProvider(),
+        friends: FriendsProvider(),
+        conversations: conversations,
+        messaging: messaging,
+      );
+      await connection.connect(1, 'test-token', 'http://localhost:3000');
+
+      // No conversation is opened: activeConversationId stays null.
+      connection.emitted.clear();
+
+      fakeSocket.simulateSocketReady();
+
+      // Baseline authenticated fetches still fire...
+      expect(fakeSocket.getConversationsCalls, 1);
+      // ...but the active-conversation reassert branch must stay dormant.
+      expect(fakeSocket.getMessagesConversationIds, isEmpty,
+          reason: 'socketReady must not refetch messages when no chat is open');
+      final pushStates = connection.emitted
+          .where((entry) => entry.key == 'pushClientState')
+          .toList();
+      expect(pushStates, isEmpty,
+          reason:
+              'socketReady must not reassert client state when no chat is open');
+    });
   });
 }

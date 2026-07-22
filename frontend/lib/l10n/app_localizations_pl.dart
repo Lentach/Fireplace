@@ -9,9 +9,6 @@ class AppLocalizationsPl extends AppLocalizations {
   AppLocalizationsPl([String locale = 'pl']) : super(locale);
 
   @override
-  String get appTitle => 'Fireplace';
-
-  @override
   String get settings => 'Ustawienia';
 
   @override
@@ -82,9 +79,6 @@ class AppLocalizationsPl extends AppLocalizations {
   String get contacts => 'Kontakty';
 
   @override
-  String get profilePictureUpdated => 'Zdjęcie profilowe zaktualizowane';
-
-  @override
   String get uploadFailed => 'Nie udało się przesłać';
 
   @override
@@ -95,9 +89,6 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get accountDeletionFailed => 'Nie udało się usunąć konta';
-
-  @override
-  String get loading => 'Ładowanie…';
 
   @override
   String get devicesLoading => 'Ładowanie…';
@@ -308,13 +299,7 @@ class AppLocalizationsPl extends AppLocalizations {
   String get attachment => 'Załącznik';
 
   @override
-  String get attachmentOptionPhoto => 'Zdjęcie';
-
-  @override
   String get attachmentOptionDocument => 'Dokument';
-
-  @override
-  String get actionTileTimer => 'Timer';
 
   @override
   String get actionTileDisappearingMessages => 'Znikające wiadomości';
@@ -360,11 +345,6 @@ class AppLocalizationsPl extends AppLocalizations {
   }
 
   @override
-  String conversationDisappearingTimerHint(String duration) {
-    return 'Znikające wiadomości: $duration';
-  }
-
-  @override
   String get conversationLastMessageEphemeralPreRead => 'Znika po odczytaniu';
 
   @override
@@ -383,9 +363,6 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get disappearingTimerSecondsLabel => 'Sekundy';
-
-  @override
-  String get disappearingTimerApply => 'Zastosuj';
 
   @override
   String get disappearingTimerOff => 'Wyłączone';
@@ -557,9 +534,6 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get gifSearchHint => 'Szukaj GIFów...';
-
-  @override
-  String get gifLoadError => 'Nie udało się załadować GIFów';
 
   @override
   String get antiQuantumNoteTitle => 'Notatka antykwantowa';
@@ -876,9 +850,6 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get userCardBack => 'Wstecz';
-
-  @override
-  String get userCardNotifications => 'Powiadomienia';
 
   @override
   String get userCardNotificationsOn => 'Powiadomienia włączone';

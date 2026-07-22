@@ -85,6 +85,31 @@ void main() {
       expect(foreverMuted.isMutedAt(now), isTrue);
     });
 
+    test('isMutedAt honors an active timed mute and ignores mute flag off', () {
+      final now = DateTime.utc(2026, 7, 13, 12);
+      final activeMute = ConversationModel(
+        id: 6,
+        userOne: UserModel(id: 10, username: 'alice', tag: '0001'),
+        userTwo: UserModel(id: 20, username: 'bob', tag: '0002'),
+        createdAt: DateTime.utc(2026, 2, 1),
+        muted: true,
+        mutedUntil: DateTime.utc(2026, 7, 13, 12, 0, 1),
+      );
+      final unmutedWithFutureUntil = ConversationModel(
+        id: 7,
+        userOne: UserModel(id: 10, username: 'alice', tag: '0001'),
+        userTwo: UserModel(id: 20, username: 'bob', tag: '0002'),
+        createdAt: DateTime.utc(2026, 2, 1),
+        muted: false,
+        mutedUntil: DateTime.utc(2026, 7, 13, 12, 0, 1),
+      );
+
+      // Active timed mute: mutedUntil after now -> still muted.
+      expect(activeMute.isMutedAt(now), isTrue);
+      // muted flag off -> never muted, regardless of mutedUntil.
+      expect(unmutedWithFutureUntil.isMutedAt(now), isFalse);
+    });
+
     test('copyWith clears disappearingTimer to null via clearDisappearingTimer',
         () {
       final base = ConversationModel(

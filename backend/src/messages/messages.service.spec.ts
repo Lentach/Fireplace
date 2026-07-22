@@ -41,21 +41,32 @@ describe('MessagesService.findByConversation', () => {
     );
   });
 
-  it('uses client-side offset for hidden messages case', async () => {
-    const msgs = Array.from({ length: 10 }, (_, i) => ({
-      id: i,
-      hiddenByUserIds: null,
-      createdAt: new Date(),
-    })) as unknown as Message[];
-    repo.find.mockResolvedValue(msgs);
+  it('filters hidden rows and applies client-side offset/limit slicing (oldest-first)', async () => {
+    // repo.find is mocked, so it returns rows in the order we supply: newest-first
+    // (DESC), mirroring the real query. The service filters rows hidden for the
+    // user, then slices(offset, offset+limit) and reverses to oldest-first.
+    const rows = [
+      { id: 10, hiddenByUserIds: null, createdAt: new Date() },
+      { id: 9, hiddenByUserIds: '99', createdAt: new Date() },
+      { id: 8, hiddenByUserIds: null, createdAt: new Date() },
+      { id: 7, hiddenByUserIds: null, createdAt: new Date() },
+      { id: 6, hiddenByUserIds: '1,99,2', createdAt: new Date() },
+      { id: 5, hiddenByUserIds: null, createdAt: new Date() },
+    ] as unknown as Message[];
+    repo.find.mockResolvedValue(rows);
 
-    await service.findByConversation(1, 5, 0, 99);
+    // limit=2, offset=1, hiddenByUserId=99
+    const result = await service.findByConversation(1, 2, 1, 99);
 
-    // With hiddenByUserId, skip should be 0 (fetch more, filter client-side)
-    // fetchLimit = limit * 3 + offset + 50 = 5 * 3 + 0 + 50 = 65
+    // With hiddenByUserId, skip=0 and take=fetchLimit (2*3+1+50=57)
     expect(repo.find).toHaveBeenCalledWith(
-      expect.objectContaining({ skip: 0, take: 65 }),
+      expect.objectContaining({ skip: 0, take: 57 }),
     );
+    // Hidden rows (9, 6) removed → [10, 8, 7, 5]; slice(1,3) → [8, 7];
+    // reverse() → oldest-first [7, 8].
+    expect(result.map((m) => m.id)).toEqual([7, 8]);
+    expect(result.map((m) => m.id)).not.toContain(9);
+    expect(result.map((m) => m.id)).not.toContain(6);
   });
 });
 
@@ -210,5 +221,40 @@ describe('MessagesService.editMessage', () => {
     expect(result!.content).toBe('[encrypted]');
     expect(result!.editedAt).toBeInstanceOf(Date);
     expect(result!.editedAt!.getTime()).toBeGreaterThanOrEqual(before);
+  });
+
+  it('preserves existing encryptedContent when only content is provided', async () => {
+    const existing = {
+      id: 5,
+      sender: { id: 1 },
+      content: 'old plaintext',
+      encryptedContent: 'old-cipher',
+      editedAt: null,
+    } as unknown as Message;
+    repo.findOne.mockResolvedValue(existing);
+
+    const result = await service.editMessage(5, 1, { content: 'new plaintext' });
+
+    expect(result).not.toBeNull();
+    expect(result!.content).toBe('new plaintext');
+    // encryptedContent omitted (undefined) → left untouched
+    expect(result!.encryptedContent).toBe('old-cipher');
+  });
+
+  it('clears encryptedContent when explicitly passed null', async () => {
+    const existing = {
+      id: 5,
+      sender: { id: 1 },
+      content: '[encrypted]',
+      encryptedContent: 'old-cipher',
+      editedAt: null,
+    } as unknown as Message;
+    repo.findOne.mockResolvedValue(existing);
+
+    const result = await service.editMessage(5, 1, { encryptedContent: null });
+
+    expect(result).not.toBeNull();
+    // explicit null (!== undefined) → field is set to null, not skipped
+    expect(result!.encryptedContent).toBeNull();
   });
 });

@@ -34,10 +34,21 @@ describe('SecretNotesService', () => {
       repo.create.mockReturnValue(note);
       repo.save.mockResolvedValue(note);
 
+      const before = Date.now();
       const result = await service.create('enc', 7200, 1);
+      const after = Date.now();
 
       expect(repo.save).toHaveBeenCalled();
       expect(result.token).toHaveLength(32);
+      // Field-mapping + TTL-scaling contract: ciphertext/creatorId forwarded verbatim,
+      // expiresAt = now + expiresInSeconds*1000 (ms, not seconds).
+      expect(repo.create).toHaveBeenCalledWith(
+        expect.objectContaining({ ciphertext: 'enc', creatorId: 1 }),
+      );
+      const createArg = repo.create.mock.calls[0][0];
+      const expiresAtMs = new Date(createArg.expiresAt).getTime();
+      expect(expiresAtMs).toBeGreaterThanOrEqual(before + 7200 * 1000);
+      expect(expiresAtMs).toBeLessThanOrEqual(after + 7200 * 1000);
     });
   });
 

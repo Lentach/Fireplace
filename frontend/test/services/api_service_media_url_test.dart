@@ -152,5 +152,30 @@ void main() {
       expect(authHeader, isNull);
       expect(bytes, [9]);
     });
+
+    test('does NOT attach the JWT to a same-origin non-/media/msgs/ URL',
+        () async {
+      // Same-origin but under /media/avatars/, not /media/msgs/: the request
+      // proceeds (trusted host) but the token must NOT be attached. Guards the
+      // `/media/msgs/` path restriction — broadening it to all same-origin
+      // paths would leak the JWT to avatar/other endpoints.
+      String? authHeader;
+      Uri? requested;
+      final mock = MockClient((request) async {
+        requested = request.url;
+        authHeader = request.headers['Authorization'];
+        return http.Response.bytes([7], 200);
+      });
+      final api = ApiService(baseUrl: prodBase, httpClient: mock);
+
+      final bytes = await api.fetchMediaBytes(
+        '$prodBase/media/avatars/u.jpg',
+        'jwt_token',
+      );
+
+      expect(requested?.host, 'fireplace.example.com');
+      expect(authHeader, isNull);
+      expect(bytes, [7]);
+    });
   });
 }

@@ -1,6 +1,5 @@
 {
   "@@locale": "en",
-  "appTitle": "Fireplace",
   "settings": "Settings",
   "theme": "Theme",
   "language": "Language",
@@ -23,12 +22,10 @@
   "uninstallWarning": "Uninstalling or clearing site data permanently erases your message history — to refresh, just fully close and reopen the app.",
   "chat": "Chats",
   "contacts": "Contacts",
-  "profilePictureUpdated": "Profile picture updated",
   "uploadFailed": "Upload failed",
   "passwordUpdatedSuccessfully": "Password updated successfully",
   "passwordResetFailed": "Password reset failed",
   "accountDeletionFailed": "Account deletion failed",
-  "loading": "Loading…",
   "devicesLoading": "Loading…",
   "settingsAppVersion": "App version",
 
@@ -109,9 +106,7 @@
   "image": "Image",
   "ping": "Ping",
   "attachment": "Attachment",
-  "attachmentOptionPhoto": "Photo",
   "attachmentOptionDocument": "Document",
-  "actionTileTimer": "Timer",
   "actionTileDisappearingMessages": "Disappearing messages",
   "disappearingTimerTitle": "Disappearing messages",
   "disappearingTimerExplainerLine1": "Messages are removed after they are read.",
@@ -132,10 +127,6 @@
   "@disappearingComposerBannerSemantics": {
     "placeholders": { "duration": { "type": "String" } }
   },
-  "conversationDisappearingTimerHint": "Disappearing messages: {duration}",
-  "@conversationDisappearingTimerHint": {
-    "placeholders": { "duration": { "type": "String" } }
-  },
   "conversationLastMessageEphemeralPreRead": "Disappears after read",
   "conversationLastMessageEphemeralRemaining": "Disappears in {duration}",
   "@conversationLastMessageEphemeralRemaining": {
@@ -145,7 +136,6 @@
   "disappearingTimerHoursLabel": "Hours",
   "disappearingTimerMinutesLabel": "Minutes",
   "disappearingTimerSecondsLabel": "Seconds",
-  "disappearingTimerApply": "Apply",
   "disappearingTimerOff": "Off",
   "disappearingTimerOutOfRange": "Timer must be between 5 seconds and 30 days, or all zeros to turn off.",
   "disappearingTimerDays": "{count, plural, one{1 day} other{{count} days}}",
@@ -208,7 +198,6 @@
   "clearingChat": "Clearing…",
   "gifNoResults": "No GIFs found",
   "gifSearchHint": "Search GIFs...",
-  "gifLoadError": "Could not load GIFs",
 
   "antiQuantumNoteTitle": "Anti-Quantum Note",
   "antiQuantumNoteHint": "Write your secret message...",
@@ -337,7 +326,6 @@
   "userCardSave": "Save",
   "userCardCancel": "Cancel",
   "userCardBack": "Back",
-  "userCardNotifications": "Notifications",
   "userCardNotificationsOn": "Notifications on",
   "userCardMuteOneHour": "Mute for 1 hour",
   "userCardMuteEightHours": "Mute for 8 hours",

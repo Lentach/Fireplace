@@ -60,7 +60,17 @@ void main() {
     test('loadCachedMessages returns a copy — provider messages are independent of cache', () {
       provider.seedCacheForTest(10, [_msg(1, 10)]);
       provider.loadCachedMessages(10);
-      // Cache must still be intact after loading (List.from copy)
+
+      // The messages getter exposes the live loaded list. Mutating it in place
+      // must NOT touch the cache — loadCachedMessages hands back a distinct copy
+      // (`_messages = List.from(cached...)`), not an alias of the cache list.
+      // If the impl regressed to `_messages = cached`, this add would leak into
+      // _conversationCache[10] and the assertions below would fail.
+      provider.messages.add(_msg(2, 10));
+
+      expect(provider.cacheMessageForTest(10, 2), isNull);
+      expect(provider.cachedMessagesFor(10).length, 1);
+      expect(provider.cachedMessagesFor(10).first.id, 1);
       expect(provider.hasCachedMessages(10), isTrue);
     });
 

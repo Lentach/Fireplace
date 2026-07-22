@@ -38,5 +38,72 @@ void main() {
       expect(updated.username, 'new');
       expect(updated.tag, '0001');
     });
+
+    test('copyWith clear flags null out fields and win over passed values', () {
+      final user = UserModel(
+        id: 1,
+        username: 'old',
+        tag: '0001',
+        profilePictureUrl: 'https://example.com/avatar.png',
+        about: 'hello world',
+      );
+
+      final avatarCleared = user.copyWith(clearProfilePicture: true);
+      expect(avatarCleared.profilePictureUrl, isNull);
+      expect(avatarCleared.about, 'hello world');
+
+      final aboutCleared = user.copyWith(clearAbout: true);
+      expect(aboutCleared.about, isNull);
+      expect(aboutCleared.profilePictureUrl, 'https://example.com/avatar.png');
+
+      // Clear flags must win even when a replacement value is also passed.
+      final both = user.copyWith(
+        profilePictureUrl: 'https://example.com/new.png',
+        clearProfilePicture: true,
+        about: 'new about',
+        clearAbout: true,
+      );
+      expect(both.profilePictureUrl, isNull);
+      expect(both.about, isNull);
+    });
+
+    test('fromJson defaults tag to 0000 when absent', () {
+      final user = UserModel.fromJson({
+        'id': 3,
+        'username': 'notag',
+      });
+      expect(user.tag, '0000');
+      expect(user.displayHandle, 'notag#0000');
+    });
+
+    test('fromJson parses about and profilePhotos', () {
+      final user = UserModel.fromJson({
+        'id': 4,
+        'username': 'photos',
+        'tag': '9999',
+        'about': 'bio text',
+        'profilePhotos': [
+          {
+            'id': 11,
+            'url': 'https://example.com/p1.png',
+            'isPrimary': true,
+            'createdAt': '2026-03-01T10:30:00.000Z',
+          },
+          {
+            'id': 12,
+            'url': 'https://example.com/p2.png',
+            'isPrimary': false,
+            'createdAt': '2026-03-02T10:30:00.000Z',
+          },
+        ],
+      });
+      expect(user.about, 'bio text');
+      expect(user.profilePhotos, hasLength(2));
+      expect(user.profilePhotos[0].id, 11);
+      expect(user.profilePhotos[0].url, 'https://example.com/p1.png');
+      expect(user.profilePhotos[0].isPrimary, isTrue);
+      expect(user.profilePhotos[1].id, 12);
+      expect(user.profilePhotos[1].isPrimary, isFalse);
+    });
   });
 }

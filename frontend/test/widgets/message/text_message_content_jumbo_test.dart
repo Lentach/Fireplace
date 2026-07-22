@@ -72,6 +72,21 @@ void main() {
       expect((span.children!.single as TextSpan).text, '😀😀😀😀😀');
     });
 
+    // Locks the intermediate step-down curve, not just its endpoints (1->82,
+    // 5->44). An off-by-one in the count->size map or a swapped tier value
+    // would slip past the endpoint-only tests.
+    for (final tier in const {2: 78.0, 3: 64.0, 4: 52.0}.entries) {
+      testWidgets('${tier.key} emoji render at fontSize ${tier.value.toInt()}', (
+        tester,
+      ) async {
+        final emoji = '😀' * tier.key;
+        await tester.pumpWidget(_textContent(emoji));
+        final span = _richTextOf(tester).text as TextSpan;
+        expect(span.style?.fontSize, tier.value);
+        expect((span.children!.single as TextSpan).text, emoji);
+      });
+    }
+
     testWidgets('plain text keeps the 14px RichText pipeline', (tester) async {
       await tester.pumpWidget(_textContent('hello world'));
       // No plain Text widget — it's rendered directly as RichText spans.

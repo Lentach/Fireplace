@@ -71,6 +71,38 @@ void main() {
       expect(crypto.iv, 'IV');
     });
 
+    test('key without iv returns raw bytes without decrypting', () async {
+      final api = _FakeApi(Uint8List.fromList(const [1, 2, 3]));
+      final crypto = _FakeCrypto();
+
+      final out = await loadDecryptedMediaBytes(
+        url: 'u',
+        token: 't',
+        key: 'K',
+        api: api,
+        crypto: crypto,
+      );
+
+      expect(out, [1, 2, 3]);
+      expect(crypto.called, isFalse);
+    });
+
+    test('iv without key returns raw bytes without decrypting', () async {
+      final api = _FakeApi(Uint8List.fromList(const [1, 2, 3]));
+      final crypto = _FakeCrypto();
+
+      final out = await loadDecryptedMediaBytes(
+        url: 'u',
+        token: 't',
+        iv: 'IV',
+        api: api,
+        crypto: crypto,
+      );
+
+      expect(out, [1, 2, 3]);
+      expect(crypto.called, isFalse);
+    });
+
     test('throws when fetched media exceeds the size cap', () async {
       final api = _FakeApi(Uint8List(MediaCryptoService.maxBytes + 1));
 

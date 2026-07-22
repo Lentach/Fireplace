@@ -45,15 +45,14 @@ class PushService {
   /// Drained once by ConnectionProvider._onSocketReady().
   int? coldStartConversationId;
 
-  // VAPID public key for web push. Supplied via the WEB_PUSH_VAPID_PUBLIC_KEY
-  // dart-define at build time; the defaultValue below is the real production
-  // fallback key. It MUST match the backend VAPID key pair — a mismatch causes
-  // silent web-push subscribe/delivery failure (CLAUDE.md §3, §5). To rotate:
-  // Firebase Console → Project Settings → Cloud Messaging → Web Push certificates.
+  // VAPID public key for web push, injected via the WEB_PUSH_VAPID_PUBLIC_KEY
+  // dart-define at build time (deploy-web.ps1 passes it). NO hardcoded fallback:
+  // an empty key makes web-push subscribe fail loudly instead of silently
+  // subscribing to a stale/wrong key (which causes 400 delivery + the backend
+  // pruning the subscription). MUST match the backend VAPID pair (CLAUDE.md §3, §5).
   static const String _vapidKey = String.fromEnvironment(
     'WEB_PUSH_VAPID_PUBLIC_KEY',
-    defaultValue:
-        'BOkbC_6t7ScCiTLyuLyM0wEG3TnXfpQaAMwZUeJHuWhtt7HVr0u3zG60xm4kqqhnNzuHZco-8h0Nt_WRYRZrZHU',
+    defaultValue: '',
   );
 
   PushService(this._api);
@@ -93,7 +92,7 @@ class PushService {
       }
 
       final fcmToken = await FirebaseMessaging.instance.getToken(
-        vapidKey: kIsWeb ? _vapidKey : null,
+        vapidKey: null,
       );
       if (fcmToken == null) return;
 
@@ -154,7 +153,7 @@ class PushService {
       push_android.setAndroidNotificationConversationTapHandler(null);
 
       final fcmToken = await FirebaseMessaging.instance.getToken(
-        vapidKey: kIsWeb ? _vapidKey : null,
+        vapidKey: null,
       );
       if (fcmToken != null) {
         await _api.removeFcmToken(jwtToken, fcmToken);

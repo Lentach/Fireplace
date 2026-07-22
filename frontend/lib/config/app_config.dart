@@ -4,11 +4,12 @@ class AppConfig {
     defaultValue: '',
   );
 
-  static String get giphyApiKey {
-    const key = String.fromEnvironment('GIPHY_API_KEY', defaultValue: '');
-    if (key.isNotEmpty) return key;
-    return 'VmCJlGsMqvJvY8fStvCuE8zTETPgTfMN';
-  }
+  // Client-side Giphy key: injected via the GIPHY_API_KEY dart-define at build
+  // time (deploy-web.ps1 sources it from gitignored config/env). No hardcoded
+  // fallback — a committed key leaks into the public repo. Empty => GIF search
+  // is disabled rather than shipping a repo-committed key.
+  static String get giphyApiKey =>
+      const String.fromEnvironment('GIPHY_API_KEY', defaultValue: '');
 
   static String get baseUrl {
     // If BASE_URL is explicitly set, use it

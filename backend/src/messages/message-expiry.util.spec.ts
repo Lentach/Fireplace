@@ -33,6 +33,44 @@ describe('isMessageExpired', () => {
     ).toBe(false);
   });
 
+  it('returns true when expiresAt is exactly equal to now (<= boundary)', () => {
+    expect(
+      isMessageExpired(
+        expiryRow({
+          expiresAt: new Date(now.getTime()),
+          createdAt: new Date('2026-05-16T12:00:00Z'),
+        }),
+        now,
+      ),
+    ).toBe(true);
+  });
+
+  it('returns false when both expiresAt and disappearAfterSeconds are null', () => {
+    expect(
+      isMessageExpired(
+        expiryRow({
+          expiresAt: null,
+          disappearAfterSeconds: null,
+          createdAt: new Date('2020-01-01T00:00:00Z'),
+        }),
+        now,
+      ),
+    ).toBe(false);
+  });
+
+  it('treats an invalid/NaN expiresAt as not-expired (NaN guard)', () => {
+    expect(
+      isMessageExpired(
+        expiryRow({
+          expiresAt: new Date('not-a-date'),
+          disappearAfterSeconds: null,
+          createdAt: new Date('2026-05-16T12:00:00Z'),
+        }),
+        now,
+      ),
+    ).toBe(false);
+  });
+
   it('expires never-read read-mode message after 1 day from send', () => {
     const createdAt = new Date(
       now.getTime() - (DISAPPEARING_MAX_UNREAD_SECONDS + 60) * 1000,

@@ -5,6 +5,12 @@ import { User } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { RefreshTokensService } from './refresh-tokens.service';
 
+// Precomputed bcrypt hash used for a constant-time comparison when the
+// identifier matches no user, so "no such user" takes the same time as a wrong
+// password (defeats timing-based user enumeration). The value is arbitrary.
+const TIMING_SAFE_DUMMY_HASH =
+  '$2b$10$pwiFDkB3zcAu0PKQqI13b.fGqVMlVlB8aCB22BL/qyvTghAEiP2N2';
+
 @Injectable()
 export class AuthService {
   private readonly auditLogger = new Logger('Audit');
@@ -40,6 +46,9 @@ export class AuthService {
       }
     }
     if (!user) {
+      // Constant-time guard: perform a real bcrypt compare so a missing user
+      // is indistinguishable by timing from a wrong password.
+      await bcrypt.compare(password, TIMING_SAFE_DUMMY_HASH);
       this.auditLogger.log(`login failed identifier=${identifier}`);
       throw new UnauthorizedException('Invalid credentials');
     }

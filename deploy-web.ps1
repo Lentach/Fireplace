@@ -17,7 +17,8 @@
   3) On your phone: fully close + reopen the PWA (NEVER uninstall - that wipes E2E keys).
 
 .SAFETY
-  - Only PUBLIC values go into the bundle (BASE_URL, VAPID public key, git commit). No secrets.
+  - Only client-visible values go into the bundle (BASE_URL, VAPID public key, git commit, Giphy key).
+    The Giphy key is a low-sensitivity CLIENT key kept OUT of the repo (set via config/env), not a server secret.
   - Never run flutter build web on the VM. Never run docker compose down -v on the VM.
   - Publishes via a temp dir + atomic swap, and aborts if the upload looks incomplete.
 #>
@@ -26,6 +27,9 @@ param(
   [string]$BaseUrl        = "https://fireplace.ignorelist.com",
   # VAPID public key - public by design (it is already inside the deployed bundle).
   [string]$VapidPublicKey = "BOyiyoPFLS19q4OUIHdhb97je8EOzxjRIzEafCH1nZqzyKGG6DfytNqFK6u3IaNrgwPSbHuj0Hra1IP-KWX7Prc",
+  # Private Giphy key - set in gitignored deploy-web.config.ps1 or the GIPHY_API_KEY env var.
+  # NEVER hardcode here (public repo). Empty is allowed (GIF search disabled).
+  [string]$GiphyApiKey    = "$env:GIPHY_API_KEY",
   [string]$RemoteDir      = "fireplace", # repo dir on the VM, relative to the SSH user's home
   # Publish target - set these in deploy-web.config.ps1 (gcloud is recommended for a GCP VM):
   [string]$GcloudUser     = "",          # SSH/login user on the VM, e.g. "olek292"  (NOT your local Windows user)
@@ -70,8 +74,12 @@ if (-not $SkipBuild) {
     "--dart-define=BASE_URL=$BaseUrl",
     "--dart-define=GIT_COMMIT=$commit",
     "--dart-define=BUILD_TIME=$buildTime",
-    "--dart-define=WEB_PUSH_VAPID_PUBLIC_KEY=$VapidPublicKey"
+    "--dart-define=WEB_PUSH_VAPID_PUBLIC_KEY=$VapidPublicKey",
+    "--dart-define=GIPHY_API_KEY=$GiphyApiKey"
   )
+  if (-not $GiphyApiKey) {
+    Write-Warning "GIPHY_API_KEY not set - GIF search will be disabled in this build. Set it in deploy-web.config.ps1 or the GIPHY_API_KEY env var."
+  }
   Push-Location frontend
   flutter clean
   # --no-wasm-dry-run avoids the memory-heavy wasm probe + its noisy stderr.
