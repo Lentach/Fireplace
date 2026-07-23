@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-23 — Contacts tab redesigned as a **contact network node map** on branch `feat/contact-network` (pushed, NOT merged): circular local node + clipped-square contact terminals, PCB dogleg traces, deterministic elliptical layout, drag-to-pin, list fallback toggle.
+**Date:** 2026-07-23 — Contacts tab redesigned as a **contact network node map** on branch `feat/contact-network` (bundle `c15d770` live as an ephemeral test deploy, NOT merged): circular local node + clipped-square contact terminals, PCB dogleg traces, deterministic elliptical layout, drag-to-pin, list fallback toggle.
 
 ## What was done
 1. New `ContactNetworkView`: pure re-render of `FriendsProvider.friends` — no fake nodes/status; doubled traces = real conversations; hero composition for the one-contact state; ticks/orbits/brackets aesthetic, theme tokens only.
@@ -13,7 +13,7 @@
 - Analyze 0 issues; full suite **786 passed** incl. 10 new contract tests. Visual loop: all five themes (cosmic/blue/dark/light/teal) × 0/1/8/25 contacts × 390/320/1100px + textScale 1.6; Chats header re-verified via glass_preview. `graphify`: 9179 nodes.
 
 ## Notes for next session
-- Owner review → PR → merge + version bump still pending; nothing deployed.
+- Branch bundle `c15d770` is LIVE for owner device testing (smoke passed: 0.0.125 + bundle sha + boot). No version bump for the ephemeral test deploy (2026-07-22 precedent); owner review → PR → merge + PATCH bump still pending. Fully close/reopen the PWA — never clear site data.
 - Trap: `flutter run -d web-server` hot restart does not recompile `-t` entry-file changes — cold restart required.
 - Full: `2026-07-23-session-contact-network.md`.
 
