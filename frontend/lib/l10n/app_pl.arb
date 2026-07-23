@@ -158,6 +158,20 @@
   "remove": "Usuń",
   "noContactsYet": "Brak kontaktów",
   "addFriendsToStart": "Dodaj znajomych, aby zacząć pisać",
+  "contactNetworkLocalNode": "WĘZEŁ LOKALNY",
+  "contactNetworkYouLocalNode": "Ty, węzeł lokalny",
+  "contactNetworkSemantic": "Sieć kontaktów, {count} kontaktów",
+  "@contactNetworkSemantic": {
+    "placeholders": { "count": { "type": "num" } }
+  },
+  "contactNetworkNodes": "WĘZŁY {count}",
+  "@contactNetworkNodes": {
+    "placeholders": { "count": { "type": "String" } }
+  },
+  "contactNetworkReset": "Resetuj układ",
+  "contactNetworkDragHint": "Przytrzymaj i przeciągnij, aby zmienić pozycję",
+  "contactNetworkShowList": "Widok listy",
+  "contactNetworkShowMap": "Widok sieci",
   "block": "Zablokuj",
   "imageFailedToLoad": "Nie udało się załadować obrazu",
   "unsupportedMessageType": "Nieobsługiwany typ wiadomości",

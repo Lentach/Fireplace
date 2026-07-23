@@ -1,5 +1,25 @@
 # Latest session summary
 
+**Date:** 2026-07-23 — Contacts tab redesigned as a **contact network node map** on branch `feat/contact-network` (pushed, NOT merged): circular local node + clipped-square contact terminals, PCB dogleg traces, deterministic elliptical layout, drag-to-pin, list fallback toggle.
+
+## What was done
+1. New `ContactNetworkView`: pure re-render of `FriendsProvider.friends` — no fake nodes/status; doubled traces = real conversations; hero composition for the one-contact state; ticks/orbits/brackets aesthetic, theme tokens only.
+2. Deterministic measured layout (viewport + textScaler), elliptical rings; collision-free in validated fitted/long-label/dense layouts (ring candidates + full-bounds sweep, contract-tested; least-overlap fallback for exhausted cases). Per-user SharedPreferences pin hints (clamped, collision-resolved per build); InteractiveViewer for dense maps with keyboard focus reveal.
+3. A11y as core invariant: per-node semantic buttons (`container: true` — labels otherwise merge into one blob), sorted traversal, Tab/Enter, 48dp floor, reduce-motion static.
+4. `MainTabScreenHeader` title now truly centered via Stack + `Positioned` side controls (old `Expanded` row drifted it; non-positioned `Align` in Stack collapses to center — trap).
+5. `ContactsScreen` → StatefulWidget: network default, header trailing toggle to the classic list; card/chat/pending-open flows untouched. 8 new ARB keys en+pl (template is `app_pl.arb`).
+
+## Verification
+- Analyze 0 issues; full suite **786 passed** incl. 10 new contract tests. Visual loop: all five themes (cosmic/blue/dark/light/teal) × 0/1/8/25 contacts × 390/320/1100px + textScale 1.6; Chats header re-verified via glass_preview. `graphify`: 9179 nodes.
+
+## Notes for next session
+- Owner review → PR → merge + version bump still pending; nothing deployed.
+- Trap: `flutter run -d web-server` hot restart does not recompile `-t` entry-file changes — cold restart required.
+- Full: `2026-07-23-session-contact-network.md`.
+
+---
+### Prior latest ↓
+
 **Date:** 2026-07-22 — PR #94 merged into `master`; Appearance redesign and compact Settings website link released in frontend 0.0.125.
 
 ## What was done
@@ -56,28 +76,7 @@
 - Full write-ups: `2026-07-22-session-ios-kb-bounce.md`, `2026-07-22-session-inbox-antispam.md`.
 
 ---
-### Prior latest ↓
-
-**Date:** 2026-07-22 — GIPHY attribution mark added to the GIF picker + web redeployed to **0.0.124** with a fresh, valid Giphy client key (GIF search restored on prod).
-
-## What was done
-1. **Official GIPHY attribution mark** in the GIF picker (`frontend/lib/widgets/gif_picker_sheet.dart`) — replaced plain `Text('Powered by GIPHY')` with `Powered by` + GIPHY's official logo image, theme-aware (white on dark / black on light via `Theme.of(context).brightness`); `errorBuilder` falls back to bold `GIPHY` text. Needed for the Giphy API **Beta→Production** upgrade (form requires the mark + a demo video).
-2. **Bundled assets** `frontend/assets/giphy/giphy_logo_{white,black}.png` (registered in pubspec) — derived from GIPHY's own official logo (`Giphy/GiphyAPI` → `logo_buildtext_white_forever.gif`, last frame, white-bg keyed to alpha, mono-recolored). **CAVEAT**: self-composed lockup (label + official logo), NOT the exact Giphy attribution-pack PNG — drop-in swap path in the session file.
-3. **Version 0.0.123 → 0.0.124** (`frontend/pubspec.yaml`); committed `462c797`, pushed to master. Backend untouched (still 0.0.123 / `4609af2`).
-4. **Web redeployed** via `deploy-web.ps1` after owner added `$GiphyApiKey` (valid, 32-char) to gitignored `deploy-web.config.ps1`.
-
-## Verification
-- `dart analyze` clean; `flutter build web` → `commit=462c797, version=0.0.124`, published (atomic swap).
-- Prod `/version.json` = **0.0.124**; served `main.dart.js` contains `462c797` (not stale); mark PNGs `/assets/assets/giphy/*` → 200.
-- **Giphy key valid**: `api.giphy.com` trending `status:200/OK`, real `search?q=hello` → 200 → **GIF search restored** (was dead since the old key was revoked).
-
-## Notes for next session
-- **Giphy Production upgrade still pending OWNER action**: record the demo video from the LIVE app (Beta key works, ~42/hr) showing GIF search + a GIF being sent + the "Powered by GIPHY" mark, then submit via the dashboard. **Production-upgrade the key** or it 429s under real traffic.
-- **Exact-mark swap (optional)**: overwrite `giphy_logo_black.png` (dark lockup → light theme) + `giphy_logo_white.png` (white → dark theme) with the official "Powered By GIPHY" PNGs from the form's download link — same filenames, zero code change; if they bake in "Powered by", also drop the separate `Powered by` Text.
-- After deploy: fully close+reopen the PWA (never uninstall — wipes E2E keys). Deploy is single-worktree now (`Desktop/Fireplace` on master holds `deploy-web.ps1` + gitignored config).
-- Full write-up: `2026-07-22-session-giphy-attribution-web-deploy.md`.
-
----
 
 ## Previous
+- 2026-07-22: GIPHY attribution mark in GIF picker + web 0.0.124 with fresh valid Giphy key (GIF search restored). Full: `2026-07-22-session-giphy-attribution-web-deploy.md`.
 - 2026-07-22: Contact inbox EXTRACTED to standalone PRIVATE `Lentach/fireplace-inbox` (Fastify+SQLite on VM :3001, nginx flip, monorepo cutover `4609af2` v0.0.123, tests 534/47) + security-hardened `9efae5c` after independent review + landing "Anti-Quantum Notes" card. Full: `2026-07-22-session-inbox-extraction.md`.

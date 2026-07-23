@@ -459,6 +459,35 @@ class AppLocalizationsPl extends AppLocalizations {
   String get addFriendsToStart => 'Dodaj znajomych, aby zacząć pisać';
 
   @override
+  String get contactNetworkLocalNode => 'WĘZEŁ LOKALNY';
+
+  @override
+  String get contactNetworkYouLocalNode => 'Ty, węzeł lokalny';
+
+  @override
+  String contactNetworkSemantic(num count) {
+    return 'Sieć kontaktów, $count kontaktów';
+  }
+
+  @override
+  String contactNetworkNodes(String count) {
+    return 'WĘZŁY $count';
+  }
+
+  @override
+  String get contactNetworkReset => 'Resetuj układ';
+
+  @override
+  String get contactNetworkDragHint =>
+      'Przytrzymaj i przeciągnij, aby zmienić pozycję';
+
+  @override
+  String get contactNetworkShowList => 'Widok listy';
+
+  @override
+  String get contactNetworkShowMap => 'Widok sieci';
+
+  @override
   String get block => 'Zablokuj';
 
   @override

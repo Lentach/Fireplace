@@ -452,6 +452,34 @@ class AppLocalizationsEn extends AppLocalizations {
   String get addFriendsToStart => 'Add friends to start chatting';
 
   @override
+  String get contactNetworkLocalNode => 'LOCAL NODE';
+
+  @override
+  String get contactNetworkYouLocalNode => 'You, local node';
+
+  @override
+  String contactNetworkSemantic(num count) {
+    return 'Contact network, $count contacts';
+  }
+
+  @override
+  String contactNetworkNodes(String count) {
+    return 'NODES $count';
+  }
+
+  @override
+  String get contactNetworkReset => 'Reset layout';
+
+  @override
+  String get contactNetworkDragHint => 'Long press and drag to reposition';
+
+  @override
+  String get contactNetworkShowList => 'List view';
+
+  @override
+  String get contactNetworkShowMap => 'Network view';
+
+  @override
   String get block => 'Block';
 
   @override

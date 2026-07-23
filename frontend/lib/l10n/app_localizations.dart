@@ -848,6 +848,54 @@ abstract class AppLocalizations {
   /// **'Dodaj znajomych, aby zacząć pisać'**
   String get addFriendsToStart;
 
+  /// No description provided for @contactNetworkLocalNode.
+  ///
+  /// In pl, this message translates to:
+  /// **'WĘZEŁ LOKALNY'**
+  String get contactNetworkLocalNode;
+
+  /// No description provided for @contactNetworkYouLocalNode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ty, węzeł lokalny'**
+  String get contactNetworkYouLocalNode;
+
+  /// No description provided for @contactNetworkSemantic.
+  ///
+  /// In pl, this message translates to:
+  /// **'Sieć kontaktów, {count} kontaktów'**
+  String contactNetworkSemantic(num count);
+
+  /// No description provided for @contactNetworkNodes.
+  ///
+  /// In pl, this message translates to:
+  /// **'WĘZŁY {count}'**
+  String contactNetworkNodes(String count);
+
+  /// No description provided for @contactNetworkReset.
+  ///
+  /// In pl, this message translates to:
+  /// **'Resetuj układ'**
+  String get contactNetworkReset;
+
+  /// No description provided for @contactNetworkDragHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Przytrzymaj i przeciągnij, aby zmienić pozycję'**
+  String get contactNetworkDragHint;
+
+  /// No description provided for @contactNetworkShowList.
+  ///
+  /// In pl, this message translates to:
+  /// **'Widok listy'**
+  String get contactNetworkShowList;
+
+  /// No description provided for @contactNetworkShowMap.
+  ///
+  /// In pl, this message translates to:
+  /// **'Widok sieci'**
+  String get contactNetworkShowMap;
+
   /// No description provided for @block.
   ///
   /// In pl, this message translates to:

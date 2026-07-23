@@ -45,50 +45,62 @@ class MainTabScreenHeader extends StatelessWidget {
         ),
         child: SizedBox(
           height: capsuleHeight,
-          child: Row(
+          child: Stack(
             children: [
-              if (leading != null) ...[
-                GlassCircle(
-                  size: capsuleHeight,
-                  child: Center(child: leading),
-                ),
-                const SizedBox(width: 10),
-              ],
-              // Owner ruling (2026-07-11): plain floating title, no pill.
-              Expanded(
-                child: Center(
-                  child: Text(
-                    title,
-                    style:
-                        RpgTheme.screenHeaderTitle(
-                          color: colorScheme.onSurface,
-                          fontSize: 17,
-                        ).copyWith(
-                          shadows: [
-                            Shadow(
-                              color: Theme.of(
-                                context,
-                              ).scaffoldBackgroundColor.withValues(alpha: 0.7),
-                              blurRadius: 12,
+              // Full-width centered title, immune to asymmetric side
+              // controls (leading avatar circle vs bare trailing icon).
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: Padding(
+                    // Reserve the widest control footprint on BOTH sides so
+                    // a long title can never sit under a control.
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: capsuleHeight + 10,
+                    ),
+                    child: Center(
+                      child: Text(
+                        title,
+                        style:
+                            RpgTheme.screenHeaderTitle(
+                              color: colorScheme.onSurface,
+                              fontSize: 17,
+                            ).copyWith(
+                              shadows: [
+                                Shadow(
+                                  color: Theme.of(context)
+                                      .scaffoldBackgroundColor
+                                      .withValues(alpha: 0.7),
+                                  blurRadius: 12,
+                                ),
+                              ],
                             ),
-                          ],
-                        ),
-                    maxLines: 1,
-                    overflow: TextOverflow.ellipsis,
-                    textAlign: TextAlign.center,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                      ),
+                    ),
                   ),
                 ),
               ),
-              if (trailing != null) ...[
-                const SizedBox(width: 10),
+              if (leading != null)
+                Positioned(
+                  left: 0,
+                  top: 0,
+                  bottom: 0,
+                  child: GlassCircle(
+                    size: capsuleHeight,
+                    child: Center(child: leading),
+                  ),
+                ),
+              if (trailing != null)
                 // Bare icon, no glass circle (owner round-5: "remove halo
-                // around plus icon"); the row keeps capsule height so the
-                // icon centers against the leading circle.
-                SizedBox(
-                  height: capsuleHeight,
+                // around plus icon"); centered against the capsule height.
+                Positioned(
+                  right: 0,
+                  top: 0,
+                  bottom: 0,
                   child: Center(child: trailing),
                 ),
-              ],
             ],
           ),
         ),

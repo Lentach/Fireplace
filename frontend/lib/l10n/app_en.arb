@@ -170,6 +170,20 @@
   "remove": "Remove",
   "noContactsYet": "No contacts yet",
   "addFriendsToStart": "Add friends to start chatting",
+  "contactNetworkLocalNode": "LOCAL NODE",
+  "contactNetworkYouLocalNode": "You, local node",
+  "contactNetworkSemantic": "Contact network, {count} contacts",
+  "@contactNetworkSemantic": {
+    "placeholders": { "count": { "type": "num" } }
+  },
+  "contactNetworkNodes": "NODES {count}",
+  "@contactNetworkNodes": {
+    "placeholders": { "count": { "type": "String" } }
+  },
+  "contactNetworkReset": "Reset layout",
+  "contactNetworkDragHint": "Long press and drag to reposition",
+  "contactNetworkShowList": "List view",
+  "contactNetworkShowMap": "Network view",
   "block": "Block",
   "imageFailedToLoad": "Image failed to load",
   "unsupportedMessageType": "Unsupported message type",

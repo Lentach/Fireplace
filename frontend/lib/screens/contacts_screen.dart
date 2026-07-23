@@ -5,15 +5,26 @@ import '../l10n/app_localizations.dart';
 import '../models/user_model.dart';
 import '../providers/conversations_provider.dart';
 import '../providers/friends_provider.dart';
+import '../providers/auth_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
+import '../widgets/contact_network_view.dart';
 import '../widgets/main_tab_screen_header.dart';
 import '../utils/instant_opaque_route.dart';
 import 'chat_detail_screen.dart';
 import 'user_card_screen.dart';
 
-class ContactsScreen extends StatelessWidget {
+class ContactsScreen extends StatefulWidget {
   const ContactsScreen({super.key});
+
+  @override
+  State<ContactsScreen> createState() => _ContactsScreenState();
+}
+
+class _ContactsScreenState extends State<ContactsScreen> {
+  /// The network map is the primary presentation; the classic list stays one
+  /// tap away as the accessibility / fast-lookup fallback.
+  bool _showList = false;
 
   void _openChatWithContact(BuildContext context, int userId) {
     final convs = context.read<ConversationsProvider>();
@@ -111,7 +122,11 @@ class ContactsScreen extends StatelessWidget {
     return Scaffold(
       body: Stack(
         children: [
-          Positioned.fill(child: _buildContactsList(context)),
+          Positioned.fill(
+            child: _showList
+                ? _buildContactsList(context)
+                : _buildNetwork(context),
+          ),
           Positioned(top: 0, left: 0, right: 0, child: _buildHeader(context)),
         ],
       ),
@@ -119,7 +134,63 @@ class ContactsScreen extends StatelessWidget {
   }
 
   Widget _buildHeader(BuildContext context) {
-    return MainTabScreenHeader(title: AppLocalizations.of(context).contacts);
+    final l10n = AppLocalizations.of(context);
+    final hasContacts = context.watch<FriendsProvider>().friends.isNotEmpty;
+    return MainTabScreenHeader(
+      title: l10n.contacts,
+      trailing: hasContacts
+          ? IconButton(
+              onPressed: () => setState(() => _showList = !_showList),
+              tooltip: _showList
+                  ? l10n.contactNetworkShowMap
+                  : l10n.contactNetworkShowList,
+              icon: Icon(
+                _showList ? Icons.hub_outlined : Icons.format_list_bulleted,
+                size: 20,
+                color: Theme.of(context).colorScheme.onSurface,
+              ),
+            )
+          : null,
+    );
+  }
+
+  Widget _buildNetwork(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final friendsProvider = context.watch<FriendsProvider>();
+    final friends = List<UserModel>.from(friendsProvider.friends)
+      ..sort(_compareByDisplayName);
+    final convs = context.watch<ConversationsProvider>();
+    final conversationContactIds = <int>{};
+    for (final conversation in convs.conversations) {
+      final other = convs.getOtherUser(conversation);
+      if (other != null) conversationContactIds.add(other.id);
+    }
+    final currentUser = context.watch<AuthProvider>().currentUser;
+    final media = MediaQuery.paddingOf(context);
+
+    return ContactNetworkView(
+      contacts: friends,
+      localNodeLabel: currentUser?.username ?? '',
+      localNodeCaption: l10n.contactNetworkLocalNode,
+      emptyTitle: l10n.noContactsYet,
+      emptyMessage: l10n.addFriendsToStart,
+      onContactTap: (user) => _openContactCard(context, user),
+      networkSemanticLabel: l10n.contactNetworkSemantic(friends.length),
+      localNodeSemanticLabel: l10n.contactNetworkYouLocalNode,
+      safeInsets: EdgeInsets.fromLTRB(
+        12,
+        media.top + MainTabScreenHeader.clearance,
+        12,
+        media.bottom + 8,
+      ),
+      storageUserId: currentUser?.id,
+      resetLayoutLabel: l10n.contactNetworkReset,
+      dragHint: l10n.contactNetworkDragHint,
+      conversationContactIds: conversationContactIds,
+      mapCaption: l10n.contactNetworkNodes(
+        friends.length.toString().padLeft(2, '0'),
+      ),
+    );
   }
 
   /// Natural sort: same prefix → smaller number first (ziomek3, ziomek6, ziomek50).
