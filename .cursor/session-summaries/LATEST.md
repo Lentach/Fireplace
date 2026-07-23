@@ -15,6 +15,7 @@
 ## Notes for next session
 - Branch bundle `c15d770` is LIVE for owner device testing (smoke passed: 0.0.125 + bundle sha + boot). No version bump for the ephemeral test deploy (2026-07-22 precedent); owner review → PR → merge + PATCH bump still pending. Fully close/reopen the PWA — never clear site data.
 - Trap: `flutter run -d web-server` hot restart does not recompile `-t` entry-file changes — cold restart required.
+- **NEXT TASK (owner-approved): Terminal Rack dense mode** — the 40-contact pannable map was rejected as a mess; above the geometric fit limit the network must reorganize into a vertically scrolling patch-panel grid (same terminal cells, independent per-card sockets — NO shared bus lines), plus jitter fade in map mode. Full spec + traps: local `2026-07-23-handoff-terminal-rack.md` (same directory).
 - Full: `2026-07-23-session-contact-network.md`.
 
 ---
