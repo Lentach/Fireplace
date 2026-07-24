@@ -1,5 +1,23 @@
 # Latest session summary
 
+**Date:** 2026-07-24 — PWA logout incident root-caused: server auth CONFIRMED healthy (112/112 refreshes 201 over 14 days, zero rejections); the owner-verified victim was proven via Postgres xmin forensics to have suffered a FULL device-side origin-storage wipe — tokens AND Signal identity destroyed and regenerated on re-login (permanent history loss on that device).
+
+## What was done
+1. Ruled out server causes with live VM evidence: `/auth/refresh` deployed + 100% successful; most users hold healthy 365-day sliding sessions; no `[auth-session-end]` warns; secret rotation/clock/CORS refuted.
+2. "Logged out after 1 day+" = 24h access-JWT TTL on devices that never call refresh. DB fingerprint: victims' rows never slide (`expires_at` = `created_at`+365d exactly). Top churner was owner's incognito build checks (noise).
+3. Verified logout path is E2E-key-safe at source: only `jwt_token`/`refresh_token` removed; re-login reuses on-device Signal store.
+
+## Verification
+- Read-only: file:line reads + nginx/docker/psql queries on the VM. No code changes, no deploys.
+
+## Notes for next session
+- Open: owner's "more common than usual" uptick not visible server-side. Shortlist: stale PWA bundle (invisible server-side), per-device origin-storage eviction (would also wipe Signal keys), iOS 26 behavior. Waiting on victim capture: Settings footer `version · gitCommit` + do old chats decrypt after re-login.
+- Proposed `fix/pwa-logout` hardening (needs owner OK): version telemetry header, session-end reason on login screen, proactive refresh on cold boot, `navigator.storage.persist()` at login, in-app update nudge. NEVER clear site data / rotate JWT_SECRET.
+- Full: `2026-07-24-session.md`.
+
+---
+### Prior latest ↓
+
 **Date:** 2026-07-23 — PR #95 E2E cross-context ratchet repair deployed to production as frontend 0.0.126 / bundle `0486cb3`; backend intentionally unchanged.
 
 ## What was done
@@ -56,43 +74,5 @@
 - Full: `2026-07-22-session-appearance-redesign.md`.
 
 ---
-### Prior latest ↓
 
-**Date:** 2026-07-22 — landing iOS keyboard-bounce RESOLVED on device (real culprit was the HERO Done, not the journey pill) + `fireplace-inbox` anti-spam push cooldown + inbox Clear button (`14e99fe`, deployed).
-
-## What was done
-1. **iOS keyboard bounce fixed for real** (`fireplaceWebsite` `ecdda29`, cleanup `4a158c8`, live JS `RXVEr5wJ`): the earlier journey-pill fixes were the wrong button — the HERO `.enc-done` (`encrypt.ts`) had the identical WebKit hole: pointerdown blur → pill hides → iOS synthesized click retargets to the textarea → NATIVE refocus (JS guards can't stop it; Blink cancels compat mouse events on pointerdown-preventDefault, WebKit doesn't — hence iOS-only). Fix: one-shot touchend `preventDefault` (disarmed on touchcancel) + 700ms `readOnly` hammer. **Confirmed working on the physical iPhone.** Journey-side guards kept (same hole there); `?kbdebug` tracer removed after confirmation.
-2. **Hero `.enc-done` touch-gated** (`ed0b003`, live CSS `DBMb6rVT`): `@media (max-width: 999px)` → `and (pointer: coarse)` — no Done pill on narrow desktop; browser-verified both ways.
-3. **fireplace-inbox anti-spam + Clear** (`14e99fe`, VM rebuilt, healthy): push cooldown max 1 ping/5min (suppressed messages still stored; next push says `(+N more)`; SW tag collapses banners) + key-gated `POST /contact/clear` (404 bad key / 204) + red-outline **Clear** button with confirm on the inbox page. `Store.clearMessages()` in db.ts.
-
-## Verification
-- Owner-device confirm on the hero fix; live-bundle greps each deploy; 818px/390px pill gating checked in browser.
-- Inbox live sweep via VM: Clear button rendered; bad-key clear 404; two rapid POSTs → `1/1 delivered` + `suppressed (cooldown, 1 held)` (exactly one iPhone buzz); good-key clear 204 → 0 rows; **iPhone push subscription intact (1 row)**.
-
-## Notes for next session
-- **Local clone of `fireplace-inbox` now EXISTS** at `Desktop/fireplace-inbox` (no longer VM-only). Windows: `npm ci --ignore-scripts` (better-sqlite3 needs MSVC; tsc doesn't). Deploy = push, then VM `cd ~/fireplace-inbox && git pull && docker compose up -d --build`.
-- Owner inbox URL unchanged (`/contact/inbox?key=547ac8b6…d071d95`); iPhone `web.push.apple.com` subscription lives in the `inbox-data` volume — do NOT delete.
-- Full write-ups: `2026-07-22-session-ios-kb-bounce.md`, `2026-07-22-session-inbox-antispam.md`.
-
----
-### Prior latest ↓
-
-**Date:** 2026-07-22 — GIPHY attribution mark added to the GIF picker + web redeployed to **0.0.124** with a fresh, valid Giphy client key (GIF search restored on prod).
-
-## What was done
-1. **Official GIPHY attribution mark** in the GIF picker (`frontend/lib/widgets/gif_picker_sheet.dart`) — replaced plain `Text('Powered by GIPHY')` with `Powered by` + GIPHY's official logo image, theme-aware (white on dark / black on light via `Theme.of(context).brightness`); `errorBuilder` falls back to bold `GIPHY` text. Needed for the Giphy API **Beta→Production** upgrade (form requires the mark + a demo video).
-2. **Bundled assets** `frontend/assets/giphy/giphy_logo_{white,black}.png` (registered in pubspec) — derived from GIPHY's own official logo (`Giphy/GiphyAPI` → `logo_buildtext_white_forever.gif`, last frame, white-bg keyed to alpha, mono-recolored). **CAVEAT**: self-composed lockup (label + official logo), NOT the exact Giphy attribution-pack PNG — drop-in swap path in the session file.
-3. **Version 0.0.123 → 0.0.124** (`frontend/pubspec.yaml`); committed `462c797`, pushed to master. Backend untouched (still 0.0.123 / `4609af2`).
-4. **Web redeployed** via `deploy-web.ps1` after owner added `$GiphyApiKey` (valid, 32-char) to gitignored `deploy-web.config.ps1`.
-
-## Verification
-- `dart analyze` clean; `flutter build web` → `commit=462c797, version=0.0.124`, published (atomic swap).
-- Prod `/version.json` = **0.0.124**; served `main.dart.js` contains `462c797` (not stale); mark PNGs `/assets/assets/giphy/*` → 200.
-- **Giphy key valid**: `api.giphy.com` trending `status:200/OK`, real `search?q=hello` → 200 → **GIF search restored** (was dead since the old key was revoked).
-
-## Notes for next session
-- **Giphy Production upgrade still pending OWNER action**: record the demo video from the LIVE app (Beta key works, ~42/hr) showing GIF search + a GIF being sent + the "Powered by GIPHY" mark, then submit via the dashboard. **Production-upgrade the key** or it 429s under real traffic.
-- **Exact-mark swap (optional)**: overwrite `giphy_logo_black.png` (dark lockup → light theme) + `giphy_logo_white.png` (white → dark theme) with the official "Powered By GIPHY" PNGs from the form's download link — same filenames, zero code change; if they bake in "Powered by", also drop the separate `Powered by` Text.
-- After deploy: fully close+reopen the PWA (never uninstall — wipes E2E keys). Deploy is single-worktree now (`Desktop/Fireplace` on master holds `deploy-web.ps1` + gitignored config).
-- Full write-up: `2026-07-22-session-giphy-attribution-web-deploy.md`.
 

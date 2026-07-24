@@ -493,6 +493,15 @@ class AppLocalizationsPl extends AppLocalizations {
   String get resetButton => 'Zmień';
 
   @override
+  String sessionEndedReason(String reason) {
+    return 'wylogowano: $reason';
+  }
+
+  @override
+  String get updateAvailableCloseReopen =>
+      'Dostępna aktualizacja — całkowicie zamknij i ponownie otwórz aplikację.';
+
+  @override
   String get authTagline => 'Wiadomości, które przeczytają tylko dwie osoby';
 
   @override

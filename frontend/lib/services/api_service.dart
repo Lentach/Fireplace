@@ -11,6 +11,19 @@ class ApiService {
   final String baseUrl;
   final http.Client _httpClient;
 
+  /// Compiled-in build commit sent as `X-App-Commit` on auth calls so server
+  /// logs can tell which bundle a (re-)logging-in device runs. Absence of the
+  /// header on a login = a bundle older than this telemetry = stale PWA.
+  static const String appCommit = String.fromEnvironment(
+    'GIT_COMMIT',
+    defaultValue: 'dev',
+  );
+
+  static const Map<String, String> _authJsonHeaders = {
+    'Content-Type': 'application/json',
+    'X-App-Commit': appCommit,
+  };
+
   ApiService({required this.baseUrl, http.Client? httpClient})
       : _httpClient = httpClient ?? http.Client();
 
@@ -35,7 +48,7 @@ class ApiService {
 
     final response = await _httpClient.post(
       Uri.parse('$baseUrl/auth/register'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _authJsonHeaders,
       body: jsonEncode(body),
     );
 
@@ -49,7 +62,7 @@ class ApiService {
   Future<Map<String, dynamic>> login(String identifier, String password) async {
     final response = await _httpClient.post(
       Uri.parse('$baseUrl/auth/login'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _authJsonHeaders,
       body: jsonEncode({'identifier': identifier, 'password': password}),
     );
 
@@ -69,7 +82,7 @@ class ApiService {
     try {
       final response = await _httpClient.post(
         Uri.parse('$baseUrl/auth/refresh'),
-        headers: {'Content-Type': 'application/json'},
+        headers: _authJsonHeaders,
         body: jsonEncode({'refresh_token': refreshToken}),
       );
 
@@ -118,7 +131,7 @@ class ApiService {
   Future<void> logoutRefresh(String refreshToken) async {
     final response = await _httpClient.post(
       Uri.parse('$baseUrl/auth/logout'),
-      headers: {'Content-Type': 'application/json'},
+      headers: _authJsonHeaders,
       body: jsonEncode({'refresh_token': refreshToken}),
     );
     if (response.statusCode != 204 && response.statusCode != 200) {

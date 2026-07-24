@@ -1,3 +1,4 @@
+import { Logger } from '@nestjs/common';
 import { Test, TestingModule } from '@nestjs/testing';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { KeyBundlesService, KeyBundleData } from './key-bundles.service';
@@ -74,6 +75,47 @@ describe('KeyBundlesService', () => {
         { conflictPaths: ['userId'] },
       );
       expect(keyBundleRepo.save).not.toHaveBeenCalled();
+    });
+
+    it('warns when an upload replaces an existing identity', async () => {
+      const oldIdentity = 'old-identity-public-key-material';
+      const newIdentity = 'new-identity-public-key-material';
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 9,
+        ...mockKeyBundleData,
+        identityPublicKey: oldIdentity,
+      });
+      keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+
+      await service.upsertKeyBundle(9, {
+        ...mockKeyBundleData,
+        identityPublicKey: newIdentity,
+      });
+
+      expect(warnSpy).toHaveBeenCalledTimes(1);
+      expect(warnSpy).toHaveBeenCalledWith(
+        '[identity-churn] userId=9 oldIdentityPrefix=old-identity newIdentityPrefix=new-identity',
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('does not warn when an upload retains the existing identity', async () => {
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 10,
+        ...mockKeyBundleData,
+      });
+      keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+
+      await service.upsertKeyBundle(10, mockKeyBundleData);
+
+      expect(warnSpy).not.toHaveBeenCalled();
+      warnSpy.mockRestore();
     });
 
     it('purges unused OTPs from superseded identity epochs (durable stale-OTP fix)', async () => {

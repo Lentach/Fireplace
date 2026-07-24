@@ -89,7 +89,14 @@ if (-not $SkipBuild) {
   if ($buildExit -ne 0 -or -not (Test-Path frontend/build/web/version.json)) {
     throw "Build failed (flutter exit=$buildExit) or output missing (frontend/build/web/version.json)."
   }
-  Write-Host "Built frontend/build/web  (commit=$commit, version=$ver)" -ForegroundColor Green
+  # Inject the build commit into version.json: the app's stale-bundle nudge
+  # compares this served value against its compiled-in GIT_COMMIT dart-define.
+  # Flutter's generated version.json has no commit field of its own.
+  $vjPath = "frontend/build/web/version.json"
+  $vj = Get-Content $vjPath -Raw | ConvertFrom-Json
+  $vj | Add-Member -NotePropertyName gitCommit -NotePropertyValue $commit -Force
+  $vj | ConvertTo-Json -Compress | Set-Content $vjPath -Encoding utf8 -NoNewline
+  Write-Host "Built frontend/build/web  (commit=$commit, version=$ver; gitCommit injected into version.json)" -ForegroundColor Green
 }
 
 # ---------- publish (PC -> VM staging -> atomic swap) ----------

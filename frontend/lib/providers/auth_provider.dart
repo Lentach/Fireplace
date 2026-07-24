@@ -10,6 +10,7 @@ import '../services/pwa_app_badge_clear.dart';
 import '../services/push_service.dart';
 import '../services/session_refresh_exception.dart';
 import '../config/app_config.dart';
+import '../utils/e2e_persistent_diag.dart';
 
 class AuthProvider extends ChangeNotifier {
   AuthProvider({ApiService? api})
@@ -44,7 +45,10 @@ class AuthProvider extends ChangeNotifier {
   bool get isRestoringSession => _isRestoringSession;
   bool get isLoggedIn => _token != null && _currentUser != null;
 
-  @visibleForTesting
+  /// Why the last session ended (e.g. `refresh_invalid`,
+  /// `expired_access_without_refresh`). Shown on the auth screen so a victim
+  /// screenshot names the exact logout path; null on a clean cold start —
+  /// which itself is a signal (wiped storage leaves nothing to clear).
   String? get lastSessionEndReason => _lastSessionEndReason;
 
   void setOnAccessTokenChanged(void Function(String)? cb) {
@@ -154,6 +158,16 @@ class AuthProvider extends ChangeNotifier {
       'accessExpired=$accessExpired userId=$userId '
       'errorType=${error.runtimeType}',
     );
+    // Involuntary session ends are failure-class field evidence (the 2026-07
+    // logout incident was undiagnosable client-side); explicit logout is not.
+    if (reason != 'explicit_logout') {
+      E2ePersistentDiag.record('AUTH_SESSION_END', {
+        'reason': reason,
+        'source': source,
+        'hasRefresh': _refreshToken != null,
+        'accessExpired': accessExpired,
+      });
+    }
   }
 
   void _finishRestoringSession() {
@@ -242,6 +256,11 @@ class AuthProvider extends ChangeNotifier {
 
       if (savedToken == null && savedRefresh == null) return;
 
+      // Whether the SAVED access alone was usable — i.e. boot phase 1 will
+      // restore it without refreshing. Decides the proactive slide below.
+      final savedAccessUsable =
+          savedToken != null && !_isAccessExpired(savedToken);
+
       // Phase 1: get a usable access token (refresh if missing/expired).
       if (await _restoreAccessOnBoot(savedToken)) return;
       if (_token == null) return;
@@ -250,10 +269,35 @@ class AuthProvider extends ChangeNotifier {
       if (await _hydrateCurrentUserOnBoot()) return;
 
       _startSessionRefreshTimer();
+      if (savedAccessUsable) {
+        _scheduleBackgroundSessionSlide();
+      }
       notifyListeners();
     } finally {
       _finishRestoringSession();
     }
+  }
+
+  /// Proactively slides the sliding refresh session once per cold boot even
+  /// while the access JWT is still valid. Purpose: (1) the server-side
+  /// `refresh_tokens.expires_at` becomes a daily per-device health signal
+  /// (a device that stops sliding = storage loss/stale bundle candidate);
+  /// (2) the access token in hand is almost always fresh, so a later offline
+  /// reopen inside 24h still works. MUST route around [ensureSessionReady]
+  /// (it no-ops on a valid access) and MUST swallow every failure including
+  /// [SessionRefreshInvalidException]: a revoked-row or transient blip during
+  /// boot must never log the user out of a still-valid session — the regular
+  /// expiry path deals with truly dead sessions.
+  void _scheduleBackgroundSessionSlide() {
+    if (_refreshToken == null) return;
+    unawaited(
+      _refreshSessionLocked().catchError((Object e) {
+        debugPrint(
+          '[auth-session-slide] background slide failed (kept session): '
+          '${e.runtimeType}',
+        );
+      }),
+    );
   }
 
   /// Boot phase 1: ensure [_token] holds a usable access JWT. When a refresh
