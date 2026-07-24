@@ -13,6 +13,7 @@ import '../widgets/contact_network_view.dart';
 import '../widgets/glass/glass_surface.dart';
 import '../widgets/main_tab_screen_header.dart';
 import '../utils/instant_opaque_route.dart';
+import 'add_or_invitations_screen.dart';
 import 'chat_detail_screen.dart';
 import 'user_card_screen.dart';
 
@@ -273,6 +274,20 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
+  /// The relationship layer lives on this tab now: adding people and the
+  /// inbound request queue both open the existing add/invitations screen.
+  void _openAddOrInvitations(BuildContext context) {
+    Navigator.of(context)
+        .push<int>(
+          MaterialPageRoute(builder: (_) => const AddOrInvitationsScreen()),
+        )
+        .then((userId) {
+          if (userId != null && context.mounted) {
+            _openChatWithContact(context, userId);
+          }
+        });
+  }
+
   Widget _buildNetwork(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final friendsProvider = context.watch<FriendsProvider>();
@@ -286,6 +301,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       final other = convs.getOtherUser(conversation);
       if (other != null) conversationContactIds.add(other.id);
     }
+    final pendingRequests = friendsProvider.pendingRequestsCount;
     final currentUser = context.watch<AuthProvider>().currentUser;
     final media = MediaQuery.paddingOf(context);
 
@@ -299,6 +315,15 @@ class _ContactsScreenState extends State<ContactsScreen> {
       onContactTap: (user) => _openContactCard(context, user),
       onContactOpenChat: (user) => _openChatWithContact(context, user.id),
       openChatSemanticHint: l10n.contactNetworkOpenChatHint,
+      // The add cell is part of the board, but a filtered result set must
+      // not grow one — search shows matches, nothing else.
+      onAddContact: filtering ? null : () => _openAddOrInvitations(context),
+      addSlotLabel: l10n.contactNetworkAddSlot,
+      pendingRequestCount: filtering ? 0 : pendingRequests,
+      onPendingRequestsTap: () => _openAddOrInvitations(context),
+      pendingRequestsSemanticLabel: l10n.contactNetworkPendingRequests(
+        pendingRequests,
+      ),
       networkSemanticLabel: l10n.contactNetworkSemantic(friends.length),
       localNodeSemanticLabel: l10n.contactNetworkYouLocalNode,
       safeInsets: EdgeInsets.fromLTRB(

@@ -337,6 +337,103 @@ void main() {
       handle.dispose();
     });
 
+    testWidgets('the add cell is a field slot, never a fake contact', (
+      tester,
+    ) async {
+      var addTapped = 0;
+      await tester.pumpWidget(
+        _host(
+          ContactNetworkView(
+            contacts: [_contact(1, 'ada'), _contact(2, 'borys')],
+            localNodeLabel: 'Marta',
+            localNodeCaption: 'LOCAL NODE',
+            emptyTitle: 'No contacts yet',
+            emptyMessage: 'Add friends to start',
+            onContactTap: (_) {},
+            onAddContact: () => addTapped++,
+            addSlotLabel: 'add',
+            networkSemanticLabel: 'Contact network',
+            localNodeSemanticLabel: 'You, local node',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('add'));
+      await tester.pumpAndSettle();
+      expect(addTapped, 1);
+
+      // Reserved as geometry only: the contact list the layout reports is
+      // still just the real people.
+      final layout = ContactHexLayout.resolve(
+        contacts: _inputs(2),
+        width: 366,
+        labelHeight: 15,
+        extraSlots: 1,
+      );
+      expect(layout.inputs, hasLength(2));
+      expect(layout.slots, hasLength(3));
+      expect(layout.extraSlots, 1);
+    });
+
+    testWidgets('an empty account still offers the add cell', (tester) async {
+      await tester.pumpWidget(
+        _host(
+          ContactNetworkView(
+            contacts: const [],
+            localNodeLabel: 'Marta',
+            localNodeCaption: 'LOCAL NODE',
+            emptyTitle: 'No contacts yet',
+            emptyMessage: 'Add friends to start',
+            onContactTap: (_) {},
+            onAddContact: () {},
+            addSlotLabel: 'add',
+            networkSemanticLabel: 'Contact network',
+            localNodeSemanticLabel: 'You, local node',
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('add'), findsOneWidget);
+      // The copy moves below the cell instead of colliding with it.
+      expect(find.text('No contacts yet'), findsOneWidget);
+      expect(
+        tester.getRect(find.text('No contacts yet')).top,
+        greaterThan(tester.getRect(find.text('add')).bottom),
+      );
+    });
+
+    testWidgets('the inbound port only exists when requests are waiting', (
+      tester,
+    ) async {
+      var portTapped = 0;
+      Widget view({required int pending}) => ContactNetworkView(
+        contacts: [_contact(1, 'ada')],
+        localNodeLabel: 'Marta',
+        localNodeCaption: 'LOCAL NODE',
+        emptyTitle: 'No contacts yet',
+        emptyMessage: 'Add friends to start',
+        onContactTap: (_) {},
+        pendingRequestCount: pending,
+        onPendingRequestsTap: () => portTapped++,
+        pendingRequestsSemanticLabel: '$pending friend requests waiting',
+        networkSemanticLabel: 'Contact network',
+        localNodeSemanticLabel: 'You, local node',
+      );
+
+      await tester.pumpWidget(_host(view(pending: 0)));
+      await tester.pumpAndSettle();
+      expect(find.byIcon(Icons.south), findsNothing);
+
+      await tester.pumpWidget(_host(view(pending: 3)));
+      await tester.pumpAndSettle();
+      expect(find.text('3'), findsOneWidget);
+
+      await tester.tap(find.byIcon(Icons.south));
+      await tester.pumpAndSettle();
+      expect(portTapped, 1);
+    });
     testWidgets('keyboard focus reveals deep nodes by scrolling', (
       tester,
     ) async {

@@ -171,6 +171,12 @@
   "contactNetworkShowList": "Widok listy",
   "contactNetworkShowMap": "Widok sieci",
   "contactNetworkOpenChatHint": "Otwórz czat",
+  "contactNetworkAddSlot": "dodaj",
+  "contactNetworkAddSlotSemantic": "Dodaj kontakt",
+  "contactNetworkPendingRequests": "{count, plural, =1{1 zaproszenie oczekuje} few{{count} zaproszenia oczekują} many{{count} zaproszeń oczekuje} other{{count} zaproszeń oczekuje}}",
+  "@contactNetworkPendingRequests": {
+    "placeholders": { "count": { "type": "num" } }
+  },
   "contactsSearchHint": "Szukaj kontaktów",
   "contactsSearchNoResults": "Brak pasujących kontaktów",
   "block": "Zablokuj",

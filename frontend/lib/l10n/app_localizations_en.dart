@@ -477,6 +477,23 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactNetworkOpenChatHint => 'Open chat';
 
   @override
+  String get contactNetworkAddSlot => 'add';
+
+  @override
+  String get contactNetworkAddSlotSemantic => 'Add a contact';
+
+  @override
+  String contactNetworkPendingRequests(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count friend requests waiting',
+      one: '1 friend request waiting',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get contactsSearchHint => 'Search contacts';
 
   @override

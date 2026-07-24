@@ -183,6 +183,12 @@
   "contactNetworkShowList": "List view",
   "contactNetworkShowMap": "Network view",
   "contactNetworkOpenChatHint": "Open chat",
+  "contactNetworkAddSlot": "add",
+  "contactNetworkAddSlotSemantic": "Add a contact",
+  "contactNetworkPendingRequests": "{count, plural, =1{1 friend request waiting} other{{count} friend requests waiting}}",
+  "@contactNetworkPendingRequests": {
+    "placeholders": { "count": { "type": "num" } }
+  },
   "contactsSearchHint": "Search contacts",
   "contactsSearchNoResults": "No matching contacts",
   "block": "Block",

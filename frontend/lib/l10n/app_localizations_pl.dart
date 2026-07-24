@@ -484,6 +484,25 @@ class AppLocalizationsPl extends AppLocalizations {
   String get contactNetworkOpenChatHint => 'Otwórz czat';
 
   @override
+  String get contactNetworkAddSlot => 'dodaj';
+
+  @override
+  String get contactNetworkAddSlotSemantic => 'Dodaj kontakt';
+
+  @override
+  String contactNetworkPendingRequests(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count zaproszeń oczekuje',
+      many: '$count zaproszeń oczekuje',
+      few: '$count zaproszenia oczekują',
+      one: '1 zaproszenie oczekuje',
+    );
+    return '$_temp0';
+  }
+
+  @override
   String get contactsSearchHint => 'Szukaj kontaktów';
 
   @override

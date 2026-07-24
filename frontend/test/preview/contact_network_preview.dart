@@ -43,6 +43,8 @@ class ContactNetworkPreviewApp extends StatelessWidget {
     // avatars=1: placeholder photos to review the avatar-in-hex rendering.
     final avatars = query['avatars'] == '1';
     final screenMode = query['screen'] == '1';
+    // pending=N: inbound friend requests docking at the core.
+    final pending = int.tryParse(query['pending'] ?? '') ?? 0;
     final contacts = _previewContacts(count, avatars: avatars);
 
     return MaterialApp(
@@ -58,7 +60,7 @@ class ContactNetworkPreviewApp extends StatelessWidget {
         child: child!,
       ),
       home: screenMode
-          ? _seededContactsScreen(contacts)
+          ? _seededContactsScreen(contacts, pending)
           : _ContactNetworkPreviewPage(
               contacts: contacts,
               textScale: textScale,
@@ -68,7 +70,7 @@ class ContactNetworkPreviewApp extends StatelessWidget {
 
   /// The real ContactsScreen against seeded providers: friends via the
   /// socket-event JSON path, the local user via an unsigned preview JWT.
-  Widget _seededContactsScreen(List<UserModel> contacts) {
+  Widget _seededContactsScreen(List<UserModel> contacts, int pending) {
     final friends = FriendsProvider()
       ..onFriendsList([
         for (final contact in contacts)
@@ -78,7 +80,8 @@ class ContactNetworkPreviewApp extends StatelessWidget {
             'tag': contact.tag,
             'profilePictureUrl': contact.profilePictureUrl,
           },
-      ]);
+      ])
+      ..onPendingRequestsCount({'count': pending});
     String b64(Map<String, Object> json) =>
         base64Url.encode(utf8.encode(jsonEncode(json))).replaceAll('=', '');
     final auth = AuthProvider()

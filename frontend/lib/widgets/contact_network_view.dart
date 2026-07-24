@@ -36,6 +36,11 @@ class ContactNetworkView extends StatefulWidget {
     required this.onContactTap,
     this.onContactOpenChat,
     this.openChatSemanticHint,
+    this.onAddContact,
+    this.addSlotLabel,
+    this.pendingRequestCount = 0,
+    this.onPendingRequestsTap,
+    this.pendingRequestsSemanticLabel,
     required this.networkSemanticLabel,
     required this.localNodeSemanticLabel,
     this.safeInsets = EdgeInsets.zero,
@@ -62,6 +67,17 @@ class ContactNetworkView extends StatefulWidget {
   /// Screen-reader hint for the long-press action ("Open chat"), so the
   /// gesture is announced with its meaning instead of a bare "long press".
   final String? openChatSemanticHint;
+
+  /// Tapping the trailing "+" cell. Null hides the cell entirely.
+  final VoidCallback? onAddContact;
+
+  /// Caption under the "+" cell (localized by the parent).
+  final String? addSlotLabel;
+
+  /// Inbound friend requests waiting at the core. 0 hides the port.
+  final int pendingRequestCount;
+  final VoidCallback? onPendingRequestsTap;
+  final String? pendingRequestsSemanticLabel;
   final String networkSemanticLabel;
   final String localNodeSemanticLabel;
 
@@ -87,6 +103,7 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
   int? _routeContactId;
   int? _focusedContactId;
   bool _entranceCompleted = false;
+  bool _addSlotFocused = false;
 
   @override
   void initState() {
@@ -184,6 +201,7 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
           contacts: inputs,
           width: safeRect.width,
           labelHeight: labelHeight,
+          extraSlots: widget.onAddContact == null ? 0 : 1,
         );
         final viewportHeight = safeRect.height;
         final fieldHeight = math.max(layout.fieldHeight, viewportHeight);
@@ -311,6 +329,8 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                   ),
                 ),
                 _buildCore(context, layout, entrance),
+                if (widget.pendingRequestCount > 0)
+                  _buildInboundPort(context, layout, entrance),
                 for (var index = 0; index < inputs.length; index++)
                   _buildContactNode(
                     context,
@@ -321,6 +341,14 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                     nodeTextStyle,
                     entrance,
                     disableAnimations,
+                  ),
+                if (layout.extraSlots > 0)
+                  _buildAddNode(
+                    context,
+                    layout,
+                    inputs.length,
+                    nodeTextStyle,
+                    entrance,
                   ),
                 if (inputs.isEmpty) _buildEmptyCopy(context, layout),
               ],
@@ -391,6 +419,79 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
               const SizedBox(height: 6),
               Text(widget.localNodeCaption, style: captionStyle),
             ],
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Inbound port: pending friend requests docking into the top of the core.
+  /// Rendered only when someone is actually waiting — the count is real.
+  Widget _buildInboundPort(
+    BuildContext context,
+    ContactHexLayoutResult layout,
+    double entrance,
+  ) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final colors = FireplaceColors.of(context);
+    final count = widget.pendingRequestCount;
+    final label = count > 99 ? '99+' : '$count';
+
+    return Positioned(
+      left: layout.coreCenter.dx - 46,
+      top: math.max(0, layout.coreCenter.dy - ContactHexLayout.coreRadius - 34),
+      width: 92,
+      child: Semantics(
+        container: true,
+        button: true,
+        label: widget.pendingRequestsSemanticLabel ?? label,
+        sortKey: const OrdinalSortKey(-1),
+        excludeSemantics: true,
+        child: Opacity(
+          opacity: entrance,
+          child: Center(
+            child: GestureDetector(
+              excludeFromSemantics: true,
+              behavior: HitTestBehavior.opaque,
+              onTap: () => widget.onPendingRequestsTap?.call(),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  Container(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 10,
+                      vertical: 4,
+                    ),
+                    decoration: BoxDecoration(
+                      color: colors.convItemBg,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: colorScheme.primary),
+                    ),
+                    child: Row(
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Icon(Icons.south, size: 12, color: colorScheme.primary),
+                        const SizedBox(width: 4),
+                        Text(
+                          label,
+                          style: RpgTheme.bodyFont(
+                            fontSize: 11,
+                            fontWeight: FontWeight.w800,
+                            color: colorScheme.primary,
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                  // Stub docking into the reticle rim.
+                  Container(
+                    width: 1.5,
+                    height: 12,
+                    color: colorScheme.primary.withValues(alpha: 0.7),
+                  ),
+                ],
+              ),
+            ),
           ),
         ),
       ),
@@ -544,12 +645,119 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
     }
   }
 
+  /// The trailing "+" cell: an empty socket waiting for the next person.
+  /// Dashed, avatar-less, and never counted as a contact.
+  Widget _buildAddNode(
+    BuildContext context,
+    ContactHexLayoutResult layout,
+    int index,
+    TextStyle labelStyle,
+    double entrance,
+  ) {
+    final colors = FireplaceColors.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    final slot = layout.slots[index];
+    final rowCount = math.max(1, layout.rowCount);
+    final rowT = ((entrance * (rowCount + 1)) - layout.rowOf[index]).clamp(
+      0.0,
+      1.0,
+    );
+    final focused = _addSlotFocused;
+
+    return Positioned(
+      left: slot.dx - layout.pitch / 2,
+      top: slot.dy - ContactHexLayout.hexRadius,
+      width: layout.pitch,
+      child: FocusTraversalOrder(
+        order: NumericFocusOrder((index + 1).toDouble()),
+        child: Focus(
+          onFocusChange: (hasFocus) {
+            if (_addSlotFocused != hasFocus) {
+              setState(() => _addSlotFocused = hasFocus);
+            }
+            if (hasFocus) _revealSlot(layout, slot);
+          },
+          onKeyEvent: (_, event) {
+            if (event is KeyDownEvent &&
+                (event.logicalKey == LogicalKeyboardKey.enter ||
+                    event.logicalKey == LogicalKeyboardKey.space)) {
+              widget.onAddContact?.call();
+              return KeyEventResult.handled;
+            }
+            return KeyEventResult.ignored;
+          },
+          child: Semantics(
+            container: true,
+            button: true,
+            label: widget.addSlotLabel ?? '',
+            sortKey: OrdinalSortKey((index + 1).toDouble()),
+            onTap: () => widget.onAddContact?.call(),
+            excludeSemantics: true,
+            child: Opacity(
+              opacity: rowT,
+              child: Transform.scale(
+                scale: 0.94 + rowT * 0.06,
+                child: GestureDetector(
+                  excludeFromSemantics: true,
+                  behavior: HitTestBehavior.opaque,
+                  onTap: () => widget.onAddContact?.call(),
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      SizedBox(
+                        width: ContactHexLayout.hexWidth,
+                        height: ContactHexLayout.hexRadius * 2,
+                        child: CustomPaint(
+                          painter: _AddSlotPainter(
+                            borderColor: colors.convItemBorder,
+                            accent: colorScheme.primary,
+                            focused: focused,
+                          ),
+                          child: Center(
+                            child: Icon(
+                              Icons.add,
+                              size: 22,
+                              color: focused
+                                  ? colorScheme.primary
+                                  : colors.mutedText,
+                            ),
+                          ),
+                        ),
+                      ),
+                      const SizedBox(height: ContactHexLayout.labelGap),
+                      Text(
+                        widget.addSlotLabel ?? '',
+                        softWrap: false,
+                        maxLines: 1,
+                        overflow: TextOverflow.ellipsis,
+                        textAlign: TextAlign.center,
+                        style: labelStyle.copyWith(color: colors.mutedText),
+                      ),
+                    ],
+                  ),
+                ),
+              ),
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildEmptyCopy(BuildContext context, ContactHexLayoutResult layout) {
     final colors = FireplaceColors.of(context);
+    // With an add cell on the board the copy sits under it, not on top.
+    final top = layout.slots.isEmpty
+        ? layout.coreCenter.dy + ContactHexLayout.coreRadius + 52
+        : layout.slots.last.dy +
+              ContactHexLayout.hexRadius +
+              ContactHexLayout.labelGap +
+              layout.labelHeight +
+              24;
     return Positioned(
       left: 24,
       right: 24,
-      top: layout.coreCenter.dy + ContactHexLayout.coreRadius + 52,
+      top: top,
       child: Column(
         children: [
           Text(
@@ -614,6 +822,7 @@ class ContactHexLayoutResult {
     required this.slots,
     required this.rowOf,
     required this.rowCount,
+    this.extraSlots = 0,
     required this.columnsWide,
     required this.pitch,
     required this.labelHeight,
@@ -631,6 +840,12 @@ class ContactHexLayoutResult {
   final List<int> rowOf;
 
   final int rowCount;
+
+  /// Trailing slots that belong to the field, not to [inputs] (the add cell).
+  final int extraSlots;
+
+  /// Slot count including [extraSlots].
+  int get slotCount => slots.length;
 
   /// Column count of a full wide row (4 on phones, up to 8 on desktop).
   final int columnsWide;
@@ -666,6 +881,10 @@ class ContactHexLayout {
     required List<ContactHexLayoutInput> contacts,
     required double width,
     required double labelHeight,
+    // One trailing cell the field owns rather than a contact (the "+" add
+    // slot). Reserved here so it lands on the same lattice, never faked as
+    // a contact — [inputs] and the announced node count stay honest.
+    int extraSlots = 0,
   }) {
     final ordered = sortContacts(contacts);
     final halfUsable = math.max(hexWidth, width / 2 - hexWidth);
@@ -684,7 +903,7 @@ class ContactHexLayout {
     final rowOf = <int>[];
     // Core radius + caption band + first-row clearance.
     var y = coreCenter.dy + coreRadius + 28 + hexRadius;
-    var remaining = ordered.length;
+    var remaining = ordered.length + extraSlots;
     var wideRow = true;
     var rowIndex = 0;
     while (remaining > 0) {
@@ -715,6 +934,7 @@ class ContactHexLayout {
       slots: slots,
       rowOf: rowOf,
       rowCount: rowIndex,
+      extraSlots: extraSlots,
       columnsWide: wideCapacity,
       pitch: pitch,
       labelHeight: labelHeight,
@@ -858,6 +1078,45 @@ class _HexChromePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _HexChromePainter oldDelegate) =>
+      oldDelegate.borderColor != borderColor ||
+      oldDelegate.accent != accent ||
+      oldDelegate.focused != focused;
+}
+
+/// Dashed hex outline for the "+" add cell: a socket with nobody in it yet.
+class _AddSlotPainter extends CustomPainter {
+  const _AddSlotPainter({
+    required this.borderColor,
+    required this.accent,
+    required this.focused,
+  });
+
+  final Color borderColor;
+  final Color accent;
+  final bool focused;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    final r = size.height / 2 - 0.75;
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.25
+      ..color = focused ? accent : borderColor.withValues(alpha: 0.7);
+
+    // Dash the outline by walking the hex path in 5px on / 4px off runs.
+    for (final metric in hexPath(c, r).computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final end = math.min(distance + 5, metric.length);
+        canvas.drawPath(metric.extractPath(distance, end), paint);
+        distance = end + 4;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _AddSlotPainter oldDelegate) =>
       oldDelegate.borderColor != borderColor ||
       oldDelegate.accent != accent ||
       oldDelegate.focused != focused;
@@ -1030,7 +1289,10 @@ class _HexFieldPainter extends CustomPainter {
       final row = layout.rowOf[i];
       final rowT = ((entranceProgress * (rowCount + 1)) - row).clamp(0.0, 1.0);
       if (rowT <= 0) continue;
-      final hasConv = conversationIds.contains(layout.inputs[i].id);
+      // Trailing add cell has no contact behind it: single, empty socket.
+      final hasConv =
+          i < layout.inputs.length &&
+          conversationIds.contains(layout.inputs[i].id);
       stubPaint.color = baseColor.withValues(alpha: 0.38 * rowT);
       padPaint.color = baseColor.withValues(alpha: 0.60 * rowT);
       final top = Offset(slot.dx, slot.dy - ContactHexLayout.hexRadius);

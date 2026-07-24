@@ -890,6 +890,24 @@ abstract class AppLocalizations {
   /// **'Otwórz czat'**
   String get contactNetworkOpenChatHint;
 
+  /// No description provided for @contactNetworkAddSlot.
+  ///
+  /// In pl, this message translates to:
+  /// **'dodaj'**
+  String get contactNetworkAddSlot;
+
+  /// No description provided for @contactNetworkAddSlotSemantic.
+  ///
+  /// In pl, this message translates to:
+  /// **'Dodaj kontakt'**
+  String get contactNetworkAddSlotSemantic;
+
+  /// No description provided for @contactNetworkPendingRequests.
+  ///
+  /// In pl, this message translates to:
+  /// **'{count, plural, =1{1 zaproszenie oczekuje} few{{count} zaproszenia oczekują} many{{count} zaproszeń oczekuje} other{{count} zaproszeń oczekuje}}'**
+  String contactNetworkPendingRequests(num count);
+
   /// No description provided for @contactsSearchHint.
   ///
   /// In pl, this message translates to:
