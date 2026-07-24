@@ -8,12 +8,13 @@
 3. Verified logout path is E2E-key-safe at source: only `jwt_token`/`refresh_token` removed; re-login reuses on-device Signal store.
 
 ## Verification
-- Read-only: file:line reads + nginx/docker/psql queries on the VM. No code changes, no deploys.
+- Investigation: read-only file:line reads + nginx/docker/psql queries on the VM. Fix branch: backend 536 passed/47 suites; frontend analyze 0 issues, 783 passed/4 skips; targeted regressions for the boot slide (valid-access boot slides once with `X-App-Commit`; slide 401/500 NEVER logs out).
 
 ## Notes for next session
-- Open: owner's "more common than usual" uptick not visible server-side. Shortlist: stale PWA bundle (invisible server-side), per-device origin-storage eviction (would also wipe Signal keys), iOS 26 behavior. Waiting on victim capture: Settings footer `version · gitCommit` + do old chats decrypt after re-login.
-- Proposed `fix/pwa-logout` hardening (needs owner OK): version telemetry header, session-end reason on login screen, proactive refresh on cold boot, `navigator.storage.persist()` at login, in-app update nudge. NEVER clear site data / rotate JWT_SECRET.
-- Full: `2026-07-24-session.md`.
+- **PR #96 (`fix/pwa-logout`, 0.0.127) is OPEN and unmerged — owner will return if logouts recur.** Contents: `navigator.storage.persist()` at every web boot (+`STORAGE_NOT_PERSISTENT` diag), backend `[identity-churn]` WARN on identityPublicKey change, proactive boot session slide, `X-App-Commit` on auth calls, session-end reason + compiled commit on the auth screen, stale-bundle nudge (deploy-web.ps1 injects `gitCommit` into version.json). Backend test count in root CLAUDE.md §3 updated to 536 on the branch.
+- On the next logout report, BEFORE re-deriving anything: (1) grep backend logs for `[identity-churn]` and `[auth-session-end]`; (2) nginx: did the victim's login carry `X-App-Commit`? absent/old = stale bundle; (3) victim's login-screen footer screenshot now shows commit + reason; (4) `refresh_tokens.expires_at` vs `created_at`+365d = never-slid fingerprint. Forensic trap: OTP upsert preserves `createdAt` and overwrites `identityPublicKey` — use Postgres `xmin` for rewrite dating.
+- Platform truth (sources verified): `persist()` is real eviction protection on Android/Chrome installed PWAs; on iOS the home-screen install itself is the main exemption and `persist()` is best-effort. Manual site-data wipes are indefensible on any web platform (= Signal Web) — native builds are the only escape.
+- NEVER clear site data / rotate JWT_SECRET as a "fix". Full details: `2026-07-24-session.md` (local-only, gitignored by incident rule).
 
 ---
 ### Prior latest ↓
