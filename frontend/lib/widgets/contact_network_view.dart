@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/semantics.dart';
 
+import '../config/app_config.dart';
 import '../models/user_model.dart';
 import '../theme/rpg_theme.dart';
 
@@ -76,7 +77,10 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
     _routeController =
         AnimationController(
             vsync: this,
-            duration: const Duration(milliseconds: 260),
+            // Slow enough to READ: the strip travelling to the core is the
+            // point of the interaction (owner call, overrides the entrance
+            // cap - this is user-triggered feedback, not chrome).
+            duration: const Duration(milliseconds: 480),
           )
           ..addStatusListener((status) {
             if (status != AnimationStatus.completed) return;
@@ -258,7 +262,9 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                             entranceProgress: entrance,
                             routeProgress: _routeContactId == null
                                 ? 0
-                                : _routeController.value,
+                                : Curves.easeInOut.transform(
+                                    _routeController.value,
+                                  ),
                             routeIndex: _slotIndexOf(
                               layout,
                               _routeContactId,
@@ -425,20 +431,19 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                         width: ContactHexLayout.hexWidth,
                         height: ContactHexLayout.hexRadius * 2,
                         child: CustomPaint(
-                          painter: _HexNodePainter(
-                            seed: _stableHash('node-${contact.id}'),
-                            surface: colors.convItemBg,
+                          foregroundPainter: _HexChromePainter(
                             borderColor: colors.convItemBorder,
-                            foreground: colorScheme.onSurface,
                             accent: colorScheme.primary,
                             focused: focused || routing,
                           ),
-                          child: Align(
-                            alignment: const Alignment(0, 0.52),
-                            child: Text(
-                              _initials(contact.username),
-                              style: RpgTheme.bodyFont(
-                                fontSize: 13,
+                          child: ClipPath(
+                            clipper: const _HexClipper(),
+                            child: _HexAvatar(
+                              imageUrl: contact.profilePictureUrl,
+                              initials: _initials(contact.username),
+                              surface: colors.convItemBg,
+                              initialsStyle: RpgTheme.bodyFont(
+                                fontSize: 14,
                                 fontWeight: FontWeight.w800,
                                 color: colorScheme.onSurface,
                               ),
@@ -787,21 +792,16 @@ Path _hexPath(Offset c, double r) {
   return path..close();
 }
 
-/// Hex terminal chrome + surface + symmetric identicon + focus halo.
-class _HexNodePainter extends CustomPainter {
-  const _HexNodePainter({
-    required this.seed,
-    required this.surface,
+/// Hex terminal chrome: outline, inner hairline, focus halo. Painted over
+/// the clipped avatar/initials surface so edges stay crisp.
+class _HexChromePainter extends CustomPainter {
+  const _HexChromePainter({
     required this.borderColor,
-    required this.foreground,
     required this.accent,
     required this.focused,
   });
 
-  final int seed;
-  final Color surface;
   final Color borderColor;
-  final Color foreground;
   final Color accent;
   final bool focused;
 
@@ -809,10 +809,8 @@ class _HexNodePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final c = Offset(size.width / 2, size.height / 2);
     final r = size.height / 2 - 0.75;
-    final hex = _hexPath(c, r);
-    canvas.drawPath(hex, Paint()..color = surface);
     canvas.drawPath(
-      hex,
+      _hexPath(c, r),
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.25
@@ -834,40 +832,95 @@ class _HexNodePainter extends CustomPainter {
           ..color = accent,
       );
     }
-
-    // Symmetric 5x5 identicon in the upper half; mirrored columns read as
-    // designed identity, not noise.
-    const grid = 20.0;
-    const cell = grid / 5;
-    final left = c.dx - grid / 2;
-    final top = c.dy - 22;
-    final dot = Paint()..color = foreground.withValues(alpha: 0.30);
-    for (var row = 0; row < 5; row++) {
-      for (var col = 0; col < 5; col++) {
-        final src = col < 3 ? col : 4 - col;
-        if (((seed >> (row * 3 + src)) & 1) == 1) {
-          canvas.drawRect(
-            Rect.fromLTWH(
-              left + col * cell + 0.5,
-              top + row * cell + 0.5,
-              cell - 1,
-              cell - 1,
-            ),
-            dot,
-          );
-        }
-      }
-    }
   }
 
   @override
-  bool shouldRepaint(covariant _HexNodePainter oldDelegate) =>
-      oldDelegate.seed != seed ||
-      oldDelegate.surface != surface ||
+  bool shouldRepaint(covariant _HexChromePainter oldDelegate) =>
       oldDelegate.borderColor != borderColor ||
-      oldDelegate.foreground != foreground ||
       oldDelegate.accent != accent ||
       oldDelegate.focused != focused;
+}
+
+class _HexClipper extends CustomClipper<Path> {
+  const _HexClipper();
+
+  @override
+  Path getClip(Size size) => _hexPath(
+    Offset(size.width / 2, size.height / 2),
+    size.height / 2 - 0.75,
+  );
+
+  @override
+  bool shouldReclip(covariant _HexClipper oldClipper) => false;
+}
+
+/// The hex surface: the contact's avatar covering the whole hex, or the
+/// themed surface + initials when there is no (loadable) avatar.
+class _HexAvatar extends StatefulWidget {
+  const _HexAvatar({
+    required this.imageUrl,
+    required this.initials,
+    required this.surface,
+    required this.initialsStyle,
+  });
+
+  final String? imageUrl;
+  final String initials;
+  final Color surface;
+  final TextStyle initialsStyle;
+
+  @override
+  State<_HexAvatar> createState() => _HexAvatarState();
+}
+
+class _HexAvatarState extends State<_HexAvatar> {
+  bool _imageLoadError = false;
+
+  @override
+  void didUpdateWidget(_HexAvatar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.imageUrl != widget.imageUrl) {
+      _imageLoadError = false;
+    }
+  }
+
+  String _resolvedUrl() {
+    final url = widget.imageUrl!;
+    final isAbsolute =
+        url.startsWith('http://') || url.startsWith('https://');
+    // Same resolution as AvatarCircle: the per-upload UUID filename is the
+    // cache key, no cache-busting query.
+    return isAbsolute ? url : '${AppConfig.baseUrl}$url';
+  }
+
+  Widget _fallback() {
+    return ColoredBox(
+      color: widget.surface,
+      child: Center(
+        child: Text(widget.initials, style: widget.initialsStyle),
+      ),
+    );
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final url = widget.imageUrl;
+    if (url == null || url.trim().isEmpty || _imageLoadError) {
+      return _fallback();
+    }
+    return Image.network(
+      _resolvedUrl(),
+      fit: BoxFit.cover,
+      errorBuilder: (context, error, stackTrace) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (mounted) setState(() => _imageLoadError = true);
+        });
+        return _fallback();
+      },
+      loadingBuilder: (context, child, loadingProgress) =>
+          loadingProgress == null ? child : _fallback(),
+    );
+  }
 }
 
 /// Instrument reticle for the local node: outer ring, N/E/S/W ticks in the
@@ -1100,6 +1153,22 @@ class _HexFieldPainter extends CustomPainter {
           );
           remainingStart = 0;
         }
+        // Bright head where the strip currently is: makes the travel
+        // direction (node -> core) readable at a glance.
+        if (routeProgress < 1) {
+          var headOffset = total * (1 - routeProgress);
+          for (final m in metrics) {
+            if (headOffset > m.length) {
+              headOffset -= m.length;
+              continue;
+            }
+            final head = m.getTangentForOffset(headOffset)?.position;
+            if (head != null) {
+              canvas.drawCircle(head, 2.6, Paint()..color = accent);
+            }
+            break;
+          }
+        }
         final slot = layout.slots[index];
         canvas.drawRect(
           Rect.fromCenter(
@@ -1127,11 +1196,3 @@ class _HexFieldPainter extends CustomPainter {
       oldDelegate.routeIndex != routeIndex;
 }
 
-int _stableHash(String value) {
-  var hash = 0;
-  for (final codeUnit in value.codeUnits) {
-    hash = ((hash << 5) - hash) + codeUnit;
-    hash &= 0x7fffffff;
-  }
-  return hash;
-}

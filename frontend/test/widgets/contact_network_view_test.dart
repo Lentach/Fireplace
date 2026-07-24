@@ -245,10 +245,10 @@ void main() {
       await tester.tap(find.text('borys'));
       await tester.pump();
       // Mid-flight: the route strip is still travelling to the core.
-      await tester.pump(const Duration(milliseconds: 100));
+      await tester.pump(const Duration(milliseconds: 250));
       expect(tapped, isNull);
       // Docked: the card opens.
-      await tester.pump(const Duration(milliseconds: 200));
+      await tester.pump(const Duration(milliseconds: 300));
       expect(tapped?.username, 'borys');
       await tester.pumpAndSettle();
     });

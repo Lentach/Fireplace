@@ -30,7 +30,8 @@ class ContactNetworkPreviewApp extends StatelessWidget {
     final count = int.tryParse(query['count'] ?? '') ?? 1;
     final textScale = double.tryParse(query['textScale'] ?? '') ?? 1;
     final reduceMotion = query['reduceMotion'] == '1';
-
+    // avatars=1: placeholder photos to review the avatar-in-hex rendering.
+    final avatars = query['avatars'] == '1';
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
@@ -43,7 +44,7 @@ class ContactNetworkPreviewApp extends StatelessWidget {
         child: child!,
       ),
       home: _ContactNetworkPreviewPage(
-        contacts: _previewContacts(count),
+        contacts: _previewContacts(count, avatars: avatars),
         textScale: textScale,
       ),
     );
@@ -149,7 +150,7 @@ class _ContactNetworkPreviewPage extends StatelessWidget {
   }
 }
 
-List<UserModel> _previewContacts(int count) {
+List<UserModel> _previewContacts(int count, {bool avatars = false}) {
   const names = [
     'Ada',
     'Borys',
@@ -182,6 +183,9 @@ List<UserModel> _previewContacts(int count) {
             ? names[index]
             : '${names[index % names.length]}${index + 1}',
         tag: (index + 1).toString().padLeft(4, '0'),
+        profilePictureUrl: avatars && index % 3 != 2
+            ? 'https://picsum.photos/seed/fireplace$index/128'
+            : null,
       ),
   ];
 }
