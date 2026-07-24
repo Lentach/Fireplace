@@ -57,21 +57,21 @@
 ---
 ### Prior latest ↓
 
-**Date:** 2026-07-23 — Contacts tab redesigned as the **Honeycomb Core** on `feat/contact-network` (owner-driven brainstorm; Terminal Rack plan rejected before build): reticle core top-center feeding a fixed-width staggered hex field, alphabetical order = spatial order, vertical scroll only.
+**Date:** 2026-07-23 — Contacts tab redesigned as the **Honeycomb Core** on `feat/contact-network` (owner-driven brainstorm; Terminal Rack plan rejected before build). Owner verdict on device: "all is perfect". Live as ephemeral test deploy `a8473b6` / 0.0.128; NOT merged, no bump.
 
 ## What was done
-1. Full rewrite of `ContactNetworkView`: pure `ContactHexLayout` (deterministic slots from width + measured label height; 4-3 rows on phones, adaptive to 8-7 on desktop; partial last row self-centers), hex terminals showing the contact's AVATAR covering the whole hex (fallback: themed surface + initial; identicons built then removed on owner review), per-hex socket stub (doubled = real conversation), core visibly feeds row 1 only — no bus wiring, ever.
+1. Full rewrite of `ContactNetworkView`: pure `ContactHexLayout` (deterministic slots from width + measured label height; 4-3 rows on phones, adaptive to 8-7 on desktop; partial last row self-centers), hex terminals showing the contact's AVATAR covering the whole hex (fallback: initial; identicons built then removed on owner review), per-hex socket stub (**one pin = no conversation, two = active chat — owner explicitly KEPT this semantic, do not unify**), core visibly feeds row 1 only — no bus wiring, ever. Local core shows the current user's avatar, accent ring on the circumference.
 2. Tap = the signature interaction: the contact's route fills with accent from their hex UP to the core (480ms easeInOut + bright head dot — owner slowed it from 260ms to make the travel readable; deliberate override of the entrance cap for user-triggered feedback) and the user card opens on dock; reduce-motion opens instantly. Blue strip NEVER appears on bare keyboard focus (focus = hex halo only; Enter activates).
-3. Deleted wholesale: elliptical-ring engine, drag-to-pin SharedPreferences store, Reset button, InteractiveViewer pan mode, dogleg traces. ARB `contactNetworkReset`/`DragHint` removed (en+pl). Owner chose pure alphabetical, no manual swap.
-4. A11y kept as core invariant: per-node semantic buttons (`container: true`), sorted traversal, Tab reveal via scroll, 48dp floor.
+3. Search: one capsule field under the header filters BOTH the network (live re-sort, owner: "chef kiss") and the classic list; hidden on empty accounts; `contactsSearchHint`/`NoResults` ARB en+pl. Harness `&screen=1` renders the real ContactsScreen with seeded providers.
+4. Deleted wholesale: elliptical-ring engine, drag-to-pin SharedPreferences store, Reset button, InteractiveViewer pan mode, dogleg traces. ARB `contactNetworkReset`/`DragHint` removed (en+pl). Owner chose pure alphabetical, no manual swap.
+5. A11y kept as core invariant: per-node semantic buttons (`container: true`), sorted traversal, Tab reveal by scroll, 48dp floor.
 
 ## Verification
-- Analyze 0; full suite **797 passed / 4 skips**; 14 rewritten contract tests (pairwise non-overlap across widths x text scales x counts, route bounds, animated-tap ordering, Tab x40 scroll reveal). Visual loop: all five themes at 390x844, 320x700, 1100px desktop, textScale 1.6.
+- Analyze 0; full suite **801 passed / 4 skips**; 14 layout/interaction contract tests + 4 search widget tests. Visual loop: all five themes at 390x844, 320x700, 1100px desktop, textScale 1.6, avatars on/off. Production smoke passed on each of the four ephemeral deploys (`1f987f1`, `8582c07` -> `30f79b5` -> `fe48ce4` -> `a8473b6`).
 
 ## Notes for next session
-- Branch-only, NOT merged, no version bump. Production serves master `5a757d3` / 0.0.128. Owner has not yet seen the built honeycomb on device — expect an ephemeral branch deploy request, then PR + PATCH bump on approval.
-- Traps: hot restart recompiles nothing under `test/preview/` (cold `hub restart`); adjacent slot rects share edges (overlap asserts need epsilon); `find.text` sees offscreen widgets in the non-lazy field; row-0 routes must reuse feed geometry.
-- Full: `2026-07-23-session-honeycomb-core.md`.
+- **NEXT TASK (owner decision pending): kill the search bar's 54px band** — owner brainstormed scroll-hide (idea 1) vs search-in-header (idea 2, recommended: magnifier left of the capsule, title yields to the input); he has NOT picked yet. Full handoff with implementation notes, traps, and the release path (PR -> 0.0.129 -> merge on explicit OK): `2026-07-23-handoff-honeycomb-search.md` (local-only).
+- Full session detail: `2026-07-23-session-honeycomb-core.md`.
 
 ---
 ### Prior latest ↓
