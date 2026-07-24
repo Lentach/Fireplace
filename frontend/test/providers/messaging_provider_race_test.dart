@@ -37,7 +37,11 @@ class _FakeEncryptionProvider extends EncryptionProvider {
   }
 
   @override
-  Future<String> decrypt(int senderId, String ciphertext) async {
+  Future<String> decrypt(
+    int senderId,
+    String ciphertext, {
+    int? messageId,
+  }) async {
     return jsonEncode(E2eEnvelope.build('decrypted'));
   }
 
@@ -51,7 +55,11 @@ class _DecryptCountingEncryption extends _FakeEncryptionProvider {
   int decryptCalls = 0;
 
   @override
-  Future<String> decrypt(int senderId, String ciphertext) async {
+  Future<String> decrypt(
+    int senderId,
+    String ciphertext, {
+    int? messageId,
+  }) async {
     decryptCalls++;
     return jsonEncode(E2eEnvelope.build('plain-$decryptCalls'));
   }
@@ -62,7 +70,11 @@ class _DecryptCountingEncryption extends _FakeEncryptionProvider {
 /// where no peer re-key should happen.
 class _AlwaysFailDecryptEncryption extends _FakeEncryptionProvider {
   @override
-  Future<String> decrypt(int senderId, String ciphertext) async {
+  Future<String> decrypt(
+    int senderId,
+    String ciphertext, {
+    int? messageId,
+  }) async {
     throw Exception('Generic crypto failure');
   }
 }
@@ -79,7 +91,11 @@ class _AlwaysFailWithSessionCountEncryption extends _FakeEncryptionProvider {
   }
 
   @override
-  Future<String> decrypt(int senderId, String ciphertext) async {
+  Future<String> decrypt(
+    int senderId,
+    String ciphertext, {
+    int? messageId,
+  }) async {
     throw Exception('Generic crypto failure');
   }
 }
@@ -98,7 +114,11 @@ class _PersistedGifWithoutKeysEncryption extends _FakeEncryptionProvider {
   }
 
   @override
-  Future<String> decrypt(int senderId, String ciphertext) async {
+  Future<String> decrypt(
+    int senderId,
+    String ciphertext, {
+    int? messageId,
+  }) async {
     decryptCalls++;
     return jsonEncode(
       E2eEnvelope.build(
@@ -123,7 +143,11 @@ class _AlwaysDuplicateDecryptEncryption extends _FakeEncryptionProvider {
   }
 
   @override
-  Future<String> decrypt(int senderId, String ciphertext) async {
+  Future<String> decrypt(
+    int senderId,
+    String ciphertext, {
+    int? messageId,
+  }) async {
     throw Exception(
       'DuplicateMessageException - Received message with old counter',
     );
@@ -141,7 +165,11 @@ class _AlwaysBadMacDecryptEncryption extends _FakeEncryptionProvider {
   }
 
   @override
-  Future<String> decrypt(int senderId, String ciphertext) async {
+  Future<String> decrypt(
+    int senderId,
+    String ciphertext, {
+    int? messageId,
+  }) async {
     throw Exception('InvalidMessageException: Bad Mac');
   }
 }
@@ -160,7 +188,11 @@ class _IdentityResetEncryption extends _FakeEncryptionProvider {
   }
 
   @override
-  Future<String> decrypt(int senderId, String ciphertext) async {
+  Future<String> decrypt(
+    int senderId,
+    String ciphertext, {
+    int? messageId,
+  }) async {
     throw Exception('NoSessionException - no session for this peer');
   }
 }
@@ -185,7 +217,11 @@ class _AlwaysNoSessionEncryption extends _FakeEncryptionProvider {
       persisted;
 
   @override
-  Future<String> decrypt(int senderId, String ciphertext) async {
+  Future<String> decrypt(
+    int senderId,
+    String ciphertext, {
+    int? messageId,
+  }) async {
     decryptCalls++;
     throw Exception('NoSessionException - No session for: $senderId:1');
   }
@@ -196,7 +232,11 @@ class _DuplicateDecryptEncryption extends _FakeEncryptionProvider {
   int decryptCalls = 0;
 
   @override
-  Future<String> decrypt(int senderId, String ciphertext) async {
+  Future<String> decrypt(
+    int senderId,
+    String ciphertext, {
+    int? messageId,
+  }) async {
     decryptCalls++;
     if (decryptCalls > 1) {
       throw Exception(
@@ -228,7 +268,11 @@ class _HistoryDecryptRetryEncryption extends _FakeEncryptionProvider {
   }
 
   @override
-  Future<String> decrypt(int senderId, String ciphertext) async {
+  Future<String> decrypt(
+    int senderId,
+    String ciphertext, {
+    int? messageId,
+  }) async {
     decryptAttempts++;
     if (decryptAttempts <= 1) {
       throw Exception('simulate ratchet mismatch');

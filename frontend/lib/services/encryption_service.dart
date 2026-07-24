@@ -4,15 +4,22 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
 import 'encryption/signal_stores.dart';
+import 'encryption/session_cross_context_lock.dart';
 
 class EncryptionService {
-  EncryptionService({int decryptedContentCacheLimit = 2000})
-      : _decryptedContentCacheLimit = decryptedContentCacheLimit;
+  EncryptionService({
+    int decryptedContentCacheLimit = 2000,
+    SessionCrossContextLockRunner? sessionCrossContextLock,
+  }) : _decryptedContentCacheLimit = decryptedContentCacheLimit,
+       _sessionCrossContextLock =
+           sessionCrossContextLock ?? runSessionCrossContextLocked;
 
   /// Batch size for replenishment (preKeysLow). Server threshold is 10.
   static const int _preKeyBatchSize = 100;
+
   /// Smaller initial batch for fresh install — faster startup, preKeysLow replenishes when low.
   static const int _initialPreKeyBatchSize = 20;
   static const int _deviceId = 1;
@@ -22,9 +29,9 @@ class EncryptionService {
   /// SharedPreferences/localStorage — flutter_secure_storage's IndexedDB+
   /// WebCrypto backing loses data when tabs close or the WebCrypto key is
   /// evicted. On mobile, ONLY flutter_secure_storage (Keychain/Keystore).
-  final DualStorage _storage = DualStorage(FlutterSecureStorage(
-    webOptions: const WebOptions(dbName: 'FireplaceE2E'),
-  ));
+  final DualStorage _storage = DualStorage(
+    FlutterSecureStorage(webOptions: const WebOptions(dbName: 'FireplaceE2E')),
+  );
 
   late SecureIdentityKeyStore _identityStore;
   late SecurePreKeyStore _preKeyStore;
@@ -45,7 +52,13 @@ class EncryptionService {
   SharedPreferences? _prefs;
   Future<SharedPreferences> get _sharedPrefs async =>
       _prefs ??= await SharedPreferences.getInstance();
+
+  Future<void> _reloadPrefsForCrossContext(SharedPreferences prefs) async {
+    if (kIsWeb) await prefs.reload();
+  }
+
   final int _decryptedContentCacheLimit;
+  final SessionCrossContextLockRunner _sessionCrossContextLock;
 
   /// Test-only seam: wrap the session store used by SessionCipher /
   /// SessionBuilder (e.g. to hold a storeSession mid-flight and force a
@@ -101,14 +114,11 @@ class EncryptionService {
 
     // Generate signed pre-key (id = 0)
     final signedPreKey = generateSignedPreKey(identityKeyPair, 0);
-    await _signedPreKeyStore.storeSignedPreKey(
-        signedPreKey.id, signedPreKey);
+    await _signedPreKeyStore.storeSignedPreKey(signedPreKey.id, signedPreKey);
 
     // Generate one-time pre-keys (smaller batch for fast startup; preKeysLow replenishes)
     final preKeys = generatePreKeys(0, _initialPreKeyBatchSize);
-    await Future.wait(
-      preKeys.map((pk) => _preKeyStore.storePreKey(pk.id, pk)),
-    );
+    await Future.wait(preKeys.map((pk) => _preKeyStore.storePreKey(pk.id, pk)));
 
     // Save next pre-key id
     await _storage.write(
@@ -120,11 +130,13 @@ class EncryptionService {
     _keysForUpload = {
       'keyBundle': {
         'registrationId': registrationId,
-        'identityPublicKey':
-            base64Encode(identityKeyPair.getPublicKey().serialize()),
+        'identityPublicKey': base64Encode(
+          identityKeyPair.getPublicKey().serialize(),
+        ),
         'signedPreKeyId': signedPreKey.id,
-        'signedPreKeyPublic':
-            base64Encode(signedPreKey.getKeyPair().publicKey.serialize()),
+        'signedPreKeyPublic': base64Encode(
+          signedPreKey.getKeyPair().publicKey.serialize(),
+        ),
         'signedPreKeySignature': base64Encode(signedPreKey.signature),
       },
       'oneTimePreKeys': preKeys.map(_preKeyToUploadFormat).toList(),
@@ -150,7 +162,8 @@ class EncryptionService {
       final address = SignalProtocolAddress(userId.toString(), _deviceId);
       await _sessionStore.deleteSession(address);
       debugPrint(
-          '[EncryptionService] Session deleted for userId=$userId (broken session reset)');
+        '[EncryptionService] Session deleted for userId=$userId (broken session reset)',
+      );
     });
   }
 
@@ -172,23 +185,36 @@ class EncryptionService {
   /// in-flight encrypt/decrypt store loses one side's advance.
   Future<void> buildSession(int userId, Map<String, dynamic> preKeyBundle) {
     return _runSessionSerialized(
-        userId, () => _buildSessionSerialized(userId, preKeyBundle));
+      userId,
+      () => _buildSessionSerialized(userId, preKeyBundle),
+    );
   }
 
   Future<void> _buildSessionSerialized(
-      int userId, Map<String, dynamic> preKeyBundle) async {
+    int userId,
+    Map<String, dynamic> preKeyBundle,
+  ) async {
     final address = SignalProtocolAddress(userId.toString(), _deviceId);
-    final builder = SessionBuilder(_cipherSessionStore, _preKeyStore,
-        _signedPreKeyStore, _identityStore, address);
+    final builder = SessionBuilder(
+      _cipherSessionStore,
+      _preKeyStore,
+      _signedPreKeyStore,
+      _identityStore,
+      address,
+    );
 
     ECPublicKey? oneTimePreKey;
     if (preKeyBundle['oneTimePreKeyPublic'] != null) {
       oneTimePreKey = Curve.decodePoint(
-          base64Decode(preKeyBundle['oneTimePreKeyPublic'] as String), 0);
+        base64Decode(preKeyBundle['oneTimePreKeyPublic'] as String),
+        0,
+      );
     }
 
     final identityKey = IdentityKey.fromBytes(
-        base64Decode(preKeyBundle['identityPublicKey'] as String), 0);
+      base64Decode(preKeyBundle['identityPublicKey'] as String),
+      0,
+    );
     // Trust the identity from the bundle so we don't throw UntrustedIdentityException
     // when the peer has rotated keys (e.g. after they regenerated keys).
     await _identityStore.saveIdentity(address, identityKey);
@@ -200,9 +226,12 @@ class EncryptionService {
       oneTimePreKey,
       preKeyBundle['signedPreKeyId'] as int,
       Curve.decodePoint(
-          base64Decode(preKeyBundle['signedPreKeyPublic'] as String), 0),
+        base64Decode(preKeyBundle['signedPreKeyPublic'] as String),
+        0,
+      ),
       Uint8List.fromList(
-          base64Decode(preKeyBundle['signedPreKeySignature'] as String)),
+        base64Decode(preKeyBundle['signedPreKeySignature'] as String),
+      ),
       identityKey,
     );
 
@@ -232,12 +261,23 @@ class EncryptionService {
   /// sequential acquisitions.
   final Map<int, Future<void>> _sessionTails = {};
 
-  /// Queue [action] behind every in-flight session mutation for [peerId].
-  /// Callers run in call order; a failed predecessor never poisons the queue
-  /// (errors are contained to the caller that owns them).
+  String _sessionLockName(int peerId) {
+    final userId = _userId;
+    if (userId == null) {
+      throw StateError('EncryptionService is not initialized');
+    }
+    return 'fireplace-e2e-session-$userId-$peerId';
+  }
+
+  /// Queue [action] behind every in-flight mutation in this app engine, then
+  /// take the origin-wide Web Lock for the same account/peer. The browser lock
+  /// is load-bearing: separate PWA tabs have separate Dart heaps and therefore
+  /// separate [_sessionTails], but they mutate the same persisted SessionRecord.
   Future<T> _runSessionSerialized<T>(int peerId, Future<T> Function() action) {
     final tail = _sessionTails[peerId] ?? Future<void>.value();
-    final result = tail.then((_) => action());
+    final result = tail.then(
+      (_) => _sessionCrossContextLock(_sessionLockName(peerId), action),
+    );
     _sessionTails[peerId] = result.then<void>((_) {}, onError: (_) {});
     return result;
   }
@@ -257,13 +297,17 @@ class EncryptionService {
   Future<String> encrypt(int recipientUserId, String plaintext) {
     final inFlight = _encryptInFlight[recipientUserId] ?? 0;
     if (inFlight > 0) {
-      E2ePersistentDiag.record(
-          'ENCRYPT_OVERLAP', {'recipientId': recipientUserId, 'inFlight': inFlight});
+      E2ePersistentDiag.record('ENCRYPT_OVERLAP', {
+        'recipientId': recipientUserId,
+        'inFlight': inFlight,
+      });
     }
     _encryptInFlight[recipientUserId] = inFlight + 1;
 
     final result = _runSessionSerialized(
-        recipientUserId, () => _encryptSerialized(recipientUserId, plaintext));
+      recipientUserId,
+      () => _encryptSerialized(recipientUserId, plaintext),
+    );
     // Error-swallowed continuation as the decrement hook, so a failed encrypt
     // never leaks an unhandled async error (the owning caller still sees it
     // via `result`).
@@ -279,14 +323,24 @@ class EncryptionService {
   }
 
   Future<String> _encryptSerialized(
-      int recipientUserId, String plaintext) async {
-    final address =
-        SignalProtocolAddress(recipientUserId.toString(), _deviceId);
-    final cipher = SessionCipher(_cipherSessionStore, _preKeyStore,
-        _signedPreKeyStore, _identityStore, address);
+    int recipientUserId,
+    String plaintext,
+  ) async {
+    final address = SignalProtocolAddress(
+      recipientUserId.toString(),
+      _deviceId,
+    );
+    final cipher = SessionCipher(
+      _cipherSessionStore,
+      _preKeyStore,
+      _signedPreKeyStore,
+      _identityStore,
+      address,
+    );
 
-    final ciphertext =
-        await cipher.encrypt(Uint8List.fromList(utf8.encode(plaintext)));
+    final ciphertext = await cipher.encrypt(
+      Uint8List.fromList(utf8.encode(plaintext)),
+    );
 
     return '${ciphertext.getType()}:${base64Encode(ciphertext.serialize())}';
   }
@@ -299,17 +353,43 @@ class EncryptionService {
   /// higher-level cache/persist side effects; THIS lock is the ratchet-record
   /// guard — without it a decrypt store can land over a concurrent encrypt
   /// store and roll the sender chain back.
-  Future<String> decrypt(int senderUserId, String ciphertextStr) {
-    return _runSessionSerialized(
-        senderUserId, () => _decryptSerialized(senderUserId, ciphertextStr));
+  Future<String> decrypt(
+    int senderUserId,
+    String ciphertextStr, {
+    int? messageId,
+  }) {
+    return _runSessionSerialized(senderUserId, () async {
+      if (messageId != null) {
+        final replay = await _loadRawDecryptedContent(messageId, ciphertextStr);
+        if (replay != null) {
+          E2eDiagLog.add('DECRYPT_RAW_REPLAY', {
+            'msgId': messageId,
+            'senderId': senderUserId,
+          });
+          return replay;
+        }
+      }
+
+      final plaintext = await _decryptSerialized(senderUserId, ciphertextStr);
+      if (messageId != null) {
+        await _saveRawDecryptedContent(messageId, ciphertextStr, plaintext);
+      }
+      return plaintext;
+    });
   }
 
   Future<String> _decryptSerialized(
-      int senderUserId, String ciphertextStr) async {
-    final address =
-        SignalProtocolAddress(senderUserId.toString(), _deviceId);
-    final cipher = SessionCipher(_cipherSessionStore, _preKeyStore,
-        _signedPreKeyStore, _identityStore, address);
+    int senderUserId,
+    String ciphertextStr,
+  ) async {
+    final address = SignalProtocolAddress(senderUserId.toString(), _deviceId);
+    final cipher = SessionCipher(
+      _cipherSessionStore,
+      _preKeyStore,
+      _signedPreKeyStore,
+      _identityStore,
+      address,
+    );
 
     final colonIdx = ciphertextStr.indexOf(':');
     final type = int.parse(ciphertextStr.substring(0, colonIdx));
@@ -319,8 +399,9 @@ class EncryptionService {
     if (type == CiphertextMessage.prekeyType) {
       plaintext = await cipher.decrypt(PreKeySignalMessage(body));
     } else {
-      plaintext =
-          await cipher.decryptFromSignal(SignalMessage.fromSerialized(body));
+      plaintext = await cipher.decryptFromSignal(
+        SignalMessage.fromSerialized(body),
+      );
     }
 
     return utf8.decode(plaintext);
@@ -342,9 +423,7 @@ class EncryptionService {
     const chunkSize = 25;
     for (var i = 0; i < preKeys.length; i += chunkSize) {
       final chunk = preKeys.skip(i).take(chunkSize).toList();
-      await Future.wait(
-        chunk.map((pk) => _preKeyStore.storePreKey(pk.id, pk)),
-      );
+      await Future.wait(chunk.map((pk) => _preKeyStore.storePreKey(pk.id, pk)));
     }
 
     await _storage.write(
@@ -353,7 +432,8 @@ class EncryptionService {
     );
 
     debugPrint(
-        '[EncryptionService] Generated ${preKeys.length} more pre-keys (nextId=${nextId + _preKeyBatchSize})');
+      '[EncryptionService] Generated ${preKeys.length} more pre-keys (nextId=${nextId + _preKeyBatchSize})',
+    );
 
     return preKeys.map(_preKeyToUploadFormat).toList();
   }
@@ -384,9 +464,7 @@ class EncryptionService {
     final keyPair = await _identityStore.getIdentityKeyPair();
     final bytes = keyPair.getPublicKey().serialize();
     // Format as hex groups of 4 for readability
-    final hex = bytes
-        .map((b) => b.toRadixString(16).padLeft(2, '0'))
-        .join();
+    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
     final groups = <String>[];
     for (var i = 0; i < hex.length; i += 4) {
       final end = (i + 4 > hex.length) ? hex.length : i + 4;
@@ -409,9 +487,9 @@ class EncryptionService {
   }
 
   static Map<String, dynamic> _preKeyToUploadFormat(PreKeyRecord pk) => {
-        'keyId': pk.id,
-        'publicKey': base64Encode(pk.getKeyPair().publicKey.serialize()),
-      };
+    'keyId': pk.id,
+    'publicKey': base64Encode(pk.getKeyPair().publicKey.serialize()),
+  };
 
   /// Build the public key bundle from stored keys for re-upload on reconnect.
   /// Returns null if keys are not loaded yet.
@@ -425,12 +503,73 @@ class EncryptionService {
         'registrationId': registrationId,
         'identityPublicKey': base64Encode(keyPair.getPublicKey().serialize()),
         'signedPreKeyId': signedPreKey.id,
-        'signedPreKeyPublic':
-            base64Encode(signedPreKey.getKeyPair().publicKey.serialize()),
+        'signedPreKeyPublic': base64Encode(
+          signedPreKey.getKeyPair().publicKey.serialize(),
+        ),
         'signedPreKeySignature': base64Encode(signedPreKey.signature),
       };
     } catch (e) {
       debugPrint('[EncryptionService] getKeyBundleForReupload failed: $e');
+      return null;
+    }
+  }
+
+  /// A Signal decrypt consumes a one-shot ratchet key before the provider can
+  /// parse and persist the envelope. Keep a bounded raw replay under the
+  /// message id while still holding the cross-context session lock. Exact
+  /// ciphertext matching makes retention safe across edits and closes both the
+  /// multi-engine duplicate and post-decrypt app-termination windows.
+  Future<void> _saveRawDecryptedContent(
+    int messageId,
+    String ciphertext,
+    String plaintext,
+  ) async {
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      await _sessionCrossContextLock(
+        'fireplace-e2e-raw-replay-$userId',
+        () async {
+          final prefs = await _sharedPrefs;
+          await _reloadPrefsForCrossContext(prefs);
+          final key = _rawDecryptedContentKey(userId, messageId);
+          final payload = jsonEncode({
+            'ciphertext': ciphertext,
+            'plaintext': plaintext,
+          });
+          var ok = await prefs.setString(key, payload);
+          if (!ok) ok = await prefs.setString(key, payload);
+          if (!ok) {
+            E2ePersistentDiag.record('DECRYPT_RAW_PERSIST_FAILED', {
+              'msgId': messageId,
+            });
+            return;
+          }
+          await _pruneRawDecryptedContent(prefs, userId);
+        },
+      );
+    } catch (_) {
+      E2ePersistentDiag.record('DECRYPT_RAW_PERSIST_FAILED', {
+        'msgId': messageId,
+      });
+    }
+  }
+
+  Future<String?> _loadRawDecryptedContent(
+    int messageId,
+    String ciphertext,
+  ) async {
+    final userId = _userId;
+    if (userId == null) return null;
+    try {
+      final prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
+      final raw = prefs.getString(_rawDecryptedContentKey(userId, messageId));
+      if (raw == null) return null;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map || decoded['ciphertext'] != ciphertext) return null;
+      return decoded['plaintext'] as String?;
+    } catch (_) {
       return null;
     }
   }
@@ -445,6 +584,7 @@ class EncryptionService {
     if (userId == null) return;
     try {
       final prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
       final key = _decryptedContentKey(userId, id);
       // Never downgrade a keyed media entry to a keyless one. E2E media keys
       // (mediaKey/mediaIv) are persisted at first successful decrypt and are the
@@ -495,8 +635,10 @@ class EncryptionService {
     if (userId == null) return null;
     final key = _decryptedContentKey(userId, id);
     try {
-      // Primary: SharedPreferences (reliable on web — synchronous localStorage)
+      // Legacy SharedPreferences caches per engine. Reload before every read so
+      // plaintext written by another PWA tab is visible immediately.
       final prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
       final raw = prefs.getString(key);
       if (raw != null) return jsonDecode(raw) as Map<String, dynamic>;
       // Fallback: flutter_secure_storage (written by older app versions)
@@ -516,7 +658,10 @@ class EncryptionService {
 
     try {
       final prefs = await _sharedPrefs;
-      keysToDelete.addAll(prefs.getKeys().where((key) => key.startsWith(prefix)));
+      await _reloadPrefsForCrossContext(prefs);
+      keysToDelete.addAll(
+        prefs.getKeys().where((key) => key.startsWith(prefix)),
+      );
       for (final key in keysToDelete) {
         await prefs.remove(key);
       }
@@ -530,10 +675,24 @@ class EncryptionService {
       }
     } catch (_) {}
 
+    try {
+      final prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
+      final rawPrefix = _rawDecryptedContentPrefix(userId);
+      for (final key
+          in prefs
+              .getKeys()
+              .where((key) => key.startsWith(rawPrefix))
+              .toList()) {
+        await prefs.remove(key);
+      }
+    } catch (_) {}
+
     // Pending-send records are required for lost-ack reconciliation and are
     // not part of the user-facing audio-cache action.
     try {
       final prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
       final pendPrefix = _pendingSendPrefix(userId);
       for (final key
           in prefs.getKeys().where((k) => k.startsWith(pendPrefix)).toList()) {
@@ -576,7 +735,9 @@ class EncryptionService {
   /// Record an emitted send (ciphertext → plaintext payload) for lost-ack
   /// reconciliation. Silent on failure (send must never be blocked by this).
   Future<void> savePendingSendRecord(
-      String ciphertext, Map<String, dynamic> data) async {
+    String ciphertext,
+    Map<String, dynamic> data,
+  ) async {
     final userId = _userId;
     if (userId == null) return;
     try {
@@ -633,7 +794,10 @@ class EncryptionService {
   /// TTL + cap sweep. Concurrent sweeps may double-remove a key — harmless
   /// (remove is idempotent); an entry is never modified in place.
   Future<void> _prunePendingSendRecords(
-      SharedPreferences prefs, int userId, int now) async {
+    SharedPreferences prefs,
+    int userId,
+    int now,
+  ) async {
     final prefix = _pendingSendPrefix(userId);
     final cutoff = now - _pendingSendTtl.inMilliseconds;
     final live = <MapEntry<String, int>>[];
@@ -674,6 +838,7 @@ class EncryptionService {
       // SharedPreferences: clear decrypted content cache entries
       try {
         final prefs = await _sharedPrefs;
+        await _reloadPrefsForCrossContext(prefs);
         final spKeysToDelete = prefs
             .getKeys()
             .where((k) => k.startsWith(prefix))
@@ -697,10 +862,38 @@ class EncryptionService {
   String _decryptedContentKey(int userId, int messageId) =>
       '${_decryptedContentPrefix(userId)}$messageId';
 
+  String _rawDecryptedContentPrefix(int userId) =>
+      'e2e_${userId}_decrypt_raw_v1_';
+  static const int _rawDecryptedContentCacheLimit = 40;
+
+  String _rawDecryptedContentKey(int userId, int messageId) =>
+      '${_rawDecryptedContentPrefix(userId)}$messageId';
+
+  Future<void> _pruneRawDecryptedContent(
+    SharedPreferences prefs,
+    int userId,
+  ) async {
+    final prefix = _rawDecryptedContentPrefix(userId);
+    final keys = prefs
+        .getKeys()
+        .where((key) => key.startsWith(prefix))
+        .toList();
+    if (keys.length <= _rawDecryptedContentCacheLimit) return;
+    keys.sort((a, b) {
+      final aId = int.tryParse(a.substring(prefix.length)) ?? 0;
+      final bId = int.tryParse(b.substring(prefix.length)) ?? 0;
+      return aId.compareTo(bId);
+    });
+    for (final key in keys.take(keys.length - _rawDecryptedContentCacheLimit)) {
+      await prefs.remove(key);
+    }
+  }
+
   Future<void> _pruneDecryptedContentCache(
     SharedPreferences prefs,
     int userId,
   ) async {
+    await _reloadPrefsForCrossContext(prefs);
     if (_decryptedContentCacheLimit <= 0) {
       await clearDecryptedContentCache();
       return;

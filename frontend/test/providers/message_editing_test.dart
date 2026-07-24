@@ -27,7 +27,11 @@ class _FakeEnc extends EncryptionProvider {
   @override
   Future<String> encrypt(int recipientId, String plaintext) async => 'cipher';
   @override
-  Future<String> decrypt(int senderId, String ciphertext) async =>
+  Future<String> decrypt(
+    int senderId,
+    String ciphertext, {
+    int? messageId,
+  }) async =>
       jsonEncode(E2eEnvelope.build(decryptMap[ciphertext] ?? 'decrypted'));
   @override
   Future<Map<String, dynamic>?> getDecryptedContent(int id) async =>
@@ -39,32 +43,31 @@ class _FakeEnc extends EncryptionProvider {
 }
 
 Map<String, dynamic> _convJson() => {
-      'id': 10,
-      'userOne': {'id': 1, 'username': 'alice', 'tag': '0001'},
-      'userTwo': {'id': 2, 'username': 'bob', 'tag': '0002'},
-      'createdAt': '2026-01-01T00:00:00.000Z',
-      'unreadCount': 0,
-      'lastMessage': null,
-    };
+  'id': 10,
+  'userOne': {'id': 1, 'username': 'alice', 'tag': '0001'},
+  'userTwo': {'id': 2, 'username': 'bob', 'tag': '0002'},
+  'createdAt': '2026-01-01T00:00:00.000Z',
+  'unreadCount': 0,
+  'lastMessage': null,
+};
 
 Map<String, dynamic> _peerMsg({
   required int id,
   required String cipher,
   required String createdAt,
   String? editedAt,
-}) =>
-    {
-      'id': id,
-      'content': '[encrypted]',
-      'encryptedContent': cipher,
-      'senderId': 2,
-      'senderUsername': 'bob',
-      'conversationId': 10,
-      'deliveryStatus': 'DELIVERED',
-      'messageType': 'TEXT',
-      'createdAt': createdAt,
-      'editedAt': ?editedAt,
-    };
+}) => {
+  'id': id,
+  'content': '[encrypted]',
+  'encryptedContent': cipher,
+  'senderId': 2,
+  'senderUsername': 'bob',
+  'conversationId': 10,
+  'deliveryStatus': 'DELIVERED',
+  'messageType': 'TEXT',
+  'createdAt': createdAt,
+  'editedAt': ?editedAt,
+};
 
 Future<void> _settle() async {
   for (var i = 0; i < 8; i++) {
@@ -114,7 +117,7 @@ void main() {
           'deliveryStatus': 'READ',
           'messageType': 'TEXT',
           'createdAt': DateTime.now().toUtc().toIso8601String(),
-        }
+        },
       ],
     });
     await _settle();
@@ -151,7 +154,12 @@ void main() {
       wire(_FakeEnc());
       // (1) non-own: a peer message may never be edited.
       provider.onNewMessage(
-          _peerMsg(id: 7, cipher: 'c7', createdAt: DateTime.now().toUtc().toIso8601String()));
+        _peerMsg(
+          id: 7,
+          cipher: 'c7',
+          createdAt: DateTime.now().toUtc().toIso8601String(),
+        ),
+      );
       await _settle();
       provider.editMessage(7, 'hack');
       await _settle();
@@ -161,8 +169,9 @@ void main() {
       //     sendMessage creates a SENDING row with a monotonic negative id.
       provider.sendMessage('optimistic');
       await _settle();
-      final optimistic =
-          provider.messages.firstWhere((m) => m.id < 0 && m.senderId == 1);
+      final optimistic = provider.messages.firstWhere(
+        (m) => m.id < 0 && m.senderId == 1,
+      );
       emitted.clear(); // drop the sendMessage emit from the optimistic send
       provider.editMessage(optimistic.id, 'edited');
       await _settle();
@@ -181,12 +190,15 @@ void main() {
             'deliveryStatus': 'READ',
             'messageType': 'IMAGE',
             'createdAt': DateTime.now().toUtc().toIso8601String(),
-          }
+          },
         ],
       });
       await _settle();
-      expect(provider.messages.any((m) => m.id == 200), isTrue,
-          reason: 'image row must be present so the non-TEXT guard is exercised');
+      expect(
+        provider.messages.any((m) => m.id == 200),
+        isTrue,
+        reason: 'image row must be present so the non-TEXT guard is exercised',
+      );
       provider.editMessage(200, 'caption hack');
       await _settle();
       expect(emitted.where((e) => e['event'] == 'editMessage'), isEmpty);
@@ -210,9 +222,15 @@ void main() {
       await seedOwn(100, 'original');
       provider.editMessage(100, 'edited');
       await _settle();
-      expect(provider.messages.firstWhere((m) => m.id == 100).content, 'edited');
+      expect(
+        provider.messages.firstWhere((m) => m.id == 100).content,
+        'edited',
+      );
 
-      provider.onEditMessageFailed({'messageId': 100, 'reason': 'window_expired'});
+      provider.onEditMessageFailed({
+        'messageId': 100,
+        'reason': 'window_expired',
+      });
       final row = provider.messages.firstWhere((m) => m.id == 100);
       expect(row.content, 'original');
       expect(row.editedAt, isNull);
@@ -227,20 +245,31 @@ void main() {
       // Optimistic success path persisted the new content.
       expect(encryption.persisted[100]?['content'], 'edited');
 
-      provider.onEditMessageFailed({'messageId': 100, 'reason': 'window_expired'});
+      provider.onEditMessageFailed({
+        'messageId': 100,
+        'reason': 'window_expired',
+      });
       await _settle();
       // Revert must roll the persisted cache back to the original, else the
       // own-message restore path would re-show 'edited' after reopening.
       expect(encryption.persisted[100]?['content'], 'original');
-      expect(provider.messages.firstWhere((m) => m.id == 100).content, 'original');
+      expect(
+        provider.messages.firstWhere((m) => m.id == 100).content,
+        'original',
+      );
     });
   });
 
   group('messageEdited (peer)', () {
     test('decrypts the new ciphertext in the active conversation', () async {
       wire(_FakeEnc(decryptMap: {'cP': 'hello', 'cP2': 'hello edited'}));
-      provider.onNewMessage(_peerMsg(
-          id: 5, cipher: 'cP', createdAt: DateTime.now().toUtc().toIso8601String()));
+      provider.onNewMessage(
+        _peerMsg(
+          id: 5,
+          cipher: 'cP',
+          createdAt: DateTime.now().toUtc().toIso8601String(),
+        ),
+      );
       await _settle();
       expect(provider.messages.firstWhere((m) => m.id == 5).content, 'hello');
 
@@ -248,7 +277,10 @@ void main() {
         'messageId': 5,
         'conversationId': 10,
         'encryptedContent': 'cP2',
-        'editedAt': DateTime.now().toUtc().add(const Duration(minutes: 1)).toIso8601String(),
+        'editedAt': DateTime.now()
+            .toUtc()
+            .add(const Duration(minutes: 1))
+            .toIso8601String(),
       });
       await _settle();
       final row = provider.messages.firstWhere((m) => m.id == 5);
@@ -258,10 +290,19 @@ void main() {
 
     test('ignores edit for a deleted message (delete wins)', () async {
       wire(_FakeEnc(decryptMap: {'cP': 'hello', 'cP2': 'edited'}));
-      provider.onNewMessage(_peerMsg(
-          id: 6, cipher: 'cP', createdAt: DateTime.now().toUtc().toIso8601String()));
+      provider.onNewMessage(
+        _peerMsg(
+          id: 6,
+          cipher: 'cP',
+          createdAt: DateTime.now().toUtc().toIso8601String(),
+        ),
+      );
       await _settle();
-      provider.onMessageDeleted({'messageId': 6, 'conversationId': 10, 'forEveryone': true});
+      provider.onMessageDeleted({
+        'messageId': 6,
+        'conversationId': 10,
+        'forEveryone': true,
+      });
       provider.onMessageEdited({
         'messageId': 6,
         'conversationId': 10,
@@ -279,9 +320,11 @@ void main() {
       final t1 = DateTime.now().toUtc().subtract(const Duration(seconds: 20));
       final t2 = DateTime.now().toUtc().subtract(const Duration(seconds: 10));
       provider.onNewMessage(
-          _peerMsg(id: 1, cipher: 'cA', createdAt: t1.toIso8601String()));
+        _peerMsg(id: 1, cipher: 'cA', createdAt: t1.toIso8601String()),
+      );
       provider.onNewMessage(
-          _peerMsg(id: 2, cipher: 'cB', createdAt: t2.toIso8601String()));
+        _peerMsg(id: 2, cipher: 'cB', createdAt: t2.toIso8601String()),
+      );
       await _settle();
       expect(provider.messages.firstWhere((m) => m.id == 1).content, 'A');
       expect(provider.messages.firstWhere((m) => m.id == 2).content, 'B');
@@ -291,15 +334,19 @@ void main() {
         'conversationId': 10,
         'messages': [
           _peerMsg(
-              id: 1,
-              cipher: 'cA2',
-              createdAt: t1.toIso8601String(),
-              editedAt: DateTime.now().toUtc().toIso8601String()),
+            id: 1,
+            cipher: 'cA2',
+            createdAt: t1.toIso8601String(),
+            editedAt: DateTime.now().toUtc().toIso8601String(),
+          ),
           _peerMsg(id: 2, cipher: 'cB', createdAt: t2.toIso8601String()),
         ],
       });
       await _settle();
-      expect(provider.messages.firstWhere((m) => m.id == 1).content, 'A-edited');
+      expect(
+        provider.messages.firstWhere((m) => m.id == 1).content,
+        'A-edited',
+      );
       expect(provider.messages.firstWhere((m) => m.id == 2).content, 'B');
     });
   });
