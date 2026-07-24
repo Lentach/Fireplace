@@ -319,6 +319,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       // not grow one — search shows matches, nothing else.
       onAddContact: filtering ? null : () => _openAddOrInvitations(context),
       addSlotLabel: l10n.contactNetworkAddSlot,
+      addSlotSemanticLabel: l10n.contactNetworkAddSlotSemantic,
       pendingRequestCount: filtering ? 0 : pendingRequests,
       onPendingRequestsTap: () => _openAddOrInvitations(context),
       pendingRequestsSemanticLabel: l10n.contactNetworkPendingRequests(

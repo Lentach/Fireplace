@@ -38,6 +38,7 @@ class ContactNetworkView extends StatefulWidget {
     this.openChatSemanticHint,
     this.onAddContact,
     this.addSlotLabel,
+    this.addSlotSemanticLabel,
     this.pendingRequestCount = 0,
     this.onPendingRequestsTap,
     this.pendingRequestsSemanticLabel,
@@ -73,6 +74,9 @@ class ContactNetworkView extends StatefulWidget {
 
   /// Caption under the "+" cell (localized by the parent).
   final String? addSlotLabel;
+
+  /// Spoken name of the "+" cell; the visible caption is a bare "add".
+  final String? addSlotSemanticLabel;
 
   /// Inbound friend requests waiting at the core. 0 hides the port.
   final int pendingRequestCount;
@@ -689,7 +693,7 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
           child: Semantics(
             container: true,
             button: true,
-            label: widget.addSlotLabel ?? '',
+            label: widget.addSlotSemanticLabel ?? widget.addSlotLabel ?? '',
             sortKey: OrdinalSortKey((index + 1).toDouble()),
             onTap: () => widget.onAddContact?.call(),
             excludeSemantics: true,
