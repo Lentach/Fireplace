@@ -943,15 +943,17 @@ class _LocalReticlePainter extends CustomPainter {
     final r = size.shortestSide / 2;
     final stroke = Paint()..style = PaintingStyle.stroke;
 
+    // Accent ring rides the circumference (owner nit: it used to cut 6px
+    // into the avatar); the plain hairline sits inside as the inner ring.
     stroke
       ..strokeWidth = 1
       ..color = borderColor;
-    canvas.drawCircle(c, r - 0.5, stroke);
+    canvas.drawCircle(c, r - 6, stroke);
 
     stroke
       ..strokeWidth = 1.5
       ..color = accent;
-    canvas.drawCircle(c, r - 6, stroke);
+    canvas.drawCircle(c, r - 0.75, stroke);
 
     stroke
       ..strokeWidth = 1
