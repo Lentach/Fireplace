@@ -200,7 +200,6 @@
   "@sessionEndedReason": {
     "placeholders": { "reason": { "type": "String" } }
   },
-  "updateAvailableCloseReopen": "Update available — fully close and reopen the app.",
   "authTagline": "Messages only two people can read",
   "authLoginTab": "LOGIN",
   "authRegisterTab": "REGISTER",

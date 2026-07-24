@@ -527,10 +527,6 @@ class AppLocalizationsPl extends AppLocalizations {
   }
 
   @override
-  String get updateAvailableCloseReopen =>
-      'Dostępna aktualizacja — całkowicie zamknij i ponownie otwórz aplikację.';
-
-  @override
   String get authTagline => 'Wiadomości, które przeczytają tylko dwie osoby';
 
   @override

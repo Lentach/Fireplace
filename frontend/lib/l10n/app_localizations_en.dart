@@ -519,10 +519,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get updateAvailableCloseReopen =>
-      'Update available — fully close and reopen the app.';
-
-  @override
   String get authTagline => 'Messages only two people can read';
 
   @override

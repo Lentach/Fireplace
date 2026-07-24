@@ -26,7 +26,6 @@ Last updated: (fill on edit)
 | Edited-message text renders wrong/displaced (overlay) | OPEN | — | Stale/snapshot vs layout displacement; edited + long-press overlay. |
 | Emote message layout (P1 indicators-under, P2 iOS missing, P3 jumbo size, P4 inline size) | OPEN | `fix/emote-message-layout` | Needs px numbers confirmed. |
 | Emote composer (A native emoji, B scroll-to-newest, C panel anim) | OPEN | `fix/emote-composer-native-scroll-anim` | A decided: native per platform. |
-| In-app "update available / reload" banner | OPEN | — | Never clear localStorage/IndexedDB. |
 | Android keyboard white-void + hide-lag + false portrait overlay | OPEN | — | interactive-widget meta + event-driven relayout; don't reintroduce scroll-lock. |
 | E2E media upload gap (orphan metric + cron grace) | IN-PROGRESS | `fix/media-orphan-grace-and-metric` | Low sev; grace period + observability. |
 | Frontend production-readiness review | IN-PROGRESS | `review/frontend-prod-readiness` | Report-first, go/no-go. |

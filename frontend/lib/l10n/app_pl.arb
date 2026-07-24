@@ -188,7 +188,6 @@
   "@sessionEndedReason": {
     "placeholders": { "reason": { "type": "String" } }
   },
-  "updateAvailableCloseReopen": "Dostępna aktualizacja — całkowicie zamknij i ponownie otwórz aplikację.",
   "authTagline": "Wiadomości, które przeczytają tylko dwie osoby",
   "authLoginTab": "LOGOWANIE",
   "authRegisterTab": "REJESTRACJA",
