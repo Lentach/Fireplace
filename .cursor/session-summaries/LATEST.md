@@ -1,20 +1,22 @@
 # Latest session summary
 
-**Date:** 2026-07-24 — Contacts tab = the **Honeycomb Core** on `feat/contact-network`, now with search living IN the header capsule (owner: "i would go with option 2 lets see serchbar in the header"). Still an ephemeral branch deploy, NOT merged, no version bump.
+**Date:** 2026-07-24 — `feat/contact-network` now carries the whole visual pass: Contacts **Honeycomb Core** + search in the header capsule, and the **Chats list redesign** (hex avatars, unread as a lit row edge, live/normal/cold row weights). Owner approved each step from renders ("thats what we need go implement it"). Ephemeral branch deploy `ed037e5` / 0.0.128, smoke 5/5. NOT merged, no version bump.
 
 ## What was done
 1. Honeycomb Core (2026-07-23, owner verdict "all is perfect"): `ContactNetworkView` rewritten around the pure `ContactHexLayout` — reticle core top-center with the user's avatar, fixed-width staggered hex field below (4-3 rows on phones, up to 8-7 on desktop, partial last row self-centers), alphabetical order = spatial order, vertical scroll only. Contact avatar fills each hex. Socket stub per hex: **one pin = no conversation, two pins = active chat — owner explicitly KEPT this, do not unify.** Tap fills the route from the hex up to the core (480ms easeInOut + head dot) and opens the card; the strip NEVER appears on bare keyboard focus (focus = halo, Enter activates). Deleted: elliptical-ring engine, drag-to-pin store, Reset button, InteractiveViewer, dogleg traces, identicons.
 2. Search moved into the header (2026-07-24): the 54px band under the header is GONE. Closed state = bare magnifier LEFT, title, list/map toggle RIGHT. Open state = full-width `GlassPill` input (inner magnifier, autofocus, ×) with the toggle keeping its slot, so one query still drives BOTH presentations across a view switch; Escape closes.
 3. `MainTabScreenHeader` gained `.custom(child:)` (row-replacing, header still owns the geometry) and `leadingGlass` (default `true`) — Chats/Settings call sites untouched by design.
 4. Trap paid: `InputDecoration.collapsed` only nulls `border`, so `RpgTheme.inputDecorationTheme.focusedBorder` painted a 2px box inside the glass capsule on focus; the field now sets `focusedBorder: InputBorder.none` explicitly.
+5. Chats list redesign: shared `widgets/hex_avatar.dart` (`hexPath`/`HexClipper`/`HexAvatarSurface`/`HexAvatar`) extracted from the honeycomb so both tabs use ONE shape language. `ConversationTile` derives a row weight from data it already had — live (unread/typing) grows to a 50px hex with a second preview line + 3px accent edge + 5% wash, normal keeps the legacy 64px row, cold (>6 days) shrinks to 36px and dims; the stock unread pill is gone (count rides the time in accent), and the hex ring carries a recency ember. Dividers dropped in both lists; the Contacts classic list uses the same hex at the same left offset (owner's row-parity rule). Swipe-delete, active bg, muted icon, typing line, emoji spans and the ephemeral hearth arc all preserved verbatim.
 
 ## Verification
-- `flutter analyze`: 0 issues. Full suite: **804 passed / 4 skips** (14 layout/interaction contracts + 7 search tests, incl. a `safeInsets.top == MainTabScreenHeader.clearance` no-band contract).
-- Visual: real ContactsScreen via `test/preview/contact_network_preview.dart?screen=1` — cosmic/light/blue, 390×844 and 320×700, closed + open + live-filtered. Chats header re-verified via `glass_preview.dart`: unchanged. `graphify update .`: 9264 nodes.
+- `flutter analyze`: 0 issues. Full suite: **810 passed / 4 skips** (14 honeycomb layout contracts + 7 header-search tests + 6 new row-weight contracts, incl. a live row at textScale 1.6 on 320px throwing no overflow).
+- Visual: real ContactsScreen via `contact_network_preview.dart?screen=1` (cosmic/light/blue, 390×844 + 320×700, search closed/open/filtered) and the real `ConversationTile` via `glass_preview.dart` (dark/light/blue/teal, top + scrolled to the cold rows). Deploy verified by `/version.json` gitCommit AND the served `main.dart.js` containing `ed037e5`. `graphify update .` run.
 
 ## Notes for next session
-- **Awaiting owner review on device.** Nothing merged: master untouched, no bump, no deploy from this session. Release path on his OK: PR `feat/contact-network` → master, bump 0.0.128 → **0.0.129** (PATCH, never `+N`), then `deploy-web.ps1` + `scripts/smoke/post-deploy-smoke.mjs`.
-- Full detail: `2026-07-24-session-honeycomb-header-search.md`, `2026-07-23-handoff-honeycomb-search.md`, `2026-07-23-session-honeycomb-core.md` (all local-only).
+- **Awaiting owner review on device.** Master untouched. Release path on his OK: PR `feat/contact-network` → master, bump 0.0.128 → **0.0.129** (PATCH, never `+N`), then `deploy-web.ps1` + `scripts/smoke/post-deploy-smoke.mjs`.
+- Agreed next phase (not started): Contacts becomes **People** (absorbs add-friend/invitations/blocked + a pending-requests port on the core), the Chats `+` opens the honeycomb as a picker, and long-press hex → straight into the chat. Ember is the easiest piece to drop if it reads as noise (`ConversationTile._ember` + `HexAvatar.ember`).
+- Full detail: `2026-07-24-session-chats-list-redesign.md`, `2026-07-24-session-honeycomb-header-search.md`, `2026-07-23-handoff-honeycomb-search.md`, `2026-07-23-session-honeycomb-core.md` (all local-only).
 
 ---
 ### Prior latest ↓
