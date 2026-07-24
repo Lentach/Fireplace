@@ -82,11 +82,20 @@ class EncryptionProvider extends ChangeNotifier {
     }
   }
 
-  /// Decrypt ciphertext from the given sender.
+  /// Decrypt ciphertext from the given sender. [messageId] binds the
+  /// one-shot Signal decrypt to its durable raw replay record.
   /// Delegates to [EncryptionService.decrypt].
-  Future<String> decrypt(int senderId, String ciphertext) async {
+  Future<String> decrypt(
+    int senderId,
+    String ciphertext, {
+    int? messageId,
+  }) async {
     try {
-      return await _encryptionService.decrypt(senderId, ciphertext);
+      return await _encryptionService.decrypt(
+        senderId,
+        ciphertext,
+        messageId: messageId,
+      );
     } catch (e) {
       _error = 'Decryption failed: $e';
       notifyListeners();

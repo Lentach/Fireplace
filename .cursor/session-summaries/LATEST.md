@@ -1,5 +1,24 @@
 # Latest session summary
 
+**Date:** 2026-07-23 — E2E cross-context ratchet repair isolated from pending Contacts work onto `fix/e2e-cross-context-ratchet`, committed/pushed as `fd89e7e`, and reviewed by parallel Standards + Spec agents.
+
+## What was done
+1. Created the branch from clean `origin/master`, restored only the 16 reviewed E2E production/test/runbook paths, and verified the diff contains no Contacts files.
+2. Pushed the 0.0.126 repair: origin-wide account+peer Web Locks, fail-closed missing-API behavior, exact-ciphertext replay, strict 40-record retention, web-only SharedPreferences coherence, provider message-id binding, and anonymized incident runbook.
+3. Standards review found no hard documented-standard violation or correctness/concurrency defect; three non-blocking notes: the Web Locks test is vacuous under default VM tests, formatting churn inflates the diff, and lock-name strings could be centralized.
+4. Spec review passed every incident requirement with no missing/partial behavior, scope creep, or unsafe implementation.
+
+## Verification
+- Isolated focused suite: **23 passed**; analyze: **0 issues**. Earlier full proof remains: Flutter **791 passed, 4 existing skips**, production web build succeeded, browser probe `SESSION_LOCK_PASS`, local full-stack Signal harness **11 passed**. Graph on the clean branch: 9208 nodes.
+
+## Notes for next session
+- Branch is pushed but **not merged or deployed**. Production remains 0.0.125 / `c15d770`; create/approve a PR before release.
+- Highest-value review follow-up: wire `session_cross_context_lock_web_test.dart` into a real Chrome CI lane when the project Chrome launcher is repaired. Manual source-controlled browser probe currently covers the JS boundary.
+- Full: `2026-07-23-session.md`.
+
+---
+### Prior latest ↓
+
 **Date:** 2026-07-22 — PR #94 merged into `master`; Appearance redesign and compact Settings website link released in frontend 0.0.125.
 
 ## What was done
@@ -77,7 +96,3 @@
 - After deploy: fully close+reopen the PWA (never uninstall — wipes E2E keys). Deploy is single-worktree now (`Desktop/Fireplace` on master holds `deploy-web.ps1` + gitignored config).
 - Full write-up: `2026-07-22-session-giphy-attribution-web-deploy.md`.
 
----
-
-## Previous
-- 2026-07-22: Contact inbox EXTRACTED to standalone PRIVATE `Lentach/fireplace-inbox` (Fastify+SQLite on VM :3001, nginx flip, monorepo cutover `4609af2` v0.0.123, tests 534/47) + security-hardened `9efae5c` after independent review + landing "Anti-Quantum Notes" card. Full: `2026-07-22-session-inbox-extraction.md`.

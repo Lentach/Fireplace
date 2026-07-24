@@ -25,8 +25,11 @@ class _WorkingEncryption extends EncryptionProvider {
       'ciphertext';
 
   @override
-  Future<String> decrypt(int senderId, String ciphertext) async =>
-      jsonEncode(E2eEnvelope.build('decrypted'));
+  Future<String> decrypt(
+    int senderId,
+    String ciphertext, {
+    int? messageId,
+  }) async => jsonEncode(E2eEnvelope.build('decrypted'));
 
   @override
   Future<Map<String, dynamic>?> getDecryptedContent(int messageId) async =>
@@ -34,7 +37,9 @@ class _WorkingEncryption extends EncryptionProvider {
 
   @override
   Future<void> saveDecryptedContent(
-          int messageId, Map<String, dynamic> data) async {}
+    int messageId,
+    Map<String, dynamic> data,
+  ) async {}
 }
 
 /// Encryption fake whose ensureSession never completes — rows stay SENDING.
@@ -46,24 +51,24 @@ class _StuckEncryption extends _WorkingEncryption {
 }
 
 Map<String, dynamic> _convJson() => {
-      'id': 10,
-      'userOne': {'id': 1, 'username': 'alice', 'tag': '0001'},
-      'userTwo': {'id': 2, 'username': 'bob', 'tag': '0002'},
-      'createdAt': '2026-01-01T00:00:00.000Z',
-      'unreadCount': 0,
-      'lastMessage': null,
-    };
+  'id': 10,
+  'userOne': {'id': 1, 'username': 'alice', 'tag': '0001'},
+  'userTwo': {'id': 2, 'username': 'bob', 'tag': '0002'},
+  'createdAt': '2026-01-01T00:00:00.000Z',
+  'unreadCount': 0,
+  'lastMessage': null,
+};
 
 Map<String, dynamic> _plainIncomingJson(int id) => {
-      'id': id,
-      'content': 'hello there',
-      'senderId': 2,
-      'senderUsername': 'bob',
-      'conversationId': 10,
-      'deliveryStatus': 'DELIVERED',
-      'messageType': 'TEXT',
-      'createdAt': '2026-01-01T00:00:00.000Z',
-    };
+  'id': id,
+  'content': 'hello there',
+  'senderId': 2,
+  'senderUsername': 'bob',
+  'conversationId': 10,
+  'deliveryStatus': 'DELIVERED',
+  'messageType': 'TEXT',
+  'createdAt': '2026-01-01T00:00:00.000Z',
+};
 
 void main() {
   late MessagingProvider provider;
@@ -94,8 +99,7 @@ void main() {
   group('onMessageSent temp -> real replacement', () {
     setUp(() => wire(_WorkingEncryption()));
 
-    test(
-        'replaces the optimistic temp row with the server row and restores '
+    test('replaces the optimistic temp row with the server row and restores '
         'plaintext from pending send content', () async {
       provider.sendMessage('secret plan');
       // Optimistic row is visible immediately.
@@ -108,8 +112,7 @@ void main() {
       // Let _encryptAndSend finish and capture the emitted tempId.
       await Future<void>.delayed(Duration.zero);
       await Future<void>.delayed(Duration.zero);
-      final sendEvent =
-          emitted.singleWhere((e) => e['event'] == 'sendMessage');
+      final sendEvent = emitted.singleWhere((e) => e['event'] == 'sendMessage');
       final tempId = (sendEvent['data'] as Map)['tempId'] as String;
       expect(tempId, temp.tempId);
 
@@ -131,42 +134,49 @@ void main() {
       expect(provider.messages, hasLength(1));
       final real = provider.messages.single;
       expect(real.id, 555);
-      expect(real.content, 'secret plan',
-          reason: 'plaintext must be restored from _pendingSendContent, '
-              'never shown as [encrypted]');
+      expect(
+        real.content,
+        'secret plan',
+        reason:
+            'plaintext must be restored from _pendingSendContent, '
+            'never shown as [encrypted]',
+      );
       expect(real.deliveryStatus, MessageDeliveryStatus.sent);
       expect(provider.messages.where((m) => m.id < 0), isEmpty);
     });
 
-    test('messageSent with an unknown tempId does not corrupt existing rows',
-        () async {
-      provider.sendMessage('first');
-      await Future<void>.delayed(Duration.zero);
-      await Future<void>.delayed(Duration.zero);
-      final before = provider.messages.single;
+    test(
+      'messageSent with an unknown tempId does not corrupt existing rows',
+      () async {
+        provider.sendMessage('first');
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        final before = provider.messages.single;
 
-      provider.onMessageSent({
-        'id': 777,
-        'content': '[encrypted]',
-        'encryptedContent': 'ciphertext',
-        'senderId': 1,
-        'senderUsername': 'alice',
-        'conversationId': 10,
-        'deliveryStatus': 'SENT',
-        'messageType': 'TEXT',
-        'createdAt': '2026-01-01T00:00:02.000Z',
-        'tempId': 'temp_unknown_999',
-      });
+        provider.onMessageSent({
+          'id': 777,
+          'content': '[encrypted]',
+          'encryptedContent': 'ciphertext',
+          'senderId': 1,
+          'senderUsername': 'alice',
+          'conversationId': 10,
+          'deliveryStatus': 'SENT',
+          'messageType': 'TEXT',
+          'createdAt': '2026-01-01T00:00:02.000Z',
+          'tempId': 'temp_unknown_999',
+        });
 
-      // The pending row for 'first' must still exist untouched.
-      final firstRow =
-          provider.messages.where((m) => m.tempId == before.tempId);
-      expect(firstRow, hasLength(1));
-      expect(firstRow.single.content, 'first');
-      // No duplicate ids.
-      final ids = provider.messages.map((m) => m.id).toList();
-      expect(ids.toSet().length, ids.length);
-    });
+        // The pending row for 'first' must still exist untouched.
+        final firstRow = provider.messages.where(
+          (m) => m.tempId == before.tempId,
+        );
+        expect(firstRow, hasLength(1));
+        expect(firstRow.single.content, 'first');
+        // No duplicate ids.
+        final ids = provider.messages.map((m) => m.id).toList();
+        expect(ids.toSet().length, ids.length);
+      },
+    );
   });
 
   group('reactions', () {
@@ -230,31 +240,38 @@ void main() {
   group('typing indicators', () {
     setUp(() => wire(_WorkingEncryption()));
 
-    test('onPartnerTyping sets the flag and expires after the timer window',
-        () {
-      fakeAsync((async) {
-        provider.onPartnerTyping({'conversationId': 10});
-        expect(provider.isPartnerTyping(10), isTrue);
+    test(
+      'onPartnerTyping sets the flag and expires after the timer window',
+      () {
+        fakeAsync((async) {
+          provider.onPartnerTyping({'conversationId': 10});
+          expect(provider.isPartnerTyping(10), isTrue);
 
-        async.elapse(const Duration(seconds: 2, milliseconds: 900));
-        expect(provider.isPartnerTyping(10), isTrue,
-            reason: 'flag must survive until the 3s window elapses');
+          async.elapse(const Duration(seconds: 2, milliseconds: 900));
+          expect(
+            provider.isPartnerTyping(10),
+            isTrue,
+            reason: 'flag must survive until the 3s window elapses',
+          );
 
-        async.elapse(const Duration(milliseconds: 200));
-        expect(provider.isPartnerTyping(10), isFalse);
-      });
-    });
+          async.elapse(const Duration(milliseconds: 200));
+          expect(provider.isPartnerTyping(10), isFalse);
+        });
+      },
+    );
 
-    test('typing in another conversation does not leak into the active one',
-        () {
-      fakeAsync((async) {
-        provider.onPartnerTyping({'conversationId': 99});
-        expect(provider.isPartnerTyping(10), isFalse);
-        expect(provider.isPartnerTyping(99), isTrue);
-        async.elapse(const Duration(seconds: 4));
-        expect(provider.isPartnerTyping(99), isFalse);
-      });
-    });
+    test(
+      'typing in another conversation does not leak into the active one',
+      () {
+        fakeAsync((async) {
+          provider.onPartnerTyping({'conversationId': 99});
+          expect(provider.isPartnerTyping(10), isFalse);
+          expect(provider.isPartnerTyping(99), isTrue);
+          async.elapse(const Duration(seconds: 4));
+          expect(provider.isPartnerTyping(99), isFalse);
+        });
+      },
+    );
 
     test('an incoming message from the partner clears the typing flag', () {
       fakeAsync((async) {
@@ -262,8 +279,11 @@ void main() {
         expect(provider.isPartnerTyping(10), isTrue);
 
         provider.onNewMessage(_plainIncomingJson(60));
-        expect(provider.isPartnerTyping(10), isFalse,
-            reason: 'message arrival supersedes the typing indicator');
+        expect(
+          provider.isPartnerTyping(10),
+          isFalse,
+          reason: 'message arrival supersedes the typing indicator',
+        );
       });
     });
   });
@@ -308,57 +328,63 @@ void main() {
   });
 
   group('markSendingMessagesFailed', () {
-    test('flips SENDING rows to failed and leaves settled rows untouched',
-        () async {
-      wire(_StuckEncryption());
+    test(
+      'flips SENDING rows to failed and leaves settled rows untouched',
+      () async {
+        wire(_StuckEncryption());
 
-      // Settled row from the peer.
-      provider.onMessageHistory({
-        'conversationId': 10,
-        'messages': [_plainIncomingJson(80)],
-      });
+        // Settled row from the peer.
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [_plainIncomingJson(80)],
+        });
 
-      // Own send stuck in SENDING (ensureSession never resolves).
-      provider.sendMessage('stuck one');
-      await Future<void>.delayed(Duration.zero);
-      expect(
-        provider.messages
-            .where((m) => m.deliveryStatus == MessageDeliveryStatus.sending),
-        hasLength(1),
-      );
+        // Own send stuck in SENDING (ensureSession never resolves).
+        provider.sendMessage('stuck one');
+        await Future<void>.delayed(Duration.zero);
+        expect(
+          provider.messages.where(
+            (m) => m.deliveryStatus == MessageDeliveryStatus.sending,
+          ),
+          hasLength(1),
+        );
 
-      provider.markSendingMessagesFailed('socket error');
+        provider.markSendingMessagesFailed('socket error');
 
-      final own = provider.messages.singleWhere((m) => m.tempId != null);
-      expect(own.deliveryStatus, MessageDeliveryStatus.failed);
-      final settled = provider.messages.singleWhere((m) => m.id == 80);
-      expect(settled.deliveryStatus, MessageDeliveryStatus.delivered,
-          reason: 'already-settled rows must not be touched');
-    });
+        final own = provider.messages.singleWhere((m) => m.tempId != null);
+        expect(own.deliveryStatus, MessageDeliveryStatus.failed);
+        final settled = provider.messages.singleWhere((m) => m.id == 80);
+        expect(
+          settled.deliveryStatus,
+          MessageDeliveryStatus.delivered,
+          reason: 'already-settled rows must not be touched',
+        );
+      },
+    );
 
-    test('failed rows become retryable: a retry emits sendMessage again',
-        () async {
-      wire(_WorkingEncryption());
+    test(
+      'failed rows become retryable: a retry emits sendMessage again',
+      () async {
+        wire(_WorkingEncryption());
 
-      provider.sendMessage('retry me');
-      await Future<void>.delayed(Duration.zero);
-      await Future<void>.delayed(Duration.zero);
-      expect(
-          emitted.where((e) => e['event'] == 'sendMessage'), hasLength(1));
+        provider.sendMessage('retry me');
+        await Future<void>.delayed(Duration.zero);
+        await Future<void>.delayed(Duration.zero);
+        expect(emitted.where((e) => e['event'] == 'sendMessage'), hasLength(1));
 
-      // Simulate socket error flipping the (already sent but unconfirmed) row.
-      provider.markSendingMessagesFailed('socket error');
+        // Simulate socket error flipping the (already sent but unconfirmed) row.
+        provider.markSendingMessagesFailed('socket error');
 
-      final row = provider.messages.single;
-      // Re-run the send path with the same tempId — the exactly-once latch
-      // must have been released by the failure.
-      await provider.encryptAndSendForTest(
-        recipientId: 2,
-        content: 'retry me',
-        tempId: row.tempId!,
-      );
-      expect(
-          emitted.where((e) => e['event'] == 'sendMessage'), hasLength(2));
-    });
+        final row = provider.messages.single;
+        // Re-run the send path with the same tempId — the exactly-once latch
+        // must have been released by the failure.
+        await provider.encryptAndSendForTest(
+          recipientId: 2,
+          content: 'retry me',
+          tempId: row.tempId!,
+        );
+        expect(emitted.where((e) => e['event'] == 'sendMessage'), hasLength(2));
+      },
+    );
   });
 }

@@ -714,6 +714,7 @@ extension MessagingDecrypt on MessagingProvider {
       final plaintext = await _encryptionProvider!.decrypt(
         msg.senderId,
         msg.encryptedContent!,
+        messageId: msg.id,
       );
       // Decrypt from this peer works again — allow a future failure to issue
       // a fresh rebuild request.
