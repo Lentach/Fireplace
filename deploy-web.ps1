@@ -89,7 +89,21 @@ if (-not $SkipBuild) {
   if ($buildExit -ne 0 -or -not (Test-Path frontend/build/web/version.json)) {
     throw "Build failed (flutter exit=$buildExit) or output missing (frontend/build/web/version.json)."
   }
-  Write-Host "Built frontend/build/web  (commit=$commit, version=$ver)" -ForegroundColor Green
+  # Inject the build commit into version.json: the app's stale-bundle nudge
+  # compares this served value against its compiled-in GIT_COMMIT dart-define.
+  # Flutter's generated version.json has no commit field of its own.
+  $vjPath = "frontend/build/web/version.json"
+  $vj = Get-Content $vjPath -Raw | ConvertFrom-Json
+  $vj | Add-Member -NotePropertyName gitCommit -NotePropertyValue $commit -Force
+  # BOM-free write: PS 5.1's Set-Content -Encoding utf8 prepends a UTF-8 BOM,
+  # which breaks JSON.parse / package_info_plus in every web client.
+  $vjJson = $vj | ConvertTo-Json -Compress
+  [System.IO.File]::WriteAllText((Resolve-Path $vjPath), $vjJson, (New-Object System.Text.UTF8Encoding($false)))
+  $vjBytes = [System.IO.File]::ReadAllBytes((Resolve-Path $vjPath))
+  if ($vjBytes.Length -ge 3 -and $vjBytes[0] -eq 0xEF -and $vjBytes[1] -eq 0xBB -and $vjBytes[2] -eq 0xBF) {
+    throw "version.json has a UTF-8 BOM - web clients cannot parse it. Aborting publish."
+  }
+  Write-Host "Built frontend/build/web  (commit=$commit, version=$ver; gitCommit injected into version.json)" -ForegroundColor Green
 }
 
 # ---------- publish (PC -> VM staging -> atomic swap) ----------

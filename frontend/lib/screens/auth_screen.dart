@@ -7,6 +7,7 @@ import '../theme/rpg_theme.dart';
 import '../providers/auth_provider.dart';
 import '../widgets/auth_form.dart';
 import '../widgets/glass/glass_surface.dart';
+import '../services/api_service.dart';
 import '../widgets/chat_background_pattern.dart';
 import '../l10n/app_localizations.dart';
 
@@ -192,6 +193,23 @@ class _AuthScreenState extends State<AuthScreen> {
                             ),
                           ],
                         ],
+                      ),
+                    ),
+                    const SizedBox(height: 24),
+                    // Diagnostic footer: running-bundle commit (stale-build
+                    // discriminator in every victim screenshot) plus the
+                    // recorded involuntary session-end reason when one exists.
+                    // Deliberately NOT the async PackageInfo semver: on web
+                    // that fetches the SERVER's version.json and can lie about
+                    // the running bundle; the compiled commit cannot.
+                    Text(
+                      authProvider.lastSessionEndReason == null
+                          ? ApiService.appCommit
+                          : '${ApiService.appCommit} · ${l10n.sessionEndedReason(authProvider.lastSessionEndReason!)}',
+                      textAlign: TextAlign.center,
+                      style: RpgTheme.bodyFont(
+                        fontSize: 11,
+                        color: fc.mutedText.withValues(alpha: 0.7),
                       ),
                     ),
                   ],

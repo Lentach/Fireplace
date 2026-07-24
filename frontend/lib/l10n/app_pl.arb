@@ -184,6 +184,11 @@
   "passwordMustContain": "Hasło musi zawierać wielką literę, małą literę i cyfrę",
   "oldPasswordRequired": "Obecne hasło jest wymagane",
   "resetButton": "Zmień",
+  "sessionEndedReason": "wylogowano: {reason}",
+  "@sessionEndedReason": {
+    "placeholders": { "reason": { "type": "String" } }
+  },
+  "updateAvailableCloseReopen": "Dostępna aktualizacja — całkowicie zamknij i ponownie otwórz aplikację.",
   "authTagline": "Wiadomości, które przeczytają tylko dwie osoby",
   "authLoginTab": "LOGOWANIE",
   "authRegisterTab": "REJESTRACJA",

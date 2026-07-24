@@ -514,6 +514,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get resetButton => 'Reset';
 
   @override
+  String sessionEndedReason(String reason) {
+    return 'signed out: $reason';
+  }
+
+  @override
+  String get updateAvailableCloseReopen =>
+      'Update available — fully close and reopen the app.';
+
+  @override
   String get authTagline => 'Messages only two people can read';
 
   @override

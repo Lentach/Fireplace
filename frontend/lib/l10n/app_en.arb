@@ -196,6 +196,11 @@
   "passwordMustContain": "Password must contain uppercase, lowercase, and number",
   "oldPasswordRequired": "Old password is required",
   "resetButton": "Reset",
+  "sessionEndedReason": "signed out: {reason}",
+  "@sessionEndedReason": {
+    "placeholders": { "reason": { "type": "String" } }
+  },
+  "updateAvailableCloseReopen": "Update available — fully close and reopen the app.",
   "authTagline": "Messages only two people can read",
   "authLoginTab": "LOGIN",
   "authRegisterTab": "REGISTER",

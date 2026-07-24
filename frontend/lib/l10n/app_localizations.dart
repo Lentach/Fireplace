@@ -962,6 +962,18 @@ abstract class AppLocalizations {
   /// **'Zmień'**
   String get resetButton;
 
+  /// No description provided for @sessionEndedReason.
+  ///
+  /// In pl, this message translates to:
+  /// **'wylogowano: {reason}'**
+  String sessionEndedReason(String reason);
+
+  /// No description provided for @updateAvailableCloseReopen.
+  ///
+  /// In pl, this message translates to:
+  /// **'Dostępna aktualizacja — całkowicie zamknij i ponownie otwórz aplikację.'**
+  String get updateAvailableCloseReopen;
+
   /// No description provided for @authTagline.
   ///
   /// In pl, this message translates to:
