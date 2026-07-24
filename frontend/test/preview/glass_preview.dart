@@ -236,7 +236,10 @@ class _ChatListPreviewState extends State<_ChatListPreview> {
       'see you at the cabin on saturday then?',
     ][i % 6],
     messageType: MessageType.text,
-    createdAt: DateTime.now().subtract(Duration(hours: i * 3)),
+    // Tail rows are genuinely stale so the "cold" density shows up here.
+    createdAt: DateTime.now().subtract(
+      i >= 8 ? Duration(days: 7 + i) : Duration(hours: i * 3),
+    ),
     deliveryStatus: MessageDeliveryStatus.read,
   );
 
@@ -250,7 +253,7 @@ class _ChatListPreviewState extends State<_ChatListPreview> {
             child: Builder(
               builder: (context) {
                 final media = MediaQuery.paddingOf(context);
-                return ListView.separated(
+                return ListView.builder(
                   padding: EdgeInsets.fromLTRB(
                     8,
                     media.top + MainTabScreenHeader.clearance,
@@ -258,10 +261,6 @@ class _ChatListPreviewState extends State<_ChatListPreview> {
                     media.bottom + 8,
                   ),
                   itemCount: _names.length,
-                  separatorBuilder: (_, i) => Divider(
-                    height: 1,
-                    color: Theme.of(context).dividerTheme.color,
-                  ),
                   itemBuilder: (context, i) => ConversationTile(
                     conversationId: i,
                     displayName: _names[i],

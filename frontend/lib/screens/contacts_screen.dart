@@ -8,7 +8,7 @@ import '../providers/conversations_provider.dart';
 import '../providers/friends_provider.dart';
 import '../providers/auth_provider.dart';
 import '../theme/rpg_theme.dart';
-import '../widgets/avatar_circle.dart';
+import '../widgets/hex_avatar.dart';
 import '../widgets/contact_network_view.dart';
 import '../widgets/glass/glass_surface.dart';
 import '../widgets/main_tab_screen_header.dart';
@@ -390,12 +390,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
       );
     }
 
-    final borderColor = FireplaceColors.of(context).convItemBorder;
-
-    return ListView.separated(
+    return ListView.builder(
       padding: EdgeInsets.fromLTRB(8, topClearance, 8, bottomClearance + 8),
       itemCount: friends.length,
-      separatorBuilder: (_, index) => Divider(height: 1, color: borderColor),
       itemBuilder: (context, index) {
         final friend = friends[index];
         return _buildContactTile(context, friend);
@@ -405,42 +402,52 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   Widget _buildContactTile(BuildContext context, UserModel friend) {
     final colorScheme = Theme.of(context).colorScheme;
+    final colors = FireplaceColors.of(context);
     final user = friend;
 
-    return Material(
-      color: Colors.transparent,
-      borderRadius: BorderRadius.circular(8),
-      child: InkWell(
-        onTap: () => _openContactCard(context, user),
-        borderRadius: BorderRadius.circular(8),
-        splashColor: Theme.of(
-          context,
-        ).colorScheme.primary.withValues(alpha: 0.2),
-        child: Padding(
-          // Matches ConversationTile metrics exactly (owner: rows must be
-          // the same height as the Chats tab): v10 + 44px avatar = 64px.
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-          child: Row(
-            children: [
-              AvatarCircle(
-                displayName: user.username,
-                radius: 22,
-                profilePictureUrl: user.profilePictureUrl,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Text(
-                  user.username,
-                  style: RpgTheme.bodyFont(
-                    fontSize: 14,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+      child: Material(
+        color: Colors.transparent,
+        borderRadius: BorderRadius.circular(12),
+        child: InkWell(
+          onTap: () => _openContactCard(context, user),
+          borderRadius: BorderRadius.circular(12),
+          splashColor: colorScheme.primary.withValues(alpha: 0.2),
+          child: Padding(
+            // Matches the ConversationTile "normal" row exactly (owner: rows
+            // must line up with the Chats tab): v10 + 44px hex = 64px tall,
+            // and 4+21 = the 4+6+3+12 left offset of a chat row's hex.
+            padding: const EdgeInsets.fromLTRB(21, 10, 12, 10),
+            child: Row(
+              children: [
+                HexAvatar(
+                  size: 44,
+                  displayName: user.username,
+                  imageUrl: user.profilePictureUrl,
+                  surface: colors.convItemBg,
+                  borderColor: colors.convItemBorder,
+                  initialsStyle: RpgTheme.bodyFont(
+                    fontSize: 44 * 0.34,
+                    fontWeight: FontWeight.w800,
                     color: colorScheme.onSurface,
-                    fontWeight: FontWeight.w600,
                   ),
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
                 ),
-              ),
-            ],
+                const SizedBox(width: 12),
+                Expanded(
+                  child: Text(
+                    user.username,
+                    style: RpgTheme.bodyFont(
+                      fontSize: 14,
+                      color: colorScheme.onSurface,
+                      fontWeight: FontWeight.w600,
+                    ),
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

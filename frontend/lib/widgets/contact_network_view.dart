@@ -4,9 +4,9 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/semantics.dart';
 
-import '../config/app_config.dart';
 import '../models/user_model.dart';
 import '../theme/rpg_theme.dart';
+import 'hex_avatar.dart';
 
 /// A provider-free rendering of the existing contact set as a "honeycomb
 /// core": the local user's reticle node feeds a fixed-width staggered field
@@ -80,27 +80,26 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
     super.initState();
     _routeController =
         AnimationController(
-            vsync: this,
-            // Slow enough to READ: the strip travelling to the core is the
-            // point of the interaction (owner call, overrides the entrance
-            // cap - this is user-triggered feedback, not chrome).
-            duration: const Duration(milliseconds: 480),
-          )
-          ..addStatusListener((status) {
-            if (status != AnimationStatus.completed) return;
-            final id = _routeContactId;
-            _routeController.reset();
-            if (id == null) return;
-            UserModel? target;
-            for (final contact in widget.contacts) {
-              if (contact.id == id) {
-                target = contact;
-                break;
-              }
+          vsync: this,
+          // Slow enough to READ: the strip travelling to the core is the
+          // point of the interaction (owner call, overrides the entrance
+          // cap - this is user-triggered feedback, not chrome).
+          duration: const Duration(milliseconds: 480),
+        )..addStatusListener((status) {
+          if (status != AnimationStatus.completed) return;
+          final id = _routeContactId;
+          _routeController.reset();
+          if (id == null) return;
+          UserModel? target;
+          for (final contact in widget.contacts) {
+            if (contact.id == id) {
+              target = contact;
+              break;
             }
-            setState(() => _routeContactId = null);
-            if (target != null) widget.onContactTap(target);
-          });
+          }
+          setState(() => _routeContactId = null);
+          if (target != null) widget.onContactTap(target);
+        });
   }
 
   @override
@@ -132,7 +131,11 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
       fontWeight: FontWeight.w600,
       color: colorScheme.onSurface,
     );
-    final labelHeight = _measureHeight(nodeTextStyle, textScaler, textDirection);
+    final labelHeight = _measureHeight(
+      nodeTextStyle,
+      textScaler,
+      textDirection,
+    );
 
     final inputs = ContactHexLayout.sortContacts([
       for (final contact in widget.contacts)
@@ -269,10 +272,7 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                                 : Curves.easeInOut.transform(
                                     _routeController.value,
                                   ),
-                            routeIndex: _slotIndexOf(
-                              layout,
-                              _routeContactId,
-                            ),
+                            routeIndex: _slotIndexOf(layout, _routeContactId),
                           ),
                         ),
                       ),
@@ -344,7 +344,7 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                     focused: false,
                   ),
                   child: ClipOval(
-                    child: _HexAvatar(
+                    child: HexAvatarSurface(
                       imageUrl: widget.localNodeAvatarUrl,
                       initials: _initials(widget.localNodeLabel),
                       surface: colors.convItemBg,
@@ -438,8 +438,8 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                             focused: focused || routing,
                           ),
                           child: ClipPath(
-                            clipper: const _HexClipper(),
-                            child: _HexAvatar(
+                            clipper: const HexClipper(),
+                            child: HexAvatarSurface(
                               imageUrl: contact.profilePictureUrl,
                               initials: _initials(contact.username),
                               surface: colors.convItemBg,
@@ -477,7 +477,8 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
     if (!_scrollController.hasClients) return;
     final position = _scrollController.position;
     final top = slot.dy - ContactHexLayout.hexRadius - 16;
-    final bottom = slot.dy + ContactHexLayout.hexRadius + layout.labelHeight + 24;
+    final bottom =
+        slot.dy + ContactHexLayout.hexRadius + layout.labelHeight + 24;
     final viewTop = position.pixels;
     final viewBottom = viewTop + position.viewportDimension;
     double? target;
@@ -493,10 +494,7 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
     }
   }
 
-  Widget _buildEmptyCopy(
-    BuildContext context,
-    ContactHexLayoutResult layout,
-  ) {
+  Widget _buildEmptyCopy(BuildContext context, ContactHexLayoutResult layout) {
     final colors = FireplaceColors.of(context);
     return Positioned(
       left: 24,
@@ -547,17 +545,7 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
     return painter.size.height.ceilToDouble() + 1;
   }
 
-  static String _initials(String value) {
-    final parts = value
-        .split(RegExp(r'[^A-Za-z0-9]+'))
-        .where((part) => part.isNotEmpty)
-        .toList(growable: false);
-    final initials = parts
-        .take(2)
-        .map((part) => part.substring(0, 1).toUpperCase())
-        .join();
-    return initials.isEmpty ? '?' : initials;
-  }
+  static String _initials(String value) => hexInitials(value);
 }
 
 /// Sorting input to the pure hex-field algorithm.
@@ -608,9 +596,7 @@ class ContactHexLayoutResult {
       slot.dx - pitch / 2,
       slot.dy - ContactHexLayout.hexRadius,
       pitch,
-      ContactHexLayout.hexRadius * 2 +
-          ContactHexLayout.labelGap +
-          labelHeight,
+      ContactHexLayout.hexRadius * 2 + ContactHexLayout.labelGap + labelHeight,
     );
   }
 }
@@ -778,21 +764,6 @@ class ContactHexLayout {
   }
 }
 
-/// Pointy-top hexagon path centered on [c].
-Path _hexPath(Offset c, double r) {
-  final path = Path();
-  for (var i = 0; i < 6; i++) {
-    final a = -math.pi / 2 + i * math.pi / 3;
-    final p = c + Offset(math.cos(a), math.sin(a)) * r;
-    if (i == 0) {
-      path.moveTo(p.dx, p.dy);
-    } else {
-      path.lineTo(p.dx, p.dy);
-    }
-  }
-  return path..close();
-}
-
 /// Hex terminal chrome: outline, inner hairline, focus halo. Painted over
 /// the clipped avatar/initials surface so edges stay crisp.
 class _HexChromePainter extends CustomPainter {
@@ -811,14 +782,14 @@ class _HexChromePainter extends CustomPainter {
     final c = Offset(size.width / 2, size.height / 2);
     final r = size.height / 2 - 0.75;
     canvas.drawPath(
-      _hexPath(c, r),
+      hexPath(c, r),
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1.25
         ..color = borderColor.withValues(alpha: 0.6),
     );
     canvas.drawPath(
-      _hexPath(c, r - 3),
+      hexPath(c, r - 3),
       Paint()
         ..style = PaintingStyle.stroke
         ..strokeWidth = 1
@@ -826,7 +797,7 @@ class _HexChromePainter extends CustomPainter {
     );
     if (focused) {
       canvas.drawPath(
-        _hexPath(c, r + 3),
+        hexPath(c, r + 3),
         Paint()
           ..style = PaintingStyle.stroke
           ..strokeWidth = 1
@@ -840,88 +811,6 @@ class _HexChromePainter extends CustomPainter {
       oldDelegate.borderColor != borderColor ||
       oldDelegate.accent != accent ||
       oldDelegate.focused != focused;
-}
-
-class _HexClipper extends CustomClipper<Path> {
-  const _HexClipper();
-
-  @override
-  Path getClip(Size size) => _hexPath(
-    Offset(size.width / 2, size.height / 2),
-    size.height / 2 - 0.75,
-  );
-
-  @override
-  bool shouldReclip(covariant _HexClipper oldClipper) => false;
-}
-
-/// The hex surface: the contact's avatar covering the whole hex, or the
-/// themed surface + initials when there is no (loadable) avatar.
-class _HexAvatar extends StatefulWidget {
-  const _HexAvatar({
-    required this.imageUrl,
-    required this.initials,
-    required this.surface,
-    required this.initialsStyle,
-  });
-
-  final String? imageUrl;
-  final String initials;
-  final Color surface;
-  final TextStyle initialsStyle;
-
-  @override
-  State<_HexAvatar> createState() => _HexAvatarState();
-}
-
-class _HexAvatarState extends State<_HexAvatar> {
-  bool _imageLoadError = false;
-
-  @override
-  void didUpdateWidget(_HexAvatar oldWidget) {
-    super.didUpdateWidget(oldWidget);
-    if (oldWidget.imageUrl != widget.imageUrl) {
-      _imageLoadError = false;
-    }
-  }
-
-  String _resolvedUrl() {
-    final url = widget.imageUrl!;
-    final isAbsolute =
-        url.startsWith('http://') || url.startsWith('https://');
-    // Same resolution as AvatarCircle: the per-upload UUID filename is the
-    // cache key, no cache-busting query.
-    return isAbsolute ? url : '${AppConfig.baseUrl}$url';
-  }
-
-  Widget _fallback() {
-    return ColoredBox(
-      color: widget.surface,
-      child: Center(
-        child: Text(widget.initials, style: widget.initialsStyle),
-      ),
-    );
-  }
-
-  @override
-  Widget build(BuildContext context) {
-    final url = widget.imageUrl;
-    if (url == null || url.trim().isEmpty || _imageLoadError) {
-      return _fallback();
-    }
-    return Image.network(
-      _resolvedUrl(),
-      fit: BoxFit.cover,
-      errorBuilder: (context, error, stackTrace) {
-        WidgetsBinding.instance.addPostFrameCallback((_) {
-          if (mounted) setState(() => _imageLoadError = true);
-        });
-        return _fallback();
-      },
-      loadingBuilder: (context, child, loadingProgress) =>
-          loadingProgress == null ? child : _fallback(),
-    );
-  }
 }
 
 /// Instrument reticle for the local node: outer ring, N/E/S/W ticks in the
@@ -1055,18 +944,19 @@ class _HexFieldPainter extends CustomPainter {
     // frame has free sockets (chrome, not fake contacts).
     final dotPaint = Paint()..color = borderColor.withValues(alpha: 0.18);
     if (layout.slots.isNotEmpty) {
-      final rowPitch = ContactHexLayout.hexRadius * 2 +
+      final rowPitch =
+          ContactHexLayout.hexRadius * 2 +
           ContactHexLayout.labelGap +
           layout.labelHeight +
           9;
       var wideRow = layout.rowCount.isEven;
-      for (var y = layout.slots.last.dy + rowPitch;
-          y < size.height - 24;
-          y += rowPitch) {
+      for (
+        var y = layout.slots.last.dy + rowPitch;
+        y < size.height - 24;
+        y += rowPitch
+      ) {
         final count = wideRow ? layout.columnsWide : layout.columnsWide - 1;
-        final offsets = [
-          for (var i = 0; i < count; i++) -(count - 1) / 2 + i,
-        ];
+        final offsets = [for (var i = 0; i < count; i++) -(count - 1) / 2 + i];
         for (final f in offsets) {
           canvas.drawCircle(
             Offset(core.dx + f * layout.pitch, y),
@@ -1088,8 +978,7 @@ class _HexFieldPainter extends CustomPainter {
     for (var i = 0; i < layout.slots.length; i++) {
       final slot = layout.slots[i];
       final row = layout.rowOf[i];
-      final rowT =
-          ((entranceProgress * (rowCount + 1)) - row).clamp(0.0, 1.0);
+      final rowT = ((entranceProgress * (rowCount + 1)) - row).clamp(0.0, 1.0);
       if (rowT <= 0) continue;
       final hasConv = conversationIds.contains(layout.inputs[i].id);
       stubPaint.color = baseColor.withValues(alpha: 0.38 * rowT);
@@ -1150,10 +1039,7 @@ class _HexFieldPainter extends CustomPainter {
             remainingStart -= m.length;
             continue;
           }
-          canvas.drawPath(
-            m.extractPath(remainingStart, m.length),
-            routePaint,
-          );
+          canvas.drawPath(m.extractPath(remainingStart, m.length), routePaint);
           remainingStart = 0;
         }
         // Bright head where the strip currently is: makes the travel
@@ -1175,10 +1061,7 @@ class _HexFieldPainter extends CustomPainter {
         final slot = layout.slots[index];
         canvas.drawRect(
           Rect.fromCenter(
-            center: Offset(
-              slot.dx,
-              slot.dy - ContactHexLayout.hexRadius - 9,
-            ),
+            center: Offset(slot.dx, slot.dy - ContactHexLayout.hexRadius - 9),
             width: 3.5,
             height: 3.5,
           ),
@@ -1198,4 +1081,3 @@ class _HexFieldPainter extends CustomPainter {
       oldDelegate.routeProgress != routeProgress ||
       oldDelegate.routeIndex != routeIndex;
 }
-
