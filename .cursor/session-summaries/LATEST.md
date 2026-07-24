@@ -1,6 +1,6 @@
 # Latest session summary
 
-**Date:** 2026-07-23 — PR #95 merged the reviewed E2E cross-context ratchet repair into `master` as `44e8c52`; frontend source is now 0.0.126, not yet deployed.
+**Date:** 2026-07-23 — PR #95 E2E cross-context ratchet repair deployed to production as frontend 0.0.126 / bundle `0486cb3`; backend intentionally unchanged.
 
 ## What was done
 1. Created the branch from clean `origin/master`, restored only the 16 reviewed E2E production/test/runbook paths, and verified the diff contains no Contacts files.
@@ -9,10 +9,10 @@
 4. Spec review passed every incident requirement with no missing/partial behavior, scope creep, or unsafe implementation.
 
 ## Verification
-- Isolated focused suite: **23 passed**; analyze: **0 issues**. Earlier full proof remains: Flutter **791 passed, 4 existing skips**, production web build succeeded, browser probe `SESSION_LOCK_PASS`, local full-stack Signal harness **11 passed**. PR CI passed Backend tests and Flutter analyze/tests. Graph on the clean branch: 9208 nodes.
+- Isolated focused suite: **23 passed**; analyze: **0 issues**. Earlier full proof: Flutter **791 passed, 4 existing skips**, browser probe `SESSION_LOCK_PASS`, local full-stack Signal harness **11 passed**. PR CI passed both jobs. Production post-deploy smoke passed `/health`, `/version.json` 0.0.126, `/version`, literal bundle SHA `0486cb3`, and Flutter app boot. Graph: 9208 nodes.
 
 ## Notes for next session
-- PR #95 is merged on `master` (`44e8c52`) but **not deployed**. Live frontend remains 0.0.125; live backend remains 0.0.123 / `4609af2`. Deploy is a separate explicit operation.
+- PR #95 is merged and deployed. Users must fully close and reopen the PWA; never clear site data. Live frontend is 0.0.126 / `0486cb3`; backend remains 0.0.123 / `4609af2`.
 - Highest-value review follow-up: wire `session_cross_context_lock_web_test.dart` into a real Chrome CI lane when the project Chrome launcher is repaired. Manual source-controlled browser probe currently covers the JS boundary.
 - Full: `2026-07-23-session.md`.
 
