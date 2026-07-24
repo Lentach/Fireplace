@@ -1,10 +1,10 @@
-# Runbook: "[Decryption failed]" reappears (post-0.0.94)
+# Runbook: "[Decryption failed]" reappears (post-0.0.126)
 
-Written 2026-07-07, after the encrypt/decrypt cross-race fix
-(`fix/e2e-encrypt-decrypt-cross-race`, `_sessionTails` unified per-peer lock in
-`EncryptionService`). Use this when users report broken messages again and you
-need to decide fast: **is it the new lock, the old race back, or something
-else entirely** — without re-deriving three sessions of context.
+Written 2026-07-07 after the in-process encrypt/decrypt cross-race fix;
+updated 2026-07-23 after the cross-PWA-engine incident and 0.0.126 fix.
+Use this when users report broken messages again and you need to decide fast:
+**stale build, in-process lock failure, cross-context lock failure, replay
+window, or identity/session churn** — without re-deriving prior incidents.
 
 ## Step 0 — rule out the stale-build trap (2 min, do this FIRST)
 
@@ -33,9 +33,10 @@ were not what they claimed to be.
 
 | Signature (from diag/UX) | Meaning | Action |
 |---|---|---|
-| `DECRYPT_DECISION kind:duplicate` on NEW messages (sent post-0.0.94 by an up-to-date sender) | Ratchet lost-update is BACK: a session-record writer exists outside the `_sessionTails` lock | Step 3A |
+| `DECRYPT_DECISION kind:duplicate` on NEW messages from a confirmed 0.0.126+ build | A session writer escaped the process queue/origin lock, or raw replay persistence failed | Step 3A |
+| `DECRYPT_RAW_REPLAY` | This engine received a message another engine already decrypted, or resumed after the ratchet advanced but before normal content persistence. Exact-ciphertext replay restored plaintext without touching Signal twice | Expected recovery after 0.0.126; investigate only if followed by failures |
 | Messages stuck `SENDING` forever, chats stop decrypting, NO new failure events in diag, app otherwise alive | **The new lock deadlocked** — a guarded method awaits another guarded method for the same peer (non-reentrant tail queue chains behind itself, silently) | Step 3B |
-| `kind:duplicate` only on OLD rows | Pre-fix damage. Persisted-terminal rows are cryptographically unrecoverable — receiver's ratchet consumed those counters. Resend; not a bug | Nothing to fix |
+| `kind:duplicate` only on OLD rows | Pre-fix consumed ciphertext. Hydrate any surviving structured plaintext cache; if no engine ever cached plaintext, cryptographic recovery is impossible | Resend only the unrecoverable rows |
 | `DECRYPT_IDENTITY_RESET` / `idReset:true`, peer's OTP uploads in backend log | Peer regenerated identity (storage loss / clear-data / incognito). Separate problem — the still-unbuilt regeneration guard | Run the 2-min persistence test (below), then build the guard |
 | `kind:badMac` | Peer encrypting from a stale sender ratchet or session mismatch | Existing rebuild-request machinery handles it; investigate only if looping |
 | `ENCRYPT_OVERLAP` events | INFO only: proves sends were concurrent. Expected and safe under the lock | Ignore |
@@ -49,7 +50,7 @@ identify the sender:
 
 ```bash
 docker compose -f docker-compose.prod.yml exec db psql -U postgres -d chatdb \
-  -c 'SELECT id, "senderId", "createdAt" FROM messages WHERE id IN (<ids>);'
+  -c 'SELECT id, sender_id, conversation_id, created_at FROM messages WHERE id IN (<ids>);'
 ```
 
 Then check the SENDER's footer version at that time — a peer PWA keeps running
@@ -60,23 +61,36 @@ duplicate from a **confirmed-updated** sender reopens Step 3A.
 
 ## Step 3A — duplicate counters on new messages (the race is back)
 
-The invariant: **every** load→mutate→store on a peer's `SessionRecord` must go
-through `EncryptionService._runSessionSerialized`. Suspects, in order:
+The invariant has two layers: **every** peer-session load→mutate→store must go
+through the process-local `_runSessionSerialized`, and every web acquisition
+must also hold the origin-wide `runSessionCrossContextLocked` lock keyed by
+local user + peer. Suspects, in order:
 
-1. `git log -p frontend/lib/services/encryption_service.dart` since 0.0.94 —
-   did someone add a session-touching method (or a raw `SessionCipher` /
-   `SessionBuilder` construction anywhere in `lib/`) that bypasses
-   `_sessionTails`? `grep -rn "SessionCipher\|SessionBuilder" frontend/lib`
-   must show hits ONLY inside `encryption_service.dart` serialized bodies.
-2. Reproduce with the gated probe pattern:
+1. Enumerate every `SessionCipher` / `SessionBuilder` construction and
+   `storeSession` / `deleteSession` caller. All production writers must remain
+   inside serialized `EncryptionService` bodies.
+2. Check the cross-context runner. On web it must reach `navigator.locks`;
+   native/stub intentionally uses only the process queue. A caught Web Locks
+   error must propagate — silently running unlocked reopens the bug.
+3. Run
    `frontend/test/services/encryption_encrypt_decrypt_race_probe_test.dart`.
-   Copy the `_GatedSessionStore` + `debugWrapSessionStore` approach, hold the
-   suspect path's `storeSession`, run the other path, release, assert the next
-   wire decrypts. **A naive concurrent probe will NOT collide** (Dart's
-   deterministic microtask phase) — do not conclude "no repro" from one; that
-   mistake already cost a session.
-3. Fix = route the new writer through `_runSessionSerialized`, never a second
-   ad-hoc lock (two locks over one record was the original bug).
+   Its two-engine gated case uses separate `_sessionTails` maps plus a shared
+   origin-lock model. Removing the cross-context lock must reproduce
+   `DuplicateMessageException old counter: 1, 0`.
+4. Run the source-controlled browser probe:
+   ```bash
+   cd frontend
+   dart compile js tool/session_cross_context_lock_probe.dart \
+     -o build/session_lock_probe/probe.js
+   python -m http.server 8765
+   ```
+   Open `http://127.0.0.1:8765/tool/session_cross_context_lock_probe.html`;
+   the title must become `SESSION_LOCK_PASS`. It asserts same-name queuing and
+   fail-closed behavior when `navigator.locks` is absent. Also run
+   `session_cross_context_lock_web_test.dart` when the Flutter Chrome harness
+   is healthy.
+5. Never add another ad-hoc session lock. Extend the existing two-layer
+   contract and keep guarded bodies leaf-level/non-reentrant.
 
 ## Step 3B — hang: the lock deadlocked (bug IN the race fix)
 
@@ -98,16 +112,26 @@ hang, decrypts stop, per one peer or all peers.
    format change; keys/ratchets untouched) — you trade back to the rare race,
    which beats a hung app.
 
-## Step 3C — spurious duplicates on restart (rarer, known-open gap)
+## Step 3C — duplicate replay/crash window (fixed in 0.0.126)
 
-A message can decrypt (ratchet advances, persisted) but die before its
-plaintext persists (`_persistDecryptedContent` runs after `cacheDecryption`;
-iOS PWA suspend can kill in that window). Next start: re-decrypt →
-`duplicate` → terminal, even though the user already read it once. If diag
-shows `kind:duplicate, isHistory:true` on a message the user SAW, this is it.
-Fix direction (not built): persist plaintext before returning from the
-serialized decrypt, or a duplicate policy that checks "was this id ever
-decrypted" before branding terminal.
+A Signal decrypt consumes and persists a one-shot ratchet key before provider
+code can persist the parsed envelope. Another PWA engine can receive the same
+socket broadcast after that advance; app suspension can also kill the first
+engine in the post-decrypt window. Re-decrypting the ciphertext then correctly
+throws `DuplicateMessageException`.
+
+0.0.126 writes a bounded raw plaintext replay record while still holding the
+cross-context session lock. The record is keyed by local user + message id and
+accepted only when the ciphertext matches exactly. The second engine therefore
+returns plaintext without consuming Signal twice; edited ciphertext with the
+same message id cannot replay stale content. Normal structured content
+persistence does not delete this short replay record. Account/cache privacy
+clears remove both stores.
+
+If a post-0.0.126 duplicate reaches the UI instead of logging
+`DECRYPT_RAW_REPLAY`, check the served commit first, then inspect whether the
+raw preference write failed (`DECRYPT_RAW_PERSIST_FAILED`) or whether the
+message id/ciphertext changed.
 
 ## The 2-min persistence test (still not run as of 2026-07-07)
 
@@ -125,6 +149,46 @@ prioritize over everything else.
 - Never advise users to clear site data / reinstall / test in incognito.
 - `[Decryption failed]` rows that are persisted-terminal do not come back.
   Ever. Set expectations before deploying a fix.
+
+## Incident record — 2026-07-23 Sender A → Receiver B
+
+- User report: several messages showed `[Decryption failed]`, then recovered
+  without a resend over a short period.
+- Production evidence covered three affected type-2 whisper rows in one
+  conversation across two consecutive days. Exact account/message identifiers
+  and timestamps remain only in the gitignored incident findings.
+- Receiver diagnostics classified all three rows as `kind:duplicate`, not bad
+  MAC, no-session, or identity reset. The later diagnostic times date history
+  attempts, not message creation.
+- Sender key-bundle evidence showed no identity rotation: registration and
+  identity remained stable, with unused OTPs available. A bundle
+  reconnect/update preceded the two newest rows by about four minutes.
+- The served frontend was commit `c15d770`, version `0.0.125`; backend was
+  `4609af2`. The frontend delta since the prior build contained Contacts UI
+  only. The latest E2E commit only repaired next-OTP id selection. Neither
+  introduced the failure.
+- Attribution (high confidence, not direct client telemetry): 0.0.94 serialized
+  Signal writes only inside one Dart engine. Multiple same-origin PWA engines
+  share Signal storage but owned independent `_sessionTails`; they could race
+  the same record or process one broadcast twice. Legacy `SharedPreferences`
+  caching could then hide plaintext written by the other engine. A later cache
+  hydration/restart exposed that plaintext, producing the visible
+  “self-repair.” No production snapshot recorded which windows were open, but
+  the deterministic harness reproduces the complete signature.
+- Why it was intermittent: it requires overlapping engines/resume traffic and
+  a narrow ratchet/cache ordering. A quiet month does not disprove it.
+- Fix: origin-wide Web Locks around every peer-session mutation; exact-
+  ciphertext raw replay written before lock release; web-only preference
+  reload before cross-context reads; provider call sites now bind `messageId`
+  into decrypt.
+- Proof before release: deterministic two-engine probe failed pre-fix with
+  `DuplicateMessageException old counter: 1, 0` and passes post-fix; the
+  compiled browser helper queued same-name Web Locks; all focused tests,
+  the full Flutter suite, production web build, and local full-stack Signal
+  wire harness passed.
+- Scope: prevents future races/replay gaps. It cannot recover plaintext for a
+  message that was consumed before 0.0.126 and never cached anywhere. Do not
+  clear users' site data; that destroys the keys needed for unaffected traffic.
 
 ## Known accepted edges (independent review, 2026-07-09 — none blocking)
 

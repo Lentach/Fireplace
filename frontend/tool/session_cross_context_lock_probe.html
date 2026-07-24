@@ -1,0 +1,17 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <title>SESSION_LOCK_PENDING</title>
+  <script>
+    window.disableWebLocksForProbe = () => Object.defineProperty(
+      navigator,
+      'locks',
+      { value: null, configurable: true }
+    );
+  </script>
+</head>
+<body>
+  <script src="/build/session_lock_probe/probe.js"></script>
+</body>
+</html>
