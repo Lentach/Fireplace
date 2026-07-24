@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import '../constants/app_constants.dart';
 import '../l10n/app_localizations.dart';
@@ -9,6 +10,7 @@ import '../providers/auth_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/contact_network_view.dart';
+import '../widgets/glass/glass_surface.dart';
 import '../widgets/main_tab_screen_header.dart';
 import '../utils/instant_opaque_route.dart';
 import 'chat_detail_screen.dart';
@@ -26,18 +28,28 @@ class _ContactsScreenState extends State<ContactsScreen> {
   /// tap away as the accessibility / fast-lookup fallback.
   bool _showList = false;
 
-  /// One query filters BOTH presentations; the field only shows when the
-  /// account has contacts at all.
+  /// One query filters BOTH presentations. The field lives IN the header
+  /// capsule row (owner: no dedicated band under it) and only exists when
+  /// the account has contacts at all.
   final _searchController = TextEditingController();
+  bool _searchOpen = false;
   String _query = '';
-
-  /// Vertical band reserved under the header for the search field.
-  static const double _searchClearance = 54;
 
   @override
   void dispose() {
     _searchController.dispose();
     super.dispose();
+  }
+
+  void _openSearch() => setState(() => _searchOpen = true);
+
+  void _closeSearch() {
+    _searchController.clear();
+    FocusScope.of(context).unfocus();
+    setState(() {
+      _query = '';
+      _searchOpen = false;
+    });
   }
 
   List<UserModel> _applyQuery(List<UserModel> friends) {
@@ -79,9 +91,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   void _openContactCard(BuildContext context, UserModel user) {
     final convs = context.read<ConversationsProvider>();
-    final existingConversation = convs.conversations.where(
-      (conversation) => convs.getOtherUser(conversation)?.id == user.id,
-    ).firstOrNull;
+    final existingConversation = convs.conversations
+        .where(
+          (conversation) => convs.getOtherUser(conversation)?.id == user.id,
+        )
+        .firstOrNull;
     final hasConversation = existingConversation != null;
 
     Navigator.of(context).push(
@@ -120,8 +134,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
-
-
   @override
   Widget build(BuildContext context) {
     final convs = context.watch<ConversationsProvider>();
@@ -142,7 +154,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
     // Same floating-chrome treatment as the Chats tab (owner, round 4b):
     // the list runs full-bleed behind the transparent header capsule area
     // and the bottom nav; clearance is padding, not a layout slot.
-    final hasContacts = context.watch<FriendsProvider>().friends.isNotEmpty;
     return Scaffold(
       body: Stack(
         children: [
@@ -151,63 +162,88 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 ? _buildContactsList(context)
                 : _buildNetwork(context),
           ),
-          if (hasContacts)
-            Positioned(
-              top: MediaQuery.paddingOf(context).top +
-                  MainTabScreenHeader.clearance,
-              left: 0,
-              right: 0,
-              child: _buildSearchBar(context),
-            ),
           Positioned(top: 0, left: 0, right: 0, child: _buildHeader(context)),
         ],
       ),
     );
   }
 
-  Widget _buildSearchBar(BuildContext context) {
+  /// The header row while searching: the search capsule takes the title's
+  /// place, the list/map toggle keeps its slot so the query survives a view
+  /// switch (one query drives both presentations).
+  Widget _buildHeaderSearchField(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final colors = FireplaceColors.of(context);
     final colorScheme = Theme.of(context).colorScheme;
-    return Container(
-      height: 42,
-      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
-      padding: const EdgeInsets.symmetric(horizontal: 12),
-      decoration: BoxDecoration(
-        color: colors.convItemBg,
-        borderRadius: BorderRadius.circular(21),
-        border: Border.all(color: colors.convItemBorder),
-      ),
+    return CallbackShortcuts(
+      bindings: {
+        const SingleActivator(LogicalKeyboardKey.escape): _closeSearch,
+      },
       child: Row(
         children: [
-          Icon(Icons.search, size: 18, color: colors.mutedText),
-          const SizedBox(width: 8),
           Expanded(
-            child: TextField(
-              controller: _searchController,
-              onChanged: (value) => setState(() => _query = value),
-              style: RpgTheme.bodyFont(
-                fontSize: 14,
-                color: colorScheme.onSurface,
-              ),
-              decoration: InputDecoration.collapsed(
-                hintText: l10n.contactsSearchHint,
-                hintStyle: RpgTheme.bodyFont(
-                  fontSize: 14,
-                  color: colors.mutedText,
-                ),
+            child: GlassPill(
+              height: MainTabScreenHeader.capsuleHeight,
+              padding: const EdgeInsets.only(left: 16, right: 4),
+              child: Row(
+                children: [
+                  Icon(Icons.search, size: 18, color: colors.mutedText),
+                  const SizedBox(width: 10),
+                  Expanded(
+                    child: TextField(
+                      controller: _searchController,
+                      autofocus: true,
+                      textInputAction: TextInputAction.search,
+                      onChanged: (value) => setState(() => _query = value),
+                      style: RpgTheme.bodyFont(
+                        fontSize: 14,
+                        color: colorScheme.onSurface,
+                      ),
+                      // `InputDecoration.collapsed` only nulls `border`;
+                      // the theme's 2px focusedBorder would draw a second
+                      // box inside the glass capsule on focus.
+                      decoration: InputDecoration(
+                        isCollapsed: true,
+                        filled: false,
+                        border: InputBorder.none,
+                        enabledBorder: InputBorder.none,
+                        focusedBorder: InputBorder.none,
+                        contentPadding: EdgeInsets.zero,
+                        hintText: l10n.contactsSearchHint,
+                        hintStyle: RpgTheme.bodyFont(
+                          fontSize: 14,
+                          color: colors.mutedText,
+                        ),
+                      ),
+                    ),
+                  ),
+                  IconButton(
+                    onPressed: _closeSearch,
+                    tooltip: l10n.cancel,
+                    icon: Icon(Icons.close, size: 20, color: colors.mutedText),
+                  ),
+                ],
               ),
             ),
           ),
-          if (_query.isNotEmpty)
-            GestureDetector(
-              onTap: () {
-                _searchController.clear();
-                setState(() => _query = '');
-              },
-              child: Icon(Icons.close, size: 18, color: colors.mutedText),
-            ),
+          const SizedBox(width: 6),
+          _buildListToggle(context),
         ],
+      ),
+    );
+  }
+
+  Widget _buildListToggle(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    return IconButton(
+      onPressed: () => setState(() => _showList = !_showList),
+      tooltip: _showList
+          ? l10n.contactNetworkShowMap
+          : l10n.contactNetworkShowList,
+      icon: Icon(
+        _showList ? Icons.hub_outlined : Icons.format_list_bulleted,
+        size: 20,
+        color: Theme.of(context).colorScheme.onSurface,
       ),
     );
   }
@@ -215,21 +251,25 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Widget _buildHeader(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final hasContacts = context.watch<FriendsProvider>().friends.isNotEmpty;
+    if (!hasContacts) return MainTabScreenHeader(title: l10n.contacts);
+    if (_searchOpen) {
+      return MainTabScreenHeader.custom(
+        child: _buildHeaderSearchField(context),
+      );
+    }
     return MainTabScreenHeader(
       title: l10n.contacts,
-      trailing: hasContacts
-          ? IconButton(
-              onPressed: () => setState(() => _showList = !_showList),
-              tooltip: _showList
-                  ? l10n.contactNetworkShowMap
-                  : l10n.contactNetworkShowList,
-              icon: Icon(
-                _showList ? Icons.hub_outlined : Icons.format_list_bulleted,
-                size: 20,
-                color: Theme.of(context).colorScheme.onSurface,
-              ),
-            )
-          : null,
+      leadingGlass: false,
+      leading: IconButton(
+        onPressed: _openSearch,
+        tooltip: l10n.contactsSearchHint,
+        icon: Icon(
+          Icons.search,
+          size: 20,
+          color: Theme.of(context).colorScheme.onSurface,
+        ),
+      ),
+      trailing: _buildListToggle(context),
     );
   }
 
@@ -239,7 +279,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final allFriends = List<UserModel>.from(friendsProvider.friends)
       ..sort(_compareByDisplayName);
     final friends = _applyQuery(allFriends);
-    final filtering = _query.trim().isNotEmpty;
+    final filtering = _query.trim().isNotEmpty && allFriends.isNotEmpty;
     final convs = context.watch<ConversationsProvider>();
     final conversationContactIds = <int>{};
     for (final conversation in convs.conversations) {
@@ -261,9 +301,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
       localNodeSemanticLabel: l10n.contactNetworkYouLocalNode,
       safeInsets: EdgeInsets.fromLTRB(
         12,
-        media.top +
-            MainTabScreenHeader.clearance +
-            (allFriends.isNotEmpty ? _searchClearance : 0),
+        media.top + MainTabScreenHeader.clearance,
         12,
         media.bottom + 8,
       ),
@@ -293,15 +331,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
     final allFriends = List<UserModel>.from(friendsProvider.friends)
       ..sort(_compareByDisplayName);
     final friends = _applyQuery(allFriends);
-    final filtering = _query.trim().isNotEmpty;
+    final filtering = _query.trim().isNotEmpty && allFriends.isNotEmpty;
     final isDark = RpgTheme.isDark(context);
     final mutedColor = FireplaceColors.of(context).mutedText;
 
     final media = MediaQuery.paddingOf(context);
     final bottomClearance = media.bottom;
-    final topClearance = media.top +
-        MainTabScreenHeader.clearance +
-        (allFriends.isNotEmpty ? _searchClearance : 0);
+    final topClearance = media.top + MainTabScreenHeader.clearance;
 
     if (friends.isEmpty) {
       if (filtering) {

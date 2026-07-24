@@ -1,5 +1,24 @@
 # Latest session summary
 
+**Date:** 2026-07-24 — Contacts tab = the **Honeycomb Core** on `feat/contact-network`, now with search living IN the header capsule (owner: "i would go with option 2 lets see serchbar in the header"). Still an ephemeral branch deploy, NOT merged, no version bump.
+
+## What was done
+1. Honeycomb Core (2026-07-23, owner verdict "all is perfect"): `ContactNetworkView` rewritten around the pure `ContactHexLayout` — reticle core top-center with the user's avatar, fixed-width staggered hex field below (4-3 rows on phones, up to 8-7 on desktop, partial last row self-centers), alphabetical order = spatial order, vertical scroll only. Contact avatar fills each hex. Socket stub per hex: **one pin = no conversation, two pins = active chat — owner explicitly KEPT this, do not unify.** Tap fills the route from the hex up to the core (480ms easeInOut + head dot) and opens the card; the strip NEVER appears on bare keyboard focus (focus = halo, Enter activates). Deleted: elliptical-ring engine, drag-to-pin store, Reset button, InteractiveViewer, dogleg traces, identicons.
+2. Search moved into the header (2026-07-24): the 54px band under the header is GONE. Closed state = bare magnifier LEFT, title, list/map toggle RIGHT. Open state = full-width `GlassPill` input (inner magnifier, autofocus, ×) with the toggle keeping its slot, so one query still drives BOTH presentations across a view switch; Escape closes.
+3. `MainTabScreenHeader` gained `.custom(child:)` (row-replacing, header still owns the geometry) and `leadingGlass` (default `true`) — Chats/Settings call sites untouched by design.
+4. Trap paid: `InputDecoration.collapsed` only nulls `border`, so `RpgTheme.inputDecorationTheme.focusedBorder` painted a 2px box inside the glass capsule on focus; the field now sets `focusedBorder: InputBorder.none` explicitly.
+
+## Verification
+- `flutter analyze`: 0 issues. Full suite: **804 passed / 4 skips** (14 layout/interaction contracts + 7 search tests, incl. a `safeInsets.top == MainTabScreenHeader.clearance` no-band contract).
+- Visual: real ContactsScreen via `test/preview/contact_network_preview.dart?screen=1` — cosmic/light/blue, 390×844 and 320×700, closed + open + live-filtered. Chats header re-verified via `glass_preview.dart`: unchanged. `graphify update .`: 9264 nodes.
+
+## Notes for next session
+- **Awaiting owner review on device.** Nothing merged: master untouched, no bump, no deploy from this session. Release path on his OK: PR `feat/contact-network` → master, bump 0.0.128 → **0.0.129** (PATCH, never `+N`), then `deploy-web.ps1` + `scripts/smoke/post-deploy-smoke.mjs`.
+- Full detail: `2026-07-24-session-honeycomb-header-search.md`, `2026-07-23-handoff-honeycomb-search.md`, `2026-07-23-session-honeycomb-core.md` (all local-only).
+
+---
+### Prior latest ↓
+
 **Date:** 2026-07-24 — Removed the top-of-screen "Update available — fully close and reopen the app." nudge on user request (annoying); shipped straight to `master` as frontend **0.0.128**.
 
 ## What was done
@@ -53,25 +72,6 @@
 - PR #95 is merged and deployed. Users must fully close and reopen the PWA; never clear site data. Live frontend is 0.0.126 / `0486cb3`; backend remains 0.0.123 / `4609af2`.
 - Highest-value review follow-up: wire `session_cross_context_lock_web_test.dart` into a real Chrome CI lane when the project Chrome launcher is repaired. Manual source-controlled browser probe currently covers the JS boundary.
 - Full: `2026-07-23-session.md`.
-
----
-### Prior latest ↓
-
-**Date:** 2026-07-23 — Contacts tab redesigned as the **Honeycomb Core** on `feat/contact-network` (owner-driven brainstorm; Terminal Rack plan rejected before build). Owner verdict on device: "all is perfect". Live as ephemeral test deploy `a8473b6` / 0.0.128; NOT merged, no bump.
-
-## What was done
-1. Full rewrite of `ContactNetworkView`: pure `ContactHexLayout` (deterministic slots from width + measured label height; 4-3 rows on phones, adaptive to 8-7 on desktop; partial last row self-centers), hex terminals showing the contact's AVATAR covering the whole hex (fallback: initial; identicons built then removed on owner review), per-hex socket stub (**one pin = no conversation, two = active chat — owner explicitly KEPT this semantic, do not unify**), core visibly feeds row 1 only — no bus wiring, ever. Local core shows the current user's avatar, accent ring on the circumference.
-2. Tap = the signature interaction: the contact's route fills with accent from their hex UP to the core (480ms easeInOut + bright head dot — owner slowed it from 260ms to make the travel readable; deliberate override of the entrance cap for user-triggered feedback) and the user card opens on dock; reduce-motion opens instantly. Blue strip NEVER appears on bare keyboard focus (focus = hex halo only; Enter activates).
-3. Search: one capsule field under the header filters BOTH the network (live re-sort, owner: "chef kiss") and the classic list; hidden on empty accounts; `contactsSearchHint`/`NoResults` ARB en+pl. Harness `&screen=1` renders the real ContactsScreen with seeded providers.
-4. Deleted wholesale: elliptical-ring engine, drag-to-pin SharedPreferences store, Reset button, InteractiveViewer pan mode, dogleg traces. ARB `contactNetworkReset`/`DragHint` removed (en+pl). Owner chose pure alphabetical, no manual swap.
-5. A11y kept as core invariant: per-node semantic buttons (`container: true`), sorted traversal, Tab reveal by scroll, 48dp floor.
-
-## Verification
-- Analyze 0; full suite **801 passed / 4 skips**; 14 layout/interaction contract tests + 4 search widget tests. Visual loop: all five themes at 390x844, 320x700, 1100px desktop, textScale 1.6, avatars on/off. Production smoke passed on each of the four ephemeral deploys (`1f987f1`, `8582c07` -> `30f79b5` -> `fe48ce4` -> `a8473b6`).
-
-## Notes for next session
-- **NEXT TASK (owner decision pending): kill the search bar's 54px band** — owner brainstormed scroll-hide (idea 1) vs search-in-header (idea 2, recommended: magnifier left of the capsule, title yields to the input); he has NOT picked yet. Full handoff with implementation notes, traps, and the release path (PR -> 0.0.129 -> merge on explicit OK): `2026-07-23-handoff-honeycomb-search.md` (local-only).
-- Full session detail: `2026-07-23-session-honeycomb-core.md`.
 
 ---
 ### Prior latest ↓
