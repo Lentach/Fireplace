@@ -884,6 +884,18 @@ abstract class AppLocalizations {
   /// **'Widok sieci'**
   String get contactNetworkShowMap;
 
+  /// No description provided for @contactsSearchHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Szukaj kontaktów'**
+  String get contactsSearchHint;
+
+  /// No description provided for @contactsSearchNoResults.
+  ///
+  /// In pl, this message translates to:
+  /// **'Brak pasujących kontaktów'**
+  String get contactsSearchNoResults;
+
   /// No description provided for @block.
   ///
   /// In pl, this message translates to:

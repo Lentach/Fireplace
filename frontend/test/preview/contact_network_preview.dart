@@ -1,10 +1,20 @@
 // Throwaway visual harness for ContactNetworkView (not part of flutter test).
 // Run: flutter run -d web-server -t test/preview/contact_network_preview.dart
 // Query parameters: ?theme=cosmic|blue|dark|light|teal&count=0|1|3|8|15|25|40
-// Optional: &textScale=1.6&reduceMotion=1
-import 'package:flutter/material.dart';
+// Optional: &textScale=1.6&reduceMotion=1&avatars=1
+// screen=1: renders the REAL ContactsScreen (seeded providers) so the
+// search bar and both view modes are reviewable without a backend.
+import 'dart:convert';
 
+import 'package:flutter/material.dart';
+import 'package:provider/provider.dart';
+
+import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/models/user_model.dart';
+import 'package:fireplace/providers/auth_provider.dart';
+import 'package:fireplace/providers/conversations_provider.dart';
+import 'package:fireplace/providers/friends_provider.dart';
+import 'package:fireplace/screens/contacts_screen.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/contact_network_view.dart';
 import 'package:fireplace/widgets/glass/glass_bottom_nav.dart';
@@ -32,10 +42,14 @@ class ContactNetworkPreviewApp extends StatelessWidget {
     final reduceMotion = query['reduceMotion'] == '1';
     // avatars=1: placeholder photos to review the avatar-in-hex rendering.
     final avatars = query['avatars'] == '1';
+    final screenMode = query['screen'] == '1';
+    final contacts = _previewContacts(count, avatars: avatars);
 
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: _theme(theme),
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
       builder: (context, child) => MediaQuery(
         data: MediaQuery.of(context).copyWith(
           textScaler: TextScaler.linear(textScale),
@@ -43,10 +57,47 @@ class ContactNetworkPreviewApp extends StatelessWidget {
         ),
         child: child!,
       ),
-      home: _ContactNetworkPreviewPage(
-        contacts: _previewContacts(count, avatars: avatars),
-        textScale: textScale,
-      ),
+      home: screenMode
+          ? _seededContactsScreen(contacts)
+          : _ContactNetworkPreviewPage(
+              contacts: contacts,
+              textScale: textScale,
+            ),
+    );
+  }
+
+  /// The real ContactsScreen against seeded providers: friends via the
+  /// socket-event JSON path, the local user via an unsigned preview JWT.
+  Widget _seededContactsScreen(List<UserModel> contacts) {
+    final friends = FriendsProvider()
+      ..onFriendsList([
+        for (final contact in contacts)
+          {
+            'id': contact.id,
+            'username': contact.username,
+            'tag': contact.tag,
+            'profilePictureUrl': contact.profilePictureUrl,
+          },
+      ]);
+    String b64(Map<String, Object> json) =>
+        base64Url.encode(utf8.encode(jsonEncode(json))).replaceAll('=', '');
+    final auth = AuthProvider()
+      ..setAccessTokenForTest(
+        '${b64({'alg': 'none'})}.'
+        '${b64({
+          'sub': 700,
+          'username': 'Marta',
+          'tag': '0007',
+          'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600,
+        })}.x',
+      );
+    return MultiProvider(
+      providers: [
+        ChangeNotifierProvider.value(value: auth),
+        ChangeNotifierProvider.value(value: friends),
+        ChangeNotifierProvider(create: (_) => ConversationsProvider()),
+      ],
+      child: const ContactsScreen(),
     );
   }
 }

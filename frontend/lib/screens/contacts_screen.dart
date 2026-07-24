@@ -26,6 +26,29 @@ class _ContactsScreenState extends State<ContactsScreen> {
   /// tap away as the accessibility / fast-lookup fallback.
   bool _showList = false;
 
+  /// One query filters BOTH presentations; the field only shows when the
+  /// account has contacts at all.
+  final _searchController = TextEditingController();
+  String _query = '';
+
+  /// Vertical band reserved under the header for the search field.
+  static const double _searchClearance = 54;
+
+  @override
+  void dispose() {
+    _searchController.dispose();
+    super.dispose();
+  }
+
+  List<UserModel> _applyQuery(List<UserModel> friends) {
+    final query = _query.trim().toLowerCase();
+    if (query.isEmpty) return friends;
+    return [
+      for (final friend in friends)
+        if (friend.username.toLowerCase().contains(query)) friend,
+    ];
+  }
+
   void _openChatWithContact(BuildContext context, int userId) {
     final convs = context.read<ConversationsProvider>();
 
@@ -119,6 +142,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
     // Same floating-chrome treatment as the Chats tab (owner, round 4b):
     // the list runs full-bleed behind the transparent header capsule area
     // and the bottom nav; clearance is padding, not a layout slot.
+    final hasContacts = context.watch<FriendsProvider>().friends.isNotEmpty;
     return Scaffold(
       body: Stack(
         children: [
@@ -127,7 +151,62 @@ class _ContactsScreenState extends State<ContactsScreen> {
                 ? _buildContactsList(context)
                 : _buildNetwork(context),
           ),
+          if (hasContacts)
+            Positioned(
+              top: MediaQuery.paddingOf(context).top +
+                  MainTabScreenHeader.clearance,
+              left: 0,
+              right: 0,
+              child: _buildSearchBar(context),
+            ),
           Positioned(top: 0, left: 0, right: 0, child: _buildHeader(context)),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildSearchBar(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colors = FireplaceColors.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    return Container(
+      height: 42,
+      margin: const EdgeInsets.fromLTRB(16, 4, 16, 8),
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      decoration: BoxDecoration(
+        color: colors.convItemBg,
+        borderRadius: BorderRadius.circular(21),
+        border: Border.all(color: colors.convItemBorder),
+      ),
+      child: Row(
+        children: [
+          Icon(Icons.search, size: 18, color: colors.mutedText),
+          const SizedBox(width: 8),
+          Expanded(
+            child: TextField(
+              controller: _searchController,
+              onChanged: (value) => setState(() => _query = value),
+              style: RpgTheme.bodyFont(
+                fontSize: 14,
+                color: colorScheme.onSurface,
+              ),
+              decoration: InputDecoration.collapsed(
+                hintText: l10n.contactsSearchHint,
+                hintStyle: RpgTheme.bodyFont(
+                  fontSize: 14,
+                  color: colors.mutedText,
+                ),
+              ),
+            ),
+          ),
+          if (_query.isNotEmpty)
+            GestureDetector(
+              onTap: () {
+                _searchController.clear();
+                setState(() => _query = '');
+              },
+              child: Icon(Icons.close, size: 18, color: colors.mutedText),
+            ),
         ],
       ),
     );
@@ -157,8 +236,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Widget _buildNetwork(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final friendsProvider = context.watch<FriendsProvider>();
-    final friends = List<UserModel>.from(friendsProvider.friends)
+    final allFriends = List<UserModel>.from(friendsProvider.friends)
       ..sort(_compareByDisplayName);
+    final friends = _applyQuery(allFriends);
+    final filtering = _query.trim().isNotEmpty;
     final convs = context.watch<ConversationsProvider>();
     final conversationContactIds = <int>{};
     for (final conversation in convs.conversations) {
@@ -171,15 +252,18 @@ class _ContactsScreenState extends State<ContactsScreen> {
     return ContactNetworkView(
       contacts: friends,
       localNodeLabel: currentUser?.username ?? '',
+      localNodeAvatarUrl: currentUser?.profilePictureUrl,
       localNodeCaption: l10n.contactNetworkLocalNode,
-      emptyTitle: l10n.noContactsYet,
-      emptyMessage: l10n.addFriendsToStart,
+      emptyTitle: filtering ? l10n.contactsSearchNoResults : l10n.noContactsYet,
+      emptyMessage: filtering ? '' : l10n.addFriendsToStart,
       onContactTap: (user) => _openContactCard(context, user),
       networkSemanticLabel: l10n.contactNetworkSemantic(friends.length),
       localNodeSemanticLabel: l10n.contactNetworkYouLocalNode,
       safeInsets: EdgeInsets.fromLTRB(
         12,
-        media.top + MainTabScreenHeader.clearance,
+        media.top +
+            MainTabScreenHeader.clearance +
+            (allFriends.isNotEmpty ? _searchClearance : 0),
         12,
         media.bottom + 8,
       ),
@@ -206,16 +290,37 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
   Widget _buildContactsList(BuildContext context) {
     final friendsProvider = context.watch<FriendsProvider>();
-    final friends = List<UserModel>.from(friendsProvider.friends)
+    final allFriends = List<UserModel>.from(friendsProvider.friends)
       ..sort(_compareByDisplayName);
+    final friends = _applyQuery(allFriends);
+    final filtering = _query.trim().isNotEmpty;
     final isDark = RpgTheme.isDark(context);
     final mutedColor = FireplaceColors.of(context).mutedText;
 
     final media = MediaQuery.paddingOf(context);
     final bottomClearance = media.bottom;
-    final topClearance = media.top + MainTabScreenHeader.clearance;
+    final topClearance = media.top +
+        MainTabScreenHeader.clearance +
+        (allFriends.isNotEmpty ? _searchClearance : 0);
 
     if (friends.isEmpty) {
+      if (filtering) {
+        return Center(
+          child: Padding(
+            padding: EdgeInsets.fromLTRB(
+              32,
+              32 + topClearance,
+              32,
+              32 + bottomClearance,
+            ),
+            child: Text(
+              AppLocalizations.of(context).contactsSearchNoResults,
+              textAlign: TextAlign.center,
+              style: RpgTheme.bodyFont(fontSize: 14, color: mutedColor),
+            ),
+          ),
+        );
+      }
       return Center(
         child: Padding(
           padding: EdgeInsets.fromLTRB(

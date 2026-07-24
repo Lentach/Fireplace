@@ -481,6 +481,12 @@ class AppLocalizationsPl extends AppLocalizations {
   String get contactNetworkShowMap => 'Widok sieci';
 
   @override
+  String get contactsSearchHint => 'Szukaj kontaktów';
+
+  @override
+  String get contactsSearchNoResults => 'Brak pasujących kontaktów';
+
+  @override
   String get block => 'Zablokuj';
 
   @override

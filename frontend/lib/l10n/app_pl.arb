@@ -170,6 +170,8 @@
   },
   "contactNetworkShowList": "Widok listy",
   "contactNetworkShowMap": "Widok sieci",
+  "contactsSearchHint": "Szukaj kontaktów",
+  "contactsSearchNoResults": "Brak pasujących kontaktów",
   "block": "Zablokuj",
   "imageFailedToLoad": "Nie udało się załadować obrazu",
   "unsupportedMessageType": "Nieobsługiwany typ wiadomości",

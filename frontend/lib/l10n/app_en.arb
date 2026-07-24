@@ -182,6 +182,8 @@
   },
   "contactNetworkShowList": "List view",
   "contactNetworkShowMap": "Network view",
+  "contactsSearchHint": "Search contacts",
+  "contactsSearchNoResults": "No matching contacts",
   "block": "Block",
   "imageFailedToLoad": "Image failed to load",
   "unsupportedMessageType": "Unsupported message type",

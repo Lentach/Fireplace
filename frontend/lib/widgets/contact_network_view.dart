@@ -28,6 +28,7 @@ class ContactNetworkView extends StatefulWidget {
     super.key,
     required this.contacts,
     required this.localNodeLabel,
+    this.localNodeAvatarUrl,
     required this.localNodeCaption,
     required this.emptyTitle,
     required this.emptyMessage,
@@ -41,6 +42,9 @@ class ContactNetworkView extends StatefulWidget {
 
   final List<UserModel> contacts;
   final String localNodeLabel;
+
+  /// The local user's avatar, shown inside the core reticle when set.
+  final String? localNodeAvatarUrl;
   final String localNodeCaption;
   final String emptyTitle;
   final String emptyMessage;
@@ -340,17 +344,14 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                     focused: false,
                   ),
                   child: ClipOval(
-                    child: ColoredBox(
-                      color: colors.convItemBg,
-                      child: Center(
-                        child: Text(
-                          _initials(widget.localNodeLabel),
-                          style: RpgTheme.bodyFont(
-                            fontSize: 16,
-                            fontWeight: FontWeight.w800,
-                            color: colorScheme.primary,
-                          ),
-                        ),
+                    child: _HexAvatar(
+                      imageUrl: widget.localNodeAvatarUrl,
+                      initials: _initials(widget.localNodeLabel),
+                      surface: colors.convItemBg,
+                      initialsStyle: RpgTheme.bodyFont(
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                        color: colorScheme.primary,
                       ),
                     ),
                   ),
