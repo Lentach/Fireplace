@@ -39,7 +39,9 @@ void main() {
   const base = 'http://localhost:3999';
 
   group('AuthProvider boot restore (characterization)', () {
-    test('valid saved access + fetchMe OK -> logged in without refreshing', () async {
+    test(
+        'valid saved access -> logged in; boot slides the refresh session '
+        'in the background and a slide failure never logs out', () async {
       SharedPreferences.setMockInitialValues({
         'jwt_token': _validAccessJwt,
         'refresh_token': 'opaque_refresh',
@@ -58,7 +60,15 @@ void main() {
       await _settled(auth, expectLoggedIn: true);
 
       expect(auth.currentUser?.username, 'test');
-      expect(refreshCalls, 0, reason: 'valid access must not trigger a refresh');
+      // New contract (0.0.127): a valid-access boot still slides the sliding
+      // session in the background (server-visible device health signal). The
+      // 500 here must be swallowed — retried transiently, never a logout.
+      for (var i = 0; i < 40 && refreshCalls == 0; i++) {
+        await Future<void>.delayed(const Duration(milliseconds: 50));
+      }
+      expect(refreshCalls, greaterThan(0),
+          reason: 'valid-access boot must slide the session');
+      expect(auth.isLoggedIn, isTrue);
     });
 
     test('expired access + valid refresh + fetchMe OK -> refreshes and logs in',

@@ -39,6 +39,18 @@ export class KeyBundlesService {
   ) {}
 
   async upsertKeyBundle(userId: number, data: KeyBundleData): Promise<void> {
+    // Telemetry pre-check only; races with concurrent uploads are acceptable.
+    const existingBundle = await this.keyBundleRepo.findOne({
+      where: { userId },
+    });
+    if (
+      existingBundle &&
+      existingBundle.identityPublicKey !== data.identityPublicKey
+    ) {
+      this.logger.warn(
+        `[identity-churn] userId=${userId} oldIdentityPrefix=${existingBundle.identityPublicKey.slice(0, 12)} newIdentityPrefix=${data.identityPublicKey.slice(0, 12)}`,
+      );
+    }
     // Atomic upsert — handles concurrent connections from same user (e.g. two tabs)
     await this.keyBundleRepo.upsert(
       { userId, ...data },

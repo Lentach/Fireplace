@@ -20,6 +20,7 @@ import '../utils/tab_visibility.dart';
 import '../utils/instant_opaque_route.dart';
 import '../utils/notification_nav_decision.dart';
 import '../services/unread_badge_sync.dart';
+import '../services/update_check.dart';
 import '../widgets/top_snackbar.dart';
 import '../theme/glass_theme.dart';
 import '../widgets/glass/glass_bottom_nav.dart';
@@ -38,6 +39,13 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
   StreamSubscription<dynamic>? _tabVisibilitySub;
   UnreadBadgeSync? _unreadBadgeSync;
 
+  /// One nudge per app run when the served bundle is newer than the running
+  /// one. Stale installed PWAs are how pre-refresh clients survived for weeks
+  /// in the field (2026-07 logout incident); nothing else ever tells the user
+  /// to update. Close-and-reopen is the only reliable way to activate
+  /// Flutter's updated service worker — an in-place reload often is not.
+  static bool _staleNudgeShown = false;
+
   @override
   void initState() {
     super.initState();
@@ -52,6 +60,11 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         _unreadBadgeSync = UnreadBadgeSync(
           context.read<ConversationsProvider>(),
         );
+      });
+    }
+    if (kIsWeb) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        unawaited(_nudgeIfBundleStale());
       });
     }
     WidgetsBinding.instance.addObserver(this);
@@ -84,6 +97,18 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         }());
       });
     }
+  }
+
+  Future<void> _nudgeIfBundleStale() async {
+    if (_staleNudgeShown) return;
+    final stale = await isServedBundleNewer();
+    if (!stale || !mounted || _staleNudgeShown) return;
+    _staleNudgeShown = true;
+    showTopSnackBar(
+      context,
+      AppLocalizations.of(context).updateAvailableCloseReopen,
+      duration: const Duration(seconds: 8),
+    );
   }
 
   void _openMyProfile() {

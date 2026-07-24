@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'package:firebase_core/firebase_core.dart';
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
@@ -23,6 +24,7 @@ import 'screens/auth_screen.dart';
 import 'screens/main_shell.dart';
 import 'services/portrait_lock_service.dart';
 import 'theme/app_scroll_behavior.dart';
+import 'utils/storage_persist.dart';
 import 'utils/e2e_persistent_diag.dart';
 import 'utils/web_document_background.dart';
 import 'widgets/portrait_lock_shell.dart';
@@ -69,6 +71,20 @@ Future<void> main() async {
   stripNotifyConvParam();
   // Load the durable E2E failure log (survives restarts) before the UI mounts.
   await E2ePersistentDiag.init();
+  // Ask the browser for persistent (eviction-proof) storage at every boot —
+  // not only mid-E2E-flow. A whole-origin eviction wiped a user's tokens AND
+  // Signal identity (2026-07-24 incident); installed PWAs are usually granted
+  // this silently. Fire-and-forget: boot must never block on it, and only the
+  // failure case is worth persisting (it is the risk marker).
+  unawaited(
+    requestPersistentStorage().then((r) {
+      if (r['granted'] != true) {
+        E2ePersistentDiag.record('STORAGE_NOT_PERSISTENT', {
+          'supported': r['supported'] ?? false,
+        });
+      }
+    }),
+  );
   runApp(FireplaceApp(coldStartConversationId: coldStartConvId));
 }
 
