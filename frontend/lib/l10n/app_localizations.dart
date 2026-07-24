@@ -872,18 +872,6 @@ abstract class AppLocalizations {
   /// **'WĘZŁY {count}'**
   String contactNetworkNodes(String count);
 
-  /// No description provided for @contactNetworkReset.
-  ///
-  /// In pl, this message translates to:
-  /// **'Resetuj układ'**
-  String get contactNetworkReset;
-
-  /// No description provided for @contactNetworkDragHint.
-  ///
-  /// In pl, this message translates to:
-  /// **'Przytrzymaj i przeciągnij, aby zmienić pozycję'**
-  String get contactNetworkDragHint;
-
   /// No description provided for @contactNetworkShowList.
   ///
   /// In pl, this message translates to:

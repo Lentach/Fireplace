@@ -183,9 +183,6 @@ class _ContactsScreenState extends State<ContactsScreen> {
         12,
         media.bottom + 8,
       ),
-      storageUserId: currentUser?.id,
-      resetLayoutLabel: l10n.contactNetworkReset,
-      dragHint: l10n.contactNetworkDragHint,
       conversationContactIds: conversationContactIds,
       mapCaption: l10n.contactNetworkNodes(
         friends.length.toString().padLeft(2, '0'),

@@ -180,8 +180,6 @@
   "@contactNetworkNodes": {
     "placeholders": { "count": { "type": "String" } }
   },
-  "contactNetworkReset": "Reset layout",
-  "contactNetworkDragHint": "Long press and drag to reposition",
   "contactNetworkShowList": "List view",
   "contactNetworkShowMap": "Network view",
   "block": "Block",

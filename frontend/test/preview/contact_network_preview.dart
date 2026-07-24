@@ -31,6 +31,7 @@ class ContactNetworkPreviewApp extends StatelessWidget {
     final textScale = double.tryParse(query['textScale'] ?? '') ?? 1;
     final reduceMotion = query['reduceMotion'] == '1';
 
+
     return MaterialApp(
       debugShowCheckedModeBanner: false,
       theme: _theme(theme),
@@ -85,9 +86,6 @@ class _ContactNetworkPreviewPage extends StatelessWidget {
               networkSemanticLabel:
                   'Contact network, ${contacts.length} contacts',
               localNodeSemanticLabel: 'You, local node',
-              dragHint: 'Long press and drag to reposition',
-              storageUserId: 700,
-              resetLayoutLabel: 'Reset layout',
               conversationContactIds: {
                 for (final contact in contacts)
                   if (contact.id.isOdd) contact.id,

@@ -468,12 +468,6 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
-  String get contactNetworkReset => 'Reset layout';
-
-  @override
-  String get contactNetworkDragHint => 'Long press and drag to reposition';
-
-  @override
   String get contactNetworkShowList => 'List view';
 
   @override

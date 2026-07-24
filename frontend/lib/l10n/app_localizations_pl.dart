@@ -475,13 +475,6 @@ class AppLocalizationsPl extends AppLocalizations {
   }
 
   @override
-  String get contactNetworkReset => 'Resetuj układ';
-
-  @override
-  String get contactNetworkDragHint =>
-      'Przytrzymaj i przeciągnij, aby zmienić pozycję';
-
-  @override
   String get contactNetworkShowList => 'Widok listy';
 
   @override

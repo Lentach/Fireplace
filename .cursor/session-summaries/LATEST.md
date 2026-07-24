@@ -57,23 +57,21 @@
 ---
 ### Prior latest ↓
 
-**Date:** 2026-07-23 — Contacts tab remains unfinished on `feat/contact-network`: circular local node + clipped-square contact terminals, PCB dogleg traces, deterministic elliptical layout, drag-to-pin, and list fallback toggle.
+**Date:** 2026-07-23 — Contacts tab redesigned as the **Honeycomb Core** on `feat/contact-network` (owner-driven brainstorm; Terminal Rack plan rejected before build): reticle core top-center feeding a fixed-width staggered hex field, alphabetical order = spatial order, vertical scroll only.
 
 ## What was done
-1. New `ContactNetworkView`: pure re-render of `FriendsProvider.friends` — no fake nodes/status; doubled traces = real conversations; hero composition for the one-contact state; ticks/orbits/brackets aesthetic, theme tokens only.
-2. Deterministic measured layout (viewport + textScaler), elliptical rings; collision-free in validated fitted/long-label/dense layouts (ring candidates + full-bounds sweep, contract-tested; least-overlap fallback for exhausted cases). Per-user SharedPreferences pin hints (clamped, collision-resolved per build); InteractiveViewer for dense maps with keyboard focus reveal.
-3. A11y as core invariant: per-node semantic buttons (`container: true` — labels otherwise merge into one blob), sorted traversal, Tab/Enter, 48dp floor, reduce-motion static.
-4. `MainTabScreenHeader` title now truly centered via Stack + `Positioned` side controls.
-5. `ContactsScreen` is a StatefulWidget with network default and a classic-list fallback; card/chat/pending-open flows remain untouched.
+1. Full rewrite of `ContactNetworkView`: pure `ContactHexLayout` (deterministic slots from width + measured label height; 4-3 rows on phones, adaptive to 8-7 on desktop; partial last row self-centers), hex terminals with identicon + initials + username, per-hex socket stub (doubled = real conversation), core visibly feeds row 1 only — no bus wiring, ever.
+2. Tap = the signature interaction: the contact's route fills with accent from their hex UP to the core (260ms) and the user card opens on dock; reduce-motion opens instantly. Blue strip NEVER appears on bare keyboard focus (focus = hex halo only; Enter activates).
+3. Deleted wholesale: elliptical-ring engine, drag-to-pin SharedPreferences store, Reset button, InteractiveViewer pan mode, dogleg traces. ARB `contactNetworkReset`/`DragHint` removed (en+pl). Owner chose pure alphabetical, no manual swap.
+4. A11y kept as core invariant: per-node semantic buttons (`container: true`), sorted traversal, Tab reveal via scroll, 48dp floor.
 
 ## Verification
-- Analyze 0 issues; full suite **786 passed** including 10 new contract tests. Visual loop covered all five themes, 0/1/8/25 contacts, narrow/desktop widths, and textScale 1.6.
+- Analyze 0; full suite **797 passed / 4 skips**; 14 rewritten contract tests (pairwise non-overlap across widths x text scales x counts, route bounds, animated-tap ordering, Tab x40 scroll reveal). Visual loop: all five themes at 390x844, 320x700, 1100px desktop, textScale 1.6.
 
 ## Notes for next session
-- The earlier `c15d770` feature-branch test bundle was superseded by the production 0.0.126 E2E deploy. The network remains branch-only and must not be merged or redeployed until owner review.
-- Next work: replace rejected 40-contact dense map mode with the Terminal Rack patch-panel grid, plus map-mode jitter fade. Full local spec: `2026-07-23-handoff-terminal-rack.md`.
-- Trap: `flutter run -d web-server` hot restart does not recompile `-t` entry-file changes; cold restart is required.
-- Full: `2026-07-23-session-contact-network.md`.
+- Branch-only, NOT merged, no version bump. Production serves master `5a757d3` / 0.0.128. Owner has not yet seen the built honeycomb on device — expect an ephemeral branch deploy request, then PR + PATCH bump on approval.
+- Traps: hot restart recompiles nothing under `test/preview/` (cold `hub restart`); adjacent slot rects share edges (overlap asserts need epsilon); `find.text` sees offscreen widgets in the non-lazy field; row-0 routes must reuse feed geometry.
+- Full: `2026-07-23-session-honeycomb-core.md`.
 
 ---
 ### Prior latest ↓
@@ -93,26 +91,6 @@
 ## Notes for next session
 - PR #94 is merged and the release is permanent on `master`; fully close/reopen the PWA after deployment, never clear site data.
 - Full: `2026-07-22-session-settings-about-link.md`.
-
----
-### Prior latest ↓
-
-**Date:** 2026-07-22 — Appearance settings redesign completed and deployed for device testing from `feat/appearance-redesign` (`f5c9aa6`): one coherent theme/background model, real previews, and Cosmic Theme default → starfield.
-
-## What was done
-1. Replaced the cramped five-icon Theme tile, misleading Plain/Glyphs tile, and Cosmic-only Starfield switch with one preview-backed **Appearance** entry and a dedicated selector screen.
-2. Added one per-user preference: Theme default / Plain / Hieroglyphs. Cosmic + Theme default resolves to the animated starfield; explicit overrides persist across theme changes. Auth keeps its forced Cosmic starfield independently.
-3. Added real miniature chat previews, safe legacy migration, English/Polish strings, focused tests, narrow-width top-bar handling, and a scroll fade that prevents cross-theme previews bleeding through floating chrome.
-4. Published the feature-branch frontend bundle to production as an ephemeral test deploy; master/backend remain untouched.
-
-## Verification
-- Flutter analyze: 0 issues. Full Flutter suite: 775 passed, 4 existing skips. `graphify update .`: 9081 nodes.
-- Rendered all five themes at 390×844 and Cosmic at 320×700. Read-only design review: mergeable; follow-up confirmed both requested visual fixes.
-- Production smoke passed: `/health`, `/version.json`, `/version`, served bundle contains `f5c9aa6`, and Flutter boot rendered.
-
-## Notes for next session
-- Feature-branch bundle `f5c9aa6` is live for owner testing. No version bump and no master merge; production permanence still requires explicit approval.
-- Full: `2026-07-22-session-appearance-redesign.md`.
 
 ---
 

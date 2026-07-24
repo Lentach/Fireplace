@@ -1,6 +1,5 @@
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
-import 'package:flutter/rendering.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fireplace/models/user_model.dart';
@@ -10,14 +9,20 @@ import 'package:fireplace/widgets/contact_network_view.dart';
 UserModel _contact(int id, String name) =>
     UserModel(id: id, username: name, tag: '0001');
 
-List<ContactNetworkLayoutInput> _inputs(int count) => [
+List<ContactHexLayoutInput> _inputs(int count) => [
   for (var i = 0; i < count; i++)
-    ContactNetworkLayoutInput(
-      id: i + 1,
-      displayName: 'user${i + 1}',
-      labelSize: const Size(64, 14),
-    ),
+    ContactHexLayoutInput(id: i + 1, displayName: 'user${i + 1}'),
 ];
+
+ContactHexLayoutResult _resolve(
+  int count, {
+  double width = 366,
+  double labelHeight = 15,
+}) => ContactHexLayout.resolve(
+  contacts: _inputs(count),
+  width: width,
+  labelHeight: labelHeight,
+);
 
 Widget _host(
   Widget child, {
@@ -27,10 +32,7 @@ Widget _host(
   return MaterialApp(
     theme: RpgTheme.themeDataDarkGray,
     home: MediaQuery(
-      data: MediaQueryData(
-        size: size,
-        disableAnimations: disableAnimations,
-      ),
+      data: MediaQueryData(size: size, disableAnimations: disableAnimations),
       child: Scaffold(
         body: Center(
           child: SizedBox(
@@ -44,301 +46,287 @@ Widget _host(
   );
 }
 
+ContactNetworkView _view({
+  required List<UserModel> contacts,
+  ValueChanged<UserModel>? onTap,
+  Set<int> conversationIds = const {},
+}) {
+  return ContactNetworkView(
+    contacts: contacts,
+    localNodeLabel: 'Marta',
+    localNodeCaption: 'LOCAL NODE',
+    emptyTitle: 'No contacts yet',
+    emptyMessage: 'Add friends to start',
+    onContactTap: onTap ?? (_) {},
+    networkSemanticLabel: 'Contact network',
+    localNodeSemanticLabel: 'You, local node',
+    conversationContactIds: conversationIds,
+  );
+}
+
 void main() {
-  group('ContactNetworkLayout', () {
-    test('identical inputs produce identical layouts', () {
-      const viewport = Size(366, 600);
-      const localLabel = Size(70, 12);
-      final a = ContactNetworkLayout.resolve(
-        contacts: _inputs(8),
-        safeViewport: viewport,
-        localLabelSize: localLabel,
-        savedPins: const {},
-      );
-      final b = ContactNetworkLayout.resolve(
-        contacts: _inputs(8),
-        safeViewport: viewport,
-        localLabelSize: localLabel,
-        savedPins: const {},
-      );
-      expect(a.localCenter, b.localCenter);
-      expect(a.contactCenters, b.contactCenters);
-      expect(a.ringExtents, b.ringExtents);
+  group('ContactHexLayout', () {
+    test('identical inputs produce identical slots', () {
+      final a = _resolve(27);
+      final b = _resolve(27);
+      expect(a.slots, b.slots);
+      expect(a.rowOf, b.rowOf);
+      expect(a.coreCenter, b.coreCenter);
+      expect(a.fieldHeight, b.fieldHeight);
     });
 
-    test('contacts never overlap the local node visual rect', () {
-      final layout = ContactNetworkLayout.resolve(
-        contacts: _inputs(8),
-        safeViewport: const Size(366, 600),
-        localLabelSize: const Size(70, 12),
-        savedPins: const {},
+    test('slot order is the natural sort of display names', () {
+      final layout = ContactHexLayout.resolve(
+        contacts: const [
+          ContactHexLayoutInput(id: 1, displayName: 'ziomek50'),
+          ContactHexLayoutInput(id: 2, displayName: 'Ada'),
+          ContactHexLayoutInput(id: 3, displayName: 'ziomek3'),
+          ContactHexLayoutInput(id: 4, displayName: 'borys'),
+        ],
+        width: 366,
+        labelHeight: 15,
       );
-      final localRect = Rect.fromLTWH(
-        layout.localCenter.dx - layout.metrics.localVisualWidth / 2,
-        layout.localCenter.dy - layout.metrics.localNodeRadius,
-        layout.metrics.localVisualWidth,
-        ContactNetworkLayoutMetrics.localNodeDiameter +
-            ContactNetworkLayoutMetrics.labelGap +
-            layout.metrics.localLabelSize.height,
-      );
-      layout.contactCenters.forEach((id, center) {
-        final rect = layout.metrics.visualRectFor(
-          layout.inputById[id]!,
-          center,
-        );
-        expect(
-          rect.overlaps(localRect),
-          isFalse,
-          reason: 'contact $id overlaps the local node',
-        );
-      });
+      expect(layout.inputs.map((c) => c.displayName).toList(), [
+        'Ada',
+        'borys',
+        'ziomek3',
+        'ziomek50',
+      ]);
     });
 
-    test('contact visual rects never overlap pairwise', () {
-      final scenarios = <(int, Size, Size)>[
-        // Fitted phone layout.
-        (8, const Size(366, 600), const Size(64, 14)),
-        // Long labels / accessibility text scale.
-        (12, const Size(366, 600), const Size(150, 24)),
-        // Dense interactive (pannable) layout.
-        (25, const Size(320, 480), const Size(64, 14)),
-      ];
-      for (final (count, viewport, labelSize) in scenarios) {
-        final layout = ContactNetworkLayout.resolve(
-          contacts: [
-            for (var i = 0; i < count; i++)
-              ContactNetworkLayoutInput(
-                id: i + 1,
-                displayName: 'user${i + 1}',
-                labelSize: labelSize,
-              ),
-          ],
-          safeViewport: viewport,
-          localLabelSize: const Size(70, 12),
-          savedPins: const {},
-        );
-        final rects = [
-          for (final entry in layout.contactCenters.entries)
-            layout.metrics.visualRectFor(
-              layout.inputById[entry.key]!,
-              entry.value,
-            ),
-        ];
-        for (var i = 0; i < rects.length; i++) {
-          for (var j = i + 1; j < rects.length; j++) {
-            expect(
-              rects[i].deflate(0.5).overlaps(rects[j].deflate(0.5)),
-              isFalse,
-              reason:
-                  'nodes $i and $j overlap in scenario '
-                  '($count contacts, $viewport, $labelSize)',
+    test('no two slot visual rects overlap at any tested geometry', () {
+      for (final count in [3, 8, 15, 27, 40]) {
+        for (final width in [296.0, 366.0, 1076.0]) {
+          for (final labelHeight in [15.0, 24.0]) {
+            final layout = _resolve(
+              count,
+              width: width,
+              labelHeight: labelHeight,
             );
+            for (var i = 0; i < count; i++) {
+              for (var j = i + 1; j < count; j++) {
+                final a = layout.visualRectAt(i);
+                final b = layout.visualRectAt(j);
+                final overlap = a.intersect(b);
+                expect(
+                  overlap.width <= 0.01 || overlap.height <= 0.01,
+                  isTrue,
+                  reason:
+                      'slots $i/$j overlap at count=$count width=$width '
+                      'labelHeight=$labelHeight: $a vs $b',
+                );
+              }
+            }
           }
         }
       }
     });
 
-    test('saved pins are hints: out-of-bounds pins are clamped inside', () {
-      final layout = ContactNetworkLayout.resolve(
-        contacts: _inputs(3),
-        safeViewport: const Size(366, 600),
-        localLabelSize: const Size(70, 12),
-        // Normalized coords far outside the 0..1 range.
-        savedPins: const {1: Offset(9.0, -4.0)},
-      );
-      final center = layout.contactCenters[1]!;
-      final bounds = layout.metrics.centerBoundsFor(layout.inputById[1]!);
-      expect(center.dx, inInclusiveRange(bounds.left, bounds.right));
-      expect(center.dy, inInclusiveRange(bounds.top, bounds.bottom));
+    test('every slot rect stays inside the field width', () {
+      for (final width in [296.0, 366.0, 1076.0]) {
+        final layout = _resolve(27, width: width);
+        for (var i = 0; i < 27; i++) {
+          final rect = layout.visualRectAt(i);
+          expect(rect.left, greaterThanOrEqualTo(-0.01), reason: 'i=$i');
+          expect(
+            rect.right,
+            lessThanOrEqualTo(width + 0.01),
+            reason: 'i=$i width=$width',
+          );
+        }
+      }
     });
 
-    test('every contact keeps a 48dp hit-target node at the floor', () {
-      final layout = ContactNetworkLayout.resolve(
-        contacts: _inputs(40),
-        safeViewport: const Size(320, 480),
-        localLabelSize: const Size(70, 12),
-        savedPins: const {},
-      );
-      expect(
-        layout.metrics.nodeDiameter,
-        greaterThanOrEqualTo(ContactNetworkLayoutMetrics.nodeFloorDiameter),
-      );
-      expect(layout.usesInteractiveViewer, isTrue);
+    test('rows fill 4-3-4-3 and the partial last row centers itself', () {
+      final layout = _resolve(9);
+      expect(layout.rowOf, [0, 0, 0, 0, 1, 1, 1, 2, 2]);
+      // Last row holds 2: centered as a symmetric pair around the core x.
+      final lastRow = [layout.slots[7].dx, layout.slots[8].dx];
+      final center = layout.coreCenter.dx;
+      expect(lastRow[0] - center, closeTo(-(lastRow[1] - center), 0.001));
+    });
+
+    test('hex hit target clears the 48dp floor', () {
+      expect(ContactHexLayout.hexRadius * 2, greaterThanOrEqualTo(48));
+      expect(ContactHexLayout.hexWidth, greaterThanOrEqualTo(48));
+    });
+
+    test('field height grows with count and width never changes it', () {
+      final small = _resolve(8);
+      final large = _resolve(40);
+      expect(large.fieldHeight, greaterThan(small.fieldHeight));
+      // More contacts never widen the field: slots stay within the same
+      // horizontal envelope regardless of count.
+      final envelope27 = _resolve(27)
+          .slots
+          .map((s) => s.dx)
+          .reduce((a, b) => a > b ? a : b);
+      final envelope40 = _resolve(40)
+          .slots
+          .map((s) => s.dx)
+          .reduce((a, b) => a > b ? a : b);
+      expect(envelope40, envelope27);
+    });
+
+    test('route path stays inside the field horizontal bounds', () {
+      final layout = _resolve(27);
+      for (final index in [0, 5, 12, 26]) {
+        final bounds = ContactHexLayout.routePath(layout, index).getBounds();
+        expect(bounds.left, greaterThanOrEqualTo(-0.01));
+        expect(bounds.right, lessThanOrEqualTo(366.01));
+        // The route ends at the target's socket pad.
+        final slot = layout.slots[index];
+        expect(
+          bounds.bottom,
+          closeTo(slot.dy - ContactHexLayout.hexRadius - 9, 0.01),
+        );
+      }
     });
   });
 
   group('ContactNetworkView', () {
-    testWidgets('tapping a node opens that contact', (tester) async {
+    testWidgets('renders a semantic button per contact with username', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(
+          _view(
+            contacts: [
+              _contact(1, 'ada'),
+              _contact(2, 'borys'),
+              _contact(3, 'celina'),
+            ],
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      for (final name in ['ada', 'borys', 'celina']) {
+        expect(find.bySemanticsLabel(name), findsOneWidget);
+      }
+      expect(find.bySemanticsLabel('You, local node'), findsOneWidget);
+      handle.dispose();
+    });
+
+    testWidgets('tap opens contact synchronously under reduce motion', (
+      tester,
+    ) async {
       UserModel? tapped;
       await tester.pumpWidget(
         _host(
-          ContactNetworkView(
+          _view(
             contacts: [_contact(1, 'ada'), _contact(2, 'borys')],
-            localNodeLabel: 'marta',
-            localNodeCaption: 'LOCAL NODE',
-            emptyTitle: 'empty',
-            emptyMessage: 'add friends',
-            onContactTap: (user) => tapped = user,
-            networkSemanticLabel: 'network',
-            localNodeSemanticLabel: 'you',
+            onTap: (user) => tapped = user,
           ),
         ),
       );
       await tester.pumpAndSettle();
 
       await tester.tap(find.text('ada'));
-      await tester.pump();
-      expect(tapped?.id, 1);
+      expect(tapped?.username, 'ada');
     });
 
-    testWidgets(
-      'reduce motion: tap routes synchronously without pulse delay',
-      (tester) async {
-        UserModel? tapped;
-        await tester.pumpWidget(
-          _host(
-            ContactNetworkView(
-              contacts: [_contact(1, 'ada')],
-              localNodeLabel: 'marta',
-              localNodeCaption: 'LOCAL NODE',
-              emptyTitle: 'empty',
-              emptyMessage: 'add friends',
-              onContactTap: (user) => tapped = user,
-              networkSemanticLabel: 'network',
-              localNodeSemanticLabel: 'you',
-            ),
-          ),
-        );
-        await tester.pumpAndSettle();
-
-        await tester.tap(find.text('ada'));
-        // No pump: with disableAnimations the callback fires in the tap
-        // handler itself instead of after the 180ms pulse.
-        expect(tapped?.id, 1);
-      },
-    );
-
-    testWidgets('nodes are semantic buttons labeled with the username', (
-      tester,
-    ) async {
-      final handle = tester.ensureSemantics();
-      await tester.pumpWidget(
-        _host(
-          ContactNetworkView(
-            contacts: [_contact(1, 'ada')],
-            localNodeLabel: 'marta',
-            localNodeCaption: 'LOCAL NODE',
-            emptyTitle: 'empty',
-            emptyMessage: 'add friends',
-            onContactTap: (_) {},
-            networkSemanticLabel: 'network',
-            localNodeSemanticLabel: 'you',
-          ),
-        ),
-      );
-      await tester.pumpAndSettle();
-
-      SemanticsNode? target;
-      void visit(SemanticsNode node) {
-        if (node.label == 'ada') {
-          target = node;
-        }
-        node.visitChildren((child) {
-          visit(child);
-          return true;
-        });
-      }
-
-      visit(
-        tester.binding.renderViews.first.owner!.semanticsOwner!
-            .rootSemanticsNode!,
-      );
-      expect(target, isNotNull, reason: 'no semantics node labeled ada');
-      final data = target!.getSemanticsData();
-      expect(data.label, 'ada');
-      expect(data.flagsCollection.isButton, isTrue);
-      handle.dispose();
-    });
-
-    testWidgets('keyboard: Enter on a focused node opens the contact', (
+    testWidgets('animated tap fills the route before opening the card', (
       tester,
     ) async {
       UserModel? tapped;
       await tester.pumpWidget(
         _host(
-          ContactNetworkView(
+          _view(
             contacts: [_contact(1, 'ada'), _contact(2, 'borys')],
-            localNodeLabel: 'marta',
-            localNodeCaption: 'LOCAL NODE',
-            emptyTitle: 'empty',
-            emptyMessage: 'add friends',
-            onContactTap: (user) => tapped = user,
-            networkSemanticLabel: 'network',
-            localNodeSemanticLabel: 'you',
+            onTap: (user) => tapped = user,
           ),
+          disableAnimations: false,
         ),
       );
       await tester.pumpAndSettle();
 
-      await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+      await tester.tap(find.text('borys'));
       await tester.pump();
-      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-      await tester.pump();
-      // Traversal order is the sorted contact order, so the first Tab stop
-      // is 'ada'.
-      expect(tapped?.id, 1);
+      // Mid-flight: the route strip is still travelling to the core.
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(tapped, isNull);
+      // Docked: the card opens.
+      await tester.pump(const Duration(milliseconds: 200));
+      expect(tapped?.username, 'borys');
+      await tester.pumpAndSettle();
     });
 
-    testWidgets(
-      'keyboard focus reveals an initially offscreen node in the pannable map',
-      (tester) async {
-        // 25 contacts in a small viewport forces the InteractiveViewer path
-        // with a map larger than the screen.
-        final contacts = [
-          for (var i = 1; i <= 25; i++) _contact(i, 'user${i.toString().padLeft(2, '0')}'),
-        ];
-        await tester.pumpWidget(
-          _host(
-            ContactNetworkView(
-              contacts: contacts,
-              localNodeLabel: 'marta',
-              localNodeCaption: 'LOCAL NODE',
-              emptyTitle: 'empty',
-              emptyMessage: 'add friends',
-              onContactTap: (_) {},
-              networkSemanticLabel: 'network',
-              localNodeSemanticLabel: 'you',
-            ),
-            size: const Size(320, 480),
-          ),
-        );
-        await tester.pumpAndSettle();
+    testWidgets('keyboard focus reveals deep nodes by scrolling', (
+      tester,
+    ) async {
+      final contacts = [
+        for (var i = 0; i < 40; i++) _contact(i + 1, 'user${i + 1}'),
+      ];
+      await tester.pumpWidget(
+        _host(_view(contacts: contacts), size: const Size(390, 700)),
+      );
+      await tester.pumpAndSettle();
 
-        // Tab through every node; the traversal order matches the sorted
-        // contact order, ending on the last contact.
-        for (var i = 0; i < contacts.length; i++) {
-          await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-          await tester.pump();
-        }
-        await tester.pumpAndSettle();
+      // Tab to the last node in traversal order (user40).
+      for (var i = 0; i < 40; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+      }
+      await tester.pumpAndSettle();
 
-        final label = find.text('user25');
-        expect(label, findsOneWidget);
-        final rect = tester.getRect(label);
-        // The host widget is centered inside the 800x600 test surface, so
-        // the viewport rect must be taken from the widget itself.
-        final viewport = tester.getRect(find.byType(ContactNetworkView));
-        // The focused node's label must have been panned into the viewport.
-        // Full containment: the reveal contract is the whole label visible,
-        // not one pixel overlapping.
-        expect(
-          viewport.contains(rect.topLeft) &&
-              viewport.contains(rect.bottomRight),
-          isTrue,
-          reason:
-              'focused node not fully revealed: $rect outside $viewport',
-        );
-      },
-    );
+      final rect = tester.getRect(find.text('user40'));
+      expect(rect.top, greaterThanOrEqualTo(0));
+      expect(rect.bottom, lessThanOrEqualTo(700));
+
+      // Enter activates the focused node.
+      UserModel? opened;
+      await tester.pumpWidget(
+        _host(
+          _view(contacts: contacts, onTap: (u) => opened = u),
+          size: const Size(390, 700),
+        ),
+      );
+      await tester.pumpAndSettle();
+      for (var i = 0; i < 40; i++) {
+        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        await tester.pump();
+      }
+      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
+      await tester.pump();
+      expect(opened?.username, 'user40');
+    });
+
+    testWidgets('empty contact set shows the empty copy and the core', (
+      tester,
+    ) async {
+      await tester.pumpWidget(_host(_view(contacts: const [])));
+      await tester.pumpAndSettle();
+
+      expect(find.text('No contacts yet'), findsOneWidget);
+      expect(find.text('Add friends to start'), findsOneWidget);
+      expect(find.text('LOCAL NODE'), findsOneWidget);
+    });
+
+    testWidgets('field scrolls when contacts outgrow the viewport', (
+      tester,
+    ) async {
+      final contacts = [
+        for (var i = 0; i < 40; i++) _contact(i + 1, 'user${i + 1}'),
+      ];
+      await tester.pumpWidget(
+        _host(_view(contacts: contacts), size: const Size(390, 700)),
+      );
+      await tester.pumpAndSettle();
+      // The last contact starts below the fold (it exists in the tree; the
+      // field is not lazy)...
+      expect(tester.getRect(find.text('user40')).top, greaterThan(700));
+      // ...and scrolls into the viewport.
+      await tester.drag(
+        find.byType(SingleChildScrollView),
+        const Offset(0, -2000),
+      );
+      await tester.pumpAndSettle();
+      final rect = tester.getRect(find.text('user40'));
+      expect(rect.bottom, lessThanOrEqualTo(700));
+      expect(rect.top, greaterThanOrEqualTo(0));
+      expect(find.text('user40'), findsOneWidget);
+    });
   });
 }

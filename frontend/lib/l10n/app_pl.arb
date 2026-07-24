@@ -168,8 +168,6 @@
   "@contactNetworkNodes": {
     "placeholders": { "count": { "type": "String" } }
   },
-  "contactNetworkReset": "Resetuj układ",
-  "contactNetworkDragHint": "Przytrzymaj i przeciągnij, aby zmienić pozycję",
   "contactNetworkShowList": "Widok listy",
   "contactNetworkShowMap": "Widok sieci",
   "block": "Zablokuj",
