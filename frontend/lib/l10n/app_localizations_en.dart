@@ -474,6 +474,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get contactNetworkShowMap => 'Network view';
 
   @override
+  String get contactNetworkOpenChatHint => 'Open chat';
+
+  @override
   String get contactsSearchHint => 'Search contacts';
 
   @override

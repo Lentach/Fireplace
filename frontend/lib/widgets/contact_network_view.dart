@@ -1,5 +1,6 @@
 import 'dart:math' as math;
 
+import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter/semantics.dart';
@@ -33,6 +34,8 @@ class ContactNetworkView extends StatefulWidget {
     required this.emptyTitle,
     required this.emptyMessage,
     required this.onContactTap,
+    this.onContactOpenChat,
+    this.openChatSemanticHint,
     required this.networkSemanticLabel,
     required this.localNodeSemanticLabel,
     this.safeInsets = EdgeInsets.zero,
@@ -49,6 +52,16 @@ class ContactNetworkView extends StatefulWidget {
   final String emptyTitle;
   final String emptyMessage;
   final ValueChanged<UserModel> onContactTap;
+
+  /// Secondary activation (long press, Shift+Enter): jump straight into the
+  /// conversation, no route animation — chat entry is instant by doctrine.
+  /// Null for contacts the parent has no conversation for, so a stray press
+  /// can never create one; those fall back to [onContactTap].
+  final ValueChanged<UserModel>? onContactOpenChat;
+
+  /// Screen-reader hint for the long-press action ("Open chat"), so the
+  /// gesture is announced with its meaning instead of a bare "long press".
+  final String? openChatSemanticHint;
   final String networkSemanticLabel;
   final String localNodeSemanticLabel;
 
@@ -117,6 +130,24 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
     if (_routeController.isAnimating) return;
     setState(() => _routeContactId = contact.id);
     _routeController.forward(from: 0);
+  }
+
+  /// Only a contact whose wire already exists (doubled socket = a real
+  /// conversation) can be entered directly; everyone else opens the card,
+  /// so a stray long press can never create a conversation.
+  bool _canOpenChat(UserModel contact) =>
+      widget.onContactOpenChat != null &&
+      widget.conversationContactIds.contains(contact.id);
+
+  /// Secondary activation: travel the existing wire straight into the chat.
+  /// No route fill — the chat route is deliberately zero-duration, so an
+  /// animation here would only add 480ms in front of it.
+  void _openChat(UserModel contact) {
+    final openChat = widget.onContactOpenChat;
+    if (openChat == null) return;
+    if (_routeController.isAnimating) return;
+    if (!kIsWeb) HapticFeedback.selectionClick();
+    openChat(contact);
   }
 
   @override
@@ -402,21 +433,37 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
             if (hasFocus) _revealSlot(layout, slot);
           },
           onKeyEvent: (_, event) {
-            if (event is KeyDownEvent &&
-                (event.logicalKey == LogicalKeyboardKey.enter ||
-                    event.logicalKey == LogicalKeyboardKey.space)) {
-              _activateContact(contact, disableAnimations);
+            if (event is! KeyDownEvent) return KeyEventResult.ignored;
+            final isActivation =
+                event.logicalKey == LogicalKeyboardKey.enter ||
+                event.logicalKey == LogicalKeyboardKey.space;
+            if (!isActivation) return KeyEventResult.ignored;
+            // Shift+Enter is the keyboard twin of the long press.
+            if (HardwareKeyboard.instance.isShiftPressed &&
+                _canOpenChat(contact)) {
+              _openChat(contact);
               return KeyEventResult.handled;
             }
-            return KeyEventResult.ignored;
+            _activateContact(contact, disableAnimations);
+            return KeyEventResult.handled;
           },
-          child: Semantics(
+          child: Semantics.fromProperties(
             container: true,
-            button: true,
-            label: contact.username,
-            sortKey: OrdinalSortKey((index + 1).toDouble()),
-            onTap: () => _activateContact(contact, disableAnimations),
             excludeSemantics: true,
+            properties: SemanticsProperties(
+              button: true,
+              label: contact.username,
+              sortKey: OrdinalSortKey((index + 1).toDouble()),
+              onTap: () => _activateContact(contact, disableAnimations),
+              onLongPress: _canOpenChat(contact)
+                  ? () => _openChat(contact)
+                  : null,
+              hintOverrides: _canOpenChat(contact)
+                  ? SemanticsHintOverrides(
+                      onLongPressHint: widget.openChatSemanticHint,
+                    )
+                  : null,
+            ),
             child: Opacity(
               opacity: rowT,
               child: Transform.scale(
@@ -425,6 +472,9 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                   excludeFromSemantics: true,
                   behavior: HitTestBehavior.opaque,
                   onTap: () => _activateContact(contact, disableAnimations),
+                  onLongPress: _canOpenChat(contact)
+                      ? () => _openChat(contact)
+                      : null,
                   child: Column(
                     mainAxisSize: MainAxisSize.min,
                     children: [

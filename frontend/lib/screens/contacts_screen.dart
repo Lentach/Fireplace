@@ -297,6 +297,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
       emptyTitle: filtering ? l10n.contactsSearchNoResults : l10n.noContactsYet,
       emptyMessage: filtering ? '' : l10n.addFriendsToStart,
       onContactTap: (user) => _openContactCard(context, user),
+      onContactOpenChat: (user) => _openChatWithContact(context, user.id),
+      openChatSemanticHint: l10n.contactNetworkOpenChatHint,
       networkSemanticLabel: l10n.contactNetworkSemantic(friends.length),
       localNodeSemanticLabel: l10n.contactNetworkYouLocalNode,
       safeInsets: EdgeInsets.fromLTRB(

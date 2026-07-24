@@ -170,6 +170,7 @@
   },
   "contactNetworkShowList": "Widok listy",
   "contactNetworkShowMap": "Widok sieci",
+  "contactNetworkOpenChatHint": "Otwórz czat",
   "contactsSearchHint": "Szukaj kontaktów",
   "contactsSearchNoResults": "Brak pasujących kontaktów",
   "block": "Zablokuj",

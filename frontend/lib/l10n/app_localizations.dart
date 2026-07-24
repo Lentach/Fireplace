@@ -884,6 +884,12 @@ abstract class AppLocalizations {
   /// **'Widok sieci'**
   String get contactNetworkShowMap;
 
+  /// No description provided for @contactNetworkOpenChatHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Otwórz czat'**
+  String get contactNetworkOpenChatHint;
+
   /// No description provided for @contactsSearchHint.
   ///
   /// In pl, this message translates to:

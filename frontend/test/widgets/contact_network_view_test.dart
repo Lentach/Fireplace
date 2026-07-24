@@ -35,11 +35,7 @@ Widget _host(
       data: MediaQueryData(size: size, disableAnimations: disableAnimations),
       child: Scaffold(
         body: Center(
-          child: SizedBox(
-            width: size.width,
-            height: size.height,
-            child: child,
-          ),
+          child: SizedBox(width: size.width, height: size.height, child: child),
         ),
       ),
     ),
@@ -49,6 +45,7 @@ Widget _host(
 ContactNetworkView _view({
   required List<UserModel> contacts,
   ValueChanged<UserModel>? onTap,
+  ValueChanged<UserModel>? onOpenChat,
   Set<int> conversationIds = const {},
 }) {
   return ContactNetworkView(
@@ -58,6 +55,7 @@ ContactNetworkView _view({
     emptyTitle: 'No contacts yet',
     emptyMessage: 'Add friends to start',
     onContactTap: onTap ?? (_) {},
+    onContactOpenChat: onOpenChat,
     networkSemanticLabel: 'Contact network',
     localNodeSemanticLabel: 'You, local node',
     conversationContactIds: conversationIds,
@@ -157,14 +155,12 @@ void main() {
       expect(large.fieldHeight, greaterThan(small.fieldHeight));
       // More contacts never widen the field: slots stay within the same
       // horizontal envelope regardless of count.
-      final envelope27 = _resolve(27)
-          .slots
-          .map((s) => s.dx)
-          .reduce((a, b) => a > b ? a : b);
-      final envelope40 = _resolve(40)
-          .slots
-          .map((s) => s.dx)
-          .reduce((a, b) => a > b ? a : b);
+      final envelope27 = _resolve(
+        27,
+      ).slots.map((s) => s.dx).reduce((a, b) => a > b ? a : b);
+      final envelope40 = _resolve(
+        40,
+      ).slots.map((s) => s.dx).reduce((a, b) => a > b ? a : b);
       expect(envelope40, envelope27);
     });
 
@@ -251,6 +247,94 @@ void main() {
       await tester.pump(const Duration(milliseconds: 300));
       expect(tapped?.username, 'borys');
       await tester.pumpAndSettle();
+    });
+
+    testWidgets('long press on a wired contact opens the chat directly', (
+      tester,
+    ) async {
+      UserModel? carded;
+      UserModel? chatted;
+      await tester.pumpWidget(
+        _host(
+          _view(
+            contacts: [_contact(1, 'ada'), _contact(2, 'borys')],
+            onTap: (user) => carded = user,
+            onOpenChat: (user) => chatted = user,
+            conversationIds: const {2},
+          ),
+          disableAnimations: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('borys'));
+      await tester.pump();
+
+      // Straight in: no route animation in front of the chat route.
+      expect(chatted?.username, 'borys');
+      expect(carded, isNull);
+      await tester.pumpAndSettle();
+    });
+
+    testWidgets('long press without a conversation cannot start one', (
+      tester,
+    ) async {
+      UserModel? chatted;
+      await tester.pumpWidget(
+        _host(
+          _view(
+            contacts: [_contact(1, 'ada')],
+            onOpenChat: (user) => chatted = user,
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.longPress(find.text('ada'));
+      await tester.pumpAndSettle();
+
+      expect(chatted, isNull);
+    });
+
+    testWidgets('wired nodes expose a long-press action with its meaning', (
+      tester,
+    ) async {
+      final handle = tester.ensureSemantics();
+      await tester.pumpWidget(
+        _host(
+          ContactNetworkView(
+            contacts: [_contact(1, 'ada'), _contact(2, 'borys')],
+            localNodeLabel: 'Marta',
+            localNodeCaption: 'LOCAL NODE',
+            emptyTitle: 'No contacts yet',
+            emptyMessage: 'Add friends to start',
+            onContactTap: (_) {},
+            onContactOpenChat: (_) {},
+            openChatSemanticHint: 'Open chat',
+            networkSemanticLabel: 'Contact network',
+            localNodeSemanticLabel: 'You, local node',
+            conversationContactIds: const {2},
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('borys')),
+        matchesSemantics(
+          label: 'borys',
+          isButton: true,
+          hasTapAction: true,
+          hasLongPressAction: true,
+          onLongPressHint: 'Open chat',
+        ),
+      );
+      // A contact with no wire keeps tap-only semantics.
+      expect(
+        tester.getSemantics(find.bySemanticsLabel('ada')),
+        matchesSemantics(label: 'ada', isButton: true, hasTapAction: true),
+      );
+      handle.dispose();
     });
 
     testWidgets('keyboard focus reveals deep nodes by scrolling', (

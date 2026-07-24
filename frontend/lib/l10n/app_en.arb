@@ -182,6 +182,7 @@
   },
   "contactNetworkShowList": "List view",
   "contactNetworkShowMap": "Network view",
+  "contactNetworkOpenChatHint": "Open chat",
   "contactsSearchHint": "Search contacts",
   "contactsSearchNoResults": "No matching contacts",
   "block": "Block",
