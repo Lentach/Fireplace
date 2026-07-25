@@ -7,8 +7,8 @@ import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/contact_network_view.dart';
 import 'package:fireplace/widgets/hex_avatar.dart';
 
-UserModel _contact(int id, String name) =>
-    UserModel(id: id, username: name, tag: '0001');
+UserModel _contact(int id, String name, {String? avatar}) =>
+    UserModel(id: id, username: name, tag: '0001', profilePictureUrl: avatar);
 
 List<ContactHexLayoutInput> _inputs(int count) => [
   for (var i = 0; i < count; i++)
@@ -549,6 +549,47 @@ void main() {
       await tester.sendKeyEvent(LogicalKeyboardKey.enter);
       await tester.pump();
       expect(opened?.username, 'user40');
+    });
+
+    testWidgets('avatars below the fold do not fetch until scrolled to', (
+      tester,
+    ) async {
+      final contacts = [
+        for (var i = 1; i <= 60; i++)
+          _contact(i, 'user$i', avatar: 'https://example.test/$i.png'),
+      ];
+      await tester.pumpWidget(
+        _host(_view(contacts: contacts), size: const Size(390, 700)),
+      );
+      await tester.pumpAndSettle();
+
+      int armed() => tester
+          .widgetList<HexAvatarSurface>(find.byType(HexAvatarSurface))
+          .where((surface) => surface.imageUrl != null)
+          .length;
+
+      // Every node is built - focus and semantics still reach all 60 - but
+      // only the rows on screen are allowed to pull a face.
+      expect(find.byType(HexAvatarSurface), findsNWidgets(61)); // + the core
+      final onMount = armed();
+      expect(onMount, greaterThan(0));
+      expect(onMount, lessThan(60));
+
+      await tester.drag(
+        find.byType(SingleChildScrollView),
+        const Offset(0, -600),
+      );
+      await tester.pumpAndSettle();
+      final afterScroll = armed();
+      expect(afterScroll, greaterThan(onMount));
+
+      // Scrolling back must not drop already-loaded faces to initials.
+      await tester.drag(
+        find.byType(SingleChildScrollView),
+        const Offset(0, 600),
+      );
+      await tester.pumpAndSettle();
+      expect(armed(), afterScroll);
     });
 
     testWidgets('empty contact set shows the empty copy and the core', (

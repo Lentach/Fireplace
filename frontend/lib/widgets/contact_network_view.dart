@@ -109,6 +109,17 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
   bool _entranceCompleted = false;
   bool _addSlotFocused = false;
 
+  /// Highest row whose avatars may fetch. A ValueNotifier, not setState:
+  /// crossing a row while scrolling must rebuild N tiny avatar leaves, not
+  /// N Focus/Semantics/GestureDetector/ClipPath subtrees.
+  final _armedThroughRow = ValueNotifier<int>(0);
+
+  /// Rows visible right now, recomputed each build. Combined with the
+  /// notifier's high-water mark so scrolling back up never drops a face
+  /// that already loaded back to initials.
+  int _armedFloor = 0;
+  ContactHexLayoutResult? _lastLayout;
+
   @override
   void initState() {
     super.initState();
@@ -134,13 +145,37 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
           setState(() => _routeContactId = null);
           if (target != null) widget.onContactTap(target);
         });
+    _scrollController.addListener(_armVisibleRows);
   }
 
   @override
   void dispose() {
     _routeController.dispose();
+    _scrollController.removeListener(_armVisibleRows);
     _scrollController.dispose();
+    _armedThroughRow.dispose();
     super.dispose();
+  }
+
+  /// Last row whose avatars are allowed to fetch: everything on screen plus
+  /// one row of lookahead, so a face decodes just before it scrolls in.
+  int _visibleThroughRow(ContactHexLayoutResult layout, double fallbackHeight) {
+    if (layout.slots.isEmpty) return 0;
+    final attached = _scrollController.hasClients;
+    final offset = attached ? _scrollController.position.pixels : 0.0;
+    final viewport = attached
+        ? _scrollController.position.viewportDimension
+        : fallbackHeight;
+    final bottom = offset + viewport + layout.rowPitch;
+    final rows = ((bottom - layout.slots.first.dy) / layout.rowPitch).ceil();
+    return rows.clamp(0, math.max(0, layout.rowCount - 1));
+  }
+
+  void _armVisibleRows() {
+    final layout = _lastLayout;
+    if (layout == null) return;
+    final next = _visibleThroughRow(layout, 0);
+    if (next > _armedThroughRow.value) _armedThroughRow.value = next;
   }
 
   void _activateContact(UserModel contact, bool disableAnimations) {
@@ -209,6 +244,11 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
         );
         final viewportHeight = safeRect.height;
         final fieldHeight = math.max(layout.fieldHeight, viewportHeight);
+        // Plain assignments, deliberately not setState: we are already
+        // inside build, and notifying the arming notifier here would fire
+        // listeners mid-build.
+        _lastLayout = layout;
+        _armedFloor = _visibleThroughRow(layout, viewportHeight);
 
         return Stack(
           clipBehavior: Clip.none,
@@ -603,16 +643,28 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                             accent: colorScheme.primary,
                             focused: focused || routing,
                           ),
+                          // Only rows that have been on screen are allowed
+                          // to fetch. A 200-contact board otherwise pulls
+                          // 200 faces on mount, most of them for hexes
+                          // below the fold nobody scrolls to. The listener
+                          // is HERE, around the leaf, so crossing a row
+                          // while scrolling rebuilds avatars and not the
+                          // Focus/Semantics/GestureDetector above them.
                           child: ClipPath(
                             clipper: const HexClipper(),
-                            child: HexAvatarSurface(
-                              imageUrl: contact.profilePictureUrl,
-                              initials: _initials(contact.username),
-                              surface: colors.convItemBg,
-                              initialsStyle: RpgTheme.bodyFont(
-                                fontSize: 14,
-                                fontWeight: FontWeight.w800,
-                                color: colorScheme.onSurface,
+                            child: ValueListenableBuilder<int>(
+                              valueListenable: _armedThroughRow,
+                              builder: (context, armed, _) => HexAvatarSurface(
+                                imageUrl: row <= math.max(armed, _armedFloor)
+                                    ? contact.profilePictureUrl
+                                    : null,
+                                initials: _initials(contact.username),
+                                surface: colors.convItemBg,
+                                initialsStyle: RpgTheme.bodyFont(
+                                  fontSize: 14,
+                                  fontWeight: FontWeight.w800,
+                                  color: colorScheme.onSurface,
+                                ),
                               ),
                             ),
                           ),
@@ -887,6 +939,14 @@ class ContactHexLayoutResult {
     }
     return _traces = combined;
   }
+
+  /// Vertical distance between row centres — the same value `resolve` laid
+  /// the rows out on.
+  double get rowPitch =>
+      ContactHexLayout.hexRadius * 2 +
+      ContactHexLayout.labelGap +
+      labelHeight +
+      9;
 
   /// Full visual rect (hex + label) of one slot, for tests and reveal math.
   Rect visualRectAt(int index) {
@@ -1292,11 +1352,7 @@ class _HexFieldPainter extends CustomPainter {
     // frame has free sockets (chrome, not fake contacts).
     final dotPaint = Paint()..color = baseColor.withValues(alpha: 0.16);
     if (layout.slots.isNotEmpty) {
-      final rowPitch =
-          ContactHexLayout.hexRadius * 2 +
-          ContactHexLayout.labelGap +
-          layout.labelHeight +
-          9;
+      final rowPitch = layout.rowPitch;
       var wideRow = layout.rowCount.isEven;
       for (
         var y = layout.slots.last.dy + rowPitch;
