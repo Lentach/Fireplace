@@ -114,44 +114,6 @@ void main() {
       expect(washOf(accent.single), isNull);
     });
 
-    testWidgets('only the destructive row lights the bus', (tester) async {
-      await tester.pumpWidget(_host());
-      await tester.pumpAndSettle();
-      await tester.drag(find.byType(ListView), const Offset(0, -420));
-      await tester.pumpAndSettle();
-
-      ConsoleSpinePainter busOf(SettingsConsoleRow row) => tester
-          .widgetList<CustomPaint>(
-            find.descendant(
-              of: find.byWidget(row),
-              matching: find.byType(CustomPaint),
-            ),
-          )
-          .map((paint) => paint.foregroundPainter)
-          .whereType<ConsoleSpinePainter>()
-          .first;
-
-      final rows = tester
-          .widgetList<SettingsConsoleRow>(find.byType(SettingsConsoleRow))
-          .toList();
-      final danger = rows.singleWhere((r) => r.edge == ConsoleRowEdge.danger);
-      final accent = rows.singleWhere((r) => r.edge == ConsoleRowEdge.accent);
-      final plain = rows.firstWhere((r) => r.edge == ConsoleRowEdge.none);
-
-      // Delete Account and Log out are ADJACENT rows, and on the light themes
-      // `primary` is nearly the same ember as `error`. Lighting both paints
-      // one continuous bright rail spanning the pair - the merged alarm block
-      // that has already been fixed once at the border. The bus carries the
-      // warning; Log out is marked by its tinted hex and title alone.
-      expect(busOf(danger).lit, isTrue);
-      expect(busOf(accent).lit, isFalse);
-      expect(busOf(plain).lit, isFalse);
-
-      // The bus is the local node's own wiring: it ends at the last node.
-      expect(busOf(accent).terminates, isTrue);
-      expect(busOf(danger).terminates, isFalse);
-    });
-
     testWidgets('survives 320px at a 1.6 text scale without overflowing', (
       tester,
     ) async {

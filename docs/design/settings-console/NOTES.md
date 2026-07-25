@@ -104,7 +104,11 @@ The stronger argument against B is not visual:
 If B is ever adopted anyway, the two things to decide first are (a) what the rail *means*,
 and (b) whether the danger edge moves, since a doubled left gutter is the price otherwise.
 
-## Verdict: B SHIPPED — the bus (2026-07-25)
+## Round: B was built and shipped — SUPERSEDED, see "FINAL" at the bottom (2026-07-25)
+
+> **This section is history.** The bus described below was deployed and then reverted on
+> device. Variant A is what ships. Kept because the reasoning and the traps are still worth
+> reading, and because a future attempt at the wiring needs to know what was already tried.
 
 The owner took B and, asked what the rail *means*, gave the answer that settles it:
 
@@ -155,3 +159,45 @@ positions. Cost is that swap plus two existing tests that assert `find.byType(Li
 (`settings_screen_scroll_physics_test`, `settings_screen_version_footer_test`). The reason the
 fan was reverted on Contacts does NOT apply here — that failure was N rays converging on a 34px
 rim at 100 contacts; nine rows render fine.
+
+## FINAL: the bus was REVERTED on device (2026-07-25)
+
+**Variant A — the console WITHOUT the spine — is what ships.** The bus was built, shipped as
+`2b646c1`/`18c97a9`, deployed, and then reverted after the owner saw it on his physical phone:
+
+> "now when i see it on the phisical phone i noticed the other option was a better choice
+> please revert it to the previous one"
+
+No hedging on this one: it was rendered, reviewed, tested, deployed, and still wrong once it was
+in a hand. **That is the whole argument for the device pass.** Every screenshot in this folder is
+390×844 at 2× on a desktop monitor; none of them reproduce a real phone at arm's length, where
+the full-height rail reads heavier and more enclosing than it does in a render. The earlier note
+in this file flagged "it encloses the page" as a risk — the renders were not enough to settle it,
+and the device was.
+
+### What was reverted, and what was kept
+
+Reverted by restoring `settings_console.dart`, `settings_screen.dart` and
+`settings_console_test.dart` to their exact `a342640` contents — byte-identical to a build the
+owner had already approved, which is a stronger guarantee than hand-unpicking the diff. Gone:
+`ConsoleSpinePainter`, `ConsoleSpineHead`, `kConsoleSpineX`, `terminatesSpine`, the
+bus-lighting test. The 3px lit left edge on marked rows is back, since the bus is no longer
+there to carry the warning.
+
+**Kept deliberately:** `test/preview/settings_preview.dart` (the harness mounts the real screen
+and is useful for every future round), all the renders in this folder, and this document. The
+bus renders (`bus-*.webp`, `spine-*.webp`) stay as the record of what was tried.
+
+### If anyone revisits the wiring
+
+The owner's "inside a computer" rationale is still correct and still worth reading — the idea was
+sound, the execution on a real screen was not. Two things a future attempt must beat:
+
+1. **A full-height vertical rail is too heavy at phone scale.** Something shorter, dimmer, or
+   segmented per section might work where a continuous trunk did not.
+2. **The literal fan was never rendered.** His words were "each line coming from the avatar",
+   which may mean N rays from the core rather than one trunk with stubs — that is a genuinely
+   different picture and it was never put in front of him. Cost is a `ListView` →
+   `SingleChildScrollView` + `Column` swap plus two tests that assert `find.byType(ListView)`.
+
+Do NOT simply re-apply `2b646c1`. It was judged on a device and rejected.
