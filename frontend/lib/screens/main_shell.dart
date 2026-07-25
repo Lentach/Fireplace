@@ -241,12 +241,22 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
     return Scaffold(
       extendBody: true,
+      // IndexedStack wraps every child in `Visibility(maintainAnimation:
+      // true)`, so an offstage tab keeps burning frames — the Contacts
+      // honeycomb ran its whole entrance at app boot behind the Chats tab.
+      // TickerMode stops hidden tabs from animating at all. It is not what
+      // makes an entrance wait for its tab (muting a ticker stops frames,
+      // not the clock); each screen defers its own entrance off
+      // `TickerMode.of(context)`. This is the CPU half.
       body: IndexedStack(
         index: _selectedIndex,
         children: [
-          ConversationsScreen(onAvatarTap: _openMyProfile),
-          const ContactsScreen(),
-          const SettingsScreen(),
+          for (final (index, tab) in <Widget>[
+            ConversationsScreen(onAvatarTap: _openMyProfile),
+            const ContactsScreen(),
+            const SettingsScreen(),
+          ].indexed)
+            TickerMode(enabled: _selectedIndex == index, child: tab),
         ],
       ),
       bottomNavigationBar: SafeArea(top: false, child: bottomNavigation),

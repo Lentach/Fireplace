@@ -234,6 +234,48 @@ void main() {
       );
     });
 
+    testWidgets('the entrance waits for the tab, it does not burn offstage', (
+      tester,
+    ) async {
+      // MainShell keeps all three tabs mounted in an IndexedStack, which
+      // wraps every child in `Visibility(maintainAnimation: true)` - an
+      // offstage tab's tickers keep running. The honeycomb burned its whole
+      // entrance at app boot behind the Chats tab and was already at rest
+      // the first time Contacts was opened. MainShell now freezes hidden
+      // tabs with TickerMode; this pins the half the honeycomb owns. The
+      // MainShell side is NOT covered — mounting it starts a real socket via
+      // ConversationsScreen.initState.
+      final coreOpacity = find
+          .ancestor(
+            of: find.text('LOCAL NODE'),
+            matching: find.byType(Opacity),
+          )
+          .first;
+      Widget shell({required bool visible}) => _host(
+        TickerMode(
+          enabled: visible,
+          child: _view(
+            contacts: [for (var i = 1; i <= 8; i++) _contact(i, 'user$i')],
+          ),
+        ),
+        disableAnimations: false,
+      );
+
+      await tester.pumpWidget(shell(visible: false));
+      await tester.pump(const Duration(seconds: 1));
+      // Frozen at the start of the envelope: nothing has faded in.
+      expect(tester.widget<Opacity>(coreOpacity).opacity, 0);
+
+      await tester.pumpWidget(shell(visible: true));
+      await tester.pump(const Duration(milliseconds: 100));
+      final midFlight = tester.widget<Opacity>(coreOpacity).opacity;
+      expect(midFlight, greaterThan(0));
+      expect(midFlight, lessThan(1));
+
+      await tester.pumpAndSettle();
+      expect(tester.widget<Opacity>(coreOpacity).opacity, 1);
+    });
+
     testWidgets('tap opens contact synchronously under reduce motion', (
       tester,
     ) async {

@@ -285,14 +285,23 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
     ColorScheme colorScheme,
     bool disableAnimations,
   ) {
+    // MainShell keeps every tab mounted in an IndexedStack, so this widget
+    // is built at app boot while Contacts is offstage. TickerMode alone is
+    // not enough — muting a ticker stops frames, not the clock, so the
+    // controller jumps straight to completed on unmute and the entrance is
+    // already spent the first time the tab is opened. Holding the tween's
+    // target at 0 until the tab is on screen is what actually defers it.
+    final onScreen = TickerMode.of(context);
     return TweenAnimationBuilder<double>(
       duration: disableAnimations || _entranceCompleted
           ? Duration.zero
           : const Duration(milliseconds: 280),
       curve: Curves.easeOutCubic,
-      tween: Tween<double>(begin: 0, end: 1),
+      tween: Tween<double>(begin: 0, end: onScreen ? 1 : 0),
       onEnd: () {
-        if (_entranceCompleted) return;
+        // A 0 -> 0 tween settling while the tab is offstage is not an
+        // entrance; latching on it would spend the animation unseen.
+        if (_entranceCompleted || !onScreen) return;
         // Under reduce-motion the zero-duration tween completes during the
         // first build; setState here would be a during-build rebuild.
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1341,7 +1350,11 @@ class _HexFieldPainter extends CustomPainter {
           firstRowY +
           (entranceProgress * (rowCount + 1) - 1) * rowPitch -
           ContactHexLayout.hexRadius;
-      final band = Rect.fromLTWH(0, y - rowPitch, size.width, rowPitch);
+      // Two-row trail, not a hairline: the wavefront crosses the visible
+      // rows in well under the 280ms envelope, so it has to be a swipe of
+      // light to register at all. Duration stays inside the motion budget.
+      final trail = rowPitch * 2;
+      final band = Rect.fromLTWH(0, y - trail, size.width, trail);
       canvas.drawRect(
         band,
         Paint()
@@ -1350,7 +1363,7 @@ class _HexFieldPainter extends CustomPainter {
             end: Alignment.bottomCenter,
             colors: [
               accent.withValues(alpha: 0),
-              accent.withValues(alpha: 0.10),
+              accent.withValues(alpha: 0.18),
             ],
           ).createShader(band),
       );
@@ -1358,8 +1371,8 @@ class _HexFieldPainter extends CustomPainter {
         Offset(0, y),
         Offset(size.width, y),
         Paint()
-          ..strokeWidth = 1
-          ..color = accent.withValues(alpha: 0.5),
+          ..strokeWidth = 1.5
+          ..color = accent.withValues(alpha: 0.7),
       );
     }
 
