@@ -14,7 +14,7 @@ import 'hex_avatar.dart';
 ///
 /// The glyphs live in `console_glyphs.dart` and are re-exported here so a
 /// screen needs one import to build a console.
-export 'console_glyphs.dart' show ConsoleGlyph, ConsoleGlyphSet;
+export 'console_glyphs.dart' show ConsoleGlyph;
 
 /// Leading hex width follows the pointy-top ratio, like every other hex.
 const double kConsoleHexHeight = 44;
@@ -77,7 +77,6 @@ class SettingsConsoleRow extends StatelessWidget {
     this.onTap,
     this.edge = ConsoleRowEdge.none,
     this.leadingOverride,
-    this.set = ConsoleGlyphSet.instrument,
   });
 
   final ConsoleGlyph glyph;
@@ -90,10 +89,6 @@ class SettingsConsoleRow extends StatelessWidget {
   /// Replaces the glyph inside the hex — used by the Appearance row, whose
   /// "icon" is really a live preview of the current theme.
   final Widget? leadingOverride;
-
-  /// Which glyph drawing to use. Exists only while the owner is choosing
-  /// between the two sets; it goes when the losing set is deleted.
-  final ConsoleGlyphSet set;
 
   @override
   Widget build(BuildContext context) {
@@ -125,12 +120,7 @@ class SettingsConsoleRow extends StatelessWidget {
           SizedBox(
             width: edgeColor == null ? kConsoleHexLeft : kConsoleHexLeft - 3,
           ),
-          ConsoleHexIcon(
-            glyph: glyph,
-            tint: edgeColor,
-            set: set,
-            child: leadingOverride,
-          ),
+          ConsoleHexIcon(glyph: glyph, tint: edgeColor, child: leadingOverride),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -257,7 +247,6 @@ class ConsoleHexIcon extends StatelessWidget {
     this.tint,
     this.child,
     this.height = kConsoleHexHeight,
-    this.set = ConsoleGlyphSet.instrument,
   });
 
   final ConsoleGlyph glyph;
@@ -267,8 +256,6 @@ class ConsoleHexIcon extends StatelessWidget {
   /// Terminal height. The glyph scales with it, so a screen header can use
   /// the same widget at 64–72px instead of hand-rolling a second hexagon.
   final double height;
-
-  final ConsoleGlyphSet set;
 
   @override
   Widget build(BuildContext context) {
@@ -296,11 +283,7 @@ class ConsoleHexIcon extends StatelessWidget {
                     width: glyphBox,
                     height: glyphBox,
                     child: CustomPaint(
-                      painter: ConsoleGlyphPainter(
-                        glyph: glyph,
-                        color: ink,
-                        set: set,
-                      ),
+                      painter: ConsoleGlyphPainter(glyph: glyph, color: ink),
                     ),
                   ),
                 ),

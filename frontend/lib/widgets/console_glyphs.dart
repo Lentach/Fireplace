@@ -6,8 +6,8 @@
 /// slashed circle is `Icons.block`. Drawing clip art by hand does not stop it
 /// being clip art; it only loses Material's optical tuning. And there was no
 /// grid behind it: three circles at three diameters (8, 7.8, 7.6), a `signal`
-/// glyph whose mass sat entirely in the bottom half of its box, a `key` that
-/// filled a third of the height while `shield` filled three quarters.
+/// glyph whose mass sat entirely in the bottom half of its box, and a `key`
+/// that filled a third of the height while `shield` filled three quarters.
 ///
 /// This file fixes both halves of that failure.
 ///
@@ -16,24 +16,21 @@
 /// of a pixel. There is one canonical circle, one canonical square, one
 /// canonical hexagon, one stroke weight, one terminal radius. Geometry is
 /// produced as data ([ConsoleGlyphGeometry]) rather than painted inline, and
-/// every glyph is re-centred on its own bounding box before it is drawn —
+/// every glyph is re-centred on its own tight bounds before it is drawn —
 /// optical centring is a property of the system here, not of one author's
 /// arithmetic. `console_glyph_keyline_test.dart` measures it.
 ///
-/// **Concept.** Two sets are drawn, because "recognisable" and "ours" pull in
-/// opposite directions and the answer is a judgement call the owner makes on
-/// a device, not one an agent makes in a render:
+/// **Concept — settled by the owner on 2026-07-25 from a rendered A/B.** The
+/// set is a WIRING DIAGRAM of what each row does to your node, drawn from the
+/// app's own primitives: the hex cell, the trace, the terminal. That follows
+/// the owner's rationale for the whole language — the app reads as the inside
+/// of a computer, and every Settings row is a facet of your own node.
 ///
-/// * [ConsoleGlyphSet.instrument] keeps the conventional silhouette — a key
-///   is a key, a padlock is a padlock — and wins on construction: canonical
-///   shapes, one angle family, uniform mass.
-/// * [ConsoleGlyphSet.schematic] replaces the silhouette with a wiring
-///   diagram of what the row does to your node, using only the app's own
-///   primitives (hex cell, trace, terminal). It does this ONLY for the nine
-///   rows where the concept genuinely is a node relation — "blocked" really
-///   is a severed link, "log out" really is your node detaching. The other
-///   six have no node meaning and would become unreadable, so they fall
-///   through to the instrument form on purpose.
+/// It is not applied dogmatically. Six rows have no truthful node reading
+/// ("downloaded audio cache" is not a node relation), and `metadata` is an
+/// owner call: the server stack says "the machine that holds this" better
+/// than a node wired to a box. Those keep a conventional silhouette, built to
+/// the same grid so the set still reads as one hand.
 library;
 
 import 'dart:math' as math;
@@ -64,13 +61,8 @@ const double kGlyphKeylineExtent = 8.2;
 const double kGlyphDotRadius = 1.5;
 
 const Offset _c = Offset(12, 12);
-const double _circleR = 7.5;
 const double _squareHalf = 7.5;
 const double _hexR = 8.2;
-
-/// Which drawing of the set to use. Both are complete; the owner picks one on
-/// a device and the loser is deleted.
-enum ConsoleGlyphSet { instrument, schematic }
 
 /// Semantic names, not shape names. The old set was named after its drawings
 /// (`palette`, `globe`, `nodeX`), which is why re-drawing it meant renaming
@@ -127,8 +119,7 @@ class ConsoleGlyphGeometry {
   /// which is deliberately CONSERVATIVE: for an arc or a rotated oval it
   /// bounds the Bézier control points, not the curve. That over-reports by
   /// up to ~20% here, and since [centred] divides by this rectangle it was
-  /// visibly mis-centring every arc-based glyph — `push`, `privacy`,
-  /// `quantum` and both padlocks. The keyline test catches it now.
+  /// visibly mis-centring every arc-based glyph. The keyline test catches it.
   Rect get bounds {
     double? minX, minY, maxX, maxY;
     void addPoint(double x, double y) {
@@ -209,14 +200,14 @@ Path _rotated(Path p, double radians) => p.transform(
       .storage,
 );
 
-/// A hex cell in the schematic vocabulary — the same pointy-top hexagon the
-/// honeycomb draws, so the glyphs and the board are literally one shape.
+/// A hex cell — the same pointy-top hexagon the honeycomb draws, so the
+/// glyphs and the board are literally one shape.
 Path _hexNode(Offset c, double r) => hexPath(c, r);
 
 /// Straight trace. Horizontal, vertical or on a hex angle; never arbitrary.
 Path _trace(Offset a, Offset b) => _line(a, b);
 
-/// The 45° arrowhead, shared by both sets so the two never disagree.
+/// The 45° arrowhead, shared so no two arrows disagree.
 Path _arrowHead(Offset tip, {double size = 3.0}) => _poly([
   Offset(tip.dx - size, tip.dy - size),
   tip,
@@ -224,107 +215,100 @@ Path _arrowHead(Offset tip, {double size = 3.0}) => _poly([
 ]);
 
 // ---------------------------------------------------------------------------
-// The instrument set — conventional silhouettes, canonical construction
+// The set
 // ---------------------------------------------------------------------------
 
-ConsoleGlyphGeometry _instrument(ConsoleGlyph glyph) {
+ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
   switch (glyph) {
     case ConsoleGlyph.appearance:
-      // Contrast disc: the canonical circle with one half solid. The single
-      // deliberate fill in the set, and the standard mark for "appearance".
+      // Contrast mark on the HEX, not a disc (owner call): the local node is
+      // the app's only circle, so a circle here would have claimed a meaning
+      // this row does not have. Half the cell is solid, which is the standard
+      // "appearance" mark and the one deliberate fill in the set.
+      final cell = _hexNode(_c, _hexR);
       return ConsoleGlyphGeometry(
-        strokes: [_circle(_c, _circleR)],
+        strokes: [cell],
         fills: [
-          Path()
-            ..addArc(
-              Rect.fromCircle(center: _c, radius: _circleR),
-              math.pi / 2,
-              math.pi,
-            )
-            ..close(),
+          Path.combine(
+            PathOperation.intersect,
+            cell,
+            Path()..addRect(const Rect.fromLTRB(0, 0, 12, 24)),
+          ),
         ],
       );
 
     case ConsoleGlyph.language:
-      // A globe needs three latitudes to read as a sphere; the single equator
-      // is what made the old one look flat. Chords are exact to the circle.
-      const lat = 4.2;
-      final halfChord = math.sqrt(_circleR * _circleR - lat * lat);
+      // One node, two traces carrying the same link in two encodings.
       return ConsoleGlyphGeometry(
         strokes: [
-          _circle(_c, _circleR),
-          _oval(_c, 7.4, _circleR * 2),
-          _line(
-            const Offset(12 - _circleR, 12),
-            const Offset(12 + _circleR, 12),
-          ),
-          _line(
-            Offset(12 - halfChord, 12 - lat),
-            Offset(12 + halfChord, 12 - lat),
-          ),
-          _line(
-            Offset(12 - halfChord, 12 + lat),
-            Offset(12 + halfChord, 12 + lat),
-          ),
+          _hexNode(const Offset(7.6, 12), 4.3),
+          _trace(const Offset(11.4, 9.2), const Offset(20.2, 9.2)),
+          _trace(const Offset(11.4, 14.8), const Offset(13.8, 14.8)),
+          _trace(const Offset(15.2, 14.8), const Offset(17.6, 14.8)),
+          _trace(const Offset(19.0, 14.8), const Offset(20.2, 14.8)),
         ],
       );
 
     case ConsoleGlyph.privacy:
-      // Shield on the canonical square with a 45° point, and a KEYHOLE rather
-      // than a check mark: the row is privacy, not verification.
+      // Your node inside a shell that is open top and bottom — protection,
+      // not a sealed box.
       return ConsoleGlyphGeometry(
         strokes: [
-          _poly(const [
-            Offset(4.5, 4.5),
-            Offset(19.5, 4.5),
-            Offset(19.5, 12),
-            Offset(12, 19.5),
-            Offset(4.5, 12),
-          ], close: true),
-          _circle(const Offset(12, 10.6), 2.0),
-          _line(const Offset(12, 12.6), const Offset(12, 15.0)),
+          _hexNode(_c, 4.8),
+          _arc(_c, 8.0, 2 * math.pi / 3, 2 * math.pi / 3),
+          _arc(_c, 8.0, -math.pi / 3, 2 * math.pi / 3),
         ],
       );
 
     case ConsoleGlyph.blocked:
-      // The slash is a TRUE diameter — its endpoints sit exactly on the
-      // circle. The old one overshot, which is the classic homemade tell.
-      final k = _circleR * math.sqrt1_2;
+      // Two nodes, the link between them, and a slash killing it.
+      //
+      // The first drawing was a purely schematic "open circuit": a 1.8-unit
+      // gap with two cap strokes. At the size this actually ships (24px) the
+      // gap is under two pixels, so it read as two nodes JOINED — the exact
+      // opposite of the word on the row. A legibility failure is not fixed
+      // with a second subtle idea, so the negation is the universal slash,
+      // carried over the node pair rather than over a bare circle.
       return ConsoleGlyphGeometry(
         strokes: [
-          _circle(_c, _circleR),
-          _line(Offset(12 - k, 12 + k), Offset(12 + k, 12 - k)),
+          _hexNode(const Offset(6.6, 12), 3.2),
+          _hexNode(const Offset(17.4, 12), 3.2),
+          _trace(const Offset(9.37, 12), const Offset(14.63, 12)),
+          _line(const Offset(7.2, 18.4), const Offset(16.8, 5.6)),
         ],
       );
 
     case ConsoleGlyph.devices:
-      // A portrait plate, not a laptop: the product is a phone. This is the
-      // keyline's "tall" shape, so it may use the full vertical extent.
+      // A chip: the node with its pin-out.
+      //
+      // The first drawing was the node plus one downward terminal, which at
+      // true size read as a balloon on a string. Pins on both flanks say
+      // "hardware" instantly, and they are the most literal possible take on
+      // the rationale for this whole language.
       return ConsoleGlyphGeometry(
         strokes: [
-          _rrect(const Rect.fromLTRB(6.5, 3.8, 17.5, 20.2), 2.2),
-          _line(const Offset(10.2, 6.8), const Offset(13.8, 6.8)),
-          _line(const Offset(10.4, 17.6), const Offset(13.6, 17.6)),
+          _hexNode(_c, 6.0),
+          for (final y in const [9.0, 12.0, 15.0]) ...[
+            _line(Offset(4.2, y), Offset(6.9, y)),
+            _line(Offset(17.1, y), Offset(19.8, y)),
+          ],
         ],
       );
 
     case ConsoleGlyph.push:
-      // Broadcast arcs from a terminal, symmetric about straight up.
-      const origin = Offset(12, 15.05);
-      const start = -0.81 * math.pi;
-      const sweep = 0.62 * math.pi;
+      // The node broadcasting.
       return ConsoleGlyphGeometry(
         strokes: [
-          _arc(origin, 4.6, start, sweep),
-          _arc(origin, 7.6, start, sweep),
+          _hexNode(const Offset(12, 15.4), 4.4),
+          _arc(const Offset(12, 11.0), 4.2, -0.81 * math.pi, 0.62 * math.pi),
+          _arc(const Offset(12, 11.0), 7.2, -0.81 * math.pi, 0.62 * math.pi),
         ],
-        dots: const [origin],
       );
 
     case ConsoleGlyph.password:
-      // A padlock is the credential convention; the diagonal key below is
-      // reserved for identity key MATERIAL. Two different objects, so the
-      // two rows can never be read as the same thing.
+      // A padlock: a credential you type. Deliberately a different OBJECT
+      // from [keys], which is identity material, so the two rows can never be
+      // read as the same thing.
       return ConsoleGlyphGeometry(
         strokes: [
           _rrect(const Rect.fromLTRB(5.4, 11.2, 18.6, 19.8), 1.8),
@@ -333,50 +317,34 @@ ConsoleGlyphGeometry _instrument(ConsoleGlyph glyph) {
         dots: const [Offset(12, 15.5)],
       );
 
-    case ConsoleGlyph.keys:
-      // Diagonal so it fills the keyline, instead of the thin horizontal bar
-      // through the middle of the box that the old `key` was.
-      const bow = Offset(7.8, 16.2);
-      const bowR = 3.4;
-      final dir = Offset(math.sqrt1_2, -math.sqrt1_2);
-      final perp = Offset(math.sqrt1_2, math.sqrt1_2);
-      final shaftStart = bow + dir * bowR;
-      const shaftEnd = Offset(18.6, 5.4);
-      final shaftLen = (shaftEnd - shaftStart).distance;
-      final t1 = shaftStart + dir * (shaftLen * 0.62);
-      final t2 = shaftStart + dir * (shaftLen * 0.85);
-      return ConsoleGlyphGeometry(
-        strokes: [
-          _circle(bow, bowR),
-          _line(shaftStart, shaftEnd),
-          _line(t1, t1 + perp * 3.0),
-          _line(t2, t2 + perp * 2.2),
-        ],
-      );
-
     case ConsoleGlyph.deleteNode:
-      // Person + ×. On the danger row clarity beats cleverness; the row
-      // already carries the red edge, title and terminal tint.
+      // Your node, struck out. The row already carries the red edge, title
+      // and terminal tint; the mark only has to be unmistakable.
       return ConsoleGlyphGeometry(
         strokes: [
-          _circle(const Offset(9.2, 8.0), 2.8),
-          _arc(const Offset(9.2, 19.6), 5.0, math.pi, math.pi),
-          _line(const Offset(15.8, 15.0), const Offset(20.2, 19.4)),
-          _line(const Offset(20.2, 15.0), const Offset(15.8, 19.4)),
+          _hexNode(_c, _hexR),
+          _line(const Offset(8.4, 8.4), const Offset(15.6, 15.6)),
+          _line(const Offset(15.6, 8.4), const Offset(8.4, 15.6)),
         ],
       );
 
     case ConsoleGlyph.logout:
+      // The node detaching along its trace.
       return ConsoleGlyphGeometry(
         strokes: [
-          _poly(const [
-            Offset(11.5, 4.6),
-            Offset(5.0, 4.6),
-            Offset(5.0, 19.4),
-            Offset(11.5, 19.4),
-          ]),
-          _line(const Offset(9.2, 12), const Offset(19.6, 12)),
-          _arrowHead(const Offset(19.6, 12), size: 3.2),
+          _hexNode(const Offset(8.6, 12), 5.6),
+          _trace(const Offset(13.45, 12), const Offset(20.2, 12)),
+          _arrowHead(const Offset(20.2, 12), size: 2.8),
+        ],
+      );
+
+    case ConsoleGlyph.keys:
+      // The node itself is keyed — the identity material IS the node.
+      return ConsoleGlyphGeometry(
+        strokes: [
+          _hexNode(_c, 7.0),
+          _circle(const Offset(12, 10.6), 2.0),
+          _line(const Offset(12, 12.6), const Offset(12, 15.6)),
         ],
       );
 
@@ -390,8 +358,8 @@ ConsoleGlyphGeometry _instrument(ConsoleGlyph glyph) {
       );
 
     case ConsoleGlyph.media:
-      // Every ridge is 45°, so the plate agrees with the shield and the
-      // arrowheads instead of introducing a fourth angle family.
+      // Every ridge is 45°, so the plate agrees with the arrowheads instead
+      // of introducing another angle family.
       return ConsoleGlyphGeometry(
         strokes: [
           _rrect(
@@ -414,8 +382,9 @@ ConsoleGlyphGeometry _instrument(ConsoleGlyph glyph) {
       );
 
     case ConsoleGlyph.metadata:
-      // A server stack. The row is about the machine that holds the metadata,
-      // which an ⓘ badge does not say.
+      // A server stack — OWNER CALL over the node-wired-to-a-box diagram.
+      // The row is about the machine that holds the metadata, and the stack
+      // says that directly.
       return ConsoleGlyphGeometry(
         strokes: [
           _rrect(const Rect.fromLTRB(4.5, 4.6, 19.5, 8.2), 1.6),
@@ -461,185 +430,32 @@ ConsoleGlyphGeometry _instrument(ConsoleGlyph glyph) {
   }
 }
 
-// ---------------------------------------------------------------------------
-// The schematic set — node relations only
-// ---------------------------------------------------------------------------
-
-/// Returns null where the schematic vocabulary has nothing truthful to say,
-/// so the instrument drawing is used instead. That fall-through is the point:
-/// a forced node-diagram for "downloaded audio cache" would be a puzzle.
-ConsoleGlyphGeometry? _schematic(ConsoleGlyph glyph) {
-  switch (glyph) {
-    case ConsoleGlyph.blocked:
-      // Two nodes, the link between them, and a slash killing it.
-      //
-      // The first drawing was a purely schematic "open circuit": a 1.8-unit
-      // gap with two cap strokes. At the size this actually ships (24px) the
-      // gap is under two pixels, so it read as two nodes JOINED — the exact
-      // opposite of the word on the row. A legibility failure is not fixed
-      // with a second subtle idea, so the negation is now the universal
-      // slash, carried over the node pair rather than over a bare circle.
-      return ConsoleGlyphGeometry(
-        strokes: [
-          _hexNode(const Offset(6.6, 12), 3.2),
-          _hexNode(const Offset(17.4, 12), 3.2),
-          _trace(const Offset(9.37, 12), const Offset(14.63, 12)),
-          _line(const Offset(7.2, 18.4), const Offset(16.8, 5.6)),
-        ],
-      );
-
-    case ConsoleGlyph.devices:
-      // A chip: the node with its pin-out.
-      //
-      // The first drawing was the node plus one downward terminal, which at
-      // true size read as a balloon on a string. Pins on both flanks say
-      // "hardware" instantly, and they are the most literal possible take on
-      // the owner's own rationale for this whole language — the app as the
-      // inside of a computer.
-      return ConsoleGlyphGeometry(
-        strokes: [
-          _hexNode(_c, 6.0),
-          for (final y in const [9.0, 12.0, 15.0]) ...[
-            _line(Offset(4.2, y), Offset(6.9, y)),
-            _line(Offset(17.1, y), Offset(19.8, y)),
-          ],
-        ],
-      );
-
-    case ConsoleGlyph.logout:
-      // The node detaching along its trace.
-      return ConsoleGlyphGeometry(
-        strokes: [
-          _hexNode(const Offset(8.6, 12), 5.6),
-          _trace(const Offset(13.45, 12), const Offset(20.2, 12)),
-          _arrowHead(const Offset(20.2, 12), size: 2.8),
-        ],
-      );
-
-    case ConsoleGlyph.deleteNode:
-      return ConsoleGlyphGeometry(
-        strokes: [
-          _hexNode(_c, _hexR),
-          _line(const Offset(8.4, 8.4), const Offset(15.6, 15.6)),
-          _line(const Offset(15.6, 8.4), const Offset(8.4, 15.6)),
-        ],
-      );
-
-    case ConsoleGlyph.privacy:
-      // Your node inside a shell that is open top and bottom — protection,
-      // not a sealed box.
-      return ConsoleGlyphGeometry(
-        strokes: [
-          _hexNode(_c, 4.8),
-          _arc(_c, 8.0, 2 * math.pi / 3, 2 * math.pi / 3),
-          _arc(_c, 8.0, -math.pi / 3, 2 * math.pi / 3),
-        ],
-      );
-
-    case ConsoleGlyph.language:
-      // One node, two traces carrying the same link in two encodings.
-      return ConsoleGlyphGeometry(
-        strokes: [
-          _hexNode(const Offset(7.6, 12), 4.3),
-          _trace(const Offset(11.4, 9.2), const Offset(20.2, 9.2)),
-          _trace(const Offset(11.4, 14.8), const Offset(13.8, 14.8)),
-          _trace(const Offset(15.2, 14.8), const Offset(17.6, 14.8)),
-          _trace(const Offset(19.0, 14.8), const Offset(20.2, 14.8)),
-        ],
-      );
-
-    case ConsoleGlyph.push:
-      return ConsoleGlyphGeometry(
-        strokes: [
-          _hexNode(const Offset(12, 15.4), 4.4),
-          _arc(const Offset(12, 11.0), 4.2, -0.81 * math.pi, 0.62 * math.pi),
-          _arc(const Offset(12, 11.0), 7.2, -0.81 * math.pi, 0.62 * math.pi),
-        ],
-      );
-
-    case ConsoleGlyph.keys:
-      // The node itself is keyed — the identity material IS the node.
-      return ConsoleGlyphGeometry(
-        strokes: [
-          _hexNode(_c, 7.0),
-          _circle(const Offset(12, 10.6), 2.0),
-          _line(const Offset(12, 12.6), const Offset(12, 15.6)),
-        ],
-      );
-
-    case ConsoleGlyph.metadata:
-      // You, wired to the thing that is not you. The server is the only
-      // rectangle in the schematic set precisely so it reads as foreign.
-      return ConsoleGlyphGeometry(
-        strokes: [
-          _hexNode(const Offset(7.0, 12), 3.8),
-          _trace(const Offset(10.29, 12), const Offset(13.6, 12)),
-          _rrect(const Rect.fromLTRB(13.6, 7.4, 20.2, 16.6), 1.6),
-          _line(const Offset(13.6, 10.5), const Offset(20.2, 10.5)),
-          _line(const Offset(13.6, 13.5), const Offset(20.2, 13.5)),
-        ],
-      );
-
-    case ConsoleGlyph.appearance:
-    case ConsoleGlyph.password:
-    case ConsoleGlyph.webStorage:
-    case ConsoleGlyph.media:
-    case ConsoleGlyph.quantum:
-    case ConsoleGlyph.cache:
-      return null;
-  }
-}
-
-/// Whether the schematic set has its own drawing for [glyph], or deliberately
-/// falls through to the instrument one. Public because both the comparison
-/// sheet and the keyline test need to state the fall-through set exactly,
-/// rather than inferring it from geometry that might coincide.
-bool consoleGlyphHasSchematic(ConsoleGlyph glyph) => _schematic(glyph) != null;
-
 /// Resolved, centred geometry for one glyph. Pure — the keyline test calls
 /// this directly rather than reading pixels.
-ConsoleGlyphGeometry consoleGlyphGeometry(
-  ConsoleGlyph glyph,
-  ConsoleGlyphSet set,
-) => _resolved[(glyph, set)] ??= _resolve(glyph, set);
+ConsoleGlyphGeometry consoleGlyphGeometry(ConsoleGlyph glyph) =>
+    _resolved[glyph] ??= _draw(glyph).centred(nudge: _opticalNudge(glyph));
 
 /// Resolving walks every contour to measure tight bounds, and a console can
 /// hold a dozen terminals, so the result is cached. The geometry is pure and
-/// immutable, so one entry per (glyph, set) is correct forever.
-final Map<(ConsoleGlyph, ConsoleGlyphSet), ConsoleGlyphGeometry> _resolved = {};
+/// immutable, so one entry per glyph is correct forever.
+final Map<ConsoleGlyph, ConsoleGlyphGeometry> _resolved = {};
 
-ConsoleGlyphGeometry _resolve(ConsoleGlyph glyph, ConsoleGlyphSet set) {
-  final raw =
-      (set == ConsoleGlyphSet.schematic ? _schematic(glyph) : null) ??
-      _instrument(glyph);
-  return raw.centred(nudge: _opticalNudge(glyph));
-}
-
-/// Bounding-box centring is right for almost everything. These are the shapes
-/// whose visual weight is not their geometric middle.
-Offset _opticalNudge(ConsoleGlyph glyph) => switch (glyph) {
-  // The shackle is open line-work above a closed body, so the body reads
-  // heavier than the bounding box implies.
-  ConsoleGlyph.password => const Offset(0, -0.35),
-  // Broadcast arcs thin out as they rise; the terminal anchors the eye.
-  ConsoleGlyph.push => const Offset(0, 0.3),
-  _ => Offset.zero,
-};
+/// Bounding-box centring is right for almost everything. This is the shape
+/// whose visual weight is not its geometric middle: the padlock's shackle is
+/// open line-work above a closed body, so the body reads heavier than the box
+/// implies and the mark sits low without the lift.
+Offset _opticalNudge(ConsoleGlyph glyph) =>
+    glyph == ConsoleGlyph.password ? const Offset(0, -0.35) : Offset.zero;
 
 class ConsoleGlyphPainter extends CustomPainter {
-  const ConsoleGlyphPainter({
-    required this.glyph,
-    required this.color,
-    this.set = ConsoleGlyphSet.instrument,
-  });
+  const ConsoleGlyphPainter({required this.glyph, required this.color});
 
   final ConsoleGlyph glyph;
   final Color color;
-  final ConsoleGlyphSet set;
 
   @override
   void paint(Canvas canvas, Size size) {
-    final geometry = consoleGlyphGeometry(glyph, set);
+    final geometry = consoleGlyphGeometry(glyph);
 
     canvas.save();
     canvas.scale(size.width / kGlyphUnit, size.height / kGlyphUnit);
@@ -667,7 +483,5 @@ class ConsoleGlyphPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant ConsoleGlyphPainter oldDelegate) =>
-      oldDelegate.glyph != glyph ||
-      oldDelegate.color != color ||
-      oldDelegate.set != set;
+      oldDelegate.glyph != glyph || oldDelegate.color != color;
 }
