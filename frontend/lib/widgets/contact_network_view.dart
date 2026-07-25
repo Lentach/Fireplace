@@ -205,7 +205,7 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
           contacts: inputs,
           width: safeRect.width,
           labelHeight: labelHeight,
-          extraSlots: widget.onAddContact == null ? 0 : 1,
+          leadingSlots: widget.onAddContact == null ? 0 : 1,
         );
         final viewportHeight = safeRect.height;
         final fieldHeight = math.max(layout.fieldHeight, viewportHeight);
@@ -317,7 +317,6 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                             layout: layout,
                             conversationIds: widget.conversationContactIds,
                             baseColor: colorScheme.onSurface,
-                            borderColor: colors.convItemBorder,
                             accent: colorScheme.primary,
                             entranceProgress: entrance,
                             routeProgress: _routeContactId == null
@@ -346,14 +345,8 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                     entrance,
                     disableAnimations,
                   ),
-                if (layout.extraSlots > 0)
-                  _buildAddNode(
-                    context,
-                    layout,
-                    inputs.length,
-                    nodeTextStyle,
-                    entrance,
-                  ),
+                if (layout.leadingSlots > 0)
+                  _buildAddNode(context, layout, nodeTextStyle, entrance),
                 if (inputs.isEmpty) _buildEmptyCopy(context, layout),
               ],
             );
@@ -363,10 +356,12 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
     );
   }
 
+  /// Slot index of a contact — the field may own leading slots the contact
+  /// list does not know about.
   static int? _slotIndexOf(ContactHexLayoutResult layout, int? contactId) {
     if (contactId == null) return null;
     for (var i = 0; i < layout.inputs.length; i++) {
-      if (layout.inputs[i].id == contactId) return i;
+      if (layout.inputs[i].id == contactId) return i + layout.leadingSlots;
     }
     return null;
   }
@@ -385,8 +380,15 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
       color: colorScheme.onSurface,
     ).copyWith(letterSpacing: 1.5);
 
+    // Full-width band, NOT a box hugging the avatar: the caption is wider
+    // than the reticle, and a shrink-wrapped Positioned let the Column's
+    // intrinsic width (= caption width) shove the avatar right by
+    // (captionWidth - 2*radius)/2. That desynced the drawn core from
+    // `layout.coreCenter`, which every feed line and route is aimed at, so
+    // the leftmost first-row wires visibly stopped short of the rim.
     return Positioned(
-      left: layout.coreCenter.dx - radius,
+      left: 0,
+      width: layout.coreCenter.dx * 2,
       top: layout.coreCenter.dy - radius,
       child: Semantics(
         container: true,
@@ -402,7 +404,7 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                 height: radius * 2,
                 child: CustomPaint(
                   foregroundPainter: _LocalReticlePainter(
-                    borderColor: colors.convItemBorder,
+                    outline: colorScheme.onSurface,
                     accent: colorScheme.primary,
                     focused: false,
                   ),
@@ -421,7 +423,11 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                 ),
               ),
               const SizedBox(height: 6),
-              Text(widget.localNodeCaption, style: captionStyle),
+              Text(
+                widget.localNodeCaption,
+                textAlign: TextAlign.center,
+                style: captionStyle,
+              ),
             ],
           ),
         ),
@@ -514,13 +520,13 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
   ) {
     final colors = FireplaceColors.of(context);
     final colorScheme = Theme.of(context).colorScheme;
-    final slot = layout.slots[index];
+    final slot = layout.slots[index + layout.leadingSlots];
     final focused = _focusedContactId == contact.id;
     final routing = _routeContactId == contact.id;
     // Row-staggered entrance: rows materialize top-down within the single
     // 280ms envelope (motion budget), never per-item unbounded.
     final rowCount = math.max(1, layout.rowCount);
-    final row = layout.rowOf[index];
+    final row = layout.rowOf[index + layout.leadingSlots];
     final rowT = ((entrance * (rowCount + 1)) - row).clamp(0.0, 1.0);
 
     return Positioned(
@@ -588,7 +594,7 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                         height: ContactHexLayout.hexRadius * 2,
                         child: CustomPaint(
                           foregroundPainter: _HexChromePainter(
-                            borderColor: colors.convItemBorder,
+                            outline: colorScheme.onSurface,
                             accent: colorScheme.primary,
                             focused: focused || routing,
                           ),
@@ -649,23 +655,21 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
     }
   }
 
-  /// The trailing "+" cell: an empty socket waiting for the next person.
-  /// Dashed, avatar-less, and never counted as a contact.
+  /// The leading "+" cell: an empty socket waiting for the next person.
+  /// Dashed, avatar-less, and never counted as a contact. It heads the field
+  /// rather than trailing it — at 27 contacts a trailing cell sat seven rows
+  /// down and had to be scrolled to before anyone could be added.
   Widget _buildAddNode(
     BuildContext context,
     ContactHexLayoutResult layout,
-    int index,
     TextStyle labelStyle,
     double entrance,
   ) {
     final colors = FireplaceColors.of(context);
     final colorScheme = Theme.of(context).colorScheme;
-    final slot = layout.slots[index];
+    final slot = layout.slots.first;
     final rowCount = math.max(1, layout.rowCount);
-    final rowT = ((entrance * (rowCount + 1)) - layout.rowOf[index]).clamp(
-      0.0,
-      1.0,
-    );
+    final rowT = (entrance * (rowCount + 1)).clamp(0.0, 1.0);
     final focused = _addSlotFocused;
 
     return Positioned(
@@ -673,7 +677,7 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
       top: slot.dy - ContactHexLayout.hexRadius,
       width: layout.pitch,
       child: FocusTraversalOrder(
-        order: NumericFocusOrder((index + 1).toDouble()),
+        order: const NumericFocusOrder(0.5),
         child: Focus(
           onFocusChange: (hasFocus) {
             if (_addSlotFocused != hasFocus) {
@@ -694,7 +698,7 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
             container: true,
             button: true,
             label: widget.addSlotSemanticLabel ?? widget.addSlotLabel ?? '',
-            sortKey: OrdinalSortKey((index + 1).toDouble()),
+            sortKey: const OrdinalSortKey(0.5),
             onTap: () => widget.onAddContact?.call(),
             excludeSemantics: true,
             child: Opacity(
@@ -713,7 +717,7 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                         height: ContactHexLayout.hexRadius * 2,
                         child: CustomPaint(
                           painter: _AddSlotPainter(
-                            borderColor: colors.convItemBorder,
+                            outline: colorScheme.onSurface,
                             accent: colorScheme.primary,
                             focused: focused,
                           ),
@@ -826,7 +830,7 @@ class ContactHexLayoutResult {
     required this.slots,
     required this.rowOf,
     required this.rowCount,
-    this.extraSlots = 0,
+    this.leadingSlots = 0,
     required this.columnsWide,
     required this.pitch,
     required this.labelHeight,
@@ -834,22 +838,22 @@ class ContactHexLayoutResult {
     required this.fieldHeight,
   });
 
-  /// Contacts in slot order (natural sort by display name).
+  /// Contacts in natural-sort order. They occupy [slots] from index
+  /// [leadingSlots] onward — the field may own leading cells that are not
+  /// people (the "+" add cell), so the announced node count stays honest.
   final List<ContactHexLayoutInput> inputs;
 
-  /// Hex centers, parallel to [inputs].
+  /// Hex centers: [leadingSlots] field-owned cells, then one per contact.
   final List<Offset> slots;
 
-  /// Row index per slot, parallel to [inputs].
+  /// Row index per slot, parallel to [slots].
   final List<int> rowOf;
 
   final int rowCount;
 
-  /// Trailing slots that belong to the field, not to [inputs] (the add cell).
-  final int extraSlots;
-
-  /// Slot count including [extraSlots].
-  int get slotCount => slots.length;
+  /// Slots at the head of the field that belong to the field, not to a
+  /// contact. Contact `i` lives at `slots[i + leadingSlots]`.
+  final int leadingSlots;
 
   /// Column count of a full wide row (4 on phones, up to 8 on desktop).
   final int columnsWide;
@@ -885,10 +889,11 @@ class ContactHexLayout {
     required List<ContactHexLayoutInput> contacts,
     required double width,
     required double labelHeight,
-    // One trailing cell the field owns rather than a contact (the "+" add
-    // slot). Reserved here so it lands on the same lattice, never faked as
-    // a contact — [inputs] and the announced node count stay honest.
-    int extraSlots = 0,
+    // Cells at the HEAD of the field that the field owns rather than a
+    // contact (the "+" add slot). Reserved here so it lands on the same
+    // lattice, never faked as a contact — [inputs] and the announced node
+    // count stay honest.
+    int leadingSlots = 0,
   }) {
     final ordered = sortContacts(contacts);
     final halfUsable = math.max(hexWidth, width / 2 - hexWidth);
@@ -907,7 +912,7 @@ class ContactHexLayout {
     final rowOf = <int>[];
     // Core radius + caption band + first-row clearance.
     var y = coreCenter.dy + coreRadius + 28 + hexRadius;
-    var remaining = ordered.length + extraSlots;
+    var remaining = ordered.length + leadingSlots;
     var wideRow = true;
     var rowIndex = 0;
     while (remaining > 0) {
@@ -938,7 +943,7 @@ class ContactHexLayout {
       slots: slots,
       rowOf: rowOf,
       rowCount: rowIndex,
-      extraSlots: extraSlots,
+      leadingSlots: leadingSlots,
       columnsWide: wideCapacity,
       pitch: pitch,
       labelHeight: labelHeight,
@@ -1038,16 +1043,18 @@ class ContactHexLayout {
   }
 }
 
-/// Hex terminal chrome: outline, inner hairline, focus halo. Painted over
-/// the clipped avatar/initials surface so edges stay crisp.
+/// Hex terminal chrome: ONE outline plus the focus halo. Drawn in the
+/// field's ink (`onSurface`), not `convItemBorder` — that token is a
+/// near-invisible hairline on the light themes (#E8E3DC on #FAF8F5) and
+/// left every empty cell ghosted while the wires beside it read fine.
 class _HexChromePainter extends CustomPainter {
   const _HexChromePainter({
-    required this.borderColor,
+    required this.outline,
     required this.accent,
     required this.focused,
   });
 
-  final Color borderColor;
+  final Color outline;
   final Color accent;
   final bool focused;
 
@@ -1055,19 +1062,14 @@ class _HexChromePainter extends CustomPainter {
   void paint(Canvas canvas, Size size) {
     final c = Offset(size.width / 2, size.height / 2);
     final r = size.height / 2 - 0.75;
+    // Single border by owner call: the old inner hairline at r-3 read as a
+    // double edge drawn on top of the avatar.
     canvas.drawPath(
       hexPath(c, r),
       Paint()
         ..style = PaintingStyle.stroke
-        ..strokeWidth = 1.25
-        ..color = borderColor.withValues(alpha: 0.6),
-    );
-    canvas.drawPath(
-      hexPath(c, r - 3),
-      Paint()
-        ..style = PaintingStyle.stroke
-        ..strokeWidth = 1
-        ..color = borderColor.withValues(alpha: 0.22),
+        ..strokeWidth = 1.4
+        ..color = outline.withValues(alpha: 0.42),
     );
     if (focused) {
       canvas.drawPath(
@@ -1082,7 +1084,7 @@ class _HexChromePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _HexChromePainter oldDelegate) =>
-      oldDelegate.borderColor != borderColor ||
+      oldDelegate.outline != outline ||
       oldDelegate.accent != accent ||
       oldDelegate.focused != focused;
 }
@@ -1090,12 +1092,12 @@ class _HexChromePainter extends CustomPainter {
 /// Dashed hex outline for the "+" add cell: a socket with nobody in it yet.
 class _AddSlotPainter extends CustomPainter {
   const _AddSlotPainter({
-    required this.borderColor,
+    required this.outline,
     required this.accent,
     required this.focused,
   });
 
-  final Color borderColor;
+  final Color outline;
   final Color accent;
   final bool focused;
 
@@ -1105,8 +1107,8 @@ class _AddSlotPainter extends CustomPainter {
     final r = size.height / 2 - 0.75;
     final paint = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.25
-      ..color = focused ? accent : borderColor.withValues(alpha: 0.7);
+      ..strokeWidth = 1.4
+      ..color = focused ? accent : outline.withValues(alpha: 0.45);
 
     // Dash the outline by walking the hex path in 5px on / 4px off runs.
     for (final metric in hexPath(c, r).computeMetrics()) {
@@ -1121,21 +1123,23 @@ class _AddSlotPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _AddSlotPainter oldDelegate) =>
-      oldDelegate.borderColor != borderColor ||
+      oldDelegate.outline != outline ||
       oldDelegate.accent != accent ||
       oldDelegate.focused != focused;
 }
 
-/// Instrument reticle for the local node: outer ring, N/E/S/W ticks in the
-/// gap band, and an inner accent ring around the surface disc.
+/// Instrument reticle for the local node: the accent ring rides the
+/// circumference and N/E/S/W ticks sit just inside it. No inner ring —
+/// a second circle drawn over the avatar read as a border on the picture
+/// (owner nit).
 class _LocalReticlePainter extends CustomPainter {
   const _LocalReticlePainter({
-    required this.borderColor,
+    required this.outline,
     required this.accent,
     required this.focused,
   });
 
-  final Color borderColor;
+  final Color outline;
   final Color accent;
   final bool focused;
 
@@ -1145,13 +1149,6 @@ class _LocalReticlePainter extends CustomPainter {
     final r = size.shortestSide / 2;
     final stroke = Paint()..style = PaintingStyle.stroke;
 
-    // Accent ring rides the circumference (owner nit: it used to cut 6px
-    // into the avatar); the plain hairline sits inside as the inner ring.
-    stroke
-      ..strokeWidth = 1
-      ..color = borderColor;
-    canvas.drawCircle(c, r - 6, stroke);
-
     stroke
       ..strokeWidth = 1.5
       ..color = accent;
@@ -1159,7 +1156,7 @@ class _LocalReticlePainter extends CustomPainter {
 
     stroke
       ..strokeWidth = 1
-      ..color = borderColor.withValues(alpha: 0.6);
+      ..color = outline.withValues(alpha: 0.45);
     for (final d in const [
       Offset(0, -1),
       Offset(1, 0),
@@ -1179,7 +1176,7 @@ class _LocalReticlePainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _LocalReticlePainter oldDelegate) =>
-      oldDelegate.borderColor != borderColor ||
+      oldDelegate.outline != outline ||
       oldDelegate.accent != accent ||
       oldDelegate.focused != focused;
 }
@@ -1233,7 +1230,6 @@ class _HexFieldPainter extends CustomPainter {
     required this.layout,
     required this.conversationIds,
     required this.baseColor,
-    required this.borderColor,
     required this.accent,
     required this.entranceProgress,
     required this.routeProgress,
@@ -1243,7 +1239,6 @@ class _HexFieldPainter extends CustomPainter {
   final ContactHexLayoutResult layout;
   final Set<int> conversationIds;
   final Color baseColor;
-  final Color borderColor;
   final Color accent;
   final double entranceProgress;
   final double routeProgress;
@@ -1252,16 +1247,16 @@ class _HexFieldPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final core = layout.coreCenter;
+    final rowPitch =
+        ContactHexLayout.hexRadius * 2 +
+        ContactHexLayout.labelGap +
+        layout.labelHeight +
+        9;
 
     // Faint lattice points continuing past the populated rows: the machine
     // frame has free sockets (chrome, not fake contacts).
-    final dotPaint = Paint()..color = borderColor.withValues(alpha: 0.18);
+    final dotPaint = Paint()..color = baseColor.withValues(alpha: 0.16);
     if (layout.slots.isNotEmpty) {
-      final rowPitch =
-          ContactHexLayout.hexRadius * 2 +
-          ContactHexLayout.labelGap +
-          layout.labelHeight +
-          9;
       var wideRow = layout.rowCount.isEven;
       for (
         var y = layout.slots.last.dy + rowPitch;
@@ -1293,10 +1288,11 @@ class _HexFieldPainter extends CustomPainter {
       final row = layout.rowOf[i];
       final rowT = ((entranceProgress * (rowCount + 1)) - row).clamp(0.0, 1.0);
       if (rowT <= 0) continue;
-      // Trailing add cell has no contact behind it: single, empty socket.
+      // The leading add cell has no contact behind it: single, empty socket.
+      final contactIndex = i - layout.leadingSlots;
       final hasConv =
-          i < layout.inputs.length &&
-          conversationIds.contains(layout.inputs[i].id);
+          contactIndex >= 0 &&
+          conversationIds.contains(layout.inputs[contactIndex].id);
       stubPaint.color = baseColor.withValues(alpha: 0.38 * rowT);
       padPaint.color = baseColor.withValues(alpha: 0.60 * rowT);
       final top = Offset(slot.dx, slot.dy - ContactHexLayout.hexRadius);
@@ -1329,6 +1325,42 @@ class _HexFieldPainter extends CustomPainter {
           ..lineTo(pad.dx, pad.dy - 1.5);
         canvas.drawPath(path, stubPaint);
       }
+    }
+
+    // Power-on sweep: the wavefront that is currently latching rows, drawn
+    // where it actually is. Rows do not fade in on their own - this line is
+    // the thing switching them on, so the entrance reads as one machine
+    // booting instead of eight independent fades. It rides the existing
+    // 280ms envelope and never exists at rest (reduce-motion collapses the
+    // envelope to a single frame at 1, so nothing is drawn at all).
+    if (layout.slots.isNotEmpty &&
+        entranceProgress > 0 &&
+        entranceProgress < 1) {
+      final firstRowY = layout.slots.first.dy;
+      final y =
+          firstRowY +
+          (entranceProgress * (rowCount + 1) - 1) * rowPitch -
+          ContactHexLayout.hexRadius;
+      final band = Rect.fromLTWH(0, y - rowPitch, size.width, rowPitch);
+      canvas.drawRect(
+        band,
+        Paint()
+          ..shader = LinearGradient(
+            begin: Alignment.topCenter,
+            end: Alignment.bottomCenter,
+            colors: [
+              accent.withValues(alpha: 0),
+              accent.withValues(alpha: 0.10),
+            ],
+          ).createShader(band),
+      );
+      canvas.drawLine(
+        Offset(0, y),
+        Offset(size.width, y),
+        Paint()
+          ..strokeWidth = 1
+          ..color = accent.withValues(alpha: 0.5),
+      );
     }
 
     // Tap/focus route: the connection fills with the accent color from the
@@ -1391,7 +1423,6 @@ class _HexFieldPainter extends CustomPainter {
   bool shouldRepaint(covariant _HexFieldPainter oldDelegate) =>
       oldDelegate.layout != layout ||
       oldDelegate.baseColor != baseColor ||
-      oldDelegate.borderColor != borderColor ||
       oldDelegate.accent != accent ||
       oldDelegate.entranceProgress != entranceProgress ||
       oldDelegate.routeProgress != routeProgress ||

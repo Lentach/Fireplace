@@ -14,6 +14,7 @@ import 'package:fireplace/models/user_model.dart';
 import 'package:fireplace/providers/auth_provider.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/friends_provider.dart';
+import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/screens/contacts_screen.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/contact_network_view.dart';
@@ -99,6 +100,9 @@ class ContactNetworkPreviewApp extends StatelessWidget {
         ChangeNotifierProvider.value(value: auth),
         ChangeNotifierProvider.value(value: friends),
         ChangeNotifierProvider(create: (_) => ConversationsProvider()),
+        ChangeNotifierProvider(
+          create: (_) => SettingsProvider(initialThemePreference: 'dark'),
+        ),
       ],
       child: const ContactsScreen(),
     );

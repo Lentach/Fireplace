@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:fireplace/models/user_model.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/contact_network_view.dart';
+import 'package:fireplace/widgets/hex_avatar.dart';
 
 UserModel _contact(int id, String name) =>
     UserModel(id: id, username: name, tag: '0001');
@@ -205,6 +206,34 @@ void main() {
       handle.dispose();
     });
 
+    testWidgets('local core is drawn on the field axis, not beside it', (
+      tester,
+    ) async {
+      await tester.pumpWidget(
+        _host(
+          _view(contacts: [for (var i = 1; i <= 8; i++) _contact(i, 'user$i')]),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      // The caption is wider than the reticle. When the core's Positioned
+      // shrink-wrapped the Column, that width pushed the avatar off
+      // `layout.coreCenter` - the exact point every feed line is aimed at -
+      // and the leftmost first-row wires stopped short of the rim.
+      final field = tester.getRect(find.byType(ContactNetworkView));
+      final core = tester.getRect(
+        find.ancestor(
+          of: find.byType(HexAvatarSurface),
+          matching: find.byType(ClipOval),
+        ),
+      );
+      expect(core.center.dx, closeTo(field.center.dx, 0.5));
+      expect(
+        tester.getRect(find.text('LOCAL NODE')).center.dx,
+        closeTo(field.center.dx, 0.5),
+      );
+    });
+
     testWidgets('tap opens contact synchronously under reduce motion', (
       tester,
     ) async {
@@ -337,7 +366,7 @@ void main() {
       handle.dispose();
     });
 
-    testWidgets('the add cell is a field slot, never a fake contact', (
+    testWidgets('the add cell heads the field, never a fake contact', (
       tester,
     ) async {
       var addTapped = 0;
@@ -363,17 +392,28 @@ void main() {
       await tester.pumpAndSettle();
       expect(addTapped, 1);
 
+      // Reachable without scrolling: it is the first cell of the first row,
+      // not the tail of the alphabet seven rows down.
+      expect(
+        tester.getRect(find.text('add')).left,
+        lessThan(tester.getRect(find.text('ada')).left),
+      );
+      expect(
+        tester.getRect(find.text('add')).center.dy,
+        closeTo(tester.getRect(find.text('ada')).center.dy, 0.5),
+      );
+
       // Reserved as geometry only: the contact list the layout reports is
       // still just the real people.
       final layout = ContactHexLayout.resolve(
         contacts: _inputs(2),
         width: 366,
         labelHeight: 15,
-        extraSlots: 1,
+        leadingSlots: 1,
       );
       expect(layout.inputs, hasLength(2));
       expect(layout.slots, hasLength(3));
-      expect(layout.extraSlots, 1);
+      expect(layout.leadingSlots, 1);
     });
 
     testWidgets('an empty account still offers the add cell', (tester) async {

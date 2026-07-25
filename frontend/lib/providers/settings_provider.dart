@@ -71,6 +71,7 @@ class SettingsProvider extends ChangeNotifier {
       _loadThemePreference();
     }
     _loadLocalePreference();
+    _loadContactsListView();
   }
 
   Future<void> _loadLocalePreference() async {
@@ -91,6 +92,31 @@ class SettingsProvider extends ChangeNotifier {
     final prefs = await SharedPreferences.getInstance();
     await prefs.setString('locale_preference', code);
   }
+
+  /// Contacts tab presentation: `false` = honeycomb node map (default),
+  /// `true` = classic tile list. Device-local, not per-account — it is a
+  /// view preference, not user data.
+  bool _contactsListView = false;
+
+  bool get contactsListView => _contactsListView;
+
+  Future<void> _loadContactsListView() async {
+    final prefs = await SharedPreferences.getInstance();
+    final saved = prefs.getBool(_contactsListViewKey);
+    if (saved == null || saved == _contactsListView) return;
+    _contactsListView = saved;
+    notifyListeners();
+  }
+
+  Future<void> setContactsListView(bool useList) async {
+    if (_contactsListView == useList) return;
+    _contactsListView = useList;
+    notifyListeners();
+    final prefs = await SharedPreferences.getInstance();
+    await prefs.setBool(_contactsListViewKey, useList);
+  }
+
+  static const String _contactsListViewKey = 'contacts_list_view';
 
   Future<void> _loadThemePreference() async {
     final prefs = await SharedPreferences.getInstance();

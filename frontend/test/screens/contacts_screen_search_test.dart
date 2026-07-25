@@ -3,6 +3,7 @@ import 'package:fireplace/models/user_model.dart';
 import 'package:fireplace/providers/auth_provider.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/friends_provider.dart';
+import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/screens/contacts_screen.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/contact_network_view.dart';
@@ -11,6 +12,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
+import 'package:shared_preferences/shared_preferences.dart';
 
 /// AuthProvider fake: only [currentUser] matters to the Contacts tab.
 class _FakeAuthProvider extends AuthProvider {
@@ -22,7 +24,10 @@ class _FakeAuthProvider extends AuthProvider {
   UserModel? get currentUser => _user;
 }
 
-Widget _host({required List<String> friendNames}) {
+Widget _host({
+  required List<String> friendNames,
+  SettingsProvider? settings,
+}) {
   final friends = FriendsProvider()
     ..onFriendsList([
       for (var i = 0; i < friendNames.length; i++)
@@ -36,6 +41,9 @@ Widget _host({required List<String> friendNames}) {
       ),
       ChangeNotifierProvider.value(value: friends),
       ChangeNotifierProvider(create: (_) => ConversationsProvider()),
+      ChangeNotifierProvider<SettingsProvider>.value(
+        value: settings ?? SettingsProvider(initialThemePreference: 'dark'),
+      ),
     ],
     child: MaterialApp(
       theme: RpgTheme.themeDataDarkGray,
@@ -60,6 +68,9 @@ Future<void> _openSearch(WidgetTester tester) async {
 
 void main() {
   const names = ['ada', 'borys', 'borys24', 'celina'];
+
+  // SettingsProvider reads preferences in its constructor.
+  setUp(() => SharedPreferences.setMockInitialValues({}));
 
   testWidgets('the magnifier swaps the title for the search field', (
     tester,
@@ -173,5 +184,42 @@ void main() {
     expect(find.byIcon(Icons.search), findsNothing);
     expect(find.byType(TextField), findsNothing);
     expect(find.text('No contacts yet'), findsOneWidget);
+  });
+
+  testWidgets('the view choice survives leaving and reopening the tab', (
+    tester,
+  ) async {
+    final settings = SettingsProvider(initialThemePreference: 'dark');
+    await tester.pumpWidget(_host(friendNames: names, settings: settings));
+    await tester.pumpAndSettle();
+    expect(find.byType(ContactNetworkView), findsOneWidget);
+
+    await tester.tap(find.byIcon(Icons.format_list_bulleted));
+    await tester.pumpAndSettle();
+    expect(find.byType(ContactNetworkView), findsNothing);
+    expect(settings.contactsListView, isTrue);
+    expect(
+      (await SharedPreferences.getInstance()).getBool('contacts_list_view'),
+      isTrue,
+    );
+
+    // Remount with a FRESH provider: the choice has to come back off disk,
+    // not out of the instance that is still in memory.
+    await tester.pumpWidget(const SizedBox.shrink());
+    await tester.pumpWidget(_host(friendNames: names));
+    await tester.pumpAndSettle();
+    expect(find.byType(ContactNetworkView), findsNothing);
+    expect(find.byIcon(Icons.hub_outlined), findsOneWidget);
+  });
+
+  testWidgets('a stored list choice is restored on a cold start', (
+    tester,
+  ) async {
+    SharedPreferences.setMockInitialValues({'contacts_list_view': true});
+    await tester.pumpWidget(_host(friendNames: names));
+    await tester.pumpAndSettle();
+
+    expect(find.byType(ContactNetworkView), findsNothing);
+    expect(find.byIcon(Icons.hub_outlined), findsOneWidget);
   });
 }

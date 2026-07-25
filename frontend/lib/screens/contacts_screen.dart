@@ -7,6 +7,7 @@ import '../models/user_model.dart';
 import '../providers/conversations_provider.dart';
 import '../providers/friends_provider.dart';
 import '../providers/auth_provider.dart';
+import '../providers/settings_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/hex_avatar.dart';
 import '../widgets/contact_network_view.dart';
@@ -25,10 +26,6 @@ class ContactsScreen extends StatefulWidget {
 }
 
 class _ContactsScreenState extends State<ContactsScreen> {
-  /// The network map is the primary presentation; the classic list stays one
-  /// tap away as the accessibility / fast-lookup fallback.
-  bool _showList = false;
-
   /// One query filters BOTH presentations. The field lives IN the header
   /// capsule row (owner: no dedicated band under it) and only exists when
   /// the account has contacts at all.
@@ -159,7 +156,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
       body: Stack(
         children: [
           Positioned.fill(
-            child: _showList
+            child:
+                context.select<SettingsProvider, bool>(
+                  (settings) => settings.contactsListView,
+                )
                 ? _buildContactsList(context)
                 : _buildNetwork(context),
           ),
@@ -234,15 +234,22 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
+  /// The network map is the primary presentation; the classic list stays one
+  /// tap away as the accessibility / fast-lookup fallback. The choice is
+  /// persisted device-side so the tab reopens in whichever view it was left.
   Widget _buildListToggle(BuildContext context) {
     final l10n = AppLocalizations.of(context);
+    final showList = context.select<SettingsProvider, bool>(
+      (settings) => settings.contactsListView,
+    );
     return IconButton(
-      onPressed: () => setState(() => _showList = !_showList),
-      tooltip: _showList
+      onPressed: () =>
+          context.read<SettingsProvider>().setContactsListView(!showList),
+      tooltip: showList
           ? l10n.contactNetworkShowMap
           : l10n.contactNetworkShowList,
       icon: Icon(
-        _showList ? Icons.hub_outlined : Icons.format_list_bulleted,
+        showList ? Icons.hub_outlined : Icons.format_list_bulleted,
         size: 20,
         color: Theme.of(context).colorScheme.onSurface,
       ),
