@@ -278,6 +278,43 @@ void main() {
       await tester.pumpAndSettle();
     });
 
+    testWidgets('the route fill repaints without rebuilding the nodes', (
+      tester,
+    ) async {
+      // The route controller drives one painter. It used to drive the whole
+      // Stack, so every frame of the 480ms fill rebuilt every contact node
+      // (Focus + Semantics + GestureDetector + ClipPath + Image apiece) -
+      // ~6k subtree builds per tap on a 100-contact board. Widget identity
+      // across fill frames is the cheapest honest proof that is not
+      // happening: a rebuilt subtree hands back a new Widget instance.
+      await tester.pumpWidget(
+        _host(
+          _view(
+            contacts: [for (var i = 1; i <= 12; i++) _contact(i, 'user$i')],
+          ),
+          disableAnimations: false,
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(find.text('user7'));
+      await tester.pump();
+      final atStart = tester.widget<Text>(find.text('user3'));
+
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(
+        identical(tester.widget<Text>(find.text('user3')), atStart),
+        isTrue,
+      );
+      await tester.pump(const Duration(milliseconds: 150));
+      expect(
+        identical(tester.widget<Text>(find.text('user3')), atStart),
+        isTrue,
+      );
+
+      await tester.pumpAndSettle();
+    });
+
     testWidgets('long press on a wired contact opens the chat directly', (
       tester,
     ) async {

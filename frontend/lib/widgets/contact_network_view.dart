@@ -302,55 +302,60 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
         });
       },
       builder: (context, entrance, _) {
-        return AnimatedBuilder(
-          animation: _routeController,
-          builder: (context, _) {
-            return Stack(
-              clipBehavior: Clip.none,
-              children: [
-                Positioned.fill(
-                  child: ExcludeSemantics(
-                    child: IgnorePointer(
-                      child: RepaintBoundary(
-                        child: CustomPaint(
-                          painter: _HexFieldPainter(
-                            layout: layout,
-                            conversationIds: widget.conversationContactIds,
-                            baseColor: colorScheme.onSurface,
-                            accent: colorScheme.primary,
-                            entranceProgress: entrance,
-                            routeProgress: _routeContactId == null
-                                ? 0
-                                : Curves.easeInOut.transform(
-                                    _routeController.value,
-                                  ),
-                            routeIndex: _slotIndexOf(layout, _routeContactId),
-                          ),
+        return Stack(
+          clipBehavior: Clip.none,
+          children: [
+            // The route controller drives ONLY this painter, so only this
+            // subtree may listen to it. It used to wrap the whole Stack:
+            // every frame of the 480ms fill rebuilt every contact node -
+            // Focus, Semantics, GestureDetector, ClipPath and Image apiece -
+            // which is ~6k subtree builds for one tap on a 100-contact
+            // board. The nodes only care about `_routeContactId`, which
+            // changes twice per tap via setState.
+            Positioned.fill(
+              child: ExcludeSemantics(
+                child: IgnorePointer(
+                  child: RepaintBoundary(
+                    child: AnimatedBuilder(
+                      animation: _routeController,
+                      builder: (context, _) => CustomPaint(
+                        painter: _HexFieldPainter(
+                          layout: layout,
+                          conversationIds: widget.conversationContactIds,
+                          baseColor: colorScheme.onSurface,
+                          accent: colorScheme.primary,
+                          entranceProgress: entrance,
+                          routeProgress: _routeContactId == null
+                              ? 0
+                              : Curves.easeInOut.transform(
+                                  _routeController.value,
+                                ),
+                          routeIndex: _slotIndexOf(layout, _routeContactId),
                         ),
                       ),
                     ),
                   ),
                 ),
-                _buildCore(context, layout, entrance),
-                if (widget.pendingRequestCount > 0)
-                  _buildInboundPort(context, layout, entrance),
-                for (var index = 0; index < inputs.length; index++)
-                  _buildContactNode(
-                    context,
-                    contactsById[inputs[index].id]!,
-                    inputs[index],
-                    layout,
-                    index,
-                    nodeTextStyle,
-                    entrance,
-                    disableAnimations,
-                  ),
-                if (layout.leadingSlots > 0)
-                  _buildAddNode(context, layout, nodeTextStyle, entrance),
-                if (inputs.isEmpty) _buildEmptyCopy(context, layout),
-              ],
-            );
-          },
+              ),
+            ),
+            _buildCore(context, layout, entrance),
+            if (widget.pendingRequestCount > 0)
+              _buildInboundPort(context, layout, entrance),
+            for (var index = 0; index < inputs.length; index++)
+              _buildContactNode(
+                context,
+                contactsById[inputs[index].id]!,
+                inputs[index],
+                layout,
+                index,
+                nodeTextStyle,
+                entrance,
+                disableAnimations,
+              ),
+            if (layout.leadingSlots > 0)
+              _buildAddNode(context, layout, nodeTextStyle, entrance),
+            if (inputs.isEmpty) _buildEmptyCopy(context, layout),
+          ],
         );
       },
     );
