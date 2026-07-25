@@ -12,12 +12,26 @@ class AppearancePreview extends StatelessWidget {
   final double width;
   final double height;
 
+  /// Draws the miniature's own rounded outline. True for the Appearance
+  /// screen's choice cards, where the border IS the card edge.
+  ///
+  /// The Settings row sets this false: there the miniature is clipped into a
+  /// hex terminal that already paints its own ring, and the radius-12 outline
+  /// would cut arcs across the interior. That used to be worked around by
+  /// drawing the preview at 92×58 and centre-cropping to the 38px hex — which
+  /// hid the border, but also cropped away the strips at `left: 8` and
+  /// `right: 8` where BOTH bubbles live, leaving the row showing background
+  /// and two slivers. Without the border the miniature can render at the
+  /// hex's own size and stay whole.
+  final bool showBorder;
+
   const AppearancePreview({
     super.key,
     required this.themeData,
     required this.background,
     this.width = 96,
     this.height = 58,
+    this.showBorder = true,
   });
 
   @override
@@ -35,7 +49,9 @@ class AppearancePreview extends StatelessWidget {
               clipBehavior: Clip.antiAlias,
               decoration: BoxDecoration(
                 borderRadius: BorderRadius.circular(12),
-                border: Border.all(color: colors.convItemBorder),
+                border: showBorder
+                    ? Border.all(color: colors.convItemBorder)
+                    : null,
               ),
               child: background == ChatBackgroundLayer.glyphs
                   ? FittedBox(
@@ -69,6 +85,28 @@ class AppearancePreview extends StatelessWidget {
   }
 }
 
+/// The scene's layout, exposed because it is ABSOLUTE, not proportional:
+/// only bubble WIDTH scales with the box, so any caller that resizes, crops
+/// or overflows the miniature has to reason about where the content actually
+/// lands. Two bugs came from callers guessing (owner-reported, 2026-07-25):
+/// a centre-crop that removed both bubbles, then a shrink that slid the
+/// composer bar over the "mine" bubble.
+const double kPreviewSideInset = 8;
+const double kPreviewTheirBubbleTop = 9;
+const double kPreviewMineBubbleTop = 25;
+const double kPreviewBubbleHeight = 11;
+const double kPreviewComposerBottom = 6;
+const double kPreviewComposerHeight = 7;
+
+/// Bottom of the lower bubble, measured from the top of the box.
+const double kPreviewContentBottom =
+    kPreviewMineBubbleTop + kPreviewBubbleHeight;
+
+/// The shortest box in which the composer bar still clears that bubble.
+/// Render the miniature any shorter and the bar paints over it.
+const double kPreviewMinHeight =
+    kPreviewContentBottom + kPreviewComposerBottom + kPreviewComposerHeight;
+
 class _AppearancePreviewScene extends StatelessWidget {
   final FireplaceColors colors;
   final ChatBackgroundLayer background;
@@ -89,27 +127,27 @@ class _AppearancePreviewScene extends StatelessWidget {
           return Stack(
             children: [
               Positioned(
-                left: 8,
-                top: 9,
+                left: kPreviewSideInset,
+                top: kPreviewTheirBubbleTop,
                 child: _PreviewBubble(
                   color: colors.theirsMsgBg,
                   width: bubbleWidth,
                 ),
               ),
               Positioned(
-                right: 8,
-                top: 25,
+                right: kPreviewSideInset,
+                top: kPreviewMineBubbleTop,
                 child: _PreviewBubble(
                   color: colors.mineMsgBg,
                   width: bubbleWidth * 0.86,
                 ),
               ),
               Positioned(
-                left: 8,
-                right: 8,
-                bottom: 6,
+                left: kPreviewSideInset,
+                right: kPreviewSideInset,
+                bottom: kPreviewComposerBottom,
                 child: Container(
-                  height: 7,
+                  height: kPreviewComposerHeight,
                   decoration: BoxDecoration(
                     color: colors.inputBg,
                     borderRadius: BorderRadius.circular(4),
@@ -135,7 +173,7 @@ class _PreviewBubble extends StatelessWidget {
   Widget build(BuildContext context) {
     return Container(
       width: width,
-      height: 11,
+      height: kPreviewBubbleHeight,
       decoration: BoxDecoration(
         color: color,
         borderRadius: BorderRadius.circular(6),

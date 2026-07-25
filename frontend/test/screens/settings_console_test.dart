@@ -4,6 +4,7 @@ import 'package:fireplace/providers/connection_provider.dart';
 import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/screens/settings_screen.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
+import 'package:fireplace/widgets/appearance_preview.dart';
 import 'package:fireplace/widgets/local_node_core.dart';
 import 'package:fireplace/widgets/settings_console.dart';
 import 'package:flutter/material.dart';
@@ -74,6 +75,46 @@ void main() {
 
       expect(find.text('PRIVACY & SAFETY'), findsOneWidget);
       expect(find.text('Privacy & Safety'), findsNothing);
+    });
+
+    testWidgets('the Appearance row previews the theme without clipping it', (
+      tester,
+    ) async {
+      // Two owner-reported bugs live here, one per axis, both caused by
+      // `_AppearancePreviewScene` using ABSOLUTE insets while only bubble
+      // WIDTH scales with the box.
+      await tester.pumpWidget(_host());
+      await tester.pumpAndSettle();
+
+      final preview = tester.widget<AppearancePreview>(
+        find.byType(AppearancePreview),
+      );
+
+      // WIDTH — the miniature was drawn at 92 and centre-cropped to the 38px
+      // terminal to hide its own border, which threw away precisely the
+      // `left: 8` / `right: 8` strips that carry both bubble colours:
+      // "most of the hex is on background color with little visible chat
+      // bubble". Matching the terminal keeps the scene whole sideways, and
+      // dropping the border removes the reason the crop existed.
+      expect(preview.width, kConsoleHexWidth);
+      expect(
+        preview.showBorder,
+        isFalse,
+        reason: 'the hex terminal already paints a ring',
+      );
+
+      // HEIGHT — shrinking to the terminal's own 44 slid the composer bar up
+      // through the lower bubble and painted over it: "green/blue bubble is
+      // covered by bottom block". The bar spans `height - 13 .. height - 6`,
+      // so it clears the bubble only while that top stays below
+      // kPreviewContentBottom. Asserted as the INVARIANT, not as a literal,
+      // so retuning either the height or the scene's insets still fails
+      // loudly instead of silently re-covering the bubble.
+      expect(
+        preview.height - kPreviewComposerBottom - kPreviewComposerHeight,
+        greaterThanOrEqualTo(kPreviewContentBottom),
+        reason: 'the composer bar overlaps the lower bubble',
+      );
     });
 
     testWidgets('rows are console rows with no chevrons', (tester) async {
