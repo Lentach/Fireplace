@@ -823,9 +823,9 @@ class ContactHexLayoutInput {
   final String displayName;
 }
 
-@immutable
+/// Geometry is immutable; [traces] is a memo of it, built on first read.
 class ContactHexLayoutResult {
-  const ContactHexLayoutResult({
+  ContactHexLayoutResult({
     required this.inputs,
     required this.slots,
     required this.rowOf,
@@ -861,6 +861,27 @@ class ContactHexLayoutResult {
   final double labelHeight;
   final Offset coreCenter;
   final double fieldHeight;
+
+  Path? _traces;
+
+  /// Every contact's dormant trace as ONE path, built on first read and
+  /// reused for the life of this layout.
+  ///
+  /// One path, one stroke, on purpose. Drawing 27 separate paths meant
+  /// overlapping segments composited 27 times, so the bundle under the core
+  /// darkened to near-opaque while the same stroke stayed faint lower down.
+  /// A single draw unions the coverage: uniform weight everywhere. It also
+  /// keeps `routePath` off the paint path — it sorts peers to fan the rim,
+  /// and the 480ms tap fill repaints every frame.
+  Path get traces {
+    final cached = _traces;
+    if (cached != null) return cached;
+    final combined = Path();
+    for (var i = leadingSlots; i < slots.length; i++) {
+      combined.addPath(ContactHexLayout.routePath(this, i), Offset.zero);
+    }
+    return _traces = combined;
+  }
 
   /// Full visual rect (hex + label) of one slot, for tests and reveal math.
   Rect visualRectAt(int index) {
@@ -905,7 +926,11 @@ class ContactHexLayout {
         .clamp(hexWidth + 6, maxPitch)
         .toDouble();
     final wideCapacity = halfSteps * 2;
-    final coreCenter = Offset(width / 2, 64);
+    // 48, not 64: the safe rect already begins below the header capsule, so
+    // a 64px centre left ~30px of dead air above the reticle. 48 leaves
+    // ~14px under the header and lifts the whole field with it, which buys
+    // roughly one more visible row before scrolling.
+    final coreCenter = Offset(width / 2, 48);
     final rowPitch = hexRadius * 2 + labelGap + labelHeight + 9;
 
     final slots = <Offset>[];
@@ -970,8 +995,18 @@ class ContactHexLayout {
         ..lineTo(pad.dx, pad.dy);
     }
 
-    // Exit the rim angled toward the target side so the route clears the
-    // centered LOCAL NODE caption below the core.
+    // Two shared exits, one per side, angled so the route clears the
+    // centered LOCAL NODE caption. Sharing them is deliberate: the traces
+    // that overlap here are drawn as ONE path in ONE stroke, so the shared
+    // run composites a single time and stays exactly as thin as every other
+    // trace no matter how many contacts feed into it.
+    //
+    // Fanning each trace to its own rim angle was tried and reverted. It
+    // scales the wrong way: N rays converging on a 34px circle stay
+    // sub-pixel apart for ~180px out, so at 100 contacts the fan fills in
+    // to a solid wedge that no alpha ramp short enough to spare row 0 can
+    // hide. Overlap that composites once is strictly better than overlap
+    // spread into a smudge.
     final sideSign = slot.dx >= core.dx ? 1.0 : -1.0;
     final exit = Offset(core.dx + sideSign * 52, core.dy + coreRadius + 24);
     final rimDir = exit - core;
@@ -1312,19 +1347,27 @@ class _HexFieldPainter extends CustomPainter {
       } else {
         stub(0);
       }
+    }
 
-      // The core visibly feeds the first row.
-      if (row == 0) {
-        final pad = Offset(top.dx, top.dy - 9);
-        final dir = Offset(pad.dx - core.dx, 52);
-        final rim = core + dir / dir.distance * ContactHexLayout.coreRadius;
-        stubPaint.color = baseColor.withValues(alpha: 0.30 * rowT);
-        final path = Path()
-          ..moveTo(rim.dx, rim.dy)
-          ..lineTo(pad.dx, pad.dy - 16)
-          ..lineTo(pad.dx, pad.dy - 1.5);
-        canvas.drawPath(path, stubPaint);
-      }
+    // Every relationship is drawn, dormant, all the time: the board is a
+    // wired board, not four wired nodes and the rest floating. One trace per
+    // real contact - no bus, no shared rail - so the picture still cannot
+    // lie about who you know. Tapping does not conjure a wire, it energises
+    // the one already there.
+    //
+    // ONE path, ONE stroke. That is what keeps it thin: shared runs near the
+    // core overlap heavily, and drawing each trace separately composited
+    // them 13-deep into a fat bundle while the same stroke stayed faint
+    // further down. A single draw unions the coverage, so the picture has
+    // uniform weight at 3 contacts and at 300.
+    if (entranceProgress > 0) {
+      canvas.drawPath(
+        layout.traces,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 0.9
+          ..color = baseColor.withValues(alpha: 0.17 * entranceProgress),
+      );
     }
 
     // Tap/focus route: the connection fills with the accent color from the
