@@ -55,6 +55,27 @@ void main() {
       expect(find.text('LOCAL NODE'), findsOneWidget);
     });
 
+    testWidgets('every section caption is upper-cased by the widget', (
+      tester,
+    ) async {
+      // The Privacy screen reuses a screen TITLE as a caption
+      // (`Privacy & Safety`) next to captions that come from already-caps
+      // section keys (`SECURITY`), which put mixed casing on one rail. The
+      // widget normalises so no call site can reintroduce it.
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: RpgTheme.themeDataLight,
+          home: const Scaffold(
+            body: SettingsSectionCaption(label: 'Privacy & Safety'),
+          ),
+        ),
+      );
+      await tester.pumpAndSettle();
+
+      expect(find.text('PRIVACY & SAFETY'), findsOneWidget);
+      expect(find.text('Privacy & Safety'), findsNothing);
+    });
+
     testWidgets('rows are console rows with no chevrons', (tester) async {
       await tester.pumpWidget(_host());
       await tester.pumpAndSettle();

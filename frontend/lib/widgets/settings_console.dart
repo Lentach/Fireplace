@@ -1,8 +1,7 @@
-import 'dart:math' as math;
-
 import 'package:flutter/material.dart';
 
 import '../theme/rpg_theme.dart';
+import 'console_glyphs.dart';
 import 'hex_avatar.dart';
 
 /// Row grammar for the Settings "local node console".
@@ -13,10 +12,9 @@ import 'hex_avatar.dart';
 /// Contacts classic list already use: a 44px hex at left offset 12, a 12px
 /// gap, opaque rows, no dividers, no chevrons. The affordance is the row.
 ///
-/// The glyphs inside the hexes are drawn here rather than taken from the
-/// Material set (owner call, 2026-07-25): a stock shield or laptop icon inside
-/// our hex frame was the last "different app" tell. They share one stroke spec
-/// so the set reads as instrument line-work, not as clip art.
+/// The glyphs live in `console_glyphs.dart` and are re-exported here so a
+/// screen needs one import to build a console.
+export 'console_glyphs.dart' show ConsoleGlyph, ConsoleGlyphSet;
 
 /// Leading hex width follows the pointy-top ratio, like every other hex.
 const double kConsoleHexHeight = 44;
@@ -28,19 +26,6 @@ double get kConsoleHexWidth => kConsoleHexHeight * kHexWidthRatio;
 /// `accent` is a state change worth pausing on (log out). Both reuse the lit
 /// row edge the Chats list already uses for unread.
 enum ConsoleRowEdge { none, danger, accent }
-
-/// The drawn glyph set. Keep these geometric and single-weight.
-enum ConsoleGlyph {
-  palette,
-  globe,
-  shield,
-  blocked,
-  device,
-  signal,
-  key,
-  nodeX,
-  exit,
-}
 
 /// Section header. Type copied from the already-shipped Appearance sub-screen
 /// (`appearance_screen.dart`) so the Settings root and the screen it opens do
@@ -63,7 +48,12 @@ class SettingsSectionCaption extends StatelessWidget {
       padding: const EdgeInsets.fromLTRB(kConsoleHexLeft, 18, 16, 8),
       child: Row(
         children: [
-          Text(label, style: styleOf(context)),
+          // Upper-cased HERE, not by the caller. Some captions come from
+          // section keys that are already caps (`SECURITY`) and others reuse
+          // a screen title that is not (`Privacy & Safety`), which put three
+          // different casings on one rail in the Privacy screen. Normalising
+          // at the widget means no call site can break the rail again.
+          Text(label.toUpperCase(), style: styleOf(context)),
           const SizedBox(width: 10),
           Expanded(
             child: Container(
@@ -87,6 +77,7 @@ class SettingsConsoleRow extends StatelessWidget {
     this.onTap,
     this.edge = ConsoleRowEdge.none,
     this.leadingOverride,
+    this.set = ConsoleGlyphSet.instrument,
   });
 
   final ConsoleGlyph glyph;
@@ -99,6 +90,10 @@ class SettingsConsoleRow extends StatelessWidget {
   /// Replaces the glyph inside the hex — used by the Appearance row, whose
   /// "icon" is really a live preview of the current theme.
   final Widget? leadingOverride;
+
+  /// Which glyph drawing to use. Exists only while the owner is choosing
+  /// between the two sets; it goes when the losing set is deleted.
+  final ConsoleGlyphSet set;
 
   @override
   Widget build(BuildContext context) {
@@ -130,7 +125,12 @@ class SettingsConsoleRow extends StatelessWidget {
           SizedBox(
             width: edgeColor == null ? kConsoleHexLeft : kConsoleHexLeft - 3,
           ),
-          ConsoleHexIcon(glyph: glyph, tint: edgeColor, child: leadingOverride),
+          ConsoleHexIcon(
+            glyph: glyph,
+            tint: edgeColor,
+            set: set,
+            child: leadingOverride,
+          ),
           const SizedBox(width: 12),
           Expanded(
             child: Column(
@@ -177,24 +177,109 @@ class SettingsConsoleRow extends StatelessWidget {
   }
 }
 
+/// A row that explains rather than navigates: hex terminal, title, and a body
+/// paragraph with no line clamp.
+///
+/// This is what the Privacy & Safety screen's translucent Material cards
+/// became. They were a double violation — a tinted card is the Material
+/// settings-list tell the console removed, and `SPEC.md` §1 forbids
+/// translucency behind body text outright. The information is the same; only
+/// the card is gone.
+class ConsoleInfoRow extends StatelessWidget {
+  const ConsoleInfoRow({
+    super.key,
+    required this.glyph,
+    required this.title,
+    required this.body,
+  });
+
+  final ConsoleGlyph glyph;
+  final String title;
+  final String body;
+
+  @override
+  Widget build(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return Semantics(
+      container: true,
+      label: title,
+      value: body,
+      excludeSemantics: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(width: kConsoleHexLeft),
+            // Top-aligned: a paragraph row is tall, and a vertically centred
+            // terminal would float away from the title it belongs to.
+            ConsoleHexIcon(glyph: glyph),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(
+                    title,
+                    style: RpgTheme.bodyFont(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurface,
+                    ),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    body,
+                    style: RpgTheme.bodyFont(
+                      fontSize: 13,
+                      color: colorScheme.onSurfaceVariant,
+                    ).copyWith(height: 1.35),
+                  ),
+                ],
+              ),
+            ),
+            const SizedBox(width: 16),
+          ],
+        ),
+      ),
+    );
+  }
+}
+
 /// The hex terminal that holds a glyph. Same ink and weight as the board's
 /// `_HexChromePainter`: one outline, nothing inside it.
 class ConsoleHexIcon extends StatelessWidget {
-  const ConsoleHexIcon({super.key, required this.glyph, this.tint, this.child});
+  const ConsoleHexIcon({
+    super.key,
+    required this.glyph,
+    this.tint,
+    this.child,
+    this.height = kConsoleHexHeight,
+    this.set = ConsoleGlyphSet.instrument,
+  });
 
   final ConsoleGlyph glyph;
   final Color? tint;
   final Widget? child;
+
+  /// Terminal height. The glyph scales with it, so a screen header can use
+  /// the same widget at 64–72px instead of hand-rolling a second hexagon.
+  final double height;
+
+  final ConsoleGlyphSet set;
 
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final colors = FireplaceColors.of(context);
     final ink = tint ?? colorScheme.primary;
+    final glyphBox = kGlyphBox * (height / kConsoleHexHeight);
 
     return SizedBox(
-      width: kConsoleHexWidth,
-      height: kConsoleHexHeight,
+      width: height * kHexWidthRatio,
+      height: height,
       child: CustomPaint(
         foregroundPainter: _HexOutlinePainter(
           color: tint ?? colorScheme.onSurface,
@@ -208,10 +293,14 @@ class ConsoleHexIcon extends StatelessWidget {
                 color: colors.convItemBg,
                 child: Center(
                   child: SizedBox(
-                    width: 22,
-                    height: 22,
+                    width: glyphBox,
+                    height: glyphBox,
                     child: CustomPaint(
-                      painter: ConsoleGlyphPainter(glyph: glyph, color: ink),
+                      painter: ConsoleGlyphPainter(
+                        glyph: glyph,
+                        color: ink,
+                        set: set,
+                      ),
                     ),
                   ),
                 ),
@@ -242,151 +331,4 @@ class _HexOutlinePainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant _HexOutlinePainter oldDelegate) =>
       oldDelegate.color != color || oldDelegate.alpha != alpha;
-}
-
-/// One stroke spec for every glyph: 1.6 wide, round caps and joins, drawn in a
-/// 24-unit design space and scaled to whatever box it is given. Single weight
-/// is what makes a hand-drawn set look deliberate instead of homemade.
-class ConsoleGlyphPainter extends CustomPainter {
-  const ConsoleGlyphPainter({required this.glyph, required this.color});
-
-  final ConsoleGlyph glyph;
-  final Color color;
-
-  static const double _unit = 24;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    canvas.save();
-    canvas.scale(size.width / _unit, size.height / _unit);
-
-    final stroke = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.6
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..color = color;
-
-    switch (glyph) {
-      case ConsoleGlyph.palette:
-        canvas.drawCircle(const Offset(12, 12), 8, stroke);
-        for (final a in [-2.2, -1.4, -0.6]) {
-          canvas.drawCircle(
-            Offset(12 + 4.4 * math.cos(a), 12 + 4.4 * math.sin(a)),
-            1.3,
-            stroke,
-          );
-        }
-      case ConsoleGlyph.globe:
-        canvas.drawCircle(const Offset(12, 12), 7.8, stroke);
-        canvas.drawOval(
-          Rect.fromCenter(
-            center: const Offset(12, 12),
-            width: 7.6,
-            height: 15.6,
-          ),
-          stroke,
-        );
-        canvas.drawLine(const Offset(4.2, 12), const Offset(19.8, 12), stroke);
-      case ConsoleGlyph.shield:
-        canvas.drawPath(
-          Path()
-            ..moveTo(12, 3.4)
-            ..lineTo(19.4, 6.8)
-            ..lineTo(19.4, 12)
-            ..lineTo(12, 20.6)
-            ..lineTo(4.6, 12)
-            ..lineTo(4.6, 6.8)
-            ..close(),
-          stroke,
-        );
-        canvas.drawPath(
-          Path()
-            ..moveTo(8.8, 11.8)
-            ..lineTo(11.1, 14.1)
-            ..lineTo(15.2, 9.6),
-          stroke,
-        );
-      case ConsoleGlyph.blocked:
-        canvas.drawCircle(const Offset(12, 12), 7.6, stroke);
-        canvas.drawLine(
-          const Offset(6.6, 6.6),
-          const Offset(17.4, 17.4),
-          stroke,
-        );
-      case ConsoleGlyph.device:
-        canvas.drawRRect(
-          RRect.fromRectAndRadius(
-            const Rect.fromLTRB(3.6, 5.4, 20.4, 15.6),
-            const Radius.circular(1.6),
-          ),
-          stroke,
-        );
-        canvas.drawLine(const Offset(12, 15.6), const Offset(12, 18.8), stroke);
-        canvas.drawLine(
-          const Offset(8.4, 18.8),
-          const Offset(15.6, 18.8),
-          stroke,
-        );
-      case ConsoleGlyph.signal:
-        canvas.drawCircle(const Offset(12, 17.4), 1.5, Paint()..color = color);
-        for (final r in [5.2, 9.0]) {
-          canvas.drawArc(
-            Rect.fromCircle(center: const Offset(12, 17.4), radius: r),
-            math.pi * 1.18,
-            math.pi * 0.64,
-            false,
-            stroke,
-          );
-        }
-      case ConsoleGlyph.key:
-        canvas.drawCircle(const Offset(7.6, 12), 3.4, stroke);
-        canvas.drawLine(const Offset(11, 12), const Offset(20, 12), stroke);
-        canvas.drawLine(
-          const Offset(16.6, 12),
-          const Offset(16.6, 15.2),
-          stroke,
-        );
-        canvas.drawLine(
-          const Offset(19.4, 12),
-          const Offset(19.4, 14.2),
-          stroke,
-        );
-      case ConsoleGlyph.nodeX:
-        canvas.drawPath(hexPath(const Offset(12, 12), 8.4), stroke);
-        canvas.drawLine(
-          const Offset(9.2, 9.2),
-          const Offset(14.8, 14.8),
-          stroke,
-        );
-        canvas.drawLine(
-          const Offset(14.8, 9.2),
-          const Offset(9.2, 14.8),
-          stroke,
-        );
-      case ConsoleGlyph.exit:
-        canvas.drawPath(
-          Path()
-            ..moveTo(13.4, 4.6)
-            ..lineTo(5.4, 4.6)
-            ..lineTo(5.4, 19.4)
-            ..lineTo(13.4, 19.4),
-          stroke,
-        );
-        canvas.drawLine(const Offset(10.6, 12), const Offset(19.6, 12), stroke);
-        canvas.drawPath(
-          Path()
-            ..moveTo(16.6, 9)
-            ..lineTo(19.6, 12)
-            ..lineTo(16.6, 15),
-          stroke,
-        );
-    }
-
-    canvas.restore();
-  }
-
-  @override
-  bool shouldRepaint(covariant ConsoleGlyphPainter oldDelegate) =>
-      oldDelegate.glyph != glyph || oldDelegate.color != color;
 }

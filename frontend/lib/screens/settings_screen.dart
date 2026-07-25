@@ -264,7 +264,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     };
 
     return SettingsConsoleRow(
-      glyph: ConsoleGlyph.palette,
+      glyph: ConsoleGlyph.appearance,
       leadingOverride: _appearancePreviewInHex(settings),
       title: l10n.appearance,
       subtitle: l10n.appearanceSummary(themeName, backgroundName),
@@ -333,7 +333,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
     // No row-level onTap: the chips are the affordance, so the row itself
     // must not be a button that does nothing.
     return SettingsConsoleRow(
-      glyph: ConsoleGlyph.globe,
+      glyph: ConsoleGlyph.language,
       title: l10n.language,
       trailing: Row(
         mainAxisSize: MainAxisSize.min,
@@ -487,7 +487,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                   SettingsSectionCaption(label: l10n.settingsSectionSecurity),
                   SettingsConsoleRow(
-                    glyph: ConsoleGlyph.shield,
+                    glyph: ConsoleGlyph.privacy,
                     title: l10n.privacyAndSafety,
                     onTap: () {
                       Navigator.of(context).push(
@@ -511,13 +511,13 @@ class _SettingsScreenState extends State<SettingsScreen> {
                   // No onTap today - this row reports the device, it does not
                   // navigate. Kept non-interactive rather than faking a target.
                   SettingsConsoleRow(
-                    glyph: ConsoleGlyph.device,
+                    glyph: ConsoleGlyph.devices,
                     title: l10n.devices,
                     subtitle: _deviceName ?? l10n.devicesLoading,
                   ),
                   if (kIsWeb)
                     SettingsConsoleRow(
-                      glyph: ConsoleGlyph.signal,
+                      glyph: ConsoleGlyph.push,
                       title: l10n.webPushEnableTitle,
                       subtitle: l10n.webPushEnableSubtitle,
                       onTap: _enableWebPushNotifications,
@@ -525,18 +525,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
                   SettingsSectionCaption(label: l10n.settingsSectionSession),
                   SettingsConsoleRow(
-                    glyph: ConsoleGlyph.key,
+                    glyph: ConsoleGlyph.password,
                     title: l10n.resetPassword,
                     onTap: _showResetPasswordDialog,
                   ),
                   SettingsConsoleRow(
-                    glyph: ConsoleGlyph.nodeX,
+                    glyph: ConsoleGlyph.deleteNode,
                     title: l10n.deleteAccount,
                     edge: ConsoleRowEdge.danger,
                     onTap: _showDeleteAccountDialog,
                   ),
                   SettingsConsoleRow(
-                    glyph: ConsoleGlyph.exit,
+                    glyph: ConsoleGlyph.logout,
                     title: l10n.logout,
                     edge: ConsoleRowEdge.accent,
                     onTap: () {

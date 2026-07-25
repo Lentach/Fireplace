@@ -22,6 +22,8 @@ import 'package:fireplace/screens/blocked_users_screen.dart';
 import 'package:fireplace/screens/privacy_safety_screen.dart';
 import 'package:fireplace/screens/add_or_invitations_screen.dart';
 import 'package:fireplace/screens/auth_screen.dart';
+import 'package:fireplace/screens/settings_screen.dart';
+import 'package:fireplace/screens/appearance_screen.dart';
 import 'package:fireplace/providers/connection_provider.dart';
 
 import 'package:fireplace/l10n/app_localizations.dart';
@@ -155,6 +157,12 @@ class GlassPreviewApp extends StatelessWidget {
           'privacy' => const PrivacySafetyScreen(),
           'add' => const AddOrInvitationsScreen(),
           'auth' => const AuthScreen(),
+          // The Settings root console and the Appearance sub-screen. This
+          // harness (not settings_preview.dart) is the one that can host
+          // them alongside Privacy and Blocked, because it already provides
+          // Encryption/Friends — so one server renders all four.
+          'settings' => const SettingsScreen(),
+          'appearance' => const AppearanceScreen(userId: 7),
           // Loading skeleton (?screen=skeleton[&reduceMotion=1]): the pure
           // ConversationListSkeleton widget, no backend/providers needed.
           'skeleton' => _SkeletonPreview(
