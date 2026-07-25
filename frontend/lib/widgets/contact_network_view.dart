@@ -285,23 +285,14 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
     ColorScheme colorScheme,
     bool disableAnimations,
   ) {
-    // MainShell keeps every tab mounted in an IndexedStack, so this widget
-    // is built at app boot while Contacts is offstage. TickerMode alone is
-    // not enough — muting a ticker stops frames, not the clock, so the
-    // controller jumps straight to completed on unmute and the entrance is
-    // already spent the first time the tab is opened. Holding the tween's
-    // target at 0 until the tab is on screen is what actually defers it.
-    final onScreen = TickerMode.of(context);
     return TweenAnimationBuilder<double>(
       duration: disableAnimations || _entranceCompleted
           ? Duration.zero
           : const Duration(milliseconds: 280),
       curve: Curves.easeOutCubic,
-      tween: Tween<double>(begin: 0, end: onScreen ? 1 : 0),
+      tween: Tween<double>(begin: 0, end: 1),
       onEnd: () {
-        // A 0 -> 0 tween settling while the tab is offstage is not an
-        // entrance; latching on it would spend the animation unseen.
-        if (_entranceCompleted || !onScreen) return;
+        if (_entranceCompleted) return;
         // Under reduce-motion the zero-duration tween completes during the
         // first build; setState here would be a during-build rebuild.
         WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -1256,16 +1247,16 @@ class _HexFieldPainter extends CustomPainter {
   @override
   void paint(Canvas canvas, Size size) {
     final core = layout.coreCenter;
-    final rowPitch =
-        ContactHexLayout.hexRadius * 2 +
-        ContactHexLayout.labelGap +
-        layout.labelHeight +
-        9;
 
     // Faint lattice points continuing past the populated rows: the machine
     // frame has free sockets (chrome, not fake contacts).
     final dotPaint = Paint()..color = baseColor.withValues(alpha: 0.16);
     if (layout.slots.isNotEmpty) {
+      final rowPitch =
+          ContactHexLayout.hexRadius * 2 +
+          ContactHexLayout.labelGap +
+          layout.labelHeight +
+          9;
       var wideRow = layout.rowCount.isEven;
       for (
         var y = layout.slots.last.dy + rowPitch;
@@ -1334,46 +1325,6 @@ class _HexFieldPainter extends CustomPainter {
           ..lineTo(pad.dx, pad.dy - 1.5);
         canvas.drawPath(path, stubPaint);
       }
-    }
-
-    // Power-on sweep: the wavefront that is currently latching rows, drawn
-    // where it actually is. Rows do not fade in on their own - this line is
-    // the thing switching them on, so the entrance reads as one machine
-    // booting instead of eight independent fades. It rides the existing
-    // 280ms envelope and never exists at rest (reduce-motion collapses the
-    // envelope to a single frame at 1, so nothing is drawn at all).
-    if (layout.slots.isNotEmpty &&
-        entranceProgress > 0 &&
-        entranceProgress < 1) {
-      final firstRowY = layout.slots.first.dy;
-      final y =
-          firstRowY +
-          (entranceProgress * (rowCount + 1) - 1) * rowPitch -
-          ContactHexLayout.hexRadius;
-      // Two-row trail, not a hairline: the wavefront crosses the visible
-      // rows in well under the 280ms envelope, so it has to be a swipe of
-      // light to register at all. Duration stays inside the motion budget.
-      final trail = rowPitch * 2;
-      final band = Rect.fromLTWH(0, y - trail, size.width, trail);
-      canvas.drawRect(
-        band,
-        Paint()
-          ..shader = LinearGradient(
-            begin: Alignment.topCenter,
-            end: Alignment.bottomCenter,
-            colors: [
-              accent.withValues(alpha: 0),
-              accent.withValues(alpha: 0.18),
-            ],
-          ).createShader(band),
-      );
-      canvas.drawLine(
-        Offset(0, y),
-        Offset(size.width, y),
-        Paint()
-          ..strokeWidth = 1.5
-          ..color = accent.withValues(alpha: 0.7),
-      );
     }
 
     // Tap/focus route: the connection fills with the accent color from the
