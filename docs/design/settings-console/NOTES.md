@@ -75,3 +75,31 @@ Real `SettingsScreen`, 390×844, English, top of page + the SESSION block:
   speaks console; those screens are the next seam. Not in scope for this round.
 - The old floating "person" badge over the avatar is gone — tapping the core opens your user
   card instead. Worth watching whether that reads as tappable on a device.
+
+## Addendum — variant B re-rendered on the shipped console (2026-07-25)
+
+The owner asked to see the other option again after A shipped. B was rebuilt as
+*the real console plus a rail*, composing the production `SettingsConsoleRow` /
+`SettingsSectionCaption` / `LocalNodeCore` widgets so only the painter was throwaway. The
+prototype has been deleted; these renders are the record:
+
+- `spine-cosmic-top.webp` / `spine-cosmic-session.webp`
+- `spine-light-top.webp` / `spine-light-session.webp`
+
+**The earlier "the spine collides with the lit edges" verdict was too harsh and is corrected
+here.** With the elbow leaving the core's west tick (instead of dropping from the south tick
+through the centred caption), B renders cleanly. In the SESSION block the 3px danger edge at
+x=0 and the rail at x=6 read as two parallel verticals ~6px apart — doubled, slightly busy,
+but not merged. That is a real cost, not a defect.
+
+The stronger argument against B is not visual:
+
+- **The rail carries no information.** On the Contacts board a trace means "this contact
+  connects to your node" — it is a real relationship, and the node count never lies. A
+  Settings rail connects rows to nothing; it is decoration wearing the costume of the app's
+  one load-bearing idiom. That cheapens the idiom everywhere else it is used.
+- **It encloses the page.** A full-height vertical line down the left gutter indents and
+  boxes the content, which is most noticeable in the light themes.
+
+If B is ever adopted anyway, the two things to decide first are (a) what the rail *means*,
+and (b) whether the danger edge moves, since a doubled left gutter is the price otherwise.
