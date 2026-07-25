@@ -100,6 +100,15 @@ class AppLocalizationsPl extends AppLocalizations {
   String get settingsAboutFireplace => 'O projekcie';
 
   @override
+  String get settingsSectionPreferences => 'PREFERENCJE';
+
+  @override
+  String get settingsSectionSecurity => 'BEZPIECZEŃSTWO';
+
+  @override
+  String get settingsSectionSession => 'SESJA';
+
+  @override
   String get privacySafetyTitle => 'Prywatność i bezpieczeństwo';
 
   @override

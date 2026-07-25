@@ -8,6 +8,7 @@ import 'package:flutter/semantics.dart';
 import '../models/user_model.dart';
 import '../theme/rpg_theme.dart';
 import 'hex_avatar.dart';
+import 'local_node_core.dart';
 
 /// A provider-free rendering of the existing contact set as a "honeycomb
 /// core": the local user's reticle node feeds a fixed-width staggered field
@@ -445,7 +446,6 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
     double entrance,
   ) {
     final colorScheme = Theme.of(context).colorScheme;
-    final colors = FireplaceColors.of(context);
     const radius = ContactHexLayout.coreRadius;
     final captionStyle = RpgTheme.bodyFont(
       fontSize: 10,
@@ -472,28 +472,10 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
           opacity: entrance,
           child: Column(
             children: [
-              SizedBox(
-                width: radius * 2,
-                height: radius * 2,
-                child: CustomPaint(
-                  foregroundPainter: _LocalReticlePainter(
-                    outline: colorScheme.onSurface,
-                    accent: colorScheme.primary,
-                    focused: false,
-                  ),
-                  child: ClipOval(
-                    child: HexAvatarSurface(
-                      imageUrl: widget.localNodeAvatarUrl,
-                      initials: _initials(widget.localNodeLabel),
-                      surface: colors.convItemBg,
-                      initialsStyle: RpgTheme.bodyFont(
-                        fontSize: 16,
-                        fontWeight: FontWeight.w800,
-                        color: colorScheme.primary,
-                      ),
-                    ),
-                  ),
-                ),
+              LocalNodeCore(
+                radius: radius,
+                displayName: widget.localNodeLabel,
+                avatarUrl: widget.localNodeAvatarUrl,
               ),
               const SizedBox(height: 6),
               Text(
@@ -1251,59 +1233,6 @@ class _AddSlotPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant _AddSlotPainter oldDelegate) =>
-      oldDelegate.outline != outline ||
-      oldDelegate.accent != accent ||
-      oldDelegate.focused != focused;
-}
-
-/// Instrument reticle for the local node: the accent ring rides the
-/// circumference and N/E/S/W ticks sit just inside it. No inner ring —
-/// a second circle drawn over the avatar read as a border on the picture
-/// (owner nit).
-class _LocalReticlePainter extends CustomPainter {
-  const _LocalReticlePainter({
-    required this.outline,
-    required this.accent,
-    required this.focused,
-  });
-
-  final Color outline;
-  final Color accent;
-  final bool focused;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final c = size.center(Offset.zero);
-    final r = size.shortestSide / 2;
-    final stroke = Paint()..style = PaintingStyle.stroke;
-
-    stroke
-      ..strokeWidth = 1.5
-      ..color = accent;
-    canvas.drawCircle(c, r - 0.75, stroke);
-
-    stroke
-      ..strokeWidth = 1
-      ..color = outline.withValues(alpha: 0.45);
-    for (final d in const [
-      Offset(0, -1),
-      Offset(1, 0),
-      Offset(0, 1),
-      Offset(-1, 0),
-    ]) {
-      canvas.drawLine(c + d * (r - 5.5), c + d * (r - 1.5), stroke);
-    }
-
-    if (focused) {
-      stroke
-        ..strokeWidth = 1
-        ..color = accent;
-      canvas.drawCircle(c, r + 3, stroke);
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _LocalReticlePainter oldDelegate) =>
       oldDelegate.outline != outline ||
       oldDelegate.accent != accent ||
       oldDelegate.focused != focused;

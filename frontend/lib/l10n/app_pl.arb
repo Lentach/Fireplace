@@ -29,6 +29,9 @@
   "devicesLoading": "Ładowanie…",
   "settingsAppVersion": "Wersja aplikacji",
   "settingsAboutFireplace": "O projekcie",
+  "settingsSectionPreferences": "PREFERENCJE",
+  "settingsSectionSecurity": "BEZPIECZEŃSTWO",
+  "settingsSectionSession": "SESJA",
 
   "privacySafetyTitle": "Prywatność i bezpieczeństwo",
   "e2eEncryptionEnabled": "Szyfrowanie end-to-end jest włączone",

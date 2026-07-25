@@ -272,6 +272,24 @@ abstract class AppLocalizations {
   /// **'O projekcie'**
   String get settingsAboutFireplace;
 
+  /// No description provided for @settingsSectionPreferences.
+  ///
+  /// In pl, this message translates to:
+  /// **'PREFERENCJE'**
+  String get settingsSectionPreferences;
+
+  /// No description provided for @settingsSectionSecurity.
+  ///
+  /// In pl, this message translates to:
+  /// **'BEZPIECZEŃSTWO'**
+  String get settingsSectionSecurity;
+
+  /// No description provided for @settingsSectionSession.
+  ///
+  /// In pl, this message translates to:
+  /// **'SESJA'**
+  String get settingsSectionSession;
+
   /// No description provided for @privacySafetyTitle.
   ///
   /// In pl, this message translates to:

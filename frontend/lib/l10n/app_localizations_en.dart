@@ -100,6 +100,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsAboutFireplace => 'About';
 
   @override
+  String get settingsSectionPreferences => 'PREFERENCES';
+
+  @override
+  String get settingsSectionSecurity => 'SECURITY';
+
+  @override
+  String get settingsSectionSession => 'SESSION';
+
+  @override
   String get privacySafetyTitle => 'Privacy & Safety';
 
   @override
