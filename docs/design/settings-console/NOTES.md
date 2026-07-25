@@ -103,3 +103,55 @@ The stronger argument against B is not visual:
 
 If B is ever adopted anyway, the two things to decide first are (a) what the rail *means*,
 and (b) whether the danger edge moves, since a doubled left gutter is the price otherwise.
+
+## Verdict: B SHIPPED — the bus (2026-07-25)
+
+The owner took B and, asked what the rail *means*, gave the answer that settles it:
+
+> "hexes looking like a honeycomb so the rail is highlighting the honeycomb in a
+> technological way, my idea was to create something that looks like inside a computer —
+> honey shapes, a technologically used honeycomb shape connected by lines, which is to
+> visualize the technological transfer of information from the local node — the user's
+> avatar — to other contacts. In the settings, it is supposed to be connected to each line
+> coming from the avatar as if it were connected to it."
+
+So the rail is **the local node's own bus**. The app reads as the inside of a computer:
+hexes are the honeycomb, lines are traces, information flows out of the local node. Every
+settings row is a FACET OF YOUR OWN NODE, so wiring each one back to the core is literally
+true — which was the test my earlier "it means nothing" objection failed. Objection
+withdrawn.
+
+**This does NOT contradict the "no bus / no shared-rail wiring" rule on the Contacts board.**
+That rule exists so the honeycomb can never imply a contact-to-contact relationship that does
+not exist; there, every drawn line must be one real user→contact edge and the node count must
+not lie. Settings has exactly ONE node and the rows are its parts. The rule and the bus are
+different claims. This is written into `settings_console.dart`'s header too, because a future
+agent citing that rule would otherwise delete the spine.
+
+### The doubled gutter, resolved by merging the two signals
+
+Rather than a red 3px border at x=0 sitting beside a grey rail at x=6, **the bus itself lights
+up**: `ConsoleRowEdge.danger` paints that row's rail and stub in `error` at 1.6px/0.95 alpha,
+and the left border is gone entirely. The wiring carries the warning instead of running
+parallel to it.
+
+**Only `danger` lights the bus.** Log out sits directly beneath Delete Account, and on the
+light themes `primary` is nearly the same ember as `error` — lighting both painted one
+continuous bright rail across the two rows, which is exactly the merged-alarm-block bug from
+the first round relocated from the border to the bus. Log out is marked by its tinted hex and
+title alone, and the bus terminates at it with an end cap.
+
+Renders of the shipped result: `bus-cosmic-top.webp`, `bus-cosmic-session.webp`,
+`bus-light-top.webp`, `bus-light-session.webp`. Harness: `test/preview/settings_preview.dart`.
+
+### Open: one trunk vs a literal fan
+
+The owner's words say "each line coming from the avatar", which could mean N rays fanning from
+the core to each row rather than one trunk with stubs. He approved the trunk from a render, so
+that is what shipped, but the fan is a **modest** change, not a big one: Settings has ~12
+children and does not need laziness, so swapping the `ListView` for a `SingleChildScrollView` +
+`Column` inside a `Stack` lets one full-height painter draw real rays with measured row
+positions. Cost is that swap plus two existing tests that assert `find.byType(ListView)`
+(`settings_screen_scroll_physics_test`, `settings_screen_version_footer_test`). The reason the
+fan was reverted on Contacts does NOT apply here — that failure was N rays converging on a 34px
+rim at 100 contacts; nine rows render fine.

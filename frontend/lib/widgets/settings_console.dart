@@ -17,6 +17,22 @@ import 'hex_avatar.dart';
 /// Material set (owner call, 2026-07-25): a stock shield or laptop icon inside
 /// our hex frame was the last "different app" tell. They share one stroke spec
 /// so the set reads as instrument line-work, not as clip art.
+///
+/// ## The bus (owner's vision, 2026-07-25 — read this before removing it)
+///
+/// The app is meant to read as the inside of a computer: hexes are a
+/// honeycomb, the lines between them are traces on a board, and information
+/// flows out of the LOCAL NODE — your avatar — along those traces. So the rail
+/// running down the gutter here is not decoration. Every settings row is a
+/// FACET OF YOUR OWN NODE, and the bus wires each one back to the core it
+/// belongs to. That statement is literally true, which is the whole test.
+///
+/// **This does not contradict the "no bus / no shared-rail wiring" rule on the
+/// Contacts board.** That rule exists so the honeycomb can never imply a
+/// contact-to-contact relationship that does not exist — there, every drawn
+/// line must be one real user→contact edge and the node count must not lie.
+/// Here there is exactly ONE node, and the rows are its own parts. Do not
+/// "fix" this rail away by citing that rule; they are different claims.
 
 /// Leading hex width follows the pointy-top ratio, like every other hex.
 const double kConsoleHexHeight = 44;
@@ -24,9 +40,16 @@ const double kConsoleHexLeft = 12;
 const double kConsoleRowMinHeight = 64;
 double get kConsoleHexWidth => kConsoleHexHeight * kHexWidthRatio;
 
+/// The bus sits in the gutter, left of the hex column.
+const double kConsoleSpineX = 6;
+
 /// How a row is marked as consequential. `danger` is destructive (delete),
-/// `accent` is a state change worth pausing on (log out). Both reuse the lit
-/// row edge the Chats list already uses for unread.
+/// `accent` is a state change worth pausing on (log out).
+///
+/// A marked row does NOT get its own left border. The BUS lights up instead:
+/// the rail and stub passing that row take the edge colour. Drawing both put
+/// a 3px border at x=0 and a rail at x=6 side by side — a doubled gutter —
+/// so the two signals were merged into one. The wash stays destructive-only.
 enum ConsoleRowEdge { none, danger, accent }
 
 /// The drawn glyph set. Keep these geometric and single-weight.
@@ -59,19 +82,27 @@ class SettingsSectionCaption extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(kConsoleHexLeft, 18, 16, 8),
-      child: Row(
-        children: [
-          Text(label, style: styleOf(context)),
-          const SizedBox(width: 10),
-          Expanded(
-            child: Container(
-              height: 1,
-              color: colorScheme.onSurface.withValues(alpha: 0.12),
+    // The bus runs behind the caption without a stub: a section header is a
+    // label on the board, not a node hanging off it.
+    return CustomPaint(
+      foregroundPainter: ConsoleSpinePainter(
+        color: colorScheme.onSurface,
+        stub: false,
+      ),
+      child: Padding(
+        padding: const EdgeInsets.fromLTRB(kConsoleHexLeft, 18, 16, 8),
+        child: Row(
+          children: [
+            Text(label, style: styleOf(context)),
+            const SizedBox(width: 10),
+            Expanded(
+              child: Container(
+                height: 1,
+                color: colorScheme.onSurface.withValues(alpha: 0.12),
+              ),
             ),
-          ),
-        ],
+          ],
+        ),
       ),
     );
   }
@@ -87,6 +118,7 @@ class SettingsConsoleRow extends StatelessWidget {
     this.onTap,
     this.edge = ConsoleRowEdge.none,
     this.leadingOverride,
+    this.terminatesSpine = false,
   });
 
   final ConsoleGlyph glyph;
@@ -99,6 +131,10 @@ class SettingsConsoleRow extends StatelessWidget {
   /// Replaces the glyph inside the hex — used by the Appearance row, whose
   /// "icon" is really a live preview of the current theme.
   final Widget? leadingOverride;
+
+  /// Last node on the bus: the rail stops at this row's stub and gets an end
+  /// cap instead of running on into the footer.
+  final bool terminatesSpine;
 
   @override
   Widget build(BuildContext context) {
@@ -114,22 +150,16 @@ class SettingsConsoleRow extends StatelessWidget {
       // Only the DESTRUCTIVE row gets the filled wash. Logging out is not
       // dangerous, and on the light themes `primary` is nearly the same ember
       // as `error`, so washing both made Delete Account and Log out merge
-      // into one continuous alarm block. Edge-only keeps them separate.
-      decoration: edgeColor == null
-          ? null
-          : BoxDecoration(
-              color: edge == ConsoleRowEdge.danger
-                  ? edgeColor.withValues(alpha: 0.05)
-                  : null,
-              border: Border(left: BorderSide(color: edgeColor, width: 3)),
-            ),
+      // into one continuous alarm block.
+      //
+      // No left border: a marked row lights the BUS instead (see the painter
+      // below). A 3px border at x=0 plus the rail at x=6 was a doubled gutter.
+      decoration: edge == ConsoleRowEdge.danger
+          ? BoxDecoration(color: colorScheme.error.withValues(alpha: 0.05))
+          : null,
       child: Row(
         children: [
-          // The 3px lit edge eats into the gutter so the hex column stays on
-          // the same axis as every other row.
-          SizedBox(
-            width: edgeColor == null ? kConsoleHexLeft : kConsoleHexLeft - 3,
-          ),
+          const SizedBox(width: kConsoleHexLeft),
           ConsoleHexIcon(glyph: glyph, tint: edgeColor, child: leadingOverride),
           const SizedBox(width: 12),
           Expanded(
@@ -166,12 +196,30 @@ class SettingsConsoleRow extends StatelessWidget {
       ),
     );
 
-    if (onTap == null) return row;
+    // Only DANGER lights the bus. Log out sits directly beneath Delete
+    // Account, and on the light themes `primary` is nearly the same ember as
+    // `error`, so lighting both painted ONE continuous bright rail across the
+    // two rows — the merged-alarm-block bug relocated from the border to the
+    // bus. Log out stays marked by its tinted hex and title.
+    //
+    // Painted OVER the wash so the lit rail stays legible against its tint.
+    final busLit = edge == ConsoleRowEdge.danger;
+    final wired = CustomPaint(
+      foregroundPainter: ConsoleSpinePainter(
+        color: busLit ? colorScheme.error : colorScheme.onSurface,
+        stub: true,
+        lit: busLit,
+        terminates: terminatesSpine,
+      ),
+      child: row,
+    );
+
+    if (onTap == null) return wired;
     return Semantics(
       button: true,
       child: Material(
         type: MaterialType.transparency,
-        child: InkWell(onTap: onTap, child: row),
+        child: InkWell(onTap: onTap, child: wired),
       ),
     );
   }
@@ -389,4 +437,135 @@ class ConsoleGlyphPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant ConsoleGlyphPainter oldDelegate) =>
       oldDelegate.glyph != glyph || oldDelegate.color != color;
+}
+
+/// One segment of the local node's bus: the rail through the gutter plus, for
+/// a row, the stub docking into its hex's left edge.
+///
+/// Painted PER ROW rather than as one full-height overlay, so it scrolls,
+/// reflows and re-themes for free and can light up row by row.
+class ConsoleSpinePainter extends CustomPainter {
+  const ConsoleSpinePainter({
+    required this.color,
+    required this.stub,
+    this.lit = false,
+    this.terminates = false,
+  });
+
+  final Color color;
+  final bool stub;
+
+  /// A marked row (danger/accent) lights its own length of bus in [color]
+  /// instead of wearing a separate border.
+  final bool lit;
+
+  final bool terminates;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final rail = Paint()
+      ..strokeWidth = lit ? 1.6 : 1
+      ..color = color.withValues(alpha: lit ? 0.95 : 0.30);
+    final mid = size.height / 2;
+
+    canvas.drawLine(
+      const Offset(kConsoleSpineX, 0),
+      Offset(kConsoleSpineX, terminates ? mid : size.height),
+      rail,
+    );
+    if (!stub) return;
+
+    canvas.drawLine(
+      const Offset(kConsoleSpineX, 0) + Offset(0, mid),
+      Offset(kConsoleHexLeft, mid),
+      Paint()
+        ..strokeWidth = lit ? 1.6 : 1
+        ..color = color.withValues(alpha: lit ? 0.95 : 0.38),
+    );
+    if (terminates) {
+      canvas.drawLine(
+        Offset(kConsoleSpineX - 3, mid),
+        Offset(kConsoleSpineX + 3, mid),
+        rail,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant ConsoleSpinePainter oldDelegate) =>
+      oldDelegate.color != color ||
+      oldDelegate.stub != stub ||
+      oldDelegate.lit != lit ||
+      oldDelegate.terminates != terminates;
+}
+
+/// Wraps the local-node block and draws the bus leaving the core.
+///
+/// It exits the WEST tick and turns down into the gutter. Dropping from the
+/// SOUTH tick instead runs the rail straight through the centred name and
+/// `LOCAL NODE` caption, which is what the first render did.
+class ConsoleSpineHead extends StatelessWidget {
+  const ConsoleSpineHead({
+    super.key,
+    required this.coreCenterDy,
+    required this.coreRadius,
+    required this.child,
+  });
+
+  /// Distance from the top of [child] to the core's centre.
+  final double coreCenterDy;
+  final double coreRadius;
+  final Widget child;
+
+  @override
+  Widget build(BuildContext context) {
+    return CustomPaint(
+      foregroundPainter: _ConsoleSpineHeadPainter(
+        color: Theme.of(context).colorScheme.onSurface,
+        coreCenterDy: coreCenterDy,
+        coreRadius: coreRadius,
+      ),
+      child: child,
+    );
+  }
+}
+
+class _ConsoleSpineHeadPainter extends CustomPainter {
+  const _ConsoleSpineHeadPainter({
+    required this.color,
+    required this.coreCenterDy,
+    required this.coreRadius,
+  });
+
+  final Color color;
+  final double coreCenterDy;
+  final double coreRadius;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final cx = size.width / 2;
+    final exit = cx - coreRadius - 2;
+    canvas.drawPath(
+      Path()
+        ..moveTo(exit, coreCenterDy)
+        ..lineTo(kConsoleSpineX + 8, coreCenterDy)
+        ..quadraticBezierTo(
+          kConsoleSpineX,
+          coreCenterDy,
+          kConsoleSpineX,
+          coreCenterDy + 8,
+        )
+        ..lineTo(kConsoleSpineX, size.height),
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = 1
+        ..color = color.withValues(alpha: 0.30),
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _ConsoleSpineHeadPainter oldDelegate) =>
+      oldDelegate.color != color ||
+      oldDelegate.coreCenterDy != coreCenterDy ||
+      oldDelegate.coreRadius != coreRadius;
 }

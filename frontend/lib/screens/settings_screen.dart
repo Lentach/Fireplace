@@ -347,48 +347,57 @@ class _SettingsScreenState extends State<SettingsScreen> {
 
   /// The local node: the same round reticle the Contacts core uses. Tapping
   /// it opens your own user card, which is what the old floating badge did.
+  ///
+  /// The bus leaves this block and runs down the gutter past every row —
+  /// the rows below are facets of THIS node, so the wiring is literal.
   Widget _buildLocalNode(BuildContext context, UserModel? user) {
     final colorScheme = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
     final name = user?.username ?? 'Hero';
+    const topPad = 20.0;
+    const coreRadius = 46.0;
 
-    return Padding(
-      padding: const EdgeInsets.only(top: 20, bottom: 4),
-      child: Column(
-        children: [
-          Semantics(
-            button: true,
-            label: l10n.contactNetworkYouLocalNode,
-            excludeSemantics: true,
-            child: GestureDetector(
-              onTap: _openMyProfile,
-              child: LocalNodeCore(
-                radius: 46,
-                displayName: name,
-                avatarUrl: user?.profilePictureUrl,
-                initialsFontSize: 24,
+    return ConsoleSpineHead(
+      coreCenterDy: topPad + coreRadius,
+      coreRadius: coreRadius,
+      child: Padding(
+        padding: const EdgeInsets.only(top: topPad, bottom: 4),
+        child: Column(
+          children: [
+            Semantics(
+              button: true,
+              label: l10n.contactNetworkYouLocalNode,
+              excludeSemantics: true,
+              child: GestureDetector(
+                onTap: _openMyProfile,
+                child: LocalNodeCore(
+                  radius: coreRadius,
+                  displayName: name,
+                  avatarUrl: user?.profilePictureUrl,
+                  initialsFontSize: 24,
+                ),
               ),
             ),
-          ),
-          const SizedBox(height: 12),
-          Text(
-            '$name#${user?.tag ?? '0000'}',
-            style: RpgTheme.bodyFont(
-              fontSize: 18,
-              color: colorScheme.onSurface,
-              fontWeight: FontWeight.w700,
+            const SizedBox(height: 12),
+            Text(
+              '$name#${user?.tag ?? '0000'}',
+              style: RpgTheme.bodyFont(
+                fontSize: 18,
+                color: colorScheme.onSurface,
+                fontWeight: FontWeight.w700,
+              ),
             ),
-          ),
-          const SizedBox(height: 4),
-          Text(
-            l10n.contactNetworkLocalNode,
-            style: RpgTheme.bodyFont(
-              fontSize: 10,
-              fontWeight: FontWeight.w700,
-              color: colorScheme.onSurface.withValues(alpha: 0.5),
-            ).copyWith(letterSpacing: 1.5),
-          ),
-        ],
+            const SizedBox(height: 4),
+            Text(
+              l10n.contactNetworkLocalNode,
+              style: RpgTheme.bodyFont(
+                fontSize: 10,
+                fontWeight: FontWeight.w700,
+                color: colorScheme.onSurface.withValues(alpha: 0.5),
+              ).copyWith(letterSpacing: 1.5),
+            ),
+          ],
+        ),
       ),
     );
   }
@@ -539,6 +548,7 @@ class _SettingsScreenState extends State<SettingsScreen> {
                     glyph: ConsoleGlyph.exit,
                     title: l10n.logout,
                     edge: ConsoleRowEdge.accent,
+                    terminatesSpine: true,
                     onTap: () {
                       conn.disconnect(isLogout: true);
                       auth.logout();
