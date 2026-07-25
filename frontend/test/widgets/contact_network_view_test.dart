@@ -563,10 +563,11 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      int armed() => tester
-          .widgetList<HexAvatarSurface>(find.byType(HexAvatarSurface))
-          .where((surface) => surface.imageUrl != null)
-          .length;
+      Iterable<HexAvatarSurface> surfaces() =>
+          tester.widgetList<HexAvatarSurface>(find.byType(HexAvatarSurface));
+      int armed() => surfaces().where((s) => s.imageUrl != null).length;
+      bool armedFor(int id) =>
+          surfaces().any((s) => s.imageUrl == 'https://example.test/$id.png');
 
       // Every node is built - focus and semantics still reach all 60 - but
       // only the rows on screen are allowed to pull a face.
@@ -574,6 +575,11 @@ void main() {
       final onMount = armed();
       expect(onMount, greaterThan(0));
       expect(onMount, lessThan(60));
+      // The aggregate count alone stays green through an off-by-one that
+      // leaves a hex the user can plainly see sitting on initials, so pin
+      // the real contract: the first row IS armed, the last row is NOT.
+      expect(armedFor(1), isTrue);
+      expect(armedFor(60), isFalse);
 
       await tester.drag(
         find.byType(SingleChildScrollView),
@@ -590,6 +596,42 @@ void main() {
       );
       await tester.pumpAndSettle();
       expect(armed(), afterScroll);
+    });
+
+    testWidgets('a changed contact set re-arms from the viewport, not the '
+        'stale high-water mark', (tester) async {
+      List<UserModel> board(int count) => [
+        for (var i = 1; i <= count; i++)
+          _contact(i, 'user$i', avatar: 'https://example.test/$i.png'),
+      ];
+      Widget hosted(int count) =>
+          _host(_view(contacts: board(count)), size: const Size(390, 700));
+
+      await tester.pumpWidget(hosted(60));
+      await tester.pumpAndSettle();
+
+      int armed() => tester
+          .widgetList<HexAvatarSurface>(find.byType(HexAvatarSurface))
+          .where((surface) => surface.imageUrl != null)
+          .length;
+
+      // Walk to the bottom so the high-water mark reaches the last row.
+      await tester.drag(
+        find.byType(SingleChildScrollView),
+        const Offset(0, -4000),
+      );
+      await tester.pumpAndSettle();
+      expect(armed(), 60);
+
+      // Filter down and back out, exactly as the search field does. The mark
+      // is a row index into the OLD field; carried over, it would arm all 60
+      // faces at once while the user is sitting back at the top.
+      await tester.pumpWidget(hosted(3));
+      await tester.pumpAndSettle();
+      await tester.pumpWidget(hosted(60));
+      await tester.pumpAndSettle();
+
+      expect(armed(), lessThan(60));
     });
 
     testWidgets('empty contact set shows the empty copy and the core', (

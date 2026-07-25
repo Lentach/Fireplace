@@ -149,6 +149,34 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
   }
 
   @override
+  void didUpdateWidget(ContactNetworkView oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    // The mark is a ROW INDEX into the field that produced it. A different
+    // contact set re-flows the field, so a carried-over mark means nothing —
+    // and because it is a HIGH-WATER mark, a stale high one arms every row
+    // at once and silently disables the gate for the rest of the session:
+    // scroll a long board to the bottom, filter, clear the filter, and all
+    // N faces fetch again while the user is sitting back at row 0.
+    // `_armedFloor` needs no reset here — the build right behind us
+    // recomputes it from the current viewport unconditionally.
+    if (!_sameContactRun(oldWidget.contacts, widget.contacts)) {
+      _armedThroughRow.value = 0;
+    }
+  }
+
+  /// Compares the field's identity, not the models': [UserModel] has no
+  /// `==`, so comparing instances would reset the marks on every provider
+  /// tick that hands us freshly-built objects for the same people.
+  static bool _sameContactRun(List<UserModel> a, List<UserModel> b) {
+    if (identical(a, b)) return true;
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i].id != b[i].id) return false;
+    }
+    return true;
+  }
+
+  @override
   void dispose() {
     _routeController.dispose();
     _scrollController.removeListener(_armVisibleRows);
