@@ -640,6 +640,20 @@ double _regionProgress(double t, int index, int count) {
 double _activeStroke(ConsoleGlyph glyph) =>
     glyph == ConsoleGlyph.settings ? kGlyphStrokeActive : kGlyphStroke;
 
+/// How far this glyph turns as it becomes selected.
+///
+/// Only the gear turns, and by exactly ONE TOOTH PITCH. The mark is 6-fold
+/// symmetric — hex body, six teeth 60° apart — so 60° maps it onto itself:
+/// you watch it turn a notch and it lands perfectly registered. The owner
+/// suggested 45°, which would leave it 15° off its own symmetry and sit
+/// visibly crooked against every other hex in the app.
+///
+/// An earlier spin was rejected ("gear animation is bad design"), but that
+/// one ran underneath a draw-on, so the glyph was assembling and twisting at
+/// the same time. With the draw-on gone this is the only thing moving.
+double _selectedSpin(ConsoleGlyph glyph) =>
+    glyph == ConsoleGlyph.settings ? -math.pi / 3 : 0;
+
 class ConsoleGlyphPainter extends CustomPainter {
   const ConsoleGlyphPainter({
     required this.glyph,
@@ -672,6 +686,16 @@ class ConsoleGlyphPainter extends CustomPainter {
 
     canvas.save();
     canvas.scale(size.width / kGlyphUnit, size.height / kGlyphUnit);
+
+    // Turn into place. Transient: it starts a notch back and unwinds to the
+    // resting orientation, so the resting and selected drawings are identical
+    // and only the travel is visible.
+    final spin = _selectedSpin(glyph);
+    if (spin != 0 && t > 0 && t < 1) {
+      canvas.translate(_c.dx, _c.dy);
+      canvas.rotate(spin * (1 - t));
+      canvas.translate(-_c.dx, -_c.dy);
+    }
 
     final stroke = Paint()
       ..style = PaintingStyle.stroke
