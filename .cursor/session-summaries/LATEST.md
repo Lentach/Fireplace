@@ -20,7 +20,7 @@
 - **`main_shell.dart` is intentionally no longer byte-identical to master** — nav destinations live there. That old hard rule does not survive this branch.
 - Dials if he revisits: lens height (50) and falloff, `kGlyphStrokeActive` (2.5), `_kCellSpread` (2.2), `_kBubbleLift` (1.6). Beyond what paths can express, the next real step is a Rive/Lottie dep with an authored file per icon.
 - Still unresolved from the merged branch: the `appearance` glyph renders nowhere, and `push` is the one glyph he never named.
-- Full: `2026-07-26-session-release-0.0.129.md` and `2026-07-26-session-nav-rework.md`.
+- ➡ **FRESH AGENT: read `2026-07-26-HANDOFF-START-HERE.md` — that is the ONLY current pickup brief.** `2026-07-25-HANDOFF-START-HERE.md` is banner-marked SUPERSEDED; ignore it and every older `*handoff*` file. Then `2026-07-26-session-nav-rework.md` for the last round in full, and `2026-07-26-session-release-0.0.129.md` for the release.
 
 ---
 ### Prior latest ↓
