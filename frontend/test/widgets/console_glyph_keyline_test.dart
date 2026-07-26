@@ -90,4 +90,64 @@ void main() {
     expect(a.shouldRepaint(same), isFalse);
     expect(a.shouldRepaint(otherGlyph), isTrue);
   });
+
+  group('the selected state', () {
+    /// Outline at rest, solid when selected, is the pattern every platform
+    /// ships (Material 3 "the icon becomes filled", iOS outline/filled symbol
+    /// pairs, Android's two-state AnimatedVectorDrawable). Only the three nav
+    /// glyphs have one; a Settings row is never "selected".
+    const navGlyphs = {
+      ConsoleGlyph.chats,
+      ConsoleGlyph.contacts,
+      ConsoleGlyph.settings,
+    };
+
+    for (final glyph in ConsoleGlyph.values) {
+      test('${glyph.name} has a filled variant only if it is a nav glyph', () {
+        expect(
+          consoleGlyphGeometry(glyph).activeFills,
+          navGlyphs.contains(glyph) ? isNotEmpty : isEmpty,
+        );
+      });
+    }
+
+    test('the comb keeps its seams when solid', () {
+      // The three cells SHARE edges. Filling them flush merges all three into
+      // one lump with no internal boundary — the silhouette survives but the
+      // comb does not. Each fill must therefore stay strictly inside its own
+      // cell, which a render confirmed is what keeps it legible at 24px.
+      final fills = consoleGlyphGeometry(ConsoleGlyph.contacts).activeFills;
+      expect(fills.length, 3);
+
+      for (var i = 0; i < fills.length; i++) {
+        for (var j = i + 1; j < fills.length; j++) {
+          final overlap = Path.combine(
+            PathOperation.intersect,
+            fills[i],
+            fills[j],
+          );
+          expect(
+            overlap.computeMetrics().isEmpty,
+            isTrue,
+            reason:
+                'filled cells $i and $j touch, so the comb reads as one '
+                'solid lump',
+          );
+        }
+      }
+
+      // And a real gap, not merely a shared boundary: every fill sits clear
+      // of its neighbours by more than the stroke that separates them.
+      final centres = [for (final f in fills) f.getBounds().center];
+      final gap =
+          (centres[1] - centres[2]).distance -
+          fills[1].getBounds().width / 2 -
+          fills[2].getBounds().width / 2;
+      expect(
+        gap,
+        greaterThan(kGlyphStroke),
+        reason: 'the gap between adjacent fills must clear the shared stroke',
+      );
+    });
+  });
 }

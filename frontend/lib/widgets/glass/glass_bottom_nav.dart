@@ -1,7 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/glass_theme.dart';
-import '../icon_entrance.dart';
+import '../icon_selection.dart';
 import 'glass_surface.dart';
 
 /// One destination of [GlassBottomNav].
@@ -190,9 +190,8 @@ class _NavItemState extends State<_NavItem>
               children: [
                 AnimatedBuilder(
                   animation: _drawOn,
-                  builder: (context, child) => IconEntrance(
+                  builder: (context, child) => IconSelection(
                     progress: _drawOn.value,
-                    restColor: muted,
                     activeColor: accent,
                     // Icons that cannot draw themselves partially — every
                     // plain `Icon` — just take the lerped color and fade.

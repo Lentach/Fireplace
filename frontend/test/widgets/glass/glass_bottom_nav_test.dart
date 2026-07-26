@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/glass/glass_bottom_nav.dart';
-import 'package:fireplace/widgets/icon_entrance.dart';
+import 'package:fireplace/widgets/icon_selection.dart';
 
 Widget _host({required int index, required ValueChanged<int> onTap}) {
   return MaterialApp(
@@ -116,12 +116,12 @@ void main() {
       await tester.pumpWidget(const _SwitchableHost());
 
       expect(
-        _entranceOf(tester, 'Contacts').progress,
+        _selectionOf(tester, 'Contacts').progress,
         0,
         reason: 'a destination at rest shows none of the active mark',
       );
       expect(
-        _entranceOf(tester, 'Chat').progress,
+        _selectionOf(tester, 'Chat').progress,
         1,
         reason: 'the selected destination shows all of it',
       );
@@ -135,7 +135,7 @@ void main() {
       var sawPartial = false;
       for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 20));
-        final p = _entranceOf(tester, 'Contacts').progress;
+        final p = _selectionOf(tester, 'Contacts').progress;
         if (p > 0 && p < 1) sawPartial = true;
       }
       expect(
@@ -145,27 +145,7 @@ void main() {
       );
 
       await tester.pumpAndSettle();
-      expect(_entranceOf(tester, 'Contacts').progress, 1);
-    });
-
-    testWidgets('the mark never disappears while it draws on', (tester) async {
-      await tester.pumpWidget(const _SwitchableHost());
-
-      await tester.tap(find.text('Contacts'));
-      await tester.pump();
-      for (var i = 0; i < 20; i++) {
-        await tester.pump(const Duration(milliseconds: 20));
-        final entrance = _entranceOf(tester, 'Contacts');
-        if (entrance.progress < 1) {
-          expect(
-            entrance.restColor,
-            isNotNull,
-            reason:
-                'a partial entrance must publish the resting color, or the '
-                'icon blinks out and redraws instead of handing over',
-          );
-        }
-      }
+      expect(_selectionOf(tester, 'Contacts').progress, 1);
     });
 
     testWidgets('the outgoing destination retracts rather than snapping', (
@@ -175,7 +155,7 @@ void main() {
 
       await tester.tap(find.text('Contacts'));
       await tester.pumpAndSettle();
-      expect(_entranceOf(tester, 'Contacts').progress, 1);
+      expect(_selectionOf(tester, 'Contacts').progress, 1);
 
       // Both halves of the handoff animate: leaving Contacts must sweep its
       // active mark back off, not cut to the resting state in one frame.
@@ -184,7 +164,7 @@ void main() {
       var sawPartial = false;
       for (var i = 0; i < 16; i++) {
         await tester.pump(const Duration(milliseconds: 20));
-        final p = _entranceOf(tester, 'Contacts').progress;
+        final p = _selectionOf(tester, 'Contacts').progress;
         if (p > 0 && p < 1) sawPartial = true;
       }
       expect(
@@ -194,8 +174,8 @@ void main() {
       );
 
       await tester.pumpAndSettle();
-      expect(_entranceOf(tester, 'Contacts').progress, 0);
-      expect(_entranceOf(tester, 'Settings').progress, 1);
+      expect(_selectionOf(tester, 'Contacts').progress, 0);
+      expect(_selectionOf(tester, 'Settings').progress, 1);
     });
 
     testWidgets('reduce motion skips the transition entirely', (tester) async {
@@ -206,12 +186,12 @@ void main() {
       for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 20));
         expect(
-          _entranceOf(tester, 'Contacts').progress,
+          _selectionOf(tester, 'Contacts').progress,
           1,
           reason: 'the new tab is immediately whole under reduce-motion',
         );
         expect(
-          _entranceOf(tester, 'Chat').progress,
+          _selectionOf(tester, 'Chat').progress,
           0,
           reason: 'and the old one is immediately at rest',
         );
@@ -221,12 +201,12 @@ void main() {
 }
 
 /// The entrance published to one destination's icon.
-IconEntrance _entranceOf(WidgetTester tester, String label) {
+IconSelection _selectionOf(WidgetTester tester, String label) {
   final column = find
       .ancestor(of: find.text(label), matching: find.byType(Column))
       .first;
-  return tester.widget<IconEntrance>(
-    find.descendant(of: column, matching: find.byType(IconEntrance)).first,
+  return tester.widget<IconSelection>(
+    find.descendant(of: column, matching: find.byType(IconSelection)).first,
   );
 }
 

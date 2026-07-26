@@ -38,7 +38,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'hex_avatar.dart';
-import 'icon_entrance.dart';
+import 'icon_selection.dart';
 
 /// Design space. Deliberately equal to the rendered box (see [kGlyphBox]) so
 /// the scale factor is exactly 1 and every coordinate is pixel-predictable.
@@ -113,6 +113,7 @@ class ConsoleGlyphGeometry {
     this.strokes = const [],
     this.fills = const [],
     this.dots = const [],
+    this.activeFills = const [],
   });
 
   /// Drawn with [kGlyphStroke], round caps and joins.
@@ -123,6 +124,19 @@ class ConsoleGlyphGeometry {
 
   /// Filled terminals of radius [kGlyphDotRadius].
   final List<Offset> dots;
+
+  /// Solid regions painted only when the glyph is SELECTED, flooded in.
+  ///
+  /// Outline-at-rest, solid-when-active is the pattern every platform ships:
+  /// Material 3 says the icon "becomes filled" on selection, iOS tab bars use
+  /// outline/filled symbol pairs, and Android morphs two states through an
+  /// `AnimatedVectorDrawable`. It works because the change is MASS — visible
+  /// at 24px in a way that a transform or a stroke reveal is not.
+  ///
+  /// Congruent with [strokes] by construction, so it never moves [bounds].
+  /// Empty for every glyph that has no selected state, i.e. all the Settings
+  /// rows.
+  final List<Path> activeFills;
 
   /// Union of everything, ignoring stroke width (which is uniform across the
   /// set and so cannot shift the centre).
@@ -165,6 +179,7 @@ class ConsoleGlyphGeometry {
     strokes: [for (final p in strokes) p.shift(d)],
     fills: [for (final p in fills) p.shift(d)],
     dots: [for (final o in dots) o + d],
+    activeFills: [for (final p in activeFills) p.shift(d)],
   );
 
   /// Translates so the bounding box centres on the design-space centre, plus
@@ -478,6 +493,17 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
             Offset(11.4, 17.3),
           ]),
         ],
+        activeFills: [
+          Path.combine(
+            PathOperation.union,
+            _hexNode(const Offset(12, 10.6), 6.8),
+            _poly(const [
+              Offset(9.2, 16.2),
+              Offset(6.3, 19.8),
+              Offset(11.4, 17.3),
+            ], close: true),
+          ),
+        ],
       );
 
     case ConsoleGlyph.contacts:
@@ -487,11 +513,24 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
       // Owner pick (C1), 2026-07-26. Chosen over a 4-cell diamond and a
       // 7-cell flower: fewer and bigger survives 24px on a phone, and the
       // shared edges read as one comb rather than as separate marks.
+      //
+      // The three cells are separate active fills on purpose: they flood in
+      // sequence, which is the per-icon character an authored Lottie file
+      // would otherwise have to supply by hand.
       return ConsoleGlyphGeometry(
         strokes: [
           _hexNode(const Offset(12, 8.3), 4.6),
           _hexNode(const Offset(8.0163, 15.2), 4.6),
           _hexNode(const Offset(15.9837, 15.2), 4.6),
+        ],
+        activeFills: [
+          // Inset by the stroke half-width plus a hairline of clearance.
+          // Filling these cells to their outline would merge all three into
+          // one solid lump — they SHARE edges, so the seams that make it read
+          // as a comb are exactly what a flush fill destroys.
+          _hexNode(const Offset(12, 8.3), 3.2),
+          _hexNode(const Offset(8.0163, 15.2), 3.2),
+          _hexNode(const Offset(15.9837, 15.2), 3.2),
         ],
       );
 
@@ -512,6 +551,17 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
           for (final angle in _hexVertexAngles)
             _line(_radial(angle, 5.0), _radial(angle, 8.0)),
           _circle(_c, 2.0),
+        ],
+        activeFills: [
+          // Body solid, bore knocked out past the OUTER edge of its own
+          // stroke (2.0 + half of 1.8): knocking out only to the stroke's
+          // centreline would let the fill swallow half the ring and shrink
+          // the hole. A gear reads as a gear while you can see through it.
+          Path.combine(
+            PathOperation.difference,
+            _hexNode(_c, 5.6),
+            _circle(_c, 2.9),
+          ),
         ],
       );
   }
@@ -534,65 +584,38 @@ final Map<ConsoleGlyph, ConsoleGlyphGeometry> _resolved = {};
 Offset _opticalNudge(ConsoleGlyph glyph) =>
     glyph == ConsoleGlyph.password ? const Offset(0, -0.35) : Offset.zero;
 
-/// Per-glyph entrance character.
+/// Sub-region [index]'s own 0..1 progress within the whole transition.
 ///
-/// Telegram's tab icons feel alive because every one carries its OWN authored
-/// animation (they ship as Lottie/TGS files), not because a single transform
-/// is applied to a static drawing. We get the same thing for free and with no
-/// dependency, because these glyphs are already path DATA: the entrance draws
-/// each contour on with `PathMetric.extractPath`, the same trim the contact
-/// board already uses for its route fill.
-///
-/// The gear is the one glyph with motion beyond the draw-on: it turns one
-/// tooth pitch (60°, six teeth) into place, because a gear that rotates is
-/// the most literal motion this mark can have.
-double _entranceSpin(ConsoleGlyph glyph) =>
-    glyph == ConsoleGlyph.settings ? -math.pi / 3 : 0;
-
-/// Sub-path [index]'s own 0..1 progress within the whole entrance.
-///
-/// Contours draw in sequence with a long overlap, which is what makes the
-/// bubble's tail land after its cell and the comb's three cells light one by
-/// one — bespoke-looking motion that falls out of the drawing order.
-double _contourProgress(double t, int index, int count) {
+/// Regions flood in sequence with a long overlap, which is what makes the
+/// comb's three cells light one after another — the per-icon character that
+/// an authored Lottie file would otherwise have to supply by hand.
+double _regionProgress(double t, int index, int count) {
   if (count <= 1) return t;
-  const span = 0.62;
+  const span = 0.66;
   final start = index * (1 - span) / (count - 1);
   return ((t - start) / span).clamp(0.0, 1.0);
-}
-
-/// [path] trimmed to the first [t] of each of its contours.
-Path _trimmed(Path path, double t) {
-  if (t >= 1) return path;
-  final out = Path();
-  if (t <= 0) return out;
-  for (final metric in path.computeMetrics()) {
-    out.addPath(metric.extractPath(0, metric.length * t), Offset.zero);
-  }
-  return out;
 }
 
 class ConsoleGlyphPainter extends CustomPainter {
   const ConsoleGlyphPainter({
     required this.glyph,
     required this.color,
-    this.progress = 1,
-    this.underlayColor,
+    this.progress = 0,
+    this.activeColor,
   });
 
   final ConsoleGlyph glyph;
+
+  /// The outline color. Static call sites pass their tint and get exactly the
+  /// mark they always got.
   final Color color;
 
-  /// 0 = undrawn, 1 = the finished mark. Defaults to 1, so every static call
-  /// site (all the Settings rows) renders exactly as it did before.
+  /// How much of the SELECTED look is shown: 0 = outline only, 1 = solid.
+  /// Defaults to 0, so every static call site is unaffected.
   final double progress;
 
-  /// Painted whole, underneath, while [progress] < 1.
-  ///
-  /// Without it the entrance starts from an empty box and the mark blinks out
-  /// before redrawing. With it the glyph is continuously present and the new
-  /// color simply sweeps across it.
-  final Color? underlayColor;
+  /// Color of the flooded fill. Falls back to [color].
+  final Color? activeColor;
 
   @override
   void paint(Canvas canvas, Size size) {
@@ -602,56 +625,16 @@ class ConsoleGlyphPainter extends CustomPainter {
     canvas.save();
     canvas.scale(size.width / kGlyphUnit, size.height / kGlyphUnit);
 
-    final rest = underlayColor;
-    if (t < 1 && rest != null) {
-      _paintWhole(canvas, geometry, rest);
-    }
-
-    final spin = _entranceSpin(glyph);
-    if (t < 1 && spin != 0) {
-      canvas.translate(_c.dx, _c.dy);
-      canvas.rotate(spin * (1 - t));
-      canvas.translate(-_c.dx, -_c.dy);
-    }
-
     final stroke = Paint()
       ..style = PaintingStyle.stroke
       ..strokeWidth = kGlyphStroke
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..color = color;
+    final fill = Paint()..color = color;
 
-    // Filled regions and terminals have no contour to walk, so they arrive on
-    // the tail of the draw-on instead of trimming.
-    final tail = t <= 0.6 ? 0.0 : ((t - 0.6) / 0.4).clamp(0.0, 1.0);
-    final fill = Paint()..color = color.withValues(alpha: color.a * tail);
-
-    if (tail > 0) {
-      for (final path in geometry.fills) {
-        canvas.drawPath(path, fill);
-      }
-    }
-    for (var i = 0; i < geometry.strokes.length; i++) {
-      final contour = _contourProgress(t, i, geometry.strokes.length);
-      if (contour <= 0) continue;
-      canvas.drawPath(_trimmed(geometry.strokes[i], contour), stroke);
-    }
-    for (final dot in geometry.dots) {
-      if (tail > 0) canvas.drawCircle(dot, kGlyphDotRadius * tail, fill);
-    }
-
-    canvas.restore();
-  }
-
-  /// The finished mark, no trimming — used for the resting underlay.
-  void _paintWhole(Canvas canvas, ConsoleGlyphGeometry geometry, Color c) {
-    final stroke = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = kGlyphStroke
-      ..strokeCap = StrokeCap.round
-      ..strokeJoin = StrokeJoin.round
-      ..color = c;
-    final fill = Paint()..color = c;
+    // The outline is ALWAYS whole. That is what makes this a state change
+    // rather than an entrance: the mark never leaves, it gains mass.
     for (final path in geometry.fills) {
       canvas.drawPath(path, fill);
     }
@@ -661,6 +644,33 @@ class ConsoleGlyphPainter extends CustomPainter {
     for (final dot in geometry.dots) {
       canvas.drawCircle(dot, kGlyphDotRadius, fill);
     }
+
+    if (t > 0 && geometry.activeFills.isNotEmpty) {
+      final active = Paint()..color = activeColor ?? color;
+      for (var i = 0; i < geometry.activeFills.length; i++) {
+        final region = geometry.activeFills[i];
+        final local = _regionProgress(t, i, geometry.activeFills.length);
+        if (local <= 0) continue;
+        canvas.save();
+        if (local < 1) {
+          // Flood from the region's own centre so the solid grows into the
+          // outline instead of cross-fading with it.
+          final b = region.getBounds();
+          canvas.clipPath(
+            Path()..addOval(
+              Rect.fromCircle(
+                center: b.center,
+                radius: b.longestSide * 0.75 * local,
+              ),
+            ),
+          );
+        }
+        canvas.drawPath(region, active);
+        canvas.restore();
+      }
+    }
+
+    canvas.restore();
   }
 
   @override
@@ -668,7 +678,7 @@ class ConsoleGlyphPainter extends CustomPainter {
       oldDelegate.glyph != glyph ||
       oldDelegate.color != color ||
       oldDelegate.progress != progress ||
-      oldDelegate.underlayColor != underlayColor;
+      oldDelegate.activeColor != activeColor;
 }
 
 /// A console glyph as a drop-in icon: reads its color and size from the
@@ -676,9 +686,9 @@ class ConsoleGlyphPainter extends CustomPainter {
 /// tints its icons (e.g. the bottom nav's selection tween) drives the glyph
 /// without knowing this system exists.
 ///
-/// It also honours [IconEntrance], so chrome that animates a selection gets
-/// the draw-on for free. With no [IconEntrance] ancestor the progress is 1
-/// and this is a plain static mark.
+/// It also honours [IconSelection], so chrome with a selected state gets the
+/// outline→solid change for free. With no [IconSelection] ancestor the
+/// progress is 0 and this is the plain resting mark.
 class ConsoleGlyphIcon extends StatelessWidget {
   const ConsoleGlyphIcon(this.glyph, {super.key});
 
@@ -688,15 +698,14 @@ class ConsoleGlyphIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final iconTheme = IconTheme.of(context);
     final size = iconTheme.size ?? kGlyphBox;
-    final entrance = IconEntrance.of(context);
+    final selection = IconSelection.of(context);
     return CustomPaint(
       size: Size.square(size),
       painter: ConsoleGlyphPainter(
         glyph: glyph,
-        color:
-            entrance?.activeColor ?? iconTheme.color ?? const Color(0xFF000000),
-        progress: entrance?.progress ?? 1,
-        underlayColor: entrance?.restColor,
+        color: iconTheme.color ?? const Color(0xFF000000),
+        progress: selection?.progress ?? 0,
+        activeColor: selection?.activeColor,
       ),
     );
   }
