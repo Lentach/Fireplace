@@ -18,6 +18,7 @@ import 'package:fireplace/providers/settings_provider.dart';
 import 'package:fireplace/screens/contacts_screen.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/contact_network_view.dart';
+import 'package:fireplace/widgets/console_glyphs.dart';
 import 'package:fireplace/widgets/glass/glass_bottom_nav.dart';
 import 'package:fireplace/widgets/main_tab_screen_header.dart';
 
@@ -88,12 +89,7 @@ class ContactNetworkPreviewApp extends StatelessWidget {
     final auth = AuthProvider()
       ..setAccessTokenForTest(
         '${b64({'alg': 'none'})}.'
-        '${b64({
-          'sub': 700,
-          'username': 'Marta',
-          'tag': '0007',
-          'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600,
-        })}.x',
+        '${b64({'sub': 700, 'username': 'Marta', 'tag': '0007', 'exp': DateTime.now().millisecondsSinceEpoch ~/ 1000 + 3600})}.x',
       );
     return MultiProvider(
       providers: [
@@ -149,8 +145,7 @@ class _ContactNetworkPreviewPage extends StatelessWidget {
                 for (final contact in contacts)
                   if (contact.id.isOdd) contact.id,
               },
-              mapCaption:
-                  'NODES ${contacts.length.toString().padLeft(2, '0')}',
+              mapCaption: 'NODES ${contacts.length.toString().padLeft(2, '0')}',
             ),
           ),
           Positioned(
@@ -193,12 +188,15 @@ class _ContactNetworkPreviewPage extends StatelessWidget {
           onTap: (_) {},
           destinations: const [
             GlassNavDestination(
-              icon: Icon(Icons.chat_bubble_outline),
+              icon: ConsoleGlyphIcon(ConsoleGlyph.chats),
               label: 'Chat',
             ),
-            GlassNavDestination(icon: Icon(Icons.people), label: 'Contacts'),
             GlassNavDestination(
-              icon: Icon(Icons.settings_outlined),
+              icon: ConsoleGlyphIcon(ConsoleGlyph.contacts),
+              label: 'Contacts',
+            ),
+            GlassNavDestination(
+              icon: ConsoleGlyphIcon(ConsoleGlyph.localNode),
               label: 'Settings',
             ),
           ],

@@ -88,6 +88,17 @@ enum ConsoleGlyph {
   metadata,
   quantum,
   cache,
+
+  /// Bottom-nav: a conversation is a LINK — two nodes joined by a live trace,
+  /// on the honeycomb's own 60° neighbour angle.
+  chats,
+
+  /// Bottom-nav: the board itself — a three-cell honeycomb cluster.
+  contacts,
+
+  /// Bottom-nav: Settings is YOUR node — the circle-with-reticle, the app's
+  /// only circle in that role (owner call), carried into the nav.
+  localNode,
 }
 
 /// A glyph as data: stroked outlines, filled regions, and filled terminals.
@@ -427,6 +438,43 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
           ]),
         ],
       );
+
+    case ConsoleGlyph.chats:
+      // Two nodes joined on the honeycomb's 60° neighbour angle. The link IS
+      // the conversation; the diagonal keeps it from reading as `blocked`
+      // minus its slash.
+      return ConsoleGlyphGeometry(
+        strokes: [
+          _hexNode(const Offset(9.5, 16.33), 3.4),
+          _hexNode(const Offset(14.5, 7.67), 3.4),
+          _trace(const Offset(10.97, 13.78), const Offset(13.03, 10.22)),
+        ],
+      );
+
+    case ConsoleGlyph.contacts:
+      // The board in miniature: three cells on the true honeycomb pitch,
+      // separated by the same clear gap the field keeps.
+      return ConsoleGlyphGeometry(
+        strokes: [
+          _hexNode(const Offset(12, 7.6), 3.8),
+          _hexNode(const Offset(7.9, 14.4), 3.8),
+          _hexNode(const Offset(16.1, 14.4), 3.8),
+        ],
+      );
+
+    case ConsoleGlyph.localNode:
+      // The local node: circle among hexes, rim ticks at the cardinals, you
+      // at the centre. Same entity `LocalNodeCore` draws full-size.
+      return ConsoleGlyphGeometry(
+        strokes: [
+          _circle(_c, 6.2),
+          _line(const Offset(12, 3.8), const Offset(12, 6.6)),
+          _line(const Offset(12, 17.4), const Offset(12, 20.2)),
+          _line(const Offset(3.8, 12), const Offset(6.6, 12)),
+          _line(const Offset(17.4, 12), const Offset(20.2, 12)),
+        ],
+        dots: const [_c],
+      );
   }
 }
 
@@ -484,4 +532,27 @@ class ConsoleGlyphPainter extends CustomPainter {
   @override
   bool shouldRepaint(covariant ConsoleGlyphPainter oldDelegate) =>
       oldDelegate.glyph != glyph || oldDelegate.color != color;
+}
+
+/// A console glyph as a drop-in icon: reads its color and size from the
+/// ambient [IconTheme], exactly like [Icon] does, so any container that
+/// tints its icons (e.g. the bottom nav's selection tween) drives the glyph
+/// without knowing this system exists.
+class ConsoleGlyphIcon extends StatelessWidget {
+  const ConsoleGlyphIcon(this.glyph, {super.key});
+
+  final ConsoleGlyph glyph;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconTheme = IconTheme.of(context);
+    final size = iconTheme.size ?? kGlyphBox;
+    return CustomPaint(
+      size: Size.square(size),
+      painter: ConsoleGlyphPainter(
+        glyph: glyph,
+        color: iconTheme.color ?? const Color(0xFF000000),
+      ),
+    );
+  }
 }

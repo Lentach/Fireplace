@@ -21,7 +21,7 @@ import '../utils/instant_opaque_route.dart';
 import '../utils/notification_nav_decision.dart';
 import '../services/unread_badge_sync.dart';
 import '../widgets/top_snackbar.dart';
-import '../theme/glass_theme.dart';
+import '../widgets/console_glyphs.dart';
 import '../widgets/glass/glass_bottom_nav.dart';
 import 'user_card_screen.dart';
 
@@ -184,7 +184,8 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
               consumedId: id,
               conversationExistsLocally:
                   id != null && provider.getConversationById(id) != null,
-              isDesktop: MediaQuery.of(context).size.width >=
+              isDesktop:
+                  MediaQuery.of(context).size.width >=
                   AppConstants.layoutBreakpointDesktop,
               isAlreadyActive: provider.activeConversationId == id,
             );
@@ -214,26 +215,20 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     ThemeData theme,
     ColorScheme colorScheme,
   ) {
-    final glass = GlassTheme.of(context);
     final bottomNavigation = GlassBottomNav(
       currentIndex: _selectedIndex,
       onTap: (index) => setState(() => _selectedIndex = index),
       destinations: [
         GlassNavDestination(
-          icon: const Icon(Icons.chat_bubble_outline, size: 24),
-          activeIcon: _FilledChatBubbleWithLines(
-            iconColor: glass.onGlassAccent,
-            lineColor: glass.fill.withValues(alpha: 1.0),
-          ),
+          icon: const ConsoleGlyphIcon(ConsoleGlyph.chats),
           label: AppLocalizations.of(context).chat,
         ),
         GlassNavDestination(
-          icon: const Icon(Icons.people_outline),
-          activeIcon: const Icon(Icons.people),
+          icon: const ConsoleGlyphIcon(ConsoleGlyph.contacts),
           label: AppLocalizations.of(context).contacts,
         ),
         GlassNavDestination(
-          icon: const Icon(Icons.settings_outlined),
+          icon: const ConsoleGlyphIcon(ConsoleGlyph.localNode),
           label: AppLocalizations.of(context).settings,
         ),
       ],
@@ -251,94 +246,5 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
       ),
       bottomNavigationBar: SafeArea(top: false, child: bottomNavigation),
     );
-  }
-}
-
-/// Filled chat bubble icon with three horizontal lines inside (Apple-like minimalist style).
-class _FilledChatBubbleWithLines extends StatelessWidget {
-  final Color iconColor;
-  final Color lineColor;
-
-  const _FilledChatBubbleWithLines({
-    required this.iconColor,
-    required this.lineColor,
-  });
-
-  @override
-  Widget build(BuildContext context) {
-    return CustomPaint(
-      size: const Size(24, 24),
-      painter: _ChatBubblePainter(bubbleColor: iconColor, lineColor: lineColor),
-    );
-  }
-}
-
-/// Custom painter for clean Apple-style chat bubble with 3 lines.
-class _ChatBubblePainter extends CustomPainter {
-  final Color bubbleColor;
-  final Color lineColor;
-
-  _ChatBubblePainter({required this.bubbleColor, required this.lineColor});
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final paint = Paint()
-      ..color = bubbleColor
-      ..style = PaintingStyle.fill
-      ..isAntiAlias = true;
-
-    // Draw rounded rectangle bubble (main body)
-    final bubbleRect = RRect.fromRectAndRadius(
-      Rect.fromLTWH(2, 3, size.width - 4, size.height - 8),
-      const Radius.circular(11),
-    );
-    canvas.drawRRect(bubbleRect, paint);
-
-    // Draw tail (small triangle at bottom left)
-    final tailPath = Path()
-      ..moveTo(6, size.height - 5)
-      ..lineTo(3, size.height - 2)
-      ..lineTo(8, size.height - 5)
-      ..close();
-    canvas.drawPath(tailPath, paint);
-
-    // Draw three horizontal lines inside (white/contrast color)
-    final linePaint = Paint()
-      ..color = lineColor
-      ..strokeWidth = 1.5
-      ..strokeCap = StrokeCap.round
-      ..isAntiAlias = true;
-
-    const lineWidth = 10.0;
-    final centerX = size.width / 2;
-    final startY = 9.0;
-    const lineSpacing = 3.0;
-
-    // Line 1
-    canvas.drawLine(
-      Offset(centerX - lineWidth / 2, startY),
-      Offset(centerX + lineWidth / 2, startY),
-      linePaint,
-    );
-
-    // Line 2
-    canvas.drawLine(
-      Offset(centerX - lineWidth / 2, startY + lineSpacing),
-      Offset(centerX + lineWidth / 2, startY + lineSpacing),
-      linePaint,
-    );
-
-    // Line 3
-    canvas.drawLine(
-      Offset(centerX - lineWidth / 2, startY + lineSpacing * 2),
-      Offset(centerX + lineWidth / 2, startY + lineSpacing * 2),
-      linePaint,
-    );
-  }
-
-  @override
-  bool shouldRepaint(_ChatBubblePainter oldDelegate) {
-    return oldDelegate.bubbleColor != bubbleColor ||
-        oldDelegate.lineColor != lineColor;
   }
 }

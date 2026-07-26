@@ -34,6 +34,7 @@ import 'package:fireplace/models/user_model.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/conversation_tile.dart';
 import 'package:fireplace/widgets/conversation_list_skeleton.dart';
+import 'package:fireplace/widgets/console_glyphs.dart';
 import 'package:fireplace/widgets/glass/glass_bottom_nav.dart';
 import 'package:fireplace/widgets/main_tab_screen_header.dart';
 import 'package:fireplace/widgets/dialogs/delete_account_dialog.dart';
@@ -314,15 +315,15 @@ class _ChatListPreviewState extends State<_ChatListPreview> {
           onTap: (i) => setState(() => _index = i),
           destinations: const [
             GlassNavDestination(
-              icon: Icon(Icons.chat_bubble_outline),
+              icon: ConsoleGlyphIcon(ConsoleGlyph.chats),
               label: 'Chat',
             ),
             GlassNavDestination(
-              icon: Icon(Icons.people_outline),
+              icon: ConsoleGlyphIcon(ConsoleGlyph.contacts),
               label: 'Contacts',
             ),
             GlassNavDestination(
-              icon: Icon(Icons.settings_outlined),
+              icon: ConsoleGlyphIcon(ConsoleGlyph.localNode),
               label: 'Settings',
             ),
           ],
