@@ -228,7 +228,7 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           label: AppLocalizations.of(context).contacts,
         ),
         GlassNavDestination(
-          icon: const ConsoleGlyphIcon(ConsoleGlyph.localNode),
+          icon: const ConsoleGlyphIcon(ConsoleGlyph.settings),
           label: AppLocalizations.of(context).settings,
         ),
       ],

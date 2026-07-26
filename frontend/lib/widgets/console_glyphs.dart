@@ -96,9 +96,9 @@ enum ConsoleGlyph {
   /// Bottom-nav: the board itself — a three-cell honeycomb cluster.
   contacts,
 
-  /// Bottom-nav: Settings is YOUR node — the circle-with-reticle, the app's
-  /// only circle in that role (owner call), carried into the nav.
-  localNode,
+  /// Bottom-nav: Settings. A gear wearing the cell — teeth on the hex's six
+  /// POINTS, bore through the middle (owner pick G3, 2026-07-26).
+  settings,
 }
 
 /// A glyph as data: stroked outlines, filled regions, and filled terminals.
@@ -218,6 +218,20 @@ Path _hexNode(Offset c, double r) => hexPath(c, r);
 /// Straight trace. Horizontal, vertical or on a hex angle; never arbitrary.
 Path _trace(Offset a, Offset b) => _line(a, b);
 
+/// A point at [angleDegrees] and [radius] from the design-space centre.
+/// Polar placement keeps radial sets (gear teeth, spokes) exactly regular
+/// instead of hand-rounded per point.
+Offset _radial(double angleDegrees, double radius) {
+  final radians = angleDegrees * math.pi / 180;
+  return Offset(
+    _c.dx + radius * math.cos(radians),
+    _c.dy + radius * math.sin(radians),
+  );
+}
+
+/// The pointy-top hex's six POINTS. Its six flats sit 30° off these.
+const List<double> _hexVertexAngles = [30, 90, 150, 210, 270, 330];
+
 /// The 45° arrowhead, shared so no two arrows disagree.
 Path _arrowHead(Offset tip, {double size = 3.0}) => _poly([
   Offset(tip.dx - size, tip.dy - size),
@@ -249,14 +263,20 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
       );
 
     case ConsoleGlyph.language:
-      // One node, two traces carrying the same link in two encodings.
+      // The meridian globe (owner pick L1, 2026-07-26).
+      //
+      // This is a CONVENTIONAL silhouette, the same licence `metadata` takes,
+      // and for the same reason: "language" has no truthful node relation to
+      // draw. Three attempts at one proved it — a node with two encodings
+      // stacked to its right (what shipped first) reads as a bullet list, two
+      // cells carrying different scripts mush into a bowtie at 24px, and the
+      // same idea diverging on hex angles reads as scissors. A globe survives
+      // the size, which is the only test that matters on a 44px terminal.
       return ConsoleGlyphGeometry(
         strokes: [
-          _hexNode(const Offset(7.6, 12), 4.3),
-          _trace(const Offset(11.4, 9.2), const Offset(20.2, 9.2)),
-          _trace(const Offset(11.4, 14.8), const Offset(13.8, 14.8)),
-          _trace(const Offset(15.2, 14.8), const Offset(17.6, 14.8)),
-          _trace(const Offset(19.0, 14.8), const Offset(20.2, 14.8)),
+          _circle(_c, 7.6),
+          _oval(_c, 7.6, 15.2),
+          _line(const Offset(4.4, 12), const Offset(19.6, 12)),
         ],
       );
 
@@ -440,40 +460,58 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
       );
 
     case ConsoleGlyph.chats:
-      // Two nodes joined on the honeycomb's 60° neighbour angle. The link IS
-      // the conversation; the diagonal keeps it from reading as `blocked`
-      // minus its slash.
+      // A hex speech bubble — the app's own cell doing the bubble job.
+      //
+      // Owner pick, 2026-07-26. The first drawing was two small nodes joined
+      // by a trace, which at 24px was `blocked` minus its slash: two dots and
+      // a hairline. Nav glyphs are the most-glanced marks in the app and must
+      // differ in GROSS SILHOUETTE, not in detail — so this one is a single
+      // closed shape with a spur, against the lattice and the radial core it
+      // sits beside.
       return ConsoleGlyphGeometry(
         strokes: [
-          _hexNode(const Offset(9.5, 16.33), 3.4),
-          _hexNode(const Offset(14.5, 7.67), 3.4),
-          _trace(const Offset(10.97, 13.78), const Offset(13.03, 10.22)),
+          _hexNode(const Offset(12, 10.6), 6.8),
+          _poly(const [
+            Offset(9.2, 16.2),
+            Offset(6.3, 19.8),
+            Offset(11.4, 17.3),
+          ]),
         ],
       );
 
     case ConsoleGlyph.contacts:
-      // The board in miniature: three cells on the true honeycomb pitch,
-      // separated by the same clear gap the field keeps.
+      // Three cells sharing edges on the true honeycomb pitch — the board in
+      // miniature.
+      //
+      // Owner pick (C1), 2026-07-26. Chosen over a 4-cell diamond and a
+      // 7-cell flower: fewer and bigger survives 24px on a phone, and the
+      // shared edges read as one comb rather than as separate marks.
       return ConsoleGlyphGeometry(
         strokes: [
-          _hexNode(const Offset(12, 7.6), 3.8),
-          _hexNode(const Offset(7.9, 14.4), 3.8),
-          _hexNode(const Offset(16.1, 14.4), 3.8),
+          _hexNode(const Offset(12, 8.3), 4.6),
+          _hexNode(const Offset(8.0163, 15.2), 4.6),
+          _hexNode(const Offset(15.9837, 15.2), 4.6),
         ],
       );
 
-    case ConsoleGlyph.localNode:
-      // The local node: circle among hexes, rim ticks at the cardinals, you
-      // at the centre. Same entity `LocalNodeCore` draws full-size.
+    case ConsoleGlyph.settings:
+      // The gear, dressed in the cell.
+      //
+      // Owner direction, 2026-07-26: "modify a bit current icon for setting
+      // which is a gear - just dress it up in a cube". Teeth sit on the six
+      // POINTS rather than the flats (his pick of four drawings) and the bore
+      // stays open at 24px, which is what keeps it a gear rather than a sun.
+      //
+      // This REPLACED a circle-with-cardinal-ticks reading of "your local
+      // node". That one measured fine and still failed: at true size four
+      // ticks on a ring is a gunsight.
       return ConsoleGlyphGeometry(
         strokes: [
-          _circle(_c, 6.2),
-          _line(const Offset(12, 3.8), const Offset(12, 6.6)),
-          _line(const Offset(12, 17.4), const Offset(12, 20.2)),
-          _line(const Offset(3.8, 12), const Offset(6.6, 12)),
-          _line(const Offset(17.4, 12), const Offset(20.2, 12)),
+          _hexNode(_c, 5.6),
+          for (final angle in _hexVertexAngles)
+            _line(_radial(angle, 5.0), _radial(angle, 8.0)),
+          _circle(_c, 2.0),
         ],
-        dots: const [_c],
       );
   }
 }

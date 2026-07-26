@@ -196,7 +196,7 @@ class _ContactNetworkPreviewPage extends StatelessWidget {
               label: 'Contacts',
             ),
             GlassNavDestination(
-              icon: ConsoleGlyphIcon(ConsoleGlyph.localNode),
+              icon: ConsoleGlyphIcon(ConsoleGlyph.settings),
               label: 'Settings',
             ),
           ],
