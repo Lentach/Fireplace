@@ -53,6 +53,22 @@ const double kGlyphBox = 24;
 /// the glyph is the subject and the terminal is the frame.
 const double kGlyphStroke = 1.8;
 
+/// Stroke weight when a glyph is SELECTED.
+///
+/// Weight is what states selection on a mark that cannot take a fill. The
+/// device verdict that established this was the bubble: a single closed
+/// silhouette filled flush is just a black hexagon at 24px, and on a light
+/// theme, where the accent is nearly black, that is all you see ("chat icone
+/// is all black").
+///
+/// The gear is on weight for the same structural reason, though that one is
+/// a judgement call from a render rather than an owner verdict: its teeth are
+/// thin spokes rooted inside the body, so a flush fill swallows their roots
+/// and leaves a 6-point star with a pinhole. Only the comb, whose fill is
+/// INSET inside cells that keep their outlines, still carries
+/// [ConsoleGlyphGeometry.activeFills].
+const double kGlyphStrokeActive = 2.5;
+
 /// Keyline: the canonical circle (Ø15), square (15×15) and pointy-top hexagon
 /// (14.2 × 16.4). No glyph may exceed this distance from centre on either
 /// axis; the keyline test enforces it.
@@ -127,15 +143,15 @@ class ConsoleGlyphGeometry {
 
   /// Solid regions painted only when the glyph is SELECTED, flooded in.
   ///
-  /// Outline-at-rest, solid-when-active is the pattern every platform ships:
-  /// Material 3 says the icon "becomes filled" on selection, iOS tab bars use
-  /// outline/filled symbol pairs, and Android morphs two states through an
-  /// `AnimatedVectorDrawable`. It works because the change is MASS — visible
-  /// at 24px in a way that a transform or a stroke reveal is not.
+  /// Deliberately INSET rather than flush with the outline. Filling a glyph
+  /// out to its own silhouette turns it into one black mass at 24px — the
+  /// owner rejected exactly that on the bubble ("chat icone is all black").
+  /// What survives is a fill that leaves the outline and its interior
+  /// negative space visible, so the mark still reads as itself.
   ///
-  /// Congruent with [strokes] by construction, so it never moves [bounds].
-  /// Empty for every glyph that has no selected state, i.e. all the Settings
-  /// rows.
+  /// Contained within the stroked mark by construction — the comb's cells are
+  /// deliberately INSET, not congruent — so this never moves [bounds], which
+  /// is measured from [strokes], [fills] and [dots] only.
   final List<Path> activeFills;
 
   /// Union of everything, ignoring stroke width (which is uniform across the
@@ -484,6 +500,11 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
       // differ in GROSS SILHOUETTE, not in detail — so this one is a single
       // closed shape with a spur, against the lattice and the radial core it
       // sits beside.
+      // Its SELECTED state is weight, not fill. Filling this bubble out to
+      // its own silhouette is a solid hexagon, which at 24px — and above all
+      // on a light theme, where the accent is nearly black — is one black
+      // lump: "chat icone is all black". A closed silhouette is exactly the
+      // shape that cannot afford a flush fill.
       return ConsoleGlyphGeometry(
         strokes: [
           _hexNode(const Offset(12, 10.6), 6.8),
@@ -492,17 +513,6 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
             Offset(6.3, 19.8),
             Offset(11.4, 17.3),
           ]),
-        ],
-        activeFills: [
-          Path.combine(
-            PathOperation.union,
-            _hexNode(const Offset(12, 10.6), 6.8),
-            _poly(const [
-              Offset(9.2, 16.2),
-              Offset(6.3, 19.8),
-              Offset(11.4, 17.3),
-            ], close: true),
-          ),
         ],
       );
 
@@ -545,23 +555,18 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
       // This REPLACED a circle-with-cardinal-ticks reading of "your local
       // node". That one measured fine and still failed: at true size four
       // ticks on a ring is a gunsight.
+      //
+      // Its SELECTED state is weight, not fill — a judgement call from a
+      // render, not an owner verdict. Filling this body swallows the roots of
+      // six spokes and leaves a 6-point star with a pinhole; the bore and the
+      // teeth are the whole identity here, so the gear keeps every line and
+      // simply gets heavier.
       return ConsoleGlyphGeometry(
         strokes: [
           _hexNode(_c, 5.6),
           for (final angle in _hexVertexAngles)
             _line(_radial(angle, 5.0), _radial(angle, 8.0)),
           _circle(_c, 2.0),
-        ],
-        activeFills: [
-          // Body solid, bore knocked out past the OUTER edge of its own
-          // stroke (2.0 + half of 1.8): knocking out only to the stroke's
-          // centreline would let the fill swallow half the ring and shrink
-          // the hole. A gear reads as a gear while you can see through it.
-          Path.combine(
-            PathOperation.difference,
-            _hexNode(_c, 5.6),
-            _circle(_c, 2.9),
-          ),
         ],
       );
   }
@@ -596,6 +601,18 @@ double _regionProgress(double t, int index, int count) {
   return ((t - start) / span).clamp(0.0, 1.0);
 }
 
+/// Stroke weight this glyph reaches when fully selected.
+///
+/// The gear and the bubble state selection by weight, because neither can be
+/// filled without becoming a black lump. The COMB deliberately does not:
+/// widening its stroke would eat the ~2.4-unit gap that holds its three
+/// filled cells apart and merge them back into the very lump the inset fill
+/// exists to prevent. It states selection by those fills instead.
+double _activeStroke(ConsoleGlyph glyph) => switch (glyph) {
+  ConsoleGlyph.settings || ConsoleGlyph.chats => kGlyphStrokeActive,
+  _ => kGlyphStroke,
+};
+
 class ConsoleGlyphPainter extends CustomPainter {
   const ConsoleGlyphPainter({
     required this.glyph,
@@ -610,11 +627,15 @@ class ConsoleGlyphPainter extends CustomPainter {
   /// mark they always got.
   final Color color;
 
-  /// How much of the SELECTED look is shown: 0 = outline only, 1 = solid.
-  /// Defaults to 0, so every static call site is unaffected.
+  /// How far into the SELECTED state this mark is: 0 = resting, 1 = fully
+  /// selected. What that looks like is per glyph — heavier stroke for the
+  /// bubble and the gear, inset cells flooding for the comb — because a flush
+  /// fill on a closed silhouette is a black lump at 24px. Defaults to 0, so
+  /// every static call site is unaffected.
   final double progress;
 
-  /// Color of the flooded fill. Falls back to [color].
+  /// Color of the flooded fill, for the glyphs that have one. Falls back to
+  /// [color].
   final Color? activeColor;
 
   @override
@@ -627,7 +648,7 @@ class ConsoleGlyphPainter extends CustomPainter {
 
     final stroke = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = kGlyphStroke
+      ..strokeWidth = kGlyphStroke + (_activeStroke(glyph) - kGlyphStroke) * t
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..color = color;
@@ -687,7 +708,8 @@ class ConsoleGlyphPainter extends CustomPainter {
 /// without knowing this system exists.
 ///
 /// It also honours [IconSelection], so chrome with a selected state gets the
-/// outline→solid change for free. With no [IconSelection] ancestor the
+/// change for free — heavier stroke, or flooded inset regions, depending on
+/// what the glyph's shape can carry. With no [IconSelection] ancestor the
 /// progress is 0 and this is the plain resting mark.
 class ConsoleGlyphIcon extends StatelessWidget {
   const ConsoleGlyphIcon(this.glyph, {super.key});

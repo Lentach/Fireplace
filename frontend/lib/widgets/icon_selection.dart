@@ -10,11 +10,13 @@ import 'package:flutter/widgets.dart';
 /// this one value instead of on each other. An icon that ignores it — every
 /// plain `Icon` — just takes the ambient [IconTheme] color and cross-fades.
 ///
-/// The pattern being expressed is the one every platform ships: outline at
-/// rest, SOLID when selected. Material 3 says the icon "becomes filled", iOS
-/// tab bars pair outline and filled symbols, Android morphs the two states
-/// through an `AnimatedVectorDrawable`. It works because the change is mass,
-/// which survives being 24px — a transform or a stroke reveal does not.
+/// The pattern being expressed is the one every platform ships: a resting
+/// outline and a heavier or filled SELECTED state. Material 3 says the icon
+/// "becomes filled", iOS tab bars pair outline and filled symbols, Android
+/// morphs the two through an `AnimatedVectorDrawable`. It works because the
+/// change is mass, which survives being 24px where a transform or a stroke
+/// reveal does not. Which form of mass suits a given mark is the icon's own
+/// business: filling a closed silhouette flush just makes a black lump.
 class IconSelection extends InheritedWidget {
   const IconSelection({
     super.key,
@@ -23,9 +25,9 @@ class IconSelection extends InheritedWidget {
     required super.child,
   });
 
-  /// 0 = resting outline, 1 = fully solid. The default when no ancestor
-  /// provides a value is 0, so an icon outside selectable chrome renders as
-  /// its plain resting mark.
+  /// 0 = resting, 1 = fully selected. The default when no ancestor provides a
+  /// value is 0, so an icon outside selectable chrome renders as its plain
+  /// resting mark.
   final double progress;
 
   /// The color the solid state floods in. Held separately from the ambient

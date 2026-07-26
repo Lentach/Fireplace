@@ -92,24 +92,41 @@ void main() {
   });
 
   group('the selected state', () {
-    /// Outline at rest, solid when selected, is the pattern every platform
-    /// ships (Material 3 "the icon becomes filled", iOS outline/filled symbol
-    /// pairs, Android's two-state AnimatedVectorDrawable). Only the three nav
-    /// glyphs have one; a Settings row is never "selected".
-    const navGlyphs = {
-      ConsoleGlyph.chats,
-      ConsoleGlyph.contacts,
-      ConsoleGlyph.settings,
-    };
+    /// Outline at rest, heavier and/or solid when selected — the pattern
+    /// every platform ships (Material 3 "the icon becomes filled", iOS
+    /// outline/filled symbol pairs, Android's two-state
+    /// AnimatedVectorDrawable). Only nav glyphs have a selected state at all;
+    /// a Settings row is never "selected".
+    ///
+    /// The COMB is the only one that fills, and only because its fill is
+    /// inset inside cells that keep their outlines. A flush fill on a closed
+    /// silhouette is one black mass at 24px — the owner's verdict on the
+    /// bubble ("chat icone is all black"). The bubble and the gear state
+    /// selection by stroke weight instead.
+    const filledGlyphs = {ConsoleGlyph.contacts};
 
     for (final glyph in ConsoleGlyph.values) {
-      test('${glyph.name} has a filled variant only if it is a nav glyph', () {
+      test(
+        '${glyph.name} has a filled variant only if its shape takes one',
+        () {
+          expect(
+            consoleGlyphGeometry(glyph).activeFills,
+            filledGlyphs.contains(glyph) ? isNotEmpty : isEmpty,
+          );
+        },
+      );
+    }
+
+    test('the closed silhouettes state selection by weight, never by fill', () {
+      for (final glyph in [ConsoleGlyph.chats, ConsoleGlyph.settings]) {
         expect(
           consoleGlyphGeometry(glyph).activeFills,
-          navGlyphs.contains(glyph) ? isNotEmpty : isEmpty,
+          isEmpty,
+          reason: '${glyph.name} filled flush is a black lump at 24px',
         );
-      });
-    }
+      }
+      expect(kGlyphStrokeActive, greaterThan(kGlyphStroke));
+    });
 
     test('the comb keeps its seams when solid', () {
       // The three cells SHARE edges. Filling them flush merges all three into
