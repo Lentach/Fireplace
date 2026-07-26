@@ -61,27 +61,86 @@ class GlassBottomNav extends StatelessWidget {
   /// two sweeps competing for attention.
   static const Duration kExitDuration = Duration(milliseconds: 200);
 
+  /// The node's travel between slots. `easeInOutCubic` because this is a
+  /// journey with two ends, not an arrival.
+  static const Duration kTravelDuration = Duration(milliseconds: 300);
+
+  /// The rail the node runs on, and the node itself.
+  static const double kRailInset = 7;
+  static const double kNodeRadius = 3;
+
   @override
   Widget build(BuildContext context) {
     final glass = GlassTheme.of(context);
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    final n = destinations.length;
+    final accent = glass.onGlassAccent;
     return Padding(
       padding: const EdgeInsets.fromLTRB(34, 8, 34, 12),
       child: GlassPill(
         height: 66,
         padding: const EdgeInsets.symmetric(horizontal: 10),
-        child: Row(
+        child: Stack(
           children: [
-            for (var i = 0; i < destinations.length; i++)
-              Expanded(
-                child: _NavItem(
-                  destination: destinations[i],
-                  selected: i == currentIndex,
-                  reduceMotion: reduceMotion,
-                  glass: glass,
-                  onTap: () => onTap(i),
+            // A dormant trace across the pill, exactly like the dormant route
+            // every contact hex owns: the path the signal WILL travel is
+            // already drawn, so the lit motion follows a line that was always
+            // there rather than appearing from nowhere.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: kRailInset,
+              height: 1,
+              child: ColoredBox(
+                color: accent.withValues(alpha: 0.16),
+                child: const SizedBox.expand(),
+              ),
+            ),
+            // The node itself, docking under the selected tab. With a 1/n-wide
+            // box, x = -1 + 2i/(n-1) lands each stop on slot i's centre, so
+            // skipping a tab travels THROUGH the middle slot rather than
+            // jumping — which is what sells it as travel.
+            Positioned(
+              left: 0,
+              right: 0,
+              bottom: kRailInset - kNodeRadius + 0.5,
+              height: kNodeRadius * 2,
+              child: AnimatedAlign(
+                alignment: Alignment(
+                  n <= 1 ? 0 : -1 + 2 * currentIndex / (n - 1),
+                  0,
+                ),
+                duration: reduceMotion ? Duration.zero : kTravelDuration,
+                curve: Curves.easeInOutCubic,
+                child: FractionallySizedBox(
+                  widthFactor: n == 0 ? 1 : 1 / n,
+                  child: Center(
+                    child: Container(
+                      width: kNodeRadius * 2,
+                      height: kNodeRadius * 2,
+                      decoration: BoxDecoration(
+                        color: accent,
+                        shape: BoxShape.circle,
+                      ),
+                    ),
+                  ),
                 ),
               ),
+            ),
+            Row(
+              children: [
+                for (var i = 0; i < n; i++)
+                  Expanded(
+                    child: _NavItem(
+                      destination: destinations[i],
+                      selected: i == currentIndex,
+                      reduceMotion: reduceMotion,
+                      glass: glass,
+                      onTap: () => onTap(i),
+                    ),
+                  ),
+              ],
+            ),
           ],
         ),
       ),
