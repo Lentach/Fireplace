@@ -1,5 +1,24 @@
 # Latest session summary
 
+**Date:** 2026-07-26 — **RELEASED: `feat/contact-network` merged to master and deployed as frontend 0.0.129 / `9d24d7b`**, smoke 5/5. The entire Contacts/Chats/Settings visual overhaul (50 commits, PR #97) is now permanent production. Backend intentionally untouched at 0.0.127/`3861166`. All stale local branches deleted — `master` is the only local branch.
+
+## What was done
+1. Owner gave the explicit release OK. PR #97 was CLEAN, both CI jobs green.
+2. Bumped `frontend/pubspec.yaml` 0.0.128 → 0.0.129 as the last branch commit (`1235bcb`), merged PR #97 (`9d24d7b`), deployed master via `deploy-web.ps1`, smoke **5/5** (`main.dart.js` literally contains `9d24d7b`).
+3. Branch cleanup: deleted 17 fully-merged local branches + force-deleted `feat/cosmic-theme` (lone unmerged commit `1745a50` was a preview-harness `?density=` knob; recoverable via reflog). Remote `feat/contact-network` auto-deleted at merge.
+
+## Verification
+- Pre-merge: PR #97 `MERGEABLE`/`CLEAN`, Backend tests + Flutter analyze/tests SUCCESS. Post-deploy: smoke 5/5, `/version.json` → 0.0.129/`9d24d7b`.
+
+## Notes for next session
+- **The release gate is CLOSED — the 2026-07-25 handoff briefs are historical now.** Two owner forks survive unresolved: the `appearance` glyph renders nowhere (live preview owns its row slot) and `push` is the one glyph he never named. Do not guess either.
+- Deferred, none promised: honeycomb `ListView` rewrite >200 contacts, "sent invites as ghosts" (backend), Chats `+` honeycomb picker, three declined refactors (in `85a04dc`'s message).
+- **Owner's next ask: design "something else" — new design work, subject not yet named.** Bootstrap the UI playbook before touching anything visual.
+- Full: `2026-07-26-session-release-0.0.129.md`.
+
+---
+### Prior latest ↓
+
 **Date:** 2026-07-25 — `feat/contact-network` carries the whole visual pass: Contacts **Honeycomb Core** (header search, long-press → chat, **People board**: inbound request port + add cell), the **Chats list redesign** (hex avatars, unread as a lit row edge, live/normal/cold row weights), the **Settings "local node console"** (owner: *"settings tab looks like a diffrent app"*), and a **rebuilt console glyph set + all three Settings SUB-screens** (owner: *"icones in settings are bad desing too"*). Owner drove every step from renders — and from his phone, which is what killed the spine. **Live ephemeral branch deploy is `85a04dc`** — still **0.0.128**, because branch test deploys never bump semver — smoke 5/5. A "local node bus" (rail down the gutter, item 16) was built, deployed, and **REVERTED on device**. NOT merged, no version bump. **PR #97 is open and ready: https://github.com/Lentach/Fireplace/pull/97.** ➡ **FRESH AGENT: read `2026-07-25-HANDOFF-START-HERE.md` — that is the ONLY current pickup brief. Both `2026-07-25-handoff-branch-ready-to-merge.md` and `2026-07-24-handoff-contact-network-merge.md` are SUPERSEDED and banner-marked; ignore them.**
 
 ## What was done
@@ -88,27 +107,4 @@
 - PR #95 is merged and deployed. Users must fully close and reopen the PWA; never clear site data. Live frontend is 0.0.126 / `0486cb3`; backend remains 0.0.123 / `4609af2`.
 - Highest-value review follow-up: wire `session_cross_context_lock_web_test.dart` into a real Chrome CI lane when the project Chrome launcher is repaired. Manual source-controlled browser probe currently covers the JS boundary.
 - Full: `2026-07-23-session.md`.
-
----
-### Prior latest ↓
-
-**Date:** 2026-07-22 — PR #94 merged into `master`; Appearance redesign and compact Settings website link released in frontend 0.0.125.
-
-## What was done
-1. Added a restrained FIREPLACE wordmark + localized “About” / “O projekcie” footer action immediately above the app-version block.
-2. Wired `https://fireplace.ignorelist.com/welcome/` through `LaunchMode.externalApplication`, preserving the installed PWA.
-3. Bumped frontend 0.0.124 → 0.0.125, merged PR #94 (`eb4ba89`), and deployed the resulting `master` bundle.
-
-## Verification
-- Focused Settings tests: 3 passed. Flutter analyze: 0 issues.
-- Rendered Cosmic, Blue, Dark, Light, and Teal at 390×844 plus Light at 320×700.
-- CI passed backend tests plus Flutter analyze/tests. Production smoke passed after the master deploy: health, frontend 0.0.125, bundle commit, Flutter boot. `graphify update .`: 9089 nodes.
-
-## Notes for next session
-- PR #94 is merged and the release is permanent on `master`; fully close/reopen the PWA after deployment, never clear site data.
-- Full: `2026-07-22-session-settings-about-link.md`.
-
----
-
-
 
