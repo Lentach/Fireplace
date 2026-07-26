@@ -61,20 +61,22 @@ class GlassBottomNav extends StatelessWidget {
   /// two sweeps competing for attention.
   static const Duration kExitDuration = Duration(milliseconds: 200);
 
-  /// The node's travel between slots. `easeInOutCubic` because this is a
+  /// The lens's travel between slots. `easeInOutCubic` because this is a
   /// journey with two ends, not an arrival.
   static const Duration kTravelDuration = Duration(milliseconds: 300);
 
-  /// The rail the node runs on, and the node itself.
-  static const double kRailInset = 7;
-  static const double kNodeRadius = 3;
+  /// Height of the pool of glass under the active tab.
+  static const double kLensHeight = 50;
+
+  /// The travelling lens, exposed so a test can read where it actually
+  /// rendered rather than inspecting the implicit animation's target.
+  static const Key activeLensKey = ValueKey('nav-active-lens');
 
   @override
   Widget build(BuildContext context) {
     final glass = GlassTheme.of(context);
     final reduceMotion = MediaQuery.disableAnimationsOf(context);
     final n = destinations.length;
-    final accent = glass.onGlassAccent;
     return Padding(
       padding: const EdgeInsets.fromLTRB(34, 8, 34, 12),
       child: GlassPill(
@@ -82,29 +84,21 @@ class GlassBottomNav extends StatelessWidget {
         padding: const EdgeInsets.symmetric(horizontal: 10),
         child: Stack(
           children: [
-            // A dormant trace across the pill, exactly like the dormant route
-            // every contact hex owns: the path the signal WILL travel is
-            // already drawn, so the lit motion follows a line that was always
-            // there rather than appearing from nowhere.
+            // The glass thickens under the tab you chose, and that pool glides
+            // when you choose another. Deliberately EDGELESS: a radial falloff
+            // to fully transparent, no outline, no bar, no dot. Every discrete
+            // little marker tried here was rejected for being a small hard
+            // shape competing with the glyphs; light and mass are what this
+            // surface is actually made of.
+            //
+            // `activeCapsule` is the per-theme token the spec already defines
+            // for exactly this ("active-tab capsule fill (bottom nav)"), so
+            // each theme brings its own tuned tint rather than an invented one.
             Positioned(
               left: 0,
               right: 0,
-              bottom: kRailInset,
-              height: 1,
-              child: ColoredBox(
-                color: accent.withValues(alpha: 0.16),
-                child: const SizedBox.expand(),
-              ),
-            ),
-            // The node itself, docking under the selected tab. With a 1/n-wide
-            // box, x = -1 + 2i/(n-1) lands each stop on slot i's centre, so
-            // skipping a tab travels THROUGH the middle slot rather than
-            // jumping — which is what sells it as travel.
-            Positioned(
-              left: 0,
-              right: 0,
-              bottom: kRailInset - kNodeRadius + 0.5,
-              height: kNodeRadius * 2,
+              top: 0,
+              bottom: 0,
               child: AnimatedAlign(
                 alignment: Alignment(
                   n <= 1 ? 0 : -1 + 2 * currentIndex / (n - 1),
@@ -114,14 +108,29 @@ class GlassBottomNav extends StatelessWidget {
                 curve: Curves.easeInOutCubic,
                 child: FractionallySizedBox(
                   widthFactor: n == 0 ? 1 : 1 / n,
-                  child: Center(
-                    child: Container(
-                      width: kNodeRadius * 2,
-                      height: kNodeRadius * 2,
+                  // The lens fills its slot. A bare `Center` here would hand
+                  // the box loose constraints and a decoration-only child
+                  // collapses to zero width — invisible, and the travel would
+                  // be untestable because there would be nothing to measure.
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 3,
+                      vertical: (66 - kLensHeight) / 2,
+                    ),
+                    child: DecoratedBox(
+                      key: activeLensKey,
                       decoration: BoxDecoration(
-                        color: accent,
-                        shape: BoxShape.circle,
+                        borderRadius: BorderRadius.circular(kLensHeight / 2),
+                        gradient: RadialGradient(
+                          radius: 0.9,
+                          colors: [
+                            glass.activeCapsule,
+                            glass.activeCapsule.withValues(alpha: 0),
+                          ],
+                          stops: const [0.1, 1],
+                        ),
                       ),
+                      child: const SizedBox.expand(),
                     ),
                   ),
                 ),

@@ -198,7 +198,73 @@ void main() {
       }
     });
   });
+
+  group('the travelling lens', () {
+    testWidgets('docks on the selected slot', (tester) async {
+      await tester.pumpWidget(const _SwitchableHost());
+      expect(_lensX(tester), closeTo(_slotX(tester, 'Chat'), 0.5));
+
+      await tester.tap(find.text('Settings'));
+      await tester.pumpAndSettle();
+      expect(_lensX(tester), closeTo(_slotX(tester, 'Settings'), 0.5));
+    });
+
+    testWidgets('travels through the slot it skips', (tester) async {
+      await tester.pumpWidget(const _SwitchableHost());
+      final middle = _slotX(tester, 'Contacts');
+      final start = _slotX(tester, 'Chat');
+      final end = _slotX(tester, 'Settings');
+
+      // Chats -> Settings skips Contacts. The lens must sweep over it rather
+      // than jump, which is the whole reason this reads as travel.
+      //
+      // Asserted as samples landing on BOTH sides of the skipped slot, not as
+      // a sample near it: the sweep covers ~50px per frame at peak, so any
+      // narrow window around the midpoint is jumped straight over and the
+      // test would fail on a perfectly good animation.
+      await tester.tap(find.text('Settings'));
+      await tester.pump();
+      var before = false;
+      var after = false;
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+        final x = _lensX(tester);
+        if (x > start + 1 && x < middle) before = true;
+        if (x > middle && x < end - 1) after = true;
+      }
+      expect(
+        before && after,
+        isTrue,
+        reason: 'the lens must sweep across the skipped slot, not jump to it',
+      );
+
+      await tester.pumpAndSettle();
+      expect(_lensX(tester), closeTo(end, 0.5));
+    });
+
+    testWidgets('reduce motion docks it instantly', (tester) async {
+      await tester.pumpWidget(const _SwitchableHost(disableAnimations: true));
+      await tester.tap(find.text('Settings'));
+      await tester.pump();
+      expect(
+        _lensX(tester),
+        closeTo(_slotX(tester, 'Settings'), 0.5),
+        reason: 'no travel frames under reduce-motion',
+      );
+    });
+  });
 }
+
+/// Where the travelling lens actually rendered.
+double _lensX(WidgetTester tester) =>
+    tester.getCenter(find.byKey(GlassBottomNav.activeLensKey)).dx;
+
+/// The horizontal centre of one destination's slot.
+double _slotX(WidgetTester tester, String label) => tester
+    .getCenter(
+      find.ancestor(of: find.text(label), matching: find.byType(InkWell)),
+    )
+    .dx;
 
 /// The entrance published to one destination's icon.
 IconSelection _selectionOf(WidgetTester tester, String label) {
