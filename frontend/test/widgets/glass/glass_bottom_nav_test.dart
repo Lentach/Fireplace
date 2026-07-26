@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/glass/glass_bottom_nav.dart';
+import 'package:fireplace/widgets/icon_entrance.dart';
 
 Widget _host({required int index, required ValueChanged<int> onTap}) {
   return MaterialApp(
@@ -108,90 +109,125 @@ void main() {
     }
   });
 
-  group('the selection pulse', () {
-    testWidgets('plays on the newly selected glyph and settles back to 1', (
+  group('the selection entrance', () {
+    testWidgets('runs on the newly selected destination and completes', (
       tester,
     ) async {
       await tester.pumpWidget(const _SwitchableHost());
 
-      expect(_glyphScale(tester, 'Contacts'), closeTo(1, 0.001));
+      expect(
+        _entranceOf(tester, 'Contacts').progress,
+        0,
+        reason: 'a destination at rest shows none of the active mark',
+      );
+      expect(
+        _entranceOf(tester, 'Chat').progress,
+        1,
+        reason: 'the selected destination shows all of it',
+      );
 
       await tester.tap(find.text('Contacts'));
       await tester.pump();
 
-      // Sample the whole pulse window rather than one frame: the contract is
-      // "it visibly moves and then settles", not "it is at 0.94 at t=60ms",
-      // which would only pin this test to the current frame cadence.
-      var peakDeviation = 0.0;
-      for (var i = 0; i < 16; i++) {
+      // Sample the whole window: the contract is "it starts undrawn, is
+      // partway through at some point, and finishes", not a value at one
+      // frame, which would only pin the test to the current frame cadence.
+      var sawPartial = false;
+      for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 20));
-        final d = (_glyphScale(tester, 'Contacts') - 1).abs();
-        if (d > peakDeviation) peakDeviation = d;
+        final p = _entranceOf(tester, 'Contacts').progress;
+        if (p > 0 && p < 1) sawPartial = true;
       }
       expect(
-        peakDeviation,
-        greaterThan(0.02),
-        reason: 'the selected glyph must visibly pulse',
+        sawPartial,
+        isTrue,
+        reason: 'the selected glyph must visibly draw on',
       );
 
       await tester.pumpAndSettle();
-      expect(
-        _glyphScale(tester, 'Contacts'),
-        closeTo(1, 0.001),
-        reason: 'the pulse must land on exactly 1.0, with no residual spring',
-      );
+      expect(_entranceOf(tester, 'Contacts').progress, 1);
     });
 
-    testWidgets('a glyph deselected mid-pulse resets instead of animating', (
+    testWidgets('the mark never disappears while it draws on', (tester) async {
+      await tester.pumpWidget(const _SwitchableHost());
+
+      await tester.tap(find.text('Contacts'));
+      await tester.pump();
+      for (var i = 0; i < 20; i++) {
+        await tester.pump(const Duration(milliseconds: 20));
+        final entrance = _entranceOf(tester, 'Contacts');
+        if (entrance.progress < 1) {
+          expect(
+            entrance.restColor,
+            isNotNull,
+            reason:
+                'a partial entrance must publish the resting color, or the '
+                'icon blinks out and redraws instead of handing over',
+          );
+        }
+      }
+    });
+
+    testWidgets('the outgoing destination retracts rather than snapping', (
       tester,
     ) async {
       await tester.pumpWidget(const _SwitchableHost());
 
       await tester.tap(find.text('Contacts'));
-      await tester.pump();
-      await tester.pump(const Duration(milliseconds: 40));
+      await tester.pumpAndSettle();
+      expect(_entranceOf(tester, 'Contacts').progress, 1);
 
-      // Leave for another tab while Contacts is still mid-pulse. Sample the
-      // remainder of its window: a single frame lands in a dead spot where an
-      // un-reset controller happens to read 1.0 anyway.
+      // Both halves of the handoff animate: leaving Contacts must sweep its
+      // active mark back off, not cut to the resting state in one frame.
       await tester.tap(find.text('Settings'));
       await tester.pump();
-      for (var i = 0; i < 12; i++) {
+      var sawPartial = false;
+      for (var i = 0; i < 16; i++) {
         await tester.pump(const Duration(milliseconds: 20));
-        expect(
-          _glyphScale(tester, 'Contacts'),
-          closeTo(1, 0.001),
-          reason: 'a muted glyph must not keep animating',
-        );
+        final p = _entranceOf(tester, 'Contacts').progress;
+        if (p > 0 && p < 1) sawPartial = true;
       }
+      expect(
+        sawPartial,
+        isTrue,
+        reason: 'the tab you left must retract, not snap',
+      );
+
+      await tester.pumpAndSettle();
+      expect(_entranceOf(tester, 'Contacts').progress, 0);
+      expect(_entranceOf(tester, 'Settings').progress, 1);
     });
 
-    testWidgets('reduce motion skips the pulse entirely', (tester) async {
+    testWidgets('reduce motion skips the transition entirely', (tester) async {
       await tester.pumpWidget(const _SwitchableHost(disableAnimations: true));
 
       await tester.tap(find.text('Contacts'));
       await tester.pump();
-      for (var i = 0; i < 16; i++) {
+      for (var i = 0; i < 20; i++) {
         await tester.pump(const Duration(milliseconds: 20));
         expect(
-          _glyphScale(tester, 'Contacts'),
-          closeTo(1, 0.001),
-          reason: 'no frame may scale the glyph under reduce-motion',
+          _entranceOf(tester, 'Contacts').progress,
+          1,
+          reason: 'the new tab is immediately whole under reduce-motion',
+        );
+        expect(
+          _entranceOf(tester, 'Chat').progress,
+          0,
+          reason: 'and the old one is immediately at rest',
         );
       }
     });
   });
 }
 
-/// Scale currently applied to one destination's glyph by the pulse.
-double _glyphScale(WidgetTester tester, String label) {
+/// The entrance published to one destination's icon.
+IconEntrance _entranceOf(WidgetTester tester, String label) {
   final column = find
       .ancestor(of: find.text(label), matching: find.byType(Column))
       .first;
-  final transform = tester.widget<Transform>(
-    find.descendant(of: column, matching: find.byType(Transform)).first,
+  return tester.widget<IconEntrance>(
+    find.descendant(of: column, matching: find.byType(IconEntrance)).first,
   );
-  return transform.transform.getMaxScaleOnAxis();
 }
 
 /// Selection has to really change for the pulse to fire, so these tests need

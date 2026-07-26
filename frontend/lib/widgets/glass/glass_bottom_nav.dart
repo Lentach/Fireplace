@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 
 import '../../theme/glass_theme.dart';
+import '../icon_entrance.dart';
 import 'glass_surface.dart';
 
 /// One destination of [GlassBottomNav].
@@ -21,12 +22,17 @@ class GlassNavDestination {
 /// Floating pill bottom navigation (accepted spec §5): 66px glass pill inset
 /// 34px sides / 12px bottom.
 ///
-/// Selection is CROSS-TINT ONLY (owner call, 2026-07-26): icon and label
-/// tween between the muted and accent on-glass colors, so the active tab
-/// changes by color alone. There is deliberately no capsule wash and no
-/// underline/indicator bar — an accent bar under the row was drawn once and
-/// rejected ("it cover it"), and the stock Material ripple is suppressed.
-/// The tint tween lands instantly under reduce-motion.
+/// Selection has no capsule wash and no indicator bar — an accent bar under
+/// the row was drawn once and rejected ("it cover it"), and the Material
+/// ripple is suppressed. What marks the active tab is the icon and label
+/// cross-tinting, plus an ENTRANCE the icon plays on becoming selected.
+///
+/// The entrance is published as an [IconEntrance] progress rather than
+/// applied as a transform here, because a transform is the same gesture for
+/// every icon and that is exactly what read as too weak. An icon that knows
+/// its own geometry (`ConsoleGlyphIcon`) draws itself on; a plain [Icon]
+/// simply ignores the value. This widget stays icon-agnostic either way.
+/// Everything lands instantly under reduce-motion.
 class GlassBottomNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;
@@ -43,10 +49,15 @@ class GlassBottomNav extends StatelessWidget {
   /// reduce-motion.
   static const Duration kTintDuration = Duration(milliseconds: 200);
 
-  /// The selection pulse. Slightly longer than the tint so the glyph is still
-  /// settling as the color lands, which is what makes the switch read as one
-  /// gesture rather than two effects.
-  static const Duration kPulseDuration = Duration(milliseconds: 240);
+  /// The entrance. Longer than the tint so the mark is still arriving as the
+  /// color lands, which makes the switch read as one gesture rather than two
+  /// effects. Under the playbook's 400ms cap for chrome.
+  static const Duration kEntranceDuration = Duration(milliseconds: 340);
+
+  /// The outgoing half. Deliberately quicker than the entrance so the tab you
+  /// left clears while the one you chose is still arriving, rather than the
+  /// two sweeps competing for attention.
+  static const Duration kExitDuration = Duration(milliseconds: 200);
 
   @override
   Widget build(BuildContext context) {
@@ -102,66 +113,57 @@ class _NavItem extends StatefulWidget {
 
 class _NavItemState extends State<_NavItem>
     with SingleTickerProviderStateMixin {
-  late final AnimationController _pulse = AnimationController(
+  /// How much of the ACTIVE mark is drawn over the resting one: 0 for a tab
+  /// at rest, 1 for the selected tab. The muted glyph is always underneath,
+  /// so both directions are a sweep across a mark that never leaves.
+  late final AnimationController _entrance = AnimationController(
     vsync: this,
-    duration: GlassBottomNav.kPulseDuration,
+    duration: GlassBottomNav.kEntranceDuration,
+    reverseDuration: GlassBottomNav.kExitDuration,
+    value: widget.selected ? 1 : 0,
   );
 
-  /// Dip, overshoot, settle: 1.0 → 0.92 → 1.06 → 1.0. Written as explicit
-  /// keyframes so the shape is the code rather than a comment about it, and
-  /// so it lands on exactly 1.0 with no trailing spring.
-  late final Animation<double> _pulseScale = TweenSequence<double>([
-    TweenSequenceItem(
-      tween: Tween(
-        begin: 1.0,
-        end: 0.92,
-      ).chain(CurveTween(curve: Curves.easeOut)),
-      weight: 30,
-    ),
-    TweenSequenceItem(
-      tween: Tween(
-        begin: 0.92,
-        end: 1.06,
-      ).chain(CurveTween(curve: Curves.easeOut)),
-      weight: 40,
-    ),
-    TweenSequenceItem(
-      tween: Tween(
-        begin: 1.06,
-        end: 1.0,
-      ).chain(CurveTween(curve: Curves.easeInOut)),
-      weight: 30,
-    ),
-  ]).animate(_pulse);
+  late final CurvedAnimation _drawOn = CurvedAnimation(
+    parent: _entrance,
+    curve: Curves.easeOutCubic,
+    reverseCurve: Curves.easeInCubic,
+  );
 
   @override
   void didUpdateWidget(covariant _NavItem old) {
     super.didUpdateWidget(old);
     if (widget.reduceMotion) {
-      _pulse.stop();
-      _pulse.value = 0;
+      _entrance.stop();
+      _entrance.value = widget.selected ? 1 : 0;
       return;
     }
-    // Fire only on the transition INTO selected, restarting from zero so
-    // hammering the tabs retargets instead of queueing pulses.
-    if (widget.selected && !old.selected) {
-      _pulse.forward(from: 0);
-    } else if (!widget.selected && old.selected) {
-      // Leaving mid-pulse must not keep a muted glyph animating.
-      _pulse.stop();
-      _pulse.value = 0;
+    if (widget.selected == old.selected) return;
+    // Both halves of the handoff animate: the incoming tab draws its active
+    // mark on, the outgoing one retracts its own. `forward`/`reverse` resume
+    // from the CURRENT value rather than restarting, so hammering the tabs
+    // retargets smoothly instead of snapping to an end first.
+    if (widget.selected) {
+      _entrance.forward();
+    } else {
+      _entrance.reverse();
     }
   }
 
   @override
   void dispose() {
-    _pulse.dispose();
+    _drawOn.dispose();
+    _entrance.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
     final d = widget.destination;
+    final muted = widget.glass.onGlassMuted;
+    final accent = widget.glass.onGlassAccent;
+    // The icon's own color is always the ACTIVE one; how much of it you see
+    // is the entrance. Lerping this toward the destination instead would make
+    // the sweep invisible for its first half. The label still cross-tints.
     // One authoritative semantics node per destination: label + button +
     // selected + tap, with the visual subtree excluded so the Text/icon do
     // not produce duplicate nodes.
@@ -175,59 +177,55 @@ class _NavItemState extends State<_NavItem>
         type: MaterialType.transparency,
         child: InkWell(
           borderRadius: BorderRadius.circular(20),
-          // The pulse + cross-tint ARE the tap feedback; the stock Material
+          // The entrance + cross-tint ARE the tap feedback; the stock Material
           // ripple is the foreign motion this rework removes. Focus highlight
           // stays for keyboard users.
           splashFactory: NoSplash.splashFactory,
           splashColor: Colors.transparent,
           highlightColor: Colors.transparent,
           onTap: widget.onTap,
-          child: TweenAnimationBuilder<double>(
-            tween: Tween(end: widget.selected ? 1 : 0),
-            duration: widget.reduceMotion
-                ? Duration.zero
-                : GlassBottomNav.kTintDuration,
-            curve: Curves.easeInOut,
-            builder: (context, t, _) {
-              final color = Color.lerp(
-                widget.glass.onGlassMuted,
-                widget.glass.onGlassAccent,
-                t,
-              )!;
-              return Center(
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    AnimatedBuilder(
-                      animation: _pulseScale,
-                      // The glyph subtree is rebuilt by the tint tween above;
-                      // the pulse only needs to re-apply a transform, so it
-                      // rides the `child` slot and does not rebuild it again.
-                      builder: (context, child) => Transform.scale(
-                        scale: _pulseScale.value,
-                        child: child,
+          child: Center(
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                AnimatedBuilder(
+                  animation: _drawOn,
+                  builder: (context, child) => IconEntrance(
+                    progress: _drawOn.value,
+                    restColor: muted,
+                    activeColor: accent,
+                    // Icons that cannot draw themselves partially — every
+                    // plain `Icon` — just take the lerped color and fade.
+                    child: IconTheme(
+                      data: IconThemeData(
+                        color: Color.lerp(muted, accent, _drawOn.value),
+                        size: 24,
                       ),
-                      child: IconTheme(
-                        data: IconThemeData(color: color, size: 24),
-                        child:
-                            (widget.selected ? d.activeIcon : null) ?? d.icon,
-                      ),
+                      child: child!,
                     ),
-                    const SizedBox(height: 2),
-                    Text(
-                      d.label,
-                      maxLines: 1,
-                      overflow: TextOverflow.ellipsis,
-                      style: TextStyle(
-                        fontSize: 10.5,
-                        fontWeight: FontWeight.w600,
-                        color: color,
-                      ),
-                    ),
-                  ],
+                  ),
+                  child: (widget.selected ? d.activeIcon : null) ?? d.icon,
                 ),
-              );
-            },
+                const SizedBox(height: 2),
+                TweenAnimationBuilder<double>(
+                  tween: Tween(end: widget.selected ? 1 : 0),
+                  duration: widget.reduceMotion
+                      ? Duration.zero
+                      : GlassBottomNav.kTintDuration,
+                  curve: Curves.easeInOut,
+                  builder: (context, t, _) => Text(
+                    d.label,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    style: TextStyle(
+                      fontSize: 10.5,
+                      fontWeight: FontWeight.w600,
+                      color: Color.lerp(muted, accent, t),
+                    ),
+                  ),
+                ),
+              ],
+            ),
           ),
         ),
       ),

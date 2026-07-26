@@ -38,6 +38,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'hex_avatar.dart';
+import 'icon_entrance.dart';
 
 /// Design space. Deliberately equal to the rendered box (see [kGlyphBox]) so
 /// the scale factor is exactly 1 and every coordinate is pixel-predictable.
@@ -533,18 +534,85 @@ final Map<ConsoleGlyph, ConsoleGlyphGeometry> _resolved = {};
 Offset _opticalNudge(ConsoleGlyph glyph) =>
     glyph == ConsoleGlyph.password ? const Offset(0, -0.35) : Offset.zero;
 
+/// Per-glyph entrance character.
+///
+/// Telegram's tab icons feel alive because every one carries its OWN authored
+/// animation (they ship as Lottie/TGS files), not because a single transform
+/// is applied to a static drawing. We get the same thing for free and with no
+/// dependency, because these glyphs are already path DATA: the entrance draws
+/// each contour on with `PathMetric.extractPath`, the same trim the contact
+/// board already uses for its route fill.
+///
+/// The gear is the one glyph with motion beyond the draw-on: it turns one
+/// tooth pitch (60°, six teeth) into place, because a gear that rotates is
+/// the most literal motion this mark can have.
+double _entranceSpin(ConsoleGlyph glyph) =>
+    glyph == ConsoleGlyph.settings ? -math.pi / 3 : 0;
+
+/// Sub-path [index]'s own 0..1 progress within the whole entrance.
+///
+/// Contours draw in sequence with a long overlap, which is what makes the
+/// bubble's tail land after its cell and the comb's three cells light one by
+/// one — bespoke-looking motion that falls out of the drawing order.
+double _contourProgress(double t, int index, int count) {
+  if (count <= 1) return t;
+  const span = 0.62;
+  final start = index * (1 - span) / (count - 1);
+  return ((t - start) / span).clamp(0.0, 1.0);
+}
+
+/// [path] trimmed to the first [t] of each of its contours.
+Path _trimmed(Path path, double t) {
+  if (t >= 1) return path;
+  final out = Path();
+  if (t <= 0) return out;
+  for (final metric in path.computeMetrics()) {
+    out.addPath(metric.extractPath(0, metric.length * t), Offset.zero);
+  }
+  return out;
+}
+
 class ConsoleGlyphPainter extends CustomPainter {
-  const ConsoleGlyphPainter({required this.glyph, required this.color});
+  const ConsoleGlyphPainter({
+    required this.glyph,
+    required this.color,
+    this.progress = 1,
+    this.underlayColor,
+  });
 
   final ConsoleGlyph glyph;
   final Color color;
 
+  /// 0 = undrawn, 1 = the finished mark. Defaults to 1, so every static call
+  /// site (all the Settings rows) renders exactly as it did before.
+  final double progress;
+
+  /// Painted whole, underneath, while [progress] < 1.
+  ///
+  /// Without it the entrance starts from an empty box and the mark blinks out
+  /// before redrawing. With it the glyph is continuously present and the new
+  /// color simply sweeps across it.
+  final Color? underlayColor;
+
   @override
   void paint(Canvas canvas, Size size) {
     final geometry = consoleGlyphGeometry(glyph);
+    final t = progress.clamp(0.0, 1.0);
 
     canvas.save();
     canvas.scale(size.width / kGlyphUnit, size.height / kGlyphUnit);
+
+    final rest = underlayColor;
+    if (t < 1 && rest != null) {
+      _paintWhole(canvas, geometry, rest);
+    }
+
+    final spin = _entranceSpin(glyph);
+    if (t < 1 && spin != 0) {
+      canvas.translate(_c.dx, _c.dy);
+      canvas.rotate(spin * (1 - t));
+      canvas.translate(-_c.dx, -_c.dy);
+    }
 
     final stroke = Paint()
       ..style = PaintingStyle.stroke
@@ -552,8 +620,38 @@ class ConsoleGlyphPainter extends CustomPainter {
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..color = color;
-    final fill = Paint()..color = color;
 
+    // Filled regions and terminals have no contour to walk, so they arrive on
+    // the tail of the draw-on instead of trimming.
+    final tail = t <= 0.6 ? 0.0 : ((t - 0.6) / 0.4).clamp(0.0, 1.0);
+    final fill = Paint()..color = color.withValues(alpha: color.a * tail);
+
+    if (tail > 0) {
+      for (final path in geometry.fills) {
+        canvas.drawPath(path, fill);
+      }
+    }
+    for (var i = 0; i < geometry.strokes.length; i++) {
+      final contour = _contourProgress(t, i, geometry.strokes.length);
+      if (contour <= 0) continue;
+      canvas.drawPath(_trimmed(geometry.strokes[i], contour), stroke);
+    }
+    for (final dot in geometry.dots) {
+      if (tail > 0) canvas.drawCircle(dot, kGlyphDotRadius * tail, fill);
+    }
+
+    canvas.restore();
+  }
+
+  /// The finished mark, no trimming — used for the resting underlay.
+  void _paintWhole(Canvas canvas, ConsoleGlyphGeometry geometry, Color c) {
+    final stroke = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = kGlyphStroke
+      ..strokeCap = StrokeCap.round
+      ..strokeJoin = StrokeJoin.round
+      ..color = c;
+    final fill = Paint()..color = c;
     for (final path in geometry.fills) {
       canvas.drawPath(path, fill);
     }
@@ -563,19 +661,24 @@ class ConsoleGlyphPainter extends CustomPainter {
     for (final dot in geometry.dots) {
       canvas.drawCircle(dot, kGlyphDotRadius, fill);
     }
-
-    canvas.restore();
   }
 
   @override
   bool shouldRepaint(covariant ConsoleGlyphPainter oldDelegate) =>
-      oldDelegate.glyph != glyph || oldDelegate.color != color;
+      oldDelegate.glyph != glyph ||
+      oldDelegate.color != color ||
+      oldDelegate.progress != progress ||
+      oldDelegate.underlayColor != underlayColor;
 }
 
 /// A console glyph as a drop-in icon: reads its color and size from the
 /// ambient [IconTheme], exactly like [Icon] does, so any container that
 /// tints its icons (e.g. the bottom nav's selection tween) drives the glyph
 /// without knowing this system exists.
+///
+/// It also honours [IconEntrance], so chrome that animates a selection gets
+/// the draw-on for free. With no [IconEntrance] ancestor the progress is 1
+/// and this is a plain static mark.
 class ConsoleGlyphIcon extends StatelessWidget {
   const ConsoleGlyphIcon(this.glyph, {super.key});
 
@@ -585,11 +688,15 @@ class ConsoleGlyphIcon extends StatelessWidget {
   Widget build(BuildContext context) {
     final iconTheme = IconTheme.of(context);
     final size = iconTheme.size ?? kGlyphBox;
+    final entrance = IconEntrance.of(context);
     return CustomPaint(
       size: Size.square(size),
       painter: ConsoleGlyphPainter(
         glyph: glyph,
-        color: iconTheme.color ?? const Color(0xFF000000),
+        color:
+            entrance?.activeColor ?? iconTheme.color ?? const Color(0xFF000000),
+        progress: entrance?.progress ?? 1,
+        underlayColor: entrance?.restColor,
       ),
     );
   }
