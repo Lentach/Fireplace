@@ -57,8 +57,8 @@ class AppearancePreview extends StatelessWidget {
                   ? FittedBox(
                       fit: BoxFit.fill,
                       child: SizedBox(
-                        width: width * 2,
-                        height: height * 2,
+                        width: width * _kGlyphsSceneUpscale,
+                        height: height * _kGlyphsSceneUpscale,
                         child: _AppearancePreviewScene(
                           colors: colors,
                           background: background,
@@ -106,6 +106,29 @@ const double kPreviewContentBottom =
 /// Render the miniature any shorter and the bar paints over it.
 const double kPreviewMinHeight =
     kPreviewContentBottom + kPreviewComposerBottom + kPreviewComposerHeight;
+
+/// The `glyphs` background lays the scene out this many times over and then
+/// `FittedBox`es it back down to the box — which also halves every ABSOLUTE
+/// offset in [_AppearancePreviewScene]. Callers that do their own layout
+/// arithmetic on the `kPreview*` constants must therefore either avoid that
+/// layer or fold the scaling in; the Settings hex avoids it.
+const double _kGlyphsSceneUpscale = 2;
+
+/// Vertical alignment for an [OverflowBox] holding the miniature inside a
+/// SHORTER terminal, chosen so the midpoint of the two BUBBLES lands on the
+/// terminal's centre — rather than the midpoint of the whole miniature, which
+/// would hang them high and wedge-clip the upper one against a hex taper.
+double appearancePreviewAlignY({
+  required double previewHeight,
+  required double terminalHeight,
+}) {
+  const contentCentre = (kPreviewTheirBubbleTop + kPreviewContentBottom) / 2;
+  // Where the miniature's y=0 must land, in terminal coordinates.
+  final originY = terminalHeight / 2 - contentCentre;
+  final overflow = (previewHeight - terminalHeight) / 2;
+  // OverflowBox positions at originY = -overflow - overflow * alignY.
+  return -originY / overflow - 1;
+}
 
 class _AppearancePreviewScene extends StatelessWidget {
   final FireplaceColors colors;

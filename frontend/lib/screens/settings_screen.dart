@@ -227,46 +227,44 @@ class _SettingsScreenState extends State<SettingsScreen> {
   /// [AppearancePreview] miniature, hex-clipped so it reads as a terminal
   /// like every other row.
   ///
-  /// The two axes need opposite treatment, because `_AppearancePreviewScene`
-  /// positions everything at ABSOLUTE insets and only scales bubble WIDTH.
+  /// **No chat background** (owner, 2026-07-25: *"background in appearance
+  /// hex is not really needed"*). The row's subtitle already names it, and
+  /// dropping it also removes the `glyphs` layer's rendering trick from this
+  /// call site: that layer lays its scene out at 2× and `FittedBox`es it back
+  /// down, which halves every ABSOLUTE offset in the scene and left the
+  /// bubbles half-height and high in the terminal. Plain keeps one geometry.
+  ///
+  /// The remaining two axes need opposite treatment, because
+  /// `_AppearancePreviewScene` positions everything at ABSOLUTE insets and
+  /// only scales bubble WIDTH:
   ///
   /// * Width is the terminal's own. It used to be 92 and centre-cropped to
   ///   hide the miniature's radius-12 border, but the hex only shows the
   ///   middle 38px of those 92 — exactly cropping away the `left: 8` and
   ///   `right: 8` strips that carry both bubble colours. `showBorder: false`
   ///   removes the reason for the crop; the hex already paints a ring.
-  /// * Height stays at the natural 58 and overflows. Shrinking it to the
-  ///   terminal's 44 moved the composer bar (`bottom: 6`, height 7) up to
-  ///   y 31–38, straight through the "mine" bubble at y 25–36 — and the bar
-  ///   paints after it, so it covered it (owner, 2026-07-25: *"green/blue
-  ///   bubble is covered by bottom block"*). Any height below 49 collides.
-  ///
-  /// The alignment then slides the 58 down so the two bubbles straddle the
-  /// hex centre (content spans y 9–36, midpoint 22.5, against the hex's 22)
-  /// and the composer falls past the bottom vertex instead of being sliced.
+  /// * Height stays natural and overflows. Shrinking it to the terminal's 44
+  ///   moved the composer bar (`bottom: 6`, height 7) up to y 31–38, straight
+  ///   through the "mine" bubble at y 25–36 — and the bar paints after it, so
+  ///   it covered it (*"green/blue bubble is covered by bottom block"*).
+  ///   Anything below [kPreviewMinHeight] collides.
   Widget _appearancePreviewInHex(SettingsProvider settings) {
-    // Tall enough that the composer bar clears the lower bubble, with a
-    // little headroom over the minimum so the bar sits clean of the clip.
+    // Headroom over the collision floor so the bar also clears the clip.
     const previewHeight = kPreviewMinHeight + 9;
-
-    // Slide the miniature so the midpoint of the two BUBBLES lands on the
-    // terminal's centre — not the midpoint of the whole miniature, which
-    // would hang them high and wedge-clip the upper one against the taper.
-    const contentCentre = (kPreviewTheirBubbleTop + kPreviewContentBottom) / 2;
-    const originY = kConsoleHexHeight / 2 - contentCentre;
-    const overflow = (previewHeight - kConsoleHexHeight) / 2;
-    // OverflowBox alignment is linear in the overflow: -1 puts the child's
-    // top on the parent's top (originY 0), +1 puts its bottom on the
-    // parent's bottom (originY -2*overflow).
-    const alignY = -originY / overflow - 1;
 
     return OverflowBox(
       maxWidth: kConsoleHexWidth,
       maxHeight: previewHeight,
-      alignment: const Alignment(0, alignY),
+      alignment: Alignment(
+        0,
+        appearancePreviewAlignY(
+          previewHeight: previewHeight,
+          terminalHeight: kConsoleHexHeight,
+        ),
+      ),
       child: AppearancePreview(
         themeData: settings.themeData,
-        background: settings.resolvedChatBackground,
+        background: ChatBackgroundLayer.plain,
         width: kConsoleHexWidth,
         height: previewHeight,
         showBorder: false,

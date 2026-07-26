@@ -1,4 +1,5 @@
 import 'package:fireplace/l10n/app_localizations.dart';
+import 'package:fireplace/models/chat_background_preference.dart';
 import 'package:fireplace/providers/auth_provider.dart';
 import 'package:fireplace/providers/connection_provider.dart';
 import 'package:fireplace/providers/settings_provider.dart';
@@ -15,12 +16,21 @@ Widget _host({
   Size size = const Size(390, 844),
   double textScale = 1,
   ThemeData? theme,
+  // Seeds the PROVIDER's theme, which is what drives
+  // `resolvedChatBackground` — distinct from `theme`, which is only the
+  // ambient ThemeData. Cosmic is the one preference that resolves to a
+  // non-plain background, so it is what makes the "no background in the hex"
+  // assertion able to fail.
+  String? themePreference,
 }) {
   return MultiProvider(
     providers: [
       ChangeNotifierProvider(create: (_) => AuthProvider()),
       ChangeNotifierProvider(create: (_) => ConnectionProvider()),
-      ChangeNotifierProvider(create: (_) => SettingsProvider()),
+      ChangeNotifierProvider(
+        create: (_) =>
+            SettingsProvider(initialThemePreference: themePreference),
+      ),
     ],
     child: MaterialApp(
       theme: theme ?? RpgTheme.themeDataLight,
@@ -83,7 +93,11 @@ void main() {
       // Two owner-reported bugs live here, one per axis, both caused by
       // `_AppearancePreviewScene` using ABSOLUTE insets while only bubble
       // WIDTH scales with the box.
-      await tester.pumpWidget(_host());
+      // Cosmic on purpose: it is the one preference whose
+      // `resolvedChatBackground` is NOT plain, so passing the resolved value
+      // through to the hex (the bug) makes the background assertion below
+      // fail instead of silently agreeing.
+      await tester.pumpWidget(_host(themePreference: 'cosmic'));
       await tester.pumpAndSettle();
 
       final preview = tester.widget<AppearancePreview>(
@@ -114,6 +128,19 @@ void main() {
         preview.height - kPreviewComposerBottom - kPreviewComposerHeight,
         greaterThanOrEqualTo(kPreviewContentBottom),
         reason: 'the composer bar overlaps the lower bubble',
+      );
+
+      // BACKGROUND — owner call: "background in appearance hex is not really
+      // needed". It also keeps the miniature on ONE geometry: the `glyphs`
+      // layer renders its scene at 2x and FittedBoxes it back down, halving
+      // every absolute offset, which would leave the bubbles half-height and
+      // high in the terminal and silently invalidate the centring above.
+      expect(
+        preview.background,
+        ChatBackgroundLayer.plain,
+        reason:
+            'the hex must not take a background layer that rescales '
+            'the scene out from under the alignment maths',
       );
     });
 

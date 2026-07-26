@@ -74,7 +74,6 @@ class AppearanceScreen extends StatelessWidget {
               ],
               const SizedBox(height: 16),
               SettingsSectionCaption(label: l10n.appearanceChatBackground),
-              const SizedBox(height: 8),
               for (final choice in backgrounds) ...[
                 _AppearanceChoiceCard(
                   key: ValueKey(
