@@ -98,12 +98,13 @@ void main() {
     /// AnimatedVectorDrawable). Only nav glyphs have a selected state at all;
     /// a Settings row is never "selected".
     ///
-    /// The COMB is the only one that fills, and only because its fill is
-    /// inset inside cells that keep their outlines. A flush fill on a closed
-    /// silhouette is one black mass at 24px — the owner's verdict on the
-    /// bubble ("chat icone is all black"). The bubble and the gear state
-    /// selection by stroke weight instead.
-    const filledGlyphs = {ConsoleGlyph.contacts};
+    /// The bubble and the comb both fill, and both do it INSET — the fill
+    /// sits inside outlines that stay visible. A flush fill on a closed
+    /// silhouette is one black mass at 24px, which is the owner's verdict on
+    /// the bubble's first filled attempt ("chat icone is all black"); his
+    /// direction after it was "filled inside but with other lines". Only the
+    /// gear cannot be filled at all, so it states selection by weight.
+    const filledGlyphs = {ConsoleGlyph.chats, ConsoleGlyph.contacts};
 
     for (final glyph in ConsoleGlyph.values) {
       test(
@@ -117,15 +118,41 @@ void main() {
       );
     }
 
-    test('the closed silhouettes state selection by weight, never by fill', () {
-      for (final glyph in [ConsoleGlyph.chats, ConsoleGlyph.settings]) {
-        expect(
-          consoleGlyphGeometry(glyph).activeFills,
-          isEmpty,
-          reason: '${glyph.name} filled flush is a black lump at 24px',
-        );
-      }
+    test('the gear states selection by weight, never by fill', () {
+      expect(
+        consoleGlyphGeometry(ConsoleGlyph.settings).activeFills,
+        isEmpty,
+        reason: 'filling the gear swallows the roots of its six spokes',
+      );
       expect(kGlyphStrokeActive, greaterThan(kGlyphStroke));
+    });
+
+    test('the filled bubble keeps its message lines', () {
+      // "make it same as others filled inside but with other lines" — the
+      // inset alone only makes a ring, so the fill has two lines knocked out
+      // of it. Their absence would leave a solid inner cell, which is the
+      // thing that got rejected, so each hole is asserted by position rather
+      // than inferred from a contour count.
+      final fill = consoleGlyphGeometry(ConsoleGlyph.chats).activeFills.single;
+
+      // Geometry is re-centred on resolve, so shift the design-space
+      // coordinates by however far the fill actually moved.
+      final delta = fill.getBounds().center - const Offset(12, 10.6);
+
+      expect(
+        fill.contains(const Offset(12, 9.2) + delta),
+        isFalse,
+        reason: 'the first message line must be knocked out of the fill',
+      );
+      expect(
+        fill.contains(const Offset(11.1, 12.0) + delta),
+        isFalse,
+        reason: 'the second message line must be knocked out of the fill',
+      );
+      // And the fill is genuinely solid where it should be: between the two
+      // lines, and above the first.
+      expect(fill.contains(const Offset(12, 10.6) + delta), isTrue);
+      expect(fill.contains(const Offset(12, 6.8) + delta), isTrue);
     });
 
     test('the comb keeps its seams when solid', () {

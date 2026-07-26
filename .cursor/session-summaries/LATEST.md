@@ -1,20 +1,25 @@
 # Latest session summary
 
-**Date:** 2026-07-26 — **RELEASED: `feat/contact-network` merged to master and deployed as frontend 0.0.129 / `9d24d7b`**, smoke 5/5. The entire Contacts/Chats/Settings visual overhaul (50 commits, PR #97) is now permanent production. Backend intentionally untouched at 0.0.127/`3861166`. All stale local branches deleted — `master` is the only local branch.
+**Date:** 2026-07-26 — two things, one shipped and one **STILL OPEN**. (a) **RELEASED: `feat/contact-network` merged to master and deployed as frontend 0.0.129 / `9d24d7b`**, smoke 5/5 — the whole Contacts/Chats/Settings overhaul (50 commits, PR #97) is permanent production, and all stale local branches are gone. (b) **`feat/nav-rework` is IN PROGRESS and UNMERGED**: the bottom nav's three Material icons replaced with owner-picked console glyphs, and three separate attempts at a tab-switch animation. Live ephemeral branch deploy is **`da3847b`, still 0.0.129** (branch deploys never bump semver). **The owner has NOT given a verdict on that build.**
 
 ## What was done
-1. Owner gave the explicit release OK. PR #97 was CLEAN, both CI jobs green.
-2. Bumped `frontend/pubspec.yaml` 0.0.128 → 0.0.129 as the last branch commit (`1235bcb`), merged PR #97 (`9d24d7b`), deployed master via `deploy-web.ps1`, smoke **5/5** (`main.dart.js` literally contains `9d24d7b`).
-3. Branch cleanup: deleted 17 fully-merged local branches + force-deleted `feat/cosmic-theme` (lone unmerged commit `1745a50` was a preview-harness `?density=` knob; recoverable via reflog). Remote `feat/contact-network` auto-deleted at merge.
+1. Release: bumped 0.0.128 → 0.0.129 as the last branch commit (`1235bcb`), merged PR #97 (`9d24d7b`), deployed master, smoke **5/5**. Deleted 17 merged local branches; `feat/cosmic-theme`'s lone unmerged commit is preserved as tag `archive/cosmic-density-probe`.
+2. Nav glyphs, owner picked per row from rendered A/B: **hex speech bubble** for Chats ("its just wow"), **C1 three-cell comb** for Contacts, **G3 gear wearing the cell** for Settings ("just dress it up in a cube"), plus a **meridian globe** replacing the bad `language` glyph. `ConsoleGlyph.localNode` → `.settings`.
+3. **Round 1 was rejected outright** ("all are kinda bad") for one reason worth keeping: all three marks were small hex clusters, differing only in DETAIL. Nav glyphs must differ in GROSS SILHOUETTE.
+4. **A selection indicator bar was built and DELETED** ("it cover it") — a greedy `Center` had parked it in the middle of the pill, cutting under every active glyph.
+5. **Three animation attempts.** Scale pulse → "too little". Draw-on via `PathMetric.extractPath` → "only gear is moving, rest is static" (a stroke reveal at 24px reads as a colour change; only the gear's rotation looked like motion, and he called that bad design). Then outline→filled, which is what Material 3 / iOS / Android all actually ship — the change is MASS, which survives 24px.
+6. **Flush fills rejected on device: "chat icone is all black".** `chats` and `settings` now state selection by STROKE WEIGHT (1.8 → 2.5); `contacts` keeps fills because they are INSET inside cells that keep their outlines. A render caught that flush-filling the comb's shared-edge cells merges them into one lump.
 
 ## Verification
-- Pre-merge: PR #97 `MERGEABLE`/`CLEAN`, Backend tests + Flutter analyze/tests SUCCESS. Post-deploy: smoke 5/5, `/version.json` → 0.0.129/`9d24d7b`.
+- Release: PR #97 `MERGEABLE`/`CLEAN`, both CI jobs green; post-deploy smoke 5/5.
+- Branch: analyze 0 issues over `lib/` + `test/`, **871 passed / 4 skips**, backend untouched at 536. Five ephemeral deploys, smoke 5/5 each. Every behavioural test falsified, including the comb-seam geometry test (red against flush fills).
 
 ## Notes for next session
-- **The release gate is CLOSED — the 2026-07-25 handoff briefs are historical now.** Two owner forks survive unresolved: the `appearance` glyph renders nowhere (live preview owns its row slot) and `push` is the one glyph he never named. Do not guess either.
-- Deferred, none promised: honeycomb `ListView` rewrite >200 contacts, "sent invites as ghosts" (backend), Chats `+` honeycomb picker, three declined refactors (in `85a04dc`'s message).
-- **Owner's next ask: design "something else" — new design work, subject not yet named.** Bootstrap the UI playbook before touching anything visual.
-- Full: `2026-07-26-session-release-0.0.129.md`.
+- **`feat/nav-rework` is unmerged and the owner's verdict on `da3847b` is OUTSTANDING.** Do not merge, do not bump. On an explicit merge: 0.0.129 → **0.0.130** as the LAST branch commit, then PR → master deploy → smoke.
+- **`main_shell.dart` is intentionally no longer byte-identical to master** — nav destinations live there. That old hard rule does not survive this branch.
+- Levers if the weight change is too subtle in his hand: raise `kGlyphStrokeActive`, or give the bubble an inset core like the comb's. Beyond what paths can express, the next real step is a Rive/Lottie dep with an authored file per icon.
+- Still unresolved from the merged branch: the `appearance` glyph renders nowhere, and `push` is the one glyph he never named.
+- Full: `2026-07-26-session-release-0.0.129.md` and `2026-07-26-session-nav-rework.md`.
 
 ---
 ### Prior latest ↓

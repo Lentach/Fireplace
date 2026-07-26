@@ -25,14 +25,16 @@ class GlassNavDestination {
 /// Selection has no capsule wash and no indicator bar — an accent bar under
 /// the row was drawn once and rejected ("it cover it"), and the Material
 /// ripple is suppressed. What marks the active tab is the icon and label
-/// cross-tinting, plus an ENTRANCE the icon plays on becoming selected.
+/// cross-tinting, plus a SELECTED STATE the icon takes on.
 ///
-/// The entrance is published as an [IconEntrance] progress rather than
-/// applied as a transform here, because a transform is the same gesture for
-/// every icon and that is exactly what read as too weak. An icon that knows
-/// its own geometry (`ConsoleGlyphIcon`) draws itself on; a plain [Icon]
-/// simply ignores the value. This widget stays icon-agnostic either way.
-/// Everything lands instantly under reduce-motion.
+/// That state is published as an [IconSelection] progress rather than applied
+/// as a transform here, because one transform over three unlike shapes is
+/// exactly what read as too weak. An icon that knows its own geometry
+/// (`ConsoleGlyphIcon`) interpolates whatever its shape can carry — heavier
+/// stroke for a closed silhouette, flooded inset regions for a cluster — and
+/// a plain [Icon] ignores the value and just takes the lerped tint. This
+/// widget stays icon-agnostic either way, and everything lands instantly
+/// under reduce-motion.
 class GlassBottomNav extends StatelessWidget {
   final int currentIndex;
   final ValueChanged<int> onTap;

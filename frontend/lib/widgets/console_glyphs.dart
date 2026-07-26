@@ -500,11 +500,14 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
       // differ in GROSS SILHOUETTE, not in detail — so this one is a single
       // closed shape with a spur, against the lattice and the radial core it
       // sits beside.
-      // Its SELECTED state is weight, not fill. Filling this bubble out to
-      // its own silhouette is a solid hexagon, which at 24px — and above all
-      // on a light theme, where the accent is nearly black — is one black
-      // lump: "chat icone is all black". A closed silhouette is exactly the
-      // shape that cannot afford a flush fill.
+      //
+      // Its SELECTED state is an INSET fill, matching the comb (owner: "chats
+      // icon can be filled in but no all one color inside icone make it same
+      // as others filled inside but with other lines"). Filling it out to its
+      // own silhouette was the earlier attempt and it is one black hexagon at
+      // 24px — worse on a light theme, where the accent is nearly black:
+      // "chat icone is all black". Insetting keeps the outline and the tail
+      // reading as lines with the solid sitting inside them.
       return ConsoleGlyphGeometry(
         strokes: [
           _hexNode(const Offset(12, 10.6), 6.8),
@@ -513,6 +516,30 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
             Offset(6.3, 19.8),
             Offset(11.4, 17.3),
           ]),
+        ],
+        activeFills: [
+          // Inner cell, with two message lines knocked back out of it. The
+          // inset alone would only give a ring; the lines are what keep the
+          // filled state reading as a CHAT bubble instead of a solid cell,
+          // and they sit inside the hex's full-width band (y 8.0–13.2) so
+          // neither one clips a sloping edge.
+          Path.combine(
+            PathOperation.difference,
+            _hexNode(const Offset(12, 10.6), 5.2),
+            Path()
+              ..addRRect(
+                RRect.fromRectAndRadius(
+                  const Rect.fromLTRB(8.4, 8.45, 15.6, 9.95),
+                  const Radius.circular(0.75),
+                ),
+              )
+              ..addRRect(
+                RRect.fromRectAndRadius(
+                  const Rect.fromLTRB(8.4, 11.25, 13.8, 12.75),
+                  const Radius.circular(0.75),
+                ),
+              ),
+          ),
         ],
       );
 
@@ -603,15 +630,15 @@ double _regionProgress(double t, int index, int count) {
 
 /// Stroke weight this glyph reaches when fully selected.
 ///
-/// The gear and the bubble state selection by weight, because neither can be
-/// filled without becoming a black lump. The COMB deliberately does not:
-/// widening its stroke would eat the ~2.4-unit gap that holds its three
-/// filled cells apart and merge them back into the very lump the inset fill
-/// exists to prevent. It states selection by those fills instead.
-double _activeStroke(ConsoleGlyph glyph) => switch (glyph) {
-  ConsoleGlyph.settings || ConsoleGlyph.chats => kGlyphStrokeActive,
-  _ => kGlyphStroke,
-};
+/// Only the GEAR states selection by weight, and only because it is the one
+/// mark here that cannot be filled at all: its teeth are thin spokes rooted
+/// inside the body, so any fill swallows their roots. The bubble and the comb
+/// both carry inset fills instead, and their strokes deliberately do NOT
+/// thicken — a heavier outline would close the narrow gap that keeps each
+/// fill visibly separate from the line around it, which is the whole reason
+/// the fills are inset.
+double _activeStroke(ConsoleGlyph glyph) =>
+    glyph == ConsoleGlyph.settings ? kGlyphStrokeActive : kGlyphStroke;
 
 class ConsoleGlyphPainter extends CustomPainter {
   const ConsoleGlyphPainter({
