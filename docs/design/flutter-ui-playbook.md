@@ -41,6 +41,14 @@ Motion makes UI feel alive — but uncapped, replayed, or unavoidable motion is 
 | Reduce-motion | ALWAYS honor `MediaQuery.disableAnimationsOf(context)`: skip entrances, swap shimmer for a static fill. |
 | Simultaneity | One well-orchestrated moment (staggered list-in, one hero) beats scattered micro-jitters everywhere. |
 
+**Ratified exception — user-triggered travel (owner, 2026-07-24).** The Contacts honeycomb
+fills a contact's route from their hex up to the core in **480 ms** on tap
+(`contact_network_view.dart`, `_routeController`). It knowingly exceeds the 400 ms cap: the
+travel IS the interaction's feedback, not chrome, and the owner slowed it from 260 ms on
+device precisely so the link reads ("it works better now, links is slower and visible to
+user"). Reduce-motion still short-circuits to an instant open. Do not "fix" this back to
+400 ms, and do not treat it as licence for slow chrome — the cap stands everywhere else.
+
 ### Where motion is BANNED (device-proven, do not relearn the hard way)
 
 `frontend/CLAUDE.md` §7 documents these in detail — animating them causes real iOS/Android bugs:

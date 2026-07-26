@@ -308,11 +308,11 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
       );
     }
 
-    final borderColor = FireplaceColors.of(context).convItemBorder;
-    return ListView.separated(
+    // Rows carry their own spacing and rounded surface now (live rows are
+    // tinted, cold rows shrink); hairline dividers fought that hierarchy.
+    return ListView.builder(
       padding: listPadding,
       itemCount: conversations.length,
-      separatorBuilder: (_, index) => Divider(height: 1, color: borderColor),
       itemBuilder: (context, index) {
         final conv = conversations[index];
         final otherUser = convs.getOtherUser(conv);

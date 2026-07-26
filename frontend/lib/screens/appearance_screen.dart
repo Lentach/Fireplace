@@ -6,8 +6,9 @@ import '../models/chat_background_preference.dart';
 import '../providers/settings_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/appearance_preview.dart';
-import '../widgets/glass/glass_surface.dart';
+import '../widgets/hex_avatar.dart';
 import '../widgets/glass/glass_top_bar.dart';
+import '../widgets/settings_console.dart';
 
 class AppearanceScreen extends StatelessWidget {
   final int userId;
@@ -47,14 +48,13 @@ class AppearanceScreen extends StatelessWidget {
           ListView(
             physics: const ClampingScrollPhysics(),
             padding: EdgeInsets.fromLTRB(
-              13,
-              media.top + GlassTopBar.capsuleHeight + 24,
-              13,
+              0,
+              media.top + GlassTopBar.capsuleHeight + 6,
+              0,
               media.bottom + 24,
             ),
             children: [
-              _SectionLabel(l10n.appearanceColorTheme),
-              const SizedBox(height: 8),
+              SettingsSectionCaption(label: l10n.appearanceColorTheme),
               for (final choice in themes) ...[
                 _AppearanceChoiceCard(
                   key: ValueKey('appearance-theme-${choice.value}'),
@@ -73,8 +73,7 @@ class AppearanceScreen extends StatelessWidget {
                 const SizedBox(height: 8),
               ],
               const SizedBox(height: 16),
-              _SectionLabel(l10n.appearanceChatBackground),
-              const SizedBox(height: 8),
+              SettingsSectionCaption(label: l10n.appearanceChatBackground),
               for (final choice in backgrounds) ...[
                 _AppearanceChoiceCard(
                   key: ValueKey(
@@ -183,25 +182,87 @@ class AppearanceScreen extends StatelessWidget {
   ];
 }
 
-class _SectionLabel extends StatelessWidget {
-  final String text;
+class _HexSelectionMark extends StatelessWidget {
+  const _HexSelectionMark({required this.selected});
 
-  const _SectionLabel(this.text);
+  final bool selected;
 
   @override
   Widget build(BuildContext context) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 4),
-      child: Text(
-        text,
-        style: RpgTheme.bodyFont(
-          fontSize: 11,
-          color: Theme.of(context).colorScheme.onSurfaceVariant,
-          fontWeight: FontWeight.w700,
-        ).copyWith(letterSpacing: 1.1),
+    final colorScheme = Theme.of(context).colorScheme;
+    return SizedBox(
+      width: 26,
+      height: 30,
+      child: CustomPaint(
+        painter: _HexSelectionMarkPainter(
+          selected: selected,
+          primary: colorScheme.primary,
+          onPrimary: colorScheme.onPrimary,
+          outline: colorScheme.onSurfaceVariant,
+        ),
       ),
     );
   }
+}
+
+class _HexSelectionMarkPainter extends CustomPainter {
+  const _HexSelectionMarkPainter({
+    required this.selected,
+    required this.primary,
+    required this.onPrimary,
+    required this.outline,
+  });
+
+  final bool selected;
+  final Color primary;
+  final Color onPrimary;
+  final Color outline;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final hex = hexPath(
+      Offset(size.width / 2, size.height / 2),
+      size.height / 2 - 0.75,
+    );
+    final outlinePaint = Paint()
+      ..color = selected ? primary : outline.withValues(alpha: 0.64)
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.4
+      ..strokeJoin = StrokeJoin.round;
+
+    if (selected) {
+      canvas.drawPath(
+        hex,
+        Paint()
+          ..color = primary
+          ..style = PaintingStyle.fill,
+      );
+    }
+    canvas.drawPath(hex, outlinePaint);
+
+    if (selected) {
+      final check = Path()
+        ..moveTo(size.width * 0.28, size.height * 0.52)
+        ..lineTo(size.width * 0.45, size.height * 0.68)
+        ..lineTo(size.width * 0.73, size.height * 0.35);
+      canvas.drawPath(
+        check,
+        Paint()
+          ..color = onPrimary
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1.8
+          ..strokeCap = StrokeCap.round
+          ..strokeJoin = StrokeJoin.round,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HexSelectionMarkPainter oldDelegate) =>
+      oldDelegate.selected != selected ||
+      oldDelegate.primary != primary ||
+      oldDelegate.onPrimary != onPrimary ||
+      oldDelegate.outline != outline;
 }
 
 class _AppearanceChoiceCard extends StatelessWidget {
@@ -223,22 +284,16 @@ class _AppearanceChoiceCard extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final scheme = Theme.of(context).colorScheme;
-    final borderRadius = BorderRadius.circular(16);
 
-    return Semantics(
-      selected: selected,
-      button: true,
-      child: Stack(
-        children: [
-          GlassSurface(
-            width: double.infinity,
-            borderRadius: borderRadius,
-            blur: false,
-            shadow: false,
-            child: Material(
-              type: MaterialType.transparency,
-              clipBehavior: Clip.antiAlias,
-              borderRadius: borderRadius,
+    return Padding(
+      padding: const EdgeInsets.symmetric(horizontal: 12),
+      child: Semantics(
+        selected: selected,
+        button: true,
+        child: Stack(
+          children: [
+            Material(
+              color: scheme.surfaceContainerHighest,
               child: InkWell(
                 onTap: onTap,
                 child: Padding(
@@ -273,44 +328,24 @@ class _AppearanceChoiceCard extends StatelessWidget {
                         ),
                       ),
                       const SizedBox(width: 10),
-                      Container(
-                        width: 26,
-                        height: 26,
-                        decoration: BoxDecoration(
-                          color: selected ? scheme.primary : Colors.transparent,
-                          shape: BoxShape.circle,
-                          border: Border.all(
-                            color: selected
-                                ? scheme.primary
-                                : scheme.onSurfaceVariant,
-                          ),
-                        ),
-                        child: selected
-                            ? Icon(
-                                Icons.check_rounded,
-                                size: 18,
-                                color: scheme.onPrimary,
-                              )
-                            : null,
-                      ),
+                      _HexSelectionMark(selected: selected),
                     ],
                   ),
                 ),
               ),
             ),
-          ),
-          if (selected)
-            Positioned.fill(
-              child: IgnorePointer(
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    borderRadius: borderRadius,
-                    border: Border.all(color: scheme.primary, width: 2),
+            if (selected)
+              Positioned.fill(
+                child: IgnorePointer(
+                  child: DecoratedBox(
+                    decoration: BoxDecoration(
+                      border: Border.all(color: scheme.primary, width: 2),
+                    ),
                   ),
                 ),
               ),
-            ),
-        ],
+          ],
+        ),
       ),
     );
   }

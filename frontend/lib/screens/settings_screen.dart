@@ -4,7 +4,6 @@ import 'package:provider/provider.dart';
 import 'package:url_launcher/url_launcher.dart';
 import '../models/chat_background_preference.dart';
 import '../theme/rpg_theme.dart';
-import '../widgets/glass/glass_surface.dart';
 import '../widgets/appearance_preview.dart';
 import '../providers/auth_provider.dart';
 import '../providers/connection_provider.dart';
@@ -14,7 +13,9 @@ import '../services/api_service.dart';
 import '../services/push_service.dart';
 import '../config/app_config.dart';
 import '../config/app_version_info.dart';
-import '../widgets/avatar_circle.dart';
+import '../models/user_model.dart';
+import '../widgets/local_node_core.dart';
+import '../widgets/settings_console.dart';
 import '../widgets/dialogs/reset_password_dialog.dart';
 import '../widgets/main_tab_screen_header.dart';
 import '../widgets/dialogs/delete_account_dialog.dart';
@@ -222,30 +223,56 @@ class _SettingsScreenState extends State<SettingsScreen> {
     }
   }
 
-  /// Liquid Glass (owner, 2026-07-11): tiles are tinted glass cards.
-  /// `blur: false` — over the flat settings background a backdrop blur is
-  /// invisible and per-tile filters on a scrolling list are a perf trap;
-  /// the translucent fill/border reads identically. ListTile ink still
-  /// needs a [Material] ancestor inside the surface.
-  Widget _settingsTileShell(Widget child) {
-    return Padding(
-      padding: const EdgeInsets.symmetric(horizontal: 13, vertical: 4),
-      child: GlassSurface(
-        borderRadius: BorderRadius.circular(16),
-        blur: false,
-        shadow: false,
-        child: Material(
-          type: MaterialType.transparency,
-          clipBehavior: Clip.antiAlias,
-          borderRadius: BorderRadius.circular(16),
-          child: child,
+  /// The Appearance row's "glyph" is the live theme itself — the real
+  /// [AppearancePreview] miniature, hex-clipped so it reads as a terminal
+  /// like every other row.
+  ///
+  /// **No chat background** (owner, 2026-07-25: *"background in appearance
+  /// hex is not really needed"*). The row's subtitle already names it, and
+  /// dropping it also removes the `glyphs` layer's rendering trick from this
+  /// call site: that layer lays its scene out at 2× and `FittedBox`es it back
+  /// down, which halves every ABSOLUTE offset in the scene and left the
+  /// bubbles half-height and high in the terminal. Plain keeps one geometry.
+  ///
+  /// The remaining two axes need opposite treatment, because
+  /// `_AppearancePreviewScene` positions everything at ABSOLUTE insets and
+  /// only scales bubble WIDTH:
+  ///
+  /// * Width is the terminal's own. It used to be 92 and centre-cropped to
+  ///   hide the miniature's radius-12 border, but the hex only shows the
+  ///   middle 38px of those 92 — exactly cropping away the `left: 8` and
+  ///   `right: 8` strips that carry both bubble colours. `showBorder: false`
+  ///   removes the reason for the crop; the hex already paints a ring.
+  /// * Height stays natural and overflows. Shrinking it to the terminal's 44
+  ///   moved the composer bar (`bottom: 6`, height 7) up to y 31–38, straight
+  ///   through the "mine" bubble at y 25–36 — and the bar paints after it, so
+  ///   it covered it (*"green/blue bubble is covered by bottom block"*).
+  ///   Anything below [kPreviewMinHeight] collides.
+  Widget _appearancePreviewInHex(SettingsProvider settings) {
+    // Headroom over the collision floor so the bar also clears the clip.
+    const previewHeight = kPreviewMinHeight + 9;
+
+    return OverflowBox(
+      maxWidth: kConsoleHexWidth,
+      maxHeight: previewHeight,
+      alignment: Alignment(
+        0,
+        appearancePreviewAlignY(
+          previewHeight: previewHeight,
+          terminalHeight: kConsoleHexHeight,
         ),
+      ),
+      child: AppearancePreview(
+        themeData: settings.themeData,
+        background: ChatBackgroundLayer.plain,
+        width: kConsoleHexWidth,
+        height: previewHeight,
+        showBorder: false,
       ),
     );
   }
 
-  Widget _buildAppearanceTile(BuildContext context, SettingsProvider settings) {
-    final theme = Theme.of(context);
+  Widget _buildAppearanceRow(BuildContext context, SettingsProvider settings) {
     final l10n = AppLocalizations.of(context);
     final themeName = switch (settings.themePreference) {
       'light' => l10n.appearanceThemeLight,
@@ -263,140 +290,132 @@ class _SettingsScreenState extends State<SettingsScreen> {
       ChatBackgroundPreference.glyphs => l10n.appearanceBackgroundGlyphs,
     };
 
-    return _settingsTileShell(
-      ListTile(
-        leading: AppearancePreview(
-          themeData: settings.themeData,
-          background: settings.resolvedChatBackground,
-          width: 64,
-          height: 40,
-        ),
-        title: Text(
-          l10n.appearance,
-          style: RpgTheme.bodyFont(
-            fontSize: 14,
-            color: theme.colorScheme.onSurface,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        subtitle: Text(
-          l10n.appearanceSummary(themeName, backgroundName),
-          maxLines: 1,
-          overflow: TextOverflow.ellipsis,
-          style: RpgTheme.bodyFont(
-            fontSize: 12,
-            color: theme.colorScheme.onSurfaceVariant,
-          ),
-        ),
-        trailing: Icon(
-          Icons.chevron_right,
-          color: theme.colorScheme.onSurfaceVariant,
-        ),
-        onTap: () {
-          final userId = context.read<AuthProvider>().currentUser?.id;
-          if (userId == null) return;
-          Navigator.of(context).push(
-            MaterialPageRoute(builder: (_) => AppearanceScreen(userId: userId)),
-          );
-        },
-      ),
+    return SettingsConsoleRow(
+      glyph: ConsoleGlyph.appearance,
+      leadingOverride: _appearancePreviewInHex(settings),
+      title: l10n.appearance,
+      subtitle: l10n.appearanceSummary(themeName, backgroundName),
+      onTap: () {
+        final userId = context.read<AuthProvider>().currentUser?.id;
+        if (userId == null) return;
+        Navigator.of(context).push(
+          MaterialPageRoute(builder: (_) => AppearanceScreen(userId: userId)),
+        );
+      },
     );
   }
 
-  Widget _buildLanguageTile(BuildContext context, SettingsProvider settings) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    final fc = FireplaceColors.of(context);
-    final current = settings.localeCode;
+  Widget _buildLanguageRow(BuildContext context, SettingsProvider settings) {
+    final colorScheme = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
+    final current = settings.localeCode;
 
-    Widget langBtn(String code, String label) {
-      final isSelected = current == code;
-      return InkWell(
-        onTap: () => settings.setLocalePreference(code),
-        customBorder: const CircleBorder(),
-        child: Container(
-          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-          decoration: BoxDecoration(
-            color: isSelected
-                ? colorScheme.primary.withValues(alpha: 0.2)
-                : Colors.transparent,
-            borderRadius: BorderRadius.circular(20),
-            border: Border.all(
-              color: isSelected ? colorScheme.primary : fc.settingsTileBorder,
-              width: isSelected ? 2 : 1,
-            ),
-          ),
-          child: Text(
-            label,
-            style: RpgTheme.bodyFont(
-              fontSize: 13,
-              color: isSelected
-                  ? colorScheme.primary
-                  : colorScheme.onSurfaceVariant,
-              fontWeight: isSelected ? FontWeight.w600 : FontWeight.w500,
+    // The chip shows the CODE, not the language name. At 320px with a 1.6
+    // text scale "Polski"+"Angielski" is ~210px of non-flexible trailing,
+    // which collapses the title to a one-letter-per-line column. The full
+    // name stays on the semantics node so screen readers still announce it.
+    Widget chip(String code, String label) {
+      final selected = current == code;
+      return Padding(
+        padding: const EdgeInsets.only(left: 6),
+        child: Semantics(
+          button: true,
+          selected: selected,
+          label: label,
+          excludeSemantics: true,
+          child: InkWell(
+            onTap: () => settings.setLocalePreference(code),
+            borderRadius: BorderRadius.circular(6),
+            child: Container(
+              constraints: const BoxConstraints(minWidth: 44, minHeight: 36),
+              alignment: Alignment.center,
+              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 8),
+              decoration: BoxDecoration(
+                color: selected
+                    ? colorScheme.primary.withValues(alpha: 0.16)
+                    : null,
+                border: Border.all(
+                  color: selected
+                      ? colorScheme.primary
+                      : colorScheme.onSurface.withValues(alpha: 0.28),
+                ),
+                borderRadius: BorderRadius.circular(6),
+              ),
+              child: Text(
+                code.toUpperCase(),
+                style: RpgTheme.bodyFont(
+                  fontSize: 12,
+                  fontWeight: FontWeight.w700,
+                  color: selected
+                      ? colorScheme.primary
+                      : colorScheme.onSurfaceVariant,
+                ).copyWith(letterSpacing: 1.2),
+              ),
             ),
           ),
         ),
       );
     }
 
-    return _settingsTileShell(
-      ListTile(
-        leading: Icon(Icons.language, color: colorScheme.primary, size: 24),
-        title: Text(
-          l10n.language,
-          style: RpgTheme.bodyFont(
-            fontSize: 14,
-            color: colorScheme.onSurface,
-            fontWeight: FontWeight.w500,
-          ),
-        ),
-        trailing: Row(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            langBtn('pl', l10n.languagePolish),
-            const SizedBox(width: 8),
-            langBtn('en', l10n.languageEnglish),
-          ],
-        ),
+    // No row-level onTap: the chips are the affordance, so the row itself
+    // must not be a button that does nothing.
+    return SettingsConsoleRow(
+      glyph: ConsoleGlyph.language,
+      title: l10n.language,
+      trailing: Row(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          chip('pl', l10n.languagePolish),
+          chip('en', l10n.languageEnglish),
+        ],
       ),
     );
   }
 
-  Widget _buildSettingsTile({
-    required IconData icon,
-    required String title,
-    String? subtitle,
-    Widget? trailing,
-    VoidCallback? onTap,
-    Color? textColor,
-  }) {
-    final theme = Theme.of(context);
-    final colorScheme = theme.colorScheme;
-    return _settingsTileShell(
-      ListTile(
-        leading: Icon(icon, color: colorScheme.primary, size: 24),
-        title: Text(
-          title,
-          style: RpgTheme.bodyFont(
-            fontSize: 14,
-            color: textColor ?? colorScheme.onSurface,
-            fontWeight: FontWeight.w500,
+  /// The local node: the same round reticle the Contacts core uses. Tapping
+  /// it opens your own user card, which is what the old floating badge did.
+  Widget _buildLocalNode(BuildContext context, UserModel? user) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
+    final name = user?.username ?? 'Hero';
+
+    return Padding(
+      padding: const EdgeInsets.only(top: 20, bottom: 4),
+      child: Column(
+        children: [
+          Semantics(
+            button: true,
+            label: l10n.contactNetworkYouLocalNode,
+            excludeSemantics: true,
+            child: GestureDetector(
+              onTap: _openMyProfile,
+              child: LocalNodeCore(
+                radius: 46,
+                displayName: name,
+                avatarUrl: user?.profilePictureUrl,
+                initialsFontSize: 24,
+              ),
+            ),
           ),
-        ),
-        subtitle: subtitle != null
-            ? Text(
-                subtitle,
-                style: RpgTheme.bodyFont(
-                  fontSize: 12,
-                  color: colorScheme.onSurfaceVariant,
-                ),
-              )
-            : null,
-        trailing: trailing,
-        onTap: onTap,
-        enabled: onTap != null,
+          const SizedBox(height: 12),
+          Text(
+            '$name#${user?.tag ?? '0000'}',
+            style: RpgTheme.bodyFont(
+              fontSize: 18,
+              color: colorScheme.onSurface,
+              fontWeight: FontWeight.w700,
+            ),
+          ),
+          const SizedBox(height: 4),
+          Text(
+            l10n.contactNetworkLocalNode,
+            style: RpgTheme.bodyFont(
+              fontSize: 10,
+              fontWeight: FontWeight.w700,
+              color: colorScheme.onSurface.withValues(alpha: 0.5),
+            ).copyWith(letterSpacing: 1.5),
+          ),
+        ],
       ),
     );
   }
@@ -466,14 +485,15 @@ class _SettingsScreenState extends State<SettingsScreen> {
     final auth = context.watch<AuthProvider>();
     final conn = context.read<ConnectionProvider>();
     final settings = context.watch<SettingsProvider>();
-
+    final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
+
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
       body: Column(
         crossAxisAlignment: CrossAxisAlignment.stretch,
         children: [
-          MainTabScreenHeader(title: AppLocalizations.of(context).settings),
+          MainTabScreenHeader(title: l10n.settings),
           Expanded(
             child: SafeArea(
               top: false,
@@ -481,72 +501,21 @@ class _SettingsScreenState extends State<SettingsScreen> {
               child: ListView(
                 physics: const ClampingScrollPhysics(),
                 padding: EdgeInsets.only(
-                  top: 16,
                   bottom: MediaQuery.paddingOf(context).bottom + 16,
                 ),
                 children: [
-                  // Header Section
-                  Column(
-                    children: [
-                      const SizedBox(height: 24),
-                      Stack(
-                        children: [
-                          AvatarCircle(
-                            displayName: auth.currentUser?.username ?? '',
-                            radius: 60,
-                            profilePictureUrl:
-                                auth.currentUser?.profilePictureUrl,
-                          ),
-                          Positioned(
-                            bottom: 0,
-                            right: 0,
-                            child: GestureDetector(
-                              onTap: _openMyProfile,
-                              child: Container(
-                                width: 36,
-                                height: 36,
-                                decoration: BoxDecoration(
-                                  color: theme.colorScheme.primary,
-                                  shape: BoxShape.circle,
-                                  border: Border.all(
-                                    color: theme.colorScheme.surface,
-                                    width: 2,
-                                  ),
-                                ),
-                                child: const Icon(
-                                  Icons.person_outline,
-                                  color: Colors.white,
-                                  size: 18,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ],
-                      ),
-                      const SizedBox(height: 16),
-                      Text(
-                        '${auth.currentUser?.username ?? 'Hero'}#${auth.currentUser?.tag ?? '0000'}',
-                        style: RpgTheme.bodyFont(
-                          fontSize: 20,
-                          color: theme.colorScheme.onSurface,
-                          fontWeight: FontWeight.w700,
-                        ),
-                      ),
-                      const SizedBox(height: 32),
-                    ],
+                  _buildLocalNode(context, auth.currentUser),
+
+                  SettingsSectionCaption(
+                    label: l10n.settingsSectionPreferences,
                   ),
+                  _buildAppearanceRow(context, settings),
+                  _buildLanguageRow(context, settings),
 
-                  // Settings Tiles
-                  _buildAppearanceTile(context, settings),
-                  _buildLanguageTile(context, settings),
-
-                  _buildSettingsTile(
-                    icon: Icons.security,
-                    title: AppLocalizations.of(context).privacyAndSafety,
-                    trailing: Icon(
-                      Icons.chevron_right,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                  SettingsSectionCaption(label: l10n.settingsSectionSecurity),
+                  SettingsConsoleRow(
+                    glyph: ConsoleGlyph.privacy,
+                    title: l10n.privacyAndSafety,
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
@@ -555,14 +524,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       );
                     },
                   ),
-
-                  _buildSettingsTile(
-                    icon: Icons.block,
-                    title: AppLocalizations.of(context).blocked,
-                    trailing: Icon(
-                      Icons.chevron_right,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                  SettingsConsoleRow(
+                    glyph: ConsoleGlyph.blocked,
+                    title: l10n.blocked,
                     onTap: () {
                       Navigator.of(context).push(
                         MaterialPageRoute(
@@ -571,136 +535,90 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       );
                     },
                   ),
-
-                  _buildSettingsTile(
-                    icon: Icons.devices,
-                    title: AppLocalizations.of(context).devices,
-                    subtitle:
-                        _deviceName ??
-                        AppLocalizations.of(context).devicesLoading,
-                    trailing: Icon(
-                      Icons.chevron_right,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                  // No onTap today - this row reports the device, it does not
+                  // navigate. Kept non-interactive rather than faking a target.
+                  SettingsConsoleRow(
+                    glyph: ConsoleGlyph.devices,
+                    title: l10n.devices,
+                    subtitle: _deviceName ?? l10n.devicesLoading,
                   ),
-
                   if (kIsWeb)
-                    _buildSettingsTile(
-                      icon: Icons.notifications_active,
-                      title: AppLocalizations.of(context).webPushEnableTitle,
-                      subtitle: AppLocalizations.of(
-                        context,
-                      ).webPushEnableSubtitle,
-                      trailing: Icon(
-                        Icons.chevron_right,
-                        color: theme.colorScheme.onSurfaceVariant,
-                      ),
+                    SettingsConsoleRow(
+                      glyph: ConsoleGlyph.push,
+                      title: l10n.webPushEnableTitle,
+                      subtitle: l10n.webPushEnableSubtitle,
                       onTap: _enableWebPushNotifications,
                     ),
 
-                  _buildSettingsTile(
-                    icon: Icons.lock_reset,
-                    title: AppLocalizations.of(context).resetPassword,
-                    trailing: Icon(
-                      Icons.chevron_right,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                  SettingsSectionCaption(label: l10n.settingsSectionSession),
+                  SettingsConsoleRow(
+                    glyph: ConsoleGlyph.password,
+                    title: l10n.resetPassword,
                     onTap: _showResetPasswordDialog,
                   ),
-
-                  _buildSettingsTile(
-                    icon: Icons.delete_forever,
-                    title: AppLocalizations.of(context).deleteAccount,
-                    trailing: Icon(
-                      Icons.chevron_right,
-                      color: theme.colorScheme.onSurfaceVariant,
-                    ),
+                  SettingsConsoleRow(
+                    glyph: ConsoleGlyph.deleteNode,
+                    title: l10n.deleteAccount,
+                    edge: ConsoleRowEdge.danger,
                     onTap: _showDeleteAccountDialog,
-                    textColor: theme.colorScheme.error,
+                  ),
+                  SettingsConsoleRow(
+                    glyph: ConsoleGlyph.logout,
+                    title: l10n.logout,
+                    edge: ConsoleRowEdge.accent,
+                    onTap: () {
+                      conn.disconnect(isLogout: true);
+                      auth.logout();
+                      if (Navigator.of(context).canPop()) {
+                        Navigator.pop(context);
+                      }
+                    },
                   ),
 
-                  const SizedBox(height: 24),
+                  const SizedBox(height: 28),
                   _buildAboutFireplaceLink(),
 
-                  if (_appVersionLine != null) const SizedBox(height: 8),
-
-                  if (_appVersionLine != null)
+                  if (_appVersionLine != null) ...[
+                    const SizedBox(height: 14),
                     Padding(
                       padding: const EdgeInsets.symmetric(horizontal: 24),
                       child: Column(
                         children: [
                           Text(
-                            AppLocalizations.of(context).settingsAppVersion,
+                            l10n.settingsAppVersion,
+                            textAlign: TextAlign.center,
                             style: RpgTheme.bodyFont(
                               fontSize: 11,
                               color: theme.colorScheme.onSurfaceVariant,
                               fontWeight: FontWeight.w500,
                             ),
-                            textAlign: TextAlign.center,
                           ),
                           const SizedBox(height: 4),
                           Text(
                             _appVersionLine!,
+                            textAlign: TextAlign.center,
                             style: RpgTheme.bodyFont(
                               fontSize: 11,
                               color: theme.colorScheme.onSurfaceVariant
                                   .withValues(alpha: 0.85),
                             ),
-                            textAlign: TextAlign.center,
                           ),
                         ],
                       ),
                     ),
+                  ],
 
-                  if (_appVersionLine != null) const SizedBox(height: 16),
-
-                  // E2E key-loss warning — shown right above logout (the uninstall/clear-data danger point).
+                  const SizedBox(height: 16),
+                  // E2E key-loss warning - the uninstall/clear-data danger
+                  // point. It stays at the very bottom, under everything.
                   Padding(
                     padding: const EdgeInsets.symmetric(horizontal: 24),
                     child: Text(
-                      AppLocalizations.of(context).uninstallWarning,
+                      l10n.uninstallWarning,
+                      textAlign: TextAlign.center,
                       style: RpgTheme.bodyFont(
                         fontSize: 11,
                         color: theme.colorScheme.onSurfaceVariant,
-                      ),
-                      textAlign: TextAlign.center,
-                    ),
-                  ),
-                  const SizedBox(height: 12),
-
-                  // Logout Button
-                  Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 16),
-                    child: ElevatedButton(
-                      onPressed: () {
-                        conn.disconnect(isLogout: true);
-                        auth.logout();
-                        if (Navigator.of(context).canPop()) {
-                          Navigator.pop(context);
-                        }
-                      },
-                      style: ElevatedButton.styleFrom(
-                        backgroundColor: theme.colorScheme.primary,
-                        foregroundColor: Colors.white,
-                        padding: const EdgeInsets.symmetric(vertical: 16),
-                        shape: RoundedRectangleBorder(
-                          borderRadius: BorderRadius.circular(8),
-                        ),
-                      ),
-                      child: Row(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          const Icon(Icons.logout, size: 20),
-                          const SizedBox(width: 8),
-                          Text(
-                            AppLocalizations.of(context).logout,
-                            style: RpgTheme.bodyFont(
-                              fontSize: 14,
-                              color: Colors.white,
-                              fontWeight: FontWeight.w600,
-                            ),
-                          ),
-                        ],
                       ),
                     ),
                   ),

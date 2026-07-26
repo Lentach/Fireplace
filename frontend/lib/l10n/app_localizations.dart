@@ -272,6 +272,24 @@ abstract class AppLocalizations {
   /// **'O projekcie'**
   String get settingsAboutFireplace;
 
+  /// No description provided for @settingsSectionPreferences.
+  ///
+  /// In pl, this message translates to:
+  /// **'PREFERENCJE'**
+  String get settingsSectionPreferences;
+
+  /// No description provided for @settingsSectionSecurity.
+  ///
+  /// In pl, this message translates to:
+  /// **'BEZPIECZEŃSTWO'**
+  String get settingsSectionSecurity;
+
+  /// No description provided for @settingsSectionSession.
+  ///
+  /// In pl, this message translates to:
+  /// **'SESJA'**
+  String get settingsSectionSession;
+
   /// No description provided for @privacySafetyTitle.
   ///
   /// In pl, this message translates to:
@@ -847,6 +865,78 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Dodaj znajomych, aby zacząć pisać'**
   String get addFriendsToStart;
+
+  /// No description provided for @contactNetworkLocalNode.
+  ///
+  /// In pl, this message translates to:
+  /// **'WĘZEŁ LOKALNY'**
+  String get contactNetworkLocalNode;
+
+  /// No description provided for @contactNetworkYouLocalNode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ty, węzeł lokalny'**
+  String get contactNetworkYouLocalNode;
+
+  /// No description provided for @contactNetworkSemantic.
+  ///
+  /// In pl, this message translates to:
+  /// **'Sieć kontaktów, {count} kontaktów'**
+  String contactNetworkSemantic(num count);
+
+  /// No description provided for @contactNetworkNodes.
+  ///
+  /// In pl, this message translates to:
+  /// **'WĘZŁY {count}'**
+  String contactNetworkNodes(String count);
+
+  /// No description provided for @contactNetworkShowList.
+  ///
+  /// In pl, this message translates to:
+  /// **'Widok listy'**
+  String get contactNetworkShowList;
+
+  /// No description provided for @contactNetworkShowMap.
+  ///
+  /// In pl, this message translates to:
+  /// **'Widok sieci'**
+  String get contactNetworkShowMap;
+
+  /// No description provided for @contactNetworkOpenChatHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Otwórz czat'**
+  String get contactNetworkOpenChatHint;
+
+  /// No description provided for @contactNetworkAddSlot.
+  ///
+  /// In pl, this message translates to:
+  /// **'dodaj'**
+  String get contactNetworkAddSlot;
+
+  /// No description provided for @contactNetworkAddSlotSemantic.
+  ///
+  /// In pl, this message translates to:
+  /// **'Dodaj kontakt'**
+  String get contactNetworkAddSlotSemantic;
+
+  /// No description provided for @contactNetworkPendingRequests.
+  ///
+  /// In pl, this message translates to:
+  /// **'{count, plural, =1{1 zaproszenie oczekuje} few{{count} zaproszenia oczekują} many{{count} zaproszeń oczekuje} other{{count} zaproszeń oczekuje}}'**
+  String contactNetworkPendingRequests(num count);
+
+  /// No description provided for @contactsSearchHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Szukaj kontaktów'**
+  String get contactsSearchHint;
+
+  /// No description provided for @contactsSearchNoResults.
+  ///
+  /// In pl, this message translates to:
+  /// **'Brak pasujących kontaktów'**
+  String get contactsSearchNoResults;
 
   /// No description provided for @block.
   ///

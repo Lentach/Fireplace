@@ -9,6 +9,7 @@ import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
 import '../widgets/audio/playback_controller.dart';
 import '../widgets/glass/glass_top_bar.dart';
+import '../widgets/settings_console.dart';
 import '../widgets/top_snackbar.dart';
 
 class PrivacySafetyScreen extends StatefulWidget {
@@ -46,10 +47,8 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
   @override
   Widget build(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = RpgTheme.isDark(context);
-    final mutedColor = isDark
-        ? RpgTheme.mutedDark
-        : RpgTheme.textSecondaryLight;
+    final colorScheme = theme.colorScheme;
+    final l10n = AppLocalizations.of(context);
 
     return Scaffold(
       backgroundColor: theme.scaffoldBackgroundColor,
@@ -61,184 +60,197 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
           onPressed: () => Navigator.of(context).pop(),
         ),
         title: Text(
-          _diagLogUnlocked
-              ? '🔓 hacker mode'
-              : AppLocalizations.of(context).privacySafetyTitle,
+          _diagLogUnlocked ? '🔓 hacker mode' : l10n.privacySafetyTitle,
           style: RpgTheme.bodyFont(
             fontSize: 16,
-            color: theme.colorScheme.onSurface,
+            color: colorScheme.onSurface,
             fontWeight: FontWeight.w600,
           ),
         ),
       ),
       body: SingleChildScrollView(
-        padding: EdgeInsets.fromLTRB(
-          24,
-          MediaQuery.paddingOf(context).top + GlassTopBar.capsuleHeight + 16,
-          24,
-          MediaQuery.paddingOf(context).bottom + 24,
+        padding: EdgeInsets.only(
+          top:
+              MediaQuery.paddingOf(context).top +
+              GlassTopBar.capsuleHeight +
+              16,
+          bottom: MediaQuery.paddingOf(context).bottom + 24,
         ),
         child: Column(
-          crossAxisAlignment: CrossAxisAlignment.start,
+          crossAxisAlignment: CrossAxisAlignment.stretch,
           children: [
-            // Shield icon — long-press unlocks E2E diagnostic log
-            Center(
-              child: GestureDetector(
-                onLongPress: () => setState(() => _diagLogUnlocked = true),
-                child: Column(
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    Icon(
-                      Icons.verified_user,
-                      size: 64,
-                      color: theme.colorScheme.primary,
-                    ),
-                    if (_diagLogUnlocked) ...[
-                      const SizedBox(height: 6),
-                      Text(
-                        '🔓 hacker mode',
-                        style: theme.textTheme.labelSmall?.copyWith(
-                          color: theme.colorScheme.primary,
-                          letterSpacing: 1.2,
+            Padding(
+              padding: const EdgeInsets.symmetric(horizontal: 24),
+              child: Column(
+                crossAxisAlignment: CrossAxisAlignment.stretch,
+                children: [
+                  // Long-pressing the privacy terminal unlocks the E2E log.
+                  Center(
+                    child: Semantics(
+                      button: true,
+                      label: l10n.privacySafetyTitle,
+                      onLongPress: () =>
+                          setState(() => _diagLogUnlocked = true),
+                      child: GestureDetector(
+                        behavior: HitTestBehavior.opaque,
+                        onLongPress: () =>
+                            setState(() => _diagLogUnlocked = true),
+                        child: SizedBox(
+                          width: 88,
+                          child: Column(
+                            mainAxisSize: MainAxisSize.min,
+                            children: [
+                              SizedBox(
+                                height: 72,
+                                child: Center(
+                                  child: const ConsoleHexIcon(
+                                    glyph: ConsoleGlyph.privacy,
+                                    height: 68,
+                                  ),
+                                ),
+                              ),
+                              if (_diagLogUnlocked) ...[
+                                const SizedBox(height: 6),
+                                Text(
+                                  '🔓 hacker mode',
+                                  style: theme.textTheme.labelSmall?.copyWith(
+                                    color: colorScheme.primary,
+                                    letterSpacing: 1.2,
+                                  ),
+                                ),
+                              ],
+                            ],
+                          ),
                         ),
                       ),
-                    ],
-                  ],
-                ),
+                    ),
+                  ),
+                  const SizedBox(height: 24),
+                  Text(
+                    l10n.e2eEncryptionEnabled,
+                    style: RpgTheme.bodyFont(
+                      fontSize: 18,
+                      fontWeight: FontWeight.bold,
+                      color: colorScheme.onSurface,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                  const SizedBox(height: 16),
+                  Text(
+                    l10n.e2eEncryptionDescription,
+                    style: RpgTheme.bodyFont(
+                      fontSize: 14,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
+                    textAlign: TextAlign.center,
+                  ),
+                ],
               ),
             ),
-            const SizedBox(height: 24),
-
-            // Title
-            Center(
-              child: Text(
-                AppLocalizations.of(context).e2eEncryptionEnabled,
-                style: RpgTheme.bodyFont(
-                  fontSize: 18,
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.onSurface,
-                ),
-                textAlign: TextAlign.center,
+            const SizedBox(height: 12),
+            SettingsSectionCaption(label: l10n.settingsSectionSecurity),
+            ConsoleInfoRow(
+              glyph: ConsoleGlyph.keys,
+              title: l10n.yourEncryptionKeys,
+              body: l10n.yourEncryptionKeysDescription,
+            ),
+            ConsoleInfoRow(
+              glyph: ConsoleGlyph.devices,
+              title: l10n.singleDeviceEncryption,
+              body: l10n.singleDeviceEncryptionDescription,
+            ),
+            if (kIsWeb)
+              ConsoleInfoRow(
+                glyph: ConsoleGlyph.webStorage,
+                title: l10n.webKeyStorage,
+                body: l10n.webKeyStorageDescription,
               ),
+            SettingsSectionCaption(label: l10n.privacySafetyTitle),
+            ConsoleInfoRow(
+              glyph: ConsoleGlyph.media,
+              title: l10n.whatIsEncrypted,
+              body: l10n.whatIsEncryptedDescription,
             ),
-            const SizedBox(height: 16),
-
-            // Description
-            Text(
-              AppLocalizations.of(context).e2eEncryptionDescription,
-              style: RpgTheme.bodyFont(fontSize: 14, color: mutedColor),
-              textAlign: TextAlign.center,
+            ConsoleInfoRow(
+              glyph: ConsoleGlyph.metadata,
+              title: l10n.serverStoresMetadata,
+              body: l10n.serverStoresMetadataDescription,
             ),
-            const SizedBox(height: 32),
-
-            // Key info section
-            _buildInfoCard(
-              context,
-              icon: Icons.key,
-              title: AppLocalizations.of(context).yourEncryptionKeys,
-              description: AppLocalizations.of(
-                context,
-              ).yourEncryptionKeysDescription,
+            ConsoleInfoRow(
+              glyph: ConsoleGlyph.quantum,
+              title: l10n.privacyAntiQuantumNoteTitle,
+              body: l10n.privacyAntiQuantumNoteDescription,
             ),
-            const SizedBox(height: 16),
-
-            _buildInfoCard(
-              context,
-              icon: Icons.devices,
-              title: AppLocalizations.of(context).singleDeviceEncryption,
-              description: AppLocalizations.of(
-                context,
-              ).singleDeviceEncryptionDescription,
-            ),
-            if (kIsWeb) ...[
-              const SizedBox(height: 16),
-              _buildInfoCard(
-                context,
-                icon: Icons.laptop,
-                title: AppLocalizations.of(context).webKeyStorage,
-                description: AppLocalizations.of(
-                  context,
-                ).webKeyStorageDescription,
-              ),
-            ],
-            const SizedBox(height: 16),
-            _buildInfoCard(
-              context,
-              icon: Icons.photo_library_outlined,
-              title: AppLocalizations.of(context).whatIsEncrypted,
-              description: AppLocalizations.of(
-                context,
-              ).whatIsEncryptedDescription,
-            ),
-            const SizedBox(height: 16),
-
-            _buildInfoCard(
-              context,
-              icon: Icons.info_outline,
-              title: AppLocalizations.of(context).serverStoresMetadata,
-              description: AppLocalizations.of(
-                context,
-              ).serverStoresMetadataDescription,
-            ),
-            const SizedBox(height: 16),
-
-            _buildInfoCard(
-              context,
-              icon: Icons.science_outlined,
-              title: AppLocalizations.of(context).privacyAntiQuantumNoteTitle,
-              description: AppLocalizations.of(
-                context,
-              ).privacyAntiQuantumNoteDescription,
-            ),
-            const SizedBox(height: 16),
+            SettingsSectionCaption(label: l10n.settingsSectionPreferences),
             _buildLocalCacheCard(context),
-            const SizedBox(height: 32),
-
-            // Fingerprint section
-            if (!_loading && _fingerprint != null) ...[
-              Text(
-                AppLocalizations.of(context).yourIdentityFingerprint,
-                style: RpgTheme.bodyFont(
-                  fontSize: 14,
-                  fontWeight: FontWeight.bold,
-                  color: theme.colorScheme.onSurface,
-                ),
-              ),
-              const SizedBox(height: 8),
-              Text(
-                AppLocalizations.of(context).shareFingerprintHint,
-                style: RpgTheme.bodyFont(fontSize: 12, color: mutedColor),
-              ),
-              const SizedBox(height: 12),
-              Container(
-                width: double.infinity,
-                padding: const EdgeInsets.all(16),
-                decoration: BoxDecoration(
-                  color: theme.colorScheme.surfaceContainerHighest,
-                  borderRadius: BorderRadius.circular(8),
-                  border: Border.all(color: theme.colorScheme.outlineVariant),
-                ),
-                child: SelectableText(
-                  _fingerprint!,
-                  style: TextStyle(
-                    fontSize: 13,
-                    color: theme.colorScheme.onSurface,
-                    fontFamily: 'monospace',
-                    letterSpacing: 1.2,
+            if (_loading || _fingerprint != null) ...[
+              SettingsSectionCaption(label: l10n.yourIdentityFingerprint),
+              if (!_loading && _fingerprint != null) ...[
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(kConsoleHexLeft, 0, 16, 0),
+                  child: Text(
+                    l10n.shareFingerprintHint,
+                    style: RpgTheme.bodyFont(
+                      fontSize: 12,
+                      color: colorScheme.onSurfaceVariant,
+                    ),
                   ),
                 ),
-              ),
-            ],
-            if (_loading)
-              const Center(
-                child: Padding(
-                  padding: EdgeInsets.all(16),
-                  child: CircularProgressIndicator(),
+                const SizedBox(height: 12),
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(kConsoleHexLeft, 0, 16, 0),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.all(16),
+                    decoration: BoxDecoration(
+                      color: colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(12),
+                      border: Border.all(color: colorScheme.outlineVariant),
+                    ),
+                    child: SelectableText(
+                      _fingerprint!,
+                      style: TextStyle(
+                        fontSize: 13,
+                        color: colorScheme.onSurface,
+                        fontFamily: 'monospace',
+                        letterSpacing: 1.2,
+                      ),
+                    ),
+                  ),
                 ),
-              ),
+              ],
+              if (_loading)
+                Padding(
+                  padding: const EdgeInsets.fromLTRB(kConsoleHexLeft, 0, 16, 0),
+                  child: Semantics(
+                    label: l10n.devicesLoading,
+                    child: Container(
+                      height: 56,
+                      decoration: BoxDecoration(
+                        color: colorScheme.surfaceContainerHighest,
+                        borderRadius: BorderRadius.circular(12),
+                        border: Border.all(color: colorScheme.outlineVariant),
+                      ),
+                      alignment: Alignment.centerLeft,
+                      child: Container(
+                        width: 168,
+                        height: 12,
+                        margin: const EdgeInsets.symmetric(horizontal: 16),
+                        decoration: BoxDecoration(
+                          color: colorScheme.outlineVariant,
+                          borderRadius: BorderRadius.circular(6),
+                        ),
+                      ),
+                    ),
+                  ),
+                ),
+            ],
             if (_diagLogUnlocked) ...[
               const SizedBox(height: 24),
-              _buildDiagLogPanel(context),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(kConsoleHexLeft, 0, 16, 0),
+                child: _buildDiagLogPanel(context),
+              ),
             ],
           ],
         ),
@@ -246,128 +258,53 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
     );
   }
 
-  Widget _buildInfoCard(
-    BuildContext context, {
-    required IconData icon,
-    required String title,
-    required String description,
-  }) {
-    final theme = Theme.of(context);
-    final isDark = RpgTheme.isDark(context);
-    final mutedColor = isDark
-        ? RpgTheme.mutedDark
-        : RpgTheme.textSecondaryLight;
-
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Row(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Icon(icon, size: 24, color: theme.colorScheme.primary),
-          const SizedBox(width: 12),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: RpgTheme.bodyFont(
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                    color: theme.colorScheme.onSurface,
-                  ),
-                ),
-                const SizedBox(height: 4),
-                Text(
-                  description,
-                  style: RpgTheme.bodyFont(fontSize: 13, color: mutedColor),
-                ),
-              ],
-            ),
-          ),
-        ],
-      ),
-    );
-  }
-
   Widget _buildLocalCacheCard(BuildContext context) {
-    final theme = Theme.of(context);
     final l10n = AppLocalizations.of(context);
-    final isDark = RpgTheme.isDark(context);
-    final mutedColor = isDark
-        ? RpgTheme.mutedDark
-        : RpgTheme.textSecondaryLight;
 
-    return Container(
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
-        borderRadius: BorderRadius.circular(12),
-      ),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Row(
-            crossAxisAlignment: CrossAxisAlignment.start,
-            children: [
-              Icon(
-                Icons.cleaning_services_outlined,
-                size: 24,
-                color: theme.colorScheme.primary,
-              ),
-              const SizedBox(width: 12),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      l10n.localMessageCache,
-                      style: RpgTheme.bodyFont(
-                        fontSize: 14,
-                        fontWeight: FontWeight.bold,
-                        color: theme.colorScheme.onSurface,
-                      ),
-                    ),
-                    const SizedBox(height: 4),
-                    Text(
-                      l10n.localMessageCacheDescription,
-                      style: RpgTheme.bodyFont(fontSize: 13, color: mutedColor),
-                    ),
-                  ],
-                ),
-              ),
-            ],
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ConsoleInfoRow(
+          glyph: ConsoleGlyph.cache,
+          title: l10n.localMessageCache,
+          body: l10n.localMessageCacheDescription,
+        ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            kConsoleHexLeft + kConsoleHexWidth + 12,
+            0,
+            16,
+            12,
           ),
-          const SizedBox(height: 12),
-          SizedBox(
-            width: double.infinity,
-            child: OutlinedButton.icon(
+          child: SizedBox(
+            height: 48,
+            child: OutlinedButton(
               onPressed: _clearingLocalCache ? null : _clearLocalMessageCache,
-              icon: _clearingLocalCache
-                  ? const SizedBox(
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_clearingLocalCache) ...[
+                    const SizedBox(
                       width: 16,
                       height: 16,
                       child: CircularProgressIndicator(strokeWidth: 2),
-                    )
-                  : const Icon(Icons.delete_sweep_outlined),
-              label: Text(l10n.clearLocalMessageCache),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Text(l10n.clearLocalMessageCache),
+                ],
+              ),
             ),
           ),
-        ],
-      ),
+        ),
+      ],
     );
   }
 
   Widget _buildDiagLogPanel(BuildContext context) {
     final theme = Theme.of(context);
-    final isDark = RpgTheme.isDark(context);
-    final mutedColor = isDark
-        ? RpgTheme.mutedDark
-        : RpgTheme.textSecondaryLight;
+    final mutedColor = theme.colorScheme.onSurfaceVariant;
     final allEntries = E2eDiagLog.entries.reversed.toList();
     final durable = E2ePersistentDiag.entries.reversed.toList();
     final entries = switch (_diagFilter) {
@@ -386,7 +323,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
     return Container(
       padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: theme.colorScheme.surfaceContainerHighest.withValues(alpha: 0.5),
+        color: theme.colorScheme.surfaceContainerHighest,
         borderRadius: BorderRadius.circular(12),
       ),
       child: Column(

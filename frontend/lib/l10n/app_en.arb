@@ -29,6 +29,9 @@
   "devicesLoading": "Loading…",
   "settingsAppVersion": "App version",
   "settingsAboutFireplace": "About",
+  "settingsSectionPreferences": "PREFERENCES",
+  "settingsSectionSecurity": "SECURITY",
+  "settingsSectionSession": "SESSION",
 
   "privacySafetyTitle": "Privacy & Safety",
   "e2eEncryptionEnabled": "End-to-end encryption is enabled",
@@ -170,6 +173,27 @@
   "remove": "Remove",
   "noContactsYet": "No contacts yet",
   "addFriendsToStart": "Add friends to start chatting",
+  "contactNetworkLocalNode": "LOCAL NODE",
+  "contactNetworkYouLocalNode": "You, local node",
+  "contactNetworkSemantic": "Contact network, {count} contacts",
+  "@contactNetworkSemantic": {
+    "placeholders": { "count": { "type": "num" } }
+  },
+  "contactNetworkNodes": "NODES {count}",
+  "@contactNetworkNodes": {
+    "placeholders": { "count": { "type": "String" } }
+  },
+  "contactNetworkShowList": "List view",
+  "contactNetworkShowMap": "Network view",
+  "contactNetworkOpenChatHint": "Open chat",
+  "contactNetworkAddSlot": "add",
+  "contactNetworkAddSlotSemantic": "Add a contact",
+  "contactNetworkPendingRequests": "{count, plural, =1{1 friend request waiting} other{{count} friend requests waiting}}",
+  "@contactNetworkPendingRequests": {
+    "placeholders": { "count": { "type": "num" } }
+  },
+  "contactsSearchHint": "Search contacts",
+  "contactsSearchNoResults": "No matching contacts",
   "block": "Block",
   "imageFailedToLoad": "Image failed to load",
   "unsupportedMessageType": "Unsupported message type",

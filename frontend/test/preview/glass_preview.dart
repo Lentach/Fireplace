@@ -22,6 +22,8 @@ import 'package:fireplace/screens/blocked_users_screen.dart';
 import 'package:fireplace/screens/privacy_safety_screen.dart';
 import 'package:fireplace/screens/add_or_invitations_screen.dart';
 import 'package:fireplace/screens/auth_screen.dart';
+import 'package:fireplace/screens/settings_screen.dart';
+import 'package:fireplace/screens/appearance_screen.dart';
 import 'package:fireplace/providers/connection_provider.dart';
 
 import 'package:fireplace/l10n/app_localizations.dart';
@@ -155,6 +157,12 @@ class GlassPreviewApp extends StatelessWidget {
           'privacy' => const PrivacySafetyScreen(),
           'add' => const AddOrInvitationsScreen(),
           'auth' => const AuthScreen(),
+          // The Settings root console and the Appearance sub-screen. This
+          // harness (not settings_preview.dart) is the one that can host
+          // them alongside Privacy and Blocked, because it already provides
+          // Encryption/Friends — so one server renders all four.
+          'settings' => const SettingsScreen(),
+          'appearance' => const AppearanceScreen(userId: 7),
           // Loading skeleton (?screen=skeleton[&reduceMotion=1]): the pure
           // ConversationListSkeleton widget, no backend/providers needed.
           'skeleton' => _SkeletonPreview(
@@ -236,7 +244,10 @@ class _ChatListPreviewState extends State<_ChatListPreview> {
       'see you at the cabin on saturday then?',
     ][i % 6],
     messageType: MessageType.text,
-    createdAt: DateTime.now().subtract(Duration(hours: i * 3)),
+    // Tail rows are genuinely stale so the "cold" density shows up here.
+    createdAt: DateTime.now().subtract(
+      i >= 8 ? Duration(days: 7 + i) : Duration(hours: i * 3),
+    ),
     deliveryStatus: MessageDeliveryStatus.read,
   );
 
@@ -250,7 +261,7 @@ class _ChatListPreviewState extends State<_ChatListPreview> {
             child: Builder(
               builder: (context) {
                 final media = MediaQuery.paddingOf(context);
-                return ListView.separated(
+                return ListView.builder(
                   padding: EdgeInsets.fromLTRB(
                     8,
                     media.top + MainTabScreenHeader.clearance,
@@ -258,10 +269,6 @@ class _ChatListPreviewState extends State<_ChatListPreview> {
                     media.bottom + 8,
                   ),
                   itemCount: _names.length,
-                  separatorBuilder: (_, i) => Divider(
-                    height: 1,
-                    color: Theme.of(context).dividerTheme.color,
-                  ),
                   itemBuilder: (context, i) => ConversationTile(
                     conversationId: i,
                     displayName: _names[i],

@@ -100,6 +100,15 @@ class AppLocalizationsPl extends AppLocalizations {
   String get settingsAboutFireplace => 'O projekcie';
 
   @override
+  String get settingsSectionPreferences => 'PREFERENCJE';
+
+  @override
+  String get settingsSectionSecurity => 'BEZPIECZEŃSTWO';
+
+  @override
+  String get settingsSectionSession => 'SESJA';
+
+  @override
   String get privacySafetyTitle => 'Prywatność i bezpieczeństwo';
 
   @override
@@ -457,6 +466,56 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get addFriendsToStart => 'Dodaj znajomych, aby zacząć pisać';
+
+  @override
+  String get contactNetworkLocalNode => 'WĘZEŁ LOKALNY';
+
+  @override
+  String get contactNetworkYouLocalNode => 'Ty, węzeł lokalny';
+
+  @override
+  String contactNetworkSemantic(num count) {
+    return 'Sieć kontaktów, $count kontaktów';
+  }
+
+  @override
+  String contactNetworkNodes(String count) {
+    return 'WĘZŁY $count';
+  }
+
+  @override
+  String get contactNetworkShowList => 'Widok listy';
+
+  @override
+  String get contactNetworkShowMap => 'Widok sieci';
+
+  @override
+  String get contactNetworkOpenChatHint => 'Otwórz czat';
+
+  @override
+  String get contactNetworkAddSlot => 'dodaj';
+
+  @override
+  String get contactNetworkAddSlotSemantic => 'Dodaj kontakt';
+
+  @override
+  String contactNetworkPendingRequests(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count zaproszeń oczekuje',
+      many: '$count zaproszeń oczekuje',
+      few: '$count zaproszenia oczekują',
+      one: '1 zaproszenie oczekuje',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get contactsSearchHint => 'Szukaj kontaktów';
+
+  @override
+  String get contactsSearchNoResults => 'Brak pasujących kontaktów';
 
   @override
   String get block => 'Zablokuj';

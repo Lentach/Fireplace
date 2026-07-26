@@ -7,8 +7,8 @@ import '../models/message_model.dart';
 import '../models/user_model.dart';
 import '../providers/messaging_provider.dart';
 import '../providers/settings_provider.dart';
-import 'avatar_circle.dart';
 import 'glass/glass_dialog.dart';
+import 'hex_avatar.dart';
 import 'hearth_fade_arc.dart';
 import '../utils/jumbo_emoji.dart';
 
@@ -99,7 +99,9 @@ class ConversationTile extends StatelessWidget {
     BuildContext context,
     Color ephemeralColor,
     Color secondaryColor,
+    bool live,
   ) {
+    final accent = Theme.of(context).colorScheme.primary;
     final staticTrailing = Row(
       mainAxisSize: MainAxisSize.min,
       children: [
@@ -115,30 +117,28 @@ class ConversationTile extends StatelessWidget {
               ),
             ),
           ),
-        if (unreadCount > 0)
-          Container(
-            margin: const EdgeInsets.only(right: 6),
-            padding: const EdgeInsets.symmetric(horizontal: 6, vertical: 2),
-            decoration: BoxDecoration(
-              color: Theme.of(context).colorScheme.primary,
-              borderRadius: BorderRadius.circular(10),
-            ),
-            constraints: const BoxConstraints(minWidth: 18),
-            child: Text(
-              unreadCount > 99 ? '99+' : '$unreadCount',
-              style: RpgTheme.bodyFont(
-                fontSize: 11,
-                color: Colors.white,
-                fontWeight: FontWeight.w600,
-              ),
-              textAlign: TextAlign.center,
-            ),
-          ),
         if (lastMessage != null)
           Text(
             _formatTime(lastMessage!.createdAt),
-            style: RpgTheme.bodyFont(fontSize: 11, color: secondaryColor),
+            style: RpgTheme.bodyFont(
+              fontSize: 11,
+              color: live ? accent : secondaryColor,
+              fontWeight: live ? FontWeight.w700 : FontWeight.w400,
+            ),
           ),
+        // The count rides with the time in accent; the row's lit edge is
+        // what actually announces unread (owner-approved 2026-07-24).
+        if (unreadCount > 0) ...[
+          const SizedBox(width: 6),
+          Text(
+            unreadCount > 99 ? '99+' : '$unreadCount',
+            style: RpgTheme.bodyFont(
+              fontSize: 11,
+              color: accent,
+              fontWeight: FontWeight.w800,
+            ),
+          ),
+        ],
       ],
     );
 
@@ -171,6 +171,25 @@ class ConversationTile extends StatelessWidget {
     );
   }
 
+  /// Row weight, derived from data the tile already receives: rows that want
+  /// you get bigger, dead threads shrink. No new inputs, no backend.
+  _RowWeight get _weight {
+    if (unreadCount > 0 || isTyping) return _RowWeight.live;
+    final at = lastMessage?.createdAt;
+    if (at != null && DateTime.now().difference(at) > _coldAfter) {
+      return _RowWeight.cold;
+    }
+    return _RowWeight.normal;
+  }
+
+  /// Recency as warmth for the hex ring: 1 fresh, 0 once [_coldAfter] old.
+  double get _ember {
+    final at = lastMessage?.createdAt;
+    if (at == null) return 0;
+    final age = DateTime.now().difference(at).inSeconds;
+    return (1 - age / _coldAfter.inSeconds).clamp(0.0, 1.0);
+  }
+
   @override
   Widget build(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
@@ -179,12 +198,27 @@ class ConversationTile extends StatelessWidget {
       context,
       themePreference: themePref,
     );
-    // Active-row tint comes from the glass theme so every theme highlights
-    // with its own accent (spec: activeCapsule), not a hardcoded palette.
+    final colors = FireplaceColors.of(context);
     final activeBg = GlassTheme.of(context).activeCapsule;
     // Per-theme muted (FireplaceColors) instead of the legacy warm gray that
     // tinted blue/teal dark themes orange-ish.
-    final secondaryColor = FireplaceColors.of(context).mutedText;
+    final secondaryColor = colors.mutedText;
+
+    final weight = _weight;
+    final live = weight == _RowWeight.live;
+    final cold = weight == _RowWeight.cold;
+    final hexSize = switch (weight) {
+      _RowWeight.live => 50.0,
+      // Normal rows keep the legacy 64px row height (owner: Chats and the
+      // Contacts list must line up), so the hex matches the old 44px circle.
+      _RowWeight.normal => 44.0,
+      _RowWeight.cold => 36.0,
+    };
+    final verticalPad = switch (weight) {
+      _RowWeight.live => 12.0,
+      _RowWeight.normal => 10.0,
+      _RowWeight.cold => 7.0,
+    };
 
     return Dismissible(
       key: ValueKey<int>(conversationId),
@@ -249,81 +283,121 @@ class ConversationTile extends StatelessWidget {
         );
       },
       onDismissed: (direction) => onDelete(),
-      child: Material(
-        color: isActive ? activeBg : Colors.transparent,
-        borderRadius: BorderRadius.circular(8),
-        child: InkWell(
-          onTap: onTap,
-          borderRadius: BorderRadius.circular(8),
-          splashColor: Theme.of(
-            context,
-          ).colorScheme.primary.withValues(alpha: 0.2),
-          child: Padding(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-            child: Row(
-              children: [
-                AvatarCircle(
-                  displayName: displayName,
-                  profilePictureUrl: otherUser?.profilePictureUrl,
-                ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: Column(
-                    crossAxisAlignment: CrossAxisAlignment.start,
-                    children: [
-                      Text(
-                        displayName,
-                        style: RpgTheme.bodyFont(
-                          fontSize: 14,
-                          color: colorScheme.onSurface,
-                          fontWeight: FontWeight.w600,
-                        ),
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      if (isTyping) ...[
-                        const SizedBox(height: 3),
-                        Text(
-                          AppLocalizations.of(context).typing,
-                          style: RpgTheme.bodyFont(
-                            fontSize: 13,
-                            color: Theme.of(context).colorScheme.primary,
-                          ).copyWith(fontStyle: FontStyle.italic),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ] else if (lastMessage != null) ...[
-                        const SizedBox(height: 3),
-                        Text.rich(
-                          TextSpan(
-                            children: buildInlineEmojiSpans(
-                              _lastMessagePreview(context, lastMessage!),
-                              textStyle: RpgTheme.bodyFont(
-                                fontSize: 13,
-                                color: secondaryColor,
-                              ),
-                              emojiFontSize: 13,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(horizontal: 4, vertical: 2),
+        child: Material(
+          color: isActive
+              ? activeBg
+              : live
+              ? colorScheme.primary.withValues(alpha: 0.05)
+              : Colors.transparent,
+          borderRadius: BorderRadius.circular(12),
+          child: InkWell(
+            onTap: onTap,
+            borderRadius: BorderRadius.circular(12),
+            splashColor: colorScheme.primary.withValues(alpha: 0.2),
+            child: Padding(
+              padding: EdgeInsets.fromLTRB(6, verticalPad, 12, verticalPad),
+              child: Row(
+                children: [
+                  // Unread is the row's own edge, not a stock badge pill.
+                  SizedBox(
+                    width: 3,
+                    height: live ? hexSize * 0.8 : 0,
+                    child: live
+                        ? DecoratedBox(
+                            decoration: BoxDecoration(
+                              color: colorScheme.primary,
+                              borderRadius: BorderRadius.circular(2),
                             ),
-                          ),
-                          maxLines: 1,
-                          overflow: TextOverflow.ellipsis,
-                        ),
-                      ],
-                    ],
+                          )
+                        : null,
                   ),
-                ),
-                Column(
-                  crossAxisAlignment: CrossAxisAlignment.end,
-                  mainAxisSize: MainAxisSize.min,
-                  children: [
-                    _buildTrailingMetaRow(
-                      context,
-                      ephemeralColor,
-                      secondaryColor,
+                  SizedBox(width: live ? 9 : 12),
+                  HexAvatar(
+                    size: hexSize,
+                    displayName: displayName,
+                    imageUrl: otherUser?.profilePictureUrl,
+                    surface: colors.convItemBg,
+                    borderColor: colors.convItemBorder,
+                    ember: _ember,
+                    initialsStyle: RpgTheme.bodyFont(
+                      fontSize: hexSize * 0.34,
+                      fontWeight: FontWeight.w800,
+                      color: colorScheme.onSurface,
                     ),
-                  ],
-                ),
-              ],
+                  ),
+                  const SizedBox(width: 12),
+                  Expanded(
+                    child: Column(
+                      crossAxisAlignment: CrossAxisAlignment.start,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        Row(
+                          children: [
+                            Expanded(
+                              child: Text(
+                                displayName,
+                                style: RpgTheme.bodyFont(
+                                  fontSize: cold ? 13 : 14,
+                                  color: cold
+                                      ? secondaryColor
+                                      : colorScheme.onSurface,
+                                  fontWeight: live
+                                      ? FontWeight.w700
+                                      : FontWeight.w600,
+                                ),
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                              ),
+                            ),
+                            const SizedBox(width: 8),
+                            _buildTrailingMetaRow(
+                              context,
+                              ephemeralColor,
+                              secondaryColor,
+                              live,
+                            ),
+                          ],
+                        ),
+                        if (isTyping) ...[
+                          const SizedBox(height: 3),
+                          Text(
+                            AppLocalizations.of(context).typing,
+                            style: RpgTheme.bodyFont(
+                              fontSize: 13,
+                              color: colorScheme.primary,
+                            ).copyWith(fontStyle: FontStyle.italic),
+                            maxLines: 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ] else if (lastMessage != null) ...[
+                          const SizedBox(height: 3),
+                          Text.rich(
+                            TextSpan(
+                              children: buildInlineEmojiSpans(
+                                _lastMessagePreview(context, lastMessage!),
+                                textStyle: RpgTheme.bodyFont(
+                                  fontSize: cold ? 12 : 13,
+                                  color: live
+                                      ? colorScheme.onSurface.withValues(
+                                          alpha: 0.78,
+                                        )
+                                      : secondaryColor,
+                                ),
+                                emojiFontSize: cold ? 12 : 13,
+                              ),
+                            ),
+                            // Live rows earn a second line of context.
+                            maxLines: live ? 2 : 1,
+                            overflow: TextOverflow.ellipsis,
+                          ),
+                        ],
+                      ],
+                    ),
+                  ),
+                ],
+              ),
             ),
           ),
         ),
@@ -331,3 +405,8 @@ class ConversationTile extends StatelessWidget {
     );
   }
 }
+
+enum _RowWeight { live, normal, cold }
+
+/// A thread with no activity for this long reads as cold.
+const Duration _coldAfter = Duration(days: 6);

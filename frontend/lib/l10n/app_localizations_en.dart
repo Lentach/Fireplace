@@ -100,6 +100,15 @@ class AppLocalizationsEn extends AppLocalizations {
   String get settingsAboutFireplace => 'About';
 
   @override
+  String get settingsSectionPreferences => 'PREFERENCES';
+
+  @override
+  String get settingsSectionSecurity => 'SECURITY';
+
+  @override
+  String get settingsSectionSession => 'SESSION';
+
+  @override
   String get privacySafetyTitle => 'Privacy & Safety';
 
   @override
@@ -450,6 +459,54 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get addFriendsToStart => 'Add friends to start chatting';
+
+  @override
+  String get contactNetworkLocalNode => 'LOCAL NODE';
+
+  @override
+  String get contactNetworkYouLocalNode => 'You, local node';
+
+  @override
+  String contactNetworkSemantic(num count) {
+    return 'Contact network, $count contacts';
+  }
+
+  @override
+  String contactNetworkNodes(String count) {
+    return 'NODES $count';
+  }
+
+  @override
+  String get contactNetworkShowList => 'List view';
+
+  @override
+  String get contactNetworkShowMap => 'Network view';
+
+  @override
+  String get contactNetworkOpenChatHint => 'Open chat';
+
+  @override
+  String get contactNetworkAddSlot => 'add';
+
+  @override
+  String get contactNetworkAddSlotSemantic => 'Add a contact';
+
+  @override
+  String contactNetworkPendingRequests(num count) {
+    String _temp0 = intl.Intl.pluralLogic(
+      count,
+      locale: localeName,
+      other: '$count friend requests waiting',
+      one: '1 friend request waiting',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get contactsSearchHint => 'Search contacts';
+
+  @override
+  String get contactsSearchNoResults => 'No matching contacts';
 
   @override
   String get block => 'Block';

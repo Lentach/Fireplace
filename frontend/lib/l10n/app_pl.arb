@@ -29,6 +29,9 @@
   "devicesLoading": "Ładowanie…",
   "settingsAppVersion": "Wersja aplikacji",
   "settingsAboutFireplace": "O projekcie",
+  "settingsSectionPreferences": "PREFERENCJE",
+  "settingsSectionSecurity": "BEZPIECZEŃSTWO",
+  "settingsSectionSession": "SESJA",
 
   "privacySafetyTitle": "Prywatność i bezpieczeństwo",
   "e2eEncryptionEnabled": "Szyfrowanie end-to-end jest włączone",
@@ -158,6 +161,27 @@
   "remove": "Usuń",
   "noContactsYet": "Brak kontaktów",
   "addFriendsToStart": "Dodaj znajomych, aby zacząć pisać",
+  "contactNetworkLocalNode": "WĘZEŁ LOKALNY",
+  "contactNetworkYouLocalNode": "Ty, węzeł lokalny",
+  "contactNetworkSemantic": "Sieć kontaktów, {count} kontaktów",
+  "@contactNetworkSemantic": {
+    "placeholders": { "count": { "type": "num" } }
+  },
+  "contactNetworkNodes": "WĘZŁY {count}",
+  "@contactNetworkNodes": {
+    "placeholders": { "count": { "type": "String" } }
+  },
+  "contactNetworkShowList": "Widok listy",
+  "contactNetworkShowMap": "Widok sieci",
+  "contactNetworkOpenChatHint": "Otwórz czat",
+  "contactNetworkAddSlot": "dodaj",
+  "contactNetworkAddSlotSemantic": "Dodaj kontakt",
+  "contactNetworkPendingRequests": "{count, plural, =1{1 zaproszenie oczekuje} few{{count} zaproszenia oczekują} many{{count} zaproszeń oczekuje} other{{count} zaproszeń oczekuje}}",
+  "@contactNetworkPendingRequests": {
+    "placeholders": { "count": { "type": "num" } }
+  },
+  "contactsSearchHint": "Szukaj kontaktów",
+  "contactsSearchNoResults": "Brak pasujących kontaktów",
   "block": "Zablokuj",
   "imageFailedToLoad": "Nie udało się załadować obrazu",
   "unsupportedMessageType": "Nieobsługiwany typ wiadomości",
