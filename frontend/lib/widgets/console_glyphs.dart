@@ -640,19 +640,58 @@ double _regionProgress(double t, int index, int count) {
 double _activeStroke(ConsoleGlyph glyph) =>
     glyph == ConsoleGlyph.settings ? kGlyphStrokeActive : kGlyphStroke;
 
-/// How far this glyph turns as it becomes selected.
+/// Per-glyph motion on selection.
 ///
-/// Only the gear turns, and by exactly ONE TOOTH PITCH. The mark is 6-fold
-/// symmetric — hex body, six teeth 60° apart — so 60° maps it onto itself:
-/// you watch it turn a notch and it lands perfectly registered. The owner
-/// suggested 45°, which would leave it 15° off its own symmetry and sit
-/// visibly crooked against every other hex in the app.
+/// Each nav glyph moves in a way only that mark could: the gear turns, the
+/// bubble lifts, the comb's cells come apart and reassemble. This is the
+/// thing that makes an authored icon set feel alive — Telegram ships a
+/// separate Lottie file per tab icon for exactly this reason — and it costs
+/// nothing here because the glyphs are already path data.
 ///
-/// An earlier spin was rejected ("gear animation is bad design"), but that
-/// one ran underneath a draw-on, so the glyph was assembling and twisting at
-/// the same time. With the draw-on gone this is the only thing moving.
+/// All three are TRANSIENT: every one returns to zero at t = 1, so the
+/// resting and selected drawings are identical and only the travel is seen.
+
+/// How far the gear turns. One tooth pitch, because the mark is 6-fold
+/// symmetric so 60° maps it onto itself and the travel reads as engaging a
+/// notch. (The owner suggested 45°; since the rotation settles back to zero
+/// either way, that was a taste call on my part, not a constraint.)
 double _selectedSpin(ConsoleGlyph glyph) =>
     glyph == ConsoleGlyph.settings ? -math.pi / 3 : 0;
+
+/// How far the comb's cells fly apart at the peak, in design units.
+const double _kCellSpread = 2.2;
+
+/// How far the bubble lifts at the peak, in design units.
+const double _kBubbleLift = 1.6;
+
+/// A 0 → 1 → 0 bump. Eased on the way out so the return settles rather than
+/// snapping, and exactly zero at both ends so nothing is left displaced.
+double _bump(double t) {
+  if (t <= 0 || t >= 1) return 0;
+  return math.sin(t * math.pi);
+}
+
+/// Displacement for one sub-path of [glyph] at time [t].
+///
+/// For the comb this is radial: each cell is pushed straight out from the
+/// glyph centre and pulled back, so the board visibly comes apart and
+/// reassembles. For the bubble the whole mark lifts. Geometry is centred on
+/// resolve, so the glyph centre is [_c] by construction and the direction can
+/// be read straight off the sub-path's own bounds.
+Offset _motionOffset(ConsoleGlyph glyph, Path subPath, double t) {
+  final bump = _bump(t);
+  if (bump == 0) return Offset.zero;
+  switch (glyph) {
+    case ConsoleGlyph.contacts:
+      final d = subPath.getBounds().center - _c;
+      if (d.distance == 0) return Offset.zero;
+      return d / d.distance * (_kCellSpread * bump);
+    case ConsoleGlyph.chats:
+      return Offset(0, -_kBubbleLift * bump);
+    default:
+      return Offset.zero;
+  }
+}
 
 class ConsoleGlyphPainter extends CustomPainter {
   const ConsoleGlyphPainter({
@@ -711,7 +750,7 @@ class ConsoleGlyphPainter extends CustomPainter {
       canvas.drawPath(path, fill);
     }
     for (final path in geometry.strokes) {
-      canvas.drawPath(path, stroke);
+      canvas.drawPath(path.shift(_motionOffset(glyph, path, t)), stroke);
     }
     for (final dot in geometry.dots) {
       canvas.drawCircle(dot, kGlyphDotRadius, fill);
@@ -720,7 +759,10 @@ class ConsoleGlyphPainter extends CustomPainter {
     if (t > 0 && geometry.activeFills.isNotEmpty) {
       final active = Paint()..color = activeColor ?? color;
       for (var i = 0; i < geometry.activeFills.length; i++) {
-        final region = geometry.activeFills[i];
+        // Each fill rides with the cell it belongs to. For the comb the two
+        // lists are index-aligned one-per-cell, which the keyline test pins.
+        final shift = _motionOffset(glyph, geometry.activeFills[i], t);
+        final region = geometry.activeFills[i].shift(shift);
         final local = _regionProgress(t, i, geometry.activeFills.length);
         if (local <= 0) continue;
         canvas.save();

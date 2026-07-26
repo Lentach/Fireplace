@@ -155,6 +155,22 @@ void main() {
       expect(fill.contains(const Offset(12, 6.8) + delta), isTrue);
     });
 
+    test('the comb pairs one fill to each cell, in order', () {
+      // The painter moves fill i with stroke i when the cells fly apart, so a
+      // mismatch here would send a fill travelling with the wrong cell.
+      final comb = consoleGlyphGeometry(ConsoleGlyph.contacts);
+      expect(comb.activeFills.length, comb.strokes.length);
+      for (var i = 0; i < comb.strokes.length; i++) {
+        final cell = comb.strokes[i].getBounds().center;
+        final fill = comb.activeFills[i].getBounds().center;
+        expect(
+          (cell - fill).distance,
+          lessThan(0.01),
+          reason: 'fill $i is not concentric with cell $i',
+        );
+      }
+    });
+
     test('the comb keeps its seams when solid', () {
       // The three cells SHARE edges. Filling them flush merges all three into
       // one lump with no internal boundary — the silhouette survives but the
