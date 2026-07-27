@@ -191,6 +191,32 @@ tier, and closed the cross-tier test gap — whose very first CI run exposed bot
     conditional imports, a backend service with 9 importers, and multi-line TS imports: no
     misses, no false positives. Standards found no HARD violations; Security found no P0.
 
+### Fifth round — RELEASED 0.0.132
+
+27. **Shipped as `0.0.132` / `05fc423`, both surfaces, smoke 5/5.** The owner chose the
+    "ship it properly" option over a backend-only deploy, because `deploy-backend.sh:24`
+    derives `APP_VERSION` from `frontend/pubspec.yaml` — bumping and deploying only the
+    backend would have left `/version` at 0.0.132 while `/version.json` still read 0.0.131.
+28. **Only ONE production file was in this release**: `backend/src/database/migration-runner.ts`.
+    Zero `frontend/lib` changes — the web bundle was rebuilt purely so both surfaces report the
+    same semver. Everything else this session (`scripts/`, `.githooks/`, `.github/`, `CLAUDE.md`,
+    `.gitignore`) is tooling and docs that never reach prod.
+29. **The release changes nothing for the running server, and that was the point.** Both
+    migration bugs only fire on an EMPTY database; production's baseline is stamped, so the
+    repaired code path is never executed there. The value is disaster recovery: before this,
+    a from-scratch restore would have failed to boot. Confirmed live — the backend came up
+    `healthy` in 10s with `db:ok`, i.e. the runner took the stamped path exactly as the review
+    predicted.
+30. **Order and evidence.** CI green on `05fc423` (all three jobs, `e2e-wire` included) BEFORE
+    touching prod. Backend first (riskier: container recreate + migration run), so a failure
+    would not have left a swapped frontend bundle against an old backend. Then
+    `deploy-web.ps1` (build → scp → atomic swap). Then `post-deploy-smoke.mjs`: `/health`,
+    both version surfaces, **`main.dart.js` literally containing `05fc423`** (the only real
+    stale-build detector), and a headless app boot.
+31. **Outstanding for the owner:** fully close + reopen the PWA to pick up 0.0.132 — never
+    uninstall or clear site data, that destroys the local Signal keys. Then issues #100 (rotate
+    `CONTACT_INBOX_KEY`), #101 (install gitleaks), #102 (finish brace-expansion).
+
 ## Key files
 
 - `scripts/impact.mjs` (new) — the tool. Header documents its scope limit.
