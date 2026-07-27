@@ -99,6 +99,51 @@ existing graph ritual was producing near-random answers for the Flutter tier. Tw
    architecture, wire contracts, documented traps — stay trustworthy as written; an absolutist
    version would have been more ritual than the session removed.
 
+### Third round — the E2E gap, and the two DR bugs it found
+
+13. **`e2e-wire` CI job added** (`.github/workflows/ci.yml`). Full-stack harness: real Postgres
+    + backend via `docker compose`, then `flutter test test_e2e`. It is the ONLY automated
+    guard on the §7 wire contracts — unit tests on each side mock the other, and `impact.mjs`
+    cannot see across the wire. `continue-on-error: true` and `timeout-minutes: 25` are
+    STAGING ONLY, to gather reliability signal; while set, **this job is observability, not
+    protection.** Promote it to a required check once it has a green streak. Teardown uses
+    `docker compose down` without `-v` deliberately, so the repo never normalises a flag
+    `CLAUDE.md` §4 bans on prod.
+14. **BUG 1 — `0001_baseline.sql` could NEVER execute on a fresh database.** `pg_dump`
+    brackets its output with `\restrict` / `\unrestrict`, which are psql META-commands, not
+    SQL (our baseline header says pg_dump **16.13** — not a 17+ quirk). Sent through
+    node-postgres they raise `syntax error at or near "\"`. Invisible for months because live
+    prod and every existing dev DB **stamp** the baseline instead of running it — the only
+    paths that execute it are a brand-new environment and **disaster recovery**.
+15. **BUG 2, immediately behind it — the tracking INSERT died too.** The baseline ends with
+    `set_config('search_path','',false)`, which is session-wide and therefore still in force
+    for the `INSERT INTO schema_migrations` that runs right after it *inside the same
+    transaction*: `relation "schema_migrations" does not exist`. The `RESET ALL` that repairs
+    the session only runs after COMMIT. All four references are now `public.`-qualified,
+    matching the rule `backend/CLAUDE.md` §4 already stated for migration SQL.
+16. **Both fixes live in the runner, not the migration** — applied migration files are
+    IMMUTABLE (`backend/CLAUDE.md` §4), and a later migration cannot repair a baseline that
+    never starts. The meta-command strip is scoped to `BASELINE_FILENAME` alone: the regex is
+    line-based and would corrupt a dollar-quoted body, so every other migration is executed
+    byte-for-byte, with a test pinning that.
+17. **Repo is PRIVATE** — `gh repo view --json isPrivate` → `true`, while `CLAUDE.md:20` and
+    `.gitignore` both asserted "public" and had shaped the whole summary-visibility policy.
+    Un-ignored `.cursor/session-summaries/*`: 111 previously-local files committed, 225 total.
+    Scanned for secrets/PII first (clean). Then scrubbed the now-published false guidance —
+    correction banner on `2026-07-26-HANDOFF-START-HERE.md`, and a new `README.md` in the
+    directory carrying both corrections once instead of editing 20 historical files.
+18. **Frontend test-count verifier** (`scripts/verify-claude-frontend-test-counts.mjs`),
+    mirroring the backend one. `LATEST` claimed 879; the real number was 903 — already
+    drifted. It initially FAILED on CI: `flutter test` prints `🎉 903 tests passed, 4 skipped.`
+    when not attached to a TTY, not the `+N ~M:` progress counter a local run emits. Parser
+    now handles both. The CI step redirects to a log instead of `| tee`, so its exit status is
+    Flutter's own and does not depend on pipefail.
+19. **`CLAUDE.md` §4–§6 compressed**, deploy-only detail moved into
+    `.cursor/rules/production-vm-deploy.mdc` (loaded on demand). Checked FIRST that the runbook
+    did not already cover it — it did not cover the smoke script, staging, backup cron, or the
+    env table, so those were MOVED, not deleted. Verified afterwards that every relocated term
+    resolves in one file or the other. Net 3341 → 3120 tokens despite six rules added.
+
 ## Key files
 
 - `scripts/impact.mjs` (new) — the tool. Header documents its scope limit.

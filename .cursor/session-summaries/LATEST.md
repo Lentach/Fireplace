@@ -1,26 +1,27 @@
 # Latest session summary
 
-**Date:** 2026-07-27 — **no product code changed.** Started as "is master clear?", became an evaluation of the `Egonex-AI/Understand-Anything` plugin (REJECTED), and ended by finding that our own graph ritual was near-random on the Flutter tier. Two commits on `master`: `89aa3a5` + the hook guard. Nothing deployed; live is still **0.0.131 / `f4d3967`**.
+**Date:** 2026-07-27 — a workflow/infra session that found **two real production bugs**. No product code changed. Live is still **0.0.131 / `f4d3967`**; nothing deployed.
 
 ## What was done
-1. **MEASURED graphify instead of trusting it.** Its `graph.json` file→file import edges score **86.6% precision / 90.7% recall on backend TS** but **0.5% / 1.5% on frontend Dart** — it collapses every relative specifier (`../../theme/rpg_theme.dart`) into one node attributed to an arbitrary file. It claimed the only importer of `contact_network_view.dart` was itself; truth is `contacts_screen.dart:13`. It works on the tier we touch least and is noise on the tier we touch most.
-2. **`scripts/impact.mjs` (new)** — "who depends on what I changed, and which tests import it", parsed from source in ~0.6s, no LLM. Handles Dart conditional imports (29 files, multiline, some with two `if` clauses), **bare same-directory specifiers** (the bug that made every `_web`/`_io` file look importer-less), `package:fireplace/…`, TS barrels, untracked files and deletions. **1639 internal specifiers, 0 unresolved.**
-3. **Graph rebuild automated + guarded.** `.githooks/post-commit` rebuilds in the background; a changed-extension filter sits **above** the `graphify-hook-start` marker (so `graphify hook install` cannot clobber it) because the graphify block claims "code files only" but actually fires on any commit and re-extracts all 684 files.
-4. **`Understand-Anything` rejected** despite genuine first-class Dart support (real `DartExtractor`, vendored tree-sitter WASM, Flutter widget-construction call edges): no MCP/CLI so it cannot run in this harness (its npm `main` points at a file absent from the repo), user-reported tens of millions of tokens per init, and a `curl|bash` + global-symlink + confirmation-suppressing-hook install surface. Two of my initial objections were overstated and withdrawn — an unmerged malicious PR is the normal public-repo threat, and stars:subscribers proves nothing.
-5. `CLAUDE.md` §1 L30-31 and §2 L46 rewritten; root-only scratch media gitignored.
+1. **MEASURED graphify instead of trusting it.** Its file→file import edges score **86.6%/90.7% on backend TS** but **0.5%/1.5% on frontend Dart** — it collapses every relative specifier into one node attributed to an arbitrary file. It claimed `contact_network_view.dart`'s only importer was itself; truth is `contacts_screen.dart:13`. Kept and automated, but DEMOTED: never answer a Flutter dependency question from `GRAPH_REPORT.md`.
+2. **`scripts/impact.mjs` (new)** — who depends on what I changed + which tests import it, parsed from source in ~0.6s. Handles Dart conditional imports, bare same-directory specifiers, `package:fireplace/…`, TS barrels, untracked files, deletions. **1639 specifiers, 0 unresolved.** 16 hermetic self-tests in CI.
+3. **`.githooks/post-commit` rebuilds the graph** in the background, guarded to code-only commits (the graphify block claims "code files only" and does not filter).
+4. **BUG: `0001_baseline.sql` could never run on a fresh database.** `pg_dump` brackets its dump with `\restrict`/`\unrestrict` psql meta-commands; node-postgres answers `syntax error at or near "\"`. **BUG 2, right behind it:** the baseline ends with `set_config('search_path','',false)`, so the runner's own unqualified tracking INSERT died with `relation "schema_migrations" does not exist`. Both hit only EMPTY databases — i.e. disaster recovery — because prod stamps the baseline instead of running it. Fixed in the runner (baseline is immutable), 3 regression tests.
+5. **`e2e-wire` CI job added** — full-stack harness vs real Postgres+backend. It found both bugs on its first run. **11 wire tests green.**
+6. **Repo is PRIVATE** (`gh repo view --json isPrivate` → true); docs said "public". All 225 dated summaries are now committed, and the false policy they carried is corrected.
+7. Frontend test-count verifier added; `CLAUDE.md` §4–§6 deploy detail moved to the runbook.
 
 ## Verification
-- **`scripts/impact.selftest.mjs`: 16/16 pass**, hermetic (throwaway repo in `$TMPDIR`), wired into CI before `npm ci`. Run unpiped so the exit code is real.
-- Every parser fix checked against `grep` ground truth. Recommended command actually run: **35 passed**.
-- Hook fired on `89aa3a5`, rebuild completed (9520 nodes), report advanced to `89aa3a50`. Guard tested both ways on real commits: code → REBUILD, docs → skip.
+- Backend **541/47 green**, Flutter **903 + 4 skipped green**, both counts now machine-verified in CI. `e2e-wire` **11 passed** against real Postgres.
+- Migration fix falsified by reverting it (test goes red). Every parser fix checked against `grep`.
 
 ## Notes for next session
-- **`impact.mjs` is an inner-loop hint, NOT a coverage oracle** — static imports only, 3 hops; blind to NestJS DI wiring, §7 wire contracts, assets/config. Full tier suites still gate commits and PRs. Do not let it justify skipping `flutter test` / `npm test`.
-- **TRAP: `core.filemode=false` here** — new hooks stage as `100644` even after `chmod +x` and are silently ignored on Linux/fresh clones. Fixed via `git update-index --chmod=+x`; check `git ls-files --stage .githooks/` after adding any hook. Activation is still per-clone: `git config core.hooksPath .githooks`.
-- Never answer a Flutter dependency question from `GRAPH_REPORT.md`. Re-run the measurement before trusting graphify's Dart edges again.
-- **Dependabot #95 is VALID and still open — do NOT dismiss it.** `207bc06` upgraded only the four `^5.0.5` copies to `5.0.8`; the alert's range is `<= 5.0.7`, which also covers **root `brace-expansion@1.1.16`** and three nested `2.1.2` copies (`@jest/reporters`, `jest-config`, `jest-runtime`) that were never touched. So the lockfile is PARTIALLY upgraded, not fixed. All eight copies are `dev: true` (eslint/jest tooling; the prod container ships prod deps only), so it is not deploy-blocking — but the fix is to upgrade the remaining four, not to close the alert. Earlier notes claiming "#95 fixed in 207bc06" are wrong.
-- **Session records: only `LATEST.md` is committed GOING FORWARD.** `.gitignore:51` ignores `.cursor/session-summaries/*` except this file, so `git add` there silently skips new dated summaries. The 114 dated files **up to 2026-07-22** predate that rule and remain tracked — readable on any clone. **Everything from 2026-07-23 on is local-only, including every dated file linked from this page.** So never cut a trap from LATEST because "the dated file has it": off this machine, it does not. Size-capped by `.githooks/pre-commit` (≤5 entries, ≤2600 words, ≤700/entry).
-- ➡ Full detail (local-only): **`2026-07-27-session-workflow-tooling.md`**.
+- **`impact.mjs` is an inner-loop hint, NOT a coverage oracle** — static imports, 3 hops; blind to NestJS DI, §7 wire contracts, assets. Full tier suites still gate commits/PRs.
+- **PROMOTE `e2e-wire` to a required check.** It is `continue-on-error` ONLY to gather reliability signal, and it is the sole automated guard on the §7 wire contracts. While non-gating it is observability, not protection. Note it already caught two DR-class bugs.
+- **TRAP: `core.filemode=false` here** — new hooks stage `100644` even after `chmod +x` and are silently ignored on Linux. Use `git update-index --chmod=+x`; check `git ls-files --stage .githooks/`. Hook activation is per-clone: `git config core.hooksPath .githooks`.
+- **Dependabot #95 is VALID — do NOT dismiss.** `207bc06` upgraded only the four `^5.0.5` copies; the range `<= 5.0.7` also covers root `brace-expansion@1.1.16` and three nested `2.1.2`. Partially upgraded, dev-only, not deploy-blocking. Fix the remaining four.
+- `gitleaks` is NOT installed here, so the pre-commit scan runs a weaker regex fallback.
+- ➡ Detail: **`2026-07-27-session-workflow-tooling.md`**; orientation for this directory: **`README.md`**.
 
 ---
 ### Prior latest ↓
