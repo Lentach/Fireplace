@@ -19,6 +19,7 @@
 - **TRAP: `core.filemode=false` here** — new hooks stage as `100644` even after `chmod +x` and are silently ignored on Linux/fresh clones. Fixed via `git update-index --chmod=+x`; check `git ls-files --stage .githooks/` after adding any hook. Activation is still per-clone: `git config core.hooksPath .githooks`.
 - Never answer a Flutter dependency question from `GRAPH_REPORT.md`. Re-run the measurement before trusting graphify's Dart edges again.
 - **Dependabot #95 is VALID and still open — do NOT dismiss it.** `207bc06` upgraded only the four `^5.0.5` copies to `5.0.8`; the alert's range is `<= 5.0.7`, which also covers **root `brace-expansion@1.1.16`** and three nested `2.1.2` copies (`@jest/reporters`, `jest-config`, `jest-runtime`) that were never touched. So the lockfile is PARTIALLY upgraded, not fixed. All eight copies are `dev: true` (eslint/jest tooling; the prod container ships prod deps only), so it is not deploy-blocking — but the fix is to upgrade the remaining four, not to close the alert. Earlier notes claiming "#95 fixed in 207bc06" are wrong.
+- **LATEST.md is the ONLY committed session record.** `.gitignore:51` ignores `.cursor/session-summaries/*` except this file (right call — public repo, dated summaries carry VM/infra + incident detail). So `git add` on that directory silently skips dated summaries, and a fresh clone sees ONLY this file. Never cut a trap from LATEST on the grounds that "the dated file has it" — off this machine it does not. LATEST is now size-capped by `.githooks/pre-commit` (≤5 entries, ≤2600 words, ≤700/entry) after sitting at ~8.7k tokens that every agent and subagent paid on read.
 - ➡ Full detail: **`2026-07-27-session-workflow-tooling.md`**.
 
 ---
@@ -45,7 +46,7 @@
 - `MainShell`'s `IndexedStack` wraps children in `Visibility(maintainAnimation: true)`, so an offstage tab's animations run at app boot — the honeycomb's entrance stagger has never actually been seen. Status quo, and FINE.
 - **NEVER run `dart format lib/`** — it reformatted 70 untouched files. Format only files you edited.
 - **Ask before opening the browser tool** — it is not headless and pops a window in front of the owner.
-- ➡ Detail: `2026-07-25-session-console-glyphs.md` and `2026-07-25-session-settings-console.md`. **Both 2026-07-25 handoffs are banner-marked SUPERSEDED — do not pick them up** (`2026-07-25-HANDOFF-START-HERE.md`, `2026-07-25-handoff-branch-ready-to-merge.md`); the later brief is `2026-07-26-HANDOFF-START-HERE.md`, itself now historical since PR #98 merged.
+- ➡ Detail: `2026-07-25-session-console-glyphs.md` and `2026-07-25-session-settings-console.md`. The 2026-07-25 handoffs were DELETED on 2026-07-27 (they were banner-marked SUPERSEDED and one nearly got followed); `2026-07-26-HANDOFF-START-HERE.md` survives as historical context only — PR #98 shipped what it gated.
 
 ---
 ### Prior latest ↓
