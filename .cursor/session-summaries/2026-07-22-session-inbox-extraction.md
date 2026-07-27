@@ -60,9 +60,13 @@ Tiny self-hosted service that owns everything under `/contact*`:
   containers healthy. `/health` ok, `/version.json` frontend 0.0.122 unchanged.
 
 ## Notes for next session
-- **Owner's inbox URL unchanged**: `https://fireplace.ignorelist.com/contact/inbox?key=547ac8b6927b2c42969c6478cc3cde1054a93d2d3a244280d1f1d0226d071d95`
-  (still the same `CONTACT_INBOX_KEY`; now served by the new service). iPhone setup
-  still pending (Safari → Add to Home Screen → open from icon → Enable notifications).
+- **Owner's inbox URL**: `https://fireplace.ignorelist.com/contact/inbox?key=<ROTATED-2026-07-27>`
+  **The key that was pasted here in cleartext was ROTATED on 2026-07-27 and is DEAD** (verified:
+  old key → 404, new key → 200). Issue #100, closed. The dead value survives in git history — that
+  is accepted, not an open leak; do not re-raise it and do not scrub history. Read the current key
+  with `ssh ubuntu@51.68.138.13 'grep CONTACT_INBOX_KEY ~/fireplace-inbox/.env'`; keep it in a
+  password manager and **never** paste it into a summary again. iPhone setup still pending
+  (Safari → Add to Home Screen → open from icon → Enable notifications).
 - **Two doorbells still ring**: the new inbox service AND the old `bob208 (id 37)`
   account ping — WAIT, the account ping lived in the removed backend module, so it is
   now GONE with the cutover. `CONTACT_NOTIFY_USER_ID` in `~/fireplace/.env` is now a

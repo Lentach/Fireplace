@@ -21,9 +21,9 @@
 - **`e2e-wire` is now CI-failing** (`continue-on-error` removed after 5 consecutive greens; it caught two DR bugs on its first two runs). **But red is NOT a gate here** — branch protection is a paid feature, 403 on this private free-plan repo, so nothing blocks a push or merge and small fixes still go straight to `master`. Checking the run is a human/agent duty: `gh run list --branch master --limit 1`. If it flakes, restore `continue-on-error: true` deliberately and record it.
 - **Owner must fully close + reopen the PWA** to pick up 0.0.132 (Settings footer → `0.0.132 / 05fc423`). **NEVER uninstall or clear site data** — that destroys the local E2E Signal keys.
 - **Open work is now tracked as GitHub issues — read them, do not re-derive from here.**
-  - **#100 (bug, do first): rotate `CONTACT_INBOX_KEY`.** A live 64-hex bearer key guarding `/contact/inbox` (every landing contact-form submission — third parties' names, emails, message text) is committed at `2026-07-22-session-inbox-extraction.md:63`. **PRE-EXISTING**: blob `bd5fe89` identical at `05e0962` and HEAD, from `2a70e38`, and in none of the 112 summaries published 2026-07-27. Rotation commands are in the issue.
-  - **#101: install `gitleaks`.** Not installed, so `.githooks/pre-commit` falls back to a prefix-only regex that cannot catch high-entropy secrets — #100 is the proof it missed one. Never cite that hook as the reason a paste was safe.
-  - **#102: finish Dependabot #95.** `207bc06` fixed only four of eight `brace-expansion` copies; root `1.1.16` + three nested `2.1.2` are still inside `<= 5.0.7`. Dev-only, not deploy-blocking. **Do not dismiss the alert.**
+  - **#100 CLOSED 2026-07-27 — `CONTACT_INBOX_KEY` ROTATED.** New key on the VM; old key verified **404**. The value at `2026-07-22-session-inbox-extraction.md:63` is **DEAD** — do not re-raise it.
+  - **#101 DONE — `gitleaks` v8.30.1 installed** (`~/.local/bin`). The hook's gitleaks branch is now live; proven to block a 64-hex `?key=` at entropy 3.97.
+  - **#102: finish Dependabot #95.** Still open. `osv-scanner` confirms **4 of 8** `brace-expansion` copies vulnerable: root `1.1.16` + `2.1.2` under `@jest/reporters`, `jest-config`, `jest-runtime`. Dev-only. **Do not dismiss.**
 - ➡ Detail: **`2026-07-27-session-workflow-tooling.md`**; orientation for this directory: **`README.md`**.
 
 ---
