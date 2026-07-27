@@ -10,7 +10,8 @@
 // coverage. This follows `--depth` hops (default 3) through STATIC IMPORTS only. It
 // cannot see NestJS DI/module wiring, the client<->server wire contracts, assets or
 // config, or any behaviour a test exercises without importing the changed file. Use it
-// to retest fast while iterating; the full tier suite still gates commits and PRs.
+// to retest fast while iterating. Running the full tier suite before a commit or PR is
+// required by project policy — nothing on this repo enforces it mechanically.
 //
 // Why not graphify's graph.json: measured 2026-07-27 against resolved imports, its
 // file->file import edges score 86.6% precision / 90.7% recall on backend TypeScript but

@@ -196,8 +196,9 @@ tier, and closed the cross-tier test gap — whose very first CI run exposed bot
 
 - **`impact.mjs` is an inner-loop hint, NOT a coverage oracle.** It follows static imports for
   `--depth` hops (default 3). It cannot see NestJS DI/module wiring, the §7 wire contracts,
-  assets/config, or anything a test exercises without importing the changed file. The full tier
-  suite still gates commits and PRs — this is stated in the script header, in its output
+  assets/config, or anything a test exercises without importing the changed file. Running the
+  full tier suites before a commit or PR is required by PROJECT POLICY — nothing enforces it
+  mechanically. That limit is stated in the script header, in the tool's own output
   ("Retest (inner loop only…)"), and in `CLAUDE.md`. Do not let it become an excuse to skip
   `flutter test` / `npm test`.
 - **TRAP — `core.filemode=false` on this machine.** New hooks staged as `100644` even after
