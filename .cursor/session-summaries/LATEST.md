@@ -1,5 +1,28 @@
 # Latest session summary
 
+**Date:** 2026-07-27 — **no product code changed.** Started as "is master clear?", became an evaluation of the `Egonex-AI/Understand-Anything` plugin (REJECTED), and ended by finding that our own graph ritual was near-random on the Flutter tier. Two commits on `master`: `89aa3a5` + the hook guard. Nothing deployed; live is still **0.0.131 / `f4d3967`**.
+
+## What was done
+1. **MEASURED graphify instead of trusting it.** Its `graph.json` file→file import edges score **86.6% precision / 90.7% recall on backend TS** but **0.5% / 1.5% on frontend Dart** — it collapses every relative specifier (`../../theme/rpg_theme.dart`) into one node attributed to an arbitrary file. It claimed the only importer of `contact_network_view.dart` was itself; truth is `contacts_screen.dart:13`. It works on the tier we touch least and is noise on the tier we touch most.
+2. **`scripts/impact.mjs` (new)** — "who depends on what I changed, and which tests import it", parsed from source in ~0.6s, no LLM. Handles Dart conditional imports (29 files, multiline, some with two `if` clauses), **bare same-directory specifiers** (the bug that made every `_web`/`_io` file look importer-less), `package:fireplace/…`, TS barrels, untracked files and deletions. **1639 internal specifiers, 0 unresolved.**
+3. **Graph rebuild automated + guarded.** `.githooks/post-commit` rebuilds in the background; a changed-extension filter sits **above** the `graphify-hook-start` marker (so `graphify hook install` cannot clobber it) because the graphify block claims "code files only" but actually fires on any commit and re-extracts all 684 files.
+4. **`Understand-Anything` rejected** despite genuine first-class Dart support (real `DartExtractor`, vendored tree-sitter WASM, Flutter widget-construction call edges): no MCP/CLI so it cannot run in this harness (its npm `main` points at a file absent from the repo), user-reported tens of millions of tokens per init, and a `curl|bash` + global-symlink + confirmation-suppressing-hook install surface. Two of my initial objections were overstated and withdrawn — an unmerged malicious PR is the normal public-repo threat, and stars:subscribers proves nothing.
+5. `CLAUDE.md` §1 L30-31 and §2 L46 rewritten; root-only scratch media gitignored.
+
+## Verification
+- **`scripts/impact.selftest.mjs`: 16/16 pass**, hermetic (throwaway repo in `$TMPDIR`), wired into CI before `npm ci`. Run unpiped so the exit code is real.
+- Every parser fix checked against `grep` ground truth. Recommended command actually run: **35 passed**.
+- Hook fired on `89aa3a5`, rebuild completed (9520 nodes), report advanced to `89aa3a50`. Guard tested both ways on real commits: code → REBUILD, docs → skip.
+
+## Notes for next session
+- **`impact.mjs` is an inner-loop hint, NOT a coverage oracle** — static imports only, 3 hops; blind to NestJS DI wiring, §7 wire contracts, assets/config. Full tier suites still gate commits and PRs. Do not let it justify skipping `flutter test` / `npm test`.
+- **TRAP: `core.filemode=false` here** — new hooks stage as `100644` even after `chmod +x` and are silently ignored on Linux/fresh clones. Fixed via `git update-index --chmod=+x`; check `git ls-files --stage .githooks/` after adding any hook. Activation is still per-clone: `git config core.hooksPath .githooks`.
+- Never answer a Flutter dependency question from `GRAPH_REPORT.md`. Re-run the measurement before trusting graphify's Dart edges again.
+- ➡ Full detail: **`2026-07-27-session-workflow-tooling.md`**.
+
+---
+### Prior latest ↓
+
 **Date:** 2026-07-27 — three releases in one session. (a) `feat/nav-rework` merged as PR #98 → **0.0.130**. (b) **RELEASED: `feat/backlog-sweep` merged as PR #99 (`f4d3967`) → frontend AND backend both at 0.0.131, smoke 5/5.** This is the session's **first backend production deploy** — `deploy-backend.sh` on the VM derives `APP_VERSION` from `frontend/pubspec.yaml`, so one bump versioned both surfaces; `/version.json` and `/version` both read `0.0.131 / f4d3967` and the container is `healthy`. Query-only change, **no schema migration**. Owner's words: *"pr merge make master great again"*, *"do all Left on the table, deliberately"*, *"pr merge and deploy"*. **The honeycomb `ListView` rewrite is the one queued item NOT done — explicitly RE-DEFERRED by the owner (see below; do not read this as a cleared backlog).**
 
 ### Backlog sweep — shipped in 0.0.131 (details in `2026-07-27-session-backlog-sweep.md`)
@@ -112,23 +135,4 @@
 - On the next logout report, BEFORE re-deriving anything: (1) grep backend logs for `[identity-churn]` and `[auth-session-end]`; (2) nginx: did the victim's login carry `X-App-Commit`? absent/old = stale bundle; (3) victim's login-screen footer screenshot now shows commit + reason; (4) `refresh_tokens.expires_at` vs `created_at`+365d = never-slid fingerprint. Forensic trap: OTP upsert preserves `createdAt` and overwrites `identityPublicKey` — use Postgres `xmin` for rewrite dating.
 - Platform truth (sources verified): `persist()` is real eviction protection on Android/Chrome installed PWAs; on iOS the home-screen install itself is the main exemption and `persist()` is best-effort. Manual site-data wipes are indefensible on any web platform (= Signal Web) — native builds are the only escape.
 - NEVER clear site data / rotate JWT_SECRET as a "fix". Full details: `2026-07-24-session.md` (local-only, gitignored by incident rule).
-
----
-### Prior latest ↓
-
-**Date:** 2026-07-23 — PR #95 E2E cross-context ratchet repair deployed to production as frontend 0.0.126 / bundle `0486cb3`; backend intentionally unchanged.
-
-## What was done
-1. Created the branch from clean `origin/master`, restored only the 16 reviewed E2E production/test/runbook paths, and verified the diff contains no Contacts files.
-2. Merged the 0.0.126 repair: origin-wide account+peer Web Locks, fail-closed missing-API behavior, exact-ciphertext replay, strict 40-record retention, web-only SharedPreferences coherence, provider message-id binding, and anonymized incident runbook.
-3. Standards review found no hard documented-standard violation or correctness/concurrency defect; three non-blocking notes: the Web Locks test is vacuous under default VM tests, formatting churn inflates the diff, and lock-name strings could be centralized.
-4. Spec review passed every incident requirement with no missing/partial behavior, scope creep, or unsafe implementation.
-
-## Verification
-- Isolated focused suite: **23 passed**; analyze: **0 issues**. Earlier full proof: Flutter **791 passed, 4 existing skips**, browser probe `SESSION_LOCK_PASS`, local full-stack Signal harness **11 passed**. PR CI passed both jobs. Production post-deploy smoke passed `/health`, `/version.json` 0.0.126, `/version`, literal bundle SHA `0486cb3`, and Flutter app boot. Graph: 9208 nodes.
-
-## Notes for next session
-- PR #95 is merged and deployed. Users must fully close and reopen the PWA; never clear site data. Live frontend is 0.0.126 / `0486cb3`; backend remains 0.0.123 / `4609af2`.
-- Highest-value review follow-up: wire `session_cross_context_lock_web_test.dart` into a real Chrome CI lane when the project Chrome launcher is repaired. Manual source-controlled browser probe currently covers the JS boundary.
-- Full: `2026-07-23-session.md`.
 
