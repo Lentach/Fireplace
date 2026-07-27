@@ -15,6 +15,13 @@ backend/coverage/
 # Graphify knowledge graph output (graphify update .) — local only
 graphify-out/
 
+# Scratch screenshots / screen recordings dropped in the repo root while reviewing UI.
+# Root only — real assets live under frontend/assets/ and stay tracked.
+/*.jpg
+/*.jpeg
+/*.png
+/*.mp4
+
 # Flutter
 frontend/build/
 frontend/.dart_tool/

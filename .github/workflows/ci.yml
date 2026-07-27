@@ -30,6 +30,12 @@ jobs:
           cache: npm
           cache-dependency-path: backend/package-lock.json
 
+      # No dependencies needed - runs before `npm ci` so a broken impact tool fails
+      # fast instead of after a full install.
+      - name: Self-test scripts/impact.mjs
+        working-directory: .
+        run: node scripts/impact.selftest.mjs
+
       - name: Install backend dependencies
         run: npm ci
 
