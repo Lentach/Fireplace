@@ -171,3 +171,88 @@ all of `/contact*`. Fastify + SQLite + web-push, one Docker container.
 2. Backend change → remind `./deploy-backend.sh` on the VM. Frontend change → remind `deploy-web.ps1` on the PC.
 3. Mention new `pubspec` version if bumped.
 4. Do not claim prod is updated until confirmed via `curl /version.json` (frontend) / `curl /version` (backend) / Settings line.
+
+---
+
+## Moved here from root `CLAUDE.md` (2026-07-27)
+
+Root `CLAUDE.md` is loaded by every agent AND every subagent, so deploy-only detail was
+costing ~1.2k tokens on every spawn for something ~90% of sessions never touch. It lives
+here now. The irreversible footguns stayed inline in `CLAUDE.md` §4–§6 on purpose.
+
+### One-shot deploy verification
+
+```bash
+cd scripts/smoke && node post-deploy-smoke.mjs      # one-time: npm install && npx playwright install chromium
+```
+
+Checks `/health`, both version surfaces, that the served `main.dart.js` literally contains
+the expected git short-sha (**the definitive stale-build detector** — semver can be bumped
+while Flutter serves cached code), and boots the app in a fresh headless browser. Defaults
+to local HEAD; `--commit <sha>` checks an older deploy.
+
+### Frontend deploy detail
+
+`.\deploy-web.ps1` runs `flutter clean`, then `flutter build web --release --no-wasm-dry-run`
+with `BASE_URL`, `GIT_COMMIT`, `BUILD_TIME`, `WEB_PUSH_VAPID_PUBLIC_KEY`, and publishes by
+staging + atomic swap into `~/fireplace/frontend-build/`.
+
+Change not taking effect → `cd frontend && flutter clean` before re-running, then hard-bust
+the PWA service-worker cache (an incognito tab proves whether the bundle actually changed).
+
+### Staging dress rehearsal (a GATE for risky deploys, not routine)
+
+`.\staging.ps1` boots the real prod compose isolated as `fireplace-staging` — backend `:3100`,
+db `:5533`, its own volumes, dummy secrets in gitignored `.env.staging` (**NEVER the real
+`JWT_SECRET`**).
+
+Rehearse BEFORE deploying anything touching `*.entity.ts`, manual SQL, `docker-compose.prod.yml`,
+`backend/Dockerfile`, or bootstrap/config code. Skip it for UI work.
+Flow: `up` → `restore <dump>` (or `seed-schema` for entity-fresh) → `sql <migration>` (runs with
+`lock_timeout=10s`) → `harness` (wire harness against the prod-mode stack).
+It does NOT rehearse nginx/TLS, host permissions, or real devices.
+
+### Backup setup
+
+`./setup-backup-cron.sh` on the VM stores the gpg passphrase in a 0600 file (never on the cron
+line or argv) and installs the daily cron. Without it there are effectively no backups, or
+unencrypted ones — `backup-db.sh` skips `.env` and warns when no passphrase is configured.
+Store the passphrase OFF the VM, and decrypt-test one dump before trusting any of them.
+
+Offsite: `BACKUP_RCLONE_REMOTE=remote:bucket/prefix` on the cron line uploads encrypted
+artifacts (verify by listing the remote) — B2 with an append-only application key (no
+`deleteFiles`), pruning via bucket lifecycle. `BACKUP_HEALTHCHECK_URL` pings a dead-man
+monitor ONLY on full success.
+
+`./restore-db.sh <dump>` is DB-only, destructive, and wraps `pg_restore` in one transaction.
+Media and `.env` restore are manual.
+
+### Core env vars
+
+| Area | Vars |
+|---|---|
+| DB | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME` |
+| Auth/CORS | `JWT_SECRET` (>=32 chars, generated once and persisted — do NOT rotate during normal deploys or host moves; if exposed, rotate only after sticky-session refresh is deployed, since valid refresh tokens mint new access JWTs without re-login), `ALLOWED_ORIGINS` |
+| Media | `MEDIA_BASE_URL`, `MEDIA_DIR`, `MEDIA_CLEANUP_GRACE_MS`, `MEDIA_X_ACCEL_REDIRECT` |
+| Push | `FIREBASE_SERVICE_ACCOUNT`, `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`, `WEB_PUSH_VAPID_SUBJECT` |
+| Frontend dart-defines | `BASE_URL`, `GIPHY_API_KEY`, `WEB_PUSH_VAPID_PUBLIC_KEY`, `GIT_COMMIT`, `BUILD_TIME` |
+| Deploy metadata | `APP_VERSION`, `GIT_COMMIT`, `BUILD_TIME` |
+
+The VAPID public key in the frontend build MUST match the backend VAPID keys. A mismatch
+silently breaks web-push subscribe/delivery — a stupidly easy footgun.
+
+### Branch testing before merge
+
+Frontend: check the branch out on the PC, `cd frontend && flutter clean && cd .. && .\deploy-web.ps1`,
+confirm the Settings `gitCommit` matches the branch commit, smoke-test on device.
+Backend: on the VPS, `git fetch origin && git checkout <branch> && ./deploy-backend.sh`, verify
+`/version` + `/health`. Production becomes permanent only after PR merge to `master` + a normal deploy.
+
+### VM logs
+
+```bash
+cd ~/fireplace && docker compose -f docker-compose.prod.yml logs -f --since 1m backend
+```
+
+Filter instrumentation with `| grep --line-buffered "<tag>"`. NestJS `this.logger.log` goes to
+stdout → docker logs.

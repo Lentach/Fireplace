@@ -66,57 +66,39 @@ cd frontend && flutter run -d chrome
 
 ## 4. Production deploy and safety
 
-Production: `https://fireplace.ignorelist.com`, **OVH VPS** `ubuntu@51.68.138.13` (Warszawa, 4 GB + 2G swap, Ubuntu 24.04, key-only SSH), repo `~/fireplace`. Migrated off GCP 2026-07-08; the GCP project is **fully decommissioned** (instance, disk, snapshots, static IP deleted 2026-07-14) — treat any `gcloud`/GCP instructions in older docs as historical.
+Production: `https://fireplace.ignorelist.com`, **OVH VPS** `ubuntu@51.68.138.13` (Warszawa, key-only SSH), repo `~/fireplace`. GCP was fully decommissioned 2026-07-14 — treat any `gcloud` instruction in older docs as historical.
 
-Full runbook (paths, verification table, backup/restore, troubleshooting): `.cursor/rules/production-vm-deploy.mdc` — read it before non-trivial prod ops.
+**Deploy is SPLIT** because the VM cannot compile Flutter web without OOM:
 
-Deploy is split because small servers cannot compile Flutter web without OOM/freezing:
+- Frontend, from the PC: `git pull ; .\deploy-web.ps1`
+- Backend, on the VM: `cd ~/fireplace && ./deploy-backend.sh`
+- Verify: `cd scripts/smoke && node post-deploy-smoke.mjs`
 
-- Frontend deploy is from the PC: `git pull ; .\deploy-web.ps1`.
-  - Script runs `flutter clean` then `flutter build web --release --no-wasm-dry-run` with `BASE_URL`, `GIT_COMMIT`, `BUILD_TIME`, `WEB_PUSH_VAPID_PUBLIC_KEY`.
-  - Publishes by staging + atomic swap into `~/fireplace/frontend-build/`.
-  - Verify served app via `/version.json` and Settings footer. Trust `gitCommit`, not semver alone; Flutter can serve cached code with a bumped version. Change not taking effect → `cd frontend && flutter clean` before `.\deploy-web.ps1`, and hard-bust the PWA service-worker cache (incognito tab proves it).
-  - After deploy: fully close + reopen PWA. Never uninstall / clear site data to refresh — that wipes local E2E Signal keys.
-- Backend deploy is on the VM: `cd ~/fireplace && ./deploy-backend.sh`.
-  - Script runs `git pull --ff-only`, computes `APP_VERSION` from `frontend/pubspec.yaml`, builds the backend image from `docker-compose.prod.yml`, recreates the backend container via `up -d` (db stays up), verifies local `/version` and `/health`. Never run a bare `docker compose -f docker-compose.prod.yml up -d` by hand — without the exported `APP_VERSION`/`GIT_COMMIT` it recreates the backend at `0.0.1/unknown`.
-  - Verify public backend via `curl https://fireplace.ignorelist.com/version` and `/health`.
-- One-shot deploy verification: `cd scripts/smoke && node post-deploy-smoke.mjs` (one-time `npm install && npx playwright install chromium`). Checks `/health`, both version surfaces, that the served `main.dart.js` literally contains the expected git short-sha (definitive stale-build detector), and boots the app in a fresh headless browser. Defaults to local HEAD; `--commit <sha>` to check an older deploy.
-- `deploy.sh` exists but is legacy/all-in-one. Do not use it as the production deploy path and never run Flutter web build on the VM.
-- VM logs: `cd ~/fireplace && docker compose -f docker-compose.prod.yml logs -f --since 1m backend` (filter instrumentation with `| grep --line-buffered "<tag>"`; NestJS `this.logger.log` goes to stdout → docker logs).
-- Never run `docker compose down -v`, `docker volume rm`, or `prune --volumes` on prod. `pgdata` and `media_storage` are user data.
-- Testing a feature branch before merge: frontend — checkout the branch on the PC, `cd frontend && flutter clean && cd .. && .\deploy-web.ps1`, verify Settings `gitCommit` matches the branch commit, smoke-test on device. Backend — on the VPS: `git fetch origin && git checkout <branch> && ./deploy-backend.sh`, verify `/version` + `/health`. Production becomes permanent only after PR merge to `master` + normal deploy.
+**➡ Everything else — script internals, staging rehearsal, backups/restore, the env-var table, branch testing, VM logs — is in `.cursor/rules/production-vm-deploy.mdc`. Read it before any non-trivial prod op.**
 
-## 5. Version and environment contract
+Non-negotiable, because each one is silent or irreversible:
 
-- User-visible app version is semver only from `frontend/pubspec.yaml`: `0.0.x`, no `+build` suffix anywhere (Settings, API, commits). "Bump version by +1" means increment the PATCH segment (`0.0.1` → `0.0.2`), never append `+1`. Production-worthy releases bump PATCH by 1; state the new version in the commit message. Docs/session-only edits do not need a bump. Minor/major bumps only on explicit ask or a clear milestone.
-- Settings footer shows `version · gitCommit · buildTime` from `PackageInfo` + dart-defines.
-- Flutter may still use an internal `versionCode` counter for Android store packaging; that is not the user-facing `0.0.x` string — never put `+N` in `pubspec.yaml`.
-- Backend `GET /version` returns `{ version, gitCommit, buildTime }` from `APP_VERSION`, `GIT_COMMIT`, `BUILD_TIME` injected by deploy scripts.
+- **Trust `gitCommit`, never semver alone.** Flutter happily serves cached code under a bumped version. `/version.json` (frontend) and `/version` (backend) are the truth; `git log` is not.
+- **After a frontend deploy the user must fully close + reopen the PWA. NEVER uninstall or clear site data** — that destroys local E2E Signal keys with no recovery.
+- **Never run `docker compose down -v`, `docker volume rm`, or `prune --volumes` on prod.** `pgdata` and `media_storage` are user data.
+- **Never run a bare `docker compose -f docker-compose.prod.yml up -d`** — without the exported `APP_VERSION`/`GIT_COMMIT` it silently recreates the backend as `0.0.1/unknown`.
+- **Never build Flutter web on the VM**, and never use the legacy all-in-one `deploy.sh`.
 
-Core env vars:
+## 5. Version contract
 
-| Area | Vars |
-|---|---|
-| DB | `DB_HOST`, `DB_PORT`, `DB_USER`, `DB_PASS`, `DB_NAME` |
-| Auth/CORS | `JWT_SECRET` (>=32 chars, generated once and persisted; do not rotate/regenerate during normal deploys or host moves. If exposed, rotate after sticky-session refresh is deployed; valid refresh tokens can obtain new access JWTs without re-login), `ALLOWED_ORIGINS` |
-| Media | `MEDIA_BASE_URL`, `MEDIA_DIR`, `MEDIA_CLEANUP_GRACE_MS`, `MEDIA_X_ACCEL_REDIRECT` |
-| Push | `FIREBASE_SERVICE_ACCOUNT`, `WEB_PUSH_VAPID_PUBLIC_KEY`, `WEB_PUSH_VAPID_PRIVATE_KEY`, `WEB_PUSH_VAPID_SUBJECT` |
-| Frontend dart-defines | `BASE_URL`, `GIPHY_API_KEY`, `WEB_PUSH_VAPID_PUBLIC_KEY`, `GIT_COMMIT`, `BUILD_TIME` |
-| Deploy metadata | `APP_VERSION`, `GIT_COMMIT`, `BUILD_TIME` |
+- The user-visible version is semver from `frontend/pubspec.yaml` ONLY: `0.0.x`, **never** a `+build` suffix anywhere. "Bump by +1" means the PATCH segment (`0.0.1` → `0.0.2`), not `+1` appended. Production releases bump PATCH and state the new version in the commit message; docs/session-only edits do not bump. Minor/major only on explicit ask.
+- Settings footer shows `version · gitCommit · buildTime`; backend `GET /version` returns the same triple from `APP_VERSION`/`GIT_COMMIT`/`BUILD_TIME` injected by the deploy scripts.
+- Android `versionCode` is internal packaging only — it is NOT the user-facing string, and `+N` never belongs in `pubspec.yaml`.
+- Env vars (incl. the `JWT_SECRET` rotation rule and the VAPID key-match footgun): see the runbook's env table.
 
-VAPID public key in the frontend build must match backend VAPID keys. A wrong key means web push subscribe/delivery failures; this is a stupidly easy footgun.
+## 6. Database and E2E safety
 
-## 6. Database, backups, and E2E safety
-
-- Local `docker-compose.yml`: dev only, bind-mounted backend, `NODE_ENV=development`, relaxed CORS, TypeORM auto-DDL.
-- Prod `docker-compose.prod.yml`: `NODE_ENV=production`, restricted CORS, TypeORM `synchronize` OFF. Prod schema changes ship as numbered SQL files in `backend/migrations/`, applied automatically at backend boot by the migration runner (exactly-once, tracked in `schema_migrations`; a failed migration aborts boot). Entities define the dev shape; the migration files are prod truth — see `backend/CLAUDE.md` §4.
-- Staging dress rehearsal (PC, not routine — a GATE for risky deploys only): `.\staging.ps1` boots the real prod compose isolated as `fireplace-staging` (backend `:3100`, db `:5533`, own volumes, dummy secrets in gitignored `.env.staging` — NEVER the real `JWT_SECRET`). Rehearse BEFORE deploying anything that touches `*.entity.ts`, manual SQL, `docker-compose.prod.yml`, `backend/Dockerfile`, or bootstrap/config code; skip it for UI work. Flow: `up` → `restore <dump>` (or `seed-schema` for entity-fresh) → `sql <migration>` (runs with `lock_timeout=10s`) → `harness` (wire harness vs prod-mode stack). It does NOT rehearse nginx/TLS, host perms, or devices.
-- Raw SQL with camelCase columns needs quotes, e.g. `"deliveryStatus"`, `"createdAt"`.
-- Backups: `./backup-db.sh` on VM backs up Postgres + media + encrypted `.env` when a passphrase is configured. Dumps contain ciphertext messages, public keys, usernames/contact graph/timestamps and password hashes; they cannot decrypt messages but are still sensitive.
-- Backup setup: `./setup-backup-cron.sh` on the VM stores the gpg passphrase in a 0600 file (never on the cron line/argv) and installs the daily cron. Without it there are effectively no backups, or unencrypted ones (`backup-db.sh` skips `.env` and warns when no passphrase). Store the passphrase OFF the VM and decrypt-test one dump before trusting it.
-- Offsite: `BACKUP_RCLONE_REMOTE=remote:bucket/prefix` on the cron line uploads encrypted artifacts (verified by listing the remote) — B2 with an append-only application key (no `deleteFiles`), pruning via bucket lifecycle. `BACKUP_HEALTHCHECK_URL` pings a dead-man monitor ONLY on full success. Details in `.cursor/rules/production-vm-deploy.mdc`.
-- Restore: `./restore-db.sh <dump>` is DB-only, destructive, and wraps `pg_restore` in a single transaction; media and `.env` restore are manual.
-- E2E invariant: server stores Signal ciphertext and metadata, never device private keys. Device Signal keys live locally (web localStorage / mobile secure storage). Clearing site data, uninstalling the PWA, or account deletion can destroy keys with no recovery.
+- Dev `docker-compose.yml`: bind-mounted backend, `NODE_ENV=development`, relaxed CORS, TypeORM auto-DDL. Prod `docker-compose.prod.yml`: `NODE_ENV=production`, restricted CORS, `synchronize` **OFF**.
+- **Prod schema changes are numbered SQL files in `backend/migrations/`**, applied exactly once at boot by the migration runner; a failed migration aborts boot. Entities define the dev shape, the migration files are prod truth — full contract in `backend/CLAUDE.md` §4. Applied files are IMMUTABLE.
+- Rehearse on the staging stack before deploying anything touching entities, manual SQL, the prod compose file, the Dockerfile, or bootstrap config (runbook). Skip it for UI work.
+- Raw SQL must quote camelCase columns: `"deliveryStatus"`, `"createdAt"`. Casing is per entity — check, never guess.
+- Backups (`./backup-db.sh`, `./setup-backup-cron.sh`, `./restore-db.sh`) are in the runbook. Dumps hold ciphertext, public keys, usernames/contact graph and password hashes — they cannot decrypt messages but are sensitive.
+- **E2E invariant: the server stores Signal ciphertext and metadata, NEVER device private keys.** Device keys live in web localStorage / mobile secure storage. Clearing site data, uninstalling the PWA, or deleting the account destroys them permanently.
 
 ## 7. Shared wire contracts
 
