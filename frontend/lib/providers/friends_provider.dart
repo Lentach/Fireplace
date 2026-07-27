@@ -9,10 +9,12 @@ class FriendsProvider extends ChangeNotifier {
   // ---------- State ----------
   List<UserModel> _friends = [];
   List<FriendRequestModel> _friendRequests = [];
+  List<FriendRequestModel> _sentRequests = [];
   int _pendingRequestsCount = 0;
   List<UserModel> _blockedUsers = [];
   final Set<int> _blockedByUserIds = {};
   bool _friendRequestJustSent = false;
+
   /// Set when we (sender) receive friendRequestAccepted — acceptor's username for snackbar.
   String? _pendingFriendAcceptedByName;
   List<UserModel>? _searchResults;
@@ -40,11 +42,13 @@ class FriendsProvider extends ChangeNotifier {
 
   List<UserModel> get friends => _friends;
   List<FriendRequestModel> get friendRequests => _friendRequests;
+  List<FriendRequestModel> get sentRequests => _sentRequests;
   int get pendingRequestsCount => _pendingRequestsCount;
   List<UserModel> get blockedUsers => _blockedUsers;
   Set<int> get blockedByUserIds => Set.unmodifiable(_blockedByUserIds);
   List<UserModel>? get searchResults => _searchResults;
   int? get currentUserId => _currentUserId;
+
   /// Peek at pending friend-accepted name without clearing it.
   String? get pendingFriendAcceptedByName => _pendingFriendAcceptedByName;
 
@@ -76,9 +80,16 @@ class FriendsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  void onSentRequestsList(dynamic data) {
+    final list = data as List<dynamic>;
+    _sentRequests = list
+        .map((r) => FriendRequestModel.fromJson(r as Map<String, dynamic>))
+        .toList();
+    notifyListeners();
+  }
+
   void onNewFriendRequest(dynamic data) {
-    final request =
-        FriendRequestModel.fromJson(data as Map<String, dynamic>);
+    final request = FriendRequestModel.fromJson(data as Map<String, dynamic>);
     _friendRequests.insert(0, request);
     notifyListeners();
   }
@@ -92,8 +103,7 @@ class FriendsProvider extends ChangeNotifier {
   /// Backend already emits updated lists; extra calls cause race condition
   /// and overwrite with stale data.
   void onFriendRequestAccepted(dynamic data) {
-    final request =
-        FriendRequestModel.fromJson(data as Map<String, dynamic>);
+    final request = FriendRequestModel.fromJson(data as Map<String, dynamic>);
     _friendRequests.removeWhere((r) => r.id == request.id);
     // If we are the sender (we sent the request), show snackbar
     if (_currentUserId == request.sender.id) {
@@ -103,8 +113,7 @@ class FriendsProvider extends ChangeNotifier {
   }
 
   void onFriendRequestRejected(dynamic data) {
-    final request =
-        FriendRequestModel.fromJson(data as Map<String, dynamic>);
+    final request = FriendRequestModel.fromJson(data as Map<String, dynamic>);
     _friendRequests.removeWhere((r) => r.id == request.id);
     notifyListeners();
   }
@@ -122,7 +131,8 @@ class FriendsProvider extends ChangeNotifier {
         .toList();
     if (incoming.isEmpty && _friends.isNotEmpty) {
       debugPrint(
-          '[FriendsProvider] Ignoring empty friendsList (${_friends.length} local friends preserved)');
+        '[FriendsProvider] Ignoring empty friendsList (${_friends.length} local friends preserved)',
+      );
       return;
     }
     _friends = incoming;
@@ -133,11 +143,11 @@ class FriendsProvider extends ChangeNotifier {
   }
 
   void onUnfriended(dynamic data) {
-    final unfriendUserId =
-        (data as Map<String, dynamic>)['userId'] as int;
+    final unfriendUserId = (data as Map<String, dynamic>)['userId'] as int;
     _friends.removeWhere((f) => f.id == unfriendUserId);
-    _friendRequests.removeWhere((r) =>
-        r.sender.id == unfriendUserId || r.receiver.id == unfriendUserId);
+    _friendRequests.removeWhere(
+      (r) => r.sender.id == unfriendUserId || r.receiver.id == unfriendUserId,
+    );
     onRemoveConversationsForUser?.call(unfriendUserId);
     notifyListeners();
   }
@@ -228,6 +238,7 @@ class FriendsProvider extends ChangeNotifier {
     _blockedByUserIds.clear();
     if (!isReconnect) {
       _friendRequests = [];
+      _sentRequests = [];
       _pendingRequestsCount = 0;
       _friends = [];
       _friendRequestJustSent = false;
@@ -255,6 +266,7 @@ class FriendsProvider extends ChangeNotifier {
   void clearAll() {
     _friends = [];
     _friendRequests = [];
+    _sentRequests = [];
     _pendingRequestsCount = 0;
     _blockedUsers = [];
     _blockedByUserIds.clear();

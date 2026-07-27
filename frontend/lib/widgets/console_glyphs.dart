@@ -118,6 +118,13 @@ enum ConsoleGlyph {
   settings,
 }
 
+/// The transient motion a glyph uses while its nav selection travels.
+///
+/// This stays as data rather than a per-glyph painter branch: all glyph
+/// identity, including how it moves, lives with the geometry that is resolved
+/// and re-centred once.
+enum ConsoleGlyphMotion { none, lift, spread }
+
 /// A glyph as data: stroked outlines, filled regions, and filled terminals.
 ///
 /// Kept separate from painting so the keyline contract is measurable. A test
@@ -130,6 +137,10 @@ class ConsoleGlyphGeometry {
     this.fills = const [],
     this.dots = const [],
     this.activeFills = const [],
+    this.opticalNudge = Offset.zero,
+    this.activeStroke = kGlyphStroke,
+    this.selectedSpin = 0,
+    this.motion = ConsoleGlyphMotion.none,
   });
 
   /// Drawn with [kGlyphStroke], round caps and joins.
@@ -153,6 +164,48 @@ class ConsoleGlyphGeometry {
   /// deliberately INSET, not congruent — so this never moves [bounds], which
   /// is measured from [strokes], [fills] and [dots] only.
   final List<Path> activeFills;
+
+  /// Optical adjustment applied after tight-bounds centring.
+  ///
+  /// Bounding-box centring is right for almost everything. The padlock's
+  /// shackle is open line-work above a closed body, so the body reads heavier
+  /// than the box implies and the mark sits low without the lift. Still true
+  /// now that the body is a hex cell — the U-shackle above it is thinner
+  /// line-work over a wider closed form, which is the same imbalance.
+  final Offset opticalNudge;
+
+  /// Stroke weight this glyph reaches when fully selected.
+  ///
+  /// Only the GEAR states selection by weight, and only because it is the one
+  /// mark here that cannot be filled at all: its teeth are thin spokes rooted
+  /// inside the body, so any fill swallows their roots. The bubble and the
+  /// comb both carry inset fills instead, and their strokes deliberately do
+  /// NOT thicken — a heavier outline would close the narrow gap that keeps
+  /// each fill visibly separate from the line around it, which is the whole
+  /// reason the fills are inset.
+  final double activeStroke;
+
+  /// Per-glyph transient selected-state movement.
+  ///
+  /// Each nav glyph moves in a way only that mark could: the gear turns, the
+  /// bubble lifts, the comb's cells come apart and reassemble. This is the
+  /// thing that makes an authored icon set feel alive — Telegram ships a
+  /// separate Lottie file per tab icon for exactly this reason — and it costs
+  /// nothing here because the glyphs are already path data.
+  ///
+  /// All three are TRANSIENT: every one returns to zero at t = 1, so the
+  /// resting and selected drawings are identical and only the travel is seen.
+  ///
+  /// How far the gear turns while selection travels.
+  ///
+  /// One tooth pitch, because the mark is 6-fold symmetric so 60° maps it
+  /// onto itself and the travel reads as engaging a notch. (The owner
+  /// suggested 45°; since the rotation settles back to zero either way, that
+  /// was a taste call on my part, not a constraint.)
+  final double selectedSpin;
+
+  /// Translation strategy for the bubble and comb while selection travels.
+  final ConsoleGlyphMotion motion;
 
   /// Union of everything, ignoring stroke width (which is uniform across the
   /// set and so cannot shift the centre).
@@ -196,6 +249,10 @@ class ConsoleGlyphGeometry {
     fills: [for (final p in fills) p.shift(d)],
     dots: [for (final o in dots) o + d],
     activeFills: [for (final p in activeFills) p.shift(d)],
+    opticalNudge: opticalNudge,
+    activeStroke: activeStroke,
+    selectedSpin: selectedSpin,
+    motion: motion,
   );
 
   /// Translates so the bounding box centres on the design-space centre, plus
@@ -395,6 +452,7 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
           _line(const Offset(14.6, 9.2), const Offset(14.6, 12.2)),
           _arc(const Offset(12, 9.2), 2.6, math.pi, math.pi),
         ],
+        opticalNudge: const Offset(0, -0.35),
       );
 
     case ConsoleGlyph.deleteNode:
@@ -558,6 +616,7 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
               ),
           ),
         ],
+        motion: ConsoleGlyphMotion.lift,
       );
 
     case ConsoleGlyph.contacts:
@@ -586,6 +645,7 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
           _hexNode(const Offset(8.0163, 15.2), 3.2),
           _hexNode(const Offset(15.9837, 15.2), 3.2),
         ],
+        motion: ConsoleGlyphMotion.spread,
       );
 
     case ConsoleGlyph.settings:
@@ -612,28 +672,26 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
             _line(_radial(angle, 5.0), _radial(angle, 8.0)),
           _circle(_c, 2.0),
         ],
+        activeStroke: kGlyphStrokeActive,
+        selectedSpin: -math.pi / 3,
       );
   }
 }
 
 /// Resolved, centred geometry for one glyph. Pure — the keyline test calls
 /// this directly rather than reading pixels.
-ConsoleGlyphGeometry consoleGlyphGeometry(ConsoleGlyph glyph) =>
-    _resolved[glyph] ??= _draw(glyph).centred(nudge: _opticalNudge(glyph));
+ConsoleGlyphGeometry consoleGlyphGeometry(ConsoleGlyph glyph) {
+  final geometry = _resolved[glyph];
+  if (geometry != null) return geometry;
+
+  final drawn = _draw(glyph);
+  return _resolved[glyph] = drawn.centred(nudge: drawn.opticalNudge);
+}
 
 /// Resolving walks every contour to measure tight bounds, and a console can
 /// hold a dozen terminals, so the result is cached. The geometry is pure and
 /// immutable, so one entry per glyph is correct forever.
 final Map<ConsoleGlyph, ConsoleGlyphGeometry> _resolved = {};
-
-/// Bounding-box centring is right for almost everything. This is the shape
-/// whose visual weight is not its geometric middle: the padlock's shackle is
-/// open line-work above a closed body, so the body reads heavier than the box
-/// implies and the mark sits low without the lift. Still true now that the
-/// body is a hex cell — the U-shackle above it is thinner line-work over a
-/// wider closed form, which is the same imbalance.
-Offset _opticalNudge(ConsoleGlyph glyph) =>
-    glyph == ConsoleGlyph.password ? const Offset(0, -0.35) : Offset.zero;
 
 /// Sub-region [index]'s own 0..1 progress within the whole transition.
 ///
@@ -646,36 +704,6 @@ double _regionProgress(double t, int index, int count) {
   final start = index * (1 - span) / (count - 1);
   return ((t - start) / span).clamp(0.0, 1.0);
 }
-
-/// Stroke weight this glyph reaches when fully selected.
-///
-/// Only the GEAR states selection by weight, and only because it is the one
-/// mark here that cannot be filled at all: its teeth are thin spokes rooted
-/// inside the body, so any fill swallows their roots. The bubble and the comb
-/// both carry inset fills instead, and their strokes deliberately do NOT
-/// thicken — a heavier outline would close the narrow gap that keeps each
-/// fill visibly separate from the line around it, which is the whole reason
-/// the fills are inset.
-double _activeStroke(ConsoleGlyph glyph) =>
-    glyph == ConsoleGlyph.settings ? kGlyphStrokeActive : kGlyphStroke;
-
-/// Per-glyph motion on selection.
-///
-/// Each nav glyph moves in a way only that mark could: the gear turns, the
-/// bubble lifts, the comb's cells come apart and reassemble. This is the
-/// thing that makes an authored icon set feel alive — Telegram ships a
-/// separate Lottie file per tab icon for exactly this reason — and it costs
-/// nothing here because the glyphs are already path data.
-///
-/// All three are TRANSIENT: every one returns to zero at t = 1, so the
-/// resting and selected drawings are identical and only the travel is seen.
-
-/// How far the gear turns. One tooth pitch, because the mark is 6-fold
-/// symmetric so 60° maps it onto itself and the travel reads as engaging a
-/// notch. (The owner suggested 45°; since the rotation settles back to zero
-/// either way, that was a taste call on my part, not a constraint.)
-double _selectedSpin(ConsoleGlyph glyph) =>
-    glyph == ConsoleGlyph.settings ? -math.pi / 3 : 0;
 
 /// How far the comb's cells fly apart at the peak, in design units.
 const double _kCellSpread = 2.2;
@@ -697,17 +725,17 @@ double _bump(double t) {
 /// reassembles. For the bubble the whole mark lifts. Geometry is centred on
 /// resolve, so the glyph centre is [_c] by construction and the direction can
 /// be read straight off the sub-path's own bounds.
-Offset _motionOffset(ConsoleGlyph glyph, Path subPath, double t) {
+Offset _motionOffset(ConsoleGlyphGeometry geometry, Path subPath, double t) {
   final bump = _bump(t);
   if (bump == 0) return Offset.zero;
-  switch (glyph) {
-    case ConsoleGlyph.contacts:
+  switch (geometry.motion) {
+    case ConsoleGlyphMotion.spread:
       final d = subPath.getBounds().center - _c;
       if (d.distance == 0) return Offset.zero;
       return d / d.distance * (_kCellSpread * bump);
-    case ConsoleGlyph.chats:
+    case ConsoleGlyphMotion.lift:
       return Offset(0, -_kBubbleLift * bump);
-    default:
+    case ConsoleGlyphMotion.none:
       return Offset.zero;
   }
 }
@@ -748,7 +776,7 @@ class ConsoleGlyphPainter extends CustomPainter {
     // Turn into place. Transient: it starts a notch back and unwinds to the
     // resting orientation, so the resting and selected drawings are identical
     // and only the travel is visible.
-    final spin = _selectedSpin(glyph);
+    final spin = geometry.selectedSpin;
     if (spin != 0 && t > 0 && t < 1) {
       canvas.translate(_c.dx, _c.dy);
       canvas.rotate(spin * (1 - t));
@@ -757,7 +785,7 @@ class ConsoleGlyphPainter extends CustomPainter {
 
     final stroke = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = kGlyphStroke + (_activeStroke(glyph) - kGlyphStroke) * t
+      ..strokeWidth = kGlyphStroke + (geometry.activeStroke - kGlyphStroke) * t
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..color = color;
@@ -769,7 +797,7 @@ class ConsoleGlyphPainter extends CustomPainter {
       canvas.drawPath(path, fill);
     }
     for (final path in geometry.strokes) {
-      canvas.drawPath(path.shift(_motionOffset(glyph, path, t)), stroke);
+      canvas.drawPath(path.shift(_motionOffset(geometry, path, t)), stroke);
     }
     for (final dot in geometry.dots) {
       canvas.drawCircle(dot, kGlyphDotRadius, fill);
@@ -780,7 +808,7 @@ class ConsoleGlyphPainter extends CustomPainter {
       for (var i = 0; i < geometry.activeFills.length; i++) {
         // Each fill rides with the cell it belongs to. For the comb the two
         // lists are index-aligned one-per-cell, which the keyline test pins.
-        final shift = _motionOffset(glyph, geometry.activeFills[i], t);
+        final shift = _motionOffset(geometry, geometry.activeFills[i], t);
         final region = geometry.activeFills[i].shift(shift);
         final local = _regionProgress(t, i, geometry.activeFills.length);
         if (local <= 0) continue;

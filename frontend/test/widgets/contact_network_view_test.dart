@@ -45,12 +45,14 @@ Widget _host(
 
 ContactNetworkView _view({
   required List<UserModel> contacts,
+  List<UserModel> sentInvitees = const [],
   ValueChanged<UserModel>? onTap,
   ValueChanged<UserModel>? onOpenChat,
   Set<int> conversationIds = const {},
 }) {
   return ContactNetworkView(
     contacts: contacts,
+    sentInvitees: sentInvitees,
     localNodeLabel: 'Marta',
     localNodeCaption: 'LOCAL NODE',
     emptyTitle: 'No contacts yet',
@@ -91,6 +93,26 @@ void main() {
         'ziomek3',
         'ziomek50',
       ]);
+    });
+
+    test('ghost invitees reserve cells without becoming contacts or wires', () {
+      final layout = ContactHexLayout.resolve(
+        contacts: const [ContactHexLayoutInput(id: 1, displayName: 'ada')],
+        ghosts: const [ContactHexLayoutInput(id: 2, displayName: 'cora')],
+        width: 366,
+        labelHeight: 15,
+        leadingSlots: 1,
+      );
+
+      expect(layout.inputs.map((input) => input.id), [1]);
+      expect(layout.fieldInputs.map((input) => input.id), [1, 2]);
+      expect(layout.slots, hasLength(3)); // + leading add cell
+      const ghostSlot = 2;
+      expect(layout.isGhostSlot(ghostSlot), isTrue);
+      expect(layout.isContactSlot(ghostSlot), isFalse);
+      expect(layout.slotIndexForContactId(2), isNull);
+      // The dormant trace belongs only to the real relationship.
+      expect(layout.traces.computeMetrics(), hasLength(1));
     });
 
     test('no two slot visual rects overlap at any tested geometry', () {
@@ -206,6 +228,41 @@ void main() {
       handle.dispose();
     });
 
+    testWidgets(
+      'sent invite is a non-chat ghost cell with a single relationship-free socket',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        final invitee = _contact(7, 'cora');
+        await tester.pumpWidget(
+          _host(
+            _view(
+              contacts: [_contact(1, 'ada')],
+              sentInvitees: [invitee],
+              // Even an accidental stale conversation id must not turn the
+              // ghost into a doubled, chat-capable contact.
+              conversationIds: const {7},
+            ),
+          ),
+        );
+        await tester.pumpAndSettle();
+
+        expect(find.text('cora'), findsOneWidget);
+        expect(find.byIcon(Icons.send_outlined), findsOneWidget);
+        expect(find.byKey(const ValueKey('contact-node-7')), findsNothing);
+        expect(
+          tester.getSemantics(find.bySemanticsLabel('cora, invitation sent')),
+          matchesSemantics(
+            label: 'cora, invitation sent',
+            isButton: false,
+            hasTapAction: false,
+            hasLongPressAction: false,
+          ),
+        );
+
+        handle.dispose();
+      },
+    );
+
     testWidgets('local core is drawn on the field axis, not beside it', (
       tester,
     ) async {
@@ -248,7 +305,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('ada'));
+      await tester.tap(find.byKey(const ValueKey('contact-node-1')));
       expect(tapped?.username, 'ada');
     });
 
@@ -267,7 +324,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('borys'));
+      await tester.tap(find.byKey(const ValueKey('contact-node-2')));
       await tester.pump();
       // Mid-flight: the route strip is still travelling to the core.
       await tester.pump(const Duration(milliseconds: 250));
@@ -297,7 +354,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.tap(find.text('user7'));
+      await tester.tap(find.byKey(const ValueKey('contact-node-7')));
       await tester.pump();
       final atStart = tester.widget<Text>(find.text('user3'));
 
@@ -333,7 +390,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.longPress(find.text('borys'));
+      await tester.longPress(find.byKey(const ValueKey('contact-node-2')));
       await tester.pump();
 
       // Straight in: no route animation in front of the chat route.
@@ -356,7 +413,7 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      await tester.longPress(find.text('ada'));
+      await tester.longPress(find.byKey(const ValueKey('contact-node-1')));
       await tester.pumpAndSettle();
 
       expect(chatted, isNull);
@@ -511,47 +568,66 @@ void main() {
       await tester.pumpAndSettle();
       expect(portTapped, 1);
     });
-    testWidgets('keyboard focus reveals deep nodes by scrolling', (
-      tester,
-    ) async {
-      final contacts = [
-        for (var i = 0; i < 40; i++) _contact(i + 1, 'user${i + 1}'),
-      ];
-      await tester.pumpWidget(
-        _host(_view(contacts: contacts), size: const Size(390, 700)),
-      );
-      await tester.pumpAndSettle();
+    testWidgets(
+      'large boards virtualize visual nodes without dropping semantics, '
+      'keyboard traversal, or search results',
+      (tester) async {
+        final handle = tester.ensureSemantics();
+        final contacts = [
+          for (var i = 0; i < 240; i++) _contact(i + 1, 'user${i + 1}'),
+        ];
+        UserModel? opened;
+        await tester.pumpWidget(
+          _host(
+            _view(contacts: contacts, onTap: (user) => opened = user),
+            size: const Size(390, 700),
+          ),
+        );
+        await tester.pumpAndSettle();
 
-      // Tab to the last node in traversal order (user40).
-      for (var i = 0; i < 40; i++) {
-        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+        // The resident focus/semantics controls cover all 240 people, but
+        // only nearby avatar/clip/paint subtrees are mounted.
+        expect(
+          tester
+              .widgetList<HexAvatarSurface>(find.byType(HexAvatarSurface))
+              .length,
+          lessThanOrEqualTo(60), // includes the local core
+        );
+        expect(
+          tester
+              .widgetList<GestureDetector>(find.byType(GestureDetector))
+              .length,
+          lessThanOrEqualTo(60),
+        );
+        expect(find.bySemanticsLabel(RegExp(r'^user\d+$')), findsNWidgets(240));
+
+        // Tab to the last real contact. Focus must scroll it into the visual
+        // window before its Enter activation reaches the usual tap contract.
+        for (var i = 0; i < contacts.length; i++) {
+          await tester.sendKeyEvent(LogicalKeyboardKey.tab);
+          await tester.pump();
+        }
+        await tester.pumpAndSettle();
+        final rect = tester.getRect(find.text('user240'));
+        expect(rect.top, greaterThanOrEqualTo(0));
+        expect(rect.bottom, lessThanOrEqualTo(700));
+        await tester.sendKeyEvent(LogicalKeyboardKey.enter);
         await tester.pump();
-      }
-      await tester.pumpAndSettle();
+        expect(opened?.username, 'user240');
 
-      final rect = tester.getRect(find.text('user40'));
-      expect(rect.top, greaterThanOrEqualTo(0));
-      expect(rect.bottom, lessThanOrEqualTo(700));
+        // ContactsScreen search passes a filtered contact run. A deep match
+        // must remount immediately rather than vanish with its old row.
+        await tester.pumpWidget(
+          _host(_view(contacts: [contacts.last]), size: const Size(390, 700)),
+        );
+        await tester.pumpAndSettle();
+        expect(find.text('user240'), findsOneWidget);
+        expect(find.bySemanticsLabel('user240'), findsOneWidget);
+        handle.dispose();
+      },
+    );
 
-      // Enter activates the focused node.
-      UserModel? opened;
-      await tester.pumpWidget(
-        _host(
-          _view(contacts: contacts, onTap: (u) => opened = u),
-          size: const Size(390, 700),
-        ),
-      );
-      await tester.pumpAndSettle();
-      for (var i = 0; i < 40; i++) {
-        await tester.sendKeyEvent(LogicalKeyboardKey.tab);
-        await tester.pump();
-      }
-      await tester.sendKeyEvent(LogicalKeyboardKey.enter);
-      await tester.pump();
-      expect(opened?.username, 'user40');
-    });
-
-    testWidgets('avatars below the fold do not fetch until scrolled to', (
+    testWidgets('avatars below the fold stay lazy across virtual rows', (
       tester,
     ) async {
       final contacts = [
@@ -563,39 +639,42 @@ void main() {
       );
       await tester.pumpAndSettle();
 
-      Iterable<HexAvatarSurface> surfaces() =>
-          tester.widgetList<HexAvatarSurface>(find.byType(HexAvatarSurface));
-      int armed() => surfaces().where((s) => s.imageUrl != null).length;
-      bool armedFor(int id) =>
-          surfaces().any((s) => s.imageUrl == 'https://example.test/$id.png');
+      Iterable<HexAvatarSurface> contactSurfaces() => tester
+          .widgetList<HexAvatarSurface>(find.byType(HexAvatarSurface))
+          .where((surface) => surface.initials == 'U');
+      int mounted() => contactSurfaces().length;
+      int armed() =>
+          contactSurfaces().where((surface) => surface.imageUrl != null).length;
+      bool armedFor(int id) => contactSurfaces().any(
+        (surface) => surface.imageUrl == 'https://example.test/$id.png',
+      );
 
-      // Every node is built - focus and semantics still reach all 60 - but
-      // only the rows on screen are allowed to pull a face.
-      expect(find.byType(HexAvatarSurface), findsNWidgets(61)); // + the core
-      final onMount = armed();
-      expect(onMount, greaterThan(0));
-      expect(onMount, lessThan(60));
-      // The aggregate count alone stays green through an off-by-one that
-      // leaves a hex the user can plainly see sitting on initials, so pin
-      // the real contract: the first row IS armed, the last row is NOT.
+      // Focus and semantics still cover all 60 in the resident control
+      // layer, but only nearby visual rows exist. The last overscan row is
+      // deliberately still unarmed: virtual overscan is two rows, avatar
+      // lookahead is one.
+      expect(mounted(), greaterThan(0));
+      expect(mounted(), lessThan(60));
+      expect(armed(), greaterThan(0));
+      expect(armed(), lessThan(mounted()));
       expect(armedFor(1), isTrue);
       expect(armedFor(60), isFalse);
 
       await tester.drag(
         find.byType(SingleChildScrollView),
-        const Offset(0, -600),
+        const Offset(0, -4000),
       );
       await tester.pumpAndSettle();
-      final afterScroll = armed();
-      expect(afterScroll, greaterThan(onMount));
+      expect(armedFor(60), isTrue);
 
-      // Scrolling back must not drop already-loaded faces to initials.
+      // A visual row can unmount, but after returning it keeps the face that
+      // the high-water mark already armed.
       await tester.drag(
         find.byType(SingleChildScrollView),
-        const Offset(0, 600),
+        const Offset(0, 4000),
       );
       await tester.pumpAndSettle();
-      expect(armed(), afterScroll);
+      expect(armedFor(1), isTrue);
     });
 
     testWidgets('a changed contact set re-arms from the viewport, not the '
@@ -610,10 +689,15 @@ void main() {
       await tester.pumpWidget(hosted(60));
       await tester.pumpAndSettle();
 
-      int armed() => tester
+      Iterable<HexAvatarSurface> contactSurfaces() => tester
           .widgetList<HexAvatarSurface>(find.byType(HexAvatarSurface))
-          .where((surface) => surface.imageUrl != null)
-          .length;
+          .where((surface) => surface.initials == 'U');
+      int mounted() => contactSurfaces().length;
+      int armed() =>
+          contactSurfaces().where((surface) => surface.imageUrl != null).length;
+      bool armedFor(int id) => contactSurfaces().any(
+        (surface) => surface.imageUrl == 'https://example.test/$id.png',
+      );
 
       // Walk to the bottom so the high-water mark reaches the last row.
       await tester.drag(
@@ -621,17 +705,19 @@ void main() {
         const Offset(0, -4000),
       );
       await tester.pumpAndSettle();
-      expect(armed(), 60);
+      expect(armedFor(60), isTrue);
 
       // Filter down and back out, exactly as the search field does. The mark
-      // is a row index into the OLD field; carried over, it would arm all 60
-      // faces at once while the user is sitting back at the top.
+      // is a row index into the OLD field; carried over, it would arm every
+      // visual row as soon as the restored board mounts at the top.
       await tester.pumpWidget(hosted(3));
       await tester.pumpAndSettle();
       await tester.pumpWidget(hosted(60));
       await tester.pumpAndSettle();
 
-      expect(armed(), lessThan(60));
+      expect(mounted(), greaterThan(0));
+      expect(mounted(), lessThan(60));
+      expect(armed(), lessThan(mounted()));
     });
 
     testWidgets('empty contact set shows the empty copy and the core', (
@@ -645,9 +731,10 @@ void main() {
       expect(find.text('LOCAL NODE'), findsOneWidget);
     });
 
-    testWidgets('field scrolls when contacts outgrow the viewport', (
+    testWidgets('field scrolls virtual rows into the visual window', (
       tester,
     ) async {
+      final handle = tester.ensureSemantics();
       final contacts = [
         for (var i = 0; i < 40; i++) _contact(i + 1, 'user${i + 1}'),
       ];
@@ -655,10 +742,11 @@ void main() {
         _host(_view(contacts: contacts), size: const Size(390, 700)),
       );
       await tester.pumpAndSettle();
-      // The last contact starts below the fold (it exists in the tree; the
-      // field is not lazy)...
-      expect(tester.getRect(find.text('user40')).top, greaterThan(700));
-      // ...and scrolls into the viewport.
+
+      // The last contact remains semantic before it receives a visual subtree.
+      expect(find.text('user40'), findsNothing);
+      expect(find.bySemanticsLabel('user40'), findsOneWidget);
+
       await tester.drag(
         find.byType(SingleChildScrollView),
         const Offset(0, -2000),
@@ -667,7 +755,7 @@ void main() {
       final rect = tester.getRect(find.text('user40'));
       expect(rect.bottom, lessThanOrEqualTo(700));
       expect(rect.top, greaterThanOrEqualTo(0));
-      expect(find.text('user40'), findsOneWidget);
+      handle.dispose();
     });
   });
 }

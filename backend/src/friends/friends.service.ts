@@ -231,6 +231,19 @@ export class FriendsService {
       order: { createdAt: 'DESC' },
     });
   }
+  async getSentRequests(userId: number): Promise<FriendRequest[]> {
+    return this.friendRequestRepository.find({
+      where: {
+        sender: { id: userId },
+        status: FriendRequestStatus.PENDING,
+      },
+      relations: {
+        sender: true,
+        receiver: true
+      },
+      order: { createdAt: 'DESC' },
+    });
+  }
 
   async getFriends(userId: number): Promise<User[]> {
     const friendRequests = await this.friendRequestRepository.find({

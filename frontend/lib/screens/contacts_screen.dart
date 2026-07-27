@@ -302,6 +302,9 @@ class _ContactsScreenState extends State<ContactsScreen> {
       ..sort(_compareByDisplayName);
     final friends = _applyQuery(allFriends);
     final filtering = _query.trim().isNotEmpty && allFriends.isNotEmpty;
+    final sentInvitees = _applyQuery([
+      for (final request in friendsProvider.sentRequests) request.receiver,
+    ]);
     final convs = context.watch<ConversationsProvider>();
     final conversationContactIds = <int>{};
     for (final conversation in convs.conversations) {
@@ -314,6 +317,7 @@ class _ContactsScreenState extends State<ContactsScreen> {
 
     return ContactNetworkView(
       contacts: friends,
+      sentInvitees: sentInvitees,
       localNodeLabel: currentUser?.username ?? '',
       localNodeAvatarUrl: currentUser?.profilePictureUrl,
       localNodeCaption: l10n.contactNetworkLocalNode,

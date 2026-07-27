@@ -527,6 +527,8 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return this.chatFriendRequestService.handleRejectFriendRequest(
       client,
       data,
+      this.server,
+      this.onlineUsers,
     );
   }
 

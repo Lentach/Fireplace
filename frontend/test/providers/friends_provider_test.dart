@@ -40,6 +40,39 @@ void main() {
       expect(provider.pendingFriendAcceptedByName, isNull);
     });
 
+    test(
+      'sentRequestsList populates sent requests and account resets clear them',
+      () {
+        final provider = FriendsProvider();
+        final sentRequest = [
+          {
+            'id': 6,
+            'sender': {'id': 1, 'username': 'alice'},
+            'receiver': {'id': 2, 'username': 'bob'},
+            'status': 'pending',
+            'createdAt': '2026-01-01T00:00:00.000Z',
+          },
+        ];
+
+        provider.onSentRequestsList(sentRequest);
+
+        expect(provider.sentRequests, hasLength(1));
+        expect(provider.sentRequests.single.id, 6);
+        expect(provider.sentRequests.single.receiver.username, 'bob');
+
+        provider.onConnect(false);
+
+        expect(provider.sentRequests, isEmpty);
+
+        provider.onSentRequestsList(sentRequest);
+        expect(provider.sentRequests, hasLength(1));
+
+        provider.clearAll();
+
+        expect(provider.sentRequests, isEmpty);
+      },
+    );
+
     test('onConnect(true) clears blockedByUserIds', () {
       final provider = FriendsProvider();
 
@@ -112,4 +145,3 @@ void main() {
     });
   });
 }
-

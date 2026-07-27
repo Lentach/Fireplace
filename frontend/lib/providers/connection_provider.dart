@@ -380,6 +380,9 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.on('friendRequestsList', (data) {
       _friendsProvider?.onFriendRequestsList(data);
     });
+    _socketService.on('sentRequestsList', (data) {
+      _friendsProvider?.onSentRequestsList(data);
+    });
     _socketService.on('newFriendRequest', (data) {
       _friendsProvider?.onNewFriendRequest(data);
     });

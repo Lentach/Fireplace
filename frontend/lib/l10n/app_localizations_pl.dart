@@ -1057,4 +1057,20 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get messageShowLess => 'Zwiń';
+
+  @override
+  String get chatPickerTitle => 'Wybierz znajomego';
+
+  @override
+  String get chatPickerSubtitle => 'Wybierz węzeł, aby rozpocząć czat';
+
+  @override
+  String get chatPickerEmptyTitle => 'Nie masz jeszcze znajomych';
+
+  @override
+  String get chatPickerEmptyDescription =>
+      'Dodaj znajomego, aby rozpocząć czat.';
+
+  @override
+  String get chatPickerOpenTooltip => 'Nowy czat';
 }

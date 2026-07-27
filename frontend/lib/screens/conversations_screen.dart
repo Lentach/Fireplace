@@ -13,11 +13,11 @@ import '../providers/friends_provider.dart';
 import '../providers/messaging_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
+import '../widgets/chat_honeycomb_picker.dart';
 import '../widgets/conversation_tile.dart';
 import '../widgets/conversation_list_skeleton.dart';
 import '../widgets/main_tab_screen_header.dart';
 import '../utils/instant_opaque_route.dart';
-import 'add_or_invitations_screen.dart';
 import 'chat_detail_screen.dart';
 
 class ConversationsScreen extends StatefulWidget {
@@ -92,13 +92,29 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     }
   }
 
-  void _startNewChat() async {
-    final result = await Navigator.of(context).push<int>(
-      MaterialPageRoute(builder: (_) => const AddOrInvitationsScreen()),
+  Future<void> _showNewChatPicker() async {
+    final selectedFriend = await showChatHoneycombPicker(
+      context,
+      friends: context.read<FriendsProvider>().friends,
     );
-    if (result != null && mounted) {
-      _openChat(result);
+    if (selectedFriend == null || !mounted) return;
+
+    final convs = context.read<ConversationsProvider>();
+    final existingConversation = convs.conversations
+        .where(
+          (conversation) =>
+              convs.getOtherUser(conversation)?.id == selectedFriend.id,
+        )
+        .firstOrNull;
+    if (existingConversation != null) {
+      _openChat(existingConversation.id);
+      return;
     }
+
+    // The backend creates the conversation and emits `openConversation`; the
+    // build path below consumes that pending ID through this screen's normal
+    // open-chat path.
+    convs.startConversation(selectedFriend.id);
   }
 
   void _deleteConversation(int conversationId) {
@@ -113,6 +129,18 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
 
   @override
   Widget build(BuildContext context) {
+    final convs = context.watch<ConversationsProvider>();
+    if (convs.pendingOpenConversationId != null) {
+      WidgetsBinding.instance.addPostFrameCallback((_) {
+        final conversationId = context
+            .read<ConversationsProvider>()
+            .consumePendingOpen();
+        if (conversationId != null && mounted) {
+          _openChat(conversationId);
+        }
+      });
+    }
+
     return LayoutBuilder(
       builder: (context, constraints) {
         final isDesktop =
@@ -156,13 +184,14 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
         clipBehavior: Clip.none,
         children: [
           IconButton(
+            key: const Key('conversations-new-chat-button'),
             icon: Icon(
               Icons.add_circle_outline,
               color: colorScheme.primary,
               size: 28,
             ),
-            onPressed: _startNewChat,
-            tooltip: l10n.addInvitations,
+            onPressed: _showNewChatPicker,
+            tooltip: l10n.chatPickerOpenTooltip,
           ),
           Consumer<FriendsProvider>(
             builder: (context, friends, _) {
