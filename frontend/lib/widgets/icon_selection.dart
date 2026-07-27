@@ -39,8 +39,6 @@ class IconSelection extends InheritedWidget {
   static IconSelection? of(BuildContext context) =>
       context.dependOnInheritedWidgetOfExactType<IconSelection>();
 
-  static double progressOf(BuildContext context) => of(context)?.progress ?? 0;
-
   @override
   bool updateShouldNotify(IconSelection oldWidget) =>
       oldWidget.progress != progress || oldWidget.activeColor != activeColor;

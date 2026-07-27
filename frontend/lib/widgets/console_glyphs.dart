@@ -837,7 +837,7 @@ class ConsoleGlyphIcon extends StatelessWidget {
       size: Size.square(size),
       painter: ConsoleGlyphPainter(
         glyph: glyph,
-        color: iconTheme.color ?? const Color(0xFF000000),
+        color: iconTheme.color ?? Theme.of(context).colorScheme.onSurface,
         progress: selection?.progress ?? 0,
         activeColor: selection?.activeColor,
       ),
