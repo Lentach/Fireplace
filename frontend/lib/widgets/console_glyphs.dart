@@ -295,20 +295,28 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
       );
 
     case ConsoleGlyph.language:
-      // The meridian globe (owner pick L1, 2026-07-26).
+      // The meridian globe, wearing the cell (owner, this session: "language
+      // icone is not hex too … maybe just make a hex instead of round globe").
       //
-      // This is a CONVENTIONAL silhouette, the same licence `metadata` takes,
+      // Still a CONVENTIONAL silhouette, the same licence `metadata` takes,
       // and for the same reason: "language" has no truthful node relation to
       // draw. Three attempts at one proved it — a node with two encodings
       // stacked to its right (what shipped first) reads as a bullet list, two
       // cells carrying different scripts mush into a bowtie at 24px, and the
       // same idea diverging on hex angles reads as scissors. A globe survives
       // the size, which is the only test that matters on a 44px terminal.
+      //
+      // The shell is now the hex, so the row stops being the one round mark
+      // in a hex set. Meridian and equator are pulled deliberately OFF that
+      // shell — 1.6 of clearance at the poles, 0.93 at the flats. The version
+      // that simply swapped circle for hex kept the old 7.6/15.2 oval and
+      // crowded to within 0.8 and 0.33; three 1.8 strokes inside a 16-unit
+      // hex is what makes this mark choke at 24px, and clearance is the cure.
       return ConsoleGlyphGeometry(
         strokes: [
-          _circle(_c, 7.6),
-          _oval(_c, 7.6, 15.2),
-          _line(const Offset(4.4, 12), const Offset(19.6, 12)),
+          _hexNode(_c, 8.0),
+          _oval(_c, 7.0, 12.8),
+          _line(const Offset(6.0, 12), const Offset(18.0, 12)),
         ],
       );
 
@@ -369,15 +377,24 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
       );
 
     case ConsoleGlyph.password:
-      // A padlock: a credential you type. Deliberately a different OBJECT
-      // from [keys], which is identity material, so the two rows can never be
-      // read as the same thing.
+      // A padlock whose body IS a cell (owner, this session: the padlock
+      // "doesnt really fit the rest hex theme"). Deliberately a different
+      // OBJECT from [keys], which is identity material, so the two rows can
+      // never be read as the same thing.
+      //
+      // Drawn as a TRUE U: two legs rooted in the body's upper edges with a
+      // half hoop above them. A pointy-top hex fights a shackle — its top
+      // point rises into the opening — so the two constructions that hung an
+      // arc straight off the body both read as a handbag, one as an avocado.
+      // Lifting the hoop clear of the point and dropping legs to meet the
+      // shoulders is what makes this read as a lock at 24px.
       return ConsoleGlyphGeometry(
         strokes: [
-          _rrect(const Rect.fromLTRB(5.4, 11.2, 18.6, 19.8), 1.8),
-          _arc(const Offset(12, 11.2), 4.2, math.pi, math.pi),
+          _hexNode(const Offset(12, 15.9), 5.2),
+          _line(const Offset(9.4, 9.2), const Offset(9.4, 12.2)),
+          _line(const Offset(14.6, 9.2), const Offset(14.6, 12.2)),
+          _arc(const Offset(12, 9.2), 2.6, math.pi, math.pi),
         ],
-        dots: const [Offset(12, 15.5)],
       );
 
     case ConsoleGlyph.deleteNode:
@@ -612,7 +629,9 @@ final Map<ConsoleGlyph, ConsoleGlyphGeometry> _resolved = {};
 /// Bounding-box centring is right for almost everything. This is the shape
 /// whose visual weight is not its geometric middle: the padlock's shackle is
 /// open line-work above a closed body, so the body reads heavier than the box
-/// implies and the mark sits low without the lift.
+/// implies and the mark sits low without the lift. Still true now that the
+/// body is a hex cell — the U-shackle above it is thinner line-work over a
+/// wider closed form, which is the same imbalance.
 Offset _opticalNudge(ConsoleGlyph glyph) =>
     glyph == ConsoleGlyph.password ? const Offset(0, -0.35) : Offset.zero;
 
