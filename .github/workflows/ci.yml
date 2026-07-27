@@ -70,5 +70,74 @@ jobs:
       - name: Analyze Flutter code
         run: flutter analyze --no-fatal-infos
 
+      # Single run, log captured by redirect rather than `| tee` so the step's exit
+      # status is Flutter's own and never depends on pipefail being set.
       - name: Run Flutter tests
-        run: flutter test
+        run: flutter test > test-output.txt 2>&1 || { cat test-output.txt; exit 1; }
+
+      - name: Show Flutter test summary
+        run: tail -1 test-output.txt
+
+      - name: Verify CLAUDE.md frontend test counts
+        working-directory: .
+        run: node scripts/verify-claude-frontend-test-counts.mjs --log frontend/test-output.txt
+
+  # The ONLY automated guard on the cross-tier wire contracts in CLAUDE.md 7:
+  # the E2E envelope, WS event names/payloads, and delete semantics. Unit tests on
+  # either side mock the other, and scripts/impact.mjs cannot see across the wire,
+  # so nothing else proves the two halves still agree.
+  #
+  # STAGING NOTE - continue-on-error is TEMPORARY. It exists only to gather signal on
+  # how reliable this job is (real Postgres, real libsignal, registration throttles,
+  # fresh accounts per run). While it is set, this job is OBSERVABILITY, NOT PROTECTION.
+  # Once it has a green streak, delete continue-on-error and make `e2e-wire` a required
+  # check - optionally path-filtered to backend/src/chat|messages and the frontend
+  # services/providers that speak the wire. Do not leave it non-gating indefinitely.
+  e2e-wire:
+    name: E2E wire harness (non-gating while stabilising)
+    runs-on: ubuntu-latest
+    continue-on-error: true
+    # Real sockets + libsignal can wedge; cap well under GitHub's multi-hour default so a
+    # hung run does not burn a runner before the `if: always()` teardown gets to fire.
+    timeout-minutes: 25
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Start backend + Postgres
+        run: docker compose up -d --wait --wait-timeout 300 || docker compose up -d
+
+      - name: Wait for /health
+        run: |
+          for i in $(seq 1 60); do
+            if curl -fsS http://localhost:3000/health > /dev/null 2>&1; then
+              echo "backend healthy after ${i}0s"; exit 0
+            fi
+            sleep 10
+          done
+          echo "backend never became healthy"; docker compose logs --tail 100 backend; exit 1
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        working-directory: frontend
+        run: flutter pub get
+
+      # test_e2e is a sibling of test/, so the fast lane never picks it up.
+      # Fresh accounts every run is BY DESIGN - see frontend/CLAUDE.md 1.
+      - name: Run the wire harness
+        working-directory: frontend
+        run: flutter test test_e2e
+
+      - name: Backend logs on failure
+        if: failure()
+        run: docker compose logs --tail 200 backend
+
+      - name: Tear down
+        if: always()
+        run: docker compose down   # no -v: CLAUDE.md 4 bans that flag; do not normalise it
