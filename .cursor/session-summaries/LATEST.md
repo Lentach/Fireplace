@@ -1,20 +1,28 @@
 # Latest session summary
 
-**Date:** 2026-07-26 — **RELEASED: `feat/contact-network` merged to master and deployed as frontend 0.0.129 / `9d24d7b`**, smoke 5/5. The entire Contacts/Chats/Settings visual overhaul (50 commits, PR #97) is now permanent production. Backend intentionally untouched at 0.0.127/`3861166`. All stale local branches deleted — `master` is the only local branch.
+**Date:** 2026-07-27 — **`feat/nav-rework` continues: nav travel motion perfected and the last two foreign glyphs redrawn. Owner-approved, STILL UNMERGED.** Live ephemeral branch deploy is **`bc40116`, still 0.0.129** (branch deploys never bump semver); backend untouched at 0.0.127/`3861166`. Three approvals this session ("ok thats nice im pleased with that result", "rest is ok well done"). **The only thing left is still his explicit "merge".** Prior round (2026-07-26) released `feat/contact-network` as **0.0.129 / `9d24d7b`** and built the nav rework itself — glyphs, selected state, per-glyph motion and the glass lens, all owner-picked; that history is below and in the dated files.
 
 ## What was done
-1. Owner gave the explicit release OK. PR #97 was CLEAN, both CI jobs green.
-2. Bumped `frontend/pubspec.yaml` 0.0.128 → 0.0.129 as the last branch commit (`1235bcb`), merged PR #97 (`9d24d7b`), deployed master via `deploy-web.ps1`, smoke **5/5** (`main.dart.js` literally contains `9d24d7b`).
-3. Branch cleanup: deleted 17 fully-merged local branches + force-deleted `feat/cosmic-theme` (lone unmerged commit `1745a50` was a preview-harness `?density=` knob; recoverable via reflog). Remote `feat/contact-network` auto-deleted at merge.
+1. **Tab-to-tab travel, two more beats, APPROVED.** Every layer used to fire on the SAME frame. Now: the lens **stretches** toward the destination and flattens as it goes (volume roughly conserved, scaled by distance travelled, so a two-slot jump throws twice as far), and the tab you tap **waits 160ms** and lights up only once the lens is 59% of the way there — it DELIVERS the selection instead of racing it. The lens is explicitly driven (`_ActiveLens`) because the stretch needs to know how far THROUGH the journey it is and an `AnimatedAlign` only exposes its endpoints. Icon and label now ride ONE animation.
+2. **`Alignment` places a child by its EDGES**, so the same alignment lands a WIDER child's centre nearer the middle of the pill — the lens would sag inward exactly as it stretches. `_alignmentFor` solves for the CENTRE instead.
+3. **A reduce-motion bug caught in review:** `_ActiveLens.didUpdateWidget` returned on an unchanged index BEFORE checking `reduceMotion`, and switching reduce-motion on arrives as exactly that — a rebuild with the same index. Stretch died on its own; the glide ran its full 300ms against the instant-motion contract. `_NavItem` already ordered the checks correctly; the lens now matches.
+4. **`password` and `language` now wear the cell.** Owner: the padlock "doesnt really fit the rest hex theme", and unprompted: "langugage icone is not hex too … maybe just make a hex instead of round globe". Every other mark says *the hex cell is your node and each mark does something to it*; the padlock was the only physical OBJECT and the globe the only round shell. He picked direction A for both from a rendered A/B, then said **"perfect them"** — password shipped as a **true U** shackle (legs rooted in the body's upper edges, hoop clear above; a pointy-top hex fights a shackle because its point rises into the opening, which made two other constructions read as a handbag and an avocado), language as a hex globe with meridian and equator pulled OFF the shell (1.6 clearance at the poles, 0.93 at the flats).
+5. **Dependabot #95 triaged** (it had fired on every push for days, never examined): `brace-expansion <= 5.0.7` DoS, high, `backend/package-lock.json` — **every copy is `dev: true`**, reachable only through eslint/jest/nest-cli, and the container ships prod deps only. Not deploy-blocking. NOT fixed: it lands on master, which needs his word.
 
 ## Verification
-- Pre-merge: PR #97 `MERGEABLE`/`CLEAN`, Backend tests + Flutter analyze/tests SUCCESS. Post-deploy: smoke 5/5, `/version.json` → 0.0.129/`9d24d7b`.
+- **879 passed / 4 skips** (was 876), analyze 0 issues over `lib/` + `test/`, backend untouched at 536. Three deploys (`6a8aa4d`, `9ebcd21`, `bc40116`), smoke **5/5** each.
+- Every added test falsified: the delivery wait (red at `0.599` where it demands `0`), stretch width, squash height, the mid-flight reduce-motion snap.
+- **One test was written and DELETED** — it claimed to defend the lens's centre-sag correction and still passed with the correction reverted. The sag is ~10px inside a single frame of travel, so nothing assertable separated correct from broken without also failing on correct code. The correction stays, documented as untested. **A test that cannot fail is worse than no test.**
+- Glyph candidates were **temporary enum members drawn by the REAL painter**, never a duplicated preview painter that could diverge on scaling, caps or centring; the keyline test measured all six for free. All members, cases and the throwaway sheet are deleted.
 
 ## Notes for next session
-- **The release gate is CLOSED — the 2026-07-25 handoff briefs are historical now.** Two owner forks survive unresolved: the `appearance` glyph renders nowhere (live preview owns its row slot) and `push` is the one glyph he never named. Do not guess either.
-- Deferred, none promised: honeycomb `ListView` rewrite >200 contacts, "sent invites as ghosts" (backend), Chats `+` honeycomb picker, three declined refactors (in `85a04dc`'s message).
-- **Owner's next ask: design "something else" — new design work, subject not yet named.** Bootstrap the UI playbook before touching anything visual.
-- Full: `2026-07-26-session-release-0.0.129.md`.
+- **UNMERGED and design is DONE.** On his explicit merge: 0.0.129 → **0.0.130** as the LAST branch commit, then PR (**none exists**) → master deploy → smoke.
+- **`appearance` is OFF the table** — owner, this session: "appearance leave as it was". Untouched on this branch (0 references in the diff). Its long-standing fork (the glyph renders nowhere because the live `AppearancePreview` owns that row's leading slot) is now a decision, not an open question.
+- **Five marks are still non-hex objects** — `devices`, `webStorage`, `media`, `metadata`, `cache`. Flagged; he said "rest is ok". Do not re-litigate.
+- **Renders keep flattering things his hand rejects.** Render to pick a DIRECTION; deploy to get a VERDICT. Also: he asked "what did you just implement i cant tell?" after a long report — lead with what changed in plain words, keep evidence below it.
+- Dials: `kDrawOnStart` 0.4 (the 160ms wait), `kLensStretch` 0.4, `kLensSquash` 7, `kGlyphStrokeActive` 2.5, `_kCellSpread` 2.2, `_kBubbleLift` 1.6; for the lock, `_arc(Offset(12, 9.2), 2.6, …)`.
+- **`main_shell.dart` is intentionally no longer byte-identical to master** — nav destinations live there. That old hard rule does not survive this branch.
+- ➡ Full detail: **`2026-07-27-session-nav-motion-and-glyphs.md`**, then `2026-07-26-HANDOFF-START-HERE.md` for the branch's earlier rounds. `2026-07-25-HANDOFF-START-HERE.md` is banner-marked SUPERSEDED; ignore it and every older `*handoff*`.
 
 ---
 ### Prior latest ↓

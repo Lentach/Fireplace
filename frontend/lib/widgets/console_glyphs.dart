@@ -38,6 +38,7 @@ import 'dart:math' as math;
 import 'package:flutter/material.dart';
 
 import 'hex_avatar.dart';
+import 'icon_selection.dart';
 
 /// Design space. Deliberately equal to the rendered box (see [kGlyphBox]) so
 /// the scale factor is exactly 1 and every coordinate is pixel-predictable.
@@ -51,6 +52,22 @@ const double kGlyphBox = 24;
 /// One weight for the whole set. Heavier than the 1.4 hex terminal outline so
 /// the glyph is the subject and the terminal is the frame.
 const double kGlyphStroke = 1.8;
+
+/// Stroke weight when a glyph is SELECTED.
+///
+/// Weight is what states selection on a mark that cannot take a fill. The
+/// device verdict that established this was the bubble: a single closed
+/// silhouette filled flush is just a black hexagon at 24px, and on a light
+/// theme, where the accent is nearly black, that is all you see ("chat icone
+/// is all black").
+///
+/// The gear is on weight for the same structural reason, though that one is
+/// a judgement call from a render rather than an owner verdict: its teeth are
+/// thin spokes rooted inside the body, so a flush fill swallows their roots
+/// and leaves a 6-point star with a pinhole. Only the comb, whose fill is
+/// INSET inside cells that keep their outlines, still carries
+/// [ConsoleGlyphGeometry.activeFills].
+const double kGlyphStrokeActive = 2.5;
 
 /// Keyline: the canonical circle (Ø15), square (15×15) and pointy-top hexagon
 /// (14.2 × 16.4). No glyph may exceed this distance from centre on either
@@ -88,6 +105,17 @@ enum ConsoleGlyph {
   metadata,
   quantum,
   cache,
+
+  /// Bottom-nav: a conversation is a LINK — two nodes joined by a live trace,
+  /// on the honeycomb's own 60° neighbour angle.
+  chats,
+
+  /// Bottom-nav: the board itself — a three-cell honeycomb cluster.
+  contacts,
+
+  /// Bottom-nav: Settings. A gear wearing the cell — teeth on the hex's six
+  /// POINTS, bore through the middle (owner pick G3, 2026-07-26).
+  settings,
 }
 
 /// A glyph as data: stroked outlines, filled regions, and filled terminals.
@@ -101,6 +129,7 @@ class ConsoleGlyphGeometry {
     this.strokes = const [],
     this.fills = const [],
     this.dots = const [],
+    this.activeFills = const [],
   });
 
   /// Drawn with [kGlyphStroke], round caps and joins.
@@ -111,6 +140,19 @@ class ConsoleGlyphGeometry {
 
   /// Filled terminals of radius [kGlyphDotRadius].
   final List<Offset> dots;
+
+  /// Solid regions painted only when the glyph is SELECTED, flooded in.
+  ///
+  /// Deliberately INSET rather than flush with the outline. Filling a glyph
+  /// out to its own silhouette turns it into one black mass at 24px — the
+  /// owner rejected exactly that on the bubble ("chat icone is all black").
+  /// What survives is a fill that leaves the outline and its interior
+  /// negative space visible, so the mark still reads as itself.
+  ///
+  /// Contained within the stroked mark by construction — the comb's cells are
+  /// deliberately INSET, not congruent — so this never moves [bounds], which
+  /// is measured from [strokes], [fills] and [dots] only.
+  final List<Path> activeFills;
 
   /// Union of everything, ignoring stroke width (which is uniform across the
   /// set and so cannot shift the centre).
@@ -153,6 +195,7 @@ class ConsoleGlyphGeometry {
     strokes: [for (final p in strokes) p.shift(d)],
     fills: [for (final p in fills) p.shift(d)],
     dots: [for (final o in dots) o + d],
+    activeFills: [for (final p in activeFills) p.shift(d)],
   );
 
   /// Translates so the bounding box centres on the design-space centre, plus
@@ -207,6 +250,20 @@ Path _hexNode(Offset c, double r) => hexPath(c, r);
 /// Straight trace. Horizontal, vertical or on a hex angle; never arbitrary.
 Path _trace(Offset a, Offset b) => _line(a, b);
 
+/// A point at [angleDegrees] and [radius] from the design-space centre.
+/// Polar placement keeps radial sets (gear teeth, spokes) exactly regular
+/// instead of hand-rounded per point.
+Offset _radial(double angleDegrees, double radius) {
+  final radians = angleDegrees * math.pi / 180;
+  return Offset(
+    _c.dx + radius * math.cos(radians),
+    _c.dy + radius * math.sin(radians),
+  );
+}
+
+/// The pointy-top hex's six POINTS. Its six flats sit 30° off these.
+const List<double> _hexVertexAngles = [30, 90, 150, 210, 270, 330];
+
 /// The 45° arrowhead, shared so no two arrows disagree.
 Path _arrowHead(Offset tip, {double size = 3.0}) => _poly([
   Offset(tip.dx - size, tip.dy - size),
@@ -238,14 +295,28 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
       );
 
     case ConsoleGlyph.language:
-      // One node, two traces carrying the same link in two encodings.
+      // The meridian globe, wearing the cell (owner, this session: "language
+      // icone is not hex too … maybe just make a hex instead of round globe").
+      //
+      // Still a CONVENTIONAL silhouette, the same licence `metadata` takes,
+      // and for the same reason: "language" has no truthful node relation to
+      // draw. Three attempts at one proved it — a node with two encodings
+      // stacked to its right (what shipped first) reads as a bullet list, two
+      // cells carrying different scripts mush into a bowtie at 24px, and the
+      // same idea diverging on hex angles reads as scissors. A globe survives
+      // the size, which is the only test that matters on a 44px terminal.
+      //
+      // The shell is now the hex, so the row stops being the one round mark
+      // in a hex set. Meridian and equator are pulled deliberately OFF that
+      // shell — 1.6 of clearance at the poles, 0.93 at the flats. The version
+      // that simply swapped circle for hex kept the old 7.6/15.2 oval and
+      // crowded to within 0.8 and 0.33; three 1.8 strokes inside a 16-unit
+      // hex is what makes this mark choke at 24px, and clearance is the cure.
       return ConsoleGlyphGeometry(
         strokes: [
-          _hexNode(const Offset(7.6, 12), 4.3),
-          _trace(const Offset(11.4, 9.2), const Offset(20.2, 9.2)),
-          _trace(const Offset(11.4, 14.8), const Offset(13.8, 14.8)),
-          _trace(const Offset(15.2, 14.8), const Offset(17.6, 14.8)),
-          _trace(const Offset(19.0, 14.8), const Offset(20.2, 14.8)),
+          _hexNode(_c, 8.0),
+          _oval(_c, 7.0, 12.8),
+          _line(const Offset(6.0, 12), const Offset(18.0, 12)),
         ],
       );
 
@@ -306,15 +377,24 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
       );
 
     case ConsoleGlyph.password:
-      // A padlock: a credential you type. Deliberately a different OBJECT
-      // from [keys], which is identity material, so the two rows can never be
-      // read as the same thing.
+      // A padlock whose body IS a cell (owner, this session: the padlock
+      // "doesnt really fit the rest hex theme"). Deliberately a different
+      // OBJECT from [keys], which is identity material, so the two rows can
+      // never be read as the same thing.
+      //
+      // Drawn as a TRUE U: two legs rooted in the body's upper edges with a
+      // half hoop above them. A pointy-top hex fights a shackle — its top
+      // point rises into the opening — so the two constructions that hung an
+      // arc straight off the body both read as a handbag, one as an avocado.
+      // Lifting the hoop clear of the point and dropping legs to meet the
+      // shoulders is what makes this read as a lock at 24px.
       return ConsoleGlyphGeometry(
         strokes: [
-          _rrect(const Rect.fromLTRB(5.4, 11.2, 18.6, 19.8), 1.8),
-          _arc(const Offset(12, 11.2), 4.2, math.pi, math.pi),
+          _hexNode(const Offset(12, 15.9), 5.2),
+          _line(const Offset(9.4, 9.2), const Offset(9.4, 12.2)),
+          _line(const Offset(14.6, 9.2), const Offset(14.6, 12.2)),
+          _arc(const Offset(12, 9.2), 2.6, math.pi, math.pi),
         ],
-        dots: const [Offset(12, 15.5)],
       );
 
     case ConsoleGlyph.deleteNode:
@@ -427,6 +507,112 @@ ConsoleGlyphGeometry _draw(ConsoleGlyph glyph) {
           ]),
         ],
       );
+
+    case ConsoleGlyph.chats:
+      // A hex speech bubble — the app's own cell doing the bubble job.
+      //
+      // Owner pick, 2026-07-26. The first drawing was two small nodes joined
+      // by a trace, which at 24px was `blocked` minus its slash: two dots and
+      // a hairline. Nav glyphs are the most-glanced marks in the app and must
+      // differ in GROSS SILHOUETTE, not in detail — so this one is a single
+      // closed shape with a spur, against the lattice and the radial core it
+      // sits beside.
+      //
+      // Its SELECTED state is an INSET fill, matching the comb (owner: "chats
+      // icon can be filled in but no all one color inside icone make it same
+      // as others filled inside but with other lines"). Filling it out to its
+      // own silhouette was the earlier attempt and it is one black hexagon at
+      // 24px — worse on a light theme, where the accent is nearly black:
+      // "chat icone is all black". Insetting keeps the outline and the tail
+      // reading as lines with the solid sitting inside them.
+      return ConsoleGlyphGeometry(
+        strokes: [
+          _hexNode(const Offset(12, 10.6), 6.8),
+          _poly(const [
+            Offset(9.2, 16.2),
+            Offset(6.3, 19.8),
+            Offset(11.4, 17.3),
+          ]),
+        ],
+        activeFills: [
+          // Inner cell, with two message lines knocked back out of it. The
+          // inset alone would only give a ring; the lines are what keep the
+          // filled state reading as a CHAT bubble instead of a solid cell,
+          // and they sit inside the hex's full-width band (y 8.0–13.2) so
+          // neither one clips a sloping edge.
+          Path.combine(
+            PathOperation.difference,
+            _hexNode(const Offset(12, 10.6), 5.2),
+            Path()
+              ..addRRect(
+                RRect.fromRectAndRadius(
+                  const Rect.fromLTRB(8.4, 8.45, 15.6, 9.95),
+                  const Radius.circular(0.75),
+                ),
+              )
+              ..addRRect(
+                RRect.fromRectAndRadius(
+                  const Rect.fromLTRB(8.4, 11.25, 13.8, 12.75),
+                  const Radius.circular(0.75),
+                ),
+              ),
+          ),
+        ],
+      );
+
+    case ConsoleGlyph.contacts:
+      // Three cells sharing edges on the true honeycomb pitch — the board in
+      // miniature.
+      //
+      // Owner pick (C1), 2026-07-26. Chosen over a 4-cell diamond and a
+      // 7-cell flower: fewer and bigger survives 24px on a phone, and the
+      // shared edges read as one comb rather than as separate marks.
+      //
+      // The three cells are separate active fills on purpose: they flood in
+      // sequence, which is the per-icon character an authored Lottie file
+      // would otherwise have to supply by hand.
+      return ConsoleGlyphGeometry(
+        strokes: [
+          _hexNode(const Offset(12, 8.3), 4.6),
+          _hexNode(const Offset(8.0163, 15.2), 4.6),
+          _hexNode(const Offset(15.9837, 15.2), 4.6),
+        ],
+        activeFills: [
+          // Inset by the stroke half-width plus a hairline of clearance.
+          // Filling these cells to their outline would merge all three into
+          // one solid lump — they SHARE edges, so the seams that make it read
+          // as a comb are exactly what a flush fill destroys.
+          _hexNode(const Offset(12, 8.3), 3.2),
+          _hexNode(const Offset(8.0163, 15.2), 3.2),
+          _hexNode(const Offset(15.9837, 15.2), 3.2),
+        ],
+      );
+
+    case ConsoleGlyph.settings:
+      // The gear, dressed in the cell.
+      //
+      // Owner direction, 2026-07-26: "modify a bit current icon for setting
+      // which is a gear - just dress it up in a cube". Teeth sit on the six
+      // POINTS rather than the flats (his pick of four drawings) and the bore
+      // stays open at 24px, which is what keeps it a gear rather than a sun.
+      //
+      // This REPLACED a circle-with-cardinal-ticks reading of "your local
+      // node". That one measured fine and still failed: at true size four
+      // ticks on a ring is a gunsight.
+      //
+      // Its SELECTED state is weight, not fill — a judgement call from a
+      // render, not an owner verdict. Filling this body swallows the roots of
+      // six spokes and leaves a 6-point star with a pinhole; the bore and the
+      // teeth are the whole identity here, so the gear keeps every line and
+      // simply gets heavier.
+      return ConsoleGlyphGeometry(
+        strokes: [
+          _hexNode(_c, 5.6),
+          for (final angle in _hexVertexAngles)
+            _line(_radial(angle, 5.0), _radial(angle, 8.0)),
+          _circle(_c, 2.0),
+        ],
+      );
   }
 }
 
@@ -443,39 +629,178 @@ final Map<ConsoleGlyph, ConsoleGlyphGeometry> _resolved = {};
 /// Bounding-box centring is right for almost everything. This is the shape
 /// whose visual weight is not its geometric middle: the padlock's shackle is
 /// open line-work above a closed body, so the body reads heavier than the box
-/// implies and the mark sits low without the lift.
+/// implies and the mark sits low without the lift. Still true now that the
+/// body is a hex cell — the U-shackle above it is thinner line-work over a
+/// wider closed form, which is the same imbalance.
 Offset _opticalNudge(ConsoleGlyph glyph) =>
     glyph == ConsoleGlyph.password ? const Offset(0, -0.35) : Offset.zero;
 
+/// Sub-region [index]'s own 0..1 progress within the whole transition.
+///
+/// Regions flood in sequence with a long overlap, which is what makes the
+/// comb's three cells light one after another — the per-icon character that
+/// an authored Lottie file would otherwise have to supply by hand.
+double _regionProgress(double t, int index, int count) {
+  if (count <= 1) return t;
+  const span = 0.66;
+  final start = index * (1 - span) / (count - 1);
+  return ((t - start) / span).clamp(0.0, 1.0);
+}
+
+/// Stroke weight this glyph reaches when fully selected.
+///
+/// Only the GEAR states selection by weight, and only because it is the one
+/// mark here that cannot be filled at all: its teeth are thin spokes rooted
+/// inside the body, so any fill swallows their roots. The bubble and the comb
+/// both carry inset fills instead, and their strokes deliberately do NOT
+/// thicken — a heavier outline would close the narrow gap that keeps each
+/// fill visibly separate from the line around it, which is the whole reason
+/// the fills are inset.
+double _activeStroke(ConsoleGlyph glyph) =>
+    glyph == ConsoleGlyph.settings ? kGlyphStrokeActive : kGlyphStroke;
+
+/// Per-glyph motion on selection.
+///
+/// Each nav glyph moves in a way only that mark could: the gear turns, the
+/// bubble lifts, the comb's cells come apart and reassemble. This is the
+/// thing that makes an authored icon set feel alive — Telegram ships a
+/// separate Lottie file per tab icon for exactly this reason — and it costs
+/// nothing here because the glyphs are already path data.
+///
+/// All three are TRANSIENT: every one returns to zero at t = 1, so the
+/// resting and selected drawings are identical and only the travel is seen.
+
+/// How far the gear turns. One tooth pitch, because the mark is 6-fold
+/// symmetric so 60° maps it onto itself and the travel reads as engaging a
+/// notch. (The owner suggested 45°; since the rotation settles back to zero
+/// either way, that was a taste call on my part, not a constraint.)
+double _selectedSpin(ConsoleGlyph glyph) =>
+    glyph == ConsoleGlyph.settings ? -math.pi / 3 : 0;
+
+/// How far the comb's cells fly apart at the peak, in design units.
+const double _kCellSpread = 2.2;
+
+/// How far the bubble lifts at the peak, in design units.
+const double _kBubbleLift = 1.6;
+
+/// A 0 → 1 → 0 bump. Eased on the way out so the return settles rather than
+/// snapping, and exactly zero at both ends so nothing is left displaced.
+double _bump(double t) {
+  if (t <= 0 || t >= 1) return 0;
+  return math.sin(t * math.pi);
+}
+
+/// Displacement for one sub-path of [glyph] at time [t].
+///
+/// For the comb this is radial: each cell is pushed straight out from the
+/// glyph centre and pulled back, so the board visibly comes apart and
+/// reassembles. For the bubble the whole mark lifts. Geometry is centred on
+/// resolve, so the glyph centre is [_c] by construction and the direction can
+/// be read straight off the sub-path's own bounds.
+Offset _motionOffset(ConsoleGlyph glyph, Path subPath, double t) {
+  final bump = _bump(t);
+  if (bump == 0) return Offset.zero;
+  switch (glyph) {
+    case ConsoleGlyph.contacts:
+      final d = subPath.getBounds().center - _c;
+      if (d.distance == 0) return Offset.zero;
+      return d / d.distance * (_kCellSpread * bump);
+    case ConsoleGlyph.chats:
+      return Offset(0, -_kBubbleLift * bump);
+    default:
+      return Offset.zero;
+  }
+}
+
 class ConsoleGlyphPainter extends CustomPainter {
-  const ConsoleGlyphPainter({required this.glyph, required this.color});
+  const ConsoleGlyphPainter({
+    required this.glyph,
+    required this.color,
+    this.progress = 0,
+    this.activeColor,
+  });
 
   final ConsoleGlyph glyph;
+
+  /// The outline color. Static call sites pass their tint and get exactly the
+  /// mark they always got.
   final Color color;
+
+  /// How far into the SELECTED state this mark is: 0 = resting, 1 = fully
+  /// selected. What that looks like is per glyph — heavier stroke for the
+  /// bubble and the gear, inset cells flooding for the comb — because a flush
+  /// fill on a closed silhouette is a black lump at 24px. Defaults to 0, so
+  /// every static call site is unaffected.
+  final double progress;
+
+  /// Color of the flooded fill, for the glyphs that have one. Falls back to
+  /// [color].
+  final Color? activeColor;
 
   @override
   void paint(Canvas canvas, Size size) {
     final geometry = consoleGlyphGeometry(glyph);
+    final t = progress.clamp(0.0, 1.0);
 
     canvas.save();
     canvas.scale(size.width / kGlyphUnit, size.height / kGlyphUnit);
 
+    // Turn into place. Transient: it starts a notch back and unwinds to the
+    // resting orientation, so the resting and selected drawings are identical
+    // and only the travel is visible.
+    final spin = _selectedSpin(glyph);
+    if (spin != 0 && t > 0 && t < 1) {
+      canvas.translate(_c.dx, _c.dy);
+      canvas.rotate(spin * (1 - t));
+      canvas.translate(-_c.dx, -_c.dy);
+    }
+
     final stroke = Paint()
       ..style = PaintingStyle.stroke
-      ..strokeWidth = kGlyphStroke
+      ..strokeWidth = kGlyphStroke + (_activeStroke(glyph) - kGlyphStroke) * t
       ..strokeCap = StrokeCap.round
       ..strokeJoin = StrokeJoin.round
       ..color = color;
     final fill = Paint()..color = color;
 
+    // The outline is ALWAYS whole. That is what makes this a state change
+    // rather than an entrance: the mark never leaves, it gains mass.
     for (final path in geometry.fills) {
       canvas.drawPath(path, fill);
     }
     for (final path in geometry.strokes) {
-      canvas.drawPath(path, stroke);
+      canvas.drawPath(path.shift(_motionOffset(glyph, path, t)), stroke);
     }
     for (final dot in geometry.dots) {
       canvas.drawCircle(dot, kGlyphDotRadius, fill);
+    }
+
+    if (t > 0 && geometry.activeFills.isNotEmpty) {
+      final active = Paint()..color = activeColor ?? color;
+      for (var i = 0; i < geometry.activeFills.length; i++) {
+        // Each fill rides with the cell it belongs to. For the comb the two
+        // lists are index-aligned one-per-cell, which the keyline test pins.
+        final shift = _motionOffset(glyph, geometry.activeFills[i], t);
+        final region = geometry.activeFills[i].shift(shift);
+        final local = _regionProgress(t, i, geometry.activeFills.length);
+        if (local <= 0) continue;
+        canvas.save();
+        if (local < 1) {
+          // Flood from the region's own centre so the solid grows into the
+          // outline instead of cross-fading with it.
+          final b = region.getBounds();
+          canvas.clipPath(
+            Path()..addOval(
+              Rect.fromCircle(
+                center: b.center,
+                radius: b.longestSide * 0.75 * local,
+              ),
+            ),
+          );
+        }
+        canvas.drawPath(region, active);
+        canvas.restore();
+      }
     }
 
     canvas.restore();
@@ -483,5 +808,39 @@ class ConsoleGlyphPainter extends CustomPainter {
 
   @override
   bool shouldRepaint(covariant ConsoleGlyphPainter oldDelegate) =>
-      oldDelegate.glyph != glyph || oldDelegate.color != color;
+      oldDelegate.glyph != glyph ||
+      oldDelegate.color != color ||
+      oldDelegate.progress != progress ||
+      oldDelegate.activeColor != activeColor;
+}
+
+/// A console glyph as a drop-in icon: reads its color and size from the
+/// ambient [IconTheme], exactly like [Icon] does, so any container that
+/// tints its icons (e.g. the bottom nav's selection tween) drives the glyph
+/// without knowing this system exists.
+///
+/// It also honours [IconSelection], so chrome with a selected state gets the
+/// change for free — heavier stroke, or flooded inset regions, depending on
+/// what the glyph's shape can carry. With no [IconSelection] ancestor the
+/// progress is 0 and this is the plain resting mark.
+class ConsoleGlyphIcon extends StatelessWidget {
+  const ConsoleGlyphIcon(this.glyph, {super.key});
+
+  final ConsoleGlyph glyph;
+
+  @override
+  Widget build(BuildContext context) {
+    final iconTheme = IconTheme.of(context);
+    final size = iconTheme.size ?? kGlyphBox;
+    final selection = IconSelection.of(context);
+    return CustomPaint(
+      size: Size.square(size),
+      painter: ConsoleGlyphPainter(
+        glyph: glyph,
+        color: iconTheme.color ?? Theme.of(context).colorScheme.onSurface,
+        progress: selection?.progress ?? 0,
+        activeColor: selection?.activeColor,
+      ),
+    );
+  }
 }
