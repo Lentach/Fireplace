@@ -18,6 +18,7 @@
 - **`impact.mjs` is an inner-loop hint, NOT a coverage oracle** — static imports only, 3 hops; blind to NestJS DI wiring, §7 wire contracts, assets/config. Full tier suites still gate commits and PRs. Do not let it justify skipping `flutter test` / `npm test`.
 - **TRAP: `core.filemode=false` here** — new hooks stage as `100644` even after `chmod +x` and are silently ignored on Linux/fresh clones. Fixed via `git update-index --chmod=+x`; check `git ls-files --stage .githooks/` after adding any hook. Activation is still per-clone: `git config core.hooksPath .githooks`.
 - Never answer a Flutter dependency question from `GRAPH_REPORT.md`. Re-run the measurement before trusting graphify's Dart edges again.
+- **Dependabot #95: patched in code, alert never closed.** `git push` still warns "1 high" and `gh api` reports #95 `open` (`brace-expansion <= 5.0.7`), but `master`'s lockfile already has **5.0.8** on every `^5.0.5` entry (from `207bc06`) and all eight copies are `dev: true`. Dismiss the alert on GitHub — do NOT touch the lockfile again.
 - ➡ Full detail: **`2026-07-27-session-workflow-tooling.md`**.
 
 ---
