@@ -1,0 +1,129 @@
+# E2E safety audit + chat-entry flicker/lag fix
+
+**Date:** 2026-07-27 — full pre-production E2E audit (7 parallel read-only slices)
+plus the fix for the reported "history flashes `[encrypted]` and janks on chat
+entry". Branch `audit/e2e-safety` in a separate worktree
+(`C:/Users/Lentach/Desktop/fireplace-e2e-audit`), cut from `master` @ `d2f8aca`.
+Live at audit time: **0.0.132 / `05fc423`**, both surfaces. Nothing deployed.
+
+## What was done
+
+### The reported symptom — root-caused and MEASURED, not guessed
+Two independent defects, neither a decryption failure:
+
+1. **Paint before hydrate.** The server ships `content: "[encrypted]"` for every
+   E2E row (`chat-message.service.ts:80`). `onMessageHistory` merged and
+   notified at `history.dart:402` BEFORE any local plaintext was applied, so the
+   first painted frame of a cold entry was all placeholders; the list flipped
+   only at the terminal notify of the async decrypt pass.
+2. **One full `SharedPreferences.reload()` PER ROW.** `getDecryptedContent`
+   (`encryption_service.dart:641`) reloads before every read — added by
+   `fd89e7e` (0.0.126) for cross-engine coherence — and `_decryptMessageHistory`
+   called it once per history row. On web `reload()` is the plugin's `getAll()`:
+   enumerate EVERY localStorage key, then `getItem` + `jsonDecode` each
+   `flutter.`-prefixed one, against a plaintext cache capped at **2000** records.
+
+Measured in headless Chrome against real localStorage
+(`frontend/tool/prefs_reload_cost_probe.dart`, 3 runs, virtual + real clock
+agree), desktop i7-7700, cache at its 2000-row cap:
+
+| | current | one reload per pass |
+|---|---|---|
+| 50 rows (one page) | **65-77 ms** | 1.4 ms |
+| 200 rows | **290-316 ms** | 1.4 ms |
+| 400 rows | **562-597 ms** | 1.6 ms |
+
+One reload = 1.6-2.0 ms at the cap (0.10 ms empty — it scales with cache size).
+Phones run this 4-6x slower, which is exactly "a flick of a second".
+
+Bonus finding, same probe: `SharedPreferencesAsyncWeb.getString` filters its
+allowList only AFTER materialising every localStorage key, so **every Signal
+session/identity/prekey read is O(total keys)** — a single Signal key read goes
+0.034 ms → 0.236 ms purely because the plaintext cache filled up.
+
+### The fix (4 changes, none touches the lock or the replay cache)
+- `EncryptionService.getDecryptedContentMany` — one coherence reload for a
+  bounded id set. Carries the safety argument in its doc comment: the plaintext
+  cache IS a coherence surface, so the reload is **hoisted, never deleted**;
+  writes landing mid-pass are still caught by the raw replay cache (own reload,
+  written before the session lock releases, capped at 40).
+- `_hydrateSnapshotFromCaches` fills the parsed snapshot while it is still a
+  caller-local list, before the merge + notify. Upgrade-only.
+- `_decryptMessageHistory` prefetches once per pass; `_persistedPlaintextFor`
+  falls through to the single read on a miss.
+- `_pruneDecryptedContentCache` no longer calls `_storage.readAll()` on web
+  (matched zero keys while decoding the whole origin store — 2.46 ms wasted per
+  persisted message), and the legacy secure-storage fallback is gated to mobile
+  where such entries can actually exist.
+
+### The audit — verdict SAFE WITH CAVEATS, no CRITICAL
+Verified sound: both lock layers on all four session mutations, leaf-level (no
+deadlock), account+peer lock naming, fail-closed Web Locks, monotonic plaintext,
+exact-ciphertext replay, server structurally incapable of holding private keys,
+content-free push on both channels, blind server-side `editMessage`, membership
+on every endpoint, ciphertext genuinely deleted.
+
+Open caveats, highest first — **none fixed in this branch**:
+- **MED `identity_key_pair` and `registration_id` are two independent keys.**
+  Losing exactly one makes `loadFromStorage()` return false → `_generateKeys()`
+  mints a NEW identity → all history with every peer becomes permanently
+  undecryptable, silently. A *throwing* read is correctly fail-safe; only
+  partial loss bites. This is the one that can destroy user data.
+- **MED the Web Lock layer is not actually tested.**
+  `session_cross_context_lock_web_test.dart:11` opens `if (!kIsWeb) return;` —
+  under `flutter test` it is a no-op that **reports as passing**. The race probes
+  inject a fake lock. Only the manual browser probe exercises real
+  `navigator.locks`, and CI never runs it.
+- MED cross-engine OTP generation is unserialized (per-engine bool only).
+- MED decrypted plaintext sits unencrypted at rest on **mobile** too
+  (SharedPreferences, not secure storage) while keys are hardware-backed.
+- MED silent TOFU: a peer identity change is auto-accepted with no warning.
+- LOW `GET /media/msgs/:filename` is JWT-guarded but has no participant check
+  (E2E-encrypted UUID blobs, so no plaintext).
+- LOW invariants "no deadlock" and "unrelated peers stay parallel" have zero
+  automated coverage; `buildSession`/`deleteSession` serialization is still
+  probe-vacuous, exactly as the 2026-07-09 runbook edge recorded.
+
+## Key files
+- `frontend/lib/services/encryption_service.dart` — `getDecryptedContentMany`,
+  `_legacyDecryptedContentFallback`, prune gate.
+- `frontend/lib/providers/encryption_provider.dart` — batch passthrough.
+- `frontend/lib/providers/messaging/messaging_provider.decrypt.dart` —
+  `_restoreFromPersistedPayload`, `_hydrateSnapshotFromCaches`,
+  `_hydrateSnapshotFromStorage`, `_prefetchPersistedPlaintext`,
+  `_persistedPlaintextFor`.
+- `frontend/lib/providers/messaging/messaging_provider.history.dart` —
+  pre-paint hydration + supersede guard in `onMessageHistory`.
+- `frontend/test/providers/messaging_provider_chat_entry_hydration_test.dart` (new, 6 tests).
+- `frontend/tool/prefs_reload_cost_probe.dart` + `.html` (new, diagnostic).
+- `docs/runbooks/e2e-decryption-failed.md` — new Step 3D.
+- `frontend/CLAUDE.md` §5 — two new load-bearing bullets. `CLAUDE.md` §3 count 903 → 909.
+
+## Verification
+- `flutter analyze --no-fatal-infos` → **No issues found**.
+- `flutter test` → **909 passed, 4 skipped**; `verify-claude-frontend-test-counts.mjs` → OK.
+- **Both new behaviours falsified separately**: disabling the pre-paint
+  hydration turns the placeholder-frame test red; ignoring the prefetched batch
+  turns the pass-level test red at 30 reads instead of 0. (The first read-count
+  test alone did NOT discriminate — pre-paint hydration satisfied it — which is
+  why the pass-level test exists.)
+- The lost-ack suite caught a real regression mid-work: hydrating OWN rows from
+  the RAM cache skipped the reconcile branch and the durable persist never
+  happened. Fixed in the hydration, not in the test.
+- Cost probe re-run after the change is unnecessary: the "one reload per pass"
+  column above IS the new access pattern (two such passes per entry, ~3-7 ms).
+
+## Notes for next session
+- **NOT deployed and NOT version-bumped.** `pubspec.yaml` stays 0.0.132; the
+  bump belongs to the release commit (the 0.0.131 run recorded a procedure
+  exception for bumping too early). Branch does not auto-deploy.
+- Do **not** claim a synchronous warm-entry fast path: own rows always route to
+  the disk read (the server always sends them as `[encrypted]`), so any chat
+  containing your own messages takes the batched read. The honest claim is
+  "one batched read instead of N reloads".
+- The identity-regeneration hole (MED, first in the list above) is the highest
+  value follow-up: make the identity pair + registration id one atomic record
+  and refuse to regenerate while session records still exist.
+- The vacuous Web-Lock test is the second: it reports green while pinning
+  nothing. Either run it under `--platform chrome` in CI or wire the browser
+  probe into a job.

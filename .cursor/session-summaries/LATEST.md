@@ -1,5 +1,28 @@
 # Latest session summary
 
+**Date:** 2026-07-27 — **full E2E safety audit + the chat-entry flicker/lag fix.** Branch `audit/e2e-safety` (separate worktree), cut from `d2f8aca`. **Not deployed, not bumped** — live stays 0.0.132 / `05fc423`.
+
+## What was done
+1. **Root-caused the "history flashes `[encrypted]` on chat entry" report — two defects, neither a decryption failure.** (a) `onMessageHistory` merged + notified at `history.dart:402` BEFORE applying local plaintext, and the server sends `content: "[encrypted]"` for every E2E row, so the first painted frame was all placeholders. (b) `getDecryptedContent` reloads prefs before every read (added by `fd89e7e` for cross-engine coherence) and the history pass called it **once per row**.
+2. **MEASURED it** (`frontend/tool/prefs_reload_cost_probe.dart`, headless Chrome, real localStorage). On web `reload()` = enumerate EVERY localStorage key + `getItem`/`jsonDecode` each `flutter.` one, against a cache capped at 2000: **65-77 ms for one 50-row page, ~300 ms at 200 rows, ~590 ms at 400** on a desktop i7; 4-6x worse on a phone. One reload per pass is ~1.5 ms flat.
+3. **Fixed**: `getDecryptedContentMany` (one coherence reload per pass), pre-paint `_hydrateSnapshotFromCaches`, per-pass prefetch with authoritative fall-through, and the dead web `readAll()` dropped from prune.
+4. **Audit verdict: SAFE WITH CAVEATS, no CRITICAL.** Both lock layers hold on all four session mutations, leaf-level (no deadlock), fail-closed Web Locks, monotonic plaintext, exact-ciphertext replay, server structurally cannot hold private keys, push is content-free, `editMessage` blind and gated server-side, deletes really delete.
+
+## Verification
+- analyze **0 issues**; `flutter test` **909 passed / 4 skipped**; count verifier OK.
+- **Both behaviours falsified separately** (disable pre-paint hydration → placeholder test red; ignore the batch → pass-level test red at 30 reads vs 0). The read-count test alone did NOT discriminate, which is why the pass-level one exists.
+- ⚠ **Unit tests + synthetic probe only — NOT yet exercised in a real long-history PWA chat.** End-to-end confirmation (open a real chat: no placeholder frame, no jank) is outstanding.
+
+## Notes for next session
+- **Highest-value open bug (MED): identity can silently regenerate.** `identity_key_pair` and `registration_id` are two independent keys; losing exactly ONE makes `loadFromStorage()` false → new identity → all history with every peer permanently undecryptable. A throwing read is correctly fail-safe; only partial loss bites.
+- **The Web Lock layer is not actually tested.** `session_cross_context_lock_web_test.dart:11` starts `if (!kIsWeb) return;` — a no-op that **reports as passing**; the race probes inject a fake lock. Only the manual browser probe touches real `navigator.locks`, and CI never runs it.
+- Other caveats: unserialized cross-engine OTP generation; decrypted plaintext unencrypted at rest on **mobile** too; silent TOFU on peer re-key; `GET /media/msgs/:filename` has no participant check (E2E blobs, no plaintext).
+- Do **not** claim a synchronous warm-entry path — own rows always take the disk read. Honest claim: "one batched read instead of N reloads".
+- ➡ Detail: `2026-07-27-session-e2e-audit-and-chat-entry-cost.md`; runbook **Step 3D**; `frontend/CLAUDE.md` §5 (two new bullets).
+
+---
+### Prior latest ↓
+
 **Date:** 2026-07-27 — **RELEASED 0.0.132 / `05fc423`, both surfaces, smoke 5/5.** A workflow/infra session that ended up fixing **two disaster-recovery bugs in production code** (`backend/src/database/migration-runner.ts`), both surfaced by the new cross-tier CI job on its very first run. 18 commits, `05e0962..05fc423`.
 
 ## What was done
@@ -69,24 +92,4 @@
 ## Notes for next session
 - Reverts PR #96's stale-bundle nudge only; the underlying stale-PWA reality is unchanged — users still must fully close + reopen after a deploy to activate a new service worker. Never uninstall / clear site data (wipes E2E keys).
 - Full: `2026-07-24-remove-stale-bundle-nudge.md`.
-
----
-### Prior latest ↓
-
-**Date:** 2026-07-24 — PWA logout incident root-caused AND hardening released: PR #96 merged, **0.0.127 / `3861166` deployed to production (frontend + backend), smoke passed**. Server auth was CONFIRMED healthy (112/112 refreshes 201 over 14 days); the owner-verified victim suffered a FULL device-side origin-storage wipe (proven via Postgres xmin — tokens AND Signal identity destroyed and regenerated; permanent history loss on that device).
-
-## What was done
-1. Ruled out server causes with live VM evidence: `/auth/refresh` deployed + 100% successful; most users hold healthy 365-day sliding sessions; no `[auth-session-end]` warns; secret rotation/clock/CORS refuted.
-2. "Logged out after 1 day+" = 24h access-JWT TTL on devices that never call refresh. DB fingerprint: victims' rows never slide (`expires_at` = `created_at`+365d exactly). Top churner was owner's incognito build checks (noise).
-3. Verified logout path is E2E-key-safe at source: only `jwt_token`/`refresh_token` removed; re-login reuses on-device Signal store.
-
-## Verification
-- Investigation: read-only file:line reads + nginx/docker/psql queries on the VM. Fix branch: backend 536 passed/47 suites; frontend analyze 0 issues, 783 passed/4 skips; targeted regressions for the boot slide (valid-access boot slides once with `X-App-Commit`; slide 401/500 NEVER logs out).
-
-## Notes for next session
-- **PR #96 (`fix/pwa-logout`, 0.0.127) is MERGED and DEPLOYED** (backend `deploy-backend.sh` healthy; `deploy-web.ps1` published; post-deploy smoke 5/5; version.json BOM-free with injected `gitCommit`; CORS preflight allows `x-app-commit`). Contents: `navigator.storage.persist()` at every web boot (+`STORAGE_NOT_PERSISTENT` diag), backend `[identity-churn]` WARN on identityPublicKey change, proactive boot session slide, `X-App-Commit` on auth calls, session-end reason + compiled commit on the auth screen, stale-bundle nudge. (That entry said the backend count was 536; it is **541** as of 2026-07-27 and now machine-verified in CI.)
-- Devices still on old bundles benefit only after one full close+reopen (the nudge code isn't in their cached bundle). Remind users; never uninstall/clear site data.
-- On the next logout report, BEFORE re-deriving anything: (1) grep backend logs for `[identity-churn]` and `[auth-session-end]`; (2) nginx: did the victim's login carry `X-App-Commit`? absent/old = stale bundle; (3) victim's login-screen footer screenshot now shows commit + reason; (4) `refresh_tokens.expires_at` vs `created_at`+365d = never-slid fingerprint. Forensic trap: OTP upsert preserves `createdAt` and overwrites `identityPublicKey` — use Postgres `xmin` for rewrite dating.
-- Platform truth (sources verified): `persist()` is real eviction protection on Android/Chrome installed PWAs; on iOS the home-screen install itself is the main exemption and `persist()` is best-effort. Manual site-data wipes are indefensible on any web platform (= Signal Web) — native builds are the only escape.
-- NEVER clear site data / rotate JWT_SECRET as a "fix". Full details: `2026-07-24-session.md` — tracked since 2026-07-27; the "local-only, gitignored by incident rule" note that used to be here no longer applies.
 

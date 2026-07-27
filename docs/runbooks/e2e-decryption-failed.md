@@ -133,6 +133,48 @@ If a post-0.0.126 duplicate reaches the UI instead of logging
 raw preference write failed (`DECRYPT_RAW_PERSIST_FAILED`) or whether the
 message id/ciphertext changed.
 
+## Step 3D — chat entry is slow and briefly shows "[encrypted]"
+
+NOT a decryption failure. Rows resolve correctly, just late. Symptom: opening a
+chat with real history janks for a fraction of a second and the message text
+visibly flips from `[encrypted]` to plaintext.
+
+Two independent causes, both fixed after 0.0.132:
+
+1. **Paint before hydrate.** The server ships `content: "[encrypted]"` for
+   every E2E row, and `onMessageHistory` merged + notified BEFORE any local
+   plaintext was applied, so the first painted frame was all placeholders.
+   Fixed by hydrating the parsed snapshot from the RAM/persisted caches while
+   it is still a caller-local list
+   (`_hydrateSnapshotFromCaches`, `messaging_provider.decrypt.dart`).
+2. **One full `SharedPreferences.reload()` PER ROW.** `getDecryptedContent`
+   reloads before every read (added by `fd89e7e` for cross-engine coherence),
+   and the history pass called it once per message. On web `reload()` is
+   `getAll()`: enumerate EVERY localStorage key, then `getItem` + `jsonDecode`
+   each `flutter.`-prefixed one — and the plaintext cache holds up to 2000
+   records. Fixed by `getDecryptedContentMany` (one reload per pass).
+
+Measured with `frontend/tool/prefs_reload_cost_probe.dart` (compile + serve +
+headless Chrome, same pattern as the session-lock probe; title becomes
+`PREFS_PROBE_DONE`). At the 2000-record cap, desktop i7, real localStorage:
+one reload 1.6-2.0 ms; a 50-row page cost 65-77 ms of blocked main thread,
+200 rows ~300 ms, 400 rows ~590 ms. One reload for the whole pass is ~1.5 ms
+flat. Phones run this 4-6x slower.
+
+**Do NOT "fix" this by deleting the reload.** The plaintext cache is itself a
+cross-engine coherence surface: a stale snapshot means a cache miss, a live
+decrypt of a ciphertext another engine already consumed, and a real
+`DuplicateMessage`. Hoisting is safe only because one reload still opens the
+pass and the raw replay cache (which keeps its own reload, written before the
+session lock releases, capped at 40 records) still covers writes landing
+mid-pass. Same reason a batch MISS is not an answer — callers must fall
+through to `getDecryptedContent`, never treat an absent id as "no plaintext".
+
+Regressions: `frontend/test/providers/messaging_provider_chat_entry_hydration_test.dart`.
+Both behaviours are separately falsifiable (disable the pre-paint hydration →
+the placeholder-frame test goes red; ignore the prefetched batch → the
+pass-level read-count test goes red at 30 reads instead of 0).
+
 ## The 2-min persistence test (still not run as of 2026-07-07)
 
 Gates the regeneration guard. Normal (non-incognito) browser profile: register

@@ -629,7 +629,8 @@ class EncryptionService {
   }
 
   /// Retrieve persisted decrypted message content, or null if not found.
-  /// Falls back to flutter_secure_storage for entries written by older versions.
+  /// On mobile, falls back to flutter_secure_storage for entries written by
+  /// older versions ([_legacyDecryptedContentFallback]).
   Future<Map<String, dynamic>?> getDecryptedContent(int id) async {
     final userId = _userId;
     if (userId == null) return null;
@@ -641,13 +642,81 @@ class EncryptionService {
       await _reloadPrefsForCrossContext(prefs);
       final raw = prefs.getString(key);
       if (raw != null) return jsonDecode(raw) as Map<String, dynamic>;
-      // Fallback: flutter_secure_storage (written by older app versions)
-      final oldRaw = await _storage.read(key: key);
+      final oldRaw = await _legacyDecryptedContentFallback(key);
       if (oldRaw != null) return jsonDecode(oldRaw) as Map<String, dynamic>;
       return null;
     } catch (_) {
       return null;
     }
+  }
+
+  /// Legacy plaintext-cache fallback for entries written by older app versions.
+  ///
+  /// MOBILE ONLY, and provably so: [saveDecryptedContent] has only ever written
+  /// through the raw [SharedPreferences] namespace, while [DualStorage.read]
+  /// routes web reads to the `sig_`-prefixed async store. A
+  /// `e2e_<uid>_decrypted_<id>` key therefore cannot exist there, so on web
+  /// this lookup could only ever return null — at the cost of a full
+  /// localStorage key enumeration per call (SharedPreferencesAsyncWeb filters
+  /// its allowList only AFTER materialising every key). Rows with no persisted
+  /// plaintext — terminal failures above all — miss on EVERY chat entry, so
+  /// that was a recurring cost for a guaranteed null.
+  Future<String?> _legacyDecryptedContentFallback(String key) async {
+    if (kIsWeb) return null;
+    return _storage.read(key: key);
+  }
+
+  /// Batched sibling of [getDecryptedContent]: resolves many message ids while
+  /// paying the cross-engine coherence reload exactly ONCE.
+  ///
+  /// WHY THIS IS SAFE — read before "simplifying" it. The plaintext cache is
+  /// itself a cross-engine coherence surface, NOT just a UI convenience: if
+  /// another PWA engine persisted plaintext for a row and this engine's prefs
+  /// snapshot is stale, we miss the cache, live-decrypt a ciphertext whose
+  /// ratchet key the other engine already consumed, and land on
+  /// DuplicateMessage -> "[Decryption failed]". That is exactly why
+  /// [getDecryptedContent] reloads, and why deleting the reload is NOT the
+  /// optimisation to make. Batching keeps the guarantee because:
+  ///   * one reload at the head of the pass makes everything another engine
+  ///     wrote BEFORE the pass visible to every row in it; and
+  ///   * anything another engine writes DURING the pass is still caught by the
+  ///     raw replay cache, which keeps its own reload
+  ///     ([_loadRawDecryptedContent]) and is written before the peer-session
+  ///     lock is released — bounded by [_rawDecryptedContentCacheLimit] (40)
+  ///     records, i.e. the other engine would have to decrypt >40 messages
+  ///     inside our pass to slip past both layers.
+  /// A MISS IS NOT AN ANSWER. This reads the SharedPreferences namespace only,
+  /// so callers must treat an absent id as "unknown" and fall through to
+  /// [getDecryptedContent] (which also serves the mobile legacy store).
+  /// Reading a miss as "no plaintext" would strand a row on "[encrypted]".
+  /// Keeping the legacy store out of the batch is deliberate: on mobile that
+  /// is a Keychain/Keystore hit per id, and a whole-pass prefetch would pay it
+  /// for every row instead of only the rows that actually need it.
+  Future<Map<int, Map<String, dynamic>>> getDecryptedContentMany(
+    Iterable<int> ids,
+  ) async {
+    final userId = _userId;
+    final result = <int, Map<String, dynamic>>{};
+    if (userId == null) return result;
+    final wanted = ids.toSet();
+    if (wanted.isEmpty) return result;
+    try {
+      final prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
+      for (final id in wanted) {
+        final raw = prefs.getString(_decryptedContentKey(userId, id));
+        if (raw == null) continue;
+        try {
+          result[id] = jsonDecode(raw) as Map<String, dynamic>;
+        } catch (_) {
+          // Corrupt record: leave the id absent so the caller falls through to
+          // the authoritative single read.
+        }
+      }
+    } catch (_) {
+      return result;
+    }
+    return result;
   }
 
   Future<int> clearDecryptedContentCache() async {
@@ -902,7 +971,16 @@ class EncryptionService {
     final prefix = _decryptedContentPrefix(userId);
     final keys = <String>{
       ...prefs.getKeys().where((key) => key.startsWith(prefix)),
-      ...(await _storage.readAll()).keys.where((key) => key.startsWith(prefix)),
+      // Legacy store, mobile only. On web DualStorage reads the `sig_`-prefixed
+      // async namespace, which never held a `_decryptedContentKey`, so this
+      // matched nothing while decoding EVERY value in localStorage
+      // (SharedPreferencesAsyncWeb.getPreferences has no prefix filter) — on
+      // every single saveDecryptedContent. Measured ~2.5 ms per persisted
+      // message at the 2000-record cap, all of it for an empty set.
+      if (!kIsWeb)
+        ...(await _storage.readAll()).keys.where(
+          (key) => key.startsWith(prefix),
+        ),
     }.toList();
     if (keys.length <= _decryptedContentCacheLimit) return;
 

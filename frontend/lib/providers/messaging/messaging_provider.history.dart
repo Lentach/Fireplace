@@ -271,7 +271,7 @@ extension MessagingHistory on MessagingProvider {
     cache[idx] = patch(cache[idx]);
   }
 
-  void onMessageHistory(dynamic data) {
+  Future<void> onMessageHistory(dynamic data) async {
     final effectiveActive = _effectiveActiveConversationId;
 
     int? responseConversationId;
@@ -293,9 +293,12 @@ extension MessagingHistory on MessagingProvider {
       'activeId': effectiveActive ?? -1,
       'paginationId': _paginationConversationId,
     });
-    if (responseConversationId != null &&
-        effectiveActive != null &&
-        responseConversationId != effectiveActive) {
+    bool droppedForConversationMismatch(int? activeNow) {
+      if (responseConversationId == null ||
+          activeNow == null ||
+          responseConversationId == activeNow) {
+        return false;
+      }
       if (_isPaginationLoad &&
           responseConversationId == _paginationConversationId) {
         _finishPaginationLoad();
@@ -304,10 +307,12 @@ extension MessagingHistory on MessagingProvider {
       _e2eFlowLog('HISTORY_DROP', {
         'reason': 'convMismatch',
         'convId': responseConversationId,
-        'activeId': effectiveActive,
+        'activeId': activeNow,
       });
-      return;
+      return true;
     }
+
+    if (droppedForConversationMismatch(effectiveActive)) return;
     final newMessages = list
         .map(
           (m) => _enrichReplyPreview(
@@ -315,6 +320,49 @@ extension MessagingHistory on MessagingProvider {
           ),
         )
         .toList();
+
+    // Fill in plaintext we already hold BEFORE this snapshot reaches _messages.
+    // Every E2E row arrives as content "[encrypted]" (the server never sees
+    // plaintext), so painting the snapshot first and decrypting afterwards is
+    // what made a long history flash placeholders on entry. This touches the
+    // caller-local list only; the merge into _messages and the notifyListeners
+    // below stay a single atomic step, as they were.
+    //
+    // The RAM half is synchronous and returns null, so a warm re-entry keeps
+    // the whole handler suspension-free. Only a cold entry that has to read
+    // storage yields — and everything below branches on mutable pagination
+    // state, so in that case snapshot the inputs and refuse to evaluate this
+    // payload against state a concurrent getMessages / loadOlderMessages moved
+    // underneath us.
+    final hydration = _hydrateSnapshotFromCaches(newMessages);
+    if (hydration != null) {
+      final paginationAtEntry = _isPaginationLoad;
+      final paginationIdAtEntry = _paginationConversationId;
+      final fetchSeqAtEntry = _historyFetchSeq;
+      await hydration;
+      if (droppedForConversationMismatch(_effectiveActiveConversationId)) {
+        return;
+      }
+      if (_isPaginationLoad != paginationAtEntry ||
+          _paginationConversationId != paginationIdAtEntry ||
+          _historyFetchSeq != fetchSeqAtEntry) {
+        // Superseded mid-hydrate. Same treatment as the stale-sequence path
+        // below: keep the payload's plaintext in the conversation cache,
+        // release this fetch's slot, and let the newer request own the UI.
+        final supersededConvId =
+            responseConversationId ?? _effectiveActiveConversationId;
+        _acknowledgeHistoryFetch(supersededConvId);
+        if (supersededConvId != null) {
+          _mergeServerSnapshotIntoCache(supersededConvId, newMessages);
+        }
+        _e2eFlowLog('HISTORY_DROP', {
+          'reason': 'supersededDuringHydrate',
+          'convId': supersededConvId ?? -1,
+          'mergedToCache': supersededConvId != null,
+        });
+        return;
+      }
+    }
 
     if (_isPaginationLoad) {
       if (responseConversationId != null &&

@@ -226,6 +226,16 @@ class EncryptionProvider extends ChangeNotifier {
     return _encryptionService.getDecryptedContent(messageId);
   }
 
+  /// Batched persisted-plaintext lookup for a bounded id set (one cross-engine
+  /// reload for the whole set). Delegates to
+  /// [EncryptionService.getDecryptedContentMany] — see the safety note there
+  /// before using it anywhere other than a history pass.
+  Future<Map<int, Map<String, dynamic>>> getDecryptedContentMany(
+    Iterable<int> messageIds,
+  ) async {
+    return _encryptionService.getDecryptedContentMany(messageIds);
+  }
+
   /// Record an emitted send for lost-ack reconciliation (keyed by the exact
   /// emitted ciphertext). Delegates to [EncryptionService.savePendingSendRecord].
   Future<void> savePendingSendRecord(

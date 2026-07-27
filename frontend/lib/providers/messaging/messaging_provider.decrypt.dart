@@ -245,6 +245,167 @@ extension MessagingDecrypt on MessagingProvider {
     });
   }
 
+  /// Rebuild [msg] from a persisted plaintext [payload].
+  ///
+  /// The link-preview image is re-validated so a payload written by an older
+  /// build cannot introduce an unsafe URL. Note this gates what the payload can
+  /// ADD: `copyWith` is null-preserving, so a failed check falls back to
+  /// `msg.linkPreviewImageUrl` rather than clearing it — harmless because the
+  /// backend never populates linkPreview* for a row carrying encryptedContent.
+  MessageModel _restoreFromPersistedPayload(
+    MessageModel msg,
+    Map<String, dynamic> payload,
+  ) {
+    final content = payload['content'] as String? ?? '';
+    final imageUrl = payload['linkPreviewImageUrl'] as String?;
+    final pageUrl = payload['linkPreviewUrl'] as String?;
+    final validImage =
+        imageUrl != null &&
+            pageUrl != null &&
+            LinkPreviewService.isSafeImageUrl(imageUrl, pageUrl)
+        ? imageUrl
+        : null;
+    return msg.copyWith(
+      content: content.isNotEmpty ? content : msg.content,
+      messageType: _parseMessageTypeString(payload['messageType'] as String?),
+      mediaUrl: payload['mediaUrl'] as String?,
+      mediaDuration: payload['mediaDuration'] as int?,
+      mediaKey: payload['mediaKey'] as String?,
+      mediaIv: payload['mediaIv'] as String?,
+      mediaWidth: payload['mediaWidth'] as int?,
+      mediaHeight: payload['mediaHeight'] as int?,
+      mediaThumbHash: payload['mediaThumbHash'] as String?,
+      linkPreviewUrl: payload['linkPreviewUrl'] as String?,
+      linkPreviewTitle: payload['linkPreviewTitle'] as String?,
+      linkPreviewImageUrl: validImage,
+    );
+  }
+
+  /// Fill a freshly parsed server snapshot with plaintext we already hold,
+  /// BEFORE it is merged into [_messages] and painted.
+  ///
+  /// The server ships `content: "[encrypted]"` for every E2E row, so without
+  /// this the first frame of a cold chat entry paints placeholders and the
+  /// list only flips once the async decrypt pass finishes — the visible
+  /// "[encrypted] for a fraction of a second" flash. Operates on the caller's
+  /// local list before any shared state is touched, so the merge + notify that
+  /// follow stay atomic exactly as before.
+  ///
+  /// Upgrade-only: a row is replaced solely when the restored version has
+  /// usable plaintext, so this can never downgrade a row to a placeholder.
+  /// It performs NO Signal work — purely RAM cache plus one batched read of
+  /// plaintext this account already decrypted.
+  ///
+  /// Returns null when everything resolved synchronously (no provider, no rows,
+  /// or the RAM cache covered them all), so the caller keeps its fully
+  /// synchronous, atomic merge+notify. Only a genuine cold entry that has to
+  /// touch storage introduces a suspension point.
+  Future<void>? _hydrateSnapshotFromCaches(List<MessageModel> rows) {
+    final provider = _encryptionProvider;
+    if (provider == null || rows.isEmpty) return null;
+
+    // Pass 1: RAM cache, free and synchronous — INBOUND rows only.
+    //
+    // Own rows are deliberately excluded. They come back from the server as
+    // "[encrypted]" too, but the history pass's own-message branch is also the
+    // lost-ack reconcile: when nothing is persisted under the real id it
+    // recovers plaintext from the durable pending-send record, writes it under
+    // the real id, verifies the read-back and only then consumes the record.
+    // Satisfying such a row from RAM would flip it to plaintext, the branch
+    // condition would no longer match, and that durable persist would silently
+    // never happen. The disk pass below still hydrates own rows, which is safe
+    // precisely because a persisted entry means the reconcile had nothing left
+    // to do.
+    final needDisk = <int>[];
+    for (var i = 0; i < rows.length; i++) {
+      final row = rows[i];
+      if (_hasUsableDecryptedContent(row)) continue;
+      if (row.needsDecryption(_currentUserId)) {
+        final cached = provider.getCachedDecryption(row.id);
+        if (cached != null &&
+            _hasUsableDecryptedContent(cached) &&
+            !_isEditStale(row.editedAt, cached.editedAt)) {
+          rows[i] = _mergeMessagePreferNewer(row, cached);
+          continue;
+        }
+      }
+      needDisk.add(row.id);
+    }
+    if (needDisk.isEmpty) return null;
+    return _hydrateSnapshotFromStorage(rows, needDisk, provider);
+  }
+
+  /// Pass 2 of [_hydrateSnapshotFromCaches]: ONE batched persisted read for
+  /// every row the RAM cache could not resolve.
+  ///
+  /// A miss is not authoritative (see
+  /// [EncryptionService.getDecryptedContentMany]) — it just means the decrypt
+  /// pass resolves that row the slow way, as it always did. Nothing is
+  /// downgraded on a miss.
+  Future<void> _hydrateSnapshotFromStorage(
+    List<MessageModel> rows,
+    List<int> ids,
+    EncryptionProvider provider,
+  ) async {
+    final persisted = await provider.getDecryptedContentMany(ids);
+    if (persisted.isEmpty) return;
+    for (var i = 0; i < rows.length; i++) {
+      final row = rows[i];
+      final payload = persisted[row.id];
+      if (payload == null) continue;
+      final content = payload['content'] as String? ?? '';
+      if (content == _kDecryptionFailedLabel) continue;
+      final hasPayload =
+          content.isNotEmpty ||
+          payload['mediaUrl'] != null ||
+          payload['messageType'] != null;
+      if (!hasPayload) continue;
+      final editedAt = payload['editedAt'] != null
+          ? DateTime.tryParse(payload['editedAt'] as String)
+          : null;
+      if (_isEditStale(row.editedAt, editedAt)) continue;
+      final restored = _restoreFromPersistedPayload(row, payload);
+      if (!_hasUsableDecryptedContent(restored)) continue;
+      rows[i] = restored;
+      provider.cacheDecryption(row.id, restored);
+    }
+  }
+
+  /// One batched, cross-engine-coherent snapshot of the persisted plaintext for
+  /// every row a history pass could consult.
+  ///
+  /// Deliberately prefetches EVERY id in [rows] rather than re-deriving the
+  /// loop's branch conditions: after the single reload each extra id is one
+  /// synchronous map lookup, and a second copy of the predicate would rot out
+  /// of sync with the loop and silently strand rows on "[encrypted]".
+  Future<Map<int, Map<String, dynamic>>> _prefetchPersistedPlaintext(
+    List<MessageModel> rows,
+  ) async {
+    final provider = _encryptionProvider;
+    if (provider == null || rows.isEmpty) {
+      return const <int, Map<String, dynamic>>{};
+    }
+    return provider.getDecryptedContentMany(rows.map((m) => m.id));
+  }
+
+  /// Persisted plaintext for [id]: the batched snapshot when it has the row,
+  /// otherwise the authoritative single read.
+  ///
+  /// A batch miss is NOT "no plaintext" — the batch covers the SharedPreferences
+  /// namespace only, so an absent id still has to consult
+  /// [EncryptionProvider.getDecryptedContent] (which also serves the mobile
+  /// legacy store). Misses are the rows that were about to be live-decrypted
+  /// anyway, so the fall-through does not reintroduce the per-row cost on the
+  /// common path.
+  Future<Map<String, dynamic>?> _persistedPlaintextFor(
+    int id,
+    Map<int, Map<String, dynamic>> batch,
+  ) async {
+    final hit = batch[id];
+    if (hit != null) return hit;
+    return _encryptionProvider?.getDecryptedContent(id);
+  }
+
   Future<void> _decryptMessageHistory(int generation) async {
     _historyDecryptFailedPeers = <int>{};
     _historySessionRebuildRequested = <int>{};
@@ -266,6 +427,19 @@ extension MessagingDecrypt on MessagingProvider {
         if (byTime != 0) return byTime;
         return a.id.compareTo(b.id);
       });
+    // ONE cross-engine coherence read for the whole pass instead of one per
+    // row. Before this, every row awaited getDecryptedContent, and each of
+    // those did a full SharedPreferences.reload() on web — a complete
+    // localStorage enumeration + JSON decode of every cached record (capped at
+    // 2000). Entering a chat therefore cost O(rows x cached records) of
+    // blocking main-thread work (measured: ~65 ms for one 50-row page at the
+    // cap on desktop, several times that on a phone) and the list stayed on
+    // "[encrypted]" placeholders for the whole pass. See the safety note on
+    // EncryptionService.getDecryptedContentMany: the reload is NOT dropped,
+    // it is hoisted, and the raw replay cache still covers writes that land
+    // mid-pass.
+    final persistedById = await _prefetchPersistedPlaintext(sorted);
+    if (_decryptHistoryGeneration != generation) return;
     bool changed = false;
     for (var i = 0; i < sorted.length; i++) {
       if (_decryptHistoryGeneration != generation) break;
@@ -298,11 +472,9 @@ extension MessagingDecrypt on MessagingProvider {
             continue;
           }
         }
-        // _encryptionProvider is non-null here: this path is reached only when
-        // isE2EReady is true, which requires the provider to be set.
-        final persisted = await _encryptionProvider!.getDecryptedContent(
-          msg.id,
-        );
+        // Batched snapshot from the head of the pass; a miss still consults
+        // the authoritative single read.
+        final persisted = await _persistedPlaintextFor(msg.id, persistedById);
         final pContent = persisted?['content'] as String? ?? '';
         final persistedEditedAt = persisted?['editedAt'] != null
             ? DateTime.tryParse(persisted!['editedAt'] as String)
@@ -326,31 +498,7 @@ extension MessagingDecrypt on MessagingProvider {
             }
             continue;
           }
-          final safeImageUrl = persisted['linkPreviewImageUrl'] as String?;
-          final safePageUrl = persisted['linkPreviewUrl'] as String?;
-          final validImage =
-              safeImageUrl != null &&
-                  safePageUrl != null &&
-                  LinkPreviewService.isSafeImageUrl(safeImageUrl, safePageUrl)
-              ? safeImageUrl
-              : null;
-          final restoredType = _parseMessageTypeString(
-            persisted['messageType'] as String?,
-          );
-          final restored = msg.copyWith(
-            content: pContent.isNotEmpty ? pContent : msg.content,
-            messageType: restoredType,
-            mediaUrl: persisted['mediaUrl'] as String?,
-            mediaDuration: persisted['mediaDuration'] as int?,
-            mediaKey: persisted['mediaKey'] as String?,
-            mediaIv: persisted['mediaIv'] as String?,
-            mediaWidth: persisted['mediaWidth'] as int?,
-            mediaHeight: persisted['mediaHeight'] as int?,
-            mediaThumbHash: persisted['mediaThumbHash'] as String?,
-            linkPreviewUrl: persisted['linkPreviewUrl'] as String?,
-            linkPreviewTitle: persisted['linkPreviewTitle'] as String?,
-            linkPreviewImageUrl: validImage,
-          );
+          final restored = _restoreFromPersistedPayload(msg, persisted);
           final idx = _messages.indexWhere((m) => m.id == msg.id);
           final merged = idx != -1
               ? _mergeMessagePreferNewer(_messages[idx], restored)
@@ -385,8 +533,8 @@ extension MessagingDecrypt on MessagingProvider {
       } else if (msg.senderId == _currentUserId &&
           (msg.content == _kEncryptedPlaceholderLabel ||
               _missingEncryptedMediaKeys(msg))) {
-        // _encryptionProvider is non-null here: own-message path requires E2E ready.
-        final stored = await _encryptionProvider!.getDecryptedContent(msg.id);
+        // Own-message branch, same batched snapshot + fall-through.
+        final stored = await _persistedPlaintextFor(msg.id, persistedById);
         final storedContent = stored?['content'] as String? ?? '';
         if (storedContent.isNotEmpty ||
             (stored?['messageType'] as String?) != null ||
