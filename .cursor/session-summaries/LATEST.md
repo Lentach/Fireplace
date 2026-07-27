@@ -16,8 +16,8 @@
 - Migration fix falsified by reverting it (test goes red). Every parser fix checked against `grep`.
 
 ## Notes for next session
-- **`impact.mjs` is an inner-loop hint, NOT a coverage oracle** — static imports, 3 hops; blind to NestJS DI, §7 wire contracts, assets. Full tier suites still gate commits/PRs.
-- **PROMOTE `e2e-wire` to a required check.** It is `continue-on-error` ONLY to gather reliability signal, and it is the sole automated guard on the §7 wire contracts. While non-gating it is observability, not protection. Note it already caught two DR-class bugs.
+- **`impact.mjs` is an inner-loop hint, NOT a coverage oracle** — static imports, 3 hops; blind to NestJS DI, §7 wire contracts, assets. Full tier suites are **required by project policy** before commits/PRs; nothing enforces that mechanically.
+- **`e2e-wire` is now CI-failing** (`continue-on-error` removed after 5 consecutive greens; it caught two DR bugs on its first two runs). **But red is NOT a gate here** — branch protection is a paid feature, 403 on this private free-plan repo, so nothing blocks a push or merge and small fixes still go straight to `master`. Checking the run is a human/agent duty: `gh run list --branch master --limit 1`. If it flakes, restore `continue-on-error: true` deliberately and record it.
 - **TRAP: `core.filemode=false` here** — new hooks stage `100644` even after `chmod +x` and are silently ignored on Linux. Use `git update-index --chmod=+x`; check `git ls-files --stage .githooks/`. Hook activation is per-clone: `git config core.hooksPath .githooks`.
 - **Dependabot #95 is VALID — do NOT dismiss.** `207bc06` upgraded only the four `^5.0.5` copies; the range `<= 5.0.7` also covers root `brace-expansion@1.1.16` and three nested `2.1.2`. Partially upgraded, dev-only, not deploy-blocking. Fix the remaining four.
 - `gitleaks` is NOT installed here, so the pre-commit scan runs a weaker regex fallback.

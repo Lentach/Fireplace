@@ -87,16 +87,25 @@ jobs:
   # either side mock the other, and scripts/impact.mjs cannot see across the wire,
   # so nothing else proves the two halves still agree.
   #
-  # STAGING NOTE - continue-on-error is TEMPORARY. It exists only to gather signal on
-  # how reliable this job is (real Postgres, real libsignal, registration throttles,
-  # fresh accounts per run). While it is set, this job is OBSERVABILITY, NOT PROTECTION.
-  # Once it has a green streak, delete continue-on-error and make `e2e-wire` a required
-  # check - optionally path-filtered to backend/src/chat|messages and the frontend
-  # services/providers that speak the wire. Do not leave it non-gating indefinitely.
+  # CI-FAILING as of 2026-07-27 (`continue-on-error` removed). It ran advisory-only for
+  # 5 consecutive runs (30290696876, 30293138856, 30293298015, 30293387936, 30294083606)
+  # with the harness step green in every one, after catching two real disaster-recovery
+  # bugs on its first two attempts. A wire regression now turns the CI run RED.
+  #
+  # RED IS NOT A GATE. Be precise about what this does and does not do: GitHub branch
+  # protection is a paid feature and the API returns 403 on this private free-plan repo,
+  # so nothing here can BLOCK a push or a merge. CI only reports, and only after `master`
+  # has already changed — and the project explicitly allows small fixes pushed straight
+  # to `master`. Treating red as a blocker is a PROJECT POLICY carried out by a human or
+  # agent checking the run, not something GitHub enforces. Do not let a future reader
+  # believe a merge was prevented; it was not.
+  #
+  # Do NOT path-filter this job: wire breakage is routinely caused by an edit OUTSIDE the
+  # files you would think to list. If it turns flaky, restore `continue-on-error: true`
+  # deliberately and say so in the session summary — do not silently disable it.
   e2e-wire:
-    name: E2E wire harness (non-gating while stabilising)
+    name: E2E wire harness
     runs-on: ubuntu-latest
-    continue-on-error: true
     # Real sockets + libsignal can wedge; cap well under GitHub's multi-hour default so a
     # hung run does not burn a runner before the `if: always()` teardown gets to fire.
     timeout-minutes: 25

@@ -21,7 +21,7 @@ flutter test test/services/api_service_media_url_test.dart
 flutter test test/providers/message_editing_test.dart
 ```
 
-Full-stack E2E wire harness (`test_e2e/` — a sibling of `test/`, so the DEFAULT suite never picks it up; needs a live backend). As of 2026-07-27 it DOES run in CI, in its own `e2e-wire` job against a real Postgres + backend — `continue-on-error` while stabilising, to be promoted to a required check. Locally:
+Full-stack E2E wire harness (`test_e2e/` — a sibling of `test/`, so the DEFAULT suite never picks it up; needs a live backend). As of 2026-07-27 it runs in CI as the `e2e-wire` job against a real Postgres + backend, and a failure now turns the CI run red (it is no longer `continue-on-error`). It is the only automated check that client and server still agree on the wire — it caught two disaster-recovery bugs on its first two runs. Red is not a mechanical gate on this repo, so check the run yourself. Locally:
 
 ```powershell
 docker-compose up            # repo root, separate terminal

@@ -106,9 +106,14 @@ tier, and closed the cross-tier test gap — whose very first CI run exposed bot
 13. **`e2e-wire` CI job added** (`.github/workflows/ci.yml`). Full-stack harness: real Postgres
     + backend via `docker compose`, then `flutter test test_e2e`. It is the ONLY automated
     guard on the §7 wire contracts — unit tests on each side mock the other, and `impact.mjs`
-    cannot see across the wire. `continue-on-error: true` and `timeout-minutes: 25` are
-    STAGING ONLY, to gather reliability signal; while set, **this job is observability, not
-    protection.** Promote it to a required check once it has a green streak. Teardown uses
+    cannot see across the wire. It ran `continue-on-error: true` for 5 runs to gather
+    reliability signal, then that was REMOVED — a wire regression now turns the CI run red.
+    **Red is not a gate on this repo**, though: branch protection is a paid feature and the
+    API returns 403 on a private free-plan repo, so nothing blocks a push or a merge, and §1
+    still allows small fixes straight to `master`. CI reports only, and only after `master`
+    has changed. "Never merge on red" is project policy executed by a human or agent, not
+    something GitHub enforces — do not write it up as if a merge was prevented.
+    `timeout-minutes: 25` stays (real sockets + libsignal can wedge). Teardown uses
     `docker compose down` without `-v` deliberately, so the repo never normalises a flag
     `CLAUDE.md` §4 bans on prod.
 14. **BUG 1 — `0001_baseline.sql` could NEVER execute on a fresh database.** `pg_dump`
