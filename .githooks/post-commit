@@ -1,4 +1,19 @@
 #!/bin/sh
+
+# --- Fireplace guard -------------------------------------------------------
+# Deliberately ABOVE the graphify markers: `graphify hook install/uninstall`
+# rewrites only the text between them, so this survives a reinstall.
+#
+# The graphify block below claims "code files only" but never actually filters -
+# it fires on any nonempty commit and _rebuild_code() then re-extracts the whole
+# repo (684 files). Without this, every docs(session) or LATEST.md commit kicks
+# off a full background rebuild for nothing. This restores the old CLAUDE.md
+# rule: docs-only changes do not need a graph update.
+_FP_CHANGED=$(git diff --name-only HEAD~1 HEAD 2>/dev/null || git diff --name-only HEAD 2>/dev/null)
+if ! printf '%s\n' "$_FP_CHANGED" | grep -qE '\.(dart|ts|tsx|js|mjs|sql)$'; then
+    exit 0
+fi
+# --- end Fireplace guard ---------------------------------------------------
 # graphify-hook-start
 # Auto-rebuilds the knowledge graph after each commit (code files only, no LLM needed).
 # Installed by: graphify hook install
