@@ -151,6 +151,46 @@ tier, and closed the cross-tier test gap — whose very first CI run exposed bot
     env table, so those were MOVED, not deleted. Verified afterwards that every relocated term
     resolves in one file or the other. Net 3341 → 3120 tokens despite six rules added.
 
+### Fourth round — independent review of the whole session
+
+20. **Three `reviewer` subagents audited `05e0962..HEAD` in parallel** (Standards / Spec /
+    Security), same model class per `CLAUDE.md` §1. The first "review" done in-session had
+    audited only the `e2e-wire` gating language — not the migration-runner change, the tests,
+    the parser, the hooks, or the 112-file publication. This round covered all of it.
+21. **P1, and it is NOT from this session: a live `CONTACT_INBOX_KEY` sits in git.**
+    `2026-07-22-session-inbox-extraction.md:63` pastes a 64-hex bearer token into a real
+    `/contact/inbox?key=…` URL. Attribution verified independently rather than taken on trust:
+    blob `bd5fe89` is byte-identical at `05e0962` and at HEAD, introduced by `2a70e38`, and
+    `grep` across the 112 newly published files finds it in none of them. **ROTATE IT** on the
+    VM and in `~/fireplace/.env`.
+22. **The security review caught me writing a rule to flatter my own code.** `CLAUDE.md` §1
+    justified publishing the summaries with "the secret scan runs on every one" — but
+    `gitleaks` is not installed, so the fallback is a prefix-only regex (`AKIA`/`gh_`/`xox`/…)
+    that cannot match a bare high-entropy `?key=`. The finding above is the proof: that token
+    sat in a tracked file for days without tripping it. This is exactly the failure mode I had
+    briefed the reviewers to hunt for, and I had committed it myself. The rule now states the
+    real limitation and requires manual `<REDACTED>`.
+23. **Standards: a latent footgun in `impact.mjs`.** `changedFiles` took `known` as a parameter
+    but reached for a module-global mutable `isTracked`, assigned in `main()` just before the
+    call. Correct today, but any reuse, reorder, or import would leave it empty — and
+    `!isTracked.has(f)` then reports the ENTIRE tree as changed. Threaded as a parameter.
+    Also switched the two `git diff --name-only` calls to `-z`/`nulList`, matching the rest of
+    the file (without `-z`, git C-quotes non-ASCII paths).
+24. **Spec: the "compress `CLAUDE.md`" request was only half honoured.** §4–§6 genuinely
+    shrank, but §1 had nearly DOUBLED (486 → 1006 words) with my own new rules, so the
+    always-loaded file grew 2269 → 2510 overall — the opposite of the ask, and against the
+    file's own "do not turn root back into a junk drawer". Tightened §1 to 791; the file is now
+    **2295 words against a 2269 baseline**, i.e. flat despite ~10 rules added.
+25. **Judged and accepted, not silently kept:** the reviewers flagged the summaries `README`,
+    the LATEST size-cap rewrite, and the migration fix as scope beyond the literal asks. The
+    migration fix is in-scope-by-consequence (it BLOCKED the requested `e2e-wire` job on a
+    fresh DB). The other two are genuine minor creep, defensible only under the owner's
+    explicit "get best workflow you can" grant — recorded here as creep rather than dressed up
+    as requirements.
+26. **The Spec reviewer independently re-verified `impact.mjs` against `grep`** on Dart
+    conditional imports, a backend service with 9 importers, and multi-line TS imports: no
+    misses, no false positives. Standards found no HARD violations; Security found no P0.
+
 ## Key files
 
 - `scripts/impact.mjs` (new) — the tool. Header documents its scope limit.
