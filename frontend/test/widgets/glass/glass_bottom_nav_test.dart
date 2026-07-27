@@ -178,6 +178,48 @@ void main() {
       expect(_selectionOf(tester, 'Settings').progress, 1);
     });
 
+    testWidgets('the lens delivers it — the incoming tab waits', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const _SwitchableHost());
+
+      await tester.tap(find.text('Contacts'));
+      await tester.pump();
+
+      // 100ms in: short of the gate at kDrawOnStart of a 400ms entrance, and
+      // far enough from it that a frame either way cannot cross it.
+      await tester.pump(const Duration(milliseconds: 100));
+      expect(
+        _selectionOf(tester, 'Contacts').progress,
+        0,
+        reason: 'the tab you chose stays dark until the lens is nearly there',
+      );
+      expect(
+        _lensX(tester),
+        greaterThan(_slotX(tester, 'Chat') + 1),
+        reason:
+            'the lens is already travelling — the wait is a handoff, not '
+            'a stalled first beat',
+      );
+      expect(
+        _selectionOf(tester, 'Chat').progress,
+        lessThan(1),
+        reason:
+            'and the tab you left clears immediately, which is what keeps '
+            'the tap acknowledged while the incoming one waits',
+      );
+
+      // Past the gate it draws, and it is whole by the end of the entrance.
+      await tester.pump(const Duration(milliseconds: 120));
+      expect(
+        _selectionOf(tester, 'Contacts').progress,
+        greaterThan(0),
+        reason: 'once the lens has arrived the tab lights up',
+      );
+      await tester.pumpAndSettle();
+      expect(_selectionOf(tester, 'Contacts').progress, 1);
+    });
+
     testWidgets('reduce motion skips the transition entirely', (tester) async {
       await tester.pumpWidget(const _SwitchableHost(disableAnimations: true));
 
@@ -242,6 +284,35 @@ void main() {
       expect(_lensX(tester), closeTo(end, 0.5));
     });
 
+    testWidgets('elongates while it travels and settles back to its slot', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const _SwitchableHost());
+      final resting = _lensSize(tester);
+
+      await tester.tap(find.text('Contacts'));
+      await tester.pump();
+      await tester.pump(GlassBottomNav.kTravelDuration ~/ 2);
+      final moving = _lensSize(tester);
+      expect(
+        moving.width,
+        greaterThan(resting.width + 1),
+        reason: 'the pool stretches out at the fast part of the journey',
+      );
+      expect(
+        moving.height,
+        lessThan(resting.height - 1),
+        reason:
+            'and flattens as it does, so it reads as liquid holding its '
+            'volume rather than a box being resized',
+      );
+
+      await tester.pumpAndSettle();
+      final settled = _lensSize(tester);
+      expect(settled.width, closeTo(resting.width, 0.5));
+      expect(settled.height, closeTo(resting.height, 0.5));
+    });
+
     testWidgets('reduce motion docks it instantly', (tester) async {
       await tester.pumpWidget(const _SwitchableHost(disableAnimations: true));
       await tester.tap(find.text('Settings'));
@@ -258,6 +329,10 @@ void main() {
 /// Where the travelling lens actually rendered.
 double _lensX(WidgetTester tester) =>
     tester.getCenter(find.byKey(GlassBottomNav.activeLensKey)).dx;
+
+/// How big the travelling lens actually rendered.
+Size _lensSize(WidgetTester tester) =>
+    tester.getSize(find.byKey(GlassBottomNav.activeLensKey));
 
 /// The horizontal centre of one destination's slot.
 double _slotX(WidgetTester tester, String label) => tester
@@ -276,8 +351,8 @@ IconSelection _selectionOf(WidgetTester tester, String label) {
   );
 }
 
-/// Selection has to really change for the pulse to fire, so these tests need
-/// a host that owns the index rather than the fixed-index `_host`.
+/// Selection has to really change for the entrance to fire, so these tests
+/// need a host that owns the index rather than the fixed-index `_host`.
 class _SwitchableHost extends StatefulWidget {
   const _SwitchableHost({this.disableAnimations = false});
 
