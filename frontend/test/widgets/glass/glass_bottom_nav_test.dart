@@ -323,6 +323,32 @@ void main() {
         reason: 'no travel frames under reduce-motion',
       );
     });
+
+    testWidgets('reduce motion switched on MID-FLIGHT snaps it home', (
+      tester,
+    ) async {
+      await tester.pumpWidget(const _SwitchableHost());
+      await tester.tap(find.text('Settings'));
+      await tester.pump();
+      await tester.pump(const Duration(milliseconds: 60));
+
+      final destination = _slotX(tester, 'Settings');
+      expect(
+        _lensX(tester),
+        lessThan(destination - 1),
+        reason: 'precondition: the lens is genuinely still in the air',
+      );
+
+      // Turning reduce-motion on arrives as a rebuild with an UNCHANGED index,
+      // which is the one path that can slip past an index guard and let the
+      // glide run to completion.
+      await tester.pumpWidget(const _SwitchableHost(disableAnimations: true));
+      expect(
+        _lensX(tester),
+        closeTo(destination, 0.5),
+        reason: 'an in-flight lens must land the moment motion is disabled',
+      );
+    });
   });
 }
 

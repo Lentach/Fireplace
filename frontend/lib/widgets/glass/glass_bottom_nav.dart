@@ -184,12 +184,17 @@ class _ActiveLensState extends State<_ActiveLens>
   @override
   void didUpdateWidget(covariant _ActiveLens old) {
     super.didUpdateWidget(old);
-    if (widget.index == old.index) return;
+    // Reduce-motion is checked BEFORE the index guard: it can be switched on
+    // mid-journey, and that arrives as a rebuild with an UNCHANGED index. The
+    // stretch dies on its own (`build` zeroes `flight`), but the glide would
+    // carry on to the end of its 300ms in flat violation of the instant-motion
+    // contract.
     if (widget.reduceMotion) {
       _travel.stop();
       _from = _to = widget.index.toDouble();
       return;
     }
+    if (widget.index == old.index) return;
     _from = _slot;
     _to = widget.index.toDouble();
     _travel.forward(from: 0);
