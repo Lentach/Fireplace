@@ -166,24 +166,23 @@ function parseArgs(argv) {
   return opts;
 }
 
-function changedFiles({ files, ref }, known) {
+function changedFiles({ files, ref }, known, tracked) {
   if (files.length) return files.map((f) => posix(relative(ROOT, resolve(f))));
 
-  // Committed-since-ref plus everything still uncommitted. `git diff` lists deletions
+  // Committed-since-ref plus everything still uncommitted. `git diff` reports deletions
   // (wanted) but never untracked files, so those are unioned in explicitly.
+  // `-z` throughout: without it git C-quotes non-ASCII paths and they parse wrong.
   const diffs = ref
-    ? [git('diff', '--name-only', `${ref}...HEAD`), git('diff', '--name-only', 'HEAD')]
-    : [git('diff', '--name-only', 'HEAD'), git('diff', '--name-only', '--cached')];
+    ? [git('diff', '--name-only', '-z', `${ref}...HEAD`), git('diff', '--name-only', '-z', 'HEAD')]
+    : [git('diff', '--name-only', '-z', 'HEAD'), git('diff', '--name-only', '-z', '--cached')];
 
-  const fromDiff = diffs.flatMap((d) => d.split('\n')).map((s) => posix(s.trim()));
+  const fromDiff = diffs.flatMap(nulList);
   const untracked = [...known].filter(
-    (f) => inRoots(f) && langOf(f) && !isTracked.has(f),
+    (f) => inRoots(f) && langOf(f) && !tracked.has(f),
   );
 
-  return [...new Set([...fromDiff, ...untracked])].filter(Boolean);
+  return [...new Set([...fromDiff, ...untracked])];
 }
-
-let isTracked = new Set();
 
 /** Walk the reverse-import graph outward, recording the hop each file was reached at. */
 function blastRadius(seeds, rdeps, maxDepth) {
@@ -225,9 +224,9 @@ function testCommand(hit, total, label, cmd, strip) {
 function main() {
   const opts = parseArgs(process.argv.slice(2));
 
-  isTracked = new Set(nulList(git('ls-files', '-z')));
+  const tracked = new Set(nulList(git('ls-files', '-z')));
   const known = inventory();
-  const rawChanged = changedFiles(opts, known);
+  const rawChanged = changedFiles(opts, known, tracked);
   // A deleted file is absent from the inventory but must still resolve as a target.
   for (const f of rawChanged) known.add(f);
 
