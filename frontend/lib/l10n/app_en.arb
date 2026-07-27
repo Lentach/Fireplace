@@ -418,5 +418,10 @@
   "userCardSafety": "Safety",
   "userCardRemoveContact": "Remove contact",
   "messageReadMore": "Read more",
-  "messageShowLess": "Show less"
+  "messageShowLess": "Show less",
+  "chatPickerTitle": "Choose a friend",
+  "chatPickerSubtitle": "Pick a node to start chatting",
+  "chatPickerEmptyTitle": "No friends yet",
+  "chatPickerEmptyDescription": "Add a friend to start a chat.",
+  "chatPickerOpenTooltip": "New chat"
 }

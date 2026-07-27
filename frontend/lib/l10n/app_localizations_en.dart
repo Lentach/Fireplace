@@ -1044,4 +1044,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get messageShowLess => 'Show less';
+
+  @override
+  String get chatPickerTitle => 'Choose a friend';
+
+  @override
+  String get chatPickerSubtitle => 'Pick a node to start chatting';
+
+  @override
+  String get chatPickerEmptyTitle => 'No friends yet';
+
+  @override
+  String get chatPickerEmptyDescription => 'Add a friend to start a chat.';
+
+  @override
+  String get chatPickerOpenTooltip => 'New chat';
 }

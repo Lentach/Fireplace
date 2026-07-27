@@ -96,6 +96,16 @@ class EventLog {
     _buffer.putIfAbsent(event, () => []).add(payload);
   }
 
+  /// Drops every buffered payload for [event].
+  ///
+  /// [next] scans the WHOLE buffer and takes the first payload satisfying
+  /// `where`, with no cursor — so a payload that arrived long before the
+  /// action under test can satisfy a later wait and make the assertion
+  /// vacuous. Anything asserting a STATE TRANSITION (a list that must become
+  /// empty, a count that must drop) has to discard immediately before
+  /// triggering the action, or it proves nothing.
+  void discard(String event) => _buffer.remove(event);
+
   /// Waits for the next [event] payload (optionally matching [where]).
   /// Buffered payloads are consumed first, in arrival order.
   Future<dynamic> next(
@@ -170,6 +180,7 @@ class E2eClient {
     'friendsList',
     'conversationsList',
     'pendingRequestsCount',
+    'sentRequestsList',
     'openConversation',
     'messageSent',
     'newMessage',

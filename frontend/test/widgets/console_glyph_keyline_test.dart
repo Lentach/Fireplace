@@ -1,3 +1,5 @@
+import 'dart:math' as math;
+
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -209,5 +211,39 @@ void main() {
         reason: 'the gap between adjacent fills must clear the shared stroke',
       );
     });
+  });
+
+  group('glyph behaviour is resolved with geometry', () {
+    for (final glyph in ConsoleGlyph.values) {
+      test(glyph.name, () {
+        final geometry = consoleGlyphGeometry(glyph);
+        final expectedMotion = switch (glyph) {
+          ConsoleGlyph.chats => ConsoleGlyphMotion.lift,
+          ConsoleGlyph.contacts => ConsoleGlyphMotion.spread,
+          _ => ConsoleGlyphMotion.none,
+        };
+
+        expect(
+          geometry.opticalNudge,
+          glyph == ConsoleGlyph.password ? const Offset(0, -0.35) : Offset.zero,
+          reason: 'only the padlock has an optical centring adjustment',
+        );
+        expect(
+          geometry.activeStroke,
+          glyph == ConsoleGlyph.settings ? kGlyphStrokeActive : kGlyphStroke,
+          reason: 'only the gear gets heavier when selected',
+        );
+        expect(
+          geometry.selectedSpin,
+          glyph == ConsoleGlyph.settings ? -math.pi / 3 : 0,
+          reason: 'only the gear turns while selected',
+        );
+        expect(
+          geometry.motion,
+          expectedMotion,
+          reason: 'only the bubble lifts and the comb spreads',
+        );
+      });
+    }
   });
 }

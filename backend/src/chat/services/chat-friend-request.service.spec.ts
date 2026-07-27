@@ -8,6 +8,8 @@ import { MessagesService } from '../../messages/messages.service';
 import { MediaCleanupService } from '../../media/media-cleanup.service';
 import { ChatConversationService } from './chat-conversation.service';
 import { Socket, Server } from 'socket.io';
+import { FriendRequest, FriendRequestStatus } from '../../friends/friend-request.entity';
+import { User } from '../../users/user.entity';
 
 describe('ChatFriendRequestService', () => {
   let service: ChatFriendRequestService;
@@ -45,6 +47,7 @@ describe('ChatFriendRequestService', () => {
             unfriend: jest.fn(),
             getFriends: jest.fn().mockResolvedValue([]),
             getPendingRequests: jest.fn().mockResolvedValue([]),
+            getSentRequests: jest.fn().mockResolvedValue([]),
             getPendingRequestCount: jest.fn().mockResolvedValue(0),
           },
         },
@@ -244,13 +247,69 @@ describe('ChatFriendRequestService', () => {
       } as any);
       friendsService.getPendingRequests.mockResolvedValue([]);
       friendsService.getPendingRequestCount.mockResolvedValue(0);
+      mockClient.data = { user: { id: 2 } };
+      onlineUsers.set(1, 'socket-1');
 
-      await service.handleRejectFriendRequest(mockClient as any, { requestId: 10 });
+      await service.handleRejectFriendRequest(
+        mockClient as Socket,
+        { requestId: 10 },
+        mockServer as Server,
+        onlineUsers,
+      );
 
-      expect(friendsService.rejectRequest).toHaveBeenCalledWith(10, 1);
+
+      expect(friendsService.rejectRequest).toHaveBeenCalledWith(10, 2);
       expect(mockClient.emit).toHaveBeenCalledWith('friendRequestRejected', expect.any(Object));
       expect(mockClient.emit).toHaveBeenCalledWith('friendRequestsList', []);
+      expect(mockClient.emit).toHaveBeenCalledWith('sentRequestsList', []);
       expect(mockClient.emit).toHaveBeenCalledWith('pendingRequestsCount', { count: 0 });
+      expect(mockServer.to).toHaveBeenCalledWith('socket-1');
+      expect(mockServer.emit).toHaveBeenCalledWith('sentRequestsList', []);
+    });
+  });
+
+  describe('handleGetFriendRequests', () => {
+    it('emits mapped sent requests without changing the inbound pending count', async () => {
+      const sentRequest = Object.assign(new FriendRequest(), {
+        id: 11,
+        status: FriendRequestStatus.PENDING,
+        sender: Object.assign(new User(), mockSender),
+        receiver: Object.assign(new User(), mockRecipient),
+        createdAt: new Date('2026-07-27T10:00:00.000Z'),
+        respondedAt: null,
+      });
+      friendsService.getSentRequests.mockResolvedValue([sentRequest]);
+      friendsService.getPendingRequestCount.mockResolvedValue(7);
+
+      await service.handleGetFriendRequests(mockClient as Socket);
+
+      expect(mockClient.emit).toHaveBeenCalledWith('friendRequestsList', []);
+      expect(mockClient.emit).toHaveBeenCalledWith('sentRequestsList', [
+        expect.objectContaining({
+          id: 11,
+          sender: expect.objectContaining({
+            id: 1,
+            username: 'alice',
+            tag: '0001',
+            about: null,
+            profilePhotos: [],
+          }),
+          receiver: expect.objectContaining({
+            id: 2,
+            username: 'bob',
+            tag: '0002',
+            about: null,
+            profilePhotos: [],
+          }),
+          status: FriendRequestStatus.PENDING,
+          createdAt: new Date('2026-07-27T10:00:00.000Z'),
+          respondedAt: null,
+        }),
+      ]);
+      expect(mockClient.emit).toHaveBeenCalledWith('pendingRequestsCount', {
+        count: 7,
+      });
+      expect(friendsService.getPendingRequestCount).toHaveBeenCalledTimes(1);
     });
   });
 

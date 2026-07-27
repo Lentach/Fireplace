@@ -1933,6 +1933,36 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Zwiń'**
   String get messageShowLess;
+
+  /// No description provided for @chatPickerTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wybierz znajomego'**
+  String get chatPickerTitle;
+
+  /// No description provided for @chatPickerSubtitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wybierz węzeł, aby rozpocząć czat'**
+  String get chatPickerSubtitle;
+
+  /// No description provided for @chatPickerEmptyTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie masz jeszcze znajomych'**
+  String get chatPickerEmptyTitle;
+
+  /// No description provided for @chatPickerEmptyDescription.
+  ///
+  /// In pl, this message translates to:
+  /// **'Dodaj znajomego, aby rozpocząć czat.'**
+  String get chatPickerEmptyDescription;
+
+  /// No description provided for @chatPickerOpenTooltip.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nowy czat'**
+  String get chatPickerOpenTooltip;
 }
 
 class _AppLocalizationsDelegate

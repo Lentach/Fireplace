@@ -109,6 +109,31 @@ export class ChatFriendRequestService {
     }
   }
 
+  /** Emit sentRequestsList to client and optionally to another socket. */
+  private async emitSentRequestsListToBoth(
+    client: Socket,
+    server: Server,
+    clientUserId: number,
+    otherSocketId: string | undefined,
+    otherUserId: number | undefined,
+  ): Promise<void> {
+    try {
+      const clientSentRequests = await this.friendsService.getSentRequests(clientUserId);
+      client.emit(
+        'sentRequestsList',
+        clientSentRequests.map(FriendRequestMapper.toPayload),
+      );
+      if (otherSocketId != null && otherUserId != null) {
+        const otherSentRequests = await this.friendsService.getSentRequests(otherUserId);
+        server
+          .to(otherSocketId)
+          .emit('sentRequestsList', otherSentRequests.map(FriendRequestMapper.toPayload));
+      }
+    } catch (error) {
+      this.logger.error('emitSentRequestsListToBoth (non-critical):', error);
+    }
+  }
+
   /** Emit full auto-accept flow: friendRequestAccepted, friendsList, conversation + lists, openConversation, pendingCount. */
   private async emitAutoAcceptFlow(
     client: Socket,
@@ -135,6 +160,13 @@ export class ChatFriendRequestService {
     }
     await this.emitConversationsListToBoth(client, server, sender.id, recipientSocketId, recipient.id);
     if (conversation) client.emit('openConversation', { conversationId: conversation.id });
+    await this.emitSentRequestsListToBoth(
+      client,
+      server,
+      sender.id,
+      recipientSocketId,
+      recipient.id,
+    );
     await this.emitPendingCountToBoth(client, server, sender.id, recipientSocketId, recipient.id);
   }
 
@@ -210,6 +242,11 @@ export class ChatFriendRequestService {
           `sendFriendRequest: emitting friendRequestSent to sender ${sender.username}`,
         );
         client.emit('friendRequestSent', payload);
+        const sentRequests = await this.friendsService.getSentRequests(senderId);
+        client.emit(
+          'sentRequestsList',
+          sentRequests.map(FriendRequestMapper.toPayload),
+        );
       } catch (error) {
         this.logger.error(
           'sendFriendRequest: Failed to emit friendRequestSent (non-critical):',
@@ -333,6 +370,16 @@ export class ChatFriendRequestService {
     try {
       const pendingRequests = await this.friendsService.getPendingRequests(userId);
       client.emit('friendRequestsList', pendingRequests.map(FriendRequestMapper.toPayload));
+      const sentRequests = await this.friendsService.getSentRequests(userId);
+      client.emit('sentRequestsList', sentRequests.map(FriendRequestMapper.toPayload));
+      if (senderSocketId) {
+        const senderSentRequests = await this.friendsService.getSentRequests(
+          friendRequest.sender.id,
+        );
+        server
+          .to(senderSocketId)
+          .emit('sentRequestsList', senderSentRequests.map(FriendRequestMapper.toPayload));
+      }
       const pendingCount = await this.friendsService.getPendingRequestCount(userId);
       client.emit('pendingRequestsCount', { count: pendingCount });
     } catch (error) {
@@ -355,20 +402,25 @@ export class ChatFriendRequestService {
     }
   }
 
-  async handleRejectFriendRequest(client: Socket, data: any) {
+  async handleRejectFriendRequest(
+    client: Socket,
+    data: unknown,
+    server: Server,
+    onlineUsers: Map<number, string>,
+  ) {
     const userId: number = client.data.user?.id;
     if (!userId) return;
 
+    let dto: RejectFriendRequestDto;
     try {
-      const dto = validateDto(RejectFriendRequestDto, data);
-      data = dto;
+      dto = validateDto(RejectFriendRequestDto, data);
     } catch (error) {
       client.emit('error', { message: error.message });
       return;
     }
 
     const friendRequest = await this.friendsService.rejectRequest(
-      data.requestId,
+      dto.requestId,
       userId,
     );
 
@@ -381,6 +433,21 @@ export class ChatFriendRequestService {
       'friendRequestsList',
       pendingRequests.map(FriendRequestMapper.toPayload),
     );
+    const sentRequests = await this.friendsService.getSentRequests(userId);
+    client.emit(
+      'sentRequestsList',
+      sentRequests.map(FriendRequestMapper.toPayload),
+    );
+
+    const senderSocketId = onlineUsers.get(friendRequest.sender.id);
+    if (senderSocketId) {
+      const senderSentRequests = await this.friendsService.getSentRequests(
+        friendRequest.sender.id,
+      );
+      server
+        .to(senderSocketId)
+        .emit('sentRequestsList', senderSentRequests.map(FriendRequestMapper.toPayload));
+    }
 
     const pendingCount =
       await this.friendsService.getPendingRequestCount(userId);
@@ -395,6 +462,11 @@ export class ChatFriendRequestService {
     client.emit(
       'friendRequestsList',
       friendRequests.map(FriendRequestMapper.toPayload),
+    );
+    const sentRequests = await this.friendsService.getSentRequests(userId);
+    client.emit(
+      'sentRequestsList',
+      sentRequests.map(FriendRequestMapper.toPayload),
     );
 
     const count = await this.friendsService.getPendingRequestCount(userId);

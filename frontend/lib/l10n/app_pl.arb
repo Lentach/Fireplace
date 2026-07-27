@@ -400,5 +400,10 @@
   "userCardSafety": "Bezpieczeństwo",
   "userCardRemoveContact": "Usuń kontakt",
   "messageReadMore": "Czytaj więcej",
-  "messageShowLess": "Zwiń"
+  "messageShowLess": "Zwiń",
+  "chatPickerTitle": "Wybierz znajomego",
+  "chatPickerSubtitle": "Wybierz węzeł, aby rozpocząć czat",
+  "chatPickerEmptyTitle": "Nie masz jeszcze znajomych",
+  "chatPickerEmptyDescription": "Dodaj znajomego, aby rozpocząć czat.",
+  "chatPickerOpenTooltip": "Nowy czat"
 }

@@ -62,6 +62,31 @@ describe('FriendsService', () => {
     );
   });
 
+  describe('getSentRequests', () => {
+    it('loads pending requests sent by the user with both participants ordered newest first', async () => {
+      const sentRequest = frow({
+        id: 10,
+        status: FriendRequestStatus.PENDING,
+        sender: usr({ id: 1 }),
+        receiver: usr({ id: 2 }),
+      });
+      friendRequestRepository.find.mockResolvedValue([sentRequest]);
+
+      await expect(service.getSentRequests(1)).resolves.toEqual([sentRequest]);
+
+      expect(friendRequestRepository.find).toHaveBeenCalledWith({
+        where: {
+          sender: { id: 1 },
+          status: FriendRequestStatus.PENDING,
+        },
+        relations: {
+          sender: true,
+          receiver: true,
+        },
+        order: { createdAt: 'DESC' },
+      });
+    });
+  });
   describe('getFriends', () => {
     it('loads profile photos for each user returned to the contacts list', async () => {
       const friend = usr({

@@ -29,6 +29,7 @@ class ContactNetworkView extends StatefulWidget {
   const ContactNetworkView({
     super.key,
     required this.contacts,
+    this.sentInvitees = const <UserModel>[],
     required this.localNodeLabel,
     this.localNodeAvatarUrl,
     required this.localNodeCaption,
@@ -51,6 +52,10 @@ class ContactNetworkView extends StatefulWidget {
   });
 
   final List<UserModel> contacts;
+
+  /// Recipients of the caller's pending outbound invitations. They occupy
+  /// ghost cells but remain outside the real-contact contract.
+  final List<UserModel> sentInvitees;
   final String localNodeLabel;
 
   /// The local user's avatar, shown inside the core reticle when set.
@@ -100,6 +105,27 @@ class ContactNetworkView extends StatefulWidget {
   State<ContactNetworkView> createState() => _ContactNetworkViewState();
 }
 
+@immutable
+class _VisibleRowRange {
+  const _VisibleRowRange(this.first, this.last);
+
+  const _VisibleRowRange.empty() : first = 0, last = -1;
+
+  final int first;
+  final int last;
+
+  bool contains(int row) => row >= first && row <= last;
+
+  bool get isEmpty => last < first;
+
+  @override
+  bool operator ==(Object other) =>
+      other is _VisibleRowRange && other.first == first && other.last == last;
+
+  @override
+  int get hashCode => Object.hash(first, last);
+}
+
 class _ContactNetworkViewState extends State<ContactNetworkView>
     with SingleTickerProviderStateMixin {
   final _scrollController = ScrollController();
@@ -111,8 +137,8 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
   bool _addSlotFocused = false;
 
   /// Highest row whose avatars may fetch. A ValueNotifier, not setState:
-  /// crossing a row while scrolling must rebuild N tiny avatar leaves, not
-  /// N Focus/Semantics/GestureDetector/ClipPath subtrees.
+  /// crossing a row while scrolling rebuilds mounted avatar leaves, never
+  /// the resident focus/semantics controls or unrelated visual rows.
   final _armedThroughRow = ValueNotifier<int>(0);
 
   /// Rows visible right now, recomputed each build. Combined with the
@@ -120,6 +146,14 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
   /// that already loaded back to initials.
   int _armedFloor = 0;
   ContactHexLayoutResult? _lastLayout;
+
+  /// Rows with a visible hex subtree. Focus and semantics stay resident for
+  /// every real contact in a lightweight control layer below.
+  final _visibleRows = ValueNotifier<_VisibleRowRange>(
+    const _VisibleRowRange.empty(),
+  );
+  bool _visibleRowsSyncScheduled = false;
+  double _lastViewportHeight = 0;
 
   @override
   void initState() {
@@ -146,22 +180,33 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
           setState(() => _routeContactId = null);
           if (target != null) widget.onContactTap(target);
         });
-    _scrollController.addListener(_armVisibleRows);
+    _scrollController.addListener(_onScroll);
   }
 
   @override
   void didUpdateWidget(ContactNetworkView oldWidget) {
     super.didUpdateWidget(oldWidget);
     // The mark is a ROW INDEX into the field that produced it. A different
-    // contact set re-flows the field, so a carried-over mark means nothing —
-    // and because it is a HIGH-WATER mark, a stale high one arms every row
-    // at once and silently disables the gate for the rest of the session:
-    // scroll a long board to the bottom, filter, clear the filter, and all
-    // N faces fetch again while the user is sitting back at row 0.
+    // contact or ghost run re-flows the field, so a carried-over mark means
+    // nothing — and because it is a HIGH-WATER mark, a stale high one arms
+    // every row at once and silently disables the gate for the rest of the
+    // session: scroll a long board to the bottom, filter, clear the filter,
+    // and all N faces fetch again while the user is sitting back at row 0.
     // `_armedFloor` needs no reset here — the build right behind us
     // recomputes it from the current viewport unconditionally.
-    if (!_sameContactRun(oldWidget.contacts, widget.contacts)) {
+    final contactsChanged = !_sameContactRun(
+      oldWidget.contacts,
+      widget.contacts,
+    );
+    final inviteesChanged = !_sameContactRun(
+      oldWidget.sentInvitees,
+      widget.sentInvitees,
+    );
+    final leadingSlotChanged =
+        (oldWidget.onAddContact == null) != (widget.onAddContact == null);
+    if (contactsChanged || inviteesChanged || leadingSlotChanged) {
       _armedThroughRow.value = 0;
+      _visibleRows.value = const _VisibleRowRange.empty();
     }
   }
 
@@ -180,9 +225,10 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
   @override
   void dispose() {
     _routeController.dispose();
-    _scrollController.removeListener(_armVisibleRows);
+    _scrollController.removeListener(_onScroll);
     _scrollController.dispose();
     _armedThroughRow.dispose();
+    _visibleRows.dispose();
     super.dispose();
   }
 
@@ -205,6 +251,56 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
     if (layout == null) return;
     final next = _visibleThroughRow(layout, 0);
     if (next > _armedThroughRow.value) _armedThroughRow.value = next;
+  }
+
+  /// Scrolling is intentionally a notifier-only path: viewport changes mount
+  /// and unmount just the nearby visual rows, while the full focus/semantics
+  /// control layer stays stable for traversal and assistive technology.
+  void _onScroll() {
+    _armVisibleRows();
+    _syncVisibleRows();
+  }
+
+  _VisibleRowRange _visibleRowRange(
+    ContactHexLayoutResult layout,
+    double fallbackHeight,
+  ) {
+    if (layout.slots.isEmpty) return const _VisibleRowRange.empty();
+    final attached = _scrollController.hasClients;
+    final offset = attached ? _scrollController.position.pixels : 0.0;
+    final viewport = attached
+        ? _scrollController.position.viewportDimension
+        : fallbackHeight;
+    final firstRow =
+        (((offset - layout.slots.first.dy) / layout.rowPitch).floor() - 1)
+            .clamp(0, layout.rowCount - 1)
+            .toInt();
+    // Two rows of visual overscan prevent a blank edge during a fast fling.
+    // Avatar arming keeps its tighter one-row lookahead, so the outermost
+    // mounted row still proves that images remain lazy.
+    final lastRow =
+        (((offset + viewport - layout.slots.first.dy) / layout.rowPitch)
+                    .ceil() +
+                2)
+            .clamp(firstRow, layout.rowCount - 1)
+            .toInt();
+    return _VisibleRowRange(firstRow, lastRow);
+  }
+
+  void _syncVisibleRows() {
+    final layout = _lastLayout;
+    if (layout == null) return;
+    final next = _visibleRowRange(layout, _lastViewportHeight);
+    if (next != _visibleRows.value) _visibleRows.value = next;
+  }
+
+  void _scheduleVisibleRowsSync() {
+    if (_visibleRowsSyncScheduled) return;
+    _visibleRowsSyncScheduled = true;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      _visibleRowsSyncScheduled = false;
+      if (mounted) _syncVisibleRows();
+    });
   }
 
   void _activateContact(UserModel contact, bool disableAnimations) {
@@ -253,31 +349,42 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
       textDirection,
     );
 
-    final inputs = ContactHexLayout.sortContacts([
-      for (final contact in widget.contacts)
-        ContactHexLayoutInput(id: contact.id, displayName: contact.username),
-    ]);
     final contactsById = <int, UserModel>{
       for (final contact in widget.contacts) contact.id: contact,
     };
-
+    final ghostUsersById = <int, UserModel>{
+      for (final invitee in widget.sentInvitees)
+        if (!contactsById.containsKey(invitee.id)) invitee.id: invitee,
+    };
+    final inputs = ContactHexLayout.sortContacts([
+      for (final contact in contactsById.values)
+        ContactHexLayoutInput(id: contact.id, displayName: contact.username),
+    ]);
+    final ghostInputs = [
+      for (final invitee in ghostUsersById.values)
+        ContactHexLayoutInput(id: invitee.id, displayName: invitee.username),
+    ];
     return LayoutBuilder(
       builder: (context, constraints) {
         final fullSize = Size(constraints.maxWidth, constraints.maxHeight);
         final safeRect = _safeRect(fullSize, widget.safeInsets);
         final layout = ContactHexLayout.resolve(
           contacts: inputs,
+          ghosts: ghostInputs,
           width: safeRect.width,
           labelHeight: labelHeight,
           leadingSlots: widget.onAddContact == null ? 0 : 1,
         );
         final viewportHeight = safeRect.height;
+        final initialVisibleRows = _visibleRowRange(layout, viewportHeight);
         final fieldHeight = math.max(layout.fieldHeight, viewportHeight);
         // Plain assignments, deliberately not setState: we are already
         // inside build, and notifying the arming notifier here would fire
         // listeners mid-build.
         _lastLayout = layout;
+        _lastViewportHeight = viewportHeight;
         _armedFloor = _visibleThroughRow(layout, viewportHeight);
+        _scheduleVisibleRowsSync();
 
         return Stack(
           clipBehavior: Clip.none,
@@ -300,10 +407,10 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                       child: _buildField(
                         context,
                         layout,
-                        inputs,
+                        initialVisibleRows,
                         contactsById,
+                        ghostUsersById,
                         nodeTextStyle,
-                        colors,
                         colorScheme,
                         disableAnimations,
                       ),
@@ -347,10 +454,10 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
   Widget _buildField(
     BuildContext context,
     ContactHexLayoutResult layout,
-    List<ContactHexLayoutInput> inputs,
+    _VisibleRowRange initialVisibleRows,
     Map<int, UserModel> contactsById,
+    Map<int, UserModel> ghostUsersById,
     TextStyle nodeTextStyle,
-    FireplaceColors colors,
     ColorScheme colorScheme,
     bool disableAnimations,
   ) {
@@ -410,35 +517,79 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
             _buildCore(context, layout, entrance),
             if (widget.pendingRequestCount > 0)
               _buildInboundPort(context, layout, entrance),
-            for (var index = 0; index < inputs.length; index++)
-              _buildContactNode(
+            for (final input in layout.inputs)
+              _buildContactControl(
                 context,
-                contactsById[inputs[index].id]!,
-                inputs[index],
+                contactsById[input.id]!,
                 layout,
-                index,
-                nodeTextStyle,
-                entrance,
                 disableAnimations,
               ),
+            for (
+              var slotIndex = layout.leadingSlots;
+              slotIndex < layout.slots.length;
+              slotIndex++
+            )
+              if (layout.isGhostSlot(slotIndex))
+                _buildGhostSemantics(
+                  ghostUsersById[layout
+                      .fieldInputs[slotIndex - layout.leadingSlots]
+                      .id]!,
+                  layout,
+                  slotIndex,
+                ),
+            ValueListenableBuilder<_VisibleRowRange>(
+              valueListenable: _visibleRows,
+              builder: (context, visibleRows, _) {
+                final rows = visibleRows.isEmpty
+                    ? initialVisibleRows
+                    : visibleRows;
+                return Stack(
+                  clipBehavior: Clip.none,
+                  children: [
+                    for (
+                      var slotIndex = layout.leadingSlots;
+                      slotIndex < layout.slots.length;
+                      slotIndex++
+                    )
+                      if (rows.contains(layout.rowOf[slotIndex]))
+                        if (layout.isGhostSlot(slotIndex))
+                          _buildGhostNode(
+                            context,
+                            ghostUsersById[layout
+                                .fieldInputs[slotIndex - layout.leadingSlots]
+                                .id]!,
+                            layout,
+                            slotIndex,
+                            nodeTextStyle,
+                            entrance,
+                          )
+                        else
+                          _buildContactNode(
+                            context,
+                            contactsById[layout
+                                .fieldInputs[slotIndex - layout.leadingSlots]
+                                .id]!,
+                            layout,
+                            nodeTextStyle,
+                            entrance,
+                            disableAnimations,
+                          ),
+                  ],
+                );
+              },
+            ),
             if (layout.leadingSlots > 0)
               _buildAddNode(context, layout, nodeTextStyle, entrance),
-            if (inputs.isEmpty) _buildEmptyCopy(context, layout),
+            if (layout.inputs.isEmpty) _buildEmptyCopy(context, layout),
           ],
         );
       },
     );
   }
 
-  /// Slot index of a contact — the field may own leading slots the contact
-  /// list does not know about.
-  static int? _slotIndexOf(ContactHexLayoutResult layout, int? contactId) {
-    if (contactId == null) return null;
-    for (var i = 0; i < layout.inputs.length; i++) {
-      if (layout.inputs[i].id == contactId) return i + layout.leadingSlots;
-    }
-    return null;
-  }
+  /// Only real contacts own routes; ghost terminals are deliberately absent.
+  static int? _slotIndexOf(ContactHexLayoutResult layout, int? contactId) =>
+      contactId == null ? null : layout.slotIndexForContactId(contactId);
 
   Widget _buildCore(
     BuildContext context,
@@ -563,33 +714,26 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
     );
   }
 
-  Widget _buildContactNode(
+  /// The resident, cheap control plane. Every real contact stays focusable
+  /// and semantic even while its expensive visual hex is outside the viewport.
+  Widget _buildContactControl(
     BuildContext context,
     UserModel contact,
-    ContactHexLayoutInput input,
     ContactHexLayoutResult layout,
-    int index,
-    TextStyle labelStyle,
-    double entrance,
     bool disableAnimations,
   ) {
-    final colors = FireplaceColors.of(context);
-    final colorScheme = Theme.of(context).colorScheme;
-    final slot = layout.slots[index + layout.leadingSlots];
-    final focused = _focusedContactId == contact.id;
-    final routing = _routeContactId == contact.id;
-    // Row-staggered entrance: rows materialize top-down within the single
-    // 280ms envelope (motion budget), never per-item unbounded.
-    final rowCount = math.max(1, layout.rowCount);
-    final row = layout.rowOf[index + layout.leadingSlots];
-    final rowT = ((entrance * (rowCount + 1)) - row).clamp(0.0, 1.0);
+    final slotIndex = layout.slotIndexForContactId(contact.id)!;
+    final slot = layout.slots[slotIndex];
+    final rect = layout.visualRectAt(slotIndex);
+    final order = (slotIndex + 1).toDouble();
 
     return Positioned(
-      left: slot.dx - layout.pitch / 2,
-      top: slot.dy - ContactHexLayout.hexRadius,
-      width: layout.pitch,
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
       child: FocusTraversalOrder(
-        order: NumericFocusOrder((index + 1).toDouble()),
+        order: NumericFocusOrder(order),
         child: Focus(
           onFocusChange: (hasFocus) {
             final next = hasFocus ? contact.id : null;
@@ -619,7 +763,7 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
             properties: SemanticsProperties(
               button: true,
               label: contact.username,
-              sortKey: OrdinalSortKey((index + 1).toDouble()),
+              sortKey: OrdinalSortKey(order),
               onTap: () => _activateContact(contact, disableAnimations),
               onLongPress: _canOpenChat(contact)
                   ? () => _openChat(contact)
@@ -630,72 +774,192 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                     )
                   : null,
             ),
-            child: Opacity(
-              opacity: rowT,
-              child: Transform.scale(
-                scale: 0.94 + rowT * 0.06,
-                child: GestureDetector(
-                  excludeFromSemantics: true,
-                  behavior: HitTestBehavior.opaque,
-                  onTap: () => _activateContact(contact, disableAnimations),
-                  onLongPress: _canOpenChat(contact)
-                      ? () => _openChat(contact)
-                      : null,
-                  child: Column(
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      SizedBox(
-                        width: ContactHexLayout.hexWidth,
-                        height: ContactHexLayout.hexRadius * 2,
-                        child: CustomPaint(
-                          foregroundPainter: _HexChromePainter(
-                            outline: colorScheme.onSurface,
-                            accent: colorScheme.primary,
-                            focused: focused || routing,
-                          ),
-                          // Only rows that have been on screen are allowed
-                          // to fetch. A 200-contact board otherwise pulls
-                          // 200 faces on mount, most of them for hexes
-                          // below the fold nobody scrolls to. The listener
-                          // is HERE, around the leaf, so crossing a row
-                          // while scrolling rebuilds avatars and not the
-                          // Focus/Semantics/GestureDetector above them.
-                          child: ClipPath(
-                            clipper: const HexClipper(),
-                            child: ValueListenableBuilder<int>(
-                              valueListenable: _armedThroughRow,
-                              builder: (context, armed, _) => HexAvatarSurface(
-                                imageUrl: row <= math.max(armed, _armedFloor)
-                                    ? contact.profilePictureUrl
-                                    : null,
-                                initials: _initials(contact.username),
-                                surface: colors.convItemBg,
-                                initialsStyle: RpgTheme.bodyFont(
-                                  fontSize: 14,
-                                  fontWeight: FontWeight.w800,
-                                  color: colorScheme.onSurface,
-                                ),
-                              ),
+            child: const SizedBox.expand(),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// The viewport-only visual plane. Its avatar leaf keeps the original
+  /// high-water arming gate; scrolling it never rebuilds the control plane.
+  Widget _buildContactNode(
+    BuildContext context,
+    UserModel contact,
+    ContactHexLayoutResult layout,
+    TextStyle labelStyle,
+    double entrance,
+    bool disableAnimations,
+  ) {
+    final colors = FireplaceColors.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    final slotIndex = layout.slotIndexForContactId(contact.id)!;
+    final slot = layout.slots[slotIndex];
+    final focused = _focusedContactId == contact.id;
+    final routing = _routeContactId == contact.id;
+    // Row-staggered entrance: rows materialize top-down within the single
+    // 280ms envelope (motion budget), never per-item unbounded.
+    final rowCount = math.max(1, layout.rowCount);
+    final row = layout.rowOf[slotIndex];
+    final rowT = ((entrance * (rowCount + 1)) - row).clamp(0.0, 1.0);
+
+    return Positioned(
+      left: slot.dx - layout.pitch / 2,
+      top: slot.dy - ContactHexLayout.hexRadius,
+      width: layout.pitch,
+      child: ExcludeSemantics(
+        child: Opacity(
+          opacity: rowT,
+          child: Transform.scale(
+            scale: 0.94 + rowT * 0.06,
+            child: GestureDetector(
+              key: ValueKey('contact-node-${contact.id}'),
+              excludeFromSemantics: true,
+              behavior: HitTestBehavior.opaque,
+              onTap: () => _activateContact(contact, disableAnimations),
+              onLongPress: _canOpenChat(contact)
+                  ? () => _openChat(contact)
+                  : null,
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  SizedBox(
+                    width: ContactHexLayout.hexWidth,
+                    height: ContactHexLayout.hexRadius * 2,
+                    child: CustomPaint(
+                      foregroundPainter: _HexChromePainter(
+                        outline: colorScheme.onSurface,
+                        accent: colorScheme.primary,
+                        focused: focused || routing,
+                      ),
+                      // Only rows that have been on screen are allowed to
+                      // fetch. The listener is HERE, around the avatar leaf,
+                      // so crossing a row rebuilds faces and not the resident
+                      // Focus/Semantics control plane.
+                      child: ClipPath(
+                        clipper: const HexClipper(),
+                        child: ValueListenableBuilder<int>(
+                          valueListenable: _armedThroughRow,
+                          builder: (context, armed, _) => HexAvatarSurface(
+                            imageUrl: row <= math.max(armed, _armedFloor)
+                                ? contact.profilePictureUrl
+                                : null,
+                            initials: _initials(contact.username),
+                            surface: colors.convItemBg,
+                            initialsStyle: RpgTheme.bodyFont(
+                              fontSize: 14,
+                              fontWeight: FontWeight.w800,
+                              color: colorScheme.onSurface,
                             ),
                           ),
                         ),
                       ),
-                      const SizedBox(height: ContactHexLayout.labelGap),
-                      Text(
-                        contact.username,
-                        softWrap: false,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        textAlign: TextAlign.center,
-                        style: labelStyle,
-                      ),
-                    ],
+                    ),
                   ),
-                ),
+                  const SizedBox(height: ContactHexLayout.labelGap),
+                  Text(
+                    contact.username,
+                    softWrap: false,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: labelStyle,
+                  ),
+                ],
               ),
             ),
           ),
         ),
+      ),
+    );
+  }
+
+  /// A sent invitation reserves a terminal without pretending its recipient
+  /// is already a contact: no avatar, no wire, no focus target, and no chat.
+  Widget _buildGhostNode(
+    BuildContext context,
+    UserModel invitee,
+    ContactHexLayoutResult layout,
+    int slotIndex,
+    TextStyle labelStyle,
+    double entrance,
+  ) {
+    final colors = FireplaceColors.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    final slot = layout.slots[slotIndex];
+    final rowCount = math.max(1, layout.rowCount);
+    final row = layout.rowOf[slotIndex];
+    final rowT = ((entrance * (rowCount + 1)) - row).clamp(0.0, 1.0);
+
+    return Positioned(
+      left: slot.dx - layout.pitch / 2,
+      top: slot.dy - ContactHexLayout.hexRadius,
+      width: layout.pitch,
+      child: ExcludeSemantics(
+        child: Opacity(
+          opacity: rowT,
+          child: Transform.scale(
+            scale: 0.94 + rowT * 0.06,
+            child: Column(
+              mainAxisSize: MainAxisSize.min,
+              children: [
+                SizedBox(
+                  width: ContactHexLayout.hexWidth,
+                  height: ContactHexLayout.hexRadius * 2,
+                  child: CustomPaint(
+                    painter: _GhostSlotPainter(
+                      outline: colorScheme.onSurface,
+                      surface: colors.convItemBg,
+                    ),
+                    child: Center(
+                      child: Icon(
+                        Icons.send_outlined,
+                        size: 18,
+                        color: colors.mutedText.withValues(alpha: 0.72),
+                      ),
+                    ),
+                  ),
+                ),
+                const SizedBox(height: ContactHexLayout.labelGap),
+                Text(
+                  invitee.username,
+                  softWrap: false,
+                  maxLines: 1,
+                  overflow: TextOverflow.ellipsis,
+                  textAlign: TextAlign.center,
+                  style: labelStyle.copyWith(
+                    color: colors.mutedText.withValues(alpha: 0.78),
+                  ),
+                ),
+              ],
+            ),
+          ),
+        ),
+      ),
+    );
+  }
+
+  /// Ghosts remain discoverable to assistive technology but deliberately
+  /// expose no activation action: a pending invite cannot open a chat.
+  Widget _buildGhostSemantics(
+    UserModel invitee,
+    ContactHexLayoutResult layout,
+    int slotIndex,
+  ) {
+    final rect = layout.visualRectAt(slotIndex);
+    return Positioned(
+      left: rect.left,
+      top: rect.top,
+      width: rect.width,
+      height: rect.height,
+      child: Semantics.fromProperties(
+        container: true,
+        excludeSemantics: true,
+        properties: SemanticsProperties(
+          label: '${invitee.username}, invitation sent',
+          sortKey: OrdinalSortKey((slotIndex + 1).toDouble()),
+        ),
+        child: const SizedBox.expand(),
       ),
     );
   }
@@ -894,6 +1158,9 @@ class ContactHexLayoutInput {
 class ContactHexLayoutResult {
   ContactHexLayoutResult({
     required this.inputs,
+    required this.fieldInputs,
+    required this.ghostIds,
+    required Map<int, int> contactSlotById,
     required this.slots,
     required this.rowOf,
     required this.rowCount,
@@ -903,14 +1170,22 @@ class ContactHexLayoutResult {
     required this.labelHeight,
     required this.coreCenter,
     required this.fieldHeight,
-  });
+  }) : _contactSlotById = contactSlotById;
 
-  /// Contacts in natural-sort order. They occupy [slots] from index
-  /// [leadingSlots] onward — the field may own leading cells that are not
-  /// people (the "+" add cell), so the announced node count stays honest.
+  /// Real contacts in natural-sort order. They deliberately exclude ghost
+  /// invitees, so callers' node counts and contact semantics stay honest.
   final List<ContactHexLayoutInput> inputs;
 
-  /// Hex centers: [leadingSlots] field-owned cells, then one per contact.
+  /// Every occupied person terminal in spatial order: real contacts plus
+  /// pending outbound invitees. [slots] follows this list after any leading
+  /// field-owned cells.
+  final List<ContactHexLayoutInput> fieldInputs;
+
+  /// Ids in [fieldInputs] that are ghost invitees, never relationships.
+  final Set<int> ghostIds;
+
+  /// Hex centers: [leadingSlots] field-owned cells, then one per
+  /// [fieldInputs] entry.
   final List<Offset> slots;
 
   /// Row index per slot, parallel to [slots].
@@ -919,7 +1194,7 @@ class ContactHexLayoutResult {
   final int rowCount;
 
   /// Slots at the head of the field that belong to the field, not to a
-  /// contact. Contact `i` lives at `slots[i + leadingSlots]`.
+  /// person (the "+" add cell).
   final int leadingSlots;
 
   /// Column count of a full wide row (4 on phones, up to 8 on desktop).
@@ -928,6 +1203,8 @@ class ContactHexLayoutResult {
   final double labelHeight;
   final Offset coreCenter;
   final double fieldHeight;
+
+  final Map<int, int> _contactSlotById;
 
   Path? _traces;
 
@@ -945,10 +1222,27 @@ class ContactHexLayoutResult {
     if (cached != null) return cached;
     final combined = Path();
     for (var i = leadingSlots; i < slots.length; i++) {
+      if (!isContactSlot(i)) continue;
       combined.addPath(ContactHexLayout.routePath(this, i), Offset.zero);
     }
     return _traces = combined;
   }
+
+  bool isGhostSlot(int slotIndex) {
+    final fieldIndex = slotIndex - leadingSlots;
+    return fieldIndex >= 0 &&
+        fieldIndex < fieldInputs.length &&
+        ghostIds.contains(fieldInputs[fieldIndex].id);
+  }
+
+  bool isContactSlot(int slotIndex) {
+    final fieldIndex = slotIndex - leadingSlots;
+    return fieldIndex >= 0 &&
+        fieldIndex < fieldInputs.length &&
+        !ghostIds.contains(fieldInputs[fieldIndex].id);
+  }
+
+  int? slotIndexForContactId(int contactId) => _contactSlotById[contactId];
 
   /// Vertical distance between row centres — the same value `resolve` laid
   /// the rows out on.
@@ -983,6 +1277,7 @@ class ContactHexLayout {
 
   static ContactHexLayoutResult resolve({
     required List<ContactHexLayoutInput> contacts,
+    List<ContactHexLayoutInput> ghosts = const <ContactHexLayoutInput>[],
     required double width,
     required double labelHeight,
     // Cells at the HEAD of the field that the field owns rather than a
@@ -991,7 +1286,20 @@ class ContactHexLayout {
     // count stay honest.
     int leadingSlots = 0,
   }) {
-    final ordered = sortContacts(contacts);
+    final orderedContacts = sortContacts(contacts);
+    final contactIds = <int>{for (final contact in orderedContacts) contact.id};
+    final ghostIds = <int>{};
+    final uniqueGhosts = <ContactHexLayoutInput>[];
+    for (final ghost in ghosts) {
+      if (contactIds.contains(ghost.id)) continue;
+      if (ghostIds.add(ghost.id)) uniqueGhosts.add(ghost);
+    }
+    final fieldInputs = sortContacts([...orderedContacts, ...uniqueGhosts]);
+    final contactSlotById = <int, int>{
+      for (var index = 0; index < fieldInputs.length; index++)
+        if (!ghostIds.contains(fieldInputs[index].id))
+          fieldInputs[index].id: index + leadingSlots,
+    };
     final halfUsable = math.max(hexWidth, width / 2 - hexWidth);
     // Adaptive width: phones run 4-3 rows; wider viewports earn more
     // columns (up to 8-7) at the ideal pitch instead of a skinny strip.
@@ -1012,7 +1320,7 @@ class ContactHexLayout {
     final rowOf = <int>[];
     // Core radius + caption band + first-row clearance.
     var y = coreCenter.dy + coreRadius + 28 + hexRadius;
-    var remaining = ordered.length + leadingSlots;
+    var remaining = fieldInputs.length + leadingSlots;
     var wideRow = true;
     var rowIndex = 0;
     while (remaining > 0) {
@@ -1039,7 +1347,10 @@ class ContactHexLayout {
         : slots.last.dy + hexRadius + labelGap + labelHeight + 40;
 
     return ContactHexLayoutResult(
-      inputs: ordered,
+      inputs: orderedContacts,
+      fieldInputs: fieldInputs,
+      ghostIds: Set<int>.unmodifiable(ghostIds),
+      contactSlotById: Map<int, int>.unmodifiable(contactSlotById),
       slots: slots,
       rowOf: rowOf,
       rowCount: rowIndex,
@@ -1238,6 +1549,40 @@ class _AddSlotPainter extends CustomPainter {
       oldDelegate.focused != focused;
 }
 
+/// Hollow, long-dashed terminal for an outbound invitation. The add cell uses
+/// shorter dashes plus a "+", while this one carries an outbound marker.
+class _GhostSlotPainter extends CustomPainter {
+  const _GhostSlotPainter({required this.outline, required this.surface});
+
+  final Color outline;
+  final Color surface;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    final path = hexPath(c, size.height / 2 - 0.75);
+    canvas.drawPath(path, Paint()..color = surface);
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = 1.2
+      ..color = outline.withValues(alpha: 0.32);
+
+    // Longer 8px runs distinguish a pending ghost from the 5px "+" socket.
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final end = math.min(distance + 8, metric.length);
+        canvas.drawPath(metric.extractPath(distance, end), paint);
+        distance = end + 4;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _GhostSlotPainter oldDelegate) =>
+      oldDelegate.outline != outline || oldDelegate.surface != surface;
+}
+
 /// Screen-fixed corner brackets framing the field viewport.
 class _NetworkFramePainter extends CustomPainter {
   const _NetworkFramePainter({required this.color});
@@ -1341,11 +1686,11 @@ class _HexFieldPainter extends CustomPainter {
       final row = layout.rowOf[i];
       final rowT = ((entranceProgress * (rowCount + 1)) - row).clamp(0.0, 1.0);
       if (rowT <= 0) continue;
-      // The leading add cell has no contact behind it: single, empty socket.
-      final contactIndex = i - layout.leadingSlots;
+      // Add and ghost cells occupy a socket but never own a conversation.
+      final fieldIndex = i - layout.leadingSlots;
       final hasConv =
-          contactIndex >= 0 &&
-          conversationIds.contains(layout.inputs[contactIndex].id);
+          layout.isContactSlot(i) &&
+          conversationIds.contains(layout.fieldInputs[fieldIndex].id);
       stubPaint.color = baseColor.withValues(alpha: 0.38 * rowT);
       padPaint.color = baseColor.withValues(alpha: 0.60 * rowT);
       final top = Offset(slot.dx, slot.dy - ContactHexLayout.hexRadius);
