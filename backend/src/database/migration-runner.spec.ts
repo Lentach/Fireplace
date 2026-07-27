@@ -93,7 +93,7 @@ function createMockClient(opts: MockClientOptions = {}) {
       calls.push({ text, params });
       // Match by SQL substring — not call index — so the spec survives
       // incidental reordering of the runner's bookkeeping queries.
-      if (text.includes('SELECT filename FROM schema_migrations')) {
+      if (text.includes('SELECT filename FROM public.schema_migrations')) {
         return { rows: (opts.applied ?? []).map((f) => ({ filename: f })) };
       }
       if (text.includes('to_regclass')) {
@@ -154,7 +154,7 @@ describe('runMigrations', () => {
     // No successful INSERT for the failing file.
     const insertedFail = calls.some(
       (c) =>
-        c.text.includes('INSERT INTO schema_migrations') &&
+        c.text.includes('INSERT INTO public.schema_migrations') &&
         Array.isArray(c.params) &&
         c.params.includes('0002_boom.sql'),
     );
@@ -178,7 +178,7 @@ describe('runMigrations', () => {
     const baselineSql = idxOf(calls, 'BASELINE_SQL');
     const insert = calls.findIndex(
       (c) =>
-        c.text.includes('INSERT INTO schema_migrations') &&
+        c.text.includes('INSERT INTO public.schema_migrations') &&
         Array.isArray(c.params) &&
         c.params.includes(BASELINE_FILENAME),
     );
@@ -226,7 +226,7 @@ describe('runMigrations', () => {
     // Baseline stamped via ON CONFLICT insert...
     const stampInsert = calls.find(
       (c) =>
-        c.text.includes('INSERT INTO schema_migrations') &&
+        c.text.includes('INSERT INTO public.schema_migrations') &&
         c.text.includes('ON CONFLICT') &&
         Array.isArray(c.params) &&
         c.params.includes(BASELINE_FILENAME),
@@ -278,5 +278,29 @@ describe('runMigrations', () => {
     await runMigrations({ dir, log: () => {} });
 
     expect(texts(calls)).toContain(body);
+  });
+
+  // Regression, second fresh-DB bug found by the e2e-wire CI job: pg_dump's baseline
+  // ends with `set_config('search_path', '', false)` — session-wide, so it is still in
+  // force for the tracking INSERT that runs immediately after it INSIDE THE SAME
+  // transaction. Unqualified, that INSERT dies with
+  // `relation "schema_migrations" does not exist` on every empty database, and the
+  // RESET ALL that repairs the session only happens after COMMIT. Every reference must
+  // therefore be schema-qualified.
+  it('keeps every schema_migrations reference schema-qualified so a search_path-clearing baseline cannot break bookkeeping', async () => {
+    const { client, calls } = createMockClient({ preexists: false });
+    Client.mockImplementation(() => client);
+    const dir = makeDir({
+      [BASELINE_FILENAME]:
+        "CREATE TABLE public.users (id uuid);\nSELECT pg_catalog.set_config('search_path', '', false);\n",
+    });
+
+    await runMigrations({ dir, log: () => {} });
+
+    const bookkeeping = texts(calls).filter((t) => t.includes('schema_migrations'));
+    expect(bookkeeping.length).toBeGreaterThan(0);
+    for (const sql of bookkeeping) {
+      expect(sql).toContain('public.schema_migrations');
+    }
   });
 });

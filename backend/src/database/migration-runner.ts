@@ -146,13 +146,13 @@ export async function runMigrations(
   try {
     await client.query('SELECT pg_advisory_lock($1)', [MIGRATION_LOCK_KEY]);
     await client.query(
-      `CREATE TABLE IF NOT EXISTS schema_migrations (
+      `CREATE TABLE IF NOT EXISTS public.schema_migrations (
          filename text PRIMARY KEY,
          applied_at timestamptz NOT NULL DEFAULT now()
        )`,
     );
     const appliedRows = await client.query<{ filename: string }>(
-      'SELECT filename FROM schema_migrations',
+      'SELECT filename FROM public.schema_migrations',
     );
     const applied = new Set(appliedRows.rows.map((r) => r.filename));
     const preexists = await client.query<{ x: boolean }>(
@@ -163,7 +163,7 @@ export async function runMigrations(
 
     for (const file of plan.stamp) {
       await client.query(
-        'INSERT INTO schema_migrations (filename) VALUES ($1) ON CONFLICT DO NOTHING',
+        'INSERT INTO public.schema_migrations (filename) VALUES ($1) ON CONFLICT DO NOTHING',
         [file],
       );
       log(`stamped ${file} (schema predates migration tracking; not executed)`);
@@ -180,7 +180,13 @@ export async function runMigrations(
         await client.query("SET LOCAL lock_timeout = '10s'");
         await client.query(sql);
         await client.query(
-          'INSERT INTO schema_migrations (filename) VALUES ($1)',
+          // MUST stay schema-qualified: the baseline we just executed ends with
+          // pg_dump's `set_config('search_path', '', false)`, which empties the
+          // search_path for the REST OF THE SESSION — including this INSERT, still
+          // inside the same transaction. Unqualified, it fails with
+          // `relation "schema_migrations" does not exist` on every fresh database.
+          // The RESET ALL further down only runs after COMMIT, too late for this.
+          'INSERT INTO public.schema_migrations (filename) VALUES ($1)',
           [file],
         );
         await client.query('COMMIT');
