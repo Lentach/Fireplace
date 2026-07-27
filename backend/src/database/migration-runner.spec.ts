@@ -240,4 +240,43 @@ describe('runMigrations', () => {
     expect(texts(calls).some((x) => x.includes('FK_BODY'))).toBe(true);
     expect(client.end).toHaveBeenCalledTimes(1);
   });
+
+  // Regression: pg_dump brackets its output with `\restrict` / `\unrestrict` (our
+  // baseline header says pg_dump 16.13), which are psql meta-commands, not SQL.
+  // Sent through node-postgres they raise
+  // `syntax error at or near "\"`, so the baseline could never execute on a FRESH
+  // database — the disaster-recovery path. Caught only when CI first booted an
+  // empty Postgres; prod and existing dev DBs stamp the baseline instead of running it.
+  it('strips psql meta-commands from the baseline so it can execute on a fresh database', async () => {
+    const { client, calls } = createMockClient({ preexists: false });
+    Client.mockImplementation(() => client);
+    const dir = makeDir({
+      [BASELINE_FILENAME]:
+        '\\restrict AbC123\nCREATE TABLE public.users (id uuid);\n\\unrestrict AbC123\n',
+    });
+
+    await runMigrations({ dir, log: () => {} });
+
+    const executed = texts(calls).find((x) => x.includes('CREATE TABLE public.users'));
+    expect(executed).toBeDefined();
+    // The meta-commands are gone; the real DDL survives untouched.
+    expect(executed).not.toContain('\\restrict');
+    expect(executed).not.toContain('\\unrestrict');
+  });
+
+  it('executes non-baseline migrations byte-for-byte, meta-command strip NOT applied', async () => {
+    const { client, calls } = createMockClient({ preexists: false });
+    Client.mockImplementation(() => client);
+    // A later migration must never be rewritten. If a line like this ever appears
+    // legitimately (inside a dollar-quoted body, say), it has to reach the server intact.
+    const body = "INSERT INTO public.t (s) VALUES ($$\n\\restrict not-a-meta-command\n$$);\n";
+    const dir = makeDir({
+      [BASELINE_FILENAME]: 'CREATE TABLE public.users (id uuid);\n',
+      '0002_later.sql': body,
+    });
+
+    await runMigrations({ dir, log: () => {} });
+
+    expect(texts(calls)).toContain(body);
+  });
 });

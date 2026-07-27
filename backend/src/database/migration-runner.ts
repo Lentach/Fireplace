@@ -27,6 +27,30 @@ import { Client } from 'pg';
  */
 export const BASELINE_FILENAME = '0001_baseline.sql';
 
+/**
+ * `pg_dump` brackets its output with `\restrict` / `\unrestrict` — this baseline's own
+ * header records pg_dump 16.13, so it is not a 17-and-up quirk. They are psql
+ * META-COMMANDS, not SQL: psql eats them, but this runner ships the file straight to
+ * the server via node-postgres, which answers `syntax error at or near "\"`.
+ *
+ * Consequence, invisible until CI booted a truly empty database: `0001_baseline.sql`
+ * could NEVER execute. Live prod and existing dev DBs never noticed because the
+ * baseline is STAMPED there, not run — so the only paths that hit this are a fresh
+ * environment and disaster recovery, i.e. exactly when it matters most.
+ *
+ * The baseline is immutable (see the contract above), so the repair lives here.
+ *
+ * This match is LINE-BASED and therefore not safe in general — a `\restrict` line
+ * inside a dollar-quoted body or a multi-line string literal would be stripped too.
+ * What makes it safe is the CALLER, which applies it ONLY to `BASELINE_FILENAME`:
+ * that file is frozen, contains zero `$$` bodies, and holds exactly the two
+ * meta-command lines (verified 2026-07-27). Every other migration is executed
+ * byte-for-byte. Do not widen this to all files.
+ */
+export function stripPsqlMetaCommands(sql: string): string {
+  return sql.replace(/^[ \t]*\\(?:un)?restrict\b.*$/gm, '');
+}
+
 /** Session-scoped advisory lock so concurrent boots cannot interleave DDL. */
 const MIGRATION_LOCK_KEY = 0x66697265; // 'fire'
 
@@ -146,7 +170,10 @@ export async function runMigrations(
     }
 
     for (const file of plan.run) {
-      const sql = readFileSync(join(dir, file), 'utf8');
+      const raw = readFileSync(join(dir, file), 'utf8');
+      // Only the frozen baseline gets the psql meta-command strip; everything else
+      // is executed exactly as written.
+      const sql = file === BASELINE_FILENAME ? stripPsqlMetaCommands(raw) : raw;
       log(`applying ${file}`);
       try {
         await client.query('BEGIN');

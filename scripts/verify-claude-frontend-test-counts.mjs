@@ -27,14 +27,27 @@ function parseClaudeCounts(text) {
 }
 
 /**
- * `flutter test` emits a progress line per test; the LAST "+N ~M:" wins.
- * The tilde group is absent when nothing is skipped.
+ * `flutter test` has TWO output shapes and CI uses the one a local run does not:
+ *
+ *   attached to a TTY -> per-test progress, last line wins:
+ *       01:32 +903 ~4: All tests passed!
+ *   non-interactive (GitHub Actions) -> a single summary line, no counters at all:
+ *       🎉 903 tests passed, 4 skipped.
+ *
+ * Parsing only the first form passed locally and failed on CI. Handle both.
  */
 function parseFlutterLog(text) {
-  const matches = [...text.matchAll(/\+(\d+)(?:\s+~(\d+))?\s*:/g)];
-  if (matches.length === 0) {
+  // Preferred: the non-interactive summary line, which is unambiguous.
+  const summary = text.match(/(\d+)\s+tests?\s+passed(?:,\s*(\d+)\s+skipped)?/);
+  if (summary) {
+    return { tests: Number(summary[1]), skipped: Number(summary[2] ?? 0) };
+  }
+
+  // Fallback: the TTY progress counter, last occurrence wins.
+  const counters = [...text.matchAll(/\+(\d+)(?:\s+~(\d+))?\s*:/g)];
+  if (counters.length === 0) {
     throw new Error(
-      'flutter test output: no "+N:" progress counter found — did the run fail before starting?',
+      'flutter test output: found neither an "N tests passed" summary nor a "+N:" progress counter — did the run fail before starting?',
     );
   }
   if (!/All tests passed!/.test(text)) {
@@ -42,7 +55,7 @@ function parseFlutterLog(text) {
       'flutter test output: "All tests passed!" not present — the suite did not pass, refusing to compare counts.',
     );
   }
-  const last = matches[matches.length - 1];
+  const last = counters[counters.length - 1];
   return { tests: Number(last[1]), skipped: Number(last[2] ?? 0) };
 }
 
