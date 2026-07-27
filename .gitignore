@@ -67,4 +67,6 @@ deploy-web.config.ps1
 # key into origin/master (CONTEXT7_API_KEY, introduced by fdd3aa2, found 2026-07-27).
 # The pre-commit fallback regex cannot catch it, and neither can gitleaks' default
 # generic-api-key rule — the JSON-escaped \" breaks the match. Keep it out by rule.
-.claude/settings.local.json
+# Glob, not an exact path: a `.bak-*` copy of this file carries the same secrets and
+# would otherwise be untracked-but-committable.
+.claude/settings.local.json*
