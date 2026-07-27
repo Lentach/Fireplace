@@ -8,8 +8,10 @@ fail=0
 
 # --- Gate 1: secret scan -------------------------------------------------
 # Prefer gitleaks if installed (full entropy + rule coverage); else fall back
-# to a high-signal regex scan of staged additions. This repo is PUBLIC — a
-# leaked key here is public the instant it is pushed.
+# to a high-signal regex scan of staged additions. This repo is PRIVATE (verified
+# 2026-07-27), so a leak here is not instantly public — but dumps, VM targets and
+# tokens still must not enter history. NOTE: gitleaks is NOT installed on the
+# owner's machine, so what actually runs is the weaker regex fallback.
 if command -v gitleaks >/dev/null 2>&1; then
   if ! gitleaks protect --staged --redact >/dev/null 2>&1; then
     echo "BLOCKED: gitleaks found a secret in staged changes."

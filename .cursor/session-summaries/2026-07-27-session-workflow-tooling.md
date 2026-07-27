@@ -1,9 +1,11 @@
 # Workflow tooling: impact.mjs, graph automation, and what graphify is actually worth
 
-**Date:** 2026-07-27 — no product code changed. Started as "is master clear?", turned into an
-evaluation of the `Egonex-AI/Understand-Anything` plugin, and ended with the discovery that our
-existing graph ritual was producing near-random answers for the Flutter tier. Two commits on
-`master`: `89aa3a5` (tooling) and the hook guard.
+**Date:** 2026-07-27 — a workflow/infra session that ended up fixing **two disaster-recovery
+bugs in production code**. Started as "is master clear?", became an evaluation of the
+`Egonex-AI/Understand-Anything` plugin, found that our own graph was near-random on the Flutter
+tier, and closed the cross-tier test gap — whose very first CI run exposed both bugs.
+15 commits on `master`, `05e0962..ddbf834`. **Product code DID change**:
+`backend/src/database/migration-runner.ts`. Nothing deployed; live remains 0.0.131 / `f4d3967`.
 
 ## What was done
 
@@ -155,7 +157,8 @@ existing graph ritual was producing near-random answers for the Flutter tier. Tw
   volatile-claim rule, planning-files clarification) and §2 (graph accuracy split), §9 (ADR
   laziness). `.github/workflows/ci.yml` — self-test step. `.gitignore` — root-only scratch media.
 - `.githooks/pre-commit` — Gate 2 rewritten from entry-count to a three-part size budget.
-- `.cursor/session-summaries/LATEST.md` — trimmed; **the only session file that is committed.**
+- `.cursor/session-summaries/LATEST.md` — trimmed. (It was the only committed session file at
+  the time; since item 17 all 225 dated summaries are tracked too.)
 - DELETED: three superseded `*handoff*` files + `.planning/.active_plan`.
 
 ## Verification
@@ -178,7 +181,11 @@ existing graph ritual was producing near-random answers for the Flutter tier. Tw
   `Built from commit` advanced to `89aa3a50`.
 - Guard tested both directions against real history: `89aa3a5` and `c0fcae1` → REBUILD;
   `05e0962` (docs) and the guard commit itself → skip.
-- No product code touched; backend and Flutter suites deliberately not re-run.
+- **Product code WAS touched** (`backend/src/database/migration-runner.ts`) — see items 14-16.
+  Full suites re-run and green: backend **541 tests / 47 suites**, Flutter **903 passed / 4
+  skipped**, `e2e-wire` **11 wire tests** against real Postgres. Both counts are now pinned in
+  `CLAUDE.md` §3 and machine-verified in CI. Final green run: **`30293387936`** on `ddbf834`,
+  all three jobs SUCCESS (`backend`, `frontend`, `e2e-wire`).
 
 ## Notes for next session
 
