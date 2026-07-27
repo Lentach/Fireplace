@@ -18,7 +18,7 @@
 - **`impact.mjs` is an inner-loop hint, NOT a coverage oracle** — static imports only, 3 hops; blind to NestJS DI wiring, §7 wire contracts, assets/config. Full tier suites still gate commits and PRs. Do not let it justify skipping `flutter test` / `npm test`.
 - **TRAP: `core.filemode=false` here** — new hooks stage as `100644` even after `chmod +x` and are silently ignored on Linux/fresh clones. Fixed via `git update-index --chmod=+x`; check `git ls-files --stage .githooks/` after adding any hook. Activation is still per-clone: `git config core.hooksPath .githooks`.
 - Never answer a Flutter dependency question from `GRAPH_REPORT.md`. Re-run the measurement before trusting graphify's Dart edges again.
-- **Dependabot #95: patched in code, alert never closed.** `git push` still warns "1 high" and `gh api` reports #95 `open` (`brace-expansion <= 5.0.7`), but `master`'s lockfile already has **5.0.8** on every `^5.0.5` entry (from `207bc06`) and all eight copies are `dev: true`. Dismiss the alert on GitHub — do NOT touch the lockfile again.
+- **Dependabot #95 is VALID and still open — do NOT dismiss it.** `207bc06` upgraded only the four `^5.0.5` copies to `5.0.8`; the alert's range is `<= 5.0.7`, which also covers **root `brace-expansion@1.1.16`** and three nested `2.1.2` copies (`@jest/reporters`, `jest-config`, `jest-runtime`) that were never touched. So the lockfile is PARTIALLY upgraded, not fixed. All eight copies are `dev: true` (eslint/jest tooling; the prod container ships prod deps only), so it is not deploy-blocking — but the fix is to upgrade the remaining four, not to close the alert. Earlier notes claiming "#95 fixed in 207bc06" are wrong.
 - ➡ Full detail: **`2026-07-27-session-workflow-tooling.md`**.
 
 ---
