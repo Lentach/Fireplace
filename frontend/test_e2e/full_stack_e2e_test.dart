@@ -126,20 +126,98 @@ void main() {
     await bob.initializeAndUploadKeys();
 
     // 4. Friendship: request over WS, accept on the receiving side.
+    //
+    // This also proves the GHOST INVITE contract across the tier boundary.
+    // The backend emits `sentRequestsList` and the client parses it, but each
+    // side is unit-tested against a mock, so only a live socket shows whether
+    // the SENDER's own list is the one being refreshed. That is the half that
+    // mocks cannot prove.
+    //
+    // Every wait below is preceded by a discard. Connecting already buffers an
+    // empty `sentRequestsList`, and `EventLog.next` matches the first buffered
+    // payload satisfying its predicate — so without discarding, a "must be
+    // empty" wait happily consumes the empty from CONNECT time and passes even
+    // if the action emitted nothing at all.
+    alice.events.discard('sentRequestsList');
     alice.socketService.sendFriendRequest(bob.userId);
-    final request = await bob.events.next(
+
+    final aliceGhosts = await alice.events.next(
+      'sentRequestsList',
+      where: (p) =>
+          p is List &&
+          p.any(
+            (e) =>
+                e is Map &&
+                e['receiver'] is Map &&
+                (e['receiver'] as Map)['id'] == bob.userId,
+          ),
+      reason: 'sender must see their own outbound invite as a ghost',
+    ) as List;
+    expect(
+      aliceGhosts.length,
+      1,
+      reason: 'exactly the one invite alice just sent',
+    );
+
+    final rejected = await bob.events.next(
       'newFriendRequest',
       where: (p) =>
           p is Map &&
           p['sender'] is Map &&
           (p['sender'] as Map)['id'] == alice.userId,
-      reason: 'bob receiving alice friend request',
+      reason: 'bob receiving alice first friend request',
     ) as Map;
+
+    // REJECT first. This is the riskier half of the lifecycle: the reject
+    // path had to have `server` + `onlineUsers` threaded into it to reach the
+    // ORIGINAL SENDER at all, and a mock cannot show which socket was hit.
+    alice.events.discard('sentRequestsList');
+    bob.socketService.rejectFriendRequest(rejected['id'] as int);
+    await alice.events.next(
+      'sentRequestsList',
+      where: (p) => p is List && p.isEmpty,
+      reason: 'rejecting must clear the sender ghost',
+    );
+
+    // Re-send, then accept, so the rest of the flow still has a friendship.
+    alice.events.discard('sentRequestsList');
+    alice.socketService.sendFriendRequest(bob.userId);
+    await alice.events.next(
+      'sentRequestsList',
+      where: (p) =>
+          p is List &&
+          p.any(
+            (e) =>
+                e is Map &&
+                e['receiver'] is Map &&
+                (e['receiver'] as Map)['id'] == bob.userId,
+          ),
+      reason: 'the re-sent invite is a ghost again',
+    );
+
+    final request = await bob.events.next(
+      'newFriendRequest',
+      where: (p) =>
+          p is Map &&
+          p['sender'] is Map &&
+          (p['sender'] as Map)['id'] == alice.userId &&
+          p['id'] != rejected['id'],
+      reason: 'bob receiving the re-sent request',
+    ) as Map;
+    alice.events.discard('sentRequestsList');
     bob.socketService.acceptFriendRequest(request['id'] as int);
     await alice.events.next('friendRequestAccepted',
         reason: 'alice accept confirmation');
     await bob.events.next('friendRequestAccepted',
         reason: 'bob accept confirmation');
+
+    // The ghost must CLEAR on the sender's side once the invite resolves —
+    // a ghost that outlives its invite is the whole failure mode here.
+    await alice.events.next(
+      'sentRequestsList',
+      where: (p) => p is List && p.isEmpty,
+      reason: 'accepting must clear the sender ghost',
+    );
 
     // 5. Conversation. The acceptor (bob) is auto-opened; alice starts
     //    explicitly. Both must land on the same conversation row.
