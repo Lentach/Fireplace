@@ -45,17 +45,17 @@ frontend/android/key.properties
 
 
 # Local working artifacts — specs, plans, scratch (kept on disk, not in repo)
-# Session summaries: LATEST.md is ALWAYS committed (AGENTS.md bootstrap reads it from the repo).
-# Dated session files default to LOCAL-ONLY — commit one deliberately via `git add -f`
-# only after checking it for secrets/audit content (repo is PUBLIC).
-.cursor/session-summaries/*
-!.cursor/session-summaries/LATEST.md
+# Session summaries ARE COMMITTED. This repo is PRIVATE (verified 2026-07-27 via
+# `gh repo view --json isPrivate` -> true; docs previously claimed "public", which was
+# wrong). Keeping dated summaries local meant a fresh clone or a second machine saw
+# nothing newer than 2026-07-22. The pre-commit secret scan still runs on them — keep
+# credentials and third-party PII out regardless of visibility.
 docs/superpowers/
 .planning/
 .tmp/
 omp-session*.html
 
-# Local audit report — repo is PUBLIC; keep the findings/backlog off the remote
+# Local audit report — findings/backlog stay off the remote by choice, not visibility
 docs/audit/
 
 # deploy-web.ps1 per-machine config (your VM SSH target) — keep out of the public repo
