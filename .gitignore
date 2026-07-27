@@ -58,5 +58,6 @@ omp-session*.html
 # Local audit report — findings/backlog stay off the remote by choice, not visibility
 docs/audit/
 
-# deploy-web.ps1 per-machine config (your VM SSH target) — keep out of the public repo
+# deploy-web.ps1 per-machine config (your VM SSH target) — machine-specific and points at
+# infrastructure, so it stays out of the repo on hygiene grounds, not visibility grounds
 deploy-web.config.ps1

@@ -39,16 +39,16 @@ which on this branch is everything.
 | `main_shell.dart` vs master | **changed on purpose**, +6 −100 (see §5) |
 | working tree | clean except ~10 stray `.jpg`/`.mp4` in the repo root |
 
-**This brief is LOCAL-ONLY and that is deliberate** — `.gitignore` keeps dated session
-files out of a PUBLIC repo, and only `LATEST.md` is tracked (which is why LATEST carries
-the pointer to this file). Nothing since 2026-07-22 is committed, including the previous
-brief. If you are reading this in a fresh clone and it is missing, that is the reason;
-`LATEST.md` alone is enough to resume, and `git add -f` is the deliberate opt-in after a
-secrets/audit pass.
+> **CORRECTED 2026-07-27 — the paragraph that was here is WRONG. Do not act on it.**
+> It claimed the repo is PUBLIC and that dated session files are local-only. Both are
+> false: `gh repo view --json isPrivate` returns `true`, and as of 2026-07-27 all 225
+> dated summaries are tracked. The old text told agents not to commit this file and to
+> scope every `git add` around it — ignore that. Root `CLAUDE.md` §1 is authoritative.
+> Kept as a record of what the policy used to be, not as instruction.
 
 **The stray media in the repo root are the owner's screenshots. Never touch them, never
-`git add` them.** Scope every add (`git add -A frontend`, `.cursor/session-summaries/LATEST.md`)
-and run `git show --stat HEAD` before pushing. **The repo is PUBLIC.**
+`git add` them.** (Still true — they are gitignored at the root now, but do not commit
+them deliberately either.) Scope your adds and run `git show --stat HEAD` before pushing.
 
 **Never infer what is live from `git log` — read `/version.json`.**
 
