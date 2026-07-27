@@ -37,14 +37,37 @@ else
   fi
 fi
 
-# --- Gate 2: LATEST.md 5-entry cap --------------------------------------
+# --- Gate 2: LATEST.md budget -------------------------------------------
+# Entry COUNT was the wrong unit: five entries passed while the file sat at
+# ~8.7k tokens, because one 2026-07-25 entry alone was ~4.8k. Every agent AND
+# every subagent reads this file at session start (AGENTS.md step 3), so what
+# actually costs us is SIZE. Word budget ~= tokens * 3/4.
 LATEST=.cursor/session-summaries/LATEST.md
+LATEST_MAX_ENTRIES=5
+LATEST_MAX_WORDS=2600   # ~3.5k tokens total
+LATEST_MAX_ENTRY_WORDS=700   # ~950 tokens for any single entry
 if git diff --cached --name-only | grep -qx "$LATEST"; then
-  # Count **Date:** entry markers in the staged version.
-  n=$(git show ":$LATEST" 2>/dev/null | grep -cE '^\*\*Date:\*\*' || echo 0)
-  if [ "$n" -gt 5 ]; then
-    echo "BLOCKED: $LATEST has $n entries (cap is 5). Move older entries to their dated files."
-    echo "See CLAUDE.md 1 (LATEST is the skim layer, not the archive)."
+  staged=$(git show ":$LATEST" 2>/dev/null)
+  n=$(printf '%s\n' "$staged" | grep -cE '^\*\*Date:\*\*' || echo 0)
+  words=$(printf '%s\n' "$staged" | wc -w)
+  # Largest single entry: split on the **Date:** markers and take the max.
+  biggest=$(printf '%s\n' "$staged" | awk '
+    /^\*\*Date:\*\*/ { if (w > m) m = w; w = 0 }
+    { w += NF }
+    END { if (w > m) m = w; print m }')
+  if [ "$n" -gt "$LATEST_MAX_ENTRIES" ]; then
+    echo "BLOCKED: $LATEST has $n entries (cap $LATEST_MAX_ENTRIES). Move older entries to their dated files."
+    fail=1
+  fi
+  if [ "$words" -gt "$LATEST_MAX_WORDS" ]; then
+    echo "BLOCKED: $LATEST is $words words (cap $LATEST_MAX_WORDS, ~$((words * 4 / 3)) tokens)."
+    echo "  Every agent and subagent pays this on read. Summarise older entries down to a"
+    echo "  few lines + a pointer; the full text already lives in the dated per-session file."
+    fail=1
+  fi
+  if [ "$biggest" -gt "$LATEST_MAX_ENTRY_WORDS" ]; then
+    echo "BLOCKED: $LATEST has a single entry of $biggest words (cap $LATEST_MAX_ENTRY_WORDS)."
+    echo "  LATEST is the skim layer, not the archive. See CLAUDE.md 1."
     fail=1
   fi
 fi
