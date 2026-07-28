@@ -55,50 +55,55 @@ class _PingEffectOverlayState extends State<PingEffectOverlay>
 
   @override
   Widget build(BuildContext context) {
-    return AnimatedBuilder(
-      animation: _controller,
-      builder: (context, child) {
-        return Center(
-          child: Opacity(
-            opacity: _opacityAnimation.value,
-            child: Transform.scale(
-              scale: _scaleAnimation.value,
-              child: SizedBox.square(
-                dimension: 112,
-                child: Stack(
-                  alignment: Alignment.center,
-                  children: [
-                    Container(
-                      width: 112,
-                      height: 112,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: Colors.orange.withValues(alpha: 0.28),
-                          width: 1.5,
-                        ),
-                      ),
-                    ),
-                    Container(
-                      width: 96,
-                      height: 96,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        color: Colors.orange.withValues(alpha: 0.16),
-                        border: Border.all(
-                          color: Colors.orange.withValues(alpha: 0.88),
-                          width: 2.5,
-                        ),
-                      ),
-                    ),
-                    const PingGlyph(size: 50, color: Colors.white),
-                  ],
-                ),
+    // Static subtree: built ONCE (this build runs once — no setState/AnimatedBuilder
+    // rebuild loop). The transitions below drive opacity/scale straight off the
+    // controller without rebuilding this subtree per frame, and the CustomPaint
+    // glyph is created once rather than per frame.
+    final badge = SizedBox.square(
+      dimension: 112,
+      child: Stack(
+        alignment: Alignment.center,
+        children: [
+          Container(
+            width: 112,
+            height: 112,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              border: Border.all(
+                color: Colors.orange.withValues(alpha: 0.28),
+                width: 1.5,
               ),
             ),
           ),
-        );
-      },
+          Container(
+            width: 96,
+            height: 96,
+            decoration: BoxDecoration(
+              shape: BoxShape.circle,
+              color: Colors.orange.withValues(alpha: 0.16),
+              border: Border.all(
+                color: Colors.orange.withValues(alpha: 0.88),
+                width: 2.5,
+              ),
+            ),
+          ),
+          const PingGlyph(size: 50, color: Colors.white),
+        ],
+      ),
+    );
+    // RepaintBoundary: this overlay is Positioned.fill inside the chat Stack, so
+    // the 800ms animation must not mark the message list dirty. FadeTransition
+    // (no per-frame Opacity saveLayer) + ScaleTransition animate the cached child.
+    return RepaintBoundary(
+      child: Center(
+        child: FadeTransition(
+          opacity: _opacityAnimation,
+          child: ScaleTransition(
+            scale: _scaleAnimation,
+            child: badge,
+          ),
+        ),
+      ),
     );
   }
 }
