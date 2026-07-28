@@ -67,5 +67,54 @@ void main() {
         );
       }
     });
+
+    // The pre-paint bootstrap script maps each saved theme to its scaffold
+    // hex so returning users don't flash the fresh-install default during
+    // bundle load. Those hexes are hand-copied into index.html — assert each
+    // against the real RpgTheme scaffold so palette drift breaks the build.
+    // Also assert the script never uses !important: the runtime sync writes
+    // INLINE styles, and an author !important rule would beat them.
+    test('index.html bootstrap theme map matches RpgTheme scaffolds', () {
+      final html = File('web/index.html').readAsStringSync();
+      final expected = <String, Color>{
+        'dark': RpgTheme.backgroundDarkGray,
+        'blue': RpgTheme.backgroundBlue,
+        'cosmic': RpgTheme.backgroundCosmic,
+        'teal': RpgTheme.backgroundTealStone,
+        'light': RpgTheme.backgroundLight,
+      };
+      for (final entry in expected.entries) {
+        final match = RegExp(
+          "${entry.key}:\\s*'(#[0-9a-fA-F]{6})'",
+        ).firstMatch(html);
+        expect(
+          match,
+          isNotNull,
+          reason: 'bootstrap script must map theme "${entry.key}"',
+        );
+        expect(
+          match!.group(1)!.toLowerCase(),
+          webDocumentBackgroundCss(entry.value),
+          reason: '"${entry.key}" bootstrap hex drifted from RpgTheme',
+        );
+      }
+      // The script must mirror the Dart legacy ladder: the migration never
+      // writes theme_preference back, so dark_mode_preference-only devices
+      // exist indefinitely and would otherwise flash the fresh-install
+      // default.
+      expect(
+        html.contains('flutter.dark_mode_preference'),
+        isTrue,
+        reason: 'bootstrap script must honor the legacy theme key',
+      );
+      // Match the CSS-rule shape only (the script's own comment may MENTION
+      // the flag): an author !important background rule would beat the
+      // runtime INLINE theme sync and pin the bootstrap color forever.
+      expect(
+        RegExp(r'background-color[^;}]*!important').hasMatch(html),
+        isFalse,
+        reason: 'author !important would beat the runtime inline theme sync',
+      );
+    });
   });
 }
