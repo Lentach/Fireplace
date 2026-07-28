@@ -25,11 +25,13 @@ void main() {
     });
 
     // The real contract: web/index.html paints the document for FIRST PAINT
-    // (before Flutter boots) and must match the default 'dark' theme scaffold,
-    // otherwise the Android keyboard-hide reclaimed strip flashes the wrong
-    // color. Parse the actual file so drift on either side breaks the test.
-    // CSS hex is case-insensitive, so compare lowercased.
-    test('index.html first-paint background matches the default dark scaffold',
+    // (before Flutter boots) and must match the DEFAULT theme scaffold —
+    // Hot Stone ('light', warm paper) since 2026-07-28 — otherwise the
+    // Android keyboard-hide reclaimed strip flashes the wrong color. Parse
+    // the actual file so drift on either side breaks the test. CSS hex is
+    // case-insensitive, so compare lowercased.
+    test(
+        'index.html first-paint background matches the default Hot Stone scaffold',
         () {
       final html = File('web/index.html').readAsStringSync();
       final match =
@@ -41,8 +43,78 @@ void main() {
       );
       final indexCss = match!.group(1)!.toLowerCase();
 
-      expect(indexCss, webDocumentBackgroundCss(RpgTheme.backgroundDarkGray));
-      expect(indexCss, '#17181a'); // documented default
+      expect(indexCss, webDocumentBackgroundCss(RpgTheme.backgroundLight));
+      expect(indexCss, '#f7f4f0'); // documented default (Hot Stone)
+    });
+
+    // Same contract for the PWA manifest: background_color paints the splash
+    // and theme_color the Android task-switcher/browser chrome. index.html's
+    // test alone missed these on the 2026-07-28 default flip — assert both so
+    // the next default change cannot ship a dark splash into a light app.
+    test('manifest.json splash colors match the default Hot Stone scaffold',
+        () {
+      final manifest = File('web/manifest.json').readAsStringSync();
+      final expected = webDocumentBackgroundCss(RpgTheme.backgroundLight);
+      for (final key in ['background_color', 'theme_color']) {
+        final match = RegExp(
+          '"$key":\\s*"(#[0-9a-fA-F]{6})"',
+        ).firstMatch(manifest);
+        expect(match, isNotNull, reason: 'manifest.json must declare $key');
+        expect(
+          match!.group(1)!.toLowerCase(),
+          expected,
+          reason: '$key must match the default theme scaffold',
+        );
+      }
+    });
+
+    // The pre-paint bootstrap script maps each saved theme to its scaffold
+    // hex so returning users don't flash the fresh-install default during
+    // bundle load. Those hexes are hand-copied into index.html — assert each
+    // against the real RpgTheme scaffold so palette drift breaks the build.
+    // Also assert the script never uses !important: the runtime sync writes
+    // INLINE styles, and an author !important rule would beat them.
+    test('index.html bootstrap theme map matches RpgTheme scaffolds', () {
+      final html = File('web/index.html').readAsStringSync();
+      final expected = <String, Color>{
+        'dark': RpgTheme.backgroundDarkGray,
+        'blue': RpgTheme.backgroundBlue,
+        'cosmic': RpgTheme.backgroundCosmic,
+        'teal': RpgTheme.backgroundTealStone,
+        'light': RpgTheme.backgroundLight,
+      };
+      for (final entry in expected.entries) {
+        final match = RegExp(
+          "${entry.key}:\\s*'(#[0-9a-fA-F]{6})'",
+        ).firstMatch(html);
+        expect(
+          match,
+          isNotNull,
+          reason: 'bootstrap script must map theme "${entry.key}"',
+        );
+        expect(
+          match!.group(1)!.toLowerCase(),
+          webDocumentBackgroundCss(entry.value),
+          reason: '"${entry.key}" bootstrap hex drifted from RpgTheme',
+        );
+      }
+      // The script must mirror the Dart legacy ladder: the migration never
+      // writes theme_preference back, so dark_mode_preference-only devices
+      // exist indefinitely and would otherwise flash the fresh-install
+      // default.
+      expect(
+        html.contains('flutter.dark_mode_preference'),
+        isTrue,
+        reason: 'bootstrap script must honor the legacy theme key',
+      );
+      // Match the CSS-rule shape only (the script's own comment may MENTION
+      // the flag): an author !important background rule would beat the
+      // runtime INLINE theme sync and pin the bootstrap color forever.
+      expect(
+        RegExp(r'background-color[^;}]*!important').hasMatch(html),
+        isFalse,
+        reason: 'author !important would beat the runtime inline theme sync',
+      );
     });
   });
 }

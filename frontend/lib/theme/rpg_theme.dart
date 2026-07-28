@@ -95,6 +95,9 @@ class RpgTheme {
   // Light-theme destructive red (warm brick; ~5.9:1 on white both directions).
   static const Color errorColorLight = Color(0xFFC0392B);
   static const Color successColor = Color(0xFF44FF44);
+  // Light-theme success green (green-800; ~6.4:1 on white, ~5.9:1 on the
+  // Hot Stone paper #F7F4F0). The neon successColor is dark-surface-only.
+  static const Color successColorLight = Color(0xFF166534);
 
   // Telegram-style blue theme (default dark) – official Telegram colors
   // Background: #17212B, accent: #2AABEE, sent bubble: #2481CC, received: #2B2B2B
