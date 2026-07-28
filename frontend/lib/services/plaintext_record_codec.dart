@@ -22,10 +22,22 @@ import 'dart:typed_data';
 /// sealed    {"v":1,"kid":"k2","iv":"<b64>","ct":"<b64>","_cid":7,"_savedAt":123}
 /// ```
 ///
-/// Legacy records are NEVER bulk-rewritten. Each is the only copy of a message,
-/// and a mass rewrite of up to 2000 of them is exactly the operation that must
-/// not half-fail (see the dropped-write case in `EncryptionService`). They are
-/// re-sealed lazily, only when something already had to write that record.
+/// Legacy records are migrated by an INCREMENTAL, RESUMABLE re-seal, not by a
+/// single atomic rewrite and not lazily on read.
+///
+/// Not atomic, because each record is the only copy of a message and a mass
+/// rewrite of up to 2000 of them is exactly the operation that must not
+/// half-fail (see the dropped-write case in `EncryptionService`). So the sweep
+/// works in small batches, gates every write on its commit result, leaves the
+/// legacy record untouched when a write is refused, and retries next launch —
+/// the same at-least-once discipline as the purge backlog.
+///
+/// Not lazy either, and this is the subtle part: re-sealing only what something
+/// happened to rewrite would leave the OLDEST records in cleartext, and those
+/// are precisely the ones retention destroys first. Their residue would then
+/// never be shredded by a key rotation, so the records most likely to be purged
+/// would be the ones whose bytes stay readable. Eager beats lazy here for a
+/// privacy reason, not a tidiness one.
 ///
 /// ## Why sealing is gated on an "armed" content key
 ///

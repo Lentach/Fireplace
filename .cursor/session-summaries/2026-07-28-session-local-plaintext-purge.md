@@ -67,6 +67,51 @@ decision:
   hours EARLY. Found by running the backend on a UTC+2 host: the 15-min edit window also read as
   expired immediately (that was the only e2e failure, and it was environmental, not a regression).
 
+## Two-axis review, and what it caught
+
+Ran the repo's `code-review` skill over `de7b7a6...HEAD`. **Standards: 0 hard violations** (one
+judgement call — the new sentinel is a raw literal like the existing ones; left alone, since
+`message_model.dart` cannot import a provider constant without inverting the layering).
+**Spec: 2 real gaps, both fixed:**
+
+- `CLAUDE.md` §6 still claimed uninstalling the PWA destroys device keys — the exact false warning
+  #105 was filed against, and it points users at clearing site data, which is what actually loses
+  their history. Rewritten to say what does and does not destroy keys.
+- The wipe copy said "cannot be recovered". Scoped to the server that is true, but it is the
+  phrasing this work explicitly warned against, so it now reads "cannot be undone … no copy to
+  restore from" — accurate about the product without claiming the bytes are gone.
+
+Two races surfaced in the same pass and were fixed: retired ids were loaded on `socketReady`
+**unawaited**, racing the first history pass (losing that race persists a permanent
+`[Decryption failed]` for a row the app purged on purpose) — now loaded in `initializeE2E`
+**before** `_e2eInitialized` flips, the only point that provably precedes any decrypt; and
+`clearAll()` / `onConnect(false)` never cleared `_retiredIds`, so on account switch the previous
+account's ids stayed live.
+
+## B2 started: the record envelope (`plaintext_record_codec.dart`)
+
+Format + constraints only — **nothing seals anything yet**, no storage change, no migration.
+Metadata stays cleartext (every sweep selects on it); payload is what gets encrypted. Codec is now
+the single owner of the metadata key names, with `encryption_service` aliasing them.
+
+Three constraints written into the file because they are easy to get wrong and expensive to get
+wrong:
+
+1. **Durability inverts.** These records are in localStorage *because* its writes are synchronous
+   and survive a tab close; the content key would live in IndexedDB, whose in-flight transactions
+   are **aborted** by a tab close. Mint → encrypt → write record → persist key can land ciphertext
+   and lose the key, leaving records unreadable forever, silently. It also flips the blast radius:
+   one lost plaintext record costs one message, a lost content key costs **every** message at once.
+   Hence: persist the key, read it back from a **fresh** transaction, and only then arm sealing.
+   Until armed, keep writing cleartext.
+2. **Migration is incremental and resumable** — not one atomic rewrite (2000 only-copies must not
+   half-fail) and **not lazy on read** either: lazy would leave the OLDEST records cleartext, and
+   those are exactly the ones retention destroys first, so their residue would never be shredded.
+3. **Rotation is the piece that carries the promise.** Encryption at rest alone gives "unreadable
+   without the key" — but the key is live, so purged records still sit decryptable in the LevelDB
+   WAL. Only rotating and destroying the key on purge turns residue into ciphertext under a key that
+   no longer exists. **"Encrypted at rest" ≠ "shredded".** Do not conflate them when reporting.
+
 ## Verification
 
 - analyze **0 issues**; `flutter test` **956 passed / 5 skipped** (counts machine-verified);
