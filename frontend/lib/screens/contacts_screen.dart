@@ -14,7 +14,7 @@ import '../widgets/contact_network_view.dart';
 import '../widgets/glass/glass_surface.dart';
 import '../widgets/main_tab_screen_header.dart';
 import '../utils/instant_opaque_route.dart';
-import 'add_or_invitations_screen.dart';
+import 'invitations_screen.dart';
 import 'chat_detail_screen.dart';
 import 'user_card_screen.dart';
 
@@ -136,7 +136,10 @@ class _ContactsScreenState extends State<ContactsScreen> {
   Widget build(BuildContext context) {
     final convs = context.watch<ConversationsProvider>();
     // When user tapped a contact and we had no conversation, we called startConversation.
-    // Backend emits openConversation; consume it here and open chat (AddOrInvitations only consumes when that screen is open).
+    // Backend emits openConversation; consume it here. This is now the tab's ONLY
+    // pending-open consumer — Invitations never consumes it, because acceptance no
+    // longer emits openConversation at all (it is reserved for explicit
+    // startConversation), and Invitations only ever pops a peer id.
     if (convs.pendingOpenConversationId != null) {
       WidgetsBinding.instance.addPostFrameCallback((_) {
         final id = context.read<ConversationsProvider>().consumePendingOpen();
@@ -281,12 +284,13 @@ class _ContactsScreenState extends State<ContactsScreen> {
     );
   }
 
-  /// The relationship layer lives on this tab now: adding people and the
-  /// inbound request queue both open the existing add/invitations screen.
-  void _openAddOrInvitations(BuildContext context) {
+  /// The relationship layer lives on this tab now: adding people and the inbound
+  /// request queue both open the Invitations screen. It pops the peer's user id
+  /// when the user explicitly taps `Open chat`, and null otherwise.
+  void _openInvitations(BuildContext context) {
     Navigator.of(context)
         .push<int>(
-          MaterialPageRoute(builder: (_) => const AddOrInvitationsScreen()),
+          MaterialPageRoute(builder: (_) => const InvitationsScreen()),
         )
         .then((userId) {
           if (userId != null && context.mounted) {
@@ -328,11 +332,11 @@ class _ContactsScreenState extends State<ContactsScreen> {
       openChatSemanticHint: l10n.contactNetworkOpenChatHint,
       // The add cell is part of the board, but a filtered result set must
       // not grow one — search shows matches, nothing else.
-      onAddContact: filtering ? null : () => _openAddOrInvitations(context),
+      onAddContact: filtering ? null : () => _openInvitations(context),
       addSlotLabel: l10n.contactNetworkAddSlot,
       addSlotSemanticLabel: l10n.contactNetworkAddSlotSemantic,
       pendingRequestCount: filtering ? 0 : pendingRequests,
-      onPendingRequestsTap: () => _openAddOrInvitations(context),
+      onPendingRequestsTap: () => _openInvitations(context),
       pendingRequestsSemanticLabel: l10n.contactNetworkPendingRequests(
         pendingRequests,
       ),

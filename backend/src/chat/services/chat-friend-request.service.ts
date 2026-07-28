@@ -1,10 +1,11 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { FriendsService } from '../../friends/friends.service';
 import { BlockedService } from '../../blocked/blocked.service';
 import { UsersService } from '../../users/users.service';
 import { User } from '../../users/user.entity';
 import { ConversationsService } from '../../conversations/conversations.service';
+import { Conversation } from '../../conversations/conversation.entity';
 import { MessagesService } from '../../messages/messages.service';
 import { MediaCleanupService } from '../../media/media-cleanup.service';
 import { validateDto } from '../utils/dto.validator';
@@ -13,11 +14,16 @@ import {
   AcceptFriendRequestDto,
   RejectFriendRequestDto,
   UnfriendDto,
+  EnsureInvitationChatDto,
 } from '../dto/chat.dto';
 import { FriendRequestMapper } from '../mappers/friend-request.mapper';
 import { UserMapper } from '../mappers/user.mapper';
-import { FriendRequestStatus } from '../../friends/friend-request.entity';
+import {
+  FriendRequest,
+  FriendRequestStatus,
+} from '../../friends/friend-request.entity';
 import { ChatConversationService } from './chat-conversation.service';
+import { ChatValidationService } from './chat-validation.service';
 
 @Injectable()
 export class ChatFriendRequestService {
@@ -31,6 +37,7 @@ export class ChatFriendRequestService {
     private readonly messagesService: MessagesService,
     private readonly mediaCleanup: MediaCleanupService,
     private readonly chatConversationService: ChatConversationService,
+    private readonly chatValidationService: ChatValidationService,
   ) {}
 
   /** Emit friendsList to client and optionally to another socket. */
@@ -134,7 +141,7 @@ export class ChatFriendRequestService {
     }
   }
 
-  /** Emit full auto-accept flow: friendRequestAccepted, friendsList, conversation + lists, openConversation, pendingCount. */
+  /** Emit full auto-accept flow with conversation readiness and refreshed lists. */
   private async emitAutoAcceptFlow(
     client: Socket,
     server: Server,
@@ -144,22 +151,37 @@ export class ChatFriendRequestService {
     onlineUsers: Map<number, string>,
   ): Promise<void> {
     const recipientSocketId = onlineUsers.get(recipient.id);
-    try {
-      client.emit('friendRequestAccepted', payload);
-      if (recipientSocketId) server.to(recipientSocketId).emit('friendRequestAccepted', payload);
-    } catch (error) {
-      this.logger.error('emitAutoAcceptFlow: friendRequestAccepted (non-critical):', error);
-    }
-    await this.emitFriendsListToBoth(client, server, sender.id, recipientSocketId, recipient.id);
-    let conversation: any = null;
+    let conversation: { id: number } | null = null;
     try {
       conversation = await this.conversationsService.findOrCreate(sender, recipient);
       this.logger.debug(`Auto-accept: conversation created/found id=${conversation.id}`);
     } catch (error) {
       this.logger.error('emitAutoAcceptFlow: findOrCreate (non-critical):', error);
     }
-    await this.emitConversationsListToBoth(client, server, sender.id, recipientSocketId, recipient.id);
-    if (conversation) client.emit('openConversation', { conversationId: conversation.id });
+
+    await this.emitConversationsListToBoth(
+      client,
+      server,
+      sender.id,
+      recipientSocketId,
+      recipient.id,
+    );
+
+    const acceptedPayload = {
+      ...payload,
+      conversationId: conversation?.id ?? null,
+      chatReady: conversation !== null,
+    };
+    try {
+      client.emit('friendRequestAccepted', acceptedPayload);
+      if (recipientSocketId) {
+        server.to(recipientSocketId).emit('friendRequestAccepted', acceptedPayload);
+      }
+    } catch (error) {
+      this.logger.error('emitAutoAcceptFlow: friendRequestAccepted (non-critical):', error);
+    }
+
+    await this.emitFriendsListToBoth(client, server, sender.id, recipientSocketId, recipient.id);
     await this.emitSentRequestsListToBoth(
       client,
       server,
@@ -182,8 +204,14 @@ export class ChatFriendRequestService {
     try {
       const dto = validateDto(SendFriendRequestDto, data);
       data = dto;
-    } catch (error) {
-      client.emit('error', { message: error.message });
+    } catch {
+      client.emit('friendRequestFailed', {
+        action: 'send',
+        requestId: null,
+        recipientId:
+          typeof data?.recipientId === 'number' ? data.recipientId : null,
+        reason: 'invalid_payload',
+      });
       return;
     }
 
@@ -191,11 +219,21 @@ export class ChatFriendRequestService {
     const recipient = await this.usersService.findById(data.recipientId);
 
     if (!sender || !recipient) {
-      client.emit('error', { message: 'User not found' });
+      client.emit('friendRequestFailed', {
+        action: 'send',
+        requestId: null,
+        recipientId: data.recipientId,
+        reason: 'user_not_found',
+      });
       return;
     }
     if (recipient.id === senderId) {
-      client.emit('error', { message: 'Cannot send friend request to yourself' });
+      client.emit('friendRequestFailed', {
+        action: 'send',
+        requestId: null,
+        recipientId: data.recipientId,
+        reason: 'self_request',
+      });
       return;
     }
 
@@ -205,7 +243,12 @@ export class ChatFriendRequestService {
       sender.id,
     );
     if (recipientBlockedSender) {
-      client.emit('error', { message: 'You are blocked by this user' });
+      client.emit('friendRequestFailed', {
+        action: 'send',
+        requestId: null,
+        recipientId: data.recipientId,
+        reason: 'blocked',
+      });
       return;
     }
 
@@ -224,10 +267,20 @@ export class ChatFriendRequestService {
       payload = FriendRequestMapper.toPayload(friendRequest);
     } catch (error) {
       this.logger.error(`sendFriendRequest: Failed to send request:`, error);
-      client.emit('error', {
-        message: error.message || 'Failed to send friend request',
+      const reason =
+        error instanceof ConflictException && error.message === 'Already friends'
+          ? 'already_friends'
+          : error instanceof ConflictException &&
+              error.message === 'Friend request already sent'
+            ? 'duplicate_request'
+            : 'invalid_payload';
+      client.emit('friendRequestFailed', {
+        action: 'send',
+        requestId: null,
+        recipientId: data.recipientId,
+        reason,
       });
-      return; // Critical failure - stop here
+      return;
     }
 
     // Check if it was auto-accepted (mutual request scenario)
@@ -291,8 +344,13 @@ export class ChatFriendRequestService {
     try {
       const dto = validateDto(AcceptFriendRequestDto, data);
       data = dto;
-    } catch (error) {
-      client.emit('error', { message: error.message });
+    } catch {
+      client.emit('friendRequestFailed', {
+        action: 'accept',
+        requestId: typeof data?.requestId === 'number' ? data.requestId : null,
+        recipientId: null,
+        reason: 'invalid_payload',
+      });
       return;
     }
 
@@ -311,28 +369,23 @@ export class ChatFriendRequestService {
         `acceptFriendRequest: accepted, sender=${friendRequest.sender.id} (${friendRequest.sender.username}), receiver=${friendRequest.receiver.id} (${friendRequest.receiver.username})`,
       );
 
-      const payload = FriendRequestMapper.toPayload(friendRequest);
-
-      // Notify both users
-      client.emit('friendRequestAccepted', payload);
-
       senderSocketId = onlineUsers.get(friendRequest.sender.id);
-      if (senderSocketId) {
-        server.to(senderSocketId).emit('friendRequestAccepted', payload);
-      }
     } catch (error) {
       this.logger.error(
         'acceptFriendRequest: Failed to accept request:',
         error,
       );
-      client.emit('error', {
-        message: error.message || 'Failed to accept friend request',
+      client.emit('friendRequestFailed', {
+        action: 'accept',
+        requestId: data.requestId,
+        recipientId: null,
+        reason: 'accept_failed',
       });
-      return; // Critical failure - stop here
+      return;
     }
 
     // Step 2: Create conversation (important but not critical - partial success possible)
-    let conversation: any = null;
+    let conversation: { id: number } | null = null;
     try {
       const senderUser = await this.usersService.findById(
         friendRequest.sender.id,
@@ -366,6 +419,16 @@ export class ChatFriendRequestService {
       friendRequest.sender.id,
     );
 
+    const acceptedPayload = {
+      ...FriendRequestMapper.toPayload(friendRequest),
+      conversationId: conversation?.id ?? null,
+      chatReady: conversation !== null,
+    };
+    client.emit('friendRequestAccepted', acceptedPayload);
+    if (senderSocketId) {
+      server.to(senderSocketId).emit('friendRequestAccepted', acceptedPayload);
+    }
+
     // Step 4: Update friend requests list and pending count (non-critical)
     try {
       const pendingRequests = await this.friendsService.getPendingRequests(userId);
@@ -395,11 +458,6 @@ export class ChatFriendRequestService {
       friendRequest.sender.id,
     );
 
-    // Step 6: Emit openConversation only to caller (acceptor) — sender should not auto-open chat
-    if (conversation) {
-      this.logger.debug(`acceptFriendRequest: emitting openConversation id=${conversation.id} to acceptor only`);
-      client.emit('openConversation', { conversationId: conversation.id });
-    }
   }
 
   async handleRejectFriendRequest(
@@ -414,15 +472,39 @@ export class ChatFriendRequestService {
     let dto: RejectFriendRequestDto;
     try {
       dto = validateDto(RejectFriendRequestDto, data);
-    } catch (error) {
-      client.emit('error', { message: error.message });
+    } catch {
+      const requestId =
+        typeof data === 'object' &&
+        data !== null &&
+        'requestId' in data &&
+        typeof data.requestId === 'number'
+          ? data.requestId
+          : null;
+      client.emit('friendRequestFailed', {
+        action: 'reject',
+        requestId,
+        recipientId: null,
+        reason: 'invalid_payload',
+      });
       return;
     }
 
-    const friendRequest = await this.friendsService.rejectRequest(
-      dto.requestId,
-      userId,
-    );
+    let friendRequest: FriendRequest;
+    try {
+      friendRequest = await this.friendsService.rejectRequest(
+        dto.requestId,
+        userId,
+      );
+    } catch (error) {
+      this.logger.error('rejectFriendRequest: Failed to reject request:', error);
+      client.emit('friendRequestFailed', {
+        action: 'reject',
+        requestId: dto.requestId,
+        recipientId: null,
+        reason: 'reject_failed',
+      });
+      return;
+    }
 
     const payload = FriendRequestMapper.toPayload(friendRequest);
     client.emit('friendRequestRejected', payload);
@@ -452,6 +534,108 @@ export class ChatFriendRequestService {
     const pendingCount =
       await this.friendsService.getPendingRequestCount(userId);
     client.emit('pendingRequestsCount', { count: pendingCount });
+  }
+
+  async handleEnsureInvitationChat(
+    client: Socket,
+    data: unknown,
+    server: Server,
+    onlineUsers: Map<number, string>,
+  ) {
+    const userId: number = client.data.user?.id;
+    if (!userId) return;
+
+    let dto: EnsureInvitationChatDto;
+    try {
+      dto = validateDto(EnsureInvitationChatDto, data);
+    } catch {
+      // Correlate the failure to a peer when the raw payload at least carries a
+      // usable id, so the client can clear exactly that row's retry state. Only a
+      // peer id that is itself unusable leaves this null, in which case the client
+      // surfaces the failure without touching any row.
+      let recipientId: number | null = null;
+      if (data !== null && typeof data === 'object' && 'peerUserId' in data) {
+        const candidate = data.peerUserId;
+        if (
+          typeof candidate === 'number' &&
+          Number.isInteger(candidate) &&
+          candidate > 0
+        ) {
+          recipientId = candidate;
+        }
+      }
+      client.emit('friendRequestFailed', {
+        action: 'ensure_chat',
+        requestId: null,
+        recipientId,
+        reason: 'invalid_payload',
+      });
+      return;
+    }
+
+    const validation = await this.chatValidationService.validateCanMessage(
+      userId,
+      dto.peerUserId,
+    );
+    if (!validation.valid) {
+      client.emit('invitationChatReady', {
+        peerUserId: dto.peerUserId,
+        correlationId: dto.correlationId,
+        conversationId: null,
+        chatReady: false,
+        reason: 'not_friends',
+      });
+      return;
+    }
+
+    const [user, peerUser] = await Promise.all([
+      this.usersService.findById(userId),
+      this.usersService.findById(dto.peerUserId),
+    ]);
+    if (!user || !peerUser) {
+      client.emit('invitationChatReady', {
+        peerUserId: dto.peerUserId,
+        correlationId: dto.correlationId,
+        conversationId: null,
+        chatReady: false,
+        reason: 'user_not_found',
+      });
+      return;
+    }
+
+    // findOrCreate THROWS on total failure (it never returns null). Unguarded, the
+    // caller's retry row would stay in its retrying state forever waiting for a
+    // correlated result that never arrives — the exact stuck state this flow exists
+    // to remove. Report the failure honestly instead.
+    let conversation: Conversation;
+    try {
+      conversation = await this.conversationsService.findOrCreate(user, peerUser);
+    } catch (error) {
+      this.logger.error('handleEnsureInvitationChat: findOrCreate failed:', error);
+      client.emit('invitationChatReady', {
+        peerUserId: dto.peerUserId,
+        correlationId: dto.correlationId,
+        conversationId: null,
+        chatReady: false,
+        reason: 'chat_setup_failed',
+      });
+      return;
+    }
+
+    const peerSocketId = onlineUsers.get(dto.peerUserId);
+    await this.emitConversationsListToBoth(
+      client,
+      server,
+      userId,
+      peerSocketId,
+      dto.peerUserId,
+    );
+    client.emit('invitationChatReady', {
+      peerUserId: dto.peerUserId,
+      correlationId: dto.correlationId,
+      conversationId: conversation.id,
+      chatReady: true,
+    });
   }
 
   async handleGetFriendRequests(client: Socket) {

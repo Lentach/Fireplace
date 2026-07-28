@@ -9,7 +9,10 @@ void showTopSnackBar(
   String message, {
   Color? backgroundColor,
   Duration duration = const Duration(milliseconds: 2500),
+  VoidCallback? onTap,
+  String? actionLabel,
 }) {
+  assert(onTap == null || actionLabel != null);
   final overlay = Overlay.of(context);
   final theme = Theme.of(context);
   final bg = backgroundColor ?? theme.colorScheme.inverseSurface;
@@ -32,23 +35,63 @@ void showTopSnackBar(
       top: topInset + GlassTopBar.capsuleHeight + 16 + 8,
       left: 16,
       right: 16,
-      child: IgnorePointer(
-        child: Material(
-          elevation: 6,
-          borderRadius: BorderRadius.circular(8),
-          color: bg,
-          child: Padding(
-            padding: const EdgeInsets.symmetric(
-              horizontal: 16,
-              vertical: 14,
+      child: onTap == null
+          ? IgnorePointer(
+              child: Material(
+                elevation: 6,
+                borderRadius: BorderRadius.circular(8),
+                color: bg,
+                child: Padding(
+                  padding: const EdgeInsets.symmetric(
+                    horizontal: 16,
+                    vertical: 14,
+                  ),
+                  child: Text(
+                    message,
+                    style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
+                  ),
+                ),
+              ),
+            )
+          : Material(
+              elevation: 6,
+              borderRadius: BorderRadius.circular(8),
+              color: bg,
+              child: Padding(
+                padding: const EdgeInsets.symmetric(
+                  horizontal: 16,
+                  vertical: 8,
+                ),
+                child: Row(
+                  children: [
+                    Expanded(
+                      child: Text(
+                        message,
+                        style: RpgTheme.bodyFont(
+                          fontSize: 14,
+                          color: textColor,
+                        ),
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                    TextButton(
+                      onPressed: () {
+                        entry.remove();
+                        onTap();
+                      },
+                      style: TextButton.styleFrom(
+                        foregroundColor: RpgTheme.readableOn(bg),
+                        textStyle: RpgTheme.bodyFont(
+                          fontSize: 14,
+                          color: RpgTheme.readableOn(bg),
+                        ),
+                      ),
+                      child: Text(actionLabel!),
+                    ),
+                  ],
+                ),
+              ),
             ),
-            child: Text(
-              message,
-              style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
-            ),
-          ),
-        ),
-      ),
     ),
   );
 

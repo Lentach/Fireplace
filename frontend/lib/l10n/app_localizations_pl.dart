@@ -171,51 +171,123 @@ class AppLocalizationsPl extends AppLocalizations {
       'To unikalna reprezentacja Twojego klucza szyfrowania.';
 
   @override
-  String get addInvitations => 'Dodaj / Zaproszenia';
+  String get invitations => 'Zaproszenia';
 
   @override
-  String get addUser => 'Dodaj użytkownika';
+  String get invitationsWaitingForYou => 'Czeka na Ciebie';
 
   @override
-  String get friendRequests => 'Zaproszenia';
+  String get invitationsSent => 'Wysłane';
 
   @override
-  String friendRequestSentTo(String handle) {
-    return 'Zaproszenie wysłane do $handle';
-  }
+  String get invitationsNothingWaiting => 'Nic na Ciebie nie czeka';
 
   @override
-  String get addNewUserHint =>
-      'Dodaj użytkownika po username#tag (np. username#1234). Swój #tag znajdziesz w Ustawieniach przy nicku. Każdy #tag jest unikalny.';
+  String get invitationsNoneSent => 'Brak wysłanych zaproszeń';
+
+  @override
+  String get inviteByHandleHint =>
+      'Zaproś kogoś po username#tag. Swój #tag znajdziesz w Ustawieniach przy nicku.';
 
   @override
   String get usernameTagPlaceholder => 'username#1234';
 
   @override
-  String get addNewUser => 'Dodaj użytkownika';
+  String get sendInvitation => 'Wyślij zaproszenie';
+
+  @override
+  String get invitationFindUser => 'Znajdź użytkownika';
 
   @override
   String get userNotFound => 'Nie znaleziono użytkownika';
 
   @override
-  String get noPendingRequests => 'Brak oczekujących zaproszeń';
+  String get invitationWantsToConnect => 'Chce się połączyć';
 
   @override
-  String get wantsToAddYouAsFriend => 'chce dodać Cię do znajomych';
+  String get invitationWaitingForResponse => 'Czeka na odpowiedź';
+
+  @override
+  String get invitationAccepted => 'Zaproszenie zaakceptowane';
+
+  @override
+  String get invitationChatReady => 'Czat gotowy';
+
+  @override
+  String get invitationChatNeedsRetry => 'Czat wymaga ponowienia';
+
+  @override
+  String get invitationOpenChat => 'Otwórz czat';
+
+  @override
+  String get invitationCreateChat => 'Utwórz czat';
+
+  @override
+  String get invitationDone => 'Gotowe';
+
+  @override
+  String get invitationDecline => 'Odrzuć';
 
   @override
   String get accept => 'Zaakceptuj';
 
   @override
-  String get reject => 'Odrzuć';
+  String get invitationStatusPending => 'Oczekuje';
 
   @override
-  String friendAdded(String name) {
-    return 'Dodano do znajomych: $name';
+  String get invitationSendFailed => 'Nie udało się wysłać zaproszenia';
+
+  @override
+  String get invitationAcceptFailed => 'Nie udało się zaakceptować zaproszenia';
+
+  @override
+  String get invitationDeclineFailed => 'Nie udało się odrzucić zaproszenia';
+
+  @override
+  String get invitationChatSetupFailed => 'Nie udało się utworzyć czatu';
+
+  @override
+  String get invitationFailedUserNotFound => 'Ten użytkownik już nie istnieje';
+
+  @override
+  String get invitationFailedSelf => 'Nie możesz zaprosić samego siebie';
+
+  @override
+  String get invitationFailedBlocked => 'Nie możesz zaprosić tego użytkownika';
+
+  @override
+  String get invitationFailedAlreadyFriends => 'Już jesteście połączeni';
+
+  @override
+  String get invitationFailedDuplicate => 'Zaproszenie zostało już wysłane';
+
+  @override
+  String get invitationFailedInvalidPayload =>
+      'Coś było nie tak z tym żądaniem';
+
+  @override
+  String get invitationFailedNotFriends =>
+      'Nie jesteś połączony z tym użytkownikiem';
+
+  @override
+  String invitationSemanticIncoming(String name) {
+    return '$name, otrzymane zaproszenie, chce się połączyć';
   }
 
   @override
-  String get requestRejected => 'Zaproszenie odrzucone';
+  String invitationSemanticOutgoing(String name) {
+    return '$name, wysłane zaproszenie, czeka na odpowiedź';
+  }
+
+  @override
+  String invitationSemanticAcceptedReady(String name) {
+    return '$name, zaproszenie zaakceptowane, czat gotowy';
+  }
+
+  @override
+  String invitationSemanticAcceptedNotReady(String name) {
+    return '$name, zaproszenie zaakceptowane, czat wymaga ponowienia';
+  }
 
   @override
   String get encryptedMessage => 'Wiadomość zaszyfrowana';

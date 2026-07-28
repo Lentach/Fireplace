@@ -52,30 +52,62 @@
   "yourIdentityFingerprint": "Twój odcisk tożsamości",
   "shareFingerprintHint": "To unikalna reprezentacja Twojego klucza szyfrowania.",
 
-  "addInvitations": "Dodaj / Zaproszenia",
-  "addUser": "Dodaj użytkownika",
-  "friendRequests": "Zaproszenia",
-  "friendRequestSentTo": "Zaproszenie wysłane do {handle}",
-  "@friendRequestSentTo": {
-    "placeholders": {
-      "handle": { "type": "String" }
-    }
-  },
-  "addNewUserHint": "Dodaj użytkownika po username#tag (np. username#1234). Swój #tag znajdziesz w Ustawieniach przy nicku. Każdy #tag jest unikalny.",
+  "invitations": "Zaproszenia",
+  "invitationsWaitingForYou": "Czeka na Ciebie",
+  "invitationsSent": "Wysłane",
+  "invitationsNothingWaiting": "Nic na Ciebie nie czeka",
+  "invitationsNoneSent": "Brak wysłanych zaproszeń",
+  "inviteByHandleHint": "Zaproś kogoś po username#tag. Swój #tag znajdziesz w Ustawieniach przy nicku.",
   "usernameTagPlaceholder": "username#1234",
-  "addNewUser": "Dodaj użytkownika",
+  "sendInvitation": "Wyślij zaproszenie",
+  "invitationFindUser": "Znajdź użytkownika",
   "userNotFound": "Nie znaleziono użytkownika",
-  "noPendingRequests": "Brak oczekujących zaproszeń",
-  "wantsToAddYouAsFriend": "chce dodać Cię do znajomych",
+  "invitationWantsToConnect": "Chce się połączyć",
+  "invitationWaitingForResponse": "Czeka na odpowiedź",
+  "invitationAccepted": "Zaproszenie zaakceptowane",
+  "invitationChatReady": "Czat gotowy",
+  "invitationChatNeedsRetry": "Czat wymaga ponowienia",
+  "invitationOpenChat": "Otwórz czat",
+  "invitationCreateChat": "Utwórz czat",
+  "invitationDone": "Gotowe",
+  "invitationDecline": "Odrzuć",
   "accept": "Zaakceptuj",
-  "reject": "Odrzuć",
-  "friendAdded": "Dodano do znajomych: {name}",
-  "@friendAdded": {
+  "invitationStatusPending": "Oczekuje",
+  "invitationSendFailed": "Nie udało się wysłać zaproszenia",
+  "invitationAcceptFailed": "Nie udało się zaakceptować zaproszenia",
+  "invitationDeclineFailed": "Nie udało się odrzucić zaproszenia",
+  "invitationChatSetupFailed": "Nie udało się utworzyć czatu",
+  "invitationFailedUserNotFound": "Ten użytkownik już nie istnieje",
+  "invitationFailedSelf": "Nie możesz zaprosić samego siebie",
+  "invitationFailedBlocked": "Nie możesz zaprosić tego użytkownika",
+  "invitationFailedAlreadyFriends": "Już jesteście połączeni",
+  "invitationFailedDuplicate": "Zaproszenie zostało już wysłane",
+  "invitationFailedInvalidPayload": "Coś było nie tak z tym żądaniem",
+  "invitationFailedNotFriends": "Nie jesteś połączony z tym użytkownikiem",
+  "invitationSemanticIncoming": "{name}, otrzymane zaproszenie, chce się połączyć",
+  "@invitationSemanticIncoming": {
     "placeholders": {
       "name": { "type": "String" }
     }
   },
-  "requestRejected": "Zaproszenie odrzucone",
+  "invitationSemanticOutgoing": "{name}, wysłane zaproszenie, czeka na odpowiedź",
+  "@invitationSemanticOutgoing": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "invitationSemanticAcceptedReady": "{name}, zaproszenie zaakceptowane, czat gotowy",
+  "@invitationSemanticAcceptedReady": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "invitationSemanticAcceptedNotReady": "{name}, zaproszenie zaakceptowane, czat wymaga ponowienia",
+  "@invitationSemanticAcceptedNotReady": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
 
   "encryptedMessage": "Wiadomość zaszyfrowana",
   "decryptionFailed": "Odszyfrowanie nie powiodło się",

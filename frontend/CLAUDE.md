@@ -27,7 +27,7 @@ flutter test test/providers/message_editing_test.dart
 |---|---|---|
 | one file | 1 | **7 s** |
 | one directory (`test/utils`) | 175 | **21 s** |
-| full suite (`flutter test`) | 903 | **127 s** |
+| full suite (`flutter test`) | 930 | **170–310 s** |
 | **45 explicit files on one command line** | ~45 | **timed out past 11 min — ≥5× the FULL suite** |
 
 `flutter test` appears to pay a compile cost **per argument** rather than once per run, so a

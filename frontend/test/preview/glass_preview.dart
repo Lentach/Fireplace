@@ -20,7 +20,7 @@ import 'package:fireplace/screens/chat_detail_screen.dart';
 import 'package:fireplace/screens/conversations_screen.dart';
 import 'package:fireplace/screens/blocked_users_screen.dart';
 import 'package:fireplace/screens/privacy_safety_screen.dart';
-import 'package:fireplace/screens/add_or_invitations_screen.dart';
+import 'package:fireplace/screens/invitations_screen.dart';
 import 'package:fireplace/screens/auth_screen.dart';
 import 'package:fireplace/screens/settings_screen.dart';
 import 'package:fireplace/screens/appearance_screen.dart';
@@ -125,6 +125,98 @@ class GlassPreviewApp extends StatelessWidget {
         }),
     ]);
     messaging.loadCachedMessages(10);
+    final friends = FriendsProvider()..setCurrentUserId(1);
+    Map<String, dynamic> invitation({
+      required int id,
+      required int senderId,
+      required String senderName,
+      required int receiverId,
+      required String receiverName,
+      int? conversationId,
+      bool? chatReady,
+    }) => {
+      'id': id,
+      'sender': {'id': senderId, 'username': senderName, 'tag': '000$senderId'},
+      'receiver': {
+        'id': receiverId,
+        'username': receiverName,
+        'tag': '000$receiverId',
+      },
+      'status': 'pending',
+      'createdAt': '2026-07-28T12:00:00.000Z',
+      'conversationId': conversationId,
+      'chatReady': ?chatReady,
+    };
+    // Raw socket payloads, exactly like the provider tests. Two accepted
+    // payloads atomically replace their matching pending rows, leaving the
+    // preview with all four row states at once.
+    friends.onFriendRequestsList([
+      invitation(
+        id: 101,
+        senderId: 2,
+        senderName: 'Mara',
+        receiverId: 1,
+        receiverName: 'alice',
+      ),
+      invitation(
+        id: 102,
+        senderId: 3,
+        senderName: 'Olek',
+        receiverId: 1,
+        receiverName: 'alice',
+      ),
+      invitation(
+        id: 103,
+        senderId: 4,
+        senderName: 'Nina',
+        receiverId: 1,
+        receiverName: 'alice',
+      ),
+    ]);
+    friends.onSentRequestsList([
+      invitation(
+        id: 201,
+        senderId: 1,
+        senderName: 'alice',
+        receiverId: 5,
+        receiverName: 'Iwo',
+      ),
+      invitation(
+        id: 202,
+        senderId: 1,
+        senderName: 'alice',
+        receiverId: 6,
+        receiverName: 'Sara',
+      ),
+      invitation(
+        id: 203,
+        senderId: 1,
+        senderName: 'alice',
+        receiverId: 7,
+        receiverName: 'Luca',
+      ),
+    ]);
+    friends.onFriendRequestAccepted(
+      invitation(
+        id: 103,
+        senderId: 4,
+        senderName: 'Nina',
+        receiverId: 1,
+        receiverName: 'alice',
+        conversationId: 44,
+        chatReady: true,
+      ),
+    );
+    friends.onFriendRequestAccepted(
+      invitation(
+        id: 203,
+        senderId: 1,
+        senderName: 'alice',
+        receiverId: 7,
+        receiverName: 'Luca',
+        chatReady: false,
+      ),
+    );
 
     return MultiProvider(
       providers: [
@@ -135,7 +227,7 @@ class GlassPreviewApp extends StatelessWidget {
         ChangeNotifierProvider(
           create: (_) => AuthProvider()..setAccessTokenForTest(_jwt),
         ),
-        ChangeNotifierProvider(create: (_) => FriendsProvider()),
+        ChangeNotifierProvider<FriendsProvider>.value(value: friends),
         ChangeNotifierProvider(create: (_) => ConnectionProvider()),
         ChangeNotifierProvider.value(value: EncryptionProvider()),
         ChangeNotifierProvider(
@@ -156,7 +248,7 @@ class GlassPreviewApp extends StatelessWidget {
           'desktop' => ConversationsScreen(onAvatarTap: () {}),
           'blocked' => const BlockedUsersScreen(),
           'privacy' => const PrivacySafetyScreen(),
-          'add' => const AddOrInvitationsScreen(),
+          'invitations' => const InvitationsScreen(),
           'auth' => const AuthScreen(),
           // The Settings root console and the Appearance sub-screen. This
           // harness (not settings_preview.dart) is the one that can host

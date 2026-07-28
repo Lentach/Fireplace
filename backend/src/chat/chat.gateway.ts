@@ -533,6 +533,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 900000 } })
+  @SubscribeMessage('ensureInvitationChat')
+  async handleEnsureInvitationChat(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: unknown,
+  ) {
+    return this.chatFriendRequestService.handleEnsureInvitationChat(
+      client,
+      data,
+      this.server,
+      this.onlineUsers,
+    );
+  }
+
+  @UseGuards(WsThrottlerGuard)
   @Throttle({ default: { limit: 300, ttl: 900000 } })
   @SubscribeMessage('getFriendRequests')
   async handleGetFriendRequests(@ConnectedSocket() client: Socket) {

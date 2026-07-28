@@ -95,9 +95,7 @@ class SocketService {
   }
 
   void emitMessageDelivered(int messageId) {
-    _socket?.emit('messageDelivered', {
-      'messageId': messageId,
-    });
+    _socket?.emit('messageDelivered', {'messageId': messageId});
   }
 
   void emitClearChatHistory(int conversationId) {
@@ -114,9 +112,7 @@ class SocketService {
   }
 
   void emitDeleteConversationOnly(int conversationId) {
-    _socket?.emit('deleteConversationOnly', {
-      'conversationId': conversationId,
-    });
+    _socket?.emit('deleteConversationOnly', {'conversationId': conversationId});
   }
 
   void emitSetDisappearingTimer(int conversationId, int? seconds) {
@@ -134,7 +130,11 @@ class SocketService {
     });
   }
 
-  void emitRecordingVoice(int recipientId, int conversationId, bool isRecording) {
+  void emitRecordingVoice(
+    int recipientId,
+    int conversationId,
+    bool isRecording,
+  ) {
     _socket?.emit('recordingVoice', {
       'recipientId': recipientId,
       'conversationId': conversationId,
@@ -143,9 +143,7 @@ class SocketService {
   }
 
   void emitMarkConversationRead(int conversationId) {
-    _socket?.emit('markConversationRead', {
-      'conversationId': conversationId,
-    });
+    _socket?.emit('markConversationRead', {'conversationId': conversationId});
   }
 
   void emitAddReaction(int messageId, String emoji) {
@@ -161,36 +159,26 @@ class SocketService {
   }
 
   void startConversation(int recipientId) {
-    _socket?.emit('startConversation', {
-      'recipientId': recipientId,
-    });
+    _socket?.emit('startConversation', {'recipientId': recipientId});
   }
 
   void getMessages(int conversationId, {int? limit, int? offset}) {
-    final payload = <String, dynamic>{
-      'conversationId': conversationId,
-    };
+    final payload = <String, dynamic>{'conversationId': conversationId};
     if (limit != null) payload['limit'] = limit;
     if (offset != null) payload['offset'] = offset;
     _socket?.emit('getMessages', payload);
   }
 
   void sendFriendRequest(int recipientId) {
-    _socket?.emit('sendFriendRequest', {
-      'recipientId': recipientId,
-    });
+    _socket?.emit('sendFriendRequest', {'recipientId': recipientId});
   }
 
   void acceptFriendRequest(int requestId) {
-    _socket?.emit('acceptFriendRequest', {
-      'requestId': requestId,
-    });
+    _socket?.emit('acceptFriendRequest', {'requestId': requestId});
   }
 
   void rejectFriendRequest(int requestId) {
-    _socket?.emit('rejectFriendRequest', {
-      'requestId': requestId,
-    });
+    _socket?.emit('rejectFriendRequest', {'requestId': requestId});
   }
 
   void getFriendRequests() {
@@ -202,9 +190,7 @@ class SocketService {
   }
 
   void unfriend(int userId) {
-    _socket?.emit('unfriend', {
-      'userId': userId,
-    });
+    _socket?.emit('unfriend', {'userId': userId});
   }
 
   void emitBlockUser(int userId) {

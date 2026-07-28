@@ -263,7 +263,7 @@ Layout — one scroll view, no `DefaultTabController`, no `TabBar`:
 Scaffold(extendBodyBehindAppBar: true)
 └ Stack
   ├ Positioned.fill → scroll view, top padding = header clearance
-  │   ├ invite-by-handle control            (opaque GlassSurface(blur: false))
+  │   ├ invite-by-handle control            (opaque GlassSurface(forceOpaque: true))
   │   ├ search result row → Send invitation (action-local progress; NO auto-send)
   │   ├ "Waiting for you"  + count          → incoming rows | "Nothing waiting for you"
   │   └ "Sent"             + count          → outgoing rows | "No sent invitations"
@@ -283,8 +283,8 @@ The floating `GlassPill`/`GlassCircle` header is hand-rolled, matching the other
 
 New widgets under `lib/widgets/invitations/`:
 
-- `invitation_row.dart` — one widget, five states: `inbound`, `outbound`, `acting`, `acceptedReady`, `acceptedNeedsChat`. Opaque content surface via `GlassSurface(blur: false, shadow: false)` — in this codebase `blur: false` is the documented **tint-only, non-glass tile** (doc comment in `widgets/glass/glass_surface.dart`), which is exactly what the current request cards already use. No blur and no glass effect on any content row. Leading identity element **reuses the avatar widget the Contacts list rows use** (locate in `contacts_screen.dart._buildContactsList`; do not hand-roll a new avatar).
-- `invitation_status_pill.dart` — **solid fill, never glass.** A plain `DecoratedBox`/`Container` with a stadium border and an opaque theme-token color: `GlassTheme.opaqueFill` (a solid `Color`, not a translucent glass token) for neutral `Pending`, `colorScheme.primary` for `Accepted` / `Chat ready`, `FireplaceColors.mutedText` for muted label text. **Prohibited in this widget:** `GlassSurface`, `GlassPill`, `GlassCircle`, `BackdropFilter`, and the translucent `GlassTheme.fill` / `GlassTheme.border` tokens. No shared pill widget exists; keep this one scoped to invitations rather than inventing a design-system component with one consumer.
+- `invitation_row.dart` — one widget, five states: `inbound`, `outbound`, `acting`, `acceptedReady`, `acceptedNeedsChat`. Opaque content surface via **`GlassSurface(forceOpaque: true, shadow: false)`**. ⚠️ **Corrected during implementation:** this plan originally specified `blur: false`, on the belief that it was a "tint-only, non-glass tile". Source says otherwise — `glass_surface.dart:90` selects `glass.fill` (the **translucent** fill) whenever `forceOpaque` is false, and `blur: false` only skips the `BackdropFilter`. `blur: false` therefore still puts translucency on a text surface, which SPEC §1 forbids. Only `forceOpaque: true` selects the solid `opaqueFill`. Leading identity element **reuses the avatar widget the Contacts list rows use** (`HexAvatar`); no new avatar was hand-rolled.
+- `invitation_status_pill.dart` — **solid fill, never glass.** A plain `DecoratedBox` with a stadium border and an opaque theme-token color: `GlassTheme.opaqueFill` for neutral `Pending`, `colorScheme.primary` for `Chat ready`. **Prohibited in this widget:** `GlassSurface`, `GlassPill`, `GlassCircle`, `BackdropFilter`, and the translucent `GlassTheme.fill` / `GlassTheme.border` tokens. **Corrected during the visual pass:** the pending outline uses `FireplaceColors.mutedText`, not `borderColor` — with the row now `forceOpaque`, the pill fill equals the row fill, and the blue `borderColor` measured only 1.92:1 against it, so the pill rendered as bare bold text.
 
 Rules that are non-negotiable here, reconciled against `docs/design/flutter-ui-playbook.md` and `docs/design/liquid-glass/SPEC.md`:
 

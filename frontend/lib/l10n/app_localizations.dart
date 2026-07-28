@@ -398,35 +398,41 @@ abstract class AppLocalizations {
   /// **'To unikalna reprezentacja Twojego klucza szyfrowania.'**
   String get shareFingerprintHint;
 
-  /// No description provided for @addInvitations.
-  ///
-  /// In pl, this message translates to:
-  /// **'Dodaj / Zaproszenia'**
-  String get addInvitations;
-
-  /// No description provided for @addUser.
-  ///
-  /// In pl, this message translates to:
-  /// **'Dodaj użytkownika'**
-  String get addUser;
-
-  /// No description provided for @friendRequests.
+  /// No description provided for @invitations.
   ///
   /// In pl, this message translates to:
   /// **'Zaproszenia'**
-  String get friendRequests;
+  String get invitations;
 
-  /// No description provided for @friendRequestSentTo.
+  /// No description provided for @invitationsWaitingForYou.
   ///
   /// In pl, this message translates to:
-  /// **'Zaproszenie wysłane do {handle}'**
-  String friendRequestSentTo(String handle);
+  /// **'Czeka na Ciebie'**
+  String get invitationsWaitingForYou;
 
-  /// No description provided for @addNewUserHint.
+  /// No description provided for @invitationsSent.
   ///
   /// In pl, this message translates to:
-  /// **'Dodaj użytkownika po username#tag (np. username#1234). Swój #tag znajdziesz w Ustawieniach przy nicku. Każdy #tag jest unikalny.'**
-  String get addNewUserHint;
+  /// **'Wysłane'**
+  String get invitationsSent;
+
+  /// No description provided for @invitationsNothingWaiting.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nic na Ciebie nie czeka'**
+  String get invitationsNothingWaiting;
+
+  /// No description provided for @invitationsNoneSent.
+  ///
+  /// In pl, this message translates to:
+  /// **'Brak wysłanych zaproszeń'**
+  String get invitationsNoneSent;
+
+  /// No description provided for @inviteByHandleHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zaproś kogoś po username#tag. Swój #tag znajdziesz w Ustawieniach przy nicku.'**
+  String get inviteByHandleHint;
 
   /// No description provided for @usernameTagPlaceholder.
   ///
@@ -434,11 +440,17 @@ abstract class AppLocalizations {
   /// **'username#1234'**
   String get usernameTagPlaceholder;
 
-  /// No description provided for @addNewUser.
+  /// No description provided for @sendInvitation.
   ///
   /// In pl, this message translates to:
-  /// **'Dodaj użytkownika'**
-  String get addNewUser;
+  /// **'Wyślij zaproszenie'**
+  String get sendInvitation;
+
+  /// No description provided for @invitationFindUser.
+  ///
+  /// In pl, this message translates to:
+  /// **'Znajdź użytkownika'**
+  String get invitationFindUser;
 
   /// No description provided for @userNotFound.
   ///
@@ -446,17 +458,59 @@ abstract class AppLocalizations {
   /// **'Nie znaleziono użytkownika'**
   String get userNotFound;
 
-  /// No description provided for @noPendingRequests.
+  /// No description provided for @invitationWantsToConnect.
   ///
   /// In pl, this message translates to:
-  /// **'Brak oczekujących zaproszeń'**
-  String get noPendingRequests;
+  /// **'Chce się połączyć'**
+  String get invitationWantsToConnect;
 
-  /// No description provided for @wantsToAddYouAsFriend.
+  /// No description provided for @invitationWaitingForResponse.
   ///
   /// In pl, this message translates to:
-  /// **'chce dodać Cię do znajomych'**
-  String get wantsToAddYouAsFriend;
+  /// **'Czeka na odpowiedź'**
+  String get invitationWaitingForResponse;
+
+  /// No description provided for @invitationAccepted.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zaproszenie zaakceptowane'**
+  String get invitationAccepted;
+
+  /// No description provided for @invitationChatReady.
+  ///
+  /// In pl, this message translates to:
+  /// **'Czat gotowy'**
+  String get invitationChatReady;
+
+  /// No description provided for @invitationChatNeedsRetry.
+  ///
+  /// In pl, this message translates to:
+  /// **'Czat wymaga ponowienia'**
+  String get invitationChatNeedsRetry;
+
+  /// No description provided for @invitationOpenChat.
+  ///
+  /// In pl, this message translates to:
+  /// **'Otwórz czat'**
+  String get invitationOpenChat;
+
+  /// No description provided for @invitationCreateChat.
+  ///
+  /// In pl, this message translates to:
+  /// **'Utwórz czat'**
+  String get invitationCreateChat;
+
+  /// No description provided for @invitationDone.
+  ///
+  /// In pl, this message translates to:
+  /// **'Gotowe'**
+  String get invitationDone;
+
+  /// No description provided for @invitationDecline.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odrzuć'**
+  String get invitationDecline;
 
   /// No description provided for @accept.
   ///
@@ -464,23 +518,101 @@ abstract class AppLocalizations {
   /// **'Zaakceptuj'**
   String get accept;
 
-  /// No description provided for @reject.
+  /// No description provided for @invitationStatusPending.
   ///
   /// In pl, this message translates to:
-  /// **'Odrzuć'**
-  String get reject;
+  /// **'Oczekuje'**
+  String get invitationStatusPending;
 
-  /// No description provided for @friendAdded.
+  /// No description provided for @invitationSendFailed.
   ///
   /// In pl, this message translates to:
-  /// **'Dodano do znajomych: {name}'**
-  String friendAdded(String name);
+  /// **'Nie udało się wysłać zaproszenia'**
+  String get invitationSendFailed;
 
-  /// No description provided for @requestRejected.
+  /// No description provided for @invitationAcceptFailed.
   ///
   /// In pl, this message translates to:
-  /// **'Zaproszenie odrzucone'**
-  String get requestRejected;
+  /// **'Nie udało się zaakceptować zaproszenia'**
+  String get invitationAcceptFailed;
+
+  /// No description provided for @invitationDeclineFailed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się odrzucić zaproszenia'**
+  String get invitationDeclineFailed;
+
+  /// No description provided for @invitationChatSetupFailed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się utworzyć czatu'**
+  String get invitationChatSetupFailed;
+
+  /// No description provided for @invitationFailedUserNotFound.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ten użytkownik już nie istnieje'**
+  String get invitationFailedUserNotFound;
+
+  /// No description provided for @invitationFailedSelf.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie możesz zaprosić samego siebie'**
+  String get invitationFailedSelf;
+
+  /// No description provided for @invitationFailedBlocked.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie możesz zaprosić tego użytkownika'**
+  String get invitationFailedBlocked;
+
+  /// No description provided for @invitationFailedAlreadyFriends.
+  ///
+  /// In pl, this message translates to:
+  /// **'Już jesteście połączeni'**
+  String get invitationFailedAlreadyFriends;
+
+  /// No description provided for @invitationFailedDuplicate.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zaproszenie zostało już wysłane'**
+  String get invitationFailedDuplicate;
+
+  /// No description provided for @invitationFailedInvalidPayload.
+  ///
+  /// In pl, this message translates to:
+  /// **'Coś było nie tak z tym żądaniem'**
+  String get invitationFailedInvalidPayload;
+
+  /// No description provided for @invitationFailedNotFriends.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie jesteś połączony z tym użytkownikiem'**
+  String get invitationFailedNotFriends;
+
+  /// No description provided for @invitationSemanticIncoming.
+  ///
+  /// In pl, this message translates to:
+  /// **'{name}, otrzymane zaproszenie, chce się połączyć'**
+  String invitationSemanticIncoming(String name);
+
+  /// No description provided for @invitationSemanticOutgoing.
+  ///
+  /// In pl, this message translates to:
+  /// **'{name}, wysłane zaproszenie, czeka na odpowiedź'**
+  String invitationSemanticOutgoing(String name);
+
+  /// No description provided for @invitationSemanticAcceptedReady.
+  ///
+  /// In pl, this message translates to:
+  /// **'{name}, zaproszenie zaakceptowane, czat gotowy'**
+  String invitationSemanticAcceptedReady(String name);
+
+  /// No description provided for @invitationSemanticAcceptedNotReady.
+  ///
+  /// In pl, this message translates to:
+  /// **'{name}, zaproszenie zaakceptowane, czat wymaga ponowienia'**
+  String invitationSemanticAcceptedNotReady(String name);
 
   /// No description provided for @encryptedMessage.
   ///

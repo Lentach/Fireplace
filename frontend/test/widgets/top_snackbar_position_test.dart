@@ -53,4 +53,83 @@ void main() {
 
     await tester.pump(const Duration(seconds: 3)); // let auto-dismiss fire
   });
+
+  testWidgets(
+    'default top snackbar remains non-interactive',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: RpgTheme.themeDataDarkGray,
+          home: Scaffold(
+            body: Builder(
+              builder: (ctx) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  showTopSnackBar(ctx, 'Plain notification');
+                });
+                return const SizedBox.expand();
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Plain notification'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is IgnorePointer && widget.ignoring,
+        ),
+        findsOneWidget,
+      );
+
+      await tester.pump(const Duration(seconds: 3));
+    },
+  );
+
+  testWidgets(
+    'action top snackbar invokes its callback and dismisses',
+    (tester) async {
+      var taps = 0;
+
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: RpgTheme.themeDataDarkGray,
+          home: Scaffold(
+            body: Builder(
+              builder: (ctx) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  showTopSnackBar(
+                    ctx,
+                    'Invitation accepted',
+                    actionLabel: 'Open chat',
+                    onTap: () => taps += 1,
+                  );
+                });
+                return const SizedBox.expand();
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      expect(find.text('Open chat'), findsOneWidget);
+      expect(
+        find.byWidgetPredicate(
+          (widget) => widget is IgnorePointer && widget.ignoring,
+        ),
+        findsNothing,
+      );
+
+      await tester.tap(find.text('Open chat'));
+      await tester.pump();
+
+      expect(taps, 1);
+      expect(find.text('Invitation accepted'), findsNothing);
+
+      await tester.pump(const Duration(seconds: 3));
+    },
+  );
 }

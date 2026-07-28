@@ -1,5 +1,7 @@
+import { Transform } from 'class-transformer';
 import {
   IsNumber,
+  IsInt,
   IsString,
   IsPositive,
   MinLength,
@@ -106,6 +108,20 @@ export class RejectFriendRequestDto {
   @IsNumber()
   @IsPositive()
   requestId: number;
+}
+
+export class EnsureInvitationChatDto {
+  @IsInt()
+  @IsPositive()
+  peerUserId: number;
+
+  @IsString()
+  @Matches(/^[A-Za-z0-9_-]{1,64}$/)
+  @Transform(
+    ({ obj, value }) => (typeof obj.correlationId === 'string' ? value : undefined),
+    { toClassOnly: true },
+  )
+  correlationId: string;
 }
 
 export class GetMessagesDto {

@@ -104,17 +104,36 @@ void main() {
           (p['sender'] as Map)['id'] == alice.userId,
       reason: 'bob receiving alice friend request',
     ) as Map;
+    bob.events.discard('friendRequestAccepted');
+    alice.events.discard('friendRequestAccepted');
+    bob.events.discard('openConversation');
+    alice.events.discard('openConversation');
     bob.socketService.acceptFriendRequest(request['id'] as int);
-    await alice.events.next('friendRequestAccepted', reason: 'alice accept');
-    await bob.events.next('friendRequestAccepted', reason: 'bob accept');
+    final aliceAccepted =
+        await alice.events.next('friendRequestAccepted', reason: 'alice accept')
+            as Map;
+    final bobAccepted =
+        await bob.events.next('friendRequestAccepted', reason: 'bob accept')
+            as Map;
+    expect(aliceAccepted['conversationId'], isA<int>());
+    expect(bobAccepted['conversationId'], isA<int>());
+    expect(aliceAccepted['chatReady'], isTrue);
+    expect(bobAccepted['chatReady'], isTrue);
+    final aliceConversationId = aliceAccepted['conversationId'] as int;
+    final bobConversationId = bobAccepted['conversationId'] as int;
+    expect(bobConversationId, aliceConversationId);
 
-    final bobOpen =
-        await bob.events.next('openConversation', reason: 'bob auto-open') as Map;
+    await bob.events.none(
+      'openConversation',
+      within: const Duration(seconds: 3),
+      reason: 'accepting an invitation must not auto-open chat',
+    );
+    alice.events.discard('openConversation');
     alice.socketService.startConversation(bob.userId);
     final aliceOpen = await alice.events
         .next('openConversation', reason: 'alice startConversation') as Map;
-    conversationId = aliceOpen['conversationId'] as int;
-    expect(bobOpen['conversationId'], conversationId);
+    conversationId = bobConversationId;
+    expect(aliceOpen['conversationId'], conversationId);
   });
 
   tearDownAll(() {

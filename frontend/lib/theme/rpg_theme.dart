@@ -102,7 +102,11 @@ class RpgTheme {
   static const Color boxBgBlue = Color(0xFF1E2D3A);
   static const Color inputBgBlue = Color(0xFF1E2D3A);
   static const Color textColorBlue = Color(0xFFE4E4E4);
-  static const Color mutedTextBlue = Color(0xFF8A8A8A);
+  // SPEC.md §4 blue off-glass muted. The former 0xFF8A8A8A was a drift from the
+  // accepted spec and measured only 4.08:1 on the opaque row fill 0xFF1E2D3A —
+  // under the 4.5:1 gate. This value measures 4.85:1 on that fill and 5.6:1 on the
+  // messages-area background.
+  static const Color mutedTextBlue = Color(0xFF8A9BA8);
   static const Color messagesAreaBgBlue = Color(0xFF17212B);
   static const Color mineMsgBgBlue = Color(
     0xFF2481CC,
@@ -202,19 +206,41 @@ class RpgTheme {
   // site's near-#000 space + ink, contrast-gated — NOT 1:1.
   static const Color accentCosmic = Color(0xFF8FD8FF); // --ice (site)
   static const Color secondaryCosmic = Color(0xFF1D6FD6); // --blue (site)
-  static const Color backgroundCosmic = Color(0xFF05070D); // derived: deep space chrome
-  static const Color surfaceCosmic = Color(0xFF0F1926); // derived: appbar/card lift
-  static const Color messagesAreaBgCosmic = Color(0xFF04060C); // derived: near-#000 starfield base
+  static const Color backgroundCosmic = Color(
+    0xFF05070D,
+  ); // derived: deep space chrome
+  static const Color surfaceCosmic = Color(
+    0xFF0F1926,
+  ); // derived: appbar/card lift
+  static const Color messagesAreaBgCosmic = Color(
+    0xFF04060C,
+  ); // derived: near-#000 starfield base
   static const Color textColorCosmic = Color(0xFFEEF6FB); // --txt (site)
-  static const Color mutedTextCosmic = Color(0xFF859096); // derived: txt·.55 flattened on base, ≥4.5:1
-  static const Color mineMsgBgCosmic = Color(0xFF1D6FD6); // .phone .me (site; white 4.95:1)
-  static const Color theirsMsgBgCosmic = Color(0xFF16222E); // .phone .them (site)
+  static const Color mutedTextCosmic = Color(
+    0xFF859096,
+  ); // derived: txt·.55 flattened on base, ≥4.5:1
+  static const Color mineMsgBgCosmic = Color(
+    0xFF1D6FD6,
+  ); // .phone .me (site; white 4.95:1)
+  static const Color theirsMsgBgCosmic = Color(
+    0xFF16222E,
+  ); // .phone .them (site)
   static const Color inputBgCosmic = Color(0xFF0B1017); // --ink (site)
-  static const Color tabBorderCosmic = Color(0xFF1A2531); // .phone .bar border (site)
-  static const Color convItemBgCosmic = Color(0xFF0A0F16); // .phone .screen (site)
-  static const Color convItemBorderCosmic = Color(0xFF1A2531); // .phone .bar border (site)
-  static const Color activeTabBgCosmic = Color(0xFF12283A); // derived: ice-tinted selection
-  static const Color settingsTileBorderCosmic = Color(0xFF1A2531); // .bar border (site)
+  static const Color tabBorderCosmic = Color(
+    0xFF1A2531,
+  ); // .phone .bar border (site)
+  static const Color convItemBgCosmic = Color(
+    0xFF0A0F16,
+  ); // .phone .screen (site)
+  static const Color convItemBorderCosmic = Color(
+    0xFF1A2531,
+  ); // .phone .bar border (site)
+  static const Color activeTabBgCosmic = Color(
+    0xFF12283A,
+  ); // derived: ice-tinted selection
+  static const Color settingsTileBorderCosmic = Color(
+    0xFF1A2531,
+  ); // .bar border (site)
 
   static bool isDark(BuildContext context) =>
       Theme.of(context).brightness == Brightness.dark;
