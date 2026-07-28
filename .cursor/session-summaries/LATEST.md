@@ -1,5 +1,32 @@
 # Latest session summary
 
+**Date:** 2026-07-28 — **deleted and expired messages now actually die on the device.** Branch `audit/e2e-safety`. **Not deployed, not bumped** (0.0.132). Continues the 07-27 audit; owner: "all my messages are saved when they should be gone irreversible".
+
+## What was done
+1. **The record is the ONLY copy** — the server holds ciphertext whose ratchet key was consumed at first decrypt. So destroying EARLY is permanent loss, LATE is minutes of exposure. Everything is biased late.
+2. **Delete purges inline** (server row already gone, no clock involved). **Expiry is two-phase:** hide on the local clock, destroy only against a confirmed `ServerClock` + 5-min grace for the per-minute cron. `socketReady` now carries **`serverTime`** (§7 wire contract); absent ⇒ client holds forever. The `Date` header CANNOT serve this — not CORS-safelisted, so the gate would have silently never fired on web.
+3. **Records stamped `_cid/_savedAt/_createdAt/_expiresAt/_disappearAfter`** so purging is a prefix scan, not a walk of loaded rows — history pages ~50 while the store holds 2000. `_expiresAt` **re-stamped on `messageDelivered`**: read-mode messages get their deadline AFTER the record is written.
+4. **Durable purge backlog**, written before anything is touched, cleared only on confirmed completion, cross-context locked ⇒ at-least-once across tab close. **Every removal gated on its commit result** — nothing reports success on residue. That is the guarantee the change rests on.
+5. **NEW BUG FOUND: the 2000-entry LRU eviction was silently destroying history.** Eviction ≠ deletion — the server row stays alive, re-serves as `[encrypted]`, re-decrypt hits `DuplicateMessage` and bricks to a permanent `[Decryption failed]`. Fires constantly past 2000 messages; a likely source of old unexplained decrypt-failure reports. Those ids + retention's now go to a **retired set** rendering a deliberate "no longer stored on this device" state.
+6. Also closed: **unfriend/block purged nothing at all**; decrypted **voice notes** survived; the old "clear cache" button touched text plaintext on **no** platform (no-op on web). Real **"delete all local history"** action added. **30-day retention** ages from a one-time epoch key, so existing history fades instead of being mass-destroyed on upgrade.
+7. **`TZ: UTC` pinned in both compose files** — `expiresAt` is `timestamp WITHOUT time zone`, so a non-UTC backend ships deadlines shifted by the host offset and the client would destroy plaintext HOURS EARLY.
+
+## Verification
+- analyze **0 issues**; `flutter test` **956/5 skipped** (machine-verified); backend **541/47**; `test_e2e` **12 passed** vs a real backend, including a new test that a real `deleteMessage` destroys the plaintext and **leaves the Signal session alive**.
+- **Live browser proof** (release build, real backend, real localStorage): seeded a record expired 1 h ago, a control expiring in 24 h, a backlog entry. After reload → expired **destroyed**, control **intact**, backlog target **destroyed**, backlog key **cleared**, all **26 Signal keys untouched**.
+- Refused-commit tests install a prefs store whose `remove` returns false. Found doing it: `prefs.remove` drops its in-memory cache entry even when the backend refuses — the row reads as gone while bytes remain, which is why retry must come from the durable backlog.
+- Wiring test **falsified both ways**.
+
+## Notes for next session
+- **B2 (at-rest encryption + key rotation) is NOT built and is the remaining half of the ask.** This delivers "gone from the app", NOT "gone from the disk": localStorage is LevelDB, `removeItem` leaves the value in the WAL until a compaction we don't control. Real unrecoverability needs records encrypted under a key **rotated and destroyed on purge**. Design agreed: `{kid, iv, ct}`, both keys live during rotation, old key destroyed only after a scan proves zero references.
+- **NEVER describe the current state as "cannot be recovered"** — that repeats the exact defect this work removed.
+- CI has never run on this branch; open the PR to run it. Rebase onto `origin/master` (`59d80ae`) — the `CLAUDE.md` count line WILL conflict.
+- Local stack: another worktree holds :3000/:5433, so this ran on **:3100/:5533**; backend on the HOST with `TZ=UTC` (`nest start --watch` never bootstrapped in the bind mount). `flutter run -d web-server` bundles die on tab reconnect — **serve a release build statically**.
+- ➡ Detail: `2026-07-28-session-local-plaintext-purge.md`; issue **#105** updated with the wider scope.
+
+---
+### Prior latest ↓
+
 **Date:** 2026-07-27 — **full E2E safety audit + the chat-entry flicker/lag fix.** Branch `audit/e2e-safety` (separate worktree), cut from `d2f8aca`. **Not deployed, not bumped** — live stays 0.0.132 / `05fc423`.
 
 ## What was done
@@ -75,22 +102,4 @@
 - **NEVER run `dart format lib/`** — it reformatted 70 untouched files. Format only files you edited.
 - **Ask before opening the browser tool** — it is not headless and pops a window in front of the owner.
 - ➡ Detail: `2026-07-25-session-console-glyphs.md` and `2026-07-25-session-settings-console.md`. The 2026-07-25 handoffs were DELETED on 2026-07-27 (they were banner-marked SUPERSEDED and one nearly got followed); `2026-07-26-HANDOFF-START-HERE.md` survives as historical context only — PR #98 shipped what it gated.
-
----
-### Prior latest ↓
-
-**Date:** 2026-07-24 — Removed the top-of-screen "Update available — fully close and reopen the app." nudge on user request (annoying); shipped straight to `master` as frontend **0.0.128**.
-
-## What was done
-1. `frontend/lib/screens/main_shell.dart`: deleted the stale-bundle nudge (`_staleNudgeShown` flag + comment, the `kIsWeb` `initState` post-frame `_nudgeIfBundleStale` hook, the method, and the `services/update_check.dart` import). Kept `showTopSnackBar` (still used by the friend-accepted toast).
-2. Deleted the now-orphaned service: `services/update_check.dart` + `_stub` + `_web` (only the nudge called `isServedBundleNewer`).
-3. Removed the unused `updateAvailableCloseReopen` key from `app_en.arb`/`app_pl.arb`; `flutter gen-l10n` regenerated the getters out of `app_localizations*.dart`.
-4. Removed the resolved banner row from `docs/ISSUE-BOARD.md`. Bumped `pubspec.yaml` 0.0.127 → 0.0.128. `graphify update .`.
-
-## Verification
-- `flutter analyze lib/screens/main_shell.dart lib/l10n` → No issues found. `git grep` for the key/service/symbol across `frontend/lib` → no matches. Graph: 9218 nodes. Production post-deploy smoke pending below.
-
-## Notes for next session
-- Reverts PR #96's stale-bundle nudge only; the underlying stale-PWA reality is unchanged — users still must fully close + reopen after a deploy to activate a new service worker. Never uninstall / clear site data (wipes E2E keys).
-- Full: `2026-07-24-remove-stale-bundle-nudge.md`.
 

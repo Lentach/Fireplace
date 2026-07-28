@@ -53,6 +53,15 @@ services:
     ports:
       - '127.0.0.1:3000:3000'
     environment:
+      # MUST be UTC, and pinned rather than inherited from the base image.
+      # `messages.expiresAt` / `createdAt` are `timestamp WITHOUT time zone`, so
+      # node-postgres parses them as LOCAL time. On a non-UTC backend every
+      # deadline is serialised shifted by the host offset, while the client's
+      # `socketReady.serverTime` stays correct — so the client would destroy
+      # expired plaintext HOURS EARLY. That plaintext is the only copy (the
+      # server keeps ciphertext whose ratchet key is consumed), so the loss is
+      # permanent. Alpine happens to default to UTC; do not rely on that.
+      TZ: UTC
       DB_HOST: db
       DB_PORT: '5432'
       DB_USER: ${DB_USER:-postgres}

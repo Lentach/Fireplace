@@ -4,6 +4,7 @@ import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/providers/friends_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
 import 'package:fireplace/services/socket_service.dart';
+import 'package:fireplace/services/server_clock.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Test double for [SocketService] — simulates connect / socketReady without I/O.
@@ -47,9 +48,11 @@ class FakeSocketService extends SocketService {
     _onConnectCallback?.call();
   }
 
-  void simulateSocketReady() {
+  /// [payload] mirrors the real `socketReady` body. The server sends
+  /// `{serverTime: <ISO-8601>}`; null covers an older server that sends none.
+  void simulateSocketReady({Object? payload}) {
     for (final handler in _handlers['socketReady'] ?? const []) {
-      handler(null);
+      handler(payload);
     }
   }
 
@@ -84,6 +87,21 @@ class RecordingConnectionProvider extends ConnectionProvider {
   void emit(String event, dynamic data) {
     emitted.add(MapEntry(event, data));
   }
+}
+
+/// Records the local-plaintext maintenance calls `_onSocketReady` fires.
+class _RecordingEncryption extends EncryptionProvider {
+  final calls = <String>[];
+
+  @override
+  Future<void> loadRetiredIds() async => calls.add('loadRetiredIds');
+
+  @override
+  Future<void> drainPurgeBacklog() async => calls.add('drainPurgeBacklog');
+
+  @override
+  Future<void> sweepDestroyablePlaintext() async =>
+      calls.add('sweepDestroyablePlaintext');
 }
 
 Map<String, dynamic> _convJson(int id) => {
@@ -246,6 +264,71 @@ void main() {
       expect(pushStates, isEmpty,
           reason:
               'socketReady must not reassert client state when no chat is open');
+    });
+  });
+
+  group('ConnectionProvider local-plaintext maintenance', () {
+    late FakeSocketService fakeSocket;
+    late RecordingConnectionProvider connection;
+    late _RecordingEncryption encryption;
+
+    setUp(() {
+      ServerClock.instance.resetForTest();
+      fakeSocket = FakeSocketService();
+      connection = RecordingConnectionProvider(socketService: fakeSocket);
+      encryption = _RecordingEncryption();
+      connection.setProviders(
+        encryption: encryption,
+        friends: FriendsProvider(),
+        conversations: ConversationsProvider(),
+        messaging: MessagingProvider(),
+      );
+    });
+
+    tearDown(() {
+      connection.disconnect();
+      ServerClock.instance.resetForTest();
+    });
+
+    test('socketReady observes the server clock before sweeping', () async {
+      await connection.connect(1, 'test-token', 'http://localhost:3000');
+      final serverTime = DateTime.utc(2026, 7, 28, 12, 30);
+
+      expect(ServerClock.instance.estimatedNow, isNull,
+          reason: 'no observation yet, so the sweep must refuse to destroy');
+
+      fakeSocket.simulateSocketReady(
+        payload: {'serverTime': serverTime.toIso8601String()},
+      );
+      await pumpEventQueue();
+
+      // Without this the expiry sweep silently never destroys anything, on the
+      // one platform this feature exists for, with no error anywhere.
+      final estimated = ServerClock.instance.estimatedNow;
+      expect(estimated, isNotNull);
+      expect(estimated!.isBefore(serverTime), isFalse);
+
+      // Order is load-bearing: retired ids must be loaded before anything can
+      // try to decrypt a row whose plaintext was already destroyed, and the
+      // backlog must drain before the sweep adds more work.
+      expect(encryption.calls, [
+        'loadRetiredIds',
+        'drainPurgeBacklog',
+        'sweepDestroyablePlaintext',
+      ]);
+    });
+
+    test('maintenance still runs when the server sends no clock', () async {
+      await connection.connect(1, 'test-token', 'http://localhost:3000');
+
+      fakeSocket.simulateSocketReady();
+      await pumpEventQueue();
+
+      // The sweep is internally a no-op with no clock, but the backlog drain
+      // must NOT be skipped — it is what finishes a delete that was cut off by
+      // a tab close, and it needs no clock at all.
+      expect(encryption.calls, contains('drainPurgeBacklog'));
+      expect(ServerClock.instance.estimatedNow, isNull);
     });
   });
 }

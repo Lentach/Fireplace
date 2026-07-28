@@ -162,8 +162,13 @@ void main() {
         await bob.saveDecryptedContent(70001, {'content': historicalPlaintext});
         expect(await bob.getDecryptedContent(70001), isNotNull);
 
-        final removed = await bob.clearDecryptedContentCache();
-        expect(removed, 1);
+        final wipe = await bob.clearDecryptedContentCache();
+        expect(wipe.removed, 1);
+        expect(
+          wipe.isComplete,
+          isTrue,
+          reason: 'a wipe that could not commit must not report success',
+        );
         expect(await bob.getDecryptedContent(70001), isNull);
 
         Object? replayError;

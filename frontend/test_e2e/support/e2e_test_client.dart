@@ -188,6 +188,7 @@ class E2eClient {
     'messageEdited',
     'editMessageFailed',
     'reactionUpdated',
+    'messageDeleted',
   ];
 
   /// Registers a brand-new account. Fresh every run BY DESIGN: reusing
@@ -409,6 +410,18 @@ class E2eClient {
       'messageId': messageId,
       'content': '[encrypted]',
       'encryptedContent': newCiphertext,
+    });
+  }
+
+  /// Emits `deleteMessage`. Like `editMessage`, the app sends this through
+  /// ConnectionProvider's raw socket path, which this mirrors.
+  ///
+  /// [forEveryone] false is delete-for-me (server keeps the row and adds the
+  /// caller to `hiddenByUserIds`); true hard-deletes it for both sides.
+  void emitDeleteMessage(int messageId, {required bool forEveryone}) {
+    socketService.socket!.emit('deleteMessage', {
+      'messageId': messageId,
+      'mode': forEveryone ? 'for_everyone' : 'for_me',
     });
   }
 

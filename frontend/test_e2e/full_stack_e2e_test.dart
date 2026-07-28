@@ -410,6 +410,58 @@ void main() {
       timeout: const Timeout(Duration(minutes: 1)),
     );
 
+    test(
+      'delete destroys the local plaintext and leaves the Signal session alive',
+      () async {
+        final plaintext = 'purge-me-$runTag';
+        final messageId = await roundTrip(alice, bob, plaintext,
+            tempId: 't12-$runTag', expectedWireType: 2);
+
+        // Persist exactly as the app does at decrypt time, including the
+        // envelope metadata the sweeps select on.
+        await bob.encryption.saveDecryptedContent(
+          messageId,
+          {'content': plaintext},
+          conversationId: conversationId,
+          createdAt: DateTime.now().toUtc(),
+        );
+        expect(
+          (await bob.encryption.getDecryptedContent(messageId))?['content'],
+          plaintext,
+          reason: 'precondition: the only copy of the plaintext is on the device',
+        );
+
+        // Real server delete over the real wire, hard-deleting the row.
+        alice.emitDeleteMessage(messageId, forEveryone: true);
+        for (final client in [alice, bob]) {
+          await client.events.next(
+            'messageDeleted',
+            where: (p) => p is Map && p['messageId'] == messageId,
+            reason: '${client.label} messageDeleted',
+          );
+        }
+
+        // What the app's messageDeleted handler does. Asserted against a REAL
+        // store with real Signal state present, because the risk is not that
+        // the delete fails — it is that destroying plaintext also damages the
+        // session and bricks the conversation.
+        final purge = await bob.encryption.removeDecryptedContent([messageId]);
+        expect(purge.isComplete, isTrue);
+        expect(purge.removed, 1);
+        expect(
+          await bob.encryption.getDecryptedContent(messageId),
+          isNull,
+          reason: 'deleting a message must destroy its local plaintext',
+        );
+
+        // The session survived: new traffic still ratchets and decrypts. A
+        // purge that quietly broke this would trade one bug for a worse one.
+        await roundTrip(alice, bob, 'after-purge-$runTag',
+            tempId: 't13-$runTag', expectedWireType: 2);
+      },
+      timeout: const Timeout(Duration(minutes: 1)),
+    );
+
     test('no unexpected socket errors surfaced during the run', () {
       expect(alice.events.errors, isEmpty,
           reason: 'alice received server error events');

@@ -21,6 +21,12 @@ services:
     ports:
       - '3000:3000'
     environment:
+      # MUST be UTC — see the note in docker-compose.prod.yml. `expiresAt` is a
+      # `timestamp WITHOUT time zone`, so a non-UTC backend ships deadlines
+      # shifted by the host offset and the client destroys the only copy of
+      # expired plaintext early. Verified: with the backend on a UTC+2 host the
+      # 15-minute edit window also reads as expired immediately.
+      TZ: UTC
       DB_HOST: db
       DB_PORT: '5432'
       DB_USER: ${DB_USER:-postgres}
