@@ -1,4 +1,5 @@
 {
-  "errors": 1320,
+  "nonPrettier": 839,
+  "prettier": 481,
   "warnings": 283
 }
