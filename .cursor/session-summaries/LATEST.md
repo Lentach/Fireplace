@@ -1,6 +1,20 @@
 # Latest session summary
 
-**Date:** 2026-07-27 — **agent tooling audit + two credential rotations.** No app source touched (zero files under `frontend/lib`, `frontend/test`, `backend/src`, `backend/test`). 6 commits, CI green. Live unchanged at **0.0.132 / `05fc423`**.
+**Date:** 2026-07-28 — **five-bug batch shipped as two PRs, AWAITING OWNER APPROVAL — no merge, no deploy.** PR **#103** `fix/composer-and-preview-quickwins` (bugs 2/4/5) and PR **#104** `fix/avatar-count-and-ping` (bugs 1/3/3e). Built in dedicated worktrees (`fireplace-wt-quickwins`, `fireplace-wt-avatar-ping`); master untouched except this docs commit. CI green on both branches.
+
+- **Bug 2 restored the composer emoji button** — removed deliberately in `6131b15` (0.0.115) as a "keyboard duplicate"; premise wrong, owner ruled restore. Full pin contract back (`composerBottomPanelPinned` + viewport bottom-pin); `frontend/CLAUDE.md` §7 ban line superseded. **iOS-style emotes declined: Apple Color Emoji is not redistributable**; iOS already renders Apple glyphs via fallback.
+- **Bug 4:** mobile (defaultTargetPlatform android/iOS, incl. phone PWA) action key now inserts newline (`TextInputAction.newline`, no onSubmitted); desktop byte-identical (Enter=newline, Ctrl/Cmd+Enter=send — owner ruled keep).
+- **Bug 5:** Anti-Quantum Note previews show the l10n label on every surface (tile, reply bar, pinned banner, in-bubble quote via `reply_preview_helper`). **Link-preview consumption CLEARED** three ways (client excludes+strips, backend skips encrypted, GET /note/:token is a SELECT — burn is POST reveal only). No wire change.
+- **Bug 1 root cause:** `_restoreUserFromAccessJwt` clobbered `profilePhotos`/`about` on EVERY silent refresh (even during boot hydrate) → self card "1/3" while others saw 3. Fix: same-account restore `copyWith`s the hydrated user. Swipe-dead gallery was collateral (tap-zone nav gated on photos>1), self-heals.
+- **Bug 3 root cause:** ping plaintext '' → lossy persisted-restore kept `[encrypted]` → forced re-decrypt every chat entry → effect re-fired forever. Fix: persisted PING restores as decrypted (consume-once by construction) + transient id dedup. Persisted "played-ids cache" band-aid named and rejected. **Bug 3e** (separate): overlay perf — RepaintBoundary + Fade/ScaleTransition over static child.
+- Tests: A **925+4** green, B **907+4** green, fail-before proven by stashing lib per bug. **⚠ Both PRs edit the CLAUDE.md §3 count — after BOTH merge set it to 929 and rerun the verifier.**
+- Codex-backed default `task` subagents are usage-walled; `sonic`/`scout` (Anthropic) work — route delegation there.
+- ➡ Detail: **`2026-07-28-session-bugfix-batch.md`**; diagnosis evidence: `.planning/bugfix-batch-2026-07/` (local-only).
+
+---
+### Prior latest ↓
+
+**Date:** 2026-07-27 — **agent tooling audit + two credential rotations.** No app source touched. 6 commits, CI green. Live unchanged at **0.0.132 / `05fc423`**.
 
 - **Two live secrets found and killed.** `CONTACT_INBOX_KEY` rotated on the VM (old → **404**, issue **#100 closed**). And a SECOND, previously unknown one: `CONTEXT7_API_KEY` was **tracked and pushed** in `.claude/settings.local.json` (from `fdd3aa2`, an unrelated feature commit) — confirmed live, now revoked and verified **401**. That file is untracked and gitignored by glob.
 - **Two enforcement gates that did not exist.** `deploy-web.ps1` now runs the post-deploy smoke and **FAILS the deploy** on a bundle-sha mismatch (falsified both ways against live prod; also catches the exit-21 silent-halt trap). And a **backend lint ratchet** in CI — lint was rotting from 726 → 1320 total errors at ~+30/day because nothing ran it. The ratchet gates a **split count**: **839** real (type-safety) errors strictly, proven platform-identical, plus 481 formatting with ±5 tolerance. It fails only when the number GOES UP.
@@ -63,22 +77,3 @@
 - **NEVER run `dart format lib/`** — it reformatted 70 untouched files. Format only files you edited.
 - **Ask before opening the browser tool** — it is not headless and pops a window in front of the owner.
 - ➡ Detail: `2026-07-25-session-console-glyphs.md` and `2026-07-25-session-settings-console.md`. The 2026-07-25 handoffs were DELETED on 2026-07-27 (they were banner-marked SUPERSEDED and one nearly got followed); `2026-07-26-HANDOFF-START-HERE.md` survives as historical context only — PR #98 shipped what it gated.
-
----
-### Prior latest ↓
-
-**Date:** 2026-07-24 — Removed the top-of-screen "Update available — fully close and reopen the app." nudge on user request (annoying); shipped straight to `master` as frontend **0.0.128**.
-
-## What was done
-1. `frontend/lib/screens/main_shell.dart`: deleted the stale-bundle nudge (`_staleNudgeShown` flag + comment, the `kIsWeb` `initState` post-frame `_nudgeIfBundleStale` hook, the method, and the `services/update_check.dart` import). Kept `showTopSnackBar` (still used by the friend-accepted toast).
-2. Deleted the now-orphaned service: `services/update_check.dart` + `_stub` + `_web` (only the nudge called `isServedBundleNewer`).
-3. Removed the unused `updateAvailableCloseReopen` key from `app_en.arb`/`app_pl.arb`; `flutter gen-l10n` regenerated the getters out of `app_localizations*.dart`.
-4. Removed the resolved banner row from `docs/ISSUE-BOARD.md`. Bumped `pubspec.yaml` 0.0.127 → 0.0.128. `graphify update .`.
-
-## Verification
-- `flutter analyze lib/screens/main_shell.dart lib/l10n` → No issues found. `git grep` for the key/service/symbol across `frontend/lib` → no matches. Graph: 9218 nodes. Production post-deploy smoke pending below.
-
-## Notes for next session
-- Reverts PR #96's stale-bundle nudge only; the underlying stale-PWA reality is unchanged — users still must fully close + reopen after a deploy to activate a new service worker. Never uninstall / clear site data (wipes E2E keys).
-- Full: `2026-07-24-remove-stale-bundle-nudge.md`.
-
