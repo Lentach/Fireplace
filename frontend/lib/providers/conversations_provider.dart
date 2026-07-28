@@ -502,18 +502,25 @@ class ConversationsProvider extends ChangeNotifier {
 
   /// Remove all conversations involving a user (called by FriendsProvider on unfriend/block).
   /// Pass userId=-1 to remove conversations for a set of blocked users (caller provides IDs).
-  void removeConversationsForUser(int userId, {Set<int>? blockedIds}) {
-    if (userId == -1 && blockedIds != null) {
-      _conversations.removeWhere((c) =>
-          blockedIds.contains(c.userOne.id) ||
-          blockedIds.contains(c.userTwo.id));
-    } else {
-      _conversations.removeWhere(
-          (c) => c.userOne.id == userId || c.userTwo.id == userId);
-    }
+  ///
+  /// Returns the ids of the conversations actually removed. This provider does
+  /// not own message state, and the decrypted plaintext for those messages has
+  /// to be destroyed by whoever does — so the caller needs to know which
+  /// conversations went away, not just that some did.
+  Set<int> removeConversationsForUser(int userId, {Set<int>? blockedIds}) {
+    final removed = <int>{};
+    _conversations.removeWhere((c) {
+      final matches = userId == -1 && blockedIds != null
+          ? blockedIds.contains(c.userOne.id) ||
+                blockedIds.contains(c.userTwo.id)
+          : c.userOne.id == userId || c.userTwo.id == userId;
+      if (matches) removed.add(c.id);
+      return matches;
+    });
     _clearActiveIfRemoved();
     notifyListeners();
     _emitPushClientState();
+    return removed;
   }
 
   /// Update the last message for a conversation (called by MessagingProvider).

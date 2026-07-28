@@ -164,6 +164,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String get clearLocalMessageCache => 'Clear downloaded audio cache';
 
   @override
+  String get deleteAllLocalHistoryTitle =>
+      'Delete all messages stored on this device';
+
+  @override
+  String get deleteAllLocalHistoryDescription =>
+      'Permanently deletes all messages stored on this device, including downloaded voice notes. It does not delete your account, messages on the other person\'s device, or your encryption keys and sessions. Deleted messages cannot be recovered or restored from the server.';
+
+  @override
+  String get deleteAllLocalHistoryButton =>
+      'Permanently delete all local messages';
+
+  @override
+  String get deleteAllLocalHistoryDialogTitle =>
+      'Permanently delete all local messages?';
+
+  @override
+  String get deleteAllLocalHistoryDialogBody =>
+      'This permanently deletes every message and downloaded voice note stored on this device. They cannot be recovered or restored from the server; the server keeps only ciphertext. Your account, encryption keys, and sessions are not affected.';
+
+  @override
+  String get deleteAllLocalHistoryConfirm => 'Delete permanently';
+
+  @override
   String get yourIdentityFingerprint => 'Your identity fingerprint';
 
   @override
@@ -225,6 +248,10 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get decryptingMessage => 'Decrypting…';
+
+  @override
+  String get messageNoLongerStoredOnThisDevice =>
+      'This message is no longer stored on this device.';
 
   @override
   String get encryptionNotInitialized => 'Encryption not initialized';
@@ -795,6 +822,14 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get snackbarFailedToClearLocalMessageCache =>
       'Failed to clear local message cache';
+
+  @override
+  String get snackbarAllLocalHistoryDeleted =>
+      'All messages stored on this device were permanently deleted';
+
+  @override
+  String get snackbarFailedToDeleteAllLocalHistory =>
+      'Some messages could not be removed from this device. Try again.';
 
   @override
   String friendAcceptedYourRequest(String name) {

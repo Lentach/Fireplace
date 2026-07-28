@@ -66,9 +66,31 @@ extension MessagingDecrypt on MessagingProvider {
   /// session-reset machinery on every history pass (the 2026-06-12
   /// SESSION_RESET{historyRetry} loop).
   bool _isUnresolvedEncryptedInbound(MessageModel m) =>
+      !_isRetiredMessage(m) &&
       m.needsDecryption(_currentUserId) &&
       m.displayAsEncryptedPlaceholder &&
       !_hasUsableDecryptedContent(m);
+
+  /// A retired id has had its only plaintext copy deliberately destroyed.
+  /// Its ciphertext remains on the server, but its ratchet key was consumed at
+  /// first decrypt, so it must never re-enter any decrypt or retry path.
+  bool _isRetiredMessage(MessageModel msg) =>
+      msg.content == kRetiredMessageLabel ||
+      (_encryptionProvider?.isRetired(msg.id) ?? false);
+
+  bool _markMessageAsRetired(MessageModel msg) {
+    final idx = _messages.indexWhere((m) => m.id == msg.id);
+    if (idx == -1 || _messages[idx].content == kRetiredMessageLabel) {
+      return false;
+    }
+    _messages[idx] = _messages[idx].copyWith(content: kRetiredMessageLabel);
+    return true;
+  }
+
+  MessageModel _retiredMessagePlaceholder(MessageModel msg) =>
+      msg.content == kRetiredMessageLabel
+          ? msg
+          : msg.copyWith(content: kRetiredMessageLabel);
 
   bool _conversationHasUndecryptedInbound(int conversationId) {
     return _messages.any(
@@ -108,8 +130,9 @@ extension MessagingDecrypt on MessagingProvider {
   }
 
   Future<void> _persistDecryptedContent(MessageModel decrypted) async {
-    if (decrypted.content == '[Decryption failed]' ||
-        decrypted.content == '[Encryption not initialized]') {
+    if (decrypted.content == _kDecryptionFailedLabel ||
+        decrypted.content == '[Encryption not initialized]' ||
+        decrypted.content == kRetiredMessageLabel) {
       return;
     }
     final hasText = decrypted.content.isNotEmpty;
@@ -151,13 +174,21 @@ extension MessagingDecrypt on MessagingProvider {
       data['linkPreviewImageUrl'] = safeImageUrl;
     }
     try {
-      await _encryptionProvider?.saveDecryptedContent(decrypted.id, data);
+      await _encryptionProvider?.saveDecryptedContent(
+        decrypted.id,
+        data,
+        conversationId: decrypted.conversationId,
+        createdAt: decrypted.createdAt,
+        expiresAt: decrypted.expiresAt,
+        disappearAfterSeconds: decrypted.disappearAfterSeconds,
+      );
     } catch (_) {}
   }
 
   /// True when [msg] has displayable plaintext (or decrypted media), not an E2E placeholder.
   bool _hasUsableDecryptedContent(MessageModel msg) {
-    if (msg.content == _kDecryptionFailedLabel ||
+    if (_isRetiredMessage(msg) ||
+        msg.content == _kDecryptionFailedLabel ||
         msg.content == '[Encryption not initialized]') {
       return false;
     }
@@ -327,6 +358,10 @@ extension MessagingDecrypt on MessagingProvider {
     final needDisk = <int>[];
     for (var i = 0; i < rows.length; i++) {
       final row = rows[i];
+      if (_isRetiredMessage(row)) {
+        rows[i] = _retiredMessagePlaceholder(row);
+        continue;
+      }
       if (_hasUsableDecryptedContent(row)) continue;
       if (row.needsDecryption(_currentUserId)) {
         final cached = provider.getCachedDecryption(row.id);
@@ -423,7 +458,9 @@ extension MessagingDecrypt on MessagingProvider {
       return;
     }
     final toDecrypt = _messages
-        .where((m) => m.needsDecryption(_currentUserId))
+        .where(
+          (m) => m.needsDecryption(_currentUserId) && !_isRetiredMessage(m),
+        )
         .length;
     if (toDecrypt > 0) {
       _e2eFlowLog('HISTORY_DECRYPT_START', {'count': toDecrypt});
@@ -459,6 +496,10 @@ extension MessagingDecrypt on MessagingProvider {
     for (var i = 0; i < sorted.length; i++) {
       if (_decryptHistoryGeneration != generation) break;
       final msg = sorted[i];
+      if (_isRetiredMessage(msg)) {
+        if (_markMessageAsRetired(msg)) changed = true;
+        continue;
+      }
       if (msg.needsDecryption(_currentUserId)) {
         // Cache-first: only skip live decrypt when cache holds real plaintext.
         final cached = _encryptionProvider?.getCachedDecryption(msg.id);
@@ -530,6 +571,10 @@ extension MessagingDecrypt on MessagingProvider {
         }
         final idx = _messages.indexWhere((m) => m.id == msg.id);
         final rowForDecrypt = idx != -1 ? _messages[idx] : msg;
+        if (_isRetiredMessage(rowForDecrypt)) {
+          if (_markMessageAsRetired(rowForDecrypt)) changed = true;
+          continue;
+        }
         if (_hasUsableDecryptedContent(rowForDecrypt)) {
           _encryptionProvider?.cacheDecryption(msg.id, rowForDecrypt);
           continue;
@@ -734,6 +779,10 @@ extension MessagingDecrypt on MessagingProvider {
     var changed = false;
     for (var i = 0; i < _messages.length; i++) {
       final m = _messages[i];
+      if (_isRetiredMessage(m)) {
+        if (_markMessageAsRetired(m)) changed = true;
+        continue;
+      }
       if (!m.needsDecryption(_currentUserId)) continue;
       if (!_hasUsableDecryptedContent(m) &&
           m.content != _kDecryptionFailedLabel &&
@@ -763,8 +812,15 @@ extension MessagingDecrypt on MessagingProvider {
     String trigger = 'historyRetry',
   }) async {
     bool changed = false;
+    final retryablePeerIds = <int>{
+      for (final m in _messages)
+        if (peerIds.contains(m.senderId) &&
+            m.needsDecryption(_currentUserId) &&
+            !_isRetiredMessage(m))
+          m.senderId,
+    };
     final rebuildRequested = _historySessionRebuildRequested ??= <int>{};
-    for (final peerId in peerIds) {
+    for (final peerId in retryablePeerIds) {
       if (_decryptHistoryGeneration != generation) return changed;
       if (rebuildRequested.add(peerId)) {
         _requestSessionRebuildForPeer(peerId, trigger: trigger);
@@ -775,8 +831,9 @@ extension MessagingDecrypt on MessagingProvider {
         _messages
             .where(
               (m) =>
-                  peerIds.contains(m.senderId) &&
-                  m.needsDecryption(_currentUserId),
+                  retryablePeerIds.contains(m.senderId) &&
+                  m.needsDecryption(_currentUserId) &&
+                  !_isRetiredMessage(m),
             )
             .toList()
           ..sort((a, b) {
@@ -789,6 +846,10 @@ extension MessagingDecrypt on MessagingProvider {
       if (_decryptHistoryGeneration != generation) break;
       final idx = _messages.indexWhere((m) => m.id == msg.id);
       final row = idx != -1 ? _messages[idx] : msg;
+      if (_isRetiredMessage(row)) {
+        if (_markMessageAsRetired(row)) changed = true;
+        continue;
+      }
       if (_hasUsableDecryptedContent(row)) {
         _encryptionProvider?.cacheDecryption(msg.id, row);
         continue;
@@ -840,13 +901,20 @@ extension MessagingDecrypt on MessagingProvider {
   }
 
   Future<MessageModel> _decryptMessageAsyncQueued(MessageModel msg) {
+    if (_isRetiredMessage(msg)) {
+      return Future.value(_retiredMessagePlaceholder(msg));
+    }
     if (msg.senderId == _currentUserId) {
       return Future.value(msg);
     }
     return _runDecryptSerialized(msg.senderId, () => _decryptMessageAsync(msg));
   }
 
+
   Future<MessageModel> _decryptMessageAsync(MessageModel msg) async {
+    // Defense in depth for any future caller that bypasses the serialized entry
+    // point: retired ciphertext must never reach Signal decryption.
+    if (_isRetiredMessage(msg)) return _retiredMessagePlaceholder(msg);
     // Own messages: server stored "[encrypted]" as content but we already
     // showed plaintext optimistically, so skip decryption for our own messages.
     if (msg.senderId == _currentUserId) return msg;

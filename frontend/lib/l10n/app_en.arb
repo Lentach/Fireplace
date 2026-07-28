@@ -49,6 +49,12 @@
   "localMessageCache": "Local message cache",
   "localMessageCacheDescription": "This device may keep downloaded voice audio locally. Clearing this cache removes downloaded audio only; it does not delete readable message history, media keys, encryption keys, sessions, or browser storage.",
   "clearLocalMessageCache": "Clear downloaded audio cache",
+  "deleteAllLocalHistoryTitle": "Delete all messages stored on this device",
+  "deleteAllLocalHistoryDescription": "Permanently deletes all messages stored on this device, including downloaded voice notes. It does not delete your account, messages on the other person's device, or your encryption keys and sessions. Deleted messages cannot be recovered or restored from the server.",
+  "deleteAllLocalHistoryButton": "Permanently delete all local messages",
+  "deleteAllLocalHistoryDialogTitle": "Permanently delete all local messages?",
+  "deleteAllLocalHistoryDialogBody": "This permanently deletes every message and downloaded voice note stored on this device. They cannot be recovered or restored from the server; the server keeps only ciphertext. Your account, encryption keys, and sessions are not affected.",
+  "deleteAllLocalHistoryConfirm": "Delete permanently",
   "yourIdentityFingerprint": "Your identity fingerprint",
   "shareFingerprintHint": "This is a unique representation of your encryption key.",
 
@@ -80,6 +86,7 @@
   "encryptedMessage": "Encrypted message",
   "decryptionFailed": "Decryption failed",
   "decryptingMessage": "Decrypting…",
+  "messageNoLongerStoredOnThisDevice": "This message is no longer stored on this device.",
   "encryptionNotInitialized": "Encryption not initialized",
   "identityDamagedTitle": "Encryption keys damaged",
   "identityDamagedBody": "Part of this device's encryption identity is missing, so messages can't be decrypted or sent. Your keys were NOT regenerated automatically — doing that silently would destroy your history.",
@@ -310,6 +317,8 @@
   "snackbarFailedToLoadAudio": "Failed to load audio",
   "snackbarLocalMessageCacheCleared": "Local message cache cleared",
   "snackbarFailedToClearLocalMessageCache": "Failed to clear local message cache",
+  "snackbarAllLocalHistoryDeleted": "All messages stored on this device were permanently deleted",
+  "snackbarFailedToDeleteAllLocalHistory": "Some messages could not be removed from this device. Try again.",
   "friendAcceptedYourRequest": "{name} accepted your friend request",
   "@friendAcceptedYourRequest": {
     "placeholders": {

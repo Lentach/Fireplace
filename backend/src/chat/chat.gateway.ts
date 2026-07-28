@@ -131,7 +131,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         `User connected: ${user.username} (socket: ${client.id})`,
       );
       // Auth is complete — client may safely emit authenticated WS events.
-      client.emit('socketReady', {});
+      // `serverTime` is the client's only trustworthy clock reference. It
+      // gates destroying expired message plaintext, which is irreversible:
+      // the client holds ciphertext it can no longer decrypt, so a device with
+      // a fast wall clock would otherwise wipe messages still live here. An
+      // older client ignores the field; a newer client against an older server
+      // sees none and simply never destroys on expiry.
+      client.emit('socketReady', { serverTime: new Date().toISOString() });
     } catch (error) {
       const errorName =
         error instanceof Error ? error.name : 'UnknownSocketAuthError';

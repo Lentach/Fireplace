@@ -386,6 +386,42 @@ abstract class AppLocalizations {
   /// **'Wyczyść pobrane audio'**
   String get clearLocalMessageCache;
 
+  /// No description provided for @deleteAllLocalHistoryTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń wszystkie wiadomości z tego urządzenia'**
+  String get deleteAllLocalHistoryTitle;
+
+  /// No description provided for @deleteAllLocalHistoryDescription.
+  ///
+  /// In pl, this message translates to:
+  /// **'Trwale usuwa z tego urządzenia wszystkie zapisane wiadomości, w tym pobrane notatki głosowe. Nie usuwa konta, wiadomości z urządzenia drugiej osoby ani kluczy i sesji szyfrowania. Usuniętych wiadomości nie można odzyskać ani przywrócić z serwera.'**
+  String get deleteAllLocalHistoryDescription;
+
+  /// No description provided for @deleteAllLocalHistoryButton.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń trwale wszystkie lokalne wiadomości'**
+  String get deleteAllLocalHistoryButton;
+
+  /// No description provided for @deleteAllLocalHistoryDialogTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Trwale usunąć wszystkie lokalne wiadomości?'**
+  String get deleteAllLocalHistoryDialogTitle;
+
+  /// No description provided for @deleteAllLocalHistoryDialogBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ta operacja trwale usuwa z tego urządzenia wszystkie wiadomości i pobrane notatki głosowe. Nie można ich odzyskać ani przywrócić z serwera, ponieważ serwer przechowuje tylko zaszyfrowane dane. Twoje konto, klucze i sesje szyfrowania pozostaną bez zmian.'**
+  String get deleteAllLocalHistoryDialogBody;
+
+  /// No description provided for @deleteAllLocalHistoryConfirm.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń trwale'**
+  String get deleteAllLocalHistoryConfirm;
+
   /// No description provided for @yourIdentityFingerprint.
   ///
   /// In pl, this message translates to:
@@ -499,6 +535,12 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Odszyfrowywanie…'**
   String get decryptingMessage;
+
+  /// No description provided for @messageNoLongerStoredOnThisDevice.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ta wiadomość nie jest już przechowywana na tym urządzeniu.'**
+  String get messageNoLongerStoredOnThisDevice;
 
   /// No description provided for @encryptionNotInitialized.
   ///
@@ -1471,6 +1513,18 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Nie udało się wyczyścić lokalnej pamięci wiadomości'**
   String get snackbarFailedToClearLocalMessageCache;
+
+  /// No description provided for @snackbarAllLocalHistoryDeleted.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wszystkie wiadomości zapisane na tym urządzeniu zostały trwale usunięte'**
+  String get snackbarAllLocalHistoryDeleted;
+
+  /// No description provided for @snackbarFailedToDeleteAllLocalHistory.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się usunąć części wiadomości z tego urządzenia. Spróbuj ponownie.'**
+  String get snackbarFailedToDeleteAllLocalHistory;
 
   /// No description provided for @friendAcceptedYourRequest.
   ///

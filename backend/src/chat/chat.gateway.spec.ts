@@ -74,7 +74,15 @@ describe('ChatGateway handleConnection', () => {
     expect(
       (gateway as any).chatKeyExchangeService.deliverPendingSessionRebuilds,
     ).toHaveBeenCalledWith(client);
-    expect(client.emit).toHaveBeenCalledWith('socketReady', {});
+    expect(client.emit).toHaveBeenCalledWith('socketReady', {
+      serverTime: expect.any(String),
+    });
+    // The client parses this and refuses to destroy expired plaintext when it
+    // cannot. An unparseable stamp would silently disable that path forever.
+    const readyCall = (client.emit as jest.Mock).mock.calls.find(
+      (call) => call[0] === 'socketReady',
+    );
+    expect(Number.isNaN(Date.parse(readyCall[1].serverTime))).toBe(false);
     expect(client.disconnect).not.toHaveBeenCalled();
     expect(client.data.user).toEqual({
       id: 42,
@@ -88,7 +96,10 @@ describe('ChatGateway handleConnection', () => {
 
     await gateway.handleConnection(client as any);
 
-    expect(client.emit).not.toHaveBeenCalledWith('socketReady', {});
+    expect(client.emit).not.toHaveBeenCalledWith(
+      'socketReady',
+      expect.anything(),
+    );
     expect(client.disconnect).toHaveBeenCalled();
     expect(jwtService.verify).not.toHaveBeenCalled();
   });
@@ -100,7 +111,10 @@ describe('ChatGateway handleConnection', () => {
 
     await gateway.handleConnection(client as any);
 
-    expect(client.emit).not.toHaveBeenCalledWith('socketReady', {});
+    expect(client.emit).not.toHaveBeenCalledWith(
+      'socketReady',
+      expect.anything(),
+    );
     expect(client.disconnect).toHaveBeenCalled();
   });
 
@@ -112,7 +126,10 @@ describe('ChatGateway handleConnection', () => {
 
     await gateway.handleConnection(client as any);
 
-    expect(client.emit).not.toHaveBeenCalledWith('socketReady', {});
+    expect(client.emit).not.toHaveBeenCalledWith(
+      'socketReady',
+      expect.anything(),
+    );
     expect(client.disconnect).toHaveBeenCalled();
     expect(usersService.findById).not.toHaveBeenCalled();
   });
@@ -130,7 +147,10 @@ describe('ChatGateway handleConnection', () => {
     await gateway.handleConnection(client as unknown as Socket);
 
     expect(client.disconnect).toHaveBeenCalled();
-    expect(client.emit).not.toHaveBeenCalledWith('socketReady', {});
+    expect(client.emit).not.toHaveBeenCalledWith(
+      'socketReady',
+      expect.anything(),
+    );
   });
 });
 

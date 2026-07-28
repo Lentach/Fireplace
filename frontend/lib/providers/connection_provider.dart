@@ -6,6 +6,7 @@ import '../config/app_config.dart';
 import '../constants/app_constants.dart';
 import '../services/api_service.dart';
 import '../services/push_service.dart';
+import '../services/server_clock.dart';
 import '../services/socket_service.dart';
 import '../utils/e2e_diag_log.dart';
 import 'chat_reconnect_manager.dart';
@@ -138,13 +139,19 @@ class ConnectionProvider extends ChangeNotifier {
 
     // 6. Wire cross-provider callbacks (friends -> conversations)
     _friendsProvider?.onRemoveConversationsForUser = (uid) {
-      if (uid == -1) {
-        final blockedIds =
-            _friendsProvider!.blockedUsers.map((u) => u.id).toSet();
-        _conversationsProvider?.removeConversationsForUser(-1,
-            blockedIds: blockedIds);
-      } else {
-        _conversationsProvider?.removeConversationsForUser(uid);
+      final removed = uid == -1
+          ? _conversationsProvider?.removeConversationsForUser(
+              -1,
+              blockedIds: _friendsProvider!.blockedUsers
+                  .map((u) => u.id)
+                  .toSet(),
+            )
+          : _conversationsProvider?.removeConversationsForUser(uid);
+      // Removing a contact must also destroy their decrypted history on this
+      // device. Nothing did that before: the conversation vanished from the
+      // list while every message stayed in memory and on disk, readable.
+      if (removed != null && removed.isNotEmpty) {
+        _messagingProvider?.onConversationsRemovedForUser(removed);
       }
     };
     // 7. Replace socket (enableForceNew). Suppress reconnect from the old socket's
@@ -159,7 +166,16 @@ class ConnectionProvider extends ChangeNotifier {
 
     // 9. Transport connect + socketReady (authenticated fetches only on ready)
     _socketService.onConnect(() => _onSocketTransportConnect(userId, token));
-    _socketService.on('socketReady', (_) => _onSocketReady());
+    _socketService.on('socketReady', (data) {
+      // The freshest server clock this app ever sees. Observed BEFORE the
+      // ready work so anything downstream that gates on it — above all the
+      // expiry purge, which destroys the only copy of a message — runs against
+      // a current observation rather than a stale one or none at all.
+      ServerClock.instance.observeIso(
+        data is Map ? data['serverTime'] : null,
+      );
+      _onSocketReady();
+    });
 
     // 10. On 'disconnect': handle reconnect
     _socketService.onDisconnect((_) {
@@ -230,6 +246,11 @@ class ConnectionProvider extends ChangeNotifier {
       'socketConnected': _socketService.isConnected,
     });
     _reconnectManager.resetAttempts();
+
+    // Local-plaintext maintenance, ordered deliberately. Runs HERE because the
+    // socketReady listener has just observed the server clock, and the sweep
+    // refuses to destroy anything without a fresh one.
+    unawaited(_runLocalPlaintextMaintenance());
     _socketService.getConversations();
     _socketService.getFriendRequests();
     _socketService.getFriends();
@@ -260,6 +281,28 @@ class ConnectionProvider extends ChangeNotifier {
     Future.delayed(const Duration(milliseconds: 900), () {
       _messagingProvider?.retryDecryptActiveConversation();
     });
+  }
+
+  /// Retired ids, then the purge backlog, then the expiry/retention sweep.
+  ///
+  /// Order matters:
+  ///   1. retired ids first, so a history pass can never try to decrypt a row
+  ///      whose plaintext retention already destroyed — that would surface as
+  ///      "[Decryption failed]" for something the app did deliberately;
+  ///   2. the backlog next, so a delete interrupted by a tab close or a refused
+  ///      write finishes now instead of leaving plaintext behind for good;
+  ///   3. the sweep last, once the clock is known fresh.
+  Future<void> _runLocalPlaintextMaintenance() async {
+    final encryption = _encryptionProvider;
+    if (encryption == null) return;
+    try {
+      await encryption.loadRetiredIds();
+      await encryption.drainPurgeBacklog();
+      await encryption.sweepDestroyablePlaintext();
+    } catch (_) {
+      // Never let maintenance break connect. A failure means the residue
+      // survives to the next socketReady, which is the safe direction.
+    }
   }
 
   /// Updates reconnect + messaging token after AuthProvider refreshes JWT (no socket reconnect).

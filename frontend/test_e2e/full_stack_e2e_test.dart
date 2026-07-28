@@ -10,7 +10,7 @@
 //
 // What it proves, over the REAL wire (REST auth -> Socket.IO -> ChatGateway ->
 // DTO validation -> Postgres -> broadcast) with REAL libsignal on both ends:
-//   1. register -> socketReady -> WS key upload for two fresh accounts
+//   1. register -> socketReady (parseable, plausible serverTime) -> WS key upload
 //   2. friend request/accept -> conversation open
 //   3. first message is PreKey (3:), server stores only '[encrypted]',
 //      recipient decrypts the exact plaintext
@@ -58,6 +58,31 @@ void main() {
       reason: 'ciphertext must be "{type}:{base64}"',
     );
     return int.parse(ciphertext.substring(0, ciphertext.indexOf(':')));
+  }
+
+  /// Pins the server clock field which protects irreversible expiry purges.
+  void expectSocketReadyServerTime(dynamic payload, String clientLabel) {
+    expect(payload, isA<Map>(),
+        reason: '$clientLabel socketReady must carry an object payload');
+    final serverTime = (payload as Map)['serverTime'];
+    expect(serverTime, isA<String>(),
+        reason: '$clientLabel socketReady.serverTime must be a string');
+
+    final serverTimeString = serverTime as String;
+    expect(serverTimeString, isNotEmpty,
+        reason: '$clientLabel socketReady.serverTime must not be empty');
+    final parsed = DateTime.tryParse(serverTimeString);
+    expect(parsed, isNotNull,
+        reason:
+            '$clientLabel socketReady.serverTime must be a parseable ISO-8601 instant');
+    expect(parsed!.isUtc, isTrue,
+        reason: '$clientLabel socketReady.serverTime must be UTC');
+    expect(
+      parsed.difference(DateTime.now().toUtc()).abs(),
+      lessThan(const Duration(minutes: 5)),
+      reason:
+          '$clientLabel socketReady.serverTime must be close to the test machine clock',
+    );
   }
 
   /// Sends [content] from [sender] to [recipient] and asserts the full wire
@@ -118,7 +143,8 @@ void main() {
     await bob.registerFresh();
 
     // 2. Real sockets, authenticated via handshake auth token.
-    await alice.connectSocket();
+    final aliceSocketReady = await alice.connectSocket();
+    expectSocketReadyServerTime(aliceSocketReady, alice.label);
     await bob.connectSocket();
 
     // 3. Signal identity + key bundle upload (WS, like EncryptionProvider).

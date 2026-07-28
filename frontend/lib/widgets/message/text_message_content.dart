@@ -3,6 +3,7 @@ import 'package:url_launcher/url_launcher.dart';
 import '../../constants/app_constants.dart';
 import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
+import '../../providers/messaging_provider.dart' show kRetiredMessageLabel;
 import '../../services/link_preview_service.dart';
 import '../../utils/linkify.dart';
 import '../../theme/rpg_theme.dart';
@@ -63,6 +64,9 @@ class _TextMessageContentState extends State<TextMessageContent> {
   ///     stayed unresolved falls back to the real sentinel instead of claiming
   ///     to still be working.
   String _displayBody(BuildContext context) {
+    if (widget.message.content == kRetiredMessageLabel) {
+      return AppLocalizations.of(context).messageNoLongerStoredOnThisDevice;
+    }
     if (!widget.decryptInProgress) return widget.message.content;
     // displayAsEncryptedPlaceholder is the model's own predicate: ciphertext
     // present AND content still the "[encrypted]" sentinel. Reused rather than

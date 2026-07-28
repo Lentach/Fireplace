@@ -68,6 +68,22 @@ void main() {
     });
   });
 
+  group('mayDestroyExpiredPlaintext', () {
+    test('requires a confirmed server clock after the expiry grace', () {
+      final deadline = DateTime.utc(2026, 5, 1);
+      final message = _msg(expiresAt: deadline);
+
+      expect(mayDestroyExpiredPlaintext(message, null), isFalse);
+      expect(
+        mayDestroyExpiredPlaintext(
+          message,
+          deadline.add(kExpiryPurgeGrace + const Duration(seconds: 1)),
+        ),
+        isTrue,
+      );
+    });
+  });
+
   group('splitDisappearingSeconds / combineDisappearingSeconds', () {
     test('1 day splits to 1/0/0/0', () {
       final parts = splitDisappearingSeconds(86400);

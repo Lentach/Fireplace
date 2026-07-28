@@ -191,7 +191,9 @@ void main() {
       await service.savePendingSendRecord('2:c3', {'content': 'three'});
       expect(await service.peekPendingSendRecord('2:c3'), isNotNull);
 
-      await service.clearDecryptedContentCache();
+      final result = await service.clearDecryptedContentCache();
+      expect(result.removed, 1);
+      expect(result.isComplete, isTrue);
 
       expect(await service.peekPendingSendRecord('2:c3'), isNull);
     });

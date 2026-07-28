@@ -75,6 +75,7 @@ void main() {
       expect(await limited.getDecryptedContent(1001), isNull);
       expect((await limited.getDecryptedContent(1002))!['content'], 'middle');
       expect((await limited.getDecryptedContent(1003))!['content'], 'newest');
+      expect(await limited.retiredMessageIds(), contains(1001));
     });
 
     test('saveDecryptedContent prunes legacy secure-storage decrypted entries', () async {
@@ -190,9 +191,10 @@ void main() {
     test('clearDecryptedContentCache removes plaintext cache without deleting keys', () async {
       await service.saveDecryptedContent(1005, {'content': 'Local plaintext'});
 
-      final removed = await service.clearDecryptedContentCache();
+      final result = await service.clearDecryptedContentCache();
 
-      expect(removed, 1);
+      expect(result.removed, 1);
+      expect(result.isComplete, isTrue);
       expect(await service.getDecryptedContent(1005), isNull);
       expect(service.isInitialized, isTrue);
       expect(await service.getIdentityFingerprint(), isNotNull);
@@ -268,6 +270,173 @@ void main() {
         await secureStorage.read(key: 'e2e_42_identity_key_pair'),
         isNull,
       );
+    });
+    test('stored records retain payload and lifecycle metadata', () async {
+      final createdAt = DateTime.utc(2026, 1, 2, 3, 4, 5);
+      final expiresAt = createdAt.add(const Duration(hours: 1));
+
+      await service.saveDecryptedContent(
+        3001,
+        {'content': 'metadata payload', 'messageType': 'TEXT'},
+        conversationId: 77,
+        createdAt: createdAt,
+        expiresAt: expiresAt,
+        disappearAfterSeconds: 90,
+      );
+
+      final record = await service.getDecryptedContent(3001);
+      expect(record!['content'], 'metadata payload');
+      expect(record['messageType'], 'TEXT');
+      expect(record['_cid'], 77);
+      expect(record['_savedAt'], isA<int>());
+      expect(record['_createdAt'], createdAt.millisecondsSinceEpoch);
+      expect(record['_expiresAt'], expiresAt.millisecondsSinceEpoch);
+      expect(record['_disappearAfter'], 90);
+    });
+
+    test('per-id purge removes decrypted and raw records idempotently', () async {
+      const id = 3002;
+      const decryptedKey = 'e2e_42_decrypted_$id';
+      const rawKey = 'e2e_42_decrypt_raw_v1_$id';
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(decryptedKey, jsonEncode({'content': 'secret'}));
+      await prefs.setString(rawKey, jsonEncode({'content': 'raw secret'}));
+
+      final first = await service.removeDecryptedContent([id]);
+
+      expect(first.removed, 1);
+      expect(first.isComplete, isTrue);
+      expect(prefs.containsKey(decryptedKey), isFalse);
+      expect(prefs.containsKey(rawKey), isFalse);
+
+      final second = await service.removeDecryptedContent([id]);
+      expect(second.removed, 0);
+      expect(second.isComplete, isTrue);
+    });
+
+    test('conversation purge lookup scans every saved record', () async {
+      await service.saveDecryptedContent(
+        3011,
+        {'content': 'first'},
+        conversationId: 71,
+      );
+      await service.saveDecryptedContent(
+        3012,
+        {'content': 'second'},
+        conversationId: 71,
+      );
+      await service.saveDecryptedContent(
+        3013,
+        {'content': 'other conversation'},
+        conversationId: 72,
+      );
+
+      expect(await service.messageIdsForConversations([71]), {3011, 3012});
+    });
+
+    test('narrower rewrites preserve conversation metadata', () async {
+      final expiresAt = DateTime.utc(2026, 7, 1);
+      await service.saveDecryptedContent(
+        3021,
+        {'content': 'first decrypt'},
+        conversationId: 81,
+        expiresAt: expiresAt,
+      );
+      await service.saveDecryptedContent(3021, {'content': '[Decryption failed]'});
+
+      expect(await service.messageIdsForConversations([81]), {3021});
+      final record = await service.getDecryptedContent(3021);
+      expect(record!['content'], '[Decryption failed]');
+      expect(record['_expiresAt'], expiresAt.millisecondsSinceEpoch);
+    });
+
+    test('expiry sweep honors grace and never-read fallback', () async {
+      final serverNow = DateTime.now().toUtc();
+      await service.saveDecryptedContent(
+        3031,
+        {'content': 'past grace'},
+        expiresAt: serverNow.subtract(const Duration(minutes: 5, seconds: 1)),
+      );
+      await service.saveDecryptedContent(
+        3032,
+        {'content': 'inside grace'},
+        expiresAt: serverNow.subtract(const Duration(minutes: 4, seconds: 59)),
+      );
+      await service.saveDecryptedContent(
+        3033,
+        {'content': 'never read'},
+        createdAt: serverNow.subtract(
+          const Duration(days: 1, minutes: 5, seconds: 1),
+        ),
+        disappearAfterSeconds: 60,
+      );
+      await service.saveDecryptedContent(3034, {'content': 'never expires'});
+
+      final due = await service.destroyableMessageIds(
+        serverNow: serverNow,
+        expiryGrace: const Duration(minutes: 5),
+      );
+
+      expect(due.expired, containsAll(<int>{3031, 3033}));
+      expect(due.expired, isNot(contains(3032)));
+      expect(due.expired, isNot(contains(3034)));
+    });
+
+    test('retention sweep holds future and legacy records', () async {
+      final serverNow = DateTime.utc(2026, 7, 1);
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(
+        'e2e_42_decrypted_3041',
+        jsonEncode({
+          'content': 'old record',
+          '_savedAt': serverNow
+              .subtract(EncryptionService.retentionWindow + const Duration(seconds: 1))
+              .millisecondsSinceEpoch,
+        }),
+      );
+      await prefs.setString(
+        'e2e_42_decrypted_3042',
+        jsonEncode({
+          'content': 'future record',
+          '_savedAt': serverNow
+              .add(const Duration(days: 1))
+              .millisecondsSinceEpoch,
+        }),
+      );
+      await prefs.setString(
+        'e2e_42_decrypted_3043',
+        jsonEncode({'content': 'legacy record'}),
+      );
+
+      final due = await service.destroyableMessageIds(
+        serverNow: serverNow,
+        expiryGrace: const Duration(minutes: 5),
+      );
+
+      expect(due.retired, {3041});
+      expect(due.expired, isEmpty);
+      expect(due.retired, isNot(contains(3042)));
+      expect(due.retired, isNot(contains(3043)));
+    });
+
+    test('purge backlog keeps unresolved work until every item is resolved',
+        () async {
+      await service.enqueuePurge([3051, 3052], ['2:first', '2:second']);
+      final initial = await service.purgeBacklog();
+      expect(initial.ids, {3051, 3052});
+      expect(initial.ciphertexts, {'2:first', '2:second'});
+
+      await service.resolvePurged([3051], ['2:first']);
+      final remaining = await service.purgeBacklog();
+      expect(remaining.ids, {3052});
+      expect(remaining.ciphertexts, {'2:second'});
+
+      await service.resolvePurged([3052], ['2:second']);
+      final cleared = await service.purgeBacklog();
+      expect(cleared.ids, isEmpty);
+      expect(cleared.ciphertexts, isEmpty);
+      final prefs = await SharedPreferences.getInstance();
+      expect(prefs.containsKey('e2e_42_purge_pending_v1'), isFalse);
     });
   });
 }

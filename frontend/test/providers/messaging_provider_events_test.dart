@@ -6,11 +6,18 @@ import 'package:fireplace/models/message_model.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/providers/messaging_provider.dart';
+import 'package:fireplace/services/encryption_service.dart';
 import 'package:fireplace/utils/e2e_envelope.dart';
 import 'package:flutter_test/flutter_test.dart';
 
 /// Encryption fake that succeeds immediately — happy send path.
 class _WorkingEncryption extends EncryptionProvider {
+  final List<Set<int>> localPurges = <Set<int>>[];
+  final List<Set<int>> conversationPurges = <Set<int>>[];
+  final Map<int, DateTime> stampedExpiries = <int, DateTime>{};
+  final List<int> retiredChecks = <int>[];
+  var loadRetiredIdsCalls = 0;
+
   @override
   bool get isE2EReady => true;
 
@@ -38,8 +45,46 @@ class _WorkingEncryption extends EncryptionProvider {
   @override
   Future<void> saveDecryptedContent(
     int messageId,
-    Map<String, dynamic> data,
-  ) async {}
+    Map<String, dynamic> data, {
+    int? conversationId,
+    DateTime? createdAt,
+    DateTime? expiresAt,
+    int? disappearAfterSeconds,
+  }) async {}
+
+  @override
+  Future<void> stampRecordExpiry(int messageId, DateTime expiresAt) async {
+    stampedExpiries[messageId] = expiresAt;
+  }
+
+  @override
+  bool isRetired(int messageId) {
+    retiredChecks.add(messageId);
+    return false;
+  }
+
+  @override
+  Future<void> loadRetiredIds() async {
+    loadRetiredIdsCalls++;
+  }
+
+  @override
+  Future<PlaintextPurgeResult> purgeLocalPlaintext(
+    Iterable<int> messageIds, {
+    Iterable<String> ciphertexts = const <String>[],
+  }) async {
+    localPurges.add(messageIds.toSet());
+    return const PlaintextPurgeResult.empty();
+  }
+
+  @override
+  Future<PlaintextPurgeResult> purgeConversations(
+    Iterable<int> conversationIds, {
+    Iterable<String> ciphertexts = const <String>[],
+  }) async {
+    conversationPurges.add(conversationIds.toSet());
+    return const PlaintextPurgeResult.empty();
+  }
 }
 
 /// Encryption fake whose ensureSession never completes — rows stay SENDING.
@@ -234,6 +279,39 @@ void main() {
           'data': {'messageId': 50, 'emoji': '🔥'},
         },
       ]);
+    });
+  });
+
+  group('plaintext purge events', () {
+    test('messageDeleted drops the row and requests a per-id purge', () {
+      final encryption = _WorkingEncryption();
+      wire(encryption);
+      provider.onMessageHistory({
+        'conversationId': 10,
+        'messages': [_plainIncomingJson(90)],
+      });
+
+      provider.onMessageDeleted({
+        'messageId': 90,
+        'conversationId': 10,
+      });
+
+      expect(provider.messages, isEmpty);
+      expect(encryption.localPurges, [{90}]);
+    });
+
+    test('unfriend removes rows and requests a conversation purge', () {
+      final encryption = _WorkingEncryption();
+      wire(encryption);
+      provider.onMessageHistory({
+        'conversationId': 10,
+        'messages': [_plainIncomingJson(91)],
+      });
+
+      provider.onConversationsRemovedForUser([10]);
+
+      expect(provider.messages, isEmpty);
+      expect(encryption.conversationPurges, [{10}]);
     });
   });
 

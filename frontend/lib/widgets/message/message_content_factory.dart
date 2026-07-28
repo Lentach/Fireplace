@@ -22,6 +22,15 @@ class MessageContentFactory {
     required Color textColor,
     required double contentAreaWidth,
   }) {
+    if (message.content == kRetiredMessageLabel) {
+      return TextMessageContent(
+        message: message,
+        isMine: isMine,
+        textColor: textColor,
+        isDark: isDark,
+        maxWidth: contentAreaWidth,
+      );
+    }
     switch (message.messageType) {
       case MessageType.voice:
         return VoiceMessageContent(message: message, isMine: isMine);

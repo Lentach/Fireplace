@@ -66,9 +66,10 @@ void main() {
           'content': 'Cached message',
         });
 
-        final removed = await provider.clearLocalDecryptedContentCache();
+        final result = await provider.clearLocalDecryptedContentCache();
 
-        expect(removed, 1);
+        expect(result.removed, 1);
+        expect(result.isComplete, isTrue);
         expect(await provider.getDecryptedContent(1003), isNull);
         expect(provider.isE2EReady, isTrue);
         expect(await provider.getIdentityFingerprint(), isNotNull);

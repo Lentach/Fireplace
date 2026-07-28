@@ -67,8 +67,12 @@ class _ThrowingEncryption extends EncryptionProvider {
   @override
   Future<void> saveDecryptedContent(
     int messageId,
-    Map<String, dynamic> data,
-  ) async {
+    Map<String, dynamic> data, {
+    int? conversationId,
+    DateTime? createdAt,
+    DateTime? expiresAt,
+    int? disappearAfterSeconds,
+  }) async {
     final copy = Map<String, dynamic>.from(data);
     durableWrites.add(MapEntry(messageId, copy));
     persisted[messageId] = copy;

@@ -37,7 +37,14 @@ class _FakeEnc extends EncryptionProvider {
   Future<Map<String, dynamic>?> getDecryptedContent(int id) async =>
       persisted[id];
   @override
-  Future<void> saveDecryptedContent(int id, Map<String, dynamic> data) async {
+  Future<void> saveDecryptedContent(
+    int id,
+    Map<String, dynamic> data, {
+    int? conversationId,
+    DateTime? createdAt,
+    DateTime? expiresAt,
+    int? disappearAfterSeconds,
+  }) async {
     persisted[id] = data;
   }
 }

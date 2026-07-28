@@ -3,9 +3,12 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 
 import '../models/message_model.dart';
+import '../services/audio_cache_store.dart';
 import '../services/encryption_service.dart';
+import '../services/server_clock.dart';
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
+import '../utils/message_expiry.dart' show kExpiryPurgeGrace;
 import '../utils/storage_persist.dart';
 
 /// EncryptionProvider — owns all E2E encryption state, initialization,
@@ -30,6 +33,10 @@ class EncryptionProvider extends ChangeNotifier {
   /// Cache of decrypted messages by id. Used when history decrypt hits
   /// DuplicateMessageException (session already advanced by live messages).
   final Map<int, MessageModel> _decryptedContentCache = {};
+
+  /// Ids whose plaintext retention destroyed while the server may STILL serve
+  /// the row. Mirrors the persisted set; see [isRetired].
+  final Set<int> _retiredIds = {};
 
   String? _error;
 
@@ -229,9 +236,87 @@ class EncryptionProvider extends ChangeNotifier {
   /// Silent on failure (matches service behavior).
   Future<void> saveDecryptedContent(
     int messageId,
-    Map<String, dynamic> data,
-  ) async {
-    await _encryptionService.saveDecryptedContent(messageId, data);
+    Map<String, dynamic> data, {
+    int? conversationId,
+    DateTime? createdAt,
+    DateTime? expiresAt,
+    int? disappearAfterSeconds,
+  }) async {
+    await _encryptionService.saveDecryptedContent(
+      messageId,
+      data,
+      conversationId: conversationId,
+      createdAt: createdAt,
+      expiresAt: expiresAt,
+      disappearAfterSeconds: disappearAfterSeconds,
+    );
+  }
+
+  /// Keep a stored record's expiry deadline authoritative after the server
+  /// assigns one. Delegates to [EncryptionService.stampRecordExpiry].
+  Future<void> stampRecordExpiry(int messageId, DateTime expiresAt) async {
+    await _encryptionService.stampRecordExpiry(messageId, expiresAt);
+  }
+
+  /// True when [messageId]'s plaintext was destroyed by RETENTION while the
+  /// server may still serve the row.
+  ///
+  /// Such a row must never enter the decrypt path: its ratchet key was consumed
+  /// at first decrypt, so a retry lands on DuplicateMessage and renders as
+  /// "[Decryption failed]" — a data-loss alarm for something the app did on
+  /// purpose. Callers show a deliberate "no longer stored on this device"
+  /// state instead.
+  bool isRetired(int messageId) => _retiredIds.contains(messageId);
+
+  /// Load the persisted retired-id set into memory. Called once per session,
+  /// before the first history pass can try to decrypt anything.
+  Future<void> loadRetiredIds() async {
+    final ids = await _encryptionService.retiredMessageIds();
+    _retiredIds
+      ..clear()
+      ..addAll(ids);
+  }
+
+  /// Destroy the local plaintext for every message stored under
+  /// [conversationIds] — not only the rows currently loaded in memory.
+  Future<PlaintextPurgeResult> purgeConversations(
+    Iterable<int> conversationIds, {
+    Iterable<String> ciphertexts = const <String>[],
+  }) async {
+    final ids = await _encryptionService.messageIdsForConversations(
+      conversationIds,
+    );
+    if (ids.isEmpty && ciphertexts.isEmpty) {
+      return const PlaintextPurgeResult.empty();
+    }
+    return purgeLocalPlaintext(ids, ciphertexts: ciphertexts);
+  }
+
+  /// Destroy plaintext whose message has expired, or aged past retention.
+  ///
+  /// No-op unless the server clock can be confirmed. Both rules destroy the
+  /// only copy of a message, so "cannot confirm" must never become "go ahead":
+  /// a device with a wrong clock would otherwise wipe live messages, or its
+  /// whole store, with nothing to restore from.
+  Future<void> sweepDestroyablePlaintext() async {
+    final serverNow = ServerClock.instance.estimatedNow;
+    if (serverNow == null) return;
+
+    final due = await _encryptionService.destroyableMessageIds(
+      serverNow: serverNow,
+      expiryGrace: kExpiryPurgeGrace,
+    );
+    if (due.expired.isEmpty && due.retired.isEmpty) return;
+
+    // Mark retired BEFORE destroying. Retention removes plaintext for rows the
+    // server still serves, so losing the marking would turn a deliberate state
+    // into an undecryptable "[Decryption failed]" the user reads as corruption.
+    if (due.retired.isNotEmpty) {
+      await _encryptionService.markRetired(due.retired);
+      _retiredIds.addAll(due.retired);
+    }
+    await purgeLocalPlaintext({...due.expired, ...due.retired});
+    notifyListeners();
   }
 
   /// Retrieve persisted decrypted message content, or null if not cached.
@@ -272,19 +357,125 @@ class EncryptionProvider extends ChangeNotifier {
     return _encryptionService.takePendingSendRecord(ciphertext);
   }
 
-  /// Clear locally cached decrypted plaintext without deleting Signal keys.
-  Future<int> clearLocalDecryptedContentCache() async {
-    final removed = await _encryptionService.clearDecryptedContentCache();
+  /// Destroy every locally persisted plaintext record for this account.
+  ///
+  /// IRREVERSIBLE — see [EncryptionService.clearDecryptedContentCache]. Signal
+  /// identity, sessions and pre-keys survive; only readable message content
+  /// dies. Callers MUST check [LocalHistoryWipeResult.isComplete] before
+  /// reporting success: a refused commit leaves plaintext on disk, and this is
+  /// the primitive behind a button that promises the opposite.
+  Future<LocalHistoryWipeResult> clearLocalDecryptedContentCache() async {
+    final result = await _encryptionService.clearDecryptedContentCache();
     _decryptedContentCache.clear();
     // Scope on record: plaintext cache only — identity, sessions and pre-keys
     // are untouched. If a user report says "cleared cache" and sessions died,
     // it was NOT this path (browser site-data clear / reinstall wipes those).
     _e2eFlowLog('CACHE_CLEAR', {
       'scope': 'decryptedContent',
-      'removed': removed,
+      'removed': result.removed,
+      'failed': result.failedKeys.length,
     });
     notifyListeners();
-    return removed;
+    return result;
+  }
+
+  /// Destroy the persisted plaintext for [messageIds] and the outgoing
+  /// pending-send records for [ciphertexts].
+  ///
+  /// IRREVERSIBLE — see [EncryptionService.removeDecryptedContent]. The RAM
+  /// cache is dropped FIRST so no in-flight reader can re-persist a purged id
+  /// from memory while the disk work is still running.
+  ///
+  /// [ciphertexts] exists because the sender's own outgoing plaintext is keyed
+  /// by ciphertext rather than by message id, so an id-only purge would leave
+  /// it readable. Callers should pass `MessageModel.encryptedContent` for
+  /// every row they purge, captured BEFORE the row leaves local state.
+  Future<PlaintextPurgeResult> purgeLocalPlaintext(
+    Iterable<int> messageIds, {
+    Iterable<String> ciphertexts = const <String>[],
+  }) async {
+    final ids = messageIds.toSet();
+    final cts = ciphertexts.toSet();
+
+    // Write the obligation down FIRST. Everything below can be interrupted by
+    // a tab close or a refused commit, and once the row is gone from memory
+    // and from the server nothing else would ever come looking for its
+    // residue. The backlog is what makes this at-least-once.
+    final recorded = await _encryptionService.enqueuePurge(ids, cts);
+
+    final result = await _runPurge(ids, cts);
+    if (result.isComplete) {
+      await _encryptionService.resolvePurged(ids, cts);
+    } else if (!recorded) {
+      // Worst case, and worth separating from an ordinary failure: the purge
+      // did not finish AND the obligation was never written down, so nothing
+      // will come back for it. "Failed, will retry" and "failed, now lost" are
+      // very different for a promise that plaintext eventually dies.
+      _e2eFlowLog('PLAINTEXT_PURGE_LOST', {
+        'requested': ids.length,
+        'failedIds': result.failedIds.length,
+      });
+    }
+    return result;
+  }
+
+  /// Retry every purge that was recorded but never confirmed complete.
+  ///
+  /// Runs at startup and after each `socketReady`. Entries survive until a
+  /// purge confirms, so a device that was closed mid-delete finishes the job
+  /// on its next launch rather than keeping the plaintext forever.
+  Future<void> drainPurgeBacklog() async {
+    final backlog = await _encryptionService.purgeBacklog();
+    if (backlog.ids.isEmpty && backlog.ciphertexts.isEmpty) return;
+    final result = await _runPurge(backlog.ids, backlog.ciphertexts);
+    final settledIds = backlog.ids.difference(result.failedIds);
+    final settledCiphertexts = backlog.ciphertexts.difference(
+      result.failedCiphertexts,
+    );
+    await _encryptionService.resolvePurged(settledIds, settledCiphertexts);
+    _e2eFlowLog('PURGE_BACKLOG_DRAINED', {
+      'owed': backlog.ids.length,
+      'settled': settledIds.length,
+    });
+  }
+
+  Future<PlaintextPurgeResult> _runPurge(
+    Set<int> ids,
+    Set<String> ciphertexts,
+  ) async {
+    for (final id in ids) {
+      _decryptedContentCache.remove(id);
+    }
+
+    final failedCiphertexts = <String>{};
+    for (final ciphertext in ciphertexts) {
+      if (!await _encryptionService.removePendingSendRecord(ciphertext)) {
+        failedCiphertexts.add(ciphertext);
+      }
+    }
+
+    final disk = await _encryptionService.removeDecryptedContent(ids);
+
+    // Voice notes are cached DECRYPTED on native, keyed by the same message
+    // id. Purging them here rather than at the call sites means no caller can
+    // destroy a message's text and leave its audio readable — and that
+    // directory is swept into iCloud / Android auto-backup.
+    final failedAudio = await AudioCacheStore.remove(ids);
+
+    final result = PlaintextPurgeResult(
+      removed: disk.removed,
+      failedIds: {...disk.failedIds, ...failedAudio},
+      failedCiphertexts: failedCiphertexts,
+    );
+    if (!result.isComplete) {
+      _e2eFlowLog('PLAINTEXT_PURGE_INCOMPLETE', {
+        'requested': ids.length,
+        'removed': result.removed,
+        'failedIds': result.failedIds.length,
+        'failedCiphertexts': result.failedCiphertexts.length,
+      });
+    }
+    return result;
   }
 
   /// Clear a pending pre-key fetch for [recipientId] (e.g. on send failure

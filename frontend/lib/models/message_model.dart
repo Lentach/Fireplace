@@ -92,7 +92,8 @@ class MessageModel {
       content.isNotEmpty &&
       content != '[encrypted]' &&
       content != '[Decryption failed]' &&
-      content != '[Encryption not initialized]';
+      content != '[Encryption not initialized]' &&
+      content != '[Message no longer stored on this device]';
 
   MessageModel({
     required this.id,

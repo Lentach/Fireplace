@@ -8,6 +8,7 @@ import '../theme/rpg_theme.dart';
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
 import '../widgets/audio/playback_controller.dart';
+import '../widgets/glass/glass_dialog.dart';
 import '../widgets/glass/glass_top_bar.dart';
 import '../widgets/settings_console.dart';
 import '../widgets/top_snackbar.dart';
@@ -23,6 +24,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
   String? _fingerprint;
   bool _loading = true;
   bool _clearingLocalCache = false;
+  bool _deletingAllLocalHistory = false;
   bool _diagLogUnlocked = false;
   String _diagFilter = 'current';
 
@@ -183,6 +185,7 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
             ),
             SettingsSectionCaption(label: l10n.settingsSectionPreferences),
             _buildLocalCacheCard(context),
+            _buildDeleteAllLocalHistoryCard(context),
             if (_loading || _fingerprint != null) ...[
               SettingsSectionCaption(label: l10n.yourIdentityFingerprint),
               if (!_loading && _fingerprint != null) ...[
@@ -293,6 +296,59 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
                     const SizedBox(width: 8),
                   ],
                   Text(l10n.clearLocalMessageCache),
+                ],
+              ),
+            ),
+          ),
+        ),
+      ],
+    );
+  }
+  Widget _buildDeleteAllLocalHistoryCard(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
+    final l10n = AppLocalizations.of(context);
+
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        ConsoleInfoRow(
+          glyph: ConsoleGlyph.deleteNode,
+          title: l10n.deleteAllLocalHistoryTitle,
+          body: l10n.deleteAllLocalHistoryDescription,
+        ),
+        Padding(
+          padding: EdgeInsets.fromLTRB(
+            kConsoleHexLeft + kConsoleHexWidth + 12,
+            0,
+            16,
+            12,
+          ),
+          child: SizedBox(
+            height: 48,
+            child: OutlinedButton(
+              onPressed: _deletingAllLocalHistory
+                  ? null
+                  : _deleteAllLocalHistory,
+              style: OutlinedButton.styleFrom(
+                foregroundColor: colorScheme.error,
+                side: BorderSide(color: colorScheme.error),
+              ),
+              child: Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  if (_deletingAllLocalHistory) ...[
+                    SizedBox(
+                      width: 16,
+                      height: 16,
+                      child: CircularProgressIndicator(
+                        strokeWidth: 2,
+                        color: colorScheme.error,
+                      ),
+                    ),
+                    const SizedBox(width: 8),
+                  ],
+                  Text(l10n.deleteAllLocalHistoryButton),
                 ],
               ),
             ),
@@ -469,6 +525,75 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
         ],
       ),
     );
+  }
+
+  Future<bool> _confirmAction({
+    required String title,
+    required String message,
+    required String confirmLabel,
+  }) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (dialogContext) {
+        final colorScheme = Theme.of(dialogContext).colorScheme;
+        final l10n = AppLocalizations.of(dialogContext);
+
+        return GlassDialog(
+          title: Text(title),
+          content: Text(message),
+          actions: [
+            TextButton(
+              onPressed: () => Navigator.of(dialogContext).pop(false),
+              child: Text(l10n.cancel),
+            ),
+            FilledButton(
+              onPressed: () => Navigator.of(dialogContext).pop(true),
+              style: FilledButton.styleFrom(
+                backgroundColor: colorScheme.error,
+                foregroundColor: colorScheme.onError,
+              ),
+              child: Text(confirmLabel),
+            ),
+          ],
+        );
+      },
+    );
+    if (!mounted) return false;
+    return confirmed ?? false;
+  }
+
+  Future<void> _deleteAllLocalHistory() async {
+    final l10n = AppLocalizations.of(context);
+    final confirmed = await _confirmAction(
+      title: l10n.deleteAllLocalHistoryDialogTitle,
+      message: l10n.deleteAllLocalHistoryDialogBody,
+      confirmLabel: l10n.deleteAllLocalHistoryConfirm,
+    );
+    if (!mounted) return;
+    if (!confirmed) return;
+
+    final encryptionProvider = context.read<EncryptionProvider>();
+    setState(() => _deletingAllLocalHistory = true);
+    try {
+      final result = await encryptionProvider.clearLocalDecryptedContentCache();
+      if (!mounted) return;
+      await PlaybackController.clearAudioCache();
+      if (!mounted) return;
+
+      showTopSnackBar(
+        context,
+        result.isComplete
+            ? l10n.snackbarAllLocalHistoryDeleted
+            : l10n.snackbarFailedToDeleteAllLocalHistory,
+      );
+    } catch (_) {
+      if (!mounted) return;
+      showTopSnackBar(context, l10n.snackbarFailedToDeleteAllLocalHistory);
+    } finally {
+      if (mounted) {
+        setState(() => _deletingAllLocalHistory = false);
+      }
+    }
   }
 
   Future<void> _clearLocalMessageCache() async {

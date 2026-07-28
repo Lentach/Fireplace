@@ -49,6 +49,12 @@
   "localMessageCache": "Lokalna pamięć wiadomości",
   "localMessageCacheDescription": "To urządzenie może przechowywać lokalnie pobrane wiadomości głosowe. Wyczyszczenie usuwa tylko pobrane audio; nie usuwa czytelnej historii, kluczy mediów, kluczy szyfrowania, sesji ani pamięci przeglądarki.",
   "clearLocalMessageCache": "Wyczyść pobrane audio",
+  "deleteAllLocalHistoryTitle": "Usuń wszystkie wiadomości z tego urządzenia",
+  "deleteAllLocalHistoryDescription": "Trwale usuwa z tego urządzenia wszystkie zapisane wiadomości, w tym pobrane notatki głosowe. Nie usuwa konta, wiadomości z urządzenia drugiej osoby ani kluczy i sesji szyfrowania. Usuniętych wiadomości nie można odzyskać ani przywrócić z serwera.",
+  "deleteAllLocalHistoryButton": "Usuń trwale wszystkie lokalne wiadomości",
+  "deleteAllLocalHistoryDialogTitle": "Trwale usunąć wszystkie lokalne wiadomości?",
+  "deleteAllLocalHistoryDialogBody": "Ta operacja trwale usuwa z tego urządzenia wszystkie wiadomości i pobrane notatki głosowe. Nie można ich odzyskać ani przywrócić z serwera, ponieważ serwer przechowuje tylko zaszyfrowane dane. Twoje konto, klucze i sesje szyfrowania pozostaną bez zmian.",
+  "deleteAllLocalHistoryConfirm": "Usuń trwale",
   "yourIdentityFingerprint": "Twój odcisk tożsamości",
   "shareFingerprintHint": "To unikalna reprezentacja Twojego klucza szyfrowania.",
 
@@ -80,6 +86,7 @@
   "encryptedMessage": "Wiadomość zaszyfrowana",
   "decryptionFailed": "Odszyfrowanie nie powiodło się",
   "decryptingMessage": "Odszyfrowywanie…",
+  "messageNoLongerStoredOnThisDevice": "Ta wiadomość nie jest już przechowywana na tym urządzeniu.",
   "encryptionNotInitialized": "Szyfrowanie niezainicjowane",
   "identityDamagedTitle": "Klucze szyfrowania uszkodzone",
   "identityDamagedBody": "Brakuje części tożsamości szyfrowania tego urządzenia, więc nie można odszyfrować ani wysyłać wiadomości. Klucze NIE zostały odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby historię.",
@@ -298,6 +305,8 @@
   "snackbarFailedToLoadAudio": "Nie udało się wczytać dźwięku",
   "snackbarLocalMessageCacheCleared": "Lokalna pamięć wiadomości wyczyszczona",
   "snackbarFailedToClearLocalMessageCache": "Nie udało się wyczyścić lokalnej pamięci wiadomości",
+  "snackbarAllLocalHistoryDeleted": "Wszystkie wiadomości zapisane na tym urządzeniu zostały trwale usunięte",
+  "snackbarFailedToDeleteAllLocalHistory": "Nie udało się usunąć części wiadomości z tego urządzenia. Spróbuj ponownie.",
   "friendAcceptedYourRequest": "{name} zaakceptował(a) zaproszenie do znajomych",
   "@friendAcceptedYourRequest": {
     "placeholders": {

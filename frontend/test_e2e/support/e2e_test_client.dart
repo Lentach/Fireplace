@@ -264,9 +264,9 @@ class E2eClient {
     await events.next('oneTimePreKeysUploaded', reason: '$label OTPs');
   }
 
-  /// Connects the real Socket.IO client and waits for the server's
-  /// `socketReady` (auth complete) before returning.
-  Future<void> connectSocket() async {
+  /// Connects the real Socket.IO client, waits for the server's
+  /// `socketReady` (auth complete), and returns its payload.
+  Future<dynamic> connectSocket() async {
     socketService.connect(baseUrl: baseUrl, token: accessToken);
     for (final event in _trackedEvents) {
       socketService.on(event, (payload) => events.record(event, payload));
@@ -279,16 +279,19 @@ class E2eClient {
     socketService.socket!.on('connect_error', (e) {
       if (!connectError.isCompleted) connectError.complete(e);
     });
+    dynamic socketReadyPayload;
     try {
       final firstError = await Future.any<dynamic>([
-        events
-            .next('socketReady', reason: '$label socket auth')
-            .then((_) => null),
+        events.next('socketReady', reason: '$label socket auth').then((payload) {
+          socketReadyPayload = payload;
+          return null;
+        }),
         connectError.future,
       ]);
       if (firstError != null) {
         throw StateError('$label socket connect_error: $firstError');
       }
+      return socketReadyPayload;
     } finally {
       socketService.off('connect_error');
     }

@@ -164,6 +164,29 @@ class AppLocalizationsPl extends AppLocalizations {
   String get clearLocalMessageCache => 'Wyczyść pobrane audio';
 
   @override
+  String get deleteAllLocalHistoryTitle =>
+      'Usuń wszystkie wiadomości z tego urządzenia';
+
+  @override
+  String get deleteAllLocalHistoryDescription =>
+      'Trwale usuwa z tego urządzenia wszystkie zapisane wiadomości, w tym pobrane notatki głosowe. Nie usuwa konta, wiadomości z urządzenia drugiej osoby ani kluczy i sesji szyfrowania. Usuniętych wiadomości nie można odzyskać ani przywrócić z serwera.';
+
+  @override
+  String get deleteAllLocalHistoryButton =>
+      'Usuń trwale wszystkie lokalne wiadomości';
+
+  @override
+  String get deleteAllLocalHistoryDialogTitle =>
+      'Trwale usunąć wszystkie lokalne wiadomości?';
+
+  @override
+  String get deleteAllLocalHistoryDialogBody =>
+      'Ta operacja trwale usuwa z tego urządzenia wszystkie wiadomości i pobrane notatki głosowe. Nie można ich odzyskać ani przywrócić z serwera, ponieważ serwer przechowuje tylko zaszyfrowane dane. Twoje konto, klucze i sesje szyfrowania pozostaną bez zmian.';
+
+  @override
+  String get deleteAllLocalHistoryConfirm => 'Usuń trwale';
+
+  @override
   String get yourIdentityFingerprint => 'Twój odcisk tożsamości';
 
   @override
@@ -225,6 +248,10 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get decryptingMessage => 'Odszyfrowywanie…';
+
+  @override
+  String get messageNoLongerStoredOnThisDevice =>
+      'Ta wiadomość nie jest już przechowywana na tym urządzeniu.';
 
   @override
   String get encryptionNotInitialized => 'Szyfrowanie niezainicjowane';
@@ -808,6 +835,14 @@ class AppLocalizationsPl extends AppLocalizations {
   @override
   String get snackbarFailedToClearLocalMessageCache =>
       'Nie udało się wyczyścić lokalnej pamięci wiadomości';
+
+  @override
+  String get snackbarAllLocalHistoryDeleted =>
+      'Wszystkie wiadomości zapisane na tym urządzeniu zostały trwale usunięte';
+
+  @override
+  String get snackbarFailedToDeleteAllLocalHistory =>
+      'Nie udało się usunąć części wiadomości z tego urządzenia. Spróbuj ponownie.';
 
   @override
   String friendAcceptedYourRequest(String name) {

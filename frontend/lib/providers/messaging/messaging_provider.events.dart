@@ -58,6 +58,8 @@ extension MessagingEvents on MessagingProvider {
   /// Called by ConnectionProvider when conversationDeleted is received.
   /// Clears messages for the deleted conversation.
   void onConversationDeleted(int conversationId) {
+    // Collect BEFORE removing — see [_purgeConversationsLocally].
+    _purgeConversationsLocally([conversationId]);
     _messages.removeWhere((m) => m.conversationId == conversationId);
     notifyListeners();
     _conversationCache.remove(conversationId);
@@ -177,6 +179,16 @@ extension MessagingEvents on MessagingProvider {
       newExpiresAt = DateTime.parse(expiresAtRaw);
     }
 
+    // Keep the stored record's deadline authoritative. A read-mode
+    // disappearing message is persisted at DECRYPT time, before the server
+    // assigns `expiresAt`; this event is where the real deadline arrives.
+    // Without re-stamping, the sweep would fall back to the never-read rule
+    // and hold that plaintext up to a day past when it should be gone.
+    final encryption = _encryptionProvider;
+    if (newExpiresAt != null && encryption != null) {
+      unawaited(encryption.stampRecordExpiry(messageId, newExpiresAt));
+    }
+
     if (index != -1) {
       _messages[index] = _messages[index].copyWith(
         deliveryStatus: newStatus,
@@ -218,12 +230,88 @@ extension MessagingEvents on MessagingProvider {
     final m = data as Map<String, dynamic>;
     final conversationId = m['conversationId'] as int;
 
+    // Collect BEFORE removing — see [_purgeConversationsLocally].
+    _purgeConversationsLocally([conversationId]);
+
     // Clear messages from memory
     _messages.removeWhere((m) => m.conversationId == conversationId);
     _conversationsProvider?.updateLastMessage(conversationId, null);
 
     notifyListeners();
     _conversationCache.remove(conversationId);
+  }
+
+  /// Unfriend / block: destroy the local plaintext for [conversationIds] and
+  /// drop their rows.
+  ///
+  /// Previously nothing cleared these at all — removing a contact left their
+  /// decrypted history in memory AND on disk indefinitely, which is the widest
+  /// version of the bug this change exists to fix.
+  void onConversationsRemovedForUser(Iterable<int> conversationIds) {
+    final targets = conversationIds.toSet();
+    if (targets.isEmpty) return;
+    _purgeConversationsLocally(targets);
+    _messages.removeWhere((m) => targets.contains(m.conversationId));
+    for (final id in targets) {
+      _conversationCache.remove(id);
+    }
+    notifyListeners();
+  }
+
+  /// Destroy every persisted plaintext record this device holds for
+  /// [conversationIds] — including messages this session never loaded.
+  ///
+  /// The ids come from a scan of the store, keyed on the `_cid` stamped into
+  /// each record, NOT from `_messages`. That distinction is the whole point:
+  /// history pages in ~50 rows at a time while up to 2000 records persist
+  /// across sessions, so purging only the loaded rows would strand the rest
+  /// permanently — a cleared or unfriended message has no expiry, so no later
+  /// sweep would find it either.
+  ///
+  /// Ciphertexts still come from the loaded rows: the pending-send store is
+  /// keyed by ciphertext and only a live row carries one. Those records are few
+  /// and TTL-bounded, and the wipe action clears them outright.
+  void _purgeConversationsLocally(Iterable<int> conversationIds) {
+    final targets = conversationIds.toSet();
+    if (targets.isEmpty) return;
+
+    final ciphertexts = <String>{};
+    void collect(Iterable<MessageModel> rows) {
+      for (final msg in rows) {
+        if (!targets.contains(msg.conversationId)) continue;
+        final ciphertext = msg.encryptedContent;
+        if (ciphertext != null) ciphertexts.add(ciphertext);
+      }
+    }
+
+    collect(_messages);
+    for (final id in targets) {
+      final cached = _conversationCache[id];
+      if (cached != null) collect(cached);
+    }
+
+    final encryption = _encryptionProvider;
+    if (encryption == null) return;
+    // Safe to fire and forget: purgeConversations routes through
+    // purgeLocalPlaintext, which writes a durable backlog entry before it
+    // touches anything, so an interrupted purge is retried on the next launch.
+    _firePurge(encryption.purgeConversations(targets, ciphertexts: ciphertexts));
+  }
+
+  /// Start a purge without awaiting it, and without letting a failure escape as
+  /// an unhandled async error.
+  ///
+  /// These run from synchronous socket handlers, so there is nobody to await
+  /// them. A throw here would abandon the rest of the handler and surface as an
+  /// unhandled zone error rather than as a retry. Correctness does not depend on
+  /// this completing: the durable purge backlog is written before any store is
+  /// touched, so whatever fails is retried on the next `socketReady`.
+  void _firePurge(Future<void> purge) {
+    unawaited(
+      purge.catchError((Object error) {
+        E2ePersistentDiag.record('PLAINTEXT_PURGE_THREW', {'error': '$error'});
+      }),
+    );
   }
 
   void _handleMessageDeleted(dynamic data) {
@@ -233,6 +321,32 @@ extension MessagingEvents on MessagingProvider {
     final forEveryone = m['forEveryone'] as bool? ?? false;
 
     _deletedMessageIds.add(messageId);
+
+    // Take the ciphertext BEFORE the row leaves local state: it is the only
+    // key to the sender's own outgoing plaintext (pending-send records are
+    // keyed by ciphertext, not id), and the removeWhere below destroys the
+    // handle. Then destroy every local copy.
+    //
+    // Safe to make irreversible here, and irreversible is the point: the
+    // server row is already gone — hard-deleted for everyone, or filtered out
+    // of history by `hiddenByUserIds` for delete-for-me — so it can never be
+    // re-served and re-decrypted. No clock is involved, unlike expiry, where
+    // the row may still be live on the server.
+    //
+    // Fire-and-forget is safe only because purgeLocalPlaintext writes a
+    // durable backlog entry first; an interrupted purge is retried on the next
+    // launch instead of leaving plaintext nothing will ever look at again.
+    final ciphertext = _ciphertextFor(messageId, conversationId);
+    final encryption = _encryptionProvider;
+    if (encryption != null) {
+      _firePurge(
+        encryption.purgeLocalPlaintext(
+          [messageId],
+          ciphertexts: ciphertext == null ? const <String>[] : [ciphertext],
+        ),
+      );
+    }
+
     _messages.removeWhere((msg) => msg.id == messageId);
 
     // Update last message preview for conversation list
@@ -265,6 +379,28 @@ extension MessagingEvents on MessagingProvider {
         _updateCache(conversationId);
       }
     }
+  }
+
+  /// The ciphertext of [messageId] if the row is still in local state.
+  ///
+  /// Pending-send records — the sender's own outgoing plaintext — are keyed by
+  /// ciphertext, so this handle must be taken before the row is dropped.
+  ///
+  /// Null when the message was never loaded this session (a delete arriving
+  /// for a conversation the user has not opened). That record then expires on
+  /// its own 72h TTL; closing the gap fully would need an id→ciphertext index
+  /// nothing else wants, and the wipe action clears the store outright.
+  String? _ciphertextFor(int messageId, int conversationId) {
+    for (final msg in _messages) {
+      if (msg.id == messageId) return msg.encryptedContent;
+    }
+    final cached = _conversationCache[conversationId];
+    if (cached != null) {
+      for (final msg in cached) {
+        if (msg.id == messageId) return msg.encryptedContent;
+      }
+    }
+    return null;
   }
 
   void _handleMessageEdited(dynamic data) {
