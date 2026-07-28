@@ -11,6 +11,7 @@
 - Review round: Branch A zero findings; Branch B P3 + three ping edges all FIXED with fail-before tests (early-unmount latch, unseen-ping resurrection via the durable READ mark, READ gate on the live trigger against silent persist loss).
 - **⚠ Owner must device-check the restored composer on the phone** (keyboard→emoji toggle→toggle back→send from panel→system back→mic): widget tests cannot exercise visualViewport/450ms-debounce/black-flash. Rollback if it fights the keyboard: `git revert` the #103 merge or redeploy from `6531aab` (last pre-batch master, 0.0.132) via `deploy-web.ps1`.
 - Codex-backed default `task` subagents are usage-walled; `sonic`/`scout` (Anthropic) work — route delegation there.
+- **PR #107 `feat/hot-stone-default` OPEN, CI green, NOT merged/deployed:** Hot Stone (the 'light' warm-paper+ember theme, renamed from "Warm Paper"/"Ciepły papier" → "Hot Stone"/"Gorący kamień") is the default for FRESH INSTALLS ONLY (saved prefs win; legacy dark_mode_preference still maps to dark). Login screen now ALWAYS wears Hot Stone (supersedes the 2026-07-18 always-Cosmic front door; render-verified on web). main.dart resolves the saved theme BEFORE runApp (guarded) → no cold-start theme flash either direction. index.html + manifest.json first-paint colors flipped to #F7F4F0; the contract test now parses BOTH files. New token successColorLight. Suite **939+4** green.
 - ➡ Detail: **`2026-07-28-session-bugfix-batch.md`**; diagnosis evidence: `.planning/bugfix-batch-2026-07/` (local-only).
 
 ---
