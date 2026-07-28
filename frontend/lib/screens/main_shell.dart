@@ -103,6 +103,23 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     );
   }
 
+  void _openAcceptedConversation(int conversationId) {
+    if (!mounted) return;
+
+    if (MediaQuery.of(context).size.width >=
+        AppConstants.layoutBreakpointDesktop) {
+      setState(() => _selectedIndex = 0);
+      context.read<ConversationsProvider>().openConversation(conversationId);
+      return;
+    }
+
+    Navigator.of(context).push(
+      instantOpaqueRoute(
+        builder: (_) => ChatDetailScreen(conversationId: conversationId),
+      ),
+    );
+  }
+
   @override
   void dispose() {
     final badge = _unreadBadgeSync;
@@ -152,20 +169,26 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
     final colorScheme = theme.colorScheme;
     return Consumer2<FriendsProvider, ConversationsProvider>(
       builder: (context, friends, convs, _) {
-        if (friends.pendingFriendAcceptedByName != null) {
-          WidgetsBinding.instance.addPostFrameCallback((_) {
-            final name = context
-                .read<FriendsProvider>()
-                .consumePendingFriendAccepted();
-            if (name != null && context.mounted) {
-              showTopSnackBar(
-                context,
-                AppLocalizations.of(context).friendAcceptedYourRequest(name),
-                backgroundColor: Colors.green,
-              );
-            }
-          });
-        }
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted) return;
+          final accepted = context
+              .read<FriendsProvider>()
+              .consumePendingFriendAccepted();
+          if (accepted == null) return;
+
+          final l10n = AppLocalizations.of(context);
+          final message = l10n.friendAcceptedYourRequest(accepted.name);
+          if (accepted.chatReady && accepted.conversationId != null) {
+            showTopSnackBar(
+              context,
+              message,
+              onTap: () => _openAcceptedConversation(accepted.conversationId!),
+              actionLabel: l10n.invitationOpenChat,
+            );
+          } else {
+            showTopSnackBar(context, message);
+          }
+        });
         // Notification deep-link — Option A: route through the SAME open path
         // the conversations list uses, and only for conversations that exist
         // locally. Gated on the first server snapshot: consuming earlier would

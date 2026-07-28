@@ -1,5 +1,7 @@
+import { Transform, type TransformFnParams } from 'class-transformer';
 import {
   IsNumber,
+  IsInt,
   IsString,
   IsPositive,
   MinLength,
@@ -106,6 +108,32 @@ export class RejectFriendRequestDto {
   @IsNumber()
   @IsPositive()
   requestId: number;
+}
+
+export class EnsureInvitationChatDto {
+  @IsInt()
+  @IsPositive()
+  peerUserId: number;
+
+  @IsString()
+  @Matches(/^[A-Za-z0-9_-]{1,64}$/)
+  // `enableImplicitConversion` would coerce a numeric correlationId into a string
+  // that then satisfies @Matches, so a non-string is rejected here rather than
+  // silently accepted. class-transformer types both fields of `TransformFnParams`
+  // as `any`; funnel them through `unknown` locals and narrow before reading, so
+  // the callback still matches the library signature and stays off the repo's
+  // no-unsafe-* lint ratchet.
+  @Transform(
+    (params: TransformFnParams): unknown => {
+      const source: unknown = params.obj;
+      const value: unknown = params.value;
+      if (source === null || typeof source !== 'object') return undefined;
+      if (!('correlationId' in source)) return undefined;
+      return typeof source.correlationId === 'string' ? value : undefined;
+    },
+    { toClassOnly: true },
+  )
+  correlationId: string;
 }
 
 export class GetMessagesDto {

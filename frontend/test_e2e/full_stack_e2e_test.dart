@@ -231,11 +231,40 @@ void main() {
       reason: 'bob receiving the re-sent request',
     ) as Map;
     alice.events.discard('sentRequestsList');
+    bob.events.discard('friendRequestAccepted');
+    alice.events.discard('friendRequestAccepted');
+    bob.events.discard('openConversation');
+    alice.events.discard('openConversation');
     bob.socketService.acceptFriendRequest(request['id'] as int);
-    await alice.events.next('friendRequestAccepted',
-        reason: 'alice accept confirmation');
-    await bob.events.next('friendRequestAccepted',
-        reason: 'bob accept confirmation');
+    final aliceAccepted = await alice.events.next(
+      'friendRequestAccepted',
+      reason: 'alice accept confirmation',
+    ) as Map;
+    final bobAccepted = await bob.events.next(
+      'friendRequestAccepted',
+      reason: 'bob accept confirmation',
+    ) as Map;
+    expect(
+      aliceAccepted['conversationId'],
+      isA<int>(),
+      reason: 'alice accepted payload must carry a conversation id',
+    );
+    expect(
+      bobAccepted['conversationId'],
+      isA<int>(),
+      reason: 'bob accepted payload must carry a conversation id',
+    );
+    expect(aliceAccepted['chatReady'], isTrue,
+        reason: 'alice accepted payload must report chat readiness');
+    expect(bobAccepted['chatReady'], isTrue,
+        reason: 'bob accepted payload must report chat readiness');
+    final aliceConversationId = aliceAccepted['conversationId'] as int;
+    final bobConversationId = bobAccepted['conversationId'] as int;
+    expect(
+      bobConversationId,
+      aliceConversationId,
+      reason: 'both accepted payloads must identify the same conversation',
+    );
 
     // The ghost must CLEAR on the sender's side once the invite resolves —
     // a ghost that outlives its invite is the whole failure mode here.
@@ -245,16 +274,21 @@ void main() {
       reason: 'accepting must clear the sender ghost',
     );
 
-    // 5. Conversation. The acceptor (bob) is auto-opened; alice starts
-    //    explicitly. Both must land on the same conversation row.
-    final bobOpen = await bob.events.next('openConversation',
-        reason: 'acceptor auto-open') as Map;
+    // 5. Accepting reserves openConversation for explicit user intent only.
+    await bob.events.none(
+      'openConversation',
+      within: const Duration(seconds: 3),
+      reason: 'accepting an invitation must not auto-open chat',
+    );
+    alice.events.discard('openConversation');
     alice.socketService.startConversation(bob.userId);
-    final aliceOpen = await alice.events.next('openConversation',
-        reason: 'alice startConversation') as Map;
-    conversationId = aliceOpen['conversationId'] as int;
-    expect(bobOpen['conversationId'], conversationId,
-        reason: 'accept-flow and startConversation must share one conversation');
+    final aliceOpen = await alice.events.next(
+      'openConversation',
+      reason: 'alice startConversation',
+    ) as Map;
+    conversationId = bobConversationId;
+    expect(aliceOpen['conversationId'], conversationId,
+        reason: 'startConversation must use the accepted conversation');
   });
 
   tearDownAll(() {

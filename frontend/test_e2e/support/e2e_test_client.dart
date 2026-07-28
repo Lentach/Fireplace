@@ -143,6 +143,26 @@ class EventLog {
       },
     );
   }
+  /// Fails if [event] is already buffered or arrives within [within].
+  ///
+  /// This delegates matching and waiter cleanup to [next], so it observes the
+  /// same whole buffer and future socket events as a positive assertion.
+  Future<void> none(
+    String event, {
+    required Duration within,
+    String? reason,
+  }) async {
+    try {
+      final payload = await next(event, timeout: within);
+      throw StateError(
+        'Unexpected "$event" event'
+        '${reason != null ? ' ($reason)' : ''}: $payload',
+      );
+    } on TimeoutException {
+      // No matching event arrived during the requested window.
+    }
+  }
+
 }
 
 /// One headless account running the real client service stack.
@@ -176,6 +196,8 @@ class E2eClient {
     'sessionRebuildNeeded',
     'newFriendRequest',
     'friendRequestSent',
+    'friendRequestFailed',
+    'invitationChatReady',
     'friendRequestAccepted',
     'friendsList',
     'conversationsList',

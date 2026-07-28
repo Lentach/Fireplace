@@ -37,7 +37,7 @@ void main() {
       expect(provider.blockedUsers, isEmpty);
       expect(provider.blockedByUserIds, isEmpty);
       expect(provider.searchResults, isNull);
-      expect(provider.pendingFriendAcceptedByName, isNull);
+      expect(provider.consumePendingFriendAccepted(), isNull);
     });
 
     test(
@@ -84,7 +84,7 @@ void main() {
 
       expect(provider.blockedByUserIds, isEmpty);
       expect(provider.searchResults, isNull);
-      expect(provider.pendingFriendAcceptedByName, isNull);
+      expect(provider.consumePendingFriendAccepted(), isNull);
     });
 
     test('onYouWereBlocked adds to blockedByUserIds and removes friend', () {

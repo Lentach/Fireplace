@@ -58,30 +58,62 @@
   "yourIdentityFingerprint": "Your identity fingerprint",
   "shareFingerprintHint": "This is a unique representation of your encryption key.",
 
-  "addInvitations": "Add / Invitations",
-  "addUser": "Add user",
-  "friendRequests": "Friend requests",
-  "friendRequestSentTo": "Friend request sent to {handle}",
-  "@friendRequestSentTo": {
-    "placeholders": {
-      "handle": { "type": "String" }
-    }
-  },
-  "addNewUserHint": "Add new user by username#tag (e.g. username#1234). Your #tag is in Settings, next to your nickname. Each #tag is unique.",
+  "invitations": "Invitations",
+  "invitationsWaitingForYou": "Waiting for you",
+  "invitationsSent": "Sent",
+  "invitationsNothingWaiting": "Nothing waiting for you",
+  "invitationsNoneSent": "No sent invitations",
+  "inviteByHandleHint": "Invite someone by username#tag. Your own #tag is in Settings, next to your nickname.",
   "usernameTagPlaceholder": "username#1234",
-  "addNewUser": "Add new user",
+  "sendInvitation": "Send invitation",
+  "invitationFindUser": "Find user",
   "userNotFound": "User not found",
-  "noPendingRequests": "No pending requests",
-  "wantsToAddYouAsFriend": "wants to add you as a friend",
+  "invitationWantsToConnect": "Wants to connect",
+  "invitationWaitingForResponse": "Waiting for response",
+  "invitationAccepted": "Invitation accepted",
+  "invitationChatReady": "Chat ready",
+  "invitationChatNeedsRetry": "Chat setup needs retry",
+  "invitationOpenChat": "Open chat",
+  "invitationCreateChat": "Create chat",
+  "invitationDone": "Done",
+  "invitationDecline": "Decline",
   "accept": "Accept",
-  "reject": "Reject",
-  "friendAdded": "Friend added: {name}",
-  "@friendAdded": {
+  "invitationStatusPending": "Pending",
+  "invitationSendFailed": "Could not send the invitation",
+  "invitationAcceptFailed": "Could not accept the invitation",
+  "invitationDeclineFailed": "Could not decline the invitation",
+  "invitationChatSetupFailed": "Could not set up the chat",
+  "invitationFailedUserNotFound": "That user no longer exists",
+  "invitationFailedSelf": "You cannot invite yourself",
+  "invitationFailedBlocked": "You cannot invite this user",
+  "invitationFailedAlreadyFriends": "You are already connected",
+  "invitationFailedDuplicate": "Invitation already sent",
+  "invitationFailedInvalidPayload": "Something was wrong with that request",
+  "invitationFailedNotFriends": "You are not connected with this user",
+  "invitationSemanticIncoming": "{name}, invitation received, wants to connect",
+  "@invitationSemanticIncoming": {
     "placeholders": {
       "name": { "type": "String" }
     }
   },
-  "requestRejected": "Request rejected",
+  "invitationSemanticOutgoing": "{name}, invitation sent, waiting for response",
+  "@invitationSemanticOutgoing": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "invitationSemanticAcceptedReady": "{name}, invitation accepted, chat ready",
+  "@invitationSemanticAcceptedReady": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
+  "invitationSemanticAcceptedNotReady": "{name}, invitation accepted, chat setup needs retry",
+  "@invitationSemanticAcceptedNotReady": {
+    "placeholders": {
+      "name": { "type": "String" }
+    }
+  },
 
   "encryptedMessage": "Encrypted message",
   "decryptionFailed": "Decryption failed",

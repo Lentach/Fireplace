@@ -605,8 +605,14 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.on('friendRequestAccepted', (data) {
       _friendsProvider?.onFriendRequestAccepted(data);
     });
+    _socketService.on('friendRequestFailed', (data) {
+      _friendsProvider?.onFriendRequestFailed(data);
+    });
     _socketService.on('friendRequestRejected', (data) {
       _friendsProvider?.onFriendRequestRejected(data);
+    });
+    _socketService.on('invitationChatReady', (data) {
+      _friendsProvider?.onInvitationChatReady(data);
     });
     _socketService.on('pendingRequestsCount', (data) {
       _friendsProvider?.onPendingRequestsCount(data);

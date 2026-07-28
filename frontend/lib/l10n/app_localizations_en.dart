@@ -194,51 +194,123 @@ class AppLocalizationsEn extends AppLocalizations {
       'This is a unique representation of your encryption key.';
 
   @override
-  String get addInvitations => 'Add / Invitations';
+  String get invitations => 'Invitations';
 
   @override
-  String get addUser => 'Add user';
+  String get invitationsWaitingForYou => 'Waiting for you';
 
   @override
-  String get friendRequests => 'Friend requests';
+  String get invitationsSent => 'Sent';
 
   @override
-  String friendRequestSentTo(String handle) {
-    return 'Friend request sent to $handle';
-  }
+  String get invitationsNothingWaiting => 'Nothing waiting for you';
 
   @override
-  String get addNewUserHint =>
-      'Add new user by username#tag (e.g. username#1234). Your #tag is in Settings, next to your nickname. Each #tag is unique.';
+  String get invitationsNoneSent => 'No sent invitations';
+
+  @override
+  String get inviteByHandleHint =>
+      'Invite someone by username#tag. Your own #tag is in Settings, next to your nickname.';
 
   @override
   String get usernameTagPlaceholder => 'username#1234';
 
   @override
-  String get addNewUser => 'Add new user';
+  String get sendInvitation => 'Send invitation';
+
+  @override
+  String get invitationFindUser => 'Find user';
 
   @override
   String get userNotFound => 'User not found';
 
   @override
-  String get noPendingRequests => 'No pending requests';
+  String get invitationWantsToConnect => 'Wants to connect';
 
   @override
-  String get wantsToAddYouAsFriend => 'wants to add you as a friend';
+  String get invitationWaitingForResponse => 'Waiting for response';
+
+  @override
+  String get invitationAccepted => 'Invitation accepted';
+
+  @override
+  String get invitationChatReady => 'Chat ready';
+
+  @override
+  String get invitationChatNeedsRetry => 'Chat setup needs retry';
+
+  @override
+  String get invitationOpenChat => 'Open chat';
+
+  @override
+  String get invitationCreateChat => 'Create chat';
+
+  @override
+  String get invitationDone => 'Done';
+
+  @override
+  String get invitationDecline => 'Decline';
 
   @override
   String get accept => 'Accept';
 
   @override
-  String get reject => 'Reject';
+  String get invitationStatusPending => 'Pending';
 
   @override
-  String friendAdded(String name) {
-    return 'Friend added: $name';
+  String get invitationSendFailed => 'Could not send the invitation';
+
+  @override
+  String get invitationAcceptFailed => 'Could not accept the invitation';
+
+  @override
+  String get invitationDeclineFailed => 'Could not decline the invitation';
+
+  @override
+  String get invitationChatSetupFailed => 'Could not set up the chat';
+
+  @override
+  String get invitationFailedUserNotFound => 'That user no longer exists';
+
+  @override
+  String get invitationFailedSelf => 'You cannot invite yourself';
+
+  @override
+  String get invitationFailedBlocked => 'You cannot invite this user';
+
+  @override
+  String get invitationFailedAlreadyFriends => 'You are already connected';
+
+  @override
+  String get invitationFailedDuplicate => 'Invitation already sent';
+
+  @override
+  String get invitationFailedInvalidPayload =>
+      'Something was wrong with that request';
+
+  @override
+  String get invitationFailedNotFriends =>
+      'You are not connected with this user';
+
+  @override
+  String invitationSemanticIncoming(String name) {
+    return '$name, invitation received, wants to connect';
   }
 
   @override
-  String get requestRejected => 'Request rejected';
+  String invitationSemanticOutgoing(String name) {
+    return '$name, invitation sent, waiting for response';
+  }
+
+  @override
+  String invitationSemanticAcceptedReady(String name) {
+    return '$name, invitation accepted, chat ready';
+  }
+
+  @override
+  String invitationSemanticAcceptedNotReady(String name) {
+    return '$name, invitation accepted, chat setup needs retry';
+  }
 
   @override
   String get encryptedMessage => 'Encrypted message';

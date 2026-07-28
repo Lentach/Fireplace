@@ -2,6 +2,7 @@ import 'package:flutter/foundation.dart';
 
 import '../models/friend_request_model.dart';
 import '../models/user_model.dart';
+import '../models/invitation_state.dart';
 
 /// FriendsProvider — owns all friends, friend requests, blocking, and
 /// user search state. [ConnectionProvider] coordinates; this provider holds friends/requests/blocked/search.
@@ -13,10 +14,20 @@ class FriendsProvider extends ChangeNotifier {
   int _pendingRequestsCount = 0;
   List<UserModel> _blockedUsers = [];
   final Set<int> _blockedByUserIds = {};
-  bool _friendRequestJustSent = false;
-
-  /// Set when we (sender) receive friendRequestAccepted — acceptor's username for snackbar.
-  String? _pendingFriendAcceptedByName;
+  final Map<int, InvitationActionStatus> _requestActions = {};
+  final Map<int, InvitationActionStatus> _sendActions = {};
+  final Map<int, InvitationOutcome> _acceptedOutcomes = {};
+  InvitationFailure? _lastInvitationFailure;
+  PendingFriendAccepted? _pendingFriendAccepted;
+  bool _hasIncomingSnapshot = false;
+  bool _hasSentSnapshot = false;
+  static int _nextInvitationSessionNonce =
+      DateTime.now().microsecondsSinceEpoch & 0xffffffff;
+  final String _invitationSessionNonce =
+      (_nextInvitationSessionNonce++ & 0xffffffff)
+          .toRadixString(16)
+          .padLeft(8, '0');
+  int _invitationCorrelationCounter = 0;
   List<UserModel>? _searchResults;
 
   int? _currentUserId;
@@ -49,25 +60,49 @@ class FriendsProvider extends ChangeNotifier {
   List<UserModel>? get searchResults => _searchResults;
   int? get currentUserId => _currentUserId;
 
-  /// Peek at pending friend-accepted name without clearing it.
-  String? get pendingFriendAcceptedByName => _pendingFriendAcceptedByName;
-
-  /// Returns true (and clears) if a friend request was just sent. For snackbar.
-  bool consumeFriendRequestSent() {
-    final sent = _friendRequestJustSent;
-    _friendRequestJustSent = false;
-    return sent;
+  InvitationActionStatus? invitationActionFor(int requestId) {
+    return _requestActions[requestId];
   }
 
-  /// Returns acceptor's username and clears; null if none. For snackbar.
-  String? consumePendingFriendAccepted() {
-    final name = _pendingFriendAcceptedByName;
-    _pendingFriendAcceptedByName = null;
-    return name;
+  InvitationActionStatus? sendActionFor(int userId) {
+    return _sendActions[userId];
+  }
+
+  InvitationOutcome? acceptedOutcomeForPeer(int peerUserId) {
+    return _acceptedOutcomes[peerUserId];
+  }
+
+  List<InvitationOutcome> acceptedOutcomesFor(
+    InvitationDirection direction,
+  ) {
+    return List.unmodifiable(
+      _acceptedOutcomes.values.where(
+        (outcome) => outcome.direction == direction,
+      ),
+    );
+  }
+
+  bool get hasLoadedInvitationsOnce =>
+      _hasIncomingSnapshot && _hasSentSnapshot;
+
+  InvitationFailure? consumeInvitationFailure() {
+    final failure = _lastInvitationFailure;
+    _lastInvitationFailure = null;
+    return failure;
+  }
+
+  PendingFriendAccepted? consumePendingFriendAccepted() {
+    final accepted = _pendingFriendAccepted;
+    _pendingFriendAccepted = null;
+    return accepted;
   }
 
   bool isFriend(int userId) {
     return _friends.any((f) => f.id == userId);
+  }
+
+  bool _requestHasPeer(FriendRequestModel request, int peerUserId) {
+    return request.sender.id == peerUserId || request.receiver.id == peerUserId;
   }
 
   // ---------- Event Handlers (called by socket events, routed from ConnectionProvider) ----------
@@ -77,6 +112,7 @@ class FriendsProvider extends ChangeNotifier {
     _friendRequests = list
         .map((r) => FriendRequestModel.fromJson(r as Map<String, dynamic>))
         .toList();
+    _hasIncomingSnapshot = true;
     notifyListeners();
   }
 
@@ -85,6 +121,7 @@ class FriendsProvider extends ChangeNotifier {
     _sentRequests = list
         .map((r) => FriendRequestModel.fromJson(r as Map<String, dynamic>))
         .toList();
+    _hasSentSnapshot = true;
     notifyListeners();
   }
 
@@ -95,7 +132,10 @@ class FriendsProvider extends ChangeNotifier {
   }
 
   void onFriendRequestSent(dynamic data) {
-    _friendRequestJustSent = true;
+    final request = FriendRequestModel.fromJson(data as Map<String, dynamic>);
+    _sendActions.remove(request.receiver.id);
+    _sentRequests.removeWhere((existing) => existing.id == request.id);
+    _sentRequests.insert(0, request);
     notifyListeners();
   }
 
@@ -103,18 +143,135 @@ class FriendsProvider extends ChangeNotifier {
   /// Backend already emits updated lists; extra calls cause race condition
   /// and overwrite with stale data.
   void onFriendRequestAccepted(dynamic data) {
-    final request = FriendRequestModel.fromJson(data as Map<String, dynamic>);
-    _friendRequests.removeWhere((r) => r.id == request.id);
-    // If we are the sender (we sent the request), show snackbar
-    if (_currentUserId == request.sender.id) {
-      _pendingFriendAcceptedByName = request.receiver.username;
+    final payload = data as Map<String, dynamic>;
+    final request = FriendRequestModel.fromJson(payload);
+    final peer = request.sender.id == _currentUserId
+        ? request.receiver
+        : request.sender;
+    final hasIncoming = _friendRequests.any(
+      (pending) => _requestHasPeer(pending, peer.id),
+    );
+    final hasOutgoing = _sentRequests.any(
+      (pending) => _requestHasPeer(pending, peer.id),
+    );
+    final direction = _sendActions.containsKey(peer.id)
+        ? InvitationDirection.outgoing
+        : hasIncoming
+            ? InvitationDirection.incoming
+            : hasOutgoing
+                ? InvitationDirection.outgoing
+                : request.sender.id == _currentUserId
+                    ? InvitationDirection.outgoing
+                    : InvitationDirection.incoming;
+    final pendingForPeer = [
+      ..._friendRequests.where((pending) => _requestHasPeer(pending, peer.id)),
+      ..._sentRequests.where((pending) => _requestHasPeer(pending, peer.id)),
+    ];
+    final conversationId = payload['conversationId'] as int?;
+    final chatReady = payload['chatReady'] as bool? ?? conversationId != null;
+
+    for (final pending in pendingForPeer) {
+      _requestActions.remove(pending.id);
+    }
+    _requestActions.remove(request.id);
+    _sendActions.remove(peer.id);
+    _friendRequests.removeWhere((pending) => _requestHasPeer(pending, peer.id));
+    _sentRequests.removeWhere((pending) => _requestHasPeer(pending, peer.id));
+    _acceptedOutcomes[peer.id] = InvitationOutcome(
+      peerUserId: peer.id,
+      direction: direction,
+      peer: peer,
+      requestId: request.id,
+      conversationId: conversationId,
+      chatReady: chatReady,
+    );
+    // Gate on the LOCALLY RESOLVED direction, never on the payload's sender role.
+    // In a reciprocal auto-accept the payload describes the brand-new B->A row, so
+    // the original sender A reads as `receiver` and would silently lose the
+    // "<name> accepted your invitation" toast even though their own invitation was
+    // just accepted. Direction already knows this side sent something.
+    if (direction == InvitationDirection.outgoing) {
+      _pendingFriendAccepted = PendingFriendAccepted(
+        name: peer.username,
+        peerUserId: peer.id,
+        conversationId: conversationId,
+        chatReady: chatReady,
+      );
     }
     notifyListeners();
   }
 
   void onFriendRequestRejected(dynamic data) {
     final request = FriendRequestModel.fromJson(data as Map<String, dynamic>);
-    _friendRequests.removeWhere((r) => r.id == request.id);
+    _requestActions.remove(request.id);
+    _friendRequests.removeWhere((pending) => pending.id == request.id);
+    notifyListeners();
+  }
+
+  void onFriendRequestFailed(dynamic data) {
+    final payload = data as Map<String, dynamic>;
+    final requestId = payload['requestId'] as int?;
+    final recipientId = payload['recipientId'] as int?;
+    final InvitationAction action;
+    switch (payload['action'] as String) {
+      case 'send':
+        action = InvitationAction.send;
+        break;
+      case 'accept':
+        action = InvitationAction.accept;
+        break;
+      case 'reject':
+        action = InvitationAction.decline;
+        break;
+      case 'ensure_chat':
+        action = InvitationAction.ensureChat;
+        break;
+      default:
+        return;
+    }
+
+    switch (action) {
+      case InvitationAction.accept:
+      case InvitationAction.decline:
+        if (requestId != null) _requestActions.remove(requestId);
+        break;
+      case InvitationAction.send:
+      case InvitationAction.ensureChat:
+        if (recipientId != null) _sendActions.remove(recipientId);
+        break;
+    }
+    if (action == InvitationAction.ensureChat && recipientId != null) {
+      final outcome = _acceptedOutcomes[recipientId];
+      if (outcome != null) {
+        _acceptedOutcomes[recipientId] = outcome.copyWith(
+          retryToken: null,
+          retrying: false,
+        );
+      }
+    }
+    _lastInvitationFailure = InvitationFailure(
+      action: action,
+      requestId: requestId,
+      recipientId: recipientId,
+      reason: payload['reason'] as String,
+    );
+    notifyListeners();
+  }
+
+  void onInvitationChatReady(dynamic data) {
+    final payload = data as Map<String, dynamic>;
+    final peerUserId = payload['peerUserId'] as int;
+    final outcome = _acceptedOutcomes[peerUserId];
+    if (outcome == null || outcome.retryToken != payload['correlationId']) {
+      return;
+    }
+
+    _acceptedOutcomes[peerUserId] = outcome.copyWith(
+      conversationId: payload['conversationId'] as int?,
+      chatReady: payload['chatReady'] as bool,
+      retryToken: null,
+      retrying: false,
+    );
     notifyListeners();
   }
 
@@ -193,15 +350,44 @@ class FriendsProvider extends ChangeNotifier {
   }
 
   void sendFriendRequest(int userId) {
+    _sendActions[userId] = InvitationActionStatus.inFlight;
+    notifyListeners();
     _emit?.call('sendFriendRequest', {'recipientId': userId});
   }
 
   void acceptFriendRequest(int requestId) {
+    _requestActions[requestId] = InvitationActionStatus.inFlight;
+    notifyListeners();
     _emit?.call('acceptFriendRequest', {'requestId': requestId});
   }
 
   void rejectFriendRequest(int requestId) {
+    _requestActions[requestId] = InvitationActionStatus.inFlight;
+    notifyListeners();
     _emit?.call('rejectFriendRequest', {'requestId': requestId});
+  }
+
+  void clearAcceptedOutcome(int peerUserId) {
+    if (_acceptedOutcomes.remove(peerUserId) != null) {
+      notifyListeners();
+    }
+  }
+
+  void ensureInvitationChat(int peerUserId) {
+    final outcome = _acceptedOutcomes[peerUserId];
+    if (outcome == null) return;
+
+    final correlationId =
+        '$_invitationSessionNonce-${++_invitationCorrelationCounter}';
+    _acceptedOutcomes[peerUserId] = outcome.copyWith(
+      retryToken: correlationId,
+      retrying: true,
+    );
+    notifyListeners();
+    _emit?.call('ensureInvitationChat', {
+      'peerUserId': peerUserId,
+      'correlationId': correlationId,
+    });
   }
 
   void unfriend(int userId) {
@@ -230,24 +416,30 @@ class FriendsProvider extends ChangeNotifier {
 
   // ---------- Lifecycle ----------
 
-  /// Called on socket connect. Fresh connect clears all state;
-  /// reconnect preserves friends/blocked to avoid UI flicker.
+  /// Called on socket connect. Fresh connect clears all state; reconnect
+  /// preserves friends, blocked users, and accepted outcomes to avoid UI flicker.
   /// _blockedByUserIds is always cleared: server does not replay youWereBlocked on reconnect.
   void onConnect(bool isReconnect) {
     _currentUserId = null; // will be set by setCurrentUserId
     _blockedByUserIds.clear();
+    _requestActions.clear();
+    _sendActions.clear();
+    _lastInvitationFailure = null;
+    _pendingFriendAccepted = null;
+    _searchResults = null;
     if (!isReconnect) {
       _friendRequests = [];
       _sentRequests = [];
       _pendingRequestsCount = 0;
       _friends = [];
-      _friendRequestJustSent = false;
-      _pendingFriendAcceptedByName = null;
-      _searchResults = null;
       _blockedUsers = [];
+      _acceptedOutcomes.clear();
+      _hasIncomingSnapshot = false;
+      _hasSentSnapshot = false;
     } else {
-      _pendingFriendAcceptedByName = null;
-      _searchResults = null;
+      _acceptedOutcomes.updateAll(
+        (_, outcome) => outcome.copyWith(retryToken: null, retrying: false),
+      );
     }
     notifyListeners();
   }
@@ -270,8 +462,13 @@ class FriendsProvider extends ChangeNotifier {
     _pendingRequestsCount = 0;
     _blockedUsers = [];
     _blockedByUserIds.clear();
-    _friendRequestJustSent = false;
-    _pendingFriendAcceptedByName = null;
+    _requestActions.clear();
+    _sendActions.clear();
+    _acceptedOutcomes.clear();
+    _lastInvitationFailure = null;
+    _pendingFriendAccepted = null;
+    _hasIncomingSnapshot = false;
+    _hasSentSnapshot = false;
     _searchResults = null;
     _currentUserId = null;
     notifyListeners();
