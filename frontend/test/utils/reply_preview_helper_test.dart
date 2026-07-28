@@ -1,4 +1,6 @@
 import 'package:fireplace/models/message_model.dart';
+import 'package:fireplace/config/app_config.dart';
+import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/utils/reply_preview_helper.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -19,8 +21,52 @@ MessageModel _msg({
       encryptedContent: encryptedContent,
     );
 
+/// Minimal encryption fake: serves a decrypted-cache row per message id so the
+/// note-URL guard on the decrypted-cache branch can be exercised.
+class _CachedEnc extends EncryptionProvider {
+  final Map<int, MessageModel> cache;
+  _CachedEnc(this.cache);
+  @override
+  MessageModel? getCachedDecryption(int messageId) => cache[messageId];
+}
+
 void main() {
   const labels = kReplyPreviewLabels;
+  // 32-hex token + b64url fragment, on this build's own origin so the
+  // context-free isAntiQuantumNoteUrl() default baseUrl matches.
+  final noteUrl =
+      '${AppConfig.baseUrl}/note/0123456789abcdef0123456789abcdef#abcABC012_-';
+
+  test('replyPreviewForMessageModel shows note label for note URL content', () {
+    final result = replyPreviewForMessageModel(
+      _msg(id: 1, content: noteUrl),
+      encryptedMessageLabel: labels.encryptedMessageLabel,
+      voiceMessageLabel: labels.voiceMessageLabel,
+      imageLabel: labels.imageLabel,
+      gifLabel: labels.gifLabel,
+      documentLabel: labels.documentLabel,
+      pingLabel: labels.pingLabel,
+      antiQuantumNoteLabel: labels.antiQuantumNoteLabel,
+    );
+    expect(result, labels.antiQuantumNoteLabel);
+  });
+
+  test('replyPreviewForMessageModel shows note label for decrypted-cache note URL',
+      () {
+    final enc = _CachedEnc({7: _msg(id: 7, content: noteUrl)});
+    final result = replyPreviewForMessageModel(
+      _msg(id: 7, content: '[encrypted]', encryptedContent: 'cipher'),
+      encryption: enc,
+      encryptedMessageLabel: labels.encryptedMessageLabel,
+      voiceMessageLabel: labels.voiceMessageLabel,
+      imageLabel: labels.imageLabel,
+      gifLabel: labels.gifLabel,
+      documentLabel: labels.documentLabel,
+      pingLabel: labels.pingLabel,
+      antiQuantumNoteLabel: labels.antiQuantumNoteLabel,
+    );
+    expect(result, labels.antiQuantumNoteLabel);
+  });
 
   test('enrichReplyToPreview uses TEXT encrypted label when cache empty', () {
     const replyTo = ReplyToPreview(
