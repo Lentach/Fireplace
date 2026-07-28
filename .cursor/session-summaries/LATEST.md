@@ -3,27 +3,22 @@
 **Date:** 2026-07-27 — **full E2E safety audit + the chat-entry flicker/lag fix.** Branch `audit/e2e-safety` (separate worktree), cut from `d2f8aca`. **Not deployed, not bumped** — live stays 0.0.132 / `05fc423`.
 
 ## What was done
-1. **Root-caused the "history flashes `[encrypted]` on chat entry" report — two defects, neither a decryption failure.** (a) `onMessageHistory` merged + notified at `history.dart:402` BEFORE applying local plaintext, and the server sends `content: "[encrypted]"` for every E2E row, so the first painted frame was all placeholders. (b) `getDecryptedContent` reloads prefs before every read (added by `fd89e7e` for cross-engine coherence) and the history pass called it **once per row**.
-2. **MEASURED it** (`frontend/tool/prefs_reload_cost_probe.dart`, headless Chrome, real localStorage). On web `reload()` = enumerate EVERY localStorage key + `getItem`/`jsonDecode` each `flutter.` one, against a cache capped at 2000: **65-77 ms for one 50-row page, ~300 ms at 200 rows, ~590 ms at 400** on a desktop i7; 4-6x worse on a phone. One reload per pass is ~1.5 ms flat.
-3. **Fixed**: `getDecryptedContentMany` (one coherence reload per pass), pre-paint `_hydrateSnapshotFromCaches`, per-pass prefetch with authoritative fall-through, and the dead web `readAll()` dropped from prune.
-4. **Audit verdict: SAFE WITH CAVEATS, no CRITICAL.** Both lock layers hold on all four session mutations, leaf-level (no deadlock), fail-closed Web Locks, monotonic plaintext, exact-ciphertext replay, server structurally cannot hold private keys, push is content-free, `editMessage` blind and gated server-side, deletes really delete.
+1. **Full E2E audit — SAFE WITH CAVEATS, no CRITICAL.** Both lock layers hold on all four session mutations, leaf-level (no deadlock), fail-closed Web Locks, monotonic plaintext, exact-ciphertext replay, server structurally cannot hold private keys, push content-free, `editMessage` blind and gated server-side, deletes really delete.
+2. **Chat-entry flicker root-caused and MEASURED.** `onMessageHistory` painted server `[encrypted]` rows before hydrating, and `getDecryptedContent` reloaded prefs **per row** (`fd89e7e`). On web `reload()` enumerates every localStorage key + decodes each `flutter.` one against a 2000-cap cache: **65-77 ms per 50-row page, ~590 ms at 400 rows** (desktop i7; 4-6x worse on a phone) vs ~1.5 ms for one reload per pass. Fixed with `getDecryptedContentMany` + pre-paint hydration.
+3. **Four of five MEDIUM findings closed.** Identity is now ONE atomic `identity_record_v1` (legacy pair still READ — the whole installed base has only that); partial loss throws and mints nothing, with a user-consented `IdentityDamagedBanner` escape hatch. Peer re-key surfaced (`PeerIdentityChangedBanner`, still TOFU, now cheaper than the old unconditional write). Prekey generation origin-locked. **The Web Lock is finally tested** — the old test opened `if (!kIsWeb) return;` and **reported as PASSED while asserting nothing**; now an honest skip + CI job `session-lock`.
+4. **Verified in a REAL browser** (owner pushed back on deferring): real backend, real Chrome, real libsignal. Legacy-only install loads + migrates with identity unchanged; partial loss refuses; consented recovery republishes and a peer completes **X3DH against the regenerated identity**. The banner's action button was invisible (theme primary on red) — only a render caught it.
+5. **The owner's actual bug was still there.** 300 fresh messages showed `[encrypted]` for 3-5 s: my first fix targeted the CACHED re-entry path, but a genuinely first entry has no plaintext to show. Now relabelled **"Decrypting…"** while a pass is in flight — confirmed in the browser, then real text.
 
 ## Verification
-- analyze **0 issues**; `flutter test` **931 passed / 5 skipped**; count verifier OK.
-- **Every fix falsified separately.** Chat entry: disable pre-paint hydration → placeholder test red; ignore the batch → pass-level test red at 30 reads vs 0 (the first read-count test alone did NOT discriminate, which is why the pass-level one exists). Prekey lock ships a falsification case asserting the unserialized version still collides. Session-lock runner proven to fail both ways before being trusted.
-- ⚠ **Unit tests + synthetic probes only — NOT yet exercised in a real long-history PWA chat.** End-to-end confirmation (open a real chat: no placeholder frame, no jank) is outstanding.
-
-## Then: four of five MEDIUM audit findings closed (`98d26bb`)
-- **Identity can no longer silently regenerate.** `identity_key_pair` + `registration_id` were two independent keys; losing exactly ONE reported a fresh install and minted a new identity, destroying all history. Now one atomic `identity_record_v1`, legacy pair still READ as fallback (the whole installed base has only that). Partial state throws `E2eIdentityIncompleteException` and touches nothing; the residue probe biases toward FRESH INSTALL when `readAll` fails — bricking a user with nothing to lose is not a safety property. Escape hatch is user-consented: `IdentityDamagedBanner` → confirm → regenerate.
-- **Peer re-key is surfaced** (`PeerIdentityChangedBanner`), still TOFU. It runs per message, so trusted keys are memoised and the write is skipped when unchanged — cheaper than before.
-- **Prekey generation is origin-locked** (`fireplace-e2e-prekeys-<uid>`, its own name).
-- **The Web Lock is finally verified.** `session_cross_context_lock_web_test.dart` opened `if (!kIsWeb) return;` — a no-op that **reported as PASSED** while asserting nothing. Now an honest skip plus `node scripts/verify-session-lock-probe.mjs` driving real `navigator.locks` in headless Chrome as CI job `session-lock`.
+- analyze **0 issues**; `flutter test` **937 passed / 5 skipped**; count verifier OK; `flutter test test_e2e` **11 passed** vs a real backend.
+- **Every fix falsified separately** (disable pre-paint hydration → red; ignore the batch → red at 30 reads vs 0; prekey lock ships a falsification case; the session-lock runner was proven to fail both ways before being trusted).
 
 ## Notes for next session
-- **NOT deployed, NOT version-bumped** — `pubspec.yaml` stays 0.0.132, branch `audit/e2e-safety` does not auto-deploy. Bump belongs to the release commit.
-- **M4 left undone on purpose:** decrypted plaintext is unencrypted at rest on **mobile** too. Migrating up to 2000 records into Keychain/Keystore is slow and a data-loss hazard of exactly the class this branch removes. Proportionate design is a cache encrypted under a secure-storage key, scoped separately.
-- Remaining LOW: `GET /media/msgs/:filename` has no participant check (E2E blobs, no plaintext); deadlock and cross-peer-parallelism invariants still unpinned.
-- Do **not** claim a synchronous warm-entry path — own rows always take the disk read. Honest claim: "one batched read instead of N reloads".
+- **NOT deployed, NOT bumped** (0.0.132). **CI has never run on this branch** — the workflow triggers on push-to-`master` and `pull_request`, so opening the PR is what runs it.
+- ⚠ **`origin/master` moved to `59d80ae` mid-session** ("post-merge count is 930"). This branch is behind and the `CLAUDE.md` count line WILL conflict — rebase and re-run the count verifier before merging.
+- **Tried and REVERTED: progressive reveal.** The pass runs oldest-first (ratchet) while the list is `reverse: true` and shows newest, so mid-pass notifies resolve off-screen rows first.
+- **M4 left undone on purpose:** plaintext is unencrypted at rest on **mobile** too; migrating ~2000 records into Keychain/Keystore is a data-loss hazard of exactly the class this branch removes.
+- Remaining LOW: `/media/msgs/:filename` has no participant check (E2E blobs, no plaintext); deadlock and cross-peer parallelism still unpinned.
 - ➡ Detail: `2026-07-27-session-e2e-audit-and-chat-entry-cost.md`; runbook **Steps 3D/3E/3F**; `frontend/CLAUDE.md` §5.
 
 ---

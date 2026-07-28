@@ -159,6 +159,52 @@ branch exists to remove. Not worth doing blind. If it matters, the proportionate
 design is a cache encrypted with a key held in secure storage, scoped and
 measured on its own.
 
+## Then: verified in a REAL browser, and found the fix was incomplete (`be4ef31`)
+
+Owner pushed back on deferring verification — docker, an emulator and a browser
+were all available. Everything below ran against a real backend + Postgres, a
+real Chrome profile, and real libsignal.
+
+- **M1 web path — the biggest unverified risk — now proven.** On real
+  localStorage: legacy-only install LOADS and migrates (`pairUnchanged: true`,
+  `v1MatchesLegacyPair: true`) — that is the whole installed base's upgrade
+  path; partial loss REFUSES (`identityPairUntouched: true`,
+  `noNewRecordMinted: true`, `IDENTITY_INCOMPLETE` in the durable diag);
+  consented recovery mints a new identity, republishes, and the server shows
+  the matching `identityPublicKey`, 20 fresh OTPs and `[identity-churn]`.
+- **A peer can X3DH against the regenerated identity**
+  (`recovered_identity_probe_test.dart`, PreKey `3:` wire). That closed the
+  "banner went away but is the account reachable" gap.
+- **The banner's action button was invisible** — default TextButton colour is
+  the theme PRIMARY, unreadable on the red error container. Caught only by
+  looking at a render. Pinned to `onErrorContainer`.
+- **THE OWNER'S ACTUAL BUG WAS STILL THERE.** Entering a chat with 300 fresh
+  messages showed every row as `[encrypted]` for 3-5 s. My earlier fix targeted
+  the CACHED re-entry path; a genuinely first entry has no plaintext to show, so
+  it fell straight through. Instrumented: first row 4.7 s, pass 6.3 s for 50
+  rows (DEBUG web build — absolute numbers are not production).
+  - Fixed by relabelling to "Decrypting…" while a pass is in flight. Verified in
+    the browser: rows read "Odszyfrowywanie…" mid-pass, then real text.
+  - Narrow on purpose: keyed off `displayAsEncryptedPlaceholder`, so terminal
+    `[Decryption failed]` stays terminal and keyed media never reaches the path.
+  - `retryDecryptActiveConversation` now try/finally — a throw there stranded
+    `_decryptingHistory` true for the session, previously invisible, and would
+    have become a permanent "Decrypting…".
+- **Tried and REVERTED: progressive reveal.** The pass runs oldest-first
+  (ratchet) while the list is `reverse: true` and shows newest — mid-pass
+  notifies resolve off-screen rows first. Churn, no gain.
+- **Prune rewritten**: was a full key scan plus a redundant reload on EVERY
+  save. Now gated on a size estimate seeded by one scan per instance —
+  deliberately NOT a per-session counter, which resets each launch and would let
+  the cache grow to the localStorage quota, where the first casualty is
+  `WebSignalKvStore` persisting session/identity records, not the cache.
+
+### Incidental
+- The disaster-recovery migration path ran for real: the stack came up on an
+  EMPTY database and reached `{"status":"ok","db":"ok"}`.
+- Two throwaway probes added, both skipped unless given dart-defines:
+  `seed_long_history_probe_test.dart`, `recovered_identity_probe_test.dart`.
+
 ## Notes for next session
 - **NOT deployed and NOT version-bumped.** `pubspec.yaml` stays 0.0.132; the
   bump belongs to the release commit (the 0.0.131 run recorded a procedure
