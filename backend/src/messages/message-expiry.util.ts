@@ -30,10 +30,7 @@ export function isMessageExpired(
     }
   }
 
-  if (
-    message.disappearAfterSeconds != null &&
-    message.expiresAt == null
-  ) {
+  if (message.disappearAfterSeconds != null && message.expiresAt == null) {
     const createdMs = new Date(message.createdAt as Date).getTime();
     if (!Number.isNaN(createdMs)) {
       const unreadDeadlineMs =

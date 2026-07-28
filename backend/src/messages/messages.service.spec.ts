@@ -106,7 +106,9 @@ describe('MessagesService.getUnreadSummaryForUser', () => {
     const result = await service.getUnreadSummaryForUser(42);
 
     expect(result.unreadTotal).toBe(8);
-    expect(result.unreadConversationIds).toEqual(expect.arrayContaining([10, 20]));
+    expect(result.unreadConversationIds).toEqual(
+      expect.arrayContaining([10, 20]),
+    );
     expect(result.unreadConversationIds).toHaveLength(2);
     expect(result.countByConversationId.get(10)).toBe(3);
     expect(result.countByConversationId.get(20)).toBe(5);
@@ -132,10 +134,9 @@ describe('MessagesService.getUnreadSummaryForUser', () => {
       { userId: 42 },
     );
     expect(qb.andWhere).toHaveBeenCalledWith('s.id != :userId', { userId: 42 });
-    expect(qb.andWhere).toHaveBeenCalledWith(
-      'm."deliveryStatus" != :status',
-      { status: MessageDeliveryStatus.READ },
-    );
+    expect(qb.andWhere).toHaveBeenCalledWith('m."deliveryStatus" != :status', {
+      status: MessageDeliveryStatus.READ,
+    });
     expect(qb.andWhere).toHaveBeenCalledWith(
       MESSAGE_NOT_EXPIRED_SQL,
       expect.objectContaining({ now: expect.any(Date) }),
@@ -233,7 +234,9 @@ describe('MessagesService.editMessage', () => {
     } as unknown as Message;
     repo.findOne.mockResolvedValue(existing);
 
-    const result = await service.editMessage(5, 1, { content: 'new plaintext' });
+    const result = await service.editMessage(5, 1, {
+      content: 'new plaintext',
+    });
 
     expect(result).not.toBeNull();
     expect(result!.content).toBe('new plaintext');
@@ -277,7 +280,10 @@ describe('MessagesService.findServedMessageIds', () => {
 
   /** Every predicate the built query carries, in one flat list. */
   const predicates = (): string[] =>
-    [...qb.where.mock.calls, ...qb.andWhere.mock.calls].map((c) => String(c[0]));
+    [
+      ...(qb.where.mock.calls as unknown[][]),
+      ...(qb.andWhere.mock.calls as unknown[][]),
+    ].map((c) => String(c[0]));
 
   beforeEach(async () => {
     qb = {
@@ -331,9 +337,27 @@ describe('MessagesService.findServedMessageIds', () => {
 
   it('drops rows the caller hid with "delete for me"', async () => {
     qb.getRawMany.mockResolvedValue([
-      { id: 1, hiddenByUserIds: '5,42,7', expiresAt: null, disappearAfterSeconds: null, createdAt: new Date() },
-      { id: 2, hiddenByUserIds: '5,7', expiresAt: null, disappearAfterSeconds: null, createdAt: new Date() },
-      { id: 3, hiddenByUserIds: null, expiresAt: null, disappearAfterSeconds: null, createdAt: new Date() },
+      {
+        id: 1,
+        hiddenByUserIds: '5,42,7',
+        expiresAt: null,
+        disappearAfterSeconds: null,
+        createdAt: new Date(),
+      },
+      {
+        id: 2,
+        hiddenByUserIds: '5,7',
+        expiresAt: null,
+        disappearAfterSeconds: null,
+        createdAt: new Date(),
+      },
+      {
+        id: 3,
+        hiddenByUserIds: null,
+        expiresAt: null,
+        disappearAfterSeconds: null,
+        createdAt: new Date(),
+      },
     ]);
 
     expect(await service.findServedMessageIds([1, 2, 3], 42)).toEqual([2, 3]);
@@ -343,22 +367,50 @@ describe('MessagesService.findServedMessageIds', () => {
     const now = Date.now();
     qb.getRawMany.mockResolvedValue([
       // Deadline already passed.
-      { id: 1, hiddenByUserIds: null, expiresAt: new Date(now - 1000), disappearAfterSeconds: 60, createdAt: new Date(now - 5000) },
+      {
+        id: 1,
+        hiddenByUserIds: null,
+        expiresAt: new Date(now - 1000),
+        disappearAfterSeconds: 60,
+        createdAt: new Date(now - 5000),
+      },
       // Read-mode, never read, sent two days ago → past the 1-day unread cap.
-      { id: 2, hiddenByUserIds: null, expiresAt: null, disappearAfterSeconds: 60, createdAt: new Date(now - 2 * DAY_MS) },
+      {
+        id: 2,
+        hiddenByUserIds: null,
+        expiresAt: null,
+        disappearAfterSeconds: 60,
+        createdAt: new Date(now - 2 * DAY_MS),
+      },
       // Read-mode, never read, sent a minute ago → still live despite the
       // 60-second timer: the clock only starts when the recipient reads.
-      { id: 3, hiddenByUserIds: null, expiresAt: null, disappearAfterSeconds: 60, createdAt: new Date(now - 60 * 1000) },
+      {
+        id: 3,
+        hiddenByUserIds: null,
+        expiresAt: null,
+        disappearAfterSeconds: 60,
+        createdAt: new Date(now - 60 * 1000),
+      },
       // Deadline in the future.
-      { id: 4, hiddenByUserIds: null, expiresAt: new Date(now + DAY_MS), disappearAfterSeconds: null, createdAt: new Date(now - 5000) },
+      {
+        id: 4,
+        hiddenByUserIds: null,
+        expiresAt: new Date(now + DAY_MS),
+        disappearAfterSeconds: null,
+        createdAt: new Date(now - 5000),
+      },
     ]);
 
-    expect(await service.findServedMessageIds([1, 2, 3, 4], 42)).toEqual([3, 4]);
+    expect(await service.findServedMessageIds([1, 2, 3, 4], 42)).toEqual([
+      3, 4,
+    ]);
   });
 
   it('never queries for an empty or non-positive id set', async () => {
     expect(await service.findServedMessageIds([], 42)).toEqual([]);
-    expect(await service.findServedMessageIds([0, -3, 1.5, NaN], 42)).toEqual([]);
+    expect(await service.findServedMessageIds([0, -3, 1.5, NaN], 42)).toEqual(
+      [],
+    );
     expect(createQueryBuilder).not.toHaveBeenCalled();
   });
 

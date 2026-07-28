@@ -46,6 +46,27 @@ function createMockClient(
   };
 }
 
+/** Typed view over a mock client's emits, so payload reads stay lint-clean. */
+function emittedPayload(
+  client: { emit: jest.Mock },
+  event: string,
+): Record<string, unknown> | undefined {
+  const calls = client.emit.mock.calls as [string, Record<string, unknown>][];
+  return calls.find((call) => call[0] === event)?.[1];
+}
+
+/**
+ * Test-only backdoor to the gateway's private presence map. A cast is the
+ * only option here — the field is deliberately private and a runtime check
+ * would prove nothing the class does not already guarantee.
+ */
+function onlineUsersOf(gateway: ChatGateway): Map<number, string> {
+  const withPresence = gateway as unknown as {
+    onlineUsers: Map<number, string>;
+  };
+  return withPresence.onlineUsers;
+}
+
 describe('ChatGateway handleConnection', () => {
   let gateway: ChatGateway;
   let jwtService: { verify: jest.Mock };
@@ -75,14 +96,12 @@ describe('ChatGateway handleConnection', () => {
       (gateway as any).chatKeyExchangeService.deliverPendingSessionRebuilds,
     ).toHaveBeenCalledWith(client);
     expect(client.emit).toHaveBeenCalledWith('socketReady', {
-      serverTime: expect.any(String),
+      serverTime: expect.any(String) as unknown,
     });
     // The client parses this and refuses to destroy expired plaintext when it
     // cannot. An unparseable stamp would silently disable that path forever.
-    const readyCall = (client.emit as jest.Mock).mock.calls.find(
-      (call) => call[0] === 'socketReady',
-    );
-    expect(Number.isNaN(Date.parse(readyCall[1].serverTime))).toBe(false);
+    const ready = emittedPayload(client, 'socketReady');
+    expect(Number.isNaN(Date.parse(String(ready?.serverTime)))).toBe(false);
     expect(client.disconnect).not.toHaveBeenCalled();
     expect(client.data.user).toEqual({
       id: 42,
@@ -185,7 +204,7 @@ describe('ChatGateway handleDisconnect (stale-socket guard)', () => {
 
     gateway.handleDisconnect(oldSocket as any); // abandoned old socket times out
 
-    const onlineUsers: Map<number, string> = (gateway as any).onlineUsers;
+    const onlineUsers = onlineUsersOf(gateway);
     expect(onlineUsers.get(37)).toBe('NEW');
   });
 
@@ -195,7 +214,7 @@ describe('ChatGateway handleDisconnect (stale-socket guard)', () => {
     await gateway.handleConnection(socket as any);
     gateway.handleDisconnect(socket as any);
 
-    const onlineUsers: Map<number, string> = (gateway as any).onlineUsers;
+    const onlineUsers = onlineUsersOf(gateway);
     expect(onlineUsers.has(37)).toBe(false);
   });
 });
@@ -208,14 +227,12 @@ describe('ChatGateway handleGetServerTime', () => {
     gateway.handleGetServerTime(client as any);
 
     expect(client.emit).toHaveBeenCalledWith('serverTime', {
-      serverTime: expect.any(String),
+      serverTime: expect.any(String) as unknown,
     });
     // Same contract as socketReady: the client refuses to destroy expired
     // plaintext without a clock it can parse, so an unparseable stamp would
     // silently disable the in-session sweep this event exists to feed.
-    const call = (client.emit as jest.Mock).mock.calls.find(
-      (c) => c[0] === 'serverTime',
-    );
-    expect(Number.isNaN(Date.parse(call[1].serverTime))).toBe(false);
+    const payload = emittedPayload(client, 'serverTime');
+    expect(Number.isNaN(Date.parse(String(payload?.serverTime)))).toBe(false);
   });
 });

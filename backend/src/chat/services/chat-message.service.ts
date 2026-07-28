@@ -25,6 +25,23 @@ import { EditMessageDto } from '../dto/edit-message.dto';
 /** Editing a sent message is only allowed within this window after it was created. */
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
 
+/**
+ * The socket's authenticated user id, or null before auth completed.
+ *
+ * `client.data` is `any` in socket.io's types; the gateway writes `data.user`
+ * itself at auth time, so this narrows an INTERNAL shape rather than external
+ * input. Runtime-narrowed instead of cast so the lint ratchet stays honest —
+ * used by the served-ids handler; older handlers keep their historical
+ * pattern untouched.
+ */
+function servedIdsCallerId(client: Socket): number | null {
+  const data: unknown = client.data;
+  if (!data || typeof data !== 'object' || !('user' in data)) return null;
+  const user = data.user;
+  if (!user || typeof user !== 'object' || !('id' in user)) return null;
+  return typeof user.id === 'number' ? user.id : null;
+}
+
 @Injectable()
 export class ChatMessageService {
   private readonly logger = new Logger(ChatMessageService.name);
@@ -166,8 +183,7 @@ export class ChatMessageService {
     );
     if (
       !conversation ||
-      (conversation.userOne.id !== userId &&
-        conversation.userTwo.id !== userId)
+      (conversation.userOne.id !== userId && conversation.userTwo.id !== userId)
     ) {
       client.emit('messageHistory', {
         conversationId: data.conversationId,
@@ -223,14 +239,16 @@ export class ChatMessageService {
    *    applied to the wrong batch.
    */
   async handleGetServedMessageIds(client: Socket, data: unknown) {
-    const userId: number = client.data.user?.id;
+    const userId = servedIdsCallerId(client);
     if (!userId) return;
 
     let dto: GetServedMessageIdsDto;
     try {
       dto = validateDto(GetServedMessageIdsDto, data);
     } catch (error) {
-      client.emit('error', { message: error.message });
+      client.emit('error', {
+        message: error instanceof Error ? error.message : String(error),
+      });
       return;
     }
 
@@ -244,9 +262,10 @@ export class ChatMessageService {
         messageIds,
       });
     } catch (error) {
+      const err = error instanceof Error ? error : new Error(String(error));
       this.logger.error(
-        `Failed to resolve served message ids for user ${userId}: ${error.message}`,
-        error.stack,
+        `Failed to resolve served message ids for user ${userId}: ${err.message}`,
+        err.stack,
       );
       // No reply on purpose — see above.
     }
@@ -272,14 +291,15 @@ export class ChatMessageService {
     }
 
     // Verify caller is the recipient of this message
-    const message = await this.messagesService.findByIdWithConversation(
-      messageId,
-    );
+    const message =
+      await this.messagesService.findByIdWithConversation(messageId);
     if (!message) return;
 
     const conv = message.conversation as any;
     const recipientId =
-      conv.userOne?.id === message.sender.id ? conv.userTwo?.id : conv.userOne?.id;
+      conv.userOne?.id === message.sender.id
+        ? conv.userTwo?.id
+        : conv.userOne?.id;
     if (userId !== recipientId) return; // Silently ignore — not the intended recipient
 
     const updated = await this.messagesService.updateDeliveryStatus(
@@ -316,15 +336,19 @@ export class ChatMessageService {
       return;
     }
 
-    const conversation = await this.conversationsService.findById(
-      conversationId,
-    );
+    const conversation =
+      await this.conversationsService.findById(conversationId);
     if (!conversation) return;
 
     // Verify the caller is a member of this conversation
     const readerId = user.id;
-    if (conversation.userOne.id !== readerId && conversation.userTwo.id !== readerId) {
-      this.logger.warn(`handleMarkConversationRead: user ${readerId} is not a member of conv ${conversationId}`);
+    if (
+      conversation.userOne.id !== readerId &&
+      conversation.userTwo.id !== readerId
+    ) {
+      this.logger.warn(
+        `handleMarkConversationRead: user ${readerId} is not a member of conv ${conversationId}`,
+      );
       return;
     }
 
@@ -387,8 +411,7 @@ export class ChatMessageService {
     }
 
     const userBelongs =
-      conversation.userOne.id === userId ||
-      conversation.userTwo.id === userId;
+      conversation.userOne.id === userId || conversation.userTwo.id === userId;
     if (!userBelongs) {
       client.emit('error', { message: 'Unauthorized' });
       return;
@@ -443,7 +466,8 @@ export class ChatMessageService {
 
     const { messageId, mode } = data;
 
-    const message = await this.messagesService.findByIdWithConversation(messageId);
+    const message =
+      await this.messagesService.findByIdWithConversation(messageId);
     if (!message) {
       client.emit('error', { message: 'Message not found' });
       return;
@@ -455,17 +479,22 @@ export class ChatMessageService {
       return;
     }
 
-    const userBelongs = conv.userOne.id === userId || conv.userTwo.id === userId;
+    const userBelongs =
+      conv.userOne.id === userId || conv.userTwo.id === userId;
     if (!userBelongs) {
       client.emit('error', { message: 'Unauthorized' });
       return;
     }
 
-    const otherUserId = conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
+    const otherUserId =
+      conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
     const conversationId = conv.id;
 
     if (mode === 'for_me') {
-      const ok = await this.messagesService.hideMessageForUser(messageId, userId);
+      const ok = await this.messagesService.hideMessageForUser(
+        messageId,
+        userId,
+      );
       if (!ok) {
         client.emit('error', { message: 'Failed to hide message' });
         return;
@@ -512,7 +541,9 @@ export class ChatMessageService {
           forEveryone: true,
         });
       }
-      this.logger.debug(`User ${userId} deleted message ${messageId} for everyone`);
+      this.logger.debug(
+        `User ${userId} deleted message ${messageId} for everyone`,
+      );
     }
   }
 
@@ -535,7 +566,8 @@ export class ChatMessageService {
 
     const { messageId } = data;
 
-    const message = await this.messagesService.findByIdWithConversation(messageId);
+    const message =
+      await this.messagesService.findByIdWithConversation(messageId);
     if (!message) {
       client.emit('editMessageFailed', { messageId, reason: 'not_found' });
       return;
@@ -548,7 +580,8 @@ export class ChatMessageService {
     }
 
     // Membership first (mirror delete): only the two participants may touch the message.
-    const userBelongs = conv.userOne.id === userId || conv.userTwo.id === userId;
+    const userBelongs =
+      conv.userOne.id === userId || conv.userTwo.id === userId;
     if (!userBelongs) {
       client.emit('editMessageFailed', { messageId, reason: 'not_sender' });
       return;
