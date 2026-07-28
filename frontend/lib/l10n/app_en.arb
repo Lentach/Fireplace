@@ -80,6 +80,16 @@
   "encryptedMessage": "Encrypted message",
   "decryptionFailed": "Decryption failed",
   "encryptionNotInitialized": "Encryption not initialized",
+  "identityDamagedTitle": "Encryption keys damaged",
+  "identityDamagedBody": "Part of this device's encryption identity is missing, so messages can't be decrypted or sent. Your keys were NOT regenerated automatically — doing that silently would destroy your history.",
+  "identityDamagedAction": "Start fresh",
+  "identityDamagedConfirmTitle": "Start with new keys?",
+  "identityDamagedConfirmBody": "A new identity will be created and your contacts will re-key automatically. Messages you have already opened on this device stay readable. Any message this device never decrypted can never be recovered.",
+  "identityDamagedConfirmAction": "Create new keys",
+  "peerIdentityChangedWarning": "{name}'s security keys changed. This happens after a reinstall, but it can also mean someone is intercepting. Verify with them over another channel.",
+  "@peerIdentityChangedWarning": {
+    "placeholders": { "name": { "type": "String" } }
+  },
   "blockUser": "Block user",
   "conversationDeletedByOther": "Conversation deleted by the other user",
   "noMessagesYet": "No messages yet",

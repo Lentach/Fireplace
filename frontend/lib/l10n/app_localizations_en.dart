@@ -227,6 +227,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get encryptionNotInitialized => 'Encryption not initialized';
 
   @override
+  String get identityDamagedTitle => 'Encryption keys damaged';
+
+  @override
+  String get identityDamagedBody =>
+      'Part of this device\'s encryption identity is missing, so messages can\'t be decrypted or sent. Your keys were NOT regenerated automatically — doing that silently would destroy your history.';
+
+  @override
+  String get identityDamagedAction => 'Start fresh';
+
+  @override
+  String get identityDamagedConfirmTitle => 'Start with new keys?';
+
+  @override
+  String get identityDamagedConfirmBody =>
+      'A new identity will be created and your contacts will re-key automatically. Messages you have already opened on this device stay readable. Any message this device never decrypted can never be recovered.';
+
+  @override
+  String get identityDamagedConfirmAction => 'Create new keys';
+
+  @override
+  String peerIdentityChangedWarning(String name) {
+    return '$name\'s security keys changed. This happens after a reinstall, but it can also mean someone is intercepting. Verify with them over another channel.';
+  }
+
+  @override
   String get blockUser => 'Block user';
 
   @override

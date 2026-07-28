@@ -37,6 +37,7 @@ import '../services/notification_cleaner_stub.dart'
     if (dart.library.html) '../services/notification_cleaner_web.dart'
     if (dart.library.io) '../services/notification_cleaner_io.dart';
 import '../utils/instant_opaque_route.dart';
+import '../widgets/peer_identity_changed_banner.dart';
 import 'user_card_screen.dart';
 
 class ChatDetailScreen extends StatefulWidget {
@@ -923,6 +924,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       final hasInFlowTopBanner = pinnedBanner != null;
       body = Column(
         children: [
+          if (otherUser != null)
+            PeerIdentityChangedBanner(
+              peerId: otherUser.id,
+              peerName: contactName,
+            ),
           if (pinnedBanner != null)
             SafeArea(bottom: false, child: pinnedBanner),
           Expanded(
@@ -966,6 +972,11 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               ],
             ),
           ),
+          if (otherUser != null)
+            PeerIdentityChangedBanner(
+              peerId: otherUser.id,
+              peerName: contactName,
+            ),
           ?pinnedBanner,
           Expanded(child: _buildChatBodyStack(body, messaging)),
         ],

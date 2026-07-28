@@ -244,6 +244,21 @@ class WebSignalKvStore {
   }
 }
 
+/// Outcome of [SecureIdentityKeyStore.loadFromStorage].
+enum IdentityLoadResult {
+  /// A complete identity was restored.
+  loaded,
+
+  /// Nothing identity-shaped is stored. Genuine fresh install; safe to
+  /// generate.
+  absent,
+
+  /// Identity material is present but INCOMPLETE. Regenerating here would mint
+  /// a new identity and make every peer's history permanently undecryptable,
+  /// so the caller must fail closed instead.
+  partial,
+}
+
 /// Persistent IdentityKeyStore backed by DualStorage.
 class SecureIdentityKeyStore extends IdentityKeyStore {
   final DualStorage _storage;
@@ -251,7 +266,21 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
   IdentityKeyPair? _identityKeyPair;
   int? _localRegistrationId;
 
-  SecureIdentityKeyStore(this._storage, this._p);
+  /// Fired when a peer presents an identity key DIFFERENT from the one already
+  /// trusted for that address — a reinstall, a storage wipe, or a server
+  /// swapping the bundle. Trust-on-first-use is unaffected (no callback for a
+  /// peer we have never seen).
+  void Function(SignalProtocolAddress address)? onIdentityChanged;
+
+  SecureIdentityKeyStore(this._storage, this._p, {this.onIdentityChanged});
+
+  /// Single-record identity. The pair and the registration id used to be two
+  /// independent keys, so losing exactly ONE made [loadFromStorage] report a
+  /// fresh install and the caller regenerated the identity — silent, total,
+  /// unrecoverable history loss. One key cannot half-exist.
+  String get _recordKey => '${_p}identity_record_v1';
+  String get _legacyPairKey => '${_p}identity_key_pair';
+  String get _legacyRegIdKey => '${_p}registration_id';
 
   Future<void> initialize(
     IdentityKeyPair identityKeyPair,
@@ -259,23 +288,70 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
   ) async {
     _identityKeyPair = identityKeyPair;
     _localRegistrationId = registrationId;
+    // Atomic record FIRST: a crash after this point still loads cleanly.
     await _storage.write(
-      key: '${_p}identity_key_pair',
+      key: _recordKey,
+      value: jsonEncode(<String, dynamic>{
+        'pair': base64Encode(identityKeyPair.serialize()),
+        'registrationId': registrationId,
+      }),
+    );
+    // Legacy mirror, so rolling back to an older bundle still finds an
+    // identity. These two are never read while the record above exists.
+    await _storage.write(
+      key: _legacyPairKey,
       value: base64Encode(identityKeyPair.serialize()),
     );
     await _storage.write(
-      key: '${_p}registration_id',
+      key: _legacyRegIdKey,
       value: registrationId.toString(),
     );
   }
 
-  Future<bool> loadFromStorage() async {
-    final pairB64 = await _storage.read(key: '${_p}identity_key_pair');
-    final regIdStr = await _storage.read(key: '${_p}registration_id');
-    if (pairB64 == null || regIdStr == null) return false;
+  /// Restore the identity, preferring the atomic record and falling back to the
+  /// legacy two-key layout every existing install still has.
+  ///
+  /// A read that THROWS propagates — the caller must not treat a storage error
+  /// as "no keys". Only a definitive absence returns [IdentityLoadResult.absent].
+  Future<IdentityLoadResult> loadFromStorage() async {
+    final raw = await _storage.read(key: _recordKey);
+    if (raw != null) {
+      final decoded = jsonDecode(raw) as Map<String, dynamic>;
+      final pairB64 = decoded['pair'] as String?;
+      final regId = decoded['registrationId'] as int?;
+      if (pairB64 != null && regId != null) {
+        _identityKeyPair = IdentityKeyPair.fromSerialized(
+          base64Decode(pairB64),
+        );
+        _localRegistrationId = regId;
+        return IdentityLoadResult.loaded;
+      }
+      // A record that exists but cannot be parsed is damage, not absence.
+      return IdentityLoadResult.partial;
+    }
+
+    final pairB64 = await _storage.read(key: _legacyPairKey);
+    final regIdStr = await _storage.read(key: _legacyRegIdKey);
+    if (pairB64 == null && regIdStr == null) return IdentityLoadResult.absent;
+    if (pairB64 == null || regIdStr == null) return IdentityLoadResult.partial;
+
+    final regId = int.tryParse(regIdStr);
+    if (regId == null) return IdentityLoadResult.partial;
     _identityKeyPair = IdentityKeyPair.fromSerialized(base64Decode(pairB64));
-    _localRegistrationId = int.parse(regIdStr);
-    return true;
+    _localRegistrationId = regId;
+
+    // Best-effort upgrade to the atomic record. Purely additive: the legacy
+    // keys stay, so a failure here costs nothing and is retried next boot.
+    try {
+      await _storage.write(
+        key: _recordKey,
+        value: jsonEncode(<String, dynamic>{
+          'pair': pairB64,
+          'registrationId': regId,
+        }),
+      );
+    } catch (_) {}
+    return IdentityLoadResult.loaded;
   }
 
   @override
@@ -288,18 +364,36 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
     return _localRegistrationId!;
   }
 
+  String _trustedKey(SignalProtocolAddress address) =>
+      '${_p}trusted_identity_${address.getName()}_${address.getDeviceId()}';
+
+  /// Write-through memo of the trusted peer keys this engine has already read.
+  ///
+  /// libsignal calls [isTrustedIdentity] on EVERY encrypt and EVERY decrypt, and
+  /// on web a single storage read enumerates the whole localStorage keyspace
+  /// (`SharedPreferencesAsyncWeb.getString` filters its allowList only after
+  /// materialising every key). Without this memo, change detection would cost
+  /// one full enumeration per message. With it, steady state is a memory
+  /// compare and — since the write below is now conditional — strictly cheaper
+  /// than the unconditional write this code used to do per message.
+  ///
+  /// Engine-local by design: a sibling tab writing a peer key is not observed
+  /// here, which can only cost a duplicate warning, never trust of a key this
+  /// engine did not itself verify against storage on first contact.
+  final Map<String, IdentityKey> _trustedMemo = {};
+
   @override
   Future<bool> saveIdentity(
     SignalProtocolAddress address,
     IdentityKey? identityKey,
   ) async {
     if (identityKey == null) return false;
-    final key =
-        '${_p}trusted_identity_${address.getName()}_${address.getDeviceId()}';
+    final key = _trustedKey(address);
     await _storage.write(
       key: key,
       value: base64Encode(identityKey.serialize()),
     );
+    _trustedMemo[key] = identityKey;
     return true;
   }
 
@@ -310,19 +404,46 @@ class SecureIdentityKeyStore extends IdentityKeyStore {
     Direction direction,
   ) async {
     if (identityKey == null) return false;
-    // Auto-update: accept key rotation (e.g. peer reinstalled / storage evicted).
-    // Consumer app — we don't verify fingerprints manually, so TOFU always wins.
+    // Auto-update: accept key rotation (e.g. peer reinstalled / storage
+    // evicted). Consumer app — we don't verify fingerprints manually, so TOFU
+    // always wins and the message keeps flowing.
+    //
+    // But a CHANGE is no longer silent. A peer's key changing means either a
+    // reinstall or a server handing us a different bundle, and the second case
+    // is indistinguishable from a machine-in-the-middle for everything sent
+    // afterwards. The user gets told; only first contact stays quiet.
+    final existing = await getIdentity(address);
+    if (existing != null && _sameIdentity(existing, identityKey)) {
+      // Unchanged: deliberately NO write. This runs per message.
+      return true;
+    }
     await saveIdentity(address, identityKey);
+    if (existing != null) {
+      onIdentityChanged?.call(address);
+    }
+    return true;
+  }
+
+  bool _sameIdentity(IdentityKey a, IdentityKey b) {
+    final x = a.serialize();
+    final y = b.serialize();
+    if (x.length != y.length) return false;
+    for (var i = 0; i < x.length; i++) {
+      if (x[i] != y[i]) return false;
+    }
     return true;
   }
 
   @override
   Future<IdentityKey?> getIdentity(SignalProtocolAddress address) async {
-    final key =
-        '${_p}trusted_identity_${address.getName()}_${address.getDeviceId()}';
+    final key = _trustedKey(address);
+    final memo = _trustedMemo[key];
+    if (memo != null) return memo;
     final stored = await _storage.read(key: key);
     if (stored == null) return null;
-    return IdentityKey.fromBytes(base64Decode(stored), 0);
+    final parsed = IdentityKey.fromBytes(base64Decode(stored), 0);
+    _trustedMemo[key] = parsed;
+    return parsed;
   }
 }
 

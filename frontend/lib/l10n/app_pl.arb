@@ -80,6 +80,16 @@
   "encryptedMessage": "Wiadomość zaszyfrowana",
   "decryptionFailed": "Odszyfrowanie nie powiodło się",
   "encryptionNotInitialized": "Szyfrowanie niezainicjowane",
+  "identityDamagedTitle": "Klucze szyfrowania uszkodzone",
+  "identityDamagedBody": "Brakuje części tożsamości szyfrowania tego urządzenia, więc nie można odszyfrować ani wysyłać wiadomości. Klucze NIE zostały odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby historię.",
+  "identityDamagedAction": "Zacznij od nowa",
+  "identityDamagedConfirmTitle": "Utworzyć nowe klucze?",
+  "identityDamagedConfirmBody": "Zostanie utworzona nowa tożsamość, a kontakty automatycznie wymienią klucze. Wiadomości już otwarte na tym urządzeniu pozostaną czytelne. Wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania.",
+  "identityDamagedConfirmAction": "Utwórz nowe klucze",
+  "peerIdentityChangedWarning": "Klucze bezpieczeństwa użytkownika {name} uległy zmianie. Zwykle oznacza to ponowną instalację, ale może też oznaczać podsłuch. Potwierdź to z nim innym kanałem.",
+  "@peerIdentityChangedWarning": {
+    "placeholders": { "name": { "type": "String" } }
+  },
   "blockUser": "Zablokuj użytkownika",
   "conversationDeletedByOther": "Rozmowa usunięta przez drugą osobę",
   "noMessagesYet": "Brak wiadomości",

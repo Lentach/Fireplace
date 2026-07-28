@@ -9,6 +9,25 @@ import '../utils/e2e_persistent_diag.dart';
 import 'encryption/signal_stores.dart';
 import 'encryption/session_cross_context_lock.dart';
 
+/// Thrown by [EncryptionService.initialize] when identity material is present
+/// but incomplete.
+///
+/// Initialization fails CLOSED here on purpose: regenerating would mint a new
+/// identity and make every peer's history permanently undecryptable, while
+/// refusing leaves the surviving bytes on disk where they may still be
+/// recoverable. Because that also means E2E never comes up, this is a distinct
+/// type — callers must surface it and offer
+/// [EncryptionService.regenerateIdentityAfterConfirmedLoss] as an explicit,
+/// user-consented way out, NOT treat it as a transient init failure.
+class E2eIdentityIncompleteException implements Exception {
+  const E2eIdentityIncompleteException();
+
+  @override
+  String toString() =>
+      'E2eIdentityIncompleteException: identity material is incomplete; '
+      'refusing to regenerate without explicit consent';
+}
+
 class EncryptionService {
   EncryptionService({
     int decryptedContentCacheLimit = 2000,
@@ -74,6 +93,42 @@ class EncryptionService {
 
   /// Public key data to upload to the server (set after key generation).
   Map<String, dynamic>? _keysForUpload;
+  /// True once [initialize] refused to start because identity material is
+  /// incomplete. The only way forward is
+  /// [regenerateIdentityAfterConfirmedLoss], which the USER must consent to.
+  bool identityIncomplete = false;
+
+  /// Peers whose identity key changed under us this session, surfaced so the
+  /// UI can warn instead of silently trusting the new key.
+  final Set<int> _peersWithChangedIdentity = <int>{};
+  Set<int> get peersWithChangedIdentity =>
+      Set.unmodifiable(_peersWithChangedIdentity);
+
+  /// Called when a peer's identity key changes. Set by the provider.
+  void Function(int peerId)? onPeerIdentityChanged;
+
+  /// Construct the four Signal stores for prefix [p].
+  ///
+  /// Single place on purpose: the identity store carries the
+  /// peer-identity-change callback, and a second construction site that forgot
+  /// it would silently disable the MITM/re-key warning.
+  void _buildStores(String p) {
+    _identityStore = SecureIdentityKeyStore(
+      _storage,
+      p,
+      onIdentityChanged: (address) {
+        final peerId = int.tryParse(address.getName());
+        if (peerId == null) return;
+        if (!_peersWithChangedIdentity.add(peerId)) return;
+        E2ePersistentDiag.record('PEER_IDENTITY_CHANGED', {'peerId': peerId});
+        onPeerIdentityChanged?.call(peerId);
+      },
+    );
+    _preKeyStore = SecurePreKeyStore(_storage, p);
+    _signedPreKeyStore = SecureSignedPreKeyStore(_storage, p);
+    _sessionStore = SecureSessionStore(_storage, p);
+    _cipherSessionStore = _sessionStore;
+  }
 
   /// Initialize the encryption service for the given user. Loads keys from
   /// secure storage or generates new ones if this is a fresh install.
@@ -81,22 +136,122 @@ class EncryptionService {
     _userId = userId;
     final p = 'e2e_${userId}_'; // per-user storage key prefix
 
-    _identityStore = SecureIdentityKeyStore(_storage, p);
-    _preKeyStore = SecurePreKeyStore(_storage, p);
-    _signedPreKeyStore = SecureSignedPreKeyStore(_storage, p);
-    _sessionStore = SecureSessionStore(_storage, p);
-    _cipherSessionStore = _sessionStore;
+    _buildStores(p);
 
-    final loaded = await _identityStore.loadFromStorage();
-    if (loaded) {
-      debugPrint('[EncryptionService] Loaded existing keys from storage');
-      needsKeyUpload = false;
-    } else {
-      debugPrint('[EncryptionService] Generating new keys (fresh install)');
-      await _generateKeys();
-      needsKeyUpload = true;
+    // A THROWING read propagates: a storage error must never be read as "no
+    // keys". Only a definitive absence reaches the generate branch.
+    var load = await _identityStore.loadFromStorage();
+    if (load == IdentityLoadResult.absent &&
+        await _hasPriorInstallResidue(p)) {
+      // No identity, yet sessions/prekeys from a previous install survive.
+      // That is partial storage loss, not a fresh install.
+      load = IdentityLoadResult.partial;
     }
 
+    switch (load) {
+      case IdentityLoadResult.loaded:
+        debugPrint('[EncryptionService] Loaded existing keys from storage');
+        needsKeyUpload = false;
+      case IdentityLoadResult.partial:
+        E2ePersistentDiag.record('IDENTITY_INCOMPLETE', {'userId': userId});
+        debugPrint(
+          '[EncryptionService] Identity incomplete — refusing to regenerate',
+        );
+        identityIncomplete = true;
+        throw const E2eIdentityIncompleteException();
+      case IdentityLoadResult.absent:
+        debugPrint('[EncryptionService] Generating new keys (fresh install)');
+        await _generateKeys();
+        needsKeyUpload = true;
+    }
+
+    _initialized = true;
+  }
+
+  /// True when storage still holds Signal material from a previous install of
+  /// this account — sessions, prekeys, or the prekey counter. Identity absent
+  /// while these survive means partial loss, and regenerating would strand
+  /// every one of those sessions.
+  ///
+  /// Only consulted after [SecureIdentityKeyStore.loadFromStorage] returned
+  /// `absent`, which already proves the identity reads themselves succeeded —
+  /// storage is broadly working. A throwing `readAll` is therefore
+  /// INCONCLUSIVE, not evidence of residue: biasing it to `true` would brick
+  /// genuine fresh installs on a transient error and prompt a "your keys are
+  /// damaged" recovery at a user who has no keys and nothing to lose. Retry
+  /// once, then treat it as a fresh install and leave a forensic trail. The
+  /// primary guard against partial loss is `loadFromStorage` returning
+  /// `partial`, which never depends on this check.
+  Future<bool> _hasPriorInstallResidue(String prefix) async {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final all = await _storage.readAll();
+        for (final key in all.keys) {
+          if (!key.startsWith(prefix)) continue;
+          final suffix = key.substring(prefix.length);
+          if (suffix.startsWith('session_') ||
+              suffix.startsWith('pre_key_') ||
+              suffix.startsWith('signed_pre_key_') ||
+              suffix == 'next_pre_key_id') {
+            return true;
+          }
+        }
+        return false;
+      } catch (_) {
+        if (attempt == 0) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      }
+    }
+    E2ePersistentDiag.record('IDENTITY_RESIDUE_UNKNOWN', {'prefix': prefix});
+    return false;
+  }
+
+  /// DESTRUCTIVE, USER-CONSENTED. Mint a brand-new identity after the user has
+  /// been told the stored one is damaged.
+  ///
+  /// What is actually lost: every existing Signal session, so NO ciphertext can
+  /// be decrypted from here on — any message whose plaintext was never cached
+  /// is gone for good, and peers must re-key. What survives: the decrypted
+  /// plaintext cache is deliberately NOT deleted, so history this device
+  /// already decrypted stays readable. Say exactly that in the consent dialog;
+  /// do not promise total loss.
+  ///
+  /// This is the escape hatch for [E2eIdentityIncompleteException]: the guard
+  /// in [initialize] deliberately refuses to do this on its own, because doing
+  /// it silently IS the data-loss bug. Old sessions and prekeys are cleared
+  /// first — leaving them would strand the new identity against ratchets no
+  /// peer can follow.
+  Future<void> regenerateIdentityAfterConfirmedLoss(int userId) async {
+    _userId = userId;
+    final p = 'e2e_${userId}_';
+    E2ePersistentDiag.record('IDENTITY_REGEN_CONSENTED', {'userId': userId});
+
+    try {
+      final all = await _storage.readAll();
+      for (final key in all.keys.toList()) {
+        if (!key.startsWith(p)) continue;
+        final suffix = key.substring(p.length);
+        final isSignalMaterial =
+            suffix.startsWith('session_') ||
+            suffix.startsWith('pre_key_') ||
+            suffix.startsWith('signed_pre_key_') ||
+            suffix.startsWith('trusted_identity_') ||
+            suffix.startsWith('identity_') ||
+            suffix == 'registration_id' ||
+            suffix == 'next_pre_key_id';
+        if (isSignalMaterial) {
+          await _storage.delete(key: key);
+        }
+      }
+    } catch (_) {}
+
+    _buildStores(p);
+    _peersWithChangedIdentity.clear();
+
+    await _generateKeys();
+    needsKeyUpload = true;
+    identityIncomplete = false;
     _initialized = true;
   }
 
@@ -408,9 +563,30 @@ class EncryptionService {
   }
 
   /// Generate more one-time pre-keys and return them for server upload.
-  Future<List<Map<String, dynamic>>> generateMorePreKeys() async {
+  ///
+  /// Serialized origin-wide. The whole body is a read-modify-write of
+  /// `next_pre_key_id`, and same-origin PWA engines share that counter: two
+  /// engines both handling `preKeysLow` could both read `next=20`, both mint
+  /// ids 20..119 with DIFFERENT private halves, and both upload. The last
+  /// local write wins, so the server ends up serving a public prekey whose
+  /// private half this device overwrote — and the peer who draws it gets a
+  /// bad-MAC session that no retry can fix.
+  ///
+  /// Its own lock name, never the per-peer session lock: this touches no
+  /// SessionRecord, and reusing the session name would serialize prekey
+  /// generation against unrelated conversations. Same shape as the existing
+  /// raw-replay lock. Leaf-level, like every other guarded body — it must not
+  /// call into a session-locked method.
+  Future<List<Map<String, dynamic>>> generateMorePreKeys() {
     final uid = _userId;
-    if (uid == null) return [];
+    if (uid == null) return Future.value(const <Map<String, dynamic>>[]);
+    return _sessionCrossContextLock(
+      'fireplace-e2e-prekeys-$uid',
+      () => _generateMorePreKeysLocked(uid),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _generateMorePreKeysLocked(int uid) async {
     final nextIdStr = await _storage.read(key: 'e2e_${uid}_next_pre_key_id');
     final storedNext = int.tryParse(nextIdStr ?? '');
     // If the counter was lost but pre-keys survive, derive the next id from the

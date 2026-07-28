@@ -10,10 +10,25 @@ external void disableWebLocksForProbe();
 /// Browser smoke probe for the origin-wide Signal session lock.
 ///
 /// Compile and serve using the commands in
-/// `docs/runbooks/e2e-decryption-failed.md` Step 3A. The page title becomes
+/// `docs/runbooks/e2e-decryption-failed.md` Step 3A, or just run
+/// `node scripts/verify-session-lock-probe.mjs`. The page title becomes
 /// `SESSION_LOCK_PASS` only when same-name requests queue and a missing Web
 /// Locks API fails closed without running the guarded action.
+///
+/// A failed assertion sets `SESSION_LOCK_FAIL: <reason>`. That distinction is
+/// load-bearing: if a regression merely left the title at PENDING, the runner
+/// could not tell "the lock is broken" from "the page never finished", and
+/// would report the one thing this probe exists to catch as a harness glitch.
 Future<void> main() async {
+  try {
+    await _runProbe();
+    web.document.title = 'SESSION_LOCK_PASS';
+  } catch (e) {
+    web.document.title = 'SESSION_LOCK_FAIL: $e';
+  }
+}
+
+Future<void> _runProbe() async {
   final firstStarted = Completer<void>();
   final releaseFirst = Completer<void>();
   var secondStarted = false;
@@ -46,6 +61,4 @@ Future<void> main() async {
   } on UnsupportedError {
     if (unlockedActionRan) throw StateError('Signal mutation ran unlocked');
   }
-
-  web.document.title = 'SESSION_LOCK_PASS';
 }

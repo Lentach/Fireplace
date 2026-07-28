@@ -56,6 +56,20 @@ class EncryptionProvider extends ChangeNotifier {
   /// storage loss). All messages encrypted for the old identity are unrecoverable.
   bool get hadIdentityReset => _encryptionService.needsKeyUpload;
 
+  /// True when initialization REFUSED to start because the stored identity is
+  /// damaged (present but incomplete). E2E is down and stays down until the
+  /// user consents to [recoverFromIncompleteIdentity]. Distinct from a
+  /// transient init failure precisely so the UI can say so and offer the way
+  /// out instead of looping forever on `[encrypted]`.
+  bool get identityIncomplete => _identityIncomplete;
+  bool _identityIncomplete = false;
+
+  /// Peers whose Signal identity key changed under us. A reinstall looks
+  /// identical to a server swapping the bundle, so the user is told rather
+  /// than silently re-trusted.
+  Set<int> get peersWithChangedIdentity =>
+      _encryptionService.peersWithChangedIdentity;
+
   /// The pending pre-key fetch completers, keyed by recipient user ID.
   Map<int, Completer<Map<String, dynamic>>> get pendingPreKeyFetches =>
       _pendingPreKeyFetches;
@@ -320,8 +334,12 @@ class EncryptionProvider extends ChangeNotifier {
     _e2eFlowLog('E2E_INIT_START', {'alreadyInitialized': _e2eInitialized});
     try {
       if (!_e2eInitialized) {
+        // Rebuild the UI when a peer's identity key changes so the warning can
+        // appear without waiting for the next message.
+        _encryptionService.onPeerIdentityChanged = (_) => notifyListeners();
         // Fresh session: load keys from storage (or generate on first install).
         await _encryptionService.initialize(userId);
+        _identityIncomplete = false;
         _e2eInitialized = true;
         debugPrint('[E2E] Encryption service initialized');
         _e2eFlowLog('E2E_INIT_DONE', {
@@ -375,6 +393,16 @@ class EncryptionProvider extends ChangeNotifier {
           );
         }
       }
+    } on E2eIdentityIncompleteException catch (e) {
+      // NOT a transient failure and NOT recoverable by retrying: the stored
+      // identity is damaged and we refused to regenerate over it. Surface it
+      // so the UI can explain and offer recoverFromIncompleteIdentity(),
+      // instead of leaving the user staring at "[encrypted]" every boot.
+      debugPrint('[E2E] $e');
+      _identityIncomplete = true;
+      _e2eInitialized = false;
+      _e2eFlowLog('E2E_INIT_IDENTITY_INCOMPLETE', {});
+      notifyListeners();
     } catch (e) {
       debugPrint('[E2E] Initialization failed: $e');
       // Only clear the flag if we hadn't initialized yet; don't undo a working
@@ -386,6 +414,59 @@ class EncryptionProvider extends ChangeNotifier {
         onE2EReady?.call();
       }
     }
+  }
+
+  /// DESTRUCTIVE, only after explicit user consent. The escape hatch from
+  /// [identityIncomplete]: wipe the damaged Signal material and start a new
+  /// identity so the app can send and receive again.
+  ///
+  /// Tell the user the truth first: no existing ciphertext will ever decrypt
+  /// again and peers must re-key, but history this device already decrypted
+  /// stays readable (the plaintext cache is not touched).
+  Future<void> recoverFromIncompleteIdentity() async {
+    final userId = _currentUserId;
+    if (userId == null || !_identityIncomplete) return;
+    // Set SYNCHRONOUSLY, before any await: key generation mints 100 prekeys and
+    // is far from instant, and `_identityIncomplete` only clears at the end. A
+    // second tap in that window would otherwise pass the guard above and run a
+    // concurrent identity write + prekey batch against the same counter.
+    if (_identityRecoveryInFlight) return;
+    _identityRecoveryInFlight = true;
+    notifyListeners();
+    try {
+      await _runIdentityRecovery(userId);
+    } finally {
+      _identityRecoveryInFlight = false;
+      notifyListeners();
+    }
+  }
+
+  /// True while [recoverFromIncompleteIdentity] is running, so the UI can
+  /// disable its own trigger instead of relying on the user not double-tapping.
+  bool get identityRecoveryInFlight => _identityRecoveryInFlight;
+  bool _identityRecoveryInFlight = false;
+
+  Future<void> _runIdentityRecovery(int userId) async {
+    _e2eFlowLog('E2E_IDENTITY_RECOVERY_START', {'userId': userId});
+    await _encryptionService.regenerateIdentityAfterConfirmedLoss(userId);
+    _identityIncomplete = false;
+    _e2eInitialized = true;
+    notifyListeners();
+    // Publish the new bundle; without it peers cannot start a session.
+    final keys = _encryptionService.getKeysForUpload();
+    if (keys != null) {
+      final keyBundle = keys['keyBundle'] as Map<String, dynamic>;
+      final identity = keyBundle['identityPublicKey'];
+      if (identity is String && identity.isNotEmpty) {
+        _emit?.call('uploadKeyBundle', keyBundle);
+        _emit?.call('uploadOneTimePreKeys', {
+          'keys': (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
+          'identityPublicKey': identity,
+        });
+      }
+    }
+    _e2eFlowLog('E2E_IDENTITY_RECOVERY_DONE', {'userId': userId});
+    onE2EReady?.call();
   }
 
   // ---------- Key Exchange Event Handlers ----------

@@ -175,6 +175,36 @@ Both behaviours are separately falsifiable (disable the pre-paint hydration →
 the placeholder-frame test goes red; ignore the prefetched batch → the
 pass-level read-count test goes red at 30 reads instead of 0).
 
+## Step 3E — "Encryption keys damaged" banner / E2E never comes up
+
+`E2eIdentityIncompleteException`. The stored identity is present but
+INCOMPLETE, and initialization refused to regenerate over it. This is
+deliberate: regenerating silently is what destroys a user's history without
+telling them. Diag shows `IDENTITY_INCOMPLETE`.
+
+1. Do NOT tell the user to clear site data or reinstall — that converts
+   recoverable damage into certain loss.
+2. Dump `E2ePersistentDiag`. `IDENTITY_RESIDUE_UNKNOWN` means the residue probe
+   itself failed twice and we treated it as a fresh install; that path can only
+   under-trigger, never over-trigger.
+3. The only way forward is the in-app consented action (`IdentityDamagedBanner`
+   → confirm → `regenerateIdentityAfterConfirmedLoss`). Set expectations
+   precisely: every message this device has NOT already decrypted is gone for
+   good and peers re-key; history already in the plaintext cache stays
+   readable.
+
+## Step 3F — "security keys changed" warning in a chat
+
+`PEER_IDENTITY_CHANGED`. The peer presented an identity key different from the
+one we had trusted. Fireplace remains trust-on-first-use, so the message still
+decrypts — the change is now surfaced instead of swallowed.
+
+Almost always a reinstall or storage wipe on their side (cross-check: their OTP
+uploads in the backend log, per Step 1). It is also indistinguishable from a
+server handing us a substituted bundle, which is why the user is told rather
+than the client deciding for them. There is no action to take in the app; the
+resolution is the two humans confirming over another channel.
+
 ## The 2-min persistence test (still not run as of 2026-07-07)
 
 Gates the regeneration guard. Normal (non-incognito) browser profile: register

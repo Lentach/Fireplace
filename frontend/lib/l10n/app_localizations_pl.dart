@@ -227,6 +227,31 @@ class AppLocalizationsPl extends AppLocalizations {
   String get encryptionNotInitialized => 'Szyfrowanie niezainicjowane';
 
   @override
+  String get identityDamagedTitle => 'Klucze szyfrowania uszkodzone';
+
+  @override
+  String get identityDamagedBody =>
+      'Brakuje części tożsamości szyfrowania tego urządzenia, więc nie można odszyfrować ani wysyłać wiadomości. Klucze NIE zostały odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby historię.';
+
+  @override
+  String get identityDamagedAction => 'Zacznij od nowa';
+
+  @override
+  String get identityDamagedConfirmTitle => 'Utworzyć nowe klucze?';
+
+  @override
+  String get identityDamagedConfirmBody =>
+      'Zostanie utworzona nowa tożsamość, a kontakty automatycznie wymienią klucze. Wiadomości już otwarte na tym urządzeniu pozostaną czytelne. Wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania.';
+
+  @override
+  String get identityDamagedConfirmAction => 'Utwórz nowe klucze';
+
+  @override
+  String peerIdentityChangedWarning(String name) {
+    return 'Klucze bezpieczeństwa użytkownika $name uległy zmianie. Zwykle oznacza to ponowną instalację, ale może też oznaczać podsłuch. Potwierdź to z nim innym kanałem.';
+  }
+
+  @override
   String get blockUser => 'Zablokuj użytkownika';
 
   @override

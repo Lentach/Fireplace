@@ -500,6 +500,48 @@ abstract class AppLocalizations {
   /// **'Szyfrowanie niezainicjowane'**
   String get encryptionNotInitialized;
 
+  /// No description provided for @identityDamagedTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Klucze szyfrowania uszkodzone'**
+  String get identityDamagedTitle;
+
+  /// No description provided for @identityDamagedBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Brakuje części tożsamości szyfrowania tego urządzenia, więc nie można odszyfrować ani wysyłać wiadomości. Klucze NIE zostały odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby historię.'**
+  String get identityDamagedBody;
+
+  /// No description provided for @identityDamagedAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zacznij od nowa'**
+  String get identityDamagedAction;
+
+  /// No description provided for @identityDamagedConfirmTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Utworzyć nowe klucze?'**
+  String get identityDamagedConfirmTitle;
+
+  /// No description provided for @identityDamagedConfirmBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zostanie utworzona nowa tożsamość, a kontakty automatycznie wymienią klucze. Wiadomości już otwarte na tym urządzeniu pozostaną czytelne. Wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania.'**
+  String get identityDamagedConfirmBody;
+
+  /// No description provided for @identityDamagedConfirmAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Utwórz nowe klucze'**
+  String get identityDamagedConfirmAction;
+
+  /// No description provided for @peerIdentityChangedWarning.
+  ///
+  /// In pl, this message translates to:
+  /// **'Klucze bezpieczeństwa użytkownika {name} uległy zmianie. Zwykle oznacza to ponowną instalację, ale może też oznaczać podsłuch. Potwierdź to z nim innym kanałem.'**
+  String peerIdentityChangedWarning(String name);
+
   /// No description provided for @blockUser.
   ///
   /// In pl, this message translates to:
