@@ -8,6 +8,7 @@
 - Visual direction: shared floating glass utility chrome, opaque compact rows, Contacts hex identity language, primary Accept/quiet Decline, token-only colors, skeleton loading, reduce-motion-aware row transition, and unchanged instant-opaque chat entry.
 - Primary-source evidence: Signal, Discord, Session, Matrix/Element; Meta/Snapchat gaps stated rather than guessed. ➡ `2026-07-28-invitation-rework-research.md`, `docs/plans/2026-07-28-invitation-flow-research.md`, `docs/plans/2026-07-28-invitation-flow-rework.md`.
 - Worktree: `C:/Users/Lentach/Desktop/fireplace-wt-invitation`; branch `feat/invitation-rework` is committed and pushed. No merge, deploy, or app behavior change.
+- Fresh-agent copy/paste implementation prompt: `docs/plans/2026-07-28-invitation-implementation-handoff.md`. It locks scope, sender/accepter payload parity, no-auto-navigation regressions, cross-tier E2E, and the four-theme visual loop.
 
 ---
 ### Prior latest ↓

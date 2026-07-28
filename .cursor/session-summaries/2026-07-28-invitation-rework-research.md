@@ -16,6 +16,7 @@
 
 - `docs/plans/2026-07-28-invitation-flow-research.md` — cited first-party product evidence.
 - `docs/plans/2026-07-28-invitation-flow-rework.md` — recommended flow, alternatives, wire/module seam, visual direction, implementation slices, and acceptance criteria.
+- `docs/plans/2026-07-28-invitation-implementation-handoff.md` — copy-paste implementation prompt with exact scope, contracts, non-goals, regressions, visual loop, and required verification.
 - `.planning/invitation-rework/` — task plan, findings, and progress.
 
 ## Verification
@@ -25,6 +26,7 @@
 - No application source, tests, configuration, migrations, or version changed; app tests/builds were therefore not run.
 - Three optional parallel designer agents returned HTTP 429 before output. Their scoped alternatives were synthesized inline from the code audit and source-backed research instead of retrying.
 - Proposal artifacts were committed and `feat/invitation-rework` was pushed to `origin`; no merge or deployment was performed.
+- Added a fresh-agent implementation handoff for the approved design; it requires work in the isolated branch and forbids merge/deploy without owner approval.
 
 ## Notes for next session
 
