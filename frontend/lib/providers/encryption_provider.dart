@@ -319,6 +319,130 @@ class EncryptionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// How long a COMPLETED reconciliation pass suppresses the next one.
+  ///
+  /// Not a one-off migration: `messageDeleted` is a live socket event, so a
+  /// message the peer deletes while this device is offline leaves no trace to
+  /// react to — the row is simply absent from history afterwards. Asking the
+  /// server is the only thing that ever notices. It repeats for that reason,
+  /// but not on every `socketReady`: a flaky connection reconnects many times
+  /// a minute and this costs real round trips.
+  static const Duration reconcileInterval = Duration(hours: 6);
+
+  /// Ids per request. Matches the server's own per-batch cap.
+  static const int reconcileBatchSize = 500;
+
+  /// Destroy the local plaintext of every stored message the server no longer
+  /// serves this account.
+  ///
+  /// This is what makes "deleted messages are gone" true for messages that
+  /// were already deleted or expired when this feature shipped. Delete and
+  /// expiry purge as they happen, but only for events this device saw: a
+  /// record orphaned earlier carries none of the metadata
+  /// [destroyableMessageIds] matches on, and its server row is gone, so
+  /// nothing local would ever come back for it.
+  ///
+  /// [askServer] answers "of these ids, which do you still serve me". It MUST
+  /// return null for any failure — timeout, dropped socket, malformed reply.
+  /// Three properties make this safe to act on:
+  ///
+  ///  * A batch with no answer purges nothing. Silence must never read as
+  ///    "the server has none of these", because an empty answer is a real and
+  ///    destructive instruction (a fully cleared history).
+  ///  * The local id set is snapshotted BEFORE the first request, so a message
+  ///    that arrives mid-pass is not in any batch and cannot be mistaken for
+  ///    one the server dropped.
+  ///  * The answer is authoritative and global. Nothing is inferred from what
+  ///    a history PAGE contained, which would read "older than this page" as
+  ///    "deleted" and destroy the archive of every long conversation.
+  Future<void> reconcileStoredPlaintext(
+    Future<Set<int>?> Function(Set<int> batch) askServer, {
+    bool force = false,
+  }) async {
+    // The interval below cannot hold on its own: the stamp is written only
+    // after the LAST batch is answered, so a reconnect storm would start a
+    // second pass while the first is still waiting on the network and both
+    // would sail past the due check. Purging twice is harmless; paying for
+    // several concurrent passes is exactly what the interval exists to avoid.
+    if (_reconcileInFlight) return;
+    _reconcileInFlight = true;
+    try {
+      await _reconcileStoredPlaintext(askServer, force: force);
+    } finally {
+      _reconcileInFlight = false;
+    }
+  }
+
+  bool _reconcileInFlight = false;
+
+  Future<void> _reconcileStoredPlaintext(
+    Future<Set<int>?> Function(Set<int> batch) askServer, {
+    required bool force,
+  }) async {
+    final userId = _encryptionService.activeUserId;
+    if (userId == null) return;
+    final nowMs = DateTime.now().millisecondsSinceEpoch;
+    if (!force) {
+      final lastMs = await _encryptionService.lastReconcileAtMs();
+      final elapsed = lastMs == null ? null : nowMs - lastMs;
+      if (elapsed != null &&
+          elapsed >= 0 &&
+          elapsed < reconcileInterval.inMilliseconds) {
+        return;
+      }
+    }
+
+    final stored = await _encryptionService.storedMessageIds();
+    if (stored.isEmpty) {
+      await _encryptionService.markReconciledAt(nowMs);
+      return;
+    }
+
+    final batch = <int>{};
+    final orphans = <int>{};
+    var answeredAll = true;
+
+    Future<bool> ask() async {
+      final served = await askServer(Set<int>.unmodifiable(batch));
+      if (served == null) return false;
+      orphans.addAll(batch.difference(served));
+      batch.clear();
+      return true;
+    }
+
+    for (final id in stored) {
+      batch.add(id);
+      if (batch.length < reconcileBatchSize) continue;
+      if (!await ask()) {
+        answeredAll = false;
+        break;
+      }
+    }
+    if (answeredAll && batch.isNotEmpty && !await ask()) {
+      answeredAll = false;
+    }
+
+    // The account can change while the round trips are in flight (logout, then
+    // a login as the chat partner). Storage keys are namespaced per user, so
+    // purging ids collected under one account against another's namespace
+    // could destroy the partner's copy of a shared message id.
+    if (_encryptionService.activeUserId != userId) return;
+
+    if (orphans.isNotEmpty) {
+      await purgeLocalPlaintext(orphans);
+      notifyListeners();
+    }
+    _e2eFlowLog('PLAINTEXT_RECONCILED', {
+      'stored': stored.length,
+      'orphaned': orphans.length,
+      'complete': answeredAll,
+    });
+
+    // Only a pass that heard back about EVERY batch may throttle the next one.
+    // A partial pass leaves residue it has not proven anything about.
+    if (answeredAll) await _encryptionService.markReconciledAt(nowMs);
+  }
+
   /// Retrieve persisted decrypted message content, or null if not cached.
   /// Delegates to [EncryptionService.getDecryptedContent].
   Future<Map<String, dynamic>?> getDecryptedContent(int messageId) async {

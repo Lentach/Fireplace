@@ -57,6 +57,25 @@ import 'dart:typed_data';
 /// storing cleartext. An unarmed device holds readable plaintext slightly
 /// longer, which is recoverable; an armed device whose key never persisted is
 /// not. Same bias-late rule as expiry and retention.
+///
+/// ## What sealing and rotation CANNOT shred — do not over-claim this
+///
+/// Re-sealing a legacy record writes a NEW value to the SAME localStorage key.
+/// The original cleartext value stays in the LevelDB write-ahead log until a
+/// compaction nobody can trigger from JS. Destroying a content key therefore
+/// only makes residue unrecoverable for records that were sealed from the
+/// start — i.e. written after sealing armed.
+///
+/// Consequence, stated plainly because it is easy to imply otherwise: on every
+/// EXISTING install the whole current history has cleartext residue that no key
+/// rotation can ever reach. Only a profile that was sealed from its first write
+/// gets the full property. The same holds for the mobile legacy secure-store
+/// copies that a re-seal writes over.
+///
+/// So the honest claim after B2 lands is: "new messages are encrypted at rest,
+/// and purging them shreds their residue; history that predates sealing is
+/// encrypted going forward but its earlier cleartext bytes may persist in the
+/// store's log." Not "nothing can be recovered".
 class PlaintextRecordCodec {
   const PlaintextRecordCodec._();
 

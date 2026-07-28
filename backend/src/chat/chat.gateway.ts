@@ -202,6 +202,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return this.chatMessageService.handleGetMessages(client, data);
   }
 
+  /**
+   * Local-plaintext reconciliation. Cheap (PK lookup + two predicates), and the
+   * client throttles itself to a few passes a day, so the limit sits well under
+   * `getMessages`.
+   */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 900000 } })
+  @SubscribeMessage('getServedMessageIds')
+  async handleGetServedMessageIds(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: unknown,
+  ) {
+    return this.chatMessageService.handleGetServedMessageIds(client, data);
+  }
+
   @SubscribeMessage('messageDelivered')
   async handleMessageDelivered(
     @ConnectedSocket() client: Socket,

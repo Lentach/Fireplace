@@ -69,6 +69,11 @@ class EncryptionService {
 
   int? _userId;
 
+  /// The account every storage key on this instance is namespaced under, or
+  /// null before [initialize]. Exposed so a long-running pass can confirm the
+  /// account did not change underneath it before destroying anything.
+  int? get activeUserId => _userId;
+
   /// Cached SharedPreferences instance for synchronous-on-web message content cache.
   SharedPreferences? _prefs;
   Future<SharedPreferences> get _sharedPrefs async =>
@@ -1264,6 +1269,79 @@ class EncryptionService {
       return false;
     });
     return (expired: expired, retired: retired);
+  }
+
+  /// Every message id whose plaintext this device has persisted.
+  ///
+  /// The union of both id-keyed stores: a record left in only one of them is
+  /// still readable, so both must be visible to whoever decides what dies.
+  ///
+  /// Unlike [messageIdsForConversations] and [destroyableMessageIds] this
+  /// reads no metadata at all, which is the entire point. Records written
+  /// before the `_cid` / `_savedAt` stamps existed are invisible to both of
+  /// those rules and would otherwise sit here until the LRU cap happened to
+  /// evict them; they are exactly what server reconciliation is for.
+  Future<Set<int>> storedMessageIds() async {
+    final userId = _userId;
+    if (userId == null) return <int>{};
+    final prefixes = [
+      _decryptedContentPrefix(userId),
+      _rawDecryptedContentPrefix(userId),
+    ];
+    try {
+      final prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
+      final ids = <int>{};
+      for (final key in prefs.getKeys()) {
+        for (final prefix in prefixes) {
+          if (!key.startsWith(prefix)) continue;
+          final id = int.tryParse(key.substring(prefix.length));
+          if (id != null) ids.add(id);
+          break;
+        }
+      }
+      return ids;
+    } catch (_) {
+      return <int>{};
+    }
+  }
+
+  // ── Server reconciliation ────────────────────────────────────────────────
+
+  String _reconcileStampKey(int userId) => 'e2e_${userId}_reconcile_last_v1';
+
+  /// When the last COMPLETE reconciliation pass finished, in local-clock ms,
+  /// or null if none ever has.
+  ///
+  /// The local clock is deliberate here, and it is the one place in this file
+  /// where it is safe: this value only decides how OFTEN the device asks the
+  /// server, never what gets destroyed. A wrong clock either re-asks too often
+  /// (wasted round trips) or skips a pass (residue survives to the next one).
+  /// Both directions are harmless because nothing dies unless the server
+  /// itself named the survivors.
+  Future<int?> lastReconcileAtMs() async {
+    final userId = _userId;
+    if (userId == null) return null;
+    try {
+      final prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
+      return prefs.getInt(_reconcileStampKey(userId));
+    } catch (_) {
+      // Unreadable stamp reads as "never reconciled": re-asking costs a few
+      // round trips, skipping would postpone the cleanup indefinitely.
+      return null;
+    }
+  }
+
+  /// Record that a pass completed at [atMs]. Only ever called when EVERY batch
+  /// was answered — a partial pass must be retried, not throttled away.
+  Future<void> markReconciledAt(int atMs) async {
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      await prefs.setInt(_reconcileStampKey(userId), atMs);
+    } catch (_) {}
   }
 
   // ── Retired ids ──────────────────────────────────────────────────────────

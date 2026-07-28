@@ -4,7 +4,17 @@ import { In, Not, Repository } from 'typeorm';
 import { Message, MessageDeliveryStatus, MessageType } from './message.entity';
 import { User } from '../users/user.entity';
 import { Conversation } from '../conversations/conversation.entity';
-import { MESSAGE_NOT_EXPIRED_SQL } from './message-expiry.util';
+import {
+  ExpirableMessage,
+  isMessageExpired,
+  MESSAGE_NOT_EXPIRED_SQL,
+} from './message-expiry.util';
+
+/** Projected row read by [MessagesService.findServedMessageIds]. */
+type ServedMessageRow = ExpirableMessage & {
+  id: number | string;
+  hiddenByUserIds: string | null;
+};
 
 @Injectable()
 export class MessagesService {
@@ -139,6 +149,66 @@ export class MessagesService {
       (m) => !MessagesService.parseHiddenIds(m.hiddenByUserIds).includes(hiddenByUserId),
     );
     return filtered.slice(offset, offset + limit).reverse();
+  }
+
+  /**
+   * Of [messageIds], the ones this user's history read path would still serve.
+   *
+   * The client destroys the local plaintext of every id NOT returned here, and
+   * that plaintext is the only copy — the ciphertext on this server can never
+   * be decrypted twice. So this MUST stay at least as permissive as
+   * `findByConversation` + `ChatMessageService.handleGetMessages`:
+   *   - a false "not served" is irreversible data loss;
+   *   - a false "served" only leaves residue for a later pass to clear.
+   * Bias every difference in the second direction. In particular do NOT copy
+   * predicates from the unread-count queries below: they carry `sender != me`
+   * and `deliveryStatus != READ`, either of which would report the user's own
+   * outgoing history as gone.
+   *
+   * Deliberately reuses `parseHiddenIds` and `isMessageExpired` rather than
+   * restating them as SQL, so the two paths cannot drift apart. The query is
+   * projected to the five columns those two rules read: hydrating whole
+   * message entities with nested user relations, per chunk, to emit a list of
+   * ints is wasted work.
+   */
+  async findServedMessageIds(
+    messageIds: number[],
+    userId: number,
+  ): Promise<number[]> {
+    const ids = Array.from(
+      new Set(
+        messageIds
+          .map((id) => Number(id))
+          .filter((id) => Number.isInteger(id) && id > 0),
+      ),
+    );
+    if (ids.length === 0) return [];
+
+    const rows: ServedMessageRow[] = await this.msgRepo
+      .createQueryBuilder('m')
+      .innerJoin('m.conversation', 'c')
+      .select('m.id', 'id')
+      .addSelect('m."hiddenByUserIds"', 'hiddenByUserIds')
+      .addSelect('m."expiresAt"', 'expiresAt')
+      .addSelect('m."disappearAfterSeconds"', 'disappearAfterSeconds')
+      .addSelect('m."createdAt"', 'createdAt')
+      .where('m.id IN (:...ids)', { ids })
+      .andWhere('(c.user_one_id = :userId OR c.user_two_id = :userId)', {
+        userId,
+      })
+      .getRawMany();
+
+    const now = new Date();
+    const served: number[] = [];
+    for (const row of rows) {
+      if (MessagesService.parseHiddenIds(row.hiddenByUserIds).includes(userId)) {
+        continue;
+      }
+      if (isMessageExpired(row, now)) continue;
+      const id = Number(row.id);
+      if (!Number.isNaN(id)) served.push(id);
+    }
+    return served;
   }
 
   /** Find message by ID with conversation and sender loaded (for delete flow). */

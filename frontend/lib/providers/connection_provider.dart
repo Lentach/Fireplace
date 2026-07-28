@@ -42,6 +42,12 @@ class ConnectionProvider extends ChangeNotifier {
   int _serverResponseCounter = 0;
   Timer? _resumeProbeTimer;
 
+  /// In-flight `getServedMessageIds` round trips, keyed by the id the server
+  /// echoes back. Completing with null means "no usable answer".
+  final Map<String, Completer<Set<int>?>> _servedIdRequests = {};
+  int _servedIdRequestSeq = 0;
+  static const Duration _servedIdRequestTimeout = Duration(seconds: 20);
+
   int? _currentUserId;
   bool _isConnected = false;
   bool _intentionalDisconnect = false;
@@ -283,7 +289,8 @@ class ConnectionProvider extends ChangeNotifier {
     });
   }
 
-  /// Refresh the retired ids, drain the purge backlog, then sweep.
+  /// Refresh the retired ids, drain the purge backlog, sweep, then reconcile
+  /// what is left against the server.
   ///
   /// This runs UNAWAITED alongside the initial fetches, so it does NOT order
   /// itself against the first history pass — do not read the sequence below as
@@ -297,7 +304,10 @@ class ConnectionProvider extends ChangeNotifier {
   ///   1. refresh retired ids before the sweep can add more of them;
   ///   2. the backlog next, so a delete interrupted by a tab close or a refused
   ///      write finishes now instead of leaving plaintext behind for good;
-  ///   3. the sweep last, once the clock is known fresh.
+  ///   3. the sweep, once the clock is known fresh;
+  ///   4. reconciliation last. It is the only step that talks to the server,
+  ///      and it should not ask about ids the three local rules above were
+  ///      already going to destroy.
   Future<void> _runLocalPlaintextMaintenance() async {
     final encryption = _encryptionProvider;
     if (encryption == null) return;
@@ -305,10 +315,70 @@ class ConnectionProvider extends ChangeNotifier {
       await encryption.loadRetiredIds();
       await encryption.drainPurgeBacklog();
       await encryption.sweepDestroyablePlaintext();
+      await encryption.reconcileStoredPlaintext(_askServedMessageIds);
     } catch (_) {
       // Never let maintenance break connect. A failure means the residue
       // survives to the next socketReady, which is the safe direction.
     }
+  }
+
+  /// One `getServedMessageIds` round trip.
+  ///
+  /// Returns null for EVERY failure mode — no socket, no reply in time, a
+  /// malformed reply. Null means "no answer" and purges nothing; an empty set
+  /// means "the server serves none of these" and destroys all of them. Those
+  /// two must never be able to blur into each other, which is why nothing here
+  /// falls back to an empty set.
+  Future<Set<int>?> _askServedMessageIds(Set<int> batch) async {
+    if (batch.isEmpty) return const <int>{};
+    if (!_socketService.isConnected) return null;
+
+    final requestId =
+        's${++_servedIdRequestSeq}-${DateTime.now().microsecondsSinceEpoch}';
+    final completer = Completer<Set<int>?>();
+    _servedIdRequests[requestId] = completer;
+    try {
+      _socketService.getServedMessageIds(requestId, batch.toList());
+      return await completer.future.timeout(
+        _servedIdRequestTimeout,
+        onTimeout: () => null,
+      );
+    } catch (_) {
+      return null;
+    } finally {
+      _servedIdRequests.remove(requestId);
+    }
+  }
+
+  /// Resolve the round trip [_askServedMessageIds] is waiting on.
+  ///
+  /// Anything unreadable resolves to null rather than to the ids it managed to
+  /// parse. A partially-parsed answer would silently mark the unparsed ids as
+  /// "the server no longer has this" and destroy their plaintext.
+  void _onServedMessageIds(dynamic data) {
+    if (data is! Map) return;
+    final requestId = data['requestId'];
+    if (requestId is! String) return;
+    final completer = _servedIdRequests.remove(requestId);
+    if (completer == null || completer.isCompleted) return;
+
+    final raw = data['messageIds'];
+    if (raw is! List) {
+      completer.complete(null);
+      return;
+    }
+    final served = <int>{};
+    for (final entry in raw) {
+      if (entry is int) {
+        served.add(entry);
+      } else if (entry is num) {
+        served.add(entry.toInt());
+      } else {
+        completer.complete(null);
+        return;
+      }
+    }
+    completer.complete(served);
   }
 
   /// Updates reconnect + messaging token after AuthProvider refreshes JWT (no socket reconnect).
@@ -335,6 +405,14 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.disconnect();
     _isConnected = false;
     _errorMessage = null;
+
+    // Answer every in-flight reconcile round trip with "no answer" instead of
+    // making it wait out its timeout. Null purges nothing, so an interrupted
+    // pass simply leaves the residue for the next connect.
+    for (final completer in _servedIdRequests.values) {
+      if (!completer.isCompleted) completer.complete(null);
+    }
+    _servedIdRequests.clear();
 
     if (isLogout) {
       _pushInitialized = false;
@@ -533,6 +611,7 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.on('partnerRecordingVoice', (data) {
       _messagingProvider?.onPartnerRecordingVoice(data);
     });
+    _socketService.on('servedMessageIds', _onServedMessageIds);
 
     // --- Error event ---
     _socketService.on('error', (err) {

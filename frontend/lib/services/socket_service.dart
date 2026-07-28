@@ -175,6 +175,18 @@ class SocketService {
     _socket?.emit('getMessages', payload);
   }
 
+  /// Ask which of [messageIds] the server still serves this account.
+  ///
+  /// [requestId] is echoed back on `servedMessageIds` so a late or foreign
+  /// answer cannot be applied to the wrong batch — the caller destroys the
+  /// local plaintext of every id missing from the reply.
+  void getServedMessageIds(String requestId, List<int> messageIds) {
+    _socket?.emit('getServedMessageIds', {
+      'requestId': requestId,
+      'messageIds': messageIds,
+    });
+  }
+
   void sendFriendRequest(int recipientId) {
     _socket?.emit('sendFriendRequest', {
       'recipientId': recipientId,

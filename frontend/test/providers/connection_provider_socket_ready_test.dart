@@ -16,6 +16,9 @@ class FakeSocketService extends SocketService {
   int getFriendRequestsCalls = 0;
   int getFriendsCalls = 0;
   int getBlockedListCalls = 0;
+
+  /// `getServedMessageIds` emissions as (requestId, ids).
+  final servedIdRequests = <MapEntry<String, List<int>>>[];
   final getMessagesConversationIds = <int>[];
   @override
   bool get isConnected => true;
@@ -52,6 +55,17 @@ class FakeSocketService extends SocketService {
   /// `{serverTime: <ISO-8601>}`; null covers an older server that sends none.
   void simulateSocketReady({Object? payload}) {
     for (final handler in _handlers['socketReady'] ?? const []) {
+      handler(payload);
+    }
+  }
+
+  @override
+  void getServedMessageIds(String requestId, List<int> messageIds) {
+    servedIdRequests.add(MapEntry(requestId, messageIds));
+  }
+
+  void simulateServedMessageIds(Object? payload) {
+    for (final handler in _handlers['servedMessageIds'] ?? const []) {
       handler(payload);
     }
   }
@@ -102,6 +116,38 @@ class _RecordingEncryption extends EncryptionProvider {
   @override
   Future<void> sweepDestroyablePlaintext() async =>
       calls.add('sweepDestroyablePlaintext');
+
+  @override
+  Future<void> reconcileStoredPlaintext(
+    Future<Set<int>?> Function(Set<int> batch) askServer, {
+    bool force = false,
+  }) async =>
+      calls.add('reconcileStoredPlaintext');
+}
+
+/// Drives ONE real `getServedMessageIds` round trip through
+/// [ConnectionProvider]'s socket plumbing and records what came back.
+class _RoundTripEncryption extends EncryptionProvider {
+  Set<int>? answer;
+  bool answered = false;
+
+  @override
+  Future<void> loadRetiredIds() async {}
+
+  @override
+  Future<void> drainPurgeBacklog() async {}
+
+  @override
+  Future<void> sweepDestroyablePlaintext() async {}
+
+  @override
+  Future<void> reconcileStoredPlaintext(
+    Future<Set<int>?> Function(Set<int> batch) askServer, {
+    bool force = false,
+  }) async {
+    answer = await askServer({1, 2, 3});
+    answered = true;
+  }
 }
 
 Map<String, dynamic> _convJson(int id) => {
@@ -309,12 +355,15 @@ void main() {
       expect(estimated!.isBefore(serverTime), isFalse);
 
       // Order is load-bearing: retired ids must be loaded before anything can
-      // try to decrypt a row whose plaintext was already destroyed, and the
-      // backlog must drain before the sweep adds more work.
+      // try to decrypt a row whose plaintext was already destroyed, the
+      // backlog must drain before the sweep adds more work, and reconciliation
+      // goes last so it never asks the server about ids the three local rules
+      // were already destroying.
       expect(encryption.calls, [
         'loadRetiredIds',
         'drainPurgeBacklog',
         'sweepDestroyablePlaintext',
+        'reconcileStoredPlaintext',
       ]);
     });
 
@@ -329,6 +378,93 @@ void main() {
       // a tab close, and it needs no clock at all.
       expect(encryption.calls, contains('drainPurgeBacklog'));
       expect(ServerClock.instance.estimatedNow, isNull);
+    });
+  });
+
+  group('ConnectionProvider getServedMessageIds round trip', () {
+    late FakeSocketService fakeSocket;
+    late RecordingConnectionProvider connection;
+    late _RoundTripEncryption encryption;
+
+    setUp(() async {
+      ServerClock.instance.resetForTest();
+      fakeSocket = FakeSocketService();
+      connection = RecordingConnectionProvider(socketService: fakeSocket);
+      encryption = _RoundTripEncryption();
+      connection.setProviders(
+        encryption: encryption,
+        friends: FriendsProvider(),
+        conversations: ConversationsProvider(),
+        messaging: MessagingProvider(),
+      );
+      await connection.connect(1, 'test-token', 'http://localhost:3000');
+      fakeSocket.simulateSocketReady();
+      await pumpEventQueue();
+    });
+
+    tearDown(() {
+      // Also releases any round trip still waiting for an answer.
+      connection.disconnect();
+      ServerClock.instance.resetForTest();
+    });
+
+    String requestId() => fakeSocket.servedIdRequests.single.key;
+
+    test('asks about the batch and returns the ids the server still serves',
+        () async {
+      expect(fakeSocket.servedIdRequests.single.value, [1, 2, 3]);
+
+      fakeSocket.simulateServedMessageIds({
+        'requestId': requestId(),
+        'messageIds': [1, 3],
+      });
+      await pumpEventQueue();
+
+      expect(encryption.answer, {1, 3});
+    });
+
+    test('an empty answer is passed through, not swallowed', () async {
+      fakeSocket.simulateServedMessageIds({
+        'requestId': requestId(),
+        'messageIds': <int>[],
+      });
+      await pumpEventQueue();
+
+      expect(encryption.answered, isTrue);
+      expect(encryption.answer, isEmpty);
+    });
+
+    test('a malformed answer resolves to null, not to a partial set',
+        () async {
+      // Parsing what it can would mark the unparsed ids as "the server no
+      // longer has this" and destroy their only copy.
+      fakeSocket.simulateServedMessageIds({
+        'requestId': requestId(),
+        'messageIds': [1, 'two', 3],
+      });
+      await pumpEventQueue();
+
+      expect(encryption.answered, isTrue);
+      expect(encryption.answer, isNull);
+    });
+
+    test('an answer for a different request is ignored', () async {
+      fakeSocket.simulateServedMessageIds({
+        'requestId': 'someone-elses-batch',
+        'messageIds': <int>[],
+      });
+      await pumpEventQueue();
+
+      expect(encryption.answered, isFalse,
+          reason: 'an empty set destroys everything it is applied to');
+    });
+
+    test('disconnect releases the wait as "no answer"', () async {
+      connection.disconnect();
+      await pumpEventQueue();
+
+      expect(encryption.answered, isTrue);
+      expect(encryption.answer, isNull);
     });
   });
 }

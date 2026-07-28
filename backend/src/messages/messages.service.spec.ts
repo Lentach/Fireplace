@@ -258,3 +258,113 @@ describe('MessagesService.editMessage', () => {
     expect(result!.encryptedContent).toBeNull();
   });
 });
+
+describe('MessagesService.findServedMessageIds', () => {
+  const DAY_MS = 86400 * 1000;
+
+  type ServedQueryBuilder = {
+    innerJoin: jest.Mock;
+    select: jest.Mock;
+    addSelect: jest.Mock;
+    where: jest.Mock;
+    andWhere: jest.Mock;
+    getRawMany: jest.Mock;
+  };
+
+  let service: MessagesService;
+  let qb: ServedQueryBuilder;
+  let createQueryBuilder: jest.Mock;
+
+  /** Every predicate the built query carries, in one flat list. */
+  const predicates = (): string[] =>
+    [...qb.where.mock.calls, ...qb.andWhere.mock.calls].map((c) => String(c[0]));
+
+  beforeEach(async () => {
+    qb = {
+      innerJoin: jest.fn().mockReturnThis(),
+      select: jest.fn().mockReturnThis(),
+      addSelect: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      getRawMany: jest.fn().mockResolvedValue([]),
+    };
+    createQueryBuilder = jest.fn(() => qb);
+    const module = await Test.createTestingModule({
+      providers: [
+        MessagesService,
+        {
+          provide: getRepositoryToken(Message),
+          useValue: { createQueryBuilder },
+        },
+      ],
+    }).compile();
+    service = module.get(MessagesService);
+  });
+
+  it('reports a message the caller SENT as still served', async () => {
+    // The regression this guards: the unread-count queries in this same
+    // service all carry `s.id != :userId`. Copying that here would report the
+    // user's entire outgoing history as gone and the client would destroy it.
+    qb.getRawMany.mockResolvedValue([
+      {
+        id: 7,
+        hiddenByUserIds: null,
+        expiresAt: null,
+        disappearAfterSeconds: null,
+        createdAt: new Date(),
+      },
+    ]);
+
+    expect(await service.findServedMessageIds([7], 1)).toEqual([7]);
+    expect(predicates().join(' ')).not.toMatch(/sender|s\.id|deliveryStatus/);
+  });
+
+  it('scopes to conversations the caller participates in', async () => {
+    await service.findServedMessageIds([7], 42);
+
+    expect(qb.innerJoin).toHaveBeenCalledWith('m.conversation', 'c');
+    expect(qb.andWhere).toHaveBeenCalledWith(
+      '(c.user_one_id = :userId OR c.user_two_id = :userId)',
+      { userId: 42 },
+    );
+  });
+
+  it('drops rows the caller hid with "delete for me"', async () => {
+    qb.getRawMany.mockResolvedValue([
+      { id: 1, hiddenByUserIds: '5,42,7', expiresAt: null, disappearAfterSeconds: null, createdAt: new Date() },
+      { id: 2, hiddenByUserIds: '5,7', expiresAt: null, disappearAfterSeconds: null, createdAt: new Date() },
+      { id: 3, hiddenByUserIds: null, expiresAt: null, disappearAfterSeconds: null, createdAt: new Date() },
+    ]);
+
+    expect(await service.findServedMessageIds([1, 2, 3], 42)).toEqual([2, 3]);
+  });
+
+  it('drops expired rows but keeps a disappearing message still inside its unread window', async () => {
+    const now = Date.now();
+    qb.getRawMany.mockResolvedValue([
+      // Deadline already passed.
+      { id: 1, hiddenByUserIds: null, expiresAt: new Date(now - 1000), disappearAfterSeconds: 60, createdAt: new Date(now - 5000) },
+      // Read-mode, never read, sent two days ago → past the 1-day unread cap.
+      { id: 2, hiddenByUserIds: null, expiresAt: null, disappearAfterSeconds: 60, createdAt: new Date(now - 2 * DAY_MS) },
+      // Read-mode, never read, sent a minute ago → still live despite the
+      // 60-second timer: the clock only starts when the recipient reads.
+      { id: 3, hiddenByUserIds: null, expiresAt: null, disappearAfterSeconds: 60, createdAt: new Date(now - 60 * 1000) },
+      // Deadline in the future.
+      { id: 4, hiddenByUserIds: null, expiresAt: new Date(now + DAY_MS), disappearAfterSeconds: null, createdAt: new Date(now - 5000) },
+    ]);
+
+    expect(await service.findServedMessageIds([1, 2, 3, 4], 42)).toEqual([3, 4]);
+  });
+
+  it('never queries for an empty or non-positive id set', async () => {
+    expect(await service.findServedMessageIds([], 42)).toEqual([]);
+    expect(await service.findServedMessageIds([0, -3, 1.5, NaN], 42)).toEqual([]);
+    expect(createQueryBuilder).not.toHaveBeenCalled();
+  });
+
+  it('de-duplicates the requested ids', async () => {
+    await service.findServedMessageIds([4, 4, 9, 4], 42);
+
+    expect(qb.where).toHaveBeenCalledWith('m.id IN (:...ids)', { ids: [4, 9] });
+  });
+});

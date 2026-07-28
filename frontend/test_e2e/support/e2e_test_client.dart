@@ -189,6 +189,7 @@ class E2eClient {
     'editMessageFailed',
     'reactionUpdated',
     'messageDeleted',
+    'servedMessageIds',
   ];
 
   /// Registers a brand-new account. Fresh every run BY DESIGN: reusing
@@ -423,6 +424,23 @@ class E2eClient {
       'messageId': messageId,
       'mode': forEveryone ? 'for_everyone' : 'for_me',
     });
+  }
+
+  /// Emits `getServedMessageIds` and returns the ids the server says it still
+  /// serves this account. Mirrors what `ConnectionProvider` does during
+  /// local-plaintext reconciliation.
+  Future<Set<int>> servedMessageIds(List<int> messageIds) async {
+    final requestId = 'e2e-${_randomHex(6)}';
+    events.discard('servedMessageIds');
+    socketService.getServedMessageIds(requestId, messageIds);
+    final payload = await events.next(
+      'servedMessageIds',
+      where: (p) => p is Map && p['requestId'] == requestId,
+      reason: '$label servedMessageIds',
+    ) as Map;
+    return {
+      for (final id in payload['messageIds'] as List) (id as num).toInt(),
+    };
   }
 
   void dispose() {

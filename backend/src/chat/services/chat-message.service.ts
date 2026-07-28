@@ -7,7 +7,13 @@ import { UsersService } from '../../users/users.service';
 import { ChatLinkPreviewService } from './chat-link-preview.service';
 import { PushNotificationCoalescingService } from '../../push-notifications/push-notification-coalescing.service';
 import { validateDto } from '../utils/dto.validator';
-import { SendMessageDto, GetMessagesDto, ClearChatHistoryDto, DeleteMessageDto } from '../dto/chat.dto';
+import {
+  SendMessageDto,
+  GetMessagesDto,
+  ClearChatHistoryDto,
+  DeleteMessageDto,
+  GetServedMessageIdsDto,
+} from '../dto/chat.dto';
 import { MessageDeliveredDto } from '../dto/message-delivered.dto';
 import { MarkConversationReadDto } from '../dto/mark-conversation-read.dto';
 import { MessageDeliveryStatus } from '../../messages/message.entity';
@@ -198,6 +204,51 @@ export class ChatMessageService {
         conversationId: data.conversationId,
         messages: [],
       });
+    }
+  }
+
+  /**
+   * Answer "which of these message ids do you still serve me?".
+   *
+   * The client destroys the local plaintext of every id it asked about that is
+   * MISSING from the reply — that is how a message deleted or expired before
+   * the device learned about it finally leaves the disk. Two consequences:
+   *
+   *  - An empty `messageIds` is a legitimate answer (a fully cleared history)
+   *    and is read as "destroy all of them". It must therefore never be
+   *    manufactured by a failure. Unlike `handleGetMessages`, which answers a
+   *    database error with an empty history, this handler answers it with
+   *    SILENCE: no reply leaves the client holding everything until next time.
+   *  - `requestId` is echoed verbatim so a late or foreign reply cannot be
+   *    applied to the wrong batch.
+   */
+  async handleGetServedMessageIds(client: Socket, data: unknown) {
+    const userId: number = client.data.user?.id;
+    if (!userId) return;
+
+    let dto: GetServedMessageIdsDto;
+    try {
+      dto = validateDto(GetServedMessageIdsDto, data);
+    } catch (error) {
+      client.emit('error', { message: error.message });
+      return;
+    }
+
+    try {
+      const messageIds = await this.messagesService.findServedMessageIds(
+        dto.messageIds,
+        userId,
+      );
+      client.emit('servedMessageIds', {
+        requestId: dto.requestId,
+        messageIds,
+      });
+    } catch (error) {
+      this.logger.error(
+        `Failed to resolve served message ids for user ${userId}: ${error.message}`,
+        error.stack,
+      );
+      // No reply on purpose — see above.
     }
   }
 

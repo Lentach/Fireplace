@@ -462,6 +462,65 @@ void main() {
       timeout: const Timeout(Duration(minutes: 1)),
     );
 
+    test(
+      'getServedMessageIds answers from the real history rules',
+      () async {
+        // The reconcile pass destroys the local plaintext of every id MISSING
+        // from this answer, so a wrong "not served" is permanent data loss.
+        // Mocked unit tests cannot see the assembled SQL; this can.
+        final mine = await roundTrip(alice, bob, 'served-mine-$runTag',
+            tempId: 't14-$runTag', expectedWireType: 2);
+        final theirs = await roundTrip(bob, alice, 'served-theirs-$runTag',
+            tempId: 't15-$runTag', expectedWireType: 2);
+        final deleted = await roundTrip(alice, bob, 'served-deleted-$runTag',
+            tempId: 't16-$runTag', expectedWireType: 2);
+        final hiddenForBob = await roundTrip(alice, bob, 'served-hidden-$runTag',
+            tempId: 't17-$runTag', expectedWireType: 2);
+
+        alice.emitDeleteMessage(deleted, forEveryone: true);
+        for (final client in [alice, bob]) {
+          await client.events.next(
+            'messageDeleted',
+            where: (p) => p is Map && p['messageId'] == deleted,
+            reason: '${client.label} hard delete',
+          );
+        }
+
+        bob.emitDeleteMessage(hiddenForBob, forEveryone: false);
+        await bob.events.next(
+          'messageDeleted',
+          where: (p) => p is Map && p['messageId'] == hiddenForBob,
+          reason: 'bob delete-for-me',
+        );
+
+        const unknownId = 2147483000;
+        final forAlice = await alice.servedMessageIds(
+          [mine, theirs, deleted, hiddenForBob, unknownId],
+        );
+
+        // THE trap: every unread-count query in MessagesService carries
+        // `sender != me`. Copying one into the existence check would report
+        // the user's entire outgoing history as gone and destroy it.
+        expect(forAlice, contains(mine),
+            reason: 'a message the caller SENT is still served');
+        expect(forAlice, contains(theirs));
+        expect(forAlice, contains(hiddenForBob),
+            reason: "bob's delete-for-me must not affect alice");
+        expect(forAlice, isNot(contains(deleted)));
+        expect(forAlice, isNot(contains(unknownId)));
+
+        final forBob = await bob.servedMessageIds(
+          [mine, theirs, deleted, hiddenForBob],
+        );
+        expect(forBob, contains(mine));
+        expect(forBob, contains(theirs));
+        expect(forBob, isNot(contains(deleted)));
+        expect(forBob, isNot(contains(hiddenForBob)),
+            reason: 'delete-for-me must read as gone for the user who did it');
+      },
+      timeout: const Timeout(Duration(minutes: 1)),
+    );
+
     test('no unexpected socket errors surfaced during the run', () {
       expect(alice.events.errors, isEmpty,
           reason: 'alice received server error events');

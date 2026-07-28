@@ -12,6 +12,7 @@ import { Conversation } from '../../conversations/conversation.entity';
 import { Message, MessageDeliveryStatus } from '../../messages/message.entity';
 import { Socket } from 'socket.io';
 import { Server } from 'socket.io';
+import { SERVED_MESSAGE_IDS_MAX_BATCH } from '../dto/served-message-ids.dto';
 
 describe('ChatMessageService', () => {
   let service: ChatMessageService;
@@ -67,6 +68,7 @@ describe('ChatMessageService', () => {
             updateDeliveryStatus: jest.fn(),
             deleteById: jest.fn(),
             editMessage: jest.fn(),
+            findServedMessageIds: jest.fn().mockResolvedValue([]),
           },
         },
         {
@@ -820,6 +822,94 @@ describe('ChatMessageService', () => {
         conversationId: 10,
         messages: [],
       });
+    });
+  });
+
+  describe('handleGetServedMessageIds', () => {
+    /** Names of every event emitted to the caller in this test. */
+    const emitted = () =>
+      (mockClient.emit as jest.Mock).mock.calls.map((c) => String(c[0]));
+
+    it('echoes the requestId with the ids the server still serves', async () => {
+      messagesService.findServedMessageIds.mockResolvedValue([2, 4]);
+
+      await service.handleGetServedMessageIds(mockClient as Socket, {
+        requestId: 'abc',
+        messageIds: [1, 2, 3, 4],
+      });
+
+      expect(messagesService.findServedMessageIds).toHaveBeenCalledWith(
+        [1, 2, 3, 4],
+        1,
+      );
+      expect(mockClient.emit).toHaveBeenCalledWith('servedMessageIds', {
+        requestId: 'abc',
+        messageIds: [2, 4],
+      });
+    });
+
+    it('answers a fully deleted history with an empty list', async () => {
+      // Not an error case: the client is meant to destroy all of them.
+      messagesService.findServedMessageIds.mockResolvedValue([]);
+
+      await service.handleGetServedMessageIds(mockClient as Socket, {
+        requestId: 'abc',
+        messageIds: [1, 2],
+      });
+
+      expect(mockClient.emit).toHaveBeenCalledWith('servedMessageIds', {
+        requestId: 'abc',
+        messageIds: [],
+      });
+    });
+
+    it('stays SILENT when the lookup throws', async () => {
+      // The empty list above is an instruction to destroy plaintext, so a
+      // database failure must never be able to manufacture one. No reply at
+      // all leaves the client holding everything until the next attempt.
+      messagesService.findServedMessageIds.mockRejectedValue(new Error('db down'));
+
+      await service.handleGetServedMessageIds(mockClient as Socket, {
+        requestId: 'abc',
+        messageIds: [1, 2],
+      });
+
+      expect(emitted()).not.toContain('servedMessageIds');
+    });
+
+    it('rejects a malformed batch without answering it', async () => {
+      await service.handleGetServedMessageIds(mockClient as Socket, {
+        requestId: 'abc',
+        messageIds: ['nope'],
+      });
+
+      expect(messagesService.findServedMessageIds).not.toHaveBeenCalled();
+      expect(emitted()).toEqual(['error']);
+    });
+
+    it('rejects a batch over the size cap', async () => {
+      await service.handleGetServedMessageIds(mockClient as Socket, {
+        requestId: 'abc',
+        messageIds: Array.from(
+          { length: SERVED_MESSAGE_IDS_MAX_BATCH + 1 },
+          (_, i) => i + 1,
+        ),
+      });
+
+      expect(messagesService.findServedMessageIds).not.toHaveBeenCalled();
+      expect(emitted()).toEqual(['error']);
+    });
+
+    it('ignores an unauthenticated socket', async () => {
+      const anonymous: Partial<Socket> = { data: {}, emit: jest.fn() };
+
+      await service.handleGetServedMessageIds(anonymous as Socket, {
+        requestId: 'abc',
+        messageIds: [1],
+      });
+
+      expect(messagesService.findServedMessageIds).not.toHaveBeenCalled();
+      expect(anonymous.emit).not.toHaveBeenCalled();
     });
   });
 });
