@@ -77,9 +77,9 @@ Two constraints pin this slot, and only this slot satisfies both:
 
 ```ts
 {
-  action: 'send' | 'accept' | 'reject',
+  action: 'send' | 'accept' | 'reject' | 'ensure_chat',
   requestId: number | null,      // set for accept/reject
-  recipientId: number | null,    // set for send
+  recipientId: number | null,    // set for send; the peer id for ensure_chat
   reason: 'invalid_payload' | 'user_not_found' | 'self_request' | 'blocked'
         | 'already_friends' | 'duplicate_request' | 'accept_failed' | 'reject_failed',
 }
@@ -103,9 +103,10 @@ enum InvitationAction { send, accept, decline }
 enum InvitationActionStatus { inFlight, failed }
 enum InvitationDirection { incoming, outgoing }
 class InvitationOutcome {          // accepted result, survives the request leaving both pending lists
-  final int requestId;
+  final int peerUserId;            // IDENTITY — see §1.5.1. Map key, row key, retry key.
   final InvitationDirection direction; // which section the row must stay in
   final UserModel peer;
+  final int? requestId;            // display/debug only; NEVER an identity (nullable, may be a row this client never saw)
   final int? conversationId;
   final bool chatReady;
 }
@@ -119,7 +120,42 @@ class InvitationFailure {
 
 `FriendRequestModel` is **not** touched. `conversationId`/`chatReady` are read off the raw map inside `FriendsProvider.onFriendRequestAccepted`; the model stays a pure relationship record used by five other events.
 
-`direction` must be captured **at record time**, because the pending row is removed from `_friendRequests` / `_sentRequests` in the same handler and the peer alone cannot say which section it came from: `_currentUserId == receiver.id` → `incoming` (the accepter, row stays under `Waiting for you`); `_currentUserId == sender.id` → `outgoing` (the original sender, row stays under `Sent`). Reciprocal auto-accept produces exactly one outcome per side, each with that side's own direction.
+### 1.5.1 Invitation identity is the **peer user id**, never the request id
+
+This is not a style preference; the request id is provably not stable across the reciprocal path.
+
+`FriendsService.sendRequest` (`backend/src/friends/friends.service.ts:91-119`) does **not** reuse the reverse pending row when both users have invited each other. It creates a brand-new row, marks **both** rows `ACCEPTED`, and returns the **new** one:
+
+```ts
+const newRequest = manager.create(FriendRequest, { sender, receiver, status: PENDING });
+await manager.save(FriendRequest, newRequest);
+if (reversePending) {
+  await manager.update(FriendRequest, { id: reversePending.id }, { status: ACCEPTED, … });
+  await manager.update(FriendRequest, { id: newRequest.id },     { status: ACCEPTED, … });
+  return await manager.findOne(FriendRequest, { where: { id: newRequest.id }, … })!;  // ← the NEW id
+}
+```
+
+So in a reciprocal accept the payload carries request `#new`, while the original sender holds `#old` under `Sent` and the second sender holds `#old` under `Waiting for you`. **Neither client has `#new` in any list.** Keying anything on the payload's request id therefore produces, on both sides at once, a stale pending row that is never removed plus a phantom accepted row — and under the §1.2 ordering that state is now *visible*, because the list refresh that used to paper over it arrives afterwards.
+
+The peer user id has none of these problems: it is the same on both sides, in both directions, in both the normal and the reciprocal path. Consequences, all mandatory:
+
+- `_acceptedOutcomes` is keyed by `peerUserId`.
+- `onFriendRequestAccepted` removes from `_friendRequests` and `_sentRequests` **by counterpart user id**, not by request id.
+- The row `ValueKey` is the peer user id. It dedupes, and it gives an in-place update when a row transforms **within** its section (the normal accept path). It does **not** survive the cross-section move a reciprocal row makes — Flutter remounts across sibling subtrees regardless of key. See the Phase 3 merge rule for the honest scope; the tested guarantee is continuous presence, not element identity.
+- The §1.7 retry pair addresses the outcome by `peerUserId` and the *attempt* by a separate client token. A request id on that wire would be a second identity for the same thing, and the wrong one.
+- `requestId` survives on `InvitationOutcome` for logs only. `_requestActions` (accept/decline in flight) stays keyed by request id because it legitimately addresses an inbound row this client holds — but it is **cleared by peer**, not by payload id: the swap collects the request ids of every pending row it removes for that peer, unions `{payload.id}`, and clears all of them. Clearing only `payload.id` leaves the second sender's `Accept` spinner on `#old` running forever after a reciprocal accept.
+
+**Direction precedence (order matters, and this exact order is load-bearing):**
+
+1. `_sendActions[peerUserId]` is in flight → `outgoing`.
+2. else peer matches a row in `_friendRequests` → `incoming`.
+3. else peer matches a row in `_sentRequests` → `outgoing`.
+4. else (invitation arrived while the screen was closed) → fall back to the payload's sender/receiver role.
+
+Rule 1 must come first precisely because the reciprocal case satisfies rules 1 and 2 simultaneously: the second sender holds `#old` inbound *and* has a send in flight. The locked UX says their accepted row belongs under `Sent` — the last deliberate act was sending an invitation, and that is the control they are watching. Resolving `_friendRequests` first would strand it under `Waiting for you`.
+
+Direction is captured at record time, since the same handler clears both pending lists.
 
 ### 1.6 Navigation contract
 
@@ -138,18 +174,19 @@ Instead, add one correlated request/result pair. This is what the handoff means 
 
 ```ts
 // client -> server
-ensureInvitationChat { requestId: number, peerUserId: number }
+ensureInvitationChat { peerUserId: number, correlationId: string }
 // server -> caller only
-invitationChatReady { requestId: number, conversationId: number | null, chatReady: boolean, reason?: string }
+invitationChatReady { peerUserId: number, correlationId: string, conversationId: number | null, chatReady: boolean, reason?: string }
 ```
 
-- `requestId` is **correlation only** — echoed back so the client can address the exact `InvitationOutcome`. It is never trusted for authorization.
+- `peerUserId` addresses the **outcome** (§1.5.1). `correlationId` is a client-generated token addressing **this attempt**, echoed verbatim by the server and never interpreted by it. Because the server reflects it, it is **bounded at the DTO, not merely typed `string`**: `@IsString() @Matches(/^[A-Za-z0-9_-]{1,64}$/)`. The charset restriction matters as much as the length — a reflected value should never be able to carry control characters or markup. The client mints `<sessionNonce>-<monotonicCounter>` (8 hex chars + a per-session counter), so tokens are unique, ordered, and trivially inside the bound.
+- Both are needed. Peer alone identifies the row but not the attempt: tap `Create chat`, the first attempt stalls, tap again, the second succeeds and the row reads `Chat ready` — then the first attempt's failure lands and overwrites a fresh success with `Chat setup needs retry`. The client therefore stores the current token on the outcome and **applies a result only when the echoed token is still the current one**; anything else is dropped as a stale attempt.
 - Authorization reuses the documented shared gate: `ChatValidationService.validateCanMessage(callerId, peerUserId)` (the same blocked+friendship check `handleStartConversation` uses). A caller who is not actually a friend gets `chatReady: false, reason: 'not_friends'`.
 - Then `conversationsService.findOrCreate` — idempotent by construction — followed by `emitConversationsListToBoth` so the conversation lands in both lists, then `invitationChatReady` to the caller.
-- **No `openConversation` is emitted on this path.** Nothing navigates. The client calls `FriendsProvider.markOutcomeChatReady(requestId, conversationId)` and the row flips to `Chat ready`, where an explicit `Open chat` tap still has to happen.
+- **No `openConversation` is emitted on this path.** Nothing navigates. The client applies the result to the outcome and the row flips to `Chat ready`, where an explicit `Open chat` tap still has to happen.
 - `ConversationsProvider` is **not** modified at all — no `autoOpen` parameter, no suppression state.
 
-Handler lives in `ChatFriendRequestService` next to the accept path (it is an invitation outcome, not a conversation-start intent), with a `@SubscribeMessage('ensureInvitationChat')` in `chat.gateway.ts` throttled like the other mutating friend actions (30/900000) and a `EnsureInvitationChatDto` validated through `validateDto`, matching backend `CLAUDE.md` §12.
+Handler lives in `ChatFriendRequestService` next to the accept path (it is an invitation outcome, not a conversation-start intent), with a `@SubscribeMessage('ensureInvitationChat')` in `chat.gateway.ts` throttled like the other mutating friend actions (30/900000) and an `EnsureInvitationChatDto` (`peerUserId: @IsInt() @IsPositive()`, `correlationId` as bounded above) validated through `validateDto`, matching backend `CLAUDE.md` §12. A DTO rejection emits `friendRequestFailed {action:'ensure_chat', recipientId: null, reason:'invalid_payload'}` and nothing else — an unvalidated token must never reach an emit.
 
 ---
 
@@ -172,9 +209,10 @@ Test-first. Add/replace in the spec (mocking convention already in the file: `Te
 7. auto-accept with `findOrCreate` rejecting emits `chatReady: false` to both
 8. send failures emit `friendRequestFailed {action:'send', recipientId, reason}` for `self_request`, `blocked`, `user_not_found`, `duplicate_request` (replaces spec `:149`, `:169`, `:189`)
 9. reject failure emits `friendRequestFailed {action:'reject', requestId, reason:'reject_failed'}`
-10. `ensureInvitationChat` with a real friendship emits `invitationChatReady {requestId, conversationId, chatReady: true}` to the caller only, emits `conversationsList` to both, and emits **no** `openConversation`
-11. `ensureInvitationChat` echoes back the exact `requestId` it was given (correlation), and a non-friend caller gets `chatReady: false, reason: 'not_friends'` with no conversation created
-12. `ensureInvitationChat` is idempotent — called twice it returns the same `conversationId` (`findOrCreate` semantics)
+10. `ensureInvitationChat` with a real friendship emits `invitationChatReady {peerUserId, correlationId, conversationId, chatReady: true}` to the caller only, emits `conversationsList` to both, and emits **no** `openConversation`
+11. `ensureInvitationChat` echoes `peerUserId` and `correlationId` **verbatim** — the server never interprets the token — and a non-friend caller gets `chatReady: false, reason: 'not_friends'` with no conversation created
+12. `ensureInvitationChat` is idempotent — called twice with different tokens it returns the same `conversationId` (`findOrCreate` semantics), each echoing its own token
+12b. `ensureInvitationChat` **rejects a malformed token before any emit**: a 65-char `correlationId`, one containing `<`/newline/whitespace, a non-string, and a missing/negative `peerUserId` each produce `friendRequestFailed {action:'ensure_chat', reason:'invalid_payload'}` and **no** `invitationChatReady`, **no** `conversationsList`, and no `findOrCreate` call. The server echoes this field, so the bound is a contract, not a formality
 13. every existing list-refresh test (`:243`, `:271`, `:317`, `:330`, `:344`, `:361`, `:376`) stays green untouched
 
 Then implement §1.1–§1.3 and the §1.7 handler. `emitAutoAcceptFlow` needs the accepted payload built after `findOrCreate`, so its `payload` parameter becomes the *base* request payload and the accepted emit moves to the slot defined in §1.2.
@@ -191,11 +229,11 @@ Files: `frontend/lib/models/invitation_state.dart` (new), `frontend/lib/provider
 |---|---|
 | `Map<int, InvitationActionStatus> _requestActions` | accept/decline in flight, keyed by `requestId` |
 | `Map<int, InvitationActionStatus> _sendActions` | send in flight, keyed by recipient `userId` |
-| `Map<int, InvitationOutcome> _acceptedOutcomes` | accepted rows, keyed by `requestId` |
+| `Map<int, InvitationOutcome> _acceptedOutcomes` | accepted rows, keyed by **`peerUserId`** (§1.5.1 — the payload request id is a different row in the reciprocal case) |
 | `InvitationFailure? _lastInvitationFailure` + `consumeInvitationFailure()` | one-shot scoped failure |
-| `invitationActionFor(requestId)`, `sendActionFor(userId)`, `acceptedOutcomeFor(requestId)`, `acceptedOutcomesFor(InvitationDirection)` | read surface; the direction-filtered getter is what each section renders |
-| `clearAcceptedOutcome(requestId)` | the `Done` action |
-| `ensureInvitationChat(requestId, peerUserId)` / `onInvitationChatReady(data)` | §1.7 correlated retry: marks the outcome retrying, then applies `conversationId`/`chatReady`/`reason` by `requestId` |
+| `invitationActionFor(requestId)`, `sendActionFor(userId)`, `acceptedOutcomeForPeer(peerUserId)`, `acceptedOutcomesFor(InvitationDirection)` | read surface; the direction-filtered getter is what each section renders |
+| `clearAcceptedOutcome(peerUserId)` | the `Done` action |
+| `ensureInvitationChat(peerUserId)` / `onInvitationChatReady(data)` | §1.7 retry. The emit mints a fresh `correlationId`, stores it on the outcome as the current attempt token and marks the row retrying; the handler looks the outcome up by `peerUserId` and **applies the result only if the echoed token is still current**, dropping stale attempts |
 | `onFriendRequestFailed(data)` | clears the matching in-flight entry, records the failure |
 | `_hasIncomingSnapshot` + `_hasSentSnapshot` → `hasLoadedInvitationsOnce` (**both** true) | real fetch signal gating the skeleton. `friendRequestsList` and `sentRequestsList` are two separate socket events (`handleGetFriendRequests` emits them in sequence), so ending the skeleton on the first one flashes a false `No sent invitations` while the second snapshot is still in flight. Each handler sets its own flag; the skeleton ends only when both are set. Both reset on `onConnect(false)` / `clearAll`, **not** on reconnect — data we still hold must not be covered by a skeleton. Playbook §3: never gate a skeleton on a timer |
 
@@ -203,15 +241,17 @@ Behavioral edits:
 
 - `sendFriendRequest` / `acceptFriendRequest` / `rejectFriendRequest` mark in-flight + `notifyListeners()` before emitting.
 - `onFriendRequestSent` is the **authoritative send success** and is atomic, same shape as the accepted swap: clear `_sendActions[payload.receiver.id]` **and** insert the payload into `_sentRequests` (dedupe by `requestId`, newest first), then one `notifyListeners()`. Clearing the flag alone is not enough — the backend emits `friendRequestSent` at `:244` and `sentRequestsList` at `:246` as two separate events, so a flag-only handler flips the button back to `Send invitation` with an empty `Sent` section for a frame. The later `sentRequestsList` reconciles authoritatively; the dedupe makes that a no-op. **`_friendRequestJustSent` and `consumeFriendRequestSent()` are deleted** — their only consumer was the pop-after-send block. Grep before deleting.
-- `onFriendRequestAccepted` becomes one atomic swap, in this order: clear `_requestActions[id]`; **clear `_sendActions[peer.id]` if present**; **remove the id from BOTH `_friendRequests` and `_sentRequests`**; then insert the `InvitationOutcome` with `direction` resolved from `_currentUserId` (§1.5), the peer being the other party, and `conversationId`/`chatReady` off the raw map; then a single `notifyListeners()`. Two of those steps are new and load-bearing. **The `_sendActions` clear** covers reciprocal auto-accept: that path emits `friendRequestAccepted`, never `friendRequestSent`, so a caller who just tapped `Send invitation` on someone who had already invited them would otherwise spin forever. **The both-list removal** matters because today the handler only drops `_friendRequests`, and under the §1.2 ordering the sender's `sentRequestsList` has not arrived yet, so leaving `_sentRequests` intact would render the same `requestId` twice under `Sent`. **Still no `getConversations()`/`getFriends()`** — the comment at `:100-102` stays and gets a test.
+- `onFriendRequestAccepted` becomes one atomic swap, in this order: resolve the peer (the party that is not `_currentUserId`); resolve `direction` by the §1.5.1 precedence (`_sendActions` first, then `_friendRequests`, then `_sentRequests`, then the payload role); collect every pending row for that peer out of `_friendRequests` and `_sentRequests`; clear `_requestActions` for all of their request ids **plus** `payload.id`; clear `_sendActions[peer.id]`; remove those rows **by peer**, not by request id; insert the `InvitationOutcome` keyed by `peer.id`; then a single `notifyListeners()`. Every one of those "by peer" clauses exists because of §1.5.1: after a reciprocal auto-accept the payload's request id is a brand-new row neither client has ever seen, so any by-id cleanup silently misses and leaves a stale pending row, a stuck `Accept` spinner, and a phantom accepted row side by side. The `_sendActions` clear additionally covers the reciprocal caller, who receives `friendRequestAccepted` and never `friendRequestSent`. **Still no `getConversations()`/`getFriends()`** — the comment at `:100-102` stays and gets a test.
 - `onFriendRequestRejected` is the **authoritative decline success** and is the only thing that retires a declined row: clear `_requestActions[requestId]`, remove the id from `_friendRequests`, then one `notifyListeners()`. Until that event lands the row stays mounted with both actions disabled and progress inside `Decline` — the screen never removes a row optimistically, exactly as it never claims `Friend added` optimistically. No `InvitationOutcome` is recorded for a decline; there is nothing to open.
 - `_pendingFriendAcceptedByName` widens to a small `PendingFriendAccepted {name, conversationId, chatReady}` so the MainShell toast can offer `Open chat`.
-- `onConnect` / `clearAll` clear all three maps + the failure.
+- **Lifecycle is asymmetric, matching the provider's existing reconnect philosophy.** `onConnect(false)` (fresh connect / account switch) and `clearAll` wipe everything: both action maps, `_acceptedOutcomes`, the failure, and both snapshot flags. `onConnect(true)` (reconnect) **preserves `_acceptedOutcomes`** — the server never replays `friendRequestAccepted`, so wiping them on a transient drop permanently destroys an undismissed accepted row and its `Open chat`. What reconnect *does* clear: `_requestActions`, `_sendActions`, `_lastInvitationFailure`, and each outcome's retry token + retrying flag — an action whose result the disconnect swallowed must not leave a spinner running or `Create chat` disabled forever. The snapshot flags also survive reconnect (a skeleton must never cover data we still hold).
 
 `ConversationsProvider`: **unchanged** — the correlated retry in §1.7 removes any need to touch it.
 `ConnectionProvider`: register `friendRequestFailed` → `FriendsProvider.onFriendRequestFailed` and `invitationChatReady` → `FriendsProvider.onInvitationChatReady`, adjacent to the friend-event block at `:379-415`.
 
-Tests: extend `frontend/test/providers/friends_provider_test.dart` and add `frontend/test/providers/friends_provider_invitations_test.dart` (raw-JSON-into-handlers convention already used in that file) — in-flight set/clear per action; **the decline round trip**: `rejectFriendRequest` marks in-flight, the row survives until `onFriendRequestRejected` clears the flag and removes it, and `friendRequestFailed{action:'reject'}` clears the flag while leaving the row in place; **the reciprocal send round trip**: `sendFriendRequest(peer)` then `onFriendRequestAccepted` **with no intervening `friendRequestSent`** clears `_sendActions[peer.id]` and records the outcome — the stuck-spinner regression; **the send round trip**: `onFriendRequestSent` alone puts the row in `sentRequests`, and a following `sentRequestsList` does not duplicate it; **direction**: the same accepted payload yields `incoming` from the accepter's seat and `outgoing` from the sender's (flip `setCurrentUserId`); **the intermediate state immediately after `onFriendRequestAccepted` and before any refreshed list**: `friendRequests` and `sentRequests` both exclude that id and exactly one outcome exists for it (asserted from the sender's seat, where the duplicate would appear); outcome recorded with and without `chatReady`; scoped failure clears the right key; sender path records the conversation id; `onFriendRequestAccepted` emits nothing (no refetch); `clearAcceptedOutcome` removes the row; `onInvitationChatReady` flips only the outcome with the matching `requestId`; `hasLoadedInvitationsOnce` stays false after `friendRequestsList` alone and flips only once `sentRequestsList` also lands, resetting on `onConnect(false)`.
+Tests: extend `frontend/test/providers/friends_provider_test.dart` and add `frontend/test/providers/friends_provider_invitations_test.dart` (raw-JSON-into-handlers convention already used in that file) — in-flight set/clear per action; **the decline round trip**: `rejectFriendRequest` marks in-flight, the row survives until `onFriendRequestRejected` clears the flag and removes it, and `friendRequestFailed{action:'reject'}` clears the flag while leaving the row in place; **the reciprocal round trip, driven exactly as the server produces it** — seed an inbound row `#old` from the peer, call `sendFriendRequest(peer)`, then deliver `friendRequestAccepted` carrying a **different** request id `#new` and no `friendRequestSent`: `_sendActions[peer.id]` clears, the `#old` inbound row is gone, `_requestActions[#old]` is cleared, exactly one outcome exists keyed by `peer.id`, and its `direction` is **`outgoing`** (precedence rule 1 beats the inbound row); **the send round trip**: `onFriendRequestSent` alone puts the row in `sentRequests`, and a following `sentRequestsList` does not duplicate it; **direction** for the plain paths: accepter's seat → `incoming`, sender's seat → `outgoing` (flip `setCurrentUserId`); **the intermediate state immediately after `onFriendRequestAccepted` and before any refreshed list**: `friendRequests` and `sentRequests` both exclude that peer and exactly one outcome exists (asserted from the sender's seat, where the duplicate would appear); outcome recorded with and without `chatReady`; scoped failure clears the right key; sender path records the conversation id; `onFriendRequestAccepted` emits nothing (no refetch); `clearAcceptedOutcome(peer.id)` removes the row; **retry token**: two `ensureInvitationChat` calls for the same peer, then the **first** attempt's `invitationChatReady{chatReady:false}` arriving after the second's success is **dropped** and the row stays `Chat ready`; `hasLoadedInvitationsOnce` stays false after `friendRequestsList` alone and flips only once `sentRequestsList` also lands, resetting on `onConnect(false)`.
+
+Plus the **reconnect** case, which has its own bullet above and its own test: with an undismissed accepted outcome and a `Create chat` attempt in flight, `onConnect(true)` keeps the outcome (still rendering, still offering `Open chat`) while clearing the action maps and the outcome's retry token so `Create chat` is tappable again; `onConnect(false)` clears the outcome too. Assert both directions — a reconnect that drops the outcome and a fresh connect that keeps it are equal and opposite bugs.
 
 ### Phase 3 — The Invitations screen
 
@@ -235,7 +275,7 @@ Scaffold(extendBodyBehindAppBar: true)
 - `Waiting for you` = accepted outcomes with `direction: incoming`, then `FriendsProvider.friendRequests`.
 - `Sent` = accepted outcomes with `direction: outgoing`, then `FriendsProvider.sentRequests`.
 - Section count = pending + accepted, so the header does not tick down the instant a row is accepted.
-- Keys are `ValueKey(requestId)` on every row, pending and accepted alike — that is what makes the pending→accepted swap an in-place element update instead of an unmount/mount, and it is what §1.2's emit ordering protects.
+- Keys are `ValueKey(peerUserId)` on every row, pending and accepted alike (§1.5.1). Scope the claim honestly: a key preserves element identity only among **siblings under the same parent**, so it gives an in-place update when a row transforms *within* its section (the normal accept path, where direction does not change). In the reciprocal case the row's direction resolves to `outgoing` while its pending row lived under `Waiting for you`, so it moves across section subtrees and Flutter unmounts and remounts it — no key short of a `GlobalKey` changes that, and a `GlobalKey` across two simultaneously mounted subtrees is not worth its failure modes here. **The guarantee we make and test is continuous presence, not element identity:** in every pumped frame there is exactly one row for that peer somewhere on screen. If element state ever genuinely has to survive the move, the fix is to render both sections from one flat keyed list with headers as items — not to sprinkle `GlobalKey`s.
 - `Done` (`clearAcceptedOutcome`) is the only thing that removes an accepted row. The pending list has already dropped it server-side, so there is no double render.
 - A section shows its one-line empty state only when both of its lists are empty.
 
@@ -273,11 +313,11 @@ Widget tests — `frontend/test/screens/invitations_screen_test.dart` replaces `
 4. `friendRequestAccepted` does not navigate; the row becomes `Invitation accepted` · `Chat ready` · `Open chat` · `Done`
 5. **accepter role:** the accepted row renders under `Waiting for you`, not under `Sent`
 6. **sender role:** the same accepted payload received as the original sender renders under `Sent`, not under `Waiting for you`
-7. **no disappearance and no duplicate across the list swap:** drive the real server order — `conversationsList` → `friendRequestAccepted` → `friendRequestsList`/`sentRequestsList` **without** the accepted request — and assert that in every pumped frame there is exactly **one** row for that `requestId`, on both the accepter and the sender side. This is the widget-level half of §1.2; the backend ordering test is the other half.
+7. **no disappearance and no duplicate across the list swap:** drive the real server order — `conversationsList` → `friendRequestAccepted` → `friendRequestsList`/`sentRequestsList` **without** the accepted request — and assert that in every pumped frame there is exactly **one** row for that **peer**, anywhere on screen, on both the accepter and the sender side. Assert presence and count, never element identity (a reciprocal row legitimately moves between section subtrees). This is the widget-level half of §1.2; the backend ordering test is the other half.
 8. only `Open chat` pops, and pops the peer `userId`; `Done` removes the row and pops nothing
 9. `chatReady: false` renders `Chat setup needs retry` + `Create chat` and never the string `Chat ready`
-10. `Create chat` emits `ensureInvitationChat` and does not navigate; a matching `invitationChatReady` flips that row — and only that row — to `Chat ready`
-11. **reciprocal acceptance:** tapping `Send invitation` on a peer who already invited you resolves straight to an accepted row — the `Send invitation` control leaves its progress state, nothing navigates, and the row appears under `Sent` with `Open chat`
+10. `Create chat` emits `ensureInvitationChat` with a fresh `correlationId` and does not navigate; a matching `invitationChatReady` flips that row — and only that row — to `Chat ready`, while a result echoing a **superseded** token is ignored
+11. **reciprocal acceptance, driven as the server produces it:** seed an inbound row from the peer, tap `Send invitation` on that same peer, then deliver `friendRequestAccepted` with a **different** request id and no `friendRequestSent`. Nothing navigates; the `Send invitation` control leaves its progress state; the stale inbound row is gone; there is exactly one row for that peer and it sits under `Sent` with `Open chat`
 12. `MediaQuery(data: …disableAnimations: true)` yields a zero-duration transition
 13. `Semantics` distinguishes inbound / outbound / status
 14. `friendRequestFailed` clears the in-flight row and shows a scoped message — for `action: 'reject'` the row returns to its normal inbound state with both actions re-enabled, not removed
@@ -289,6 +329,12 @@ Files: `frontend/lib/screens/main_shell.dart:153-165`, `frontend/lib/widgets/top
 The sender toast already exists and is app-wide (`friendAcceptedYourRequest(name)`); it just cannot offer `Open chat` because `showTopSnackBar` wraps its overlay in `IgnorePointer`. Add an optional `onTap` + action label; when `onTap == null` the widget tree stays byte-identical (`IgnorePointer` retained) so no existing toast changes. Tap → `_openChatWithContact`-equivalent using the `conversationId` from the widened `PendingFriendAccepted`. Never auto-open.
 
 Regression: existing top-snackbar tests must stay green; add one asserting the default path is still non-interactive.
+
+**Scope boundary — an OFFLINE sender gets no accepted feedback, and this rework does not change that.** `friendRequestAccepted` is emitted to `onlineUsers.get(senderId)` and nowhere else, on both the accept and the auto-accept path. A sender who was offline when the recipient accepted reconnects into `friendsList` / `conversationsList` / `friendRequestsList` / `sentRequestsList` — all pending-only — so nothing tells them the invitation resolved. They learn it implicitly: the peer is in Contacts and the conversation is in Chats.
+
+This is **pre-existing**, not introduced here: today's `friendRequestAccepted` and `_pendingFriendAcceptedByName` toast are already online-only. Preserving `_acceptedOutcomes` across a reconnect (Phase 2) helps only a client that received the event in the first place — it must not be read as making sender feedback durable.
+
+Closing it properly means a replayable accepted-outcome snapshot: the `friend_requests` rows exist, but "accepted and not yet shown to the sender" is not expressible today, so it needs either a new column (`senderNotifiedAt` → **a migration**, which the non-goals forbid without proof) or a time-window heuristic that will lie in both directions. That is a product decision with a schema cost, so it is **out of scope and stated, not silently absorbed**. If the owner wants it, it is a self-contained follow-up: one column, one connect-time query, one event, one ack.
 
 ### Phase 5 — E2E harness and preview fixture
 
@@ -350,21 +396,27 @@ Write `.cursor/session-summaries/2026-07-28-invitation-implementation.md` (requi
 
 Withdraw/cancel invitation (no sender-authorized backend operation exists). A `Block` action on the invitation row — the research doc recommends one beside Accept/Decline, but the approved UX specifies Accept + quiet Decline only and Block already exists elsewhere; deferred deliberately, not overlooked. Pre-friend messages. Faux chat previews. New dependencies. Migrations. Redesigning Contacts, Chats, navigation, or the global theme. A domain-wide `FriendRequest` → `Invitation` rename (internal names may stay; a cosmetic cross-tier rename buys nothing).
 
+**Durable accepted feedback for an OFFLINE sender** (Phase 4 scope boundary). Pre-existing behaviour, unchanged by this rework, stated rather than quietly inherited: acceptance is only delivered to a socket that is online at that moment, and nothing on reconnect replays it. Fixing it needs a schema change, so it is a separately-approved follow-up.
+
 ## 4. Risk register
 
 | Risk | Mitigation |
 |---|---|
 | Stale PWA clients during a backend-ahead window | flat additive payload (§1.1); failure toast loss is stated and accepted (§1.3) |
 | Contacts' build-level `consumePendingOpen` pushes chat under the open Invitations screen | acceptance no longer emits `openConversation`; the §1.7 retry is a correlated `ensureInvitationChat`/`invitationChatReady` pair that never emits `openConversation` at all |
-| A client-side "swallow the next `openConversation`" flag eating an unrelated explicit navigation | rejected by design — §1.7 correlates by `requestId` on the wire instead; `ConversationsProvider` is untouched |
-| Accepted row flickering out, or duplicating, when the refreshed request lists land | §1.2 emits the accepted result before `friendRequestsList`/`sentRequestsList`, `onFriendRequestAccepted` removes the id from both pending lists in the same atomic swap, and rows are keyed by `ValueKey(requestId)`; asserted by a backend `invocationCallOrder` test, a provider intermediate-state test, and a widget exactly-one-row-per-frame test |
+| A client-side "swallow the next `openConversation`" flag eating an unrelated explicit navigation | rejected by design — §1.7 addresses the row by `peerUserId` and the attempt by a client token; `ConversationsProvider` is untouched |
+| **Reciprocal auto-accept returns a request id neither client has** (`friends.service.ts:91-119` creates a new row and returns it) | §1.5.1: every identity — outcome key, list removal, row key, `_requestActions` cleanup, retry addressing — is the **peer user id**. Asserted by a provider round trip and a widget test that both deliver an accepted payload whose id differs from the seeded row |
+| A stale retry attempt overwriting a fresh success | the outcome stores the current `correlationId`; results echoing a superseded token are dropped (§1.7), asserted by a provider test |
+| An unbounded server-echoed token | `EnsureInvitationChatDto` bounds `correlationId` to `/^[A-Za-z0-9_-]{1,64}$/`; malformed input fails validation before any emit, asserted by Phase 1 test 12b |
+| Accepted row flickering out, or duplicating, when the refreshed request lists land | §1.2 emits the accepted result before `friendRequestsList`/`sentRequestsList`, and `onFriendRequestAccepted` clears both pending lists **by peer** in one atomic swap. The guarantee is continuous presence — exactly one row per peer per frame — not element identity, since a reciprocal row legitimately moves between sections |
 | Declined row vanishing before the server confirms | `onFriendRequestRejected` is the only retirement path; the row stays mounted and disabled until then |
 | First-load skeleton ending early and flashing a false empty section | two snapshot flags, skeleton ends only when both incoming and sent have arrived; ordering test drives `friendRequestsList` alone and asserts the skeleton is still up |
 | New status-pill colors failing contrast in one theme | WCAG 4.5:1 computed for all four themes before Phase 3 closes (playbook §1, SPEC §8) |
+| An undismissed accepted row destroyed by a transient reconnect | `friendRequestAccepted` is never replayed, so `onConnect(true)` preserves `_acceptedOutcomes` and clears only action/retry state; `onConnect(false)` clears everything. Both directions asserted |
 | Vacuous E2E assertions | `EventLog.discard` immediately before each transition; new `EventLog.none` for the negative case |
 | Reintroducing the stale-snapshot race | no `getConversations()`/`getFriends()` in `onFriendRequestAccepted`; asserted by a test |
 | Test-count verifiers going red | Phase 6 updates root `CLAUDE.md` §3 from this session's actual runs |
 
 ## 5. Definition of done
 
-Every item from the handoff's "DONE MEANS", plus: `openConversation` has exactly one producer (`handleStartConversation`), `friendRequestFailed` carries enough identity to clear the correct row, and the eight rendered screenshots have been inspected — not merely captured.
+Every item from the handoff's "DONE MEANS", plus: `openConversation` has exactly one producer (`handleStartConversation`), `friendRequestFailed` carries enough identity to clear the correct row, no invitation identity anywhere is keyed on a request id that the reciprocal path can invalidate (§1.5.1), and the eight rendered screenshots have been inspected — not merely captured.
