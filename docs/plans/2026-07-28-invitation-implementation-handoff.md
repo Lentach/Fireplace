@@ -8,7 +8,7 @@ Role: You are the implementation owner for Fireplace's invitation rework. The pr
 WORKTREE AND BRANCH
 - Work only in: C:/Users/Lentach/Desktop/fireplace-wt-invitation
 - Existing branch: feat/invitation-rework
-- Starting pushed head: a8f4192
+- Starting pushed head: 0190044
 - Do not work in C:/Users/Lentach/Desktop/fireplace.
 - Do not merge to master or deploy without explicit owner approval.
 
