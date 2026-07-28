@@ -21,6 +21,24 @@ flutter test test/services/api_service_media_url_test.dart
 flutter test test/providers/message_editing_test.dart
 ```
 
+**Test-run cost curve (measured 2026-07-27 on the dev PC) — pick the right scope, and never a file list:**
+
+| Scope | Tests | Wall |
+|---|---|---|
+| one file | 1 | **7 s** |
+| one directory (`test/utils`) | 175 | **21 s** |
+| full suite (`flutter test`) | 903 | **127 s** |
+| **45 explicit files on one command line** | ~45 | **timed out past 11 min — ≥5× the FULL suite** |
+
+`flutter test` appears to pay a compile cost **per argument** rather than once per run, so a
+long explicit file list is pathologically slow: running *everything* is dramatically faster
+than running a "smart" subset. Iterate on one file or one directory, then run the full suite
+before a commit or PR (still required by project policy).
+
+**Do NOT build a "run only the affected tests" runner on top of `scripts/impact.mjs`.** It was
+tried and measured on 2026-07-27 and it is strictly worse than `flutter test`. `impact.mjs`'s
+test list is for knowing *what you touched*, never for feeding to `flutter test`.
+
 Full-stack E2E wire harness (`test_e2e/` — a sibling of `test/`, so the DEFAULT suite never picks it up; needs a live backend). As of 2026-07-27 it runs in CI as the `e2e-wire` job against a real Postgres + backend, and a failure now turns the CI run red (it is no longer `continue-on-error`). It is the only automated check that client and server still agree on the wire — it caught two disaster-recovery bugs on its first two runs. Red is not a mechanical gate on this repo, so check the run yourself. Locally:
 
 ```powershell
