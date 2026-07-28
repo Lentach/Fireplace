@@ -85,20 +85,48 @@ Future<void> main() async {
       }
     }),
   );
-  runApp(FireplaceApp(coldStartConversationId: coldStartConvId));
+  // Resolve the saved theme BEFORE runApp so frame 1 paints the right theme:
+  // without this, returning users flash the fresh-install default (Hot Stone)
+  // for a frame while the async prefs load runs. NON-CRITICAL: a prefs/plugin
+  // failure must never block boot — pass null so the app boots on the
+  // fresh-install default (Hot Stone field initializer) while the provider's
+  // own async load retries the read.
+  String? initialTheme;
+  try {
+    initialTheme = await SettingsProvider.storedThemePreference();
+  } catch (e) {
+    debugPrint('[main] theme preference read failed, will retry async: $e');
+  }
+  runApp(
+    FireplaceApp(
+      coldStartConversationId: coldStartConvId,
+      initialThemePreference: initialTheme,
+    ),
+  );
 }
 
 class FireplaceApp extends StatelessWidget {
-  const FireplaceApp({super.key, this.coldStartConversationId});
+  const FireplaceApp({
+    super.key,
+    this.coldStartConversationId,
+    this.initialThemePreference,
+  });
 
   final int? coldStartConversationId;
+
+  /// Resolved saved theme passed by [main] so the first frame already wears
+  /// it; null (tests) falls back to the provider's async prefs load.
+  final String? initialThemePreference;
 
   @override
   Widget build(BuildContext context) {
     return MultiProvider(
       providers: [
         ChangeNotifierProvider(create: (_) => AuthProvider()),
-        ChangeNotifierProvider(create: (_) => SettingsProvider()),
+        ChangeNotifierProvider(
+          create: (_) =>
+              SettingsProvider(initialThemePreference: initialThemePreference),
+        ),
         ChangeNotifierProvider(create: (_) => EncryptionProvider()),
         ChangeNotifierProvider(create: (_) => FriendsProvider()),
         ChangeNotifierProvider(create: (_) => ConversationsProvider()),

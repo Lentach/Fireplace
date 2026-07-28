@@ -34,14 +34,58 @@
   <link rel="manifest" href="manifest.json">
 
   <style>
-    /* Match the default (dark) theme background. Android PWA keyboard hide
-       resizes the OS window and Chrome exposes the reclaimed strip before
-       Flutter's canvas grows to cover it (flutter/flutter#179208); an
-       unstyled document renders that strip WHITE. Runtime theme switches are
+    /* Match the default (Hot Stone / light) theme background. Android PWA
+       keyboard hide resizes the OS window and Chrome exposes the reclaimed
+       strip before Flutter's canvas grows to cover it (flutter/flutter#179208);
+       an unstyled document renders that strip WHITE. Runtime theme switches are
        synced from Dart (lib/utils/web_document_background.dart). Inert CSS
        only — background-color never affects layout/scroll/viewport. */
-    html, body { background-color: #17181A; }
+    html, body { background-color: #F7F4F0; }
   </style>
+  <script>
+    // Pre-paint theme sync: the static #F7F4F0 above is the FRESH-INSTALL
+    // default (Hot Stone). A returning user with a saved dark-family theme
+    // would flash light during bundle load, so read the persisted preference
+    // (shared_preferences web backend: localStorage, JSON-encoded under the
+    // "flutter." prefix) synchronously and override BEFORE first paint.
+    // Scaffold hexes must match RpgTheme.background* — drift is caught by
+    // test/utils/web_document_background_test.dart.
+    (function () {
+      try {
+        var read = function (key) {
+          return (localStorage.getItem(key) || '').replace(/"/g, '');
+        };
+        var map = {
+          dark: '#17181A',
+          blue: '#17212B',
+          cosmic: '#05070D',
+          teal: '#FAFAF9',
+          light: '#F7F4F0'
+        };
+        var theme = read('flutter.theme_preference');
+        if (!map[theme]) {
+          // Legacy ladder — mirrors SettingsProvider._resolveStoredTheme:
+          // the Dart migration never writes theme_preference back, so
+          // dark_mode_preference-only devices exist indefinitely.
+          var legacy = read('flutter.dark_mode_preference');
+          if (legacy === 'dark' || legacy === 'system') theme = 'dark';
+          else if (legacy === 'light') theme = 'light';
+        }
+        var bg = map[theme];
+        if (bg) {
+          // No !important: Dart's runtime theme sync
+          // (web_document_background_web.dart) writes INLINE styles, and an
+          // author !important rule would beat them — pinning the bootstrap
+          // color across later in-app theme switches. This later <style>
+          // element outweighs the static rule above by order alone.
+          var s = document.createElement('style');
+          s.textContent =
+            'html, body { background-color: ' + bg + '; }';
+          document.head.appendChild(s);
+        }
+      } catch (e) { /* fresh-install default stays */ }
+    })();
+  </script>
 </head>
 <body>
   <script src="flutter_bootstrap.js" async></script>

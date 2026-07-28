@@ -1595,7 +1595,7 @@ abstract class AppLocalizations {
   /// No description provided for @appearanceThemeLight.
   ///
   /// In pl, this message translates to:
-  /// **'Ciepły papier'**
+  /// **'Gorący kamień'**
   String get appearanceThemeLight;
 
   /// No description provided for @appearanceThemeTeal.

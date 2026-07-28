@@ -876,7 +876,7 @@ class AppLocalizationsPl extends AppLocalizations {
   String get appearanceColorTheme => 'MOTYW KOLORYSTYCZNY';
 
   @override
-  String get appearanceThemeLight => 'Ciepły papier';
+  String get appearanceThemeLight => 'Gorący kamień';
 
   @override
   String get appearanceThemeTeal => 'Turkus i kamień';

@@ -863,7 +863,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appearanceColorTheme => 'COLOR THEME';
 
   @override
-  String get appearanceThemeLight => 'Warm Paper';
+  String get appearanceThemeLight => 'Hot Stone';
 
   @override
   String get appearanceThemeTeal => 'Teal Stone';
