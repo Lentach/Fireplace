@@ -4,7 +4,17 @@ import { In, Not, Repository } from 'typeorm';
 import { Message, MessageDeliveryStatus, MessageType } from './message.entity';
 import { User } from '../users/user.entity';
 import { Conversation } from '../conversations/conversation.entity';
-import { MESSAGE_NOT_EXPIRED_SQL } from './message-expiry.util';
+import {
+  ExpirableMessage,
+  isMessageExpired,
+  MESSAGE_NOT_EXPIRED_SQL,
+} from './message-expiry.util';
+
+/** Projected row read by [MessagesService.findServedMessageIds]. */
+type ServedMessageRow = ExpirableMessage & {
+  id: number | string;
+  hiddenByUserIds: string | null;
+};
 
 @Injectable()
 export class MessagesService {
@@ -31,9 +41,12 @@ export class MessagesService {
     let replyTo: Message | null = null;
     if (options?.replyToMessageId != null) {
       const replyToMsg = await this.msgRepo.findOne({
-        where: { id: options.replyToMessageId, conversation: { id: conversation.id } },
+        where: {
+          id: options.replyToMessageId,
+          conversation: { id: conversation.id },
+        },
         relations: {
-          sender: true
+          sender: true,
         },
       });
       if (replyToMsg) {
@@ -71,11 +84,12 @@ export class MessagesService {
     const msg = await this.msgRepo.findOne({
       where: { id: messageId },
       relations: {
-        sender: true
+        sender: true,
       },
     });
     if (!msg || msg.sender?.id !== userId) return null;
-    if (fields.encryptedContent !== undefined) msg.encryptedContent = fields.encryptedContent;
+    if (fields.encryptedContent !== undefined)
+      msg.encryptedContent = fields.encryptedContent;
     if (fields.content !== undefined) msg.content = fields.content;
     msg.editedAt = new Date();
     return this.msgRepo.save(msg);
@@ -108,8 +122,8 @@ export class MessagesService {
           sender: true,
 
           replyTo: {
-            sender: true
-          }
+            sender: true,
+          },
         },
         order: { createdAt: 'DESC' },
         take: limit,
@@ -127,8 +141,8 @@ export class MessagesService {
         sender: true,
 
         replyTo: {
-          sender: true
-        }
+          sender: true,
+        },
       },
       order: { createdAt: 'DESC' },
       take: fetchLimit,
@@ -136,9 +150,74 @@ export class MessagesService {
     });
 
     const filtered = messages.filter(
-      (m) => !MessagesService.parseHiddenIds(m.hiddenByUserIds).includes(hiddenByUserId),
+      (m) =>
+        !MessagesService.parseHiddenIds(m.hiddenByUserIds).includes(
+          hiddenByUserId,
+        ),
     );
     return filtered.slice(offset, offset + limit).reverse();
+  }
+
+  /**
+   * Of [messageIds], the ones this user's history read path would still serve.
+   *
+   * The client destroys the local plaintext of every id NOT returned here, and
+   * that plaintext is the only copy — the ciphertext on this server can never
+   * be decrypted twice. So this MUST stay at least as permissive as
+   * `findByConversation` + `ChatMessageService.handleGetMessages`:
+   *   - a false "not served" is irreversible data loss;
+   *   - a false "served" only leaves residue for a later pass to clear.
+   * Bias every difference in the second direction. In particular do NOT copy
+   * predicates from the unread-count queries below: they carry `sender != me`
+   * and `deliveryStatus != READ`, either of which would report the user's own
+   * outgoing history as gone.
+   *
+   * Deliberately reuses `parseHiddenIds` and `isMessageExpired` rather than
+   * restating them as SQL, so the two paths cannot drift apart. The query is
+   * projected to the five columns those two rules read: hydrating whole
+   * message entities with nested user relations, per chunk, to emit a list of
+   * ints is wasted work.
+   */
+  async findServedMessageIds(
+    messageIds: number[],
+    userId: number,
+  ): Promise<number[]> {
+    const ids = Array.from(
+      new Set(
+        messageIds
+          .map((id) => Number(id))
+          .filter((id) => Number.isInteger(id) && id > 0),
+      ),
+    );
+    if (ids.length === 0) return [];
+
+    const rows: ServedMessageRow[] = await this.msgRepo
+      .createQueryBuilder('m')
+      .innerJoin('m.conversation', 'c')
+      .select('m.id', 'id')
+      .addSelect('m."hiddenByUserIds"', 'hiddenByUserIds')
+      .addSelect('m."expiresAt"', 'expiresAt')
+      .addSelect('m."disappearAfterSeconds"', 'disappearAfterSeconds')
+      .addSelect('m."createdAt"', 'createdAt')
+      .where('m.id IN (:...ids)', { ids })
+      .andWhere('(c.user_one_id = :userId OR c.user_two_id = :userId)', {
+        userId,
+      })
+      .getRawMany();
+
+    const now = new Date();
+    const served: number[] = [];
+    for (const row of rows) {
+      if (
+        MessagesService.parseHiddenIds(row.hiddenByUserIds).includes(userId)
+      ) {
+        continue;
+      }
+      if (isMessageExpired(row, now)) continue;
+      const id = Number(row.id);
+      if (!Number.isNaN(id)) served.push(id);
+    }
+    return served;
   }
 
   /** Find message by ID with conversation and sender loaded (for delete flow). */
@@ -150,8 +229,8 @@ export class MessagesService {
 
         conversation: {
           userOne: true,
-          userTwo: true
-        }
+          userTwo: true,
+        },
       },
     });
     return message || null;
@@ -166,7 +245,7 @@ export class MessagesService {
     const messages = await this.msgRepo.find({
       where: { conversation: { id: conversationId } },
       relations: {
-        sender: true
+        sender: true,
       },
       order: { createdAt: 'DESC' },
       take: hiddenByUserId != null ? 50 : 1,
@@ -174,13 +253,19 @@ export class MessagesService {
     if (messages.length === 0) return null;
     if (hiddenByUserId == null) return messages[0];
     const visible = messages.find(
-      (m) => !MessagesService.parseHiddenIds(m.hiddenByUserIds).includes(hiddenByUserId),
+      (m) =>
+        !MessagesService.parseHiddenIds(m.hiddenByUserIds).includes(
+          hiddenByUserId,
+        ),
     );
     return visible || null;
   }
 
   /** Status order: never downgrade (e.g. READ must not become DELIVERED when events are processed out of order). */
-  private static readonly DELIVERY_STATUS_ORDER: Record<MessageDeliveryStatus, number> = {
+  private static readonly DELIVERY_STATUS_ORDER: Record<
+    MessageDeliveryStatus,
+    number
+  > = {
     [MessageDeliveryStatus.SENDING]: 0,
     [MessageDeliveryStatus.SENT]: 1,
     [MessageDeliveryStatus.DELIVERED]: 2,
@@ -195,7 +280,7 @@ export class MessagesService {
       where: { id: messageId },
       relations: {
         sender: true,
-        conversation: true
+        conversation: true,
       },
     });
 
@@ -203,7 +288,8 @@ export class MessagesService {
       return null;
     }
 
-    const currentOrder = MessagesService.DELIVERY_STATUS_ORDER[message.deliveryStatus];
+    const currentOrder =
+      MessagesService.DELIVERY_STATUS_ORDER[message.deliveryStatus];
     const newOrder = MessagesService.DELIVERY_STATUS_ORDER[status];
     if (newOrder <= currentOrder) {
       return message;
@@ -248,7 +334,9 @@ export class MessagesService {
     recipientUserId: number,
   ): Promise<Map<number, number>> {
     if (conversationIds.length === 0) return new Map();
-    const ids = conversationIds.map((id) => Number(id)).filter((id) => !Number.isNaN(id));
+    const ids = conversationIds
+      .map((id) => Number(id))
+      .filter((id) => !Number.isNaN(id));
     if (ids.length === 0) return new Map();
     const rows = await this.msgRepo
       .createQueryBuilder('m')
@@ -296,7 +384,9 @@ export class MessagesService {
       .addSelect('COUNT(*)::int', 'count')
       .where('(c.user_one_id = :userId OR c.user_two_id = :userId)', { userId })
       .andWhere('s.id != :userId', { userId })
-      .andWhere('m."deliveryStatus" != :status', { status: MessageDeliveryStatus.READ })
+      .andWhere('m."deliveryStatus" != :status', {
+        status: MessageDeliveryStatus.READ,
+      })
       .andWhere(MESSAGE_NOT_EXPIRED_SQL, { now: new Date() })
       .andWhere(
         `(m."hiddenByUserIds" IS NULL OR m."hiddenByUserIds" = '' OR ` +
@@ -330,7 +420,9 @@ export class MessagesService {
     hiddenByUserId?: number,
   ): Promise<Map<number, Message | null>> {
     if (conversationIds.length === 0) return new Map();
-    const ids = conversationIds.map((id) => Number(id)).filter((id) => !Number.isNaN(id));
+    const ids = conversationIds
+      .map((id) => Number(id))
+      .filter((id) => !Number.isNaN(id));
     if (ids.length === 0) return new Map();
     let hiddenClause = '';
     const queryParams: unknown[] = [ids];
@@ -349,7 +441,9 @@ export class MessagesService {
       ) sub WHERE rn = 1`,
       queryParams,
     );
-    const msgIds = rawRows.map((r: { id: unknown }) => Number(r.id)).filter((id) => !Number.isNaN(id));
+    const msgIds = rawRows
+      .map((r: { id: unknown }) => Number(r.id))
+      .filter((id) => !Number.isNaN(id));
     const convIdByMsgId = new Map<number, number>();
     for (const r of rawRows) {
       const mid = Number((r as { id: unknown }).id);
@@ -364,7 +458,7 @@ export class MessagesService {
     const messages = await this.msgRepo.find({
       where: { id: In(msgIds) },
       relations: {
-        sender: true
+        sender: true,
       },
     });
     const byConvId = new Map<number, Message>();
@@ -407,7 +501,7 @@ export class MessagesService {
       where: { id: In(pinnedIds) },
       relations: {
         sender: true,
-        conversation: true
+        conversation: true,
       },
     });
 
@@ -442,7 +536,7 @@ export class MessagesService {
         deliveryStatus: Not(MessageDeliveryStatus.READ),
       },
       relations: {
-        sender: true
+        sender: true,
       },
     });
 
@@ -464,19 +558,17 @@ export class MessagesService {
       .execute();
 
     const readMessages = toUpdate.map(
-      (m) => (({
-        ...m,
-        deliveryStatus: MessageDeliveryStatus.READ
-      }) as Message),
+      (m) =>
+        ({
+          ...m,
+          deliveryStatus: MessageDeliveryStatus.READ,
+        }) as Message,
     );
 
     const now = new Date();
     const expiryUpdates: Message[] = [];
     for (const msg of readMessages) {
-      if (
-        msg.disappearAfterSeconds != null &&
-        msg.expiresAt == null
-      ) {
+      if (msg.disappearAfterSeconds != null && msg.expiresAt == null) {
         msg.expiresAt = new Date(
           now.getTime() + msg.disappearAfterSeconds * 1000,
         );
@@ -514,11 +606,14 @@ export class MessagesService {
   /**
    * "Delete for me" — add userId to hiddenByUserIds so message is hidden from that user.
    */
-  async hideMessageForUser(messageId: number, userId: number): Promise<boolean> {
+  async hideMessageForUser(
+    messageId: number,
+    userId: number,
+  ): Promise<boolean> {
     const message = await this.msgRepo.findOne({
       where: { id: messageId },
       relations: {
-        conversation: true
+        conversation: true,
       },
     });
     if (!message) return false;
@@ -553,7 +648,7 @@ export class MessagesService {
       where: { id: messageId },
       relations: {
         sender: true,
-        conversation: true
+        conversation: true,
       },
     });
     if (!message) return null;
@@ -583,7 +678,7 @@ export class MessagesService {
       where: { id: messageId },
       relations: {
         sender: true,
-        conversation: true
+        conversation: true,
       },
     });
     if (!message) return null;
@@ -616,12 +711,15 @@ export class MessagesService {
   /**
    * "Delete for everyone" — hard delete the message. Only sender can call this.
    */
-  async deleteById(messageId: number, requesterId: number): Promise<Message | null> {
+  async deleteById(
+    messageId: number,
+    requesterId: number,
+  ): Promise<Message | null> {
     const message = await this.msgRepo.findOne({
       where: { id: messageId },
       relations: {
         sender: true,
-        conversation: true
+        conversation: true,
       },
     });
     if (!message) return null;

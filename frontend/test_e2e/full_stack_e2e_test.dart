@@ -10,7 +10,7 @@
 //
 // What it proves, over the REAL wire (REST auth -> Socket.IO -> ChatGateway ->
 // DTO validation -> Postgres -> broadcast) with REAL libsignal on both ends:
-//   1. register -> socketReady -> WS key upload for two fresh accounts
+//   1. register -> socketReady (parseable, plausible serverTime) -> WS key upload
 //   2. friend request/accept -> conversation open
 //   3. first message is PreKey (3:), server stores only '[encrypted]',
 //      recipient decrypts the exact plaintext
@@ -58,6 +58,31 @@ void main() {
       reason: 'ciphertext must be "{type}:{base64}"',
     );
     return int.parse(ciphertext.substring(0, ciphertext.indexOf(':')));
+  }
+
+  /// Pins the server clock field which protects irreversible expiry purges.
+  void expectSocketReadyServerTime(dynamic payload, String clientLabel) {
+    expect(payload, isA<Map>(),
+        reason: '$clientLabel socketReady must carry an object payload');
+    final serverTime = (payload as Map)['serverTime'];
+    expect(serverTime, isA<String>(),
+        reason: '$clientLabel socketReady.serverTime must be a string');
+
+    final serverTimeString = serverTime as String;
+    expect(serverTimeString, isNotEmpty,
+        reason: '$clientLabel socketReady.serverTime must not be empty');
+    final parsed = DateTime.tryParse(serverTimeString);
+    expect(parsed, isNotNull,
+        reason:
+            '$clientLabel socketReady.serverTime must be a parseable ISO-8601 instant');
+    expect(parsed!.isUtc, isTrue,
+        reason: '$clientLabel socketReady.serverTime must be UTC');
+    expect(
+      parsed.difference(DateTime.now().toUtc()).abs(),
+      lessThan(const Duration(minutes: 5)),
+      reason:
+          '$clientLabel socketReady.serverTime must be close to the test machine clock',
+    );
   }
 
   /// Sends [content] from [sender] to [recipient] and asserts the full wire
@@ -118,7 +143,8 @@ void main() {
     await bob.registerFresh();
 
     // 2. Real sockets, authenticated via handshake auth token.
-    await alice.connectSocket();
+    final aliceSocketReady = await alice.connectSocket();
+    expectSocketReadyServerTime(aliceSocketReady, alice.label);
     await bob.connectSocket();
 
     // 3. Signal identity + key bundle upload (WS, like EncryptionProvider).
@@ -380,6 +406,117 @@ void main() {
           ) as Map;
           expect(updated['reactions'], isEmpty);
         }
+      },
+      timeout: const Timeout(Duration(minutes: 1)),
+    );
+
+    test(
+      'delete destroys the local plaintext and leaves the Signal session alive',
+      () async {
+        final plaintext = 'purge-me-$runTag';
+        final messageId = await roundTrip(alice, bob, plaintext,
+            tempId: 't12-$runTag', expectedWireType: 2);
+
+        // Persist exactly as the app does at decrypt time, including the
+        // envelope metadata the sweeps select on.
+        await bob.encryption.saveDecryptedContent(
+          messageId,
+          {'content': plaintext},
+          conversationId: conversationId,
+          createdAt: DateTime.now().toUtc(),
+        );
+        expect(
+          (await bob.encryption.getDecryptedContent(messageId))?['content'],
+          plaintext,
+          reason: 'precondition: the only copy of the plaintext is on the device',
+        );
+
+        // Real server delete over the real wire, hard-deleting the row.
+        alice.emitDeleteMessage(messageId, forEveryone: true);
+        for (final client in [alice, bob]) {
+          await client.events.next(
+            'messageDeleted',
+            where: (p) => p is Map && p['messageId'] == messageId,
+            reason: '${client.label} messageDeleted',
+          );
+        }
+
+        // What the app's messageDeleted handler does. Asserted against a REAL
+        // store with real Signal state present, because the risk is not that
+        // the delete fails — it is that destroying plaintext also damages the
+        // session and bricks the conversation.
+        final purge = await bob.encryption.removeDecryptedContent([messageId]);
+        expect(purge.isComplete, isTrue);
+        expect(purge.removed, 1);
+        expect(
+          await bob.encryption.getDecryptedContent(messageId),
+          isNull,
+          reason: 'deleting a message must destroy its local plaintext',
+        );
+
+        // The session survived: new traffic still ratchets and decrypts. A
+        // purge that quietly broke this would trade one bug for a worse one.
+        await roundTrip(alice, bob, 'after-purge-$runTag',
+            tempId: 't13-$runTag', expectedWireType: 2);
+      },
+      timeout: const Timeout(Duration(minutes: 1)),
+    );
+
+    test(
+      'getServedMessageIds answers from the real history rules',
+      () async {
+        // The reconcile pass destroys the local plaintext of every id MISSING
+        // from this answer, so a wrong "not served" is permanent data loss.
+        // Mocked unit tests cannot see the assembled SQL; this can.
+        final mine = await roundTrip(alice, bob, 'served-mine-$runTag',
+            tempId: 't14-$runTag', expectedWireType: 2);
+        final theirs = await roundTrip(bob, alice, 'served-theirs-$runTag',
+            tempId: 't15-$runTag', expectedWireType: 2);
+        final deleted = await roundTrip(alice, bob, 'served-deleted-$runTag',
+            tempId: 't16-$runTag', expectedWireType: 2);
+        final hiddenForBob = await roundTrip(alice, bob, 'served-hidden-$runTag',
+            tempId: 't17-$runTag', expectedWireType: 2);
+
+        alice.emitDeleteMessage(deleted, forEveryone: true);
+        for (final client in [alice, bob]) {
+          await client.events.next(
+            'messageDeleted',
+            where: (p) => p is Map && p['messageId'] == deleted,
+            reason: '${client.label} hard delete',
+          );
+        }
+
+        bob.emitDeleteMessage(hiddenForBob, forEveryone: false);
+        await bob.events.next(
+          'messageDeleted',
+          where: (p) => p is Map && p['messageId'] == hiddenForBob,
+          reason: 'bob delete-for-me',
+        );
+
+        const unknownId = 2147483000;
+        final forAlice = await alice.servedMessageIds(
+          [mine, theirs, deleted, hiddenForBob, unknownId],
+        );
+
+        // THE trap: every unread-count query in MessagesService carries
+        // `sender != me`. Copying one into the existence check would report
+        // the user's entire outgoing history as gone and destroy it.
+        expect(forAlice, contains(mine),
+            reason: 'a message the caller SENT is still served');
+        expect(forAlice, contains(theirs));
+        expect(forAlice, contains(hiddenForBob),
+            reason: "bob's delete-for-me must not affect alice");
+        expect(forAlice, isNot(contains(deleted)));
+        expect(forAlice, isNot(contains(unknownId)));
+
+        final forBob = await bob.servedMessageIds(
+          [mine, theirs, deleted, hiddenForBob],
+        );
+        expect(forBob, contains(mine));
+        expect(forBob, contains(theirs));
+        expect(forBob, isNot(contains(deleted)));
+        expect(forBob, isNot(contains(hiddenForBob)),
+            reason: 'delete-for-me must read as gone for the user who did it');
       },
       timeout: const Timeout(Duration(minutes: 1)),
     );

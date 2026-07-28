@@ -23,6 +23,7 @@ import '../services/unread_badge_sync.dart';
 import '../widgets/top_snackbar.dart';
 import '../widgets/console_glyphs.dart';
 import '../widgets/glass/glass_bottom_nav.dart';
+import '../widgets/identity_damaged_banner.dart';
 import 'user_card_screen.dart';
 
 /// Shell after login: bottom nav with Conversations, Contacts, Settings.
@@ -236,12 +237,23 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
 
     return Scaffold(
       extendBody: true,
-      body: IndexedStack(
-        index: _selectedIndex,
+      body: Column(
         children: [
-          ConversationsScreen(onAvatarTap: _openMyProfile),
-          const ContactsScreen(),
-          const SettingsScreen(),
+          // Damaged Signal identity: E2E is DOWN and cannot recover on its own,
+          // because regenerating silently is the data-loss bug we refuse to
+          // commit. Without this banner the user would just see "[encrypted]"
+          // on every message forever with no explanation and no way out.
+          const IdentityDamagedBanner(),
+          Expanded(
+            child: IndexedStack(
+              index: _selectedIndex,
+              children: [
+                ConversationsScreen(onAvatarTap: _openMyProfile),
+                const ContactsScreen(),
+                const SettingsScreen(),
+              ],
+            ),
+          ),
         ],
       ),
       bottomNavigationBar: SafeArea(top: false, child: bottomNavigation),

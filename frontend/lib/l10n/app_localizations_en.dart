@@ -164,6 +164,29 @@ class AppLocalizationsEn extends AppLocalizations {
   String get clearLocalMessageCache => 'Clear downloaded audio cache';
 
   @override
+  String get deleteAllLocalHistoryTitle =>
+      'Delete all messages stored on this device';
+
+  @override
+  String get deleteAllLocalHistoryDescription =>
+      'Permanently deletes all messages stored on this device, including downloaded voice notes. It does not delete your account, messages on the other person\'s device, or your encryption keys and sessions. This cannot be undone: the server only ever held ciphertext it cannot read, so there is no copy to restore from.';
+
+  @override
+  String get deleteAllLocalHistoryButton =>
+      'Permanently delete all local messages';
+
+  @override
+  String get deleteAllLocalHistoryDialogTitle =>
+      'Permanently delete all local messages?';
+
+  @override
+  String get deleteAllLocalHistoryDialogBody =>
+      'This permanently deletes every message and downloaded voice note stored on this device. It cannot be undone — the server only ever held ciphertext it cannot read, so there is no copy to restore from. Your account, encryption keys, and sessions are not affected.';
+
+  @override
+  String get deleteAllLocalHistoryConfirm => 'Delete permanently';
+
+  @override
   String get yourIdentityFingerprint => 'Your identity fingerprint';
 
   @override
@@ -224,7 +247,62 @@ class AppLocalizationsEn extends AppLocalizations {
   String get decryptionFailed => 'Decryption failed';
 
   @override
+  String get decryptingMessage => 'Decrypting…';
+
+  @override
+  String get messageNoLongerStoredOnThisDevice =>
+      'This message is no longer stored on this device.';
+
+  @override
   String get encryptionNotInitialized => 'Encryption not initialized';
+
+  @override
+  String get identityDamagedTitle => 'Encryption keys damaged';
+
+  @override
+  String get identityDamagedBody =>
+      'Part of this device\'s encryption identity is missing, so messages can\'t be decrypted or sent. Your keys were NOT regenerated automatically — doing that silently would destroy your history.';
+
+  @override
+  String get identityDamagedAction => 'Start fresh';
+
+  @override
+  String get identityDamagedConfirmTitle => 'Start with new keys?';
+
+  @override
+  String get identityDamagedConfirmBody =>
+      'A new identity will be created and your contacts will re-key automatically. Messages you have already opened on this device stay readable. Any message this device never decrypted can never be recovered.';
+
+  @override
+  String get identityDamagedConfirmAction => 'Create new keys';
+
+  @override
+  String peerIdentityChangedWarning(String name) {
+    return '$name\'s security keys changed. This happens after a reinstall, but it can also mean someone is intercepting. Verify with them over another channel.';
+  }
+
+  @override
+  String get peerIdentityVerifyAction => 'Verify';
+
+  @override
+  String get peerIdentityFingerprintDialogTitle => 'Verify security keys';
+
+  @override
+  String peerIdentityFingerprintDialogDescription(String name) {
+    return 'Compare these fingerprints with $name over another channel. They must match.';
+  }
+
+  @override
+  String peerIdentityFingerprintPeerLabel(String name) {
+    return '$name\'s fingerprint';
+  }
+
+  @override
+  String get peerIdentityFingerprintNoStoredKey =>
+      'No stored identity key is available for this contact.';
+
+  @override
+  String get identityFingerprintUnavailable => 'Fingerprint unavailable.';
 
   @override
   String get blockUser => 'Block user';
@@ -773,6 +851,14 @@ class AppLocalizationsEn extends AppLocalizations {
   @override
   String get snackbarFailedToClearLocalMessageCache =>
       'Failed to clear local message cache';
+
+  @override
+  String get snackbarAllLocalHistoryDeleted =>
+      'All messages stored on this device were permanently deleted';
+
+  @override
+  String get snackbarFailedToDeleteAllLocalHistory =>
+      'Some messages could not be removed from this device. Try again.';
 
   @override
   String friendAcceptedYourRequest(String name) {

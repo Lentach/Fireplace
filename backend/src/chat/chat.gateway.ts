@@ -131,7 +131,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         `User connected: ${user.username} (socket: ${client.id})`,
       );
       // Auth is complete — client may safely emit authenticated WS events.
-      client.emit('socketReady', {});
+      // `serverTime` is the client's only trustworthy clock reference. It
+      // gates destroying expired message plaintext, which is irreversible:
+      // the client holds ciphertext it can no longer decrypt, so a device with
+      // a fast wall clock would otherwise wipe messages still live here. An
+      // older client ignores the field; a newer client against an older server
+      // sees none and simply never destroys on expiry.
+      client.emit('socketReady', { serverTime: new Date().toISOString() });
     } catch (error) {
       const errorName =
         error instanceof Error ? error.name : 'UnknownSocketAuthError';
@@ -194,6 +200,36 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @MessageBody() data: any,
   ) {
     return this.chatMessageService.handleGetMessages(client, data);
+  }
+
+  /**
+   * Local-plaintext reconciliation. Cheap (PK lookup + two predicates), and the
+   * client throttles itself to a few passes a day, so the limit sits well under
+   * `getMessages`.
+   */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 900000 } })
+  @SubscribeMessage('getServedMessageIds')
+  async handleGetServedMessageIds(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: unknown,
+  ) {
+    return this.chatMessageService.handleGetServedMessageIds(client, data);
+  }
+
+  /**
+   * Server-clock refresh for the client's in-session expiry sweep. The
+   * `socketReady` observation ages out of client trust after ~30 minutes
+   * (never extrapolated further); without a refresh, a connection that stays
+   * up longer than that could never destroy expired plaintext until its next
+   * reconnect. Stateless, no DB. The client asks roughly once per half hour,
+   * so the limit sits far above real traffic.
+   */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 900000 } })
+  @SubscribeMessage('getServerTime')
+  handleGetServerTime(@ConnectedSocket() client: Socket) {
+    client.emit('serverTime', { serverTime: new Date().toISOString() });
   }
 
   @SubscribeMessage('messageDelivered')

@@ -12,6 +12,7 @@ import { Conversation } from '../../conversations/conversation.entity';
 import { Message, MessageDeliveryStatus } from '../../messages/message.entity';
 import { Socket } from 'socket.io';
 import { Server } from 'socket.io';
+import { SERVED_MESSAGE_IDS_MAX_BATCH } from '../dto/served-message-ids.dto';
 
 describe('ChatMessageService', () => {
   let service: ChatMessageService;
@@ -41,11 +42,18 @@ describe('ChatMessageService', () => {
     expiresAt: null,
   } as Message;
 
+  /**
+   * Plain jest.fn handle for the served-ids lookup. Asserting through
+   * `messagesService.findServedMessageIds` would reference a class-typed
+   * method (unbound-method); the raw fn has no `this` to lose.
+   */
+  let findServedMessageIdsMock: jest.Mock;
   let mockClient: Partial<Socket>;
   let mockServer: Partial<Server>;
   let onlineUsers: Map<number, string>;
 
   beforeEach(async () => {
+    findServedMessageIdsMock = jest.fn().mockResolvedValue([]);
     mockClient = {
       data: { user: { id: 1 } },
       emit: jest.fn(),
@@ -67,6 +75,7 @@ describe('ChatMessageService', () => {
             updateDeliveryStatus: jest.fn(),
             deleteById: jest.fn(),
             editMessage: jest.fn(),
+            findServedMessageIds: findServedMessageIdsMock,
           },
         },
         {
@@ -79,7 +88,9 @@ describe('ChatMessageService', () => {
         },
         {
           provide: ChatValidationService,
-          useValue: { validateCanMessage: jest.fn().mockResolvedValue({ valid: true }) },
+          useValue: {
+            validateCanMessage: jest.fn().mockResolvedValue({ valid: true }),
+          },
         },
         {
           provide: UsersService,
@@ -143,18 +154,23 @@ describe('ChatMessageService', () => {
     });
 
     it('should accept valid Cloudinary mediaUrl and create message', async () => {
-      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+      chatValidationService.validateCanMessage.mockResolvedValue({
+        valid: true,
+      });
       usersService.findById
         .mockResolvedValueOnce(mockSender as User)
         .mockResolvedValueOnce(mockRecipient as User);
-      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+      conversationsService.findOrCreate.mockResolvedValue(
+        mockConversation as Conversation,
+      );
       messagesService.create.mockResolvedValue(mockMessage as Message);
 
       const data = {
         recipientId: 2,
         content: '',
         messageType: 'VOICE',
-        mediaUrl: 'https://res.cloudinary.com/demo/video/upload/v1/voice-messages/abc.m4a',
+        mediaUrl:
+          'https://res.cloudinary.com/demo/video/upload/v1/voice-messages/abc.m4a',
         mediaDuration: 5,
       };
 
@@ -175,7 +191,10 @@ describe('ChatMessageService', () => {
           mediaDuration: 5,
         }),
       );
-      expect(mockClient.emit).toHaveBeenCalledWith('messageSent', expect.any(Object));
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'messageSent',
+        expect.any(Object),
+      );
     });
     it('should not create message and emit error when validation rejects the send', async () => {
       chatValidationService.validateCanMessage.mockResolvedValue({
@@ -190,16 +209,22 @@ describe('ChatMessageService', () => {
         onlineUsers,
       );
 
-      expect(mockClient.emit).toHaveBeenCalledWith('error', { message: 'blocked' });
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'blocked',
+      });
       expect(messagesService.create).not.toHaveBeenCalled();
     });
 
     it('should pass encryptedContent to create and store [encrypted] as content', async () => {
-      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+      chatValidationService.validateCanMessage.mockResolvedValue({
+        valid: true,
+      });
       usersService.findById
         .mockResolvedValueOnce(mockSender as User)
         .mockResolvedValueOnce(mockRecipient as User);
-      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+      conversationsService.findOrCreate.mockResolvedValue(
+        mockConversation as Conversation,
+      );
       messagesService.create.mockResolvedValue({
         ...mockMessage,
         content: '[encrypted]',
@@ -228,15 +253,22 @@ describe('ChatMessageService', () => {
           encryptedContent: '3:base64ciphertext==',
         }),
       );
-      expect(mockClient.emit).toHaveBeenCalledWith('messageSent', expect.any(Object));
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'messageSent',
+        expect.any(Object),
+      );
     });
 
     it('forwards encryptedContent to link-preview service', async () => {
-      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+      chatValidationService.validateCanMessage.mockResolvedValue({
+        valid: true,
+      });
       usersService.findById
         .mockResolvedValueOnce(mockSender as User)
         .mockResolvedValueOnce(mockRecipient as User);
-      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+      conversationsService.findOrCreate.mockResolvedValue(
+        mockConversation as Conversation,
+      );
       messagesService.create.mockResolvedValue({
         ...mockMessage,
         content: '[encrypted]',
@@ -267,11 +299,15 @@ describe('ChatMessageService', () => {
     });
 
     const arrangeSuccessfulTextMessageSend = () => {
-      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+      chatValidationService.validateCanMessage.mockResolvedValue({
+        valid: true,
+      });
       usersService.findById
         .mockResolvedValueOnce(mockSender as User)
         .mockResolvedValueOnce(mockRecipient as User);
-      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+      conversationsService.findOrCreate.mockResolvedValue(
+        mockConversation as Conversation,
+      );
       messagesService.create.mockResolvedValue({
         ...mockMessage,
         content: 'hello',
@@ -289,9 +325,7 @@ describe('ChatMessageService', () => {
       Object.defineProperty(mockServer, 'sockets', {
         configurable: true,
         value: {
-          sockets: new Map([
-            ['socket-bob', { data: { pushClientState } }],
-          ]),
+          sockets: new Map([['socket-bob', { data: { pushClientState } }]]),
         },
       });
     };
@@ -345,11 +379,15 @@ describe('ChatMessageService', () => {
 
   describe('E2E encrypted message types', () => {
     it('should store [encrypted] content and pass encryptedContent for PING', async () => {
-      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+      chatValidationService.validateCanMessage.mockResolvedValue({
+        valid: true,
+      });
       usersService.findById
         .mockResolvedValueOnce(mockSender as User)
         .mockResolvedValueOnce(mockRecipient as User);
-      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+      conversationsService.findOrCreate.mockResolvedValue(
+        mockConversation as Conversation,
+      );
       messagesService.create.mockResolvedValue({
         ...mockMessage,
         content: '[encrypted]',
@@ -388,18 +426,38 @@ describe('ChatMessageService', () => {
     });
 
     it.each([
-      ['VOICE', '3:voiceCiphertext==', 'http://localhost:3000/media/msgs/voice.bin'],
-      ['IMAGE', '3:imageCiphertext==', 'http://localhost:3000/media/msgs/image.bin'],
-      ['GIF', '3:base64encryptedGifData', 'http://localhost:3000/media/msgs/gif.bin'],
-      ['FILE', '3:base64encryptedFileData', 'http://localhost:3000/media/msgs/file.bin'],
+      [
+        'VOICE',
+        '3:voiceCiphertext==',
+        'http://localhost:3000/media/msgs/voice.bin',
+      ],
+      [
+        'IMAGE',
+        '3:imageCiphertext==',
+        'http://localhost:3000/media/msgs/image.bin',
+      ],
+      [
+        'GIF',
+        '3:base64encryptedGifData',
+        'http://localhost:3000/media/msgs/gif.bin',
+      ],
+      [
+        'FILE',
+        '3:base64encryptedFileData',
+        'http://localhost:3000/media/msgs/file.bin',
+      ],
     ])(
       'should persist mediaUrl and messageType for encrypted %s',
       async (messageType, encryptedContent, mediaUrl) => {
-        chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+        chatValidationService.validateCanMessage.mockResolvedValue({
+          valid: true,
+        });
         usersService.findById
           .mockResolvedValueOnce(mockSender as User)
           .mockResolvedValueOnce(mockRecipient as User);
-        conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+        conversationsService.findOrCreate.mockResolvedValue(
+          mockConversation as Conversation,
+        );
         messagesService.create.mockResolvedValue({
           ...mockMessage,
           content: '[encrypted]',
@@ -423,7 +481,10 @@ describe('ChatMessageService', () => {
           onlineUsers,
         );
 
-        const opts = messagesService.create.mock.calls[0][3] as Record<string, unknown>;
+        const opts = messagesService.create.mock.calls[0][3] as Record<
+          string,
+          unknown
+        >;
         expect(opts.encryptedContent).toBe(encryptedContent);
         expect(opts.messageType).toBe(messageType);
         expect(opts.mediaUrl).toBe(mediaUrl);
@@ -431,11 +492,15 @@ describe('ChatMessageService', () => {
     );
 
     it('should emit messageSent and newMessage with encryptedContent for online recipient', async () => {
-      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+      chatValidationService.validateCanMessage.mockResolvedValue({
+        valid: true,
+      });
       usersService.findById
         .mockResolvedValueOnce(mockSender as User)
         .mockResolvedValueOnce(mockRecipient as User);
-      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+      conversationsService.findOrCreate.mockResolvedValue(
+        mockConversation as Conversation,
+      );
 
       const savedMsg = {
         ...mockMessage,
@@ -491,11 +556,15 @@ describe('ChatMessageService', () => {
 
   describe('read-based disappearing messages', () => {
     it('stores disappearAfterSeconds with null expiresAt on send', async () => {
-      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+      chatValidationService.validateCanMessage.mockResolvedValue({
+        valid: true,
+      });
       usersService.findById
         .mockResolvedValueOnce(mockSender as User)
         .mockResolvedValueOnce(mockRecipient as User);
-      conversationsService.findOrCreate.mockResolvedValue(mockConversation as Conversation);
+      conversationsService.findOrCreate.mockResolvedValue(
+        mockConversation as Conversation,
+      );
       messagesService.create.mockResolvedValue({
         ...mockMessage,
         disappearAfterSeconds: 300,
@@ -553,20 +622,21 @@ describe('ChatMessageService', () => {
         onlineUsers,
       );
 
-      expect(messagesService.markConversationAsReadFromSender).toHaveBeenCalledWith(
-        10,
-        2,
-      );
+      expect(
+        messagesService.markConversationAsReadFromSender,
+      ).toHaveBeenCalledWith(10, 2);
       expect(toMock).toHaveBeenCalledWith('sock-sender');
       expect(toMock).toHaveBeenCalledWith('sock-reader');
       const emitCalls = toMock.mock.results.map((r) => r.value.emit.mock.calls);
-      expect(emitCalls.some((calls) =>
-        calls.some(
-          (c) =>
-            c[0] === 'messageDelivered' &&
-            c[1].expiresAt === expiresAt.toISOString(),
+      expect(
+        emitCalls.some((calls) =>
+          calls.some(
+            (c) =>
+              c[0] === 'messageDelivered' &&
+              c[1].expiresAt === expiresAt.toISOString(),
+          ),
         ),
-      )).toBe(true);
+      ).toBe(true);
     });
   });
 
@@ -575,7 +645,9 @@ describe('ChatMessageService', () => {
       // Message sender = userId 1 (the caller). Recipient = userId 2.
       const conv = { id: 10, userOne: { id: 1 }, userTwo: { id: 2 } };
       const msg = { id: 99, sender: { id: 1 }, conversation: conv };
-      messagesService.findByIdWithConversation.mockResolvedValue(msg as Message);
+      messagesService.findByIdWithConversation.mockResolvedValue(
+        msg as Message,
+      );
       messagesService.updateDeliveryStatus.mockResolvedValue(null);
 
       await service.handleMessageDelivered(
@@ -591,13 +663,20 @@ describe('ChatMessageService', () => {
     it('allows when caller is the recipient', async () => {
       // Message sender = userId 2. Caller = userId 1 (recipient).
       const conv = { id: 10, userOne: { id: 2 }, userTwo: { id: 1 } };
-      const updatedMsg = { id: 99, sender: { id: 2 }, conversation: conv, deliveryStatus: 'DELIVERED' };
+      const updatedMsg = {
+        id: 99,
+        sender: { id: 2 },
+        conversation: conv,
+        deliveryStatus: 'DELIVERED',
+      };
       messagesService.findByIdWithConversation.mockResolvedValue({
         id: 99,
         sender: { id: 2 },
         conversation: conv,
       } as Message);
-      messagesService.updateDeliveryStatus.mockResolvedValue(updatedMsg as Message);
+      messagesService.updateDeliveryStatus.mockResolvedValue(
+        updatedMsg as Message,
+      );
 
       await service.handleMessageDelivered(
         mockClient as Socket,
@@ -627,7 +706,9 @@ describe('ChatMessageService', () => {
         conversation: conv,
         mediaUrl: null,
       };
-      messagesService.findByIdWithConversation.mockResolvedValue(msg as Message);
+      messagesService.findByIdWithConversation.mockResolvedValue(
+        msg as Message,
+      );
       messagesService.deleteById.mockResolvedValue(msg as Message);
 
       await service.handleDeleteMessage(
@@ -638,10 +719,9 @@ describe('ChatMessageService', () => {
       );
 
       expect(conversationsService.clearPinnedMessage).toHaveBeenCalledWith(10);
-      expect(mockClient.emit).toHaveBeenCalledWith(
-        'messageUnpinned',
-        { conversationId: 10 },
-      );
+      expect(mockClient.emit).toHaveBeenCalledWith('messageUnpinned', {
+        conversationId: 10,
+      });
     });
   });
 
@@ -657,12 +737,19 @@ describe('ChatMessageService', () => {
       } as unknown as Message;
       const editedAt = new Date('2026-06-22T12:00:00Z');
       messagesService.findByIdWithConversation.mockResolvedValue(msg);
-      messagesService.editMessage.mockResolvedValue({ id: 100, editedAt } as Message);
+      messagesService.editMessage.mockResolvedValue({
+        id: 100,
+        editedAt,
+      } as Message);
       onlineUsers.set(2, 'sock-bob');
 
       await service.handleEditMessage(
         mockClient as Socket,
-        { messageId: 100, content: '[encrypted]', encryptedContent: 'new-cipher' },
+        {
+          messageId: 100,
+          content: '[encrypted]',
+          encryptedContent: 'new-cipher',
+        },
         mockServer as Server,
         onlineUsers,
       );
@@ -678,9 +765,15 @@ describe('ChatMessageService', () => {
         encryptedContent: 'new-cipher',
         editedAt: '2026-06-22T12:00:00.000Z',
       };
-      expect(mockClient.emit).toHaveBeenCalledWith('messageEdited', expectedPayload);
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'messageEdited',
+        expectedPayload,
+      );
       expect(mockServer.to).toHaveBeenCalledWith('sock-bob');
-      expect(mockServer.emit).toHaveBeenCalledWith('messageEdited', expectedPayload);
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        'messageEdited',
+        expectedPayload,
+      );
     });
 
     it('emits editMessageFailed with reason not_sender when caller is not the sender', async () => {
@@ -696,7 +789,11 @@ describe('ChatMessageService', () => {
 
       await service.handleEditMessage(
         mockClient as Socket,
-        { messageId: 100, content: '[encrypted]', encryptedContent: 'new-cipher' },
+        {
+          messageId: 100,
+          content: '[encrypted]',
+          encryptedContent: 'new-cipher',
+        },
         mockServer as Server,
         onlineUsers,
       );
@@ -721,7 +818,11 @@ describe('ChatMessageService', () => {
 
       await service.handleEditMessage(
         mockClient as Socket,
-        { messageId: 100, content: '[encrypted]', encryptedContent: 'new-cipher' },
+        {
+          messageId: 100,
+          content: '[encrypted]',
+          encryptedContent: 'new-cipher',
+        },
         mockServer as Server,
         onlineUsers,
       );
@@ -739,7 +840,11 @@ describe('ChatMessageService', () => {
 
       await service.handleEditMessage(
         mockClient as Socket,
-        { messageId: 100, content: '[encrypted]', encryptedContent: 'new-cipher' },
+        {
+          messageId: 100,
+          content: '[encrypted]',
+          encryptedContent: 'new-cipher',
+        },
         mockServer as Server,
         onlineUsers,
       );
@@ -765,7 +870,11 @@ describe('ChatMessageService', () => {
 
       await service.handleEditMessage(
         mockClient as Socket,
-        { messageId: 100, content: '[encrypted]', encryptedContent: 'new-cipher' },
+        {
+          messageId: 100,
+          content: '[encrypted]',
+          encryptedContent: 'new-cipher',
+        },
         mockServer as Server,
         onlineUsers,
       );
@@ -820,6 +929,93 @@ describe('ChatMessageService', () => {
         conversationId: 10,
         messages: [],
       });
+    });
+  });
+
+  describe('handleGetServedMessageIds', () => {
+    /** Names of every event emitted to the caller in this test. */
+    const emitted = () =>
+      ((mockClient.emit as jest.Mock).mock.calls as unknown[][]).map((c) =>
+        String(c[0]),
+      );
+
+    it('echoes the requestId with the ids the server still serves', async () => {
+      findServedMessageIdsMock.mockResolvedValue([2, 4]);
+
+      await service.handleGetServedMessageIds(mockClient as Socket, {
+        requestId: 'abc',
+        messageIds: [1, 2, 3, 4],
+      });
+
+      expect(findServedMessageIdsMock).toHaveBeenCalledWith([1, 2, 3, 4], 1);
+      expect(mockClient.emit).toHaveBeenCalledWith('servedMessageIds', {
+        requestId: 'abc',
+        messageIds: [2, 4],
+      });
+    });
+
+    it('answers a fully deleted history with an empty list', async () => {
+      // Not an error case: the client is meant to destroy all of them.
+      findServedMessageIdsMock.mockResolvedValue([]);
+
+      await service.handleGetServedMessageIds(mockClient as Socket, {
+        requestId: 'abc',
+        messageIds: [1, 2],
+      });
+
+      expect(mockClient.emit).toHaveBeenCalledWith('servedMessageIds', {
+        requestId: 'abc',
+        messageIds: [],
+      });
+    });
+
+    it('stays SILENT when the lookup throws', async () => {
+      // The empty list above is an instruction to destroy plaintext, so a
+      // database failure must never be able to manufacture one. No reply at
+      // all leaves the client holding everything until the next attempt.
+      findServedMessageIdsMock.mockRejectedValue(new Error('db down'));
+
+      await service.handleGetServedMessageIds(mockClient as Socket, {
+        requestId: 'abc',
+        messageIds: [1, 2],
+      });
+
+      expect(emitted()).not.toContain('servedMessageIds');
+    });
+
+    it('rejects a malformed batch without answering it', async () => {
+      await service.handleGetServedMessageIds(mockClient as Socket, {
+        requestId: 'abc',
+        messageIds: ['nope'],
+      });
+
+      expect(findServedMessageIdsMock).not.toHaveBeenCalled();
+      expect(emitted()).toEqual(['error']);
+    });
+
+    it('rejects a batch over the size cap', async () => {
+      await service.handleGetServedMessageIds(mockClient as Socket, {
+        requestId: 'abc',
+        messageIds: Array.from(
+          { length: SERVED_MESSAGE_IDS_MAX_BATCH + 1 },
+          (_, i) => i + 1,
+        ),
+      });
+
+      expect(findServedMessageIdsMock).not.toHaveBeenCalled();
+      expect(emitted()).toEqual(['error']);
+    });
+
+    it('ignores an unauthenticated socket', async () => {
+      const anonymous: Partial<Socket> = { data: {}, emit: jest.fn() };
+
+      await service.handleGetServedMessageIds(anonymous as Socket, {
+        requestId: 'abc',
+        messageIds: [1],
+      });
+
+      expect(findServedMessageIdsMock).not.toHaveBeenCalled();
+      expect(anonymous.emit).not.toHaveBeenCalled();
     });
   });
 });

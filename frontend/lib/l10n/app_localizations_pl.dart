@@ -164,6 +164,29 @@ class AppLocalizationsPl extends AppLocalizations {
   String get clearLocalMessageCache => 'Wyczyść pobrane audio';
 
   @override
+  String get deleteAllLocalHistoryTitle =>
+      'Usuń wszystkie wiadomości z tego urządzenia';
+
+  @override
+  String get deleteAllLocalHistoryDescription =>
+      'Trwale usuwa z tego urządzenia wszystkie zapisane wiadomości, w tym pobrane notatki głosowe. Nie usuwa konta, wiadomości z urządzenia drugiej osoby ani kluczy i sesji szyfrowania. Tej operacji nie można cofnąć: serwer przechowywał wyłącznie zaszyfrowane dane, których nie potrafi odczytać, więc nie ma kopii do przywrócenia.';
+
+  @override
+  String get deleteAllLocalHistoryButton =>
+      'Usuń trwale wszystkie lokalne wiadomości';
+
+  @override
+  String get deleteAllLocalHistoryDialogTitle =>
+      'Trwale usunąć wszystkie lokalne wiadomości?';
+
+  @override
+  String get deleteAllLocalHistoryDialogBody =>
+      'Ta operacja trwale usuwa z tego urządzenia wszystkie wiadomości i pobrane notatki głosowe. Nie można jej cofnąć — serwer przechowywał wyłącznie zaszyfrowane dane, których nie potrafi odczytać, więc nie ma kopii do przywrócenia. Twoje konto, klucze i sesje szyfrowania pozostaną bez zmian.';
+
+  @override
+  String get deleteAllLocalHistoryConfirm => 'Usuń trwale';
+
+  @override
   String get yourIdentityFingerprint => 'Twój odcisk tożsamości';
 
   @override
@@ -224,7 +247,64 @@ class AppLocalizationsPl extends AppLocalizations {
   String get decryptionFailed => 'Odszyfrowanie nie powiodło się';
 
   @override
+  String get decryptingMessage => 'Odszyfrowywanie…';
+
+  @override
+  String get messageNoLongerStoredOnThisDevice =>
+      'Ta wiadomość nie jest już przechowywana na tym urządzeniu.';
+
+  @override
   String get encryptionNotInitialized => 'Szyfrowanie niezainicjowane';
+
+  @override
+  String get identityDamagedTitle => 'Klucze szyfrowania uszkodzone';
+
+  @override
+  String get identityDamagedBody =>
+      'Brakuje części tożsamości szyfrowania tego urządzenia, więc nie można odszyfrować ani wysyłać wiadomości. Klucze NIE zostały odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby historię.';
+
+  @override
+  String get identityDamagedAction => 'Zacznij od nowa';
+
+  @override
+  String get identityDamagedConfirmTitle => 'Utworzyć nowe klucze?';
+
+  @override
+  String get identityDamagedConfirmBody =>
+      'Zostanie utworzona nowa tożsamość, a kontakty automatycznie wymienią klucze. Wiadomości już otwarte na tym urządzeniu pozostaną czytelne. Wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania.';
+
+  @override
+  String get identityDamagedConfirmAction => 'Utwórz nowe klucze';
+
+  @override
+  String peerIdentityChangedWarning(String name) {
+    return 'Klucze bezpieczeństwa użytkownika $name uległy zmianie. Zwykle oznacza to ponowną instalację, ale może też oznaczać podsłuch. Potwierdź to z nim innym kanałem.';
+  }
+
+  @override
+  String get peerIdentityVerifyAction => 'Zweryfikuj';
+
+  @override
+  String get peerIdentityFingerprintDialogTitle =>
+      'Zweryfikuj klucze bezpieczeństwa';
+
+  @override
+  String peerIdentityFingerprintDialogDescription(String name) {
+    return 'Porównaj te odciski z użytkownikiem $name za pośrednictwem innego kanału. Muszą być identyczne.';
+  }
+
+  @override
+  String peerIdentityFingerprintPeerLabel(String name) {
+    return 'Odcisk tożsamości użytkownika $name';
+  }
+
+  @override
+  String get peerIdentityFingerprintNoStoredKey =>
+      'Brak zapisanego klucza tożsamości dla tego kontaktu.';
+
+  @override
+  String get identityFingerprintUnavailable =>
+      'Odcisk tożsamości jest niedostępny.';
 
   @override
   String get blockUser => 'Zablokuj użytkownika';
@@ -786,6 +866,14 @@ class AppLocalizationsPl extends AppLocalizations {
   @override
   String get snackbarFailedToClearLocalMessageCache =>
       'Nie udało się wyczyścić lokalnej pamięci wiadomości';
+
+  @override
+  String get snackbarAllLocalHistoryDeleted =>
+      'Wszystkie wiadomości zapisane na tym urządzeniu zostały trwale usunięte';
+
+  @override
+  String get snackbarFailedToDeleteAllLocalHistory =>
+      'Nie udało się usunąć części wiadomości z tego urządzenia. Spróbuj ponownie.';
 
   @override
   String friendAcceptedYourRequest(String name) {

@@ -3,7 +3,6 @@ import 'dart:typed_data';
 
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
-import 'package:path_provider/path_provider.dart';
 import 'package:provider/provider.dart';
 
 import '../../config/app_config.dart';
@@ -11,6 +10,7 @@ import '../../l10n/app_localizations.dart';
 import '../../models/message_model.dart';
 import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
+import '../../services/audio_cache_store.dart';
 import '../../services/media_crypto_service.dart';
 import '../../services/voice_audio_coordinator.dart';
 import '../top_snackbar.dart';
@@ -48,19 +48,11 @@ class PlaybackController extends StatefulWidget {
     this.playerFactory,
   });
 
-  static Future<int> clearAudioCache() async {
-    if (kIsWeb) return 0;
-    final dir = await getApplicationDocumentsDirectory();
-    final cacheDir = Directory('${dir.path}/audio_cache');
-    if (!cacheDir.existsSync()) return 0;
-
-    var deleted = 0;
-    await for (final entity in cacheDir.list(recursive: true)) {
-      if (entity is File) deleted++;
-    }
-    await cacheDir.delete(recursive: true);
-    return deleted;
-  }
+  /// Destroy every cached voice note.
+  ///
+  /// Delegates to [AudioCacheStore], which owns the filename convention —
+  /// including the legacy `.m4a` names that a purge must not miss.
+  static Future<int> clearAudioCache() => AudioCacheStore.clear();
 
   @override
   State<PlaybackController> createState() => _PlaybackControllerState();
@@ -229,21 +221,17 @@ class _PlaybackControllerState extends State<PlaybackController>
   }
 
   Future<String?> _getCachedFilePath() async {
-    final dir = await getApplicationDocumentsDirectory();
-    final cachePath = '${dir.path}/audio_cache';
-    final audioFile = File('$cachePath/${widget.message.id}.audio');
-    if (audioFile.existsSync()) return audioFile.path;
-    final legacy = File('$cachePath/${widget.message.id}.m4a');
-    if (legacy.existsSync()) return legacy.path;
-    return null;
+    final file = await AudioCacheStore.find(widget.message.id);
+    return file?.path;
   }
 
   Future<String> _downloadAndCache(String url, String token) async {
-    final dir = await getApplicationDocumentsDirectory();
-    final cachePath = '${dir.path}/audio_cache';
-    await Directory(cachePath).create(recursive: true);
-
-    final file = File('$cachePath/${widget.message.id}.audio');
+    // Native-only: the web branch of _loadAndPlayAudio decrypts into memory and
+    // never reaches here, and AudioCacheStore refuses to touch dart:io on web.
+    final file = await AudioCacheStore.createTarget(widget.message.id);
+    if (file == null) {
+      throw StateError('Voice-note caching is unavailable on this platform');
+    }
 
     final raw = await ApiService(baseUrl: AppConfig.baseUrl).fetchMediaBytes(
       url,

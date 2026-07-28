@@ -188,6 +188,8 @@ class E2eClient {
     'messageEdited',
     'editMessageFailed',
     'reactionUpdated',
+    'messageDeleted',
+    'servedMessageIds',
   ];
 
   /// Registers a brand-new account. Fresh every run BY DESIGN: reusing
@@ -264,9 +266,9 @@ class E2eClient {
     await events.next('oneTimePreKeysUploaded', reason: '$label OTPs');
   }
 
-  /// Connects the real Socket.IO client and waits for the server's
-  /// `socketReady` (auth complete) before returning.
-  Future<void> connectSocket() async {
+  /// Connects the real Socket.IO client, waits for the server's
+  /// `socketReady` (auth complete), and returns its payload.
+  Future<dynamic> connectSocket() async {
     socketService.connect(baseUrl: baseUrl, token: accessToken);
     for (final event in _trackedEvents) {
       socketService.on(event, (payload) => events.record(event, payload));
@@ -279,16 +281,19 @@ class E2eClient {
     socketService.socket!.on('connect_error', (e) {
       if (!connectError.isCompleted) connectError.complete(e);
     });
+    dynamic socketReadyPayload;
     try {
       final firstError = await Future.any<dynamic>([
-        events
-            .next('socketReady', reason: '$label socket auth')
-            .then((_) => null),
+        events.next('socketReady', reason: '$label socket auth').then((payload) {
+          socketReadyPayload = payload;
+          return null;
+        }),
         connectError.future,
       ]);
       if (firstError != null) {
         throw StateError('$label socket connect_error: $firstError');
       }
+      return socketReadyPayload;
     } finally {
       socketService.off('connect_error');
     }
@@ -407,6 +412,35 @@ class E2eClient {
       'content': '[encrypted]',
       'encryptedContent': newCiphertext,
     });
+  }
+
+  /// Emits `deleteMessage`. Like `editMessage`, the app sends this through
+  /// ConnectionProvider's raw socket path, which this mirrors.
+  ///
+  /// [forEveryone] false is delete-for-me (server keeps the row and adds the
+  /// caller to `hiddenByUserIds`); true hard-deletes it for both sides.
+  void emitDeleteMessage(int messageId, {required bool forEveryone}) {
+    socketService.socket!.emit('deleteMessage', {
+      'messageId': messageId,
+      'mode': forEveryone ? 'for_everyone' : 'for_me',
+    });
+  }
+
+  /// Emits `getServedMessageIds` and returns the ids the server says it still
+  /// serves this account. Mirrors what `ConnectionProvider` does during
+  /// local-plaintext reconciliation.
+  Future<Set<int>> servedMessageIds(List<int> messageIds) async {
+    final requestId = 'e2e-${_randomHex(6)}';
+    events.discard('servedMessageIds');
+    socketService.getServedMessageIds(requestId, messageIds);
+    final payload = await events.next(
+      'servedMessageIds',
+      where: (p) => p is Map && p['requestId'] == requestId,
+      reason: '$label servedMessageIds',
+    ) as Map;
+    return {
+      for (final id in payload['messageIds'] as List) (id as num).toInt(),
+    };
   }
 
   void dispose() {

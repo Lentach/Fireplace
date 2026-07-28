@@ -226,8 +226,10 @@ class ChatMessageBubble extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    // Handle voice messages with dedicated widget
-    if (message.messageType == MessageType.voice) {
+    // A retired media row no longer has its one-shot media keys; render the
+    // same factual placeholder as retired text instead of opening its decoder.
+    if (message.messageType == MessageType.voice &&
+        message.content != kRetiredMessageLabel) {
       return VoiceMessageContent(message: message, isMine: isMine);
     }
 

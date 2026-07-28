@@ -59,6 +59,7 @@ int _deliveryStatusRank(MessageDeliveryStatus status) {
 const int _pageSize = 50;
 const String _kDecryptionFailedLabel = '[Decryption failed]';
 const String _kEncryptedPlaceholderLabel = '[encrypted]';
+const String kRetiredMessageLabel = '[Message no longer stored on this device]';
 
 /// MessagingProvider — owns all message state, send/receive handlers,
 /// encryption orchestration, typing/recording indicators, and reactions.

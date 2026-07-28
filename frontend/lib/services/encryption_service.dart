@@ -6,8 +6,29 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
+import '../utils/message_expiry.dart' show kNeverReadRetentionSeconds;
+import 'plaintext_record_codec.dart';
 import 'encryption/signal_stores.dart';
 import 'encryption/session_cross_context_lock.dart';
+
+/// Thrown by [EncryptionService.initialize] when identity material is present
+/// but incomplete.
+///
+/// Initialization fails CLOSED here on purpose: regenerating would mint a new
+/// identity and make every peer's history permanently undecryptable, while
+/// refusing leaves the surviving bytes on disk where they may still be
+/// recoverable. Because that also means E2E never comes up, this is a distinct
+/// type — callers must surface it and offer
+/// [EncryptionService.regenerateIdentityAfterConfirmedLoss] as an explicit,
+/// user-consented way out, NOT treat it as a transient init failure.
+class E2eIdentityIncompleteException implements Exception {
+  const E2eIdentityIncompleteException();
+
+  @override
+  String toString() =>
+      'E2eIdentityIncompleteException: identity material is incomplete; '
+      'refusing to regenerate without explicit consent';
+}
 
 class EncryptionService {
   EncryptionService({
@@ -48,6 +69,11 @@ class EncryptionService {
 
   int? _userId;
 
+  /// The account every storage key on this instance is namespaced under, or
+  /// null before [initialize]. Exposed so a long-running pass can confirm the
+  /// account did not change underneath it before destroying anything.
+  int? get activeUserId => _userId;
+
   /// Cached SharedPreferences instance for synchronous-on-web message content cache.
   SharedPreferences? _prefs;
   Future<SharedPreferences> get _sharedPrefs async =>
@@ -75,28 +101,164 @@ class EncryptionService {
   /// Public key data to upload to the server (set after key generation).
   Map<String, dynamic>? _keysForUpload;
 
+  /// True once [initialize] refused to start because identity material is
+  /// incomplete. The only way forward is
+  /// [regenerateIdentityAfterConfirmedLoss], which the USER must consent to.
+  bool identityIncomplete = false;
+
+  /// Peers whose identity key changed under us this session, surfaced so the
+  /// UI can warn instead of silently trusting the new key.
+  final Set<int> _peersWithChangedIdentity = <int>{};
+  Set<int> get peersWithChangedIdentity =>
+      Set.unmodifiable(_peersWithChangedIdentity);
+
+  /// Called when a peer's identity key changes. Set by the provider.
+  void Function(int peerId)? onPeerIdentityChanged;
+
+  /// Construct the four Signal stores for prefix [p].
+  ///
+  /// Single place on purpose: the identity store carries the
+  /// peer-identity-change callback, and a second construction site that forgot
+  /// it would silently disable the MITM/re-key warning.
+  void _buildStores(String p) {
+    _identityStore = SecureIdentityKeyStore(
+      _storage,
+      p,
+      onIdentityChanged: (address) {
+        final peerId = int.tryParse(address.getName());
+        if (peerId == null) return;
+        if (!_peersWithChangedIdentity.add(peerId)) return;
+        E2ePersistentDiag.record('PEER_IDENTITY_CHANGED', {'peerId': peerId});
+        onPeerIdentityChanged?.call(peerId);
+      },
+    );
+    _preKeyStore = SecurePreKeyStore(_storage, p);
+    _signedPreKeyStore = SecureSignedPreKeyStore(_storage, p);
+    _sessionStore = SecureSessionStore(_storage, p);
+    _cipherSessionStore = _sessionStore;
+  }
+
   /// Initialize the encryption service for the given user. Loads keys from
   /// secure storage or generates new ones if this is a fresh install.
   Future<void> initialize(int userId) async {
     _userId = userId;
     final p = 'e2e_${userId}_'; // per-user storage key prefix
 
-    _identityStore = SecureIdentityKeyStore(_storage, p);
-    _preKeyStore = SecurePreKeyStore(_storage, p);
-    _signedPreKeyStore = SecureSignedPreKeyStore(_storage, p);
-    _sessionStore = SecureSessionStore(_storage, p);
-    _cipherSessionStore = _sessionStore;
+    _buildStores(p);
 
-    final loaded = await _identityStore.loadFromStorage();
-    if (loaded) {
-      debugPrint('[EncryptionService] Loaded existing keys from storage');
-      needsKeyUpload = false;
-    } else {
-      debugPrint('[EncryptionService] Generating new keys (fresh install)');
-      await _generateKeys();
-      needsKeyUpload = true;
+    // A THROWING read propagates: a storage error must never be read as "no
+    // keys". Only a definitive absence reaches the generate branch.
+    var load = await _identityStore.loadFromStorage();
+    if (load == IdentityLoadResult.absent && await _hasPriorInstallResidue(p)) {
+      // No identity, yet sessions/prekeys from a previous install survive.
+      // That is partial storage loss, not a fresh install.
+      load = IdentityLoadResult.partial;
     }
 
+    switch (load) {
+      case IdentityLoadResult.loaded:
+        debugPrint('[EncryptionService] Loaded existing keys from storage');
+        needsKeyUpload = false;
+      case IdentityLoadResult.partial:
+        E2ePersistentDiag.record('IDENTITY_INCOMPLETE', {'userId': userId});
+        debugPrint(
+          '[EncryptionService] Identity incomplete — refusing to regenerate',
+        );
+        identityIncomplete = true;
+        throw const E2eIdentityIncompleteException();
+      case IdentityLoadResult.absent:
+        debugPrint('[EncryptionService] Generating new keys (fresh install)');
+        await _generateKeys();
+        needsKeyUpload = true;
+    }
+
+    _initialized = true;
+  }
+
+  /// True when storage still holds Signal material from a previous install of
+  /// this account — sessions, prekeys, or the prekey counter. Identity absent
+  /// while these survive means partial loss, and regenerating would strand
+  /// every one of those sessions.
+  ///
+  /// Only consulted after [SecureIdentityKeyStore.loadFromStorage] returned
+  /// `absent`, which already proves the identity reads themselves succeeded —
+  /// storage is broadly working. A throwing `readAll` is therefore
+  /// INCONCLUSIVE, not evidence of residue: biasing it to `true` would brick
+  /// genuine fresh installs on a transient error and prompt a "your keys are
+  /// damaged" recovery at a user who has no keys and nothing to lose. Retry
+  /// once, then treat it as a fresh install and leave a forensic trail. The
+  /// primary guard against partial loss is `loadFromStorage` returning
+  /// `partial`, which never depends on this check.
+  Future<bool> _hasPriorInstallResidue(String prefix) async {
+    for (var attempt = 0; attempt < 2; attempt++) {
+      try {
+        final all = await _storage.readAll();
+        for (final key in all.keys) {
+          if (!key.startsWith(prefix)) continue;
+          final suffix = key.substring(prefix.length);
+          if (suffix.startsWith('session_') ||
+              suffix.startsWith('pre_key_') ||
+              suffix.startsWith('signed_pre_key_') ||
+              suffix == 'next_pre_key_id') {
+            return true;
+          }
+        }
+        return false;
+      } catch (_) {
+        if (attempt == 0) {
+          await Future<void>.delayed(const Duration(milliseconds: 50));
+        }
+      }
+    }
+    E2ePersistentDiag.record('IDENTITY_RESIDUE_UNKNOWN', {'prefix': prefix});
+    return false;
+  }
+
+  /// DESTRUCTIVE, USER-CONSENTED. Mint a brand-new identity after the user has
+  /// been told the stored one is damaged.
+  ///
+  /// What is actually lost: every existing Signal session, so NO ciphertext can
+  /// be decrypted from here on — any message whose plaintext was never cached
+  /// is gone for good, and peers must re-key. What survives: the decrypted
+  /// plaintext cache is deliberately NOT deleted, so history this device
+  /// already decrypted stays readable. Say exactly that in the consent dialog;
+  /// do not promise total loss.
+  ///
+  /// This is the escape hatch for [E2eIdentityIncompleteException]: the guard
+  /// in [initialize] deliberately refuses to do this on its own, because doing
+  /// it silently IS the data-loss bug. Old sessions and prekeys are cleared
+  /// first — leaving them would strand the new identity against ratchets no
+  /// peer can follow.
+  Future<void> regenerateIdentityAfterConfirmedLoss(int userId) async {
+    _userId = userId;
+    final p = 'e2e_${userId}_';
+    E2ePersistentDiag.record('IDENTITY_REGEN_CONSENTED', {'userId': userId});
+
+    try {
+      final all = await _storage.readAll();
+      for (final key in all.keys.toList()) {
+        if (!key.startsWith(p)) continue;
+        final suffix = key.substring(p.length);
+        final isSignalMaterial =
+            suffix.startsWith('session_') ||
+            suffix.startsWith('pre_key_') ||
+            suffix.startsWith('signed_pre_key_') ||
+            suffix.startsWith('trusted_identity_') ||
+            suffix.startsWith('identity_') ||
+            suffix == 'registration_id' ||
+            suffix == 'next_pre_key_id';
+        if (isSignalMaterial) {
+          await _storage.delete(key: key);
+        }
+      }
+    } catch (_) {}
+
+    _buildStores(p);
+    _peersWithChangedIdentity.clear();
+
+    await _generateKeys();
+    needsKeyUpload = true;
+    identityIncomplete = false;
     _initialized = true;
   }
 
@@ -408,9 +570,30 @@ class EncryptionService {
   }
 
   /// Generate more one-time pre-keys and return them for server upload.
-  Future<List<Map<String, dynamic>>> generateMorePreKeys() async {
+  ///
+  /// Serialized origin-wide. The whole body is a read-modify-write of
+  /// `next_pre_key_id`, and same-origin PWA engines share that counter: two
+  /// engines both handling `preKeysLow` could both read `next=20`, both mint
+  /// ids 20..119 with DIFFERENT private halves, and both upload. The last
+  /// local write wins, so the server ends up serving a public prekey whose
+  /// private half this device overwrote — and the peer who draws it gets a
+  /// bad-MAC session that no retry can fix.
+  ///
+  /// Its own lock name, never the per-peer session lock: this touches no
+  /// SessionRecord, and reusing the session name would serialize prekey
+  /// generation against unrelated conversations. Same shape as the existing
+  /// raw-replay lock. Leaf-level, like every other guarded body — it must not
+  /// call into a session-locked method.
+  Future<List<Map<String, dynamic>>> generateMorePreKeys() {
     final uid = _userId;
-    if (uid == null) return [];
+    if (uid == null) return Future.value(const <Map<String, dynamic>>[]);
+    return _sessionCrossContextLock(
+      'fireplace-e2e-prekeys-$uid',
+      () => _generateMorePreKeysLocked(uid),
+    );
+  }
+
+  Future<List<Map<String, dynamic>>> _generateMorePreKeysLocked(int uid) async {
     final nextIdStr = await _storage.read(key: 'e2e_${uid}_next_pre_key_id');
     final storedNext = int.tryParse(nextIdStr ?? '');
     // If the counter was lost but pre-keys survive, derive the next id from the
@@ -462,9 +645,35 @@ class EncryptionService {
   Future<String?> getIdentityFingerprint() async {
     if (!_initialized) return null;
     final keyPair = await _identityStore.getIdentityKeyPair();
-    final bytes = keyPair.getPublicKey().serialize();
-    // Format as hex groups of 4 for readability
-    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return _formatIdentityFingerprint(keyPair.getPublicKey());
+  }
+
+  /// Get the stored trusted fingerprint for [peerId], if one exists.
+  ///
+  /// This is deliberately a read of the trusted identity store rather than a
+  /// server-supplied bundle: the user must compare the key this device actually
+  /// accepted after the warning, not a fresh network value.
+  Future<String?> getPeerIdentityFingerprint(int peerId) async {
+    if (!_initialized) return null;
+    try {
+      final identity = await _identityStore.getIdentity(
+        SignalProtocolAddress(peerId.toString(), _deviceId),
+      );
+      return identity == null ? null : _formatIdentityFingerprint(identity);
+    } catch (_) {
+      // Verification UI is advisory. Storage damage or an unavailable key must
+      // leave it visibly unavailable, never turn the warning into an exception.
+      return null;
+    }
+  }
+
+  /// Formats every displayed Signal identity consistently: lowercase hex,
+  /// grouped in fours so a human can compare it over another channel.
+  String _formatIdentityFingerprint(IdentityKey identity) {
+    final hex = identity
+        .serialize()
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
     final groups = <String>[];
     for (var i = 0; i < hex.length; i += 4) {
       final end = (i + 4 > hex.length) ? hex.length : i + 4;
@@ -574,34 +783,107 @@ class EncryptionService {
     }
   }
 
+  /// Reserved envelope keys stamped onto every persisted plaintext record.
+  ///
+  /// Stored in the CLEAR beside the payload, deliberately. Every sweep that
+  /// has to SELECT records — purge one conversation, drop expired plaintext,
+  /// age out old history — must do so without decrypting up to 2000 records,
+  /// and with no conversation index there is nothing else to match on. What
+  /// they reveal to someone already holding the device (which conversation,
+  /// roughly when) is far less than the message text, which is the part that
+  /// gets protected at rest.
+  /// Spelled once, in [PlaintextRecordCodec]. These aliases exist so the sweeps
+  /// below stay readable; a second literal copy here is exactly how the codec
+  /// and the scans would drift apart and silently orphan records.
+  static const String _metaConversationId =
+      PlaintextRecordCodec.conversationIdKey;
+  static const String _metaSavedAt = PlaintextRecordCodec.savedAtKey;
+  static const String _metaCreatedAt = PlaintextRecordCodec.createdAtKey;
+  static const String _metaExpiresAt = PlaintextRecordCodec.expiresAtKey;
+  static const String _metaDisappearAfter =
+      PlaintextRecordCodec.disappearAfterKey;
+
   /// Persist decrypted message content to survive app restart.
   ///
   /// Uses SharedPreferences (localStorage on web) instead of flutter_secure_storage
   /// (IndexedDB) because localStorage writes are synchronous in JS — they survive
   /// browser tab close, unlike in-flight IndexedDB transactions which are aborted.
-  Future<void> saveDecryptedContent(int id, Map<String, dynamic> data) async {
+  ///
+  /// The `_`-prefixed envelope fields are what let later sweeps FIND this
+  /// record. Without them a message is purgeable only while its row happens to
+  /// be loaded: history pages in ~50 rows at a time while the store holds up
+  /// to 2000 across sessions, so "clear chat history" on a freshly launched
+  /// app would purge the visible page and strand the rest — no expiry, no
+  /// conversation index, nothing left to name them by, ever.
+  ///
+  /// [createdAt] and [disappearAfterSeconds] matter as much as [expiresAt].
+  /// A read-mode disappearing message is stored with `expiresAt: null` and
+  /// only receives a real deadline later, on `messageDelivered`; this record
+  /// is written at DECRYPT time, before that. A sweep keying on `_expiresAt`
+  /// alone would therefore skip precisely the messages the user set a timer
+  /// on. With creation time and the TTL stamped, the sweep can compute the
+  /// same deadline `messageExpiryDeadline` does, never-read fallback included.
+  Future<void> saveDecryptedContent(
+    int id,
+    Map<String, dynamic> data, {
+    int? conversationId,
+    DateTime? createdAt,
+    DateTime? expiresAt,
+    int? disappearAfterSeconds,
+  }) async {
     final userId = _userId;
     if (userId == null) return;
     try {
       final prefs = await _sharedPrefs;
       await _reloadPrefsForCrossContext(prefs);
       final key = _decryptedContentKey(userId, id);
+      Map<String, dynamic>? existing;
+      final existingRaw = prefs.getString(key);
+      if (existingRaw != null) {
+        try {
+          existing = jsonDecode(existingRaw) as Map<String, dynamic>;
+        } catch (_) {}
+      }
+
       // Never downgrade a keyed media entry to a keyless one. E2E media keys
       // (mediaKey/mediaIv) are persisted at first successful decrypt and are the
       // ONLY way to replay the message — re-decryption is impossible once the
       // Double Ratchet consumed the message key. A later keyless write (e.g. a
       // transient re-decrypt that throws DuplicateMessage and tries to store
       // "[Decryption failed]") must not destroy them.
-      if (data['mediaKey'] == null) {
-        final existingRaw = prefs.getString(key);
-        if (existingRaw != null) {
-          try {
-            final existing = jsonDecode(existingRaw) as Map<String, dynamic>;
-            if (existing['mediaKey'] != null) return;
-          } catch (_) {}
-        }
-      }
-      final payload = jsonEncode(data);
+      if (data['mediaKey'] == null && existing?['mediaKey'] != null) return;
+
+      // Carry forward envelope metadata a later, narrower write does not supply
+      // — the "[Decryption failed]" path writes `content` alone. Dropping
+      // `_cid` here would make the record invisible to every conversation
+      // purge from then on, which is the failure this metadata exists to stop.
+      // `_savedAt` is preserved rather than refreshed so it means "age of the
+      // record", not "last touched", and it is stamped from the LOCAL clock
+      // because nothing destroys on it: the retention sweep compares it against
+      // a CONFIRMED server clock and holds when there is none.
+      final record = <String, dynamic>{
+        ...data,
+        if (conversationId != null)
+          _metaConversationId: conversationId
+        else if (existing?[_metaConversationId] != null)
+          _metaConversationId: existing![_metaConversationId],
+        _metaSavedAt:
+            existing?[_metaSavedAt] ??
+            DateTime.now().toUtc().millisecondsSinceEpoch,
+        if (createdAt != null)
+          _metaCreatedAt: createdAt.toUtc().millisecondsSinceEpoch
+        else if (existing?[_metaCreatedAt] != null)
+          _metaCreatedAt: existing![_metaCreatedAt],
+        if (disappearAfterSeconds != null)
+          _metaDisappearAfter: disappearAfterSeconds
+        else if (existing?[_metaDisappearAfter] != null)
+          _metaDisappearAfter: existing![_metaDisappearAfter],
+        if (expiresAt != null)
+          _metaExpiresAt: expiresAt.toUtc().millisecondsSinceEpoch
+        else if (existing?[_metaExpiresAt] != null)
+          _metaExpiresAt: existing![_metaExpiresAt],
+      };
+      final payload = jsonEncode(record);
       // A dropped write is how a decrypted message later re-decrypts, throws
       // DuplicateMessage (ratchet key consumed), and becomes a permanent
       // [Decryption failed] (the 2026-07-11 bob210 report — storage was
@@ -629,7 +911,8 @@ class EncryptionService {
   }
 
   /// Retrieve persisted decrypted message content, or null if not found.
-  /// Falls back to flutter_secure_storage for entries written by older versions.
+  /// On mobile, falls back to flutter_secure_storage for entries written by
+  /// older versions ([_legacyDecryptedContentFallback]).
   Future<Map<String, dynamic>?> getDecryptedContent(int id) async {
     final userId = _userId;
     if (userId == null) return null;
@@ -641,8 +924,7 @@ class EncryptionService {
       await _reloadPrefsForCrossContext(prefs);
       final raw = prefs.getString(key);
       if (raw != null) return jsonDecode(raw) as Map<String, dynamic>;
-      // Fallback: flutter_secure_storage (written by older app versions)
-      final oldRaw = await _storage.read(key: key);
+      final oldRaw = await _legacyDecryptedContentFallback(key);
       if (oldRaw != null) return jsonDecode(oldRaw) as Map<String, dynamic>;
       return null;
     } catch (_) {
@@ -650,57 +932,783 @@ class EncryptionService {
     }
   }
 
-  Future<int> clearDecryptedContentCache() async {
-    final userId = _userId;
-    if (userId == null) return 0;
-    final prefix = _decryptedContentPrefix(userId);
-    final keysToDelete = <String>{};
+  /// Legacy plaintext-cache fallback for entries written by older app versions.
+  ///
+  /// MOBILE ONLY, and provably so: [saveDecryptedContent] has only ever written
+  /// through the raw [SharedPreferences] namespace, while [DualStorage.read]
+  /// routes web reads to the `sig_`-prefixed async store. A
+  /// `e2e_<uid>_decrypted_<id>` key therefore cannot exist there, so on web
+  /// this lookup could only ever return null — at the cost of a full
+  /// localStorage key enumeration per call (SharedPreferencesAsyncWeb filters
+  /// its allowList only AFTER materialising every key). Rows with no persisted
+  /// plaintext — terminal failures above all — miss on EVERY chat entry, so
+  /// that was a recurring cost for a guaranteed null.
+  Future<String?> _legacyDecryptedContentFallback(String key) async {
+    if (kIsWeb) return null;
+    return _storage.read(key: key);
+  }
 
+  /// Batched sibling of [getDecryptedContent]: resolves many message ids while
+  /// paying the cross-engine coherence reload exactly ONCE.
+  ///
+  /// WHY THIS IS SAFE — read before "simplifying" it. The plaintext cache is
+  /// itself a cross-engine coherence surface, NOT just a UI convenience: if
+  /// another PWA engine persisted plaintext for a row and this engine's prefs
+  /// snapshot is stale, we miss the cache, live-decrypt a ciphertext whose
+  /// ratchet key the other engine already consumed, and land on
+  /// DuplicateMessage -> "[Decryption failed]". That is exactly why
+  /// [getDecryptedContent] reloads, and why deleting the reload is NOT the
+  /// optimisation to make. Batching keeps the guarantee because:
+  ///   * one reload at the head of the pass makes everything another engine
+  ///     wrote BEFORE the pass visible to every row in it; and
+  ///   * anything another engine writes DURING the pass is still caught by the
+  ///     raw replay cache, which keeps its own reload
+  ///     ([_loadRawDecryptedContent]) and is written before the peer-session
+  ///     lock is released — bounded by [_rawDecryptedContentCacheLimit] (40)
+  ///     records, i.e. the other engine would have to decrypt >40 messages
+  ///     inside our pass to slip past both layers.
+  /// A MISS IS NOT AN ANSWER. This reads the SharedPreferences namespace only,
+  /// so callers must treat an absent id as "unknown" and fall through to
+  /// [getDecryptedContent] (which also serves the mobile legacy store).
+  /// Reading a miss as "no plaintext" would strand a row on "[encrypted]".
+  /// Keeping the legacy store out of the batch is deliberate: on mobile that
+  /// is a Keychain/Keystore hit per id, and a whole-pass prefetch would pay it
+  /// for every row instead of only the rows that actually need it.
+  Future<Map<int, Map<String, dynamic>>> getDecryptedContentMany(
+    Iterable<int> ids,
+  ) async {
+    final userId = _userId;
+    final result = <int, Map<String, dynamic>>{};
+    if (userId == null) return result;
+    final wanted = ids.toSet();
+    if (wanted.isEmpty) return result;
     try {
       final prefs = await _sharedPrefs;
       await _reloadPrefsForCrossContext(prefs);
-      keysToDelete.addAll(
-        prefs.getKeys().where((key) => key.startsWith(prefix)),
-      );
-      for (final key in keysToDelete) {
-        await prefs.remove(key);
+      for (final id in wanted) {
+        final raw = prefs.getString(_decryptedContentKey(userId, id));
+        if (raw == null) continue;
+        try {
+          result[id] = jsonDecode(raw) as Map<String, dynamic>;
+        } catch (_) {
+          // Corrupt record: leave the id absent so the caller falls through to
+          // the authoritative single read.
+        }
       }
-    } catch (_) {}
+    } catch (_) {
+      return result;
+    }
+    return result;
+  }
 
+  /// Destroy EVERY persisted plaintext record for the signed-in account:
+  /// message plaintext, the raw replay cache, and the pending-send records
+  /// holding outgoing plaintext.
+  ///
+  /// IRREVERSIBLE, and far wider than [removeDecryptedContent] — this is the
+  /// primitive behind the user-facing "delete all local history" action, so it
+  /// destroys the only copy of every message this device still holds. Signal
+  /// identity, sessions and pre-keys are NOT touched: wiping those would brick
+  /// the account rather than clear it.
+  ///
+  /// Pending-send records go too. They exist for lost-ack reconciliation, but
+  /// they hold outgoing plaintext, and a wipe that leaves the user's own
+  /// messages readable is not a wipe. The cost of losing them is a send that
+  /// was in flight during the wipe reconciling as "[encrypted]".
+  Future<LocalHistoryWipeResult> clearDecryptedContentCache() async {
+    final userId = _userId;
+    if (userId == null) {
+      return const LocalHistoryWipeResult(removed: 0, failedKeys: <String>{});
+    }
+    var removed = 0;
+    final failed = <String>{};
+
+    // Gate every removal on its commit result. `remove` returns false when the
+    // backend refuses the write, and a wipe that reports success while the
+    // plaintext is still on disk is the precise defect this action exists to
+    // end. A whole-prefix failure is recorded as `<prefix>*` — the keys are
+    // unknown because the enumeration itself threw.
+    Future<void> sweepPrefs(String prefix) async {
+      try {
+        final prefs = await _sharedPrefs;
+        await _reloadPrefsForCrossContext(prefs);
+        final keys = prefs
+            .getKeys()
+            .where((key) => key.startsWith(prefix))
+            .toList();
+        for (final key in keys) {
+          var ok = await prefs.remove(key);
+          if (!ok) ok = await prefs.remove(key);
+          if (ok) {
+            removed++;
+          } else {
+            failed.add(key);
+          }
+        }
+      } catch (_) {
+        failed.add('$prefix*');
+      }
+    }
+
+    final prefix = _decryptedContentPrefix(userId);
+    await sweepPrefs(prefix);
+    await sweepPrefs(_rawDecryptedContentPrefix(userId));
+    await sweepPrefs(_pendingSendPrefix(userId));
+
+    // Legacy store, swept on EVERY platform — deliberately not gated on
+    // `!kIsWeb` the way the per-id path is. That gate rests on web never having
+    // READ a `_decryptedContentKey` from this store, which proves the app
+    // cannot surface such residue; it does not prove no build ever wrote it.
+    // Residue the app cannot read is still plaintext on disk, and destroying
+    // it is this action's entire promise. One enumeration on a one-shot,
+    // user-initiated wipe is worth closing the unknown.
     try {
       final all = await _storage.readAll();
-      keysToDelete.addAll(all.keys.where((key) => key.startsWith(prefix)));
       for (final key in all.keys.where((key) => key.startsWith(prefix))) {
-        await _storage.delete(key: key);
+        try {
+          await _storage.delete(key: key);
+          removed++;
+        } catch (_) {
+          failed.add(key);
+        }
       }
-    } catch (_) {}
+    } catch (_) {
+      failed.add('${prefix}legacy*');
+    }
 
+    // A clean wipe leaves zero records. A dirty one leaves an unknown number,
+    // so drop the estimate and let the next write re-seed it from a real scan
+    // rather than carrying a figure that would evict live messages early.
+    _cachedContentEstimate = failed.isEmpty ? 0 : null;
+    if (failed.isNotEmpty) {
+      E2ePersistentDiag.record('LOCAL_HISTORY_WIPE_INCOMPLETE', {
+        'removed': removed,
+        'failed': failed.length,
+      });
+    }
+    return LocalHistoryWipeResult(removed: removed, failedKeys: failed);
+  }
+
+  /// Permanently destroy the persisted plaintext for [ids].
+  ///
+  /// IRREVERSIBLE BY DESIGN — read this before calling it. The persisted
+  /// record is the ONLY copy of the message: the server holds ciphertext whose
+  /// Double Ratchet message key was consumed at first decrypt, so a purged
+  /// message can never be recovered. Not from the server, not by re-decrypting
+  /// — that lands on DuplicateMessage and a permanent "[Decryption failed]"
+  /// (see [saveDecryptedContent]). Call this only when the message is provably
+  /// gone for good: a server delete event, or an expiry gated on a
+  /// server-confirmed clock. NEVER on the local clock alone — a device running
+  /// fast would destroy messages that are still live server-side.
+  ///
+  /// Removes per id: the plaintext record, the raw replay record, and on
+  /// mobile the legacy secure-store copy. Returns a [PlaintextPurgeResult] —
+  /// callers MUST check [PlaintextPurgeResult.isComplete] before telling a
+  /// user their messages are gone. A refused commit leaves plaintext on disk,
+  /// and claiming a destruction that did not happen is the exact bug this
+  /// whole change exists to remove.
+  ///
+  /// NOT a secure erase on its own, and deliberately does not pretend to be.
+  /// localStorage is backed by LevelDB, whose write-ahead log keeps the old
+  /// value until a compaction we do not control; overwriting a value before
+  /// removing it only appends another record, so it is not attempted here.
+  /// Unrecoverability comes from rotating the at-rest content key after a
+  /// purge — residue is then ciphertext under a key that no longer exists.
+  Future<PlaintextPurgeResult> removeDecryptedContent(Iterable<int> ids) async {
+    final userId = _userId;
+    final wanted = ids.toSet();
+    if (wanted.isEmpty) return const PlaintextPurgeResult.empty();
+    if (userId == null) {
+      return PlaintextPurgeResult(removed: 0, failedIds: wanted);
+    }
+
+    var removed = 0;
+    final failed = <int>{};
+    final done = <int>{};
     try {
       final prefs = await _sharedPrefs;
       await _reloadPrefsForCrossContext(prefs);
-      final rawPrefix = _rawDecryptedContentPrefix(userId);
-      for (final key
-          in prefs
-              .getKeys()
-              .where((key) => key.startsWith(rawPrefix))
-              .toList()) {
-        await prefs.remove(key);
+      for (final id in wanted) {
+        // `remove` returns false when the backend refuses the commit (quota,
+        // or the dropped-write case documented in [saveDecryptedContent]);
+        // removing an absent key returns true. So presence decides whether it
+        // COUNTS as a removal, and the commit decides whether it SUCCEEDED —
+        // conflating the two is how an operation reports success having done
+        // nothing. Retry once, mirroring the write path.
+        final key = _decryptedContentKey(userId, id);
+        final present = prefs.containsKey(key);
+        var ok = await prefs.remove(key);
+        if (!ok) ok = await prefs.remove(key);
+        if (!ok) {
+          failed.add(id);
+          continue;
+        }
+        if (present) removed++;
+        if (!await prefs.remove(_rawDecryptedContentKey(userId, id))) {
+          failed.add(id);
+          continue;
+        }
+        done.add(id);
       }
-    } catch (_) {}
+    } catch (_) {
+      // A throw says nothing about the ids not yet visited — their plaintext is
+      // still on disk. Ids already confirmed committed stay counted.
+      failed.addAll(wanted.difference(done));
+    }
 
-    // Pending-send records are required for lost-ack reconciliation and are
-    // not part of the user-facing audio-cache action.
+    // Legacy secure store, mobile only — web never wrote a
+    // `_decryptedContentKey` there ([_legacyDecryptedContentFallback]), so the
+    // scan is skipped rather than paying a full key enumeration for an empty
+    // set. Deletion is unconditional: probing first would cost a Keychain read
+    // per id purely to avoid a no-op delete.
+    if (!kIsWeb) {
+      for (final id in wanted) {
+        try {
+          await _storage.delete(key: _decryptedContentKey(userId, id));
+        } catch (_) {
+          failed.add(id);
+        }
+      }
+    }
+
+    // Keep the LRU estimate honest. Left high, it evicts early — which on this
+    // cache means destroying the only copy of a live message.
+    final estimate = _cachedContentEstimate;
+    if (estimate != null && removed > 0) {
+      _cachedContentEstimate = estimate > removed ? estimate - removed : 0;
+    }
+    if (failed.isNotEmpty) {
+      E2ePersistentDiag.record('PLAINTEXT_PURGE_INCOMPLETE', {
+        'requested': wanted.length,
+        'removed': removed,
+        'failed': failed.length,
+      });
+    }
+    return PlaintextPurgeResult(removed: removed, failedIds: failed);
+  }
+
+  /// Update the stored expiry deadline for [messageId] without touching its
+  /// payload.
+  ///
+  /// A read-mode disappearing message is persisted at DECRYPT time with no
+  /// deadline — the server assigns one later, when the recipient reads, and
+  /// pushes it on `messageDelivered`. Without this the record would carry only
+  /// the never-read fallback and the sweep would hold that plaintext up to a
+  /// day past the real deadline.
+  ///
+  /// No-op when nothing is persisted yet: the save that follows stamps it. A
+  /// concurrent [saveDecryptedContent] on the same key can drop this stamp,
+  /// which costs at most that same fallback delay — never a wrong deletion.
+  Future<void> stampRecordExpiry(int messageId, DateTime expiresAt) async {
+    final userId = _userId;
+    if (userId == null) return;
     try {
       final prefs = await _sharedPrefs;
       await _reloadPrefsForCrossContext(prefs);
-      final pendPrefix = _pendingSendPrefix(userId);
-      for (final key
-          in prefs.getKeys().where((k) => k.startsWith(pendPrefix)).toList()) {
-        await prefs.remove(key);
-      }
+      final key = _decryptedContentKey(userId, messageId);
+      final raw = prefs.getString(key);
+      if (raw == null) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return;
+      decoded[_metaExpiresAt] = expiresAt.toUtc().millisecondsSinceEpoch;
+      await prefs.setString(key, jsonEncode(decoded));
     } catch (_) {}
+  }
 
-    return keysToDelete.length;
+  // ── Scan-based purges ────────────────────────────────────────────────────
+
+  /// How long a plaintext record survives after it was first stored.
+  ///
+  /// This is a RETENTION POLICY, not a cache size: the record is the only copy
+  /// of the message, so past this window it is gone from the device for good.
+  static const Duration retentionWindow = Duration(days: 30);
+
+  String _retentionEpochKey(int userId) => 'e2e_${userId}_retention_epoch_v1';
+
+  /// Ids of every persisted plaintext record belonging to [conversationIds].
+  ///
+  /// Scans the whole prefix instead of working from loaded rows, because the
+  /// store outlives memory: history pages in ~50 rows while up to 2000 records
+  /// persist across sessions. Purging only what is loaded would strand the
+  /// rest permanently — cleared and unfriended messages have no expiry, so no
+  /// later sweep would ever revisit them.
+  ///
+  /// Returns ids rather than destroying them so the caller routes destruction
+  /// through the durable purge backlog; a purge that bypassed it would have no
+  /// retry when the store refuses a write.
+  ///
+  /// Records written before `_cid` existed carry no conversation and cannot be
+  /// matched here; they age out via [destroyableMessageIds] instead.
+  Future<Set<int>> messageIdsForConversations(
+    Iterable<int> conversationIds,
+  ) async {
+    final targets = conversationIds.toSet();
+    if (targets.isEmpty) return <int>{};
+    return _messageIdsMatching(
+      (id, record) => targets.contains(record[_metaConversationId]),
+    );
+  }
+
+  /// Ids whose plaintext is past its expiry deadline, split from those past
+  /// [retentionWindow] — the two have different consequences downstream.
+  ///
+  /// [serverNow] MUST come from a CONFIRMED server clock. Callers do not call
+  /// this at all when they have none: both rules destroy the only copy of a
+  /// message, and a device whose clock is wrong by years would otherwise wipe
+  /// its entire store on first launch. [expiryGrace] covers the server's own
+  /// per-minute cleanup lag.
+  ///
+  /// `retired` is returned separately because retention is the ONE rule that
+  /// destroys plaintext for a row the server still serves — see [markRetired].
+  Future<({Set<int> expired, Set<int> retired})> destroyableMessageIds({
+    required DateTime serverNow,
+    required Duration expiryGrace,
+  }) async {
+    final userId = _userId;
+    if (userId == null) return (expired: <int>{}, retired: <int>{});
+
+    final nowMs = serverNow.toUtc().millisecondsSinceEpoch;
+    final graceMs = expiryGrace.inMilliseconds;
+    final retentionMs = retentionWindow.inMilliseconds;
+    final epochMs = await _retentionEpoch(userId, nowMs);
+
+    final expired = <int>{};
+    final retired = <int>{};
+    await _messageIdsMatching((id, record) {
+      final deadline = _recordExpiryDeadlineMs(record);
+      if (deadline != null && nowMs > deadline + graceMs) {
+        expired.add(id);
+        return false;
+      }
+
+      // Retention. A record with no stamp predates this build, so it ages from
+      // the epoch: existing history fades over the coming window instead of
+      // evaporating the moment the user upgrades.
+      final savedAtRaw = record[_metaSavedAt];
+      final savedAt = savedAtRaw is int ? savedAtRaw : epochMs;
+      // A stamp in the FUTURE means the clock was wrong when it was written.
+      // Treat that record as brand new rather than ancient.
+      if (savedAt > nowMs) return false;
+      if (nowMs - savedAt > retentionMs) {
+        retired.add(id);
+      }
+      return false;
+    });
+    return (expired: expired, retired: retired);
+  }
+
+  /// Every message id whose plaintext this device has persisted.
+  ///
+  /// The union of both id-keyed stores: a record left in only one of them is
+  /// still readable, so both must be visible to whoever decides what dies.
+  ///
+  /// Unlike [messageIdsForConversations] and [destroyableMessageIds] this
+  /// reads no metadata at all, which is the entire point. Records written
+  /// before the `_cid` / `_savedAt` stamps existed are invisible to both of
+  /// those rules and would otherwise sit here until the LRU cap happened to
+  /// evict them; they are exactly what server reconciliation is for.
+  Future<Set<int>> storedMessageIds() async {
+    final userId = _userId;
+    if (userId == null) return <int>{};
+    final prefixes = [
+      _decryptedContentPrefix(userId),
+      _rawDecryptedContentPrefix(userId),
+    ];
+    try {
+      final prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
+      final ids = <int>{};
+      for (final key in prefs.getKeys()) {
+        for (final prefix in prefixes) {
+          if (!key.startsWith(prefix)) continue;
+          final id = int.tryParse(key.substring(prefix.length));
+          if (id != null) ids.add(id);
+          break;
+        }
+      }
+      return ids;
+    } catch (_) {
+      return <int>{};
+    }
+  }
+
+  // ── Server reconciliation ────────────────────────────────────────────────
+
+  String _reconcileStampKey(int userId) => 'e2e_${userId}_reconcile_last_v1';
+
+  /// When the last COMPLETE reconciliation pass finished, in local-clock ms,
+  /// or null if none ever has.
+  ///
+  /// The local clock is deliberate here, and it is the one place in this file
+  /// where it is safe: this value only decides how OFTEN the device asks the
+  /// server, never what gets destroyed. A wrong clock either re-asks too often
+  /// (wasted round trips) or skips a pass (residue survives to the next one).
+  /// Both directions are harmless because nothing dies unless the server
+  /// itself named the survivors.
+  Future<int?> lastReconcileAtMs() async {
+    final userId = _userId;
+    if (userId == null) return null;
+    try {
+      final prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
+      return prefs.getInt(_reconcileStampKey(userId));
+    } catch (_) {
+      // Unreadable stamp reads as "never reconciled": re-asking costs a few
+      // round trips, skipping would postpone the cleanup indefinitely.
+      return null;
+    }
+  }
+
+  /// Record that a pass completed at [atMs]. Only ever called when EVERY batch
+  /// was answered — a partial pass must be retried, not throttled away.
+  Future<void> markReconciledAt(int atMs) async {
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      await prefs.setInt(_reconcileStampKey(userId), atMs);
+    } catch (_) {}
+  }
+
+  // ── Retired ids ──────────────────────────────────────────────────────────
+  //
+  // Ids whose plaintext this device destroyed while the server may STILL serve
+  // the row. Retention is the only rule with that property: expiry and delete
+  // both follow the server removing the row, but a message retired at 30 days
+  // keeps coming back as an '[encrypted]' row forever. Without this set the
+  // client would miss the cache, live-decrypt, hit DuplicateMessage (the
+  // ratchet key was consumed at first decrypt) and render the permanent
+  // '[Decryption failed]' label — indistinguishable from real data loss, and
+  // enough of them to drown the persistent diag in false alarms.
+  //
+  // Checked BEFORE any decrypt attempt so a retired row shows a deliberate
+  // state instead of an error.
+
+  static const int _retiredCap = 5000;
+
+  String _retiredKey(int userId) => 'e2e_${userId}_retired_v1';
+
+  Future<Set<int>> retiredMessageIds() async {
+    final userId = _userId;
+    if (userId == null) return <int>{};
+    try {
+      final prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
+      return _readRetired(prefs, userId);
+    } catch (_) {
+      return <int>{};
+    }
+  }
+
+  /// Record that [ids] were retired by retention. Locked for the same reason
+  /// the purge backlog is: one key, every same-origin PWA engine.
+  Future<void> markRetired(Iterable<int> ids) async {
+    final userId = _userId;
+    if (userId == null) return;
+    final incoming = ids.toSet();
+    if (incoming.isEmpty) return;
+    await _sessionCrossContextLock('fireplace-e2e-retired-$userId', () async {
+      try {
+        final prefs = await _sharedPrefs;
+        await _reloadPrefsForCrossContext(prefs);
+        final merged = <int>{..._readRetired(prefs, userId), ...incoming};
+        // Bounded, keeping the HIGHEST ids: message ids ascend with age, so
+        // the ones dropped are the oldest and least likely to be scrolled back
+        // to. A dropped id degrades that row to '[Decryption failed]' instead
+        // of the deliberate label — bounded degradation beats an unbounded key
+        // competing with the Signal session records for quota.
+        final sorted = merged.toList()..sort();
+        final kept = sorted.length > _retiredCap
+            ? sorted.sublist(sorted.length - _retiredCap)
+            : sorted;
+        await prefs.setString(_retiredKey(userId), jsonEncode(kept));
+      } catch (_) {}
+    });
+  }
+
+  Set<int> _readRetired(SharedPreferences prefs, int userId) {
+    try {
+      final raw = prefs.getString(_retiredKey(userId));
+      if (raw == null) return <int>{};
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return <int>{};
+      return decoded.whereType<int>().toSet();
+    } catch (_) {
+      return <int>{};
+    }
+  }
+
+  /// The effective expiry instant of a stored record, mirroring
+  /// `messageExpiryDeadline`. Any divergence between the two would let a
+  /// message be destroyed while it is still on screen.
+  int? _recordExpiryDeadlineMs(Map<String, dynamic> record) {
+    final expiresAt = record[_metaExpiresAt];
+    if (expiresAt is int) return expiresAt;
+    final disappearAfter = record[_metaDisappearAfter];
+    final createdAt = record[_metaCreatedAt];
+    if (disappearAfter is int && createdAt is int) {
+      return createdAt + kNeverReadRetentionSeconds * 1000;
+    }
+    return null;
+  }
+
+  /// First moment this account ran a build that stamps `_savedAt`, in ms.
+  ///
+  /// One key rather than back-stamping every legacy record: a bulk rewrite of
+  /// up to 2000 entries, each the only copy of a message, is exactly the
+  /// operation that must not half-fail (see the dropped-write case in
+  /// [saveDecryptedContent]). Same ageing behaviour, none of the exposure.
+  Future<int> _retentionEpoch(int userId, int nowMs) async {
+    try {
+      final prefs = await _sharedPrefs;
+      final key = _retentionEpochKey(userId);
+      final existing = prefs.getInt(key);
+      if (existing != null) return existing;
+      await prefs.setInt(key, nowMs);
+      return nowMs;
+    } catch (_) {
+      return nowMs;
+    }
+  }
+
+  /// Message ids whose persisted record satisfies [test].
+  ///
+  /// [test] receives the id alongside the record so a caller can bucket ids by
+  /// rule in one pass instead of scanning the store once per rule.
+  Future<Set<int>> _messageIdsMatching(
+    bool Function(int id, Map<String, dynamic> record) test,
+  ) async {
+    final userId = _userId;
+    if (userId == null) return <int>{};
+    final prefix = _decryptedContentPrefix(userId);
+
+    final SharedPreferences prefs;
+    final List<String> keys;
+    try {
+      prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
+      keys = prefs.getKeys().where((k) => k.startsWith(prefix)).toList();
+    } catch (_) {
+      return <int>{};
+    }
+
+    final matched = <int>{};
+    var skipped = 0;
+    for (final key in keys) {
+      final id = int.tryParse(key.substring(prefix.length));
+      if (id == null) continue;
+      final raw = prefs.getString(key);
+      if (raw == null) continue;
+
+      Map<String, dynamic>? record;
+      try {
+        final decoded = jsonDecode(raw);
+        if (decoded is Map<String, dynamic>) record = decoded;
+      } catch (_) {
+        // Unreadable record. A decode failure says nothing about what it
+        // holds, so nothing is ever destroyed on that basis.
+      }
+      if (record == null) {
+        skipped++;
+        continue;
+      }
+
+      // Deliberately OUTSIDE any catch. A predicate that throws is a bug, and
+      // swallowing it here would turn every sweep into a silent no-op that
+      // looks exactly like "nothing to purge" — the one failure this feature
+      // cannot afford to have quietly.
+      if (test(id, record)) matched.add(id);
+    }
+
+    if (skipped > 0) {
+      E2ePersistentDiag.record('PLAINTEXT_SCAN_SKIPPED', {
+        'scanned': keys.length,
+        'skipped': skipped,
+      });
+    }
+    return matched;
+  }
+
+  /// Destroy the pending-send record for [ciphertext], if any.
+  ///
+  /// The sender's own outgoing plaintext is keyed by ciphertext, not by message
+  /// id, so an id-only purge leaves it on disk until its TTL expires. The
+  /// deleted row carries the ciphertext, so the caller can close that gap.
+  ///
+  /// Returns whether the record is confirmed gone. Idempotent — removing an
+  /// absent key succeeds. A false here means the OUTGOING plaintext is still
+  /// readable, so it must reach the caller's result rather than being
+  /// swallowed; that is the whole reason this is not `Future<void>`.
+  Future<bool> removePendingSendRecord(String ciphertext) async {
+    final userId = _userId;
+    if (userId == null) return false;
+    try {
+      final prefs = await _sharedPrefs;
+      final key = _pendingSendRecordKey(userId, ciphertext);
+      var ok = await prefs.remove(key);
+      if (!ok) ok = await prefs.remove(key);
+      return ok;
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // ── Durable purge backlog ────────────────────────────────────────────────
+  //
+  // A delete purge is fire-and-forget from a synchronous socket handler: the
+  // tab can close or the PWA reload mid-write, and a refused commit is
+  // reported but not retried. Nothing would ever revisit that residue — the
+  // message is gone from `_messages`, gone from the server, and invisible to
+  // the expiry sweep, because a plain deleted message has no `expiresAt`. So
+  // the obligation is written down BEFORE the purge runs and cleared only on a
+  // confirmed-complete result, which makes purging at-least-once across
+  // crashes instead of best-effort within one frame.
+
+  static const int _purgeBacklogCap = 2000;
+
+  String _purgeBacklogKey(int userId) => 'e2e_${userId}_purge_pending_v1';
+
+  String _purgeBacklogLockName(int userId) =>
+      'fireplace-e2e-purge-backlog-$userId';
+
+  /// Record that [ids] and [ciphertexts] are owed a purge.
+  ///
+  /// Read-modify-write on ONE key shared by every same-origin PWA engine, so
+  /// it runs under the cross-context lock for the same reason the pre-key
+  /// counter does: without it, tab B holding a pre-write snapshot can call
+  /// [resolvePurged] and write back a set missing tab A's entry. The
+  /// obligation would vanish with both operations reporting success, and the
+  /// residue this backlog exists to catch would never be revisited.
+  /// Returns whether the obligation is durably recorded. A false answer means
+  /// the purge is about to run with NO retry behind it — a refused write (the
+  /// realistic localStorage case is quota exhaustion) cannot be remembered, so
+  /// the most this can do is stop being silent about it. The caller
+  /// distinguishes "purge failed and will be retried" from "purge failed and is
+  /// now lost", which are very different things for a feature whose whole
+  /// promise is that plaintext eventually dies.
+  Future<bool> enqueuePurge(
+    Iterable<int> ids,
+    Iterable<String> ciphertexts,
+  ) async {
+    final userId = _userId;
+    if (userId == null) return false;
+    final newIds = ids.toSet();
+    final newCiphertexts = ciphertexts.toSet();
+    if (newIds.isEmpty && newCiphertexts.isEmpty) return true;
+    var recorded = false;
+    await _sessionCrossContextLock(_purgeBacklogLockName(userId), () async {
+      try {
+        final prefs = await _sharedPrefs;
+        await _reloadPrefsForCrossContext(prefs);
+        final backlog = _readPurgeBacklog(prefs, userId);
+        // Insertion-ordered, so trimming from the front drops the entries that
+        // have already been retried longest. Bounded because a persistently
+        // failing store must not grow this to the localStorage quota and take
+        // the Signal session records down with it.
+        final mergedIds = <int>{...backlog.ids, ...newIds};
+        final mergedCiphertexts = <String>{
+          ...backlog.ciphertexts,
+          ...newCiphertexts,
+        };
+        final keptIds = mergedIds.length > _purgeBacklogCap
+            ? mergedIds.skip(mergedIds.length - _purgeBacklogCap).toSet()
+            : mergedIds;
+        final keptCiphertexts = mergedCiphertexts.length > _purgeBacklogCap
+            ? mergedCiphertexts
+                  .skip(mergedCiphertexts.length - _purgeBacklogCap)
+                  .toSet()
+            : mergedCiphertexts;
+        if (keptIds.length != mergedIds.length ||
+            keptCiphertexts.length != mergedCiphertexts.length) {
+          E2ePersistentDiag.record('PURGE_BACKLOG_OVERFLOW', {
+            'ids': mergedIds.length,
+            'ciphertexts': mergedCiphertexts.length,
+          });
+        }
+        recorded = await prefs.setString(
+          _purgeBacklogKey(userId),
+          jsonEncode({
+            'ids': keptIds.toList(),
+            'cts': keptCiphertexts.toList(),
+          }),
+        );
+      } catch (_) {
+        recorded = false;
+      }
+      if (!recorded) {
+        E2ePersistentDiag.record('PURGE_BACKLOG_WRITE_FAILED', {
+          'ids': newIds.length,
+          'ciphertexts': newCiphertexts.length,
+        });
+      }
+    });
+    return recorded;
+  }
+
+  /// Everything still owed a purge. Drained at startup and after `socketReady`.
+  Future<({Set<int> ids, Set<String> ciphertexts})> purgeBacklog() async {
+    final userId = _userId;
+    if (userId == null) return (ids: <int>{}, ciphertexts: <String>{});
+    try {
+      final prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
+      return _readPurgeBacklog(prefs, userId);
+    } catch (_) {
+      return (ids: <int>{}, ciphertexts: <String>{});
+    }
+  }
+
+  /// Drop [ids] and [ciphertexts] from the backlog after a CONFIRMED-complete
+  /// purge. Never call this on a partial result: a surviving entry is the only
+  /// thing that will bring the failure back for another attempt.
+  Future<void> resolvePurged(
+    Iterable<int> ids,
+    Iterable<String> ciphertexts,
+  ) async {
+    final userId = _userId;
+    if (userId == null) return;
+    await _sessionCrossContextLock(_purgeBacklogLockName(userId), () async {
+      try {
+        final prefs = await _sharedPrefs;
+        await _reloadPrefsForCrossContext(prefs);
+        final backlog = _readPurgeBacklog(prefs, userId);
+        final remainingIds = backlog.ids.difference(ids.toSet());
+        final remainingCiphertexts = backlog.ciphertexts.difference(
+          ciphertexts.toSet(),
+        );
+        if (remainingIds.isEmpty && remainingCiphertexts.isEmpty) {
+          await prefs.remove(_purgeBacklogKey(userId));
+          return;
+        }
+        await prefs.setString(
+          _purgeBacklogKey(userId),
+          jsonEncode({
+            'ids': remainingIds.toList(),
+            'cts': remainingCiphertexts.toList(),
+          }),
+        );
+      } catch (_) {}
+    });
+  }
+
+  ({Set<int> ids, Set<String> ciphertexts}) _readPurgeBacklog(
+    SharedPreferences prefs,
+    int userId,
+  ) {
+    try {
+      final raw = prefs.getString(_purgeBacklogKey(userId));
+      if (raw == null) return (ids: <int>{}, ciphertexts: <String>{});
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map) return (ids: <int>{}, ciphertexts: <String>{});
+      return (
+        ids: (decoded['ids'] as List?)?.whereType<int>().toSet() ?? <int>{},
+        ciphertexts:
+            (decoded['cts'] as List?)?.whereType<String>().toSet() ??
+            <String>{},
+      );
+    } catch (_) {
+      return (ids: <int>{}, ciphertexts: <String>{});
+    }
   }
 
   // ── Pending-send reconcile store (lost `messageSent` ack) ────────────────
@@ -889,22 +1897,48 @@ class EncryptionService {
     }
   }
 
+  /// Live estimate of how many plaintext records this account has cached.
+  ///
+  /// Seeded by ONE key scan per service instance, then incremented per write.
+  /// Deliberately not a "sweep every N writes" counter: that resets on every
+  /// app start, so a user who opens one chat per launch would never reach the
+  /// threshold and the cache would grow without bound. On web that ends at the
+  /// localStorage quota — and the first casualty is not this cache, it is
+  /// `WebSignalKvStore.write` failing to persist session and identity records.
+  /// A size estimate keeps the bound across restarts.
+  ///
+  /// Over-counting (an overwrite counted as a new record) only makes a sweep
+  /// happen slightly early; every sweep resets the estimate to the true count.
+  int? _cachedContentEstimate;
+
   Future<void> _pruneDecryptedContentCache(
     SharedPreferences prefs,
     int userId,
   ) async {
-    await _reloadPrefsForCrossContext(prefs);
+    // NO reload here: the only caller (saveDecryptedContent) reloaded a few
+    // lines earlier and has not awaited anything that could invalidate it.
     if (_decryptedContentCacheLimit <= 0) {
       await clearDecryptedContentCache();
       return;
     }
 
     final prefix = _decryptedContentPrefix(userId);
-    final keys = <String>{
-      ...prefs.getKeys().where((key) => key.startsWith(prefix)),
-      ...(await _storage.readAll()).keys.where((key) => key.startsWith(prefix)),
-    }.toList();
-    if (keys.length <= _decryptedContentCacheLimit) return;
+    // One scan per instance to establish the baseline. It must cover the SAME
+    // key set the sweep below evicts from — on mobile that includes the legacy
+    // secure store, and counting only prefs would let the real total sit over
+    // the cap while the estimate says otherwise.
+    var estimate =
+        _cachedContentEstimate ??
+        (await _cachedContentKeys(prefs, prefix)).length;
+    _cachedContentEstimate = ++estimate;
+    if (estimate <= _decryptedContentCacheLimit) return;
+
+    // Over the cap: pay for the real scan, evict, and re-anchor the estimate.
+    final keys = (await _cachedContentKeys(prefs, prefix)).toList();
+    if (keys.length <= _decryptedContentCacheLimit) {
+      _cachedContentEstimate = keys.length;
+      return;
+    }
 
     keys.sort((a, b) {
       final aId = int.tryParse(a.substring(prefix.length)) ?? 0;
@@ -913,9 +1947,119 @@ class EncryptionService {
     });
 
     final overflow = keys.length - _decryptedContentCacheLimit;
+    final evicted = <int>{};
+    var stillPresent = 0;
     for (final key in keys.take(overflow)) {
-      await prefs.remove(key);
-      await _storage.delete(key: key);
+      // Gate on the commit, like every other purge path here: a discarded
+      // result lets the estimate be re-anchored as though the eviction landed.
+      var ok = await prefs.remove(key);
+      if (!ok) ok = await prefs.remove(key);
+      try {
+        await _storage.delete(key: key);
+      } catch (_) {}
+      if (ok) {
+        // Both stores are filtered by the same prefix in _cachedContentKeys, so
+        // this parse is valid for either; a non-numeric suffix yields null and
+        // is skipped rather than polluting the capped, id-sorted retired set.
+        final id = int.tryParse(key.substring(prefix.length));
+        if (id != null) evicted.add(id);
+      } else {
+        stillPresent++;
+      }
+    }
+
+    // Eviction has the SAME property retention does, and fires far more often:
+    // the server row is still alive and `hiddenByUserIds` does not filter it,
+    // so it re-serves as '[encrypted]', the re-decrypt hits DuplicateMessage
+    // (that ratchet key was consumed long ago) and the row bricks to a
+    // persisted '[Decryption failed]'. Recording the ids keeps those rows out
+    // of the decrypt path so they render a deliberate state instead of what
+    // looks exactly like data loss — the LRU cap has been quietly destroying
+    // history for any account past the limit, and the eviction was silent.
+    if (evicted.isNotEmpty) await markRetired(evicted);
+
+    _cachedContentEstimate = keys.length - evicted.length;
+    if (stillPresent > 0) {
+      E2ePersistentDiag.record('PLAINTEXT_EVICTION_INCOMPLETE', {
+        'attempted': overflow,
+        'failed': stillPresent,
+      });
     }
   }
+
+  /// Every key holding a persisted plaintext record for [prefix], across both
+  /// stores. The seeding count and the eviction sweep MUST use the same set,
+  /// or the estimate can sit under the cap while the real total is over it.
+  Future<Set<String>> _cachedContentKeys(
+    SharedPreferences prefs,
+    String prefix,
+  ) async {
+    return <String>{
+      ...prefs.getKeys().where((key) => key.startsWith(prefix)),
+      // Legacy store, mobile only. On web DualStorage reads the `sig_`-prefixed
+      // async namespace, which never held a `_decryptedContentKey`, so this
+      // matched nothing while decoding EVERY value in localStorage
+      // (SharedPreferencesAsyncWeb.getPreferences has no prefix filter) — on
+      // every single saveDecryptedContent. Measured ~2.5 ms per persisted
+      // message at the 2000-record cap, all of it for an empty set.
+      if (!kIsWeb)
+        ...(await _storage.readAll()).keys.where(
+          (key) => key.startsWith(prefix),
+        ),
+    };
+  }
+}
+
+/// Outcome of [EncryptionService.removeDecryptedContent].
+///
+/// Purging plaintext is irreversible, so a caller has to be able to tell
+/// "nothing was there" apart from "the store refused the write". Only
+/// [isComplete] licenses telling a user their messages are gone.
+class PlaintextPurgeResult {
+  const PlaintextPurgeResult({
+    required this.removed,
+    required this.failedIds,
+    this.failedCiphertexts = const <String>{},
+  });
+
+  const PlaintextPurgeResult.empty()
+    : removed = 0,
+      failedIds = const <int>{},
+      failedCiphertexts = const <String>{};
+
+  /// Records confirmed present before the call and confirmed removed after it.
+  final int removed;
+
+  /// Ids whose plaintext may still be on disk: the backend refused the commit,
+  /// or threw before the id was reached. Safe to retry — purging is idempotent.
+  final Set<int> failedIds;
+
+  /// Ciphertexts whose pending-send record — the SENDER's own outgoing
+  /// plaintext — may still be on disk. Tracked separately from [failedIds]
+  /// because that store is keyed by ciphertext and a caller retrying needs the
+  /// key, not the id.
+  final Set<String> failedCiphertexts;
+
+  bool get isComplete => failedIds.isEmpty && failedCiphertexts.isEmpty;
+}
+
+/// Outcome of [EncryptionService.clearDecryptedContentCache].
+///
+/// Separate from [PlaintextPurgeResult] because a whole-store wipe cannot
+/// always name what it failed on: when the key enumeration itself throws, the
+/// failure is recorded as a prefix rather than a message id.
+class LocalHistoryWipeResult {
+  const LocalHistoryWipeResult({
+    required this.removed,
+    required this.failedKeys,
+  });
+
+  /// Records confirmed removed and confirmed committed.
+  final int removed;
+
+  /// Keys — or `<prefix>*` markers — whose plaintext may still be on disk.
+  final Set<String> failedKeys;
+
+  /// Only this licenses telling the user their history is gone.
+  bool get isComplete => failedKeys.isEmpty;
 }

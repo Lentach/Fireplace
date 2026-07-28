@@ -10,6 +10,32 @@
       { value: null, configurable: true }
     );
   </script>
+  <script>
+    // Report the verdict back to whoever is serving this page, so an automated
+    // runner does not have to guess WHEN the probe finished.
+    // `--dump-dom` snapshots at load completion, which is before the async Web
+    // Lock round trip resolves, and `--virtual-time-budget` does not advance
+    // real Web Locks — both read SESSION_LOCK_PENDING forever.
+    // Harmless when the page is opened by hand: the fetch just 404s.
+    (function reportVerdict() {
+      var sent = false;
+      function send(title) {
+        if (sent) return;
+        sent = true;
+        try {
+          fetch('/__probe_result?title=' + encodeURIComponent(title));
+        } catch (e) { /* manual run, no runner listening */ }
+      }
+      new MutationObserver(function () {
+        if (document.title !== 'SESSION_LOCK_PENDING') send(document.title);
+      }).observe(
+        document.querySelector('title'),
+        { childList: true, characterData: true, subtree: true }
+      );
+      // Backstop: never leave a runner waiting on a probe that died silently.
+      setTimeout(function () { send(document.title); }, 30000);
+    })();
+  </script>
 </head>
 <body>
   <script src="/build/session_lock_probe/probe.js"></script>

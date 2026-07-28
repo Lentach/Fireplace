@@ -2,12 +2,25 @@ import { Message } from './message.entity';
 import { DISAPPEARING_MAX_UNREAD_SECONDS } from './disappearing.constants';
 
 /**
+ * The only fields the expiry rule reads. Declared so callers can pass a
+ * PROJECTED row (see `MessagesService.findServedMessageIds`) instead of
+ * hydrating a whole entity just to ask one question.
+ */
+export type ExpirableMessage = Pick<
+  Message,
+  'expiresAt' | 'disappearAfterSeconds' | 'createdAt'
+>;
+
+/**
  * Effective expiry for display, history, unread counts, and cleanup.
  * - Grandfathered: expiresAt set at send.
  * - Read-mode after read: expiresAt set on markConversationRead.
  * - Read-mode never read: createdAt + DISAPPEARING_MAX_UNREAD_SECONDS.
  */
-export function isMessageExpired(message: Message, now: Date = new Date()): boolean {
+export function isMessageExpired(
+  message: ExpirableMessage,
+  now: Date = new Date(),
+): boolean {
   const nowMs = now.getTime();
 
   if (message.expiresAt != null) {
@@ -17,10 +30,7 @@ export function isMessageExpired(message: Message, now: Date = new Date()): bool
     }
   }
 
-  if (
-    message.disappearAfterSeconds != null &&
-    message.expiresAt == null
-  ) {
+  if (message.disappearAfterSeconds != null && message.expiresAt == null) {
     const createdMs = new Date(message.createdAt as Date).getTime();
     if (!Number.isNaN(createdMs)) {
       const unreadDeadlineMs =

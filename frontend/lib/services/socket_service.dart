@@ -175,6 +175,31 @@ class SocketService {
     _socket?.emit('getMessages', payload);
   }
 
+  /// Ask which of [messageIds] the server still serves this account.
+  ///
+  /// [requestId] is echoed back on `servedMessageIds` so a late or foreign
+  /// answer cannot be applied to the wrong batch — the caller destroys the
+  /// local plaintext of every id missing from the reply.
+  void getServedMessageIds(String requestId, List<int> messageIds) {
+    _socket?.emit('getServedMessageIds', {
+      'requestId': requestId,
+      'messageIds': messageIds,
+    });
+  }
+
+  /// Ask for a fresh server-clock observation; the server answers on
+  /// `serverTime` with `{serverTime: <ISO-8601>}`.
+  ///
+  /// The `socketReady` observation ages out of trust after
+  /// [ServerClock.maxExtrapolation]; the in-session expiry sweep calls this to
+  /// re-arm the clock instead of letting expired plaintext survive until the
+  /// next reconnect. Against an older backend without the handler the emit is
+  /// silently ignored, the clock stays unconfirmed, and nothing is destroyed —
+  /// the safe direction.
+  void getServerTime() {
+    _socket?.emit('getServerTime');
+  }
+
   void sendFriendRequest(int recipientId) {
     _socket?.emit('sendFriendRequest', {
       'recipientId': recipientId,

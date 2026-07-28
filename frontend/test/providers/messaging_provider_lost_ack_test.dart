@@ -58,7 +58,13 @@ class _RealStoreEncryption extends EncryptionProvider {
 
   @override
   Future<void> saveDecryptedContent(
-      int messageId, Map<String, dynamic> data) async {
+    int messageId,
+    Map<String, dynamic> data, {
+    int? conversationId,
+    DateTime? createdAt,
+    DateTime? expiresAt,
+    int? disappearAfterSeconds,
+  }) async {
     if (dropNextSaveDecryptedContent) {
       dropNextSaveDecryptedContent = false;
       return; // persist "fails" — the read-back verify will find nothing

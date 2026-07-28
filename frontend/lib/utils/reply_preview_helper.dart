@@ -18,7 +18,8 @@ bool hasUsablePlaintextContent(MessageModel message) {
   if (message.content.isEmpty) return false;
   if (message.content == '[encrypted]' ||
       message.content == '[Decryption failed]' ||
-      message.content == '[Encryption not initialized]') {
+      message.content == '[Encryption not initialized]' ||
+      message.content == '[Message no longer stored on this device]') {
     return false;
   }
   if (message.content == kReplyPreviewLabels.encryptedMessageLabel) {
@@ -73,7 +74,8 @@ String? _decryptedPreviewText(EncryptionProvider? encryption, int messageId) {
   if (text.isEmpty ||
       text == '[encrypted]' ||
       text == '[Decryption failed]' ||
-      text == '[Encryption not initialized]') {
+      text == '[Encryption not initialized]' ||
+      text == '[Message no longer stored on this device]') {
     return null;
   }
   return text;
@@ -166,18 +168,22 @@ String replyPreviewForMessage(
   AppLocalizations l10n,
   MessageModel message, {
   EncryptionProvider? encryption,
-}) =>
-    replyPreviewForMessageModel(
-      message,
-      encryption: encryption,
-      encryptedMessageLabel: l10n.encryptedMessage,
-      voiceMessageLabel: l10n.voiceMessage,
-      imageLabel: l10n.image,
-      gifLabel: l10n.actionTileGif,
-      documentLabel: l10n.attachmentOptionDocument,
-      pingLabel: l10n.ping,
-      antiQuantumNoteLabel: l10n.antiQuantumNoteTitle,
-    );
+}) {
+  if (message.content == '[Message no longer stored on this device]') {
+    return l10n.messageNoLongerStoredOnThisDevice;
+  }
+  return replyPreviewForMessageModel(
+    message,
+    encryption: encryption,
+    encryptedMessageLabel: l10n.encryptedMessage,
+    voiceMessageLabel: l10n.voiceMessage,
+    imageLabel: l10n.image,
+    gifLabel: l10n.actionTileGif,
+    documentLabel: l10n.attachmentOptionDocument,
+    pingLabel: l10n.ping,
+    antiQuantumNoteLabel: l10n.antiQuantumNoteTitle,
+  );
+}
 
 /// Default English labels for provider paths without BuildContext.
 const kReplyPreviewLabels = (

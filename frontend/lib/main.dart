@@ -22,6 +22,7 @@ import 'providers/messaging_provider.dart';
 import 'providers/settings_provider.dart';
 import 'screens/auth_screen.dart';
 import 'screens/main_shell.dart';
+import 'services/content_key_canary.dart';
 import 'services/portrait_lock_service.dart';
 import 'theme/app_scroll_behavior.dart';
 import 'utils/storage_persist.dart';
@@ -71,6 +72,8 @@ Future<void> main() async {
   stripNotifyConvParam();
   // Load the durable E2E failure log (survives restarts) before the UI mounts.
   await E2ePersistentDiag.init();
+  // Measure WebCrypto-backed secure-store durability without delaying first paint.
+  ContentKeyCanary().checkAndArm().ignore();
   // Ask the browser for persistent (eviction-proof) storage at every boot —
   // not only mid-E2E-flow. A whole-origin eviction wiped a user's tokens AND
   // Signal identity (2026-07-24 incident); installed PWAs are usually granted

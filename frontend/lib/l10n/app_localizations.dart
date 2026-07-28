@@ -386,6 +386,42 @@ abstract class AppLocalizations {
   /// **'Wyczyść pobrane audio'**
   String get clearLocalMessageCache;
 
+  /// No description provided for @deleteAllLocalHistoryTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń wszystkie wiadomości z tego urządzenia'**
+  String get deleteAllLocalHistoryTitle;
+
+  /// No description provided for @deleteAllLocalHistoryDescription.
+  ///
+  /// In pl, this message translates to:
+  /// **'Trwale usuwa z tego urządzenia wszystkie zapisane wiadomości, w tym pobrane notatki głosowe. Nie usuwa konta, wiadomości z urządzenia drugiej osoby ani kluczy i sesji szyfrowania. Tej operacji nie można cofnąć: serwer przechowywał wyłącznie zaszyfrowane dane, których nie potrafi odczytać, więc nie ma kopii do przywrócenia.'**
+  String get deleteAllLocalHistoryDescription;
+
+  /// No description provided for @deleteAllLocalHistoryButton.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń trwale wszystkie lokalne wiadomości'**
+  String get deleteAllLocalHistoryButton;
+
+  /// No description provided for @deleteAllLocalHistoryDialogTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Trwale usunąć wszystkie lokalne wiadomości?'**
+  String get deleteAllLocalHistoryDialogTitle;
+
+  /// No description provided for @deleteAllLocalHistoryDialogBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ta operacja trwale usuwa z tego urządzenia wszystkie wiadomości i pobrane notatki głosowe. Nie można jej cofnąć — serwer przechowywał wyłącznie zaszyfrowane dane, których nie potrafi odczytać, więc nie ma kopii do przywrócenia. Twoje konto, klucze i sesje szyfrowania pozostaną bez zmian.'**
+  String get deleteAllLocalHistoryDialogBody;
+
+  /// No description provided for @deleteAllLocalHistoryConfirm.
+  ///
+  /// In pl, this message translates to:
+  /// **'Usuń trwale'**
+  String get deleteAllLocalHistoryConfirm;
+
   /// No description provided for @yourIdentityFingerprint.
   ///
   /// In pl, this message translates to:
@@ -494,11 +530,101 @@ abstract class AppLocalizations {
   /// **'Odszyfrowanie nie powiodło się'**
   String get decryptionFailed;
 
+  /// No description provided for @decryptingMessage.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odszyfrowywanie…'**
+  String get decryptingMessage;
+
+  /// No description provided for @messageNoLongerStoredOnThisDevice.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ta wiadomość nie jest już przechowywana na tym urządzeniu.'**
+  String get messageNoLongerStoredOnThisDevice;
+
   /// No description provided for @encryptionNotInitialized.
   ///
   /// In pl, this message translates to:
   /// **'Szyfrowanie niezainicjowane'**
   String get encryptionNotInitialized;
+
+  /// No description provided for @identityDamagedTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Klucze szyfrowania uszkodzone'**
+  String get identityDamagedTitle;
+
+  /// No description provided for @identityDamagedBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Brakuje części tożsamości szyfrowania tego urządzenia, więc nie można odszyfrować ani wysyłać wiadomości. Klucze NIE zostały odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby historię.'**
+  String get identityDamagedBody;
+
+  /// No description provided for @identityDamagedAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zacznij od nowa'**
+  String get identityDamagedAction;
+
+  /// No description provided for @identityDamagedConfirmTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Utworzyć nowe klucze?'**
+  String get identityDamagedConfirmTitle;
+
+  /// No description provided for @identityDamagedConfirmBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zostanie utworzona nowa tożsamość, a kontakty automatycznie wymienią klucze. Wiadomości już otwarte na tym urządzeniu pozostaną czytelne. Wiadomości, których to urządzenie nigdy nie odszyfrowało, będą nie do odzyskania.'**
+  String get identityDamagedConfirmBody;
+
+  /// No description provided for @identityDamagedConfirmAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Utwórz nowe klucze'**
+  String get identityDamagedConfirmAction;
+
+  /// No description provided for @peerIdentityChangedWarning.
+  ///
+  /// In pl, this message translates to:
+  /// **'Klucze bezpieczeństwa użytkownika {name} uległy zmianie. Zwykle oznacza to ponowną instalację, ale może też oznaczać podsłuch. Potwierdź to z nim innym kanałem.'**
+  String peerIdentityChangedWarning(String name);
+
+  /// No description provided for @peerIdentityVerifyAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zweryfikuj'**
+  String get peerIdentityVerifyAction;
+
+  /// No description provided for @peerIdentityFingerprintDialogTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zweryfikuj klucze bezpieczeństwa'**
+  String get peerIdentityFingerprintDialogTitle;
+
+  /// No description provided for @peerIdentityFingerprintDialogDescription.
+  ///
+  /// In pl, this message translates to:
+  /// **'Porównaj te odciski z użytkownikiem {name} za pośrednictwem innego kanału. Muszą być identyczne.'**
+  String peerIdentityFingerprintDialogDescription(String name);
+
+  /// No description provided for @peerIdentityFingerprintPeerLabel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odcisk tożsamości użytkownika {name}'**
+  String peerIdentityFingerprintPeerLabel(String name);
+
+  /// No description provided for @peerIdentityFingerprintNoStoredKey.
+  ///
+  /// In pl, this message translates to:
+  /// **'Brak zapisanego klucza tożsamości dla tego kontaktu.'**
+  String get peerIdentityFingerprintNoStoredKey;
+
+  /// No description provided for @identityFingerprintUnavailable.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odcisk tożsamości jest niedostępny.'**
+  String get identityFingerprintUnavailable;
 
   /// No description provided for @blockUser.
   ///
@@ -1435,6 +1561,18 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Nie udało się wyczyścić lokalnej pamięci wiadomości'**
   String get snackbarFailedToClearLocalMessageCache;
+
+  /// No description provided for @snackbarAllLocalHistoryDeleted.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wszystkie wiadomości zapisane na tym urządzeniu zostały trwale usunięte'**
+  String get snackbarAllLocalHistoryDeleted;
+
+  /// No description provided for @snackbarFailedToDeleteAllLocalHistory.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się usunąć części wiadomości z tego urządzenia. Spróbuj ponownie.'**
+  String get snackbarFailedToDeleteAllLocalHistory;
 
   /// No description provided for @friendAcceptedYourRequest.
   ///

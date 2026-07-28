@@ -1,11 +1,13 @@
 import 'dart:async';
 
+import 'package:clock/clock.dart';
 import 'package:flutter/foundation.dart';
 
 import '../config/app_config.dart';
 import '../constants/app_constants.dart';
 import '../services/api_service.dart';
 import '../services/push_service.dart';
+import '../services/server_clock.dart';
 import '../services/socket_service.dart';
 import '../utils/e2e_diag_log.dart';
 import 'chat_reconnect_manager.dart';
@@ -40,6 +42,30 @@ class ConnectionProvider extends ChangeNotifier {
   /// [ensureReconnectIfNeeded]).
   int _serverResponseCounter = 0;
   Timer? _resumeProbeTimer;
+
+  /// In-flight `getServedMessageIds` round trips, keyed by the id the server
+  /// echoes back. Completing with null means "no usable answer".
+  final Map<String, Completer<Set<int>?>> _servedIdRequests = {};
+  int _servedIdRequestSeq = 0;
+  static const Duration _servedIdRequestTimeout = Duration(seconds: 20);
+
+  /// In-session expiry destruction cadence — see [_onPlaintextSweepTick].
+  ///
+  /// The socketReady sweep only covers reconnects; this timer covers the
+  /// session that never reconnects. One minute is cheap (the sweep is a key
+  /// scan over an in-memory prefs map) and adds at most a minute on top of the
+  /// deliberate `kExpiryPurgeGrace`.
+  static const Duration _plaintextSweepInterval = Duration(minutes: 1);
+
+  /// Floor between `getServerTime` requests that never got an answer.
+  ///
+  /// An older backend without the handler answers NOTHING, so without a floor
+  /// a stale clock would re-emit every tick forever. One unanswered request
+  /// per this window is bounded waste; the reply handler resets it.
+  static const Duration _serverTimeRetryFloor = Duration(minutes: 5);
+
+  Timer? _plaintextSweepTimer;
+  DateTime? _serverTimeRequestedAt;
 
   int? _currentUserId;
   bool _isConnected = false;
@@ -138,13 +164,19 @@ class ConnectionProvider extends ChangeNotifier {
 
     // 6. Wire cross-provider callbacks (friends -> conversations)
     _friendsProvider?.onRemoveConversationsForUser = (uid) {
-      if (uid == -1) {
-        final blockedIds =
-            _friendsProvider!.blockedUsers.map((u) => u.id).toSet();
-        _conversationsProvider?.removeConversationsForUser(-1,
-            blockedIds: blockedIds);
-      } else {
-        _conversationsProvider?.removeConversationsForUser(uid);
+      final removed = uid == -1
+          ? _conversationsProvider?.removeConversationsForUser(
+              -1,
+              blockedIds: _friendsProvider!.blockedUsers
+                  .map((u) => u.id)
+                  .toSet(),
+            )
+          : _conversationsProvider?.removeConversationsForUser(uid);
+      // Removing a contact must also destroy their decrypted history on this
+      // device. Nothing did that before: the conversation vanished from the
+      // list while every message stayed in memory and on disk, readable.
+      if (removed != null && removed.isNotEmpty) {
+        _messagingProvider?.onConversationsRemovedForUser(removed);
       }
     };
     // 7. Replace socket (enableForceNew). Suppress reconnect from the old socket's
@@ -159,7 +191,16 @@ class ConnectionProvider extends ChangeNotifier {
 
     // 9. Transport connect + socketReady (authenticated fetches only on ready)
     _socketService.onConnect(() => _onSocketTransportConnect(userId, token));
-    _socketService.on('socketReady', (_) => _onSocketReady());
+    _socketService.on('socketReady', (data) {
+      // The freshest server clock this app ever sees. Observed BEFORE the
+      // ready work so anything downstream that gates on it — above all the
+      // expiry purge, which destroys the only copy of a message — runs against
+      // a current observation rather than a stale one or none at all.
+      ServerClock.instance.observeIso(
+        data is Map ? data['serverTime'] : null,
+      );
+      _onSocketReady();
+    });
 
     // 10. On 'disconnect': handle reconnect
     _socketService.onDisconnect((_) {
@@ -230,6 +271,12 @@ class ConnectionProvider extends ChangeNotifier {
       'socketConnected': _socketService.isConnected,
     });
     _reconnectManager.resetAttempts();
+
+    // Local-plaintext maintenance, ordered deliberately. Runs HERE because the
+    // socketReady listener has just observed the server clock, and the sweep
+    // refuses to destroy anything without a fresh one.
+    unawaited(_runLocalPlaintextMaintenance());
+    _startPlaintextSweepTimer();
     _socketService.getConversations();
     _socketService.getFriendRequests();
     _socketService.getFriends();
@@ -262,6 +309,162 @@ class ConnectionProvider extends ChangeNotifier {
     });
   }
 
+  /// Refresh the retired ids, drain the purge backlog, sweep, then reconcile
+  /// what is left against the server.
+  ///
+  /// This runs UNAWAITED alongside the initial fetches, so it does NOT order
+  /// itself against the first history pass — do not read the sequence below as
+  /// that guarantee. The load that actually precedes every decrypt is the
+  /// awaited one in `EncryptionProvider.initializeE2E`, which completes before
+  /// the ready flag flips; decrypting requires E2E to be ready, so by then the
+  /// set is populated. The call here is a cross-tab REFRESH: another
+  /// same-origin engine may have retired ids since.
+  ///
+  /// Order within this method still matters:
+  ///   1. refresh retired ids before the sweep can add more of them;
+  ///   2. the backlog next, so a delete interrupted by a tab close or a refused
+  ///      write finishes now instead of leaving plaintext behind for good;
+  ///   3. the sweep, once the clock is known fresh;
+  ///   4. reconciliation last. It is the only step that talks to the server,
+  ///      and it should not ask about ids the three local rules above were
+  ///      already going to destroy.
+  Future<void> _runLocalPlaintextMaintenance() async {
+    final encryption = _encryptionProvider;
+    if (encryption == null) return;
+    try {
+      await encryption.loadRetiredIds();
+      await encryption.drainPurgeBacklog();
+      await encryption.sweepDestroyablePlaintext();
+      await encryption.reconcileStoredPlaintext(_askServedMessageIds);
+    } catch (_) {
+      // Never let maintenance break connect. A failure means the residue
+      // survives to the next socketReady, which is the safe direction.
+    }
+  }
+
+  /// Arm (or re-arm) the in-session expiry sweep.
+  ///
+  /// Without this, [EncryptionProvider.sweepDestroyablePlaintext] runs ONLY at
+  /// socketReady — a message expiring while the app stays connected would keep
+  /// its plaintext on disk until the next reconnect, which for a long-lived
+  /// PWA is unbounded. The timer makes expiry destruction happen within
+  /// `kExpiryPurgeGrace` plus one tick, always.
+  void _startPlaintextSweepTimer() {
+    _plaintextSweepTimer?.cancel();
+    _serverTimeRequestedAt = null;
+    _plaintextSweepTimer = Timer.periodic(
+      _plaintextSweepInterval,
+      (_) => _onPlaintextSweepTick(),
+    );
+  }
+
+  void _onPlaintextSweepTick() {
+    if (!_socketService.isConnected) return;
+    final encryption = _encryptionProvider;
+    if (encryption == null) return;
+
+    if (ServerClock.instance.estimatedNow == null) {
+      // The socketReady observation aged past ServerClock.maxExtrapolation (or
+      // never arrived). The sweep would silently no-op forever from here, so
+      // ask for a fresh observation; the `serverTime` reply runs the sweep.
+      // Floor-limited: an older backend never answers, and one dead request
+      // per floor window is bounded waste while staying fail-closed.
+      // clock.now() (package:clock), not DateTime.now(): fake_async patches
+      // the former, so the retry floor is deterministic under test.
+      final requestedAt = _serverTimeRequestedAt;
+      final now = clock.now();
+      if (requestedAt != null &&
+          now.difference(requestedAt) < _serverTimeRetryFloor) {
+        return;
+      }
+      _serverTimeRequestedAt = now;
+      _socketService.getServerTime();
+      return;
+    }
+    _sweepPlaintextNow(encryption);
+  }
+
+  /// `serverTime` reply — observe, then sweep against the fresh clock.
+  ///
+  /// A malformed stamp is ignored by [ServerClock.observeIso]; the clock stays
+  /// unconfirmed and nothing is destroyed. The retry stamp is cleared only on
+  /// a usable answer so garbage cannot silence the re-request path.
+  void _onServerTime(dynamic data) {
+    ServerClock.instance.observeIso(data is Map ? data['serverTime'] : null);
+    if (ServerClock.instance.estimatedNow == null) return;
+    _serverTimeRequestedAt = null;
+    final encryption = _encryptionProvider;
+    if (encryption == null) return;
+    _sweepPlaintextNow(encryption);
+  }
+
+  void _sweepPlaintextNow(EncryptionProvider encryption) {
+    // Fire-and-forget from a timer/socket handler; a failure means the residue
+    // survives to the next tick, which is the safe direction.
+    unawaited(
+      encryption.sweepDestroyablePlaintext().catchError((Object _) {}),
+    );
+  }
+
+  /// One `getServedMessageIds` round trip.
+  ///
+  /// Returns null for EVERY failure mode — no socket, no reply in time, a
+  /// malformed reply. Null means "no answer" and purges nothing; an empty set
+  /// means "the server serves none of these" and destroys all of them. Those
+  /// two must never be able to blur into each other, which is why nothing here
+  /// falls back to an empty set.
+  Future<Set<int>?> _askServedMessageIds(Set<int> batch) async {
+    if (batch.isEmpty) return const <int>{};
+    if (!_socketService.isConnected) return null;
+
+    final requestId =
+        's${++_servedIdRequestSeq}-${DateTime.now().microsecondsSinceEpoch}';
+    final completer = Completer<Set<int>?>();
+    _servedIdRequests[requestId] = completer;
+    try {
+      _socketService.getServedMessageIds(requestId, batch.toList());
+      return await completer.future.timeout(
+        _servedIdRequestTimeout,
+        onTimeout: () => null,
+      );
+    } catch (_) {
+      return null;
+    } finally {
+      _servedIdRequests.remove(requestId);
+    }
+  }
+
+  /// Resolve the round trip [_askServedMessageIds] is waiting on.
+  ///
+  /// Anything unreadable resolves to null rather than to the ids it managed to
+  /// parse. A partially-parsed answer would silently mark the unparsed ids as
+  /// "the server no longer has this" and destroy their plaintext.
+  void _onServedMessageIds(dynamic data) {
+    if (data is! Map) return;
+    final requestId = data['requestId'];
+    if (requestId is! String) return;
+    final completer = _servedIdRequests.remove(requestId);
+    if (completer == null || completer.isCompleted) return;
+
+    final raw = data['messageIds'];
+    if (raw is! List) {
+      completer.complete(null);
+      return;
+    }
+    final served = <int>{};
+    for (final entry in raw) {
+      if (entry is int) {
+        served.add(entry);
+      } else if (entry is num) {
+        served.add(entry.toInt());
+      } else {
+        completer.complete(null);
+        return;
+      }
+    }
+    completer.complete(served);
+  }
+
   /// Updates reconnect + messaging token after AuthProvider refreshes JWT (no socket reconnect).
   void applyRefreshedAccessToken(String newAccessToken) {
     _reconnectManager.tokenForReconnect = newAccessToken;
@@ -274,6 +477,8 @@ class ConnectionProvider extends ChangeNotifier {
     _intentionalDisconnect = true;
     _debouncedConnectTimer?.cancel();
     _resumeProbeTimer?.cancel();
+    _plaintextSweepTimer?.cancel();
+    _plaintextSweepTimer = null;
     _reconnectManager.cancel();
 
     // Notify sub-providers
@@ -286,6 +491,14 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.disconnect();
     _isConnected = false;
     _errorMessage = null;
+
+    // Answer every in-flight reconcile round trip with "no answer" instead of
+    // making it wait out its timeout. Null purges nothing, so an interrupted
+    // pass simply leaves the residue for the next connect.
+    for (final completer in _servedIdRequests.values) {
+      if (!completer.isCompleted) completer.complete(null);
+    }
+    _servedIdRequests.clear();
 
     if (isLogout) {
       _pushInitialized = false;
@@ -484,6 +697,8 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.on('partnerRecordingVoice', (data) {
       _messagingProvider?.onPartnerRecordingVoice(data);
     });
+    _socketService.on('servedMessageIds', _onServedMessageIds);
+    _socketService.on('serverTime', _onServerTime);
 
     // --- Error event ---
     _socketService.on('error', (err) {
@@ -501,6 +716,7 @@ class ConnectionProvider extends ChangeNotifier {
   @override
   void dispose() {
     _debouncedConnectTimer?.cancel();
+    _plaintextSweepTimer?.cancel();
     _reconnectManager.cancel();
     _socketService.disconnect();
     super.dispose();

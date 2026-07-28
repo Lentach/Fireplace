@@ -97,6 +97,46 @@ jobs:
         working-directory: .
         run: node scripts/verify-claude-frontend-test-counts.mjs --log frontend/test-output.txt
 
+  # The ONLY automated check on the origin-wide Web Lock half of the E2E fix
+  # (`fd89e7e`, 0.0.126). It has to be its own job because the guard lives in
+  # `navigator.locks`, which no VM test can reach:
+  # `test/services/session_cross_context_lock_web_test.dart` only runs under
+  # `--platform chrome` (it is honestly SKIPPED in the `frontend` job above),
+  # and the two-engine race probes inject a FAKE in-memory lock. Before this
+  # job, production could have stopped calling `navigator.locks` altogether and
+  # every suite would still have been green — the audit found that test
+  # reporting itself as PASSED while asserting nothing.
+  #
+  # The runner compiles `tool/session_cross_context_lock_probe.dart`, serves it,
+  # and drives headless Chrome; the page reports its verdict back over HTTP.
+  # It asserts same-name requests queue AND that a missing Web Locks API fails
+  # closed instead of silently running a Signal mutation unlocked.
+  #
+  # Falsified on 2026-07-27 before being trusted: breaking the lock produced
+  # `SESSION_LOCK_FAIL: same-name lock did not queue` and exit 1; a page that
+  # never reports produced the hang message and exit 1.
+  session-lock:
+    name: E2E session Web Lock probe
+    runs-on: ubuntu-latest
+    timeout-minutes: 10
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Set up Flutter
+        uses: subosito/flutter-action@v2
+        with:
+          channel: stable
+          cache: true
+
+      - name: Install Flutter dependencies
+        working-directory: frontend
+        run: flutter pub get
+
+      - name: Run the session lock probe
+        run: node scripts/verify-session-lock-probe.mjs
+
   # The ONLY automated guard on the cross-tier wire contracts in CLAUDE.md 7:
   # the E2E envelope, WS event names/payloads, and delete semantics. Unit tests on
   # either side mock the other, and scripts/impact.mjs cannot see across the wire,
