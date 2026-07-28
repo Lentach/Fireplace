@@ -10,7 +10,10 @@ import { MediaCleanupService } from '../../media/media-cleanup.service';
 import { ChatConversationService } from './chat-conversation.service';
 import { ChatValidationService } from './chat-validation.service';
 import { Socket, Server } from 'socket.io';
-import { FriendRequest, FriendRequestStatus } from '../../friends/friend-request.entity';
+import {
+  FriendRequest,
+  FriendRequestStatus,
+} from '../../friends/friend-request.entity';
 import { User } from '../../users/user.entity';
 
 describe('ChatFriendRequestService', () => {
@@ -109,8 +112,12 @@ describe('ChatFriendRequestService', () => {
     friendsService = module.get(FriendsService) as jest.Mocked<FriendsService>;
     blockedService = module.get(BlockedService) as jest.Mocked<BlockedService>;
     usersService = module.get(UsersService) as jest.Mocked<UsersService>;
-    conversationsService = module.get(ConversationsService) as jest.Mocked<ConversationsService>;
-    chatValidationService = module.get(ChatValidationService) as jest.Mocked<ChatValidationService>;
+    conversationsService = module.get(
+      ConversationsService,
+    ) as jest.Mocked<ConversationsService>;
+    chatValidationService = module.get(
+      ChatValidationService,
+    ) as jest.Mocked<ChatValidationService>;
   });
 
   describe('handleSendFriendRequest', () => {
@@ -130,8 +137,14 @@ describe('ChatFriendRequestService', () => {
         onlineUsers,
       );
 
-      expect(friendsService.sendRequest).toHaveBeenCalledWith(mockSender, mockRecipient);
-      expect(mockClient.emit).toHaveBeenCalledWith('friendRequestSent', expect.any(Object));
+      expect(friendsService.sendRequest).toHaveBeenCalledWith(
+        mockSender,
+        mockRecipient,
+      );
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'friendRequestSent',
+        expect.any(Object),
+      );
     });
 
     it('emits accepted readiness to both users without opening a conversation when request is accepted (mutual)', async () => {
@@ -156,10 +169,19 @@ describe('ChatFriendRequestService', () => {
         conversationId: 100,
         chatReady: true,
       });
-      expect(mockClient.emit).toHaveBeenCalledWith('friendRequestAccepted', acceptedPayload);
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'friendRequestAccepted',
+        acceptedPayload,
+      );
       expect(mockServer.to).toHaveBeenCalledWith('socket-2');
-      expect(mockServer.emit).toHaveBeenCalledWith('friendRequestAccepted', acceptedPayload);
-      expect(conversationsService.findOrCreate).toHaveBeenCalledWith(mockSender, mockRecipient);
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        'friendRequestAccepted',
+        acceptedPayload,
+      );
+      expect(conversationsService.findOrCreate).toHaveBeenCalledWith(
+        mockSender,
+        mockRecipient,
+      );
       expect(mockClient.emit).not.toHaveBeenCalledWith(
         'openConversation',
         expect.anything(),
@@ -178,7 +200,9 @@ describe('ChatFriendRequestService', () => {
         ...mockFriendRequest,
         status: 'accepted',
       } as any);
-      conversationsService.findOrCreate.mockRejectedValue(new Error('database unavailable'));
+      conversationsService.findOrCreate.mockRejectedValue(
+        new Error('database unavailable'),
+      );
       onlineUsers.set(2, 'socket-2');
 
       await service.handleSendFriendRequest(
@@ -193,8 +217,14 @@ describe('ChatFriendRequestService', () => {
         conversationId: null,
         chatReady: false,
       });
-      expect(mockClient.emit).toHaveBeenCalledWith('friendRequestAccepted', acceptedPayload);
-      expect(mockServer.emit).toHaveBeenCalledWith('friendRequestAccepted', acceptedPayload);
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'friendRequestAccepted',
+        acceptedPayload,
+      );
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        'friendRequestAccepted',
+        acceptedPayload,
+      );
     });
 
     it.each([
@@ -221,7 +251,10 @@ describe('ChatFriendRequestService', () => {
         recipientId: data.recipientId,
         reason,
       });
-      expect(mockClient.emit).not.toHaveBeenCalledWith('error', expect.anything());
+      expect(mockClient.emit).not.toHaveBeenCalledWith(
+        'error',
+        expect.anything(),
+      );
     });
 
     it('emits scoped send failure when sending to self', async () => {
@@ -243,11 +276,16 @@ describe('ChatFriendRequestService', () => {
         recipientId: 1,
         reason: 'self_request',
       });
-      expect(mockClient.emit).not.toHaveBeenCalledWith('error', expect.anything());
+      expect(mockClient.emit).not.toHaveBeenCalledWith(
+        'error',
+        expect.anything(),
+      );
     });
 
     it('emits scoped send failure when user is not found', async () => {
-      usersService.findById.mockResolvedValueOnce(mockSender as any).mockResolvedValueOnce(null);
+      usersService.findById
+        .mockResolvedValueOnce(mockSender as any)
+        .mockResolvedValueOnce(null);
 
       await service.handleSendFriendRequest(
         mockClient as any,
@@ -262,7 +300,10 @@ describe('ChatFriendRequestService', () => {
         recipientId: 999,
         reason: 'user_not_found',
       });
-      expect(mockClient.emit).not.toHaveBeenCalledWith('error', expect.anything());
+      expect(mockClient.emit).not.toHaveBeenCalledWith(
+        'error',
+        expect.anything(),
+      );
     });
 
     it.each([
@@ -292,7 +333,10 @@ describe('ChatFriendRequestService', () => {
         recipientId: 2,
         reason,
       });
-      expect(mockClient.emit).not.toHaveBeenCalledWith('error', expect.anything());
+      expect(mockClient.emit).not.toHaveBeenCalledWith(
+        'error',
+        expect.anything(),
+      );
     });
   });
 
@@ -329,9 +373,15 @@ describe('ChatFriendRequestService', () => {
         chatReady: true,
       });
       expect(friendsService.acceptRequest).toHaveBeenCalledWith(10, 1);
-      expect(mockClient.emit).toHaveBeenCalledWith('friendRequestAccepted', acceptedPayload);
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'friendRequestAccepted',
+        acceptedPayload,
+      );
       expect(mockServer.to).toHaveBeenCalledWith('socket-1');
-      expect(mockServer.emit).toHaveBeenCalledWith('friendRequestAccepted', acceptedPayload);
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        'friendRequestAccepted',
+        acceptedPayload,
+      );
       expect(conversationsService.findOrCreate).toHaveBeenCalled();
     });
 
@@ -353,7 +403,9 @@ describe('ChatFriendRequestService', () => {
 
     it('emits chatReady false to both users and all list refreshes when conversation creation fails', async () => {
       setUpAcceptedRequest();
-      conversationsService.findOrCreate.mockRejectedValue(new Error('database unavailable'));
+      conversationsService.findOrCreate.mockRejectedValue(
+        new Error('database unavailable'),
+      );
       onlineUsers.set(1, 'socket-1');
 
       await service.handleAcceptFriendRequest(
@@ -368,12 +420,20 @@ describe('ChatFriendRequestService', () => {
         conversationId: null,
         chatReady: false,
       });
-      expect(mockClient.emit).toHaveBeenCalledWith('friendRequestAccepted', acceptedPayload);
-      expect(mockServer.emit).toHaveBeenCalledWith('friendRequestAccepted', acceptedPayload);
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'friendRequestAccepted',
+        acceptedPayload,
+      );
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        'friendRequestAccepted',
+        acceptedPayload,
+      );
       expect(mockClient.emit).toHaveBeenCalledWith('conversationsList', []);
       expect(mockClient.emit).toHaveBeenCalledWith('friendRequestsList', []);
       expect(mockClient.emit).toHaveBeenCalledWith('sentRequestsList', []);
-      expect(mockClient.emit).toHaveBeenCalledWith('pendingRequestsCount', { count: 0 });
+      expect(mockClient.emit).toHaveBeenCalledWith('pendingRequestsCount', {
+        count: 0,
+      });
       expect(mockClient.emit).toHaveBeenCalledWith('friendsList', []);
       expect(mockServer.emit).toHaveBeenCalledWith('conversationsList', []);
       expect(mockServer.emit).toHaveBeenCalledWith('sentRequestsList', []);
@@ -392,9 +452,13 @@ describe('ChatFriendRequestService', () => {
 
       const callOrder = (event: string) =>
         (mockClient.emit as jest.Mock).mock.invocationCallOrder[
-          (mockClient.emit as jest.Mock).mock.calls.findIndex(([name]) => name === event)
+          (mockClient.emit as jest.Mock).mock.calls.findIndex(
+            ([name]) => name === event,
+          )
         ];
-      expect(callOrder('conversationsList')).toBeLessThan(callOrder('friendRequestAccepted'));
+      expect(callOrder('conversationsList')).toBeLessThan(
+        callOrder('friendRequestAccepted'),
+      );
       expect(callOrder('friendRequestAccepted')).toBeLessThan(
         callOrder('friendRequestsList'),
       );
@@ -408,7 +472,9 @@ describe('ChatFriendRequestService', () => {
       ['accept failure', { requestId: 999 }, 'accept_failed'],
     ])('emits scoped accept failure for %s', async (_label, data, reason) => {
       if (reason === 'accept_failed') {
-        friendsService.acceptRequest.mockRejectedValue(new Error('Request not found'));
+        friendsService.acceptRequest.mockRejectedValue(
+          new Error('Request not found'),
+        );
       }
 
       await service.handleAcceptFriendRequest(
@@ -424,7 +490,10 @@ describe('ChatFriendRequestService', () => {
         recipientId: null,
         reason,
       });
-      expect(mockClient.emit).not.toHaveBeenCalledWith('error', expect.anything());
+      expect(mockClient.emit).not.toHaveBeenCalledWith(
+        'error',
+        expect.anything(),
+      );
     });
   });
 
@@ -447,10 +516,15 @@ describe('ChatFriendRequestService', () => {
       );
 
       expect(friendsService.rejectRequest).toHaveBeenCalledWith(10, 2);
-      expect(mockClient.emit).toHaveBeenCalledWith('friendRequestRejected', expect.any(Object));
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'friendRequestRejected',
+        expect.any(Object),
+      );
       expect(mockClient.emit).toHaveBeenCalledWith('friendRequestsList', []);
       expect(mockClient.emit).toHaveBeenCalledWith('sentRequestsList', []);
-      expect(mockClient.emit).toHaveBeenCalledWith('pendingRequestsCount', { count: 0 });
+      expect(mockClient.emit).toHaveBeenCalledWith('pendingRequestsCount', {
+        count: 0,
+      });
       expect(mockServer.to).toHaveBeenCalledWith('socket-1');
       expect(mockServer.emit).toHaveBeenCalledWith('sentRequestsList', []);
     });
@@ -460,7 +534,9 @@ describe('ChatFriendRequestService', () => {
       ['reject failure', { requestId: 10 }, 'reject_failed'],
     ])('emits scoped reject failure for %s', async (_label, data, reason) => {
       if (reason === 'reject_failed') {
-        friendsService.rejectRequest.mockRejectedValue(new Error('Request not found'));
+        friendsService.rejectRequest.mockRejectedValue(
+          new Error('Request not found'),
+        );
       }
 
       await service.handleRejectFriendRequest(
@@ -476,7 +552,10 @@ describe('ChatFriendRequestService', () => {
         recipientId: null,
         reason,
       });
-      expect(mockClient.emit).not.toHaveBeenCalledWith('error', expect.anything());
+      expect(mockClient.emit).not.toHaveBeenCalledWith(
+        'error',
+        expect.anything(),
+      );
     });
   });
   describe('handleEnsureInvitationChat', () => {
@@ -503,7 +582,10 @@ describe('ChatFriendRequestService', () => {
         onlineUsers,
       );
 
-      expect(chatValidationService.validateCanMessage).toHaveBeenCalledWith(1, 2);
+      expect(chatValidationService.validateCanMessage).toHaveBeenCalledWith(
+        1,
+        2,
+      );
       expect(mockClient.emit).toHaveBeenCalledWith('invitationChatReady', {
         peerUserId: 2,
         correlationId: 'session_1-token',
@@ -607,7 +689,10 @@ describe('ChatFriendRequestService', () => {
         'conversationsList',
         expect.anything(),
       );
-      expect(mockClient.emit).not.toHaveBeenCalledWith('openConversation', expect.anything());
+      expect(mockClient.emit).not.toHaveBeenCalledWith(
+        'openConversation',
+        expect.anything(),
+      );
     });
 
     it('reports user_not_found when a participant no longer exists', async () => {
@@ -634,13 +719,33 @@ describe('ChatFriendRequestService', () => {
     // usable peer id must still name that peer, or the client cannot clear the
     // right row's retry state and it hangs. Only an unusable peer id yields null.
     it.each([
-      ['a 65-character correlationId', { peerUserId: 2, correlationId: 'a'.repeat(65) }, 2],
-      ['a correlationId containing markup', { peerUserId: 2, correlationId: 'bad<token' }, 2],
-      ['a correlationId containing a newline', { peerUserId: 2, correlationId: 'bad\ntoken' }, 2],
-      ['a correlationId containing whitespace', { peerUserId: 2, correlationId: 'bad token' }, 2],
+      [
+        'a 65-character correlationId',
+        { peerUserId: 2, correlationId: 'a'.repeat(65) },
+        2,
+      ],
+      [
+        'a correlationId containing markup',
+        { peerUserId: 2, correlationId: 'bad<token' },
+        2,
+      ],
+      [
+        'a correlationId containing a newline',
+        { peerUserId: 2, correlationId: 'bad\ntoken' },
+        2,
+      ],
+      [
+        'a correlationId containing whitespace',
+        { peerUserId: 2, correlationId: 'bad token' },
+        2,
+      ],
       ['a non-string correlationId', { peerUserId: 2, correlationId: 42 }, 2],
       ['a missing peerUserId', { correlationId: 'valid_token' }, null],
-      ['a negative peerUserId', { peerUserId: -2, correlationId: 'valid_token' }, null],
+      [
+        'a negative peerUserId',
+        { peerUserId: -2, correlationId: 'valid_token' },
+        null,
+      ],
     ])(
       'rejects %s before conversation or readiness emits',
       async (_label, data, expectedRecipientId) => {
@@ -761,7 +866,12 @@ describe('ChatFriendRequestService', () => {
 
   describe('handleGetFriends', () => {
     it('excludes blocked users from friendsList', async () => {
-      const friend = { id: 2, username: 'bob', tag: '0002', profilePictureUrl: null };
+      const friend = {
+        id: 2,
+        username: 'bob',
+        tag: '0002',
+        profilePictureUrl: null,
+      };
       friendsService.getFriends.mockResolvedValue([friend] as any);
       blockedService.getBlockedUserIds.mockResolvedValue([2]);
       blockedService.getBlockedByUserIds.mockResolvedValue([]);
@@ -772,7 +882,12 @@ describe('ChatFriendRequestService', () => {
     });
 
     it('emits mapped friend payload when no blocks', async () => {
-      const friend = { id: 2, username: 'bob', tag: '0002', profilePictureUrl: null };
+      const friend = {
+        id: 2,
+        username: 'bob',
+        tag: '0002',
+        profilePictureUrl: null,
+      };
       friendsService.getFriends.mockResolvedValue([friend] as any);
       blockedService.getBlockedUserIds.mockResolvedValue([]);
       blockedService.getBlockedByUserIds.mockResolvedValue([]);
@@ -787,5 +902,4 @@ describe('ChatFriendRequestService', () => {
       );
     });
   });
-
 });
