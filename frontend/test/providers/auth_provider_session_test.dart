@@ -15,6 +15,11 @@ const _expiredAccessJwt =
 const _validAccessJwt =
     'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjEsInVzZXJuYW1lIjoidGVzdCIsInRhZyI6IjAwMDAiLCJleHAiOjk5OTk5OTk5OTl9.abc';
 
+/// Valid access JWT for a DIFFERENT account (sub=2). Used to prove an account
+/// switch does not carry the previous user's hydrated profile over.
+const _otherUserAccessJwt =
+    'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJzdWIiOjIsInVzZXJuYW1lIjoib3RoZXIiLCJ0YWciOiIwMDAxIiwiZXhwIjo5OTk5OTk5OTk5fQ.sig';
+
 Future<void> _waitForAuthSettled(
   AuthProvider auth, {
   required bool expectLoggedIn,
@@ -360,6 +365,156 @@ void main() {
         expect(auth.lastSessionEndReason, 'password_changed');
         expect(prefs.getString('jwt_token'), isNull);
         expect(prefs.getString('refresh_token'), isNull);
+      },
+    );
+
+    test(
+      'same-user token restore preserves hydrated profilePhotos and about',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'jwt_token': _validAccessJwt,
+          'refresh_token': 'opaque_refresh',
+        });
+
+        final mock = MockClient((request) async {
+          if (request.url.path == '/auth/refresh') {
+            return http.Response(
+              jsonEncode({
+                'access_token': _validAccessJwt,
+                'refresh_token': 'opaque_refresh',
+              }),
+              201,
+              headers: {'Content-Type': 'application/json'},
+            );
+          }
+          if (request.url.path == '/users/me') {
+            // Server hydrates the self profile with a full gallery + about.
+            return http.Response(
+              jsonEncode({
+                'id': 1,
+                'username': 'test',
+                'tag': '0000',
+                'profilePictureUrl': 'https://cdn/p1.jpg',
+                'about': 'hello world',
+                'profilePhotos': [
+                  {
+                    'id': 1,
+                    'url': 'https://cdn/p1.jpg',
+                    'isPrimary': true,
+                    'createdAt': '2026-01-01T00:00:00.000Z',
+                  },
+                  {
+                    'id': 2,
+                    'url': 'https://cdn/p2.jpg',
+                    'isPrimary': false,
+                    'createdAt': '2026-01-02T00:00:00.000Z',
+                  },
+                  {
+                    'id': 3,
+                    'url': 'https://cdn/p3.jpg',
+                    'isPrimary': false,
+                    'createdAt': '2026-01-03T00:00:00.000Z',
+                  },
+                ],
+              }),
+              200,
+              headers: {'Content-Type': 'application/json'},
+            );
+          }
+          throw Exception('Unexpected ${request.url.path}');
+        });
+
+        final auth = AuthProvider(
+          api: ApiService(baseUrl: base, httpClient: mock),
+        );
+        await _waitForAuthSettled(auth, expectLoggedIn: true);
+        expect(auth.currentUser?.profilePhotos.length, 3,
+            reason: 'seed precondition: gallery must be hydrated from /users/me');
+
+        // A silent 15-min token refresh re-runs _restoreUserFromAccessJwt for
+        // the SAME account; it must not collapse the gallery or drop about.
+        auth.setAccessTokenForTest(_validAccessJwt);
+
+        expect(auth.currentUser?.id, 1);
+        expect(auth.currentUser?.profilePhotos.length, 3);
+        expect(
+          auth.currentUser?.profilePhotos.map((p) => p.id).toList(),
+          [1, 2, 3],
+        );
+        expect(auth.currentUser?.about, 'hello world');
+        expect(auth.currentUser?.profilePictureUrl, 'https://cdn/p1.jpg');
+      },
+    );
+
+    test(
+      'different-user token restore does not carry over stale profilePhotos',
+      () async {
+        SharedPreferences.setMockInitialValues({
+          'jwt_token': _validAccessJwt,
+          'refresh_token': 'opaque_refresh',
+        });
+
+        final mock = MockClient((request) async {
+          if (request.url.path == '/auth/refresh') {
+            return http.Response(
+              jsonEncode({
+                'access_token': _validAccessJwt,
+                'refresh_token': 'opaque_refresh',
+              }),
+              201,
+              headers: {'Content-Type': 'application/json'},
+            );
+          }
+          if (request.url.path == '/users/me') {
+            return http.Response(
+              jsonEncode({
+                'id': 1,
+                'username': 'test',
+                'tag': '0000',
+                'profilePictureUrl': 'https://cdn/p1.jpg',
+                'about': 'hello world',
+                'profilePhotos': [
+                  {
+                    'id': 1,
+                    'url': 'https://cdn/p1.jpg',
+                    'isPrimary': true,
+                    'createdAt': '2026-01-01T00:00:00.000Z',
+                  },
+                  {
+                    'id': 2,
+                    'url': 'https://cdn/p2.jpg',
+                    'isPrimary': false,
+                    'createdAt': '2026-01-02T00:00:00.000Z',
+                  },
+                  {
+                    'id': 3,
+                    'url': 'https://cdn/p3.jpg',
+                    'isPrimary': false,
+                    'createdAt': '2026-01-03T00:00:00.000Z',
+                  },
+                ],
+              }),
+              200,
+              headers: {'Content-Type': 'application/json'},
+            );
+          }
+          throw Exception('Unexpected ${request.url.path}');
+        });
+
+        final auth = AuthProvider(
+          api: ApiService(baseUrl: base, httpClient: mock),
+        );
+        await _waitForAuthSettled(auth, expectLoggedIn: true);
+        expect(auth.currentUser?.profilePhotos.length, 3);
+
+        // Account switch: a JWT for a different user id must NOT inherit the
+        // previous account's gallery/about.
+        auth.setAccessTokenForTest(_otherUserAccessJwt);
+
+        expect(auth.currentUser?.id, 2);
+        expect(auth.currentUser?.username, 'other');
+        expect(auth.currentUser?.profilePhotos, isEmpty);
+        expect(auth.currentUser?.about, isNull);
       },
     );
   });
