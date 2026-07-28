@@ -199,3 +199,23 @@ describe('ChatGateway handleDisconnect (stale-socket guard)', () => {
     expect(onlineUsers.has(37)).toBe(false);
   });
 });
+
+describe('ChatGateway handleGetServerTime', () => {
+  it('answers with a parseable ISO serverTime on the serverTime event', () => {
+    const gateway = createGateway();
+    const client = createMockClient();
+
+    gateway.handleGetServerTime(client as any);
+
+    expect(client.emit).toHaveBeenCalledWith('serverTime', {
+      serverTime: expect.any(String),
+    });
+    // Same contract as socketReady: the client refuses to destroy expired
+    // plaintext without a clock it can parse, so an unparseable stamp would
+    // silently disable the in-session sweep this event exists to feed.
+    const call = (client.emit as jest.Mock).mock.calls.find(
+      (c) => c[0] === 'serverTime',
+    );
+    expect(Number.isNaN(Date.parse(call[1].serverTime))).toBe(false);
+  });
+});

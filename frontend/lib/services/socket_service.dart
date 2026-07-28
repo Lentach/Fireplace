@@ -187,6 +187,19 @@ class SocketService {
     });
   }
 
+  /// Ask for a fresh server-clock observation; the server answers on
+  /// `serverTime` with `{serverTime: <ISO-8601>}`.
+  ///
+  /// The `socketReady` observation ages out of trust after
+  /// [ServerClock.maxExtrapolation]; the in-session expiry sweep calls this to
+  /// re-arm the clock instead of letting expired plaintext survive until the
+  /// next reconnect. Against an older backend without the handler the emit is
+  /// silently ignored, the clock stays unconfirmed, and nothing is destroyed —
+  /// the safe direction.
+  void getServerTime() {
+    _socket?.emit('getServerTime');
+  }
+
   void sendFriendRequest(int recipientId) {
     _socket?.emit('sendFriendRequest', {
       'recipientId': recipientId,

@@ -1,3 +1,4 @@
+import 'package:fake_async/fake_async.dart';
 import 'package:fireplace/providers/connection_provider.dart';
 import 'package:fireplace/providers/conversations_provider.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
@@ -66,6 +67,19 @@ class FakeSocketService extends SocketService {
 
   void simulateServedMessageIds(Object? payload) {
     for (final handler in _handlers['servedMessageIds'] ?? const []) {
+      handler(payload);
+    }
+  }
+
+  int getServerTimeCalls = 0;
+
+  @override
+  void getServerTime() {
+    getServerTimeCalls++;
+  }
+
+  void simulateServerTime(Object? payload) {
+    for (final handler in _handlers['serverTime'] ?? const []) {
       handler(payload);
     }
   }
@@ -465,6 +479,146 @@ void main() {
 
       expect(encryption.answered, isTrue);
       expect(encryption.answer, isNull);
+    });
+  });
+
+  group('ConnectionProvider in-session expiry sweep timer', () {
+    // The timer exists because sweepDestroyablePlaintext otherwise runs ONLY
+    // at socketReady: a message expiring while the app stays connected would
+    // keep its plaintext on disk until the next reconnect — unbounded for a
+    // long-lived PWA. These tests pin both halves: the tick sweeps, and a
+    // stale clock asks the server for time instead of silently no-opping
+    // forever (ServerClock refuses extrapolation past 30 minutes and its only
+    // other feeder is socketReady).
+    late FakeSocketService fakeSocket;
+    late RecordingConnectionProvider connection;
+    late _RecordingEncryption encryption;
+
+    setUp(() {
+      ServerClock.instance.resetForTest();
+      fakeSocket = FakeSocketService();
+      connection = RecordingConnectionProvider(socketService: fakeSocket);
+      encryption = _RecordingEncryption();
+      connection.setProviders(
+        encryption: encryption,
+        friends: FriendsProvider(),
+        conversations: ConversationsProvider(),
+        messaging: MessagingProvider(),
+      );
+    });
+
+    tearDown(() {
+      connection.disconnect();
+      ServerClock.instance.resetForTest();
+    });
+
+    /// Connect and fire socketReady inside [fake]'s zone so the periodic
+    /// timer is fake-controlled. [payload] mirrors the real socketReady body.
+    void ready(FakeAsync fake, {Object? payload}) {
+      connection.connect(1, 'test-token', 'http://localhost:3000');
+      fake.flushMicrotasks();
+      fakeSocket.simulateSocketReady(payload: payload);
+      fake.flushMicrotasks();
+      encryption.calls.clear();
+    }
+
+    test('a tick with a confirmed clock sweeps without a round trip', () {
+      fakeAsync((fake) {
+        ready(fake, payload: {
+          'serverTime': DateTime.utc(2026, 7, 28, 12).toIso8601String(),
+        });
+
+        fake.elapse(const Duration(minutes: 1));
+        fake.flushMicrotasks();
+
+        // The real Stopwatch under ServerClock does not advance in fakeAsync,
+        // so the socketReady observation is still fresh here by construction.
+        expect(encryption.calls, contains('sweepDestroyablePlaintext'));
+        expect(fakeSocket.getServerTimeCalls, 0,
+            reason: 'a confirmable clock needs no round trip');
+      });
+    });
+
+    test(
+        'a tick with NO confirmable clock asks for server time instead of '
+        'silently doing nothing', () {
+      fakeAsync((fake) {
+        // No serverTime in socketReady — same observable state as a clock
+        // aged past maxExtrapolation.
+        ready(fake);
+
+        fake.elapse(const Duration(minutes: 1));
+        fake.flushMicrotasks();
+
+        expect(fakeSocket.getServerTimeCalls, 1);
+        expect(encryption.calls, isNot(contains('sweepDestroyablePlaintext')),
+            reason: 'nothing may be destroyed before the clock is confirmed');
+      });
+    });
+
+    test('unanswered time requests are floor-limited, not once per tick', () {
+      fakeAsync((fake) {
+        ready(fake);
+
+        // 4 ticks inside the 5-minute retry floor: exactly ONE request.
+        fake.elapse(const Duration(minutes: 4));
+        fake.flushMicrotasks();
+        expect(fakeSocket.getServerTimeCalls, 1,
+            reason: 'an older backend never answers; once per floor window');
+
+        // Past the floor the request is retried.
+        fake.elapse(const Duration(minutes: 2));
+        fake.flushMicrotasks();
+        expect(fakeSocket.getServerTimeCalls, 2);
+      });
+    });
+
+    test('the serverTime reply observes the clock and sweeps immediately', () {
+      fakeAsync((fake) {
+        ready(fake);
+        fake.elapse(const Duration(minutes: 1));
+        fake.flushMicrotasks();
+        expect(fakeSocket.getServerTimeCalls, 1);
+
+        fakeSocket.simulateServerTime({
+          'serverTime': DateTime.utc(2026, 7, 28, 12).toIso8601String(),
+        });
+        fake.flushMicrotasks();
+
+        expect(ServerClock.instance.estimatedNow, isNotNull);
+        expect(encryption.calls, contains('sweepDestroyablePlaintext'));
+      });
+    });
+
+    test('a malformed serverTime reply neither observes nor sweeps', () {
+      fakeAsync((fake) {
+        ready(fake);
+        fake.elapse(const Duration(minutes: 1));
+        fake.flushMicrotasks();
+
+        fakeSocket.simulateServerTime({'serverTime': 42});
+        fake.flushMicrotasks();
+
+        expect(ServerClock.instance.estimatedNow, isNull,
+            reason: 'a malformed stamp must not become a confident clock');
+        expect(encryption.calls, isNot(contains('sweepDestroyablePlaintext')));
+      });
+    });
+
+    test('disconnect stops the timer', () {
+      fakeAsync((fake) {
+        ready(fake, payload: {
+          'serverTime': DateTime.utc(2026, 7, 28, 12).toIso8601String(),
+        });
+
+        connection.disconnect();
+        encryption.calls.clear();
+        fake.elapse(const Duration(minutes: 10));
+        fake.flushMicrotasks();
+
+        expect(encryption.calls, isEmpty);
+        expect(fakeSocket.getServerTimeCalls, 0);
+      });
     });
   });
 }

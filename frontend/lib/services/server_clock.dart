@@ -32,8 +32,9 @@ class ServerClock {
   ServerClock();
 
   /// Process-wide instance. The server's clock is one global fact, and the
-  /// observers (socket ack, message payloads) are far from the consumers (the
-  /// expiry sweep); threading an instance through both would buy nothing.
+  /// observers (the `socketReady` handshake and the `serverTime` refresh, both
+  /// in ConnectionProvider) are far from the consumers (the expiry sweep);
+  /// threading an instance through both would buy nothing.
   static ServerClock instance = ServerClock();
 
   /// How far a single observation may be projected forward before it is

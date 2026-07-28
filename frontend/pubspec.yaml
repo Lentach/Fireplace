@@ -60,6 +60,10 @@ dependencies:
     sdk: flutter
   emoji_picker_flutter: ^4.4.0
   characters: ^1.4.1
+  # Direct because ConnectionProvider reads clock.now() for the serverTime
+  # retry floor — package:clock is what fake_async overrides, so the floor is
+  # deterministic under test while DateTime.now() would not be.
+  clock: ^1.1.2
   skeletonizer: ^2.1.3
 
 dependency_overrides:

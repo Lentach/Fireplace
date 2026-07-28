@@ -217,6 +217,21 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return this.chatMessageService.handleGetServedMessageIds(client, data);
   }
 
+  /**
+   * Server-clock refresh for the client's in-session expiry sweep. The
+   * `socketReady` observation ages out of client trust after ~30 minutes
+   * (never extrapolated further); without a refresh, a connection that stays
+   * up longer than that could never destroy expired plaintext until its next
+   * reconnect. Stateless, no DB. The client asks roughly once per half hour,
+   * so the limit sits far above real traffic.
+   */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 900000 } })
+  @SubscribeMessage('getServerTime')
+  handleGetServerTime(@ConnectedSocket() client: Socket) {
+    client.emit('serverTime', { serverTime: new Date().toISOString() });
+  }
+
   @SubscribeMessage('messageDelivered')
   async handleMessageDelivered(
     @ConnectedSocket() client: Socket,
