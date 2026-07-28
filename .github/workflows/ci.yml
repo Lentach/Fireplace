@@ -46,6 +46,21 @@ jobs:
         working-directory: .
         run: node scripts/verify-claude-backend-test-counts.mjs --log backend/test-output.txt
 
+      # ESLint RATCHET, not a gate. `npm run lint` has been failing on master for months
+      # (966 problems / 726 errors on 2026-07-08 -> 1603 / 1320 on 2026-07-27, ~+30/day)
+      # precisely because nothing ran it. A plain eslint step would be red on day one and
+      # would get ignored, which is how the debt accumulated in the first place.
+      #
+      # So this fails ONLY when the error count goes UP against scripts/lint-baseline.json.
+      # Pre-existing debt never turns the build red; new debt does. The floor drops as debt
+      # is paid (`node scripts/lint-ratchet.mjs --update`).
+      #
+      # Note `npm run lint` is `eslint --fix` — it rewrites ~510 files instead of reporting.
+      # Never "fix" a ratchet failure by running it. Use `npm run lint:check` to see the list.
+      - name: Backend lint ratchet
+        working-directory: .
+        run: node scripts/lint-ratchet.mjs
+
   frontend:
     name: Flutter analyze and tests
     runs-on: ubuntu-latest

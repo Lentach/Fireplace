@@ -156,5 +156,44 @@ if (-not $SkipVerify) {
   } catch {
     Write-Warning "Could not reach $BaseUrl : $($_.Exception.Message)"
   }
+
+  # ---- definitive stale-build gate -------------------------------------------------
+  # The checks above can BOTH pass while the VM still serves cached JS: version.json is a
+  # separate file from the bundle, so a bumped semver proves nothing about the code. The
+  # smoke script greps the served main.dart.js for the git short-sha that was compiled
+  # into it, which is the only check that actually detects a stale or half-published
+  # bundle - including the exit-21 silent-halt trap where the publish step does nothing
+  # and says nothing (2026-07-08, 2026-07-15, 2026-07-16).
+  #
+  # --commit is passed EXPLICITLY: the script otherwise defaults to `git rev-parse HEAD`,
+  # and HEAD can move under a long deploy (a second agent pushed 0.0.132 mid-session on
+  # 2026-07-27). $commit is the sha actually compiled into this bundle.
+  #
+  # Run from scripts/smoke: that directory has its own package.json and node_modules, and
+  # the script's `import("playwright")` only resolves from there.
+  $smokeDir = Join-Path $repo "scripts\smoke"
+  $smokeJs  = Join-Path $smokeDir "post-deploy-smoke.mjs"
+  if (-not (Test-Path $smokeJs)) {
+    Write-Warning "Smoke script not found at $smokeJs - skipping the stale-build gate."
+  }
+  elseif (-not (Test-Path (Join-Path $smokeDir "node_modules"))) {
+    Write-Warning "scripts/smoke deps missing - skipping the stale-build gate."
+    Write-Warning "One-time fix:  cd scripts\smoke ; npm install ; npx playwright install chromium"
+  }
+  else {
+    Step "Post-deploy smoke (stale-build gate)"
+    Push-Location $smokeDir
+    try {
+      node "post-deploy-smoke.mjs" --commit $commit --url $BaseUrl
+      $smokeExit = $LASTEXITCODE
+    } finally { Pop-Location }
+    if ($smokeExit -ne 0) {
+      throw ("POST-DEPLOY SMOKE FAILED (exit=$smokeExit). The served bundle does NOT match commit $commit.`n" +
+             "  Most likely the publish silently did not run - re-publish WITHOUT rebuilding:  .\deploy-web.ps1 -SkipBuild`n" +
+             "  Do NOT tell anyone to reinstall the PWA or clear site data - that destroys their E2E Signal keys.")
+    }
+    Write-Host "Smoke passed: the served bundle really is $commit." -ForegroundColor Green
+  }
+
   Write-Host "`nLast step: on your phone, fully close + reopen the PWA (do NOT uninstall). Settings footer should read $ver / $commit." -ForegroundColor Yellow
 }
