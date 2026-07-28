@@ -779,8 +779,13 @@ extension MessagingDecrypt on MessagingProvider {
         // duplicate/redelivered ping that reaches live decrypt cannot re-fire
         // (transient event dedup; the persisted-cache restore path never
         // live-decrypts a ping, so restart/re-enter stay silent by construction).
+        // The READ gate mirrors the restore path: if _persistDecryptedContent
+        // ever fails silently, an old ping would live-re-decrypt on every cold
+        // entry — a genuinely new arrival is never READ, so the clause only
+        // blocks that failure-mode replay. One consume record on both paths.
         if (parsedType == MessageType.ping &&
             msg.senderId != _currentUserId &&
+            msg.deliveryStatus != MessageDeliveryStatus.read &&
             _pingEffectFiredIds.add(msg.id)) {
           _showPingEffect = true;
         }

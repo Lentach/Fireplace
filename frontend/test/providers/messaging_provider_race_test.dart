@@ -751,6 +751,75 @@ void main() {
     );
 
     test(
+      'live re-decrypt of an already-READ PING stays silent (lost persist)',
+      () async {
+        final enc = _DuplicateDecryptEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        // Failure mode the READ gate exists for: _persistDecryptedContent
+        // failed silently, so every cold start live-re-decrypts the old ping.
+        // The row is READ (it was seen long ago) — the re-decrypt must not
+        // replay the effect. A genuinely new arrival is never READ, so this
+        // clause cannot suppress a real ping.
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 9,
+              createdAt: '2026-01-01T00:00:09.000Z',
+              messageType: 'PING',
+              includeTtl: false,
+              deliveryStatus: 'READ',
+            ),
+          ],
+        });
+        for (var i = 0; i < 30; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+
+        expect(enc.decryptCalls, 1, reason: 'no persisted record: must decrypt');
+        expect(
+          provider.showPingEffect,
+          isFalse,
+          reason: 'a READ ping re-decrypted after a lost persist must be silent',
+        );
+      },
+    );
+
+    test(
+      'live newMessage PING already marked READ does not flip showPingEffect',
+      () async {
+        final enc = _DuplicateDecryptEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        // Same READ gate on the socket path: a redelivered/echoed ping that
+        // the server already stamped READ must stay silent. A genuinely new
+        // arrival is DELIVERED at most (covered by the flip test above).
+        provider.onNewMessage(
+          incomingJson(
+            id: 9,
+            createdAt: '2026-01-01T00:00:09.000Z',
+            messageType: 'PING',
+            includeTtl: false,
+            deliveryStatus: 'READ',
+          ),
+        );
+        for (var i = 0; i < 30; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+
+        expect(enc.decryptCalls, 1);
+        expect(
+          provider.showPingEffect,
+          isFalse,
+          reason: 'a READ ping arriving over the socket must not replay',
+        );
+      },
+    );
+
+    test(
       'messageHistory does not re-decrypt rows already plaintext in _messages',
       () async {
         final counting = _DecryptCountingEncryption();
