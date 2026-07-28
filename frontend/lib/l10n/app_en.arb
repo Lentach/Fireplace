@@ -90,6 +90,8 @@
   "chatMessageHint": "Type a message...",
   "chatComposerSendTooltip": "Send",
   "chatComposerSendSemantics": "Send message",
+  "chatComposerEmojiTooltip": "Emoji",
+  "chatComposerEmojiSemantics": "Open emoji picker",
   "emojiPickerSemantics": "Emoji picker",
   "emojiPickerSearchHint": "Search emoji",
   "emojiPickerNoRecents": "No recent emoji",
