@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 
 import '../utils/ping_sound.dart';
@@ -17,6 +19,7 @@ class _PingEffectOverlayState extends State<PingEffectOverlay>
   late AnimationController _controller;
   late Animation<double> _scaleAnimation;
   late Animation<double> _opacityAnimation;
+  bool _completed = false;
 
   @override
   void initState() {
@@ -42,6 +45,7 @@ class _PingEffectOverlayState extends State<PingEffectOverlay>
     playPingSound().ignore();
     _controller.forward().then((_) {
       if (mounted) {
+        _completed = true;
         widget.onComplete();
       }
     });
@@ -49,6 +53,16 @@ class _PingEffectOverlayState extends State<PingEffectOverlay>
 
   @override
   void dispose() {
+    // Route popped mid-animation: the forward().then above never fires its
+    // callback (unmounted), so without this the showPingEffect flag stays
+    // latched and the NEXT chat entry remounts the overlay and replays the
+    // sound (same-session replay; the per-id decrypt guard cannot help — the
+    // flag is already true). Defer past teardown: a sync notifyListeners here
+    // would fire an ancestor setState during tree finalization (same trap as
+    // the composerBottomPanelPinned dispose reset).
+    if (!_completed) {
+      scheduleMicrotask(widget.onComplete);
+    }
     _controller.dispose();
     super.dispose();
   }
