@@ -369,6 +369,22 @@ extension MessagingDecrypt on MessagingProvider {
               _messages[idx] = merged;
               changed = true;
             }
+            // Pending-ping resurrection (Bug 3, "arrived while away" case):
+            // if the live decrypt ran in a PREVIOUS process (backgrounded
+            // arrival, then OS kill before the chat was opened), the transient
+            // _showPingEffect died with that process while the persisted
+            // record suppresses any re-decrypt here. The durable consume
+            // record is the READ mark: markConversationRead is emitted AFTER
+            // this history payload was built (history.dart onMessageHistory),
+            // so a never-seen ping still arrives un-READ. Fire once per id;
+            // the read-mark that follows keeps every later entry, restart,
+            // and resync silent.
+            if (merged.messageType == MessageType.ping &&
+                merged.senderId != _currentUserId &&
+                merged.deliveryStatus != MessageDeliveryStatus.read &&
+                _pingEffectFiredIds.add(merged.id)) {
+              _showPingEffect = true;
+            }
             continue;
           }
           // Stale persisted row (mediaUrl without keys) — fall through to live decrypt.

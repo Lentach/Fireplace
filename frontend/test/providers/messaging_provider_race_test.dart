@@ -377,6 +377,7 @@ void main() {
       required String createdAt,
       bool includeTtl = true,
       String messageType = 'TEXT',
+      String deliveryStatus = 'DELIVERED',
     }) => {
       'id': id,
       'content': '[encrypted]',
@@ -384,7 +385,7 @@ void main() {
       'senderId': 2,
       'senderUsername': 'bob',
       'conversationId': 10,
-      'deliveryStatus': 'DELIVERED',
+      'deliveryStatus': deliveryStatus,
       'messageType': messageType,
       if (includeTtl) 'disappearAfterSeconds': 60,
       'createdAt': createdAt,
@@ -619,14 +620,16 @@ void main() {
     );
 
     test(
-      'history restore of a persisted PING does not re-decrypt or re-fire the effect',
+      'history restore of a SEEN persisted PING does not re-decrypt or re-fire',
       () async {
         final enc = _PersistedPingEncryption();
         provider.setEncryptionProvider(enc);
         provider.setActiveConversationIdForTest(10);
 
-        // Cold-start restore: server row is "[encrypted]" but a decrypted PING
-        // (empty plaintext) is already persisted from its one live decrypt.
+        // Re-entry / restart after the ping was seen: the row is READ (the
+        // durable consume record stamped server-side by markConversationRead)
+        // and a decrypted PING (empty plaintext) is persisted from its one
+        // live decrypt. Must restore silently without touching Signal.
         provider.onMessageHistory({
           'conversationId': 10,
           'messages': [
@@ -635,6 +638,7 @@ void main() {
               createdAt: '2026-01-01T00:00:08.000Z',
               messageType: 'PING',
               includeTtl: false,
+              deliveryStatus: 'READ',
             ),
           ],
         });
@@ -653,7 +657,66 @@ void main() {
         expect(
           provider.showPingEffect,
           isFalse,
-          reason: 'restoring a persisted ping must not re-fire the effect',
+          reason: 'restoring a seen (READ) ping must not re-fire the effect',
+        );
+      },
+    );
+
+    test(
+      'history restore of an UNSEEN persisted PING fires once without re-decrypt',
+      () async {
+        final enc = _PersistedPingEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        // "Arrived while away, then process death": the live decrypt ran in a
+        // previous process (record persisted) but the transient
+        // _showPingEffect died with it and the user never opened the chat, so
+        // the row is still un-READ. The restore must resurrect the pending
+        // nudge exactly once — still with zero Signal calls.
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 8,
+              createdAt: '2026-01-01T00:00:08.000Z',
+              messageType: 'PING',
+              includeTtl: false,
+            ),
+          ],
+        });
+        for (var i = 0; i < 30; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+
+        expect(enc.decryptCalls, 0);
+        expect(
+          provider.showPingEffect,
+          isTrue,
+          reason: 'an unseen persisted ping must play once when the chat opens',
+        );
+
+        // Same-session second history pass (resync) must not fire again.
+        provider.clearPingEffect();
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 8,
+              createdAt: '2026-01-01T00:00:08.000Z',
+              messageType: 'PING',
+              includeTtl: false,
+            ),
+          ],
+        });
+        for (var i = 0; i < 30; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+        expect(enc.decryptCalls, 0);
+        expect(
+          provider.showPingEffect,
+          isFalse,
+          reason: 'the per-id guard must dedup a resync of the same ping',
         );
       },
     );
