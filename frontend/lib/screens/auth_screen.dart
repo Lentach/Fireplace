@@ -56,15 +56,15 @@ class _AuthScreenState extends State<AuthScreen> {
 
   @override
   Widget build(BuildContext context) {
-    // The auth screen is the app's front door and ALWAYS wears the cosmic
-    // world (owner call 2026-07-18) — the same starfield + palette a visitor
-    // just scrolled through on the landing black-hole journey — regardless of
-    // the saved chat theme. Forcing the real `themeDataCosmic` here means the
-    // card (GlassTheme.cosmic), inputs/button (accentCosmic), and the animated
-    // starfield (CosmicBackdrop, rendered by ChatBackgroundPattern) all come
-    // from the ONE cosmic theme — no parallel login-only palette.
+    // The auth screen is the app's front door and ALWAYS wears Hot Stone
+    // (owner call 2026-07-28, superseding the 2026-07-18 always-Cosmic
+    // ruling) — the warm-paper + ember world that is now the app default —
+    // regardless of the saved chat theme. Forcing the real `themeDataLight`
+    // here means the card (GlassTheme.light), inputs/button (ember primary),
+    // and the plain warm-paper backdrop all come from the ONE light theme —
+    // no parallel login-only palette.
     return Theme(
-      data: RpgTheme.themeDataCosmic,
+      data: RpgTheme.themeDataLight,
       child: Builder(builder: _buildBody),
     );
   }
@@ -74,16 +74,17 @@ class _AuthScreenState extends State<AuthScreen> {
     final l10n = AppLocalizations.of(context);
     final scheme = Theme.of(context).colorScheme;
     final fc = FireplaceColors.of(context);
-    // Wordmark accent = the app's cosmic-chrome blue (settings icons/toggles),
-    // the exact tone the owner picked from the variant board — a hair lighter
-    // than colorScheme.primary (#8FD8FF).
+    // Wordmark accent = the light glass chrome ember (GlassTheme.light
+    // .onGlassAccent, deep ember #A03D0C) — reads as the brand flame against
+    // the warm-paper background while FIRE stays warm near-black.
     final accent = GlassTheme.of(context).onGlassAccent;
 
     return Scaffold(
       body: ChatBackgroundPattern(
-        // The front door always shows the Cosmic world. Chat wallpaper is an
-        // authenticated per-user choice and must not leak into this screen.
-        layer: ChatBackgroundLayer.starfield,
+        // The front door always shows the plain Hot Stone paper. Chat
+        // wallpaper is an authenticated per-user choice and must not leak
+        // into this screen.
+        layer: ChatBackgroundLayer.plain,
         child: SafeArea(
           child: Center(
             child: SingleChildScrollView(
@@ -93,8 +94,8 @@ class _AuthScreenState extends State<AuthScreen> {
                 child: Column(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    // The landing wordmark: Archivo 900, FIRE white + PLACE in
-                    // the cosmic-chrome accent (owner pick F6 + N split).
+                    // The landing wordmark: Archivo 900, FIRE in warm
+                    // near-black (onSurface) + PLACE in the deep ember accent.
                     Text.rich(
                       TextSpan(
                         text: 'FIRE',
@@ -188,7 +189,9 @@ class _AuthScreenState extends State<AuthScreen> {
                                 fontSize: 13,
                                 color: authProvider.isError
                                     ? scheme.error
-                                    : RpgTheme.successColor,
+                                    // Dark-only neon green is illegible on
+                                    // paper; this door is always light.
+                                    : RpgTheme.successColorLight,
                               ),
                             ),
                           ],

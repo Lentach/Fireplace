@@ -26,7 +26,7 @@ String webDocumentBackgroundCss(Color color) {
 /// change (see the banned list in
 /// docs/review/ios-composer-keyboard-flash-handoff.md §3).
 ///
-/// `web/index.html` ships the default dark value (`#17181A`) for first paint;
-/// this keeps it in sync when the user switches themes. No-op off web.
+/// `web/index.html` ships the default Hot Stone value (`#F7F4F0`) for first
+/// paint; this keeps it in sync when the user switches themes. No-op off web.
 void syncWebDocumentBackground(Color color) =>
     impl.syncWebDocumentBackground(color);
