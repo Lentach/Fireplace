@@ -26,7 +26,7 @@ Subagent split: fingerprints and canary ran as parallel slices with exclusive fi
 
 - Backend `npm test`: **554 tests / 47 suites green** (was 553). Frontend `flutter analyze` clean; `flutter test`: **1042 passed / 5 skipped** (was 985 pre-merge-reconcile). Both count verifiers OK locally.
 - Key regression pinned: with a stale clock the tick emits `getServerTime` instead of silently no-opping (the failure mode that would have made a naive timer useless in production).
-- **NOT verified this session:** e2e-wire harness (no local backend container up); CI's `e2e-wire` job must be green before merge. New wire pair is additive; both sides unit-tested against the documented shape.
+- **NOT verified locally that session:** e2e-wire harness (no local backend container up); CI's `e2e-wire` job must be green before merge. New wire pair is additive; both sides unit-tested against the documented shape.
 
 ## Notes for next session
 
