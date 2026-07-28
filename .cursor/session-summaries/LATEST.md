@@ -7,7 +7,7 @@
 - **Bug 5:** Anti-Quantum Note previews show the l10n label on every surface (tile, reply bar, pinned banner, in-bubble quote via `reply_preview_helper`). **Link-preview consumption CLEARED** three ways (client excludes+strips, backend skips encrypted, GET /note/:token is a SELECT — burn is POST reveal only). No wire change.
 - **Bug 1 root cause:** `_restoreUserFromAccessJwt` clobbered `profilePhotos`/`about` on EVERY silent refresh (even during boot hydrate) → self card "1/3" while others saw 3. Fix: same-account restore `copyWith`s the hydrated user. Swipe-dead gallery was collateral (tap-zone nav gated on photos>1), self-heals.
 - **Bug 3 root cause:** ping plaintext '' → lossy persisted-restore kept `[encrypted]` → forced re-decrypt every chat entry → effect re-fired forever. Fix: persisted PING restores as decrypted (consume-once by construction) + transient id dedup. Persisted "played-ids cache" band-aid named and rejected. **Bug 3e** (separate): overlay perf — RepaintBoundary + Fade/ScaleTransition over static child.
-- Tests: A **925+4** green, B **907+4** green, fail-before proven by stashing lib per bug. **⚠ Both PRs edit the CLAUDE.md §3 count — after BOTH merge set it to 929 and rerun the verifier.**
+- Tests: A **925+4** green, B **908+4** green, fail-before proven by stashing lib per bug. **⚠ Both PRs edit the CLAUDE.md §3 count — after BOTH merge set it to 930 and rerun the verifier.**
 - Codex-backed default `task` subagents are usage-walled; `sonic`/`scout` (Anthropic) work — route delegation there.
 - ➡ Detail: **`2026-07-28-session-bugfix-batch.md`**; diagnosis evidence: `.planning/bugfix-batch-2026-07/` (local-only).
 
