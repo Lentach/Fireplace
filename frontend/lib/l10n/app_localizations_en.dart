@@ -169,7 +169,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deleteAllLocalHistoryDescription =>
-      'Permanently deletes all messages stored on this device, including downloaded voice notes. It does not delete your account, messages on the other person\'s device, or your encryption keys and sessions. Deleted messages cannot be recovered or restored from the server.';
+      'Permanently deletes all messages stored on this device, including downloaded voice notes. It does not delete your account, messages on the other person\'s device, or your encryption keys and sessions. This cannot be undone: the server only ever held ciphertext it cannot read, so there is no copy to restore from.';
 
   @override
   String get deleteAllLocalHistoryButton =>
@@ -181,7 +181,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get deleteAllLocalHistoryDialogBody =>
-      'This permanently deletes every message and downloaded voice note stored on this device. They cannot be recovered or restored from the server; the server keeps only ciphertext. Your account, encryption keys, and sessions are not affected.';
+      'This permanently deletes every message and downloaded voice note stored on this device. It cannot be undone — the server only ever held ciphertext it cannot read, so there is no copy to restore from. Your account, encryption keys, and sessions are not affected.';
 
   @override
   String get deleteAllLocalHistoryConfirm => 'Delete permanently';

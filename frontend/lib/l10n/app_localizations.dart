@@ -395,7 +395,7 @@ abstract class AppLocalizations {
   /// No description provided for @deleteAllLocalHistoryDescription.
   ///
   /// In pl, this message translates to:
-  /// **'Trwale usuwa z tego urządzenia wszystkie zapisane wiadomości, w tym pobrane notatki głosowe. Nie usuwa konta, wiadomości z urządzenia drugiej osoby ani kluczy i sesji szyfrowania. Usuniętych wiadomości nie można odzyskać ani przywrócić z serwera.'**
+  /// **'Trwale usuwa z tego urządzenia wszystkie zapisane wiadomości, w tym pobrane notatki głosowe. Nie usuwa konta, wiadomości z urządzenia drugiej osoby ani kluczy i sesji szyfrowania. Tej operacji nie można cofnąć: serwer przechowywał wyłącznie zaszyfrowane dane, których nie potrafi odczytać, więc nie ma kopii do przywrócenia.'**
   String get deleteAllLocalHistoryDescription;
 
   /// No description provided for @deleteAllLocalHistoryButton.
@@ -413,7 +413,7 @@ abstract class AppLocalizations {
   /// No description provided for @deleteAllLocalHistoryDialogBody.
   ///
   /// In pl, this message translates to:
-  /// **'Ta operacja trwale usuwa z tego urządzenia wszystkie wiadomości i pobrane notatki głosowe. Nie można ich odzyskać ani przywrócić z serwera, ponieważ serwer przechowuje tylko zaszyfrowane dane. Twoje konto, klucze i sesje szyfrowania pozostaną bez zmian.'**
+  /// **'Ta operacja trwale usuwa z tego urządzenia wszystkie wiadomości i pobrane notatki głosowe. Nie można jej cofnąć — serwer przechowywał wyłącznie zaszyfrowane dane, których nie potrafi odczytać, więc nie ma kopii do przywrócenia. Twoje konto, klucze i sesje szyfrowania pozostaną bez zmian.'**
   String get deleteAllLocalHistoryDialogBody;
 
   /// No description provided for @deleteAllLocalHistoryConfirm.

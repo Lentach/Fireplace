@@ -531,6 +531,14 @@ class EncryptionProvider extends ChangeNotifier {
         // Fresh session: load keys from storage (or generate on first install).
         await _encryptionService.initialize(userId);
         _identityIncomplete = false;
+        // Load the retired-id set BEFORE flipping the ready flag. This is the
+        // only point that provably precedes any decrypt attempt: decrypting
+        // requires E2E to be ready, so nothing can start while this await is
+        // outstanding. Setting `_e2eInitialized = true` first would reopen the
+        // window — the await yields with the flag already true and the set
+        // still empty — and a decrypt that wins that race persists a permanent
+        // "[Decryption failed]" for a row the app deliberately purged.
+        await loadRetiredIds();
         _e2eInitialized = true;
         debugPrint('[E2E] Encryption service initialized');
         _e2eFlowLog('E2E_INIT_DONE', {
@@ -749,6 +757,7 @@ class EncryptionProvider extends ChangeNotifier {
     if (!isReconnect) {
       _e2eInitialized = false;
       _decryptedContentCache.clear();
+      _retiredIds.clear();
       _forceSessionRebuild.clear();
       _generatingMoreKeys = false;
       _currentUserId = null;
@@ -778,6 +787,7 @@ class EncryptionProvider extends ChangeNotifier {
     _error = null;
     _currentUserId = null;
     _decryptedContentCache.clear();
+    _retiredIds.clear();
     _forceSessionRebuild.clear();
     _cancelPendingFetches();
     notifyListeners();

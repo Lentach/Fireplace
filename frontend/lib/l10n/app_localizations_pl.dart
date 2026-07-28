@@ -169,7 +169,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get deleteAllLocalHistoryDescription =>
-      'Trwale usuwa z tego urządzenia wszystkie zapisane wiadomości, w tym pobrane notatki głosowe. Nie usuwa konta, wiadomości z urządzenia drugiej osoby ani kluczy i sesji szyfrowania. Usuniętych wiadomości nie można odzyskać ani przywrócić z serwera.';
+      'Trwale usuwa z tego urządzenia wszystkie zapisane wiadomości, w tym pobrane notatki głosowe. Nie usuwa konta, wiadomości z urządzenia drugiej osoby ani kluczy i sesji szyfrowania. Tej operacji nie można cofnąć: serwer przechowywał wyłącznie zaszyfrowane dane, których nie potrafi odczytać, więc nie ma kopii do przywrócenia.';
 
   @override
   String get deleteAllLocalHistoryButton =>
@@ -181,7 +181,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get deleteAllLocalHistoryDialogBody =>
-      'Ta operacja trwale usuwa z tego urządzenia wszystkie wiadomości i pobrane notatki głosowe. Nie można ich odzyskać ani przywrócić z serwera, ponieważ serwer przechowuje tylko zaszyfrowane dane. Twoje konto, klucze i sesje szyfrowania pozostaną bez zmian.';
+      'Ta operacja trwale usuwa z tego urządzenia wszystkie wiadomości i pobrane notatki głosowe. Nie można jej cofnąć — serwer przechowywał wyłącznie zaszyfrowane dane, których nie potrafi odczytać, więc nie ma kopii do przywrócenia. Twoje konto, klucze i sesje szyfrowania pozostaną bez zmian.';
 
   @override
   String get deleteAllLocalHistoryConfirm => 'Usuń trwale';

@@ -99,7 +99,7 @@ Non-negotiable, because each one is silent or irreversible:
 - Risky deploys get a staging dress rehearsal first; the canonical trigger list lives in the runbook ("Staging dress rehearsal") — do not restate it here, or the two copies drift. Skip rehearsal for UI work.
 - Raw SQL must quote camelCase columns: `"deliveryStatus"`, `"createdAt"`. Casing is per entity — check, never guess.
 - Backups (`./backup-db.sh`, `./setup-backup-cron.sh`, `./restore-db.sh`) are in the runbook. Dumps hold ciphertext, public keys, usernames/contact graph and password hashes — they cannot decrypt messages but are sensitive.
-- **E2E invariant: the server stores Signal ciphertext and metadata, NEVER device private keys.** Device keys live in web localStorage / mobile secure storage. Clearing site data, uninstalling the PWA, or deleting the account destroys them permanently.
+- **E2E invariant: the server stores Signal ciphertext and metadata, NEVER device private keys.** Device keys live in web localStorage / mobile secure storage. What actually destroys them: clearing site data, a browser-profile reset, iOS storage eviction, or uninstalling the **mobile** app. **Uninstalling the PWA generally does NOT** — it removes the shortcut, not the origin's storage, and `navigator.storage.persist()` (`main.dart`) asks the browser to exempt that origin from eviction. Deleting the account does not wipe local keys either; it only makes them useless. **Never tell a user to uninstall or clear site data as a fix** — that is the action that loses their history, and the previous wording here pointed straight at it (#105).
 
 ## 7. Shared wire contracts
 

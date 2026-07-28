@@ -283,12 +283,18 @@ class ConnectionProvider extends ChangeNotifier {
     });
   }
 
-  /// Retired ids, then the purge backlog, then the expiry/retention sweep.
+  /// Refresh the retired ids, drain the purge backlog, then sweep.
   ///
-  /// Order matters:
-  ///   1. retired ids first, so a history pass can never try to decrypt a row
-  ///      whose plaintext retention already destroyed — that would surface as
-  ///      "[Decryption failed]" for something the app did deliberately;
+  /// This runs UNAWAITED alongside the initial fetches, so it does NOT order
+  /// itself against the first history pass — do not read the sequence below as
+  /// that guarantee. The load that actually precedes every decrypt is the
+  /// awaited one in `EncryptionProvider.initializeE2E`, which completes before
+  /// the ready flag flips; decrypting requires E2E to be ready, so by then the
+  /// set is populated. The call here is a cross-tab REFRESH: another
+  /// same-origin engine may have retired ids since.
+  ///
+  /// Order within this method still matters:
+  ///   1. refresh retired ids before the sweep can add more of them;
   ///   2. the backlog next, so a delete interrupted by a tab close or a refused
   ///      write finishes now instead of leaving plaintext behind for good;
   ///   3. the sweep last, once the clock is known fresh.
