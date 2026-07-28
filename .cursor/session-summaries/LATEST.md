@@ -9,16 +9,22 @@
 4. **Audit verdict: SAFE WITH CAVEATS, no CRITICAL.** Both lock layers hold on all four session mutations, leaf-level (no deadlock), fail-closed Web Locks, monotonic plaintext, exact-ciphertext replay, server structurally cannot hold private keys, push is content-free, `editMessage` blind and gated server-side, deletes really delete.
 
 ## Verification
-- analyze **0 issues**; `flutter test` **909 passed / 4 skipped**; count verifier OK.
-- **Both behaviours falsified separately** (disable pre-paint hydration → placeholder test red; ignore the batch → pass-level test red at 30 reads vs 0). The read-count test alone did NOT discriminate, which is why the pass-level one exists.
-- ⚠ **Unit tests + synthetic probe only — NOT yet exercised in a real long-history PWA chat.** End-to-end confirmation (open a real chat: no placeholder frame, no jank) is outstanding.
+- analyze **0 issues**; `flutter test` **931 passed / 5 skipped**; count verifier OK.
+- **Every fix falsified separately.** Chat entry: disable pre-paint hydration → placeholder test red; ignore the batch → pass-level test red at 30 reads vs 0 (the first read-count test alone did NOT discriminate, which is why the pass-level one exists). Prekey lock ships a falsification case asserting the unserialized version still collides. Session-lock runner proven to fail both ways before being trusted.
+- ⚠ **Unit tests + synthetic probes only — NOT yet exercised in a real long-history PWA chat.** End-to-end confirmation (open a real chat: no placeholder frame, no jank) is outstanding.
+
+## Then: four of five MEDIUM audit findings closed (`98d26bb`)
+- **Identity can no longer silently regenerate.** `identity_key_pair` + `registration_id` were two independent keys; losing exactly ONE reported a fresh install and minted a new identity, destroying all history. Now one atomic `identity_record_v1`, legacy pair still READ as fallback (the whole installed base has only that). Partial state throws `E2eIdentityIncompleteException` and touches nothing; the residue probe biases toward FRESH INSTALL when `readAll` fails — bricking a user with nothing to lose is not a safety property. Escape hatch is user-consented: `IdentityDamagedBanner` → confirm → regenerate.
+- **Peer re-key is surfaced** (`PeerIdentityChangedBanner`), still TOFU. It runs per message, so trusted keys are memoised and the write is skipped when unchanged — cheaper than before.
+- **Prekey generation is origin-locked** (`fireplace-e2e-prekeys-<uid>`, its own name).
+- **The Web Lock is finally verified.** `session_cross_context_lock_web_test.dart` opened `if (!kIsWeb) return;` — a no-op that **reported as PASSED** while asserting nothing. Now an honest skip plus `node scripts/verify-session-lock-probe.mjs` driving real `navigator.locks` in headless Chrome as CI job `session-lock`.
 
 ## Notes for next session
-- **Highest-value open bug (MED): identity can silently regenerate.** `identity_key_pair` and `registration_id` are two independent keys; losing exactly ONE makes `loadFromStorage()` false → new identity → all history with every peer permanently undecryptable. A throwing read is correctly fail-safe; only partial loss bites.
-- **The Web Lock layer is not actually tested.** `session_cross_context_lock_web_test.dart:11` starts `if (!kIsWeb) return;` — a no-op that **reports as passing**; the race probes inject a fake lock. Only the manual browser probe touches real `navigator.locks`, and CI never runs it.
-- Other caveats: unserialized cross-engine OTP generation; decrypted plaintext unencrypted at rest on **mobile** too; silent TOFU on peer re-key; `GET /media/msgs/:filename` has no participant check (E2E blobs, no plaintext).
+- **NOT deployed, NOT version-bumped** — `pubspec.yaml` stays 0.0.132, branch `audit/e2e-safety` does not auto-deploy. Bump belongs to the release commit.
+- **M4 left undone on purpose:** decrypted plaintext is unencrypted at rest on **mobile** too. Migrating up to 2000 records into Keychain/Keystore is slow and a data-loss hazard of exactly the class this branch removes. Proportionate design is a cache encrypted under a secure-storage key, scoped separately.
+- Remaining LOW: `GET /media/msgs/:filename` has no participant check (E2E blobs, no plaintext); deadlock and cross-peer-parallelism invariants still unpinned.
 - Do **not** claim a synchronous warm-entry path — own rows always take the disk read. Honest claim: "one batched read instead of N reloads".
-- ➡ Detail: `2026-07-27-session-e2e-audit-and-chat-entry-cost.md`; runbook **Step 3D**; `frontend/CLAUDE.md` §5 (two new bullets).
+- ➡ Detail: `2026-07-27-session-e2e-audit-and-chat-entry-cost.md`; runbook **Steps 3D/3E/3F**; `frontend/CLAUDE.md` §5.
 
 ---
 ### Prior latest ↓

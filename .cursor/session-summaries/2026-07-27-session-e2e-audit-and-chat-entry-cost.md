@@ -113,6 +113,52 @@ Open caveats, highest first — **none fixed in this branch**:
 - Cost probe re-run after the change is unnecessary: the "one reload per pass"
   column above IS the new access pattern (two such passes per entry, ~3-7 ms).
 
+## Then: all four fixable MEDIUM findings closed (`98d26bb`)
+
+- **M1 identity can no longer silently regenerate.** One atomic
+  `identity_record_v1`; the legacy two-key pair is still READ (the whole
+  installed base has only that) and mirrored on write. `loadFromStorage` →
+  `loaded`/`absent`/`partial`; "no identity but sessions survive" is also
+  partial. Throws `E2eIdentityIncompleteException`, touches nothing. The
+  residue probe biases toward FRESH INSTALL when `readAll` itself fails —
+  bricking a user with nothing to lose is not a safety property.
+- **Escape hatch, because fail-closed without one is just a different brick.**
+  Typed catch → `identityIncomplete` → `IdentityDamagedBanner` → confirm →
+  `regenerateIdentityAfterConfirmedLoss`. In-flight guard set synchronously
+  before the await (100 prekeys is not instant; two taps would race two
+  identity writes). Consent copy states the real loss: undecrypted ciphertext
+  is gone, the plaintext cache survives.
+- **M5 peer re-key is surfaced.** Still TOFU, but `isTrustedIdentity` compares
+  and reports via `PeerIdentityChangedBanner`. It runs per message, so the
+  store memoises trusted keys and now SKIPS the write when unchanged —
+  cheaper than the unconditional write it replaced.
+- **M3 prekey generation is origin-locked** (`fireplace-e2e-prekeys-<uid>`,
+  its own name — it touches no SessionRecord).
+- **M2 the Web Lock is finally verified.** The old test opened
+  `if (!kIsWeb) return;` and reported as PASSED while asserting nothing. Now an
+  honest skip + `scripts/verify-session-lock-probe.mjs` driving real
+  `navigator.locks` in headless Chrome as CI job `session-lock`.
+
+### Verification of the MED work
+- analyze 0 issues; **931 passed / 5 skipped**; count verifier OK.
+- Prekey lock has a FALSIFICATION test asserting the unserialized version still
+  collides — it fails if the two-engine test ever stops proving anything.
+- Session-lock runner falsified BOTH ways before being trusted: breaking the
+  lock gave `SESSION_LOCK_FAIL: same-name lock did not queue` + exit 1; a page
+  that never reports gave the hang message + exit 1. The probe now sets
+  `SESSION_LOCK_FAIL` on a thrown assertion, so a real regression can never be
+  misread as a harness glitch.
+- Banner off-states are tested first: an always-on "keys damaged" bar with a
+  destructive button would be worse than not shipping it.
+
+### M4 NOT done, deliberately
+Decrypted plaintext sits in SharedPreferences on mobile too, while keys are
+hardware-backed. "Fixing" it means migrating up to 2000 records per account
+into Keychain/Keystore — slow, and a data-loss hazard of exactly the class this
+branch exists to remove. Not worth doing blind. If it matters, the proportionate
+design is a cache encrypted with a key held in secure storage, scoped and
+measured on its own.
+
 ## Notes for next session
 - **NOT deployed and NOT version-bumped.** `pubspec.yaml` stays 0.0.132; the
   bump belongs to the release commit (the 0.0.131 run recorded a procedure
