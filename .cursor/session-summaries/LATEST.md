@@ -1,5 +1,15 @@
 # Latest session summary
 
+**Date:** 2026-07-28 — **`audit/e2e-safety` hardening round 2 — NOT merged, NOT deployed, no version bump** (held for owner OK; deploy is BOTH surfaces, backend wire change). Worktree `fireplace-e2e-audit`. Backend **554/47 suites**, Flutter **1042 + 5 skipped**, analyze clean, both count verifiers OK. e2e-wire NOT run locally (no backend container) — CI must be green before merge.
+
+- **Review verdict on the branch's deletion work: delete purges ARE instant** (message/conversation/unfriend/block/clear-history — purge fires on the socket event, commit-verified, durable at-least-once backlog). **Expiry was NOT:** the sweep's only caller was socketReady and `ServerClock`'s only feeder was socketReady (30-min extrapolation cap), so a connected PWA never destroyed expired plaintext until reconnect. Closed with a new wire pair `getServerTime` → `serverTime` (root §7) + a 1-min sweep timer in `ConnectionProvider`: tick sweeps on a confirmable clock, else requests time (5-min unanswered floor, fail-closed vs older backends). Floor reads `clock.now()` — package:clock promoted to direct dep BECAUSE fake_async patches it and `DateTime.now()` made the floor untestable.
+- **Peer fingerprints:** the identity-changed banner's Verify action opens a dialog with the STORED trusted peer key fingerprint (not a fresh server bundle) + own, one shared formatter. TOFU still auto-accepts; the warning is now verifiable out-of-band.
+- **B2 phase 0 (#105):** `ContentKeyCanary` (web-only, seals NOTHING) measures flutter_secure_storage/IndexedDB durability with a localStorage shadow; `CONTENT_KEY_CANARY_LOST` in field diags = B2 MUST NOT proceed on that storage. Watch ~2 weeks post-ship.
+- Context for the review: on web ALL Signal key material + decrypted history is plaintext base64 in localStorage (`sig_*`, `e2e_*_decrypt_*`) — deliberate durability tradeoff (`signal_stores.dart:11`); E2E vs the server holds regardless, B2 sealing is the gated mitigation.
+- ➡ Detail: **`2026-07-28-session-instant-deletion-hardening.md`**; prior branch round: `2026-07-28-session-local-plaintext-purge.md`.
+
+---
+### Prior latest ↓
 **Date:** 2026-07-28 — **RELEASED 0.0.133 / `b6fa385`, frontend only, smoke 5/5.** Five-bug batch: PR **#103** `fix/composer-and-preview-quickwins` (bugs 2/4/5) and PR **#104** `fix/avatar-count-and-ping` (bugs 1/3/3e), both merged with owner approval after independent review + hardening. Backend untouched — `/version` stays `0.0.132/05fc423` BY DESIGN. Worktrees removed after merge.
 
 - **Bug 2 restored the composer emoji button** — removed deliberately in `6131b15` (0.0.115) as a "keyboard duplicate"; premise wrong, owner ruled restore. Full pin contract back (`composerBottomPanelPinned` + viewport bottom-pin); `frontend/CLAUDE.md` §7 ban line superseded. **iOS-style emotes declined: Apple Color Emoji is not redistributable**; iOS already renders Apple glyphs via fallback.
@@ -67,16 +77,3 @@
 - **RE-DEFERRED by the owner: the honeycomb `ListView` rewrite.** Build+layout is still O(N) (`SingleChildScrollView` + one full-height `Stack`; only visual subtrees are windowed). A throwaway probe measured 55.4/66.5/72.0/78.1/**135.5** ms at 20/50/100/200/400 — DIRECTIONAL ONLY, not comparable to the 2026-07-24 table. The cliff bites above ~200 contacts, which is not real yet. Do not record as done.
 - ➡ `2026-07-27-session-backlog-sweep.md`, `2026-07-27-session-release-0.0.130.md`, `2026-07-27-session-nav-motion-and-glyphs.md`.
 
----
-### Prior latest ↓
-
-**Date:** 2026-07-25 — `feat/contact-network`: the whole visual pass. Contacts **Honeycomb Core** (header search, long-press → chat, People board with inbound port + add cell), **Chats list redesign** (hex avatars, unread as a lit row edge, live/normal/cold row weights), **Settings "local node console"**, and a rebuilt console glyph set + all three Settings sub-screens. Owner drove every step from renders and from his phone. Ephemeral branch deploy `85a04dc`, still 0.0.128 (branch deploys never bump semver), smoke 5/5.
-
-- **`LocalNodeCore` is shared by Contacts and Settings on purpose** — same widget because it is the same entity (you). It stays a CIRCLE among hexes deliberately; that shape difference marks the local node.
-- **Perf traps paid, keep them paid:** route fill REPAINTS, it no longer rebuilds (`AnimatedBuilder` wraps only the `CustomPaint`, not the `Stack` — it was ≈6k subtree builds per tap at N=100). Avatars arm lazily per row via `ValueNotifier` + `ValueListenableBuilder` around each avatar LEAF, never `setState` on the field. The high-water mark resets in `didUpdateWidget` compared **by `id`** (`UserModel` has no `==`).
-- **Two things were built, shown, and DELETED at the owner's request — do NOT rebuild:** the "power-on scan" entrance, and the local node BUS (rail down the gutter). Both were rendered, tested and deployed before he rejected them on device.
-- **Renders flatter what his hand rejects.** Render to pick a DIRECTION; deploy to get a VERDICT.
-- `MainShell`'s `IndexedStack` wraps children in `Visibility(maintainAnimation: true)`, so an offstage tab's animations run at app boot — the honeycomb's entrance stagger has never actually been seen. Status quo, and FINE.
-- **NEVER run `dart format lib/`** — it reformatted 70 untouched files. Format only files you edited.
-- **Ask before opening the browser tool** — it is not headless and pops a window in front of the owner.
-- ➡ Detail: `2026-07-25-session-console-glyphs.md` and `2026-07-25-session-settings-console.md`. The 2026-07-25 handoffs were DELETED on 2026-07-27 (they were banner-marked SUPERSEDED and one nearly got followed); `2026-07-26-HANDOFF-START-HERE.md` survives as historical context only — PR #98 shipped what it gated.
