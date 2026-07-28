@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
 import '../utils/message_expiry.dart' show kNeverReadRetentionSeconds;
+import 'plaintext_record_codec.dart';
 import 'encryption/signal_stores.dart';
 import 'encryption/session_cross_context_lock.dart';
 
@@ -760,11 +761,16 @@ class EncryptionService {
   /// they reveal to someone already holding the device (which conversation,
   /// roughly when) is far less than the message text, which is the part that
   /// gets protected at rest.
-  static const String _metaConversationId = '_cid';
-  static const String _metaSavedAt = '_savedAt';
-  static const String _metaCreatedAt = '_createdAt';
-  static const String _metaExpiresAt = '_expiresAt';
-  static const String _metaDisappearAfter = '_disappearAfter';
+  /// Spelled once, in [PlaintextRecordCodec]. These aliases exist so the sweeps
+  /// below stay readable; a second literal copy here is exactly how the codec
+  /// and the scans would drift apart and silently orphan records.
+  static const String _metaConversationId =
+      PlaintextRecordCodec.conversationIdKey;
+  static const String _metaSavedAt = PlaintextRecordCodec.savedAtKey;
+  static const String _metaCreatedAt = PlaintextRecordCodec.createdAtKey;
+  static const String _metaExpiresAt = PlaintextRecordCodec.expiresAtKey;
+  static const String _metaDisappearAfter =
+      PlaintextRecordCodec.disappearAfterKey;
 
   /// Persist decrypted message content to survive app restart.
   ///
