@@ -1,5 +1,17 @@
 # Latest session summary
 
+**Date:** 2026-07-28 — **invitation rework: implementation plan locked.** Worktree `fireplace-wt-invitation`, branch `feat/invitation-rework`. Still zero application source changed; this session converted the approved design into an executable, source-verified plan. ➡ `docs/plans/2026-07-28-invitation-implementation-plan.md`, detail `2026-07-28-invitation-implementation-plan.md`.
+
+- **Accepted result contract:** `friendRequestAccepted` gains `conversationId: int|null` + `chatReady: bool`, built at the emit site (the mapper is shared by five other events). **Flat, not nested** — the backend deploys ahead of the web bundle, and a nested payload would throw in `FriendRequestModel.fromJson` on every acceptance for every already-loaded PWA client.
+- **Emit slot is pinned by two constraints:** after `conversationsList` (so `Open chat` resolves locally and the no-refetch rule in `frontend/CLAUDE.md` §6 survives) and **before** `friendRequestsList`/`sentRequestsList` (those no longer contain the request; landing first they unmount the acting row and the transform becomes a flicker).
+- **Failures get scoped:** new `friendRequestFailed {action, requestId, recipientId, reason}` replaces the generic `error` in the three friend-request handlers. There is **no socket-ack path and no exception filter anywhere in `backend/src`** — verified — so a new event on the `editMessageFailed` precedent is the only honest option.
+- **`openConversation` loses both acceptance emitters** (`chat-friend-request.service.ts:162`, `:401`); `handleStartConversation` becomes its only producer. Partial-success retry is a **correlated** `ensureInvitationChat`/`invitationChatReady` pair — a client-side "swallow the next `openConversation`" flag was designed and rejected as uncorrelated (it would eat a concurrent explicit navigation).
+- **Every confirmation is an atomic provider swap**, because the backend sends each outcome as several events: `onFriendRequestSent` clears the flag *and* inserts the sent row; `onFriendRequestAccepted` also clears any `_sendActions` entry (reciprocal auto-accept never emits `friendRequestSent`, so the caller's spinner would hang) and removes the id from **both** pending lists; `onFriendRequestRejected` is the only thing that retires a declined row. `InvitationOutcome` carries `direction` so the transformed row stays in its own section.
+- **Still binding from the entry this replaced:** never run `dart format lib/` (it reformatted 70 untouched files — format only what you edited), and **ask before opening the browser tool** — it is not headless and pops a window in front of the owner.
+
+---
+### Prior latest ↓
+
 **Date:** 2026-07-28 — **invitation rework research + UX proposal in isolated worktree.** No application source changed.
 
 - Current defect is proven: outbound requests already exist in `sentRequestsList`/`FriendsProvider`, but `AddOrInvitationsScreen` shows only inbound requests and pops after send. Accept and reciprocal auto-accept misuse `openConversation`, forcing the caller into chat; Accept also shows success before server confirmation.
@@ -63,18 +75,4 @@
 - **PROCEDURE EXCEPTION, recorded honestly:** the 0.0.131 bump was NOT the last branch commit (`280a802` bump → `c0fcae1` test). Deploys key off the MERGE commit and both surfaces report `0.0.131 / f4d3967`, so nothing in prod is inconsistent. **Do not "fix" the history.** Next time hold the bump until verification is done.
 - **RE-DEFERRED by the owner: the honeycomb `ListView` rewrite.** Build+layout is still O(N) (`SingleChildScrollView` + one full-height `Stack`; only visual subtrees are windowed). A throwaway probe measured 55.4/66.5/72.0/78.1/**135.5** ms at 20/50/100/200/400 — DIRECTIONAL ONLY, not comparable to the 2026-07-24 table. The cliff bites above ~200 contacts, which is not real yet. Do not record as done.
 - ➡ `2026-07-27-session-backlog-sweep.md`, `2026-07-27-session-release-0.0.130.md`, `2026-07-27-session-nav-motion-and-glyphs.md`.
-
----
-### Prior latest ↓
-
-**Date:** 2026-07-25 — `feat/contact-network`: the whole visual pass. Contacts **Honeycomb Core** (header search, long-press → chat, People board with inbound port + add cell), **Chats list redesign** (hex avatars, unread as a lit row edge, live/normal/cold row weights), **Settings "local node console"**, and a rebuilt console glyph set + all three Settings sub-screens. Owner drove every step from renders and from his phone. Ephemeral branch deploy `85a04dc`, still 0.0.128 (branch deploys never bump semver), smoke 5/5.
-
-- **`LocalNodeCore` is shared by Contacts and Settings on purpose** — same widget because it is the same entity (you). It stays a CIRCLE among hexes deliberately; that shape difference marks the local node.
-- **Perf traps paid, keep them paid:** route fill REPAINTS, it no longer rebuilds (`AnimatedBuilder` wraps only the `CustomPaint`, not the `Stack` — it was ≈6k subtree builds per tap at N=100). Avatars arm lazily per row via `ValueNotifier` + `ValueListenableBuilder` around each avatar LEAF, never `setState` on the field. The high-water mark resets in `didUpdateWidget` compared **by `id`** (`UserModel` has no `==`).
-- **Two things were built, shown, and DELETED at the owner's request — do NOT rebuild:** the "power-on scan" entrance, and the local node BUS (rail down the gutter). Both were rendered, tested and deployed before he rejected them on device.
-- **Renders flatter what his hand rejects.** Render to pick a DIRECTION; deploy to get a VERDICT.
-- `MainShell`'s `IndexedStack` wraps children in `Visibility(maintainAnimation: true)`, so an offstage tab's animations run at app boot — the honeycomb's entrance stagger has never actually been seen. Status quo, and FINE.
-- **NEVER run `dart format lib/`** — it reformatted 70 untouched files. Format only files you edited.
-- **Ask before opening the browser tool** — it is not headless and pops a window in front of the owner.
-- ➡ Detail: `2026-07-25-session-console-glyphs.md` and `2026-07-25-session-settings-console.md`. The 2026-07-25 handoffs were DELETED on 2026-07-27 (they were banner-marked SUPERSEDED and one nearly got followed); `2026-07-26-HANDOFF-START-HERE.md` survives as historical context only — PR #98 shipped what it gated.
 
