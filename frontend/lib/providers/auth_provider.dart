@@ -76,12 +76,30 @@ class AuthProvider extends ChangeNotifier {
   void _restoreUserFromAccessJwt(String accessJwt) {
     try {
       final payload = JwtDecoder.decode(accessJwt);
-      _currentUser = UserModel(
-        id: (payload['sub'] as num).toInt(),
-        username: payload['username'] as String,
-        tag: payload['tag'] as String? ?? '0000',
-        profilePictureUrl: _currentUser?.profilePictureUrl,
-      );
+      final id = (payload['sub'] as num).toInt();
+      final username = payload['username'] as String;
+      final tag = payload['tag'] as String? ?? '0000';
+      final existing = _currentUser;
+      if (existing != null && existing.id == id) {
+        // Same account (e.g. silent 15-min token refresh): keep the fully
+        // hydrated profile (profilePhotos, about, profilePictureUrl, ...) and
+        // only refresh the identity fields the JWT actually carries. Rebuilding
+        // from claims alone would collapse profilePhotos to [] and drop about.
+        _currentUser = existing.copyWith(
+          id: id,
+          username: username,
+          tag: tag,
+        );
+      } else {
+        // Cold start or account switch: no fully-hydrated prior profile to
+        // trust, so rebuild from claims (preserving prior behavior exactly).
+        _currentUser = UserModel(
+          id: id,
+          username: username,
+          tag: tag,
+          profilePictureUrl: existing?.profilePictureUrl,
+        );
+      }
     } catch (_) {}
   }
 
