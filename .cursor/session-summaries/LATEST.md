@@ -1,5 +1,17 @@
 # Latest session summary
 
+**Date:** 2026-07-28 — **invitation rework research + UX proposal in isolated worktree.** No application source changed.
+
+- Current defect is proven: outbound requests already exist in `sentRequestsList`/`FriendsProvider`, but `AddOrInvitationsScreen` shows only inbound requests and pops after send. Accept and reciprocal auto-accept misuse `openConversation`, forcing the caller into chat; Accept also shows success before server confirmation.
+- Recommended one `Invitations` relationship inbox: compact invite control, visible `Waiting for you` + `Sent`, authoritative row-level action states, and **Invitation accepted · Chat ready** with explicit **Open chat**. Never navigate from relationship state.
+- Wire decision: remove acceptance-driven `openConversation`; emit the accepted result with nullable `conversationId` to **both sender and accepter** after create/find attempt. Keep `openConversation` for explicit `startConversation` only; expose an honest retry state if friendship succeeds but chat setup fails.
+- Visual direction: shared floating glass utility chrome, opaque compact rows, Contacts hex identity language, primary Accept/quiet Decline, token-only colors, skeleton loading, reduce-motion-aware row transition, and unchanged instant-opaque chat entry.
+- Primary-source evidence: Signal, Discord, Session, Matrix/Element; Meta/Snapchat gaps stated rather than guessed. ➡ `2026-07-28-invitation-rework-research.md`, `docs/plans/2026-07-28-invitation-flow-research.md`, `docs/plans/2026-07-28-invitation-flow-rework.md`.
+
+---
+### Prior latest ↓
+
+
 **Date:** 2026-07-27 — **agent tooling audit + two credential rotations.** No app source touched (zero files under `frontend/lib`, `frontend/test`, `backend/src`, `backend/test`). 6 commits, CI green. Live unchanged at **0.0.132 / `05fc423`**.
 
 - **Two live secrets found and killed.** `CONTACT_INBOX_KEY` rotated on the VM (old → **404**, issue **#100 closed**). And a SECOND, previously unknown one: `CONTEXT7_API_KEY` was **tracked and pushed** in `.claude/settings.local.json` (from `fdd3aa2`, an unrelated feature commit) — confirmed live, now revoked and verified **401**. That file is untracked and gitignored by glob.
@@ -63,22 +75,4 @@
 - **NEVER run `dart format lib/`** — it reformatted 70 untouched files. Format only files you edited.
 - **Ask before opening the browser tool** — it is not headless and pops a window in front of the owner.
 - ➡ Detail: `2026-07-25-session-console-glyphs.md` and `2026-07-25-session-settings-console.md`. The 2026-07-25 handoffs were DELETED on 2026-07-27 (they were banner-marked SUPERSEDED and one nearly got followed); `2026-07-26-HANDOFF-START-HERE.md` survives as historical context only — PR #98 shipped what it gated.
-
----
-### Prior latest ↓
-
-**Date:** 2026-07-24 — Removed the top-of-screen "Update available — fully close and reopen the app." nudge on user request (annoying); shipped straight to `master` as frontend **0.0.128**.
-
-## What was done
-1. `frontend/lib/screens/main_shell.dart`: deleted the stale-bundle nudge (`_staleNudgeShown` flag + comment, the `kIsWeb` `initState` post-frame `_nudgeIfBundleStale` hook, the method, and the `services/update_check.dart` import). Kept `showTopSnackBar` (still used by the friend-accepted toast).
-2. Deleted the now-orphaned service: `services/update_check.dart` + `_stub` + `_web` (only the nudge called `isServedBundleNewer`).
-3. Removed the unused `updateAvailableCloseReopen` key from `app_en.arb`/`app_pl.arb`; `flutter gen-l10n` regenerated the getters out of `app_localizations*.dart`.
-4. Removed the resolved banner row from `docs/ISSUE-BOARD.md`. Bumped `pubspec.yaml` 0.0.127 → 0.0.128. `graphify update .`.
-
-## Verification
-- `flutter analyze lib/screens/main_shell.dart lib/l10n` → No issues found. `git grep` for the key/service/symbol across `frontend/lib` → no matches. Graph: 9218 nodes. Production post-deploy smoke pending below.
-
-## Notes for next session
-- Reverts PR #96's stale-bundle nudge only; the underlying stale-PWA reality is unchanged — users still must fully close + reopen after a deploy to activate a new service worker. Never uninstall / clear site data (wipes E2E keys).
-- Full: `2026-07-24-remove-stale-bundle-nudge.md`.
 
