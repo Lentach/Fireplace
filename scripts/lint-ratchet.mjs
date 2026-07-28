@@ -16,6 +16,14 @@
 //
 // `npm run lint` is `eslint --fix` — it REWRITES ~510 files instead of reporting. This
 // script never passes --fix. Use `npm run lint:check` for a plain human-readable report.
+//
+// PLATFORM DELTA — read before running --update.
+// The count is NOT identical across OSes: Windows reports 1320 errors where Linux CI
+// reports 1318 (two CRLF-sensitive prettier/prettier findings). The baseline is therefore
+// pinned to the HIGHER (Windows) number so neither platform fails spuriously — CI simply
+// reports an improvement. Do NOT "lower the floor" to the number CI prints; that makes
+// every local Windows run fail. Only run --update from Windows, or after a real reduction
+// that both platforms agree on.
 
 import { execFileSync } from "node:child_process";
 import { readFileSync, writeFileSync } from "node:fs";
