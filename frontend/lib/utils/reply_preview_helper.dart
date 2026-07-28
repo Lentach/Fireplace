@@ -1,4 +1,5 @@
 import '../l10n/app_localizations.dart';
+import 'anti_quantum_note_link.dart';
 import '../models/message_model.dart';
 import '../providers/encryption_provider.dart';
 
@@ -100,9 +101,11 @@ String replyPreviewForMessageModel(
   required String gifLabel,
   required String documentLabel,
   required String pingLabel,
+  String antiQuantumNoteLabel = 'Anti-Quantum Note',
 }) {
   final decrypted = _decryptedPreviewText(encryption, message.id);
   if (decrypted != null && decrypted.isNotEmpty) {
+    if (isAntiQuantumNoteUrl(decrypted)) return antiQuantumNoteLabel;
     return _truncatePreview(decrypted);
   }
 
@@ -128,6 +131,7 @@ String replyPreviewForMessageModel(
   }
 
   if (message.content.isNotEmpty) {
+    if (isAntiQuantumNoteUrl(message.content)) return antiQuantumNoteLabel;
     return _truncatePreview(message.content);
   }
   return typeLabel;
@@ -172,6 +176,7 @@ String replyPreviewForMessage(
       gifLabel: l10n.actionTileGif,
       documentLabel: l10n.attachmentOptionDocument,
       pingLabel: l10n.ping,
+      antiQuantumNoteLabel: l10n.antiQuantumNoteTitle,
     );
 
 /// Default English labels for provider paths without BuildContext.
@@ -182,6 +187,7 @@ const kReplyPreviewLabels = (
   gifLabel: 'GIF',
   documentLabel: 'Document',
   pingLabel: 'Ping',
+  antiQuantumNoteLabel: 'Anti-Quantum Note',
 );
 
 String replyDisplayContentForQuote(
@@ -207,6 +213,7 @@ String replyDisplayContentForQuote(
         decrypted.isNotEmpty &&
         decrypted != '[encrypted]' &&
         decrypted != '[Decryption failed]') {
+      if (isAntiQuantumNoteUrl(decrypted)) return l10n.antiQuantumNoteTitle;
       return decrypted.length > 150
           ? '${decrypted.substring(0, 150)}...'
           : decrypted;
@@ -236,6 +243,7 @@ ReplyToPreview enrichReplyToPreview(
   required String gifLabel,
   required String documentLabel,
   required String pingLabel,
+  String antiQuantumNoteLabel = 'Anti-Quantum Note',
   Iterable<MessageModel>? messagesForLookup,
 }) {
   final quoted = findMessageById(replyTo.id, messagesForLookup);
@@ -249,6 +257,7 @@ ReplyToPreview enrichReplyToPreview(
       gifLabel: gifLabel,
       documentLabel: documentLabel,
       pingLabel: pingLabel,
+      antiQuantumNoteLabel: antiQuantumNoteLabel,
     );
     if (fromList.isNotEmpty && fromList != encryptedMessageLabel) {
       return ReplyToPreview(
@@ -270,9 +279,11 @@ ReplyToPreview enrichReplyToPreview(
   if (decrypted != null && decrypted.isNotEmpty) {
     return ReplyToPreview(
       id: replyTo.id,
-      content: decrypted.length > 150
-          ? '${decrypted.substring(0, 150)}...'
-          : decrypted,
+      content: isAntiQuantumNoteUrl(decrypted)
+          ? antiQuantumNoteLabel
+          : (decrypted.length > 150
+              ? '${decrypted.substring(0, 150)}...'
+              : decrypted),
       senderUsername: replyTo.senderUsername,
       messageType: replyTo.messageType,
     );
@@ -310,6 +321,7 @@ MessageModel enrichMessageReplyPreview(
     gifLabel: labels.gifLabel,
     documentLabel: labels.documentLabel,
     pingLabel: labels.pingLabel,
+    antiQuantumNoteLabel: labels.antiQuantumNoteLabel,
     messagesForLookup: messagesForLookup,
   );
   if (identical(enriched, replyTo) || enriched.content == replyTo.content) {
