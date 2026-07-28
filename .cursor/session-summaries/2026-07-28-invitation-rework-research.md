@@ -24,6 +24,7 @@
 - Research artifact was read back after the background agent wrote it; material product claims link to first-party sources and evidence gaps are marked.
 - No application source, tests, configuration, migrations, or version changed; app tests/builds were therefore not run.
 - Three optional parallel designer agents returned HTTP 429 before output. Their scoped alternatives were synthesized inline from the code audit and source-backed research instead of retrying.
+- Proposal artifacts were committed and `feat/invitation-rework` was pushed to `origin`; no merge or deployment was performed.
 
 ## Notes for next session
 

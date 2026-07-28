@@ -7,6 +7,7 @@
 - Wire decision: remove acceptance-driven `openConversation`; emit the accepted result with nullable `conversationId` to **both sender and accepter** after create/find attempt. Keep `openConversation` for explicit `startConversation` only; expose an honest retry state if friendship succeeds but chat setup fails.
 - Visual direction: shared floating glass utility chrome, opaque compact rows, Contacts hex identity language, primary Accept/quiet Decline, token-only colors, skeleton loading, reduce-motion-aware row transition, and unchanged instant-opaque chat entry.
 - Primary-source evidence: Signal, Discord, Session, Matrix/Element; Meta/Snapchat gaps stated rather than guessed. ➡ `2026-07-28-invitation-rework-research.md`, `docs/plans/2026-07-28-invitation-flow-research.md`, `docs/plans/2026-07-28-invitation-flow-rework.md`.
+- Worktree: `C:/Users/Lentach/Desktop/fireplace-wt-invitation`; branch `feat/invitation-rework` is committed and pushed. No merge, deploy, or app behavior change.
 
 ---
 ### Prior latest ↓
