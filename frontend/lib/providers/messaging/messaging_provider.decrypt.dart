@@ -91,12 +91,20 @@ extension MessagingDecrypt on MessagingProvider {
     _decryptHistoryGeneration++;
     final generation = _decryptHistoryGeneration;
     _decryptingHistory = true;
-    await _decryptMessageHistory(generation);
-    _finishHistoryDecryptPass(
-      generation,
-      conversationId: convId,
-      updateCache: true,
-    );
+    // try/finally, matching the .whenComplete() the two getMessages call sites
+    // use. _decryptMessageHistory can throw before its internal guards take
+    // over (_waitForE2EReady, the prefetch), and without this the flag would
+    // stay true for the rest of the session — which now means every text row
+    // renders a "Decrypting…" that never resolves.
+    try {
+      await _decryptMessageHistory(generation);
+    } finally {
+      _finishHistoryDecryptPass(
+        generation,
+        conversationId: convId,
+        updateCache: true,
+      );
+    }
   }
 
   Future<void> _persistDecryptedContent(MessageModel decrypted) async {
@@ -441,6 +449,13 @@ extension MessagingDecrypt on MessagingProvider {
     final persistedById = await _prefetchPersistedPlaintext(sorted);
     if (_decryptHistoryGeneration != generation) return;
     bool changed = false;
+    // NOTE: do NOT "reveal progressively" here. The pass MUST run oldest-first
+    // (Double Ratchet ordering, see the sort above) while the list is
+    // reverse:true and shows the NEWEST rows. Notifying mid-pass therefore
+    // resolves off-screen rows first and leaves the visible ones on
+    // "[encrypted]" until last — pure rebuild churn for no perceived gain.
+    // The cost that makes a first entry visible is the per-row storage work
+    // below, not the notify cadence.
     for (var i = 0; i < sorted.length; i++) {
       if (_decryptHistoryGeneration != generation) break;
       final msg = sorted[i];

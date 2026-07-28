@@ -1134,31 +1134,48 @@ class EncryptionService {
     }
   }
 
+  /// Live estimate of how many plaintext records this account has cached.
+  ///
+  /// Seeded by ONE key scan per service instance, then incremented per write.
+  /// Deliberately not a "sweep every N writes" counter: that resets on every
+  /// app start, so a user who opens one chat per launch would never reach the
+  /// threshold and the cache would grow without bound. On web that ends at the
+  /// localStorage quota — and the first casualty is not this cache, it is
+  /// `WebSignalKvStore.write` failing to persist session and identity records.
+  /// A size estimate keeps the bound across restarts.
+  ///
+  /// Over-counting (an overwrite counted as a new record) only makes a sweep
+  /// happen slightly early; every sweep resets the estimate to the true count.
+  int? _cachedContentEstimate;
+
   Future<void> _pruneDecryptedContentCache(
     SharedPreferences prefs,
     int userId,
   ) async {
-    await _reloadPrefsForCrossContext(prefs);
+    // NO reload here: the only caller (saveDecryptedContent) reloaded a few
+    // lines earlier and has not awaited anything that could invalidate it.
     if (_decryptedContentCacheLimit <= 0) {
       await clearDecryptedContentCache();
       return;
     }
 
     final prefix = _decryptedContentPrefix(userId);
-    final keys = <String>{
-      ...prefs.getKeys().where((key) => key.startsWith(prefix)),
-      // Legacy store, mobile only. On web DualStorage reads the `sig_`-prefixed
-      // async namespace, which never held a `_decryptedContentKey`, so this
-      // matched nothing while decoding EVERY value in localStorage
-      // (SharedPreferencesAsyncWeb.getPreferences has no prefix filter) — on
-      // every single saveDecryptedContent. Measured ~2.5 ms per persisted
-      // message at the 2000-record cap, all of it for an empty set.
-      if (!kIsWeb)
-        ...(await _storage.readAll()).keys.where(
-          (key) => key.startsWith(prefix),
-        ),
-    }.toList();
-    if (keys.length <= _decryptedContentCacheLimit) return;
+    // One scan per instance to establish the baseline. It must cover the SAME
+    // key set the sweep below evicts from — on mobile that includes the legacy
+    // secure store, and counting only prefs would let the real total sit over
+    // the cap while the estimate says otherwise.
+    var estimate =
+        _cachedContentEstimate ??
+        (await _cachedContentKeys(prefs, prefix)).length;
+    _cachedContentEstimate = ++estimate;
+    if (estimate <= _decryptedContentCacheLimit) return;
+
+    // Over the cap: pay for the real scan, evict, and re-anchor the estimate.
+    final keys = (await _cachedContentKeys(prefs, prefix)).toList();
+    if (keys.length <= _decryptedContentCacheLimit) {
+      _cachedContentEstimate = keys.length;
+      return;
+    }
 
     keys.sort((a, b) {
       final aId = int.tryParse(a.substring(prefix.length)) ?? 0;
@@ -1171,5 +1188,28 @@ class EncryptionService {
       await prefs.remove(key);
       await _storage.delete(key: key);
     }
+    _cachedContentEstimate = keys.length - overflow;
+  }
+
+  /// Every key holding a persisted plaintext record for [prefix], across both
+  /// stores. The seeding count and the eviction sweep MUST use the same set,
+  /// or the estimate can sit under the cap while the real total is over it.
+  Future<Set<String>> _cachedContentKeys(
+    SharedPreferences prefs,
+    String prefix,
+  ) async {
+    return <String>{
+      ...prefs.getKeys().where((key) => key.startsWith(prefix)),
+      // Legacy store, mobile only. On web DualStorage reads the `sig_`-prefixed
+      // async namespace, which never held a `_decryptedContentKey`, so this
+      // matched nothing while decoding EVERY value in localStorage
+      // (SharedPreferencesAsyncWeb.getPreferences has no prefix filter) — on
+      // every single saveDecryptedContent. Measured ~2.5 ms per persisted
+      // message at the 2000-record cap, all of it for an empty set.
+      if (!kIsWeb)
+        ...(await _storage.readAll()).keys.where(
+          (key) => key.startsWith(prefix),
+        ),
+    };
   }
 }

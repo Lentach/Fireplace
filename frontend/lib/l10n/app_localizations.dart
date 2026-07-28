@@ -494,6 +494,12 @@ abstract class AppLocalizations {
   /// **'Odszyfrowanie nie powiodło się'**
   String get decryptionFailed;
 
+  /// No description provided for @decryptingMessage.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odszyfrowywanie…'**
+  String get decryptingMessage;
+
   /// No description provided for @encryptionNotInitialized.
   ///
   /// In pl, this message translates to:

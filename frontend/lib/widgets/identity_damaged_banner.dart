@@ -102,13 +102,24 @@ class IdentityDamagedBanner extends StatelessWidget {
               ),
               // Disabled while running: key generation mints 100 prekeys, and a
               // second tap would race a concurrent identity write.
+              //
+              // Foreground is pinned to onErrorContainer: the default TextButton
+              // colour is the theme PRIMARY, which renders near-invisible on the
+              // red error container (caught in a real Chrome render, not by
+              // analyze). This is the one action a user with damaged keys has.
               TextButton(
                 onPressed: busy ? null : () => _confirmAndRecover(context),
+                style: TextButton.styleFrom(
+                  foregroundColor: colors.onErrorContainer,
+                ),
                 child: busy
-                    ? const SizedBox(
+                    ? SizedBox(
                         width: 16,
                         height: 16,
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                        child: CircularProgressIndicator(
+                          strokeWidth: 2,
+                          color: colors.onErrorContainer,
+                        ),
                       )
                     : Text(l10n.identityDamagedAction),
               ),

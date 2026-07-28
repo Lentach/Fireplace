@@ -79,6 +79,7 @@
 
   "encryptedMessage": "Wiadomość zaszyfrowana",
   "decryptionFailed": "Odszyfrowanie nie powiodło się",
+  "decryptingMessage": "Odszyfrowywanie…",
   "encryptionNotInitialized": "Szyfrowanie niezainicjowane",
   "identityDamagedTitle": "Klucze szyfrowania uszkodzone",
   "identityDamagedBody": "Brakuje części tożsamości szyfrowania tego urządzenia, więc nie można odszyfrować ani wysyłać wiadomości. Klucze NIE zostały odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby historię.",

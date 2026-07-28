@@ -79,6 +79,7 @@
 
   "encryptedMessage": "Encrypted message",
   "decryptionFailed": "Decryption failed",
+  "decryptingMessage": "Decrypting…",
   "encryptionNotInitialized": "Encryption not initialized",
   "identityDamagedTitle": "Encryption keys damaged",
   "identityDamagedBody": "Part of this device's encryption identity is missing, so messages can't be decrypted or sent. Your keys were NOT regenerated automatically — doing that silently would destroy your history.",

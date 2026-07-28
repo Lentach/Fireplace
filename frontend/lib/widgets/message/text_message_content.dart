@@ -19,6 +19,11 @@ class TextMessageContent extends StatefulWidget {
   final Color textColor;
   final bool isDark;
   final double maxWidth;
+
+  /// True while a history decrypt pass is running. Turns the raw
+  /// "[encrypted]" sentinel into an honest "Decrypting…" for rows the pass has
+  /// not reached yet.
+  final bool decryptInProgress;
   const TextMessageContent({
     super.key,
     required this.message,
@@ -26,6 +31,7 @@ class TextMessageContent extends StatefulWidget {
     required this.textColor,
     required this.isDark,
     required this.maxWidth,
+    this.decryptInProgress = false,
   });
 
   @override
@@ -43,6 +49,31 @@ class _TextMessageContentState extends State<TextMessageContent> {
     if (oldWidget.message.id != widget.message.id) _expanded = false;
   }
 
+  /// The string actually shown in the bubble.
+  ///
+  /// A cold chat entry has to Signal-decrypt every row before it can show
+  /// anything, and that takes seconds on a full page. Rendering the raw
+  /// "[encrypted]" sentinel for that whole window made a normal wait look like
+  /// a failure — the user reads "encrypted" as "this message is broken", then
+  /// watches it flip. Only rows the pass has genuinely not reached yet are
+  /// relabelled:
+  ///   * "[Decryption failed]" is TERMINAL and must never become a spinner
+  ///     that resolves to nothing;
+  ///   * once the pass ends, `decryptInProgress` is false again, so a row that
+  ///     stayed unresolved falls back to the real sentinel instead of claiming
+  ///     to still be working.
+  String _displayBody(BuildContext context) {
+    if (!widget.decryptInProgress) return widget.message.content;
+    // displayAsEncryptedPlaceholder is the model's own predicate: ciphertext
+    // present AND content still the "[encrypted]" sentinel. Reused rather than
+    // re-derived, so "[Decryption failed]" (terminal) and already-decrypted
+    // text are both excluded by construction.
+    if (!widget.message.displayAsEncryptedPlaceholder) {
+      return widget.message.content;
+    }
+    return AppLocalizations.of(context).decryptingMessage;
+  }
+
   /// Builds the non-jumbo body spans: plain text + inline emoji + tappable URLs.
   List<InlineSpan> _buildBodySpans(BuildContext context) {
     final textStyle = RpgTheme.bodyFont(
@@ -54,7 +85,7 @@ class _TextMessageContentState extends State<TextMessageContent> {
         : Theme.of(context).colorScheme.primary;
 
     return buildLinkifiedSpans(
-      widget.message.content,
+      _displayBody(context),
       style: textStyle,
       linkStyle: RpgTheme.bodyFont(
         fontSize: 14,

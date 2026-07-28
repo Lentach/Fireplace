@@ -224,6 +224,9 @@ class AppLocalizationsEn extends AppLocalizations {
   String get decryptionFailed => 'Decryption failed';
 
   @override
+  String get decryptingMessage => 'Decrypting…';
+
+  @override
   String get encryptionNotInitialized => 'Encryption not initialized';
 
   @override

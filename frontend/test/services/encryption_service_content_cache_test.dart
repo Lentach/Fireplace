@@ -144,6 +144,48 @@ void main() {
       final result = await service.getDecryptedContent(2003);
       expect(result!['content'], '[Decryption failed]');
     });
+    /// The plaintext cache is bounded. Pruning used to run a full key scan on
+    /// EVERY save, which is why a first entry into a 50-row chat paid 50 scans
+    /// to discover it was nowhere near the cap — so the sweep is now gated on a
+    /// size estimate instead.
+    ///
+    /// The estimate is seeded by ONE scan per service instance rather than a
+    /// per-session write counter, and this is why: a counter starts at zero on
+    /// every app start, so a user who decrypts a handful of messages per launch
+    /// would never reach the threshold and the cache would grow forever. On web
+    /// that ends at the localStorage quota, where the first thing to fail is
+    /// not this cache but `WebSignalKvStore.write` persisting session and
+    /// identity records.
+    test('the cache stays bounded across service restarts', () async {
+      final first = EncryptionService(decryptedContentCacheLimit: 10);
+      await first.initialize(42);
+      for (var id = 0; id < 10; id++) {
+        await first.saveDecryptedContent(id, {'content': 'seed $id'});
+      }
+
+      // A NEW instance models an app restart: any per-session write counter
+      // resets here, and a few writes must still not push the cache over.
+      final restarted = EncryptionService(decryptedContentCacheLimit: 10);
+      await restarted.initialize(42);
+      for (var id = 10; id < 15; id++) {
+        await restarted.saveDecryptedContent(id, {'content': 'after $id'});
+      }
+
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.reload();
+      final cached = prefs
+          .getKeys()
+          .where((k) => k.startsWith('e2e_42_decrypted_'))
+          .length;
+      expect(
+        cached,
+        lessThanOrEqualTo(10),
+        reason: 'a restart must not let the plaintext cache grow past its cap',
+      );
+      // Newest survive, oldest evicted.
+      expect(await restarted.getDecryptedContent(14), isNotNull);
+      expect(await restarted.getDecryptedContent(0), isNull);
+    });
 
     test('clearDecryptedContentCache removes plaintext cache without deleting keys', () async {
       await service.saveDecryptedContent(1005, {'content': 'Local plaintext'});
