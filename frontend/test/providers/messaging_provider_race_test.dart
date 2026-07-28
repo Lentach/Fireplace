@@ -247,6 +247,27 @@ class _DuplicateDecryptEncryption extends _FakeEncryptionProvider {
   }
 }
 
+/// Restores a persisted, already-decrypted PING (empty plaintext) and counts
+/// live decrypt calls — proves the restore path never re-decrypts a ping and so
+/// never re-fires the ping effect on chat re-entry / cold start (Bug 3).
+class _PersistedPingEncryption extends _FakeEncryptionProvider {
+  int decryptCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>?> getDecryptedContent(int messageId) async =>
+      {'content': '', 'messageType': 'PING'};
+
+  @override
+  Future<String> decrypt(
+    int senderId,
+    String ciphertext, {
+    int? messageId,
+  }) async {
+    decryptCalls++;
+    return jsonEncode(E2eEnvelope.build('', messageType: 'PING'));
+  }
+}
+
 /// Fails the first live decrypt per history pass, then succeeds after session reset.
 /// E2E becomes ready only after [markReady] (simulates iOS PWA init lag).
 class _DelayedE2EReadyEncryption extends _FakeEncryptionProvider {
@@ -594,6 +615,75 @@ void main() {
         final row = provider.messages.singleWhere((m) => m.id == 8);
         expect(row.messageType, MessageType.ping);
         expect(row.content, isNot('[Decryption failed]'));
+      },
+    );
+
+    test(
+      'history restore of a persisted PING does not re-decrypt or re-fire the effect',
+      () async {
+        final enc = _PersistedPingEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        // Cold-start restore: server row is "[encrypted]" but a decrypted PING
+        // (empty plaintext) is already persisted from its one live decrypt.
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 8,
+              createdAt: '2026-01-01T00:00:08.000Z',
+              messageType: 'PING',
+              includeTtl: false,
+            ),
+          ],
+        });
+        for (var i = 0; i < 30; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+
+        expect(
+          enc.decryptCalls,
+          0,
+          reason: 'a persisted PING must restore without a live re-decrypt',
+        );
+        final row = provider.messages.singleWhere((m) => m.id == 8);
+        expect(row.messageType, MessageType.ping);
+        expect(row.content, '');
+        expect(
+          provider.showPingEffect,
+          isFalse,
+          reason: 'restoring a persisted ping must not re-fire the effect',
+        );
+      },
+    );
+
+    test(
+      'first live decrypt of a partner PING flips showPingEffect',
+      () async {
+        final enc = _DuplicateDecryptEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        provider.onNewMessage(
+          incomingJson(
+            id: 9,
+            createdAt: '2026-01-01T00:00:09.000Z',
+            messageType: 'PING',
+            includeTtl: false,
+          ),
+        );
+        for (var i = 0; i < 30; i++) {
+          await Future<void>.delayed(Duration.zero);
+          if (provider.showPingEffect) break;
+        }
+
+        expect(enc.decryptCalls, 1);
+        expect(
+          provider.showPingEffect,
+          isTrue,
+          reason: 'a partner ping fires the effect exactly once on live decrypt',
+        );
       },
     );
 

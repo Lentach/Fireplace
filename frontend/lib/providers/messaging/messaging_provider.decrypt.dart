@@ -338,7 +338,15 @@ extension MessagingDecrypt on MessagingProvider {
             persisted['messageType'] as String?,
           );
           final restored = msg.copyWith(
-            content: pContent.isNotEmpty ? pContent : msg.content,
+            // A PING carries no plaintext, so its persisted content is
+            // legitimately empty. Falling back to msg.content ('[encrypted]')
+            // would keep displayAsEncryptedPlaceholder true and force a
+            // redundant live re-decrypt on every chat entry, re-firing the
+            // ping sound/effect forever (Bug 3). Restore it as genuinely
+            // decrypted (empty content) so it is consumed exactly once.
+            content: restoredType == MessageType.ping
+                ? ''
+                : (pContent.isNotEmpty ? pContent : msg.content),
             messageType: restoredType,
             mediaUrl: persisted['mediaUrl'] as String?,
             mediaDuration: persisted['mediaDuration'] as int?,
@@ -750,8 +758,14 @@ extension MessagingDecrypt on MessagingProvider {
           linkPreviewTitle: parsed.linkPreviewTitle,
           linkPreviewImageUrl: safeImageUrl,
         );
-        // Trigger ping effect for recipient when decrypted type is PING
-        if (parsedType == MessageType.ping && msg.senderId != _currentUserId) {
+        // Trigger ping effect for recipient when decrypted type is PING.
+        // `_pingEffectFiredIds.add` returns false if already fired, so a
+        // duplicate/redelivered ping that reaches live decrypt cannot re-fire
+        // (transient event dedup; the persisted-cache restore path never
+        // live-decrypts a ping, so restart/re-enter stay silent by construction).
+        if (parsedType == MessageType.ping &&
+            msg.senderId != _currentUserId &&
+            _pingEffectFiredIds.add(msg.id)) {
           _showPingEffect = true;
         }
         _encryptionProvider?.cacheDecryption(msg.id, decryptedMsg);

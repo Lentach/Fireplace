@@ -192,6 +192,13 @@ class MessagingProvider extends ChangeNotifier {
   final Map<int, MessageModel> _pendingEdits = {};
 
   bool _showPingEffect = false;
+
+  /// Message ids whose ping effect already fired this provider lifetime.
+  /// Transient event-dedup only (NOT a persisted played-ids cache): a
+  /// redelivered/duplicate `newMessage` for a ping still reaches live decrypt,
+  /// so this guarantees the effect flips at most once per id. Cleared on
+  /// disconnect/fresh-connect with the rest of the transient decrypt state.
+  final Set<int> _pingEffectFiredIds = {};
   final IncomingMessageSoundService _incomingSound =
       IncomingMessageSoundService();
 
@@ -490,6 +497,9 @@ class MessagingProvider extends ChangeNotifier {
       _incomingMessageQueue.clear();
       _identityResetRebuildNotified.clear();
       _rebuildRequestedPeers.clear();
+      // Fresh connect / user switch: forget which pings already fired.
+      // (Reconnect deliberately KEEPS it so resync redelivery stays silent.)
+      _pingEffectFiredIds.clear();
       _cancelDelayedRetryIfAny();
     } else {
       // Reconnect (same user): keep messages to avoid flicker.
@@ -551,6 +561,7 @@ class MessagingProvider extends ChangeNotifier {
     _liveDecryptFailedPeers.clear();
     _identityResetRebuildNotified.clear();
     _rebuildRequestedPeers.clear();
+    _pingEffectFiredIds.clear();
     _emittedSendTempIds.clear();
     _cancelDelayedRetryIfAny();
     _currentUserId = null;
