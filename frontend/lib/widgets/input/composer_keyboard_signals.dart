@@ -12,6 +12,20 @@ final ValueNotifier<bool> composerKeyboardCollapseGuard = ValueNotifier<bool>(
   false,
 );
 
+/// True while the composer has a bottom panel (emoji picker) open that
+/// REPLACES the keyboard. While true, [ChatComposerViewport] anchors the
+/// composer block at `bottom: 0` instead of the keyboard inset, so on a
+/// keyboard→panel switch the panel occupies the keyboard's space from the
+/// first frame and the dismissing keyboard simply reveals it (native-style
+/// swap). Without this the panel mounts above the still-large inset and
+/// visibly drops from the top as the inset collapses.
+/// Singleton: only one chat composer is active at a time.
+/// (Removed in 0.0.115 with the composer emoji button; restored 2026-07-28
+/// with it — owner ruling: not every soft keyboard exposes an emoji key.)
+final ValueNotifier<bool> composerBottomPanelPinned = ValueNotifier<bool>(
+  false,
+);
+
 // 2026-07-07 device-probe verdicts (see the composer-viewport session
 // summary): the DOM focus guard is LOAD-BEARING (FG-OFF made every send tap
 // dismiss the keyboard) — never remove it. The `_sendJustFired` fast-refocus

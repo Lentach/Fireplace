@@ -108,6 +108,8 @@
   "chatMessageHint": "Napisz wiadomość…",
   "chatComposerSendTooltip": "Wyślij",
   "chatComposerSendSemantics": "Wyślij wiadomość",
+  "chatComposerEmojiTooltip": "Emoji",
+  "chatComposerEmojiSemantics": "Otwórz panel emoji",
   "emojiPickerSemantics": "Panel emoji",
   "emojiPickerSearchHint": "Szukaj emoji",
   "emojiPickerNoRecents": "Brak ostatnich emoji",
@@ -322,7 +324,7 @@
     }
   },
   "appearanceColorTheme": "MOTYW KOLORYSTYCZNY",
-  "appearanceThemeLight": "Ciepły papier",
+  "appearanceThemeLight": "Gorący kamień",
   "appearanceThemeTeal": "Turkus i kamień",
   "appearanceThemeDark": "Wire",
   "appearanceThemeBlue": "Niebieski",

@@ -1,7 +1,8 @@
 import 'dart:async';
 import 'dart:math' as math;
 
-import 'package:flutter/foundation.dart' show kIsWeb, visibleForTesting;
+import 'package:flutter/foundation.dart'
+    show kIsWeb, visibleForTesting, defaultTargetPlatform, TargetPlatform;
 import 'package:flutter/material.dart';
 import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
@@ -28,6 +29,7 @@ import '../../utils/web_ios_viewport_pin.dart';
 import '../chat_action_tiles.dart';
 import '../hearth_fade_arc.dart';
 import '../top_snackbar.dart' show showTopSnackBar;
+import '../emoji/fireplace_emoji_picker.dart';
 import 'attachment_handler.dart';
 import 'composer_attachment_bar.dart';
 import 'composer_attachment_controller.dart';
@@ -36,6 +38,7 @@ import 'recording_controller.dart';
 import 'reply_preview_bar.dart';
 import 'edit_preview_bar.dart';
 import 'composer_keyboard_signals.dart';
+import 'composer_emoji_text_editing.dart';
 
 class ChatInputBar extends StatefulWidget {
   const ChatInputBar({super.key});
@@ -55,6 +58,7 @@ class ChatInputBarState extends State<ChatInputBar> {
   MessageModel? _lastReplyingTo;
   MessageModel? _lastEditingMessage;
   bool _showActionPanel = false;
+  bool _showEmojiPicker = false;
   bool _ignoreComposerTapOutsideForChatSurfaceTap = false;
   // Captured on pointer-down inside the action panel, BEFORE the tap's DOM
   // blur can reach the framework: tells ping's keyboard-neutral refocus
@@ -63,6 +67,16 @@ class ChatInputBarState extends State<ChatInputBar> {
 
   @visibleForTesting
   bool get isActionPanelOpenForTest => _showActionPanel;
+
+  @visibleForTesting
+  bool get isEmojiPickerOpenForTest => _showEmojiPicker;
+
+  /// Mobile = Android/iOS regardless of native-vs-web: [defaultTargetPlatform]
+  /// reflects the underlying OS on web, so a phone PWA counts as mobile while
+  /// desktop web does not (kIsWeb would misclassify both).
+  static bool get _isMobilePlatform =>
+      defaultTargetPlatform == TargetPlatform.iOS ||
+      defaultTargetPlatform == TargetPlatform.android;
 
   Timer? _typingDebounceTimer;
   MessagingProvider? _messagingProvider;
@@ -105,6 +119,10 @@ class ChatInputBarState extends State<ChatInputBar> {
 
     _attachment.addListener(_onAttachmentChanged);
 
+    // Telegram/Signal contract: keyboard and emoji panel are mutually
+    // exclusive. Any composer focus gain (field tap, reply/edit refocus)
+    // closes the panel so they never stack.
+    _focusNode.addListener(_closeEmojiPickerOnFocusGain);
     // H1: keyboardVisible folds in composer focus, so the ergonomic buffer
     // collapses/restores on focus flips — rebuild on them.
     _focusNode.addListener(_onComposerFocusChangedRebuild);
@@ -123,6 +141,19 @@ class ChatInputBarState extends State<ChatInputBar> {
         onText: _insertPastedText,
       );
     }
+  }
+
+  /// Single mutation point for emoji-panel visibility so the viewport bottom
+  /// pin ([composerBottomPanelPinned]) can never drift out of sync with
+  /// [_showEmojiPicker]. Call inside setState.
+  void _setEmojiPickerVisible(bool value) {
+    _showEmojiPicker = value;
+    composerBottomPanelPinned.value = value;
+  }
+
+  void _closeEmojiPickerOnFocusGain() {
+    if (!_focusNode.hasFocus || !_showEmojiPicker) return;
+    setState(() => _setEmojiPickerVisible(false));
   }
 
   void _requestComposerFocus() {
@@ -153,6 +184,9 @@ class ChatInputBarState extends State<ChatInputBar> {
       // keyboard closed and bounced straight back (user-reported 2026-07-09,
       // iOS + Android). Unfocusing the framework node lets the dismiss stick.
       _ignoreComposerTapOutsideForChatSurfaceTap = true;
+      if (_showEmojiPicker) {
+        setState(() => _setEmojiPickerVisible(false));
+      }
       _focusNode.unfocus();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         if (mounted) _ignoreComposerTapOutsideForChatSurfaceTap = false;
@@ -170,8 +204,11 @@ class ChatInputBarState extends State<ChatInputBar> {
   }
 
   void _dismissOpenComposerPanels() {
-    if (!_showActionPanel) return;
+    if (!_showEmojiPicker && !_showActionPanel) return;
     setState(() {
+      if (_showEmojiPicker) {
+        _setEmojiPickerVisible(false);
+      }
       _showActionPanel = false;
     });
   }
@@ -324,6 +361,13 @@ class ChatInputBarState extends State<ChatInputBar> {
 
   @override
   void dispose() {
+    // Reset the pin so the next chat opens unpinned, but DEFER it: a sync
+    // notify here fires the still-mounted ancestor viewport's
+    // setState during tree finalization (locked-tree assert when leaving the
+    // chat with the panel open). By microtask time the tree is unlocked (or
+    // the viewport is unmounted and its listener no-ops on the mounted guard).
+    scheduleMicrotask(() => composerBottomPanelPinned.value = false);
+    _focusNode.removeListener(_closeEmojiPickerOnFocusGain);
     _focusNode.removeListener(_onComposerFocusChangedRebuild);
     if (kIsWeb) {
       _focusNode.removeListener(_onComposerFocusForWebViewport);
@@ -370,6 +414,9 @@ class ChatInputBarState extends State<ChatInputBar> {
       showTopSnackBar(context, AppLocalizations.of(context).messageTooLong);
       return;
     }
+    // Telegram parity: sending from the emoji panel keeps the panel open and
+    // the keyboard hidden — skip the post-send refocus in that state.
+    final keepEmojiPanel = _showEmojiPicker;
     _armComposerCollapseGuard();
 
     final messaging = context.read<MessagingProvider>();
@@ -377,11 +424,13 @@ class ChatInputBarState extends State<ChatInputBar> {
     if (editing != null) {
       messaging.editMessage(editing.id, text);
       _controller.clear();
-      WidgetsBinding.instance.addPostFrameCallback((_) {
-        if (!mounted || !_focusNode.canRequestFocus) return;
-        if (!_focusNode.hasFocus) _focusNode.requestFocus();
-        showSoftKeyboardIfHidden(context: context, hasFocus: true);
-      });
+      if (!keepEmojiPanel) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_focusNode.canRequestFocus) return;
+          if (!_focusNode.hasFocus) _focusNode.requestFocus();
+          showSoftKeyboardIfHidden(context: context, hasFocus: true);
+        });
+      }
       return;
     }
     final convs = context.read<ConversationsProvider>();
@@ -389,6 +438,7 @@ class ChatInputBarState extends State<ChatInputBar> {
     messaging.sendMessage(text, expiresIn: expiresIn);
 
     _controller.clear();
+    if (keepEmojiPanel) return;
     // Post-send refocus: keeps the keyboard up after a send-button tap on
     // non-iOS (the DOM focus guard covers iOS WebKit).
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -405,6 +455,7 @@ class ChatInputBarState extends State<ChatInputBar> {
     if (_isSendingStagedImage) return;
     final staged = _attachment.staged;
     if (staged == null) return;
+    final keepEmojiPanel = _showEmojiPicker;
     _armComposerCollapseGuard();
 
     final caption = _controller.text.trim();
@@ -435,11 +486,38 @@ class ChatInputBarState extends State<ChatInputBar> {
     } finally {
       if (mounted) setState(() => _isSendingStagedImage = false);
     }
+    if (keepEmojiPanel) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
       if (!mounted || !_focusNode.canRequestFocus) return;
       if (!_focusNode.hasFocus) _focusNode.requestFocus();
       showSoftKeyboardIfHidden(context: context, hasFocus: true);
     });
+  }
+
+  void _insertEmoji(String emoji) {
+    _controller.value = insertEmojiAtSelection(_controller.value, emoji);
+  }
+
+  void _deletePreviousEmoji() {
+    _controller.value = deletePreviousEmojiGrapheme(_controller.value);
+  }
+
+  void _toggleEmojiPicker() {
+    final opening = !_showEmojiPicker;
+    setState(() {
+      _setEmojiPickerVisible(opening);
+    });
+    if (opening) {
+      _focusNode.unfocus();
+      if (kIsWeb && isIOSWebKit()) {
+        WidgetsBinding.instance.addPostFrameCallback((_) {
+          if (!mounted || !_showEmojiPicker) return;
+          resetWebDocumentScroll();
+        });
+      }
+    } else {
+      _requestComposerFocus();
+    }
   }
 
   void _toggleActionPanel() {
@@ -474,10 +552,12 @@ class ChatInputBarState extends State<ChatInputBar> {
   }
 
   /// Called by [RecordingController] when recording state changes.
-  /// Recording replaces the composer row.
+  /// Recording replaces the composer row — close the emoji panel with it
+  /// (Telegram parity: mic tap dismisses the panel).
   void _onRecordingStateChanged(bool isRecording) {
     setState(() {
       _isRecording = isRecording;
+      if (isRecording) _setEmojiPickerVisible(false);
     });
   }
 
@@ -828,80 +908,271 @@ class ChatInputBarState extends State<ChatInputBar> {
       480.0,
     );
 
-    return TapRegion(
-      groupId: _composerTapRegionGroup,
-      onTapOutside: _handleComposerRegionTapOutside,
-      child: Column(
-        mainAxisSize: MainAxisSize.min,
-        children: [
-          // Reply preview
-          if (replyingTo != null)
-            Selector<MessagingProvider, MessageModel>(
-              selector: (_, messaging) {
-                return findMessageById(replyingTo.id, messaging.messages) ??
-                    replyingTo;
-              },
-              builder: (context, resolvedReply, _) {
-                return ReplyPreviewBar(
-                  message: resolvedReply,
-                  onDismiss: () =>
-                      context.read<MessagingProvider>().clearReplyingTo(),
-                );
-              },
-            ),
-
-          // Editing banner
-          if (editing != null)
-            EditPreviewBar(
-              onDismiss: () =>
-                  context.read<MessagingProvider>().cancelEditMessage(),
-            ),
-
-          if (activeTimer != null)
-            Container(
-              margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
-              clipBehavior: Clip.antiAlias,
-              decoration: BoxDecoration(
-                color: colorScheme.surface,
-                borderRadius: BorderRadius.circular(16),
-                border: Border.all(color: ephemeral.withValues(alpha: 0.5)),
+    // Telegram/Signal parity: system back with the emoji panel open closes
+    // the panel instead of leaving the chat.
+    return PopScope(
+      canPop: !_showEmojiPicker,
+      onPopInvokedWithResult: (didPop, _) {
+        if (!didPop && _showEmojiPicker) {
+          setState(() => _setEmojiPickerVisible(false));
+        }
+      },
+      child: TapRegion(
+        groupId: _composerTapRegionGroup,
+        onTapOutside: _handleComposerRegionTapOutside,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            // Reply preview
+            if (replyingTo != null)
+              Selector<MessagingProvider, MessageModel>(
+                selector: (_, messaging) {
+                  return findMessageById(replyingTo.id, messaging.messages) ??
+                      replyingTo;
+                },
+                builder: (context, resolvedReply, _) {
+                  return ReplyPreviewBar(
+                    message: resolvedReply,
+                    onDismiss: () =>
+                        context.read<MessagingProvider>().clearReplyingTo(),
+                  );
+                },
               ),
-              child: Semantics(
-                label: l10n.disappearingComposerBannerSemantics(
-                  _bannerDurationLabel(l10n, activeTimer),
+
+            // Editing banner
+            if (editing != null)
+              EditPreviewBar(
+                onDismiss: () =>
+                    context.read<MessagingProvider>().cancelEditMessage(),
+              ),
+
+            if (activeTimer != null)
+              Container(
+                margin: const EdgeInsets.fromLTRB(12, 0, 12, 6),
+                clipBehavior: Clip.antiAlias,
+                decoration: BoxDecoration(
+                  color: colorScheme.surface,
+                  borderRadius: BorderRadius.circular(16),
+                  border: Border.all(color: ephemeral.withValues(alpha: 0.5)),
                 ),
-                child: Padding(
-                  padding: const EdgeInsets.symmetric(
-                    horizontal: 16,
-                    vertical: 6,
+                child: Semantics(
+                  label: l10n.disappearingComposerBannerSemantics(
+                    _bannerDurationLabel(l10n, activeTimer),
                   ),
-                  child: Row(
-                    mainAxisAlignment: MainAxisAlignment.center,
-                    mainAxisSize: MainAxisSize.min,
-                    children: [
-                      CustomPaint(
-                        size: const Size(14, 14),
-                        painter: HearthFadeArcPainter(
-                          color: ephemeral,
-                          trackColor: ephemeral.withValues(alpha: 0.35),
-                          dotted: true,
-                        ),
-                      ),
-                      const SizedBox(width: 8),
-                      Flexible(
-                        child: Text(
-                          l10n.disappearingComposerBanner(
-                            _bannerDurationLabel(l10n, activeTimer),
-                          ),
-                          textAlign: TextAlign.center,
-                          maxLines: 2,
-                          overflow: TextOverflow.ellipsis,
-                          style: RpgTheme.bodyFont(
-                            fontSize: 11,
+                  child: Padding(
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 16,
+                      vertical: 6,
+                    ),
+                    child: Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      mainAxisSize: MainAxisSize.min,
+                      children: [
+                        CustomPaint(
+                          size: const Size(14, 14),
+                          painter: HearthFadeArcPainter(
                             color: ephemeral,
-                            fontWeight: FontWeight.w500,
+                            trackColor: ephemeral.withValues(alpha: 0.35),
+                            dotted: true,
                           ),
                         ),
+                        const SizedBox(width: 8),
+                        Flexible(
+                          child: Text(
+                            l10n.disappearingComposerBanner(
+                              _bannerDurationLabel(l10n, activeTimer),
+                            ),
+                            textAlign: TextAlign.center,
+                            maxLines: 2,
+                            overflow: TextOverflow.ellipsis,
+                            style: RpgTheme.bodyFont(
+                              fontSize: 11,
+                              color: ephemeral,
+                              fontWeight: FontWeight.w500,
+                            ),
+                          ),
+                        ),
+                      ],
+                    ),
+                  ),
+                ),
+              ),
+
+            // Staged pasted image (Clipboard Phase 2)
+            if (_attachment.staged != null && !_isRecording)
+              ComposerAttachmentBar(
+                attachment: _attachment.staged!,
+                onRemove: _attachment.clear,
+              ),
+
+            // Input row
+            TapRegion(
+              groupId: _composerTapRegionGroup,
+              // Liquid Glass: the input row is a floating glass pill; the
+              // surrounding area is transparent so chat content scrolls
+              // behind it. Structure (TapRegion/FocusGuardArea/trailing
+              // stack) is unchanged — glass is paint, not layout.
+              child: Padding(
+                padding: composerHorizontalPadding,
+                child: GlassSurface(
+                  borderRadius: BorderRadius.circular(28),
+                  child: Row(
+                    children: [
+                      // Action panel toggle (hidden during recording)
+                      if (!_isRecording)
+                        FocusGuardArea(
+                          id: 'composer_action_toggle',
+                          child: Focus(
+                            canRequestFocus: false,
+                            child: IconButton(
+                              icon: Icon(
+                                _showActionPanel
+                                    ? Icons.keyboard_arrow_up
+                                    : Icons.keyboard_arrow_down,
+                              ),
+                              iconSize: 24,
+                              color: glass.onGlassMuted,
+                              onPressed: _toggleActionPanel,
+                            ),
+                          ),
+                        ),
+                      if (!_isRecording)
+                        FocusGuardArea(
+                          id: 'composer_emoji_toggle',
+                          child: Focus(
+                            canRequestFocus: false,
+                            child: Semantics(
+                              button: true,
+                              label: l10n.chatComposerEmojiSemantics,
+                              excludeSemantics: true,
+                              child: IconButton(
+                                key: const ValueKey('composer-emoji-toggle'),
+                                tooltip: l10n.chatComposerEmojiTooltip,
+                                icon: Icon(
+                                  _showEmojiPicker
+                                      ? Icons.keyboard_alt_outlined
+                                      : Icons.emoji_emotions_outlined,
+                                ),
+                                iconSize: 24,
+                                color: _showEmojiPicker
+                                    ? glass.onGlassAccent
+                                    : glass.onGlassMuted,
+                                onPressed: _toggleEmojiPicker,
+                              ),
+                            ),
+                          ),
+                        ),
+                      // Text field or recording bar
+                      Expanded(
+                        child: _isRecording
+                            ? Builder(
+                                builder: (context) {
+                                  final recordingState =
+                                      _recordingKey.currentState;
+                                  if (recordingState == null) {
+                                    return const SizedBox.shrink();
+                                  }
+                                  return recordingState.buildRecordingBar(
+                                    context,
+                                  );
+                                },
+                              )
+                            : CallbackShortcuts(
+                                bindings: <ShortcutActivator, VoidCallback>{
+                                  // Web/desktop: multiline fields often lack an IME “Send”; keep one send path.
+                                  const SingleActivator(
+                                    LogicalKeyboardKey.enter,
+                                    control: true,
+                                  ): _send,
+                                  const SingleActivator(
+                                    LogicalKeyboardKey.enter,
+                                    meta: true,
+                                  ): _send,
+                                },
+                                child: ConstrainedBox(
+                                  constraints: BoxConstraints(
+                                    maxHeight: maxComposerHeight,
+                                  ),
+                                  child: TextField(
+                                    controller: _controller,
+                                    focusNode: _focusNode,
+                                    textCapitalization:
+                                        TextCapitalization.sentences,
+                                    style: RpgTheme.bodyFont(
+                                      fontSize: 14,
+                                      color: colorScheme.onSurface,
+                                    ),
+                                    // Borderless inside the glass pill (spec
+                                    // §5): the pill IS the field chrome.
+                                    decoration: InputDecoration(
+                                      hintText: AppLocalizations.of(
+                                        context,
+                                      ).chatMessageHint,
+                                      hintStyle: RpgTheme.bodyFont(
+                                        fontSize: 14,
+                                        color: glass.onGlassMuted,
+                                      ),
+                                      contentPadding:
+                                          const EdgeInsets.symmetric(
+                                            horizontal: 12,
+                                            vertical: 10,
+                                          ),
+                                      border: InputBorder.none,
+                                      enabledBorder: InputBorder.none,
+                                      focusedBorder: InputBorder.none,
+                                      filled: false,
+                                    ),
+                                    // Cap height so the composer does not consume the whole screen (matches
+                                    // WhatsApp/Telegram-style behavior: grow to a few lines, then scroll inside).
+                                    minLines: 1,
+                                    maxLines: 12,
+                                    // Platform matrix (owner ruling 2026-07-28):
+                                    // - Mobile (Android/iOS, native or PWA): the
+                                    //   IME action key inserts a NEWLINE; sending
+                                    //   is the on-screen send button only.
+                                    // - Desktop (web or native): UNCHANGED — IME
+                                    //   "Send" action + Ctrl/Cmd+Enter shortcuts;
+                                    //   plain Enter inserts '\n' in this
+                                    //   multiline field.
+                                    textInputAction: _isMobilePlatform
+                                        ? TextInputAction.newline
+                                        : TextInputAction.send,
+                                    // Default [onEditingComplete] unfocuses after "Send", which dismisses
+                                    // the keyboard while the node can still report focused in the same sync turn.
+                                    onEditingComplete: () {},
+                                    onSubmitted: _isMobilePlatform
+                                        ? null
+                                        : (_) => _send(),
+                                    // Android/desktop should hide the keyboard when
+                                    // the user taps the chat outside the whole
+                                    // composer. Composer controls sit in the same
+                                    // [TapRegion] group, so send/emoji/attachment
+                                    // taps do not trigger this callback. iOS WebKit
+                                    // keeps the old no-op because tap-outside blur
+                                    // caused the send-button keyboard bounce.
+                                    groupId: _composerTapRegionGroup,
+                                    onTapOutside: _handleComposerTapOutside,
+                                    // Android IME rich-content insertion (Phase 4);
+                                    // other platforms never emit commitContent.
+                                    contentInsertionConfiguration:
+                                        ContentInsertionConfiguration(
+                                          allowedMimeTypes:
+                                              kStageableImageMimeTypes.toList(),
+                                          onContentInserted:
+                                              _onKeyboardContentInserted,
+                                        ),
+                                  ),
+                                ),
+                              ),
+                      ),
+
+                      const SizedBox(width: 2),
+
+                      // Trailing 48×48 stack: mic always mounted; text send fades on top (Phase 0).
+                      // CLAUDE.md: never swap mic/send as Row siblings — unmount dismisses keyboard.
+                      FocusGuardArea(
+                        id: 'composer_trailing',
+                        child: _buildTrailingSlot(context),
                       ),
                     ],
                   ),
@@ -909,174 +1180,39 @@ class ChatInputBarState extends State<ChatInputBar> {
               ),
             ),
 
-          // Staged pasted image (Clipboard Phase 2)
-          if (_attachment.staged != null && !_isRecording)
-            ComposerAttachmentBar(
-              attachment: _attachment.staged!,
-              onRemove: _attachment.clear,
-            ),
+            if (!_showActionPanel &&
+                !_showEmojiPicker &&
+                bottomInteractivePadding > 0)
+              SizedBox(height: bottomInteractivePadding),
 
-          // Input row
-          TapRegion(
-            groupId: _composerTapRegionGroup,
-            // Liquid Glass: the input row is a floating glass pill; the
-            // surrounding area is transparent so chat content scrolls
-            // behind it. Structure (TapRegion/FocusGuardArea/trailing
-            // stack) is unchanged — glass is paint, not layout.
-            child: Padding(
-              padding: composerHorizontalPadding,
-              child: GlassSurface(
-                borderRadius: BorderRadius.circular(28),
-                child: Row(
-                  children: [
-                    // Action panel toggle (hidden during recording)
-                    if (!_isRecording)
-                      FocusGuardArea(
-                        id: 'composer_action_toggle',
-                        child: Focus(
-                          canRequestFocus: false,
-                          child: IconButton(
-                            icon: Icon(
-                              _showActionPanel
-                                  ? Icons.keyboard_arrow_up
-                                  : Icons.keyboard_arrow_down,
-                            ),
-                            iconSize: 24,
-                            color: glass.onGlassMuted,
-                            onPressed: _toggleActionPanel,
-                          ),
-                        ),
-                      ),
-                    // Text field or recording bar
-                    Expanded(
-                      child: _isRecording
-                          ? Builder(
-                              builder: (context) {
-                                final recordingState =
-                                    _recordingKey.currentState;
-                                if (recordingState == null) {
-                                  return const SizedBox.shrink();
-                                }
-                                return recordingState.buildRecordingBar(
-                                  context,
-                                );
-                              },
-                            )
-                          : CallbackShortcuts(
-                              bindings: <ShortcutActivator, VoidCallback>{
-                                // Web/desktop: multiline fields often lack an IME “Send”; keep one send path.
-                                const SingleActivator(
-                                  LogicalKeyboardKey.enter,
-                                  control: true,
-                                ): _send,
-                                const SingleActivator(
-                                  LogicalKeyboardKey.enter,
-                                  meta: true,
-                                ): _send,
-                              },
-                              child: ConstrainedBox(
-                                constraints: BoxConstraints(
-                                  maxHeight: maxComposerHeight,
-                                ),
-                                child: TextField(
-                                  controller: _controller,
-                                  focusNode: _focusNode,
-                                  textCapitalization:
-                                      TextCapitalization.sentences,
-                                  style: RpgTheme.bodyFont(
-                                    fontSize: 14,
-                                    color: colorScheme.onSurface,
-                                  ),
-                                  // Borderless inside the glass pill (spec
-                                  // §5): the pill IS the field chrome.
-                                  decoration: InputDecoration(
-                                    hintText: AppLocalizations.of(
-                                      context,
-                                    ).chatMessageHint,
-                                    hintStyle: RpgTheme.bodyFont(
-                                      fontSize: 14,
-                                      color: glass.onGlassMuted,
-                                    ),
-                                    contentPadding: const EdgeInsets.symmetric(
-                                      horizontal: 12,
-                                      vertical: 10,
-                                    ),
-                                    border: InputBorder.none,
-                                    enabledBorder: InputBorder.none,
-                                    focusedBorder: InputBorder.none,
-                                    filled: false,
-                                  ),
-                                  // Cap height so the composer does not consume the whole screen (matches
-                                  // WhatsApp/Telegram-style behavior: grow to a few lines, then scroll inside).
-                                  minLines: 1,
-                                  maxLines: 12,
-                                  // Send via IME action (mobile) or Ctrl/Cmd+Enter (web/desktop).
-                                  // Plain Enter still inserts '\n' in this multiline field.
-                                  textInputAction: TextInputAction.send,
-                                  // Default [onEditingComplete] unfocuses after "Send", which dismisses
-                                  // the keyboard while the node can still report focused in the same sync turn.
-                                  onEditingComplete: () {},
-                                  onSubmitted: (_) => _send(),
-                                  // Android/desktop should hide the keyboard when
-                                  // the user taps the chat outside the whole
-                                  // composer. Composer controls sit in the same
-                                  // [TapRegion] group, so send/emoji/attachment
-                                  // taps do not trigger this callback. iOS WebKit
-                                  // keeps the old no-op because tap-outside blur
-                                  // caused the send-button keyboard bounce.
-                                  groupId: _composerTapRegionGroup,
-                                  onTapOutside: _handleComposerTapOutside,
-                                  // Android IME rich-content insertion (Phase 4);
-                                  // other platforms never emit commitContent.
-                                  contentInsertionConfiguration:
-                                      ContentInsertionConfiguration(
-                                        allowedMimeTypes:
-                                            kStageableImageMimeTypes.toList(),
-                                        onContentInserted:
-                                            _onKeyboardContentInserted,
-                                      ),
-                                ),
-                              ),
-                            ),
-                    ),
-
-                    const SizedBox(width: 2),
-
-                    // Trailing 48×48 stack: mic always mounted; text send fades on top (Phase 0).
-                    // CLAUDE.md: never swap mic/send as Row siblings — unmount dismisses keyboard.
-                    FocusGuardArea(
-                      id: 'composer_trailing',
-                      child: _buildTrailingSlot(context),
-                    ),
-                  ],
+            // Action panel: instant mount/unmount, mirroring the emoji panel
+            // (H3 — the 0.0.88 treatment). The 250ms SizeTransition kept a
+            // ~300px block relayouting through the exact window where iOS
+            // counter-pans the viewport and Android Chrome leaves stale
+            // composited regions. The Listener captures focus state BEFORE
+            // the tap's DOM blur so ping's keyboard-neutral refocus knows
+            // whether the keyboard was up.
+            if (_showActionPanel)
+              Listener(
+                behavior: HitTestBehavior.translucent,
+                onPointerDown: (_) =>
+                    _actionPanelPointerDownHadFocus = _focusNode.hasFocus,
+                child: ChatActionTiles(
+                  bottomPadding: bottomInteractivePadding,
+                  onPingSent: _refocusComposerAfterPing,
                 ),
               ),
-            ),
-          ),
 
-          if (!_showActionPanel && bottomInteractivePadding > 0)
-            SizedBox(height: bottomInteractivePadding),
-
-          // Action panel: instant mount/unmount, mirroring the emoji panel
-          // (H3 — the 0.0.88 treatment). The 250ms SizeTransition kept a
-          // ~300px block relayouting through the exact window where iOS
-          // counter-pans the viewport and Android Chrome leaves stale
-          // composited regions. The Listener captures focus state BEFORE
-          // the tap's DOM blur so ping's keyboard-neutral refocus knows
-          // whether the keyboard was up.
-          if (_showActionPanel)
-            Listener(
-              behavior: HitTestBehavior.translucent,
-              onPointerDown: (_) =>
-                  _actionPanelPointerDownHadFocus = _focusNode.hasFocus,
-              child: ChatActionTiles(
-                bottomPadding: bottomInteractivePadding,
-                onPingSent: _refocusComposerAfterPing,
+            if (_showEmojiPicker)
+              FireplaceEmojiPicker(
+                onEmojiSelected: _insertEmoji,
+                onBackspacePressed: _deletePreviousEmoji,
+                height: 320,
               ),
-            ),
-        ],
-      ),
-    );
+          ],
+        ), // Column
+      ), // TapRegion
+    ); // PopScope
   }
 }
 

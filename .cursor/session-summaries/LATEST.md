@@ -1,52 +1,30 @@
 # Latest session summary
 
-**Date:** 2026-07-28 — **deleted and expired messages now actually die on the device.** Branch `audit/e2e-safety`. **Not deployed, not bumped** (0.0.132). Continues the 07-27 audit; owner: "all my messages are saved when they should be gone irreversible".
+**Date:** 2026-07-28 — **RELEASED 0.0.133 / `b6fa385`, frontend only, smoke 5/5.** Five-bug batch: PR **#103** `fix/composer-and-preview-quickwins` (bugs 2/4/5) and PR **#104** `fix/avatar-count-and-ping` (bugs 1/3/3e), both merged with owner approval after independent review + hardening. Backend untouched — `/version` stays `0.0.132/05fc423` BY DESIGN. Worktrees removed after merge.
 
-## What was done
-1. **The record is the ONLY copy** — the server holds ciphertext whose ratchet key was consumed at first decrypt. So destroying EARLY is permanent loss, LATE is minutes of exposure. Everything is biased late.
-2. **Delete purges inline** (server row already gone, no clock involved). **Expiry is two-phase:** hide on the local clock, destroy only against a confirmed `ServerClock` + 5-min grace for the per-minute cron. `socketReady` now carries **`serverTime`** (§7 wire contract); absent ⇒ client holds forever. The `Date` header CANNOT serve this — not CORS-safelisted, so the gate would have silently never fired on web.
-3. **Records stamped `_cid/_savedAt/_createdAt/_expiresAt/_disappearAfter`** so purging is a prefix scan, not a walk of loaded rows — history pages ~50 while the store holds 2000. `_expiresAt` **re-stamped on `messageDelivered`**: read-mode messages get their deadline AFTER the record is written.
-4. **Durable purge backlog**, written before anything is touched, cleared only on confirmed completion, cross-context locked ⇒ at-least-once across tab close. **Every removal gated on its commit result** — nothing reports success on residue. That is the guarantee the change rests on.
-5. **NEW BUG FOUND: the 2000-entry LRU eviction was silently destroying history.** Eviction ≠ deletion — the server row stays alive, re-serves as `[encrypted]`, re-decrypt hits `DuplicateMessage` and bricks to a permanent `[Decryption failed]`. Fires constantly past 2000 messages; a likely source of old unexplained decrypt-failure reports. Those ids + retention's now go to a **retired set** rendering a deliberate "no longer stored on this device" state.
-6. Also closed: **unfriend/block purged nothing at all**; decrypted **voice notes** survived; the old "clear cache" button touched text plaintext on **no** platform (no-op on web). Real **"delete all local history"** action added. **30-day retention** ages from a one-time epoch key, so existing history fades instead of being mass-destroyed on upgrade.
-7. **`TZ: UTC` pinned in both compose files** — `expiresAt` is `timestamp WITHOUT time zone`, so a non-UTC backend ships deadlines shifted by the host offset and the client would destroy plaintext HOURS EARLY.
-
-## Verification
-- analyze **0 issues**; `flutter test` **956/5 skipped** (machine-verified); backend **541/47**; `test_e2e` **12 passed** vs a real backend, including a new test that a real `deleteMessage` destroys the plaintext and **leaves the Signal session alive**.
-- **Live browser proof** (release build, real backend, real localStorage): seeded a record expired 1 h ago, a control expiring in 24 h, a backlog entry. After reload → expired **destroyed**, control **intact**, backlog target **destroyed**, backlog key **cleared**, all **26 Signal keys untouched**.
-- Refused-commit tests install a prefs store whose `remove` returns false. Found doing it: `prefs.remove` drops its in-memory cache entry even when the backend refuses — the row reads as gone while bytes remain, which is why retry must come from the durable backlog.
-- Wiring test **falsified both ways**.
-
-## Notes for next session
-- **B2 (at-rest encryption + key rotation) is NOT built and is the remaining half of the ask.** This delivers "gone from the app", NOT "gone from the disk": localStorage is LevelDB, `removeItem` leaves the value in the WAL until a compaction we don't control. Real unrecoverability needs records encrypted under a key **rotated and destroyed on purge**. Design agreed: `{kid, iv, ct}`, both keys live during rotation, old key destroyed only after a scan proves zero references.
-- **NEVER describe the current state as "cannot be recovered"** — that repeats the exact defect this work removed.
-- CI has never run on this branch; open the PR to run it. Rebase onto `origin/master` (`59d80ae`) — the `CLAUDE.md` count line WILL conflict.
-- Local stack: another worktree holds :3000/:5433, so this ran on **:3100/:5533**; backend on the HOST with `TZ=UTC` (`nest start --watch` never bootstrapped in the bind mount). `flutter run -d web-server` bundles die on tab reconnect — **serve a release build statically**.
-- ➡ Detail: `2026-07-28-session-local-plaintext-purge.md`; issue **#105** updated with the wider scope.
+- **Bug 2 restored the composer emoji button** — removed deliberately in `6131b15` (0.0.115) as a "keyboard duplicate"; premise wrong, owner ruled restore. Full pin contract back (`composerBottomPanelPinned` + viewport bottom-pin); `frontend/CLAUDE.md` §7 ban line superseded. **iOS-style emotes declined: Apple Color Emoji is not redistributable**; iOS already renders Apple glyphs via fallback.
+- **Bug 4:** mobile (defaultTargetPlatform android/iOS, incl. phone PWA) action key now inserts newline (`TextInputAction.newline`, no onSubmitted); desktop byte-identical (Enter=newline, Ctrl/Cmd+Enter=send — owner ruled keep).
+- **Bug 5:** Anti-Quantum Note previews show the l10n label on every surface (tile, reply bar, pinned banner, in-bubble quote via `reply_preview_helper`). **Link-preview consumption CLEARED** three ways (client excludes+strips, backend skips encrypted, GET /note/:token is a SELECT — burn is POST reveal only). No wire change.
+- **Bug 1 root cause:** `_restoreUserFromAccessJwt` clobbered `profilePhotos`/`about` on EVERY silent refresh (even during boot hydrate) → self card "1/3" while others saw 3. Fix: same-account restore `copyWith`s the hydrated user. Swipe-dead gallery was collateral (tap-zone nav gated on photos>1), self-heals.
+- **Bug 3 root cause:** ping plaintext '' → lossy persisted-restore kept `[encrypted]` → forced re-decrypt every chat entry → effect re-fired forever. Fix: persisted PING restores as decrypted (consume-once by construction) + transient id dedup. Persisted "played-ids cache" band-aid named and rejected. **Bug 3e** (separate): overlay perf — RepaintBoundary + Fade/ScaleTransition over static child.
+- Tests: A **925+4** green, B **911+4** green, fail-before proven by stashing lib per bug. Merged master reconciled to **933** (union suite run confirmed `+933 ~4` before merging #104); master CI green on `b6fa385` before deploy.
+- Review round: Branch A zero findings; Branch B P3 + three ping edges all FIXED with fail-before tests (early-unmount latch, unseen-ping resurrection via the durable READ mark, READ gate on the live trigger against silent persist loss).
+- **⚠ Owner must device-check the restored composer on the phone** (keyboard→emoji toggle→toggle back→send from panel→system back→mic): widget tests cannot exercise visualViewport/450ms-debounce/black-flash. Rollback if it fights the keyboard: `git revert` the #103 merge or redeploy from `6531aab` (last pre-batch master, 0.0.132) via `deploy-web.ps1`.
+- Codex-backed default `task` subagents are usage-walled; `sonic`/`scout` (Anthropic) work — route delegation there.
+- **PR #107 MERGED → RELEASED 0.0.134 / `a00ab0f`, smoke 5/5:** Hot Stone (the 'light' warm-paper+ember theme, renamed from "Warm Paper"/"Ciepły papier" → "Hot Stone"/"Gorący kamień") is the default for FRESH INSTALLS ONLY (saved prefs win; legacy dark_mode_preference still maps to dark). Login screen now ALWAYS wears Hot Stone (supersedes the 2026-07-18 always-Cosmic front door; render-verified on web). Flash-proofing, all contract-tested: main.dart resolves the saved theme BEFORE runApp (guarded); index.html syncs the bootstrap color from localStorage pre-paint (incl. the legacy dark_mode_preference ladder — Dart never writes the migration back) with NO !important (runtime inline sync must keep winning); manifest.json + index.html static color → #F7F4F0; native splashes pinned to @color/hot_stone_paper on BOTH Android tiers (drawable-v21 followed OS dark mode) + the iOS storyboard. New token successColorLight. Android `:app:processDebugResources` BUILD SUCCESSFUL; iOS storyboard parser-verified only (no macOS here). Suite **943+4** green.
+- ➡ Detail: **`2026-07-28-session-bugfix-batch.md`**; diagnosis evidence: `.planning/bugfix-batch-2026-07/` (local-only).
 
 ---
 ### Prior latest ↓
 
-**Date:** 2026-07-27 — **full E2E safety audit + the chat-entry flicker/lag fix.** Branch `audit/e2e-safety` (separate worktree), cut from `d2f8aca`. **Not deployed, not bumped** — live stays 0.0.132 / `05fc423`.
+**Date:** 2026-07-27 — **agent tooling audit + two credential rotations.** No app source touched. 6 commits, CI green. Live unchanged at **0.0.132 / `05fc423`**.
 
-## What was done
-1. **Full E2E audit — SAFE WITH CAVEATS, no CRITICAL.** Both lock layers hold on all four session mutations, leaf-level (no deadlock), fail-closed Web Locks, monotonic plaintext, exact-ciphertext replay, server structurally cannot hold private keys, push content-free, `editMessage` blind and gated server-side, deletes really delete.
-2. **Chat-entry flicker root-caused and MEASURED.** `onMessageHistory` painted server `[encrypted]` rows before hydrating, and `getDecryptedContent` reloaded prefs **per row** (`fd89e7e`). On web `reload()` enumerates every localStorage key + decodes each `flutter.` one against a 2000-cap cache: **65-77 ms per 50-row page, ~590 ms at 400 rows** (desktop i7; 4-6x worse on a phone) vs ~1.5 ms for one reload per pass. Fixed with `getDecryptedContentMany` + pre-paint hydration.
-3. **Four of five MEDIUM findings closed.** Identity is now ONE atomic `identity_record_v1` (legacy pair still READ — the whole installed base has only that); partial loss throws and mints nothing, with a user-consented `IdentityDamagedBanner` escape hatch. Peer re-key surfaced (`PeerIdentityChangedBanner`, still TOFU, now cheaper than the old unconditional write). Prekey generation origin-locked. **The Web Lock is finally tested** — the old test opened `if (!kIsWeb) return;` and **reported as PASSED while asserting nothing**; now an honest skip + CI job `session-lock`.
-4. **Verified in a REAL browser** (owner pushed back on deferring): real backend, real Chrome, real libsignal. Legacy-only install loads + migrates with identity unchanged; partial loss refuses; consented recovery republishes and a peer completes **X3DH against the regenerated identity**. The banner's action button was invisible (theme primary on red) — only a render caught it.
-5. **The owner's actual bug was still there.** 300 fresh messages showed `[encrypted]` for 3-5 s: my first fix targeted the CACHED re-entry path, but a genuinely first entry has no plaintext to show. Now relabelled **"Decrypting…"** while a pass is in flight — confirmed in the browser, then real text.
-
-## Verification
-- analyze **0 issues**; `flutter test` **937 passed / 5 skipped**; count verifier OK; `flutter test test_e2e` **11 passed** vs a real backend.
-- **Every fix falsified separately** (disable pre-paint hydration → red; ignore the batch → red at 30 reads vs 0; prekey lock ships a falsification case; the session-lock runner was proven to fail both ways before being trusted).
-
-## Notes for next session
-- **NOT deployed, NOT bumped** (0.0.132). **CI has never run on this branch** — the workflow triggers on push-to-`master` and `pull_request`, so opening the PR is what runs it.
-- ⚠ **`origin/master` moved to `59d80ae` mid-session** ("post-merge count is 930"). This branch is behind and the `CLAUDE.md` count line WILL conflict — rebase and re-run the count verifier before merging.
-- **Tried and REVERTED: progressive reveal.** The pass runs oldest-first (ratchet) while the list is `reverse: true` and shows newest, so mid-pass notifies resolve off-screen rows first.
-- **M4 left undone on purpose:** plaintext is unencrypted at rest on **mobile** too; migrating ~2000 records into Keychain/Keystore is a data-loss hazard of exactly the class this branch removes.
-- Remaining LOW: `/media/msgs/:filename` has no participant check (E2E blobs, no plaintext); deadlock and cross-peer parallelism still unpinned.
-- ➡ Detail: `2026-07-27-session-e2e-audit-and-chat-entry-cost.md`; runbook **Steps 3D/3E/3F**; `frontend/CLAUDE.md` §5.
+- **Two live secrets found and killed.** `CONTACT_INBOX_KEY` rotated on the VM (old → **404**, issue **#100 closed**). And a SECOND, previously unknown one: `CONTEXT7_API_KEY` was **tracked and pushed** in `.claude/settings.local.json` (from `fdd3aa2`, an unrelated feature commit) — confirmed live, now revoked and verified **401**. That file is untracked and gitignored by glob.
+- **Two enforcement gates that did not exist.** `deploy-web.ps1` now runs the post-deploy smoke and **FAILS the deploy** on a bundle-sha mismatch (falsified both ways against live prod; also catches the exit-21 silent-halt trap). And a **backend lint ratchet** in CI — lint was rotting from 726 → 1320 total errors at ~+30/day because nothing ran it. The ratchet gates a **split count**: **839** real (type-safety) errors strictly, proven platform-identical, plus 481 formatting with ±5 tolerance. It fails only when the number GOES UP.
+- **Installed:** `gitleaks` v8.30.1 (**#101 closed**; proven to block a 64-hex `?key=` at entropy 3.97), `osv-scanner` v2.4.0, `trivy` v0.72.0, `dart mcp-server` 1.1.0 (project-scoped `.omp/mcp.json`, **mount unverified — check `/mcp list`**).
+- **Prod container scanned for the first time:** 1 CRITICAL + 5 HIGH, **all in npm's bundled tree, none in the app**; `picomatch` in `/app` is already the patched 4.0.4. Container runs `node dist/main.js` and never invokes npm → **not exploitable**. Fix arrives with the next `node:22-alpine` rebuild.
+- **Measured, and it killed two ideas:** a `dart format` CI gate is unreachable (reformats **146/368 files**), and a "run only affected tests" runner is **strictly worse** than `flutter test` — cost curve now in `frontend/CLAUDE.md` §1. Also: **`impact.mjs` reports a nonexistent path as "no dependents", exit 0** — a typo reads as "safe". Unfixed.
+- ➡ Detail: **`2026-07-27-session-tooling-audit.md`**. Tier list + evidence: `.planning/tooling-audit/` (local-only).
 
 ---
 ### Prior latest ↓
@@ -72,10 +50,10 @@
 - **`e2e-wire` is now CI-failing** (`continue-on-error` removed after 5 consecutive greens; it caught two DR bugs on its first two runs). **But red is NOT a gate here** — branch protection is a paid feature, 403 on this private free-plan repo, so nothing blocks a push or merge and small fixes still go straight to `master`. Checking the run is a human/agent duty: `gh run list --branch master --limit 1`. If it flakes, restore `continue-on-error: true` deliberately and record it.
 - **Owner must fully close + reopen the PWA** to pick up 0.0.132 (Settings footer → `0.0.132 / 05fc423`). **NEVER uninstall or clear site data** — that destroys the local E2E Signal keys.
 - **Open work is now tracked as GitHub issues — read them, do not re-derive from here.**
-  - **#100 (bug, do first): rotate `CONTACT_INBOX_KEY`.** A live 64-hex bearer key guarding `/contact/inbox` (every landing contact-form submission — third parties' names, emails, message text) is committed at `2026-07-22-session-inbox-extraction.md:63`. **PRE-EXISTING**: blob `bd5fe89` identical at `05e0962` and HEAD, from `2a70e38`, and in none of the 112 summaries published 2026-07-27. Rotation commands are in the issue.
-  - **#101: install `gitleaks`.** Not installed, so `.githooks/pre-commit` falls back to a prefix-only regex that cannot catch high-entropy secrets — #100 is the proof it missed one. Never cite that hook as the reason a paste was safe.
-  - **#102: finish Dependabot #95.** `207bc06` fixed only four of eight `brace-expansion` copies; root `1.1.16` + three nested `2.1.2` are still inside `<= 5.0.7`. Dev-only, not deploy-blocking. **Do not dismiss the alert.**
-- ➡ Detail: **`2026-07-27-session-workflow-tooling.md`**; orientation for this directory: **`README.md`**.
+  - **#100 + #101 CLOSED 2026-07-27.** `CONTACT_INBOX_KEY` **rotated** (new → 200, old → **404**; the value at `2026-07-22-session-inbox-extraction.md:63` is **DEAD** — do not re-raise it). `gitleaks` **v8.30.1 installed** in `~/.local/bin`; the hook's gitleaks branch is live and proven to block a 64-hex `?key=` at entropy 3.97.
+  - **Also rotated: the `CONTEXT7_API_KEY`** that was tracked in `.claude/settings.local.json` — revoked at context7.com, verified **401**. That file is now untracked and gitignored by glob.
+  - **#102: finish Dependabot #95.** Still open. `osv-scanner` confirms **4 of 8** `brace-expansion` copies vulnerable: root `1.1.16` + `2.1.2` under `@jest/reporters`, `jest-config`, `jest-runtime`. Dev-only. **Do not dismiss.**
+- ➡ Detail: this session **`2026-07-27-session-tooling-audit.md`** (tooling audit, S-tier installs, both key rotations); earlier that day **`2026-07-27-session-workflow-tooling.md`**; orientation: **`README.md`**.
 
 ---
 ### Prior latest ↓
@@ -102,4 +80,3 @@
 - **NEVER run `dart format lib/`** — it reformatted 70 untouched files. Format only files you edited.
 - **Ask before opening the browser tool** — it is not headless and pops a window in front of the owner.
 - ➡ Detail: `2026-07-25-session-console-glyphs.md` and `2026-07-25-session-settings-console.md`. The 2026-07-25 handoffs were DELETED on 2026-07-27 (they were banner-marked SUPERSEDED and one nearly got followed); `2026-07-26-HANDOFF-START-HERE.md` survives as historical context only — PR #98 shipped what it gated.
-

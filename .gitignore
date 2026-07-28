@@ -61,3 +61,12 @@ docs/audit/
 # deploy-web.ps1 per-machine config (your VM SSH target) — machine-specific and points at
 # infrastructure, so it stays out of the repo on hygiene grounds, not visibility grounds
 deploy-web.config.ps1
+
+# Claude Code per-machine permission allow-list. NEVER track this: it is machine-local
+# state, it accretes one-shot debugging commands, and it has already leaked a live API
+# key into origin/master (CONTEXT7_API_KEY, introduced by fdd3aa2, found 2026-07-27).
+# The pre-commit fallback regex cannot catch it, and neither can gitleaks' default
+# generic-api-key rule — the JSON-escaped \" breaks the match. Keep it out by rule.
+# Glob, not an exact path: a `.bak-*` copy of this file carries the same secrets and
+# would otherwise be untracked-but-committable.
+.claude/settings.local.json*

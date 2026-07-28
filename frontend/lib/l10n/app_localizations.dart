@@ -650,6 +650,18 @@ abstract class AppLocalizations {
   /// **'Wyślij wiadomość'**
   String get chatComposerSendSemantics;
 
+  /// No description provided for @chatComposerEmojiTooltip.
+  ///
+  /// In pl, this message translates to:
+  /// **'Emoji'**
+  String get chatComposerEmojiTooltip;
+
+  /// No description provided for @chatComposerEmojiSemantics.
+  ///
+  /// In pl, this message translates to:
+  /// **'Otwórz panel emoji'**
+  String get chatComposerEmojiSemantics;
+
   /// No description provided for @emojiPickerSemantics.
   ///
   /// In pl, this message translates to:
@@ -1553,7 +1565,7 @@ abstract class AppLocalizations {
   /// No description provided for @appearanceThemeLight.
   ///
   /// In pl, this message translates to:
-  /// **'Ciepły papier'**
+  /// **'Gorący kamień'**
   String get appearanceThemeLight;
 
   /// No description provided for @appearanceThemeTeal.

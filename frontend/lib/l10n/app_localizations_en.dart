@@ -313,6 +313,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatComposerSendSemantics => 'Send message';
 
   @override
+  String get chatComposerEmojiTooltip => 'Emoji';
+
+  @override
+  String get chatComposerEmojiSemantics => 'Open emoji picker';
+
+  @override
   String get emojiPickerSemantics => 'Emoji picker';
 
   @override
@@ -848,7 +854,7 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appearanceColorTheme => 'COLOR THEME';
 
   @override
-  String get appearanceThemeLight => 'Warm Paper';
+  String get appearanceThemeLight => 'Hot Stone';
 
   @override
   String get appearanceThemeTeal => 'Teal Stone';

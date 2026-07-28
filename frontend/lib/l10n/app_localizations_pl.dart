@@ -312,6 +312,12 @@ class AppLocalizationsPl extends AppLocalizations {
   String get chatComposerSendSemantics => 'Wyślij wiadomość';
 
   @override
+  String get chatComposerEmojiTooltip => 'Emoji';
+
+  @override
+  String get chatComposerEmojiSemantics => 'Otwórz panel emoji';
+
+  @override
   String get emojiPickerSemantics => 'Panel emoji';
 
   @override
@@ -861,7 +867,7 @@ class AppLocalizationsPl extends AppLocalizations {
   String get appearanceColorTheme => 'MOTYW KOLORYSTYCZNY';
 
   @override
-  String get appearanceThemeLight => 'Ciepły papier';
+  String get appearanceThemeLight => 'Gorący kamień';
 
   @override
   String get appearanceThemeTeal => 'Turkus i kamień';

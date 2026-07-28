@@ -156,5 +156,79 @@ if (-not $SkipVerify) {
   } catch {
     Write-Warning "Could not reach $BaseUrl : $($_.Exception.Message)"
   }
+
+  # ---- definitive stale-build gate -------------------------------------------------
+  # The checks above can BOTH pass while the VM still serves cached JS: version.json is a
+  # separate file from the bundle, so a bumped semver proves nothing about the code. The
+  # smoke script greps the served main.dart.js for the git short-sha that was compiled
+  # into it, which is the only check that actually detects a stale or half-published
+  # bundle - including the exit-21 silent-halt trap where the publish step does nothing
+  # and says nothing (2026-07-08, 2026-07-15, 2026-07-16).
+  #
+  # Run from scripts/smoke: that directory has its own package.json and node_modules, and
+  # the script's `import("playwright")` only resolves from there.
+  $smokeDir = Join-Path $repo "scripts\smoke"
+  $smokeJs  = Join-Path $smokeDir "post-deploy-smoke.mjs"
+
+  # Which sha should the SERVED bundle contain?
+  #   Normal / -SkipPublish=false : $commit, the sha compiled into the bundle we just built.
+  #   -SkipBuild                  : we did NOT build, so current HEAD ($commit) may have moved
+  #                                 past the existing bundle. Read the sha out of the built
+  #                                 artifact instead, or the gate false-fails on the exact
+  #                                 recovery path the failure message recommends.
+  $expectCommit = $commit
+  if ($SkipBuild) {
+    $localVj = Join-Path $repo "frontend\build\web\version.json"
+    if (Test-Path $localVj) {
+      try {
+        $lv = Get-Content $localVj -Raw | ConvertFrom-Json
+        if ($lv.gitCommit) {
+          $expectCommit = $lv.gitCommit
+          if ($expectCommit -ne $commit) {
+            Write-Host "-SkipBuild: expecting the PREVIOUSLY BUILT bundle ($expectCommit), not current HEAD ($commit)." -ForegroundColor Yellow
+          }
+        }
+      } catch { Write-Warning "Could not read $localVj - falling back to HEAD ($commit) for the gate." }
+    }
+  }
+
+  if ($SkipPublish) {
+    # Nothing was published, so the server still serves the OLD bundle by definition.
+    # Grepping it for the new sha would throw a confusing failure for a run the operator
+    # explicitly asked not to publish.
+    Write-Host "Skipping the stale-build gate: -SkipPublish was set, so the server was not updated." -ForegroundColor Yellow
+  }
+  elseif (-not (Test-Path $smokeJs)) {
+    throw ("Cannot run the stale-build gate: smoke script missing at $smokeJs.`n" +
+           "  Refusing to report a successful deploy that was never verified.`n" +
+           "  Deploy anyway (UNVERIFIED) with:  .\deploy-web.ps1 -SkipVerify")
+  }
+  elseif (-not (Test-Path (Join-Path $smokeDir "node_modules"))) {
+    # Deliberately fatal, not a warning. A warning here means a genuinely stale bundle
+    # ships behind a yellow line and a green-looking finish, which is precisely the
+    # silent failure this gate exists to catch.
+    throw ("Cannot run the stale-build gate: scripts/smoke dependencies are not installed.`n" +
+           "  One-time fix:  cd scripts\smoke ; npm install ; npx playwright install chromium`n" +
+           "  Deploy anyway (UNVERIFIED) with:  .\deploy-web.ps1 -SkipVerify")
+  }
+  else {
+    Step "Post-deploy smoke (stale-build gate)"
+    $smokeExit = $null
+    Push-Location $smokeDir
+    try {
+      node "post-deploy-smoke.mjs" --commit $expectCommit --url $BaseUrl
+      $smokeExit = $LASTEXITCODE
+    } finally { Pop-Location }
+    if ($null -eq $smokeExit) {
+      throw "Could not run node for the stale-build gate. Is node on PATH? Deploy is UNVERIFIED."
+    }
+    if ($smokeExit -ne 0) {
+      throw ("POST-DEPLOY SMOKE FAILED (exit=$smokeExit). The served bundle does NOT match commit $expectCommit.`n" +
+             "  Most likely the publish silently did not run - re-publish WITHOUT rebuilding:  .\deploy-web.ps1 -SkipBuild`n" +
+             "  Do NOT tell anyone to reinstall the PWA or clear site data - that destroys their E2E Signal keys.")
+    }
+    Write-Host "Smoke passed: the served bundle really is $expectCommit." -ForegroundColor Green
+  }
+
   Write-Host "`nLast step: on your phone, fully close + reopen the PWA (do NOT uninstall). Settings footer should read $ver / $commit." -ForegroundColor Yellow
 }

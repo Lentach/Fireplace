@@ -4,9 +4,22 @@ import '../theme/rpg_theme.dart';
 import '../models/chat_background_preference.dart';
 
 class SettingsProvider extends ChangeNotifier {
-  /// 'light' | 'teal' (Teal+stone, light) | 'dark' (Wire gray) | 'blue'
-  /// (Telegram dark) | 'cosmic' (starfield dark)
-  String _themePreference = 'dark';
+  /// Default color theme for fresh installs / unset devices (owner ruling
+  /// 2026-07-28): Hot Stone — the warm-paper + ember light theme ('light').
+  /// Saved preferences always win; the legacy dark_mode_preference migration
+  /// still maps old dark/system choices to 'dark'.
+  static const String kDefaultThemePreference = 'light';
+
+  static bool _isValidTheme(String? value) =>
+      value == 'light' ||
+      value == 'teal' ||
+      value == 'dark' ||
+      value == 'cosmic' ||
+      value == 'blue';
+
+  /// 'light' (Hot Stone) | 'teal' (Teal+stone, light) | 'dark' (Wire gray) |
+  /// 'blue' (Telegram dark) | 'cosmic' (starfield dark)
+  String _themePreference = kDefaultThemePreference;
 
   /// 'pl' | 'en' — app UI language (default Polish)
   String _localeCode = 'pl';
@@ -34,8 +47,6 @@ class SettingsProvider extends ChangeNotifier {
 
   ThemeData get themeData {
     switch (_themePreference) {
-      case 'light':
-        return RpgTheme.themeDataLight;
       case 'teal':
         return RpgTheme.themeDataTealStone;
       case 'dark':
@@ -43,8 +54,10 @@ class SettingsProvider extends ChangeNotifier {
       case 'cosmic':
         return RpgTheme.themeDataCosmic;
       case 'blue':
-      default:
         return RpgTheme.themeDataBlue;
+      case 'light':
+      default:
+        return RpgTheme.themeDataLight;
     }
   }
 
@@ -59,13 +72,13 @@ class SettingsProvider extends ChangeNotifier {
     }
   }
 
-  /// [initialThemePreference] sets theme synchronously (widget tests); otherwise loads from prefs.
+  /// [initialThemePreference] sets theme synchronously; main.dart resolves the
+  /// saved value via [storedThemePreference] BEFORE runApp so frame 1 paints
+  /// the right theme for returning users (no light↔dark cold-start flash).
+  /// Widget tests pass explicit values. Invalid/null falls back to the async
+  /// prefs load.
   SettingsProvider({String? initialThemePreference}) {
-    if (initialThemePreference == 'light' ||
-        initialThemePreference == 'teal' ||
-        initialThemePreference == 'dark' ||
-        initialThemePreference == 'cosmic' ||
-        initialThemePreference == 'blue') {
+    if (_isValidTheme(initialThemePreference)) {
       _themePreference = initialThemePreference!;
     } else {
       _loadThemePreference();
@@ -120,24 +133,7 @@ class SettingsProvider extends ChangeNotifier {
 
   Future<void> _loadThemePreference() async {
     final prefs = await SharedPreferences.getInstance();
-    var saved = prefs.getString('theme_preference');
-    if (saved == null) {
-      final legacy = prefs.getString('dark_mode_preference');
-      if (legacy == 'light') {
-        saved = 'light';
-      } else if (legacy == 'dark' || legacy == 'system') {
-        saved = 'dark';
-      }
-    }
-    if (saved == 'light' ||
-        saved == 'teal' ||
-        saved == 'dark' ||
-        saved == 'cosmic' ||
-        saved == 'blue') {
-      _themePreference = saved!;
-    } else {
-      _themePreference = 'dark';
-    }
+    _themePreference = _resolveStoredTheme(prefs);
     notifyListeners();
   }
 
@@ -185,19 +181,24 @@ class SettingsProvider extends ChangeNotifier {
         _ => null,
       };
 
-  String _storedThemePreference(SharedPreferences prefs) {
+  /// Resolves the persisted theme (including the legacy dark_mode_preference
+  /// migration) without constructing a provider. main.dart awaits this BEFORE
+  /// runApp and passes the result as [initialThemePreference].
+  static Future<String> storedThemePreference() async {
+    final prefs = await SharedPreferences.getInstance();
+    return _resolveStoredTheme(prefs);
+  }
+
+  static String _resolveStoredTheme(
+    SharedPreferences prefs, {
+    String fallback = kDefaultThemePreference,
+  }) {
     final saved = prefs.getString('theme_preference');
-    if (saved == 'light' ||
-        saved == 'teal' ||
-        saved == 'dark' ||
-        saved == 'cosmic' ||
-        saved == 'blue') {
-      return saved!;
-    }
+    if (_isValidTheme(saved)) return saved!;
     final legacy = prefs.getString('dark_mode_preference');
     if (legacy == 'light') return 'light';
     if (legacy == 'dark' || legacy == 'system') return 'dark';
-    return _themePreference;
+    return fallback;
   }
 
   /// Loads the per-user background and migrates both legacy storage shapes:
@@ -225,7 +226,10 @@ class SettingsProvider extends ChangeNotifier {
               legacyKeys.any(
                 (candidate) => prefs.getString(candidate) == 'glyphs',
               ));
-      final savedTheme = _storedThemePreference(prefs);
+      // Fallback is the LIVE field, not the fresh-install const: a provider
+      // constructed with [initialThemePreference] (prefs unwritten) must still
+      // see its injected theme for this migration decision.
+      final savedTheme = _resolveStoredTheme(prefs, fallback: _themePreference);
       if (savedTheme == 'cosmic') {
         final legacyStarfield =
             prefs.getBool(_legacyCosmicStarfieldKey) ?? true;

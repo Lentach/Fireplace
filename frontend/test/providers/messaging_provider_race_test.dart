@@ -247,6 +247,27 @@ class _DuplicateDecryptEncryption extends _FakeEncryptionProvider {
   }
 }
 
+/// Restores a persisted, already-decrypted PING (empty plaintext) and counts
+/// live decrypt calls — proves the restore path never re-decrypts a ping and so
+/// never re-fires the ping effect on chat re-entry / cold start (Bug 3).
+class _PersistedPingEncryption extends _FakeEncryptionProvider {
+  int decryptCalls = 0;
+
+  @override
+  Future<Map<String, dynamic>?> getDecryptedContent(int messageId) async =>
+      {'content': '', 'messageType': 'PING'};
+
+  @override
+  Future<String> decrypt(
+    int senderId,
+    String ciphertext, {
+    int? messageId,
+  }) async {
+    decryptCalls++;
+    return jsonEncode(E2eEnvelope.build('', messageType: 'PING'));
+  }
+}
+
 /// Fails the first live decrypt per history pass, then succeeds after session reset.
 /// E2E becomes ready only after [markReady] (simulates iOS PWA init lag).
 class _DelayedE2EReadyEncryption extends _FakeEncryptionProvider {
@@ -356,6 +377,7 @@ void main() {
       required String createdAt,
       bool includeTtl = true,
       String messageType = 'TEXT',
+      String deliveryStatus = 'DELIVERED',
     }) => {
       'id': id,
       'content': '[encrypted]',
@@ -363,7 +385,7 @@ void main() {
       'senderId': 2,
       'senderUsername': 'bob',
       'conversationId': 10,
-      'deliveryStatus': 'DELIVERED',
+      'deliveryStatus': deliveryStatus,
       'messageType': messageType,
       if (includeTtl) 'disappearAfterSeconds': 60,
       'createdAt': createdAt,
@@ -594,6 +616,206 @@ void main() {
         final row = provider.messages.singleWhere((m) => m.id == 8);
         expect(row.messageType, MessageType.ping);
         expect(row.content, isNot('[Decryption failed]'));
+      },
+    );
+
+    test(
+      'history restore of a SEEN persisted PING does not re-decrypt or re-fire',
+      () async {
+        final enc = _PersistedPingEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        // Re-entry / restart after the ping was seen: the row is READ (the
+        // durable consume record stamped server-side by markConversationRead)
+        // and a decrypted PING (empty plaintext) is persisted from its one
+        // live decrypt. Must restore silently without touching Signal.
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 8,
+              createdAt: '2026-01-01T00:00:08.000Z',
+              messageType: 'PING',
+              includeTtl: false,
+              deliveryStatus: 'READ',
+            ),
+          ],
+        });
+        for (var i = 0; i < 30; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+
+        expect(
+          enc.decryptCalls,
+          0,
+          reason: 'a persisted PING must restore without a live re-decrypt',
+        );
+        final row = provider.messages.singleWhere((m) => m.id == 8);
+        expect(row.messageType, MessageType.ping);
+        expect(row.content, '');
+        expect(
+          provider.showPingEffect,
+          isFalse,
+          reason: 'restoring a seen (READ) ping must not re-fire the effect',
+        );
+      },
+    );
+
+    test(
+      'history restore of an UNSEEN persisted PING fires once without re-decrypt',
+      () async {
+        final enc = _PersistedPingEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        // "Arrived while away, then process death": the live decrypt ran in a
+        // previous process (record persisted) but the transient
+        // _showPingEffect died with it and the user never opened the chat, so
+        // the row is still un-READ. The restore must resurrect the pending
+        // nudge exactly once — still with zero Signal calls.
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 8,
+              createdAt: '2026-01-01T00:00:08.000Z',
+              messageType: 'PING',
+              includeTtl: false,
+            ),
+          ],
+        });
+        for (var i = 0; i < 30; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+
+        expect(enc.decryptCalls, 0);
+        expect(
+          provider.showPingEffect,
+          isTrue,
+          reason: 'an unseen persisted ping must play once when the chat opens',
+        );
+
+        // Same-session second history pass (resync) must not fire again.
+        provider.clearPingEffect();
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 8,
+              createdAt: '2026-01-01T00:00:08.000Z',
+              messageType: 'PING',
+              includeTtl: false,
+            ),
+          ],
+        });
+        for (var i = 0; i < 30; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+        expect(enc.decryptCalls, 0);
+        expect(
+          provider.showPingEffect,
+          isFalse,
+          reason: 'the per-id guard must dedup a resync of the same ping',
+        );
+      },
+    );
+
+    test(
+      'first live decrypt of a partner PING flips showPingEffect',
+      () async {
+        final enc = _DuplicateDecryptEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        provider.onNewMessage(
+          incomingJson(
+            id: 9,
+            createdAt: '2026-01-01T00:00:09.000Z',
+            messageType: 'PING',
+            includeTtl: false,
+          ),
+        );
+        for (var i = 0; i < 30; i++) {
+          await Future<void>.delayed(Duration.zero);
+          if (provider.showPingEffect) break;
+        }
+
+        expect(enc.decryptCalls, 1);
+        expect(
+          provider.showPingEffect,
+          isTrue,
+          reason: 'a partner ping fires the effect exactly once on live decrypt',
+        );
+      },
+    );
+
+    test(
+      'live re-decrypt of an already-READ PING stays silent (lost persist)',
+      () async {
+        final enc = _DuplicateDecryptEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        // Failure mode the READ gate exists for: _persistDecryptedContent
+        // failed silently, so every cold start live-re-decrypts the old ping.
+        // The row is READ (it was seen long ago) — the re-decrypt must not
+        // replay the effect. A genuinely new arrival is never READ, so this
+        // clause cannot suppress a real ping.
+        provider.onMessageHistory({
+          'conversationId': 10,
+          'messages': [
+            incomingJson(
+              id: 9,
+              createdAt: '2026-01-01T00:00:09.000Z',
+              messageType: 'PING',
+              includeTtl: false,
+              deliveryStatus: 'READ',
+            ),
+          ],
+        });
+        for (var i = 0; i < 30; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+
+        expect(enc.decryptCalls, 1, reason: 'no persisted record: must decrypt');
+        expect(
+          provider.showPingEffect,
+          isFalse,
+          reason: 'a READ ping re-decrypted after a lost persist must be silent',
+        );
+      },
+    );
+
+    test(
+      'live newMessage PING already marked READ does not flip showPingEffect',
+      () async {
+        final enc = _DuplicateDecryptEncryption();
+        provider.setEncryptionProvider(enc);
+        provider.setActiveConversationIdForTest(10);
+
+        // Same READ gate on the socket path: a redelivered/echoed ping that
+        // the server already stamped READ must stay silent. A genuinely new
+        // arrival is DELIVERED at most (covered by the flip test above).
+        provider.onNewMessage(
+          incomingJson(
+            id: 9,
+            createdAt: '2026-01-01T00:00:09.000Z',
+            messageType: 'PING',
+            includeTtl: false,
+            deliveryStatus: 'READ',
+          ),
+        );
+        for (var i = 0; i < 30; i++) {
+          await Future<void>.delayed(Duration.zero);
+        }
+
+        expect(enc.decryptCalls, 1);
+        expect(
+          provider.showPingEffect,
+          isFalse,
+          reason: 'a READ ping arriving over the socket must not replay',
+        );
       },
     );
 
