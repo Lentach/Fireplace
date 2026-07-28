@@ -590,6 +590,42 @@ abstract class AppLocalizations {
   /// **'Klucze bezpieczeństwa użytkownika {name} uległy zmianie. Zwykle oznacza to ponowną instalację, ale może też oznaczać podsłuch. Potwierdź to z nim innym kanałem.'**
   String peerIdentityChangedWarning(String name);
 
+  /// No description provided for @peerIdentityVerifyAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zweryfikuj'**
+  String get peerIdentityVerifyAction;
+
+  /// No description provided for @peerIdentityFingerprintDialogTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zweryfikuj klucze bezpieczeństwa'**
+  String get peerIdentityFingerprintDialogTitle;
+
+  /// No description provided for @peerIdentityFingerprintDialogDescription.
+  ///
+  /// In pl, this message translates to:
+  /// **'Porównaj te odciski z użytkownikiem {name} za pośrednictwem innego kanału. Muszą być identyczne.'**
+  String peerIdentityFingerprintDialogDescription(String name);
+
+  /// No description provided for @peerIdentityFingerprintPeerLabel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odcisk tożsamości użytkownika {name}'**
+  String peerIdentityFingerprintPeerLabel(String name);
+
+  /// No description provided for @peerIdentityFingerprintNoStoredKey.
+  ///
+  /// In pl, this message translates to:
+  /// **'Brak zapisanego klucza tożsamości dla tego kontaktu.'**
+  String get peerIdentityFingerprintNoStoredKey;
+
+  /// No description provided for @identityFingerprintUnavailable.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odcisk tożsamości jest niedostępny.'**
+  String get identityFingerprintUnavailable;
+
   /// No description provided for @blockUser.
   ///
   /// In pl, this message translates to:

@@ -282,6 +282,31 @@ class AppLocalizationsPl extends AppLocalizations {
   }
 
   @override
+  String get peerIdentityVerifyAction => 'Zweryfikuj';
+
+  @override
+  String get peerIdentityFingerprintDialogTitle =>
+      'Zweryfikuj klucze bezpieczeństwa';
+
+  @override
+  String peerIdentityFingerprintDialogDescription(String name) {
+    return 'Porównaj te odciski z użytkownikiem $name za pośrednictwem innego kanału. Muszą być identyczne.';
+  }
+
+  @override
+  String peerIdentityFingerprintPeerLabel(String name) {
+    return 'Odcisk tożsamości użytkownika $name';
+  }
+
+  @override
+  String get peerIdentityFingerprintNoStoredKey =>
+      'Brak zapisanego klucza tożsamości dla tego kontaktu.';
+
+  @override
+  String get identityFingerprintUnavailable =>
+      'Odcisk tożsamości jest niedostępny.';
+
+  @override
   String get blockUser => 'Zablokuj użytkownika';
 
   @override

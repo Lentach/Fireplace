@@ -100,6 +100,7 @@ class EncryptionService {
 
   /// Public key data to upload to the server (set after key generation).
   Map<String, dynamic>? _keysForUpload;
+
   /// True once [initialize] refused to start because identity material is
   /// incomplete. The only way forward is
   /// [regenerateIdentityAfterConfirmedLoss], which the USER must consent to.
@@ -148,8 +149,7 @@ class EncryptionService {
     // A THROWING read propagates: a storage error must never be read as "no
     // keys". Only a definitive absence reaches the generate branch.
     var load = await _identityStore.loadFromStorage();
-    if (load == IdentityLoadResult.absent &&
-        await _hasPriorInstallResidue(p)) {
+    if (load == IdentityLoadResult.absent && await _hasPriorInstallResidue(p)) {
       // No identity, yet sessions/prekeys from a previous install survive.
       // That is partial storage loss, not a fresh install.
       load = IdentityLoadResult.partial;
@@ -645,9 +645,35 @@ class EncryptionService {
   Future<String?> getIdentityFingerprint() async {
     if (!_initialized) return null;
     final keyPair = await _identityStore.getIdentityKeyPair();
-    final bytes = keyPair.getPublicKey().serialize();
-    // Format as hex groups of 4 for readability
-    final hex = bytes.map((b) => b.toRadixString(16).padLeft(2, '0')).join();
+    return _formatIdentityFingerprint(keyPair.getPublicKey());
+  }
+
+  /// Get the stored trusted fingerprint for [peerId], if one exists.
+  ///
+  /// This is deliberately a read of the trusted identity store rather than a
+  /// server-supplied bundle: the user must compare the key this device actually
+  /// accepted after the warning, not a fresh network value.
+  Future<String?> getPeerIdentityFingerprint(int peerId) async {
+    if (!_initialized) return null;
+    try {
+      final identity = await _identityStore.getIdentity(
+        SignalProtocolAddress(peerId.toString(), _deviceId),
+      );
+      return identity == null ? null : _formatIdentityFingerprint(identity);
+    } catch (_) {
+      // Verification UI is advisory. Storage damage or an unavailable key must
+      // leave it visibly unavailable, never turn the warning into an exception.
+      return null;
+    }
+  }
+
+  /// Formats every displayed Signal identity consistently: lowercase hex,
+  /// grouped in fours so a human can compare it over another channel.
+  String _formatIdentityFingerprint(IdentityKey identity) {
+    final hex = identity
+        .serialize()
+        .map((byte) => byte.toRadixString(16).padLeft(2, '0'))
+        .join();
     final groups = <String>[];
     for (var i = 0; i < hex.length; i += 4) {
       final end = (i + 4 > hex.length) ? hex.length : i + 4;
@@ -1587,8 +1613,7 @@ class EncryptionService {
         final keptIds = mergedIds.length > _purgeBacklogCap
             ? mergedIds.skip(mergedIds.length - _purgeBacklogCap).toSet()
             : mergedIds;
-        final keptCiphertexts =
-            mergedCiphertexts.length > _purgeBacklogCap
+        final keptCiphertexts = mergedCiphertexts.length > _purgeBacklogCap
             ? mergedCiphertexts
                   .skip(mergedCiphertexts.length - _purgeBacklogCap)
                   .toSet()
@@ -1678,7 +1703,8 @@ class EncryptionService {
       return (
         ids: (decoded['ids'] as List?)?.whereType<int>().toSet() ?? <int>{},
         ciphertexts:
-            (decoded['cts'] as List?)?.whereType<String>().toSet() ?? <String>{},
+            (decoded['cts'] as List?)?.whereType<String>().toSet() ??
+            <String>{},
       );
     } catch (_) {
       return (ids: <int>{}, ciphertexts: <String>{});

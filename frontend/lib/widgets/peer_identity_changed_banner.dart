@@ -23,6 +23,72 @@ class PeerIdentityChangedBanner extends StatelessWidget {
   final int peerId;
   final String peerName;
 
+  Future<void> _showFingerprints(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    // Capture the provider before opening the asynchronous dialog. The chat
+    // context can disappear while the user is comparing the numbers.
+    final encryption = context.read<EncryptionProvider>();
+    final fingerprints = Future.wait<String?>([
+      encryption.getPeerIdentityFingerprint(peerId),
+      encryption.getIdentityFingerprint(),
+    ]);
+
+    return showDialog<void>(
+      context: context,
+      builder: (dialogContext) => AlertDialog(
+        title: Text(l10n.peerIdentityFingerprintDialogTitle),
+        content: FutureBuilder<List<String?>>(
+          future: fingerprints,
+          builder: (context, snapshot) {
+            if (snapshot.connectionState != ConnectionState.done) {
+              return const SizedBox(
+                height: 56,
+                child: Center(child: CircularProgressIndicator()),
+              );
+            }
+
+            final peerFingerprint = snapshot.data?[0];
+            final ownFingerprint = snapshot.data?[1];
+            return SingleChildScrollView(
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
+                children: [
+                  Text(l10n.peerIdentityFingerprintDialogDescription(peerName)),
+                  const SizedBox(height: 16),
+                  Text(
+                    l10n.peerIdentityFingerprintPeerLabel(peerName),
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 4),
+                  if (peerFingerprint == null)
+                    Text(l10n.peerIdentityFingerprintNoStoredKey)
+                  else
+                    SelectableText(peerFingerprint),
+                  const SizedBox(height: 16),
+                  Text(
+                    l10n.yourIdentityFingerprint,
+                    style: Theme.of(context).textTheme.labelLarge,
+                  ),
+                  const SizedBox(height: 4),
+                  SelectableText(
+                    ownFingerprint ?? l10n.identityFingerprintUnavailable,
+                  ),
+                ],
+              ),
+            );
+          },
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(dialogContext).pop(),
+            child: Text(l10n.cancel),
+          ),
+        ],
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final changed = context.select<EncryptionProvider, bool>(
@@ -53,6 +119,13 @@ class PeerIdentityChangedBanner extends StatelessWidget {
                   color: colors.onErrorContainer,
                 ),
               ),
+            ),
+            TextButton(
+              onPressed: () => _showFingerprints(context),
+              style: TextButton.styleFrom(
+                foregroundColor: colors.onErrorContainer,
+              ),
+              child: Text(l10n.peerIdentityVerifyAction),
             ),
           ],
         ),

@@ -98,6 +98,18 @@
   "@peerIdentityChangedWarning": {
     "placeholders": { "name": { "type": "String" } }
   },
+  "peerIdentityVerifyAction": "Zweryfikuj",
+  "peerIdentityFingerprintDialogTitle": "Zweryfikuj klucze bezpieczeństwa",
+  "peerIdentityFingerprintDialogDescription": "Porównaj te odciski z użytkownikiem {name} za pośrednictwem innego kanału. Muszą być identyczne.",
+  "@peerIdentityFingerprintDialogDescription": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "peerIdentityFingerprintPeerLabel": "Odcisk tożsamości użytkownika {name}",
+  "@peerIdentityFingerprintPeerLabel": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "peerIdentityFingerprintNoStoredKey": "Brak zapisanego klucza tożsamości dla tego kontaktu.",
+  "identityFingerprintUnavailable": "Odcisk tożsamości jest niedostępny.",
   "blockUser": "Zablokuj użytkownika",
   "conversationDeletedByOther": "Rozmowa usunięta przez drugą osobę",
   "noMessagesYet": "Brak wiadomości",

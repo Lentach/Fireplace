@@ -282,6 +282,29 @@ class AppLocalizationsEn extends AppLocalizations {
   }
 
   @override
+  String get peerIdentityVerifyAction => 'Verify';
+
+  @override
+  String get peerIdentityFingerprintDialogTitle => 'Verify security keys';
+
+  @override
+  String peerIdentityFingerprintDialogDescription(String name) {
+    return 'Compare these fingerprints with $name over another channel. They must match.';
+  }
+
+  @override
+  String peerIdentityFingerprintPeerLabel(String name) {
+    return '$name\'s fingerprint';
+  }
+
+  @override
+  String get peerIdentityFingerprintNoStoredKey =>
+      'No stored identity key is available for this contact.';
+
+  @override
+  String get identityFingerprintUnavailable => 'Fingerprint unavailable.';
+
+  @override
   String get blockUser => 'Block user';
 
   @override

@@ -13,10 +13,17 @@ import 'package:provider/provider.dart';
 /// with a "start fresh" button would push healthy users into wiping their own
 /// sessions. So the off-state is tested first and hardest.
 class _FakeEncryption extends EncryptionProvider {
-  _FakeEncryption({this.damaged = false, this.changedPeers = const <int>{}});
+  _FakeEncryption({
+    this.damaged = false,
+    this.changedPeers = const <int>{},
+    this.peerFingerprint,
+    this.ownFingerprint,
+  });
 
   bool damaged;
   Set<int> changedPeers;
+  String? peerFingerprint;
+  String? ownFingerprint;
   int recoverCalls = 0;
   bool recovering = false;
 
@@ -28,6 +35,13 @@ class _FakeEncryption extends EncryptionProvider {
 
   @override
   Set<int> get peersWithChangedIdentity => changedPeers;
+
+  @override
+  Future<String?> getPeerIdentityFingerprint(int peerId) async =>
+      peerFingerprint;
+
+  @override
+  Future<String?> getIdentityFingerprint() async => ownFingerprint;
 
   @override
   Future<void> recoverFromIncompleteIdentity() async {
@@ -51,9 +65,7 @@ void main() {
   group('IdentityDamagedBanner', () {
     testWidgets('renders NOTHING when the identity is healthy', (tester) async {
       final encryption = _FakeEncryption();
-      await tester.pumpWidget(
-        _host(encryption, const IdentityDamagedBanner()),
-      );
+      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
 
       expect(find.byType(Material), findsOneWidget); // the Scaffold's own
       expect(find.byIcon(Icons.gpp_bad_outlined), findsNothing);
@@ -70,23 +82,21 @@ void main() {
       );
     });
 
-    testWidgets('warns and offers recovery when the identity is damaged',
-        (tester) async {
+    testWidgets('warns and offers recovery when the identity is damaged', (
+      tester,
+    ) async {
       final encryption = _FakeEncryption(damaged: true);
-      await tester.pumpWidget(
-        _host(encryption, const IdentityDamagedBanner()),
-      );
+      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
 
       expect(find.byIcon(Icons.gpp_bad_outlined), findsOneWidget);
       expect(find.byType(TextButton), findsOneWidget);
     });
 
-    testWidgets('the destructive action is disabled while it runs',
-        (tester) async {
+    testWidgets('the destructive action is disabled while it runs', (
+      tester,
+    ) async {
       final encryption = _FakeEncryption(damaged: true)..recovering = true;
-      await tester.pumpWidget(
-        _host(encryption, const IdentityDamagedBanner()),
-      );
+      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
 
       final button = tester.widget<TextButton>(find.byType(TextButton));
       expect(
@@ -99,12 +109,11 @@ void main() {
       expect(find.byType(CircularProgressIndicator), findsOneWidget);
     });
 
-    testWidgets('recovery only runs after explicit confirmation',
-        (tester) async {
+    testWidgets('recovery only runs after explicit confirmation', (
+      tester,
+    ) async {
       final encryption = _FakeEncryption(damaged: true);
-      await tester.pumpWidget(
-        _host(encryption, const IdentityDamagedBanner()),
-      );
+      await tester.pumpWidget(_host(encryption, const IdentityDamagedBanner()));
 
       await tester.tap(find.byType(TextButton));
       await tester.pumpAndSettle();
@@ -129,8 +138,9 @@ void main() {
   });
 
   group('PeerIdentityChangedBanner', () {
-    testWidgets('renders NOTHING for a peer whose key never changed',
-        (tester) async {
+    testWidgets('renders NOTHING for a peer whose key never changed', (
+      tester,
+    ) async {
       final encryption = _FakeEncryption();
       await tester.pumpWidget(
         _host(
@@ -142,8 +152,9 @@ void main() {
       expect(find.byIcon(Icons.privacy_tip_outlined), findsNothing);
     });
 
-    testWidgets('warns only in the conversation whose peer re-keyed',
-        (tester) async {
+    testWidgets('warns only in the conversation whose peer re-keyed', (
+      tester,
+    ) async {
       final encryption = _FakeEncryption(changedPeers: {7});
       await tester.pumpWidget(
         _host(
@@ -160,6 +171,60 @@ void main() {
       expect(find.byIcon(Icons.privacy_tip_outlined), findsOneWidget);
       expect(find.textContaining('bob'), findsOneWidget);
       expect(find.textContaining('carol'), findsNothing);
+    });
+
+    testWidgets('verify shows the peer and own fingerprints', (tester) async {
+      final encryption = _FakeEncryption(
+        changedPeers: {7},
+        peerFingerprint: '0123 4567 89ab cdef',
+        ownFingerprint: 'fedc ba98 7654 3210',
+      );
+      await tester.pumpWidget(
+        _host(
+          encryption,
+          const PeerIdentityChangedBanner(peerId: 7, peerName: 'bob'),
+        ),
+      );
+
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      await tester.tap(find.text(l10n.peerIdentityVerifyAction));
+      await tester.pumpAndSettle();
+
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(
+        find.text(l10n.peerIdentityFingerprintDialogDescription('bob')),
+        findsOneWidget,
+      );
+      final fingerprints = tester.widgetList<SelectableText>(
+        find.byType(SelectableText),
+      );
+      expect(
+        fingerprints.map((fingerprint) => fingerprint.data),
+        containsAll(<String>['0123 4567 89ab cdef', 'fedc ba98 7654 3210']),
+      );
+    });
+
+    testWidgets('verify names a missing stored peer key', (tester) async {
+      final encryption = _FakeEncryption(
+        changedPeers: {7},
+        ownFingerprint: 'fedc ba98 7654 3210',
+      );
+      await tester.pumpWidget(
+        _host(
+          encryption,
+          const PeerIdentityChangedBanner(peerId: 7, peerName: 'bob'),
+        ),
+      );
+
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      await tester.tap(find.text(l10n.peerIdentityVerifyAction));
+      await tester.pumpAndSettle();
+
+      expect(
+        find.text(l10n.peerIdentityFingerprintNoStoredKey),
+        findsOneWidget,
+      );
+      expect(find.byType(SelectableText), findsOneWidget);
     });
   });
 }

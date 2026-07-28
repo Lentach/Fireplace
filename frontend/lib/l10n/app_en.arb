@@ -98,6 +98,18 @@
   "@peerIdentityChangedWarning": {
     "placeholders": { "name": { "type": "String" } }
   },
+  "peerIdentityVerifyAction": "Verify",
+  "peerIdentityFingerprintDialogTitle": "Verify security keys",
+  "peerIdentityFingerprintDialogDescription": "Compare these fingerprints with {name} over another channel. They must match.",
+  "@peerIdentityFingerprintDialogDescription": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "peerIdentityFingerprintPeerLabel": "{name}'s fingerprint",
+  "@peerIdentityFingerprintPeerLabel": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "peerIdentityFingerprintNoStoredKey": "No stored identity key is available for this contact.",
+  "identityFingerprintUnavailable": "Fingerprint unavailable.",
   "blockUser": "Block user",
   "conversationDeletedByOther": "Conversation deleted by the other user",
   "noMessagesYet": "No messages yet",

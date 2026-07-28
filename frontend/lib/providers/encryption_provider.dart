@@ -921,6 +921,10 @@ class EncryptionProvider extends ChangeNotifier {
   Future<String?> getIdentityFingerprint() =>
       _encryptionService.getIdentityFingerprint();
 
+  /// Stored trusted identity fingerprint for out-of-band peer verification.
+  Future<String?> getPeerIdentityFingerprint(int peerId) =>
+      _encryptionService.getPeerIdentityFingerprint(peerId);
+
   /// Clear all E2E encryption keys. Call on account deletion only.
   Future<void> clearEncryptionKeys() async {
     _e2eFlowLog('CACHE_CLEAR', {'scope': 'allE2EKeys'});
