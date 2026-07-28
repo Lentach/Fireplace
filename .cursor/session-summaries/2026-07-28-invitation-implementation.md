@@ -40,8 +40,10 @@ Four independent reviews (two pre-fix, two on the fix delta) — **no BLOCKER, n
 
 ## Notes for next session
 
-- **Not merged, not deployed.** Needs owner approval; the VM pulls `master`, so nothing is live.
+- **PR #106 open, NOT merged, NOT deployed.** Needs owner approval; the VM pulls `master`, so nothing is live.
+- **`origin/master` was 17 commits ahead** when the PR opened (0.0.133 five-bug batch). Merged it into the branch: **only two doc conflicts**, `CLAUDE.md` (test counts) and `LATEST.md` (entry rotation) — zero source conflicts. Master had already reconciled the frontend count to 933; the post-merge suite **measured 960** (933 + this branch's 27), and backend stays **564**. Both verifiers green on the merged tree, and all gates were re-run after the merge, not inherited.
 - Deliberate, recorded scope boundaries: an **offline sender still gets no accepted feedback** (acceptance only reaches a socket online at that moment; closing it needs a `senderNotifiedAt` column, so it is a separately-approved follow-up), no `Withdraw invitation`, no `Block` on the row.
 - Two NITs left alone on purpose: `GlassSurface`'s opaque branch still uses the translucent `glass.border` (shared widget, app-wide blast radius), and teal's `buttonBg` (`#0D9488`) differs from `colorScheme.primary` (`#0F766E`) so a button label and a pill label disagree in polarity — a pre-existing global theme inconsistency, not this flow's.
 - `flutter run -d web-server` for the preview is flaky across restarts — it serves a blank scaffold once its hot-restart client is lost. Restart the process, do not reuse the tab.
 - The E2E register throttle is 10/hr/IP in memory: `docker compose restart backend` between full `test_e2e` runs, and give it ~2 min to reinstall and boot.
+- Do not re-derive counts by arithmetic across a merge. Master's 933 and this branch's 930 both came from a 903 base, so adding them double-counts. The merged suite was run and it said 960.

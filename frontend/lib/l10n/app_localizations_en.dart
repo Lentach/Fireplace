@@ -330,6 +330,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get chatComposerSendSemantics => 'Send message';
 
   @override
+  String get chatComposerEmojiTooltip => 'Emoji';
+
+  @override
+  String get chatComposerEmojiSemantics => 'Open emoji picker';
+
+  @override
   String get emojiPickerSemantics => 'Emoji picker';
 
   @override

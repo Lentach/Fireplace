@@ -9,25 +9,23 @@
 - **Four independent reviews, no BLOCKER/MAJOR left.** Fixed from them: blue muted text was 4.08:1 on the new opaque row fill → `mutedTextBlue` set to SPEC §4's `#8A9BA8` (4.92:1, app-wide token), a dead socket method, an unreachable failure branch, the unguarded retry, a 1.92:1 pill outline, an invisible count chip, over-tall rows, and a search button mislabelled `Send invitation`.
 - **Recorded scope boundary, not an oversight:** an **offline sender still gets no accepted feedback** — acceptance only reaches a socket online at that moment and nothing replays it; closing that needs a `senderNotifiedAt` column, so it stays a separately-approved follow-up. No `Withdraw invitation`, no `Block` on the row.
 - **Still binding:** never run `dart format lib/` (format only what you edited); **ask before opening the browser tool**; `flutter run -d web-server` serves a blank scaffold once its hot-restart client is lost — restart the process, do not reuse the tab; the E2E register throttle is 10/hr/IP in memory, so `docker compose restart backend` between full `test_e2e` runs and allow ~2 min to boot.
+**Date:** 2026-07-28 — **RELEASED 0.0.133 / `b6fa385`, frontend only, smoke 5/5.** Five-bug batch: PR **#103** `fix/composer-and-preview-quickwins` (bugs 2/4/5) and PR **#104** `fix/avatar-count-and-ping` (bugs 1/3/3e), both merged with owner approval after independent review + hardening. Backend untouched — `/version` stays `0.0.132/05fc423` BY DESIGN. Worktrees removed after merge.
+
+- **Bug 2 restored the composer emoji button** — removed deliberately in `6131b15` (0.0.115) as a "keyboard duplicate"; premise wrong, owner ruled restore. Full pin contract back (`composerBottomPanelPinned` + viewport bottom-pin); `frontend/CLAUDE.md` §7 ban line superseded. **iOS-style emotes declined: Apple Color Emoji is not redistributable**; iOS already renders Apple glyphs via fallback.
+- **Bug 4:** mobile (defaultTargetPlatform android/iOS, incl. phone PWA) action key now inserts newline (`TextInputAction.newline`, no onSubmitted); desktop byte-identical (Enter=newline, Ctrl/Cmd+Enter=send — owner ruled keep).
+- **Bug 5:** Anti-Quantum Note previews show the l10n label on every surface (tile, reply bar, pinned banner, in-bubble quote via `reply_preview_helper`). **Link-preview consumption CLEARED** three ways (client excludes+strips, backend skips encrypted, GET /note/:token is a SELECT — burn is POST reveal only). No wire change.
+- **Bug 1 root cause:** `_restoreUserFromAccessJwt` clobbered `profilePhotos`/`about` on EVERY silent refresh (even during boot hydrate) → self card "1/3" while others saw 3. Fix: same-account restore `copyWith`s the hydrated user. Swipe-dead gallery was collateral (tap-zone nav gated on photos>1), self-heals.
+- **Bug 3 root cause:** ping plaintext '' → lossy persisted-restore kept `[encrypted]` → forced re-decrypt every chat entry → effect re-fired forever. Fix: persisted PING restores as decrypted (consume-once by construction) + transient id dedup. Persisted "played-ids cache" band-aid named and rejected. **Bug 3e** (separate): overlay perf — RepaintBoundary + Fade/ScaleTransition over static child.
+- Tests: A **925+4** green, B **911+4** green, fail-before proven by stashing lib per bug. Merged master reconciled to **933** (union suite run confirmed `+933 ~4` before merging #104); master CI green on `b6fa385` before deploy.
+- Review round: Branch A zero findings; Branch B P3 + three ping edges all FIXED with fail-before tests (early-unmount latch, unseen-ping resurrection via the durable READ mark, READ gate on the live trigger against silent persist loss).
+- **⚠ Owner must device-check the restored composer on the phone** (keyboard→emoji toggle→toggle back→send from panel→system back→mic): widget tests cannot exercise visualViewport/450ms-debounce/black-flash. Rollback if it fights the keyboard: `git revert` the #103 merge or redeploy from `6531aab` (last pre-batch master, 0.0.132) via `deploy-web.ps1`.
+- Codex-backed default `task` subagents are usage-walled; `sonic`/`scout` (Anthropic) work — route delegation there.
+- ➡ Detail: **`2026-07-28-session-bugfix-batch.md`**; diagnosis evidence: `.planning/bugfix-batch-2026-07/` (local-only).
 
 ---
 ### Prior latest ↓
 
-**Date:** 2026-07-28 — **invitation rework research + UX proposal in isolated worktree.** No application source changed.
-
-- Current defect is proven: outbound requests already exist in `sentRequestsList`/`FriendsProvider`, but `AddOrInvitationsScreen` shows only inbound requests and pops after send. Accept and reciprocal auto-accept misuse `openConversation`, forcing the caller into chat; Accept also shows success before server confirmation.
-- Recommended one `Invitations` relationship inbox: compact invite control, visible `Waiting for you` + `Sent`, authoritative row-level action states, and **Invitation accepted · Chat ready** with explicit **Open chat**. Never navigate from relationship state.
-- Wire decision: remove acceptance-driven `openConversation`; emit the accepted result with nullable `conversationId` to **both sender and accepter** after create/find attempt. Keep `openConversation` for explicit `startConversation` only; expose an honest retry state if friendship succeeds but chat setup fails.
-- Visual direction: shared floating glass utility chrome, opaque compact rows, Contacts hex identity language, primary Accept/quiet Decline, token-only colors, skeleton loading, reduce-motion-aware row transition, and unchanged instant-opaque chat entry.
-- Primary-source evidence: Signal, Discord, Session, Matrix/Element; Meta/Snapchat gaps stated rather than guessed. ➡ `2026-07-28-invitation-rework-research.md`, `docs/plans/2026-07-28-invitation-flow-research.md`, `docs/plans/2026-07-28-invitation-flow-rework.md`.
-- Worktree: `C:/Users/Lentach/Desktop/fireplace-wt-invitation`; branch `feat/invitation-rework` is committed and pushed. No merge, deploy, or app behavior change.
-- Fresh-agent copy/paste implementation prompt: `docs/plans/2026-07-28-invitation-implementation-handoff.md`. It locks scope, sender/accepter payload parity, no-auto-navigation regressions, cross-tier E2E, and the four-theme visual loop.
-
----
-### Prior latest ↓
-
-
-**Date:** 2026-07-27 — **agent tooling audit + two credential rotations.** No app source touched (zero files under `frontend/lib`, `frontend/test`, `backend/src`, `backend/test`). 6 commits, CI green. Live unchanged at **0.0.132 / `05fc423`**.
+**Date:** 2026-07-27 — **agent tooling audit + two credential rotations.** No app source touched. 6 commits, CI green. Live unchanged at **0.0.132 / `05fc423`**.
 
 - **Two live secrets found and killed.** `CONTACT_INBOX_KEY` rotated on the VM (old → **404**, issue **#100 closed**). And a SECOND, previously unknown one: `CONTEXT7_API_KEY` was **tracked and pushed** in `.claude/settings.local.json` (from `fdd3aa2`, an unrelated feature commit) — confirmed live, now revoked and verified **401**. That file is untracked and gitignored by glob.
 - **Two enforcement gates that did not exist.** `deploy-web.ps1` now runs the post-deploy smoke and **FAILS the deploy** on a bundle-sha mismatch (falsified both ways against live prod; also catches the exit-21 silent-halt trap). And a **backend lint ratchet** in CI — lint was rotting from 726 → 1320 total errors at ~+30/day because nothing ran it. The ratchet gates a **split count**: **839** real (type-safety) errors strictly, proven platform-identical, plus 481 formatting with ±5 tolerance. It fails only when the number GOES UP.
@@ -76,4 +74,5 @@
 - **PROCEDURE EXCEPTION, recorded honestly:** the 0.0.131 bump was NOT the last branch commit (`280a802` bump → `c0fcae1` test). Deploys key off the MERGE commit and both surfaces report `0.0.131 / f4d3967`, so nothing in prod is inconsistent. **Do not "fix" the history.** Next time hold the bump until verification is done.
 - **RE-DEFERRED by the owner: the honeycomb `ListView` rewrite.** Build+layout is still O(N) (`SingleChildScrollView` + one full-height `Stack`; only visual subtrees are windowed). A throwaway probe measured 55.4/66.5/72.0/78.1/**135.5** ms at 20/50/100/200/400 — DIRECTIONAL ONLY, not comparable to the 2026-07-24 table. The cliff bites above ~200 contacts, which is not real yet. Do not record as done.
 - ➡ `2026-07-27-session-backlog-sweep.md`, `2026-07-27-session-release-0.0.130.md`, `2026-07-27-session-nav-motion-and-glyphs.md`.
+
 

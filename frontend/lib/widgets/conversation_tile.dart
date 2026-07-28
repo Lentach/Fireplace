@@ -11,6 +11,7 @@ import 'glass/glass_dialog.dart';
 import 'hex_avatar.dart';
 import 'hearth_fade_arc.dart';
 import '../utils/jumbo_emoji.dart';
+import '../utils/anti_quantum_note_link.dart';
 
 class ConversationTile extends StatelessWidget {
   final int conversationId;
@@ -62,6 +63,9 @@ class ConversationTile extends StatelessWidget {
     if (lastMessage.displayAsEncryptedPlaceholder ||
         lastMessage.content == 'Encrypted message') {
       return l10n.encryptedMessage;
+    }
+    if (isAntiQuantumNoteUrl(lastMessage.content)) {
+      return l10n.antiQuantumNoteTitle;
     }
     return lastMessage.content;
   }

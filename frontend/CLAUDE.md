@@ -27,7 +27,7 @@ flutter test test/providers/message_editing_test.dart
 |---|---|---|
 | one file | 1 | **7 s** |
 | one directory (`test/utils`) | 175 | **21 s** |
-| full suite (`flutter test`) | 930 | **170–310 s** |
+| full suite (`flutter test`) | 960 | **170–310 s** |
 | **45 explicit files on one command line** | ~45 | **timed out past 11 min — ≥5× the FULL suite** |
 
 `flutter test` appears to pay a compile cost **per argument** rather than once per run, so a
@@ -130,7 +130,8 @@ git pull ; .\deploy-web.ps1
 ## 7. Composer, media, and platform gotchas
 
 - Chat composer viewport: non-embedded chat uses `ChatComposerViewport`; `Scaffold(resizeToAvoidBottomInset:false)`, list bottom padding = composer height + keyboard inset, composer `Positioned(bottom: keyboardInset)`.
-- Composer has NO dedicated emoji button/panel (removed in 0.0.115 — every soft keyboard already has one; it only duplicated the keyboard). The `composerBottomPanelPinned` notifier and the `ChatComposerViewport` bottom-pin branch were deleted with it, so the composer always sits at the live keyboard inset. Emoji/reaction selection still uses `FireplaceEmojiPicker`, but ONLY in the message context menu — do not reintroduce it in the composer.
+- Composer emoji button/panel: RESTORED 2026-07-28 by owner ruling (it was removed in 0.0.115 as a "keyboard duplicate", but the premise was wrong — not every soft keyboard exposes an emoji key). The toggle (`composer-emoji-toggle` key) opens `FireplaceEmojiPicker` as a composer bottom panel that REPLACES the keyboard: `_setEmojiPickerVisible` is the single mutation point keeping `composerBottomPanelPinned` (composer_keyboard_signals.dart) in sync, and `ChatComposerViewport` anchors at `bottom: 0` while pinned so the panel occupies the keyboard's space from the first frame. Keyboard and panel are mutually exclusive (focus gain closes the panel); recording start and chat-surface taps close it; system back closes it via `PopScope`; sending from the panel keeps it open (Telegram parity). Panel mounts/unmounts INSTANTLY — no SizeTransition.
+- Composer send key (owner ruling 2026-07-28): on mobile (Android/iOS by `defaultTargetPlatform`, native AND phone PWA) the IME action key is `TextInputAction.newline` — the action key inserts a newline and only the on-screen send button sends. Desktop (web/native) keeps `TextInputAction.send` + `onSubmitted` + Ctrl/Cmd+Enter. Do not "unify" these.
 - iOS WebKit keyboard inset comes from `visualViewport` via `web_keyboard_inset.dart`; Flutter `MediaQuery.viewInsets.bottom` is unreliable there.
 - Composer collapse guard defers inset collapse only for send/edit/staged/action-toggle operations; genuine keyboard dismiss should collapse immediately.
 - Composer tap-outside: `ChatInputBar` groups the text field + composer controls in one `TapRegion`; taps outside the whole composer unfocus on Android/desktop web, while iOS WebKit still no-ops for the bare text-field outside callback to avoid the send-button keyboard bounce.

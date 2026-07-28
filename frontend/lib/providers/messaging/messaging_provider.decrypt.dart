@@ -338,7 +338,15 @@ extension MessagingDecrypt on MessagingProvider {
             persisted['messageType'] as String?,
           );
           final restored = msg.copyWith(
-            content: pContent.isNotEmpty ? pContent : msg.content,
+            // A PING carries no plaintext, so its persisted content is
+            // legitimately empty. Falling back to msg.content ('[encrypted]')
+            // would keep displayAsEncryptedPlaceholder true and force a
+            // redundant live re-decrypt on every chat entry, re-firing the
+            // ping sound/effect forever (Bug 3). Restore it as genuinely
+            // decrypted (empty content) so it is consumed exactly once.
+            content: restoredType == MessageType.ping
+                ? ''
+                : (pContent.isNotEmpty ? pContent : msg.content),
             messageType: restoredType,
             mediaUrl: persisted['mediaUrl'] as String?,
             mediaDuration: persisted['mediaDuration'] as int?,
@@ -360,6 +368,22 @@ extension MessagingDecrypt on MessagingProvider {
             if (idx != -1) {
               _messages[idx] = merged;
               changed = true;
+            }
+            // Pending-ping resurrection (Bug 3, "arrived while away" case):
+            // if the live decrypt ran in a PREVIOUS process (backgrounded
+            // arrival, then OS kill before the chat was opened), the transient
+            // _showPingEffect died with that process while the persisted
+            // record suppresses any re-decrypt here. The durable consume
+            // record is the READ mark: markConversationRead is emitted AFTER
+            // this history payload was built (history.dart onMessageHistory),
+            // so a never-seen ping still arrives un-READ. Fire once per id;
+            // the read-mark that follows keeps every later entry, restart,
+            // and resync silent.
+            if (merged.messageType == MessageType.ping &&
+                merged.senderId != _currentUserId &&
+                merged.deliveryStatus != MessageDeliveryStatus.read &&
+                _pingEffectFiredIds.add(merged.id)) {
+              _showPingEffect = true;
             }
             continue;
           }
@@ -750,8 +774,19 @@ extension MessagingDecrypt on MessagingProvider {
           linkPreviewTitle: parsed.linkPreviewTitle,
           linkPreviewImageUrl: safeImageUrl,
         );
-        // Trigger ping effect for recipient when decrypted type is PING
-        if (parsedType == MessageType.ping && msg.senderId != _currentUserId) {
+        // Trigger ping effect for recipient when decrypted type is PING.
+        // `_pingEffectFiredIds.add` returns false if already fired, so a
+        // duplicate/redelivered ping that reaches live decrypt cannot re-fire
+        // (transient event dedup; the persisted-cache restore path never
+        // live-decrypts a ping, so restart/re-enter stay silent by construction).
+        // The READ gate mirrors the restore path: if _persistDecryptedContent
+        // ever fails silently, an old ping would live-re-decrypt on every cold
+        // entry — a genuinely new arrival is never READ, so the clause only
+        // blocks that failure-mode replay. One consume record on both paths.
+        if (parsedType == MessageType.ping &&
+            msg.senderId != _currentUserId &&
+            msg.deliveryStatus != MessageDeliveryStatus.read &&
+            _pingEffectFiredIds.add(msg.id)) {
           _showPingEffect = true;
         }
         _encryptionProvider?.cacheDecryption(msg.id, decryptedMsg);
