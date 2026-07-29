@@ -41,9 +41,16 @@ Owner discovered the local plaintext-at-rest hole ("messages readable after dele
 - Merged manifest grep: `allowBackup="false"`, `fullBackupContent="false"`, `dataExtractionRules`, `INTERNET` all present.
 - Backend untouched. No version bump (no production release).
 
+## Later same session: review, keystore, first signed APK
+
+- **Two-axis review of `21074ba`** (reviewer subagents): Spec 10/10 clean. Standards: one P3, fixed in `a4c3697` — the signing gate moved from config-time `startParameter.taskNames` (missed bare `gradlew build`/`assemble`, over-matched lintRelease) to an execution-time `doFirst` on EXACTLY `packageRelease`/`packageReleaseBundle` (NOT a `package*Release*` prefix: `packageReleaseResources` feeds lint/unit tests), plus release `signingConfig = null` without a keystore (missed path ⇒ inert UNSIGNED apk, never debug-signed). Falsified: throws at `:app:packageRelease` with the runbook message; debug green.
+- **Owner generated the release keystore** (`fireplace-release.jks`, alias `fireplace`, RSA-4096, PKCS12 one-password). Password on paper, verified char-by-char against `key.properties`; .jks off-PC copy still on the owner. First `key.properties` had a one-char typo in `keyPassword` → Gradle error "Given final block not properly padded" at `:app:packageRelease` (store opened, key read failed = keyPassword wrong); fixed by copying storePassword over it programmatically (never displayed).
+- **First signed release APK built end-to-end** via `build-android.ps1`: 0.0.137 / versionCode 137, 69.2 MB, apksigner OK, 16KB gate 8/8 (incl. release `libapp.so`). Shakedown fixes committed (`cb09dfe`): script stops gradle daemons before `flutter clean` (live daemon ⇒ half-deleted `frontend\build` ⇒ lint dies on locked jars), and `:app` `lint { checkReleaseBuilds = false }` (VERIFIED effective for the whole graph: `--dry-run` lists 0 lintVital tasks incl. `:file_picker:` — library lintVital only runs as a dependency of the app's pipeline).
+- Master moved twice under the session (PR #109 merged, **0.0.137 released** by owner) — commits rebased cleanly on top.
+
 ## Notes for next session
 
-- **Phase 2 is the LAUNCH GATE**: Drift+SQLCipher encrypted store for categories 7–18 (decrypted cache, raw pairs, pendsend, backlog/retention/diag, JWT→secure storage, voice cache), key in Keystore, no auth binding, armed-gate, rotate-and-destroy on purge (shredding = key rotation, NOT SQLite deletes). Design inputs: `plaintext_record_codec.dart`, #105. **Do not distribute any APK before Phase 2** — first-install sealing is the only fully-clean shredding story.
-- **OWNER TASK pending**: generate the release keystore per the runbook and back up the .jks + passwords off-PC.
+- **Phase 2 handoff is COMPLETE and self-contained: `docs/plans/2026-07-29-android-phase2-handoff.md`** — required reading list, agreed design (no relitigating), storage inventory, gotchas (SQLCipher .so must pass the 16KB gate!), acceptance criteria. Fresh agent starts there.
+- **Do not distribute any APK before Phase 2** — first-install sealing is the only fully-clean shredding story. Owner MAY sideload for self-testing: main account = log OUT of PWA first; cleanest is a throwaway account on the APK chatting with the main PWA account (avoids the uploadKeyBundle flip-flop).
 - Backend quick win any time: friendship/block gate on `fetchPreKeyBundle`.
 - Phase 3 smoke additions agreed: fresh-clone build + killed-app push (validates no-options Firebase init), same-account flip-flop drill then PWA logout recovery.
