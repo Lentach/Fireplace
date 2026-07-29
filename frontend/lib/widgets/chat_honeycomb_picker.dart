@@ -4,26 +4,61 @@ import '../l10n/app_localizations.dart';
 import '../models/user_model.dart';
 import '../theme/glass_theme.dart';
 import '../theme/rpg_theme.dart';
+import '../utils/caption_metrics.dart';
 import 'glass/glass_sheet.dart';
 import 'hex_avatar.dart';
 
+/// What the Chats picker came back with.
+sealed class ChatPickerChoice {
+  const ChatPickerChoice();
+}
+
+/// Start, or reopen, a conversation with this friend.
+class ChatPickerFriend extends ChatPickerChoice {
+  const ChatPickerFriend(this.friend);
+
+  final UserModel friend;
+}
+
+/// Open the invitation queue.
+///
+/// The picker deliberately never accepts an invitation itself: accept and
+/// decline carry a scoped-failure and retry state machine that already lives
+/// in `InvitationsScreen`, and a second copy of it would drift from the first.
+class ChatPickerReviewInvitations extends ChatPickerChoice {
+  const ChatPickerReviewInvitations();
+}
+
 /// Opens the Chats friend picker as floating glass chrome.
-Future<UserModel?> showChatHoneycombPicker(
+Future<ChatPickerChoice?> showChatHoneycombPicker(
   BuildContext context, {
   required List<UserModel> friends,
+  List<UserModel> inviters = const <UserModel>[],
 }) {
-  return showGlassSheet<UserModel>(
+  return showGlassSheet<ChatPickerChoice>(
     context,
     isScrollControlled: true,
-    builder: (_) => ChatHoneycombPicker(friends: friends),
+    builder: (_) => ChatHoneycombPicker(friends: friends, inviters: inviters),
   );
 }
 
 /// A one-shot, reduce-motion-aware honeycomb of friends to start a chat with.
+///
+/// People who have invited *you* lead the comb as accent terminals. The Chats
+/// tab badges its "+" with the inbound request count, so the sheet behind that
+/// badge has to be able to answer it — otherwise the badge points at a door
+/// that does not open.
 class ChatHoneycombPicker extends StatefulWidget {
-  const ChatHoneycombPicker({super.key, required this.friends});
+  const ChatHoneycombPicker({
+    super.key,
+    required this.friends,
+    this.inviters = const <UserModel>[],
+  });
 
   final List<UserModel> friends;
+
+  /// Senders of inbound invitations still awaiting an answer.
+  final List<UserModel> inviters;
 
   @override
   State<ChatHoneycombPicker> createState() => _ChatHoneycombPickerState();
@@ -54,6 +89,9 @@ class _ChatHoneycombPickerState extends State<ChatHoneycombPicker>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
+    // Reduce-motion is re-checked on EVERY dependency change, not latched on
+    // the first: switching it on mid-entrance must snap the sheet to its end
+    // state. Only the forward() is one-shot.
     if (MediaQuery.disableAnimationsOf(context)) {
       _entranceController.value = 1;
       return;
@@ -76,6 +114,13 @@ class _ChatHoneycombPickerState extends State<ChatHoneycombPicker>
     final colorScheme = Theme.of(context).colorScheme;
     final glass = GlassTheme.of(context);
     final maxHeight = MediaQuery.sizeOf(context).height * 0.68;
+
+    final cells = <_PickerCell>[
+      for (final inviter in widget.inviters)
+        _PickerCell(user: inviter, isInvitation: true),
+      for (final friend in widget.friends)
+        _PickerCell(user: friend, isInvitation: false),
+    ];
 
     return SafeArea(
       top: false,
@@ -119,17 +164,34 @@ class _ChatHoneycombPickerState extends State<ChatHoneycombPicker>
                       color: glass.onGlassMuted,
                     ),
                   ),
+                  if (widget.inviters.isNotEmpty) ...[
+                    const SizedBox(height: 4),
+                    Text(
+                      key: const Key('chat-picker-invitations-hint'),
+                      l10n.contactNetworkPendingRequests(
+                        widget.inviters.length,
+                      ),
+                      style: RpgTheme.bodyFont(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w600,
+                        color: colorScheme.primary,
+                      ),
+                    ),
+                  ],
                   const SizedBox(height: 18),
                   Flexible(
-                    child: widget.friends.isEmpty
+                    child: cells.isEmpty
                         ? _EmptyPickerState(
                             title: l10n.chatPickerEmptyTitle,
                             description: l10n.chatPickerEmptyDescription,
                           )
-                        : _HoneycombFriendGrid(
-                            friends: widget.friends,
-                            onSelected: (friend) =>
-                                Navigator.of(context).pop(friend),
+                        : _HoneycombGrid(
+                            cells: cells,
+                            onSelected: (cell) => Navigator.of(context).pop(
+                              cell.isInvitation
+                                  ? const ChatPickerReviewInvitations()
+                                  : ChatPickerFriend(cell.user),
+                            ),
                           ),
                   ),
                 ],
@@ -142,26 +204,60 @@ class _ChatHoneycombPickerState extends State<ChatHoneycombPicker>
   }
 }
 
-class _HoneycombFriendGrid extends StatelessWidget {
-  const _HoneycombFriendGrid({required this.friends, required this.onSelected});
+/// One terminal of the comb: a friend to chat with, or someone waiting on an
+/// answer from you.
+@immutable
+class _PickerCell {
+  const _PickerCell({required this.user, required this.isInvitation});
 
-  final List<UserModel> friends;
-  final ValueChanged<UserModel> onSelected;
+  final UserModel user;
+  final bool isInvitation;
+}
+
+class _HoneycombGrid extends StatelessWidget {
+  const _HoneycombGrid({required this.cells, required this.onSelected});
+
+  /// Gap between a hex and its caption, and between a caption and the next
+  /// row — the same rhythm the Contacts board uses, so both combs read as one
+  /// shape language instead of two.
+  static const double _labelGap = 5;
+  static const double _rowGap = 6;
+
+  final List<_PickerCell> cells;
+  final ValueChanged<_PickerCell> onSelected;
 
   @override
   Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
     final colorScheme = Theme.of(context).colorScheme;
     final glass = GlassTheme.of(context);
+
+    // An avatar-only comb is unusable the moment a friend has no picture: every
+    // such terminal collapses to a single initial. The name is the identifier.
+    final labelStyle = RpgTheme.bodyFont(
+      fontSize: 11,
+      fontWeight: FontWeight.w600,
+      color: colorScheme.onSurface,
+    );
+    final hasInvitations = cells.any((cell) => cell.isInvitation);
+    final labelHeight = measureCaptionHeight(
+      context,
+      labelStyle,
+      lines: hasInvitations ? 2 : 1,
+    );
 
     return LayoutBuilder(
       builder: (context, constraints) {
         final columns = (constraints.maxWidth / 82).floor().clamp(3, 6);
-        final cellHeight =
+        // The half-cell in the divisor is the odd-row stagger: it keeps the
+        // widest row inside the sheet instead of overflowing it.
+        final hexHeight =
             (constraints.maxWidth / ((columns + 0.5) * kHexWidthRatio))
                 .clamp(64.0, 86.0)
                 .toDouble();
-        final cellWidth = cellHeight * kHexWidthRatio;
-        final rows = (friends.length / columns).ceil();
+        final cellWidth = hexHeight * kHexWidthRatio;
+        final rowHeight = hexHeight + _labelGap + labelHeight + _rowGap;
+        final rows = (cells.length / columns).ceil();
 
         return ListView.builder(
           key: const Key('chat-honeycomb-grid'),
@@ -169,38 +265,81 @@ class _HoneycombFriendGrid extends StatelessWidget {
           padding: EdgeInsets.zero,
           itemBuilder: (context, row) {
             final start = row * columns;
-            final end = (start + columns).clamp(0, friends.length);
+            final end = (start + columns).clamp(0, cells.length);
             return SizedBox(
-              height: cellHeight * 0.82,
+              height: rowHeight,
               child: Padding(
                 padding: EdgeInsets.only(left: row.isOdd ? cellWidth / 2 : 0),
                 child: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [
-                    for (final friend in friends.sublist(start, end))
+                    for (final cell in cells.sublist(start, end))
                       SizedBox(
                         width: cellWidth,
-                        height: cellHeight,
+                        height: rowHeight,
                         child: Semantics(
                           button: true,
-                          label: friend.displayHandle,
+                          label: cell.isInvitation
+                              ? l10n.invitationSemanticIncoming(
+                                  cell.user.username,
+                                )
+                              : cell.user.displayHandle,
+                          excludeSemantics: true,
                           child: InkResponse(
-                            key: Key('chat-picker-friend-${friend.id}'),
-                            onTap: () => onSelected(friend),
-                            radius: cellHeight / 2,
-                            child: Center(
-                              child: HexAvatar(
-                                size: cellHeight,
-                                displayName: friend.username,
-                                imageUrl: friend.profilePictureUrl,
-                                surface: colorScheme.surface,
-                                borderColor: glass.border,
-                                initialsStyle: RpgTheme.bodyFont(
-                                  fontSize: cellHeight * 0.25,
-                                  fontWeight: FontWeight.w700,
-                                  color: colorScheme.onSurface,
+                            key: Key(
+                              cell.isInvitation
+                                  ? 'chat-picker-invite-${cell.user.id}'
+                                  : 'chat-picker-friend-${cell.user.id}',
+                            ),
+                            onTap: () => onSelected(cell),
+                            radius: hexHeight / 2,
+                            child: Column(
+                              mainAxisSize: MainAxisSize.min,
+                              children: [
+                                HexAvatar(
+                                  size: hexHeight,
+                                  displayName: cell.user.username,
+                                  imageUrl: cell.user.profilePictureUrl,
+                                  surface: colorScheme.surface,
+                                  borderColor: cell.isInvitation
+                                      ? colorScheme.primary
+                                      : glass.border,
+                                  // An inbound invitation is the one terminal
+                                  // in the comb that wants something from you.
+                                  ember: cell.isInvitation ? 1 : 0,
+                                  initialsStyle: RpgTheme.bodyFont(
+                                    fontSize: hexHeight * 0.25,
+                                    fontWeight: FontWeight.w700,
+                                    color: colorScheme.onSurface,
+                                  ),
                                 ),
-                              ),
+                                const SizedBox(height: _labelGap),
+                                Column(
+                                  mainAxisSize: MainAxisSize.min,
+                                  children: [
+                                    Text(
+                                      cell.user.username,
+                                      softWrap: false,
+                                      maxLines: 1,
+                                      overflow: TextOverflow.ellipsis,
+                                      textAlign: TextAlign.center,
+                                      style: labelStyle,
+                                    ),
+                                    if (cell.isInvitation)
+                                      Text(
+                                        l10n.invitationStatusPending,
+                                        softWrap: false,
+                                        maxLines: 1,
+                                        overflow: TextOverflow.ellipsis,
+                                        textAlign: TextAlign.center,
+                                        style: labelStyle.copyWith(
+                                          fontWeight: FontWeight.w700,
+                                          color: colorScheme.primary,
+                                        ),
+                                      ),
+                                  ],
+                                ),
+                              ],
                             ),
                           ),
                         ),

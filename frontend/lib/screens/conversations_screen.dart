@@ -19,6 +19,7 @@ import '../widgets/conversation_list_skeleton.dart';
 import '../widgets/main_tab_screen_header.dart';
 import '../utils/instant_opaque_route.dart';
 import 'chat_detail_screen.dart';
+import 'invitations_screen.dart';
 
 class ConversationsScreen extends StatefulWidget {
   final VoidCallback? onAvatarTap;
@@ -93,17 +94,40 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
   }
 
   Future<void> _showNewChatPicker() async {
-    final selectedFriend = await showChatHoneycombPicker(
+    final friends = context.read<FriendsProvider>();
+    final choice = await showChatHoneycombPicker(
       context,
-      friends: context.read<FriendsProvider>().friends,
+      friends: friends.friends,
+      inviters: [
+        for (final request in friends.friendRequests) request.sender,
+      ],
     );
-    if (selectedFriend == null || !mounted) return;
+    if (choice == null || !mounted) return;
 
+    switch (choice) {
+      case ChatPickerReviewInvitations():
+        await _openInvitations();
+      case ChatPickerFriend(:final friend):
+        _startChatWith(friend.id);
+    }
+  }
+
+  /// The "+" badge counts inbound invitations, so the sheet behind it has to
+  /// reach them. Accepting stays in `InvitationsScreen`, which owns the
+  /// failure and retry machinery; this only routes there and back.
+  Future<void> _openInvitations() async {
+    final peerUserId = await Navigator.of(context).push<int>(
+      MaterialPageRoute(builder: (_) => const InvitationsScreen()),
+    );
+    if (peerUserId == null || !mounted) return;
+    _startChatWith(peerUserId);
+  }
+
+  void _startChatWith(int userId) {
     final convs = context.read<ConversationsProvider>();
     final existingConversation = convs.conversations
         .where(
-          (conversation) =>
-              convs.getOtherUser(conversation)?.id == selectedFriend.id,
+          (conversation) => convs.getOtherUser(conversation)?.id == userId,
         )
         .firstOrNull;
     if (existingConversation != null) {
@@ -114,7 +138,7 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     // The backend creates the conversation and emits `openConversation`; the
     // build path below consumes that pending ID through this screen's normal
     // open-chat path.
-    convs.startConversation(selectedFriend.id);
+    convs.startConversation(userId);
   }
 
   void _deleteConversation(int conversationId) {
@@ -201,18 +225,20 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
               return Positioned(
                 right: 4,
                 top: 4,
-                child: Container(
-                  padding: const EdgeInsets.all(4),
-                  decoration: const BoxDecoration(
-                    color: Colors.red,
+                child: DecoratedBox(
+                  decoration: BoxDecoration(
+                    color: colorScheme.error,
                     shape: BoxShape.circle,
                   ),
-                  child: Text(
-                    '${friends.pendingRequestsCount}',
-                    style: RpgTheme.bodyFont(
-                      fontSize: 10,
-                      color: Colors.white,
-                      fontWeight: FontWeight.bold,
+                  child: Padding(
+                    padding: const EdgeInsets.all(4),
+                    child: Text(
+                      '${friends.pendingRequestsCount}',
+                      style: RpgTheme.bodyFont(
+                        fontSize: 10,
+                        color: colorScheme.onError,
+                        fontWeight: FontWeight.bold,
+                      ),
                     ),
                   ),
                 ),

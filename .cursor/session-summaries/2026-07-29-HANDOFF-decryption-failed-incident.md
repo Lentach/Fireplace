@@ -1,4 +1,4 @@
-# HANDOFF — P0 INCIDENT: today's received messages flip to "[Decryption failed]" after app reopen (machinery from 0.0.136; live frontend is 0.0.137)
+# HANDOFF — P0 INCIDENT: today's received messages flip to "[Decryption failed]" after app reopen (destruction machinery from 0.0.136, present in EVERY release since)
 
 **Date:** 2026-07-29, written immediately after the owner's report. Fresh agent: read this FIRST, then root `CLAUDE.md`, `frontend/CLAUDE.md` §5, and `2026-07-28-session-instant-deletion-hardening.md`. Diagnosis runbook: `docs/runbooks/e2e-decryption-failed.md`.
 
@@ -7,7 +7,7 @@
 - All messages RECEIVED today render normally when they arrive.
 - After closing and reopening the app, ALL of today's received messages show `[Decryption failed]`.
 - Older history is apparently intact. App is unusable for the owner.
-- Started after the 0.0.136 release went live (2026-07-28 ~23:45 UTC). The frontend has since moved to `0.0.137 / 53b2610` (paint-only change) — the owner's Settings footer will read 0.0.137, and it carries the same destruction machinery.
+- Started after the 0.0.136 release went live (2026-07-28 ~23:45 UTC). The destruction machinery landed in 0.0.136 (PR #108) and is present in EVERY frontend release since — do NOT trust any version number written here as "current"; master has already moved twice while this doc was being written. Check the live pair yourself at read time: `curl https://fireplace.ignorelist.com/version.json` (frontend) and `/version` (backend), and the owner's Settings footer.
 
 ## Why this is a data-destruction emergency, not a display bug
 
@@ -17,7 +17,7 @@ The symptom fingerprint matches a false destroy exactly: arrival looks fine (pla
 
 ## STEP 0 — stop the bleeding BEFORE diagnosing (every minute costs messages)
 
-1. **Roll back the FRONTEND to 0.0.134** (`a00ab0f`, the last frontend WITHOUT purge/sweep/reconcile — note this also steps back over 0.0.137's paint-only send button, which is fine). All destruction logic is client-side; the backend can stay at 0.0.136 (its new events are additive; an old client simply never emits them).
+1. **Roll back the FRONTEND to 0.0.134** (`a00ab0f`, the last frontend WITHOUT purge/sweep/reconcile — anything released after it carries the machinery, so newer frontend-only releases roll back with it; that is fine during the incident). All destruction logic is client-side; the backend can stay (its new events are additive; an old client simply never emits them).
    - On the PC: `git -C C:/Users/Lentach/Desktop/fireplace worktree add ../fireplace-rollback a00ab0f` then run `deploy-web.ps1` from that worktree (runbook "Branch testing before merge" flow — the deploy verifies the served bundle sha, expect `a00ab0f`).
    - Tell the owner: fully close + reopen the PWA. **NEVER uninstall, NEVER clear site data** — that destroys the Signal keys and ALL remaining history.
 2. **Before the owner reopens anything else**, have him open Privacy & Safety → hacker-mode diag panel and COPY BOTH LOGS OUT (`E2ePersistentDiag` survives restarts, capped 80 — it may already be rotating evidence out). This is the primary evidence; get it before more entries push it out.
@@ -57,8 +57,8 @@ Note: the owner's conversations very likely have a disappearing timer set (read-
 
 ## State of the world
 
-- Prod NOW: frontend `0.0.137 / 53b2610` (PR #109, composer hex send — PAINT ONLY, carries all 0.0.136 machinery unchanged), backend `0.0.136 / 6fb36bf`. The destruction machinery went live in 0.0.136 (backend 23:42 UTC, web 23:45 UTC 2026-07-28, smoke 5/5 then). PRs #108 (e2e-safety) + #106 (invitation rework) shipped together in 0.0.136.
-- Frontend rollback target is therefore still `a00ab0f` (0.0.134) — the last frontend with NO purge/sweep/reconcile. Rolling back also reverts the 0.0.137 send-button paint; irrelevant during the incident.
+- Live versions: CHECK AT READ TIME (`/version.json`, `/version`). Fixed facts: backend `0.0.136 / 6fb36bf` deployed 2026-07-28 23:42 UTC, web 0.0.136 at 23:45 UTC (smoke 5/5 then); PRs #108 (e2e-safety) + #106 (invitation rework) shipped together in 0.0.136; at least #109 and #110 (both frontend-only) have released on top since, all carrying the 0.0.136 machinery unchanged.
+- Frontend rollback target is `a00ab0f` (0.0.134) — the last frontend with NO purge/sweep/reconcile.
 - Also on master since: Android release Phase 1 (keystore/signing, nothing distributed) — unrelated to this incident but explains recent commits. Correction recorded there that overrides older notes: the web at-rest store is localStorage + RAW SharedPreferences, NOT IndexedDB.
 - All destruction machinery ships in #108's commits (`42603d2` purge, `4fa1ab7` reconcile, `d998408` in-session sweep timer); #106 changed the backend relationship/conversation paths the reconcile predicate depends on.
 - Related incident already recorded in LATEST: the VM briefly ran the unmerged invitation branch (~2 min, `bde08b3`) before the real deploy — no migrations, believed harmless, but note it when reading backend logs from that window.
