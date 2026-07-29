@@ -1,0 +1,37 @@
+# Session: Android Phase 2 — encrypted native message store (issue #105 M4)
+
+**Date:** 2026-07-29 — branch `feature/android-encrypted-store`, five commits, PUSHED, PR open, **not merged**. No version bump (not a release). This is the DISTRIBUTION GATE for the APK: nothing goes to real users before it, and distribution is still additionally gated on the owner's real-phone smoke.
+
+## What was done
+
+Decrypted message plaintext, media keys, pending-send plaintext and the JWT no longer live in a readable `shared_prefs` XML on Android. They live in a SQLCipher database whose key sits in Keystore-backed secure storage, and shredding is key rotation rather than SQLite deletes.
+
+- **`ContentKv` seam** (`services/encryption/content_kv.dart`) mirrors `SharedPreferences` EXACTLY — sync reads, commit-gated `Future<bool>` writes, web-only `reload()`. That made the `EncryptionService` swap type-level, so every 0.0.135/0.0.136 purge/reconcile/sweep semantic above the seam is untouched and **web/desktop are byte-identical by construction**. `PrefsContentKv` is the historical behavior; a conditional-import opener returns it everywhere except Android (memoized on the Android path ONLY — a process-wide memo pinned the first widget test's mock prefs and broke provider tests).
+- **Encrypted store** (`native_content_store.dart`, `content_db.dart` + committed drift codegen): `files/fp_content.db`, raw-key `PRAGMA key`, and a **runtime throw unless `PRAGMA cipher_version` answers** (a plain sqlite3 binary ignores `key` and yields a store that looks sealed and is not). Sealed families `_decrypted_` / `_decrypt_raw_v1_` / `_pendsend_v1_` (AES-GCM, `12B IV || ct`, cleartext `kid` column); control records (retired set, backlog, epoch, reconcile marks) stay cleartext INSIDE the encrypted DB so they survive content-key loss.
+- **Two keys** (`content_key_manager.dart`): static DB key `fp_content_db_key_v1` (never rotated — rotation re-encrypts pages, it does not shred) + rotating `fp_content_key_<kid>`, both outside the `e2e_<uid>_` namespace so `clearAllKeys` cannot sweep them, both **armed** (write → fresh read-back → only then seal). `inventory()` returns null on enumeration failure and null means change NOTHING — a transient Keystore error must never read as key loss. Only a successful enumeration missing a kid retires rows, at open, before any decrypt; retired rows keep their bytes forever.
+- **Shred = rotate-and-destroy, batched:** durable `shred_gen` / `shred_done_gen` meta ints (done defaults to **0** when absent — defaulting to gen lost the obligation across a restart, caught by a test), 20 s debounce / 3 min deadline / `rotateNow()` from the app-background hook, 64-row all-or-nothing reseal batches, audio cache resealed BEFORE keys are destroyed, `ROTATION_RETRY` on any failure. Any open failure falls back to `PrefsContentKv` + `CONTENT_STORE_FALLBACK` — status quo plaintext loudly, never an unencrypted DB.
+- **Sealed voice notes** (`sealed_audio_codec.dart` FPAE envelope, `audio_reseal.dart`) and **Keystore JWT** (`auth_token_store.dart`, Android-only, migrate → verify by read-back → delete prefs copy).
+- **Production blocker found on device:** just_audio serves in-memory (unsealed) audio through a `127.0.0.1` proxy and API 28+ blocks cleartext, so sealed voice notes would have failed to play in RELEASE only. Fixed with a loopback-only `network_security_config.xml` (no `base-config`; debug variant adds `10.0.2.2`). A blanket `usesCleartextTraffic` was rejected.
+
+## Key files
+
+`frontend/lib/services/encryption/{content_kv,content_db,content_key_manager,record_db,native_content_store,content_sealer,content_kv_opener_io,content_kv_opener_stub,sealed_audio_codec,audio_reseal}.dart`, `frontend/lib/services/{secure_kv,auth_token_store}.dart`, `frontend/lib/widgets/audio/voice_player_native.dart`, `frontend/lib/services/playback_controller.dart`, `frontend/android/app/src/{main,debug}/res/xml/network_security_config.xml`, `frontend/integration_test/native_content_store_device_test.dart`. Contract now lives in `frontend/CLAUDE.md` §5; runbook status in `docs/runbooks/android-release.md`.
+
+## Verification
+
+- `flutter test`: **1098 passed + 10 skipped** (the 10 skips are crypto tests the host cannot run — no webcrypto native without MSVC; they execute for real on device). `flutter analyze --no-fatal-infos`: clean. Counts match root `CLAUDE.md` §3.
+- **On-device acceptance 7/7** (`flutter test integration_test -d emulator-5554`, Pixel_7 android-34): opener arms the ENCRYPTED store; a sealed record's plaintext is absent from db+wal bytes and the header is a random salt, not `SQLite format 3`; JWT never in prefs XML; legacy drain seals then deletes; a purge stamp drives a rotation that destroys the old kid in the REAL Keystore; FPAE round-trips on real webcrypto; in-memory audio loads, reports 2.000 s and seeks through the range proxy.
+- **Real two-account emulator run** against the local docker backend: register → friend request → accept → A sends `sekretneognisko` → B logs in and live-decrypts it → B replies. Storage dump after `am force-stop`: `FlutterSharedPreferences.xml` holds ONLY the diag list and two `chat_wallpaper_<uid>` entries — no JWT, no `e2e_*` record, no `sig_*`. Both markers absent from `fp_content.db`, `-wal` and `FlutterSecureStorage.xml` (host-side byte search on pulled files; the on-device `grep` silently errors with `no REGEX`, do not trust it). Main DB header `dcbe54ca…` = SQLCipher salt.
+- **Persistence proof:** after a full `force-stop` + cold start, both messages still render as plaintext. The received one was a PreKey message whose ratchet key was consumed, so it can only have come from the persisted local record.
+- Release build was green on the pre-blocker tree (0.0.137/versionCode 137, 84.6 MB, signed CN=Rick Sanches, 16KB gate 10/10 incl. `libsqlcipher.so`).
+
+## Notes for next session
+
+- **Do not merge without the owner's OK**, and do not distribute before his phone smoke: voice play/seek/cached replay/legacy-plain files, push, and an upgrade from a pre-Phase-2 install.
+- The owner still owes an **off-PC backup of `fireplace-release.jks`** (password on paper, file has no backup).
+- The store is at-rest protection, **not** an offline cache — the chat list is socket-gated, so an offline cold start shows skeletons. Recorded in `frontend/CLAUDE.md` §5.
+- Pins that must not drift: `drift ^2.31` / `sqlite3 ^2.9` / `sqlcipher_flutter_libs 0.6.8` (sqlite3 3.x uses native-assets hooks that need MSVC on every local `flutter test`) and `webcrypto` 0.6.0.
+- Simulated key loss is covered by unit tests on the genuine-loss path; an on-device wipe of `fp_content_key_*` was not attempted (secure-storage entry names are obfuscated in the XML).
+- Possible UI bug seen while driving the emulator, not reproduced: the change-password dialog stayed mounted over the auth screen after logout.
+- Backend quick win still open: no friendship/block gate on `fetchPreKeyBundle` (`chat-key-exchange.service.ts`).
+- This session did NOT touch the open P0 `[Decryption failed]` incident — separate agent, `2026-07-29-HANDOFF-decryption-failed-incident.md`. Note the overlap: that incident suspects the 0.0.136 destruction machinery, and Phase 2 sits UNDER it (same purge/reconcile rules, new storage). Whatever rule is found guilty there must be re-checked against the native store before an APK ships.
