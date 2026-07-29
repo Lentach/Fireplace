@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
@@ -81,6 +82,80 @@ class EncryptionService {
 
   Future<void> _reloadPrefsForCrossContext(SharedPreferences prefs) async {
     if (kIsWeb) await prefs.reload();
+  }
+
+  /// Namespace the SharedPreferences backends prepend to every stored key.
+  ///
+  /// Hardcoded because the package exposes [SharedPreferences.setPrefix] but no
+  /// getter, and this app never changes it. Asserted by test so a package change
+  /// fails loudly instead of silently answering null for every record.
+  @visibleForTesting
+  static const String prefsStorePrefix = 'flutter.';
+
+  /// A snapshot of the BACKING STORE on web; null everywhere else.
+  ///
+  /// WHY IT EXISTS — do not "simplify" the readers below back onto the cache.
+  /// [SharedPreferences.reload] reads the store, AWAITS that read, then CLEARS
+  /// the in-memory cache and refills it from the snapshot it took. A write that
+  /// lands inside the await window survives in the store but is dropped from
+  /// the cache. For a plaintext record that miss is not "no plaintext": the
+  /// caller re-decrypts a ciphertext whose Signal ratchet key was consumed at
+  /// first decrypt, lands on DuplicateMessage, and the row becomes a permanent
+  /// "[Decryption failed]" while its only readable copy is still in the store.
+  /// The read-modify-write in [saveDecryptedContent] reads the same null and can
+  /// then write a narrower record — including the "[Decryption failed]" label —
+  /// OVER real plaintext, which is unrecoverable loss.
+  ///
+  /// A lock in this class could not close it: the Signal session stores reload
+  /// the SAME singleton throughout decrypt, concurrently with these writes.
+  ///
+  /// WHY IT IS WEB-ONLY — and must stay that way. The hazard is web-only by
+  /// construction: [_reloadPrefsForCrossContext] reloads only when [kIsWeb], so
+  /// off web nothing ever clears the cache under a reader and `getString` is
+  /// both correct and free. On web this is free too — `reload()` already paid
+  /// for exactly this `getAll()`. Making it unconditional would serialise the
+  /// WHOLE preference map (up to the 2000-record plaintext cap plus every Signal
+  /// session blob) across the method channel on every read AND every save, i.e.
+  /// once per decrypted message.
+  Future<Map<String, Object>?> _authoritativeSnapshot() async =>
+      kIsWeb || debugForceAuthoritativeReads
+      ? await SharedPreferencesStorePlatform.instance.getAll()
+      : null;
+
+  /// Forces the web branch under `flutter test`, which runs on the Dart VM with
+  /// [kIsWeb] false. Without this the regression suite would exercise the cache
+  /// path — precisely the one it exists to prove broken — and silently pass.
+  @visibleForTesting
+  static bool debugForceAuthoritativeReads = false;
+
+  /// The raw record at [key]. A null [snapshot] means "off web, read the cache".
+  /// Null result means GENUINELY absent.
+  String? _rawRecord(
+    Map<String, Object>? snapshot,
+    SharedPreferences prefs,
+    String key,
+  ) {
+    if (snapshot == null) return prefs.getString(key);
+    final value = snapshot['$prefsStorePrefix$key'] ?? snapshot[key];
+    return value is String ? value : null;
+  }
+
+  /// Unprefixed record keys under [prefix], from whichever view is authoritative.
+  Iterable<String> _recordKeys(
+    Map<String, Object>? snapshot,
+    SharedPreferences prefs,
+    String prefix,
+  ) {
+    if (snapshot == null) {
+      return prefs.getKeys().where((k) => k.startsWith(prefix));
+    }
+    return snapshot.keys
+        .map(
+          (k) => k.startsWith(prefsStorePrefix)
+              ? k.substring(prefsStorePrefix.length)
+              : k,
+        )
+        .where((k) => k.startsWith(prefix));
   }
 
   final int _decryptedContentCacheLimit;
@@ -803,6 +878,22 @@ class EncryptionService {
   static const String _metaDisappearAfter =
       PlaintextRecordCodec.disappearAfterKey;
 
+  /// Content values that are UI PLACEHOLDERS, never real message text.
+  ///
+  /// Mirrors the labels in `messaging_provider.dart` (and the placeholder set
+  /// `MessageModel` filters on). Kept here because the guard in
+  /// [saveDecryptedContent] is the last line of defence against a placeholder
+  /// write destroying the only readable copy of a message, and that guard must
+  /// not depend on the provider layer. `encryption_service_reload_race_test`
+  /// pins these against `MessageModel` so the two cannot drift.
+  @visibleForTesting
+  static const Set<String> placeholderContents = <String>{
+    '[encrypted]',
+    '[Decryption failed]',
+    '[Encryption not initialized]',
+    '[Message no longer stored on this device]',
+  };
+
   /// Persist decrypted message content to survive app restart.
   ///
   /// Uses SharedPreferences (localStorage on web) instead of flutter_secure_storage
@@ -835,10 +926,11 @@ class EncryptionService {
     if (userId == null) return;
     try {
       final prefs = await _sharedPrefs;
-      await _reloadPrefsForCrossContext(prefs);
       final key = _decryptedContentKey(userId, id);
       Map<String, dynamic>? existing;
-      final existingRaw = prefs.getString(key);
+      // Authoritative: a cache miss here would let the narrower writes below
+      // (above all the "[Decryption failed]" label) replace real plaintext.
+      final existingRaw = _rawRecord(await _authoritativeSnapshot(), prefs, key);
       if (existingRaw != null) {
         try {
           existing = jsonDecode(existingRaw) as Map<String, dynamic>;
@@ -852,6 +944,26 @@ class EncryptionService {
       // transient re-decrypt that throws DuplicateMessage and tries to store
       // "[Decryption failed]") must not destroy them.
       if (data['mediaKey'] == null && existing?['mediaKey'] != null) return;
+
+      // Never let a PLACEHOLDER replace real plaintext. The failure path
+      // persists "[Decryption failed]" so a terminal failure is not retried
+      // forever, and it writes `content` alone. This record is the only copy —
+      // the server's ciphertext can never be decrypted again once the ratchet
+      // consumed its key — and hydration skips a record holding that label, so
+      // the row is permanently unreadable afterwards. That turned ONE bad
+      // decrypt (a transient failure, or a false cache miss on the read above)
+      // into silent, irreversible loss of a message still sitting on disk.
+      // Keeping the old plaintext costs at most a stale row; the alternative is
+      // unrecoverable.
+      final incomingContent = data['content'];
+      final heldContent = existing?['content'];
+      if (incomingContent is String &&
+          placeholderContents.contains(incomingContent) &&
+          heldContent is String &&
+          heldContent.isNotEmpty &&
+          !placeholderContents.contains(heldContent)) {
+        return;
+      }
 
       // Carry forward envelope metadata a later, narrower write does not supply
       // — the "[Decryption failed]" path writes `content` alone. Dropping
@@ -918,11 +1030,12 @@ class EncryptionService {
     if (userId == null) return null;
     final key = _decryptedContentKey(userId, id);
     try {
-      // Legacy SharedPreferences caches per engine. Reload before every read so
-      // plaintext written by another PWA tab is visible immediately.
+      // Read the BACKING STORE, not the per-engine cache: a reload racing a
+      // concurrent write drops the record from that cache while it survives
+      // here, and a false miss re-decrypts a consumed ratchet key into a
+      // permanent "[Decryption failed]".
       final prefs = await _sharedPrefs;
-      await _reloadPrefsForCrossContext(prefs);
-      final raw = prefs.getString(key);
+      final raw = _rawRecord(await _authoritativeSnapshot(), prefs, key);
       if (raw != null) return jsonDecode(raw) as Map<String, dynamic>;
       final oldRaw = await _legacyDecryptedContentFallback(key);
       if (oldRaw != null) return jsonDecode(oldRaw) as Map<String, dynamic>;
@@ -983,10 +1096,14 @@ class EncryptionService {
     final wanted = ids.toSet();
     if (wanted.isEmpty) return result;
     try {
+      // ONE authoritative snapshot for the whole pass. This is the read the
+      // history hydration depends on: every id it misses here is re-decrypted,
+      // and for an already-decrypted message that means DuplicateMessage and a
+      // permanent "[Decryption failed]".
       final prefs = await _sharedPrefs;
-      await _reloadPrefsForCrossContext(prefs);
+      final snapshot = await _authoritativeSnapshot();
       for (final id in wanted) {
-        final raw = prefs.getString(_decryptedContentKey(userId, id));
+        final raw = _rawRecord(snapshot, prefs, _decryptedContentKey(userId, id));
         if (raw == null) continue;
         try {
           result[id] = jsonDecode(raw) as Map<String, dynamic>;
@@ -1204,9 +1321,10 @@ class EncryptionService {
     if (userId == null) return;
     try {
       final prefs = await _sharedPrefs;
-      await _reloadPrefsForCrossContext(prefs);
       final key = _decryptedContentKey(userId, messageId);
-      final raw = prefs.getString(key);
+      // Authoritative: a false miss here silently drops the real deadline and
+      // leaves the record on the never-read fallback.
+      final raw = _rawRecord(await _authoritativeSnapshot(), prefs, key);
       if (raw == null) return;
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return;
@@ -1316,9 +1434,9 @@ class EncryptionService {
     ];
     try {
       final prefs = await _sharedPrefs;
-      await _reloadPrefsForCrossContext(prefs);
+      final snapshot = await _authoritativeSnapshot();
       final ids = <int>{};
-      for (final key in prefs.getKeys()) {
+      for (final key in _recordKeys(snapshot, prefs, 'e2e_${userId}_')) {
         for (final prefix in prefixes) {
           if (!key.startsWith(prefix)) continue;
           final id = int.tryParse(key.substring(prefix.length));
@@ -1482,12 +1600,13 @@ class EncryptionService {
     if (userId == null) return <int>{};
     final prefix = _decryptedContentPrefix(userId);
 
+    final Map<String, Object>? snapshot;
     final SharedPreferences prefs;
     final List<String> keys;
     try {
       prefs = await _sharedPrefs;
-      await _reloadPrefsForCrossContext(prefs);
-      keys = prefs.getKeys().where((k) => k.startsWith(prefix)).toList();
+      snapshot = await _authoritativeSnapshot();
+      keys = _recordKeys(snapshot, prefs, prefix).toList();
     } catch (_) {
       return <int>{};
     }
@@ -1497,7 +1616,7 @@ class EncryptionService {
     for (final key in keys) {
       final id = int.tryParse(key.substring(prefix.length));
       if (id == null) continue;
-      final raw = prefs.getString(key);
+      final raw = _rawRecord(snapshot, prefs, key);
       if (raw == null) continue;
 
       Map<String, dynamic>? record;
@@ -1995,6 +2114,13 @@ class EncryptionService {
     String prefix,
   ) async {
     return <String>{
+      // DELIBERATELY the per-engine cache, not [_storeSnapshot]. Eviction here
+      // destroys the only copy of a message and calls [markRetired], which is
+      // permanent. A reload-clobbered cache UNDER-counts, which suppresses
+      // eviction — the safe direction. Making this authoritative would let an
+      // account sitting at the cap evict a batch of its oldest history on the
+      // first launch after the change. Retention pressure is a separate problem
+      // from record visibility; do not "fix" it here.
       ...prefs.getKeys().where((key) => key.startsWith(prefix)),
       // Legacy store, mobile only. On web DualStorage reads the `sig_`-prefixed
       // async namespace, which never held a `_decryptedContentKey`, so this
