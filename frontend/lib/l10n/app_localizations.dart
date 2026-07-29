@@ -1775,7 +1775,7 @@ abstract class AppLocalizations {
   /// No description provided for @themeOptionBlue.
   ///
   /// In pl, this message translates to:
-  /// **'Głęboki niebieski komunikatora'**
+  /// **'Głęboki granat z jasnym błękitem'**
   String get themeOptionBlue;
 
   /// No description provided for @themeOptionTealStone.

@@ -985,7 +985,7 @@ class AppLocalizationsPl extends AppLocalizations {
   String get themeOptionDark => 'Neutralny grafit z turkusowymi akcentami';
 
   @override
-  String get themeOptionBlue => 'Głęboki niebieski komunikatora';
+  String get themeOptionBlue => 'Głęboki granat z jasnym błękitem';
 
   @override
   String get themeOptionTealStone => 'Chłodny kamień z nowoczesnym turkusem';

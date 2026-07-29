@@ -1,5 +1,16 @@
 # Latest session summary
 
+**Date:** 2026-07-29 — **composer send button → ember hexagon + one PL string.** Branch `feat/composer-hex-send` (worktree `fireplace-wt-send-button`), frontend only. **NOT merged, NOT deployed, no version bump.** Flutter **1071 + 5 skipped**, analyze clean, frontend count verifier OK. CI not yet run.
+
+- **"Ugly white arrow" was a contrast bug.** The old 42px `primary` disc hardcoded `Colors.white` on a glyph, giving **1.56:1 on `cosmic`** (#8FD8FF — effectively invisible), 2.57:1 on `blue`, 3.02:1 on `dark`; the 3:1 non-text gate fails on three of five themes. `RpgTheme.readableOn` already computed the right answer and the button ignored it.
+- **Shipped `HexSendButton`** — the app's own pointy-top hexagon (`hexPath`/`kHexWidthRatio`, shared with the Chats avatars and the Contacts honeycomb) under an accent-derived ember gradient. Owner picked it from five rendered candidates. **PAINT ONLY:** `_ComposerTapSendOverlay` keeps the 48×48 hit region, tooltip and semantics, because an `IconButton` there wins the gesture arena and blocks hold-to-record. Voice-send layer deliberately untouched.
+- Fail-before proven: re-hardcoding white turns `test/widgets/input/hex_send_button_test.dart` red. Contract in `frontend/CLAUDE.md` §7.
+- `themeOptionBlue` PL: "Głęboki niebieski komunikatora" → **"Głęboki granat z jasnym błękitem"** (calque, and redundant with the tile title "Niebieski"). Note `l10n.yaml` makes **`app_pl.arb` the template** — edit it, then `flutter gen-l10n`.
+- **Trap:** hot restart (`R`) into a `flutter run -d web-server` with **no client attached** does not republish the bundle ("Recompile complete. No client connected."); every later page load served stale JS and cache-clearing does nothing. Stop and restart the process. Also, `flutter` on Windows needs `cmd.exe /c flutter.bat …` to run as a supervised process.
+- ➡ Detail: **`2026-07-29-session-composer-hex-send.md`**.
+
+---
+### Prior latest ↓
 **Date:** 2026-07-28 — **`audit/e2e-safety` hardening round 2 — NOT merged, NOT deployed, no version bump** (held for owner OK; deploy is BOTH surfaces, backend wire change). Worktree `fireplace-e2e-audit`. Backend **554/47 suites**, Flutter **1042 + 5 skipped**, analyze clean, both count verifiers OK. e2e-wire NOT run locally (no backend container) — CI must be green before merge.
 
 - **Review verdict on the branch's deletion work: delete purges ARE instant** (message/conversation/unfriend/block/clear-history — purge fires on the socket event, commit-verified, durable at-least-once backlog). **Expiry was NOT:** the sweep's only caller was socketReady and `ServerClock`'s only feeder was socketReady (30-min extrapolation cap), so a connected PWA never destroyed expired plaintext until reconnect. Closed with a new wire pair `getServerTime` → `serverTime` (root §7) + a 1-min sweep timer in `ConnectionProvider`: tick sweeps on a confirmable clock, else requests time (5-min unanswered floor, fail-closed vs older backends). Floor reads `clock.now()` — package:clock promoted to direct dep BECAUSE fake_async patches it and `DateTime.now()` made the floor untestable.
@@ -47,33 +58,4 @@
 - **Prod container scanned for the first time:** 1 CRITICAL + 5 HIGH, **all in npm's bundled tree, none in the app**; `picomatch` in `/app` is already the patched 4.0.4. Container runs `node dist/main.js` and never invokes npm → **not exploitable**. Fix arrives with the next `node:22-alpine` rebuild.
 - **Measured, and it killed two ideas:** a `dart format` CI gate is unreachable (reformats **146/368 files**), and a "run only affected tests" runner is **strictly worse** than `flutter test` — cost curve now in `frontend/CLAUDE.md` §1. Also: **`impact.mjs` reports a nonexistent path as "no dependents", exit 0** — a typo reads as "safe". Unfixed.
 - ➡ Detail: **`2026-07-27-session-tooling-audit.md`**. Tier list + evidence: `.planning/tooling-audit/` (local-only).
-
----
-### Prior latest ↓
-
-**Date:** 2026-07-27 — **RELEASED 0.0.132 / `05fc423`, both surfaces, smoke 5/5.** A workflow/infra session that ended up fixing **two disaster-recovery bugs in production code** (`backend/src/database/migration-runner.ts`), both surfaced by the new cross-tier CI job on its very first run. 18 commits, `05e0962..05fc423`.
-
-## What was done
-1. **MEASURED graphify instead of trusting it.** Its file→file import edges score **86.6%/90.7% on backend TS** but **0.5%/1.5% on frontend Dart** — every relative specifier collapses into one node attributed to an arbitrary file. It claimed `contact_network_view.dart`'s only importer was itself; truth is `contacts_screen.dart:13`. Kept and automated, but DEMOTED: never answer a Flutter dependency question from `GRAPH_REPORT.md`.
-2. **`scripts/impact.mjs` (new)** — who depends on what I changed + which tests import it, parsed from source in ~0.6s. Handles Dart conditional imports, bare same-directory specifiers, `package:fireplace/…`, TS barrels, untracked files, deletions. **1639 specifiers, 0 unresolved.** 16 hermetic self-tests in CI.
-3. **`.githooks/post-commit` rebuilds the graph** in the background, guarded to code-only commits (the graphify block claims "code files only" and does not filter).
-4. **BUG: `0001_baseline.sql` could never run on a fresh database.** `pg_dump` brackets its dump with `\restrict`/`\unrestrict` psql meta-commands; node-postgres answers `syntax error at or near "\"`. **BUG 2, right behind it:** the baseline ends with `set_config('search_path','',false)`, so the runner's own unqualified tracking INSERT died with `relation "schema_migrations" does not exist`. Both hit only EMPTY databases — i.e. disaster recovery — because prod stamps the baseline instead of running it. Fixed in the runner (baseline is immutable), 3 regression tests.
-5. **`e2e-wire` CI job added** — full-stack harness vs real Postgres+backend. It found both bugs on its first run. **11 wire tests green.**
-6. **Repo is PRIVATE** (`gh repo view --json isPrivate` → true); docs said "public". All 226 dated summaries are committed now, and the false policy they carried is corrected.
-7. Frontend test-count verifier added; `CLAUDE.md` §4–§6 moved to the runbook.
-
-## Verification
-- Backend **541/47 green**, Flutter **903 + 4 skipped green**, both counts now machine-verified in CI. `e2e-wire` **11 passed** against real Postgres.
-- Migration fix falsified by reverting it (test goes red). Every parser fix checked against `grep`.
-- **Release 0.0.132**: CI green on `05fc423` (all three jobs) BEFORE deploying. Backend healthy in 10s, `/health` `db:ok` — the runner booted clean on the live DB, confirming the fix misses the stamped-baseline path. **Smoke 5/5**, including `main.dart.js` literally containing `05fc423`.
-
-## Notes for next session
-- **`impact.mjs` is an inner-loop hint, NOT a coverage oracle** — static imports, 3 hops; blind to NestJS DI, §7 wire contracts, assets. Full tier suites are **required by project policy** before commits/PRs; nothing enforces that mechanically.
-- **`e2e-wire` is now CI-failing** (`continue-on-error` removed after 5 consecutive greens; it caught two DR bugs on its first two runs). **But red is NOT a gate here** — branch protection is a paid feature, 403 on this private free-plan repo, so nothing blocks a push or merge and small fixes still go straight to `master`. Checking the run is a human/agent duty: `gh run list --branch master --limit 1`. If it flakes, restore `continue-on-error: true` deliberately and record it.
-- **Owner must fully close + reopen the PWA** to pick up 0.0.132 (Settings footer → `0.0.132 / 05fc423`). **NEVER uninstall or clear site data** — that destroys the local E2E Signal keys.
-- **Open work is now tracked as GitHub issues — read them, do not re-derive from here.**
-  - **#100 + #101 CLOSED 2026-07-27.** `CONTACT_INBOX_KEY` **rotated** (new → 200, old → **404**; the value at `2026-07-22-session-inbox-extraction.md:63` is **DEAD** — do not re-raise it). `gitleaks` **v8.30.1 installed** in `~/.local/bin`; the hook's gitleaks branch is live and proven to block a 64-hex `?key=` at entropy 3.97.
-  - **Also rotated: the `CONTEXT7_API_KEY`** that was tracked in `.claude/settings.local.json` — revoked at context7.com, verified **401**. That file is now untracked and gitignored by glob.
-  - **#102: finish Dependabot #95.** Still open. `osv-scanner` confirms **4 of 8** `brace-expansion` copies vulnerable: root `1.1.16` + `2.1.2` under `@jest/reporters`, `jest-config`, `jest-runtime`. Dev-only. **Do not dismiss.**
-- ➡ Detail: this session **`2026-07-27-session-tooling-audit.md`** (tooling audit, S-tier installs, both key rotations); earlier that day **`2026-07-27-session-workflow-tooling.md`**; orientation: **`README.md`**.
 

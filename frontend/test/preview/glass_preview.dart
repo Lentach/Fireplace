@@ -48,6 +48,7 @@ ThemeData _theme(String name) => switch (name) {
   'blue' => RpgTheme.themeDataBlue,
   'light' => RpgTheme.themeDataLight,
   'teal' => RpgTheme.themeDataTealStone,
+  'cosmic' => RpgTheme.themeDataCosmic,
   _ => RpgTheme.themeDataDarkGray,
 };
 

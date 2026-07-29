@@ -34,6 +34,7 @@ import 'attachment_handler.dart';
 import 'composer_attachment_bar.dart';
 import 'composer_attachment_controller.dart';
 import 'focus_guard_area.dart';
+import 'hex_send_button.dart';
 import 'recording_controller.dart';
 import 'reply_preview_bar.dart';
 import 'edit_preview_bar.dart';
@@ -732,24 +733,9 @@ class ChatInputBarState extends State<ChatInputBar> {
                         child: Stack(
                           alignment: Alignment.center,
                           children: [
-                            // Filled circular send button — big, obvious tap
-                            // affordance (paint only; the overlay below hits).
-                            IgnorePointer(
-                              child: Container(
-                                width: 42,
-                                height: 42,
-                                alignment: Alignment.center,
-                                decoration: BoxDecoration(
-                                  color: RpgTheme.primaryColor(context),
-                                  shape: BoxShape.circle,
-                                ),
-                                child: const Icon(
-                                  Icons.send_rounded,
-                                  size: 22,
-                                  color: Colors.white,
-                                ),
-                              ),
-                            ),
+                            // Ember hexagon — the app's shape language
+                            // (paint only; the overlay below hits).
+                            const IgnorePointer(child: HexSendButton()),
                             // Full 48×48 opaque tap target (was a left-nudged 22×22,
                             // easy to miss + leaked outer-ring taps to the mic).
                             Positioned.fill(
