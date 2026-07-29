@@ -2,7 +2,7 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
-import 'package:shared_preferences/shared_preferences.dart';
+import 'encryption/content_kv.dart';
 
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
@@ -74,14 +74,15 @@ class EncryptionService {
   /// account did not change underneath it before destroying anything.
   int? get activeUserId => _userId;
 
-  /// Cached SharedPreferences instance for synchronous-on-web message content cache.
-  SharedPreferences? _prefs;
-  Future<SharedPreferences> get _sharedPrefs async =>
-      _prefs ??= await SharedPreferences.getInstance();
+  /// The plaintext-record store behind every cache/purge/retention path here.
+  /// [ContentKv] mirrors the SharedPreferences surface exactly; see its doc
+  /// for what each backend guarantees. Kept behind the historical
+  /// `_sharedPrefs` name so the call sites below read unchanged.
+  ContentKv? _prefs;
+  Future<ContentKv> get _sharedPrefs async =>
+      _prefs ??= await PrefsContentKv.open();
 
-  Future<void> _reloadPrefsForCrossContext(SharedPreferences prefs) async {
-    if (kIsWeb) await prefs.reload();
-  }
+  Future<void> _reloadPrefsForCrossContext(ContentKv prefs) => prefs.reload();
 
   final int _decryptedContentCacheLimit;
   final SessionCrossContextLockRunner _sessionCrossContextLock;
@@ -1426,7 +1427,7 @@ class EncryptionService {
     });
   }
 
-  Set<int> _readRetired(SharedPreferences prefs, int userId) {
+  Set<int> _readRetired(ContentKv prefs, int userId) {
     try {
       final raw = prefs.getString(_retiredKey(userId));
       if (raw == null) return <int>{};
@@ -1482,7 +1483,7 @@ class EncryptionService {
     if (userId == null) return <int>{};
     final prefix = _decryptedContentPrefix(userId);
 
-    final SharedPreferences prefs;
+    final ContentKv prefs;
     final List<String> keys;
     try {
       prefs = await _sharedPrefs;
@@ -1692,7 +1693,7 @@ class EncryptionService {
   }
 
   ({Set<int> ids, Set<String> ciphertexts}) _readPurgeBacklog(
-    SharedPreferences prefs,
+    ContentKv prefs,
     int userId,
   ) {
     try {
@@ -1802,7 +1803,7 @@ class EncryptionService {
   /// TTL + cap sweep. Concurrent sweeps may double-remove a key — harmless
   /// (remove is idempotent); an entry is never modified in place.
   Future<void> _prunePendingSendRecords(
-    SharedPreferences prefs,
+    ContentKv prefs,
     int userId,
     int now,
   ) async {
@@ -1878,7 +1879,7 @@ class EncryptionService {
       '${_rawDecryptedContentPrefix(userId)}$messageId';
 
   Future<void> _pruneRawDecryptedContent(
-    SharedPreferences prefs,
+    ContentKv prefs,
     int userId,
   ) async {
     final prefix = _rawDecryptedContentPrefix(userId);
@@ -1912,7 +1913,7 @@ class EncryptionService {
   int? _cachedContentEstimate;
 
   Future<void> _pruneDecryptedContentCache(
-    SharedPreferences prefs,
+    ContentKv prefs,
     int userId,
   ) async {
     // NO reload here: the only caller (saveDecryptedContent) reloaded a few
@@ -1991,7 +1992,7 @@ class EncryptionService {
   /// stores. The seeding count and the eviction sweep MUST use the same set,
   /// or the estimate can sit under the cap while the real total is over it.
   Future<Set<String>> _cachedContentKeys(
-    SharedPreferences prefs,
+    ContentKv prefs,
     String prefix,
   ) async {
     return <String>{
