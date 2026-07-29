@@ -1,9 +1,12 @@
 # Android release runbook
 
-Status: **Phase 1 (release plumbing) — DONE 2026-07-29. Phase 2 (encrypted local message store) is a LAUNCH GATE and is NOT built yet.**
-Until Phase 2 lands, a release APK still writes decrypted message plaintext, media keys, pending-send
-plaintext, and the JWT to unencrypted SharedPreferences XML. Build and smoke-test freely — **do not
-distribute to real users before Phase 2.**
+Status: **Phase 1 (release plumbing) — DONE 2026-07-29. Phase 2 (encrypted local message store) —
+DONE 2026-07-29 on `feature/android-encrypted-store`, device-verified, not yet merged.**
+A release APK built from that branch keeps decrypted plaintext, media keys, pending-send plaintext
+and the JWT out of the SharedPreferences XML: content lives sealed in a SQLCipher database
+(`files/fp_content.db`) and the JWT lives in Keystore-backed secure storage. **Distribution is still
+gated on the owner's real-phone smoke** (voice play/seek/cached replay, push, upgrade from a
+pre-Phase-2 install) — see `frontend/CLAUDE.md` §5 for the store's invariants.
 
 ## What is enforced mechanically (do not re-implement by hand)
 
@@ -98,15 +101,18 @@ keys deliberately survive logout (frontend/CLAUDE.md §5), so old history stays 
 
 ## Known-not-done (tracked, do not rediscover)
 
-- **Phase 2 (launch gate):** encrypted local message store — Drift+SQLCipher, DB key in Keystore
-  (no auth binding, armed-gate: write key → read back from a fresh session → only then seal;
-  `CONTENT_KEY_LOST` → "no longer stored" rendering, never `[Decryption failed]`; rotate-and-destroy
-  on purge). Shredding comes from key rotation, NOT from SQLite deletes — freed pages/WAL keep old
-  bytes; `PRAGMA secure_delete` is defense-in-depth only. Design inputs:
-  `frontend/lib/services/plaintext_record_codec.dart`, issue #105. Content-key loss = whole local
-  history unreadable (plaintext cache is NOT re-derivable: the ratchet consumed the keys, and media
-  records hold the only copy of `mediaKey`/`mediaIv`) — budgeted, not denied.
+- **Phase 2 (launch gate) — BUILT, see `frontend/CLAUDE.md` §5.** Drift+SQLCipher store with the DB
+  key and rotating content keys in Keystore-backed secure storage, armed-gate before any use,
+  rotate-and-destroy shredding. Shredding still comes from key rotation, NOT from SQLite deletes —
+  freed pages/WAL keep old bytes; `PRAGMA secure_delete` is defense-in-depth only. Content-key loss
+  = whole local history unreadable (plaintext cache is NOT re-derivable: the ratchet consumed the
+  keys, and media records hold the only copy of `mediaKey`/`mediaIv`) — budgeted, not denied, and
+  rendered as retired ids rather than `[Decryption failed]`.
+  Acceptance is executable: `cd frontend && flutter test integration_test -d <deviceId>`.
 - R8/minify is OFF (default): enable later with keep-rules if APK size matters; not a security gate.
-- No `network_security_config`: targetSdk 36 already blocks cleartext by default; revisit only if a
-  debug-build override is ever needed.
+- `network_security_config` now EXISTS and is deliberately narrow: `frontend/android/app/src/main/res/xml/`
+  permits cleartext to `127.0.0.1`/`localhost` ONLY (just_audio serves unsealed voice bytes through a
+  loopback proxy; API 28+ blocks that otherwise), with no `base-config`, so every other host keeps
+  the platform block. The debug variant adds `10.0.2.2` for a local backend. Never widen this to
+  `usesCleartextTraffic="true"`.
 - iOS: no Firebase app, no runner signing — out of scope until an iOS release is planned.

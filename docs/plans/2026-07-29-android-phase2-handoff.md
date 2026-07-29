@@ -1,3 +1,13 @@
+> **IMPLEMENTED 2026-07-29 — this plan is history, not instructions.** Phase 2 shipped on
+> `feature/android-encrypted-store` (commits `93cc6e0` → `7f0a212` → `33a906f` → `71b3980` →
+> `6f656cc`): unit suite 1098 + 10 skipped, `flutter analyze` clean, on-device acceptance
+> `flutter test integration_test -d <device>` 7/7 on a Pixel_7 emulator (android-34), and a real
+> two-account emulator run whose storage dump showed no JWT and no `e2e_*` record in the prefs XML.
+> The living contract is `frontend/CLAUDE.md` §5 + `docs/runbooks/android-release.md`; read those
+> first and treat anything below as the reasoning that produced them.
+> Still open from this plan: the owner's real-phone smoke (voice play/seek/cached replay, push,
+> upgrade from a pre-Phase-2 install) and Phase 3 (GitHub Release distribution).
+
 # Handoff: Phase 2 — encrypted local message store (native Android)
 
 **Status when written (2026-07-29):** Phase 1 (release plumbing) is DONE, merged to master, CI green.
