@@ -16,18 +16,28 @@ if (keyPropertiesFile.exists()) {
     keyProperties.load(FileInputStream(keyPropertiesFile))
 }
 
-// HARD GATE: a release build without a real keystore must FAIL LOUDLY, never
-// silently fall back to debug signing (a debug-signed "release" looks shippable
-// but is not: Play rejects it and its signature can't ever be upgraded in place).
-// Debug/profile builds and non-release tasks are unaffected.
-val releaseRequested = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
-if (releaseRequested && !keyPropertiesFile.exists()) {
-    throw GradleException(
-        "Release build requested but android/key.properties is missing. " +
-        "Create the release keystore first — see docs/runbooks/android-release.md " +
-        "(copy android/key.properties.example to android/key.properties and fill it in)."
-    )
-}
+// HARD GATE (execution-time): a release build without a real keystore must FAIL
+// LOUDLY, never silently fall back to debug signing (a debug-signed "release"
+// looks shippable but is not: Play rejects it and its signature can't ever be
+// upgraded in place). Guarding the EXACT packaging tasks — not
+// startParameter.taskNames — catches task-name-free invocations too (`gradlew
+// build` / `assemble` build the release variant without naming it). Exact
+// names, NOT a package*Release* prefix match: packageReleaseResources/-Assets
+// are dependencies of lintRelease/testReleaseUnitTest, and gating those would
+// make release unit tests demand a keystore. packageRelease = APK,
+// packageReleaseBundle = AAB.
+tasks.matching { it.name == "packageRelease" || it.name == "packageReleaseBundle" }
+    .configureEach {
+        doFirst {
+            if (!keyPropertiesFile.exists()) {
+                throw GradleException(
+                    "Release packaging requested but android/key.properties is missing. " +
+                    "Create the release keystore first — see docs/runbooks/android-release.md " +
+                    "(copy android/key.properties.example to android/key.properties and fill it in)."
+                )
+            }
+        }
+    }
 
 android {
     namespace = "com.fireplace.app"
@@ -67,13 +77,16 @@ android {
 
     buildTypes {
         release {
-            // The hard gate above guarantees key.properties exists whenever a
-            // Release task runs; the fallback only keeps configuration of
-            // non-release invocations (e.g. assembleDebug) from crashing.
+            // The execution-time gate above throws whenever a release artifact
+            // is PACKAGED without a keystore. Defense in depth: with no
+            // keystore the signingConfig is NULL, so even a path the task-name
+            // filter missed yields an inert UNSIGNED apk (also rejected by the
+            // apksigner gate in build-android.ps1) — NEVER a debug-signed one
+            // that looks shippable.
             signingConfig = if (keyPropertiesFile.exists()) {
                 signingConfigs.getByName("release")
             } else {
-                signingConfigs.getByName("debug")
+                null
             }
         }
     }
