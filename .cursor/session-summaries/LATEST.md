@@ -1,5 +1,7 @@
 # Latest session summary
 
+**⚠ P0 INCIDENT OPEN (2026-07-29): all of today's RECEIVED messages flip to `[Decryption failed]` after app reopen — the 0.0.136 plaintext-destruction machinery (present in every release since) is the prime suspect and destroys more data every minute it runs. STOP: read `2026-07-29-HANDOFF-decryption-failed-incident.md` FIRST. Step 0 is a frontend rollback to `a00ab0f`; secure the owner's diag-panel dump BEFORE anything else; NEVER uninstall / clear site data.**
+
 **Date:** 2026-07-29 — **RELEASED 0.0.138 / `bf80602`, FRONTEND ONLY, smoke 5/5.** PR **#110** merged (`ce1ab79`) with owner approval, bump in `bf80602`, CI green on both master commits before deploy. Backend untouched — `/version` stays `0.0.136 / 6fb36bf` **BY DESIGN**. Flutter **1075 + 5 skipped**, analyze clean, count verifier OK. Two-axis review (Standards + Spec, parallel `reviewer` agents): both **correct**, three findings actioned.
 
 - **Three owner-reported invitation gaps, all shipped.** (1) A pending outbound invitation on the Contacts board said so only via `Icons.send_outlined` — while `_buildGhostSemantics` already announced "invitation sent" to screen readers. The word `invitationStatusPending` now renders under the name in `colorScheme.primary` (cosmic 12.88:1, blue 6.33, dark 5.88, light 4.72, teal 5.24). (2) The Chats `+` badge counted inbound requests but opened a friends-only sheet — `InvitationsScreen` was reachable from exactly ONE place in the app. (3) Picker hexes were avatar-only, i.e. one initial for anyone without a photo.
