@@ -4,7 +4,6 @@ import 'package:flutter/foundation.dart'
     show TargetPlatform, defaultTargetPlatform, kIsWeb;
 import 'package:flutter_local_notifications/flutter_local_notifications.dart';
 
-import '../firebase_options.dart';
 
 const String _androidChannelId = 'fireplace_messages';
 const String _androidChannelName = 'Messages';
@@ -38,9 +37,10 @@ Future<void> firebaseMessagingBackgroundHandler(RemoteMessage message) async {
   if (kIsWeb) return;
   try {
     if (Firebase.apps.isEmpty) {
-      await Firebase.initializeApp(
-        options: DefaultFirebaseOptions.currentPlatform,
-      );
+      // No options: the background isolate must also use the NATIVE default
+      // app (google-services.json), not the placeholder Dart-side options —
+      // see main.dart. This isolate can start before main() ever ran.
+      await Firebase.initializeApp();
     }
   } on FirebaseException catch (e) {
     if (e.code != 'duplicate-app') rethrow;

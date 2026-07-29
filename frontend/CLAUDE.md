@@ -54,6 +54,7 @@ Local devices:
 - Android emulator: `cd frontend && flutter run -d <deviceId> --dart-define=BASE_URL=http://10.0.2.2:3000`.
 - Phone on WiFi: `cd frontend && .\run_web_for_phone.ps1` (serves `0.0.0.0:8080`, sets `BASE_URL=http://<HostIP>:3000`, includes git/build dart-defines).
 - Low-space Android builds: `cd frontend && .\run_android_on_x.ps1`; requires `X:` drive, redirects Gradle/temp/build dirs, runs `patch_webcrypto_16k.ps1`.
+- **Android RELEASE APK: `.\build-android.ps1` from the repo root** (runbook: `docs/runbooks/android-release.md`). Gates: Gradle throws on a release task without `android/key.properties` (never silently debug-signs), `apksigner` rejects a debug cert (keytool can't read v2/v3-only signatures at minSdk 24), and `scripts/verify-apk-16k.mjs` fails the build if any 64-bit `.so` in the APK lacks 16KB-aligned PT_LOAD segments (falsification harness: `verify-apk-16k.selftest.mjs`). versionCode = `major*1_000_000 + minor*10_000 + patch` via `--build-number`. `allowBackup=false` + `res/xml/data_extraction_rules.xml` are dual-purpose (plaintext-prefs leak AND the restore-blob-without-Keystore-key corruption) — never relax.
 - Gradle cache corruption: set `$env:GRADLE_USER_HOME='D:\gradle-home'`, run `gradlew.bat --stop`, delete the broken `%USERPROFILE%\.gradle\caches\<version>` dir, then `flutter clean` + rebuild. `flutter clean` alone is not enough.
 
 Production web deploy:
@@ -97,7 +98,7 @@ git pull ; .\deploy-web.ps1
 
 ## 5. E2E and local storage invariants
 
-- Web Signal keys use `SharedPreferencesAsync`/localStorage only (`sig_` prefix) with one-time migration from legacy cached `SharedPreferences` namespace. Mobile uses `flutter_secure_storage`.
+- Web Signal keys use `SharedPreferencesAsync`/localStorage only (`sig_` prefix) with one-time migration from legacy cached `SharedPreferences` namespace. Mobile uses `flutter_secure_storage`. Firebase on native initializes with NO Dart-side options (`Firebase.initializeApp()` — native default app from `google-services.json`); `firebase_options.dart`/`firebase_secrets.dart` were deleted 2026-07-29 because their placeholder values silently killed push on clean-checkout APKs.
 - `EncryptionService` has an obsolete comment saying DualStorage writes both stores on web. Do not copy it; `signal_stores.dart` is the source of truth.
 - Keys persist through logout. They are cleared only by account deletion (`clearEncryptionKeys()`) or browser/site data deletion. No multi-device and no key recovery.
 - Plaintext decrypted-message cache is separate from Signal keys. Privacy & Safety “Clear downloaded audio cache” (`_clearLocalMessageCache` → `PlaybackController.clearAudioCache`) clears ONLY downloaded voice audio — on web it is a no-op (`kIsWeb → return 0`); on native it deletes only `documents/audio_cache/`. It does NOT touch Signal keys, sessions, decrypted history, media keys, or pending-send plaintext (narrowed to audio-only in 0.0.109; it previously also cleared the plaintext decrypted cache).
@@ -150,7 +151,7 @@ git pull ; .\deploy-web.ps1
 - Ping and web voice playback use Web Audio (`ping_sound_web.dart`, `voice_player_web.dart`) to avoid iOS MediaSession cards.
 - Web voice codec limit remains: Safari can decode AAC/MP4/MP3/WAV; WebM/Opus may not play on iOS.
 - File/media helpers use conditional imports. Guard `dart:io`/`Platform` with `!kIsWeb`.
-- `webcrypto` Android 16KB page-size patch: run `patch_webcrypto_16k.ps1`; `flutter pub run webcrypto:setup` is for native test setup, not APK/AAB packaging.
+- `webcrypto` Android 16KB page-size patch: `patch_webcrypto_16k.ps1` edits the PUB CACHE (dropped by `pub cache repair`/SDK upgrade, PowerShell-only). `build-android.ps1` applies it best-effort; the HARD gate is the post-build ELF check `scripts/verify-apk-16k.mjs`. `flutter pub run webcrypto:setup` is for native test setup, not APK/AAB packaging.
 - `MainActivity` package declaration must be `com.fireplace.app` even though the file path is still old.
 - `kotlin.incremental=false` in `android/gradle.properties` is intentional mixed-drive cache damage control.
 

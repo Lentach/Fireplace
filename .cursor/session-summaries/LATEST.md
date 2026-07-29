@@ -1,5 +1,16 @@
 # Latest session summary
 
+**Date:** 2026-07-29 — **Android release Phase 1 (plumbing) DONE, committed to master. No version bump, nothing deployed.** Decision set: direct APK first (GitHub Releases), PWA stays for iOS, Drift+SQLCipher encrypted store on native, same-account re-login migration (no key export).
+
+- **Corrections that override older notes:** the at-rest exposure is localStorage + RAW SharedPreferences (NOT IndexedDB); decrypted plaintext/media keys/pendsend/JWT are plaintext on EVERY platform incl. native XML (`encryption_service.dart:79`) — going native alone fixes nothing. "Gone from the app" shipped in 0.0.135/0.0.136; "gone from the disk" (B2/#105 M4) is the remaining half and becomes Phase 2 below.
+- **Phase 1 shipped:** Gradle THROWS on release without `key.properties` (falsified both ways); `allowBackup=false` + `data_extraction_rules.xml` (merged-manifest-verified; also prevents restore-blob-without-Keystore-key corruption); `scripts/verify-apk-16k.mjs` hard-gates 64-bit `.so` PT_LOAD alignment on the BUILT APK (5/5 falsification harness + real APK proof — the pub-cache patch can no longer silently drop); native Firebase init switched to no-options/`google-services.json` and the tracked PLACEHOLDER `firebase_options/secrets.dart` deleted (they silently killed push on clean-checkout APKs); explicit INTERNET; SDKs pinned 36/24/36; `build-android.ps1` (versionCode = major*1e6+minor*1e4+patch via `--build-number`; `apksigner` NOT keytool — minSdk 24 = v2/v3-only). Runbook: `docs/runbooks/android-release.md`.
+- **Phase 2 = LAUNCH GATE, not built:** encrypted native store (key in Keystore, NO auth binding, armed-gate, rotate-and-destroy on purge — shredding comes from key rotation, never SQLite deletes; content-key loss = history loss BY DESIGN, `CONTENT_KEY_LOST` → retired-id rendering). **Do not distribute any APK before it** — first-install sealing is the only clean shredding story. Owner task pending: generate + back up the release keystore (runbook).
+- **Migration wording is load-bearing:** `uploadKeyBundle` re-fires on EVERY connect, so PWA+APK on one account is a permanent identity flip-flop (not last-wins) — users must log OUT of the PWA; never "clear site data". Deferred: sealed sender (9 structural senderId deps). Quick win any time: `fetchPreKeyBundle` has no friendship/block gate.
+- Verification: analyze clean, **1069 + 5 skipped** green, backend untouched. ➡ Detail: `2026-07-29-session-android-phase1.md`.
+
+---
+### Prior latest ↓
+
 **Date:** 2026-07-28 — **RELEASED 0.0.136 / `6fb36bf`, BOTH surfaces, smoke 5/5.** One deploy shipped TWO merges: PR **#108** `audit/e2e-safety` (bumped 0.0.135 pre-merge; superseded by the combined tip) and PR **#106** `feat/invitation-rework`. Merged-master suites re-measured: backend **577/47 suites**, Flutter **1069 + 5 skipped**, analyze clean, e2e-wire green in CI, lint-ratchet floor lowered **821 → 817**. ⚠ **Deploy incident, self-healed:** the VM repo had been left on `feat/invitation-rework` from a branch test — the first `deploy-backend.sh` shipped `bde08b3` (that branch) for ~2 min before checkout master + redeploy; no migrations on the branch, no schema residue, and #106 merged minutes later anyway. **Always check `git status -sb` on the VM before deploying.** Owner must fully close + reopen the PWA (never clear site data) → Settings `0.0.136 / 6fb36bf`.
 
 - **Review verdict on the branch's deletion work: delete purges ARE instant** (message/conversation/unfriend/block/clear-history — purge fires on the socket event, commit-verified, durable at-least-once backlog). **Expiry was NOT:** the sweep's only caller was socketReady and `ServerClock`'s only feeder was socketReady (30-min extrapolation cap), so a connected PWA never destroyed expired plaintext until reconnect. Closed with a new wire pair `getServerTime` → `serverTime` (root §7) + a 1-min sweep timer in `ConnectionProvider`: tick sweeps on a confirmable clock, else requests time (5-min unanswered floor, fail-closed vs older backends). Floor reads `clock.now()` — package:clock promoted to direct dep BECAUSE fake_async patches it and `DateTime.now()` made the floor untestable.
@@ -47,33 +58,4 @@
 - **Prod container scanned for the first time:** 1 CRITICAL + 5 HIGH, **all in npm's bundled tree, none in the app**; `picomatch` in `/app` is already the patched 4.0.4. Container runs `node dist/main.js` and never invokes npm → **not exploitable**. Fix arrives with the next `node:22-alpine` rebuild.
 - **Measured, and it killed two ideas:** a `dart format` CI gate is unreachable (reformats **146/368 files**), and a "run only affected tests" runner is **strictly worse** than `flutter test` — cost curve now in `frontend/CLAUDE.md` §1. Also: **`impact.mjs` reports a nonexistent path as "no dependents", exit 0** — a typo reads as "safe". Unfixed.
 - ➡ Detail: **`2026-07-27-session-tooling-audit.md`**. Tier list + evidence: `.planning/tooling-audit/` (local-only).
-
----
-### Prior latest ↓
-
-**Date:** 2026-07-27 — **RELEASED 0.0.132 / `05fc423`, both surfaces, smoke 5/5.** A workflow/infra session that ended up fixing **two disaster-recovery bugs in production code** (`backend/src/database/migration-runner.ts`), both surfaced by the new cross-tier CI job on its very first run. 18 commits, `05e0962..05fc423`.
-
-## What was done
-1. **MEASURED graphify instead of trusting it.** Its file→file import edges score **86.6%/90.7% on backend TS** but **0.5%/1.5% on frontend Dart** — every relative specifier collapses into one node attributed to an arbitrary file. It claimed `contact_network_view.dart`'s only importer was itself; truth is `contacts_screen.dart:13`. Kept and automated, but DEMOTED: never answer a Flutter dependency question from `GRAPH_REPORT.md`.
-2. **`scripts/impact.mjs` (new)** — who depends on what I changed + which tests import it, parsed from source in ~0.6s. Handles Dart conditional imports, bare same-directory specifiers, `package:fireplace/…`, TS barrels, untracked files, deletions. **1639 specifiers, 0 unresolved.** 16 hermetic self-tests in CI.
-3. **`.githooks/post-commit` rebuilds the graph** in the background, guarded to code-only commits (the graphify block claims "code files only" and does not filter).
-4. **BUG: `0001_baseline.sql` could never run on a fresh database.** `pg_dump` brackets its dump with `\restrict`/`\unrestrict` psql meta-commands; node-postgres answers `syntax error at or near "\"`. **BUG 2, right behind it:** the baseline ends with `set_config('search_path','',false)`, so the runner's own unqualified tracking INSERT died with `relation "schema_migrations" does not exist`. Both hit only EMPTY databases — i.e. disaster recovery — because prod stamps the baseline instead of running it. Fixed in the runner (baseline is immutable), 3 regression tests.
-5. **`e2e-wire` CI job added** — full-stack harness vs real Postgres+backend. It found both bugs on its first run. **11 wire tests green.**
-6. **Repo is PRIVATE** (`gh repo view --json isPrivate` → true); docs said "public". All 226 dated summaries are committed now, and the false policy they carried is corrected.
-7. Frontend test-count verifier added; `CLAUDE.md` §4–§6 moved to the runbook.
-
-## Verification
-- Backend **541/47 green**, Flutter **903 + 4 skipped green**, both counts now machine-verified in CI. `e2e-wire` **11 passed** against real Postgres.
-- Migration fix falsified by reverting it (test goes red). Every parser fix checked against `grep`.
-- **Release 0.0.132**: CI green on `05fc423` (all three jobs) BEFORE deploying. Backend healthy in 10s, `/health` `db:ok` — the runner booted clean on the live DB, confirming the fix misses the stamped-baseline path. **Smoke 5/5**, including `main.dart.js` literally containing `05fc423`.
-
-## Notes for next session
-- **`impact.mjs` is an inner-loop hint, NOT a coverage oracle** — static imports, 3 hops; blind to NestJS DI, §7 wire contracts, assets. Full tier suites are **required by project policy** before commits/PRs; nothing enforces that mechanically.
-- **`e2e-wire` is now CI-failing** (`continue-on-error` removed after 5 consecutive greens; it caught two DR bugs on its first two runs). **But red is NOT a gate here** — branch protection is a paid feature, 403 on this private free-plan repo, so nothing blocks a push or merge and small fixes still go straight to `master`. Checking the run is a human/agent duty: `gh run list --branch master --limit 1`. If it flakes, restore `continue-on-error: true` deliberately and record it.
-- **Owner must fully close + reopen the PWA** to pick up 0.0.132 (Settings footer → `0.0.132 / 05fc423`). **NEVER uninstall or clear site data** — that destroys the local E2E Signal keys.
-- **Open work is now tracked as GitHub issues — read them, do not re-derive from here.**
-  - **#100 + #101 CLOSED 2026-07-27.** `CONTACT_INBOX_KEY` **rotated** (new → 200, old → **404**; the value at `2026-07-22-session-inbox-extraction.md:63` is **DEAD** — do not re-raise it). `gitleaks` **v8.30.1 installed** in `~/.local/bin`; the hook's gitleaks branch is live and proven to block a 64-hex `?key=` at entropy 3.97.
-  - **Also rotated: the `CONTEXT7_API_KEY`** that was tracked in `.claude/settings.local.json` — revoked at context7.com, verified **401**. That file is now untracked and gitignored by glob.
-  - **#102: finish Dependabot #95.** Still open. `osv-scanner` confirms **4 of 8** `brace-expansion` copies vulnerable: root `1.1.16` + `2.1.2` under `@jest/reporters`, `jest-config`, `jest-runtime`. Dev-only. **Do not dismiss.**
-- ➡ Detail: this session **`2026-07-27-session-tooling-audit.md`** (tooling audit, S-tier installs, both key rotations); earlier that day **`2026-07-27-session-workflow-tooling.md`**; orientation: **`README.md`**.
 

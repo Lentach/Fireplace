@@ -89,7 +89,7 @@ Non-negotiable, because each one is silent or irreversible:
 
 - The user-visible version is semver from `frontend/pubspec.yaml` ONLY: `0.0.x`, **never** a `+build` suffix anywhere. "Bump by +1" means the PATCH segment (`0.0.1` → `0.0.2`), not `+1` appended. Production releases bump PATCH and state the new version in the commit message; docs/session-only edits do not bump. Minor/major only on explicit ask.
 - Settings footer shows `version · gitCommit · buildTime`; backend `GET /version` returns the same triple from `APP_VERSION`/`GIT_COMMIT`/`BUILD_TIME` injected by the deploy scripts.
-- Android `versionCode` is internal packaging only — it is NOT the user-facing string, and `+N` never belongs in `pubspec.yaml`.
+- Android `versionCode` is internal packaging only — it is NOT the user-facing string, and `+N` never belongs in `pubspec.yaml`. `build-android.ps1` derives it as `major*1_000_000 + minor*10_000 + patch` and passes `--build-number`; Android release gates + keystore setup live in `docs/runbooks/android-release.md`.
 - Env vars (incl. the `JWT_SECRET` rotation rule and the VAPID key-match footgun): see the runbook's env table.
 
 ## 6. Database and E2E safety

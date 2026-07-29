@@ -35,12 +35,16 @@ frontend/.flutter-plugins-dependencies
 # Jacques AI (exclude from project)
 .jacques/
 
-# Firebase — firebase_secrets.dart is committed with TODO placeholders; do not commit real keys
+# Firebase — Dart-side options were DELETED (Android/iOS init natively from
+# google-services.json / GoogleService-Info.plist; web push is VAPID, not FCM)
 frontend/lib/firebase-config.js
 frontend/web/firebase-config.js
 
-# Android release keystore — never commit these
+# Android release keystore — never commit these.
+# key.properties.example points storeFile at ../keystore/ relative to app/,
+# i.e. frontend/android/keystore/ — BOTH candidate locations stay ignored.
 frontend/keystore/
+frontend/android/keystore/
 frontend/android/key.properties
 
 
