@@ -65,8 +65,13 @@ dependencies:
   # deterministic under test while DateTime.now() would not be.
   clock: ^1.1.2
   skeletonizer: ^2.1.3
-  drift: ^2.31.0
-  sqlite3: ^2.9.0
+  # Encrypted native content store. These bounds are load-bearing, not
+  # cosmetic: drift >=2.32 and sqlite3 3.x moved to native-assets BUILD HOOKS,
+  # which demand MSVC on every local `flutter test` on Windows — the exact trap
+  # webcrypto 0.6.1 set (see frontend/CLAUDE.md §5). `^2.31.0` would have
+  # allowed 2.32 on the next `pub upgrade`, so the upper bound is explicit.
+  drift: ">=2.31.0 <2.32.0"
+  sqlite3: ">=2.9.0 <3.0.0"
   sqlcipher_flutter_libs: ^0.6.8
 
 dependency_overrides:
@@ -90,7 +95,10 @@ dev_dependencies:
   # on — a purge that could not commit must report failure, never success.
   shared_preferences_platform_interface: ^2.4.2
   url_launcher_platform_interface: ^2.3.2
-  drift_dev: ^2.31.0
+  # Same upper bound as `drift` above — a drift_dev that outruns the runtime
+  # package would regenerate `content_db.g.dart` against a version this app
+  # deliberately does not use.
+  drift_dev: ">=2.31.0 <2.32.0"
   build_runner: ^2.15.1
 
 # For information on the generic Dart part of this file, see the

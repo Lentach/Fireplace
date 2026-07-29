@@ -108,7 +108,8 @@ keys deliberately survive logout (frontend/CLAUDE.md §5), so old history stays 
   = whole local history unreadable (plaintext cache is NOT re-derivable: the ratchet consumed the
   keys, and media records hold the only copy of `mediaKey`/`mediaIv`) — budgeted, not denied, and
   rendered as retired ids rather than `[Decryption failed]`.
-  Acceptance is executable: `cd frontend && flutter test integration_test -d <deviceId>`.
+  Acceptance is executable: `cd frontend && flutter test integration_test -d <deviceId>` (8 tests,
+  including a real-Keystore content-key wipe that must retire history, never crash).
 - R8/minify is OFF (default): enable later with keep-rules if APK size matters; not a security gate.
 - `network_security_config` now EXISTS and is deliberately narrow: `frontend/android/app/src/main/res/xml/`
   permits cleartext to `127.0.0.1`/`localhost` ONLY (just_audio serves unsealed voice bytes through a

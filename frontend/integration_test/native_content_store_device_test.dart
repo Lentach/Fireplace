@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 import 'dart:typed_data';
 
@@ -16,6 +17,7 @@ import 'package:fireplace/services/encryption/content_kv_opener_stub.dart'
 import 'package:fireplace/services/encryption/native_content_store.dart';
 import 'package:fireplace/services/encryption/sealed_audio_codec.dart';
 import 'package:fireplace/services/secure_kv.dart';
+import 'package:fireplace/utils/e2e_persistent_diag.dart';
 import 'package:fireplace/widgets/audio/voice_player_native.dart';
 
 /// ON-DEVICE acceptance for the Phase 2 encrypted store: real Android
@@ -172,6 +174,59 @@ void main() {
     } finally {
       await player.dispose();
     }
+  });
+
+  // LAST on purpose: it destroys every content key in the real Keystore, so
+  // any record an earlier test sealed becomes unreadable after it runs.
+  test('content-key loss: history retires, no crash, no [Decryption failed]',
+      () async {
+    final keys = realKeys();
+    final dbKey = await keys.dbKeyHex();
+    final store = await NativeContentStore.open(
+      db: await DriftRecordDb.open(dbKeyHex: dbKey!.hex),
+      keys: keys,
+      legacyPrefs: await SharedPreferences.getInstance(),
+      audioResealer: resealAudioCacheFiles,
+    );
+    const uid = 993;
+    final id = runId % 100000;
+    await store.setString('e2e_${uid}_decrypted_$id', '{"c":"doomed"}');
+    await store.close();
+
+    // Simulate the loss the spec's acceptance #3 describes: the Keystore
+    // entries are gone while the encrypted DB file survives intact.
+    final before = await keys.inventory();
+    expect(before, isNotNull);
+    for (final kid in before!.keys.keys) {
+      expect(await keys.destroyContentKey(kid), isTrue);
+    }
+
+    await E2ePersistentDiag.init();
+    final reopened = await NativeContentStore.open(
+      db: await DriftRecordDb.open(dbKeyHex: dbKey.hex),
+      keys: keys,
+      legacyPrefs: await SharedPreferences.getInstance(),
+      audioResealer: resealAudioCacheFiles,
+    );
+    // Opened, not crashed, and NOT degraded to a plaintext session.
+    expect(reopened.debugActiveKid, isNotEmpty);
+    // The record is not served as content — the UI must never hand a consumed
+    // ciphertext to live decrypt and end up at a terminal [Decryption failed].
+    expect(reopened.getString('e2e_${uid}_decrypted_$id'), isNull);
+    // It is retired instead: that is what renders "no longer stored".
+    final retired =
+        jsonDecode(reopened.getString('e2e_${uid}_retired_v1')!) as List;
+    expect(retired, contains(id));
+    expect(
+      E2ePersistentDiag.entries.any((e) => e.contains('CONTENT_KEY_LOST')),
+      isTrue,
+      reason: 'field diagnostics must name the loss',
+    );
+    // New writes still work, under a freshly armed key.
+    expect(await reopened.setString('e2e_${uid}_decrypted_1', '{"c":"new"}'),
+        isTrue);
+    expect(reopened.getString('e2e_${uid}_decrypted_1'), '{"c":"new"}');
+    await reopened.close();
   });
 }
 

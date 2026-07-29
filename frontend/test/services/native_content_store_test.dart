@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 
@@ -49,14 +50,29 @@ class _FakeSecureKv implements SecureKv {
 class _MarkerSealer implements ContentSealer {
   int sealCalls = 0;
 
+  /// When set, the NEXT seal parks until it completes — the only way to place
+  /// a write mid-flight across a rotation.
+  Completer<void>? sealGate;
+
+  /// Models the cipher itself failing (webcrypto throwing), as opposed to a
+  /// healthy cipher refusing bytes it did not seal.
+  bool cipherDown = false;
+
   @override
   Future<Uint8List?> seal(Uint8List key, Uint8List plaintext) async {
     sealCalls++;
+    final gate = sealGate;
+    if (gate != null) {
+      sealGate = null;
+      await gate.future;
+    }
+    if (cipherDown) return null;
     return Uint8List.fromList([key[0], key[1], ...plaintext]);
   }
 
   @override
   Future<Uint8List?> unseal(Uint8List key, Uint8List sealed) async {
+    if (cipherDown) return null;
     if (sealed.length < 2 || sealed[0] != key[0] || sealed[1] != key[1]) {
       return null;
     }
@@ -387,6 +403,79 @@ void main() {
           reason: 'kill between purge and rotation must not lose the shred');
       await store!.rotateNow();
       expect(store!.rotationPending, isFalse);
+    });
+
+    test('a write racing a rotation is never stranded under a dead key',
+        () async {
+      store = await openStore();
+      await store!.setString('e2e_7_decrypted_41', '{"c":"a"}');
+      await store!.remove('e2e_7_decrypted_41'); // owes a rotation
+
+      // Park a sealed write inside seal(), then run the whole rotation on top
+      // of it: the row's bytes belong to the retiring key, and its label must
+      // agree with them or the reseal pass cannot see it.
+      final gate = Completer<void>();
+      sealer.sealGate = gate;
+      final write = store!.setString('e2e_7_decrypted_99', '{"c":"inflight"}');
+      await pumpEventQueue();
+      final rotation = store!.rotateNow();
+      await pumpEventQueue();
+      gate.complete();
+      expect(await write, isTrue);
+      await rotation;
+
+      // The only honest end state: the record survives a reopen. Either the
+      // rotation waited for it, or it deferred the shred — never destroyed the
+      // key that record was sealed with.
+      await store!.close();
+      store = await openStore();
+      expect(store!.getString('e2e_7_decrypted_99'), '{"c":"inflight"}');
+    });
+
+    test('a cipher failure defers the shred instead of destroying keys',
+        () async {
+      store = await openStore();
+      await store!.setString('e2e_7_decrypted_41', '{"c":"survivor"}');
+      await store!.setString('e2e_7_decrypted_42', '{"c":"victim"}');
+      final oldKid = store!.debugActiveKid;
+      await store!.remove('e2e_7_decrypted_42');
+
+      sealer.cipherDown = true; // transient: refuses every unseal AND seal
+      await store!.rotateNow();
+      expect(secure.data.containsKey('fp_content_key_$oldKid'), isTrue,
+          reason: 'an ambiguous decrypt failure is not evidence of corruption');
+      expect(store!.rotationPending, isTrue, reason: 'obligation survives');
+
+      sealer.cipherDown = false;
+      await store!.rotateNow();
+      expect(store!.rotationPending, isFalse);
+      expect(secure.data.containsKey('fp_content_key_$oldKid'), isFalse);
+      expect(store!.getString('e2e_7_decrypted_41'), '{"c":"survivor"}');
+    });
+
+    test('a provably corrupt row is retired, and never blocks the shred',
+        () async {
+      store = await openStore();
+      await store!.setString('e2e_7_decrypted_41', '{"c":"a"}');
+      await store!.setString('e2e_7_decrypted_42', '{"c":"b"}');
+      final oldKid = store!.debugActiveKid;
+      await store!.remove('e2e_7_decrypted_42');
+      // Tamper AFTER the view was built, so open-time retirement did not
+      // already handle it: the rotation is what must notice.
+      final row = db.rows['e2e_7_decrypted_41']!;
+      final bad = Uint8List.fromList(row.sealed!);
+      bad[0] ^= 0xff;
+      db.rows[row.k] = RecordRow(k: row.k, kid: row.kid, sealed: bad);
+
+      await store!.rotateNow();
+
+      expect(store!.rotationPending, isFalse,
+          reason: 'corruption cannot block shredding forever');
+      expect(secure.data.containsKey('fp_content_key_$oldKid'), isFalse);
+      final retired =
+          jsonDecode(store!.getString('e2e_7_retired_v1')!) as List;
+      expect(retired, contains(41),
+          reason: 'renders "no longer stored", never [Decryption failed]');
     });
   });
 

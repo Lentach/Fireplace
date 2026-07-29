@@ -107,6 +107,11 @@ class NativeContentStore implements ContentKv {
   int _shredDoneGen = 0;
   bool _rotating = false;
   bool _closed = false;
+
+  /// Sealed writes currently between capturing a content key and committing
+  /// their row. A rotation MUST NOT destroy a key while one is in flight.
+  int _sealedWrites = 0;
+  Completer<void>? _sealedIdle;
   Timer? _debounce;
   Timer? _deadline;
 
@@ -163,16 +168,9 @@ class NativeContentStore implements ContentKv {
     var lostActiveKey = false;
     if (metaKid == null) {
       // Fresh store: mint and arm before anything can be sealed.
-      final kid = await _keys.mintContentKey();
-      if (kid == null) throw const ContentStoreUnavailable('mint');
-      final inv2 = await _keys.inventory();
-      final raw = inv2?.keys[kid];
-      if (raw == null) throw const ContentStoreUnavailable('arm');
-      if (!await _db.setMeta(_metaActiveKid, kid)) {
-        throw const ContentStoreUnavailable('meta');
-      }
-      _activeKid = kid;
-      _rawKeys[kid] = raw;
+      final armed = await _mintAndArm();
+      _activeKid = armed.kid;
+      _rawKeys[armed.kid] = armed.raw;
     } else if (inventory.keys.containsKey(metaKid)) {
       _activeKid = metaKid;
       _rawKeys.addAll(inventory.keys);
@@ -187,18 +185,11 @@ class NativeContentStore implements ContentKv {
       // content-key loss. Budgeted, not denied: mint a fresh key so NEW
       // records seal, and let the row scan below retire what died.
       lostActiveKey = true;
-      final kid = await _keys.mintContentKey();
-      if (kid == null) throw const ContentStoreUnavailable('mint');
-      final inv2 = await _keys.inventory();
-      final raw = inv2?.keys[kid];
-      if (raw == null) throw const ContentStoreUnavailable('arm');
-      if (!await _db.setMeta(_metaActiveKid, kid)) {
-        throw const ContentStoreUnavailable('meta');
-      }
-      _activeKid = kid;
+      final armed = await _mintAndArm();
+      _activeKid = armed.kid;
       _rawKeys
         ..addAll(inventory.keys)
-        ..[kid] = raw;
+        ..[armed.kid] = armed.raw;
     }
 
     _shredGen = int.tryParse(await _db.getMeta(_metaShredGen) ?? '') ?? 0;
@@ -290,6 +281,23 @@ class NativeContentStore implements ContentKv {
     }
   }
 
+  /// Mint a content key, ARM it, and record it as the active kid.
+  ///
+  /// Arming means the key was READ BACK out of secure storage by a fresh
+  /// enumeration — never assumed from a write that reported success. Throws
+  /// [ContentStoreUnavailable] naming the stage that failed; open turns that
+  /// into a prefs-fallback session, rotation turns it into a retry.
+  Future<({String kid, Uint8List raw})> _mintAndArm() async {
+    final kid = await _keys.mintContentKey();
+    if (kid == null) throw const ContentStoreUnavailable('mint');
+    final raw = (await _keys.inventory())?.keys[kid];
+    if (raw == null) throw const ContentStoreUnavailable('arm');
+    if (!await _db.setMeta(_metaActiveKid, kid)) {
+      throw const ContentStoreUnavailable('meta');
+    }
+    return (kid: kid, raw: raw);
+  }
+
   /// Merge [ids] into the persisted retired-id set for [uid], mirroring
   /// `EncryptionService.markRetired` exactly (bounded, highest ids kept).
   Future<void> _foldRetired(int uid, Set<int> ids) async {
@@ -349,15 +357,33 @@ class NativeContentStore implements ContentKv {
 
   @override
   Future<bool> setString(String key, String value) async {
-    RecordRow row;
-    if (isSealedKey(key)) {
-      final sealed = await _seal(value);
-      if (sealed == null) return false;
-      row = RecordRow(k: key, kid: _activeKid, sealed: sealed);
-    } else {
-      row = RecordRow(k: key, text: value);
+    if (!isSealedKey(key)) {
+      if (!await _db.put(RecordRow(k: key, text: value))) return false;
+      _view[key] = value;
+      _noteLegacyResidue(key);
+      return true;
     }
-    if (!await _db.put(row)) return false;
+    _sealedWrites++;
+    try {
+      // Kid and key bytes are captured TOGETHER, before the await. A rotation
+      // flipping `_activeKid` mid-seal must never make this row claim a key
+      // that did not encrypt it: the reseal pass finds rows BY kid, so a
+      // mislabelled row is invisible to it and dies with its real key.
+      final kid = _activeKid;
+      final raw = _rawKeys[kid];
+      if (raw == null) return false;
+      final sealed = await _sealWith(raw, value);
+      if (sealed == null) return false;
+      if (!await _db.put(RecordRow(k: key, kid: kid, sealed: sealed))) {
+        return false;
+      }
+    } finally {
+      _sealedWrites--;
+      if (_sealedWrites == 0) {
+        _sealedIdle?.complete();
+        _sealedIdle = null;
+      }
+    }
     _view[key] = value;
     _noteLegacyResidue(key);
     return true;
@@ -479,10 +505,31 @@ class NativeContentStore implements ContentKv {
 
   // ── Sealing ──────────────────────────────────────────────────────────────
 
-  Future<Uint8List?> _seal(String value) async {
-    final raw = _rawKeys[_activeKid];
-    if (raw == null) return null;
-    return _sealer.seal(raw, Uint8List.fromList(utf8.encode(value)));
+  Future<Uint8List?> _sealWith(Uint8List raw, String value) =>
+      _sealer.seal(raw, Uint8List.fromList(utf8.encode(value)));
+
+  /// Round-trips a probe under [raw] to tell the two meanings of a refused
+  /// unseal apart: a healthy cipher rejecting bytes that are not what we
+  /// sealed (evidence of corruption) versus the cipher itself failing —
+  /// webcrypto/BoringSSL can throw under memory pressure, and rotation runs
+  /// from the app-background hook, exactly when the OS is reclaiming.
+  Future<bool> _cipherHealthy(Uint8List raw) async {
+    final probe = Uint8List.fromList(const [0x66, 0x70, 0x61, 0x65]);
+    final sealed = await _sealer.seal(raw, probe);
+    if (sealed == null) return false;
+    final back = await _sealer.unseal(raw, sealed);
+    return back != null && listEquals(back, probe);
+  }
+
+  /// Resolves once no sealed write is mid-flight; false when they do not
+  /// settle promptly — a stuck platform channel must DEFER the shred, never
+  /// let it proceed unproven.
+  Future<bool> _sealedWritesIdle() {
+    if (_sealedWrites == 0) return Future.value(true);
+    final waiter = _sealedIdle ??= Completer<void>();
+    return waiter.future
+        .then((_) => true)
+        .timeout(const Duration(seconds: 10), onTimeout: () => false);
   }
 
   Future<String?> _unseal(String kid, Uint8List raw, Uint8List sealed) async {
@@ -505,7 +552,7 @@ class NativeContentStore implements ContentKv {
     if (!await _db.setMeta(_metaShredGen, '$_shredGen')) {
       // The row is gone but the durable obligation is not recorded. The purge
       // itself must not fail on this; make the gap visible instead.
-      E2ePersistentDiag.record('ROTATION_STAMP_FAILED', {});
+      E2ePersistentDiag.record('ROTATION_STAMP_FAILED', {'phase': 'shred'});
     }
   }
 
@@ -536,14 +583,14 @@ class NativeContentStore implements ContentKv {
       final inventory = await _keys.inventory();
       if (inventory == null) return _retryLater('inventory');
 
-      final newKid = await _keys.mintContentKey();
-      if (newKid == null) return _retryLater('mint');
-      final inv2 = await _keys.inventory();
-      final newRaw = inv2?.keys[newKid];
-      if (newRaw == null) return _retryLater('arm');
-      if (!await _db.setMeta(_metaActiveKid, newKid)) {
-        return _retryLater('meta');
+      final ({String kid, Uint8List raw}) armed;
+      try {
+        armed = await _mintAndArm();
+      } on ContentStoreUnavailable catch (e) {
+        return _retryLater(e.stage);
       }
+      final newKid = armed.kid;
+      final newRaw = armed.raw;
 
       final retiring = Map<String, Uint8List>.of(_rawKeys)
         ..addAll(inventory.keys)
@@ -551,11 +598,19 @@ class NativeContentStore implements ContentKv {
       _activeKid = newKid;
       _rawKeys[newKid] = newRaw;
 
+      // Writes that captured a retiring key before the flip above are still
+      // in flight; every write STARTED after it seals under `newKid`. Waiting
+      // here is what makes "nothing live is left under a retiring key"
+      // provable — without it a record could commit under a key this pass
+      // already drained, and the destroy below would take it along.
+      if (!await _sealedWritesIdle()) return _retryLater('quiesce');
+
       // Re-seal survivors, oldest keys first, in bounded all-or-nothing
       // batches. An abort at any point leaves a resumable state: rows still
       // carry their old kid and the pending stamp is untouched.
+      final skipped = <String>{};
+      final corruptByUid = <int, Set<int>>{};
       for (final entry in retiring.entries) {
-        final skipped = <String>{};
         while (true) {
           final rows = await _db.rowsByKid(entry.key, 64);
           final pending = rows.where((r) => !skipped.contains(r.k)).toList();
@@ -567,12 +622,23 @@ class NativeContentStore implements ContentKv {
                 ? null
                 : await _unseal(entry.key, entry.value, sealed);
             if (plain == null) {
-              // Corrupt under a key we hold: unreadable either way, so it
-              // loses nothing when the key dies. Leave the tombstone.
+              // A refused unseal is AMBIGUOUS. Only a cipher that still
+              // round-trips a probe makes it evidence of corruption; a cipher
+              // that just failed would otherwise cost this row its key while
+              // the same bytes read fine minutes ago at open.
+              if (!await _cipherHealthy(entry.value)) {
+                return _retryLater('cipher');
+              }
               skipped.add(row.k);
+              final m = _idBearingKey.firstMatch(row.k);
+              if (m != null) {
+                corruptByUid
+                    .putIfAbsent(int.parse(m.group(1)!), () => <int>{})
+                    .add(int.parse(m.group(2)!));
+              }
               continue;
             }
-            final newSealed = await _seal(plain);
+            final newSealed = await _sealWith(newRaw, plain);
             if (newSealed == null) return _retryLater('reseal');
             resealed.add(RecordRow(k: row.k, kid: newKid, sealed: newSealed));
           }
@@ -588,6 +654,18 @@ class NativeContentStore implements ContentKv {
         return _retryLater('audio');
       }
 
+      // Last gate before the irreversible step: prove no readable row is
+      // still filed under a retiring key. Anything that landed between the
+      // reseal pass and here defers the shred to the next cycle rather than
+      // being destroyed by it.
+      if (!await _sealedWritesIdle()) return _retryLater('quiesce');
+      for (final kid in retiring.keys) {
+        final left = await _db.rowsByKid(kid, 64);
+        if (left.any((r) => !skipped.contains(r.k))) {
+          return _retryLater('late-rows');
+        }
+      }
+
       // Only now is nothing live left under the old keys: destroy them. THIS
       // is the shred — residue everywhere (freelist, WAL, replaced files)
       // becomes ciphertext under keys that no longer exist.
@@ -601,10 +679,27 @@ class NativeContentStore implements ContentKv {
       }
       if (!allDestroyed) return _retryLater('destroy');
 
+      // Provably corrupt rows have no key at all now: retire their ids so
+      // history renders "no longer stored" in THIS session instead of
+      // live-decrypting a consumed ciphertext into a terminal failure.
+      for (final entry in corruptByUid.entries) {
+        await _foldRetired(entry.key, entry.value);
+      }
+      if (skipped.isNotEmpty) {
+        E2ePersistentDiag.record('ROTATION_SKIPPED_ROWS', {
+          'rows': skipped.length,
+        });
+      }
+
       await _db.vacuumHint();
 
       _shredDoneGen = g0;
-      await _db.setMeta(_metaShredDoneGen, '$g0');
+      if (!await _db.setMeta(_metaShredDoneGen, '$g0')) {
+        // Memory says done, disk does not: the next open re-runs one rotation,
+        // which is idempotent — but the field should know the stamp is
+        // unreliable on this device.
+        E2ePersistentDiag.record('ROTATION_STAMP_FAILED', {'phase': 'done'});
+      }
       if (rotationPending) {
         // Purges folded in mid-rotation; owe another cycle.
         _scheduleRotation();
