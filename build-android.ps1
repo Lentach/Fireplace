@@ -109,7 +109,16 @@ if (-not $GiphyApiKey) {
   Write-Warning "GIPHY_API_KEY not set - GIF search will use the embedded fallback key."
 }
 Push-Location frontend
-if (-not $SkipClean) { flutter clean }
+if (-not $SkipClean) {
+  # Windows: a live Gradle daemon holds file handles inside frontend\build, which
+  # makes `flutter clean` HALF-delete the tree (it warns and continues) and the
+  # subsequent build then dies on locked leftovers. Stop daemons first.
+  & .\android\gradlew.bat --stop 2>$null | Out-Null
+  flutter clean
+  if (Test-Path "build") {
+    Write-Warning "frontend\build survived flutter clean (file locks?) - close IDEs/emulators if the build fails on locked files."
+  }
+}
 flutter build apk --release --build-number=$buildNumber @defines
 $buildExit = $LASTEXITCODE
 Pop-Location

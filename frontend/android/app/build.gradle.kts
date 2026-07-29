@@ -46,6 +46,15 @@ android {
     compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
+    lint {
+        // lintVitalAnalyzeRelease runs third-party plugin modules' lint during
+        // every release build and is a known Windows flake source (lint-cache
+        // jar locks, e.g. :file_picker:lintVitalAnalyzeRelease FileSystemException
+        // 2026-07-29). We don't gate releases on lint; the release gates are the
+        // signing/16KB checks in build-android.ps1.
+        checkReleaseBuilds = false
+    }
+
     compileOptions {
         sourceCompatibility = JavaVersion.VERSION_17
         targetCompatibility = JavaVersion.VERSION_17
