@@ -1364,6 +1364,9 @@ class EncryptionService {
     if (targets.isEmpty) return <int>{};
     return _messageIdsMatching(
       (id, record) => targets.contains(record[_metaConversationId]),
+      // The user asked for this history to be gone: missing an id that is on
+      // disk would leave it readable.
+      authoritative: true,
     );
   }
 
@@ -1411,7 +1414,7 @@ class EncryptionService {
         retired.add(id);
       }
       return false;
-    });
+    }, authoritative: false);
     return (expired: expired, retired: retired);
   }
 
@@ -1433,10 +1436,19 @@ class EncryptionService {
       _rawDecryptedContentPrefix(userId),
     ];
     try {
+      // DELIBERATELY the per-engine cache, not [_authoritativeSnapshot]. This is
+      // the SOLE input to server reconciliation, which destroys the plaintext of
+      // every id the server does not return — and expired rows ARE hard-deleted
+      // server-side by a per-minute cron, so orphans genuinely exist. A
+      // clobbered cache under-enumerates, which SUPPRESSES those purges; going
+      // authoritative would enumerate the full set and destroy every orphan at
+      // once on the first launch after this change. Over-retention is
+      // recoverable, over-destruction is not, and none of this is needed to fix
+      // the false-miss bug: only the record READS are.
       final prefs = await _sharedPrefs;
-      final snapshot = await _authoritativeSnapshot();
+      await _reloadPrefsForCrossContext(prefs);
       final ids = <int>{};
-      for (final key in _recordKeys(snapshot, prefs, 'e2e_${userId}_')) {
+      for (final key in prefs.getKeys()) {
         for (final prefix in prefixes) {
           if (!key.startsWith(prefix)) continue;
           final id = int.tryParse(key.substring(prefix.length));
@@ -1593,9 +1605,20 @@ class EncryptionService {
   ///
   /// [test] receives the id alongside the record so a caller can bucket ids by
   /// rule in one pass instead of scanning the store once per rule.
+  ///
+  /// [authoritative] picks WHICH VIEW is scanned, and the two callers want
+  /// opposite directions — do not collapse them:
+  ///  * true for a user-requested deletion ([messageIdsForConversations]). The
+  ///    user asked for this plaintext to be gone, so missing an id that is on
+  ///    disk leaves readable history behind. Under-enumerating is the failure.
+  ///  * false for automatic destruction ([destroyableMessageIds]). Nobody asked
+  ///    for it, the record is the only copy, and a reload-clobbered cache
+  ///    under-enumerates, which SUPPRESSES destruction. Over-retention is
+  ///    recoverable, over-destruction is not.
   Future<Set<int>> _messageIdsMatching(
-    bool Function(int id, Map<String, dynamic> record) test,
-  ) async {
+    bool Function(int id, Map<String, dynamic> record) test, {
+    required bool authoritative,
+  }) async {
     final userId = _userId;
     if (userId == null) return <int>{};
     final prefix = _decryptedContentPrefix(userId);
@@ -1605,7 +1628,8 @@ class EncryptionService {
     final List<String> keys;
     try {
       prefs = await _sharedPrefs;
-      snapshot = await _authoritativeSnapshot();
+      snapshot = authoritative ? await _authoritativeSnapshot() : null;
+      if (snapshot == null) await _reloadPrefsForCrossContext(prefs);
       keys = _recordKeys(snapshot, prefs, prefix).toList();
     } catch (_) {
       return <int>{};
@@ -1616,6 +1640,9 @@ class EncryptionService {
     for (final key in keys) {
       final id = int.tryParse(key.substring(prefix.length));
       if (id == null) continue;
+      // Same view the keys came from. Reading content off the cache while
+      // enumerating from the store would drop a key that is on disk, and the
+      // authoritative caller is the one that must not miss.
       final raw = _rawRecord(snapshot, prefs, key);
       if (raw == null) continue;
 

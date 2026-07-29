@@ -117,11 +117,20 @@ void main() {
 
   /// Persists [id] and then drops it from the reload cache while leaving it in
   /// the backing store — the exact state the incident left inbound records in.
-  Future<void> loseFromCache(int id, Map<String, dynamic> data) async {
+  Future<void> loseFromCache(
+    int id,
+    Map<String, dynamic> data, {
+    int? conversationId,
+  }) async {
     store.holdNextGetAll();
     final reload = prefs.reload(); // snapshots WITHOUT [id], then parks
     await store.parked;
-    await service.saveDecryptedContent(id, data); // lands in store and cache
+    // Lands in store and cache.
+    await service.saveDecryptedContent(
+      id,
+      data,
+      conversationId: conversationId,
+    );
     store.release();
     await reload; // clears the cache, refills from the stale snapshot
   }
@@ -159,10 +168,25 @@ void main() {
     );
   });
 
-  test('the record scan sees a record the cache lost', () async {
-    await loseFromCache(18611, {'content': 'scanned'});
+  test('a user-requested delete still finds a record the cache lost', () async {
+    await loseFromCache(18611, {'content': 'scanned'}, conversationId: 71);
 
-    expect(await service.storedMessageIds(), contains(18611));
+    expect(
+      await service.messageIdsForConversations([71]),
+      contains(18611),
+      reason: 'the user asked for it: a miss leaves readable history behind',
+    );
+  });
+
+  test('reconcile enumeration stays suppressed when the cache lost a record', () async {
+    await loseFromCache(18612, {'content': 'not enumerated'});
+
+    // DELIBERATE, not an oversight. storedMessageIds is the sole input to server
+    // reconciliation, which destroys every id the server does not return — and
+    // expired rows ARE hard-deleted server-side, so orphans exist. Going
+    // authoritative here would destroy every orphan at once on the first launch
+    // after this change. Over-retention is recoverable; over-destruction is not.
+    expect(await service.storedMessageIds(), isNot(contains(18612)));
   });
 
   test('the failure label never replaces real plaintext', () async {
