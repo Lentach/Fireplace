@@ -4,6 +4,7 @@ import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../utils/e2e_persistent_diag.dart';
+import '../secure_kv.dart';
 import 'audio_reseal.dart';
 import 'content_db.dart';
 import 'content_key_manager.dart';
@@ -14,16 +15,21 @@ Future<ContentKv>? _memo;
 
 /// Native build of the opener. Android gets the encrypted store; everything
 /// else (desktop dev hosts, the flutter_test VM — `Platform` here is the HOST
-/// OS, not `defaultTargetPlatform`) keeps the legacy prefs backend, which is
-/// also what every existing test seeds via `setMockInitialValues`.
+/// OS, not `defaultTargetPlatform`) keeps the legacy prefs backend.
 ///
-/// Memoized as a Future so concurrent first calls cannot race two stores into
-/// existence. A session that fell back to prefs stays on prefs until the next
-/// process — flip-flopping backends mid-session would split the read view.
-Future<ContentKv> openPlatformContentKv() => _memo ??= _open();
+/// ONLY the Android path is memoized (as a Future, so concurrent first calls
+/// cannot race two encrypted stores into existence; and a session that fell
+/// back to prefs stays on prefs — flip-flopping backends mid-session would
+/// split the read view). The prefs path deliberately returns a FRESH wrapper
+/// per call: that is the historical per-service-instance behavior, and the
+/// flutter_test VM depends on it — a process-wide memo would pin the first
+/// test's mock SharedPreferences under every later test.
+Future<ContentKv> openPlatformContentKv() {
+  if (!Platform.isAndroid) return PrefsContentKv.open();
+  return _memo ??= _open();
+}
 
 Future<ContentKv> _open() async {
-  if (!Platform.isAndroid) return PrefsContentKv.open();
   var stage = 'unknown';
   try {
     final legacy = await SharedPreferences.getInstance();

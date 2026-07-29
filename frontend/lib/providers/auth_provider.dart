@@ -3,8 +3,8 @@ import 'dart:async';
 import 'package:flutter/foundation.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:jwt_decoder/jwt_decoder.dart';
-import 'package:shared_preferences/shared_preferences.dart';
 import '../models/user_model.dart';
+import '../services/auth_token_store.dart';
 import '../services/api_service.dart';
 import '../services/pwa_app_badge_clear.dart';
 import '../services/push_service.dart';
@@ -13,13 +13,15 @@ import '../config/app_config.dart';
 import '../utils/e2e_persistent_diag.dart';
 
 class AuthProvider extends ChangeNotifier {
-  AuthProvider({ApiService? api})
-    : _api = api ?? ApiService(baseUrl: AppConfig.baseUrl) {
+  AuthProvider({ApiService? api, AuthTokenStore? tokenStore})
+    : _api = api ?? ApiService(baseUrl: AppConfig.baseUrl),
+      _tokens = tokenStore ?? AuthTokenStore() {
     _pushService = PushService(_api);
     _loadSavedToken();
   }
 
   final ApiService _api;
+  final AuthTokenStore _tokens;
   late final PushService _pushService;
 
   String? _token;
@@ -111,9 +113,7 @@ class AuthProvider extends ChangeNotifier {
     }
     _token = access;
     _refreshToken = refresh;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.setString('jwt_token', access);
-    await prefs.setString('refresh_token', refresh);
+    await _tokens.write(access: access, refresh: refresh);
     _restoreUserFromAccessJwt(access);
     onAccessTokenChanged?.call(access);
     notifyListeners();
@@ -213,9 +213,7 @@ class AuthProvider extends ChangeNotifier {
     _currentUser = null;
     _statusMessage = null;
     _isError = false;
-    final prefs = await SharedPreferences.getInstance();
-    await prefs.remove('jwt_token');
-    await prefs.remove('refresh_token');
+    await _tokens.clear();
     await clearPwaAppBadgeOnLogout();
     notifyListeners();
   }
@@ -267,9 +265,9 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> _loadSavedToken() async {
     try {
-      final prefs = await SharedPreferences.getInstance();
-      final savedToken = prefs.getString('jwt_token');
-      final savedRefresh = prefs.getString('refresh_token');
+      final saved = await _tokens.read();
+      final savedToken = saved.access;
+      final savedRefresh = saved.refresh;
       _refreshToken = savedRefresh;
 
       if (savedToken == null && savedRefresh == null) return;

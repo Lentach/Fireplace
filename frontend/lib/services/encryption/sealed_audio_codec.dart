@@ -77,6 +77,22 @@ class SealedAudioCodec {
   /// Whether [bytes] carries a complete, supported sealed-file header.
   static bool isSealed(Uint8List bytes) => _readHeader(bytes) != null;
 
+  /// How many leading bytes [hasMagic] needs.
+  static const int magicPeekLength = _magicLength + 1;
+
+  /// Whether the first [magicPeekLength] bytes are this format's magic +
+  /// version. For callers that want to avoid reading a whole legacy file just
+  /// to learn it is not sealed — do NOT use it as [isSealed] (it cannot see a
+  /// truncated header); a positive here must be followed by a full read and
+  /// [unseal], whose own header check is authoritative.
+  static bool hasMagic(Uint8List head) {
+    if (head.length < magicPeekLength) return false;
+    for (var i = 0; i < _magicLength; i++) {
+      if (head[i] != _magic[i]) return false;
+    }
+    return head[_magicLength] == _version;
+  }
+
   /// Decrypts a sealed audio file, returning null rather than throwing for
   /// malformed bytes, an incorrect key, or a failed GCM authentication tag.
   ///

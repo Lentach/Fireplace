@@ -1,39 +1,8 @@
 import 'dart:math';
 
 import 'package:flutter/foundation.dart';
-import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 
-/// The four secure-storage operations the key manager needs, as a seam so
-/// tests can inject failures (a throwing `readAll` above all — the misreading
-/// of a transient enumeration failure as key loss is THE catastrophic bug
-/// this module defends against, and it must be reproducible on any host).
-abstract class SecureKv {
-  Future<String?> read(String key);
-  Future<void> write(String key, String value);
-  Future<void> delete(String key);
-  Future<Map<String, String>> readAll();
-}
-
-/// Production adapter over the SAME `flutter_secure_storage` instance/options
-/// the Signal keys use (co-located failure modes; see [ContentKeyManager]).
-class FlutterSecureStorageKv implements SecureKv {
-  const FlutterSecureStorageKv(this._storage);
-
-  final FlutterSecureStorage _storage;
-
-  @override
-  Future<String?> read(String key) => _storage.read(key: key);
-
-  @override
-  Future<void> write(String key, String value) =>
-      _storage.write(key: key, value: value);
-
-  @override
-  Future<void> delete(String key) => _storage.delete(key: key);
-
-  @override
-  Future<Map<String, String>> readAll() => _storage.readAll();
-}
+import '../secure_kv.dart';
 
 /// Owns the at-rest keys of the native encrypted content store.
 ///

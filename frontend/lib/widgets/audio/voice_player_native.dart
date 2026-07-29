@@ -1,3 +1,8 @@
+// StreamAudioSource/StreamAudioResponse carry an @experimental annotation but
+// have been just_audio's documented custom-source API for years; the in-memory
+// source below is the only way sealed voice notes can play without writing
+// plaintext back to disk. Revisit on any just_audio upgrade.
+// ignore_for_file: experimental_member_use
 import 'dart:typed_data';
 
 import 'package:just_audio/just_audio.dart';
@@ -39,7 +44,11 @@ class NativeVoicePlayer implements VoicePlayer {
 
   @override
   Future<void> setAudioBytes(Uint8List bytes) =>
-      throw UnsupportedError('setAudioBytes is web-only');
+      // Sealed voice notes are decrypted to MEMORY and must never touch disk
+      // as plaintext, so the file path is not an option for them. just_audio
+      // serves a StreamAudioSource through its local proxy — range handling
+      // in [_BytesAudioSource] must stay correct or seek silently breaks.
+      _player.setAudioSource(_BytesAudioSource(bytes));
 
   @override
   Future<void> play() => _player.play();
@@ -61,3 +70,27 @@ class NativeVoicePlayer implements VoicePlayer {
 }
 
 VoicePlayer createVoicePlayer() => NativeVoicePlayer();
+
+/// In-memory audio source with proper range semantics: honors both bounds,
+/// reports the FULL length as [StreamAudioResponse.sourceLength] (ExoPlayer
+/// derives seekability from it), and hands back only the requested window.
+class _BytesAudioSource extends StreamAudioSource {
+  _BytesAudioSource(this._bytes);
+
+  final Uint8List _bytes;
+
+  @override
+  Future<StreamAudioResponse> request([int? start, int? end]) async {
+    final from = (start ?? 0).clamp(0, _bytes.length);
+    final to = (end ?? _bytes.length).clamp(from, _bytes.length);
+    return StreamAudioResponse(
+      sourceLength: _bytes.length,
+      contentLength: to - from,
+      offset: from,
+      stream: Stream.value(Uint8List.sublistView(_bytes, from, to)),
+      // The recorder produces AAC in an MP4 container; ExoPlayer sniffs the
+      // real format regardless, this is only the proxy's Content-Type.
+      contentType: 'audio/mp4',
+    );
+  }
+}

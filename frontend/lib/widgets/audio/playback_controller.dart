@@ -12,6 +12,8 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../services/audio_cache_store.dart';
 import '../../services/media_crypto_service.dart';
+import '../../services/encryption/native_content_store.dart';
+import '../../services/encryption/sealed_audio_codec.dart';
 import '../../services/voice_audio_coordinator.dart';
 import '../top_snackbar.dart';
 import 'voice_player.dart';
@@ -194,12 +196,19 @@ class _PlaybackControllerState extends State<PlaybackController>
         _cachedFilePath = await _getCachedFilePath();
 
         if (_cachedFilePath != null && File(_cachedFilePath!).existsSync()) {
-          await _player.setFilePath(_cachedFilePath!);
-        } else {
-          final path = await _downloadAndCache(mediaUrl, token);
-          _cachedFilePath = path;
-          await _player.setFilePath(path);
+          final played = await _playCachedFile(_cachedFilePath!);
+          if (!played) {
+            // Sealed under a key this device no longer holds (or torn):
+            // unlike message plaintext, voice audio IS re-derivable — the
+            // message record still carries the only mediaKey/mediaIv. Drop
+            // the dead file and fall through to a fresh download.
+            try {
+              File(_cachedFilePath!).deleteSync();
+            } catch (_) {}
+            _cachedFilePath = null;
+          }
         }
+        _cachedFilePath ??= await _downloadCacheAndPlay(mediaUrl, token);
       }
 
       if (mounted) setState(() => _isLoading = false);
@@ -225,9 +234,38 @@ class _PlaybackControllerState extends State<PlaybackController>
     return file?.path;
   }
 
-  Future<String> _downloadAndCache(String url, String token) async {
-    // Native-only: the web branch of _loadAndPlayAudio decrypts into memory and
-    // never reaches here, and AudioCacheStore refuses to touch dart:io on web.
+  /// Plays a cached voice note, sealed or legacy-plain. False means the file
+  /// is unreadable (sealed, key gone) and the caller should re-download.
+  Future<bool> _playCachedFile(String path) async {
+    final file = File(path);
+    // Peek the header first: a legacy plaintext file plays via the zero-copy
+    // file path and must not be read into memory just to learn that.
+    final raf = await file.open();
+    Uint8List head;
+    try {
+      head = await raf.read(SealedAudioCodec.magicPeekLength);
+    } finally {
+      await raf.close();
+    }
+    if (!SealedAudioCodec.hasMagic(head)) {
+      // Legacy plaintext cache file: exactly as before.
+      await _player.setFilePath(path);
+      return true;
+    }
+    final bytes = await file.readAsBytes();
+    final store = NativeContentStore.instance;
+    final plain = store == null ? null : await store.unsealAudioBytes(bytes);
+    if (plain == null) return false;
+    await _player.setAudioBytes(plain);
+    return true;
+  }
+
+  /// Downloads, decrypts, seals into the cache when the content store is
+  /// armed (plaintext fallback otherwise — same honest rule as the record
+  /// path), and starts playback from memory. Returns the cache path.
+  Future<String> _downloadCacheAndPlay(String url, String token) async {
+    // Native-only: the web branch of _loadAndPlayAudio decrypts into memory
+    // and never reaches here.
     final file = await AudioCacheStore.createTarget(widget.message.id);
     if (file == null) {
       throw StateError('Voice-note caching is unavailable on this platform');
@@ -241,18 +279,22 @@ class _PlaybackControllerState extends State<PlaybackController>
       throw Exception('Audio too large');
     }
 
-    List<int> bytes = raw;
+    Uint8List plain = Uint8List.fromList(raw);
     final mk = widget.message.mediaKey;
     final mi = widget.message.mediaIv;
     if (mk != null && mi != null) {
-      bytes = await MediaCryptoService().decrypt(
-        Uint8List.fromList(bytes),
-        mk,
-        mi,
-      );
+      plain = await MediaCryptoService().decrypt(plain, mk, mi);
     }
 
-    await file.writeAsBytes(bytes);
+    final store = NativeContentStore.instance;
+    final sealed = store == null ? null : await store.sealAudioBytes(plain);
+    await file.writeAsBytes(sealed ?? plain, flush: true);
+
+    if (sealed != null) {
+      await _player.setAudioBytes(plain);
+    } else {
+      await _player.setFilePath(file.path);
+    }
     return file.path;
   }
 

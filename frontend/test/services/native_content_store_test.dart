@@ -5,6 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:fireplace/services/encryption/content_key_manager.dart';
+import 'package:fireplace/services/secure_kv.dart';
 import 'package:fireplace/services/encryption/content_sealer.dart';
 import 'package:fireplace/services/encryption/native_content_store.dart';
 import 'package:fireplace/services/encryption/record_db.dart';

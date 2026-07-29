@@ -7,6 +7,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 import '../../utils/e2e_persistent_diag.dart';
 import 'content_key_manager.dart';
 import 'content_sealer.dart';
+import 'sealed_audio_codec.dart';
 import 'content_kv.dart';
 import 'record_db.dart';
 
@@ -148,6 +149,7 @@ class NativeContentStore implements ContentKv {
       rotationDeadline: rotationDeadline,
     );
     await store._open();
+    instance = store;
     return store;
   }
 
@@ -620,12 +622,44 @@ class NativeContentStore implements ContentKv {
     }
   }
 
+  /// The live store of this process, or null (web, fallback session, not yet
+  /// opened). The audio cache and the app-background hook reach it here; the
+  /// record path never does — it goes through the [ContentKv] seam.
+  static NativeContentStore? instance;
+
+  /// Seal decrypted voice-note bytes under the ACTIVE content key, or null
+  /// when sealing is unavailable (caller then writes plaintext — the same
+  /// honest fallback as the record path, and the file still dies with its
+  /// message purge; it just has no shred story until sealed).
+  Future<Uint8List?> sealAudioBytes(Uint8List plain) {
+    final raw = _rawKeys[_activeKid];
+    if (raw == null) return Future.value();
+    return SealedAudioCodec.seal(
+      kid: _activeKid,
+      keyBytes: raw,
+      plaintext: plain,
+    ).then<Uint8List?>((b) => b, onError: (_) => null);
+  }
+
+  /// Unseal a cached voice-note file, or null when [bytes] is sealed under a
+  /// key this device no longer holds (caller re-downloads: the message record
+  /// still carries the only mediaKey/mediaIv, so the cache is re-derivable —
+  /// unlike message plaintext).
+  Future<Uint8List?> unsealAudioBytes(Uint8List bytes) async {
+    final kid = SealedAudioCodec.kidOf(bytes);
+    if (kid == null) return null;
+    final raw = _rawKeys[kid];
+    if (raw == null) return null;
+    return SealedAudioCodec.unseal(bytes: bytes, keyBytes: raw);
+  }
+
   /// App moving to background: last chance this process may get. Fires the
   /// owed rotation immediately instead of waiting out the debounce.
   Future<void> onAppBackground() => rotateNow();
 
   Future<void> close() async {
     _closed = true;
+    if (identical(instance, this)) instance = null;
     _debounce?.cancel();
     _deadline?.cancel();
     await _db.close();
