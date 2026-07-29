@@ -53,6 +53,8 @@ ContactNetworkView _view({
   return ContactNetworkView(
     contacts: contacts,
     sentInvitees: sentInvitees,
+    pendingInviteLabel: 'Pending',
+    pendingInviteSemanticLabel: (name) => '$name, invitation sent',
     localNodeLabel: 'Marta',
     localNodeCaption: 'LOCAL NODE',
     emptyTitle: 'No contacts yet',
@@ -248,6 +250,9 @@ void main() {
 
         expect(find.text('cora'), findsOneWidget);
         expect(find.byIcon(Icons.send_outlined), findsOneWidget);
+        // The outbound glyph was the ONLY sighted signal of the state; the
+        // sentence below was reaching screen readers alone.
+        expect(find.text('Pending'), findsOneWidget);
         expect(find.byKey(const ValueKey('contact-node-7')), findsNothing);
         expect(
           tester.getSemantics(find.bySemanticsLabel('cora, invitation sent')),

@@ -322,6 +322,8 @@ class _ContactsScreenState extends State<ContactsScreen> {
     return ContactNetworkView(
       contacts: friends,
       sentInvitees: sentInvitees,
+      pendingInviteLabel: l10n.invitationStatusPending,
+      pendingInviteSemanticLabel: l10n.invitationSemanticOutgoing,
       localNodeLabel: currentUser?.username ?? '',
       localNodeAvatarUrl: currentUser?.profilePictureUrl,
       localNodeCaption: l10n.contactNetworkLocalNode,
