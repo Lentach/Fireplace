@@ -3,6 +3,8 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'encryption/content_kv.dart';
+import 'encryption/content_kv_opener_stub.dart'
+    if (dart.library.io) 'encryption/content_kv_opener_io.dart';
 
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
@@ -78,9 +80,14 @@ class EncryptionService {
   /// [ContentKv] mirrors the SharedPreferences surface exactly; see its doc
   /// for what each backend guarantees. Kept behind the historical
   /// `_sharedPrefs` name so the call sites below read unchanged.
+  ///
+  /// The opener is platform-selected (encrypted store on Android, legacy
+  /// prefs everywhere else incl. tests) and memoized AS A FUTURE: two
+  /// concurrent first touches must not race two backends into existence.
   ContentKv? _prefs;
+  Future<ContentKv>? _prefsOpening;
   Future<ContentKv> get _sharedPrefs async =>
-      _prefs ??= await PrefsContentKv.open();
+      _prefs ??= await (_prefsOpening ??= openPlatformContentKv());
 
   Future<void> _reloadPrefsForCrossContext(ContentKv prefs) => prefs.reload();
 
@@ -1862,6 +1869,7 @@ class EncryptionService {
     _keysForUpload = null;
     _userId = null;
     _prefs = null;
+    _prefsOpening = null;
     _storage.clearPrefsCache();
     debugPrint('[EncryptionService] All encryption keys cleared');
   }

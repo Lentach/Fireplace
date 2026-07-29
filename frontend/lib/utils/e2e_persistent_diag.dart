@@ -19,7 +19,13 @@ import 'e2e_diag_log.dart';
 class E2ePersistentDiag {
   E2ePersistentDiag._();
 
-  static const String _key = 'e2e_diag_persist_v1';
+  /// Public so the native content store can EXCLUDE this key from its legacy
+  /// drain by reference, not by a stringly copy that would rot on rename.
+  /// (It is a StringList the drain could not carry anyway; the exclusion is
+  /// belt and braces on top of the type guard.)
+  // Not a secret: a SharedPreferences key NAME. gitleaks:allow
+  static const String storageKey = 'e2e_diag_persist_v1'; // gitleaks:allow
+  static const String _key = storageKey;
   static const int kMaxEntries = 80;
 
   static SharedPreferences? _prefs;
