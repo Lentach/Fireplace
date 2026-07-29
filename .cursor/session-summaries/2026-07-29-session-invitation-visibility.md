@@ -58,15 +58,31 @@ Now: vertical travel only inside a gap corridor (pitch/2 from either centre, ~17
 | `frontend/test/screens/conversations_honeycomb_picker_test.dart` | +3 tests (captions, invitation terminal → queue, no-invite case) |
 | `frontend/test/widgets/contact_network_view_test.dart` | asserts the visible `Pending` word |
 | `frontend/test/preview/*.dart` | `&invites=N`, seeded friends |
-| `frontend/CLAUDE.md` §6, root `CLAUDE.md` §3 | contracts + test count 1071 → 1074 |
+| `frontend/lib/utils/caption_metrics.dart` | **new** — shared `measureCaptionHeight`, does the `DefaultTextStyle` merge itself |
+| `frontend/CLAUDE.md` §6, root `CLAUDE.md` §3 | contracts + test count 1071 → 1075 |
 
 ## Verification
 
 - `flutter analyze --no-fatal-infos` — **No issues found**.
-- `flutter test` — **1074 passed, 5 skipped** (226 s).
-- `node scripts/verify-claude-frontend-test-counts.mjs` — **OK: CLAUDE.md matches flutter test (1074 tests, 5 skipped)**.
-- **Fail-before proven three ways:** stashing `frontend/lib` failed both new picker tests; `sed`-ing `if (widget.pendingInviteLabel != null)` → `if (false)` failed the ghost test with `Found 0 widgets with text "Pending"`.
+- `flutter test` — **1075 passed, 5 skipped** (149 s), after the review round.
+- `node scripts/verify-claude-frontend-test-counts.mjs` — **OK** (1075 tests, 5 skipped).
+- **Fail-before proven four ways:** stashing `frontend/lib` failed both new picker tests; `sed`-ing `if (widget.pendingInviteLabel != null)` → `if (false)` failed the ghost test with `Found 0 widgets with text "Pending"`; re-latching the entrance guard left the picker at 0.637 opacity.
 - **Rendered** (playbook §0): Contacts board with 3 pending invites in **all five themes** (cosmic/blue/dark/light/teal); wire routing at 8 / 40 / 200 nodes; the `+` picker sheet in light / cosmic / teal.
+
+## Review round (two-axis, parallel `reviewer` sub-agents vs `5c8e31d`)
+
+**Spec axis: correct.** R1–R4 all satisfied, every non-goal respected, no version bump. Three minor findings.
+**Standards axis: correct.** Zero hard violations; one judgement call.
+
+Three findings actioned:
+
+1. **Reduce-motion regression I introduced (P3, real).** `chat_honeycomb_picker.dart` was whole-file rewritten from a *structural* read, and `didChangeDependencies` was one of the bodies the summary had elided — so it got reconstructed rather than ported. The original checked `MediaQuery.disableAnimationsOf` **first, unguarded**, and latched only the `forward()`; my version hoisted the `_entranceStarted` latch above it, so reduce-motion switched on mid-entrance was ignored (playbook §9). Restored, plus a fail-before-proven regression test (latched version sits at **0.637** opacity instead of 1). The whole file diff was then re-read end to end against `git show 5c8e31d:` — no other drift.
+2. **Duplicated caption measurement (judgement call, valid).** The two helpers were byte-identical logic and §6 had just made it a shared contract. Extracted to `utils/caption_metrics.dart` as `measureCaptionHeight(context, style, lines:)`, which now performs the `DefaultTextStyle.merge` **internally** — the merge was the actual trap, so leaving it at the callsites left the bug reintroducible at caller three.
+3. **Badge/inviter divergence (P2, conf 0.45) — investigated and dismissed.** `connection_provider.dart:281` calls `getFriendRequests()` on socketReady, and the backend's `handleGetFriendRequests` emits `friendRequestsList` **and** `pendingRequestsCount` from the same handler (`chat-friend-request.service.ts:748-749`). The two fields cannot durably disagree; the window is sub-frame at connect, not a state the user can sit in.
+
+Not actioned, deliberately:
+
+- **On-axis contact leans right (P3, conf 0.4).** For a slot exactly on the core axis, narrow rows offer a genuine tie between `±pitch/2` and `sideSign` resolves it rightward, so that one wire is not mirror-symmetric with itself. Unavoidable: descending straight down at `core.dx` hits a narrow-row hex centre, so the wire *must* pick a side. The alternative — alternating sides by row parity — trades a consistent lean for a zigzag, which reads worse.
 
 ## Notes for next session
 

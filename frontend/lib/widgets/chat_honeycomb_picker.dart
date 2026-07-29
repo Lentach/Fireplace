@@ -4,6 +4,7 @@ import '../l10n/app_localizations.dart';
 import '../models/user_model.dart';
 import '../theme/glass_theme.dart';
 import '../theme/rpg_theme.dart';
+import '../utils/caption_metrics.dart';
 import 'glass/glass_sheet.dart';
 import 'hex_avatar.dart';
 
@@ -88,11 +89,15 @@ class _ChatHoneycombPickerState extends State<ChatHoneycombPicker>
   @override
   void didChangeDependencies() {
     super.didChangeDependencies();
-    if (_entranceStarted) return;
-    _entranceStarted = true;
+    // Reduce-motion is re-checked on EVERY dependency change, not latched on
+    // the first: switching it on mid-entrance must snap the sheet to its end
+    // state. Only the forward() is one-shot.
     if (MediaQuery.disableAnimationsOf(context)) {
       _entranceController.value = 1;
-    } else {
+      return;
+    }
+    if (!_entranceStarted) {
+      _entranceStarted = true;
       _entranceController.forward();
     }
   }
@@ -226,8 +231,6 @@ class _HoneycombGrid extends StatelessWidget {
     final l10n = AppLocalizations.of(context);
     final colorScheme = Theme.of(context).colorScheme;
     final glass = GlassTheme.of(context);
-    final textScaler = MediaQuery.textScalerOf(context);
-    final textDirection = Directionality.of(context);
 
     // An avatar-only comb is unusable the moment a friend has no picture: every
     // such terminal collapses to a single initial. The name is the identifier.
@@ -237,13 +240,9 @@ class _HoneycombGrid extends StatelessWidget {
       color: colorScheme.onSurface,
     );
     final hasInvitations = cells.any((cell) => cell.isInvitation);
-    // Measure what `Text` will actually paint: it merges its style into the
-    // ambient `DefaultTextStyle`, which carries a line height the bare style
-    // does not. Measuring the bare style under-reports and clips the caption.
-    final labelHeight = _measureLabelHeight(
-      DefaultTextStyle.of(context).style.merge(labelStyle),
-      textScaler,
-      textDirection,
+    final labelHeight = measureCaptionHeight(
+      context,
+      labelStyle,
       lines: hasInvitations ? 2 : 1,
     );
 
@@ -353,25 +352,6 @@ class _HoneycombGrid extends StatelessWidget {
         );
       },
     );
-  }
-
-  /// Height of an [lines]-line caption at the current text scale. Measured
-  /// rather than assumed: accessibility scales clip descenders otherwise.
-  static double _measureLabelHeight(
-    TextStyle style,
-    TextScaler textScaler,
-    TextDirection textDirection, {
-    required int lines,
-  }) {
-    final painter = TextPainter(
-      text: TextSpan(
-        text: List<String>.filled(lines, 'Ag').join('\n'),
-        style: style,
-      ),
-      textDirection: textDirection,
-      textScaler: textScaler,
-    )..layout();
-    return painter.size.height.ceilToDouble() + 1;
   }
 }
 

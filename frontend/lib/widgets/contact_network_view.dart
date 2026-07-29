@@ -7,6 +7,7 @@ import 'package:flutter/semantics.dart';
 
 import '../models/user_model.dart';
 import '../theme/rpg_theme.dart';
+import '../utils/caption_metrics.dart';
 import 'hex_avatar.dart';
 import 'local_node_core.dart';
 
@@ -347,8 +348,6 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
   @override
   Widget build(BuildContext context) {
     final disableAnimations = MediaQuery.disableAnimationsOf(context);
-    final textScaler = MediaQuery.textScalerOf(context);
-    final textDirection = Directionality.of(context);
     final colorScheme = Theme.of(context).colorScheme;
     final colors = FireplaceColors.of(context);
     final nodeTextStyle = RpgTheme.bodyFont(
@@ -362,13 +361,9 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
     // cost is paid only until the last invitation resolves.
     final showsInviteStatus =
         widget.pendingInviteLabel != null && widget.sentInvitees.isNotEmpty;
-    // Measure the style `Text` will really paint — it merges into the ambient
-    // `DefaultTextStyle`, whose line height the bare style omits. At one line
-    // the shortfall hid inside the row's 9px slack; at two it would not.
-    final labelHeight = _measureHeight(
-      DefaultTextStyle.of(context).style.merge(nodeTextStyle),
-      textScaler,
-      textDirection,
+    final labelHeight = measureCaptionHeight(
+      context,
+      nodeTextStyle,
       lines: showsInviteStatus ? 2 : 1,
     );
 
@@ -1165,25 +1160,6 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
     final right = math.max(left + 1, size.width - insets.right);
     final bottom = math.max(top + 1, size.height - insets.bottom);
     return Rect.fromLTRB(left, top, right, bottom);
-  }
-
-  static double _measureHeight(
-    TextStyle style,
-    TextScaler textScaler,
-    TextDirection textDirection, {
-    int lines = 1,
-  }) {
-    final painter = TextPainter(
-      text: TextSpan(
-        text: List<String>.filled(lines, 'Ag').join('\n'),
-        style: style,
-      ),
-      textDirection: textDirection,
-      textScaler: textScaler,
-    )..layout();
-    // Ceil + 1px slack: fractional text heights clip glyph descenders at
-    // accessibility text scales.
-    return painter.size.height.ceilToDouble() + 1;
   }
 
   static String _initials(String value) => hexInitials(value);

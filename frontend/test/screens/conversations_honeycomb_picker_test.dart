@@ -196,6 +196,45 @@ void main() {
     );
   });
 
+  testWidgets('reduce motion turned on mid-entrance snaps the picker to its '
+      'end state', (tester) async {
+    Widget host({required bool reduceMotion}) => MaterialApp(
+      theme: RpgTheme.themeDataDarkGray,
+      localizationsDelegates: AppLocalizations.localizationsDelegates,
+      supportedLocales: AppLocalizations.supportedLocales,
+      home: MediaQuery(
+        data: MediaQueryData(
+          size: const Size(390, 844),
+          disableAnimations: reduceMotion,
+        ),
+        child: const ChatHoneycombPicker(friends: []),
+      ),
+    );
+
+    await tester.pumpWidget(host(reduceMotion: false));
+    await tester.pump(const Duration(milliseconds: 60));
+
+    double opacity() => tester
+        .widget<FadeTransition>(
+          find.descendant(
+            of: find.byType(ChatHoneycombPicker),
+            matching: find.byType(FadeTransition),
+          ),
+        )
+        .opacity
+        .value;
+
+    expect(opacity(), lessThan(1), reason: 'entrance should be mid-flight');
+
+    // The reduce-motion check must run on EVERY dependency change, not be
+    // latched by the one-shot entrance guard: a user switching the setting on
+    // mid-animation has to see it honored (playbook §9).
+    await tester.pumpWidget(host(reduceMotion: true));
+    await tester.pump();
+
+    expect(opacity(), 1);
+  });
+
   _pickerNameTests();
 }
 
