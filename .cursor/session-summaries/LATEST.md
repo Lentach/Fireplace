@@ -1,5 +1,7 @@
 # Latest session summary
 
+**⚠ P0 INCIDENT OPEN (2026-07-29): all of today's RECEIVED messages flip to `[Decryption failed]` after app reopen — the 0.0.136 plaintext-destruction machinery (still live in 0.0.137) is the prime suspect and destroys more data every minute it runs. STOP: read `2026-07-29-HANDOFF-decryption-failed-incident.md` FIRST. Step 0 is a frontend rollback to `a00ab0f`; secure the owner's diag panel dump BEFORE anything else; NEVER uninstall / clear site data.**
+
 **Date:** 2026-07-29 — **RELEASED 0.0.137 / `53b2610`, FRONTEND ONLY, smoke 5/5.** PR **#109** merged (`9792293`) with owner approval, bump in `53b2610`, CI green on both. Backend untouched — `/version` stays `0.0.136 / 6fb36bf` **BY DESIGN**. Flutter **1071 + 5 skipped**, analyze clean, count verifier OK. Worktree + branch removed.
 
 - **"Ugly white arrow" was a contrast bug.** The old 42px `primary` disc hardcoded `Colors.white` on the glyph: **1.56:1 on `cosmic`** (#8FD8FF — effectively invisible), 2.57:1 on `blue`, 3.02:1 on `dark`. Three of five themes under the 3:1 non-text gate, while `RpgTheme.readableOn` already computed the right answer.
