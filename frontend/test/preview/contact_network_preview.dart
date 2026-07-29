@@ -1,7 +1,7 @@
 // Throwaway visual harness for ContactNetworkView (not part of flutter test).
 // Run: flutter run -d web-server -t test/preview/contact_network_preview.dart
 // Query parameters: ?theme=cosmic|blue|dark|light|teal&count=0|1|3|8|15|25|40
-// Optional: &textScale=1.6&reduceMotion=1&avatars=1
+// Optional: &textScale=1.6&reduceMotion=1&avatars=1&pending=N&invites=N
 // screen=1: renders the REAL ContactsScreen (seeded providers) so the
 // search bar and both view modes are reviewable without a backend.
 import 'dart:convert';
@@ -47,6 +47,8 @@ class ContactNetworkPreviewApp extends StatelessWidget {
     final screenMode = query['screen'] == '1';
     // pending=N: inbound friend requests docking at the core.
     final pending = int.tryParse(query['pending'] ?? '') ?? 0;
+    // invites=N: outbound invitations still awaiting an answer (ghost cells).
+    final invites = int.tryParse(query['invites'] ?? '') ?? 0;
     final contacts = _previewContacts(count, avatars: avatars);
 
     return MaterialApp(
@@ -62,7 +64,7 @@ class ContactNetworkPreviewApp extends StatelessWidget {
         child: child!,
       ),
       home: screenMode
-          ? _seededContactsScreen(contacts, pending)
+          ? _seededContactsScreen(contacts, pending, invites)
           : _ContactNetworkPreviewPage(
               contacts: contacts,
               textScale: textScale,
@@ -72,7 +74,12 @@ class ContactNetworkPreviewApp extends StatelessWidget {
 
   /// The real ContactsScreen against seeded providers: friends via the
   /// socket-event JSON path, the local user via an unsigned preview JWT.
-  Widget _seededContactsScreen(List<UserModel> contacts, int pending) {
+  Widget _seededContactsScreen(
+    List<UserModel> contacts,
+    int pending,
+    int invites,
+  ) {
+    const inviteeNames = ['Iwo', 'Sara', 'Luca', 'Nina', 'Olek'];
     final friends = FriendsProvider()
       ..onFriendsList([
         for (final contact in contacts)
@@ -81,6 +88,20 @@ class ContactNetworkPreviewApp extends StatelessWidget {
             'username': contact.username,
             'tag': contact.tag,
             'profilePictureUrl': contact.profilePictureUrl,
+          },
+      ])
+      ..onSentRequestsList([
+        for (var i = 0; i < invites; i++)
+          {
+            'id': 900 + i,
+            'sender': {'id': 700, 'username': 'Marta', 'tag': '0007'},
+            'receiver': {
+              'id': 800 + i,
+              'username': inviteeNames[i % inviteeNames.length],
+              'tag': '08${i.toString().padLeft(2, '0')}',
+            },
+            'status': 'pending',
+            'createdAt': '2026-07-29T12:00:00.000Z',
           },
       ])
       ..onPendingRequestsCount({'count': pending});

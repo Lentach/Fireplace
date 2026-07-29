@@ -127,6 +127,25 @@ class GlassPreviewApp extends StatelessWidget {
     ]);
     messaging.loadCachedMessages(10);
     final friends = FriendsProvider()..setCurrentUserId(1);
+    // Friends for the Chats "+" honeycomb picker. Deliberately mixed-length
+    // names: the caption has to ellipsize gracefully, not silently clip.
+    friends.onFriendsList([
+      for (final entry in const [
+        [2, 'Zosia'],
+        [8, 'Ada'],
+        [9, 'Borys'],
+        [10, 'Celina'],
+        [11, 'Damian'],
+        [12, 'Konstantyna'],
+        [13, 'Filip'],
+      ])
+        {
+          'id': entry[0],
+          'username': entry[1],
+          'tag': '00${entry[0]}',
+          'profilePictureUrl': null,
+        },
+    ]);
     Map<String, dynamic> invitation({
       required int id,
       required int senderId,

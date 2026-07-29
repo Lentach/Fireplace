@@ -7,6 +7,7 @@ import 'package:flutter/semantics.dart';
 
 import '../models/user_model.dart';
 import '../theme/rpg_theme.dart';
+import '../utils/caption_metrics.dart';
 import 'hex_avatar.dart';
 import 'local_node_core.dart';
 
@@ -30,6 +31,8 @@ class ContactNetworkView extends StatefulWidget {
     super.key,
     required this.contacts,
     this.sentInvitees = const <UserModel>[],
+    this.pendingInviteLabel,
+    this.pendingInviteSemanticLabel,
     required this.localNodeLabel,
     this.localNodeAvatarUrl,
     required this.localNodeCaption,
@@ -56,6 +59,17 @@ class ContactNetworkView extends StatefulWidget {
   /// Recipients of the caller's pending outbound invitations. They occupy
   /// ghost cells but remain outside the real-contact contract.
   final List<UserModel> sentInvitees;
+
+  /// Word rendered under a pending outbound invitation ("Pending"). Null
+  /// leaves the ghost cell wordless — the state would then be carried by the
+  /// outbound glyph alone, which is exactly what users read as "just an
+  /// arrow". Supplying it also widens every row's label band to two lines,
+  /// and only for as long as an invitation is actually outstanding.
+  final String? pendingInviteLabel;
+
+  /// Screen-reader sentence for a pending outbound invitation, given the
+  /// invitee's name. Null falls back to the bare name.
+  final String Function(String name)? pendingInviteSemanticLabel;
   final String localNodeLabel;
 
   /// The local user's avatar, shown inside the core reticle when set.
@@ -334,8 +348,6 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
   @override
   Widget build(BuildContext context) {
     final disableAnimations = MediaQuery.disableAnimationsOf(context);
-    final textScaler = MediaQuery.textScalerOf(context);
-    final textDirection = Directionality.of(context);
     final colorScheme = Theme.of(context).colorScheme;
     final colors = FireplaceColors.of(context);
     final nodeTextStyle = RpgTheme.bodyFont(
@@ -343,10 +355,16 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
       fontWeight: FontWeight.w600,
       color: colorScheme.onSurface,
     );
-    final labelHeight = _measureHeight(
+    // A pending invitation says so in words under its name, so the whole
+    // field reserves a second label line while any invitation is
+    // outstanding. Uniform rows are what keeps the lattice a lattice; the
+    // cost is paid only until the last invitation resolves.
+    final showsInviteStatus =
+        widget.pendingInviteLabel != null && widget.sentInvitees.isNotEmpty;
+    final labelHeight = measureCaptionHeight(
+      context,
       nodeTextStyle,
-      textScaler,
-      textDirection,
+      lines: showsInviteStatus ? 2 : 1,
     );
 
     final contactsById = <int, UserModel>{
@@ -931,6 +949,21 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                     color: colors.mutedText.withValues(alpha: 0.78),
                   ),
                 ),
+                // The outbound glyph alone reads as decoration; the state has
+                // to be a word. Accent, because it is the one thing in this
+                // cell the user is waiting on (>=4.7:1 on every theme field).
+                if (widget.pendingInviteLabel != null)
+                  Text(
+                    widget.pendingInviteLabel!,
+                    softWrap: false,
+                    maxLines: 1,
+                    overflow: TextOverflow.ellipsis,
+                    textAlign: TextAlign.center,
+                    style: labelStyle.copyWith(
+                      fontWeight: FontWeight.w700,
+                      color: colorScheme.primary,
+                    ),
+                  ),
               ],
             ),
           ),
@@ -956,7 +989,9 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
         container: true,
         excludeSemantics: true,
         properties: SemanticsProperties(
-          label: '${invitee.username}, invitation sent',
+          label:
+              widget.pendingInviteSemanticLabel?.call(invitee.username) ??
+              invitee.username,
           sortKey: OrdinalSortKey((slotIndex + 1).toDouble()),
         ),
         child: const SizedBox.expand(),
@@ -1125,21 +1160,6 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
     final right = math.max(left + 1, size.width - insets.right);
     final bottom = math.max(top + 1, size.height - insets.bottom);
     return Rect.fromLTRB(left, top, right, bottom);
-  }
-
-  static double _measureHeight(
-    TextStyle style,
-    TextScaler textScaler,
-    TextDirection textDirection,
-  ) {
-    final painter = TextPainter(
-      text: TextSpan(text: 'Ag', style: style),
-      textDirection: textDirection,
-      textScaler: textScaler,
-    )..layout();
-    // Ceil + 1px slack: fractional text heights clip glyph descenders at
-    // accessibility text scales.
-    return painter.size.height.ceilToDouble() + 1;
   }
 
   static String _initials(String value) => hexInitials(value);
@@ -1381,37 +1401,37 @@ class ContactHexLayout {
         ..lineTo(pad.dx, pad.dy);
     }
 
-    // Two shared exits, one per side, angled so the route clears the
-    // centered LOCAL NODE caption. Sharing them is deliberate: the traces
-    // that overlap here are drawn as ONE path in ONE stroke, so the shared
-    // run composites a single time and stays exactly as thin as every other
-    // trace no matter how many contacts feed into it.
+    // A pointy-top honeycomb has NO straight vertical channel and no clean
+    // long diagonal either: the gaps of a wide row sit exactly over the
+    // CENTRES of the narrow row below it, so any monotone diagonal is inside
+    // a hex every other row. That is what sliced the corners off the
+    // first-row terminals — the feed did its sideways travel across the row
+    // plane, where there is nothing but hex.
     //
-    // Fanning each trace to its own rim angle was tried and reverted. It
-    // scales the wrong way: N rays converging on a 34px circle stay
-    // sub-pixel apart for ~180px out, so at 100 contacts the fan fills in
-    // to a solid wedge that no alpha ramp short enough to spare row 0 can
-    // hide. Overlap that composites once is strictly better than overlap
-    // spread into a smudge.
+    // So the route steps: it descends INSIDE a gap corridor (pitch/2 from
+    // either neighbouring centre, ~17px of clearance past the hex's widest
+    // point) and does all of its sideways travel in the empty band BETWEEN
+    // rows. No horizontal rails — each band leg is a short slant of one
+    // half-pitch, the same diagonal language the field always had.
+    //
+    // The fan off the rim is per CORRIDOR, not per contact. Row 0 has at
+    // most `columnsWide + 1` gaps, so the bundle is bounded no matter how
+    // many contacts feed through it — which is what made the old
+    // per-contact fan smear into a wedge at 100 nodes.
     final sideSign = slot.dx >= core.dx ? 1.0 : -1.0;
-    final exit = Offset(core.dx + sideSign * 52, core.dy + coreRadius + 24);
-    final rimDir = exit - core;
-    final rim = core + rimDir / rimDir.distance * coreRadius;
-    final route = Path()
-      ..moveTo(rim.dx, rim.dy)
-      ..lineTo(exit.dx, exit.dy);
+    final route = Path();
+    var started = false;
 
-    var prevY = exit.dy;
     for (var row = 0; row < targetRow; row++) {
       final rowXs = <double>[];
-      double rowY = prevY;
+      double? rowY;
       for (var j = 0; j < layout.slots.length; j++) {
         if (layout.rowOf[j] == row) {
           rowXs.add(layout.slots[j].dx);
           rowY = layout.slots[j].dy;
         }
       }
-      if (rowXs.isEmpty) continue;
+      if (rowY == null || rowXs.isEmpty) continue;
       rowXs.sort();
       final t = (rowY - core.dy) / math.max(1, slot.dy - core.dy);
       final idealX = core.dx + (slot.dx - core.dx) * t;
@@ -1421,22 +1441,56 @@ class ContactHexLayout {
           (rowXs[g] + rowXs[g + 1]) / 2,
         rowXs.last + layout.pitch / 2,
       ];
-      var gapX = gaps.first;
-      var best = double.infinity;
-      for (final gap in gaps) {
-        final d = (gap - idealX).abs();
-        if (d < best) {
-          best = d;
-          gapX = gap;
-        }
+      final gapX = _nearestGap(gaps, idealX, core.dx, sideSign);
+      final top = rowY - hexRadius;
+      if (!started) {
+        final dir = Offset(gapX - core.dx, top - core.dy);
+        final rim = core + dir / dir.distance * coreRadius;
+        route.moveTo(rim.dx, rim.dy);
+        started = true;
       }
-      route.lineTo(gapX, rowY);
-      prevY = rowY;
+      route
+        ..lineTo(gapX, top)
+        ..lineTo(gapX, rowY + hexRadius);
     }
-    route
-      ..lineTo(pad.dx, prevY + (pad.dy - prevY) * 0.7)
-      ..lineTo(pad.dx, pad.dy);
+    // Last leg: out of the final corridor and into the pad, entirely inside
+    // the band above the target row. The guard is not decorative — a path
+    // whose first verb is `lineTo` implicitly starts at (0,0) and would draw
+    // a stray wire out of the board's top-left corner.
+    if (!started) {
+      final dir = Offset(pad.dx - core.dx, pad.dy - core.dy);
+      final rim = core + dir / dir.distance * coreRadius;
+      route.moveTo(rim.dx, rim.dy);
+    }
+    route.lineTo(pad.dx, pad.dy);
     return route;
+  }
+
+  /// Gap nearest [idealX], with ties broken OUTWARD from [coreX] on the
+  /// contact's own side. Without the tie-break both members of a mirrored
+  /// pair pick the same gap and the field stops being symmetric.
+  static double _nearestGap(
+    List<double> gaps,
+    double idealX,
+    double coreX,
+    double sideSign,
+  ) {
+    var best = double.infinity;
+    for (final gap in gaps) {
+      final d = (gap - idealX).abs();
+      if (d < best) best = d;
+    }
+    var chosen = gaps.first;
+    var bestOutward = double.negativeInfinity;
+    for (final gap in gaps) {
+      if ((gap - idealX).abs() > best + 0.01) continue;
+      final outward = (gap - coreX) * sideSign;
+      if (outward > bestOutward) {
+        bestOutward = outward;
+        chosen = gap;
+      }
+    }
+    return chosen;
   }
 
   /// Natural sort: same prefix -> smaller number first (ziomek3, ziomek50).
