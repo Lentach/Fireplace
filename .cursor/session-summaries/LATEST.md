@@ -1,5 +1,16 @@
 # Latest session summary
 
+**Date:** 2026-07-29 — **composer send button → ember hexagon + one PL string.** Branch `feat/composer-hex-send` (worktree `fireplace-wt-send-button`), **PR #109 open — do not merge without OK.** Frontend only, no version bump, nothing deployed. Flutter **1071 + 5 skipped**, analyze clean, frontend count verifier OK.
+
+- **"Ugly white arrow" was a contrast bug.** The old 42px `primary` disc hardcoded `Colors.white` on the glyph: **1.56:1 on `cosmic`** (#8FD8FF — effectively invisible), 2.57:1 on `blue`, 3.02:1 on `dark`. Three of five themes under the 3:1 non-text gate, while `RpgTheme.readableOn` already computed the right answer.
+- **Shipped `HexSendButton`** — the app's own pointy-top hexagon (`hexPath`/`kHexWidthRatio`, shared with the Chats avatars and the Contacts honeycomb) under an accent-derived ember gradient; owner picked it from five rendered candidates. **PAINT ONLY:** `_ComposerTapSendOverlay` still owns the 48×48 hit region, tooltip and semantics, or an `IconButton` there wins the gesture arena and blocks hold-to-record. Voice-send layer untouched. Fail-before proven; contract in `frontend/CLAUDE.md` §7.
+- `themeOptionBlue` PL: "Głęboki niebieski komunikatora" → **"Głęboki granat z jasnym błękitem"** (calque, and redundant with its own tile title "Niebieski"). `l10n.yaml` makes **`app_pl.arb` the template** — edit it, then `flutter gen-l10n`.
+- **Trap:** hot restart (`R`) into a `flutter run -d web-server` with **no client attached** does not republish the bundle ("Recompile complete. No client connected.") — later page loads serve stale JS and clearing the browser cache does nothing. Stop and restart the process. On Windows a supervised `flutter` needs `cmd.exe /c flutter.bat …`.
+- **Do not chase this file from the branch.** `pull_request` CI refuses to dispatch while a PR is CONFLICTING, and every master release rewrites LATEST — #109 went dirty twice in one hour. Re-resolve LATEST at merge time; the dated summary carries the detail and never conflicts.
+- ➡ Detail: **`2026-07-29-session-composer-hex-send.md`**.
+
+---
+### Prior latest ↓
 **Date:** 2026-07-29 — **Android release Phase 1 (plumbing) DONE, committed to master. No version bump, nothing deployed.** Decision set: direct APK first (GitHub Releases), PWA stays for iOS, Drift+SQLCipher encrypted store on native, same-account re-login migration (no key export).
 
 - **Corrections that override older notes:** the at-rest exposure is localStorage + RAW SharedPreferences (NOT IndexedDB); decrypted plaintext/media keys/pendsend/JWT are plaintext on EVERY platform incl. native XML (`encryption_service.dart:79`) — going native alone fixes nothing. "Gone from the app" shipped in 0.0.135/0.0.136; "gone from the disk" (B2/#105 M4) is the remaining half and becomes Phase 2 below.
@@ -46,16 +57,4 @@
 - Codex-backed default `task` subagents are usage-walled; `sonic`/`scout` (Anthropic) work — route delegation there.
 - **PR #107 MERGED → RELEASED 0.0.134 / `a00ab0f`, smoke 5/5:** Hot Stone (the 'light' warm-paper+ember theme, renamed from "Warm Paper"/"Ciepły papier" → "Hot Stone"/"Gorący kamień") is the default for FRESH INSTALLS ONLY (saved prefs win; legacy dark_mode_preference still maps to dark). Login screen now ALWAYS wears Hot Stone (supersedes the 2026-07-18 always-Cosmic front door; render-verified on web). Flash-proofing, all contract-tested: main.dart resolves the saved theme BEFORE runApp (guarded); index.html syncs the bootstrap color from localStorage pre-paint (incl. the legacy dark_mode_preference ladder — Dart never writes the migration back) with NO !important (runtime inline sync must keep winning); manifest.json + index.html static color → #F7F4F0; native splashes pinned to @color/hot_stone_paper on BOTH Android tiers (drawable-v21 followed OS dark mode) + the iOS storyboard. New token successColorLight. Android `:app:processDebugResources` BUILD SUCCESSFUL; iOS storyboard parser-verified only (no macOS here). Suite **943+4** green.
 - ➡ Detail: **`2026-07-28-session-bugfix-batch.md`**; diagnosis evidence: `.planning/bugfix-batch-2026-07/` (local-only).
-
----
-### Prior latest ↓
-
-**Date:** 2026-07-27 — **agent tooling audit + two credential rotations.** No app source touched. 6 commits, CI green. Live unchanged at **0.0.132 / `05fc423`**.
-
-- **Two live secrets found and killed.** `CONTACT_INBOX_KEY` rotated on the VM (old → **404**, issue **#100 closed**). And a SECOND, previously unknown one: `CONTEXT7_API_KEY` was **tracked and pushed** in `.claude/settings.local.json` (from `fdd3aa2`, an unrelated feature commit) — confirmed live, now revoked and verified **401**. That file is untracked and gitignored by glob.
-- **Two enforcement gates that did not exist.** `deploy-web.ps1` now runs the post-deploy smoke and **FAILS the deploy** on a bundle-sha mismatch (falsified both ways against live prod; also catches the exit-21 silent-halt trap). And a **backend lint ratchet** in CI — lint was rotting from 726 → 1320 total errors at ~+30/day because nothing ran it. The ratchet gates a **split count**: **839** real (type-safety) errors strictly, proven platform-identical, plus 481 formatting with ±5 tolerance. It fails only when the number GOES UP.
-- **Installed:** `gitleaks` v8.30.1 (**#101 closed**; proven to block a 64-hex `?key=` at entropy 3.97), `osv-scanner` v2.4.0, `trivy` v0.72.0, `dart mcp-server` 1.1.0 (project-scoped `.omp/mcp.json`, **mount unverified — check `/mcp list`**).
-- **Prod container scanned for the first time:** 1 CRITICAL + 5 HIGH, **all in npm's bundled tree, none in the app**; `picomatch` in `/app` is already the patched 4.0.4. Container runs `node dist/main.js` and never invokes npm → **not exploitable**. Fix arrives with the next `node:22-alpine` rebuild.
-- **Measured, and it killed two ideas:** a `dart format` CI gate is unreachable (reformats **146/368 files**), and a "run only affected tests" runner is **strictly worse** than `flutter test` — cost curve now in `frontend/CLAUDE.md` §1. Also: **`impact.mjs` reports a nonexistent path as "no dependents", exit 0** — a typo reads as "safe". Unfixed.
-- ➡ Detail: **`2026-07-27-session-tooling-audit.md`**. Tier list + evidence: `.planning/tooling-audit/` (local-only).
 
