@@ -16,9 +16,24 @@ if (keyPropertiesFile.exists()) {
     keyProperties.load(FileInputStream(keyPropertiesFile))
 }
 
+// HARD GATE: a release build without a real keystore must FAIL LOUDLY, never
+// silently fall back to debug signing (a debug-signed "release" looks shippable
+// but is not: Play rejects it and its signature can't ever be upgraded in place).
+// Debug/profile builds and non-release tasks are unaffected.
+val releaseRequested = gradle.startParameter.taskNames.any { it.contains("Release", ignoreCase = true) }
+if (releaseRequested && !keyPropertiesFile.exists()) {
+    throw GradleException(
+        "Release build requested but android/key.properties is missing. " +
+        "Create the release keystore first — see docs/runbooks/android-release.md " +
+        "(copy android/key.properties.example to android/key.properties and fill it in)."
+    )
+}
+
 android {
     namespace = "com.fireplace.app"
-    compileSdk = flutter.compileSdkVersion
+    // Pinned explicitly (= Flutter 3.44.6 defaults) so an SDK upgrade cannot
+    // silently change backup semantics, Keystore behavior, or 16KB compliance.
+    compileSdk = 36
     ndkVersion = flutter.ndkVersion
 
     compileOptions {
@@ -44,14 +59,17 @@ android {
 
     defaultConfig {
         applicationId = "com.fireplace.app"
-        minSdk = flutter.minSdkVersion
-        targetSdk = flutter.targetSdkVersion
+        minSdk = 24
+        targetSdk = 36
         versionCode = flutter.versionCode
         versionName = flutter.versionName
     }
 
     buildTypes {
         release {
+            // The hard gate above guarantees key.properties exists whenever a
+            // Release task runs; the fallback only keeps configuration of
+            // non-release invocations (e.g. assembleDebug) from crashing.
             signingConfig = if (keyPropertiesFile.exists()) {
                 signingConfigs.getByName("release")
             } else {

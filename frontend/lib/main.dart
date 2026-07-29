@@ -4,7 +4,6 @@ import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart' show kIsWeb;
 import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
-import 'firebase_options.dart';
 import 'fcm_background_stub.dart'
     if (dart.library.io) 'services/android_fcm_local_notifications.dart'
     as fcm_background;
@@ -41,9 +40,13 @@ Future<void> main() async {
     // without push instead of rethrowing.
     try {
       if (Firebase.apps.isEmpty) {
-        await Firebase.initializeApp(
-          options: DefaultFirebaseOptions.currentPlatform,
-        );
+        // No options: Android's default FirebaseApp comes from the committed
+        // google-services.json via the google-services Gradle plugin. Passing
+        // Dart-side options here read the PLACEHOLDER firebase_secrets values,
+        // so a clean-checkout APK initialized Firebase with a bogus appId and
+        // push silently died. iOS will use GoogleService-Info.plist the same
+        // way when it exists.
+        await Firebase.initializeApp();
       }
     } on FirebaseException catch (e) {
       // duplicate-app is benign (Android google-services auto-init races Dart).

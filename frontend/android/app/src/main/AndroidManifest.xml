@@ -1,10 +1,24 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
+    <!-- Explicit, not inherited: release must never depend on a library manifest
+         (firebase_messaging) merging INTERNET in. -->
+    <uses-permission android:name="android.permission.INTERNET"/>
     <!-- Required for push notifications on Android 13+ -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS"/>
+    <!-- allowBackup=false is DUAL-PURPOSE, do not relax it:
+         1) Auto-Backup would upload the decrypted-message SharedPreferences cache
+            to the user's Google Drive in plaintext.
+         2) A backup restored to a new device carries flutter_secure_storage's
+            encrypted blob WITHOUT its Android Keystore wrapping key -> permanently
+            undecryptable Signal identity (known flutter_secure_storage failure mode).
+         dataExtractionRules repeats the exclusion for API 31+ cloud backup AND
+         device-to-device transfer, belt-and-suspenders. -->
     <application
         android:label="Fireplace"
         android:name="${applicationName}"
-        android:icon="@mipmap/ic_launcher">
+        android:icon="@mipmap/ic_launcher"
+        android:allowBackup="false"
+        android:fullBackupContent="false"
+        android:dataExtractionRules="@xml/data_extraction_rules">
         <activity
             android:name=".MainActivity"
             android:exported="true"

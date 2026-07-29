@@ -1,0 +1,22 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Nothing leaves the device. Excludes every domain from both cloud backup and
+     device-to-device transfer (API 31+). Redundant with allowBackup=false on the
+     application tag BY DESIGN: some OEM backup stacks honor only one of the two.
+     If any path is ever whitelisted here, it must NOT include shared_prefs
+     (decrypted-message cache, JWT) or files (audio_cache decrypted voice notes). -->
+<data-extraction-rules>
+    <cloud-backup>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </cloud-backup>
+    <device-transfer>
+        <exclude domain="root" path="." />
+        <exclude domain="file" path="." />
+        <exclude domain="database" path="." />
+        <exclude domain="sharedpref" path="." />
+        <exclude domain="external" path="." />
+    </device-transfer>
+</data-extraction-rules>
