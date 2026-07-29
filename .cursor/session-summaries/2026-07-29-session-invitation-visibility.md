@@ -2,7 +2,9 @@
 
 **Date:** 2026-07-29
 
-Branch `feat/invitation-visibility`, worktree `C:/Users/Lentach/Desktop/fireplace-wt-invitation`, cut from `origin/master` at `43601bf`. **Not merged, not deployed, no version bump.**
+**RELEASED 0.0.138 / `bf80602`, FRONTEND ONLY, smoke 5/5.** PR **#110** merged as `ce1ab79`; bump in `bf80602`; CI green on both master commits before deploying. Backend untouched — `/version` stays `0.0.136 / 6fb36bf` BY DESIGN.
+
+Built on branch `feat/invitation-visibility` in worktree `C:/Users/Lentach/Desktop/fireplace-wt-invitation`, cut from `43601bf`, rebased onto `5c8e31d`.
 
 ## What was done
 
@@ -84,9 +86,22 @@ Not actioned, deliberately:
 
 - **On-axis contact leans right (P3, conf 0.4).** For a slot exactly on the core axis, narrow rows offer a genuine tie between `±pitch/2` and `sideSign` resolves it rightward, so that one wire is not mirror-symmetric with itself. Unavoidable: descending straight down at `core.dx` hits a narrow-row hex centre, so the wire *must* pick a side. The alternative — alternating sides by row parity — trades a consistent lean for a zigzag, which reads worse.
 
+## Release
+
+```
+/version.json  {"app_name":"fireplace","version":"0.0.138","package_name":"fireplace","gitCommit":"bf80602"}
+/version       {"version":"0.0.136","gitCommit":"6fb36bf","buildTime":"2026-07-28T23:42:50Z"}
+/health        {"status":"ok","db":"ok"}
+```
+
+`deploy-web.ps1`'s own stale-build gate passed 5/5 (health, both version surfaces, `main.dart.js` literally containing `bf80602`, and an app boot in a fresh headless browser), then re-confirmed independently by curl.
+
+**The deploy ran from the WORKTREE, not the main checkout — and that mattered.** `deploy-web.ps1` sets `$repo = Split-Path -Parent $MyInvocation.MyCommand.Path` and `Set-Location $repo`, so it builds whatever checkout the SCRIPT file lives in. The main copy `C:/Users/Lentach/Desktop/Fireplace` is on the owner's `feature/android-encrypted-store` with untracked WIP under `frontend/lib/services/encryption/`; invoking `…/fireplace/deploy-web.ps1` would have built and shipped that branch. The gitignored `deploy-web.config.ps1` already existed in the worktree, byte-identical (same md5), so the worktree copy ran with the correct VM target and Giphy key.
+
 ## Notes for next session
 
-- **Not merged, not deployed.** Needs owner OK per root §1, then a PATCH bump on master before `deploy-web.ps1`.
+- **Owner must fully close + reopen the PWA** → Settings footer `0.0.138 · bf80602`. **Never uninstall or clear site data** (destroys local E2E Signal keys).
+- **`fireplace-wt-invitation` is now the only checkout on `master`** (at `bf80602`) and was deliberately NOT removed: the main working copy is on the owner's Android branch, so removing it would leave the repo with no master checkout. The merged branch `feat/invitation-visibility` is deleted locally and on the remote.
 - **Device check worth doing:** the picker sheet is taller now (captions ended the row overlap). On a short phone with many friends it scrolls sooner — `maxHeight` is still `0.68 * screenHeight`.
 - Friend hexes in the picker still use `glass.border`, which is a near-invisible hairline on the light themes — the same trap `_HexChromePainter` documents for the Contacts board (it uses `onSurface` instead). Left alone deliberately: not asked, and the new captions now carry identification. Worth a ruling if the owner notices.
 - The picker has **no search field**. Captions fix identification up to ~20 friends; past that, search is the next step.
