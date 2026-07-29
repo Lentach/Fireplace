@@ -1,12 +1,13 @@
 # Latest session summary
 
-**Date:** 2026-07-29 — **composer send button → ember hexagon + one PL string.** Branch `feat/composer-hex-send` (worktree `fireplace-wt-send-button`), **PR #109 open — do not merge without OK.** Frontend only, no version bump, nothing deployed. Flutter **1071 + 5 skipped**, analyze clean, frontend count verifier OK.
+**Date:** 2026-07-29 — **RELEASED 0.0.137 / `53b2610`, FRONTEND ONLY, smoke 5/5.** PR **#109** merged (`9792293`) with owner approval, bump in `53b2610`, CI green on both. Backend untouched — `/version` stays `0.0.136 / 6fb36bf` **BY DESIGN**. Flutter **1071 + 5 skipped**, analyze clean, count verifier OK. Worktree + branch removed.
 
 - **"Ugly white arrow" was a contrast bug.** The old 42px `primary` disc hardcoded `Colors.white` on the glyph: **1.56:1 on `cosmic`** (#8FD8FF — effectively invisible), 2.57:1 on `blue`, 3.02:1 on `dark`. Three of five themes under the 3:1 non-text gate, while `RpgTheme.readableOn` already computed the right answer.
 - **Shipped `HexSendButton`** — the app's own pointy-top hexagon (`hexPath`/`kHexWidthRatio`, shared with the Chats avatars and the Contacts honeycomb) under an accent-derived ember gradient; owner picked it from five rendered candidates. **PAINT ONLY:** `_ComposerTapSendOverlay` still owns the 48×48 hit region, tooltip and semantics, or an `IconButton` there wins the gesture arena and blocks hold-to-record. Voice-send layer untouched. Fail-before proven; contract in `frontend/CLAUDE.md` §7.
 - `themeOptionBlue` PL: "Głęboki niebieski komunikatora" → **"Głęboki granat z jasnym błękitem"** (calque, and redundant with its own tile title "Niebieski"). `l10n.yaml` makes **`app_pl.arb` the template** — edit it, then `flutter gen-l10n`.
 - **Trap:** hot restart (`R`) into a `flutter run -d web-server` with **no client attached** does not republish the bundle ("Recompile complete. No client connected.") — later page loads serve stale JS and clearing the browser cache does nothing. Stop and restart the process. On Windows a supervised `flutter` needs `cmd.exe /c flutter.bat …`.
-- **Do not chase this file from the branch.** `pull_request` CI refuses to dispatch while a PR is CONFLICTING, and every master release rewrites LATEST — #109 went dirty twice in one hour. Re-resolve LATEST at merge time; the dated summary carries the detail and never conflicts.
+- **`pull_request` CI does not dispatch while a PR is `CONFLICTING`** — no run is created at all, so `gh pr checks` says "no checks reported" and it reads like Actions is broken. Master moved twice mid-session and `LATEST.md` conflicted each time, silently killing CI. Merge master in, resolve, push; then the run appears. Corollary: resolve LATEST at merge time, do not chase it from a branch.
+- **Owner: fully close + reopen the PWA** → Settings `0.0.137 / 53b2610`. **Never uninstall or clear site data.** Also worth a device check: the hex is smaller than the old disc (40 tall × ~34.6 wide vs a 42 circle), but the **tap target is unchanged at 48×48**.
 - ➡ Detail: **`2026-07-29-session-composer-hex-send.md`**.
 
 ---

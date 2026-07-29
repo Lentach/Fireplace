@@ -1,6 +1,6 @@
 # Composer send button → ember hexagon, plus one PL string fix
 
-**Date:** 2026-07-29 — branch `feat/composer-hex-send`, worktree `C:/Users/Lentach/Desktop/fireplace-wt-send-button`. **NOT merged, NOT deployed, no version bump** (frontend-only; owner picks the release moment). Flutter **1071 + 5 skipped** green, `flutter analyze --no-fatal-infos` clean, frontend count verifier OK.
+**Date:** 2026-07-29 — **RELEASED 0.0.137 / `53b2610`, FRONTEND ONLY, smoke 5/5.** PR **#109** (`feat/composer-hex-send`, worktree `fireplace-wt-send-button`) merged as `9792293` with owner approval; version bumped on master in `53b2610`. Backend untouched — `/version` stays `0.0.136 / 6fb36bf` **BY DESIGN** (same shape as the 0.0.133 frontend-only release). Flutter **1071 + 5 skipped** green, `flutter analyze --no-fatal-infos` clean, frontend count verifier OK, CI green on both master commits. Worktree + branch removed after merge.
 
 ## What was done
 
@@ -57,11 +57,14 @@ B wins on grammar: the hexagon is already the app's signature shape (`hexPath`/`
 - **Rendered in the real `ChatInputBar`** (`glass_preview.dart?screen=chat`, text typed into the composer) across `blue` / `cosmic` / `light` / `dark` / `teal`. Every theme: hex paints, glyph readable, cosmic now dark-on-ice instead of white-on-ice.
 - **Fail-before proven:** `sed`-ing the glyph back to `Colors.white` turns `hex_send_button_test.dart` red (`+0 -1`); restored and re-verified green.
 - `flutter test` **1071 + 5 skipped**, `flutter analyze --no-fatal-infos` clean, `node scripts/verify-claude-frontend-test-counts.mjs` OK.
-- CI **not yet run** — branch not pushed at the time of writing this section; check `gh run list --branch feat/composer-hex-send` before any merge.
+- **CI green** on the PR head (`5b9c012`, 4/4 jobs) and on both master commits (`9792293`, `53b2610`) before deploying.
+- **Deploy:** `.\deploy-web.ps1` from the master working copy. Its own stale-build gate passed **5/5** — `/health` `db:ok`, `/version.json` `0.0.137`, `/version` `0.0.136/6fb36bf`, **`main.dart.js` literally contains `53b2610`**, app boots in a fresh headless browser. Re-confirmed independently by `curl` afterwards.
 
 ## Notes for next session
 
 - **A hot restart (`R`) into a `flutter run -d web-server` with no client attached does not republish the bundle.** It logged "Recompile complete. No client connected." and every later page load still served the pre-edit JS — which is why `?theme=cosmic` kept rendering the Wire-gray theme after the case was added. Clearing the browser cache does nothing; **stop and restart the process**. Cost ~15 minutes and one wrong screenshot.
 - `flutter` / `flutter gen-l10n` cannot be spawned directly as a supervised process on Windows — it is a `.bat`, so it needs `cmd.exe /c flutter.bat …`.
+- **`pull_request` CI does not dispatch while a PR is `CONFLICTING`** — no run is created at all, not even a queued one, so `gh pr checks` reports "no checks reported" and it reads like Actions is broken. Master moved twice during this session (`51f380c`, then `21074ba`), and each time `LATEST.md` conflicted and silently killed CI. Merge master in, resolve, push — then the run appears.
+- **Owner: fully close + reopen the PWA** to pick up 0.0.137 (Settings footer → `0.0.137 / 53b2610`). **NEVER uninstall or clear site data** — that destroys the local E2E Signal keys.
 - Owner should device-check the hex on the phone: it is smaller than the old disc (40 tall × ~34.6 wide vs a 42 circle), though the **tap target is unchanged at 48×48** by construction.
 - Still open from before: **#102 Dependabot `brace-expansion`** (dev-only, 4 of 8 copies vulnerable, do not dismiss).
