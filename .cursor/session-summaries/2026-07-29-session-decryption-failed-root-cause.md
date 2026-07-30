@@ -39,12 +39,13 @@ For a plaintext record that false miss is not "no plaintext": the row re-decrypt
 - `frontend/test/services/encryption_service_reload_race_test.dart` — new, 9 tests, `_HoldableStore` parks `getAll()` inside the reload window to make the race deterministic.
 - `frontend/test/services/encryption_service_content_cache_test.dart` — two tests decoupled from the `[Decryption failed]` payload; they were asserting the destructive behaviour.
 - `frontend/pubspec.yaml` — `shared_preferences_platform_interface` promoted dev → runtime.
-- `CLAUDE.md` §3 — Flutter count 1075 → 1083.
+- `CLAUDE.md` §3 — Flutter count 1075 → 1085.
 
 ## Verification
 
-- **Fail-before / pass-after**, deterministic, on a probe compiled against the pre-fix service: `getDecryptedContent` → `Expected 'hello', Actual null`; batched history read → `Expected 'world', Actual null`; `storedMessageIds` → `Expected contains 18611, Actual Set:[]`; label overwrite → `Expected 'real plaintext', Actual '[Decryption failed]'`. All four pass post-fix.
-- Full frontend suite \*\*1084 passed / 5 skipped / 0 failed**; `flutter analyze` clean; `verify-claude-frontend-test-counts.mjs` OK; `lint-ratchet.mjs` **PASS** at the 817 baseline.
+- **Fail-before / pass-after**, deterministic, on a probe compiled against the pre-fix service: `getDecryptedContent` → `Expected 'hello', Actual null`; batched history read (the hydration path) → `Expected 'world', Actual null`; label overwrite → `Expected 'real plaintext', Actual '[Decryption failed]'`. All three pass post-fix.
+- Also observed pre-fix but **deliberately left suppressed**, NOT a regression: `storedMessageIds` → `Expected contains 18611, Actual Set:[]`. That path was reverted to the cache on purpose (see "Deliberately NOT changed"), so it still under-enumerates by design — that is what keeps reconciliation from destroying orphans. The suite asserts the suppression rather than the fix.
+- Full frontend suite **1085 passed / 5 skipped / 0 failed**; `flutter analyze` clean; `verify-claude-frontend-test-counts.mjs` OK; `lint-ratchet.mjs` **PASS** at the 817 baseline; master CI 4/4 green before deploy.
 - Prod evidence read-only: 45/45 rows `SERVED`; container/DB UTC; inbound volume for user 37 is **89/24h** vs 15 for the next heaviest account.
 
 ## Notes for next session
