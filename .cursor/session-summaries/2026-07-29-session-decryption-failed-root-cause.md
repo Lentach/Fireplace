@@ -1,6 +1,6 @@
 # P0 root cause: received messages flip to "[Decryption failed]" after reopen
 
-**Date:** 2026-07-29 — incident diagnosed and fixed on `fix/plaintext-read-cache-race` (`c50af12`). **NOT deployed, NOT merged** — awaiting owner decision. Prod frontend is currently rolled back to `0.0.134 / a00ab0f`; backend untouched at `0.0.136 / 6fb36bf`.
+**Date:** 2026-07-29 — incident diagnosed, fixed, and **RELEASED as `0.0.139 / 15a368c`** (frontend only, smoke 5/5, master CI green pre-deploy). Backend untouched at `0.0.136 / 6fb36bf`. Server reconciliation ships OFF pending owner confirmation.
 
 ## What was done
 
