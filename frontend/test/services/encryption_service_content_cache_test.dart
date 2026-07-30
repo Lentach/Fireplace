@@ -140,10 +140,14 @@ void main() {
     });
 
     test('a keyless write still overwrites a keyless (text) entry', () async {
+      // Deliberately NOT the "[Decryption failed]" label: a placeholder may
+      // never replace real plaintext (encryption_service_reload_race_test).
+      // What this covers is that an ordinary text rewrite is still allowed,
+      // unlike the keyed-media downgrade guarded just above.
       await service.saveDecryptedContent(2003, {'content': 'hello'});
-      await service.saveDecryptedContent(2003, {'content': '[Decryption failed]'});
+      await service.saveDecryptedContent(2003, {'content': 'hello again'});
       final result = await service.getDecryptedContent(2003);
-      expect(result!['content'], '[Decryption failed]');
+      expect(result!['content'], 'hello again');
     });
     /// The plaintext cache is bounded. Pruning used to run a full key scan on
     /// EVERY save, which is why a first entry into a 50-row chat paid 50 scans
@@ -342,11 +346,14 @@ void main() {
         conversationId: 81,
         expiresAt: expiresAt,
       );
-      await service.saveDecryptedContent(3021, {'content': '[Decryption failed]'});
+      // A narrow rewrite carrying only `content`. Not the failure label — that
+      // is refused outright when real plaintext is held, and this test is about
+      // metadata carry-forward, not the placeholder guard.
+      await service.saveDecryptedContent(3021, {'content': 'later decrypt'});
 
       expect(await service.messageIdsForConversations([81]), {3021});
       final record = await service.getDecryptedContent(3021);
-      expect(record!['content'], '[Decryption failed]');
+      expect(record!['content'], 'later decrypt');
       expect(record['_expiresAt'], expiresAt.millisecondsSinceEpoch);
     });
 

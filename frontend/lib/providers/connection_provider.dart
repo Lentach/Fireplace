@@ -309,6 +309,39 @@ class ConnectionProvider extends ChangeNotifier {
     });
   }
 
+  /// TEMPORARY, 2026-07-29 incident — REMOVE once the diagnosis is confirmed.
+  ///
+  /// Reconciliation is the only plaintext destroyer not cleared by measurement.
+  /// Expiry was cleared (the broken ids carried `expiresAt` 13 days out),
+  /// retention and eviction were cleared (both mark ids retired, and the broken
+  /// ids were decrypted), and the server answered `SERVED` for every id asked
+  /// about. But reconciliation reads NO metadata, so it purges whatever the
+  /// server does not list back — the widest destroyer here, running on an
+  /// account with live conversations while the root cause is unconfirmed.
+  ///
+  /// Gated at the callsite rather than inside the provider so the unit tests
+  /// keep exercising the real logic.
+  ///
+  /// Everything else still wipes: delete / clear history / unfriend / block
+  /// purge on the socket event, the expiry sweep runs on its 60-second timer,
+  /// and the purge backlog still retries deletes that failed to commit.
+  ///
+  /// Cost while false: messages deleted while this device was offline are not
+  /// caught up. Re-enable as soon as the owner confirms history renders again.
+  ///
+  /// Mutable so the existing socketReady tests can flip it ON and keep covering
+  /// the real wiring — otherwise disabling it here would silently delete the
+  /// only proof that reconciliation is reachable, and re-enabling it later would
+  /// ship untested.
+  ///
+  /// The value that SHIPS. Separate from the mutable flag so a test can assert
+  /// what production runs without being defeated by its own setUp override.
+  @visibleForTesting
+  static const bool kReconcileDefaultEnabled = false;
+
+  @visibleForTesting
+  static bool reconcileStoredPlaintextEnabled = kReconcileDefaultEnabled;
+
   /// Refresh the retired ids, drain the purge backlog, sweep, then reconcile
   /// what is left against the server.
   ///
@@ -335,7 +368,9 @@ class ConnectionProvider extends ChangeNotifier {
       await encryption.loadRetiredIds();
       await encryption.drainPurgeBacklog();
       await encryption.sweepDestroyablePlaintext();
-      await encryption.reconcileStoredPlaintext(_askServedMessageIds);
+      if (reconcileStoredPlaintextEnabled) {
+        await encryption.reconcileStoredPlaintext(_askServedMessageIds);
+      }
     } catch (_) {
       // Never let maintenance break connect. A failure means the residue
       // survives to the next socketReady, which is the safe direction.

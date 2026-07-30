@@ -6,7 +6,7 @@ publish_to: 'none' # Remove this line if you wish to publish to pub.dev
 
 # App version: semver only (0.0.1, 0.0.2, 0.0.3, …). Bump PATCH by +1 on each release (see root CLAUDE.md §5).
 # Do not add a +suffix here — that is Flutter build metadata, not our user-visible version.
-version: 0.0.138
+version: 0.0.139
 
 environment:
   sdk: ^3.10.7
@@ -30,6 +30,13 @@ dependencies:
   google_fonts: ^6.2.1
   jwt_decoder: ^2.0.1
   shared_preferences: ^2.3.4
+  # Runtime, not test-only: the plaintext record store reads through the
+  # platform store directly instead of SharedPreferences' in-memory cache.
+  # `reload()` clears that cache and refills it from a snapshot taken across an
+  # await, so a write landing in the window is dropped from the cache while it
+  # survives in the backing store — and a missed plaintext record re-decrypts a
+  # consumed ratchet key into a permanent "[Decryption failed]".
+  shared_preferences_platform_interface: ^2.4.2
   package_info_plus: ^8.3.0
   image_picker: ^1.2.3
   file_picker: ^11.0.2
@@ -77,10 +84,6 @@ dev_dependencies:
   flutter_launcher_icons: ^0.14.3
   fake_async: ^1.3.3
   pointycastle: ^4.0.0
-  # Test-only: lets a test install a preferences store that REFUSES removals,
-  # which is the only way to exercise the guarantee the plaintext purge rests
-  # on — a purge that could not commit must report failure, never success.
-  shared_preferences_platform_interface: ^2.4.2
   url_launcher_platform_interface: ^2.3.2
 
 # For information on the generic Dart part of this file, see the
