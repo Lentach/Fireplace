@@ -65,7 +65,7 @@ dependencies:
   flutter_local_notifications: ^21.0.0
   flutter_web_plugins:
     sdk: flutter
-  emoji_picker_flutter: ^4.4.0
+  emoji_picker_flutter: ^4.5.3
   characters: ^1.4.1
   # Direct because ConnectionProvider reads clock.now() for the serverTime
   # retry floor — package:clock is what fake_async overrides, so the floor is
