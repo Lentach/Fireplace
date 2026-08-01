@@ -175,12 +175,6 @@ Map<String, dynamic> _convJson(int id) => {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  // The 2026-07-29 incident ships with reconciliation OFF in production. Flip it
-  // ON here so every assertion below keeps covering the real wiring; the pinning
-  // test at the bottom of this file guards the shipped default.
-  setUp(() => ConnectionProvider.reconcileStoredPlaintextEnabled = true);
-  tearDown(() => ConnectionProvider.reconcileStoredPlaintextEnabled = false);
-
   group('ConnectionProvider socketReady gating', () {
     late FakeSocketService fakeSocket;
     late RecordingConnectionProvider connection;
@@ -626,21 +620,5 @@ void main() {
         expect(fakeSocket.getServerTimeCalls, 0);
       });
     });
-  });
-
-  /// DELETE THIS TEST and restore reconciliation to an unconditional call when
-  /// the 2026-07-29 incident flag is removed.
-  ///
-  /// It exists so the temporary gate announces itself instead of being
-  /// forgotten: the groups above flip the flag ON to keep covering the wiring,
-  /// which would otherwise hide that production ships it OFF. Asserts the
-  /// SHIPPED constant, not the mutable flag, so the setUp override cannot
-  /// defeat it.
-  test('reconciliation ships disabled while the incident is unconfirmed', () {
-    expect(
-      ConnectionProvider.kReconcileDefaultEnabled,
-      isFalse,
-      reason: 'flip to true and delete this test once history is confirmed back',
-    );
   });
 }
