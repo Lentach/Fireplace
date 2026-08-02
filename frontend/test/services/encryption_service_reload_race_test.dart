@@ -7,6 +7,7 @@ import 'package:shared_preferences_platform_interface/shared_preferences_platfor
 import 'package:shared_preferences_platform_interface/types.dart';
 
 import 'package:fireplace/models/message_model.dart';
+import 'package:fireplace/services/encryption/content_kv.dart';
 import 'package:fireplace/services/encryption_service.dart';
 
 /// Regression cover for the 2026-07-29 "[Decryption failed]" incident.
@@ -100,13 +101,11 @@ void main() {
 
   setUp(() async {
     store = _HoldableStore();
-    // `flutter test` runs on the Dart VM, where kIsWeb is false and the reads
-    // deliberately stay on the cache. Force the web branch, or this whole suite
-    // would exercise the path it exists to prove broken.
-    EncryptionService.debugForceAuthoritativeReads = true;
-    addTearDown(
-      () => EncryptionService.debugForceAuthoritativeReads = false,
-    );
+    // `flutter test` runs on the Dart VM, where kIsWeb is false and the prefs
+    // backend deliberately keeps reads on the cache. Force the web branch, or
+    // this whole suite would exercise the path it exists to prove broken.
+    PrefsContentKv.debugForceAuthoritative = true;
+    addTearDown(() => PrefsContentKv.debugForceAuthoritative = false);
     SharedPreferencesStorePlatform.instance = store;
     SharedPreferences.resetStatic();
     FlutterSecureStorage.setMockInitialValues({});
@@ -140,7 +139,7 @@ void main() {
 
     expect(
       (await store.getAll()).keys,
-      contains('${EncryptionService.prefsStorePrefix}probe_key'),
+      contains('${PrefsContentKv.storePrefix}probe_key'),
       reason: 'every record read would silently answer null',
     );
   });
@@ -254,12 +253,12 @@ void main() {
 
   /// Pins the platform gate as deliberate, so nobody deletes it as dead code.
   ///
-  /// Off web nothing ever reloads (`_reloadPrefsForCrossContext` is kIsWeb-gated),
-  /// so the cache cannot be clobbered and reads stay on it — a platform
-  /// `getAll()` per read and per save would be the most expensive call in the
-  /// file.
+  /// Off web nothing ever reloads (`PrefsContentKv.reload` is kIsWeb-gated), so
+  /// the cache cannot be clobbered and reads stay on it — a platform `getAll()`
+  /// per read and per save would be the most expensive call in the file, and
+  /// this backend is also what iOS, desktop and the Android fallback use.
   test('off web, reads stay on the cache', () async {
-    EncryptionService.debugForceAuthoritativeReads = false;
+    PrefsContentKv.debugForceAuthoritative = false;
 
     await service.saveDecryptedContent(19000, {'content': 'mobile'});
 

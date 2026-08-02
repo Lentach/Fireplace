@@ -12,13 +12,17 @@
             undecryptable Signal identity (known flutter_secure_storage failure mode).
          dataExtractionRules repeats the exclusion for API 31+ cloud backup AND
          device-to-device transfer, belt-and-suspenders. -->
+    <!-- networkSecurityConfig: loopback-only cleartext for just_audio's local
+         proxy (sealed voice notes play from memory through 127.0.0.1).
+         Everything else keeps the API 28+ cleartext block. -->
     <application
         android:label="Fireplace"
         android:name="${applicationName}"
         android:icon="@mipmap/ic_launcher"
         android:allowBackup="false"
         android:fullBackupContent="false"
-        android:dataExtractionRules="@xml/data_extraction_rules">
+        android:dataExtractionRules="@xml/data_extraction_rules"
+        android:networkSecurityConfig="@xml/network_security_config">
         <activity
             android:name=".MainActivity"
             android:exported="true"

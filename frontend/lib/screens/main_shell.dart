@@ -20,6 +20,7 @@ import '../utils/tab_visibility.dart';
 import '../utils/instant_opaque_route.dart';
 import '../utils/notification_nav_decision.dart';
 import '../services/unread_badge_sync.dart';
+import '../services/encryption/native_content_store.dart';
 import '../widgets/top_snackbar.dart';
 import '../widgets/console_glyphs.dart';
 import '../widgets/glass/glass_bottom_nav.dart';
@@ -159,6 +160,12 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
         // pushClientState.clientVisible true so the server skipped pushes while
         // the user was no longer looking at the chat.
         context.read<ConversationsProvider>().setClientVisible(false);
+        // Owed shred rotation: fire now instead of waiting out the debounce —
+        // background is the last CPU this process may ever get. No-op unless
+        // a purge stamped an obligation (native only; instance null on web).
+        unawaited(
+          NativeContentStore.instance?.onAppBackground() ?? Future.value(),
+        );
         break;
     }
   }

@@ -1,0 +1,94 @@
+import 'dart:io';
+
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+
+import '../../utils/e2e_persistent_diag.dart';
+import '../secure_kv.dart';
+import 'audio_reseal.dart';
+import 'content_db.dart';
+import 'content_key_manager.dart';
+import 'content_kv.dart';
+import 'native_content_store.dart';
+
+Future<ContentKv>? _memo;
+
+/// Native build of the opener. Android gets the encrypted store; everything
+/// else (desktop dev hosts, the flutter_test VM — `Platform` here is the HOST
+/// OS, not `defaultTargetPlatform`) keeps the legacy prefs backend.
+///
+/// ONLY the Android path is memoized (as a Future, so concurrent first calls
+/// cannot race two encrypted stores into existence; and a session that fell
+/// back to prefs stays on prefs — flip-flopping backends mid-session would
+/// split the read view). The prefs path deliberately returns a FRESH wrapper
+/// per call: that is the historical per-service-instance behavior, and the
+/// flutter_test VM depends on it — a process-wide memo would pin the first
+/// test's mock SharedPreferences under every later test.
+Future<ContentKv> openPlatformContentKv() {
+  if (!Platform.isAndroid) return PrefsContentKv.open();
+  return _memo ??= _open();
+}
+
+Future<ContentKv> _open() async {
+  var stage = 'unknown';
+  try {
+    final legacy = await SharedPreferences.getInstance();
+    // SAME instance/options as the Signal keys (DualStorage): the content
+    // keys must live and die with the identity, never alone.
+    final keys = ContentKeyManager(
+      const FlutterSecureStorageKv(
+        FlutterSecureStorage(webOptions: WebOptions(dbName: 'FireplaceE2E')),
+      ),
+    );
+    stage = 'db-key';
+    final dbKey = await keys.dbKeyHex();
+    if (dbKey == null) throw const ContentStoreUnavailable('db-key');
+    stage = 'db-open';
+    final db = await _openDb(dbKey);
+    try {
+      stage = 'store';
+      final store = await NativeContentStore.open(
+        db: db,
+        keys: keys,
+        legacyPrefs: legacy,
+        audioResealer: resealAudioCacheFiles,
+      );
+      return store;
+    } on ContentStoreUnavailable catch (e) {
+      stage = e.stage;
+      await db.close();
+      rethrow;
+    } catch (_) {
+      await db.close();
+      rethrow;
+    }
+  } catch (_) {
+    // Fallback = the pre-Phase-2 behavior, loudly diagnosed. Deliberately NOT
+    // an unencrypted database: prefs is the known status quo, and the diag
+    // rate is what tells us whether this path ever fires in the field.
+    E2ePersistentDiag.record('CONTENT_STORE_FALLBACK', {'stage': stage});
+    return PrefsContentKv.open();
+  }
+}
+
+/// Opens the SQLCipher DB, recreating the file ONCE when it cannot be opened
+/// with a key that was FRESHLY minted this call — i.e. secure storage was
+/// provably enumerated and genuinely held no DB key, so the surviving file is
+/// ciphertext nobody can ever read again (and the Signal identity in the same
+/// store is gone with it). Recreating trades an unreadable file for a working
+/// store; refusing would push every future session onto the plaintext prefs
+/// fallback forever.
+///
+/// With a PRE-EXISTING key the failure is NOT evidence of loss (corruption,
+/// transient I/O), so the file is left untouched and the session falls back.
+Future<DriftRecordDb> _openDb(DbKeyResult dbKey) async {
+  try {
+    return await DriftRecordDb.open(dbKeyHex: dbKey.hex);
+  } catch (_) {
+    if (!dbKey.freshlyMinted) rethrow;
+    final deleted = await DriftRecordDb.deleteDatabaseFiles();
+    if (!deleted) rethrow;
+    E2ePersistentDiag.record('CONTENT_DB_RECREATED', {});
+    return DriftRecordDb.open(dbKeyHex: dbKey.hex);
+  }
+}

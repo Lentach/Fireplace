@@ -2,8 +2,9 @@ import 'dart:convert';
 import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
-import 'package:shared_preferences/shared_preferences.dart';
-import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
+import 'encryption/content_kv.dart';
+import 'encryption/content_kv_opener_stub.dart'
+    if (dart.library.io) 'encryption/content_kv_opener_io.dart';
 
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
@@ -75,88 +76,66 @@ class EncryptionService {
   /// account did not change underneath it before destroying anything.
   int? get activeUserId => _userId;
 
-  /// Cached SharedPreferences instance for synchronous-on-web message content cache.
-  SharedPreferences? _prefs;
-  Future<SharedPreferences> get _sharedPrefs async =>
-      _prefs ??= await SharedPreferences.getInstance();
-
-  Future<void> _reloadPrefsForCrossContext(SharedPreferences prefs) async {
-    if (kIsWeb) await prefs.reload();
-  }
-
-  /// Namespace the SharedPreferences backends prepend to every stored key.
+  /// The plaintext-record store behind every cache/purge/retention path here.
+  /// [ContentKv] mirrors the SharedPreferences surface exactly; see its doc
+  /// for what each backend guarantees. Kept behind the historical
+  /// `_sharedPrefs` name so the call sites below read unchanged.
   ///
-  /// Hardcoded because the package exposes [SharedPreferences.setPrefix] but no
-  /// getter, and this app never changes it. Asserted by test so a package change
-  /// fails loudly instead of silently answering null for every record.
-  @visibleForTesting
-  static const String prefsStorePrefix = 'flutter.';
+  /// The opener is platform-selected (encrypted store on Android, legacy
+  /// prefs everywhere else incl. tests) and memoized AS A FUTURE: two
+  /// concurrent first touches must not race two backends into existence.
+  ContentKv? _prefs;
+  Future<ContentKv>? _prefsOpening;
+  Future<ContentKv> get _sharedPrefs async =>
+      _prefs ??= await (_prefsOpening ??= openPlatformContentKv());
 
-  /// A snapshot of the BACKING STORE on web; null everywhere else.
+  Future<void> _reloadPrefsForCrossContext(ContentKv prefs) => prefs.reload();
+
+  /// Ground truth for a record read, or null when [ContentKv.getString] is
+  /// already authoritative on this backend.
   ///
   /// WHY IT EXISTS — do not "simplify" the readers below back onto the cache.
-  /// [SharedPreferences.reload] reads the store, AWAITS that read, then CLEARS
-  /// the in-memory cache and refills it from the snapshot it took. A write that
-  /// lands inside the await window survives in the store but is dropped from
-  /// the cache. For a plaintext record that miss is not "no plaintext": the
-  /// caller re-decrypts a ciphertext whose Signal ratchet key was consumed at
-  /// first decrypt, lands on DuplicateMessage, and the row becomes a permanent
-  /// "[Decryption failed]" while its only readable copy is still in the store.
-  /// The read-modify-write in [saveDecryptedContent] reads the same null and can
+  /// The prefs backend's `reload()` refills its in-memory cache from a snapshot
+  /// taken across an await, so a write landing in that window survives in the
+  /// store but is DROPPED from the cache. For a plaintext record that miss is
+  /// not "no plaintext": the caller re-decrypts a ciphertext whose Signal
+  /// ratchet key was consumed at first decrypt, hits DuplicateMessage, and the
+  /// row becomes a permanent "[Decryption failed]" while its only readable copy
+  /// is still on disk. That shipped as the 2026-07-29 incident. The
+  /// read-modify-write in [saveDecryptedContent] reads the same null and can
   /// then write a narrower record — including the "[Decryption failed]" label —
   /// OVER real plaintext, which is unrecoverable loss.
   ///
   /// A lock in this class could not close it: the Signal session stores reload
-  /// the SAME singleton throughout decrypt, concurrently with these writes.
+  /// the SAME underlying singleton throughout decrypt, concurrently with these
+  /// writes.
   ///
-  /// WHY IT IS WEB-ONLY — and must stay that way. The hazard is web-only by
-  /// construction: [_reloadPrefsForCrossContext] reloads only when [kIsWeb], so
-  /// off web nothing ever clears the cache under a reader and `getString` is
-  /// both correct and free. On web this is free too — `reload()` already paid
-  /// for exactly this `getAll()`. Making it unconditional would serialise the
-  /// WHOLE preference map (up to the 2000-record plaintext cap plus every Signal
-  /// session blob) across the method channel on every read AND every save, i.e.
-  /// once per decrypted message.
+  /// Which backends answer, and what it costs, is [ContentKv]'s business —
+  /// asking it here is what keeps this class free of backend detail. The prefs
+  /// backend answers only on web (where `reload()` already paid for the same
+  /// enumeration); the native encrypted store answers null because its view
+  /// cannot be clobbered.
   Future<Map<String, Object>?> _authoritativeSnapshot() async =>
-      kIsWeb || debugForceAuthoritativeReads
-      ? await SharedPreferencesStorePlatform.instance.getAll()
-      : null;
+      (await _sharedPrefs).authoritativeSnapshot();
 
-  /// Forces the web branch under `flutter test`, which runs on the Dart VM with
-  /// [kIsWeb] false. Without this the regression suite would exercise the cache
-  /// path — precisely the one it exists to prove broken — and silently pass.
-  @visibleForTesting
-  static bool debugForceAuthoritativeReads = false;
-
-  /// The raw record at [key]. A null [snapshot] means "off web, read the cache".
-  /// Null result means GENUINELY absent.
+  /// The raw record at [key]. A null [snapshot] means the backend's own read is
+  /// ground truth. A null RESULT means the record is GENUINELY absent.
   String? _rawRecord(
     Map<String, Object>? snapshot,
-    SharedPreferences prefs,
+    ContentKv prefs,
     String key,
   ) {
     if (snapshot == null) return prefs.getString(key);
-    final value = snapshot['$prefsStorePrefix$key'] ?? snapshot[key];
+    final value = snapshot[key];
     return value is String ? value : null;
   }
 
-  /// Unprefixed record keys under [prefix], from whichever view is authoritative.
+  /// Record keys under [prefix], from whichever view is authoritative.
   Iterable<String> _recordKeys(
     Map<String, Object>? snapshot,
-    SharedPreferences prefs,
+    ContentKv prefs,
     String prefix,
-  ) {
-    if (snapshot == null) {
-      return prefs.getKeys().where((k) => k.startsWith(prefix));
-    }
-    return snapshot.keys
-        .map(
-          (k) => k.startsWith(prefsStorePrefix)
-              ? k.substring(prefsStorePrefix.length)
-              : k,
-        )
-        .where((k) => k.startsWith(prefix));
-  }
+  ) => (snapshot?.keys ?? prefs.getKeys()).where((k) => k.startsWith(prefix));
 
   final int _decryptedContentCacheLimit;
   final SessionCrossContextLockRunner _sessionCrossContextLock;
@@ -1580,7 +1559,7 @@ class EncryptionService {
     });
   }
 
-  Set<int> _readRetired(SharedPreferences prefs, int userId) {
+  Set<int> _readRetired(ContentKv prefs, int userId) {
     try {
       final raw = prefs.getString(_retiredKey(userId));
       if (raw == null) return <int>{};
@@ -1648,7 +1627,7 @@ class EncryptionService {
     final prefix = _decryptedContentPrefix(userId);
 
     final Map<String, Object>? snapshot;
-    final SharedPreferences prefs;
+    final ContentKv prefs;
     final List<String> keys;
     try {
       prefs = await _sharedPrefs;
@@ -1862,7 +1841,7 @@ class EncryptionService {
   }
 
   ({Set<int> ids, Set<String> ciphertexts}) _readPurgeBacklog(
-    SharedPreferences prefs,
+    ContentKv prefs,
     int userId,
   ) {
     try {
@@ -1972,7 +1951,7 @@ class EncryptionService {
   /// TTL + cap sweep. Concurrent sweeps may double-remove a key — harmless
   /// (remove is idempotent); an entry is never modified in place.
   Future<void> _prunePendingSendRecords(
-    SharedPreferences prefs,
+    ContentKv prefs,
     int userId,
     int now,
   ) async {
@@ -2031,6 +2010,7 @@ class EncryptionService {
     _keysForUpload = null;
     _userId = null;
     _prefs = null;
+    _prefsOpening = null;
     _storage.clearPrefsCache();
     debugPrint('[EncryptionService] All encryption keys cleared');
   }
@@ -2048,7 +2028,7 @@ class EncryptionService {
       '${_rawDecryptedContentPrefix(userId)}$messageId';
 
   Future<void> _pruneRawDecryptedContent(
-    SharedPreferences prefs,
+    ContentKv prefs,
     int userId,
   ) async {
     final prefix = _rawDecryptedContentPrefix(userId);
@@ -2082,7 +2062,7 @@ class EncryptionService {
   int? _cachedContentEstimate;
 
   Future<void> _pruneDecryptedContentCache(
-    SharedPreferences prefs,
+    ContentKv prefs,
     int userId,
   ) async {
     // NO reload here: the only caller (saveDecryptedContent) reloaded a few
@@ -2161,7 +2141,7 @@ class EncryptionService {
   /// stores. The seeding count and the eviction sweep MUST use the same set,
   /// or the estimate can sit under the cap while the real total is over it.
   Future<Set<String>> _cachedContentKeys(
-    SharedPreferences prefs,
+    ContentKv prefs,
     String prefix,
   ) async {
     return <String>{

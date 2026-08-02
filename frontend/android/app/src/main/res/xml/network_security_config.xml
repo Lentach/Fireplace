@@ -1,0 +1,14 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Loopback cleartext ONLY. just_audio serves in-memory audio sources
+     (sealed voice notes decrypted to RAM) through a local HTTP proxy on
+     127.0.0.1; API 28+ blocks that without this. Scope is deliberately the
+     loopback names and nothing else - a blanket usesCleartextTraffic="true"
+     would silently permit plaintext HTTP to every host in release builds.
+     No base-config element: everything non-loopback keeps the platform
+     default (cleartext blocked on 28+). -->
+<network-security-config>
+    <domain-config cleartextTrafficPermitted="true">
+        <domain includeSubdomains="false">127.0.0.1</domain>
+        <domain includeSubdomains="false">localhost</domain>
+    </domain-config>
+</network-security-config>
