@@ -57,6 +57,24 @@ function hasMulterFileSize(
   return typeof limits.fileSize === 'number';
 }
 
+// Decorator metadata hangs off the FUNCTION OBJECT stored on the prototype, so these
+// tests must read that object without ever invoking it. Writing
+// `MediaController.prototype.upload` says "unbound method" to typescript-eslint (and
+// 8.65 started catching the computed `prototype[name]` form too), which is the wrong
+// signal: nothing here is ever called. Go through the property descriptor instead —
+// same object, and it states the intent.
+function controllerMethod(name: 'upload' | 'serveMsgs'): object {
+  const descriptor = Object.getOwnPropertyDescriptor(
+    MediaController.prototype,
+    name,
+  );
+  const value: unknown = descriptor?.value;
+  if (typeof value !== 'function') {
+    throw new Error(`MediaController.prototype.${name} is not a method.`);
+  }
+  return value;
+}
+
 describe('MediaController', () => {
   let controller: MediaController;
 
@@ -74,7 +92,7 @@ describe('MediaController', () => {
     for (const methodName of ['upload', 'serveMsgs'] as const) {
       const guards = Reflect.getMetadata(
         GUARDS_METADATA,
-        MediaController.prototype[methodName],
+        controllerMethod(methodName),
       );
 
       expect(Array.isArray(guards)).toBe(true);
@@ -85,7 +103,7 @@ describe('MediaController', () => {
   it('upload interceptor carries the 21 MiB Multer file-size limit', () => {
     const interceptors = Reflect.getMetadata(
       INTERCEPTORS_METADATA,
-      MediaController.prototype.upload,
+      controllerMethod('upload'),
     );
 
     expect(Array.isArray(interceptors)).toBe(true);

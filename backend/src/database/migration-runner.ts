@@ -110,8 +110,11 @@ export async function runMigrations(
 
   // Mirror ConfigModule's env loading (.env.local wins over .env); dotenv
   // never overrides variables that are already set (e.g. by docker compose).
-  dotenv.config({ path: '.env.local' });
-  dotenv.config({ path: '.env' });
+  // `quiet` is explicit because dotenv 17 flipped its default to false: without
+  // it every boot prints two "injected env (N) from ..." lines to stdout, ahead
+  // of the Nest logger, in a prod container whose log level is deliberately narrow.
+  dotenv.config({ path: '.env.local', quiet: true });
+  dotenv.config({ path: '.env', quiet: true });
 
   const clientConfig = {
     host: process.env.DB_HOST ?? 'localhost',

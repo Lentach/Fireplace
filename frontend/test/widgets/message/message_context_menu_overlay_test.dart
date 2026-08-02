@@ -1018,6 +1018,18 @@ void main() {
 
     expect(positioned().top, closeTo(basePickerLayout.top, 0.001));
     expect(positioned().height, closeTo(basePickerLayout.height, 0.001));
+
+    // Every inset change feeds EmojiPicker a new Config (the picker height is
+    // derived from the keyboard inset), so didUpdateWidget reloads the recent
+    // emojis. emoji_picker_flutter 4.5.3 memoizes that read behind
+    // `Future(() async {...})`, and a bare `Future(...)` schedules a real
+    // zero-duration Timer where 4.4.0's plain `async` body only queued
+    // microtasks. The last inset pump above leaves that timer unfired and the
+    // binding asserts `!timersPending` at teardown; settling drains the timer
+    // and the setState frame that follows it. A single extra `pump()` is NOT
+    // enough — verified. Nothing product-side changed: the read is memoized
+    // (4.4.0 hit SharedPreferences on every config change, 4.5.3 hits it once).
+    await tester.pumpAndSettle();
   });
 
   testWidgets(
