@@ -168,6 +168,22 @@ void main() {
     );
   });
 
+  test('a full local wipe retires what it destroyed', () async {
+    await service.saveDecryptedContent(18700, {'content': 'wiped'});
+    await service.saveDecryptedContent(18701, {'content': 'also wiped'});
+
+    final result = await service.clearDecryptedContentCache();
+    expect(result.isComplete, isTrue, reason: 'precondition: the wipe landed');
+
+    // Without this the server keeps serving those rows, hydration finds no
+    // record, the re-decrypt hits a consumed ratchet key, and the user's WHOLE
+    // history renders a permanent "[Decryption failed]" — a deliberate action
+    // that looks exactly like catastrophic corruption. Retention and LRU
+    // eviction already retire for the same reason.
+    final retired = await service.retiredMessageIds();
+    expect(retired, containsAll(<int>[18700, 18701]));
+  });
+
   test('a user-requested delete still finds a record the cache lost', () async {
     await loseFromCache(18611, {'content': 'scanned'}, conversationId: 71);
 

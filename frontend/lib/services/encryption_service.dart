@@ -1140,12 +1140,17 @@ class EncryptionService {
     var removed = 0;
     final failed = <String>{};
 
+    // Ids whose plaintext this wipe destroyed, so they can be marked retired
+    // below. Collected as we go, because after the sweep the keys are gone and
+    // nothing else names them.
+    final wiped = <int>{};
+
     // Gate every removal on its commit result. `remove` returns false when the
     // backend refuses the write, and a wipe that reports success while the
     // plaintext is still on disk is the precise defect this action exists to
     // end. A whole-prefix failure is recorded as `<prefix>*` — the keys are
     // unknown because the enumeration itself threw.
-    Future<void> sweepPrefs(String prefix) async {
+    Future<void> sweepPrefs(String prefix, {bool collectIds = false}) async {
       try {
         final prefs = await _sharedPrefs;
         await _reloadPrefsForCrossContext(prefs);
@@ -1158,6 +1163,10 @@ class EncryptionService {
           if (!ok) ok = await prefs.remove(key);
           if (ok) {
             removed++;
+            if (collectIds) {
+              final id = int.tryParse(key.substring(prefix.length));
+              if (id != null) wiped.add(id);
+            }
           } else {
             failed.add(key);
           }
@@ -1168,9 +1177,24 @@ class EncryptionService {
     }
 
     final prefix = _decryptedContentPrefix(userId);
-    await sweepPrefs(prefix);
-    await sweepPrefs(_rawDecryptedContentPrefix(userId));
+    await sweepPrefs(prefix, collectIds: true);
+    await sweepPrefs(_rawDecryptedContentPrefix(userId), collectIds: true);
     await sweepPrefs(_pendingSendPrefix(userId));
+
+    // Retire what we destroyed, BEFORE reporting success.
+    //
+    // Without this the rows the user just wiped stay in the decrypt path: the
+    // server still serves them, hydration finds no record, the re-decrypt hits
+    // a ratchet key consumed at first decrypt, and every one of them renders a
+    // permanent "[Decryption failed]" — the whole history at once, and
+    // indistinguishable from the 2026-07-29 incident. Retention and LRU
+    // eviction already do this for exactly the same reason; a user-initiated
+    // wipe is the one destroyer that did not, so it turned a deliberate action
+    // into what looks like catastrophic corruption.
+    //
+    // Bounded by `_retiredCap` (5000) against a record store capped at 2000, so
+    // a full wipe fits with room to spare.
+    if (wiped.isNotEmpty) await markRetired(wiped);
 
     // Legacy store, swept on EVERY platform — deliberately not gated on
     // `!kIsWeb` the way the per-id path is. That gate rests on web never having
