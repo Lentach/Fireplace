@@ -8,9 +8,9 @@ Every fact below was verified by a command at write time. Re-verify anything vol
 
 | | |
 |---|---|
-| Prod frontend | `0.1.0 / a60610f` (`/version.json`) — **level with master**, deployed 2026-08-02, smoke 5/5 |
+| Prod frontend | `0.1.1 / 8415b31` (`/version.json`) — **level with master**, smoke 5/5. Carries the decrypt ledger |
 | Prod backend | `0.0.140 / da120460` — **DEPLOYED 2026-08-02**, `schema up to date`, no migrations ran. Carries the per-minute secret-note sweep |
-| `master` | `a60610f` — **level with prod on both surfaces.** Android Phase 2 is live on web |
+| `master` | `8415b31` — **level with prod on both surfaces.** Android Phase 2 and the decrypt ledger are both live on web |
 | `feature/android-encrypted-store` | **MERGED into master** via PR #111 on 2026-08-02. Branch ref preserved because the owner's working copy sits on it; delete only after he moves to master |
 | PR #111 | **MERGED** (`ac880f6`), CI green 4/4 |
 | Deploy | Both surfaces current. Backend `/version` reads `0.0.140` because that was the pubspec when it deployed — its CODE is level; that lag is the documented convention, not drift |

@@ -272,3 +272,27 @@ correctly self-suppressed: the repo explicitly endorses mirroring `markRetired`,
 delegation is the established `EncryptionProvider` convention.
 
 Both CRITICAL fixes carry falsified regression tests. Flutter **1133 + 10 skipped**, analyze clean.
+
+## Addendum 7 — RELEASED 0.1.1, the ledger is live
+
+`0.1.1 / 8415b31`, **smoke 5/5** including the served `main.dart.js` containing the expected sha.
+Backend unchanged at `0.0.140 / da120460`. Prod and master level.
+
+**One more blocker was caught in the gap between CI going green and the deploy running**, and it
+was the sharpest of the lot. `backfillLedgerFromStore` wrote its "already seeded" marker
+unconditionally, including on an empty result. That backfill runs exactly once per account and
+that single run is the only one that ever matters — so a transiently empty or partial
+authoritative read on that one attempt would have persisted an empty ledger plus a permanent
+marker: the feature silently disabled for that account forever, no retry, no diagnostic, no way to
+notice, while the docs asserted the account was protected. An empty seed now writes nothing and the
+next launch retries. Falsified.
+
+Sequence for the release: full suite → analyze → commit the bump BEFORE building (deploy-web.ps1
+stamps GIT_COMMIT from the checkout HEAD) → CI green → deploy → smoke → independent curl.
+
+**What to watch now.** This is the ledger's first run against a populated real store. The failure
+mode to look for is a message rendering "no longer stored on this device" that should be readable —
+a false positive, meaning some probe answered "definitely absent" about data that was still there.
+Every known path to that is now closed and tested, but "tested" is not "has run against 25 real
+conversations". If it appears, take the `E2ePersistentDiag` dump FIRST and look for
+`LEDGER_RECORD_LOST`; it is durable now precisely so that evidence survives.
