@@ -14,7 +14,7 @@
 - **The incident itself — fixed in `0.0.139 / 15a368c` (frontend only, smoke 5/5), now closed.** `SharedPreferences.reload()` refills its cache from a snapshot taken across an await, so a concurrent write survives on disk but vanishes from the cache; a missed plaintext record re-decrypts a consumed ratchet key → `DuplicateMessage` → permanent `[Decryption failed]`. Web-only and pre-existing; 0.0.136's 60s timer + launch drain/sweep/reconcile is what made it fire. A second, independent bug shipped in the same release: `saveDecryptedContent` let the `[Decryption failed]` label overwrite real plaintext (explains the 27 `badMac` rows from sender 60, **not** the 42).
 - **Killed by measurement**, so nobody re-chases them: reconcile (`findServedMessageIds` SQL → `SERVED 45/45`), expiry (broken ids carried `expiresAt = 2026-08-11`), retention/LRU (both `markRetired`; retired ids are never decrypted, these were), quota (fresh records written with no `DECRYPT_PERSIST_FAILED`), key format/codec, `_userId == null`.
 - `E2ePersistentDiag` is capped at 80 and rotates — in an incident, grab the dump FIRST. The expiry sweep still logs nothing on success; that gap made this diagnosis much harder than it needed to be.
-- ➡ Detail: **`2026-08-02-HANDOFF-post-incident-state.md`**, **`2026-07-29-session-decryption-failed-root-cause.md`**.
+- ➡ Detail: **`2026-08-02-HANDOFF-post-incident-state.md`**, **`2026-08-02-session-android-branch-merge-verify.md`** (branch merge + falsification evidence), **`2026-07-29-session-decryption-failed-root-cause.md`**.
 
 ---
 ### Prior latest ↓
