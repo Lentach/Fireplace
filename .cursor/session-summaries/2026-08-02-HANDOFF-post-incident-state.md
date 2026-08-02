@@ -9,11 +9,12 @@ Every fact below was verified by a command at write time. Re-verify anything vol
 | | |
 |---|---|
 | Prod frontend | `0.0.140 / 3a33bf9` (`/version.json`) |
-| Prod backend | `0.0.136 / 6fb36bf` — **by design**, frontend-only releases since |
-| `master` | `ac880f6` — **AHEAD OF PROD.** Carries merged Android Phase 2, undeployed, with no version bump |
+| Prod backend | `0.0.140 / da120460` — **DEPLOYED 2026-08-02**, `schema up to date`, no migrations ran. Carries the per-minute secret-note sweep |
+| `master` | `da12046` — frontend is **AHEAD OF PROD and undeployed** (merged Android Phase 2, no version bump). Backend is level |
 | `feature/android-encrypted-store` | **MERGED into master** via PR #111 on 2026-08-02. Branch ref preserved because the owner's working copy sits on it; delete only after he moves to master |
 | PR #111 | **MERGED** (`ac880f6`), CI green 4/4 |
-| ⚠ Deploy | **Do NOT run `deploy-web.ps1` without explicit owner OK.** master and prod both say `0.0.140`; only `gitCommit` separates them (prod `3a33bf9`, master `ac880f6`). Backend untouched by the merge |
+| ⚠ Deploy | **Do NOT run `deploy-web.ps1` without explicit owner OK**, and not before he snapshots localStorage. master and prod frontends both say `0.0.140`; only `gitCommit` separates them (prod `3a33bf9`). Backend is already level and safe to redeploy |
+| 🔴 FCM off in prod | `FIREBASE_SERVICE_ACCOUNT` is **absent from `~/fireplace/.env`**, so `PushNotificationsService` logs "FCM disabled" at every boot. `google-services.json` IS tracked, so the APK will register a token the server can never push to — **Android notifications are dead until this is set.** Web Push VAPID is present and unaffected |
 | PRs #113–#119 | Dependabot, untouched |
 
 Worktrees: owner's main copy `C:/Users/Lentach/Desktop/Fireplace` (still on `feature/android-encrypted-store`, now merged — he should **switch it to `master` and pull**), `fireplace-e2e-audit` (stale, `audit/e2e-safety`, merged long ago — removable), `fireplace-wt-invitation` (master, the one to work in).

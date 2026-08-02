@@ -128,3 +128,38 @@ commit or `verify-claude-backend-test-counts.mjs` fails CI. `backend/CLAUDE.md` 
 
 **This needs `./deploy-backend.sh` to take effect.** That deploy is independent of the undeployed
 frontend — backend is untouched by the #111 merge.
+
+## Addendum 3 — backend deployed, and an Android push blocker found
+
+**Deployed** `./deploy-backend.sh` on the VM with owner OK. Backend is now
+`0.0.140 / da120460`, `/health` `{"status":"ok","db":"ok"}`, boot log `[Migrations] schema up to
+date` — no migrations ran.
+
+**Verified safe BEFORE deploying, correcting an unverified claim I had made.** I had said "backend
+is byte-identical to prod apart from this change" on the basis of `git diff origin/master...HEAD --
+backend/`, which compares the branch to master, NOT master to the deployed commit. The right check
+is against the deployed SHA:
+
+```
+git diff --stat 6fb36bf..origin/master -- backend/      # 3 files: service, spec, CLAUDE.md
+git diff --name-only 6fb36bf..origin/master -- backend/migrations/   # empty
+```
+
+Zero migrations, one runtime file. Had a migration been in there, `deploy-backend.sh` would have
+been a schema change needing a staging rehearsal, not a cron tweak. **Diff against the deployed
+commit, never against a branch base.**
+
+**Pulling master onto the VM does not ship the frontend.** `deploy-backend.sh` runs `git pull`, so
+the VM checkout now contains Phase 2 source — but nginx serves `~/fireplace/frontend-build/`, which
+is UNTRACKED (`??` in `git status`) and only written by `deploy-web.ps1`. Confirmed after the
+deploy: `/version.json` still reports `3a33bf9`. This is why the frontend hazard survives a backend
+deploy untouched.
+
+**🔴 FCM is disabled in production.** Boot logs carry
+`WARN [PushNotificationsService] FIREBASE_SERVICE_ACCOUNT not set — FCM disabled`, and
+`grep -c '^FIREBASE_SERVICE_ACCOUNT=' ~/fireplace/.env` returns **0**. Meanwhile
+`frontend/android/app/google-services.json` IS tracked, so the client half is configured: an APK
+will happily register an FCM token via `POST /users/fcm-token`, the backend will store it, and
+nothing will ever be delivered. **Android notifications are dead on arrival until that env var is
+set on the VM.** Web Push VAPID is present, so the PWA is unaffected — which is exactly why this
+has gone unnoticed. This belongs on the Android release checklist above the APK build itself.
