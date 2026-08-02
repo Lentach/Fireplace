@@ -8,12 +8,12 @@ Every fact below was verified by a command at write time. Re-verify anything vol
 
 | | |
 |---|---|
-| Prod frontend | `0.0.140 / 3a33bf9` (`/version.json`) |
+| Prod frontend | `0.1.0 / a60610f` (`/version.json`) — **level with master**, deployed 2026-08-02, smoke 5/5 |
 | Prod backend | `0.0.140 / da120460` — **DEPLOYED 2026-08-02**, `schema up to date`, no migrations ran. Carries the per-minute secret-note sweep |
-| `master` | `da12046` — frontend is **AHEAD OF PROD and undeployed** (merged Android Phase 2, no version bump). Backend is level |
+| `master` | `a60610f` — **level with prod on both surfaces.** Android Phase 2 is live on web |
 | `feature/android-encrypted-store` | **MERGED into master** via PR #111 on 2026-08-02. Branch ref preserved because the owner's working copy sits on it; delete only after he moves to master |
 | PR #111 | **MERGED** (`ac880f6`), CI green 4/4 |
-| ⚠ Deploy | **Do NOT run `deploy-web.ps1` without explicit owner OK**, and not before he snapshots localStorage. master and prod frontends both say `0.0.140`; only `gitCommit` separates them (prod `3a33bf9`). Backend is already level and safe to redeploy |
+| Deploy | Both surfaces current. Backend `/version` reads `0.0.140` because that was the pubspec when it deployed — its CODE is level; that lag is the documented convention, not drift |
 | 🔴 FCM off in prod | `FIREBASE_SERVICE_ACCOUNT` is **absent from `~/fireplace/.env`**, so `PushNotificationsService` logs "FCM disabled" at every boot. `google-services.json` IS tracked, so the APK will register a token the server can never push to — **Android notifications are dead until this is set.** Web Push VAPID is present and unaffected |
 | PRs #113–#119 | Dependabot, untouched |
 
@@ -50,8 +50,8 @@ Governing rule, established across this incident: **over-retention is recoverabl
 ## Open work, highest value first
 
 1. **The ledger — "messages I have already decrypted once".** Just ids, tiny. Today a lost record and a deliberately deleted record are indistinguishable to the app, so it retries decryption and bricks the row. With a ledger: id present + no plaintext ⇒ "unavailable, ask sender to resend", never re-decrypt. **This is what makes aggressive deletion safe instead of one bug away from repeating the incident.** `markRetired` is already shaped like this; it just isn't applied to the general case.
-2. **~~Encrypted at-rest store (Android Phase 2)~~ — MERGED 2026-08-02 (`ac880f6`), NOT deployed and NOT distributed.** Android now seals content in SQLCipher with Keystore-held keys. Web/desktop keep the prefs path through the same `ContentKv` seam. What remains before an APK reaches anyone: the owner's real-phone smoke and the `.jks` off-PC backup — see `docs/runbooks/android-release.md`. **Web exposure is unchanged and still open:** message plaintext is base64 in localStorage on web, which is what the canary-gated B2 sealing effort would fix.
-3. **Note expiry cron.** `secret-notes.service.ts` deletes expired notes `@Cron(EVERY_DAY_AT_3AM)`, so an **unread** expired note's ciphertext lingers up to ~24h past TTL. The API refuses to serve it, but the AES key lives in the note URL, which is stored as ordinary plaintext message content — so DB access + device access reads a "self-destructed" note. One-line change to match `MessageCleanupService`'s per-minute cron.
+2. **~~Encrypted at-rest store (Android Phase 2)~~ — DONE.** Merged (`ac880f6`) and **live on web since `0.1.0 / a60610f`**; no APK distributed. Android seals content in SQLCipher with Keystore-held keys; web/desktop keep the prefs path through the same `ContentKv` seam. Before an APK reaches anyone: **FCM service account on the VM** (see the state table — this is the new blocker), the owner's real-phone smoke, and the `.jks` off-PC backup. **Web at-rest exposure is unchanged and still open:** message plaintext is base64 in localStorage, which is what the canary-gated B2 sealing effort would fix. That is now the largest remaining privacy gap.
+3. **~~Note expiry cron~~ — DONE**, shipped in backend `0.0.140 / da120460`. `secret-notes.service.ts:53` is `@Cron(EVERY_MINUTE)`, matching `MessageCleanupService`, and the cadence is pinned by a fail-before-proven test. Do not relax it: at daily, an unread expired note's ciphertext lingered ~24h past TTL while its AES key sat in plaintext message content.
 4. **`delete for me` leaves the server row forever.** The server never checks whether *both* participants hid a row, so a message both sides deleted sits there until expiry. It cannot drop it on the first delete because the other participant still needs to read it.
 5. **The expiry sweep logs nothing on success.** That gap made the incident diagnosis much harder than it needed to be. Add success-side diagnostics.
 

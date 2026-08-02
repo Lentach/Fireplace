@@ -163,3 +163,30 @@ will happily register an FCM token via `POST /users/fcm-token`, the backend will
 nothing will ever be delivered. **Android notifications are dead on arrival until that env var is
 set on the VM.** Web Push VAPID is present, so the PWA is unaffected — which is exactly why this
 has gone unnoticed. This belongs on the Android release checklist above the APK build itself.
+
+## Addendum 4 — RELEASED 0.1.0, both surfaces live
+
+Owner picked **0.1.0** over 0.0.141 and authorised the web deploy. Prod is now
+`0.1.0 / a60610f` on the frontend and `0.0.140 / da120460` on the backend, both healthy,
+**smoke 5/5** including the definitive gate: the served `main.dart.js` literally contains
+`a60610f`.
+
+Pre-deploy verification, in order: full Flutter suite **1115 passed / 10 skipped / exit 0** and
+`analyze` clean on the exact tree; grepped `frontend/test`, `frontend/lib` and `scripts` for a
+pinned `0.0.140` (none); **committed the bump before building**, because `deploy-web.ps1` stamps
+`GIT_COMMIT` from the checkout HEAD and building dirty would have shipped a bundle labelled with
+the previous commit; then waited for master CI green on `a60610f` before touching prod.
+
+`versionCode` derives to **10000** (`0*1e6 + 1*1e4 + 0`), up from 137, still monotonic — checked
+because a non-incrementing value is rejected by Play and silently breaks sideloaded upgrades. No
+APK has ever been built or distributed, so nothing depends on the old numbering.
+
+**Backend `/version` reads `0.0.140`, not `0.1.0`.** Its CODE is level with master; the label is
+just the pubspec value at the moment `deploy-backend.sh` ran, which is the documented convention
+for surfaces that deploy independently. Not drift, and not worth a container recreate to relabel.
+
+**The frontend now runs the Phase 2 web read path in production** — `_authoritativeSnapshot()`
+via the `ContentKv`/`PrefsContentKv` seam. Test-equivalent, not byte-identical source, and it has
+never run against a populated store at real volume before today. If `[Decryption failed]`
+reappears, take the `E2ePersistentDiag` dump BEFORE anything else; it caps at 80 and rotates, and
+that is exactly what cost us the evidence window in July.
