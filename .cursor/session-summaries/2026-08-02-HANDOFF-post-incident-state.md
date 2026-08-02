@@ -53,9 +53,21 @@ Governing rule, established across this incident: **over-retention is recoverabl
 4. **`delete for me` leaves the server row forever.** The server never checks whether *both* participants hid a row, so a message both sides deleted sits there until expiry. It cannot drop it on the first delete because the other participant still needs to read it.
 5. **The expiry sweep logs nothing on success.** That gap made the incident diagnosis much harder than it needed to be. Add success-side diagnostics.
 
-## Before an APK ships — a real gate, not a nicety
+## The canary gate — what it actually gates
 
-`CONTENT_KEY_CANARY_LOST` in field diags means the encrypted store **must not ship on that storage**: the SQLCipher key comes from the same place the canary measures. Canary shipped 2026-07-28; the window is open now. I nearly deleted this gate while trimming `LATEST.md` for its size budget — it is recorded as an open item there.
+**Corrected 2026-08-02. The earlier wording here said the canary blocks the APK because "the SQLCipher key comes from the same place the canary measures". That is wrong, and the code says so.**
+
+`ContentKeyCanary.checkAndArm()` opens with `if (!_isWeb) return;` (`content_key_canary.dart:96`) — it is a **no-op on native** and its own class doc says why: it measures `flutter_secure_storage` on **web**, which is IndexedDB + WebCrypto, the backend `signal_stores.dart:11-15` abandoned after keys vanished across tab closes. On Android the same plugin is Keystore-backed, which `signal_stores.dart:17-18` calls hardware-backed and reliable. Same plugin API, different backend. The canary can produce no evidence about Android, and the Phase 1 summary already said so: "Native Android can seal WITHOUT the web canary gate."
+
+So:
+
+- **It does NOT gate the APK / PR #111.** Do not block Android on it.
+- **It DOES gate web B2 sealing**, which is a separate effort that has not started. Keep it. Do not "clean it up" because Android shipped without it.
+- **Nobody can check it remotely.** `E2ePersistentDiag` is a capped SharedPreferences list read only by `privacy_safety_screen.dart` — display, copy, clear. There is **no upload path**, so "watch field diags" means exactly one thing: the owner opens Privacy & Safety in hacker mode and dumps it.
+- **Absence of the event is weak evidence.** The durable log caps at 80 and rotates, and it was observed *exactly at cap* during the P0 incident — so a `CONTENT_KEY_CANARY_LOST` from late July may well have been evicted by incident spam. A clean dump means "no surviving evidence of loss", not "the storage is safe".
+- **"Not canary-gated" is NOT "safe".** Phase 1 said the permissive half and the caveat in one breath, and only quoting the first half is the misread this section exists to stop: Keystore keys still die — factory reset, new-device restore, auth-binding invalidation — and the plaintext cache is **not re-derivable** (the ratchet consumed the keys; media records hold the only `mediaKey`/`mediaIv`). Content-key loss = the whole local history unreadable. The design budgets for it with four mitigations: **no auth binding, co-located with the Signal keys, the armed-gate (write → fresh read-back before use), and `CONTENT_KEY_LOST` → retired-id rendering.** The Android gate is that those four are present and tested — not that a canary went quiet.
+
+The real Android gates are unchanged and none of them is the canary: the owner's real-phone smoke (voice play/seek/cached replay/legacy files, push, upgrade from a pre-Phase-2 install), the `.jks` off-PC backup (**still outstanding**), and his explicit merge OK.
 
 ## Traps that cost time this session
 

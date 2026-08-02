@@ -4,9 +4,17 @@ Status: **Phase 1 (release plumbing) — DONE 2026-07-29. Phase 2 (encrypted loc
 DONE 2026-07-29 on `feature/android-encrypted-store`, device-verified, not yet merged.**
 A release APK built from that branch keeps decrypted plaintext, media keys, pending-send plaintext
 and the JWT out of the SharedPreferences XML: content lives sealed in a SQLCipher database
-(`files/fp_content.db`) and the JWT lives in Keystore-backed secure storage. **Distribution is still
-gated on the owner's real-phone smoke** (voice play/seek/cached replay, push, upgrade from a
-pre-Phase-2 install) — see `frontend/CLAUDE.md` §5 for the store's invariants.
+(`files/fp_content.db`) and the JWT lives in Keystore-backed secure storage. **Distribution is
+gated on two things, both owner tasks:** (1) the real-phone smoke — voice play/seek/cached
+replay, push, upgrade from a pre-Phase-2 install; (2) the **`.jks` off-PC backup**, still
+outstanding — see "Backing it up" below, because a lost keystore permanently ends updates for
+everyone who installed. See `frontend/CLAUDE.md` §5 for the store's invariants.
+
+**`CONTENT_KEY_CANARY_LOST` is NOT one of these gates.** `ContentKeyCanary.checkAndArm()` is
+`if (!_isWeb) return;` — a no-op on native; it measures web IndexedDB+WebCrypto durability and
+gates a separate web-sealing effort. It can produce no evidence about Android Keystore. What
+covers Android key loss instead: no auth binding, keys co-located with the Signal identity, the
+armed-gate, and `CONTENT_KEY_LOST` → retired-id rendering.
 
 ## What is enforced mechanically (do not re-implement by hand)
 
@@ -45,9 +53,34 @@ copy key.properties.example key.properties
 ```
 
 - `key.properties` and `keystore/` are gitignored (both `frontend/keystore/` and
-  `frontend/android/keystore/` are covered). **Never commit either.**
-- **Back up `fireplace-release.jks` + both passwords** in at least two places that are not this PC
-  (password manager + offline copy). This is the single unrecoverable artifact of the whole release.
+  `frontend/android/keystore/` are covered). **Never commit either.** Verified 2026-08-02:
+  neither path is tracked, and `git check-ignore -v` names the rules
+  (`frontend/android/.gitignore:12`, root `.gitignore:47`).
+
+### Backing it up (the one unrecoverable artifact)
+
+`frontend/android/keystore/fireplace-release.jks` exists on the dev PC and **nowhere else**.
+Lose it and existing installs can never be updated again — the only path left for a user is
+uninstall, which destroys their Signal keys and history. This outranks every other gate in
+this runbook.
+
+```powershell
+# 1. Fingerprint the live keystore. Record this value somewhere you will still have it later.
+Get-FileHash frontend/android/keystore/fireplace-release.jks -Algorithm SHA256
+
+# 2. Copy to at least TWO destinations that are not this PC and not the same failure domain
+#    (e.g. an encrypted password-manager attachment AND an offline USB / external drive).
+#    The two passwords live in the password manager as fields, NOT next to the file:
+#    key.properties is plaintext, so a backup holding both the .jks and key.properties in
+#    one place is a single-object compromise.
+
+# 3. Verify each copy AFTER writing it — a backup you have not read back is a guess.
+Get-FileHash <path-to-copy> -Algorithm SHA256   # must equal step 1
+```
+
+A restore is only proven when a build signed by the restored keystore reports the same
+certificate as the shipped one: `apksigner verify --print-certs <apk>`. Do that check once,
+now, while a known-good original still exists — not on the day you need the backup.
 
 ## Build
 
