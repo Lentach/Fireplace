@@ -1631,7 +1631,13 @@ class EncryptionService {
   // still exist and might yet be lost. A little headroom over that is enough.
   static const int _ledgerCap = 3000;
 
-  String _ledgerKey(int userId) => 'e2e_${userId}_decrypted_ledger_v1';
+  /// Deliberately OUTSIDE `_decryptedContentPrefix`, matching the `retired_v1`
+  /// convention. A key inside that namespace is swept by every record scan:
+  /// the LRU prune sorts by `int.tryParse(suffix) ?? 0`,
+  /// so the ledger would sort as id 0 and be the FIRST thing evicted once the
+  /// store passes its cap — deleting itself on exactly the heavy accounts it
+  /// exists to protect — and a full local wipe would take it too.
+  String _ledgerKey(int userId) => 'e2e_${userId}_ledger_v1';
 
   /// Buffered so a 50-row history pass costs ONE read-modify-write of the id
   /// list instead of fifty. Per-row storage work on web is what turned the
@@ -1678,6 +1684,59 @@ class EncryptionService {
         }
       } catch (_) {}
     });
+  }
+
+  /// One-time backfill for accounts that predate the ledger.
+  ///
+  /// Without it the ledger only ever covers messages decrypted AFTER it ships,
+  /// so every conversation a user already has stays exactly as fragile as
+  /// before — which is most of the value, missing. Every id that has a stored
+  /// plaintext record is BY DEFINITION an id whose plaintext was persisted, so
+  /// the existing store already IS the ledger's history; it just was not
+  /// written down.
+  ///
+  /// Seeds ONLY from `_decryptedContentPrefix`, never [storedMessageIds].
+  /// That helper unions the raw `_decrypt_raw_v1_` cache too, and [recordExists]
+  /// cannot see that prefix — so an id living only there would seed as
+  /// "decrypted before", probe as definitely-absent, and be permanently
+  /// retired, even though `_loadRawDecryptedContent` could still serve it. The
+  /// seed must stay a SUBSET of what [recordExists] can confirm.
+  ///
+  /// Reads the per-engine cache, which can under-enumerate. Safe direction: a
+  /// missing entry restores the OLD behaviour (attempt the decrypt), it never
+  /// invents a false "unavailable".
+  Future<void> backfillLedgerFromStore() async {
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
+      // Presence of the key is the "already seeded" marker, so this enumerates
+      // once per account rather than on every launch.
+      if (prefs.getString(_ledgerKey(userId)) != null) return;
+      final prefix = _decryptedContentPrefix(userId);
+      final seed = <int>[];
+      // Enumerate the SAME source [recordExists] trusts. `getKeys()` serves the
+      // plugin's in-memory cache, which still lists a key whose commit was
+      // refused (quota) — seeding one of those would hand the gate an id it can
+      // only ever probe as definitely-absent, and it would be retired
+      // permanently. Fall back to the cache only where no authoritative read
+      // exists, which is also where writes cannot be silently dropped.
+      final snapshot = await _authoritativeSnapshot();
+      final keys = snapshot?.keys ?? prefs.getKeys();
+      for (final key in keys) {
+        if (!key.startsWith(prefix)) continue;
+        final id = int.tryParse(key.substring(prefix.length));
+        if (id != null) seed.add(id);
+      }
+      seed.sort();
+      final kept = seed.length > _ledgerCap
+          ? seed.sublist(seed.length - _ledgerCap)
+          : seed;
+      // Written even when empty: the marker is what stops a fresh account from
+      // re-enumerating the whole store at every launch.
+      await prefs.setString(_ledgerKey(userId), jsonEncode(kept));
+    } catch (_) {}
   }
 
   Future<Set<int>> decryptedLedgerIds() async {

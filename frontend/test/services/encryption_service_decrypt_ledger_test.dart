@@ -157,10 +157,14 @@ void main() {
     expect(await service.decryptedLedgerIds(), contains(18605));
   });
 
-  test('the ledger is bounded and keeps the newest ids', () async {
+  test('the PERSISTED ledger is bounded and keeps the newest ids', () async {
     // Ids ascend with age, so eviction drops the oldest. A dropped entry only
     // restores the old behaviour (attempt the decrypt) — never a false
     // "unavailable" — which is why a bound is acceptable at all.
+    //
+    // Asserted on a reopened service: the live one also reports ids still
+    // buffered in memory (pinned by the "buffered id is visible" test above),
+    // and the cap governs what reaches storage, not that in-flight view.
     const cap = 3000;
     final ids = [for (var i = 0; i < cap + 50; i++) 1000 + i];
     for (final id in ids) {
@@ -168,9 +172,71 @@ void main() {
     }
     await service.flushDecryptedLedger();
 
-    final ledger = await service.decryptedLedgerIds();
+    final reopened = EncryptionService();
+    await reopened.initialize(37);
+    final ledger = await reopened.decryptedLedgerIds();
+
     expect(ledger.length, lessThanOrEqualTo(cap));
     expect(ledger, contains(ids.last));
     expect(ledger, isNot(contains(ids.first)));
+  });
+
+  group('backfill for accounts that predate the ledger', () {
+    test('seeds from records already on disk', () async {
+      // Without this the ledger only ever covers messages decrypted AFTER it
+      // ships, so existing conversations stay exactly as fragile as before —
+      // which is nearly all of the value, missing.
+      await service.saveDecryptedContent(18700, {'content': 'old message'});
+      await service.saveDecryptedContent(18701, {'content': 'older message'});
+
+      // A fresh service on the same store: no ledger key has ever been written.
+      final upgraded = EncryptionService();
+      await upgraded.initialize(37);
+      await upgraded.backfillLedgerFromStore();
+
+      expect(
+        await upgraded.decryptedLedgerIds(),
+        containsAll(<int>[18700, 18701]),
+      );
+    });
+
+    test('never seeds an id that recordExists cannot confirm', () async {
+      // storedMessageIds() unions the raw `_decrypt_raw_v1_` cache, which
+      // recordExists cannot see. Seeding from that union would let an id whose
+      // plaintext commit FAILED — but whose raw entry landed — probe as
+      // definitely-absent and be permanently retired, destroying access to a
+      // row the raw cache could still serve. The seed must stay a SUBSET of
+      // what recordExists can confirm.
+      store.refusePrefix = '_decrypted_';
+      await service.saveDecryptedContent(18702, {'content': 'plaintext lost'});
+      store.refusePrefix = null;
+
+      final upgraded = EncryptionService();
+      await upgraded.initialize(37);
+      await upgraded.backfillLedgerFromStore();
+
+      final ledger = await upgraded.decryptedLedgerIds();
+      for (final id in ledger) {
+        expect(
+          await upgraded.recordExists(id),
+          isTrue,
+          reason: 'seeded id $id cannot be confirmed by recordExists, so the '
+              'gate would retire it permanently',
+        );
+      }
+      expect(ledger, isNot(contains(18702)));
+    });
+
+    test('runs once, then leaves the ledger alone', () async {
+      // The marker stops a whole-store re-enumeration at every launch, and
+      // stops a later backfill resurrecting an id that an edit forgot.
+      await service.saveDecryptedContent(18703, {'content': 'seeded'});
+      await service.flushDecryptedLedger();
+      await service.forgetDecrypted(18703);
+
+      await service.backfillLedgerFromStore();
+
+      expect(await service.decryptedLedgerIds(), isNot(contains(18703)));
+    });
   });
 }

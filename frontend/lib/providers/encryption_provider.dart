@@ -303,7 +303,11 @@ class EncryptionProvider extends ChangeNotifier {
   /// Load the persisted ledger. Sits beside [loadRetiredIds] and must complete
   /// before the first history pass, or that pass makes exactly the mistake the
   /// ledger exists to prevent.
+  ///
+  /// Backfills first, so an account that predates the ledger is protected from
+  /// its very first pass instead of only for messages decrypted from now on.
   Future<void> loadDecryptedLedger() async {
+    await _encryptionService.backfillLedgerFromStore();
     final ids = await _encryptionService.decryptedLedgerIds();
     _decryptedLedger
       ..clear()
