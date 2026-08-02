@@ -42,9 +42,34 @@ copy key.properties.example key.properties
 ```
 
 - `key.properties` and `keystore/` are gitignored (both `frontend/keystore/` and
-  `frontend/android/keystore/` are covered). **Never commit either.**
-- **Back up `fireplace-release.jks` + both passwords** in at least two places that are not this PC
-  (password manager + offline copy). This is the single unrecoverable artifact of the whole release.
+  `frontend/android/keystore/` are covered). **Never commit either.** Verified 2026-08-02:
+  neither path is tracked, and `git check-ignore -v` names the rules
+  (`frontend/android/.gitignore:12`, root `.gitignore:47`).
+
+### Backing it up (the one unrecoverable artifact)
+
+`frontend/android/keystore/fireplace-release.jks` exists on the dev PC and **nowhere else**.
+Lose it and existing installs can never be updated again — the only path left for a user is
+uninstall, which destroys their Signal keys and history. This outranks every other gate in
+this runbook.
+
+```powershell
+# 1. Fingerprint the live keystore. Record this value somewhere you will still have it later.
+Get-FileHash frontend/android/keystore/fireplace-release.jks -Algorithm SHA256
+
+# 2. Copy to at least TWO destinations that are not this PC and not the same failure domain
+#    (e.g. an encrypted password-manager attachment AND an offline USB / external drive).
+#    The two passwords live in the password manager as fields, NOT next to the file:
+#    key.properties is plaintext, so a backup holding both the .jks and key.properties in
+#    one place is a single-object compromise.
+
+# 3. Verify each copy AFTER writing it — a backup you have not read back is a guess.
+Get-FileHash <path-to-copy> -Algorithm SHA256   # must equal step 1
+```
+
+A restore is only proven when a build signed by the restored keystore reports the same
+certificate as the shipped one: `apksigner verify --print-certs <apk>`. Do that check once,
+now, while a known-good original still exists — not on the day you need the backup.
 
 ## Build
 
