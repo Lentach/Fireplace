@@ -10,12 +10,13 @@ Every fact below was verified by a command at write time. Re-verify anything vol
 |---|---|
 | Prod frontend | `0.0.140 / 3a33bf9` (`/version.json`) |
 | Prod backend | `0.0.136 / 6fb36bf` — **by design**, frontend-only releases since |
-| `master` | `70eff73` (prod runs `3a33bf9`; `70eff73` is docs-only on top) |
-| `feature/android-encrypted-store` | **level with master as of `70eff73`**, PR CI green 4/4 on the merged tree — re-derive the tip with `git rev-parse`, never trust a pinned SHA here |
-| Open PR #111 | Android Phase 2 → master. **Do not merge without owner OK.** |
+| `master` | `ac880f6` — **AHEAD OF PROD.** Carries merged Android Phase 2, undeployed, with no version bump |
+| `feature/android-encrypted-store` | **MERGED into master** via PR #111 on 2026-08-02. Branch ref preserved because the owner's working copy sits on it; delete only after he moves to master |
+| PR #111 | **MERGED** (`ac880f6`), CI green 4/4 |
+| ⚠ Deploy | **Do NOT run `deploy-web.ps1` without explicit owner OK.** master and prod both say `0.0.140`; only `gitCommit` separates them (prod `3a33bf9`, master `ac880f6`). Backend untouched by the merge |
 | PRs #113–#119 | Dependabot, untouched |
 
-Worktrees: owner's main copy `C:/Users/Lentach/Desktop/Fireplace` (on the Android branch, **behind — needs `git pull`**), `fireplace-e2e-audit` (stale, `audit/e2e-safety`, merged long ago — removable), `fireplace-wt-invitation` (master, the one to work in).
+Worktrees: owner's main copy `C:/Users/Lentach/Desktop/Fireplace` (still on `feature/android-encrypted-store`, now merged — he should **switch it to `master` and pull**), `fireplace-e2e-audit` (stale, `audit/e2e-safety`, merged long ago — removable), `fireplace-wt-invitation` (master, the one to work in).
 
 **The PWA is the owner's live workstation with ~25 real conversations.** It is not a test surface. Android ships first, then iOS; the PWA stays for iOS until then.
 
@@ -48,7 +49,7 @@ Governing rule, established across this incident: **over-retention is recoverabl
 ## Open work, highest value first
 
 1. **The ledger — "messages I have already decrypted once".** Just ids, tiny. Today a lost record and a deliberately deleted record are indistinguishable to the app, so it retries decryption and bricks the row. With a ledger: id present + no plaintext ⇒ "unavailable, ask sender to resend", never re-decrypt. **This is what makes aggressive deletion safe instead of one bug away from repeating the incident.** `markRetired` is already shaped like this; it just isn't applied to the general case.
-2. **Encrypted at-rest store (Android Phase 2, PR #111).** The real exposure and the actual distribution blocker. Message plaintext is readable on disk today — base64 in localStorage on web, raw XML on Android. No key, no cracking. Perfect deletion still leaves up to 30 days sitting there.
+2. **~~Encrypted at-rest store (Android Phase 2)~~ — MERGED 2026-08-02 (`ac880f6`), NOT deployed and NOT distributed.** Android now seals content in SQLCipher with Keystore-held keys. Web/desktop keep the prefs path through the same `ContentKv` seam. What remains before an APK reaches anyone: the owner's real-phone smoke and the `.jks` off-PC backup — see `docs/runbooks/android-release.md`. **Web exposure is unchanged and still open:** message plaintext is base64 in localStorage on web, which is what the canary-gated B2 sealing effort would fix.
 3. **Note expiry cron.** `secret-notes.service.ts` deletes expired notes `@Cron(EVERY_DAY_AT_3AM)`, so an **unread** expired note's ciphertext lingers up to ~24h past TTL. The API refuses to serve it, but the AES key lives in the note URL, which is stored as ordinary plaintext message content — so DB access + device access reads a "self-destructed" note. One-line change to match `MessageCleanupService`'s per-minute cron.
 4. **`delete for me` leaves the server row forever.** The server never checks whether *both* participants hid a row, so a message both sides deleted sits there until expiry. It cannot drop it on the first delete because the other participant still needs to read it.
 5. **The expiry sweep logs nothing on success.** That gap made the incident diagnosis much harder than it needed to be. Add success-side diagnostics.

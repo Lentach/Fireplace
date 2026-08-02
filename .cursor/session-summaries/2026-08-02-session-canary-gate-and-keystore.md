@@ -72,3 +72,30 @@ verified the earlier merges had not broken anything.
 - PR #111 open, mergeable, CI green, **not merged, needs explicit OK**.
 - Process note: five docs commits to master this session, each putting the branch behind and
   costing a merge + CI cycle. Batch doc edits into one commit before merging.
+
+## Addendum — PR #111 merged (same session)
+
+Owner gave explicit OK. `feature/android-encrypted-store` merged to master as **`ac880f6`**
+(merge commit, matching the repo's convention — #109/#110/#112 all used merge commits, not squash).
+Master CI green **4/4**. Frontend only: 38 files, +4754/-144; `git diff origin/master...HEAD --
+backend/` was empty pre-merge, so backend is untouched.
+
+**Deliberately NOT bumped.** The branch carried no version bump and I left it that way: a bump
+signals a release, and bumping while prod stays on `3a33bf9` would invite someone to "catch prod
+up". Detection still works because CLAUDE.md §4 already says to trust `gitCommit`, never semver —
+prod `3a33bf9` vs master `ac880f6`.
+
+**The hazard this creates, recorded at the top of LATEST.md:** master's frontend now contains
+Phase 2, which refactored the *web* read path too (`_authoritativeSnapshot()` moved out of
+`encryption_service.dart` into the `ContentKv`/`PrefsContentKv` seam). A routine
+`git pull ; .\deploy-web.ps1` would ship it to the owner's live PWA. Web behaviour is
+**test-equivalent** — 1115 green plus the reload-race falsification — **not byte-identical
+source**, and the PWA holds ~25 real conversations. Do not web-deploy without explicit OK.
+`./deploy-backend.sh` is unaffected.
+
+The branch ref was **kept**, not deleted: the owner's working copy is checked out on it, and
+deleting the remote would orphan his checkout. Delete it after he moves that copy to master.
+
+A Dependabot security-update run (npm `brace-expansion`, backend) reports failure on `ac880f6`.
+It is a separate workflow from `ci.yml` and unrelated to this merge — CI itself is 4/4 green.
+PRs #113-#119 remain untriaged.
