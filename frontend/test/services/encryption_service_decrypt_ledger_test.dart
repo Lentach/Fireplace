@@ -227,6 +227,31 @@ void main() {
       expect(ledger, isNot(contains(18702)));
     });
 
+    test('an empty result is retried, never marked done', () async {
+      // The backfill runs once per account and that single run is the only one
+      // that matters. If the authoritative read came back empty on that
+      // attempt — a transient hiccup — persisting the marker anyway would
+      // disable the ledger for that account FOREVER, silently, while the docs
+      // claim it is covered. An empty seed must therefore leave no marker.
+      final fresh = EncryptionService();
+      await fresh.initialize(37);
+      await fresh.backfillLedgerFromStore(); // store is empty: no marker
+
+      // Records appear afterwards (or the earlier read was simply wrong).
+      await fresh.saveDecryptedContent(18800, {'content': 'appeared later'});
+
+      final next = EncryptionService();
+      await next.initialize(37);
+      await next.backfillLedgerFromStore();
+
+      expect(
+        await next.decryptedLedgerIds(),
+        contains(18800),
+        reason: 'an empty first attempt must not permanently disable the '
+            'backfill for this account',
+      );
+    });
+
     test('runs once, then leaves the ledger alone', () async {
       // The marker stops a whole-store re-enumeration at every launch, and
       // stops a later backfill resurrecting an id that an edit forgot.

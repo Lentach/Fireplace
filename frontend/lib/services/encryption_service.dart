@@ -1733,8 +1733,18 @@ class EncryptionService {
       final kept = seed.length > _ledgerCap
           ? seed.sublist(seed.length - _ledgerCap)
           : seed;
-      // Written even when empty: the marker is what stops a fresh account from
-      // re-enumerating the whole store at every launch.
+      // An EMPTY seed writes no marker, so the backfill is retried next launch.
+      //
+      // This runs exactly once per account, and it is the only run that ever
+      // matters. If the authoritative snapshot came back empty or partial on
+      // that single attempt — a transient storage hiccup — writing the marker
+      // anyway would persist an empty ledger and disable the feature for that
+      // account permanently, with no retry, no diagnostic, and no way to
+      // notice: the brick this exists to prevent would stay armed while the
+      // docs claim it is covered. An empty store costs a trivial re-scan
+      // instead, and the first real decrypt writes the key anyway (which then
+      // serves as the marker).
+      if (kept.isEmpty) return;
       await prefs.setString(_ledgerKey(userId), jsonEncode(kept));
     } catch (_) {}
   }
