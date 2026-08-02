@@ -1,5 +1,6 @@
 import 'package:flutter/foundation.dart';
 import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
 
 /// The storage seam under [EncryptionService]'s plaintext-record machinery.
 ///
@@ -29,6 +30,28 @@ abstract class ContentKv {
   /// Refresh the read view from the backing store where another context can
   /// have written to it. Web-only concern; a no-op elsewhere.
   Future<void> reload();
+
+  /// A snapshot of the BACKING STORE keyed exactly like [getString], or null
+  /// when this backend's read view cannot go stale and [getString] is already
+  /// authoritative.
+  ///
+  /// WHY THIS EXISTS. [reload] on the prefs backend refills its in-memory cache
+  /// from a snapshot taken across an await; a write landing inside that window
+  /// survives in the store but is DROPPED from the cache. For a plaintext
+  /// record that false miss is not "no plaintext" — the caller re-decrypts a
+  /// ciphertext whose Signal ratchet key was consumed at first decrypt, hits
+  /// DuplicateMessage, and the row becomes a permanent "[Decryption failed]"
+  /// while its only readable copy is still on disk. That shipped as the
+  /// 2026-07-29 incident.
+  ///
+  /// Locking cannot close it: the Signal session stores reload the same
+  /// underlying singleton throughout decrypt. So the record readers ask the
+  /// backend for ground truth instead, and each backend decides what that
+  /// means — which is why this lives here and not in `EncryptionService`.
+  ///
+  /// Implementations MUST return keys in the same namespace [getString] takes,
+  /// with any storage-level prefix already stripped.
+  Future<Map<String, Object>?> authoritativeSnapshot();
 
   String? getString(String key);
 
@@ -76,6 +99,37 @@ class PrefsContentKv implements ContentKv {
   @override
   Future<void> reload() async {
     if (kIsWeb) await _prefs.reload();
+  }
+
+  /// Web only. `reload()` already pays for exactly this enumeration, so ground
+  /// truth costs nothing extra there. Off web nothing clears the cache, so the
+  /// answer is null and callers keep the free synchronous read.
+  ///
+  /// Strips the backend prefix so callers never learn it. Hardcoded because the
+  /// package exposes [SharedPreferences.setPrefix] but no getter, and this app
+  /// never changes it; pinned by test so a package change fails loudly instead
+  /// of silently answering null for every record.
+  @visibleForTesting
+  static const String storePrefix = 'flutter.';
+
+  /// Forces the web branch under `flutter test`, which runs on the Dart VM with
+  /// [kIsWeb] false and this backend selected. Without it the reload-race suite
+  /// would exercise the cache path — precisely the one it exists to prove
+  /// broken — and pass while proving nothing.
+  @visibleForTesting
+  static bool debugForceAuthoritative = false;
+
+  @override
+  Future<Map<String, Object>?> authoritativeSnapshot() async {
+    if (!kIsWeb && !debugForceAuthoritative) return null;
+    final raw = await SharedPreferencesStorePlatform.instance.getAll();
+    return <String, Object>{
+      for (final entry in raw.entries)
+        (entry.key.startsWith(storePrefix)
+                ? entry.key.substring(storePrefix.length)
+                : entry.key):
+            entry.value,
+    };
   }
 
   @override

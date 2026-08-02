@@ -91,6 +91,52 @@ class EncryptionService {
 
   Future<void> _reloadPrefsForCrossContext(ContentKv prefs) => prefs.reload();
 
+  /// Ground truth for a record read, or null when [ContentKv.getString] is
+  /// already authoritative on this backend.
+  ///
+  /// WHY IT EXISTS — do not "simplify" the readers below back onto the cache.
+  /// The prefs backend's `reload()` refills its in-memory cache from a snapshot
+  /// taken across an await, so a write landing in that window survives in the
+  /// store but is DROPPED from the cache. For a plaintext record that miss is
+  /// not "no plaintext": the caller re-decrypts a ciphertext whose Signal
+  /// ratchet key was consumed at first decrypt, hits DuplicateMessage, and the
+  /// row becomes a permanent "[Decryption failed]" while its only readable copy
+  /// is still on disk. That shipped as the 2026-07-29 incident. The
+  /// read-modify-write in [saveDecryptedContent] reads the same null and can
+  /// then write a narrower record — including the "[Decryption failed]" label —
+  /// OVER real plaintext, which is unrecoverable loss.
+  ///
+  /// A lock in this class could not close it: the Signal session stores reload
+  /// the SAME underlying singleton throughout decrypt, concurrently with these
+  /// writes.
+  ///
+  /// Which backends answer, and what it costs, is [ContentKv]'s business —
+  /// asking it here is what keeps this class free of backend detail. The prefs
+  /// backend answers only on web (where `reload()` already paid for the same
+  /// enumeration); the native encrypted store answers null because its view
+  /// cannot be clobbered.
+  Future<Map<String, Object>?> _authoritativeSnapshot() async =>
+      (await _sharedPrefs).authoritativeSnapshot();
+
+  /// The raw record at [key]. A null [snapshot] means the backend's own read is
+  /// ground truth. A null RESULT means the record is GENUINELY absent.
+  String? _rawRecord(
+    Map<String, Object>? snapshot,
+    ContentKv prefs,
+    String key,
+  ) {
+    if (snapshot == null) return prefs.getString(key);
+    final value = snapshot[key];
+    return value is String ? value : null;
+  }
+
+  /// Record keys under [prefix], from whichever view is authoritative.
+  Iterable<String> _recordKeys(
+    Map<String, Object>? snapshot,
+    ContentKv prefs,
+    String prefix,
+  ) => (snapshot?.keys ?? prefs.getKeys()).where((k) => k.startsWith(prefix));
+
   final int _decryptedContentCacheLimit;
   final SessionCrossContextLockRunner _sessionCrossContextLock;
 
@@ -811,6 +857,22 @@ class EncryptionService {
   static const String _metaDisappearAfter =
       PlaintextRecordCodec.disappearAfterKey;
 
+  /// Content values that are UI PLACEHOLDERS, never real message text.
+  ///
+  /// Mirrors the labels in `messaging_provider.dart` (and the placeholder set
+  /// `MessageModel` filters on). Kept here because the guard in
+  /// [saveDecryptedContent] is the last line of defence against a placeholder
+  /// write destroying the only readable copy of a message, and that guard must
+  /// not depend on the provider layer. `encryption_service_reload_race_test`
+  /// pins these against `MessageModel` so the two cannot drift.
+  @visibleForTesting
+  static const Set<String> placeholderContents = <String>{
+    '[encrypted]',
+    '[Decryption failed]',
+    '[Encryption not initialized]',
+    '[Message no longer stored on this device]',
+  };
+
   /// Persist decrypted message content to survive app restart.
   ///
   /// Uses SharedPreferences (localStorage on web) instead of flutter_secure_storage
@@ -843,10 +905,11 @@ class EncryptionService {
     if (userId == null) return;
     try {
       final prefs = await _sharedPrefs;
-      await _reloadPrefsForCrossContext(prefs);
       final key = _decryptedContentKey(userId, id);
       Map<String, dynamic>? existing;
-      final existingRaw = prefs.getString(key);
+      // Authoritative: a cache miss here would let the narrower writes below
+      // (above all the "[Decryption failed]" label) replace real plaintext.
+      final existingRaw = _rawRecord(await _authoritativeSnapshot(), prefs, key);
       if (existingRaw != null) {
         try {
           existing = jsonDecode(existingRaw) as Map<String, dynamic>;
@@ -860,6 +923,26 @@ class EncryptionService {
       // transient re-decrypt that throws DuplicateMessage and tries to store
       // "[Decryption failed]") must not destroy them.
       if (data['mediaKey'] == null && existing?['mediaKey'] != null) return;
+
+      // Never let a PLACEHOLDER replace real plaintext. The failure path
+      // persists "[Decryption failed]" so a terminal failure is not retried
+      // forever, and it writes `content` alone. This record is the only copy —
+      // the server's ciphertext can never be decrypted again once the ratchet
+      // consumed its key — and hydration skips a record holding that label, so
+      // the row is permanently unreadable afterwards. That turned ONE bad
+      // decrypt (a transient failure, or a false cache miss on the read above)
+      // into silent, irreversible loss of a message still sitting on disk.
+      // Keeping the old plaintext costs at most a stale row; the alternative is
+      // unrecoverable.
+      final incomingContent = data['content'];
+      final heldContent = existing?['content'];
+      if (incomingContent is String &&
+          placeholderContents.contains(incomingContent) &&
+          heldContent is String &&
+          heldContent.isNotEmpty &&
+          !placeholderContents.contains(heldContent)) {
+        return;
+      }
 
       // Carry forward envelope metadata a later, narrower write does not supply
       // — the "[Decryption failed]" path writes `content` alone. Dropping
@@ -926,11 +1009,12 @@ class EncryptionService {
     if (userId == null) return null;
     final key = _decryptedContentKey(userId, id);
     try {
-      // Legacy SharedPreferences caches per engine. Reload before every read so
-      // plaintext written by another PWA tab is visible immediately.
+      // Read the BACKING STORE, not the per-engine cache: a reload racing a
+      // concurrent write drops the record from that cache while it survives
+      // here, and a false miss re-decrypts a consumed ratchet key into a
+      // permanent "[Decryption failed]".
       final prefs = await _sharedPrefs;
-      await _reloadPrefsForCrossContext(prefs);
-      final raw = prefs.getString(key);
+      final raw = _rawRecord(await _authoritativeSnapshot(), prefs, key);
       if (raw != null) return jsonDecode(raw) as Map<String, dynamic>;
       final oldRaw = await _legacyDecryptedContentFallback(key);
       if (oldRaw != null) return jsonDecode(oldRaw) as Map<String, dynamic>;
@@ -991,10 +1075,14 @@ class EncryptionService {
     final wanted = ids.toSet();
     if (wanted.isEmpty) return result;
     try {
+      // ONE authoritative snapshot for the whole pass. This is the read the
+      // history hydration depends on: every id it misses here is re-decrypted,
+      // and for an already-decrypted message that means DuplicateMessage and a
+      // permanent "[Decryption failed]".
       final prefs = await _sharedPrefs;
-      await _reloadPrefsForCrossContext(prefs);
+      final snapshot = await _authoritativeSnapshot();
       for (final id in wanted) {
-        final raw = prefs.getString(_decryptedContentKey(userId, id));
+        final raw = _rawRecord(snapshot, prefs, _decryptedContentKey(userId, id));
         if (raw == null) continue;
         try {
           result[id] = jsonDecode(raw) as Map<String, dynamic>;
@@ -1212,9 +1300,10 @@ class EncryptionService {
     if (userId == null) return;
     try {
       final prefs = await _sharedPrefs;
-      await _reloadPrefsForCrossContext(prefs);
       final key = _decryptedContentKey(userId, messageId);
-      final raw = prefs.getString(key);
+      // Authoritative: a false miss here silently drops the real deadline and
+      // leaves the record on the never-read fallback.
+      final raw = _rawRecord(await _authoritativeSnapshot(), prefs, key);
       if (raw == null) return;
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return;
@@ -1254,6 +1343,9 @@ class EncryptionService {
     if (targets.isEmpty) return <int>{};
     return _messageIdsMatching(
       (id, record) => targets.contains(record[_metaConversationId]),
+      // The user asked for this history to be gone: missing an id that is on
+      // disk would leave it readable.
+      authoritative: true,
     );
   }
 
@@ -1301,7 +1393,7 @@ class EncryptionService {
         retired.add(id);
       }
       return false;
-    });
+    }, authoritative: false);
     return (expired: expired, retired: retired);
   }
 
@@ -1323,6 +1415,15 @@ class EncryptionService {
       _rawDecryptedContentPrefix(userId),
     ];
     try {
+      // DELIBERATELY the per-engine cache, not [_authoritativeSnapshot]. This is
+      // the SOLE input to server reconciliation, which destroys the plaintext of
+      // every id the server does not return — and expired rows ARE hard-deleted
+      // server-side by a per-minute cron, so orphans genuinely exist. A
+      // clobbered cache under-enumerates, which SUPPRESSES those purges; going
+      // authoritative would enumerate the full set and destroy every orphan at
+      // once on the first launch after this change. Over-retention is
+      // recoverable, over-destruction is not, and none of this is needed to fix
+      // the false-miss bug: only the record READS are.
       final prefs = await _sharedPrefs;
       await _reloadPrefsForCrossContext(prefs);
       final ids = <int>{};
@@ -1483,19 +1584,32 @@ class EncryptionService {
   ///
   /// [test] receives the id alongside the record so a caller can bucket ids by
   /// rule in one pass instead of scanning the store once per rule.
+  ///
+  /// [authoritative] picks WHICH VIEW is scanned, and the two callers want
+  /// opposite directions — do not collapse them:
+  ///  * true for a user-requested deletion ([messageIdsForConversations]). The
+  ///    user asked for this plaintext to be gone, so missing an id that is on
+  ///    disk leaves readable history behind. Under-enumerating is the failure.
+  ///  * false for automatic destruction ([destroyableMessageIds]). Nobody asked
+  ///    for it, the record is the only copy, and a reload-clobbered cache
+  ///    under-enumerates, which SUPPRESSES destruction. Over-retention is
+  ///    recoverable, over-destruction is not.
   Future<Set<int>> _messageIdsMatching(
-    bool Function(int id, Map<String, dynamic> record) test,
-  ) async {
+    bool Function(int id, Map<String, dynamic> record) test, {
+    required bool authoritative,
+  }) async {
     final userId = _userId;
     if (userId == null) return <int>{};
     final prefix = _decryptedContentPrefix(userId);
 
+    final Map<String, Object>? snapshot;
     final ContentKv prefs;
     final List<String> keys;
     try {
       prefs = await _sharedPrefs;
-      await _reloadPrefsForCrossContext(prefs);
-      keys = prefs.getKeys().where((k) => k.startsWith(prefix)).toList();
+      snapshot = authoritative ? await _authoritativeSnapshot() : null;
+      if (snapshot == null) await _reloadPrefsForCrossContext(prefs);
+      keys = _recordKeys(snapshot, prefs, prefix).toList();
     } catch (_) {
       return <int>{};
     }
@@ -1505,7 +1619,10 @@ class EncryptionService {
     for (final key in keys) {
       final id = int.tryParse(key.substring(prefix.length));
       if (id == null) continue;
-      final raw = prefs.getString(key);
+      // Same view the keys came from. Reading content off the cache while
+      // enumerating from the store would drop a key that is on disk, and the
+      // authoritative caller is the one that must not miss.
+      final raw = _rawRecord(snapshot, prefs, key);
       if (raw == null) continue;
 
       Map<String, dynamic>? record;
@@ -2004,6 +2121,13 @@ class EncryptionService {
     String prefix,
   ) async {
     return <String>{
+      // DELIBERATELY the per-engine cache, not [_storeSnapshot]. Eviction here
+      // destroys the only copy of a message and calls [markRetired], which is
+      // permanent. A reload-clobbered cache UNDER-counts, which suppresses
+      // eviction — the safe direction. Making this authoritative would let an
+      // account sitting at the cap evict a batch of its oldest history on the
+      // first launch after the change. Retention pressure is a separate problem
+      // from record visibility; do not "fix" it here.
       ...prefs.getKeys().where((key) => key.startsWith(prefix)),
       // Legacy store, mobile only. On web DualStorage reads the `sig_`-prefixed
       // async namespace, which never held a `_decryptedContentKey`, so this

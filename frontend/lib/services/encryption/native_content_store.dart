@@ -338,6 +338,15 @@ class NativeContentStore implements ContentKv {
   }
 
   @override
+  Future<Map<String, Object>?> authoritativeSnapshot() async {
+    // Null means "[getString] is already ground truth". Single process, and
+    // nothing ever clears [_view] — `reload()` above is a no-op — so the
+    // clobber window the prefs backend has cannot exist here. Returning a copy
+    // instead would make every record read allocate the whole view for nothing.
+    return null;
+  }
+
+  @override
   String? getString(String key) {
     final v = _view[key];
     return v is String ? v : null;
