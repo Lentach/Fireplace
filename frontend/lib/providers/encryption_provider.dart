@@ -503,6 +503,12 @@ class EncryptionProvider extends ChangeNotifier {
   Future<bool?> recordExists(int messageId) =>
       _encryptionService.recordExists(messageId);
 
+
+  /// True when the raw replay cache can still serve [messageId] without any
+  /// ratchet work. Delegates to [EncryptionService.rawReplayExists]. A missing
+  /// `_decrypted_` record is NOT proof of loss while this answers true.
+  Future<bool?> rawReplayExists(int messageId) =>
+      _encryptionService.rawReplayExists(messageId);
   /// Batched persisted-plaintext lookup for a bounded id set (one cross-engine
   /// reload for the whole set). Delegates to
   /// [EncryptionService.getDecryptedContentMany] — see the safety note there

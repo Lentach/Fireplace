@@ -23,6 +23,7 @@ class _LedgerEncryption extends EncryptionProvider {
   _LedgerEncryption({
     required this.ledger,
     required this.exists,
+    this.replayable = false,
     Map<int, Map<String, dynamic>>? persisted,
   }) : persisted = persisted ?? {};
 
@@ -32,6 +33,11 @@ class _LedgerEncryption extends EncryptionProvider {
   /// Tri-state answer for `recordExists`: true present, false definitely
   /// absent, null undetermined.
   final bool? exists;
+
+  /// Tri-state answer for `rawReplayExists`. `decrypt` serves the raw replay
+  /// cache before the ratchet, so while this is true the message is readable
+  /// no matter what `recordExists` says.
+  final bool? replayable;
 
   final Map<int, Map<String, dynamic>> persisted;
 
@@ -51,6 +57,17 @@ class _LedgerEncryption extends EncryptionProvider {
 
   @override
   Future<bool?> recordExists(int messageId) async => exists;
+
+  @override
+  Future<bool?> rawReplayExists(int messageId) async => replayable;
+
+  @override
+  void invalidateDecryptionCache(int messageId) {
+    invalidated.add(messageId);
+    ledger.remove(messageId);
+  }
+
+  final List<int> invalidated = [];
 
   @override
   Future<void> retireLostMessage(int messageId) async {
@@ -126,11 +143,14 @@ void main() {
   Future<({MessagingProvider provider, _LedgerEncryption encryption})> run({
     required Set<int> ledger,
     required bool? exists,
+    bool? replayable = false,
     Map<int, Map<String, dynamic>>? persisted,
+    String? serverEditedAt,
   }) async {
     final encryption = _LedgerEncryption(
       ledger: ledger,
       exists: exists,
+      replayable: replayable,
       persisted: persisted,
     );
     final conversations = ConversationsProvider();
@@ -148,16 +168,19 @@ void main() {
     provider.setEmitCallback((_, _) {});
     provider.setActiveConversationIdForTest(10);
 
-    provider.onMessageHistory({
-      'conversationId': 10,
-      'messages': [_encryptedInboundJson(lostId)],
-    });
+    final row = _encryptedInboundJson(lostId);
+    if (serverEditedAt != null) row['editedAt'] = serverEditedAt;
+    provider.onMessageHistory({'conversationId': 10, 'messages': [row]});
 
     // The history pass runs async. Settle on the decrypt attempt rather than on
     // the label, because two of these cases deliberately leave the row alone.
     for (var i = 0; i < 200; i++) {
       await Future<void>.delayed(const Duration(milliseconds: 10));
-      if (encryption.decryptCalls > 0 || encryption.retired.isNotEmpty) break;
+      if (encryption.decryptCalls > 0 ||
+          encryption.retired.isNotEmpty ||
+          encryption.invalidated.isNotEmpty) {
+        break;
+      }
     }
     return (provider: provider, encryption: encryption);
   }
@@ -202,6 +225,62 @@ void main() {
     expect(r.encryption.decryptCalls, 0);
     expect(r.encryption.retired, isEmpty);
     expect(rowOf(r.provider)?.content, 'still here');
+  });
+
+  test('a raw-replay hit is NEVER retired, even with no plaintext record', () async {
+    // CRITICAL regression. `decrypt` consults the raw replay cache BEFORE the
+    // ratchet and returns its plaintext with zero ratchet work, so a row that
+    // cache covers is fully readable even when the `_decrypted_` record is
+    // gone. Retiring it destroys readable data — the exact inversion the
+    // governing rule forbids. The first version of this gate did precisely
+    // that: it asked recordExists, got false, and retired permanently.
+    final r = await run(ledger: {lostId}, exists: false, replayable: true);
+
+    expect(
+      r.encryption.retired,
+      isEmpty,
+      reason: 'the raw replay cache can still serve this message',
+    );
+    expect(
+      r.encryption.decryptCalls,
+      greaterThan(0),
+      reason: 'decrypt must be allowed to run so the replay path resolves it',
+    );
+  });
+
+  test('an edit-stale record is not served, and is not retired', () async {
+    // CRITICAL regression. An edit puts NEW ciphertext under the SAME id, and
+    // that key has never been spent. On a cold start there is no local row, so
+    // neither edit route clears the ledger; the gate must notice staleness
+    // itself. Serving the pre-edit record would hide the edit forever, and
+    // retiring it would destroy a message that decrypts cleanly.
+    final r = await run(
+      ledger: {lostId},
+      exists: true,
+      persisted: {
+        lostId: {
+          'content': 'text from BEFORE the edit',
+          'editedAt': '2026-01-01T00:00:00.000Z',
+        },
+      },
+      serverEditedAt: '2026-06-01T00:00:00.000Z',
+    );
+
+    expect(
+      r.encryption.retired,
+      isEmpty,
+      reason: 'the edited ciphertext has an UNSPENT key — retiring it would '
+          'destroy a message that decrypts cleanly',
+    );
+    expect(
+      r.encryption.invalidated,
+      contains(lostId),
+      reason: 'the gate must drop the stale ledger entry rather than serve the '
+          'pre-edit record, so the new ciphertext can be decrypted',
+    );
+    // NB: what the row finally renders is owned by the decrypt-failure
+    // fallback further down _decryptMessageAsync, which predates this change.
+    // The gate's contract is only: do not serve stale, do not retire.
   });
 
   test('an id absent from the ledger still reaches the decrypt path', () async {

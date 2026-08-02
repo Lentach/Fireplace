@@ -193,7 +193,7 @@ that is exactly what cost us the evidence window in July.
 
 ## Addendum 5 — the decrypt ledger (built, NOT deployed)
 
-`e2e_<uid>_decrypted_ledger_v1` records ids whose plaintext was successfully persisted at least
+`e2e_<uid>_ledger_v1` records ids whose plaintext was successfully persisted at least
 once. That is the fact the app could never establish before: a record missing NOW might have been
 lost, or might never have existed, and the two were indistinguishable — so it re-ran Signal
 decrypt against a consumed ratchet key, hit DuplicateMessage, and burned the row into a permanent
@@ -232,3 +232,43 @@ turns two gate tests red.
 `markRetired`, which is permanent, and it has never run against a populated real store. The next
 `deploy-web.ps1` is a release of this feature, not a routine publish — snapshot localStorage
 first.
+
+## Addendum 6 — independent review of the ledger, and the two CRITICALs it found
+
+Three parallel reviewers (Standards / Spec / data-loss) on `f6abcfa...HEAD`. The Spec axis came back
+clean — all six claimed invariants verified enforced in code, no findings. The other two found real
+defects. **Both CRITICALs were bugs I introduced and would not have found by re-reading my own work.**
+
+**CRITICAL 1 — `recordExists` was blind to the raw replay cache.** `decrypt()` consults
+`_loadRawDecryptedContent` BEFORE the ratchet (`encryption_service.dart:579-586`) and returns its
+plaintext with zero ratchet work. `recordExists` probes only `_decrypted_<id>` plus the mobile
+legacy copy, so a row the raw cache still covered answered `false` and was **permanently
+retired** — destroying access to fully readable data. The bitter part: `backfillLedgerFromStore`
+already refuses to seed from the raw prefix for exactly this reason. The reasoning was applied to
+the SEED and never to the PROBE. Fixed with `rawReplayExists`; the gate now retires only when
+`exists == false && replayable == false`, and falls through to decrypt when the replay cache can
+serve (safe — no ratchet work).
+
+**CRITICAL 2 — the gate served edit-stale records.** An edit puts NEW ciphertext under the SAME id
+with an UNSPENT key. Two edit routes clear the ledger, but both need a local row; on a cold start
+there is none, so a peer edit that landed while the app was closed reached the gate with the entry
+intact. The same pass refuses that record as stale at `decrypt.dart:554`, and the gate then served
+it anyway — showing pre-edit text indefinitely, or, if the record was gone, permanently retiring a
+message that decrypts cleanly. The gate now applies `_isEditStale` itself and drops the entry.
+
+**HIGH — `forgetDecrypted` failed CLOSED.** It early-returned when the id was absent from a
+*cache* read, which is exactly when the entry survives; it also mutated `_pendingLedgerIds` outside
+the lock, so a flush that snapshotted its batch earlier could write the id straight back. Now reads
+`_readLedgerAuthoritative`, mutates inside the lock, and writes unconditionally.
+
+**MEDIUM — the destruction was logged to the 200-entry RAM ring only.** `LEDGER_RECORD_LOST` now
+goes to `E2ePersistentDiag`, like every other destruction-adjacent event, so a wrongly retired
+message leaves evidence in the owner's dump.
+
+**Standards** flagged two doc defects, both fixed here: three summaries still cited the pre-rename
+key `e2e_<uid>_decrypted_ledger_v1`, and `LATEST.md` claimed 1128 tests while `CLAUDE.md` said 1131.
+Its two smell findings (Duplicated Code vs `markRetired`, Middle Man on the provider delegates) were
+correctly self-suppressed: the repo explicitly endorses mirroring `markRetired`, and pass-through
+delegation is the established `EncryptionProvider` convention.
+
+Both CRITICAL fixes carry falsified regression tests. Flutter **1133 + 10 skipped**, analyze clean.

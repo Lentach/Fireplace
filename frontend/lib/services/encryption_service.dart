@@ -1758,17 +1758,66 @@ class EncryptionService {
   Future<void> forgetDecrypted(int id) async {
     final userId = _userId;
     if (userId == null) return;
-    _pendingLedgerIds.remove(id);
     await _sessionCrossContextLock('fireplace-e2e-ledger-$userId', () async {
       try {
         final prefs = await _sharedPrefs;
         await _reloadPrefsForCrossContext(prefs);
-        final current = _readLedger(prefs, userId);
-        if (!current.remove(id)) return;
+        // Inside the lock: a pre-lock removal races a flush that snapshotted
+        // its batch earlier and writes the id straight back in.
+        _pendingLedgerIds.remove(id);
+        // This is the ONE ledger operation whose failure is destructive — a
+        // surviving entry for replaced ciphertext hides the edit or retires it.
+        // So: read authoritatively (getString serves the clobberable cache, the
+        // exact 2026-07-29 mechanism), and write UNCONDITIONALLY. The old
+        // `if (!current.remove(id)) return;` skipped the write whenever the read
+        // came back short, which is precisely when the entry survives.
+        final current = await _readLedgerAuthoritative(prefs, userId);
+        current.remove(id);
         final sorted = current.toList()..sort();
         await prefs.setString(_ledgerKey(userId), jsonEncode(sorted));
       } catch (_) {}
     });
+  }
+
+  /// Ledger read that does not trust the per-engine cache. Used wherever a
+  /// short read would cause destruction rather than merely lose protection.
+  Future<Set<int>> _readLedgerAuthoritative(ContentKv prefs, int userId) async {
+    try {
+      final raw = _rawRecord(
+        await _authoritativeSnapshot(),
+        prefs,
+        _ledgerKey(userId),
+      );
+      if (raw == null) return <int>{};
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return <int>{};
+      return decoded.whereType<int>().toSet();
+    } catch (_) {
+      return <int>{};
+    }
+  }
+
+  /// True when the raw replay cache still holds plaintext for [id].
+  ///
+  /// [decrypt] consults that cache BEFORE the ratchet and returns its plaintext
+  /// with zero ratchet work, so a row it covers is fully readable even when the
+  /// `_decrypted_` record is gone. Anything about to act destructively on "the
+  /// plaintext is lost" must ask this too, or it destroys readable data.
+  /// `null` = could not determine.
+  Future<bool?> rawReplayExists(int id) async {
+    final userId = _userId;
+    if (userId == null) return null;
+    try {
+      final prefs = await _sharedPrefs;
+      final raw = _rawRecord(
+        await _authoritativeSnapshot(),
+        prefs,
+        _rawDecryptedContentKey(userId, id),
+      );
+      return raw != null;
+    } catch (_) {
+      return null;
+    }
   }
 
   Set<int> _readLedger(ContentKv prefs, int userId) {

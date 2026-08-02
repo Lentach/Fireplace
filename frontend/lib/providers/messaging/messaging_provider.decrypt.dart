@@ -957,47 +957,73 @@ extension MessagingDecrypt on MessagingProvider {
     if (_hasUsableDecryptedContent(msg)) return msg;
 
     // The ledger says this id's plaintext was persisted at least once, and it
-    // is not in RAM. Either way the ratchet key for this ciphertext is already
-    // spent, so decrypting cannot succeed — the only question is what to show.
+    // is not in RAM. Work out whether anything can still serve it before
+    // letting the ratchet anywhere near a key that may already be spent.
     if (_encryptionProvider?.wasDecryptedBefore(msg.id) ?? false) {
       // Tri-state ON PURPOSE. `getDecryptedContent` returns null for an unbound
       // user and for any caught exception as well as for a real miss, so acting
       // destructively on its null would let a transient storage error retire a
-      // message whose bytes are still on disk. Only a DEFINITE absence is
-      // allowed to retire anything.
+      // message whose bytes are still on disk. Only a DEFINITE absence, of
+      // EVERY readable source, is allowed to retire anything.
       final exists = await _encryptionProvider?.recordExists(msg.id);
 
       if (exists == true) {
         final payload = await _encryptionProvider?.getDecryptedContent(msg.id);
-        if (payload != null) {
-          final restored = _restoreFromPersistedPayload(msg, payload);
-          // Merely unhydrated. Serve the record — decrypting would have been a
-          // second consumption of an already-spent key for no gain.
-          if (_hasUsableDecryptedContent(restored)) return restored;
+        final persistedEditedAt = payload?['editedAt'] != null
+            ? DateTime.tryParse(payload!['editedAt'] as String)
+            : null;
+        // An edit replaces the ciphertext under the same id, so a record from
+        // before it is stale and its NEW key has never been spent. Every other
+        // restore path in this file gates on this (:381, :420, :554); serving it
+        // here would show pre-edit text forever. Fall through and decrypt.
+        final editStale = _isEditStale(msg.editedAt, persistedEditedAt);
+        if (editStale) {
+          _encryptionProvider?.invalidateDecryptionCache(msg.id);
+        } else {
+          if (payload != null) {
+            final restored = _restoreFromPersistedPayload(msg, payload);
+            // Merely unhydrated. Serve the record — decrypting would have been
+            // a second consumption of an already-spent key for no gain.
+            if (_hasUsableDecryptedContent(restored)) return restored;
+          }
+          // On disk but unreadable this pass (corrupt, or a decode that threw).
+          // Do not decrypt, and do not retire: the bytes are there and a later
+          // pass may read them. Leave the row untouched so it retries.
+          return msg;
         }
-        // On disk but unreadable this pass (corrupt, or a decode that threw).
-        // Do not decrypt, and do not retire: the bytes are there and a later
-        // pass may read them. Leave the row untouched so it retries.
-        return msg;
-      }
+      } else {
+        // No plaintext record — but that is NOT proof the message is lost.
+        // `decrypt` consults the raw replay cache BEFORE the ratchet and returns
+        // its plaintext with zero ratchet work, so a row that cache still covers
+        // is fully readable. Retiring it would destroy readable data, which is
+        // exactly the direction the governing rule forbids.
+        final replayable = await _encryptionProvider?.rawReplayExists(msg.id);
 
-      if (exists == false) {
-        // Genuinely gone — quota, eviction, corruption, or a purge bug.
-        // Decrypting would hit DuplicateMessage on the consumed key and burn
-        // the row into a permanent "[Decryption failed]", which reads as
-        // corruption and destroys the evidence it was ever readable. Retire it:
-        // an honest "no longer stored on this device" that a resend can fix.
-        _e2eFlowLog('LEDGER_RECORD_LOST', {
-          'msgId': msg.id,
-          'senderId': msg.senderId,
-        });
-        await _encryptionProvider?.retireLostMessage(msg.id);
-        return _retiredMessagePlaceholder(msg);
+        if (replayable == true) {
+          // Safe to continue: the decrypt below resolves from the replay cache.
+        } else if (exists == false && replayable == false) {
+          // Every readable source is definitively gone — quota, eviction,
+          // corruption, or a purge bug. Decrypting would hit DuplicateMessage on
+          // the consumed key and burn the row into a permanent
+          // "[Decryption failed]", which reads as corruption and destroys the
+          // evidence it was ever readable. Retire it: an honest "no longer
+          // stored on this device" that a resend can fix.
+          //
+          // Durable, not the ring: this is the feature's only permanent
+          // destruction and the ring rotates at 200, so without this the owner's
+          // diag dump would carry no evidence it ever happened.
+          E2ePersistentDiag.record('LEDGER_RECORD_LOST', {
+            'msgId': msg.id,
+            'senderId': msg.senderId,
+          });
+          await _encryptionProvider?.retireLostMessage(msg.id);
+          return _retiredMessagePlaceholder(msg);
+        } else {
+          // Undetermined. Change nothing — not the content, not the retired set
+          // — so the next pass can ask again once storage is answering.
+          return msg;
+        }
       }
-
-      // Undetermined. Change nothing — not the content, not the retired set —
-      // so the next pass can ask again once storage is answering.
-      return msg;
     }
 
     await _waitForE2EReady();
