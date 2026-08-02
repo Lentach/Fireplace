@@ -1,0 +1,176 @@
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:flutter_test/flutter_test.dart';
+import 'package:shared_preferences/shared_preferences.dart';
+import 'package:shared_preferences_platform_interface/shared_preferences_platform_interface.dart';
+import 'package:shared_preferences_platform_interface/types.dart';
+
+import 'package:fireplace/services/encryption/content_kv.dart';
+import 'package:fireplace/services/encryption_service.dart';
+
+/// The decrypt ledger answers "did this id's plaintext ever exist?".
+///
+/// Without it a record lost to quota, eviction or a purge bug is
+/// indistinguishable from a message that was never decrypted, so the app
+/// re-runs Signal decrypt against a consumed ratchet key, hits
+/// DuplicateMessage, and burns the row into a permanent "[Decryption failed]".
+///
+/// Because the ledger is allowed to VETO decryption, every one of its failure
+/// modes has to fall open. A false "yes, decrypted before" is not a cosmetic
+/// bug: it permanently refuses the one decrypt that would still have worked.
+/// Most of what follows pins those directions rather than the happy path.
+class _RefusingStore extends SharedPreferencesStorePlatform {
+  _RefusingStore() : _inner = InMemorySharedPreferencesStore.empty();
+
+  final InMemorySharedPreferencesStore _inner;
+
+  /// Keys matching this prefix fail their commit, the way a quota-exhausted
+  /// backend does — `setString` reports false rather than throwing.
+  String? refusePrefix;
+
+  @override
+  Future<bool> setValue(String valueType, String key, Object value) {
+    final refuse = refusePrefix;
+    if (refuse != null && key.contains(refuse)) return Future.value(false);
+    return _inner.setValue(valueType, key, value);
+  }
+
+  @override
+  Future<bool> clear() => _inner.clear();
+
+  @override
+  Future<Map<String, Object>> getAll() => _inner.getAll();
+
+  @override
+  Future<bool> remove(String key) => _inner.remove(key);
+
+  @override
+  Future<bool> clearWithPrefix(String prefix) =>
+      _inner.clearWithPrefix(prefix);
+
+  @override
+  Future<bool> clearWithParameters(ClearParameters parameters) =>
+      _inner.clearWithParameters(parameters);
+
+  @override
+  Future<Map<String, Object>> getAllWithPrefix(String prefix) =>
+      _inner.getAllWithPrefix(prefix);
+
+  @override
+  Future<Map<String, Object>> getAllWithParameters(
+    GetAllParameters parameters,
+  ) => _inner.getAllWithParameters(parameters);
+}
+
+void main() {
+  TestWidgetsFlutterBinding.ensureInitialized();
+
+  late _RefusingStore store;
+  late EncryptionService service;
+
+  setUp(() async {
+    store = _RefusingStore();
+    // `flutter test` runs on the Dart VM with kIsWeb false, where the prefs
+    // backend keeps reads on its cache. Force the web branch so these exercise
+    // the same path production does.
+    PrefsContentKv.debugForceAuthoritative = true;
+    addTearDown(() => PrefsContentKv.debugForceAuthoritative = false);
+    SharedPreferencesStorePlatform.instance = store;
+    SharedPreferences.resetStatic();
+    FlutterSecureStorage.setMockInitialValues({});
+    service = EncryptionService();
+    await service.initialize(37);
+  });
+
+  test('a persisted decrypt is recorded once flushed', () async {
+    await service.saveDecryptedContent(18597, {'content': 'hello'});
+    await service.flushDecryptedLedger();
+
+    expect(await service.decryptedLedgerIds(), contains(18597));
+  });
+
+  test('the ledger survives a fresh service on the same store', () async {
+    await service.saveDecryptedContent(18598, {'content': 'persisted'});
+    await service.flushDecryptedLedger();
+
+    final reopened = EncryptionService();
+    await reopened.initialize(37);
+
+    expect(await reopened.decryptedLedgerIds(), contains(18598));
+  });
+
+  test('a failed plaintext commit is NEVER recorded', () async {
+    // The dangerous direction. Recording an id whose plaintext never landed
+    // would make a later pass refuse the decrypt that still would have worked,
+    // converting a recoverable write failure into permanent loss.
+    store.refusePrefix = '_decrypted_';
+
+    await service.saveDecryptedContent(18599, {'content': 'never landed'});
+    await service.flushDecryptedLedger();
+
+    expect(await service.decryptedLedgerIds(), isNot(contains(18599)));
+  });
+
+  test('the failure label is NEVER recorded', () async {
+    // The terminal-failure write goes through the same persist path. Recording
+    // it would claim a row was decrypted when it never was.
+    await service.saveDecryptedContent(18600, {
+      'content': '[Decryption failed]',
+    });
+    await service.flushDecryptedLedger();
+
+    expect(await service.decryptedLedgerIds(), isNot(contains(18600)));
+  });
+
+  test('an edit forgets the id so new ciphertext can be decrypted', () async {
+    // An edit puts NEW ciphertext under the SAME id. Leaving the entry would
+    // veto a payload that has genuinely never been decrypted, and the edit
+    // would render "no longer stored" forever.
+    await service.saveDecryptedContent(18601, {'content': 'before edit'});
+    await service.flushDecryptedLedger();
+    expect(await service.decryptedLedgerIds(), contains(18601));
+
+    await service.forgetDecrypted(18601);
+
+    expect(await service.decryptedLedgerIds(), isNot(contains(18601)));
+  });
+
+  test('recordExists distinguishes present from definitely absent', () async {
+    await service.saveDecryptedContent(18602, {'content': 'here'});
+
+    expect(await service.recordExists(18602), isTrue);
+    expect(await service.recordExists(18603), isFalse);
+  });
+
+  test('recordExists reports unknown rather than absent without a user', () async {
+    // `null` must never be read as "gone": the caller retires on absence, and
+    // retiring is permanent. An unbound user is not evidence of loss.
+    final unbound = EncryptionService();
+
+    expect(await unbound.recordExists(18604), isNull);
+  });
+
+  test('a buffered id is visible before it is flushed', () async {
+    // Otherwise a second decrypt inside the same pass would not see the first
+    // one and could re-enter the ratchet for a row already handled.
+    await service.saveDecryptedContent(18605, {'content': 'buffered'});
+
+    expect(await service.decryptedLedgerIds(), contains(18605));
+  });
+
+  test('the ledger is bounded and keeps the newest ids', () async {
+    // Ids ascend with age, so eviction drops the oldest. A dropped entry only
+    // restores the old behaviour (attempt the decrypt) — never a false
+    // "unavailable" — which is why a bound is acceptable at all.
+    const cap = 3000;
+    final ids = [for (var i = 0; i < cap + 50; i++) 1000 + i];
+    for (final id in ids) {
+      await service.saveDecryptedContent(id, {'content': 'm$id'});
+    }
+    await service.flushDecryptedLedger();
+
+    final ledger = await service.decryptedLedgerIds();
+    expect(ledger.length, lessThanOrEqualTo(cap));
+    expect(ledger, contains(ids.last));
+    expect(ledger, isNot(contains(ids.first)));
+  });
+}

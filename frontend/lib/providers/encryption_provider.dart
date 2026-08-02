@@ -38,6 +38,10 @@ class EncryptionProvider extends ChangeNotifier {
   /// the row. Mirrors the persisted set; see [isRetired].
   final Set<int> _retiredIds = {};
 
+  /// Ids whose plaintext was successfully persisted at least once. Mirrors the
+  /// persisted ledger; see [wasDecryptedBefore].
+  final Set<int> _decryptedLedger = {};
+
   String? _error;
 
   /// Callback to emit socket events. Set by [ConnectionProvider] via [setEmitCallback].
@@ -227,8 +231,16 @@ class EncryptionProvider extends ChangeNotifier {
 
   /// Drop the in-RAM decrypted entry for [messageId] so the next decrypt pass
   /// re-decrypts (used when a message is edited and its ciphertext changes).
+  ///
+  /// Also clears the decrypt-ledger entry, and that is load-bearing: an edit
+  /// puts NEW ciphertext under an id the ledger has already seen. Leaving the
+  /// entry would make [wasDecryptedBefore] veto the decrypt of a payload that
+  /// has genuinely never been decrypted, and the edit would render "no longer
+  /// stored" forever.
   void invalidateDecryptionCache(int messageId) {
     _decryptedContentCache.remove(messageId);
+    _decryptedLedger.remove(messageId);
+    _encryptionService.forgetDecrypted(messageId).ignore();
   }
 
   /// Persist decrypted message content to local cache.
@@ -275,6 +287,38 @@ class EncryptionProvider extends ChangeNotifier {
     _retiredIds
       ..clear()
       ..addAll(ids);
+  }
+
+  /// True when [messageId]'s plaintext was persisted at least once, so a
+  /// missing record means it was LOST rather than never decrypted.
+  ///
+  /// The distinction is the whole point: retrying a lost row re-runs Signal
+  /// decrypt against a consumed ratchet key, which throws DuplicateMessage and
+  /// burns the row into a permanent "[Decryption failed]". A ledger hit means
+  /// the app can say "no longer available, ask the sender to resend" instead
+  /// of destroying the row to find out.
+  bool wasDecryptedBefore(int messageId) =>
+      _decryptedLedger.contains(messageId);
+
+  /// Load the persisted ledger. Sits beside [loadRetiredIds] and must complete
+  /// before the first history pass, or that pass makes exactly the mistake the
+  /// ledger exists to prevent.
+  Future<void> loadDecryptedLedger() async {
+    final ids = await _encryptionService.decryptedLedgerIds();
+    _decryptedLedger
+      ..clear()
+      ..addAll(ids);
+  }
+
+  /// Persist ids buffered during a decrypt pass. Called at pass boundaries.
+  Future<void> flushDecryptedLedger() =>
+      _encryptionService.flushDecryptedLedger();
+
+  /// Record that [messageId] is known-lost so later passes short-circuit
+  /// without re-deriving it, and the state survives a restart.
+  Future<void> retireLostMessage(int messageId) async {
+    _retiredIds.add(messageId);
+    await _encryptionService.markRetired(<int>[messageId]);
   }
 
   /// Destroy the local plaintext for every message stored under
@@ -448,6 +492,12 @@ class EncryptionProvider extends ChangeNotifier {
   Future<Map<String, dynamic>?> getDecryptedContent(int messageId) async {
     return _encryptionService.getDecryptedContent(messageId);
   }
+
+  /// Tri-state: `true` on disk, `false` definitely absent, `null` unknown.
+  /// Delegates to [EncryptionService.recordExists]. Never treat `null` as
+  /// absence — that is how a transient storage error becomes permanent loss.
+  Future<bool?> recordExists(int messageId) =>
+      _encryptionService.recordExists(messageId);
 
   /// Batched persisted-plaintext lookup for a bounded id set (one cross-engine
   /// reload for the whole set). Delegates to
@@ -663,6 +713,9 @@ class EncryptionProvider extends ChangeNotifier {
         // still empty — and a decrypt that wins that race persists a permanent
         // "[Decryption failed]" for a row the app deliberately purged.
         await loadRetiredIds();
+        // Same reason, one step further: without the ledger loaded, the first
+        // history pass cannot tell a lost record from one never decrypted.
+        await loadDecryptedLedger();
         _e2eInitialized = true;
         debugPrint('[E2E] Encryption service initialized');
         _e2eFlowLog('E2E_INIT_DONE', {
@@ -882,6 +935,7 @@ class EncryptionProvider extends ChangeNotifier {
       _e2eInitialized = false;
       _decryptedContentCache.clear();
       _retiredIds.clear();
+      _decryptedLedger.clear();
       _forceSessionRebuild.clear();
       _generatingMoreKeys = false;
       _currentUserId = null;
@@ -912,6 +966,7 @@ class EncryptionProvider extends ChangeNotifier {
     _currentUserId = null;
     _decryptedContentCache.clear();
     _retiredIds.clear();
+    _decryptedLedger.clear();
     _forceSessionRebuild.clear();
     _cancelPendingFetches();
     notifyListeners();

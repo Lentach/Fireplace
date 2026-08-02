@@ -771,6 +771,12 @@ extension MessagingDecrypt on MessagingProvider {
     }
     _historyDecryptFailedPeers = null;
     _historySessionRebuildRequested = null;
+    // Persist the pass's ledger entries. Buffered during the pass so a 50-row
+    // page costs one write instead of fifty; unflushed ids are simply lost on
+    // exit, which degrades to the old behaviour rather than to a false
+    // "unavailable", but the common page is under the auto-flush threshold so
+    // without this most passes would never persist at all.
+    await _encryptionProvider?.flushDecryptedLedger();
     if (changed) _e2eFlowLog('HISTORY_DECRYPT_DONE', {'changed': true});
     if (changed) notifyListeners();
   }
@@ -949,6 +955,50 @@ extension MessagingDecrypt on MessagingProvider {
     // Already decrypted (e.g. live path) — never re-run ratchet decrypt on the
     // same ciphertext; that advances the session and causes Bad Mac on retry.
     if (_hasUsableDecryptedContent(msg)) return msg;
+
+    // The ledger says this id's plaintext was persisted at least once, and it
+    // is not in RAM. Either way the ratchet key for this ciphertext is already
+    // spent, so decrypting cannot succeed — the only question is what to show.
+    if (_encryptionProvider?.wasDecryptedBefore(msg.id) ?? false) {
+      // Tri-state ON PURPOSE. `getDecryptedContent` returns null for an unbound
+      // user and for any caught exception as well as for a real miss, so acting
+      // destructively on its null would let a transient storage error retire a
+      // message whose bytes are still on disk. Only a DEFINITE absence is
+      // allowed to retire anything.
+      final exists = await _encryptionProvider?.recordExists(msg.id);
+
+      if (exists == true) {
+        final payload = await _encryptionProvider?.getDecryptedContent(msg.id);
+        if (payload != null) {
+          final restored = _restoreFromPersistedPayload(msg, payload);
+          // Merely unhydrated. Serve the record — decrypting would have been a
+          // second consumption of an already-spent key for no gain.
+          if (_hasUsableDecryptedContent(restored)) return restored;
+        }
+        // On disk but unreadable this pass (corrupt, or a decode that threw).
+        // Do not decrypt, and do not retire: the bytes are there and a later
+        // pass may read them. Leave the row untouched so it retries.
+        return msg;
+      }
+
+      if (exists == false) {
+        // Genuinely gone — quota, eviction, corruption, or a purge bug.
+        // Decrypting would hit DuplicateMessage on the consumed key and burn
+        // the row into a permanent "[Decryption failed]", which reads as
+        // corruption and destroys the evidence it was ever readable. Retire it:
+        // an honest "no longer stored on this device" that a resend can fix.
+        _e2eFlowLog('LEDGER_RECORD_LOST', {
+          'msgId': msg.id,
+          'senderId': msg.senderId,
+        });
+        await _encryptionProvider?.retireLostMessage(msg.id);
+        return _retiredMessagePlaceholder(msg);
+      }
+
+      // Undetermined. Change nothing — not the content, not the retired set —
+      // so the next pass can ask again once storage is answering.
+      return msg;
+    }
 
     await _waitForE2EReady();
     if (!(_encryptionProvider?.isE2EReady ?? false)) {

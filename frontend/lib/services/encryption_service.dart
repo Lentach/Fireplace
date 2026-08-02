@@ -997,6 +997,9 @@ class EncryptionService {
         E2ePersistentDiag.record('DECRYPT_PERSIST_FAILED', {'msgId': id});
         return; // don't prune on a failed write
       }
+      // Ledger AFTER the confirmed commit, never before: recording an id whose
+      // plaintext did not land would refuse the one decrypt that still works.
+      _noteDecrypted(id, data);
       await _pruneDecryptedContentCache(prefs, userId);
     } catch (_) {}
   }
@@ -1019,6 +1022,33 @@ class EncryptionService {
       final oldRaw = await _legacyDecryptedContentFallback(key);
       if (oldRaw != null) return jsonDecode(oldRaw) as Map<String, dynamic>;
       return null;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Tri-state existence probe for a stored record.
+  ///
+  /// `true` = on disk, `false` = DEFINITELY absent, `null` = could not
+  /// determine. [getDecryptedContent] cannot answer this: it returns null for
+  /// an unbound user, for any caught exception, AND for a real miss, so a
+  /// transient storage failure is indistinguishable from loss. Anything that
+  /// acts destructively on "the record is gone" must use this instead, and
+  /// must treat `null` as "don't touch it".
+  Future<bool?> recordExists(int id) async {
+    final userId = _userId;
+    if (userId == null) return null;
+    final key = _decryptedContentKey(userId, id);
+    try {
+      final prefs = await _sharedPrefs;
+      // Presence is decided on the RAW bytes, before any decode: a corrupt
+      // record still means the plaintext was here, and reporting it absent
+      // would retire a row whose bytes are sitting on disk.
+      if (_rawRecord(await _authoritativeSnapshot(), prefs, key) != null) {
+        return true;
+      }
+      if (await _legacyDecryptedContentFallback(key) != null) return true;
+      return false;
     } catch (_) {
       return null;
     }
@@ -1562,6 +1592,129 @@ class EncryptionService {
   Set<int> _readRetired(ContentKv prefs, int userId) {
     try {
       final raw = prefs.getString(_retiredKey(userId));
+      if (raw == null) return <int>{};
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return <int>{};
+      return decoded.whereType<int>().toSet();
+    } catch (_) {
+      return <int>{};
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // Decrypt ledger — "ids whose plaintext I have successfully persisted at
+  // least once".
+  //
+  // [markRetired] answers "I destroyed this deliberately". The ledger answers
+  // the question the app could not previously ask at all: a record is missing
+  // NOW — did it ever exist? Without an answer, a record lost to quota,
+  // eviction, corruption or a bug is indistinguishable from a message that was
+  // never decrypted, so the app re-runs Signal decrypt on a ciphertext whose
+  // ratchet key it already consumed, gets DuplicateMessage, and the row becomes
+  // a permanent '[Decryption failed]'. That is precisely the 2026-07-29
+  // incident's mechanism, and every storage-loss path can re-trigger it.
+  //
+  // Fail-safe in each direction that matters, which is why it is safe to let
+  // this gate decryption at all:
+  //  * recorded ONLY after a CONFIRMED commit of real plaintext, so a failed
+  //    write can never mark a message "already decrypted" and lock it out of
+  //    the one decrypt that would have worked;
+  //  * a load failure, a miss, or an evicted entry degrades to the OLD
+  //    behaviour (attempt the decrypt) — never to a false "unavailable";
+  //  * an edit drops the entry through [forgetDecrypted], because an edited
+  //    row carries NEW ciphertext that genuinely has not been decrypted.
+  //
+  // Cap tracks the record store, it is not an independent guess: the store
+  // holds `_decryptedContentCacheLimit` (2000) and anything evicted past that
+  // already went through [markRetired], so the ledger only covers ids whose
+  // records
+  // still exist and might yet be lost. A little headroom over that is enough.
+  static const int _ledgerCap = 3000;
+
+  String _ledgerKey(int userId) => 'e2e_${userId}_decrypted_ledger_v1';
+
+  /// Buffered so a 50-row history pass costs ONE read-modify-write of the id
+  /// list instead of fifty. Per-row storage work on web is what turned the
+  /// plaintext reload into 65-77 ms for a single page; do not make this eager.
+  final Set<int> _pendingLedgerIds = <int>{};
+
+  /// Flush when a pass is large enough that losing the buffer would matter,
+  /// so a long history pass cannot sit on an unbounded unpersisted set.
+  static const int _ledgerFlushThreshold = 32;
+
+  void _noteDecrypted(int id, Map<String, dynamic> data) {
+    // The terminal-failure label goes through this same persist path. Recording
+    // it would tell a later pass "already decrypted" about a row that never
+    // was, and permanently refuse the real decrypt.
+    final content = data['content'];
+    if (content is String && placeholderContents.contains(content)) return;
+    _pendingLedgerIds.add(id);
+    if (_pendingLedgerIds.length >= _ledgerFlushThreshold) {
+      flushDecryptedLedger().ignore();
+    }
+  }
+
+  /// Persist buffered ledger ids. Called at decrypt-pass boundaries and safe to
+  /// call at any time. A failed commit leaves the ids buffered for the next
+  /// attempt rather than dropping them on the floor.
+  Future<void> flushDecryptedLedger() async {
+    final userId = _userId;
+    if (userId == null || _pendingLedgerIds.isEmpty) return;
+    final batch = Set<int>.from(_pendingLedgerIds);
+    await _sessionCrossContextLock('fireplace-e2e-ledger-$userId', () async {
+      try {
+        final prefs = await _sharedPrefs;
+        await _reloadPrefsForCrossContext(prefs);
+        final merged = <int>{..._readLedger(prefs, userId), ...batch};
+        // Highest ids kept, same reasoning as markRetired: ids ascend with age,
+        // so a dropped entry is the oldest and its row is the least likely to
+        // still be served. Dropping one only restores the old behaviour.
+        final sorted = merged.toList()..sort();
+        final kept = sorted.length > _ledgerCap
+            ? sorted.sublist(sorted.length - _ledgerCap)
+            : sorted;
+        if (await prefs.setString(_ledgerKey(userId), jsonEncode(kept))) {
+          _pendingLedgerIds.removeAll(batch);
+        }
+      } catch (_) {}
+    });
+  }
+
+  Future<Set<int>> decryptedLedgerIds() async {
+    final userId = _userId;
+    if (userId == null) return <int>{};
+    try {
+      final prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
+      return <int>{..._readLedger(prefs, userId), ..._pendingLedgerIds};
+    } catch (_) {
+      return <int>{..._pendingLedgerIds};
+    }
+  }
+
+  /// Drop [id] because its ciphertext changed — an edit replaces the payload
+  /// under the same message id, so the new one has never been decrypted and
+  /// MUST be allowed through. Without this an edited message would render
+  /// "no longer stored" forever.
+  Future<void> forgetDecrypted(int id) async {
+    final userId = _userId;
+    if (userId == null) return;
+    _pendingLedgerIds.remove(id);
+    await _sessionCrossContextLock('fireplace-e2e-ledger-$userId', () async {
+      try {
+        final prefs = await _sharedPrefs;
+        await _reloadPrefsForCrossContext(prefs);
+        final current = _readLedger(prefs, userId);
+        if (!current.remove(id)) return;
+        final sorted = current.toList()..sort();
+        await prefs.setString(_ledgerKey(userId), jsonEncode(sorted));
+      } catch (_) {}
+    });
+  }
+
+  Set<int> _readLedger(ContentKv prefs, int userId) {
+    try {
+      final raw = prefs.getString(_ledgerKey(userId));
       if (raw == null) return <int>{};
       final decoded = jsonDecode(raw);
       if (decoded is! List) return <int>{};
