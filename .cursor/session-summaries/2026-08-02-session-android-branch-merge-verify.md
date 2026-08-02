@@ -46,6 +46,7 @@ Everything below was run this session on the merged tree, nothing inherited.
 | `node scripts/verify-claude-frontend-test-counts.mjs` | **OK — CLAUDE.md matches** |
 | Backend suite | **Not re-run, deliberately.** `git diff origin/master...HEAD -- backend/` is **empty** — the branch's backend is byte-identical to master, and master's CI ran it green on `70eff73` (4/4 jobs). |
 | Master CI on `70eff73` | success, 4/4 |
+| **PR #111 CI on the merged tree** | **success, 4/4** — `pull_request` run `30725976087`, headSha `8d9bc20`. Backend tests, Flutter analyze+tests, Web Lock probe, E2E wire harness. This is the real gate; local green is not the same thing. |
 | Merge scope | `git diff --cached --stat 9c1d476 -- ':!*.md'` **empty** — docs-only, so the merge itself cannot have broken code |
 
 **The reload-race suite was falsified, not just run green.** With

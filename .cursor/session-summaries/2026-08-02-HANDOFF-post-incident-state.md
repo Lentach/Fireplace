@@ -11,7 +11,7 @@ Every fact below was verified by a command at write time. Re-verify anything vol
 | Prod frontend | `0.0.140 / 3a33bf9` (`/version.json`) |
 | Prod backend | `0.0.136 / 6fb36bf` — **by design**, frontend-only releases since |
 | `master` | `70eff73` (prod runs `3a33bf9`; `70eff73` is docs-only on top) |
-| `feature/android-encrypted-store` | **level with master as of `70eff73`** — re-derive the tip with `git rev-parse`, never trust a pinned SHA here |
+| `feature/android-encrypted-store` | **level with master as of `70eff73`**, PR CI green 4/4 on the merged tree — re-derive the tip with `git rev-parse`, never trust a pinned SHA here |
 | Open PR #111 | Android Phase 2 → master. **Do not merge without owner OK.** |
 | PRs #113–#119 | Dependabot, untouched |
 
