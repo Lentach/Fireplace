@@ -10,12 +10,12 @@ Every fact below was verified by a command at write time. Re-verify anything vol
 |---|---|
 | Prod frontend | `0.0.140 / 3a33bf9` (`/version.json`) |
 | Prod backend | `0.0.136 / 6fb36bf` — **by design**, frontend-only releases since |
-| `master` | `3a33bf9` |
-| `feature/android-encrypted-store` | `9c1d476`, **0 commits behind master** |
+| `master` | `70eff73` (prod runs `3a33bf9`; `70eff73` is docs-only on top) |
+| `feature/android-encrypted-store` | **level with master as of `70eff73`**, PR CI green 4/4 on the merged tree — re-derive the tip with `git rev-parse`, never trust a pinned SHA here |
 | Open PR #111 | Android Phase 2 → master. **Do not merge without owner OK.** |
 | PRs #113–#119 | Dependabot, untouched |
 
-Worktrees: owner's main copy `C:/Users/Lentach/Desktop/Fireplace` (on the Android branch, **at `a2e94ee`, behind — needs `git pull`**), `fireplace-e2e-audit` (stale, `audit/e2e-safety`, merged long ago — removable), `fireplace-wt-invitation` (master, the one to work in).
+Worktrees: owner's main copy `C:/Users/Lentach/Desktop/Fireplace` (on the Android branch, **behind — needs `git pull`**), `fireplace-e2e-audit` (stale, `audit/e2e-safety`, merged long ago — removable), `fireplace-wt-invitation` (master, the one to work in).
 
 **The PWA is the owner's live workstation with ~25 real conversations.** It is not a test surface. Android ships first, then iOS; the PWA stays for iOS until then.
 
