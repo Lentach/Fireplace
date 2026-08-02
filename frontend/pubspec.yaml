@@ -37,12 +37,12 @@ dependencies:
   # survives in the backing store — and a missed plaintext record re-decrypts a
   # consumed ratchet key into a permanent "[Decryption failed]".
   shared_preferences_platform_interface: ^2.4.2
-  package_info_plus: ^8.3.0
+  package_info_plus: ^10.2.1
   image_picker: ^1.2.3
-  file_picker: ^11.0.2
+  file_picker: ^12.0.0-beta.7
   cross_file: ^0.3.4
   http_parser: ^4.0.2
-  device_info_plus: ^12.4.0
+  device_info_plus: ^13.2.0
 
   just_audio: ^0.10.6
   path_provider: ^2.1.6
@@ -55,7 +55,7 @@ dependencies:
   web: ^1.1.0
   fast_thumbhash: ^1.2.1
   libsignal_protocol_dart: ^0.8.2
-  flutter_secure_storage: ^9.2.4
+  flutter_secure_storage: ^10.3.1
   # PINNED: >=0.6.1 switched to a native-assets hook that builds windows-x64 on
   # every local `flutter test` and needs CMake (installed) PLUS the MSVC C++
   # toolchain (multi-GB, NOT installed). Nothing ships from that asset: prod web
