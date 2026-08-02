@@ -190,3 +190,45 @@ via the `ContentKv`/`PrefsContentKv` seam. Test-equivalent, not byte-identical s
 never run against a populated store at real volume before today. If `[Decryption failed]`
 reappears, take the `E2ePersistentDiag` dump BEFORE anything else; it caps at 80 and rotates, and
 that is exactly what cost us the evidence window in July.
+
+## Addendum 5 — the decrypt ledger (built, NOT deployed)
+
+`e2e_<uid>_decrypted_ledger_v1` records ids whose plaintext was successfully persisted at least
+once. That is the fact the app could never establish before: a record missing NOW might have been
+lost, or might never have existed, and the two were indistinguishable — so it re-ran Signal
+decrypt against a consumed ratchet key, hit DuplicateMessage, and burned the row into a permanent
+`[Decryption failed]`. The July incident's mechanism, reachable from any storage loss.
+
+`_decryptMessageAsync` consults the ledger before touching the ratchet. Definitely-absent record
+⇒ `markRetired` + "no longer stored on this device", which a resend fixes.
+
+**Three fail-open rules, each with a test. Do not simplify them:**
+
+1. **Recorded only after a CONFIRMED commit of real plaintext.** Recording an id whose write
+   failed would refuse the one decrypt that still would have worked — turning a recoverable
+   write failure into permanent loss. Falsified: moving the call above the `ok` check goes red.
+2. **Absence decided by the tri-state `recordExists`, never `getDecryptedContent() == null`.**
+   That method returns null for an unbound user and for *any caught exception* as well as a real
+   miss, so acting on it would let a transient storage error permanently retire a message whose
+   bytes are on disk. `null` means "don't touch it". A review caught this after the first draft
+   shipped exactly that bug.
+3. **An edit drops the entry** via `invalidateDecryptionCache`, because an edit puts NEW
+   ciphertext under the SAME id. Without it, every edited message would render "no longer
+   stored" forever.
+
+Cap 3000 tracks the 2000-record store rather than being an independent guess: anything evicted
+past the record cap already goes through `markRetired`, so the ledger only has to cover ids whose
+records still exist and might yet be lost. Eviction degrades to the OLD behaviour, never to a
+false "unavailable". Writes are buffered and flushed at pass boundaries — a 50-row page costs one
+write, not fifty, which matters because per-row storage work on web is what made the plaintext
+reload 65-77 ms per page.
+
+**Verification:** 13 new tests (9 storage semantics, 4 gate behaviour through the real
+MessagingProvider path). Flutter **1128 + 10 skipped**, analyze clean, CI green 4/4 on `4ff1c52`.
+Both the placeholder guard and the failed-commit ordering were falsified, and disabling the gate
+turns two gate tests red.
+
+**NOT DEPLOYED.** Prod frontend is `0.1.0 / a60610f`; master is `4ff1c52`. This feature can call
+`markRetired`, which is permanent, and it has never run against a populated real store. The next
+`deploy-web.ps1` is a release of this feature, not a routine publish — snapshot localStorage
+first.
