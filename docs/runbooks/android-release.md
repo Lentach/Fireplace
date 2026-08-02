@@ -47,9 +47,12 @@ keytool -genkeypair -v `
   -keystore keystore/fireplace-release.jks `
   -alias fireplace -keyalg RSA -keysize 4096 -validity 10000
 # It prompts for: keystore password, name/org fields (values are cosmetic), key password.
+# GIVE THE SAME VALUE FOR BOTH. keytool writes PKCS12, where the key password MUST equal the
+# store password. A mismatch does not say so — it fails later with the opaque
+# "final block not properly padded". This cost a debugging session on 2026-07-29.
 copy key.properties.example key.properties
-# Edit key.properties: fill storePassword/keyPassword; keyAlias=fireplace and
-# storeFile=../keystore/fireplace-release.jks are already correct.
+# Edit key.properties: fill storePassword/keyPassword with that SAME value; keyAlias=fireplace
+# and storeFile=../keystore/fireplace-release.jks are already correct.
 ```
 
 - `key.properties` and `keystore/` are gitignored (both `frontend/keystore/` and
