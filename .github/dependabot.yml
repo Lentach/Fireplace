@@ -32,6 +32,37 @@ updates:
           - version-update:semver-minor
           - version-update:semver-major
 
+      # The Android encrypted content store (frontend/CLAUDE.md §5). Same shape
+      # as webcrypto above and for the same reason: sqlite3 3.x and drift >=2.32
+      # switch to native-assets build hooks that demand MSVC C++ on EVERY local
+      # `flutter test`, and sqlcipher_flutter_libs 0.7.0 is the "+eol" release.
+      # pubspec.yaml already carries EXPLICIT upper bounds, but dependabot
+      # rewrites the constraint rather than resolving within it, so it proposed
+      # all four anyway (#123, closed 2026-08-02) and would do so every month.
+      # Version updates only — a SECURITY advisory on any of these still opens
+      # a PR, which is the whole point of listing update-types instead of a
+      # bare dependency-name.
+      - dependency-name: drift
+        update-types:
+          - version-update:semver-patch
+          - version-update:semver-minor
+          - version-update:semver-major
+      - dependency-name: drift_dev
+        update-types:
+          - version-update:semver-patch
+          - version-update:semver-minor
+          - version-update:semver-major
+      - dependency-name: sqlite3
+        update-types:
+          - version-update:semver-patch
+          - version-update:semver-minor
+          - version-update:semver-major
+      - dependency-name: sqlcipher_flutter_libs
+        update-types:
+          - version-update:semver-patch
+          - version-update:semver-minor
+          - version-update:semver-major
+
   - package-ecosystem: github-actions
     directory: /
     schedule:

@@ -1,0 +1,173 @@
+# Dependabot sweep, both HIGH alerts, and a branch/worktree consolidation
+
+**Date:** 2026-08-02 (evening, after the `0.1.1` release and the backlog handoff)
+
+Owner picked "Dependabot sweep" off the handoff queue, then said: merge it, make master
+newest, delete stale branches, make master clean. All of that is done. **No deploy** — this
+session shipped nothing to prod. Prod stays `0.1.1 / 8415b31` frontend, `0.0.140 / da120460`
+backend; master is now ahead of prod by dependency changes only.
+
+## What was done
+
+### The sweep — PR #121, merged as `70cae4a`
+
+Consolidated six of the seven open Dependabot PRs plus both open HIGH `brace-expansion`
+alerts into **one** branch. Seven separate merges would have meant seven CI cycles, each
+invalidating the next — the exact tax recorded in the previous session's process note.
+
+| PR | Bump | Result |
+|---|---|---|
+| #113 | `actions/setup-node` 6 → 7 | clean |
+| #114 | helmet 8.2→8.3, `@eslint/eslintrc` 3.3.5→3.3.6, `@nestjs/cli` 11.0.23→11.0.24, eslint 10.6→10.8, prettier 3.9.4→3.9.6, ts-jest 29.4.11→29.4.12, typescript-eslint 8.63→8.65 | one code fix |
+| #116 | `dotenv` 16.6.1 → 17.4.2 (major) | one code fix |
+| #117 | `emoji_picker_flutter` 4.4.0 → 4.5.3 | one test fix |
+| #118 | `device_info_plus` 11.5.0 → 12.4.0 (major) | clean |
+| #119 | `flutter_local_notifications` 21.0.0 → 22.2.0 (major) | clean, one caveat |
+| — | `brace-expansion` 1.1.16→1.1.18, 2.1.2→2.1.4 | both HIGH alerts cleared |
+
+**typescript-eslint 8.65 sees `unbound-method` through computed member access; 8.63 did not.**
+That is the whole of the CI red on #114 — `MediaController.prototype[methodName]` became a new
+finding and the ratchet went 817 → 818. It is a false positive by intent: the test reads
+decorator metadata off the function object and never calls it. That site and the pre-existing
+literal one at the same test now go through `Object.getOwnPropertyDescriptor`, which is the
+same object without the "unbound method" shape. **Floor lowered 817 → 816.**
+
+The prettier floor was left at **323 by hand**, deliberately. `node scripts/lint-ratchet.mjs
+--update` from Windows writes `prettier: 324` (CRLF delta) and hands Linux CI a free error of
+slack — the exact bug that script's own header documents having been caught in review.
+
+**dotenv 17.0.0's one breaking change is `quiet` defaulting to false.** `migration-runner.ts`
+would then print two `injected env` lines to stdout on every boot, ahead of the Nest logger, in
+a prod container whose log level is deliberately narrow. Both `config()` calls now pass
+`quiet: true`. Boot output is unchanged.
+
+**emoji_picker_flutter 4.5.3 memoizes the recent-emoji read behind `Future(() async {...})`.**
+A bare `Future(...)` schedules a real zero-duration Timer where 4.4.0's plain `async` body only
+queued microtasks. The geometry test drives `viewInsets`, and picker height derives from the
+keyboard inset, so each change hands `EmojiPicker` a new `Config` and `didUpdateWidget`
+reloads — leaving a timer pending at teardown and tripping `!timersPending`. The test now
+settles at the end; **a single extra `pump()` is not enough, verified.** Harness artifact only:
+4.5.3 hits SharedPreferences once where 4.4.0 hit it per config change.
+
+### #115 (TypeScript 6) — closed, with the measurement
+
+Not a bump. A migration. Measured on a scratch branch, in order:
+
+1. `moduleResolution: "node"` and `baseUrl` are **hard errors** in TS 6 (`TS5107`, `TS5101`),
+   which aborts the ts-jest compile — that is why all 47 suites fail before a test runs. The
+   `Cannot find name 'jest'` cascade is downstream, not separate.
+2. Clear those → **226** errors in the spec project.
+3. TS 6 stops auto-including `@types` the 5.x way → **119** `TS2503` are just the missing
+   explicit `types: [...]`.
+4. TS 6 flips `strict`-family defaults on → **182 `TS2564`** from `strictPropertyInitialization`
+   across every `@Column()` field.
+5. Pin those defaults back off → **33 genuine type errors remain**: 24 × `TS18046`
+   (unknown-narrowing), 7 × `TS2339`, 2 × `TS2345` (TypeORM `DeepPartial` in spec mocks).
+
+So it is either fix 33 real holes and adopt the stricter defaults, or write
+`strictPropertyInitialization: false` / `noImplicitAny: false` into the tsconfigs — pinning the
+old laxness in writing on a backend already carrying 816 `no-unsafe-*` findings. Nothing depends
+on TS 6, `^5.7.3` already excludes it, repo stays on 5.9.3. Full breakdown is on PR #115.
+
+### Two NEW Dependabot PRs appeared post-merge, both closed
+
+Dependabot re-scanned within a minute of `70cae4a` and opened two more.
+
+**#123 — closed. Every package in it is a documented forbidden bump.** `drift` 2.31→2.34.3,
+`sqlite3` 2.9.4→**3.5.0**, `sqlcipher_flutter_libs` 0.6.8→**0.7.0+eol**. `frontend/CLAUDE.md` §5
+pins all three with EXPLICIT upper bounds precisely so `pub upgrade` cannot reach them; sqlite3
+3.x and drift ≥2.32 use native-assets build hooks that demand MSVC C++ on **every local
+`flutter test`**.
+
+**Dependabot rewrites the constraint rather than resolving inside it, so the explicit upper
+bounds in `pubspec.yaml` did not stop it.** Fixed durably: `drift`, `drift_dev`, `sqlite3` and
+`sqlcipher_flutter_libs` added to the pub `ignore:` list in `.github/dependabot.yml`, scoped to
+`version-update:*` only — copying the shape already used for `webcrypto`, so a **security**
+advisory on any of them still opens a PR. Without this it recurs monthly.
+
+**#122 — closed, needs a scheduled session, not a sweep.** `file_picker` 11.0.2 →
+**12.0.0-beta.7** (a beta does not go on master); `flutter_secure_storage` 9.2.4 → **10.3.1**, a
+major on the store holding `identity_record_v1`, every session record, and on Android the
+Keystore-backed content keys — verifying it means `flutter test integration_test -d <device>`
+against a REAL Keystore, since the host has no webcrypto native and those assertions are skipped
+in `flutter test`. Also `package_info_plus` 8.3.1→10.2.1 (two majors) and `device_info_plus`
+12.4.0→13.2.0, both pulling `win32` 6.0.0 as a breaking change.
+
+### Branch and worktree consolidation
+
+**The worktree zoo is gone. One checkout, on master.**
+
+`C:/Users/Lentach/Desktop/Fireplace` could not check out master because
+`fireplace-wt-invitation` held it. Both extra worktrees were clean and their branches fully
+merged, so both were removed (`fireplace-wt-invitation`, `fireplace-e2e-audit` — the latter was
+already flagged removable in the backlog handoff), along with the scratch `fireplace-wt-deps`
+used for this work. The main copy is now on `master` at `70cae4a`, clean and in sync.
+
+**Deleted 25 merged remote branches and 5 merged local ones.** Every one verified an ancestor of
+`origin/master` first. Local branches are now **just `master`**.
+
+**Two remote branches deliberately kept:**
+
+- `origin/feat/cosmic-theme` — **unmerged**, one real commit: `1745a50` "tool(cosmic): add
+  `?density=` override to starfield preview for density A/B" (2026-07-20,
+  `frontend/tool/starfield_preview.dart`). Deleting it loses that commit. Owner's call.
+- `origin/master`.
+
+## Key files
+
+- `backend/package.json`, `backend/package-lock.json` — the bumps + brace-expansion
+- `backend/src/media/media.controller.spec.ts` — `controllerMethod()` descriptor helper
+- `backend/src/database/migration-runner.ts:111-117` — `quiet: true` on both `dotenv.config()`
+- `scripts/lint-baseline.json` — `nonPrettier` 817 → **816**, `prettier` left at 323
+- `.github/workflows/ci.yml:27` — `actions/setup-node@v7`
+- `frontend/pubspec.yaml:45,65,68` + `pubspec.lock`
+- `frontend/test/widgets/message/message_context_menu_overlay_test.dart:1022-1032`
+- `.github/dependabot.yml` — pub `ignore:` now covers the four Phase 2 storage pins
+
+## Verification
+
+- backend `npm test` → **578 passed / 47 suites**
+- `node scripts/lint-ratchet.mjs` → **PASS at 816** (improved from 817)
+- `npm ls brace-expansion` → only 1.1.18 / 2.1.4 / 5.0.9
+- `flutter analyze --no-fatal-infos` → clean
+- `flutter test` → **1134 passed / 10 skipped** — unchanged, so root `CLAUDE.md` §3 needed no edit
+- CI on PR #121: **green 4/4**, including `e2e-wire` against a real backend + Postgres
+- Pins confirmed still resolved as pinned: drift 2.31.x, sqlite3 2.9.4, sqlcipher 0.6.8,
+  webcrypto 0.6.0; firebase-admin untouched on 13.x with its scoped `overrides.firebase-admin.uuid`
+
+## Notes for next session
+
+- **The 2 HIGH alerts close only once GitHub re-scans the default branch.** Both were
+  `scope: development` transitives, so nothing deployed was ever exposed.
+- **flutter_local_notifications 22 raised the SDK floor** to Dart ≥3.11.5 / Flutter ≥3.41.8 (was
+  3.10.7 / 3.38.4). Local is 3.44.6, CI resolves `channel: stable` unpinned. An older stable now
+  fails `pub get` outright instead of degrading.
+- **fln 22 is federated and adds `flutter_local_notifications_web`.** Inert here: the only call
+  sites are `android_fcm_local_notifications.dart` (guarded by `kIsWeb` + `_isAndroid`) and
+  `notification_cleaner_io.dart`, reached by a conditional import whose web branch is
+  `notification_cleaner_web.dart`. The PWA tray stays owned by `web/web-push-sw.js`.
+- **Master is ahead of prod.** Nothing here is user-visible, but the next deploy carries it.
+- **The queue is unchanged otherwise:** `2026-08-02-HANDOFF-remaining-backlog.md`. FCM service
+  account is still item #1 and still owner-only.
+
+### Traps paid this session
+
+- **`gh pr merge --delete-branch` fails at the local step when another worktree holds `master`**
+  (`fatal: 'master' is already used by worktree at ...`). The remote merge SUCCEEDS anyway —
+  check `gh pr view <n> --json state` before assuming it did not.
+- **`while read` loops feeding `git` eat stdin** and die with `error: read: i/o error: The
+  parameter is incorrect. (os error 87)` on this box. Use `for b in $(...)` and add `</dev/null`
+  to every git call inside the loop.
+- **Orphan `flutter_tester.exe` processes survive the test run** and lock the worktree
+  directory, so `git worktree remove` gets Permission denied. Bash `kill -9` does not touch
+  them and `taskkill //F` mangles its own flags; `powershell -NoProfile -Command "Stop-Process
+  -Id <pids> -Force"` works.
+- **`gh pr view` has no `merged` field** — use `state`/`mergeCommit`.
+- `gh pr diff <n> -- <path>` is rejected: "accepts at most 1 arg(s)". Pipe through `grep`.
+- **Never feed file text to `awk`'s `system()`.** Counting per-entry words in `LATEST.md` that
+  way shell-executed every backticked span in the file: it ran `gh pr list`, fired a
+  parameterless `Stop-Process -Force`, and tried to EXECUTE
+  `frontend/android/keystore/fireplace-release.jks` as a command. Nothing was written or
+  deleted and the keystore is verified unharmed (4430 bytes, md5 `f4ec499c…`, mtime still
+  Jul 29) — but that file is single-copy and irreplaceable, so the near-miss is the lesson.
+  Count with `wc -w` on a plain redirect, never through `system()`.
