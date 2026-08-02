@@ -1,5 +1,6 @@
 // backend/src/secret-notes/secret-notes.service.spec.ts
 import { Test } from '@nestjs/testing';
+import { CronExpression } from '@nestjs/schedule';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { SecretNotesService } from './secret-notes.service';
 import { SecretNote } from './secret-note.entity';
@@ -120,6 +121,24 @@ describe('SecretNotesService', () => {
           _type: 'lessThan',
         }),
       });
+    });
+
+    // The cadence IS the fix. Reverting to daily would leave an unread expired
+    // note's ciphertext readable for up to ~24h past its TTL while its AES key
+    // sits in plaintext message content, and no behavioural test would notice.
+    it('is scheduled per minute, matching message cleanup', () => {
+      // Read the descriptor rather than naming the method: a bare
+      // `Prototype.method` reference trips unbound-method, and Reflect's
+      // `any` return trips the no-unsafe-* rules. Both push the ratchet floor.
+      const handler = Object.getOwnPropertyDescriptor(
+        SecretNotesService.prototype,
+        'deleteExpiredNotes',
+      )?.value as object;
+      const options = Reflect.getMetadata('SCHEDULE_CRON_OPTIONS', handler) as
+        | { cronTime?: string }
+        | undefined;
+
+      expect(options?.cronTime).toBe(CronExpression.EVERY_MINUTE);
     });
   });
 });

@@ -45,7 +45,12 @@ export class SecretNotesService {
     return { ciphertext: rows[0].ciphertext };
   }
 
-  @Cron(CronExpression.EVERY_DAY_AT_3AM)
+  // Per-minute, matching MessageCleanupService. Daily-at-3am left an UNREAD
+  // expired note's ciphertext in the table for up to ~24h past its TTL. The
+  // API refuses to serve it, but the AES key travels in the note URL, which is
+  // stored as ordinary plaintext message content — so DB access plus device
+  // access reads a note the UI already called self-destructed.
+  @Cron(CronExpression.EVERY_MINUTE)
   async deleteExpiredNotes(): Promise<number> {
     const result = await this.repo.delete({ expiresAt: LessThan(new Date()) });
     const deleted = result.affected ?? 0;

@@ -153,7 +153,7 @@ Gateway throttles are source-truth in `chat.gateway.ts`:
 - `GET /note/:token` is public server-rendered HTML. AES-GCM key is in URL fragment (`#key`), never sent to server.
 - `POST /note/:token/reveal` is public read-once: atomic `DELETE ... WHERE token AND expires_at > NOW() RETURNING ciphertext`.
 - `GET /note/:token/status` (JWT, 120/min) returns `{ alive }` for the in-chat banner: the client flips the card to "burned — it was read" when the note is gone before its `e=` fragment clock ran out. Legacy links without `e=` cannot distinguish read-vs-expired and keep the generic destroyed state; after the clock passes, read-vs-expired is indistinguishable by design (the row is deleted on reveal).
-- Expired notes are lazy-deleted on reveal and daily at 03:00.
+- Expired notes are lazy-deleted on reveal and swept **every minute** (`@Cron(EVERY_MINUTE)`, matching `MessageCleanupService`). It was daily-at-03:00 until 2026-08-02, which left an UNREAD expired note's ciphertext in the table for up to ~24h past its TTL — the API refuses to serve it, but the AES key travels in the note URL and that URL is stored as ordinary plaintext message content, so DB access plus device access read a note the UI already called self-destructed. The cadence is pinned by a test; do not relax it.
 
 ## 12. REST/media/auth additions checklist
 

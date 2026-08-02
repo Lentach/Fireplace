@@ -99,3 +99,32 @@ deleting the remote would orphan his checkout. Delete it after he moves that cop
 A Dependabot security-update run (npm `brace-expansion`, backend) reports failure on `ac880f6`.
 It is a separate workflow from `ci.yml` and unrelated to this merge — CI itself is 4/4 green.
 PRs #113-#119 remain untriaged.
+
+## Addendum 2 — secret-note expiry tightened to per-minute
+
+`secret-notes.service.ts:53`: `@Cron(EVERY_DAY_AT_3AM)` → `@Cron(EVERY_MINUTE)`, matching
+`MessageCleanupService`. An unread expired note's ciphertext sat in `secret_notes` for up to ~24h
+past its TTL; the API refuses to serve it, but the AES key travels in the note URL and that URL
+is stored as ordinary plaintext message content, so DB access plus device access read a note the
+UI already called self-destructed.
+
+**The cadence is now pinned by a test**, because no behavioural assertion would catch a revert —
+`deleteExpiredNotes` does the same thing either way, just less often. Fail-before proven:
+restoring the daily cron gives `Expected "*/1 * * * *" / Received "0 03 * * *"`. Verified twice,
+once before and once after the lint rewrite below, so the assertion cannot be silently reading
+`undefined`.
+
+**Lint trap worth remembering.** The obvious version of that test added **+3 real eslint errors**
+and failed `lint-ratchet` (817 → 820): `Reflect.getMetadata` returns `any`, so the assignment,
+the member access and the argument all tripped `no-unsafe-*`. Narrowing the return with `as
+{ cronTime?: string } | undefined` cleared two. The last one was `unbound-method` on the bare
+`SecretNotesService.prototype.deleteExpiredNotes` reference — fixed by reading the property
+descriptor instead. Final state: **817, exactly at baseline.** Do not "fix" this by running
+`lint-ratchet --update`; the floor is the point.
+
+Backend suite **578 passed / 47 suites**, and root `CLAUDE.md` §3 was bumped 577 → 578 in the same
+commit or `verify-claude-backend-test-counts.mjs` fails CI. `backend/CLAUDE.md` §11 said "daily at
+03:00" and now says otherwise.
+
+**This needs `./deploy-backend.sh` to take effect.** That deploy is independent of the undeployed
+frontend — backend is untouched by the #111 merge.
