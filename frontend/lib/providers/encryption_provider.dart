@@ -366,12 +366,33 @@ class EncryptionProvider extends ChangeNotifier {
     return purgeLocalPlaintext(ids, ciphertexts: ciphertexts);
   }
 
+  /// True when the previous sweep found nothing to destroy. The sweep ticks
+  /// once a minute, so logging every empty pass would churn the 200-entry
+  /// ring and evict actual evidence — the exact noise-evicts-evidence failure
+  /// the durable-log dedupe fixed in 0.1.6, one level down. Instead the ring
+  /// gets one `PLAINTEXT_SWEEP {expired: 0, ...}` entry per TRANSITION into
+  /// "nothing due": liveness stays visible ("the sweep ran and found
+  /// nothing"), consecutive empty ticks stay silent.
+  bool _lastSweepFoundNothing = false;
+
+  /// Ring-entry id-list cap for [sweepDestroyablePlaintext]. A retention
+  /// sweep after a long absence can condemn hundreds of ids; the diag dump
+  /// copies the whole ring, so unbounded lists would bloat it for no
+  /// diagnostic gain beyond "which rows died" on a normal-sized sweep.
+  static const int _sweepDiagIdCap = 30;
+
   /// Destroy plaintext whose message has expired, or aged past retention.
   ///
   /// No-op unless the server clock can be confirmed. Both rules destroy the
   /// only copy of a message, so "cannot confirm" must never become "go ahead":
   /// a device with a wrong clock would otherwise wipe live messages, or its
   /// whole store, with nothing to restore from.
+  ///
+  /// Every acting pass logs `PLAINTEXT_SWEEP` to the RING (never the cap-80
+  /// durable log — success is routine, the durable log is failure evidence):
+  /// expired/retired counts, the removed count from the purge, and the
+  /// condemned ids (capped). Failures inside the purge keep their existing
+  /// `PLAINTEXT_PURGE_INCOMPLETE` / `PLAINTEXT_PURGE_LOST` channels.
   Future<void> sweepDestroyablePlaintext() async {
     final serverNow = ServerClock.instance.estimatedNow;
     if (serverNow == null) return;
@@ -380,7 +401,14 @@ class EncryptionProvider extends ChangeNotifier {
       serverNow: serverNow,
       expiryGrace: kExpiryPurgeGrace,
     );
-    if (due.expired.isEmpty && due.retired.isEmpty) return;
+    if (due.expired.isEmpty && due.retired.isEmpty) {
+      if (!_lastSweepFoundNothing) {
+        _lastSweepFoundNothing = true;
+        _e2eFlowLog('PLAINTEXT_SWEEP', {'expired': 0, 'retired': 0});
+      }
+      return;
+    }
+    _lastSweepFoundNothing = false;
 
     // Mark retired BEFORE destroying. Retention removes plaintext for rows the
     // server still serves, so losing the marking would turn a deliberate state
@@ -389,7 +417,16 @@ class EncryptionProvider extends ChangeNotifier {
       await _encryptionService.markRetired(due.retired);
       _retiredIds.addAll(due.retired);
     }
-    await purgeLocalPlaintext({...due.expired, ...due.retired});
+    final result = await purgeLocalPlaintext({...due.expired, ...due.retired});
+    final condemned = [...due.expired, ...due.retired]..sort();
+    _e2eFlowLog('PLAINTEXT_SWEEP', {
+      'expired': due.expired.length,
+      'retired': due.retired.length,
+      'removed': result.removed,
+      'ids': condemned.take(_sweepDiagIdCap).toList(),
+      if (condemned.length > _sweepDiagIdCap)
+        'idsTruncated': condemned.length - _sweepDiagIdCap,
+    });
     notifyListeners();
   }
 
