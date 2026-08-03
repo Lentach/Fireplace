@@ -44,6 +44,17 @@ export class MessageCleanupService {
           .filter((mediaUrl): mediaUrl is string => !!mediaUrl)
           .map((mediaUrl) => this.mediaCleanupService.deleteMediaFile(mediaUrl)),
       );
+      // Detach replies pointing at the doomed rows: the reply self-FK has no
+      // ON DELETE clause, so removing a replied-to parent that expired before
+      // its reply would throw 23503 and wedge this cron every minute (media
+      // above already unlinked, rows never removed). Live replies keep their
+      // content; only the preview link dies with the parent.
+      await this.messagesRepo.query(
+        `UPDATE public.messages
+           SET reply_to_message_id = NULL
+         WHERE reply_to_message_id = ANY($1)`,
+        [expiredMessages.map((m) => m.id)],
+      );
       await this.messagesRepo.remove(expiredMessages);
       this.logger.log(`Deleted ${expiredMessages.length} expired messages`);
     }

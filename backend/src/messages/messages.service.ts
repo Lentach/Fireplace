@@ -9,6 +9,7 @@ import {
   isMessageExpired,
   MESSAGE_NOT_EXPIRED_SQL,
 } from './message-expiry.util';
+import { MediaCleanupService } from '../media/media-cleanup.service';
 
 /** Projected row read by [MessagesService.findServedMessageIds]. */
 type ServedMessageRow = ExpirableMessage & {
@@ -21,7 +22,26 @@ export class MessagesService {
   constructor(
     @InjectRepository(Message)
     private msgRepo: Repository<Message>,
+    private mediaCleanup: MediaCleanupService,
   ) {}
+
+  /**
+   * Null every reply pointer at [messageId] so the row can be hard-deleted.
+   *
+   * `messages.reply_to_message_id` is a self-FK with NO ON DELETE clause
+   * (0001_baseline.sql), so deleting a replied-to row without this throws
+   * 23503 and the caller's delete request fails outright. The reply rows keep
+   * their own content; only the preview link goes away — which is correct,
+   * because the referenced message no longer exists.
+   */
+  private async detachReplies(messageId: number): Promise<void> {
+    await this.msgRepo.query(
+      `UPDATE public.messages
+         SET reply_to_message_id = NULL
+       WHERE reply_to_message_id = $1`,
+      [messageId],
+    );
+  }
 
   async create(
     content: string,
@@ -604,7 +624,20 @@ export class MessagesService {
   }
 
   /**
-   * "Delete for me" — add userId to hiddenByUserIds so message is hidden from that user.
+   * "Delete for me" — add userId to hiddenByUserIds so message is hidden from
+   * that user, then hard-delete the row once EVERY conversation participant
+   * has hidden it: a row nobody can ever read again is pure retention.
+   *
+   * The append is one atomic UPDATE, not read-modify-save: two participants
+   * hiding concurrently serialize on the row lock, so the second UPDATE's
+   * RETURNING value contains both ids and the hard delete fires. The old
+   * read-modify-save let one hide clobber the other — the clobbered user saw
+   * the message resurface AND the row could never qualify for deletion.
+   *
+   * The delete guard fails closed: the participant set comes from the
+   * conversation relation (never a hardcoded count), and a missing relation
+   * or empty set means "never delete". One participant hiding must NEVER
+   * delete — the other side still reads the message.
    */
   async hideMessageForUser(
     messageId: number,
@@ -618,11 +651,48 @@ export class MessagesService {
     });
     if (!message) return false;
 
-    const ids = MessagesService.parseHiddenIds(message.hiddenByUserIds);
-    if (ids.includes(userId)) return true; // Already hidden
-    ids.push(userId);
-    message.hiddenByUserIds = ids.join(',');
-    await this.msgRepo.save(message);
+    let hidden = MessagesService.parseHiddenIds(message.hiddenByUserIds);
+    if (!hidden.includes(userId)) {
+      // repo.query() returns [rows, rowCount] for UPDATE ... RETURNING.
+      const result: unknown = await this.msgRepo.query(
+        `UPDATE public.messages
+           SET "hiddenByUserIds" = CASE
+             WHEN "hiddenByUserIds" IS NULL OR "hiddenByUserIds" = '' THEN $2
+             WHEN $2 = ANY (string_to_array("hiddenByUserIds", ',')) THEN "hiddenByUserIds"
+             ELSE "hiddenByUserIds" || ',' || $2
+           END
+         WHERE id = $1
+         RETURNING "hiddenByUserIds"`,
+        [messageId, String(userId)],
+      );
+      const [rows] = result as [
+        Array<{ hiddenByUserIds: string | null }>,
+        number,
+      ];
+      if (!rows || rows.length === 0) return false; // row vanished mid-flight
+      hidden = MessagesService.parseHiddenIds(rows[0].hiddenByUserIds);
+    }
+
+    const conv = message.conversation;
+    const participantIds = [
+      ...new Set(
+        [conv?.userOne?.id, conv?.userTwo?.id].filter(
+          (id): id is number => typeof id === 'number',
+        ),
+      ),
+    ];
+    const everyParticipantHid =
+      participantIds.length > 0 &&
+      participantIds.every((id) => hidden.includes(id));
+    if (everyParticipantHid) {
+      // Media before row (backend CLAUDE.md §8): a failed unlink after row
+      // deletion would orphan the file with nothing pointing at it.
+      if (message.mediaUrl) {
+        await this.mediaCleanup.deleteMediaFile(message.mediaUrl);
+      }
+      await this.detachReplies(messageId);
+      await this.msgRepo.delete({ id: messageId });
+    }
     return true;
   }
 
@@ -710,6 +780,10 @@ export class MessagesService {
 
   /**
    * "Delete for everyone" — hard delete the message. Only sender can call this.
+   *
+   * Replies are detached first: the reply self-FK has no ON DELETE clause, so
+   * deleting a replied-to message would otherwise fail with 23503 (see
+   * [detachReplies]).
    */
   async deleteById(
     messageId: number,
@@ -724,6 +798,7 @@ export class MessagesService {
     });
     if (!message) return null;
     if (message.sender.id !== requesterId) return null;
+    await this.detachReplies(messageId);
     await this.msgRepo.remove(message);
     return message;
   }

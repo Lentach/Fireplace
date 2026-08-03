@@ -4,6 +4,13 @@ import { Message, MessageDeliveryStatus } from './message.entity';
 import { getRepositoryToken } from '@nestjs/typeorm';
 import { Test } from '@nestjs/testing';
 import { MESSAGE_NOT_EXPIRED_SQL } from './message-expiry.util';
+import { MediaCleanupService } from '../media/media-cleanup.service';
+
+/** Every MessagesService module needs this since the hard-delete rule. */
+const mediaCleanupMock = () => ({
+  provide: MediaCleanupService,
+  useValue: { deleteMediaFile: jest.fn().mockResolvedValue(undefined) },
+});
 
 type UnreadSummaryQueryBuilder = {
   innerJoin: jest.Mock;
@@ -27,6 +34,7 @@ describe('MessagesService.findByConversation', () => {
           provide: getRepositoryToken(Message),
           useValue: { find: jest.fn().mockResolvedValue([]) },
         },
+        mediaCleanupMock(),
       ],
     }).compile();
     service = module.get(MessagesService);
@@ -97,6 +105,7 @@ describe('MessagesService.getUnreadSummaryForUser', () => {
             createQueryBuilder: jest.fn().mockReturnValue(qb),
           },
         },
+        mediaCleanupMock(),
       ],
     }).compile();
     service = module.get(MessagesService);
@@ -168,6 +177,7 @@ describe('MessagesService.editMessage', () => {
             save: jest.fn((m) => Promise.resolve(m)),
           },
         },
+        mediaCleanupMock(),
       ],
     }).compile();
     service = module.get(MessagesService);
@@ -302,6 +312,7 @@ describe('MessagesService.findServedMessageIds', () => {
           provide: getRepositoryToken(Message),
           useValue: { createQueryBuilder },
         },
+        mediaCleanupMock(),
       ],
     }).compile();
     service = module.get(MessagesService);
@@ -418,5 +429,258 @@ describe('MessagesService.findServedMessageIds', () => {
     await service.findServedMessageIds([4, 4, 9, 4], 42);
 
     expect(qb.where).toHaveBeenCalledWith('m.id IN (:...ids)', { ids: [4, 9] });
+  });
+});
+
+describe('MessagesService.hideMessageForUser', () => {
+  let service: MessagesService;
+  let repo: {
+    findOne: jest.Mock;
+    query: jest.Mock<Promise<unknown>, [string, unknown[]]>;
+    delete: jest.Mock;
+  };
+  let mediaCleanup: { deleteMediaFile: jest.Mock };
+
+  const conv = (a: number, b: number) => ({
+    id: 10,
+    userOne: { id: a },
+    userTwo: { id: b },
+  });
+
+  /** repo.query() returns the [rows, rowCount] tuple for UPDATE…RETURNING. */
+  const returning = (hiddenByUserIds: string | null) => [
+    [{ hiddenByUserIds }],
+    1,
+  ];
+
+  beforeEach(async () => {
+    repo = {
+      findOne: jest.fn(),
+      query: jest
+        .fn<Promise<unknown>, [string, unknown[]]>()
+        .mockResolvedValue(returning('1')),
+      delete: jest.fn().mockResolvedValue({ affected: 1 }),
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        MessagesService,
+        { provide: getRepositoryToken(Message), useValue: repo },
+        mediaCleanupMock(),
+      ],
+    }).compile();
+    service = module.get(MessagesService);
+    mediaCleanup = module.get(MediaCleanupService);
+  });
+
+  it('NEVER deletes when only one participant hid the row', async () => {
+    // THE guard of this feature: the other participant still reads the
+    // message. Weakening every() to some(), or hardcoding a count, must turn
+    // this red.
+    repo.findOne.mockResolvedValue({
+      id: 7,
+      hiddenByUserIds: null,
+      mediaUrl: 'https://example.com/media/msgs/a.bin',
+      conversation: conv(1, 2),
+    });
+    repo.query.mockResolvedValue(returning('1'));
+
+    expect(await service.hideMessageForUser(7, 1)).toBe(true);
+
+    expect(repo.delete).not.toHaveBeenCalled();
+    expect(mediaCleanup.deleteMediaFile).not.toHaveBeenCalled();
+  });
+
+  it('hard-deletes once EVERY participant hid, media then replies then row', async () => {
+    repo.findOne.mockResolvedValue({
+      id: 7,
+      hiddenByUserIds: '1',
+      mediaUrl: 'https://example.com/media/msgs/a.bin',
+      conversation: conv(1, 2),
+    });
+    repo.query
+      .mockResolvedValueOnce(returning('1,2')) // hidden append
+      .mockResolvedValueOnce([[], 0]); // reply detach
+
+    expect(await service.hideMessageForUser(7, 2)).toBe(true);
+
+    expect(mediaCleanup.deleteMediaFile).toHaveBeenCalledWith(
+      'https://example.com/media/msgs/a.bin',
+    );
+    expect(repo.delete).toHaveBeenCalledWith({ id: 7 });
+    // Reply pointers detach (self-FK has no ON DELETE) and media unlinks
+    // BEFORE the row goes away.
+    const detachCall = repo.query.mock.calls.find((c) =>
+      c[0].includes('reply_to_message_id'),
+    );
+    expect(detachCall).toBeDefined();
+    expect(detachCall![0]).toContain('SET reply_to_message_id = NULL');
+    const deleteOrder = repo.delete.mock.invocationCallOrder[0];
+    expect(
+      mediaCleanup.deleteMediaFile.mock.invocationCallOrder[0],
+    ).toBeLessThan(deleteOrder);
+    const detachOrder =
+      repo.query.mock.invocationCallOrder[repo.query.mock.calls.length - 1];
+    expect(detachOrder).toBeLessThan(deleteOrder);
+  });
+
+  it('appends via a single atomic UPDATE with quoted "hiddenByUserIds"', async () => {
+    repo.findOne.mockResolvedValue({
+      id: 7,
+      hiddenByUserIds: null,
+      mediaUrl: null,
+      conversation: conv(1, 2),
+    });
+
+    await service.hideMessageForUser(7, 1);
+
+    const [sql, params] = repo.query.mock.calls[0];
+    expect(sql).toContain('"hiddenByUserIds"');
+    expect(sql).toContain('RETURNING');
+    expect(params).toEqual([7, '1']);
+  });
+
+  it('skips media unlink when the row has none', async () => {
+    repo.findOne.mockResolvedValue({
+      id: 7,
+      hiddenByUserIds: '2',
+      mediaUrl: null,
+      conversation: conv(1, 2),
+    });
+    repo.query
+      .mockResolvedValueOnce(returning('2,1'))
+      .mockResolvedValueOnce([[], 0]);
+
+    await service.hideMessageForUser(7, 1);
+
+    expect(mediaCleanup.deleteMediaFile).not.toHaveBeenCalled();
+    expect(repo.delete).toHaveBeenCalledWith({ id: 7 });
+  });
+
+  it('is idempotent for an already-hidden user and still heals a fully-hidden legacy row', async () => {
+    // Pre-fix data: both participants hid before the rule shipped. A repeat
+    // call must not re-append (no UPDATE on hiddenByUserIds) but MUST
+    // hard-delete.
+    repo.findOne.mockResolvedValue({
+      id: 7,
+      hiddenByUserIds: '1,2',
+      mediaUrl: null,
+      conversation: conv(1, 2),
+    });
+    repo.query.mockResolvedValue([[], 0]); // only the reply detach runs
+
+    expect(await service.hideMessageForUser(7, 1)).toBe(true);
+
+    const appendCalls = repo.query.mock.calls.filter((c: unknown[]) =>
+      String(c[0]).includes('"hiddenByUserIds"'),
+    );
+    expect(appendCalls).toHaveLength(0);
+    expect(repo.delete).toHaveBeenCalledWith({ id: 7 });
+  });
+
+  it('returns false when the message is gone', async () => {
+    repo.findOne.mockResolvedValue(null);
+
+    expect(await service.hideMessageForUser(7, 1)).toBe(false);
+    expect(repo.query).not.toHaveBeenCalled();
+    expect(repo.delete).not.toHaveBeenCalled();
+  });
+
+  it('returns false when the row vanishes between read and append', async () => {
+    repo.findOne.mockResolvedValue({
+      id: 7,
+      hiddenByUserIds: null,
+      mediaUrl: null,
+      conversation: conv(1, 2),
+    });
+    repo.query.mockResolvedValue([[], 0]); // UPDATE matched nothing
+
+    expect(await service.hideMessageForUser(7, 1)).toBe(false);
+    expect(repo.delete).not.toHaveBeenCalled();
+  });
+
+  it('never deletes when the conversation relation is missing (fail closed)', async () => {
+    repo.findOne.mockResolvedValue({
+      id: 7,
+      hiddenByUserIds: '2',
+      mediaUrl: null,
+      conversation: null,
+    });
+    repo.query.mockResolvedValue(returning('2,1'));
+
+    expect(await service.hideMessageForUser(7, 1)).toBe(true);
+    expect(repo.delete).not.toHaveBeenCalled();
+  });
+
+  it('uses the actual participant set — a self-conversation deletes after its single hide', async () => {
+    // Guards against hardcoding "2 participants": the set is derived from
+    // the conversation relation, deduplicated.
+    repo.findOne.mockResolvedValue({
+      id: 7,
+      hiddenByUserIds: null,
+      mediaUrl: null,
+      conversation: conv(5, 5),
+    });
+    repo.query
+      .mockResolvedValueOnce(returning('5'))
+      .mockResolvedValueOnce([[], 0]);
+
+    expect(await service.hideMessageForUser(7, 5)).toBe(true);
+    expect(repo.delete).toHaveBeenCalledWith({ id: 7 });
+  });
+});
+
+describe('MessagesService.deleteById', () => {
+  let service: MessagesService;
+  let repo: {
+    findOne: jest.Mock;
+    query: jest.Mock<Promise<unknown>, [string, unknown[]]>;
+    remove: jest.Mock;
+  };
+
+  beforeEach(async () => {
+    repo = {
+      findOne: jest.fn(),
+      query: jest
+        .fn<Promise<unknown>, [string, unknown[]]>()
+        .mockResolvedValue([[], 0]),
+      remove: jest.fn().mockImplementation((m) => Promise.resolve(m)),
+    };
+    const module = await Test.createTestingModule({
+      providers: [
+        MessagesService,
+        { provide: getRepositoryToken(Message), useValue: repo },
+        mediaCleanupMock(),
+      ],
+    }).compile();
+    service = module.get(MessagesService);
+  });
+
+  it('detaches replies BEFORE removing the row (self-FK has no ON DELETE)', async () => {
+    repo.findOne.mockResolvedValue({
+      id: 9,
+      sender: { id: 1 },
+      conversation: { id: 10 },
+    });
+
+    expect(await service.deleteById(9, 1)).not.toBeNull();
+
+    const [sql, params] = repo.query.mock.calls[0];
+    expect(sql).toContain('SET reply_to_message_id = NULL');
+    expect(params).toEqual([9]);
+    expect(repo.query.mock.invocationCallOrder[0]).toBeLessThan(
+      repo.remove.mock.invocationCallOrder[0],
+    );
+  });
+
+  it('does not touch replies when the caller is not the sender', async () => {
+    repo.findOne.mockResolvedValue({
+      id: 9,
+      sender: { id: 99 },
+      conversation: { id: 10 },
+    });
+
+    expect(await service.deleteById(9, 1)).toBeNull();
+    expect(repo.query).not.toHaveBeenCalled();
+    expect(repo.remove).not.toHaveBeenCalled();
   });
 });

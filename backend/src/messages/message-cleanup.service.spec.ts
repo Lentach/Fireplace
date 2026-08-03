@@ -30,6 +30,7 @@ describe('MessageCleanupService', () => {
           useValue: {
             createQueryBuilder: jest.fn().mockReturnValue(queryBuilder),
             remove: jest.fn().mockResolvedValue([]),
+            query: jest.fn().mockResolvedValue([[], 0]),
           },
         },
         {
@@ -76,6 +77,19 @@ describe('MessageCleanupService', () => {
       ...messagesRepo.remove.mock.invocationCallOrder,
     );
     expect(lastDelete).toBeLessThan(firstRemove);
+
+    // Reply detach (self-FK has no ON DELETE) runs before removal, covering
+    // exactly the doomed ids — otherwise a parent expiring before its reply
+    // throws 23503 and wedges the cron.
+    const [detachSql, detachParams] = messagesRepo.query.mock.calls[0] as [
+      string,
+      unknown[],
+    ];
+    expect(detachSql).toContain('SET reply_to_message_id = NULL');
+    expect(detachParams).toEqual([[1, 2, 3]]);
+    expect(messagesRepo.query.mock.invocationCallOrder[0]).toBeLessThan(
+      firstRemove,
+    );
   });
 
   it('retains candidates that are not actually expired (isMessageExpired guard)', async () => {
