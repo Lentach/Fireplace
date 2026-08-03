@@ -171,6 +171,38 @@ used for this work. The main copy is now on `master` at `70cae4a`, clean and in 
 - Pins confirmed still resolved as pinned: drift 2.31.x, sqlite3 2.9.4, sqlcipher 0.6.8,
   webcrypto 0.6.0; firebase-admin untouched on 13.x with its scoped `overrides.firebase-admin.uuid`
 
+## RELEASED — `0.1.2 / ded8e1a`, both tiers
+
+Everything above is now in production. Version bumped `0.1.1 → 0.1.2` in `ded8e1a` and pushed
+**before** building, because `deploy-web.ps1` stamps `GIT_COMMIT` from the checkout HEAD and a
+bump committed afterwards ships under the previous SHA.
+
+**Staging rehearsal first, and it was a real gate, not ceremony.** The runbook lists
+"bootstrap/config code" as a rehearsal trigger and `migration-runner.ts` is exactly that; the
+range also carried two backend majors. `.\staging.ps1 up` (Docker Desktop was not running on the
+PC and had to be started) booted the real prod compose isolated on `:3100` and proved the two
+things actually at risk, in the real image, before prod saw them:
+
+- **zero `injected env` lines in the boot log** — `quiet: true` genuinely works under dotenv 17
+- **`ScheduleModule` initialised and healthy in 5 s** under `@nestjs/schedule` 6
+- migrations `0006`–`0010` applied cleanly on a fresh DB, so the `{ cause: error }` rethrow did
+  not disturb the happy path
+- only warning was the known `FIREBASE_SERVICE_ACCOUNT not set`
+
+Then, in order — backend on the VM, frontend from the PC:
+
+| | |
+|---|---|
+| `./deploy-backend.sh` | healthy at 10 s; `/version` → `0.1.2 / ded8e1a2`; `/health` ok |
+| prod boot log | `Migrations: schema up to date`, **zero dotenv noise**, started +31 ms |
+| `.\deploy-web.ps1` | built, published by atomic swap, `/version.json` → `0.1.2 / ded8e1a` |
+| `post-deploy-smoke.mjs` | **5/5 PASS** — incl. `main.dart.js` literally containing `ded8e1a` |
+
+`fireplace-backend-1` healthy, `fireplace-db-1` running. No migration shipped in this release.
+
+**Owner action: fully close and reopen the PWA** — Settings should read `0.1.2 / ded8e1a`.
+**Never uninstall or clear site data.**
+
 ## Independent review — run AFTER the merge, which was the wrong order
 
 All of the above was merged on the author's own verification. The owner then asked whether it
