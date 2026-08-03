@@ -52,9 +52,18 @@ class EncryptionService {
   /// SharedPreferences/localStorage — flutter_secure_storage's IndexedDB+
   /// WebCrypto backing loses data when tabs close or the WebCrypto key is
   /// evicted. On mobile, ONLY flutter_secure_storage (Keychain/Keystore).
-  final DualStorage _storage = DualStorage(
+  DualStorage _storage = DualStorage(
     FlutterSecureStorage(webOptions: const WebOptions(dbName: 'FireplaceE2E')),
   );
+
+  /// Test-only seam mirroring [debugSetContentKv]: pin the Signal key-value
+  /// backend (e.g. a throwing fake proving the residue/prekey enumeration
+  /// hardenings — B2b design review R1/R3). Call BEFORE [initialize]; the
+  /// stores built there capture the reference.
+  @visibleForTesting
+  void debugSetDualStorage(DualStorage storage) {
+    _storage = storage;
+  }
 
   late SecureIdentityKeyStore _identityStore;
   late SecurePreKeyStore _preKeyStore;
@@ -249,14 +258,16 @@ class EncryptionService {
   /// every one of those sessions.
   ///
   /// Only consulted after [SecureIdentityKeyStore.loadFromStorage] returned
-  /// `absent`, which already proves the identity reads themselves succeeded —
-  /// storage is broadly working. A throwing `readAll` is therefore
-  /// INCONCLUSIVE, not evidence of residue: biasing it to `true` would brick
-  /// genuine fresh installs on a transient error and prompt a "your keys are
-  /// damaged" recovery at a user who has no keys and nothing to lose. Retry
-  /// once, then treat it as a fresh install and leave a forensic trail. The
-  /// primary guard against partial loss is `loadFromStorage` returning
-  /// `partial`, which never depends on this check.
+  /// `absent`. A throwing `readAll` is INCONCLUSIVE — and inconclusive now
+  /// reads as RESIDUE-PRESENT (fail closed; B2b design review R1). The old
+  /// `catch → false` bias was written for a plaintext world where `readAll`
+  /// practically never threw and biasing true would brick fresh installs;
+  /// with the web sig store sealed, an enumeration transient coinciding with
+  /// lost identity rows would have this guard wave `_generateKeys()` through
+  /// — a NEW identity minted over surviving sealed sessions, the permanent
+  /// silent loss this method exists to block. Cost of the new bias: a genuine
+  /// fresh install under a storage transient sees the incomplete-identity
+  /// surface once and retries next boot — recoverable, unlike regeneration.
   Future<bool> _hasPriorInstallResidue(String prefix) async {
     for (var attempt = 0; attempt < 2; attempt++) {
       try {
@@ -279,7 +290,7 @@ class EncryptionService {
       }
     }
     E2ePersistentDiag.record('IDENTITY_RESIDUE_UNKNOWN', {'prefix': prefix});
-    return false;
+    return true;
   }
 
   /// DESTRUCTIVE, USER-CONSENTED. Mint a brand-new identity after the user has
@@ -667,7 +678,21 @@ class EncryptionService {
     // If the counter was lost but pre-keys survive, derive the next id from the
     // highest stored key so we never reuse an id — reusing one overwrites a live
     // pre-key's private half while its public half is already on the server.
-    final nextId = storedNext ?? (await _highestStoredPreKeyId()) + 1;
+    int nextId;
+    if (storedNext != null) {
+      nextId = storedNext;
+    } else {
+      final highest = await _highestStoredPreKeyId();
+      if (highest == null) {
+        // Enumeration was INCONCLUSIVE (B2b design review R3): defaulting to
+        // the fresh-install floor here is exactly the id-reuse hazard this
+        // fallback exists to prevent. Skip replenishment this session; the
+        // server threshold re-triggers it next time.
+        E2ePersistentDiag.record('PREKEY_MINT_SKIPPED', {'userId': uid});
+        return const [];
+      }
+      nextId = highest + 1;
+    }
 
     final preKeys = generatePreKeys(nextId, _preKeyBatchSize);
     // Parallel writes (chunked to avoid overwhelming secure storage)
@@ -689,13 +714,15 @@ class EncryptionService {
     return preKeys.map(_preKeyToUploadFormat).toList();
   }
 
-  /// Highest stored one-time pre-key id for the current user, or
-  /// [_initialPreKeyBatchSize] - 1 when none are found. Used only as the
-  /// fallback when the persisted next-id counter is missing, to avoid reusing a
-  /// pre-key id (which would strand the recipient on an unusable OTP).
-  Future<int> _highestStoredPreKeyId() async {
+  /// Highest stored one-time pre-key id for the current user:
+  /// [_initialPreKeyBatchSize] - 1 when a SUCCESSFUL enumeration finds none,
+  /// or **null when the enumeration itself failed** — the caller must abort
+  /// the mint, never substitute the fresh-install floor (B2b design review
+  /// R3: that substitution reuses ids whose public halves the server already
+  /// serves). Used only when the persisted next-id counter is missing.
+  Future<int?> _highestStoredPreKeyId() async {
     final uid = _userId;
-    if (uid == null) return _initialPreKeyBatchSize - 1;
+    if (uid == null) return null;
     final prefix = 'e2e_${uid}_pre_key_';
     var maxId = -1;
     try {
@@ -705,7 +732,9 @@ class EncryptionService {
         final id = int.tryParse(key.substring(prefix.length));
         if (id != null && id > maxId) maxId = id;
       }
-    } catch (_) {}
+    } catch (_) {
+      return null;
+    }
     return maxId < 0 ? _initialPreKeyBatchSize - 1 : maxId;
   }
 

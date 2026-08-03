@@ -1,12 +1,14 @@
 # Web at-rest Signal-key sealing (B2b) — design
 
-**Status:** REVIEWED — design review verdict REVISE (`SigSealDesignReview`, 2026-08-03), all
-eight findings folded in: R1 CRITICAL `_hasPriorInstallResidue` swallowed-throw → regeneration
-(§2 rule 1, §3.1a); R2 CRITICAL session-drain lock name → cross-engine ratchet rollback
-(§3.3 step 3); R3 HIGH `_highestStoredPreKeyId` swallowed-throw → prekey reuse (§3.1a);
-R4 presence-preserving `readAll` (§3.1); R5 probe-failure fail-closed (§3.2); R6 fallback
-coexistence guard (§3.4); R7 trusted-identity cost honesty (§3.6); R8 canary-evidence honesty
-(§1). NO CODE until owner signs off on the §1 availability tradeoff.
+**Status:** IMPLEMENTED, DEPLOY HELD — design review REVISE (`SigSealDesignReview`, R1-R8 all
+folded in, incl. two CRITICALs: R1 swallowed-throw regeneration, R2 drain lock); post-review
+lock-order advisory fixed (ABBA deadlock — drain now takes exactly ONE lock per row, §3.3);
+implementation reviews: data-loss **SHIP** (`SigSealDataLossReview`: no regeneration / ratchet
+reset / prekey reuse / rollback / re-exposure / deadlock path; two LOW self-healing residuals —
+trusted-pin drain race fixed at source, prekey resurrection accepted §3.3), spec
+**SHIP-WITH-FIXES** (`SigSealSpecReview`: diag payload aligned, §5.2/§5.3/§5.7 dedicated tests
+added and red-proven, kid-sort claim softened). 12+3 falsification mutations run RED.
+**Deploy gated on: a dump proving canary survival past the 7-day iOS horizon + fresh owner OK.**
 **Queue:** `2026-08-03-HANDOFF-signal-grade-queue.md` addendum (new item after B2a shipped).
 **Prereqs read:** root `CLAUDE.md`, `frontend/CLAUDE.md` §5, `docs/design/web-content-sealing.md`
 (B2a — the proven template this deliberately mirrors and deliberately diverges from),
@@ -206,12 +208,17 @@ today. Both are hardened in this change, each with its own red test:
   "no sealed row exists" is only decidable by a SUCCESSFUL zero-envelope probe; folding a
   probe failure into the "none" arm would open the rule-4 forbidden state). If inventory
   succeeds and is empty AND a successful probe shows no sealed rows → mint + arm; mint
-  fails → fallback (loud). If inventory has keys → active kid = newest;
+  fails → fallback (loud). If inventory has keys → active kid = the marker if present and
+  known, else a DETERMINISTIC shared tiebreak (length-then-lex — approximately newest; the
+  unpadded rng tail makes strict mint-order impossible and irrelevant: every inventoried
+  key decrypts by embedded kid regardless, the tiebreak only makes sibling engines agree);
   proceed sealed. **No row scan, no retire fold — nothing destructive happens at open, ever**
   (rule 5). The lock exists for the cold-store mint race (B2a finding C1's shape): without it
   two engines could both see "no kid + no sealed rows", both mint, and both proceed — harmless
-  for uniqueness (kids are unique, both persist) but the lock also serializes drain batches
-  against a future rotation, so it is taken from day one, same as B2a.
+  for uniqueness (kids are unique, both persist) but the lock also serializes non-session
+  drain rows against a future rotation, so it is taken from day one, same as B2a. **The
+  sig-keys lock is NEVER held while acquiring any other lock** (lock-order advisory, drain
+  step 3 below).
 - Steady-state ops take NO lock (per-op seal/unseal is stateless; cross-engine session-record
   coherence is already owned by the per-peer `fireplace-e2e-session-<uid>-<peer>` locks and
   `SharedPreferencesAsync`'s cache-free reads — sealing changes neither).
@@ -224,27 +231,40 @@ State lives in the data, resumable by construction (B2a §3.4 verbatim, adapted)
    encrypt/decrypt, so the hot material seals itself within hours of normal use.
 2. **Read-both forever.** Legacy plaintext values serve as-is.
 3. **Background drain**, small batches (16 — rows are few: 1 identity + ~25 sessions + ~100
-   prekeys), under the `fireplace-e2e-sig-keys` lock per batch, **plus, for every
-   `session_<peer>_<dev>` row, the per-peer lock `fireplace-e2e-session-<uid>-<peer>` for
-   that row's seal-and-replace** (design review R2 — CRITICAL: the batch lock and the ratchet
-   write take DIFFERENT Web Lock names, and different names do not mutually exclude; a
-   same-engine CAS with "no await between re-read and write" only excludes microtasks of
-   the SAME isolate, while a sibling engine holding the per-peer lock can land a ratchet
-   advance between the drain's re-read and write — a stale envelope would then ROLL BACK
-   the double ratchet, permanent bad-MAC. B2a's CAS was sufficient because content rows are
-   over-write-recoverable; session rows are not. Under the per-peer lock the drain is
-   serialized against the exact writer that matters). Per row: seal in RAM → unseal-verify
-   round-trip in RAM BEFORE any write (H1 class: in-place replacement means one value under
-   the key at all times; a post-write verify would detect failure only after the sole copy of
-   the IDENTITY was overwritten) → re-read the key and compare-and-set against the value the
-   envelope was built from, no await between re-read and write (D1 class, same-engine half;
-   the per-peer lock covers the cross-engine half for session rows. The other families have
-   no concurrent rewriter by construction: the identity records are written only at
-   init/migration; prekey rows are written once at generation — serialized by the existing
-   `fireplace-e2e-prekeys-<uid>` lock — and only ever DELETED afterward (consumption), so a
-   CAS re-read finding the row gone aborts that row, which is the correct outcome) →
-   write, commit true required → post-write read-back as byte-equality durability proof.
-   Abort batch on any failure; partial progress kept; retry next session.
+   prekeys), **exactly ONE lock per row, NEVER nested** (post-review lock-order advisory —
+   supersedes this doc's earlier "batch lock plus per-peer lock" shape, which was an ABBA
+   deadlock: the ratchet path acquires per-peer → (lazy store open) sig-keys, so a drain
+   holding sig-keys while WAITING on a per-peer lock hangs both engines forever — Web Locks
+   are origin-wide with no timeout):
+   - `session_<peer>_<dev>` AND `trusted_identity_<peer>_<dev>` rows drain under ONLY
+     `fireplace-e2e-session-<uid>-<peer>` — the SAME lock their writers take (design review
+     R2 — CRITICAL for sessions: the sig-keys lock does not mutually exclude the writer
+     that matters; a same-engine CAS with "no await between re-read and write" only
+     excludes microtasks of the SAME isolate, while a sibling engine can land a ratchet
+     advance between the drain's re-read and write — a stale envelope would ROLL BACK the
+     double ratchet, permanent bad-MAC. B2a's CAS was sufficient because content rows are
+     over-write-recoverable; session rows are not. Trusted pins added by the data-loss
+     review: `saveIdentity` rewrites them under the per-peer lock too — a clobbered re-pin
+     would only cost one spurious banner + TOFU re-pin, but excluding it at source is
+     cheap);
+   - every other row drains under ONLY `fireplace-e2e-sig-keys` (no concurrent rewriter by
+     construction: identity records are written only at init/migration; prekey rows are
+     written once at generation — serialized by the existing `fireplace-e2e-prekeys-<uid>`
+     lock — and only ever DELETED afterward, so a CAS re-read finding the row gone aborts
+     that row, the correct outcome. Two engines draining the same non-session row
+     concurrently is harmless: both envelopes round-trip to the same plaintext.
+     **Accepted residual (data-loss review, LOW):** a cross-engine `removePreKey` landing
+     between the drain's re-read and write can resurrect a consumed prekey's private half
+     as a sealed row — dead weight, never reuse: `next_pre_key_id` has already advanced,
+     the server never re-issues that id, and the stale half is never drawn again).
+   Per row: seal in RAM → unseal-verify round-trip in RAM BEFORE any write (H1 class:
+   in-place replacement means one value under the key at all times; a post-write verify
+   would detect failure only after the sole copy of the IDENTITY was overwritten) → re-read
+   the key and compare-and-set against the value the envelope was built from, no await
+   between re-read and write (D1 class, same-engine half; the row's single lock covers the
+   cross-engine half) → write, commit true required → post-write read-back as byte-equality
+   durability proof. Abort the drain on any failure; partial progress kept; retry next
+   session.
 4. **Nothing deleted, ever.** In-place replacement under the same key.
 
 The pre-existing `WebSignalKvStore` legacy-namespace migration (cached SharedPreferences →
@@ -288,7 +308,7 @@ mid-session; it only loses write permission.
 | `SIG_SEAL_DRAIN_DONE {sealed}` | durable, one-shot | migration finished |
 | `SIG_STORE_FALLBACK {stage}` | durable | pre-first-seal session running plaintext (legal, loud) |
 | `SIG_KEY_UNAVAILABLE {stage}` | durable | sealed rows exist, keys unreachable → E2E down this session |
-| `SIG_ROWS_UNREADABLE {rows}` | durable, deduped once per open | unsealable under a present kid (tamper/corruption) |
+| `SIG_ROWS_UNREADABLE {stage}` | durable, deduped once per session | first unsealable value encountered (`parse` = malformed envelope, `kid` = key material unreachable for that kid, `unseal` = present-kid tamper/corruption) |
 | drain batches | ring | progress |
 
 Watch items post-deploy: any `SIG_KEY_UNAVAILABLE` or `SIG_ROWS_UNREADABLE` = escalate
@@ -370,6 +390,10 @@ write-skip-when-unchanged optimization compares parsed keys ABOVE the seam and i
 16. **Presence-preserving readAll:** an unsealable value must appear in `readAll` as its raw
     envelope (key present); a value-throwing mutation must go red on BOTH the residue guard
     (item 11 shape) and `inventoryPeerIds` bricking on one corrupt row.
+17. **Lock-order pin (deadlock advisory):** the drain must NEVER request a per-peer session
+    lock while holding `fireplace-e2e-sig-keys` (the ABBA half against the ratchet path's
+    per-peer → lazy-open → sig-keys order). The recording test lock flags any acquisition
+    requested while sig-keys is held; restoring the nested batch-lock shape must go red.
 
 ## 6. Rollout
 

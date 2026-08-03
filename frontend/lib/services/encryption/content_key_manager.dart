@@ -36,12 +36,20 @@ import '../secure_kv.dart';
 /// deleted account's rows are shredded by the rotation that its row removals
 /// stamp, not by deleting the shared key.
 class ContentKeyManager {
-  ContentKeyManager(this._secure);
+  ContentKeyManager(this._secure, {String keyPrefix = contentKeyPrefix})
+    : _keyPrefix = keyPrefix;
 
   final SecureKv _secure;
 
+  /// Which payload-key family this instance owns. Defaults to the content
+  /// family; the web sig-sealing store passes [sigKeyPrefix] — a SEPARATE
+  /// namespace so content-key rotation/shredding can never destroy a key
+  /// Signal rows still need (docs/design/web-sig-sealing.md §3.2).
+  final String _keyPrefix;
+
   static const String dbKeyName = 'fp_content_db_key_v1';
   static const String contentKeyPrefix = 'fp_content_key_';
+  static const String sigKeyPrefix = 'fp_sig_key_';
 
   static final Random _rng = Random.secure();
 
@@ -103,11 +111,11 @@ class ContentKeyManager {
       var others = 0;
       final all = await _secure.readAll();
       for (final entry in all.entries) {
-        if (!entry.key.startsWith(contentKeyPrefix)) {
+        if (!entry.key.startsWith(_keyPrefix)) {
           others++;
           continue;
         }
-        final kid = entry.key.substring(contentKeyPrefix.length);
+        final kid = entry.key.substring(_keyPrefix.length);
         final bytes = _fromHex(entry.value);
         if (kid.isNotEmpty && bytes != null && bytes.length == 32) {
           keys[kid] = bytes;
@@ -128,7 +136,7 @@ class ContentKeyManager {
   Future<String?> mintContentKey() async {
     final kid =
         'k${DateTime.now().toUtc().millisecondsSinceEpoch}${_rng.nextInt(0xffff)}';
-    final name = '$contentKeyPrefix$kid';
+    final name = '$_keyPrefix$kid';
     final hex = _toHex(_randomBytes(32));
     try {
       await _secure.write(name, hex);
@@ -156,7 +164,7 @@ class ContentKeyManager {
   /// Returns whether the entry is confirmed gone; a false leaves the key alive
   /// and the rotation must not report the shred as done.
   Future<bool> destroyContentKey(String kid) async {
-    final name = '$contentKeyPrefix$kid';
+    final name = '$_keyPrefix$kid';
     try {
       await _secure.delete(name);
       return await _secure.read(name) == null;

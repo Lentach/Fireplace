@@ -5,6 +5,23 @@ import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
 import '../../utils/e2e_diag_log.dart';
+import '../../utils/e2e_persistent_diag.dart';
+import '../secure_kv.dart';
+import 'content_key_manager.dart';
+import 'content_sealer.dart';
+import 'sealed_sig_envelope.dart';
+import 'sealed_web_signal_kv.dart';
+import 'session_cross_context_lock.dart';
+
+/// The four async operations every web Signal key-value backend exposes.
+/// [WebSignalKvStore] is the historical plaintext behavior; the sealed store
+/// and its fallback guard wrap it (docs/design/web-sig-sealing.md §3.1).
+abstract class SigWebKv {
+  Future<void> write(String key, String value);
+  Future<String?> read(String key);
+  Future<void> delete(String key);
+  Future<Map<String, String>> readAll();
+}
 
 /// Platform-aware key-value storage for Signal Protocol keys.
 ///
@@ -22,9 +39,27 @@ class DualStorage {
   SharedPreferencesAsync? _asyncPrefsInstance;
   SharedPreferences? _prefs;
   WebSignalKvStore? _web;
+  Future<SigWebKv>? _webOpen;
 
-  DualStorage(this._secure, {SharedPreferencesAsync? asyncPrefs})
-    : _asyncPrefsOverride = asyncPrefs;
+  /// Test seams for the web sealing path; production leaves them null and
+  /// [_openWeb] builds the real sealer/key manager over [_secure].
+  final ContentSealer? _sigSealerOverride;
+  final ContentKeyManager? _sigKeysOverride;
+  final SessionCrossContextLockRunner? _sigLockOverride;
+  final bool _debugForceSealedWeb;
+
+  DualStorage(
+    this._secure, {
+    SharedPreferencesAsync? asyncPrefs,
+    ContentSealer? sigSealer,
+    ContentKeyManager? sigKeys,
+    SessionCrossContextLockRunner? sigLock,
+    @visibleForTesting bool debugForceSealedWeb = false,
+  }) : _asyncPrefsOverride = asyncPrefs,
+       _sigSealerOverride = sigSealer,
+       _sigKeysOverride = sigKeys,
+       _sigLockOverride = sigLock,
+       _debugForceSealedWeb = debugForceSealedWeb;
 
   /// Lazily built so construction never touches the async platform plugin on
   /// non-web (mobile/tests, where `kIsWeb` is false and the plugin is not
@@ -49,33 +84,73 @@ class DualStorage {
     _spPrefix,
   );
 
+  bool get _useWeb => kIsWeb || _debugForceSealedWeb;
+
+  /// The web backend for this session, memoized AS A FUTURE (concurrent first
+  /// ops cannot race two stores; a failed open keeps rethrowing on every op —
+  /// E2E down this session, retried next boot; a fallen-back session stays on
+  /// the guarded plaintext store; never a mid-session backend flip).
+  Future<SigWebKv> get _webKv => _webOpen ??= _openWeb();
+
+  Future<SigWebKv> _openWeb() async {
+    final raw = _webStore;
+    try {
+      final keys =
+          _sigKeysOverride ??
+          ContentKeyManager(
+            FlutterSecureStorageKv(_secure),
+            keyPrefix: ContentKeyManager.sigKeyPrefix,
+          );
+      return await SealedWebSignalKv.open(
+        inner: raw,
+        keys: keys,
+        sealer: _sigSealerOverride ?? AesGcmContentSealer(),
+        lock: _sigLockOverride,
+      );
+    } on SigSealOpenUnavailable catch (e) {
+      if (!e.fallbackLegal) {
+        // Sealed rows exist (or their existence is unknowable): running a
+        // plaintext store beside them is the rule-4 forbidden state, and an
+        // absent-looking identity read could trigger regeneration. E2E stays
+        // DOWN this session (docs/design/web-sig-sealing.md §3.4).
+        E2ePersistentDiag.record('SIG_KEY_UNAVAILABLE', {'stage': e.stage});
+        rethrow;
+      }
+      // Pre-first-seal world, proven by a successful zero-envelope probe:
+      // plaintext is the status quo, loudly diagnosed, write-guarded against
+      // a sibling engine sealing later.
+      E2ePersistentDiag.record('SIG_STORE_FALLBACK', {'stage': e.stage});
+      return FallbackWebSignalKv(raw);
+    }
+  }
+
   Future<void> write({required String key, required String value}) async {
-    if (kIsWeb) {
-      await _webStore.write(key, value);
+    if (_useWeb) {
+      await (await _webKv).write(key, value);
     } else {
       await _secure.write(key: key, value: value);
     }
   }
 
   Future<String?> read({required String key}) async {
-    if (kIsWeb) {
-      return _webStore.read(key);
+    if (_useWeb) {
+      return (await _webKv).read(key);
     } else {
       return _secure.read(key: key);
     }
   }
 
   Future<void> delete({required String key}) async {
-    if (kIsWeb) {
-      await _webStore.delete(key);
+    if (_useWeb) {
+      await (await _webKv).delete(key);
     } else {
       await _secure.delete(key: key);
     }
   }
 
   Future<Map<String, String>> readAll() async {
-    if (kIsWeb) {
-      return _webStore.readAll();
+    if (_useWeb) {
+      return (await _webKv).readAll();
     } else {
       return _secure.readAll();
     }
@@ -84,6 +159,7 @@ class DualStorage {
   void clearPrefsCache() {
     _prefs = null;
     _web = null;
+    _webOpen = null;
   }
 }
 
@@ -148,7 +224,7 @@ class _SharedPrefsLegacyKv implements LegacyKv {
 ///  - once every legacy `sig_` key is drained, [_legacyDrained] is set and
 ///    reads/deletes stop touching the legacy store, so steady-state negative
 ///    lookups never pay an O(n) `reload()`.
-class WebSignalKvStore {
+class WebSignalKvStore implements SigWebKv {
   final AsyncKv _async;
   final Future<LegacyKv> Function() _legacyProvider;
   final String _prefix;
@@ -190,11 +266,13 @@ class WebSignalKvStore {
     }
   }
 
+  @override
   Future<void> write(String key, String value) async {
     await _ensureMigrated();
     await _async.setString('$_prefix$key', value);
   }
 
+  @override
   Future<String?> read(String key) async {
     await _ensureMigrated();
     final value = await _async.getString('$_prefix$key');
@@ -208,6 +286,7 @@ class WebSignalKvStore {
     return legacy.getString('$_prefix$key');
   }
 
+  @override
   Future<void> delete(String key) async {
     await _ensureMigrated();
     await _async.remove('$_prefix$key');
@@ -219,6 +298,7 @@ class WebSignalKvStore {
     await legacy.remove('$_prefix$key');
   }
 
+  @override
   Future<Map<String, String>> readAll() async {
     await _ensureMigrated();
     final result = <String, String>{};

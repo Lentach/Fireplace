@@ -5,6 +5,11 @@ import 'package:flutter_test/flutter_test.dart';
 class FakeAsyncKv implements AsyncKv {
   final Map<String, Object?> store;
   bool failNextSet = false;
+
+  /// Models the enumeration itself failing (storage pressure/eviction) —
+  /// the sealed store's open probe must fail CLOSED on this.
+  bool throwGetAll = false;
+
   FakeAsyncKv([Map<String, Object?>? initial]) : store = {...?initial};
 
   @override
@@ -25,8 +30,10 @@ class FakeAsyncKv implements AsyncKv {
   }
 
   @override
-  Future<Map<String, Object?>> getAll() async =>
-      Map<String, Object?>.from(store);
+  Future<Map<String, Object?>> getAll() async {
+    if (throwGetAll) throw Exception('enumeration failed');
+    return Map<String, Object?>.from(store);
+  }
 }
 
 /// In-memory [LegacyKv] (models the cached legacy SharedPreferences).
