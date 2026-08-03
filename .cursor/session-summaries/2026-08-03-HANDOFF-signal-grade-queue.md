@@ -7,6 +7,15 @@
 > now floods the cap-80 durable log (noise evicts evidence). New owner action: fingerprint-
 > verify peer 54 (`PEER_IDENTITY_CHANGED` 08-03) in addition to peer 90. B2b `sig_*` sealing
 > is a NEW queue item (design doc first; identity blast radius, own gauntlet).
+>
+> **ADDENDUM 2026-08-03 (late night):** §4 is **DONE** — released `0.1.6 / 0014684`; both
+> halves (terminal-duplicate retirement, N=3 boot-nonce-gated, fail-closed; `DECRYPT_DECISION`
+> `(msgId, kind)` durable dedupe) shipped through the full gauntlet (design review REVISE
+> folded, 11 falsifications red-proven, data-loss SHIP, spec SHIP-WITH-FIXES fixed).
+> Spec + review record: `docs/design/terminal-duplicate-retirement.md`; session:
+> `2026-08-03-session-terminal-dup-retirement.md`. Expect ≤14 one-time `DUP_TERMINAL_RETIRED`
+> durables over the owner's next 3 boots; any OUTSIDE the known ~14 set = class still growing.
+> **Next up: B2b `sig_*` sealing — design doc FIRST, no code before its design review.**
 
 # HANDOFF — the Signal-grade queue, ready to execute
 
