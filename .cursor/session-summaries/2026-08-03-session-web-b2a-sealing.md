@@ -86,10 +86,38 @@ Rotation/shredding (envelope carries `kid` from day one — code-only later), B2
 sealing (own design doc; different seam, identity blast radius), lazy open-unseal (only if
 the measured `ms` blows the budget on the iPhone).
 
+## Field verification (owner's device, same night) — B2a CONFIRMED LIVE
+
+Footer `0.1.5 · bf886a6`. Diag dump:
+`WEB_SEAL_OPEN {sealed: 179, legacy: 0, unreadable: 0, lostRows: 0, ms: 246}` (246ms open on
+the real iPhone — inside the 500ms budget), `WEB_SEAL_DRAIN_DONE {sealed: 190}`, zero
+`CONTENT_STORE_FALLBACK`/`CONTENT_KEY_LOST`/`CONTENT_RECORDS_UNREADABLE`, `CANARY_OK
+{ageDays: 5}`. Storage sets across three dumps: retired stayed EXACTLY the five historical
+maoi ids through deploy + migration + the owner's manual all-conversation deletion; that
+deletion purged 56 records and dropped exactly those 56 ledger entries (0.1.4 hygiene
+working); orphans = the same 20 benign pre-0.1.4 ids, stable.
+
+**Honesty note (advisory-corrected):** the 56/56 deletion ran in an ARMED sealed session —
+plaintext view served the scan, so the envelope-`cid` erasure fallback branch was NOT
+field-exercised; it has test coverage only (test 16). It fires only in
+fallback/rollback/unsealable sessions.
+
+**New findings from the dump:**
+- `PEER_IDENTITY_CHANGED {peerId: 54}` 08-03 17:55 — owner must fingerprint-verify peer 54
+  (peer 90 from 07-31 still unverified too).
+- **The terminal-duplicate class GREW and floods the cap-80 durable log**: peers 49/52/83
+  joined 60 — ~14 rows (18947, 19038, 19063, 19066, 19074, 19077, 19080, 19083, 19086,
+  19087, 19090, 19094, 19102/19105/19106, 19120) burn a durable `DECRYPT_DECISION
+  duplicate/persist:false` on EVERY chat entry. NOT sealing casualties (absent from ledger
+  AND stored, `unreadable: 0` — pre-ledger damage). The durable log is now ~90% this noise;
+  the next real alarm could be evicted before the owner dumps. **Queue item 4 (retire
+  known-terminal duplicates) + a repeat-dedupe on DECRYPT_DECISION durables is hereby
+  PROMOTED from optional to next-up** — destruction-adjacent, so full gauntlet (design →
+  falsified tests → independent review → owner OK).
+
 ## Next
 
-1. **Owner OK → deploy** (`deploy-web.ps1` from the PC after CI green). First boot on his
-   install runs the one-time drain over ~138 stored records; then request a dump and check
-   the §Diags list above.
-2. Owner blockers unchanged: keystore backup, `FIREBASE_SERVICE_ACCOUNT`.
-3. Queue: delete-for-me hard-delete (backend), sweep success diags (small), Android track.
+1. Item 4 + durable dedupe (promoted, see above).
+2. B2b `sig_*` sealing design doc; delete-for-me hard-delete (backend); sweep success diags.
+3. Owner blockers unchanged: keystore backup, `FIREBASE_SERVICE_ACCOUNT`; fingerprint-verify
+   peers 54 and 90.

@@ -1,3 +1,13 @@
+> **ADDENDUM 2026-08-03 (night):** §1 (B2 web sealing) is **DONE and field-verified** —
+> released `0.1.5 / bf886a6`, spec + review record in `docs/design/web-content-sealing.md`,
+> field proof in `2026-08-03-session-web-b2a-sealing.md` (`WEB_SEAL_OPEN sealed:179/legacy:0`,
+> `WEB_SEAL_DRAIN_DONE {sealed:190}`, zero fallback/key-loss events, retired set unchanged).
+> §4 (terminal duplicates) is **PROMOTED to next-up** with a new co-requirement: repeat-dedupe
+> for `DECRYPT_DECISION` durables — the class grew to ~14 rows across peers 49/52/60/83 and
+> now floods the cap-80 durable log (noise evicts evidence). New owner action: fingerprint-
+> verify peer 54 (`PEER_IDENTITY_CHANGED` 08-03) in addition to peer 90. B2b `sig_*` sealing
+> is a NEW queue item (design doc first; identity blast radius, own gauntlet).
+
 # HANDOFF — the Signal-grade queue, ready to execute
 
 **Written:** 2026-08-03, after shipping `0.1.4 / ca4492c`. Owner wants the items below done, in
