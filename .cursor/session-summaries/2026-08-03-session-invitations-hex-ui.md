@@ -31,11 +31,12 @@ Owner asked: an "invite a friend" door in the Chats `+` picker (same as the Cont
 
 ## Verification
 
-`flutter analyze` clean; full suite **1198 + 10 skipped, all green** (+2 new picker tests: socket→InvitationsScreen, empty-state button→InvitationsScreen; no-lone-socket asserted). Visual loop closed via the preview harness + browser screenshots: inbox dark/light/teal/blue, picker with inviter + socket, empty picker, chat header dark/light; blue re-shot after the contrast fix.
+Round 1: `flutter analyze` clean; suite 1198 + 10 skipped (+2 picker tests). Round 2 final: **1203 + 10 skipped, all green** (+3 forge, +2 comb). Visual loop closed via the preview harness + browser screenshots across dark/light/teal/blue (inbox, picker, empty picker, chat header, comb collapsed/expanded, ping lattice); blue re-shot after the contrast fix; the accept→forge flow click-verified end-to-end in the preview after the fake-echo fix (`ab2ef05`).
 
 ## Notes for next session
 
-- Branch is pushed but NOT merged — owner reviews on device first. No version bump (nothing deployed).
+- Branch pushed through `ab2ef05`, owner reviewed in the preview and approved ("all seems good") — NOT merged, no version bump; merge to master is the next step when owner says go.
 - Review LOWs deliberately NOT acted on (owner-taste calls): picker accent text uses `colorScheme.primary` on glass (SPEC suggests `onGlassAccent`; pre-existing); "Pending" labels both directions; accepted-ready card stacks three accent elements; SPEC §10 "no title pills" contradicts the shipped app (doc drift, app-wide, predates this).
 - Chat-header hex is ~45px wide at 52px height vs the 52px back-circle — slight mass asymmetry; owner to judge on device.
 - Trap re-confirmed: the `edit` tool's auto-repair silently swallowed a `Transform.translate(offset:)` argument — re-read after any repaired hunk.
+- Preview harness traps: without a socket the provider's accept/decline only set inFlight and emit into the void — the harness fakes the server echo after 400 ms; cast emitted payloads as bare `Map` (inferred-type literals make `as Map<String, dynamic>` throw, silently, inside the delayed future). And `flutter run -d web-server` hot-restart ('R') silently no-ops once the connected client is stale — cold-restart the process (the documented LATEST trap, paid again).
