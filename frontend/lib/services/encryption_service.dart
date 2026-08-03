@@ -1641,6 +1641,130 @@ class EncryptionService {
   }
 
   // ---------------------------------------------------------------------------
+  // Terminal-duplicate observation counter
+  // (docs/design/terminal-duplicate-retirement.md §3.3).
+  //
+  // Rows that fail `duplicate` with NO readable source and NO ledger entry
+  // re-attempt a futile ratchet decrypt every boot, forever. The counter
+  // records "observed terminal in N distinct process lifetimes"; the decrypt
+  // path retires the row at [terminalDuplicateRetireSessions]. Everything here
+  // fails toward the status quo: an unbound user, a refused write, a malformed
+  // record, or a dropped cap entry all mean "count less" — slower to retire,
+  // never faster.
+
+  /// Distinct-process-lifetimes threshold before a terminal-duplicate row is
+  /// retired (design §3.1).
+  static const int terminalDuplicateRetireSessions = 3;
+
+  static const int _dupTermCap = 64;
+
+  /// Process-wide boot nonce (R1, design review): a process-lifetime static
+  /// survives provider/service re-creation, so in-SPA logout→login and
+  /// account switch re-inits share ONE nonce and an id increments at most
+  /// once per process lifetime — "N sessions" means N distinct boots, not N
+  /// re-inits. Mutable ONLY through [debugDupTermBootNonce]; production code
+  /// never reassigns it.
+  static String _dupTermBootNonce =
+      '${DateTime.now().microsecondsSinceEpoch}-${identityHashCode(Object())}';
+
+  /// Simulates a process restart in tests — the only writer besides the
+  /// initializer.
+  @visibleForTesting
+  static set debugDupTermBootNonce(String value) => _dupTermBootNonce = value;
+
+  String _dupTermKey(int userId) => 'e2e_${userId}_dupterm_v1';
+
+  /// Record one terminal-duplicate observation for [id] and return the count
+  /// AFTER this call, or null when nothing could be recorded (unbound user or
+  /// storage failure — the caller must treat null as "no observation").
+  ///
+  /// Deliberately lockless: the key is last-write-wins across engines, so
+  /// concurrent increments CLOBBER rather than sum — an under-count, the safe
+  /// direction (design §3.3).
+  Future<int?> noteTerminalDuplicate(int id) async {
+    final userId = _userId;
+    if (userId == null) return null;
+    try {
+      final prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
+      final map = _readDupTerm(prefs, userId);
+      final entry = map[id];
+      if (entry != null && entry.bootNonce == _dupTermBootNonce) {
+        // Already counted this boot — repeated chat entries in one process
+        // lifetime are ONE observation.
+        return entry.count;
+      }
+      final next = (entry?.count ?? 0) + 1;
+      map[id] = (count: next, bootNonce: _dupTermBootNonce);
+      if (!await _writeDupTerm(prefs, userId, map)) return null;
+      return next;
+    } catch (_) {
+      return null;
+    }
+  }
+
+  /// Delete [id]'s counter entry — a readable source EXISTS, so any prior
+  /// observations were transient misses (design §3.3 reset). Undetermined
+  /// answers must never reach here; the caller resets only on a DEFINITE true.
+  Future<void> clearTerminalDuplicate(int id) async {
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
+      final map = _readDupTerm(prefs, userId);
+      if (map.remove(id) == null) return;
+      await _writeDupTerm(prefs, userId, map);
+    } catch (_) {}
+  }
+
+  Map<int, ({int count, String bootNonce})> _readDupTerm(
+    ContentKv prefs,
+    int userId,
+  ) {
+    final out = <int, ({int count, String bootNonce})>{};
+    try {
+      final raw = prefs.getString(_dupTermKey(userId));
+      if (raw == null) return out;
+      final decoded = jsonDecode(raw);
+      if (decoded is! Map<String, dynamic>) return out;
+      for (final e in decoded.entries) {
+        final id = int.tryParse(e.key);
+        final v = e.value;
+        if (id == null || v is! Map) continue;
+        final n = v['n'];
+        final b = v['b'];
+        // A malformed entry is dropped, restarting its count from zero — the
+        // safe direction.
+        if (n is! int || n < 1 || b is! String) continue;
+        out[id] = (count: n, bootNonce: b);
+      }
+      return out;
+    } catch (_) {
+      return <int, ({int count, String bootNonce})>{};
+    }
+  }
+
+  Future<bool> _writeDupTerm(
+    ContentKv prefs,
+    int userId,
+    Map<int, ({int count, String bootNonce})> map,
+  ) {
+    // Bounded, keeping the HIGHEST ids — same convention as [markRetired]:
+    // ids ascend with age, and an evicted entry merely restores the status quo
+    // (retry forever) for that row, never a phantom count.
+    final ids = map.keys.toList()..sort();
+    final kept = ids.length > _dupTermCap
+        ? ids.sublist(ids.length - _dupTermCap)
+        : ids;
+    final encoded = <String, Object>{
+      for (final id in kept)
+        '$id': {'n': map[id]!.count, 'b': map[id]!.bootNonce},
+    };
+    return prefs.setString(_dupTermKey(userId), jsonEncode(encoded));
+  }
+
+  // ---------------------------------------------------------------------------
   // Decrypt ledger — "ids whose plaintext I have successfully persisted at
   // least once".
   //

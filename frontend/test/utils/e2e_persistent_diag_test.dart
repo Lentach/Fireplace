@@ -138,4 +138,145 @@ void main() {
     final prefs = await SharedPreferences.getInstance();
     expect(prefs.getStringList(persistKey), isEmpty);
   });
+  // recordDeduped — the DECRYPT_DECISION repeat-dedupe
+  // (docs/design/terminal-duplicate-retirement.md §4). The durable log is the
+  // owner's only field evidence and is cap-80: a known-terminal row re-burning
+  // a slot every boot evicts real failures. These pin the dedupe's exact
+  // boundaries — what it MUST suppress, what it must NEVER suppress, and that
+  // suppression is never permanent.
+
+  List<String> matchFor(int msgId, String kind) => [
+    '{msgId: $msgId,',
+    ' kind: $kind,',
+  ];
+
+  Map<String, dynamic> decision(int msgId, String kind) => {
+    'msgId': msgId,
+    'senderId': 2,
+    'kind': kind,
+    'rule': kind,
+  };
+
+  test('an identical (msgId, kind) repeat is routed to the ring only',
+      () async {
+    E2ePersistentDiag.recordDeduped(
+      'DECRYPT_DECISION',
+      decision(19102, 'duplicate'),
+      matchAll: matchFor(19102, 'duplicate'),
+    );
+    final ringBefore = E2eDiagLog.entries.length;
+    E2ePersistentDiag.recordDeduped(
+      'DECRYPT_DECISION',
+      decision(19102, 'duplicate'),
+      matchAll: matchFor(19102, 'duplicate'),
+    );
+
+    expect(
+      E2ePersistentDiag.entries
+          .where((e) => e.contains('DECRYPT_DECISION'))
+          .length,
+      1,
+      reason: 'the repeat adds no evidence and must not burn a durable slot',
+    );
+    expect(E2eDiagLog.entries.length, greaterThan(ringBefore),
+        reason: 'the repeat stays visible in the ring, full payload');
+  });
+
+  test('§5.7 a kind CHANGE for the same msgId still records durably',
+      () async {
+    E2ePersistentDiag.recordDeduped(
+      'DECRYPT_DECISION',
+      decision(19102, 'duplicate'),
+      matchAll: matchFor(19102, 'duplicate'),
+    );
+    E2ePersistentDiag.recordDeduped(
+      'DECRYPT_DECISION',
+      decision(19102, 'badMac'),
+      matchAll: matchFor(19102, 'badMac'),
+    );
+
+    expect(
+      E2ePersistentDiag.entries
+          .where((e) => e.contains('DECRYPT_DECISION'))
+          .length,
+      2,
+      reason: 'a different kind for the same row is NEW evidence',
+    );
+  });
+
+  test('§5.9 a shorter id never dedupes against a longer id it prefixes',
+      () async {
+    E2ePersistentDiag.recordDeduped(
+      'DECRYPT_DECISION',
+      decision(19102, 'duplicate'),
+      matchAll: matchFor(19102, 'duplicate'),
+    );
+    E2ePersistentDiag.recordDeduped(
+      'DECRYPT_DECISION',
+      decision(1910, 'duplicate'),
+      matchAll: matchFor(1910, 'duplicate'),
+    );
+
+    expect(
+      E2ePersistentDiag.entries
+          .where((e) => e.contains('DECRYPT_DECISION'))
+          .length,
+      2,
+      reason: 'the trailing delimiter in the match substring is load-bearing: '
+          'without it, id 1910 would match the 19102 line and its first-ever '
+          'durable would be falsely suppressed',
+    );
+  });
+
+  test('a different step with coincidentally matching payload never dedupes',
+      () async {
+    E2ePersistentDiag.record('LEDGER_RECORD_LOST', {
+      'msgId': 19102,
+      'kind': 'duplicate',
+    });
+    E2ePersistentDiag.recordDeduped(
+      'DECRYPT_DECISION',
+      decision(19102, 'duplicate'),
+      matchAll: matchFor(19102, 'duplicate'),
+    );
+
+    expect(
+      E2ePersistentDiag.entries
+          .where((e) => e.contains('DECRYPT_DECISION'))
+          .length,
+      1,
+      reason: 'dedupe keys on the step name too, not payload alone',
+    );
+  });
+
+  test('§5.8 self-heal: eviction past the cap re-arms the durable', () async {
+    E2ePersistentDiag.recordDeduped(
+      'DECRYPT_DECISION',
+      decision(19102, 'duplicate'),
+      matchAll: matchFor(19102, 'duplicate'),
+    );
+    // Push the original entry out of the cap-80 window.
+    for (var i = 0; i < E2ePersistentDiag.kMaxEntries; i++) {
+      E2ePersistentDiag.record('SEND_FAIL', {'i': i});
+    }
+    expect(
+      E2ePersistentDiag.entries.where((e) => e.contains('DECRYPT_DECISION')),
+      isEmpty,
+    );
+
+    E2ePersistentDiag.recordDeduped(
+      'DECRYPT_DECISION',
+      decision(19102, 'duplicate'),
+      matchAll: matchFor(19102, 'duplicate'),
+    );
+
+    expect(
+      E2ePersistentDiag.entries
+          .where((e) => e.contains('DECRYPT_DECISION'))
+          .length,
+      1,
+      reason: 'suppression is never permanent — the dedupe state IS the '
+          'cache, so rotation re-arms the event',
+    );
+  });
 }

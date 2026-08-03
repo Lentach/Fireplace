@@ -66,6 +66,33 @@ class E2ePersistentDiag {
     _prefs?.setStringList(_key, _cache).ignore();
   }
 
+  /// [record], except a repeat of an event ALREADY in the durable cache is
+  /// routed to the ring only (full payload unchanged): the durable log is
+  /// cap-80 and noise evicts evidence — one field row re-burning a durable
+  /// slot per boot made the owner's dump ~90% repeats of known-terminal rows
+  /// (design `terminal-duplicate-retirement.md` §4).
+  ///
+  /// A line is a repeat when it contains ` $step | ` and EVERY [matchAll]
+  /// substring. Callers pass substrings WITH trailing delimiters (e.g.
+  /// `'{msgId: 1910,'`) so an id can never prefix-match a longer one. The
+  /// dedupe state IS the cache: eviction past [kMaxEntries] or a manual clear
+  /// re-arms the event, so nothing is ever permanently suppressed.
+  static void recordDeduped(
+    String step,
+    Map<String, dynamic> data, {
+    required List<String> matchAll,
+  }) {
+    final isRepeat = _cache.any(
+      (line) => line.contains(' $step | ') && matchAll.every(line.contains),
+    );
+    if (isRepeat) {
+      E2eDiagLog.add(step, data);
+      if (kDebugMode) debugPrint('[E2E-FLOW] $step | $data (durable-deduped)');
+      return;
+    }
+    record(step, data);
+  }
+
   static List<String> get entries => List.unmodifiable(_cache);
 
   static Future<void> clear() async {

@@ -1192,8 +1192,13 @@ extension MessagingDecrypt on MessagingProvider {
       _logDecryptionFailure(decision.rule, msg, e);
       // One line that fully explains the outcome of this failure: what the
       // error was classified as, which rule fired and with which inputs, and
-      // exactly what the caller will do about it.
-      E2ePersistentDiag.record('DECRYPT_DECISION', {
+      // exactly what the caller will do about it. Durably deduped on
+      // (msgId, kind): a known-terminal row re-failing identically every boot
+      // adds no evidence and was evicting real failures from the cap-80 log
+      // (design terminal-duplicate-retirement.md §4). Trailing delimiters in
+      // the match substrings stop an id from prefix-matching a longer one;
+      // the payload's key order is pinned by a line-format test.
+      E2ePersistentDiag.recordDeduped('DECRYPT_DECISION', {
         'msgId': msg.id,
         'senderId': msg.senderId,
         'kind': kind.name,
@@ -1205,7 +1210,19 @@ extension MessagingDecrypt on MessagingProvider {
         'markFailed': decision.markContentFailed,
         'retry': decision.retryAction.name,
         'notifyPeer': decision.notifyPeerRebuild,
-      });
+      }, matchAll: ['{msgId: ${msg.id},', ' kind: ${kind.name},']);
+      // Terminal-duplicate retirement (design terminal-duplicate-retirement.md
+      // §3): a HISTORY row failing `duplicate` with no ledger entry is the
+      // retry-forever class the ledger gate cannot reach. Guard (a) — the
+      // ledger check — is jurisdictional; safety rests on the DEFINITE-false
+      // tri-state checks inside [_evaluateTerminalDuplicate]. `?? true` fails
+      // toward "in ledger" (skip) when the provider is unbound.
+      if (kind == DecryptionFailureKind.duplicate &&
+          _decryptingHistory &&
+          !(_encryptionProvider?.wasDecryptedBefore(msg.id) ?? true)) {
+        final retired = await _evaluateTerminalDuplicate(msg);
+        if (retired != null) return retired;
+      }
       if (decision.persistTerminalFailure) {
         // Persist so future app starts skip this message without re-attempting.
         await _encryptionProvider?.saveDecryptedContent(msg.id, {
@@ -1247,5 +1264,55 @@ extension MessagingDecrypt on MessagingProvider {
           ? msg.copyWith(content: _kDecryptionFailedLabel)
           : msg;
     }
+  }
+
+  /// Terminal-duplicate retirement rule
+  /// (docs/design/terminal-duplicate-retirement.md §3). Returns the retired
+  /// placeholder when the rule fired this call, null otherwise.
+  ///
+  /// Runs ONLY from the duplicate-failure catch, after every restore attempt
+  /// missed. Three outcomes, each fail-closed:
+  ///  * a DEFINITE readable source (`recordExists`/`rawReplayExists` == true)
+  ///    → the earlier misses were transient; RESET the counter, retire nothing;
+  ///  * any undetermined answer (null) → change NOTHING — not the counter in
+  ///    either direction, so a throwing store can neither advance nor erase
+  ///    the evidence;
+  ///  * both DEFINITELY false → record one observation (at most one per
+  ///    process lifetime, boot-nonce-gated in the service), and only at
+  ///    [EncryptionService.terminalDuplicateRetireSessions] distinct boots
+  ///    retire the row — never deleting anything; a resend fully recovers it.
+  Future<MessageModel?> _evaluateTerminalDuplicate(MessageModel msg) async {
+    final enc = _encryptionProvider;
+    if (enc == null) return null;
+    // Belt and braces on guard (d): retired rows short-circuit at the entry
+    // points and own messages return before decrypt, but this rule must hold
+    // even if a future caller bypasses them.
+    if (enc.isRetired(msg.id) || msg.senderId == _currentUserId) return null;
+    final exists = await enc.recordExists(msg.id);
+    final replayable = await enc.rawReplayExists(msg.id);
+    if (exists == true || replayable == true) {
+      await enc.clearTerminalDuplicate(msg.id);
+      return null;
+    }
+    if (exists != false || replayable != false) return null;
+    final n = await enc.noteTerminalDuplicate(msg.id);
+    if (n == null) return null;
+    _e2eFlowLog('DUP_TERMINAL_SEEN', {'msgId': msg.id, 'n': n});
+    if (n < EncryptionService.terminalDuplicateRetireSessions) return null;
+    // Durable, not the ring: this is the rule's only destruction-adjacent act
+    // and the permanent evidence the row was retired BY RULE, not lost.
+    E2ePersistentDiag.record('DUP_TERMINAL_RETIRED', {
+      'msgId': msg.id,
+      'senderId': msg.senderId,
+      'sessions': n,
+    });
+    await enc.retireLostMessage(msg.id);
+    // Drop the counter (design §3.1): the retired set short-circuits future
+    // passes, but if a later boot's retired-set LOAD transiently fails, a
+    // surviving n>=3 entry would instantly re-retire and burn a SECOND
+    // durable for the same id — contradicting the once-per-id contract.
+    // Cleared, that boot restarts from n=1.
+    await enc.clearTerminalDuplicate(msg.id);
+    return _retiredMessagePlaceholder(msg);
   }
 }

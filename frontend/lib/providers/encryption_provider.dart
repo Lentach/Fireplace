@@ -339,6 +339,18 @@ class EncryptionProvider extends ChangeNotifier {
     await _encryptionService.markRetired(<int>[messageId]);
   }
 
+  /// Record one terminal-duplicate observation (design
+  /// `terminal-duplicate-retirement.md` §3.3). Returns the count after this
+  /// call, or null when nothing was recorded — callers treat null as "no
+  /// observation", never as progress.
+  Future<int?> noteTerminalDuplicate(int messageId) =>
+      _encryptionService.noteTerminalDuplicate(messageId);
+
+  /// Drop [messageId]'s terminal-duplicate counter — called only on a DEFINITE
+  /// readable source (never on an undetermined answer).
+  Future<void> clearTerminalDuplicate(int messageId) =>
+      _encryptionService.clearTerminalDuplicate(messageId);
+
   /// Destroy the local plaintext for every message stored under
   /// [conversationIds] — not only the rows currently loaded in memory.
   Future<PlaintextPurgeResult> purgeConversations(
