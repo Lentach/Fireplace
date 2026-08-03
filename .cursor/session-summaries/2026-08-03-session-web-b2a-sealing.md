@@ -1,10 +1,11 @@
-# 2026-08-03 (night) — B2a web at-rest sealing: built, reviewed, merged (NOT deployed)
+# 2026-08-03 (night) — B2a web at-rest sealing: built, reviewed, RELEASED as 0.1.5
 
-**State at end:** `master` = this session's commit (on top of `e876056`); prod frontend still
-`0.1.4 / ca4492c`, backend `0.1.2 / ded8e1a2` — **NO deploy, owner OK pending**. Flutter
+**State at end:** **prod frontend `0.1.5 / bf886a6`** (deployed on owner OK, smoke 5/5, CI
+4/4 on the release commit), backend `0.1.2 / ded8e1a2` unchanged. Flutter
 **1174 + 10 skipped**, analyze clean, count verifier OK. Design doc:
 `docs/design/web-content-sealing.md` (the authoritative spec, including every review finding
-and its resolution).
+and its resolution). Owner must fully close + reopen the PWA (never uninstall); the first
+sealed-session boot runs the one-time drain — request a diag dump after.
 
 ## What shipped (code, merged to master only)
 
