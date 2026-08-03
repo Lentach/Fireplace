@@ -318,6 +318,20 @@ class EncryptionProvider extends ChangeNotifier {
   Future<void> flushDecryptedLedger() =>
       _encryptionService.flushDecryptedLedger();
 
+  /// Diagnostic snapshot of the three persisted id sets, for the hacker-mode
+  /// Privacy & Safety panel. Read-only; disk truth, not the in-memory mirrors
+  /// (the mirrors can be stale within a session — that staleness is one of
+  /// the things this exists to make visible in the field, where the owner has
+  /// no devtools (iOS Safari PWA)). Metadata only: message ids, never content.
+  Future<({Set<int> retired, Set<int> ledger, Set<int> stored})>
+  diagStorageSets() async {
+    return (
+      retired: await _encryptionService.retiredMessageIds(),
+      ledger: await _encryptionService.decryptedLedgerIds(),
+      stored: await _encryptionService.storedMessageIds(),
+    );
+  }
+
   /// Record that [messageId] is known-lost so later passes short-circuit
   /// without re-deriving it, and the state survives a restart.
   Future<void> retireLostMessage(int messageId) async {

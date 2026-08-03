@@ -27,6 +27,9 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
   bool _deletingAllLocalHistory = false;
   bool _diagLogUnlocked = false;
   String _diagFilter = 'current';
+  String? _storageSetsSummary;
+  String? _storageSetsFull;
+  bool _loadingStorageSets = false;
 
   @override
   void initState() {
@@ -522,9 +525,95 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
                     ),
                   ),
           ),
+          const SizedBox(height: 12),
+          // Storage-set inspector: disk truth of the retired set, the decrypt
+          // ledger, and the stored-record ids. Exists because the owner's
+          // production device is an iOS Safari PWA with no devtools — this
+          // panel is the ONLY way to read these sets in the field. Ids only,
+          // never content.
+          Row(
+            children: [
+              Expanded(
+                child: Text(
+                  'Storage sets (retired / ledger / stored)',
+                  style: RpgTheme.bodyFont(
+                    fontSize: 11,
+                    fontWeight: FontWeight.bold,
+                    color: mutedColor,
+                  ),
+                ),
+              ),
+              TextButton(
+                onPressed: _loadingStorageSets ? null : _loadStorageSets,
+                child: Text(_storageSetsSummary == null ? 'Load' : 'Reload'),
+              ),
+              if (_storageSetsFull != null)
+                TextButton(
+                  onPressed: () async {
+                    await Clipboard.setData(
+                      ClipboardData(text: _storageSetsFull!),
+                    );
+                    if (!context.mounted) return;
+                    showTopSnackBar(context, 'Storage sets copied');
+                  },
+                  child: const Text('Copy full'),
+                ),
+            ],
+          ),
+          if (_storageSetsSummary != null)
+            SelectableText(
+              _storageSetsSummary!,
+              style: TextStyle(
+                fontSize: 11,
+                color: mutedColor,
+                fontFamily: 'monospace',
+              ),
+            ),
         ],
       ),
     );
+  }
+
+  Future<void> _loadStorageSets() async {
+    final encryption = context.read<EncryptionProvider>();
+    setState(() => _loadingStorageSets = true);
+    try {
+      final sets = await encryption.diagStorageSets();
+      String line(String name, Set<int> ids) {
+        if (ids.isEmpty) return '$name | count: 0';
+        final sorted = ids.toList()..sort();
+        final last = sorted.length <= 20
+            ? sorted
+            : sorted.sublist(sorted.length - 20);
+        return '$name | count: ${sorted.length} | min: ${sorted.first} '
+            '| max: ${sorted.last} | last20: $last';
+      }
+
+      String full(String name, Set<int> ids) {
+        final sorted = ids.toList()..sort();
+        return '== $name (${sorted.length}) ==\n$sorted';
+      }
+
+      final summary = [
+        line('retired', sets.retired),
+        line('ledger ', sets.ledger),
+        line('stored ', sets.stored),
+      ].join('\n');
+      if (!mounted) return;
+      setState(() {
+        _storageSetsSummary = summary;
+        _storageSetsFull = [
+          full('retired', sets.retired),
+          full('ledger', sets.ledger),
+          full('stored', sets.stored),
+        ].join('\n\n');
+      });
+    } catch (e) {
+      if (!mounted) return;
+      setState(() => _storageSetsSummary = 'failed: $e');
+    } finally {
+      if (mounted) setState(() => _loadingStorageSets = false);
+    }
   }
 
   Future<bool> _confirmAction({
