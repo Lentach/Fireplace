@@ -135,6 +135,46 @@ class InvitationsPreviewApp extends StatelessWidget {
         'chatReady': true,
       });
     }
+    // Fake server echo: there is no socket here, and without one an Accept
+    // would lock the row into its in-flight spinner forever (the provider
+    // only emits; state advances when the SERVER answers). Answer accept /
+    // decline / chat-setup after a realistic beat so the accept flow — and
+    // the forge animation it triggers — is reviewable in the preview.
+    final requestsById = {
+      for (var i = 0; i < incoming; i++)
+        10 + i: {
+          'id': 10 + i,
+          'sender': _user(2 + i, _names[i % _names.length]),
+          'receiver': _user(1, 'Marta'),
+          'status': 'accepted',
+          'createdAt': '2026-07-29T12:00:00.000Z',
+          'conversationId': 100 + i,
+          'chatReady': true,
+        },
+    };
+    friends.setEmitCallback((event, data) {
+      Future<void>.delayed(const Duration(milliseconds: 400), () {
+        // NOT `as Map<String, dynamic>`: the provider emits inferred-type
+        // literals (e.g. Map<String, int>), and a failed cast inside this
+        // delayed future is swallowed silently — the row spins forever.
+        final payload = data as Map;
+        switch (event) {
+          case 'acceptFriendRequest':
+            final request = requestsById[payload['requestId']];
+            if (request != null) friends.onFriendRequestAccepted(request);
+          case 'rejectFriendRequest':
+            final request = requestsById[payload['requestId']];
+            if (request != null) friends.onFriendRequestRejected(request);
+          case 'ensureInvitationChat':
+            friends.onInvitationChatReady({
+              'peerUserId': payload['peerUserId'],
+              'correlationId': payload['correlationId'],
+              'conversationId': 200,
+              'chatReady': true,
+            });
+        }
+      });
+    });
     return ChangeNotifierProvider.value(
       value: friends,
       child: const InvitationsScreen(),
