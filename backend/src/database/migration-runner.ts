@@ -195,8 +195,14 @@ export async function runMigrations(
         await client.query('COMMIT');
       } catch (error) {
         await client.query('ROLLBACK');
+        // `cause` matters here more than anywhere else in the backend: a failed
+        // migration ABORTS BOOT, and the pg error carries `code`, `detail`,
+        // `hint` and `position` that the flattened `.message` throws away —
+        // exactly the fields you need at 3am. Flagged by ESLint 10's new
+        // `preserve-caught-error`, which arrived with @eslint/js 10.
         throw new Error(
           `migration ${file} failed: ${(error as Error).message}`,
+          { cause: error },
         );
       }
       // pg_dump baselines clear search_path session-wide (set_config ...,false),
