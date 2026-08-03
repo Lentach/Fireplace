@@ -565,6 +565,14 @@ class EncryptionProvider extends ChangeNotifier {
   Future<LocalHistoryWipeResult> clearLocalDecryptedContentCache() async {
     final result = await _encryptionService.clearDecryptedContentCache();
     _decryptedContentCache.clear();
+    // Mirror the wipe into the in-memory sets. `markRetired` inside the
+    // service persists to DISK; `isRetired` reads THIS set, and the ledger
+    // gate runs only when the retired check misses. Without this sync a
+    // history pass in the SAME session read the stale RAM set, missed every
+    // wiped id, and reported the user's own deliberate wipe as
+    // `LEDGER_RECORD_LOST` (2026-08-02, five false alarms).
+    _retiredIds.addAll(result.wipedIds);
+    _decryptedLedger.removeAll(result.wipedIds);
     // Scope on record: plaintext cache only — identity, sessions and pre-keys
     // are untouched. If a user report says "cleared cache" and sessions died,
     // it was NOT this path (browser site-data clear / reinstall wipes those).
@@ -623,6 +631,10 @@ class EncryptionProvider extends ChangeNotifier {
   /// purge confirms, so a device that was closed mid-delete finishes the job
   /// on its next launch rather than keeping the plaintext forever.
   Future<void> drainPurgeBacklog() async {
+    // One-time upgrade amnesty (marker-guarded, cheap after the first run):
+    // obligations enqueued by the pre-0.1.4 fallback-expiry sweep must not be
+    // replayed against records the fixed sweep refuses to condemn.
+    await _encryptionService.amnestyUnstampedPurgeObligations();
     final backlog = await _encryptionService.purgeBacklog();
     if (backlog.ids.isEmpty && backlog.ciphertexts.isEmpty) return;
     final result = await _runPurge(backlog.ids, backlog.ciphertexts);
@@ -659,6 +671,18 @@ class EncryptionProvider extends ChangeNotifier {
     // destroy a message's text and leave its audio readable — and that
     // directory is swept into iCloud / Android auto-backup.
     final failedAudio = await AudioCacheStore.remove(ids);
+
+    // Ledger hygiene for DELIBERATE destruction: an id purged on purpose must
+    // not read as unexpected loss when the server briefly serves the row
+    // again. Only ids whose disk removal CONFIRMED are forgotten — a failed
+    // removal leaves readable plaintext, and its ledger entry must keep
+    // protecting it. Failed audio does not gate this: the ledger tracks the
+    // text record, and audio failures already fail the purge result.
+    final settled = ids.difference(disk.failedIds);
+    if (settled.isNotEmpty) {
+      _decryptedLedger.removeAll(settled);
+      await _encryptionService.forgetDecryptedMany(settled);
+    }
 
     final result = PlaintextPurgeResult(
       removed: disk.removed,

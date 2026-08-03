@@ -47,23 +47,14 @@ DateTime? messageExpiryDeadline(MessageModel message) {
   return null;
 }
 
-/// Whether [message]'s plaintext may be DESTROYED, given [serverNow] from
-/// `ServerClock.estimatedNow`.
-///
-/// Deliberately separate from [isMessageExpired]. Hiding a message is
-/// reversible and may run on the local clock; destroying its plaintext is
-/// irreversible — the persisted record is the only copy — and must not. A
-/// device running fast would otherwise wipe messages that are still live on
-/// the server.
-///
-/// [serverNow] of null means the server clock could not be confirmed, and that
-/// is answered with false. "Cannot confirm" is never "safe to destroy".
-bool mayDestroyExpiredPlaintext(MessageModel message, DateTime? serverNow) {
-  if (serverNow == null) return false;
-  final deadline = messageExpiryDeadline(message);
-  if (deadline == null) return false;
-  return serverNow.isAfter(deadline.add(kExpiryPurgeGrace));
-}
+// `mayDestroyExpiredPlaintext` was DELETED 2026-08-03, deliberately. It fed a
+// destruction decision from [messageExpiryDeadline]'s never-read fallback —
+// the exact rule that destroyed five still-served records on 2026-08-02 when
+// the expiry stamp was lost. It had no production caller; the real
+// destruction gate lives in `EncryptionService._recordExpiryDeadlineMs`,
+// which only honors a REAL server stamp. Do not reintroduce a destruction
+// decision built on [messageExpiryDeadline]: it is for DISPLAY, where the
+// fallback is correct and reversible.
 
 /// Split [totalSeconds] into days, hours, minutes, seconds.
 ({int days, int hours, int minutes, int seconds}) splitDisappearingSeconds(

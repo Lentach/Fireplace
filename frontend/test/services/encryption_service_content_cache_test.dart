@@ -357,7 +357,7 @@ void main() {
       expect(record['_expiresAt'], expiresAt.millisecondsSinceEpoch);
     });
 
-    test('expiry sweep honors grace and never-read fallback', () async {
+    test('expiry sweep destroys only on a REAL server stamp', () async {
       final serverNow = DateTime.now().toUtc();
       await service.saveDecryptedContent(
         3031,
@@ -369,11 +369,18 @@ void main() {
         {'content': 'inside grace'},
         expiresAt: serverNow.subtract(const Duration(minutes: 4, seconds: 59)),
       );
+      // Unstamped read-mode record, far past the OLD never-read fallback.
+      // That fallback used to authorize destruction here, and on 2026-08-02 it
+      // destroyed five records the server was still serving (the expiry stamp
+      // travels on one unacked socket event and had been lost) —
+      // LEDGER_RECORD_LOST ×5. An unstamped record must NEVER expire locally;
+      // its residue is reconciliation's job. Fail-before proven: the previous
+      // expectation (3033 in `due.expired`) goes red against the fixed sweep.
       await service.saveDecryptedContent(
         3033,
-        {'content': 'never read'},
+        {'content': 'read but stamp lost'},
         createdAt: serverNow.subtract(
-          const Duration(days: 1, minutes: 5, seconds: 1),
+          const Duration(days: 30),
         ),
         disappearAfterSeconds: 60,
       );
@@ -384,8 +391,13 @@ void main() {
         expiryGrace: const Duration(minutes: 5),
       );
 
-      expect(due.expired, containsAll(<int>{3031, 3033}));
+      expect(due.expired, contains(3031));
       expect(due.expired, isNot(contains(3032)));
+      expect(
+        due.expired,
+        isNot(contains(3033)),
+        reason: 'a fallback-derived deadline must never authorize destruction',
+      );
       expect(due.expired, isNot(contains(3034)));
     });
 

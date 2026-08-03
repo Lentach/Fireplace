@@ -295,6 +295,28 @@ extension MessagingDecrypt on MessagingProvider {
     MessageModel msg,
     Map<String, dynamic> payload,
   ) {
+    // SELF-HEAL the record's expiry stamp. This mapper is the one place every
+    // served row meets its persisted record (fast hydrate, main pass, ledger
+    // gate), so it is where a stamp lost in flight gets repaired. The
+    // `messageDelivered` stamp travels on a single unacked socket event and
+    // can race the persist or miss the socket window; an unstamped record no
+    // longer expires locally (see EncryptionService._recordExpiryDeadlineMs),
+    // so without this repair its plaintext would sit until reconciliation.
+    // Gated on the payload's stored stamp so the common already-stamped row
+    // costs one map lookup, not an authoritative storage read. Ordering note:
+    // the sweep may run BEFORE any history pass — the heal is the recovery
+    // layer, the sweep-side stamp requirement is the guarantee.
+    final rowExpiry = msg.expiresAt;
+    if (rowExpiry != null) {
+      final stamped = payload[PlaintextRecordCodec.expiresAtKey];
+      final rowExpiryMs = rowExpiry.toUtc().millisecondsSinceEpoch;
+      if (stamped != rowExpiryMs) {
+        unawaited(
+          _encryptionProvider?.stampRecordExpiry(msg.id, rowExpiry) ??
+              Future.value(),
+        );
+      }
+    }
     final content = payload['content'] as String? ?? '';
     final imageUrl = payload['linkPreviewImageUrl'] as String?;
     final pageUrl = payload['linkPreviewUrl'] as String?;

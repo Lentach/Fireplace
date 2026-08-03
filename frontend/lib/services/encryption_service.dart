@@ -8,7 +8,6 @@ import 'encryption/content_kv_opener_stub.dart'
 
 import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
-import '../utils/message_expiry.dart' show kNeverReadRetentionSeconds;
 import 'plaintext_record_codec.dart';
 import 'encryption/signal_stores.dart';
 import 'encryption/session_cross_context_lock.dart';
@@ -886,13 +885,14 @@ class EncryptionService {
   /// app would purge the visible page and strand the rest — no expiry, no
   /// conversation index, nothing left to name them by, ever.
   ///
-  /// [createdAt] and [disappearAfterSeconds] matter as much as [expiresAt].
-  /// A read-mode disappearing message is stored with `expiresAt: null` and
-  /// only receives a real deadline later, on `messageDelivered`; this record
-  /// is written at DECRYPT time, before that. A sweep keying on `_expiresAt`
-  /// alone would therefore skip precisely the messages the user set a timer
-  /// on. With creation time and the TTL stamped, the sweep can compute the
-  /// same deadline `messageExpiryDeadline` does, never-read fallback included.
+  /// [createdAt] and [disappearAfterSeconds] are still stamped for UI expiry
+  /// display and forward compatibility, but they no longer feed the sweep:
+  /// a read-mode disappearing message is stored with `expiresAt: null` at
+  /// DECRYPT time and receives its real deadline later — on `messageDelivered`
+  /// or via the history-pass self-heal. Until a REAL stamp lands the record is
+  /// NOT locally destroyable (see [_recordExpiryDeadlineMs]): the old
+  /// never-read fallback destroyed five still-served records on 2026-08-02
+  /// when the stamp event was lost. Unstamped residue is reconciliation's job.
   Future<void> saveDecryptedContent(
     int id,
     Map<String, dynamic> data, {
@@ -1203,7 +1203,13 @@ class EncryptionService {
     //
     // Bounded by `_retiredCap` (5000) against a record store capped at 2000, so
     // a full wipe fits with room to spare.
-    if (wiped.isNotEmpty) await markRetired(wiped);
+    if (wiped.isNotEmpty) {
+      await markRetired(wiped);
+      // Ledger hygiene: these ids are deliberately gone. The retired set
+      // already renders them, but a surviving ledger entry would re-read as
+      // UNEXPECTED loss if the retired write ever regressed. One lock, one write.
+      await forgetDecryptedMany(wiped);
+    }
 
     // Legacy store, swept on EVERY platform — deliberately not gated on
     // `!kIsWeb` the way the per-id path is. That gate rests on web never having
@@ -1236,7 +1242,11 @@ class EncryptionService {
         'failed': failed.length,
       });
     }
-    return LocalHistoryWipeResult(removed: removed, failedKeys: failed);
+    return LocalHistoryWipeResult(
+      removed: removed,
+      failedKeys: failed,
+      wipedIds: wiped,
+    );
   }
 
   /// Permanently destroy the persisted plaintext for [ids].
@@ -1346,9 +1356,12 @@ class EncryptionService {
   /// the never-read fallback and the sweep would hold that plaintext up to a
   /// day past the real deadline.
   ///
-  /// No-op when nothing is persisted yet: the save that follows stamps it. A
-  /// concurrent [saveDecryptedContent] on the same key can drop this stamp,
-  /// which costs at most that same fallback delay — never a wrong deletion.
+  /// No-op when nothing is persisted yet — but LOUDLY: the record that misses
+  /// this stamp keeps no local deadline at all (see [_recordExpiryDeadlineMs]),
+  /// so the miss is recorded in the diag ring and the history pass re-stamps
+  /// from the served row (`EXPIRY_STAMP_MISS` / the self-heal in
+  /// `messaging_provider.decrypt.dart`). A lost stamp therefore degrades to
+  /// plaintext held until reconciliation — never to a wrong deletion.
   Future<void> stampRecordExpiry(int messageId, DateTime expiresAt) async {
     final userId = _userId;
     if (userId == null) return;
@@ -1356,12 +1369,23 @@ class EncryptionService {
       final prefs = await _sharedPrefs;
       final key = _decryptedContentKey(userId, messageId);
       // Authoritative: a false miss here silently drops the real deadline and
-      // leaves the record on the never-read fallback.
+      // leaves the record with no local deadline at all.
       final raw = _rawRecord(await _authoritativeSnapshot(), prefs, key);
-      if (raw == null) return;
+      if (raw == null) {
+        // The record is not there yet (stamp raced the persist) or is gone.
+        // Ring, not durable: routine and self-healing, but it must be visible
+        // — this exact silence hid the 2026-08-02 destruction for a day.
+        E2eDiagLog.add('EXPIRY_STAMP_MISS', {'msgId': messageId});
+        return;
+      }
       final decoded = jsonDecode(raw);
       if (decoded is! Map<String, dynamic>) return;
-      decoded[_metaExpiresAt] = expiresAt.toUtc().millisecondsSinceEpoch;
+      final stampMs = expiresAt.toUtc().millisecondsSinceEpoch;
+      // Idempotent: the history-pass self-heal calls this for every served
+      // row that carries a deadline; rewriting an unchanged record every
+      // pass would be 50 pointless commits per page.
+      if (decoded[_metaExpiresAt] == stampMs) return;
+      decoded[_metaExpiresAt] = stampMs;
       await prefs.setString(key, jsonEncode(decoded));
     } catch (_) {}
   }
@@ -1789,6 +1813,31 @@ class EncryptionService {
     });
   }
 
+  /// Drop every id in [ids] from the ledger, one lock and one write.
+  ///
+  /// For DELIBERATE destruction (expiry sweep, delete purges, the full wipe):
+  /// a purged record whose ledger entry survives makes the next served copy of
+  /// that row read as UNEXPECTED loss — `LEDGER_RECORD_LOST` plus a permanent
+  /// retire — turning an ordered deletion into a false alarm (the 2026-08-02
+  /// dump carried exactly this ambiguity). Same authoritative-read /
+  /// unconditional-write discipline as [forgetDecrypted].
+  Future<void> forgetDecryptedMany(Iterable<int> ids) async {
+    final userId = _userId;
+    final drop = ids.toSet();
+    if (userId == null || drop.isEmpty) return;
+    await _sessionCrossContextLock('fireplace-e2e-ledger-$userId', () async {
+      try {
+        final prefs = await _sharedPrefs;
+        await _reloadPrefsForCrossContext(prefs);
+        _pendingLedgerIds.removeAll(drop);
+        final current = await _readLedgerAuthoritative(prefs, userId);
+        current.removeAll(drop);
+        final sorted = current.toList()..sort();
+        await prefs.setString(_ledgerKey(userId), jsonEncode(sorted));
+      } catch (_) {}
+    });
+  }
+
   /// Ledger read that does not trust the per-engine cache. Used wherever a
   /// short read would cause destruction rather than merely lose protection.
   Future<Set<int>> _readLedgerAuthoritative(ContentKv prefs, int userId) async {
@@ -1842,17 +1891,25 @@ class EncryptionService {
     }
   }
 
-  /// The effective expiry instant of a stored record, mirroring
-  /// `messageExpiryDeadline`. Any divergence between the two would let a
-  /// message be destroyed while it is still on screen.
+  /// Deadline that may AUTHORIZE DESTRUCTION for this record — nothing else.
+  ///
+  /// Only a REAL server-assigned stamp (`_metaExpiresAt`, written at save from
+  /// the row or upgraded by [stampRecordExpiry]) qualifies. The never-read
+  /// fallback (`createdAt + kNeverReadRetentionSeconds`) is deliberately NOT
+  /// computed here anymore: a record exists only because this device decrypted
+  /// the message, which on this client happens in the active conversation —
+  /// i.e. the message WAS read and the server's real deadline is
+  /// `readAt + disappearAfterSeconds`, up to a full unread-window LATER than
+  /// the fallback. The stamp travels on a single unacked socket event and can
+  /// be lost (race with the persist, missed socket window), and on 2026-08-02
+  /// the fallback destroyed five records the server was still serving —
+  /// `LEDGER_RECORD_LOST` ×5, the ledger's first real catch. An unstamped
+  /// record now simply does not expire locally; residue is cleaned by server
+  /// reconciliation once the row is hard-deleted (≤ reconcile interval late).
+  /// Over-retention is recoverable, over-destruction is not.
   int? _recordExpiryDeadlineMs(Map<String, dynamic> record) {
     final expiresAt = record[_metaExpiresAt];
     if (expiresAt is int) return expiresAt;
-    final disappearAfter = record[_metaDisappearAfter];
-    final createdAt = record[_metaCreatedAt];
-    if (disappearAfter is int && createdAt is int) {
-      return createdAt + kNeverReadRetentionSeconds * 1000;
-    }
     return null;
   }
 
@@ -2076,6 +2133,76 @@ class EncryptionService {
     } catch (_) {
       return (ids: <int>{}, ciphertexts: <String>{});
     }
+  }
+
+  String _purgeAmnestyKey(int userId) => 'e2e_${userId}_purge_amnesty_v1';
+
+  /// One-time upgrade amnesty: drop backlog obligations that only the OLD
+  /// expiry rule could have created.
+  ///
+  /// Builds ≤ 0.1.3 let the never-read fallback condemn UNSTAMPED records, and
+  /// `enqueuePurge` writes the obligation durably BEFORE the purge runs. An
+  /// obligation whose disk removal was then refused survives the upgrade, and
+  /// `drainPurgeBacklog` replays it with no re-validation — destroying a
+  /// still-served record the fixed sweep now refuses to touch (review finding,
+  /// 2026-08-03). Amnesty is exactly the ambiguous class: an id whose record
+  /// STILL EXISTS and carries NO real stamp. A legitimate delete-flow
+  /// obligation caught by this filter degrades to over-retention only:
+  /// reconciliation purges it once the server confirms the row is gone, and
+  /// the 30-day retention bound covers the rest. Ciphertext obligations are
+  /// untouched — the expiry sweep never enqueued any. Runs once per account.
+  Future<void> amnestyUnstampedPurgeObligations() async {
+    final userId = _userId;
+    if (userId == null) return;
+    await _sessionCrossContextLock(_purgeBacklogLockName(userId), () async {
+      try {
+        final prefs = await _sharedPrefs;
+        await _reloadPrefsForCrossContext(prefs);
+        if (prefs.getString(_purgeAmnestyKey(userId)) != null) return;
+        final backlog = _readPurgeBacklog(prefs, userId);
+        final kept = <int>{};
+        final snapshot = await _authoritativeSnapshot();
+        for (final id in backlog.ids) {
+          final raw = _rawRecord(
+            snapshot,
+            prefs,
+            _decryptedContentKey(userId, id),
+          );
+          if (raw == null) {
+            // Record already gone: replay is a harmless no-op that cleans
+            // the backlog. Keep it.
+            kept.add(id);
+            continue;
+          }
+          try {
+            final decoded = jsonDecode(raw);
+            final stamped =
+                decoded is Map<String, dynamic> &&
+                decoded[_metaExpiresAt] is int;
+            // A REAL stamp means the new sweep would (re-)condemn it anyway.
+            if (stamped) kept.add(id);
+          } catch (_) {
+            // Unreadable record: refuse destruction, drop the obligation.
+          }
+        }
+        final dropped = backlog.ids.length - kept.length;
+        if (dropped > 0) {
+          await prefs.setString(
+            _purgeBacklogKey(userId),
+            jsonEncode({
+              'ids': kept.toList(),
+              'cts': backlog.ciphertexts.toList(),
+            }),
+          );
+          E2ePersistentDiag.record('PURGE_AMNESTY', {'dropped': dropped});
+        }
+        // Marker AFTER the rewrite: an interrupted amnesty retries next run.
+        await prefs.setString(
+          _purgeAmnestyKey(userId),
+          DateTime.now().toUtc().toIso8601String(),
+        );
+      } catch (_) {}
+    });
   }
 
   /// Drop [ids] and [ciphertexts] from the backlog after a CONFIRMED-complete
@@ -2480,6 +2607,7 @@ class LocalHistoryWipeResult {
   const LocalHistoryWipeResult({
     required this.removed,
     required this.failedKeys,
+    this.wipedIds = const <int>{},
   });
 
   /// Records confirmed removed and confirmed committed.
@@ -2487,6 +2615,12 @@ class LocalHistoryWipeResult {
 
   /// Keys — or `<prefix>*` markers — whose plaintext may still be on disk.
   final Set<String> failedKeys;
+
+  /// Message ids whose record this wipe destroyed AND retired. The provider
+  /// mirrors these into its in-memory retired set: `markRetired` persists to
+  /// disk only, and a same-session history pass reading the stale RAM set was
+  /// how a deliberate wipe could masquerade as `LEDGER_RECORD_LOST`.
+  final Set<int> wipedIds;
 
   /// Only this licenses telling the user their history is gone.
   bool get isComplete => failedKeys.isEmpty;

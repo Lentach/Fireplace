@@ -112,6 +112,14 @@ class _LedgerEncryption extends EncryptionProvider {
   }) async {
     persisted[messageId] = Map<String, dynamic>.from(data);
   }
+
+  /// (messageId, expiresAt) pairs the self-heal re-stamped.
+  final List<(int, DateTime)> stamped = [];
+
+  @override
+  Future<void> stampRecordExpiry(int messageId, DateTime expiresAt) async {
+    stamped.add((messageId, expiresAt));
+  }
 }
 
 Map<String, dynamic> _convJson() => {
@@ -199,6 +207,51 @@ void main() {
     );
     expect(r.encryption.retired, contains(lostId));
     expect(rowOf(r.provider)?.content, kRetiredMessageLabel);
+  });
+
+  test('serving a record self-heals a missing expiry stamp', () async {
+    // The 2026-08-02 destruction: a live-decrypted read-mode message persists
+    // with NO expiry stamp (the `messageDelivered` stamp is one unacked socket
+    // event and can be lost), and an unstamped record no longer expires
+    // locally. _restoreFromPersistedPayload is the single point where every
+    // served row meets its record, so it must repair the stamp from the
+    // server-carried deadline.
+    final expiresAt = DateTime.utc(2026, 8, 5, 19);
+    final encryption = _LedgerEncryption(
+      ledger: {lostId},
+      exists: true,
+      persisted: {
+        lostId: {'content': 'hello', 'messageType': 'TEXT'},
+      },
+    );
+    final conversations = ConversationsProvider();
+    conversations.setCurrentUserId(1);
+    conversations.onConversationsList([_convJson()]);
+    conversations.openConversation(10);
+    final provider = MessagingProvider();
+    provider.setConversationsProvider(conversations);
+    provider.setEncryptionProvider(encryption);
+    provider.setCurrentUserId(1);
+    provider.setToken('tok');
+    provider.setIncomingMessageSoundEnabledForTest(false);
+    provider.onConnect(false);
+    provider.setEmitCallback((_, _) {});
+    provider.setActiveConversationIdForTest(10);
+
+    final row = _encryptedInboundJson(lostId);
+    row['expiresAt'] = expiresAt.toIso8601String();
+    provider.onMessageHistory({'conversationId': 10, 'messages': [row]});
+
+    for (var i = 0; i < 200; i++) {
+      await Future<void>.delayed(const Duration(milliseconds: 10));
+      if (encryption.stamped.isNotEmpty) break;
+    }
+
+    expect(encryption.decryptCalls, 0);
+    expect(encryption.stamped, isNotEmpty,
+        reason: 'a served row carrying a deadline must repair its record');
+    expect(encryption.stamped.first.$1, lostId);
+    expect(encryption.stamped.first.$2.toUtc(), expiresAt);
   });
 
   test('an undetermined probe retires NOTHING and leaves the row alone', () async {

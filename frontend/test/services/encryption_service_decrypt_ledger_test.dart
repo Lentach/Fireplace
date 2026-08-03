@@ -6,6 +6,7 @@ import 'package:shared_preferences_platform_interface/types.dart';
 
 import 'package:fireplace/services/encryption/content_kv.dart';
 import 'package:fireplace/services/encryption_service.dart';
+import 'package:fireplace/utils/e2e_diag_log.dart';
 
 /// The decrypt ledger answers "did this id's plaintext ever exist?".
 ///
@@ -262,6 +263,108 @@ void main() {
       await service.backfillLedgerFromStore();
 
       expect(await service.decryptedLedgerIds(), isNot(contains(18703)));
+    });
+  });
+
+  group('deliberate destruction is ledger-hygienic (2026-08-02 field bug)', () {
+    test('forgetDecryptedMany drops every id in one call', () async {
+      await service.saveDecryptedContent(18900, {'content': 'a'});
+      await service.saveDecryptedContent(18901, {'content': 'b'});
+      await service.saveDecryptedContent(18902, {'content': 'c'});
+      await service.flushDecryptedLedger();
+
+      await service.forgetDecryptedMany([18900, 18902]);
+
+      final ledger = await service.decryptedLedgerIds();
+      expect(ledger, isNot(contains(18900)));
+      expect(ledger, contains(18901));
+      expect(ledger, isNot(contains(18902)));
+    });
+
+    test('the full wipe reports wiped ids and forgets their ledger entries',
+        () async {
+      // Fail-before (memory-sync half lives in the provider test): the wipe
+      // used to leave ledger entries for records it destroyed, so a row the
+      // server still served re-read as UNEXPECTED loss — LEDGER_RECORD_LOST
+      // for a deletion the user ordered.
+      await service.saveDecryptedContent(18910, {'content': 'wiped'});
+      await service.flushDecryptedLedger();
+
+      final result = await service.clearDecryptedContentCache();
+
+      expect(result.wipedIds, contains(18910));
+      expect(await service.decryptedLedgerIds(), isNot(contains(18910)));
+      expect(await service.retiredMessageIds(), contains(18910));
+    });
+
+    test('stampRecordExpiry upgrades a live record in place', () async {
+      final deadline = DateTime.utc(2026, 8, 10, 12);
+      await service.saveDecryptedContent(18920, {'content': 'read-mode'});
+
+      await service.stampRecordExpiry(18920, deadline);
+
+      final record = await service.getDecryptedContent(18920);
+      expect(record!['_expiresAt'], deadline.millisecondsSinceEpoch);
+    });
+
+    test('a stamp with no record is a LOGGED no-op, never a write', () async {
+      // The silent version of this miss is how five still-served records died
+      // on 2026-08-02: the stamp raced the persist, vanished without a trace,
+      // and the old never-read fallback later authorized their destruction.
+      E2eDiagLog.clear();
+
+      await service.stampRecordExpiry(18921, DateTime.utc(2026, 8, 10));
+
+      expect(await service.recordExists(18921), isFalse);
+      expect(
+        E2eDiagLog.entries.any(
+          (e) => e.contains('EXPIRY_STAMP_MISS') && e.contains('18921'),
+        ),
+        isTrue,
+        reason: 'a lost stamp must be visible in the diag ring',
+      );
+    });
+  });
+
+  group('purge-backlog amnesty (pre-fix obligation replay)', () {
+    test('drops obligations for live UNSTAMPED records, keeps the rest',
+        () async {
+      // Builds <= 0.1.3 could durably enqueue a fallback-expired UNSTAMPED id
+      // whose purge then failed; replaying it after the sweep fix would
+      // destroy a record the new rule refuses to condemn. Fail-before: without
+      // the amnesty, the drained backlog still names 19301.
+      await service.saveDecryptedContent(19301, {'content': 'unstamped'});
+      await service.saveDecryptedContent(
+        19302,
+        {'content': 'stamped'},
+        expiresAt: DateTime.utc(2026, 8, 1),
+      );
+      // 19303 has no record — a completed purge whose resolve was lost.
+      await service.enqueuePurge([19301, 19302, 19303], ['2:ct-a']);
+
+      await service.amnestyUnstampedPurgeObligations();
+
+      final backlog = await service.purgeBacklog();
+      expect(backlog.ids, isNot(contains(19301)),
+          reason: 'a live unstamped record must never be replay-destroyed');
+      expect(backlog.ids, contains(19302),
+          reason: 'a REAL stamp would be re-condemned by the new sweep anyway');
+      expect(backlog.ids, contains(19303),
+          reason: 'no record left: replay is a harmless backlog cleanup');
+      expect(backlog.ciphertexts, contains('2:ct-a'),
+          reason: 'the expiry sweep never enqueued ciphertexts');
+    });
+
+    test('runs once: later obligations are untouched', () async {
+      await service.amnestyUnstampedPurgeObligations(); // writes the marker
+
+      await service.saveDecryptedContent(19311, {'content': 'unstamped'});
+      await service.enqueuePurge([19311], []);
+      await service.amnestyUnstampedPurgeObligations();
+
+      final backlog = await service.purgeBacklog();
+      expect(backlog.ids, contains(19311),
+          reason: 'post-fix obligations are all legitimate delete-flow work');
     });
   });
 }

@@ -15,6 +15,7 @@ import '../services/media_crypto_service.dart';
 import '../services/encrypted_media_upload_service.dart';
 import '../services/incoming_message_sound_service.dart';
 import '../services/link_preview_service.dart';
+import '../services/plaintext_record_codec.dart';
 import '../utils/anti_quantum_note_link.dart';
 import '../utils/decryption_failure_policy.dart';
 import '../utils/e2e_diag_log.dart';
