@@ -16,6 +16,13 @@
 > `2026-08-03-session-terminal-dup-retirement.md`. Expect ≤14 one-time `DUP_TERMINAL_RETIRED`
 > durables over the owner's next 3 boots; any OUTSIDE the known ~14 set = class still growing.
 > **Next up: B2b `sig_*` sealing — design doc FIRST, no code before its design review.**
+>
+> **ADDENDUM 2026-08-03 (later still):** B2b `sig_*` sealing is **IMPLEMENTED + DUAL-REVIEWED,
+> on master (`13a9fd1`), ⛔ DEPLOY HELD** — gates: (1) owner dump proving `CANARY_OK
+> {ageDays > 7}` (any `CONTENT_KEY_LOST`/canary-lost before then = STOP), (2) fresh owner OK;
+> bump to 0.1.7 at deploy time. Spec + full review record: `docs/design/web-sig-sealing.md`;
+> session: `2026-08-03-session-b2b-sig-sealing.md`. Remaining queue: §2 delete-for-me
+> hard-delete (backend), §3 sweep success diags, §0 owner blockers, §5 Android track.
 
 # HANDOFF — the Signal-grade queue, ready to execute
 
