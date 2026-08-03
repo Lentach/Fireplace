@@ -1,6 +1,6 @@
 # Latest session summary
 
-**➡ FRESH AGENT: your work queue is `2026-08-02-HANDOFF-remaining-backlog.md`** — owner wants every item done. Pair with `2026-08-02-HANDOFF-post-incident-state.md`.
+**➡ FRESH AGENT: your work queue is `2026-08-03-HANDOFF-signal-grade-queue.md`** — B2 web sealing (with settled design constraints), delete-for-me hard-delete, sweep success diags, Android track. Pair with `2026-08-02-HANDOFF-post-incident-state.md` for the standing invariants.
 
 **✅ P0 CLOSED AND CONFIRMED: `[Decryption failed]` fixed in 0.0.139, several days with zero new reports.** The four hypotheses in `2026-07-29-HANDOFF-decryption-failed-incident.md` are all DEAD (killed by measurement) — that file is historical, do not work from it. Root cause: `2026-07-29-session-decryption-failed-root-cause.md`. **Never uninstall / clear site data.**
 
