@@ -73,7 +73,9 @@ class _SettingsScreenState extends State<SettingsScreen> {
       if (kIsWeb) {
         name = 'Web Browser';
       } else {
-        // Native platforms: show generic name (DeviceInfoPlugin could be used for real name)
+        // Native platforms: generic name. Naming the real model would mean
+        // taking a device-info plugin back on as a dependency (device_info_plus
+        // was removed 2026-08-02 as unused) AND handling hardware identifiers.
         name = 'Native Device';
       }
     } catch (e) {

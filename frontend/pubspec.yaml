@@ -42,7 +42,6 @@ dependencies:
   file_picker: ^11.0.2
   cross_file: ^0.3.4
   http_parser: ^4.0.2
-  device_info_plus: ^12.4.0
 
   just_audio: ^0.10.6
   path_provider: ^2.1.6
