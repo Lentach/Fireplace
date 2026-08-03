@@ -1082,6 +1082,11 @@ class ChatInputBarState extends State<ChatInputBar> {
                                   child: TextField(
                                     controller: _controller,
                                     focusNode: _focusNode,
+                                    // Incognito keyboard (Signal parity):
+                                    // message text must not feed the IME's
+                                    // personal dictionary / cloud sync.
+                                    // Android-IME hint; no-op on web/iOS.
+                                    enableIMEPersonalizedLearning: false,
                                     textCapitalization:
                                         TextCapitalization.sentences,
                                     style: RpgTheme.bodyFont(

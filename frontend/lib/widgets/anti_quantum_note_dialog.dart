@@ -86,6 +86,9 @@ class _AntiQuantumNoteDialogState extends State<AntiQuantumNoteDialog> {
           const SizedBox(height: 12),
           TextField(
             controller: _controller,
+            // Incognito keyboard: the most sensitive input in the app must not
+            // feed the IME's personal dictionary. Android-IME hint; no-op elsewhere.
+            enableIMEPersonalizedLearning: false,
             maxLines: 4,
             onChanged: (_) => setState(() {}),
             decoration: InputDecoration(
