@@ -2,7 +2,18 @@
 
 **Date:** 2026-08-03 (worktree `fireplace-invitations-ui`, branch `feat/invitations-hex-ui`, NOT merged/deployed)
 
-## What was done
+## Second pass — owner picked crazy ideas 2/3/4/5
+
+All four implemented same session (Codex-backed `task` subagents died `usage_limit_reached` instantly — the documented Anthropic-only trap — so everything ran inline):
+
+- **#2 Forge animation (`invitation_row.dart`):** `_ForgeHexAvatar` wraps the row avatar; on the pending→accepted transition a dashed accent hex overlays it, dash gaps close over 70% of 280 ms (dashOff 4→0), then fades — the pending-socket vocabulary soldering solid. One-shot via `didUpdateWidget`; element reuse across accept works because incoming and outcome rows share the peer-id key (the expanded card is a DIRECT sibling of outcome rows for exactly this reason — do not wrap it). Reduce-motion skips entirely. Tests: `test/widgets/invitation_row_forge_test.dart` (3).
+- **#3 Hex "+" badge (`conversations_screen.dart`):** the pendingRequestsCount indicator on the Chats `+` is now `HexCountBadge` size 18, error/onError tokens — was the last `BoxShape.circle` count badge. (The 8px dot in `chat_action_tiles.dart` is not a count; conversation tiles deliberately have NO badge — owner-approved lit-edge design, untouched.)
+- **#4 Honeycomb inbox (`invitations_screen.dart`):** pending inbound requests render as `_WaitingComb` — picker-math lattice (columns clamp 3–6, hex 56–72, odd-row half-cell stagger), keys `invitation-comb-<requestId>`. Tap toggles that sender's accept/decline card below (key = peer id). **A lone request AUTO-EXPANDS** (`_expandedRequestId` null = auto, `-1` = user-collapsed sentinel) — this is what kept every pre-existing single-request test green. +2 comb tests.
+- **#5 Ping hex lattice (`ping_effect_overlay.dart`):** the two `BoxShape.circle` rings are `_PingHexPainter` hexes (same sizes/alphas/strokes, const-constructed so the build-once/no-per-frame-rebuild contract in the file's comments still holds; `Color(0x47FF9800)` etc. are exactly `Colors.orange` at the old alphas). Preview `?view=ping` remounts the overlay in a loop for screenshots.
+
+Verification for this pass: analyze clean, full suite **1203 + 10 skipped** green (+5), visual loop: comb collapsed (3 requests) / auto-expanded (1) in dark, ping lattice in dark.
+
+## First pass — what was done
 
 Owner asked: an "invite a friend" door in the Chats `+` picker (same as the Contacts add hex), hex-shaped count badges instead of round circles in the Invitations tab, a general de-genericizing of that tab, and a hex avatar in the chat screen header. All on a fresh worktree.
 

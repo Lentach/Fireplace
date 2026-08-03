@@ -65,19 +65,22 @@ class InvitationRow extends StatelessWidget {
           children: [
             Row(
               children: [
-                HexAvatar(
-                  size: 44,
-                  displayName: peer.username,
-                  imageUrl: peer.profilePictureUrl,
-                  surface: colors.convItemBg,
-                  // mutedText, not convItemBorder: on blue that border token is
-                  // 1.92:1 on this fill and the ring paints at 0.6 alpha — the
-                  // hex outline vanishes (design review 2026-08-03).
-                  borderColor: colors.mutedText,
-                  initialsStyle: RpgTheme.bodyFont(
-                    fontSize: 44 * 0.34,
-                    fontWeight: FontWeight.w800,
-                    color: colorScheme.onSurface,
+                _ForgeHexAvatar(
+                  rowState: state,
+                  child: HexAvatar(
+                    size: 44,
+                    displayName: peer.username,
+                    imageUrl: peer.profilePictureUrl,
+                    surface: colors.convItemBg,
+                    // mutedText, not convItemBorder: on blue that border token
+                    // is 1.92:1 on this fill and the ring paints at 0.6 alpha —
+                    // the hex outline vanishes (design review 2026-08-03).
+                    borderColor: colors.mutedText,
+                    initialsStyle: RpgTheme.bodyFont(
+                      fontSize: 44 * 0.34,
+                      fontWeight: FontWeight.w800,
+                      color: colorScheme.onSurface,
+                    ),
                   ),
                 ),
                 const SizedBox(width: 12),
@@ -303,6 +306,87 @@ class InvitationRow extends StatelessWidget {
       height: 18,
       width: 18,
       child: CircularProgressIndicator(strokeWidth: 2),
+    );
+  }
+}
+
+/// The invitation "forge": when this row's state crosses from pending
+/// (inbound/acting) to accepted, a dashed accent hexagon overlays the avatar
+/// and its dash gaps close — the pending-socket vocabulary soldering into a
+/// solid relationship — then the overlay fades out. One-shot, 280 ms,
+/// reduce-motion skips it entirely. The element is reused across the accept
+/// because the incoming row and its outcome row share the peer-id key.
+class _ForgeHexAvatar extends StatefulWidget {
+  const _ForgeHexAvatar({required this.rowState, required this.child});
+
+  final InvitationRowState rowState;
+  final Widget child;
+
+  @override
+  State<_ForgeHexAvatar> createState() => _ForgeHexAvatarState();
+}
+
+class _ForgeHexAvatarState extends State<_ForgeHexAvatar>
+    with SingleTickerProviderStateMixin {
+  late final AnimationController _forge = AnimationController(
+    vsync: this,
+    duration: const Duration(milliseconds: 280),
+  );
+
+  static bool _isPending(InvitationRowState state) =>
+      state == InvitationRowState.inbound || state == InvitationRowState.acting;
+
+  static bool _isAccepted(InvitationRowState state) =>
+      state == InvitationRowState.acceptedReady ||
+      state == InvitationRowState.acceptedNeedsChat;
+
+  @override
+  void didUpdateWidget(_ForgeHexAvatar oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (_isPending(oldWidget.rowState) &&
+        _isAccepted(widget.rowState) &&
+        !MediaQuery.disableAnimationsOf(context)) {
+      _forge.forward(from: 0);
+    }
+  }
+
+  @override
+  void dispose() {
+    _forge.dispose();
+    super.dispose();
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final accent = Theme.of(context).colorScheme.primary;
+    // AnimatedBuilder repaints ONLY this overlay stack per frame; the avatar
+    // itself is the cached [child].
+    return AnimatedBuilder(
+      animation: _forge,
+      child: widget.child,
+      builder: (context, child) {
+        if (!_forge.isAnimating) return child!;
+        final t = Curves.easeOutCubic.transform(_forge.value);
+        // Dashes solder shut over the first 70%, then the solid ring fades.
+        final fade = t < 0.7 ? 1.0 : 1.0 - (t - 0.7) / 0.3;
+        return Stack(
+          children: [
+            child!,
+            Positioned.fill(
+              child: IgnorePointer(
+                child: CustomPaint(
+                  painter: DashedHexPainter(
+                    outline: accent.withValues(alpha: fade.clamp(0.0, 1.0)),
+                    strokeWidth: 1.6,
+                    dashOn: 5,
+                    dashOff: 4 * (1 - t),
+                  ),
+                ),
+              ),
+            ),
+          ],
+        );
+      },
     );
   }
 }

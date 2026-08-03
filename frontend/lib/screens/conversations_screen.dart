@@ -14,6 +14,7 @@ import '../providers/messaging_provider.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/avatar_circle.dart';
 import '../widgets/chat_honeycomb_picker.dart';
+import '../widgets/hex_avatar.dart';
 import '../widgets/conversation_tile.dart';
 import '../widgets/conversation_list_skeleton.dart';
 import '../widgets/main_tab_screen_header.dart';
@@ -226,23 +227,18 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
                 return const SizedBox.shrink();
               }
               return Positioned(
-                right: 4,
-                top: 4,
-                child: DecoratedBox(
-                  decoration: BoxDecoration(
-                    color: colorScheme.error,
-                    shape: BoxShape.circle,
-                  ),
-                  child: Padding(
-                    padding: const EdgeInsets.all(4),
-                    child: Text(
-                      '${friends.pendingRequestsCount}',
-                      style: RpgTheme.bodyFont(
-                        fontSize: 10,
-                        color: colorScheme.onError,
-                        fontWeight: FontWeight.bold,
-                      ),
-                    ),
+                right: 2,
+                top: 2,
+                // Pointy-top hex like every other badge in the app (owner
+                // ruling 2026-08-03: no circles for counts).
+                child: HexCountBadge(
+                  label: '${friends.pendingRequestsCount}',
+                  size: 18,
+                  background: colorScheme.error,
+                  textStyle: RpgTheme.bodyFont(
+                    fontSize: 10,
+                    color: colorScheme.onError,
+                    fontWeight: FontWeight.bold,
                   ),
                 ),
               );

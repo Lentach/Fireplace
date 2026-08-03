@@ -16,6 +16,7 @@ import 'package:fireplace/models/user_model.dart';
 import 'package:fireplace/widgets/chat_honeycomb_picker.dart';
 import 'package:fireplace/widgets/glass/glass_top_bar.dart';
 import 'package:fireplace/widgets/hex_avatar.dart';
+import 'package:fireplace/widgets/ping_effect_overlay.dart';
 
 void main() => runApp(const InvitationsPreviewApp());
 
@@ -90,6 +91,7 @@ class InvitationsPreviewApp extends StatelessWidget {
         ),
         'picker-empty' => const _PickerHost(friends: [], inviters: []),
         'header' => const _ChatHeaderPreview(),
+        'ping' => const _PingPreview(),
         _ => _seededInbox(incoming: incoming, sent: sent, accepted: accepted),
       },
     );
@@ -207,6 +209,36 @@ class _ChatHeaderPreview extends StatelessWidget {
         ),
       ),
       body: Container(color: FireplaceColors.of(context).messagesAreaBg),
+    );
+  }
+}
+
+/// Remounts the ping overlay in a loop so any screenshot catches the hex
+/// lattice mid-flight.
+class _PingPreview extends StatefulWidget {
+  const _PingPreview();
+
+  @override
+  State<_PingPreview> createState() => _PingPreviewState();
+}
+
+class _PingPreviewState extends State<_PingPreview> {
+  int _generation = 0;
+
+  @override
+  Widget build(BuildContext context) {
+    return Scaffold(
+      body: Stack(
+        children: [
+          Container(color: FireplaceColors.of(context).messagesAreaBg),
+          PingEffectOverlay(
+            key: ValueKey(_generation),
+            onComplete: () {
+              if (mounted) setState(() => _generation++);
+            },
+          ),
+        ],
+      ),
     );
   }
 }
