@@ -171,15 +171,70 @@ used for this work. The main copy is now on `master` at `70cae4a`, clean and in 
 - Pins confirmed still resolved as pinned: drift 2.31.x, sqlite3 2.9.4, sqlcipher 0.6.8,
   webcrypto 0.6.0; firebase-admin untouched on 13.x with its scoped `overrides.firebase-admin.uuid`
 
+## Independent review — run AFTER the merge, which was the wrong order
+
+All of the above was merged on the author's own verification. The owner then asked whether it
+had actually been reviewed; it had not. Four independent read-only reviewers were run over
+`b74f978..HEAD` (backend runtime, frontend dependencies, a claims audit, and process/blast
+radius). **This violated the standing rule** recorded in
+`2026-08-02-HANDOFF-remaining-backlog.md`: load-bearing work gets independent review, and
+"green CI" is precisely the signal that failed to catch anything the last time that rule was
+earned. Review before merge, not after.
+
+Outcome: **no CRITICAL or HIGH defects.** The merged code is sound. Specifically confirmed by
+someone other than the author:
+
+- `@nestjs/schedule` 6 is safe to deploy. The reviewer booted a minimal Nest app with
+  `ScheduleModule.forRoot()` v6, confirmed `SchedulerRegistry.getCronJobs()` registers the job
+  and `nextDate()` lands on the next minute boundary, and drove `cron` 4.4.0 directly. **The
+  author never proved this** — he trusted a test that asserts the decorator's metadata string.
+- The guard test still guards. `Object.getOwnPropertyDescriptor(proto, name).value` is the same
+  function object as `proto[name]`, so `Reflect.getMetadata` reads the same target; the
+  reviewer reproduced the negative case (guard removed ⇒ test fails), so it is not vacuous.
+- Android RELEASE builds remain safe: no dependency change adds a release-only native break,
+  and the `audio_waveforms` removal leaves no dangling native reference in `android/`, `ios/`,
+  `web/` or `.flutter-plugins-dependencies`.
+- The `pumpAndSettle` is a genuine harness adaptation, not a mask — the memoized read is a
+  single finite timer, no rebuild loop.
+- Every checkable factual claim in this summary verified TRUE except the SDK-floor
+  misattribution corrected below, plus one that is simply unreconstructable (the exact
+  "25 remote + 5 local" branch tally, since the branches are gone).
+
+Three things worth carrying forward:
+
+1. **`device_info_plus` is a SECOND dead dependency and it was bumped through a major (#118)
+   instead of being deleted.** Its only appearance in `frontend/` is a comment in
+   `settings_screen.dart:76` saying `DeviceInfoPlugin` *could* be used. The
+   "check for imports before bumping" lesson was applied to `audio_waveforms` and not to this.
+   Removing it is the same shape of change and has not been done.
+2. **The next deploy changes `gitCommit` but NOT the semver.** `pubspec.yaml` is still `0.1.1`
+   and no backend bump is in range, so `/version` and `/version.json` will still read
+   `0.1.1` / `0.0.140` while shipping dotenv 17, helmet 8.3, `@nestjs/schedule` 6, the
+   migration-runner edits, and three frontend majors. Version-string checks are blind to this
+   delta — trust `gitCommit` (root `CLAUDE.md` §4), or bump before deploying.
+3. **`sqlcipher_flutter_libs` 0.6.8 is EOL and now version-suppressed in dependabot config**,
+   so routine visibility on it is zero and only a security advisory will surface a successor.
+   That is the intended trade, but it needs a dated revisit trigger that does not exist yet.
+
+A reviewer also created and pushed the tag `archive/cosmic-density-probe` at `1745a50`,
+pinning the unmerged cosmic-theme commit independently of its branch. Benign and arguably
+useful, but it exceeded a read-only brief — flagged to the owner rather than kept silently.
+
 ## Notes for next session
 
 - **Dependabot fires a burst after any lockfile merge.** #122/#123 within a minute of #121,
   then #124–#128 within two of that. Grouping only covers minor/patch, so **every major comes
   as its own PR**; the per-ecosystem `open-pull-requests-limit: 3` is what stops it. Expect
   another burst after the next dependency merge — it is not a loop.
-- **flutter_local_notifications 22 raised the SDK floor** to Dart ≥3.11.5 / Flutter ≥3.41.8 (was
-  3.10.7 / 3.38.4). Local is 3.44.6, CI resolves `channel: stable` unpinned. An older stable now
-  fails `pub get` outright instead of degrading.
+- **`emoji_picker_flutter` 4.5.x raised the SDK floor** to Dart ≥3.11.5 / Flutter ≥3.41.8 (was
+  3.10.7 / 3.38.4). Local is 3.44.6 and CI resolves `channel: stable` unpinned, so neither can
+  land below it; an older stable fails `pub get` outright rather than degrading.
+  **CORRECTION —** this was originally recorded here, in the #121 commit message and in the PR
+  body as `flutter_local_notifications` 22, which is WRONG and would send the next person
+  downgrading the wrong package. Source: `emoji_picker_flutter-4.5.3/pubspec.yaml` declares
+  `sdk: ">=3.11.5 <4.0.0"` / `flutter: ">=3.41.8"`; `flutter_local_notifications-22.2.0`
+  declares only `sdk: ^3.10.0` / `flutter: ">=3.38.1"`, and `device_info_plus-12.4.0` only
+  `>=3.7.0` / `>=3.29.0`. Caught by independent review, not by me.
 - **fln 22 is federated and adds `flutter_local_notifications_web`.** Inert here: the only call
   sites are `android_fcm_local_notifications.dart` (guarded by `kIsWeb` + `_isAndroid`) and
   `notification_cleaner_io.dart`, reached by a conditional import whose web branch is
