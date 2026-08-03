@@ -85,9 +85,11 @@ release-signing hard gate + null signingConfig fallback; minimal permissions; da
    `encryption_provider.dart:551-563` — wipe never syncs `_retiredIds`/`_decryptedLedger` RAM)
    vs genuine record loss. The panel's retired-set id range decides it.
 
-Verification: `flutter analyze` clean; input-widget suite 90/90; full suite run at session end
-(see LATEST). No new tests (no new observable contract — flags are declarative). Test counts
-unchanged. NOT committed — commit/deploy needs owner OK per standing rule.
+Verification: `flutter analyze` clean; input-widget suite 90/90; screens suite 76/76; full suite
+**1134 + 10 skipped** green twice (after hardening, after panel). No new tests (no new observable
+contract). Test counts unchanged. **RELEASED as `0.1.3 / 7dc0a9e`, frontend only, CI green 4/4
+pre-deploy, smoke 5/5** (health, version.json 0.1.3, backend 0.1.2 unchanged, bundle commit
+verified, app boot). Owner deploy OK given in-session ("go").
 
 ## Signal-grade roadmap agreed with owner (scope: practical, not full metadata resistance)
 
