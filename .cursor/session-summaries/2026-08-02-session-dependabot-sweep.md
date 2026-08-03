@@ -93,6 +93,38 @@ against a REAL Keystore, since the host has no webcrypto native and those assert
 in `flutter test`. Also `package_info_plus` 8.3.1→10.2.1 (two majors) and `device_info_plus`
 12.4.0→13.2.0, both pulling `win32` 6.0.0 as a breaking change.
 
+### Then FIVE more appeared — the second sweep, PR #129 → `713f16f`
+
+Closing the grouped PRs and merging changed the lockfiles, so Dependabot re-ran and opened
+#124–#128 within two minutes. **Grouping only covers minor/patch, so every major arrives as
+its own PR** — that is why the burst happened and why it stopped at the per-ecosystem
+`open-pull-requests-limit: 3`.
+
+Merged in #129: **#124** `@nestjs/schedule` 5.0.1→6.1.3 (major — both cron cadences are pinned
+by tests, including the `EVERY_MINUTE` secret-note sweep added earlier the same day, which is
+exactly the guard a scheduler major needs), **#125** `@types/supertest` 6→7.2.1, **#126**
+`@eslint/js` 9.39.4→10.0.1.
+
+**`@eslint/js` 10 adds `preserve-caught-error` to the recommended set, and it found a real
+bug.** `migration-runner.ts:198` rethrew a failed migration as a fresh `Error` carrying only
+`.message`, discarding the pg error's `code`, `detail`, `hint` and `position`. That is the one
+throw in the backend that **aborts boot** — the worst possible place to lose the diagnosis.
+Now rethrows with `{ cause: error }`. Ratchet 816 → 817 → back to **816**.
+
+**#127 `audio_waveforms` 1.3.0→2.0.2 was resolved by DELETING the package.** It was a
+`direct main` dependency with **zero imports anywhere in `frontend/`** — not `lib`, `test`,
+`test_e2e`, `integration_test` or `tool`. The recording waveform is drawn by the app and is
+decorative (`frontend/CLAUDE.md` §7), so this was a discarded early approach still shipping its
+Android and iOS native code in every build. 2.0.2 also carries several BREAKING changes to an
+API nothing calls. **Check for imports before bumping anything — a dead dep is deleted, not
+upgraded.**
+
+**#128 `firebase_messaging` 15→16 + `firebase_core` 3→4 closed, deferred.** Majors on the push
+path cannot be validated by a green widget suite, and FCM is disabled in prod
+(`FIREBASE_SERVICE_ACCOUNT` absent) so there is nothing to smoke-test against. It belongs in
+the same session as the FCM service account, in that order — otherwise a delivery failure has
+two possible causes instead of one.
+
 ### Branch and worktree consolidation
 
 **The worktree zoo is gone. One checkout, on master.**
@@ -117,10 +149,11 @@ used for this work. The main copy is now on `master` at `70cae4a`, clean and in 
 
 - `backend/package.json`, `backend/package-lock.json` — the bumps + brace-expansion
 - `backend/src/media/media.controller.spec.ts` — `controllerMethod()` descriptor helper
-- `backend/src/database/migration-runner.ts:111-117` — `quiet: true` on both `dotenv.config()`
+- `backend/src/database/migration-runner.ts` — `quiet: true` on both `dotenv.config()` (~:111),
+  and `{ cause: error }` on the boot-aborting migration rethrow (~:198)
 - `scripts/lint-baseline.json` — `nonPrettier` 817 → **816**, `prettier` left at 323
 - `.github/workflows/ci.yml:27` — `actions/setup-node@v7`
-- `frontend/pubspec.yaml:45,65,68` + `pubspec.lock`
+- `frontend/pubspec.yaml` + `pubspec.lock` — three bumps, and `audio_waveforms` DELETED
 - `frontend/test/widgets/message/message_context_menu_overlay_test.dart:1022-1032`
 - `.github/dependabot.yml` — pub `ignore:` now covers the four Phase 2 storage pins
 
@@ -131,14 +164,19 @@ used for this work. The main copy is now on `master` at `70cae4a`, clean and in 
 - `npm ls brace-expansion` → only 1.1.18 / 2.1.4 / 5.0.9
 - `flutter analyze --no-fatal-infos` → clean
 - `flutter test` → **1134 passed / 10 skipped** — unchanged, so root `CLAUDE.md` §3 needed no edit
-- CI on PR #121: **green 4/4**, including `e2e-wire` against a real backend + Postgres
+- CI green **4/4 on PR #121, on PR #129, and on master after each** — including `e2e-wire`
+  against a real backend + Postgres every time
+- **Both HIGH Dependabot alerts confirmed CLOSED** (`gh api .../dependabot/alerts` → 0 open)
+- **Zero open PRs, zero stale branches, one worktree, local branches = just `master`**
 - Pins confirmed still resolved as pinned: drift 2.31.x, sqlite3 2.9.4, sqlcipher 0.6.8,
   webcrypto 0.6.0; firebase-admin untouched on 13.x with its scoped `overrides.firebase-admin.uuid`
 
 ## Notes for next session
 
-- **The 2 HIGH alerts close only once GitHub re-scans the default branch.** Both were
-  `scope: development` transitives, so nothing deployed was ever exposed.
+- **Dependabot fires a burst after any lockfile merge.** #122/#123 within a minute of #121,
+  then #124–#128 within two of that. Grouping only covers minor/patch, so **every major comes
+  as its own PR**; the per-ecosystem `open-pull-requests-limit: 3` is what stops it. Expect
+  another burst after the next dependency merge — it is not a loop.
 - **flutter_local_notifications 22 raised the SDK floor** to Dart ≥3.11.5 / Flutter ≥3.41.8 (was
   3.10.7 / 3.38.4). Local is 3.44.6, CI resolves `channel: stable` unpinned. An older stable now
   fails `pub get` outright instead of degrading.
