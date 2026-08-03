@@ -3,6 +3,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 import 'encryption/content_kv.dart';
+import 'encryption/sealed_web_envelope.dart';
 import 'encryption/content_kv_opener_stub.dart'
     if (dart.library.io) 'encryption/content_kv_opener_io.dart';
 
@@ -90,6 +91,14 @@ class EncryptionService {
 
   Future<void> _reloadPrefsForCrossContext(ContentKv prefs) => prefs.reload();
 
+  /// Test-only seam: pin the content-store backend (e.g. a SealedWebContentKv
+  /// over mocked prefs). Production selection stays with the platform opener.
+  @visibleForTesting
+  void debugSetContentKv(ContentKv kv) {
+    _prefs = kv;
+    _prefsOpening = Future.value(kv);
+  }
+
   /// Ground truth for a record read, or null when [ContentKv.getString] is
   /// already authoritative on this backend.
   ///
@@ -138,6 +147,12 @@ class EncryptionService {
 
   final int _decryptedContentCacheLimit;
   final SessionCrossContextLockRunner _sessionCrossContextLock;
+
+  /// Per-session dedupe for the non-authoritative `PLAINTEXT_SCAN_SKIPPED`
+  /// durable: a fallback-to-prefs session sweeping over sealed envelopes
+  /// would otherwise record it once per sweep and evict real evidence from
+  /// the cap-80 durable log. See `_messageIdsMatching`.
+  bool _scanSkippedDiagRecorded = false;
 
   /// Test-only seam: wrap the session store used by SessionCipher /
   /// SessionBuilder (e.g. to hold a storeSession mid-flight and force a
@@ -1985,6 +2000,23 @@ class EncryptionService {
         // Unreadable record. A decode failure says nothing about what it
         // holds, so nothing is ever destroyed on that basis.
       }
+      if (record == null && authoritative) {
+        // Erasure completeness (design doc §3.1): a sealed-store envelope is
+        // undecodable in a session that cannot unseal it (prefs fallback,
+        // rollback, unsealable row, proven key loss), but its conversation id
+        // is cleartext in the framing precisely so a USER-REQUESTED deletion
+        // still selects it — destroying a row the user asked to destroy is
+        // correct even when it cannot be read. Authoritative scans only: a
+        // synthetic record has no `_savedAt`, and letting it default to the
+        // retention epoch would re-arm epoch-based destruction of rows a
+        // fallback session merely cannot read.
+        final envelope = SealedWebEnvelope.tryParse(raw);
+        if (envelope != null) {
+          record = <String, dynamic>{
+            if (envelope.cid != null) _metaConversationId: envelope.cid,
+          };
+        }
+      }
       if (record == null) {
         skipped++;
         continue;
@@ -1998,10 +2030,20 @@ class EncryptionService {
     }
 
     if (skipped > 0) {
-      E2ePersistentDiag.record('PLAINTEXT_SCAN_SKIPPED', {
-        'scanned': keys.length,
-        'skipped': skipped,
-      });
+      final payload = {'scanned': keys.length, 'skipped': skipped};
+      // Durable-channel hygiene (design doc §3.5): on an authoritative scan a
+      // skip means a user-requested erasure met a value even the envelope
+      // parser could not classify — evidence, always durable. On automatic
+      // scans a fallback session sweeping over sealed envelopes would emit
+      // this once per sweep, and the cap-80 durable log must not let routine
+      // noise evict destruction evidence: first occurrence durable, repeats
+      // to the ring.
+      if (authoritative || !_scanSkippedDiagRecorded) {
+        if (!authoritative) _scanSkippedDiagRecorded = true;
+        E2ePersistentDiag.record('PLAINTEXT_SCAN_SKIPPED', payload);
+      } else {
+        E2eDiagLog.add('PLAINTEXT_SCAN_SKIPPED', payload);
+      }
     }
     return matched;
   }

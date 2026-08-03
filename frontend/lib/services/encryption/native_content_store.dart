@@ -776,14 +776,3 @@ class NativeContentStore implements ContentKv {
   String get debugActiveKid => _activeKid;
 }
 
-/// Thrown by [NativeContentStore.open] when the store cannot be safely armed.
-/// The stage names the first check that failed; the caller records it and
-/// falls back to the legacy prefs backend for the session.
-class ContentStoreUnavailable implements Exception {
-  const ContentStoreUnavailable(this.stage);
-
-  final String stage;
-
-  @override
-  String toString() => 'ContentStoreUnavailable($stage)';
-}

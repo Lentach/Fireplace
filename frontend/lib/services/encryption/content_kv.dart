@@ -108,8 +108,8 @@ class PrefsContentKv implements ContentKv {
   /// Strips the backend prefix so callers never learn it. Hardcoded because the
   /// package exposes [SharedPreferences.setPrefix] but no getter, and this app
   /// never changes it; pinned by test so a package change fails loudly instead
-  /// of silently answering null for every record.
-  @visibleForTesting
+  /// of silently answering null for every record. Shared with the sealed web
+  /// backend, which strips the same prefix from the same platform store.
   static const String storePrefix = 'flutter.';
 
   /// Forces the web branch under `flutter test`, which runs on the Dart VM with
@@ -153,4 +153,19 @@ class PrefsContentKv implements ContentKv {
 
   @override
   Future<bool> remove(String key) => _prefs.remove(key);
+}
+
+/// Thrown by a sealed-store opener (`NativeContentStore.open` on Android,
+/// `SealedWebContentKv.open` on web) when the store cannot be safely armed.
+/// The stage names the first check that failed; the caller records it and
+/// falls back to the legacy prefs backend for the session. Lives here, not in
+/// the native store, so the web opener can use it without pulling the
+/// drift/SQLCipher backend into a web build.
+class ContentStoreUnavailable implements Exception {
+  const ContentStoreUnavailable(this.stage);
+
+  final String stage;
+
+  @override
+  String toString() => 'ContentStoreUnavailable($stage)';
 }
