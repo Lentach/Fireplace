@@ -1,0 +1,30 @@
+# Invitation surfaces speak hex — picker invite socket, hex badges/pills, hex chat-header avatar
+
+**Date:** 2026-08-03 (worktree `fireplace-invitations-ui`, branch `feat/invitations-hex-ui`, NOT merged/deployed)
+
+## What was done
+
+Owner asked: an "invite a friend" door in the Chats `+` picker (same as the Contacts add hex), hex-shaped count badges instead of round circles in the Invitations tab, a general de-genericizing of that tab, and a hex avatar in the chat screen header. All on a fresh worktree.
+
+- **`HexPill` (`widgets/hex_pill.dart`, NEW) + `HexCountBadge` (`hex_avatar.dart`, NEW):** the count badges are the app's EXACT pointy-top `hexPath` hexagon (`HexCountBadge`; owner interjection — the first cut used a flat-top elongated hex and was rejected: "must be exact hex as rest of them"). `HexPill` (elongated 120°-cap hexagon) survives ONLY for word pills — `InvitationStatusPill` ("Pending"/"Chat ready") — because a regular hexagon cannot hold a word. Colors/kinds unchanged; only shapes moved off `borderRadius: 999`.
+- **`DashedHexPainter` (public, `hex_avatar.dart`):** replaces the two private dashed painters in `contact_network_view.dart` (add cell 5/4 runs, ghost 8/4 + fill — visuals identical) and paints the picker's new socket. One dash vocabulary, three callers.
+- **Chats `+` picker (`chat_honeycomb_picker.dart`):** new sealed choice `ChatPickerInviteNew`; the comb now ends in a dashed "+" socket (key `chat-picker-invite-new`, caption/semantics reuse `contactNetworkAddSlot*`). The EMPTY picker instead carries an `Invite someone` button (`chat-picker-invite-empty`; new ARB key `chatPickerInviteButton` en+pl) — a lone socket in an empty comb looks broken. `conversations_screen.dart` routes both `ChatPickerInviteNew` and `ChatPickerReviewInvitations` to `InvitationsScreen` (accept/decline stays there per §6 — the picker still never accepts inline).
+- **Invitations tab:** section count chips are `HexPill`s; the "Waiting for you" badge flips to `colorScheme.primary` fill while `friendRequests.isNotEmpty` (new `accented` param). One-shot 240 ms fade + 12 px rise entrance when the skeleton hands over (`_InvitationEntrance`, `TweenAnimationBuilder`, reduce-motion → plain child, `alwaysIncludeSemantics: true` — Opacity(0) drops semantics on frame one and broke the semantics test until added).
+- **Chat header (`chat_detail_screen.dart`):** both `AvatarCircle`s (embedded 36px, `GlassTopBar` slot 52px) → `HexAvatar`. Supersedes the round-4 "bare 52px circle" Telegram ruling by owner ask.
+- **Design review (designer subagent) SHIP-WITH-FIXES; HIGH fixed same session:** `HexAvatar` ringed with `convItemBorder@0.6` is ~1.3:1 on blue (`#2B3B45` on `#1E2D3A`) — the hex outline vanished. All four touched callsites (InvitationRow, search row, both chat headers) now ring with `colors.mutedText`, re-rendered blue+dark to confirm. NOTE: `HexRingPainter` still halves whatever it gets (0.6 alpha); `conversation_tile`'s hexes still pass `convItemBorder` — untouched, worth an owner look on blue.
+- **Preview harness (`test/preview/invitations_preview.dart`, NEW):** `?view=inbox|picker|picker-empty|header&theme=…&incoming=N&sent=N&accepted=1` — invitations surfaces render without a backend, same pattern as `contact_network_preview.dart`.
+
+## Key files
+
+`frontend/lib/widgets/hex_pill.dart` (new), `hex_avatar.dart`, `chat_honeycomb_picker.dart`, `contact_network_view.dart`, `invitations/invitation_row.dart`, `invitations/invitation_status_pill.dart`, `frontend/lib/screens/invitations_screen.dart`, `conversations_screen.dart`, `chat_detail_screen.dart`, `frontend/lib/l10n/app_en.arb`+`app_pl.arb`, `frontend/test/screens/conversations_honeycomb_picker_test.dart` (+2), `frontend/test/preview/invitations_preview.dart` (new).
+
+## Verification
+
+`flutter analyze` clean; full suite **1198 + 10 skipped, all green** (+2 new picker tests: socket→InvitationsScreen, empty-state button→InvitationsScreen; no-lone-socket asserted). Visual loop closed via the preview harness + browser screenshots: inbox dark/light/teal/blue, picker with inviter + socket, empty picker, chat header dark/light; blue re-shot after the contrast fix.
+
+## Notes for next session
+
+- Branch is pushed but NOT merged — owner reviews on device first. No version bump (nothing deployed).
+- Review LOWs deliberately NOT acted on (owner-taste calls): picker accent text uses `colorScheme.primary` on glass (SPEC suggests `onGlassAccent`; pre-existing); "Pending" labels both directions; accepted-ready card stacks three accent elements; SPEC §10 "no title pills" contradicts the shipped app (doc drift, app-wide, predates this).
+- Chat-header hex is ~45px wide at 52px height vs the 52px back-circle — slight mass asymmetry; owner to judge on device.
+- Trap re-confirmed: the `edit` tool's auto-repair silently swallowed a `Transform.translate(offset:)` argument — re-read after any repaired hunk.

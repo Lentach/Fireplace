@@ -471,5 +471,6 @@
   "chatPickerSubtitle": "Wybierz węzeł, aby rozpocząć czat",
   "chatPickerEmptyTitle": "Nie masz jeszcze znajomych",
   "chatPickerEmptyDescription": "Dodaj znajomego, aby rozpocząć czat.",
-  "chatPickerOpenTooltip": "Nowy czat"
+  "chatPickerOpenTooltip": "Nowy czat",
+  "chatPickerInviteButton": "Zaproś kogoś"
 }

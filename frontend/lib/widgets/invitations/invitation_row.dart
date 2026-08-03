@@ -70,7 +70,10 @@ class InvitationRow extends StatelessWidget {
                   displayName: peer.username,
                   imageUrl: peer.profilePictureUrl,
                   surface: colors.convItemBg,
-                  borderColor: colors.convItemBorder,
+                  // mutedText, not convItemBorder: on blue that border token is
+                  // 1.92:1 on this fill and the ring paints at 0.6 alpha — the
+                  // hex outline vanishes (design review 2026-08-03).
+                  borderColor: colors.mutedText,
                   initialsStyle: RpgTheme.bodyFont(
                     fontSize: 44 * 0.34,
                     fontWeight: FontWeight.w800,

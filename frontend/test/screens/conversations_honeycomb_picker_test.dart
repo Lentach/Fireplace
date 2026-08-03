@@ -326,4 +326,44 @@ void _pickerNameTests() {
     expect(find.byKey(const Key('chat-picker-invitations-hint')), findsNothing);
     expect(find.byKey(const Key('chat-picker-invite-5')), findsNothing);
   });
+
+  testWidgets('the comb ends in an add socket that opens the invitations '
+      'screen', (tester) async {
+    await tester.pumpWidget(
+      _host(
+        friends: _friends([UserModel(id: 2, username: 'Ada', tag: '0002')]),
+        conversations: _conversationsWithAda(),
+      ),
+    );
+    await tester.pump();
+    await _openPicker(tester);
+
+    await tester.tap(find.byKey(const Key('chat-picker-invite-new')));
+    // Not pumpAndSettle: the invitation queue paints skeletonizer shimmer,
+    // which never reaches a settled frame.
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.byType(InvitationsScreen), findsOneWidget);
+  });
+
+  testWidgets('the empty picker offers the same invite door as a button', (
+    tester,
+  ) async {
+    await tester.pumpWidget(
+      _host(friends: _friends([]), conversations: ConversationsProvider()),
+    );
+    await tester.pump();
+    await _openPicker(tester);
+
+    // No lone dashed socket in an otherwise empty comb: the empty state
+    // carries the door instead.
+    expect(find.byKey(const Key('chat-picker-invite-new')), findsNothing);
+
+    await tester.tap(find.byKey(const Key('chat-picker-invite-empty')));
+    await tester.pump();
+    await tester.pump(const Duration(milliseconds: 400));
+
+    expect(find.byType(InvitationsScreen), findsOneWidget);
+  });
 }

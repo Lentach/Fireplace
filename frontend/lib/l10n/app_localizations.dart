@@ -2245,6 +2245,12 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Nowy czat'**
   String get chatPickerOpenTooltip;
+
+  /// No description provided for @chatPickerInviteButton.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zaproś kogoś'**
+  String get chatPickerInviteButton;
 }
 
 class _AppLocalizationsDelegate

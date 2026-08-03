@@ -105,7 +105,10 @@ class _ConversationsScreenState extends State<ConversationsScreen> {
     if (choice == null || !mounted) return;
 
     switch (choice) {
-      case ChatPickerReviewInvitations():
+      case ChatPickerReviewInvitations() || ChatPickerInviteNew():
+        // Reviewing inbound invitations and inviting someone new are the
+        // same destination: InvitationsScreen owns both halves of the
+        // relationship layer (and the accept/decline retry machinery).
         await _openInvitations();
       case ChatPickerFriend(:final friend):
         _startChatWith(friend.id);

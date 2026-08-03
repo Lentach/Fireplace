@@ -208,3 +208,117 @@ class HexRingPainter extends CustomPainter {
       oldDelegate.emberColor != emberColor ||
       oldDelegate.ember != ember;
 }
+
+/// Dashed hex outline: a socket with nobody in it yet, or a pending ghost.
+///
+/// One painter for every dashed hex in the app — the Contacts "+" cell
+/// (5px on / 4px off), the outbound ghost terminals (8/4 + fill), and the
+/// Chats picker's invite cell — so the dash vocabulary cannot drift.
+class DashedHexPainter extends CustomPainter {
+  const DashedHexPainter({
+    required this.outline,
+    this.strokeWidth = 1.4,
+    this.dashOn = 5,
+    this.dashOff = 4,
+    this.fill,
+  });
+
+  final Color outline;
+  final double strokeWidth;
+  final double dashOn;
+  final double dashOff;
+  final Color? fill;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    final path = hexPath(c, size.height / 2 - 0.75);
+    if (fill != null) {
+      canvas.drawPath(path, Paint()..color = fill!);
+    }
+    final paint = Paint()
+      ..style = PaintingStyle.stroke
+      ..strokeWidth = strokeWidth
+      ..color = outline;
+
+    for (final metric in path.computeMetrics()) {
+      var distance = 0.0;
+      while (distance < metric.length) {
+        final end = math.min(distance + dashOn, metric.length);
+        canvas.drawPath(metric.extractPath(distance, end), paint);
+        distance = end + dashOff;
+      }
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant DashedHexPainter oldDelegate) =>
+      oldDelegate.outline != outline ||
+      oldDelegate.strokeWidth != strokeWidth ||
+      oldDelegate.dashOn != dashOn ||
+      oldDelegate.dashOff != dashOff ||
+      oldDelegate.fill != fill;
+}
+
+/// A count badge in the app's EXACT pointy-top hexagon (`hexPath`), the same
+/// silhouette as the avatars and the honeycomb cells. For numbers only —
+/// words go in `HexPill`, a regular hexagon cannot hold them.
+class HexCountBadge extends StatelessWidget {
+  const HexCountBadge({
+    super.key,
+    required this.label,
+    required this.textStyle,
+    required this.background,
+    this.borderColor,
+    this.size = 28,
+  });
+
+  final String label;
+  final TextStyle textStyle;
+  final Color background;
+
+  /// Hairline outline; null paints no border (for accent-filled badges).
+  final Color? borderColor;
+
+  /// Hexagon height; width follows [kHexWidthRatio].
+  final double size;
+
+  @override
+  Widget build(BuildContext context) {
+    return SizedBox(
+      width: size * kHexWidthRatio,
+      height: size,
+      child: CustomPaint(
+        painter: _HexBadgePainter(background: background, border: borderColor),
+        child: Center(child: Text(label, maxLines: 1, style: textStyle)),
+      ),
+    );
+  }
+}
+
+class _HexBadgePainter extends CustomPainter {
+  const _HexBadgePainter({required this.background, this.border});
+
+  final Color background;
+  final Color? border;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    final path = hexPath(c, size.height / 2 - 0.75);
+    canvas.drawPath(path, Paint()..color = background);
+    if (border != null) {
+      canvas.drawPath(
+        path,
+        Paint()
+          ..style = PaintingStyle.stroke
+          ..strokeWidth = 1
+          ..color = border!,
+      );
+    }
+  }
+
+  @override
+  bool shouldRepaint(covariant _HexBadgePainter oldDelegate) =>
+      oldDelegate.background != background || oldDelegate.border != border;
+}

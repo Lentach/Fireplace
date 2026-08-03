@@ -163,13 +163,15 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 560),
                   child: friends.hasLoadedInvitationsOnce
-                      ? _InvitationContent(
-                          handleController: _handleController,
-                          searching: _searching,
-                          actingRequestActions: _actingRequestActions,
-                          friends: friends,
-                          onSearch: _search,
-                          onActOnIncoming: _actOnIncoming,
+                      ? _InvitationEntrance(
+                          child: _InvitationContent(
+                            handleController: _handleController,
+                            searching: _searching,
+                            actingRequestActions: _actingRequestActions,
+                            friends: friends,
+                            onSearch: _search,
+                            onActOnIncoming: _actOnIncoming,
+                          ),
                         )
                       : const _InvitationSkeleton(),
                 ),
@@ -317,6 +319,9 @@ class _InvitationContent extends StatelessWidget {
         _InvitationSection(
           title: l10n.invitationsWaitingForYou,
           count: incomingOutcomes.length + friends.friendRequests.length,
+          // Inbound requests are the one thing on this screen that wants an
+          // answer; the badge flips to the accent while any are waiting.
+          accented: friends.friendRequests.isNotEmpty,
           emptyMessage: l10n.invitationsNothingWaiting,
           rows: [
             for (final outcome in incomingOutcomes)
@@ -480,7 +485,9 @@ class _SearchIdentityRow extends StatelessWidget {
             displayName: user.username,
             imageUrl: user.profilePictureUrl,
             surface: colors.convItemBg,
-            borderColor: colors.convItemBorder,
+            // mutedText, not convItemBorder — same 3:1 ring-boundary reason
+            // as InvitationRow (design review 2026-08-03).
+            borderColor: colors.mutedText,
             initialsStyle: RpgTheme.bodyFont(
               fontSize: 44 * 0.34,
               fontWeight: FontWeight.w800,
@@ -519,15 +526,19 @@ class _SearchIdentityRow extends StatelessWidget {
   }
 }
 
+/// A section of the relationship inbox, headed by a title and a hex-shaped
+/// count badge — the same shape language as the avatars below it.
 class _InvitationSection extends StatelessWidget {
   final String title;
   final int count;
+  final bool accented;
   final String emptyMessage;
   final List<Widget> rows;
 
   const _InvitationSection({
     required this.title,
     required this.count,
+    this.accented = false,
     required this.emptyMessage,
     required this.rows,
   });
@@ -551,25 +562,22 @@ class _InvitationSection extends StatelessWidget {
                 ),
               ),
             ),
-            // `convItemBg` sits within a hair of the scaffold in light and teal, so
-            // the fill alone left the count reading as a bare floating number. The
-            // muted outline is what makes it a chip in every theme.
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: colors.convItemBg,
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: colors.mutedText),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                child: Text(
-                  '$count',
-                  style: RpgTheme.bodyFont(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.onSurface,
-                  ),
-                ),
+            // `convItemBg` sits within a hair of the scaffold in light and teal,
+            // so the fill alone left the count reading as a bare floating
+            // number. The muted outline is what makes it a badge in every
+            // theme; the accented badge sits on the accent and needs none.
+            // Pointy-top like every other hex in the app — owner ruling
+            // 2026-08-03: no flat-top variants.
+            HexCountBadge(
+              label: '$count',
+              background: accented ? colorScheme.primary : colors.convItemBg,
+              borderColor: accented ? null : colors.mutedText,
+              textStyle: RpgTheme.bodyFont(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: accented
+                    ? colorScheme.onPrimary
+                    : colorScheme.onSurface,
               ),
             ),
           ],
@@ -644,6 +652,36 @@ class _InvitationSkeletonTile extends StatelessWidget {
             const SizedBox(width: 12),
             const Expanded(child: Bone.text(width: 160, fontSize: 14)),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One-shot entrance for the loaded inbox: a 240 ms fade + 12 px rise,
+/// played once when the skeleton hands over, never on provider rebuilds
+/// (the tween's end value is stable, so rebuilds don't replay it).
+class _InvitationEntrance extends StatelessWidget {
+  final Widget child;
+
+  const _InvitationEntrance({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.disableAnimationsOf(context)) return child;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+      child: child,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        // The rise is decorative; assistive tech must see the inbox from the
+        // first frame, not after 240 ms.
+        alwaysIncludeSemantics: true,
+        child: Transform.translate(
+          offset: Offset(0, 12 * (1 - t)),
+          child: child,
         ),
       ),
     );

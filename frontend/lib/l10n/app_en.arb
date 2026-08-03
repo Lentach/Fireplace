@@ -489,5 +489,6 @@
   "chatPickerSubtitle": "Pick a node to start chatting",
   "chatPickerEmptyTitle": "No friends yet",
   "chatPickerEmptyDescription": "Add a friend to start a chat.",
-  "chatPickerOpenTooltip": "New chat"
+  "chatPickerOpenTooltip": "New chat",
+  "chatPickerInviteButton": "Invite someone"
 }

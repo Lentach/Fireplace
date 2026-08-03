@@ -2,10 +2,12 @@ import 'package:flutter/material.dart';
 
 import '../../theme/glass_theme.dart';
 import '../../theme/rpg_theme.dart';
+import '../hex_pill.dart';
 
 enum InvitationStatusPillKind { pending, ready }
 
-/// A compact, solid status marker for invitation rows.
+/// A compact, solid status marker for invitation rows, in the app's
+/// elongated-hex badge shape rather than a generic capsule.
 ///
 /// It deliberately does not use a glass widget: invitation rows live in the
 /// opaque content layer, while glass is reserved for floating chrome.
@@ -32,30 +34,22 @@ class InvitationStatusPill extends StatelessWidget {
     };
 
     // The pending fill is `opaqueFill`, which is exactly the row's own surface
-    // colour now that rows are forceOpaque — without an outline the pill would be
-    // invisible and only its bold text would imply the shape. `mutedText` is used
-    // rather than `borderColor` because the blue border token measures 1.92:1 on
-    // that fill, well under the ~3:1 a UI component boundary needs. The ready pill
-    // sits on the accent and needs no outline.
+    // colour now that rows are forceOpaque — without an outline the marker would
+    // be invisible and only its bold text would imply the shape. `mutedText` is
+    // used rather than `borderColor` because the blue border token measures
+    // 1.92:1 on that fill, well under the ~3:1 a UI component boundary needs.
+    // The ready marker sits on the accent and needs no outline.
     final colors = FireplaceColors.of(context);
-    return DecoratedBox(
-      decoration: BoxDecoration(
-        color: background,
-        borderRadius: BorderRadius.circular(999),
-        border: kind == InvitationStatusPillKind.pending
-            ? Border.all(color: colors.mutedText)
-            : null,
-      ),
-      child: Padding(
-        padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 5),
-        child: Text(
-          label,
-          style: RpgTheme.bodyFont(
-            fontSize: 12,
-            fontWeight: FontWeight.w600,
-            color: foreground,
-          ),
-        ),
+    return HexPill(
+      label: label,
+      background: background,
+      borderColor: kind == InvitationStatusPillKind.pending
+          ? colors.mutedText
+          : null,
+      textStyle: RpgTheme.bodyFont(
+        fontSize: 12,
+        fontWeight: FontWeight.w600,
+        color: foreground,
       ),
     );
   }
