@@ -1,7 +1,15 @@
-import { IsInt, IsNotEmpty, IsOptional, IsString, MaxLength } from 'class-validator';
+import {
+  IsInt,
+  IsNotEmpty,
+  IsOptional,
+  IsPositive,
+  IsString,
+  MaxLength,
+} from 'class-validator';
 
 export class EditMessageDto {
   @IsInt()
+  @IsPositive()
   messageId: number;
 
   /** Plaintext placeholder ('[encrypted]') — server never stores real plaintext. */

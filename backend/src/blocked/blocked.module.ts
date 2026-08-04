@@ -1,4 +1,4 @@
-import { Module } from '@nestjs/common';
+import { Module, forwardRef } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
 import { BlockedUser } from './blocked-user.entity';
 import { BlockedService } from './blocked.service';
@@ -10,7 +10,7 @@ import { MediaModule } from '../media/media.module';
 @Module({
   imports: [
     TypeOrmModule.forFeature([BlockedUser]),
-    FriendsModule,
+    forwardRef(() => FriendsModule),
     ConversationsModule,
     MessagesModule,
     MediaModule,

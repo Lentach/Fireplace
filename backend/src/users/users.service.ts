@@ -57,7 +57,9 @@ export class UsersService {
         return this.usersRepo.save(user);
       }
     }
-    throw new ConflictException('Could not generate unique tag, please try again');
+    throw new ConflictException(
+      'Could not generate unique tag, please try again',
+    );
   }
 
   async findById(id: number): Promise<User | null> {
@@ -78,7 +80,10 @@ export class UsersService {
       .getMany();
   }
 
-  async findByUsernameAndTag(username: string, tag: string): Promise<User | null> {
+  async findByUsernameAndTag(
+    username: string,
+    tag: string,
+  ): Promise<User | null> {
     return this.usersRepo
       .createQueryBuilder('user')
       .where('LOWER(user.username) = LOWER(:username)', { username })
@@ -86,8 +91,10 @@ export class UsersService {
       .getOne();
   }
 
-
-  async updateProfileAbout(userId: number, about: string | null): Promise<User> {
+  async updateProfileAbout(
+    userId: number,
+    about: string | null,
+  ): Promise<User> {
     const user = await this.findById(userId);
     if (!user) throw new NotFoundException('User not found');
     user.about = about?.trim() || null;
@@ -119,7 +126,9 @@ export class UsersService {
         order: { position: 'ASC', id: 'ASC' },
       });
       if (photos.length >= 3) {
-        throw new BadRequestException('A profile can have at most three photos');
+        throw new BadRequestException(
+          'A profile can have at most three photos',
+        );
       }
       const saved = await photosRepo.save(
         photosRepo.create({
@@ -162,12 +171,10 @@ export class UsersService {
       const photo = photos.find(({ id }) => id === photoId);
       if (!photo) throw new NotFoundException('Profile photo not found');
 
-      await this.persistProfilePhotoOrder(
-        manager,
-        userId,
-        photos,
-        [photoId, ...photos.filter(({ id }) => id !== photoId).map(({ id }) => id)],
-      );
+      await this.persistProfilePhotoOrder(manager, userId, photos, [
+        photoId,
+        ...photos.filter(({ id }) => id !== photoId).map(({ id }) => id),
+      ]);
       return photosRepo.find({
         where: { userId },
         order: { position: 'ASC', id: 'ASC' },
@@ -243,7 +250,8 @@ export class UsersService {
       where: { id: photoId, userId },
     });
     if (!photo) throw new NotFoundException('Profile photo not found');
-    if (photo.storageKey) await this.storageService.deleteAvatar(photo.storageKey);
+    if (photo.storageKey)
+      await this.storageService.deleteAvatar(photo.storageKey);
 
     return this.dataSource.transaction(async (manager) => {
       const user = await manager.findOne(User, {
@@ -277,7 +285,6 @@ export class UsersService {
     });
   }
 
-
   async resetPassword(
     userId: number,
     oldPassword: string,
@@ -296,10 +303,16 @@ export class UsersService {
 
     // Hash new password
     const hash = await bcrypt.hash(newPassword, 10);
+    // Revoke every refresh token BEFORE stamping passwordChangedAt (stamped
+    // last). A refresh token stolen before the reset must not be exchangeable
+    // for a fresh 24h access JWT in the window between the stamp landing and
+    // the revoke: /auth/refresh finds no row once revocation ran first. Doing
+    // the revoke first also means a partial failure over-revokes (all sessions
+    // dropped) rather than leaving a usable stolen token behind.
+    await this.refreshTokensService.revokeAllForUser(userId);
     user.password = hash;
     user.passwordChangedAt = new Date();
     await this.usersRepo.save(user);
-    await this.refreshTokensService.revokeAllForUser(userId);
     this.auditLogger.log(`resetPassword success userId=${userId}`);
   }
 
@@ -314,8 +327,18 @@ export class UsersService {
       throw new UnauthorizedException('Invalid password');
     }
 
-    // External I/O before transaction (non-transactional by nature).
-    // A photo's file must not outlive its account even though its row cascades.
+    // Revoke refresh tokens FIRST. Every destructive step below can throw, and
+    // if the account survives while its refresh tokens do not it can still mint
+    // fresh 24h access JWTs via /auth/refresh. Revoking up front guarantees a
+    // mid-way failure over-revokes (session killed) rather than leaving a
+    // loginable zombie.
+    await this.refreshTokensService.revokeAllForUser(userId);
+
+    // Collect filesystem targets BEFORE the transaction (read-only queries).
+    // Message media URLs must be read while the rows still exist; the actual,
+    // irreversible unlinks are deferred until AFTER a successful commit so a
+    // rolled-back transaction never leaves a half-deleted, still-loginable
+    // account whose media/keys are already gone.
     const profilePhotos = await this.getProfilePhotos(userId);
     const storageKeys = new Set(
       [
@@ -323,30 +346,22 @@ export class UsersService {
         ...profilePhotos.map((photo) => photo.storageKey),
       ].filter((storageKey): storageKey is string => storageKey != null),
     );
-    await Promise.all(
-      [...storageKeys].map((storageKey) =>
-        this.storageService.deleteAvatar(storageKey),
-      ),
-    );
-
-    // Push tokens/subscriptions and key bundles use their own repos — delete outside transaction
-    await this.fcmTokensService.removeByUserId(userId);
-    await this.webPushSubscriptionsService.removeByUserId(userId);
-    await this.keyBundlesService.deleteByUserId(userId);
 
     const conversations = await this.usersRepo.manager.find(Conversation, {
       where: [{ userOne: { id: userId } }, { userTwo: { id: userId } }],
     });
+    const mediaUrls: string[] = [];
     for (const conv of conversations) {
       const urls = await this.messagesService.findMediaUrlsByConversation(
         conv.id,
       );
-      await Promise.all(
-        urls.map((url) => this.mediaCleanup.deleteMediaFile(url)),
-      );
+      mediaUrls.push(...urls);
     }
 
-    // All DB operations in a single transaction to prevent partial deletion
+    // All DB deletions in a single transaction to prevent partial deletion.
+    // Non-cascading tables (conversations, messages, friend requests) are
+    // removed explicitly; fcm tokens, web-push subscriptions and key bundles
+    // fall away by ON DELETE CASCADE when the user row is removed here.
     await this.dataSource.transaction(async (manager) => {
       const conversationsInTx = await manager.find(Conversation, {
         where: [{ userOne: { id: userId } }, { userTwo: { id: userId } }],
@@ -368,6 +383,23 @@ export class UsersService {
       await manager.remove(User, user);
     });
 
-    this.auditLogger.log(`deleteAccount success userId=${userId} username=${user.username}`);
+    // Only after the account is durably gone do we run the irreversible external
+    // cleanup: side-table purges (idempotent backstop to the FK cascade above)
+    // and filesystem unlinks. A failure here cannot resurrect the account.
+    await this.fcmTokensService.removeByUserId(userId);
+    await this.webPushSubscriptionsService.removeByUserId(userId);
+    await this.keyBundlesService.deleteByUserId(userId);
+    await Promise.all(
+      [...storageKeys].map((storageKey) =>
+        this.storageService.deleteAvatar(storageKey),
+      ),
+    );
+    await Promise.all(
+      mediaUrls.map((url) => this.mediaCleanup.deleteMediaFile(url)),
+    );
+
+    this.auditLogger.log(
+      `deleteAccount success userId=${userId} username=${user.username}`,
+    );
   }
 }

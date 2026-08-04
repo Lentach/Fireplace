@@ -816,8 +816,11 @@ export class ChatFriendRequestService {
         );
       }
     } catch (error) {
+      // BE-103: the friendship is already gone at this point, so a swallowed
+      // failure here orphans the conversation and its encrypted messages. Log
+      // both user ids so the orphaned rows can be reconciled by hand.
       this.logger.error(
-        'handleUnfriend: Failed to delete conversation (non-critical):',
+        `handleUnfriend: Failed to delete conversation between ${currentUserId} and ${data.userId} (conversation/messages may be orphaned):`,
         error,
       );
       // Continue - users are unfriended even if conversation deletion failed

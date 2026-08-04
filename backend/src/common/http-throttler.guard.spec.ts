@@ -12,7 +12,9 @@ const makeGuard = () =>
   );
 
 // Expose the protected getTracker without `any`.
-type TrackerGuard = { getTracker(req: Record<string, unknown>): Promise<string> };
+type TrackerGuard = {
+  getTracker(req: Record<string, unknown>): Promise<string>;
+};
 
 describe('HttpThrottlerGuard', () => {
   it('skips non-HTTP contexts so it never runs on the WS gateway', async () => {
@@ -30,18 +32,28 @@ describe('HttpThrottlerGuard', () => {
     expect(tracker).toBe('203.0.113.7');
   });
 
-  it('falls back to X-Forwarded-For first hop, then req.ip', async () => {
+  it('ignores a spoofed X-Forwarded-For: its first hop never becomes the throttle key', async () => {
     const guard = makeGuard() as unknown as TrackerGuard;
+    // nginx appends the real client, so `1.2.3.4` here is the attacker's spoofed
+    // first hop. With no X-Real-IP the tracker must fall through to req.ip, NOT
+    // adopt the attacker-controlled value.
     expect(
-      await guard.getTracker({ headers: { 'x-forwarded-for': '198.51.100.9, 10.0.0.1' } }),
-    ).toBe('198.51.100.9');
-    expect(await guard.getTracker({ headers: {}, ip: '192.0.2.5' })).toBe('192.0.2.5');
+      await guard.getTracker({
+        headers: { 'x-forwarded-for': '1.2.3.4, 10.0.0.1' },
+        ip: '10.0.0.1',
+      }),
+    ).toBe('10.0.0.1');
+    expect(await guard.getTracker({ headers: {}, ip: '192.0.2.5' })).toBe(
+      '192.0.2.5',
+    );
   });
 
   it('takes the first hop when X-Real-IP arrives as a string[] (merged duplicate headers)', async () => {
     const guard = makeGuard() as unknown as TrackerGuard;
     expect(
-      await guard.getTracker({ headers: { 'x-real-ip': ['203.0.113.7', '::1'] } }),
+      await guard.getTracker({
+        headers: { 'x-real-ip': ['203.0.113.7', '::1'] },
+      }),
     ).toBe('203.0.113.7');
   });
 
@@ -53,7 +65,9 @@ describe('HttpThrottlerGuard', () => {
   it('prefers X-Real-IP over X-Forwarded-For when both are present', async () => {
     const guard = makeGuard() as unknown as TrackerGuard;
     expect(
-      await guard.getTracker({ headers: { 'x-real-ip': 'A', 'x-forwarded-for': 'B' } }),
+      await guard.getTracker({
+        headers: { 'x-real-ip': 'A', 'x-forwarded-for': 'B' },
+      }),
     ).toBe('A');
   });
 });

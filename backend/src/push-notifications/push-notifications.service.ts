@@ -5,11 +5,11 @@ import * as webPush from 'web-push';
 import { WebPushSubscriptionsService } from '../web-push-subscriptions/web-push-subscriptions.service';
 
 export interface NotifyOptions {
-  conversationId: number;            // required — always present (coalescing bucket key)
-  unreadCount?: number;              // cumulative unread in this conversation
-  unreadTotal?: number;              // user's total unread across all conversations
-  unreadConversationIds?: number[];  // conv IDs with unread > 0
-  senderName?: string;               // sender display name (metadata-only; approved for notification title)
+  conversationId: number; // required — always present (coalescing bucket key)
+  unreadCount?: number; // cumulative unread in this conversation
+  unreadTotal?: number; // user's total unread across all conversations
+  unreadConversationIds?: number[]; // conv IDs with unread > 0
+  senderName?: string; // sender display name (metadata-only; approved for notification title)
 }
 
 @Injectable()
@@ -17,6 +17,9 @@ export class PushNotificationsService implements OnModuleInit {
   private readonly logger = new Logger(PushNotificationsService.name);
   private fcmInitialized = false;
   private webPushInitialized = false;
+  // BE-501: web-push has no built-in send timeout; cap each send so one half-open TCP
+  // connection cannot hang the flush promise forever.
+  private static readonly WEB_PUSH_SEND_TIMEOUT_MS = 10000;
 
   constructor(
     private readonly fcmTokensService: FcmTokensService,
@@ -79,7 +82,10 @@ export class PushNotificationsService implements OnModuleInit {
     ]);
   }
 
-  private async notifyFcm(userId: number, options: NotifyOptions): Promise<void> {
+  private async notifyFcm(
+    userId: number,
+    options: NotifyOptions,
+  ): Promise<void> {
     if (!this.fcmInitialized) return;
 
     // Web clients are moving to standards-based Web Push.
@@ -127,7 +133,10 @@ export class PushNotificationsService implements OnModuleInit {
         `FCM push attempted for userId=${userId}, tokens=${tokens.length}, success=${result.successCount}, failure=${result.failureCount}`,
       );
     } catch (err) {
-      this.logger.error(`Failed to send push to userId=${userId}`, err);
+      // BE-502: recipient userId must not reach prod logs (prod keeps error/warn/log).
+      // Keep a non-identifying operational signal; the userId-bearing detail goes to debug.
+      this.logger.warn('FCM multicast send failed');
+      this.logger.debug(`Failed to send push to userId=${userId}`, err);
     }
   }
 
@@ -160,9 +169,8 @@ export class PushNotificationsService implements OnModuleInit {
   ): Promise<void> {
     if (!this.webPushInitialized) return;
 
-    const subscriptions = await this.webPushSubscriptionsService.findByUserId(
-      userId,
-    );
+    const subscriptions =
+      await this.webPushSubscriptionsService.findByUserId(userId);
     if (!subscriptions.length) return;
 
     // Deliberately NO `topic` (RFC 8030 collapse key): a `conv-<id>` topic is sent as a
@@ -172,10 +180,68 @@ export class PushNotificationsService implements OnModuleInit {
     // client-side notification tags already de-dupe bursts without a relay collapse key.
     const payload = JSON.stringify(body);
 
+    // BE-501: send to every subscription independently. sendNotification has no built-in
+    // timeout, so a single half-open TCP connection would otherwise hang its await forever,
+    // starve the remaining subscriptions in the sequential loop, and leak the flush promise.
+    // Promise.allSettled lets each endpoint succeed or fail on its own, and sendOneWebPush
+    // races the send against an explicit timeout.
+    const results = await Promise.allSettled(
+      subscriptions.map((subscription) =>
+        this.sendOneWebPush(subscription, payload),
+      ),
+    );
+
     const staleEndpoints: string[] = [];
-    for (const subscription of subscriptions) {
-      try {
-        await webPush.sendNotification(
+    results.forEach((result, i) => {
+      if (result.status === 'fulfilled') return;
+      const err: any = result.reason;
+      const statusCode = Number(err?.statusCode);
+      // BE-500: prune ONLY on the RFC-standard "subscription gone" codes (404/410).
+      // A 400 is a payload/VAPID/library fault the relay returns for EVERY send, not a
+      // per-subscription verdict — pruning on it would wipe every live row within a few
+      // cycles. A timeout (no statusCode) likewise must never prune: that would turn a
+      // transient relay incident into permanent mass unsubscription. Keeping a dead row
+      // wastes one round trip; deleting a live row silently kills push until the user
+      // re-enables it in Settings — always err toward keeping.
+      if (statusCode === 404 || statusCode === 410) {
+        staleEndpoints.push(subscriptions[i].endpoint);
+        return;
+      }
+      // BE-502: no recipient identifier above debug (prod keeps error/warn/log).
+      this.logger.debug(
+        `Web Push delivery failed for userId=${userId}, status=${statusCode || 'unknown'}`,
+      );
+    });
+
+    if (staleEndpoints.length) {
+      await this.webPushSubscriptionsService.removeByEndpoints(staleEndpoints);
+      this.logger.debug(
+        `Web Push cleanup removed ${staleEndpoints.length} stale subscriptions for userId=${userId}`,
+      );
+    }
+    this.logger.debug(
+      `Web Push attempted for userId=${userId}, subscriptions=${subscriptions.length}, stale=${staleEndpoints.length}`,
+    );
+  }
+
+  // Sends one Web Push and races it against WEB_PUSH_SEND_TIMEOUT_MS. A timeout rejects
+  // with a plain Error (no statusCode), so the caller keeps the subscription — a transient
+  // relay stall must NEVER be mistaken for "subscription gone" (that is BE-500 by another
+  // route). Rejections carrying a relay statusCode (e.g. 404/410) pass through unchanged.
+  private async sendOneWebPush(
+    subscription: { endpoint: string; p256dh: string; auth: string },
+    payload: string,
+  ): Promise<void> {
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const timeout = new Promise<never>((_, reject) => {
+      timer = setTimeout(
+        () => reject(new Error('web-push send timed out')),
+        PushNotificationsService.WEB_PUSH_SEND_TIMEOUT_MS,
+      );
+    });
+    try {
+      await Promise.race([
+        webPush.sendNotification(
           {
             endpoint: subscription.endpoint,
             keys: {
@@ -188,33 +254,11 @@ export class PushNotificationsService implements OnModuleInit {
             TTL: 120,
             urgency: 'high',
           },
-        );
-      } catch (err: any) {
-        const statusCode = Number(err?.statusCode);
-        // 404/410 = gone; 400 often = VAPID/crypto mismatch or permanently invalid sub.
-        if (statusCode === 400 || statusCode === 404 || statusCode === 410) {
-          staleEndpoints.push(subscription.endpoint);
-          if (statusCode === 400) {
-            this.logger.warn(
-              `Web Push subscription rejected (400) for userId=${userId} — removing; client must re-enable push in Settings`,
-            );
-          }
-          continue;
-        }
-        this.logger.warn(
-          `Web Push delivery failed for userId=${userId}, status=${statusCode || 'unknown'}`,
-        );
-      }
+        ),
+        timeout,
+      ]);
+    } finally {
+      if (timer) clearTimeout(timer);
     }
-
-    if (staleEndpoints.length) {
-      await this.webPushSubscriptionsService.removeByEndpoints(staleEndpoints);
-      this.logger.debug(
-        `Web Push cleanup removed ${staleEndpoints.length} stale subscriptions for userId=${userId}`,
-      );
-    }
-    this.logger.debug(
-      `Web Push attempted for userId=${userId}, subscriptions=${subscriptions.length}, stale=${staleEndpoints.length}`,
-    );
   }
 }

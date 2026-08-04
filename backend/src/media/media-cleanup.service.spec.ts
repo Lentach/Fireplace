@@ -93,7 +93,9 @@ describe('MediaCleanupService', () => {
         select: jest.fn().mockReturnThis(),
         where: jest.fn().mockReturnThis(),
         andWhere: jest.fn().mockReturnThis(),
-        getRawMany: jest.fn().mockResolvedValue(urls.map((mediaUrl) => ({ mediaUrl }))),
+        getRawMany: jest
+          .fn()
+          .mockResolvedValue(urls.map((mediaUrl) => ({ mediaUrl }))),
       };
       mockMessageRepo.createQueryBuilder.mockReturnValue(queryBuilder);
       return queryBuilder;
@@ -132,9 +134,7 @@ describe('MediaCleanupService', () => {
       await fs.writeFile(path.join(msgsDir, referenced), 'referenced-data');
       await writeAged(orphan, AGED_MS); // aged so grace does not protect it
 
-      mockValidMediaUrls([
-        `${MEDIA_BASE_URL}/media/msgs/${referenced}`,
-      ]);
+      mockValidMediaUrls([`${MEDIA_BASE_URL}/media/msgs/${referenced}`]);
 
       await cronService.cleanupOrphanedFiles();
 
@@ -221,8 +221,72 @@ describe('MediaCleanupService', () => {
       await expect(
         fs.access(path.join(msgsDir, 'recent-orphan.bin')),
       ).resolves.toBeUndefined();
-      await expect(fs.access(path.join(msgsDir, 'expired.bin'))).rejects.toThrow();
-      await expect(fs.access(path.join(msgsDir, 'orphan.bin'))).rejects.toThrow();
+      await expect(
+        fs.access(path.join(msgsDir, 'expired.bin')),
+      ).rejects.toThrow();
+      await expect(
+        fs.access(path.join(msgsDir, 'orphan.bin')),
+      ).rejects.toThrow();
+    });
+
+    describe('grace window env parsing (resolveGraceMs)', () => {
+      const GRACE_VAR = 'MEDIA_CLEANUP_GRACE_MS';
+      let savedGrace: string | undefined;
+
+      beforeEach(() => {
+        savedGrace = process.env[GRACE_VAR];
+      });
+
+      afterEach(() => {
+        if (savedGrace === undefined) delete process.env[GRACE_VAR];
+        else process.env[GRACE_VAR] = savedGrace;
+      });
+
+      // A file written ~now sits inside the 15-min default grace window: it is
+      // an in-flight upload and must be preserved when the default applies.
+      async function runWithFreshOrphan() {
+        await fs.writeFile(path.join(msgsDir, 'fresh-orphan.bin'), 'x');
+        mockMediaUrls({ valid: [], referenced: [] });
+        return cronService.cleanupOrphanedFiles();
+      }
+
+      it('treats empty-string env as unset → default grace (not zero)', async () => {
+        // Number('') === 0 would silently disable the grace window and delete
+        // the in-flight file; the fix must fall back to the 15-min default.
+        process.env[GRACE_VAR] = '';
+        const summary = await runWithFreshOrphan();
+        expect(summary.graceSkipped).toBe(1);
+        expect(summary.deleted).toBe(0);
+        await expect(
+          fs.access(path.join(msgsDir, 'fresh-orphan.bin')),
+        ).resolves.toBeUndefined();
+      });
+
+      it('treats whitespace-only env as unset → default grace', async () => {
+        process.env[GRACE_VAR] = '   ';
+        const summary = await runWithFreshOrphan();
+        expect(summary.graceSkipped).toBe(1);
+        expect(summary.deleted).toBe(0);
+      });
+
+      it('falls back to default grace for a non-numeric env value', async () => {
+        process.env[GRACE_VAR] = 'not-a-number';
+        const summary = await runWithFreshOrphan();
+        expect(summary.graceSkipped).toBe(1);
+        expect(summary.deleted).toBe(0);
+      });
+
+      it('honours an explicit valid grace value (0 disables the window)', async () => {
+        // A deliberate MEDIA_CLEANUP_GRACE_MS=0 is a valid, distinct choice
+        // from an empty string: with no grace the fresh orphan is swept.
+        process.env[GRACE_VAR] = '0';
+        const summary = await runWithFreshOrphan();
+        expect(summary.graceSkipped).toBe(0);
+        expect(summary.deleted).toBe(1);
+        await expect(
+          fs.access(path.join(msgsDir, 'fresh-orphan.bin')),
+        ).rejects.toThrow();
+      });
     });
 
     it('skips cleanup when msgs dir is missing', async () => {
@@ -232,7 +296,9 @@ describe('MediaCleanupService', () => {
       try {
         const emptyService = await createService(emptyDir);
         mockValidMediaUrls([]);
-        await expect(emptyService.cleanupOrphanedFiles()).resolves.not.toThrow();
+        await expect(
+          emptyService.cleanupOrphanedFiles(),
+        ).resolves.not.toThrow();
         expect(mockMessageRepo.createQueryBuilder).not.toHaveBeenCalled();
       } finally {
         await fs.rm(emptyDir, { recursive: true, force: true });

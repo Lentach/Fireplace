@@ -1,7 +1,8 @@
 import { ConflictException, NotFoundException } from '@nestjs/common';
-import { DataSource, Repository } from 'typeorm';
+import { DataSource, Repository, UpdateResult } from 'typeorm';
 import { FriendRequest, FriendRequestStatus } from './friend-request.entity';
 import { FriendsService } from './friends.service';
+import { BlockedService } from '../blocked/blocked.service';
 import { User } from '../users/user.entity';
 
 // Test fixtures are intentionally partial entities; a single justified cast
@@ -9,6 +10,10 @@ import { User } from '../users/user.entity';
 const frow = (data: Partial<FriendRequest>): FriendRequest =>
   data as unknown as FriendRequest;
 const usr = (data: Partial<User>): User => data as unknown as User;
+// TypeORM's UpdateResult only exposes `affected` to these paths; one typed cast
+// keeps the conditional-transition specs free of scattered `any`.
+const upd = (affected: number): UpdateResult =>
+  ({ affected }) as unknown as UpdateResult;
 
 describe('FriendsService', () => {
   let friendRequestRepository: jest.Mocked<Repository<FriendRequest>>;
@@ -27,12 +32,18 @@ describe('FriendsService', () => {
     execute: jest.Mock;
   };
   let service: FriendsService;
+  let blockedService: {
+    isBlockedByEither: jest.Mock;
+    getBlockedUserIds: jest.Mock;
+    getBlockedByUserIds: jest.Mock;
+  };
 
   beforeEach(() => {
     friendRequestRepository = {
       find: jest.fn(),
       findOne: jest.fn(),
-      update: jest.fn(),
+      update: jest.fn().mockResolvedValue(upd(1)),
+      createQueryBuilder: jest.fn(),
     } as unknown as jest.Mocked<Repository<FriendRequest>>;
 
     deleteBuilder = {
@@ -51,14 +62,21 @@ describe('FriendsService', () => {
     };
 
     dataSource = {
-      transaction: jest.fn(
-        async (cb: (m: unknown) => Promise<unknown>) => cb(manager),
+      transaction: jest.fn(async (cb: (m: unknown) => Promise<unknown>) =>
+        cb(manager),
       ),
     } as unknown as jest.Mocked<Pick<DataSource, 'transaction'>>;
+
+    blockedService = {
+      isBlockedByEither: jest.fn().mockResolvedValue(false),
+      getBlockedUserIds: jest.fn().mockResolvedValue([]),
+      getBlockedByUserIds: jest.fn().mockResolvedValue([]),
+    };
 
     service = new FriendsService(
       friendRequestRepository,
       dataSource as unknown as DataSource,
+      blockedService as unknown as BlockedService,
     );
   });
 
@@ -93,7 +111,9 @@ describe('FriendsService', () => {
         id: 2,
         username: 'friend',
         tag: '0002',
-        profilePhotos: [{ id: 12, url: '/avatars/friend.jpg', isPrimary: true }],
+        profilePhotos: [
+          { id: 12, url: '/avatars/friend.jpg', isPrimary: true },
+        ],
       } as Partial<User>);
       friendRequestRepository.find.mockResolvedValue([
         frow({
@@ -273,12 +293,64 @@ describe('FriendsService', () => {
 
       await expect(service.acceptRequest(5, 2)).resolves.toBe(reloaded);
       expect(friendRequestRepository.update).toHaveBeenCalledWith(
-        { id: 5 },
+        { id: 5, status: FriendRequestStatus.PENDING },
         expect.objectContaining({
           status: FriendRequestStatus.ACCEPTED,
           respondedAt: expect.any(Date),
         }),
       );
+    });
+
+    it('refuses to accept when either user has blocked the other (BE-101)', async () => {
+      friendRequestRepository.findOne.mockResolvedValueOnce(
+        frow({ id: 5, receiver: usr({ id: 2 }), sender: usr({ id: 1 }) }),
+      );
+      blockedService.isBlockedByEither.mockResolvedValueOnce(true);
+
+      await expect(service.acceptRequest(5, 2)).rejects.toThrow(
+        'Cannot accept a request from a blocked user',
+      );
+      expect(blockedService.isBlockedByEither).toHaveBeenCalledWith(1, 2);
+      expect(friendRequestRepository.update).not.toHaveBeenCalled();
+    });
+
+    it('does NOT resurrect a REJECTED request to ACCEPTED (BE-102)', async () => {
+      friendRequestRepository.findOne
+        .mockResolvedValueOnce(
+          frow({ id: 5, receiver: usr({ id: 2 }), sender: usr({ id: 1 }) }),
+        )
+        .mockResolvedValueOnce(
+          frow({ id: 5, status: FriendRequestStatus.REJECTED }),
+        );
+      // Conditional update matched no PENDING row.
+      friendRequestRepository.update.mockResolvedValueOnce(upd(0));
+
+      await expect(service.acceptRequest(5, 2)).rejects.toThrow(
+        'Friend request is no longer pending',
+      );
+      // The transition is attempted with the PENDING guard, so a REJECTED row
+      // is never flipped to ACCEPTED.
+      expect(friendRequestRepository.update).toHaveBeenCalledWith(
+        { id: 5, status: FriendRequestStatus.PENDING },
+        expect.objectContaining({ status: FriendRequestStatus.ACCEPTED }),
+      );
+    });
+
+    it('stays idempotent when a concurrent double-tap already accepted (BE-102)', async () => {
+      const alreadyAccepted = frow({
+        id: 5,
+        status: FriendRequestStatus.ACCEPTED,
+      });
+      friendRequestRepository.findOne
+        .mockResolvedValueOnce(
+          frow({ id: 5, receiver: usr({ id: 2 }), sender: usr({ id: 1 }) }),
+        )
+        .mockResolvedValueOnce(alreadyAccepted);
+      friendRequestRepository.update.mockResolvedValueOnce(upd(0));
+
+      // The losing handler must not throw a hard error; it returns the row the
+      // winning handler already accepted.
+      await expect(service.acceptRequest(5, 2)).resolves.toBe(alreadyAccepted);
     });
   });
 
@@ -313,11 +385,70 @@ describe('FriendsService', () => {
 
       await expect(service.rejectRequest(5, 2)).resolves.toBe(reloaded);
       expect(friendRequestRepository.update).toHaveBeenCalledWith(
-        { id: 5 },
+        { id: 5, status: FriendRequestStatus.PENDING },
         expect.objectContaining({
           status: FriendRequestStatus.REJECTED,
           respondedAt: expect.any(Date),
         }),
+      );
+    });
+
+    it('does NOT flip an already ACCEPTED request to REJECTED (BE-102)', async () => {
+      friendRequestRepository.findOne
+        .mockResolvedValueOnce(
+          frow({ id: 5, receiver: usr({ id: 2 }), sender: usr({ id: 1 }) }),
+        )
+        .mockResolvedValueOnce(
+          frow({ id: 5, status: FriendRequestStatus.ACCEPTED }),
+        );
+      friendRequestRepository.update.mockResolvedValueOnce(upd(0));
+
+      await expect(service.rejectRequest(5, 2)).rejects.toThrow(
+        'Friend request is no longer pending',
+      );
+      expect(friendRequestRepository.update).toHaveBeenCalledWith(
+        { id: 5, status: FriendRequestStatus.PENDING },
+        expect.objectContaining({ status: FriendRequestStatus.REJECTED }),
+      );
+    });
+  });
+
+  describe('getPendingRequests', () => {
+    it('hides pending requests from users the caller blocked or was blocked by (BE-101)', async () => {
+      friendRequestRepository.find.mockResolvedValueOnce([
+        frow({ id: 1, sender: usr({ id: 2 }), receiver: usr({ id: 1 }) }),
+        frow({ id: 2, sender: usr({ id: 3 }), receiver: usr({ id: 1 }) }),
+        frow({ id: 3, sender: usr({ id: 4 }), receiver: usr({ id: 1 }) }),
+      ]);
+      blockedService.getBlockedUserIds.mockResolvedValueOnce([2]); // caller blocked user 2
+      blockedService.getBlockedByUserIds.mockResolvedValueOnce([3]); // user 3 blocked caller
+
+      const result = await service.getPendingRequests(1);
+
+      // Only the request from the un-blocked sender (4) survives the filter.
+      expect(result.map((r) => r.id)).toEqual([3]);
+    });
+  });
+
+  describe('removeFriendRequestsForPair', () => {
+    it('deletes every request between the pair in both directions regardless of status (BE-101)', async () => {
+      const qb = {
+        delete: jest.fn().mockReturnThis(),
+        from: jest.fn().mockReturnThis(),
+        where: jest.fn().mockReturnThis(),
+        execute: jest.fn().mockResolvedValue({ affected: 2 }),
+      };
+      (friendRequestRepository.createQueryBuilder as jest.Mock).mockReturnValue(
+        qb,
+      );
+
+      await expect(service.removeFriendRequestsForPair(1, 2)).resolves.toBe(2);
+
+      // The predicate must cover BOTH directions so no orphan row survives the
+      // block; a one-directional delete would leave a resurrectable request.
+      expect(qb.where).toHaveBeenCalledWith(
+        expect.stringContaining('receiver_id = :a'),
+        { a: 1, b: 2 },
       );
     });
   });

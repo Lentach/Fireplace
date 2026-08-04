@@ -1,6 +1,7 @@
-import { IsNumber } from 'class-validator';
+import { IsInt, IsPositive } from 'class-validator';
 
 export class ClearChatHistoryDto {
-  @IsNumber()
+  @IsInt()
+  @IsPositive()
   conversationId: number;
 }

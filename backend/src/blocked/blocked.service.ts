@@ -1,4 +1,4 @@
-import { Injectable, Logger } from '@nestjs/common';
+import { Injectable, Logger, Inject, forwardRef } from '@nestjs/common';
 import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { BlockedUser } from './blocked-user.entity';
@@ -15,6 +15,7 @@ export class BlockedService {
   constructor(
     @InjectRepository(BlockedUser)
     private readonly blockedRepo: Repository<BlockedUser>,
+    @Inject(forwardRef(() => FriendsService))
     private readonly friendsService: FriendsService,
     private readonly conversationsService: ConversationsService,
     private readonly messagesService: MessagesService,
@@ -25,10 +26,15 @@ export class BlockedService {
     if (blockerId === blockedId) {
       throw new Error('Cannot block yourself');
     }
-    let existing = await this.blockedRepo.findOne({
+    const existing = await this.blockedRepo.findOne({
       where: { blocker: { id: blockerId }, blocked: { id: blockedId } },
     });
     if (existing) {
+      // BE-006: the block row is durable but a prior attempt may have committed
+      // it and then failed before tearing down the friendship / conversation,
+      // leaving a permanent split state the old early-return never healed.
+      // Re-run the teardown so tapping Block again self-heals.
+      await this.tearDownRelationship(blockerId, blockedId);
       return existing;
     }
     const record = this.blockedRepo.create({
@@ -36,7 +42,30 @@ export class BlockedService {
       blocked: { id: blockedId } as User,
     });
     await this.blockedRepo.save(record);
-    await this.friendsService.unfriend(blockerId, blockedId);
+    await this.tearDownRelationship(blockerId, blockedId);
+    this.logger.debug(`User ${blockerId} blocked user ${blockedId}`);
+    return record;
+  }
+
+  /**
+   * Tear down every relationship artifact between a blocker/blocked pair.
+   * Runs on BOTH the fresh-block and the already-blocked (retry) path so a
+   * partially-applied block self-heals (BE-006).
+   *
+   * The friend-request removal is the CRITICAL DB step; its failure propagates
+   * so the caller can surface/retry (and a retry re-heals). The conversation +
+   * media cleanup stays best-effort and, per backend/CLAUDE.md §8, runs AFTER
+   * the DB work and OUTSIDE any transaction: filesystem deletes cannot roll
+   * back, so a rollback would leave media already destroyed.
+   */
+  private async tearDownRelationship(
+    blockerId: number,
+    blockedId: number,
+  ): Promise<void> {
+    // BE-101: remove friendship AND any pending/rejected requests for the pair
+    // so a blocked user can never be accepted or re-added into a friendship.
+    await this.friendsService.removeFriendRequestsForPair(blockerId, blockedId);
+
     // Delete the conversation and messages so that after unblock + re-add they get a fresh chat.
     try {
       const conv = await this.conversationsService.findByUsers(
@@ -44,9 +73,14 @@ export class BlockedService {
         blockedId,
       );
       if (conv) {
-        const mediaUrls = await this.messagesService.findMediaUrlsByConversation(conv.id);
+        const mediaUrls =
+          await this.messagesService.findMediaUrlsByConversation(conv.id);
+        // Media before rows: deleting the conversation cascades the messages,
+        // after which the URLs can no longer be resolved (backend/CLAUDE.md §8).
         await Promise.all(
-          mediaUrls.map((mediaUrl) => this.mediaCleanupService.deleteMediaFile(mediaUrl)),
+          mediaUrls.map((mediaUrl) =>
+            this.mediaCleanupService.deleteMediaFile(mediaUrl),
+          ),
         );
         await this.conversationsService.delete(conv.id);
         this.logger.debug(
@@ -54,12 +88,14 @@ export class BlockedService {
         );
       }
     } catch (err) {
-      this.logger.warn(
-        `Block: failed to delete conversation (non-critical): ${(err as Error)?.message}`,
+      // BE-103: loud + reconcilable. The friendship rows are already gone; a
+      // swallowed failure here orphans the conversation and its encrypted
+      // messages, so log both user ids to allow reconciliation by hand.
+      this.logger.error(
+        `Block: failed to delete conversation between ${blockerId} and ${blockedId} (conversation/messages may be orphaned): ${(err as Error)?.message}`,
+        (err as Error)?.stack,
       );
     }
-    this.logger.debug(`User ${blockerId} blocked user ${blockedId}`);
-    return record;
   }
 
   async unblock(blockerId: number, blockedId: number): Promise<boolean> {
@@ -78,7 +114,7 @@ export class BlockedService {
     const rows = await this.blockedRepo.find({
       where: { blocker: { id: blockerId } },
       relations: {
-        blocked: true
+        blocked: true,
       },
     });
     return rows.map((r) => r.blocked.id);
@@ -89,7 +125,7 @@ export class BlockedService {
     const rows = await this.blockedRepo.find({
       where: { blocked: { id: blockedId } },
       relations: {
-        blocker: true
+        blocker: true,
       },
     });
     return rows.map((r) => r.blocker.id);
@@ -99,7 +135,7 @@ export class BlockedService {
     const rows = await this.blockedRepo.find({
       where: { blocker: { id: blockerId } },
       relations: {
-        blocked: true
+        blocked: true,
       },
     });
     return rows.map((r) => r.blocked);
