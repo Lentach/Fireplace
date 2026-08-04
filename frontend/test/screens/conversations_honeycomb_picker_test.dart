@@ -327,16 +327,33 @@ void _pickerNameTests() {
     expect(find.byKey(const Key('chat-picker-invite-5')), findsNothing);
   });
 
-  testWidgets('the comb ends in an add socket that opens the invitations '
-      'screen', (tester) async {
+  testWidgets('the comb LEADS with the add socket and it opens the '
+      'invitations screen', (tester) async {
     await tester.pumpWidget(
       _host(
-        friends: _friends([UserModel(id: 2, username: 'Ada', tag: '0002')]),
+        friends: _friends([
+          UserModel(id: 2, username: 'Ada', tag: '0002'),
+          UserModel(id: 3, username: 'Borys', tag: '0003'),
+        ]),
         conversations: _conversationsWithAda(),
       ),
     );
     await tester.pump();
     await _openPicker(tester);
+
+    // First cell, not last: with many friends a trailing socket sits below
+    // the fold and the invite door disappears (owner ruling 2026-08-04).
+    final socket = tester.getTopLeft(
+      find.byKey(const Key('chat-picker-invite-new')),
+    );
+    for (final id in const [2, 3]) {
+      final friend = tester.getTopLeft(find.byKey(Key('chat-picker-friend-$id')));
+      expect(
+        socket.dy < friend.dy || socket.dx < friend.dx,
+        isTrue,
+        reason: 'the add socket must precede friend $id in the comb',
+      );
+    }
 
     await tester.tap(find.byKey(const Key('chat-picker-invite-new')));
     // Not pumpAndSettle: the invitation queue paints skeletonizer shimmer,
