@@ -7,6 +7,7 @@ import '../models/friend_request_model.dart';
 import '../models/invitation_state.dart';
 import '../models/user_model.dart';
 import '../providers/friends_provider.dart';
+import '../utils/caption_metrics.dart';
 import '../theme/rpg_theme.dart';
 import '../widgets/glass/glass_surface.dart';
 import '../widgets/hex_avatar.dart';
@@ -21,8 +22,13 @@ class InvitationsScreen extends StatefulWidget {
 }
 
 class _InvitationsScreenState extends State<InvitationsScreen> {
+  /// Sentinel for "the user collapsed the comb's card"; distinct from null,
+  /// which means "no manual choice yet" and lets a lone request auto-expand.
+  static const int _combCollapsed = -1;
+
   final _handleController = TextEditingController();
   final Map<int, InvitationAction> _actingRequestActions = {};
+  int? _expandedRequestId;
 
   FriendsProvider? _friends;
   bool _searching = false;
@@ -144,6 +150,20 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
     final headerClearance = topInset + 8 + headerHeight + 8;
     final friends = context.watch<FriendsProvider>();
 
+    // Which inbound request's accept/decline card is open under the comb.
+    // A lone request auto-expands (the common case pays zero extra taps);
+    // an explicit collapse sticks until the user picks a hex again.
+    final requests = friends.friendRequests;
+    int? expandedRequestId;
+    if (_expandedRequestId != _combCollapsed) {
+      final manual = _expandedRequestId;
+      if (manual != null && requests.any((r) => r.id == manual)) {
+        expandedRequestId = manual;
+      } else if (requests.length == 1) {
+        expandedRequestId = requests.first.id;
+      }
+    }
+
     return Scaffold(
       extendBodyBehindAppBar: true,
       body: Stack(
@@ -163,13 +183,17 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
                 child: ConstrainedBox(
                   constraints: const BoxConstraints(maxWidth: 560),
                   child: friends.hasLoadedInvitationsOnce
-                      ? _InvitationContent(
-                          handleController: _handleController,
-                          searching: _searching,
-                          actingRequestActions: _actingRequestActions,
-                          friends: friends,
-                          onSearch: _search,
-                          onActOnIncoming: _actOnIncoming,
+                      ? _InvitationEntrance(
+                          child: _InvitationContent(
+                            handleController: _handleController,
+                            searching: _searching,
+                            actingRequestActions: _actingRequestActions,
+                            friends: friends,
+                            expandedRequestId: expandedRequestId,
+                            onToggleRequest: _toggleRequest,
+                            onSearch: _search,
+                            onActOnIncoming: _actOnIncoming,
+                          ),
                         )
                       : const _InvitationSkeleton(),
                 ),
@@ -243,6 +267,12 @@ class _InvitationsScreenState extends State<InvitationsScreen> {
       ),
     );
   }
+
+  void _toggleRequest(int requestId, bool wasExpanded) {
+    setState(() {
+      _expandedRequestId = wasExpanded ? _combCollapsed : requestId;
+    });
+  }
 }
 
 class _InvitationContent extends StatelessWidget {
@@ -250,6 +280,10 @@ class _InvitationContent extends StatelessWidget {
   final bool searching;
   final FriendsProvider friends;
   final Map<int, InvitationAction> actingRequestActions;
+
+  /// The inbound request whose accept/decline card is open under the comb.
+  final int? expandedRequestId;
+  final void Function(int requestId, bool wasExpanded) onToggleRequest;
   final VoidCallback onSearch;
   final void Function(FriendRequestModel request, InvitationAction action)
   onActOnIncoming;
@@ -259,6 +293,8 @@ class _InvitationContent extends StatelessWidget {
     required this.searching,
     required this.friends,
     required this.actingRequestActions,
+    required this.expandedRequestId,
+    required this.onToggleRequest,
     required this.onSearch,
     required this.onActOnIncoming,
   });
@@ -317,12 +353,29 @@ class _InvitationContent extends StatelessWidget {
         _InvitationSection(
           title: l10n.invitationsWaitingForYou,
           count: incomingOutcomes.length + friends.friendRequests.length,
+          // Inbound requests are the one thing on this screen that wants an
+          // answer; the badge flips to the accent while any are waiting.
+          accented: friends.friendRequests.isNotEmpty,
           emptyMessage: l10n.invitationsNothingWaiting,
           rows: [
             for (final outcome in incomingOutcomes)
               _outcomeRow(context, friends, outcome),
+            // Inbound requests are a mini honeycomb of accent terminals, not
+            // a wall of cards; tapping a hex opens that sender's accept /
+            // decline card in place. The expanded card is a DIRECT sibling of
+            // the outcome rows ON PURPOSE: it shares its peer-id key with the
+            // outcome row that replaces it on accept, so the element is
+            // reused and the avatar's forge animation sees the transition.
+            if (friends.friendRequests.isNotEmpty)
+              _WaitingComb(
+                key: const Key('invitation-waiting-comb'),
+                requests: friends.friendRequests,
+                expandedRequestId: expandedRequestId,
+                onToggle: onToggleRequest,
+              ),
             for (final request in friends.friendRequests)
-              _incomingRow(context, friends, request),
+              if (request.id == expandedRequestId)
+                _incomingRow(context, friends, request),
           ],
         ),
         const SizedBox(height: 28),
@@ -480,7 +533,9 @@ class _SearchIdentityRow extends StatelessWidget {
             displayName: user.username,
             imageUrl: user.profilePictureUrl,
             surface: colors.convItemBg,
-            borderColor: colors.convItemBorder,
+            // mutedText, not convItemBorder — same 3:1 ring-boundary reason
+            // as InvitationRow (design review 2026-08-03).
+            borderColor: colors.mutedText,
             initialsStyle: RpgTheme.bodyFont(
               fontSize: 44 * 0.34,
               fontWeight: FontWeight.w800,
@@ -519,15 +574,19 @@ class _SearchIdentityRow extends StatelessWidget {
   }
 }
 
+/// A section of the relationship inbox, headed by a title and a hex-shaped
+/// count badge — the same shape language as the avatars below it.
 class _InvitationSection extends StatelessWidget {
   final String title;
   final int count;
+  final bool accented;
   final String emptyMessage;
   final List<Widget> rows;
 
   const _InvitationSection({
     required this.title,
     required this.count,
+    this.accented = false,
     required this.emptyMessage,
     required this.rows,
   });
@@ -551,25 +610,22 @@ class _InvitationSection extends StatelessWidget {
                 ),
               ),
             ),
-            // `convItemBg` sits within a hair of the scaffold in light and teal, so
-            // the fill alone left the count reading as a bare floating number. The
-            // muted outline is what makes it a chip in every theme.
-            DecoratedBox(
-              decoration: BoxDecoration(
-                color: colors.convItemBg,
-                borderRadius: BorderRadius.circular(999),
-                border: Border.all(color: colors.mutedText),
-              ),
-              child: Padding(
-                padding: const EdgeInsets.symmetric(horizontal: 9, vertical: 4),
-                child: Text(
-                  '$count',
-                  style: RpgTheme.bodyFont(
-                    fontSize: 12,
-                    fontWeight: FontWeight.w600,
-                    color: colorScheme.onSurface,
-                  ),
-                ),
+            // `convItemBg` sits within a hair of the scaffold in light and teal,
+            // so the fill alone left the count reading as a bare floating
+            // number. The muted outline is what makes it a badge in every
+            // theme; the accented badge sits on the accent and needs none.
+            // Pointy-top like every other hex in the app — owner ruling
+            // 2026-08-03: no flat-top variants.
+            HexCountBadge(
+              label: '$count',
+              background: accented ? colorScheme.primary : colors.convItemBg,
+              borderColor: accented ? null : colors.mutedText,
+              textStyle: RpgTheme.bodyFont(
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+                color: accented
+                    ? colorScheme.onPrimary
+                    : colorScheme.onSurface,
               ),
             ),
           ],
@@ -644,6 +700,181 @@ class _InvitationSkeletonTile extends StatelessWidget {
             const SizedBox(width: 12),
             const Expanded(child: Bone.text(width: 160, fontSize: 14)),
           ],
+        ),
+      ),
+    );
+  }
+}
+
+/// One-shot entrance for the loaded inbox: a 240 ms fade + 12 px rise,
+/// played once when the skeleton hands over, never on provider rebuilds
+/// (the tween's end value is stable, so rebuilds don't replay it).
+class _InvitationEntrance extends StatelessWidget {
+  final Widget child;
+
+  const _InvitationEntrance({required this.child});
+
+  @override
+  Widget build(BuildContext context) {
+    if (MediaQuery.disableAnimationsOf(context)) return child;
+    return TweenAnimationBuilder<double>(
+      tween: Tween(begin: 0, end: 1),
+      duration: const Duration(milliseconds: 240),
+      curve: Curves.easeOutCubic,
+      child: child,
+      builder: (context, t, child) => Opacity(
+        opacity: t,
+        // The rise is decorative; assistive tech must see the inbox from the
+        // first frame, not after 240 ms.
+        alwaysIncludeSemantics: true,
+        child: Transform.translate(
+          offset: Offset(0, 12 * (1 - t)),
+          child: child,
+        ),
+      ),
+    );
+  }
+}
+
+/// The "Waiting for you" honeycomb: one accent hex terminal per inbound
+/// request, same lattice math and caption rhythm as the Chats picker comb.
+/// Tapping a hex toggles that sender's accept/decline card below the comb.
+class _WaitingComb extends StatelessWidget {
+  const _WaitingComb({
+    super.key,
+    required this.requests,
+    required this.expandedRequestId,
+    required this.onToggle,
+  });
+
+  static const double _labelGap = 5;
+  static const double _rowGap = 6;
+
+  final List<FriendRequestModel> requests;
+  final int? expandedRequestId;
+  final void Function(int requestId, bool wasExpanded) onToggle;
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
+    final colors = FireplaceColors.of(context);
+    final labelStyle = RpgTheme.bodyFont(
+      fontSize: 11,
+      fontWeight: FontWeight.w600,
+      color: colorScheme.onSurface,
+    );
+    final labelHeight = measureCaptionHeight(context, labelStyle, lines: 1);
+
+    return LayoutBuilder(
+      builder: (context, constraints) {
+        final columns = (constraints.maxWidth / 82).floor().clamp(3, 6);
+        // Half-cell in the divisor = the odd-row stagger staying inside the
+        // column, exactly as in the Chats picker.
+        final hexHeight =
+            (constraints.maxWidth / ((columns + 0.5) * kHexWidthRatio))
+                .clamp(56.0, 72.0)
+                .toDouble();
+        final cellWidth = hexHeight * kHexWidthRatio;
+        final rowHeight = hexHeight + _labelGap + labelHeight + _rowGap;
+        final rowCount = (requests.length / columns).ceil();
+
+        return Column(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            for (var row = 0; row < rowCount; row++)
+              SizedBox(
+                height: rowHeight,
+                child: Padding(
+                  padding: EdgeInsets.only(
+                    left: row.isOdd ? cellWidth / 2 : 0,
+                  ),
+                  child: Row(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      for (final request in requests.sublist(
+                        row * columns,
+                        ((row + 1) * columns).clamp(0, requests.length),
+                      ))
+                        _buildCell(
+                          context,
+                          l10n,
+                          colorScheme,
+                          colors,
+                          labelStyle,
+                          request,
+                          cellWidth,
+                          hexHeight,
+                          rowHeight,
+                        ),
+                    ],
+                  ),
+                ),
+              ),
+          ],
+        );
+      },
+    );
+  }
+
+  Widget _buildCell(
+    BuildContext context,
+    AppLocalizations l10n,
+    ColorScheme colorScheme,
+    FireplaceColors colors,
+    TextStyle labelStyle,
+    FriendRequestModel request,
+    double cellWidth,
+    double hexHeight,
+    double rowHeight,
+  ) {
+    final expanded = request.id == expandedRequestId;
+    return SizedBox(
+      width: cellWidth,
+      height: rowHeight,
+      child: Semantics(
+        button: true,
+        selected: expanded,
+        label: l10n.invitationSemanticIncoming(request.sender.username),
+        excludeSemantics: true,
+        child: InkResponse(
+          key: Key('invitation-comb-${request.id}'),
+          onTap: () => onToggle(request.id, expanded),
+          radius: hexHeight / 2,
+          child: Column(
+            mainAxisSize: MainAxisSize.min,
+            children: [
+              HexAvatar(
+                size: hexHeight,
+                displayName: request.sender.username,
+                imageUrl: request.sender.profilePictureUrl,
+                surface: colors.convItemBg,
+                borderColor: expanded ? colorScheme.primary : colors.mutedText,
+                // Every terminal here wants an answer; the open one burns
+                // brightest.
+                ember: expanded ? 1 : 0.45,
+                initialsStyle: RpgTheme.bodyFont(
+                  fontSize: hexHeight * 0.25,
+                  fontWeight: FontWeight.w700,
+                  color: colorScheme.onSurface,
+                ),
+              ),
+              const SizedBox(height: _labelGap),
+              Text(
+                request.sender.username,
+                softWrap: false,
+                maxLines: 1,
+                overflow: TextOverflow.ellipsis,
+                textAlign: TextAlign.center,
+                style: expanded
+                    ? labelStyle.copyWith(
+                        fontWeight: FontWeight.w700,
+                        color: colorScheme.primary,
+                      )
+                    : labelStyle,
+              ),
+            ],
+          ),
         ),
       ),
     );

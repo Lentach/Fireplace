@@ -925,9 +925,13 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                   width: ContactHexLayout.hexWidth,
                   height: ContactHexLayout.hexRadius * 2,
                   child: CustomPaint(
-                    painter: _GhostSlotPainter(
-                      outline: colorScheme.onSurface,
-                      surface: colors.convItemBg,
+                    painter: DashedHexPainter(
+                      // Longer 8px runs distinguish a pending ghost from the
+                      // 5px "+" socket.
+                      outline: colorScheme.onSurface.withValues(alpha: 0.32),
+                      strokeWidth: 1.2,
+                      dashOn: 8,
+                      fill: colors.convItemBg,
                     ),
                     child: Center(
                       child: Icon(
@@ -1082,10 +1086,12 @@ class _ContactNetworkViewState extends State<ContactNetworkView>
                         width: ContactHexLayout.hexWidth,
                         height: ContactHexLayout.hexRadius * 2,
                         child: CustomPaint(
-                          painter: _AddSlotPainter(
-                            outline: colorScheme.onSurface,
-                            accent: colorScheme.primary,
-                            focused: focused,
+                          painter: DashedHexPainter(
+                            outline: focused
+                                ? colorScheme.primary
+                                : colorScheme.onSurface.withValues(
+                                    alpha: 0.45,
+                                  ),
                           ),
                           child: Center(
                             child: Icon(
@@ -1562,79 +1568,6 @@ class _HexChromePainter extends CustomPainter {
       oldDelegate.outline != outline ||
       oldDelegate.accent != accent ||
       oldDelegate.focused != focused;
-}
-
-/// Dashed hex outline for the "+" add cell: a socket with nobody in it yet.
-class _AddSlotPainter extends CustomPainter {
-  const _AddSlotPainter({
-    required this.outline,
-    required this.accent,
-    required this.focused,
-  });
-
-  final Color outline;
-  final Color accent;
-  final bool focused;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final c = Offset(size.width / 2, size.height / 2);
-    final r = size.height / 2 - 0.75;
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.4
-      ..color = focused ? accent : outline.withValues(alpha: 0.45);
-
-    // Dash the outline by walking the hex path in 5px on / 4px off runs.
-    for (final metric in hexPath(c, r).computeMetrics()) {
-      var distance = 0.0;
-      while (distance < metric.length) {
-        final end = math.min(distance + 5, metric.length);
-        canvas.drawPath(metric.extractPath(distance, end), paint);
-        distance = end + 4;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _AddSlotPainter oldDelegate) =>
-      oldDelegate.outline != outline ||
-      oldDelegate.accent != accent ||
-      oldDelegate.focused != focused;
-}
-
-/// Hollow, long-dashed terminal for an outbound invitation. The add cell uses
-/// shorter dashes plus a "+", while this one carries an outbound marker.
-class _GhostSlotPainter extends CustomPainter {
-  const _GhostSlotPainter({required this.outline, required this.surface});
-
-  final Color outline;
-  final Color surface;
-
-  @override
-  void paint(Canvas canvas, Size size) {
-    final c = Offset(size.width / 2, size.height / 2);
-    final path = hexPath(c, size.height / 2 - 0.75);
-    canvas.drawPath(path, Paint()..color = surface);
-    final paint = Paint()
-      ..style = PaintingStyle.stroke
-      ..strokeWidth = 1.2
-      ..color = outline.withValues(alpha: 0.32);
-
-    // Longer 8px runs distinguish a pending ghost from the 5px "+" socket.
-    for (final metric in path.computeMetrics()) {
-      var distance = 0.0;
-      while (distance < metric.length) {
-        final end = math.min(distance + 8, metric.length);
-        canvas.drawPath(metric.extractPath(distance, end), paint);
-        distance = end + 4;
-      }
-    }
-  }
-
-  @override
-  bool shouldRepaint(covariant _GhostSlotPainter oldDelegate) =>
-      oldDelegate.outline != outline || oldDelegate.surface != surface;
 }
 
 /// Screen-fixed corner brackets framing the field viewport.

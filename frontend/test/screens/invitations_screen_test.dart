@@ -718,4 +718,73 @@ void main() {
     );
     await tester.pump(const Duration(milliseconds: 2501));
   });
+
+  testWidgets('two inbound requests render as a comb and only the tapped hex '
+      'expands its card', (tester) async {
+    final friends = FriendsProvider()..setCurrentUserId(1);
+    friends.onFriendRequestsList([
+      _request(
+        id: 10,
+        senderId: 2,
+        senderName: 'bob',
+        receiverId: 1,
+        receiverName: 'alice',
+      ),
+      _request(
+        id: 11,
+        senderId: 3,
+        senderName: 'mara',
+        receiverId: 1,
+        receiverName: 'alice',
+      ),
+    ]);
+    friends.onSentRequestsList([]);
+    await _pumpInvitations(tester, friends);
+
+    expect(find.byKey(const Key('invitation-waiting-comb')), findsOneWidget);
+    expect(find.byKey(const Key('invitation-comb-10')), findsOneWidget);
+    expect(find.byKey(const Key('invitation-comb-11')), findsOneWidget);
+    // With more than one request nothing auto-expands: no card, no Accept.
+    expect(find.text('Accept'), findsNothing);
+
+    await tester.tap(find.byKey(const Key('invitation-comb-10')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey(2)), findsOneWidget);
+    expect(find.byKey(const ValueKey(3)), findsNothing);
+    expect(find.text('Accept'), findsOneWidget);
+
+    // Picking the other hex swaps the card rather than stacking a second one.
+    await tester.tap(find.byKey(const Key('invitation-comb-11')));
+    await tester.pump();
+    expect(find.byKey(const ValueKey(3)), findsOneWidget);
+    expect(find.byKey(const ValueKey(2)), findsNothing);
+
+    // Tapping the open hex again collapses it.
+    await tester.tap(find.byKey(const Key('invitation-comb-11')));
+    await tester.pump();
+    expect(find.text('Accept'), findsNothing);
+  });
+
+  testWidgets('a lone inbound request auto-expands and its hex can collapse '
+      'it', (tester) async {
+    final friends = FriendsProvider()..setCurrentUserId(1);
+    friends.onFriendRequestsList([
+      _request(
+        id: 10,
+        senderId: 2,
+        senderName: 'bob',
+        receiverId: 1,
+        receiverName: 'alice',
+      ),
+    ]);
+    friends.onSentRequestsList([]);
+    await _pumpInvitations(tester, friends);
+
+    // The common case pays zero extra taps: the only card is already open.
+    expect(find.text('Accept'), findsOneWidget);
+
+    await tester.tap(find.byKey(const Key('invitation-comb-10')));
+    await tester.pump();
+    expect(find.text('Accept'), findsNothing);
+  });
 }

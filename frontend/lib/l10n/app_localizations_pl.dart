@@ -1239,4 +1239,7 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get chatPickerOpenTooltip => 'Nowy czat';
+
+  @override
+  String get chatPickerInviteButton => 'Zaproś kogoś';
 }

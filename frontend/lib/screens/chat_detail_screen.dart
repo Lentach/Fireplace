@@ -19,7 +19,7 @@ import '../widgets/message_date_separator.dart';
 import '../models/conversation_model.dart';
 import '../models/message_model.dart';
 import '../models/user_model.dart';
-import '../widgets/avatar_circle.dart';
+import '../widgets/hex_avatar.dart';
 import '../widgets/chat_background_pattern.dart';
 import '../widgets/ping_effect_overlay.dart';
 import '../widgets/top_snackbar.dart';
@@ -962,10 +962,20 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               children: [
                 GestureDetector(
                   onTap: _onAvatarTap,
-                  child: AvatarCircle(
+                  child: HexAvatar(
+                    size: 36,
                     displayName: contactName,
-                    radius: 18,
-                    profilePictureUrl: otherUser?.profilePictureUrl,
+                    imageUrl: otherUser?.profilePictureUrl,
+                    surface: FireplaceColors.of(context).convItemBg,
+                    // mutedText, not convItemBorder: the blue border token is
+                    // 1.92:1 on this fill and the ring paints at 0.6 alpha —
+                    // the hex outline vanishes (design review 2026-08-03).
+                    borderColor: FireplaceColors.of(context).mutedText,
+                    initialsStyle: RpgTheme.bodyFont(
+                      fontSize: 36 * 0.34,
+                      fontWeight: FontWeight.w800,
+                      color: colorScheme.onSurface,
+                    ),
                   ),
                 ),
                 Expanded(child: Center(child: headerTitle)),
@@ -996,14 +1006,24 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
           },
         ),
         title: headerTitle,
-        // Bare avatar slot: the photo fills the whole 52px circle with no
-        // glass ring (owner round-4 — Telegram reference).
+        // Hex avatar slot (owner ruling 2026-08-03: the chat header speaks the
+        // same hex language as the Chats list and the Contacts board; the old
+        // bare 52px circle was the round-4 Telegram reference).
         avatar: GestureDetector(
           onTap: _onAvatarTap,
-          child: AvatarCircle(
+          child: HexAvatar(
+            size: GlassTopBar.capsuleHeight,
             displayName: contactName,
-            radius: GlassTopBar.capsuleHeight / 2,
-            profilePictureUrl: otherUser?.profilePictureUrl,
+            imageUrl: otherUser?.profilePictureUrl,
+            surface: FireplaceColors.of(context).convItemBg,
+            // mutedText for the same 3:1 boundary reason as the embedded
+            // header's hex above.
+            borderColor: FireplaceColors.of(context).mutedText,
+            initialsStyle: RpgTheme.bodyFont(
+              fontSize: GlassTopBar.capsuleHeight * 0.34,
+              fontWeight: FontWeight.w800,
+              color: colorScheme.onSurface,
+            ),
           ),
         ),
       ),

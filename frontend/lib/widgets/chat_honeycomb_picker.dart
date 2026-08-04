@@ -29,6 +29,12 @@ class ChatPickerReviewInvitations extends ChatPickerChoice {
   const ChatPickerReviewInvitations();
 }
 
+/// Open the invitation screen to add someone new — the picker's trailing
+/// dashed "+" socket, the same door the Contacts board's add cell opens.
+class ChatPickerInviteNew extends ChatPickerChoice {
+  const ChatPickerInviteNew();
+}
+
 /// Opens the Chats friend picker as floating glass chrome.
 Future<ChatPickerChoice?> showChatHoneycombPicker(
   BuildContext context, {
@@ -116,10 +122,14 @@ class _ChatHoneycombPickerState extends State<ChatHoneycombPicker>
     final maxHeight = MediaQuery.sizeOf(context).height * 0.68;
 
     final cells = <_PickerCell>[
-      for (final inviter in widget.inviters)
-        _PickerCell(user: inviter, isInvitation: true),
-      for (final friend in widget.friends)
-        _PickerCell(user: friend, isInvitation: false),
+      for (final inviter in widget.inviters) _PickerCell.invitation(inviter),
+      for (final friend in widget.friends) _PickerCell.friend(friend),
+      // The comb always ends in an empty socket: inviting someone new is a
+      // first-class terminal, not a hidden affordance on another tab. Only
+      // the fully empty picker drops it — a lone socket looks broken, so the
+      // empty state carries the same door as a button instead.
+      if (widget.inviters.isNotEmpty || widget.friends.isNotEmpty)
+        const _PickerCell.addSlot(),
     ];
 
     return SafeArea(
@@ -180,17 +190,26 @@ class _ChatHoneycombPickerState extends State<ChatHoneycombPicker>
                   ],
                   const SizedBox(height: 18),
                   Flexible(
-                    child: cells.isEmpty
+                    child: cells.length <= 1
                         ? _EmptyPickerState(
                             title: l10n.chatPickerEmptyTitle,
                             description: l10n.chatPickerEmptyDescription,
+                            inviteLabel: l10n.chatPickerInviteButton,
+                            onInvite: () => Navigator.of(
+                              context,
+                            ).pop(const ChatPickerInviteNew()),
                           )
                         : _HoneycombGrid(
                             cells: cells,
                             onSelected: (cell) => Navigator.of(context).pop(
-                              cell.isInvitation
-                                  ? const ChatPickerReviewInvitations()
-                                  : ChatPickerFriend(cell.user),
+                              switch (cell) {
+                                _PickerCell(isAddSlot: true) =>
+                                  const ChatPickerInviteNew(),
+                                _PickerCell(isInvitation: true) =>
+                                  const ChatPickerReviewInvitations(),
+                                _PickerCell(:final user) =>
+                                  ChatPickerFriend(user!),
+                              },
                             ),
                           ),
                   ),
@@ -204,14 +223,27 @@ class _ChatHoneycombPickerState extends State<ChatHoneycombPicker>
   }
 }
 
-/// One terminal of the comb: a friend to chat with, or someone waiting on an
-/// answer from you.
+/// One terminal of the comb: a friend to chat with, someone waiting on an
+/// answer from you, or the empty "+" socket that invites someone new.
 @immutable
 class _PickerCell {
-  const _PickerCell({required this.user, required this.isInvitation});
+  const _PickerCell.friend(UserModel this.user)
+    : isInvitation = false,
+      isAddSlot = false;
 
-  final UserModel user;
+  const _PickerCell.invitation(UserModel this.user)
+    : isInvitation = true,
+      isAddSlot = false;
+
+  const _PickerCell.addSlot()
+    : user = null,
+      isInvitation = false,
+      isAddSlot = true;
+
+  /// Null only for the add socket.
+  final UserModel? user;
   final bool isInvitation;
+  final bool isAddSlot;
 }
 
 class _HoneycombGrid extends StatelessWidget {
@@ -230,6 +262,7 @@ class _HoneycombGrid extends StatelessWidget {
   Widget build(BuildContext context) {
     final l10n = AppLocalizations.of(context);
     final colorScheme = Theme.of(context).colorScheme;
+    final colors = FireplaceColors.of(context);
     final glass = GlassTheme.of(context);
 
     // An avatar-only comb is unusable the moment a friend has no picture: every
@@ -277,72 +310,82 @@ class _HoneycombGrid extends StatelessWidget {
                       SizedBox(
                         width: cellWidth,
                         height: rowHeight,
-                        child: Semantics(
-                          button: true,
-                          label: cell.isInvitation
-                              ? l10n.invitationSemanticIncoming(
-                                  cell.user.username,
-                                )
-                              : cell.user.displayHandle,
-                          excludeSemantics: true,
-                          child: InkResponse(
-                            key: Key(
-                              cell.isInvitation
-                                  ? 'chat-picker-invite-${cell.user.id}'
-                                  : 'chat-picker-friend-${cell.user.id}',
-                            ),
-                            onTap: () => onSelected(cell),
-                            radius: hexHeight / 2,
-                            child: Column(
-                              mainAxisSize: MainAxisSize.min,
-                              children: [
-                                HexAvatar(
-                                  size: hexHeight,
-                                  displayName: cell.user.username,
-                                  imageUrl: cell.user.profilePictureUrl,
-                                  surface: colorScheme.surface,
-                                  borderColor: cell.isInvitation
-                                      ? colorScheme.primary
-                                      : glass.border,
-                                  // An inbound invitation is the one terminal
-                                  // in the comb that wants something from you.
-                                  ember: cell.isInvitation ? 1 : 0,
-                                  initialsStyle: RpgTheme.bodyFont(
-                                    fontSize: hexHeight * 0.25,
-                                    fontWeight: FontWeight.w700,
-                                    color: colorScheme.onSurface,
+                        child: cell.isAddSlot
+                            ? _buildAddCell(
+                                context,
+                                l10n,
+                                colors,
+                                colorScheme,
+                                labelStyle,
+                                hexHeight,
+                              )
+                            : Semantics(
+                                button: true,
+                                label: cell.isInvitation
+                                    ? l10n.invitationSemanticIncoming(
+                                        cell.user!.username,
+                                      )
+                                    : cell.user!.displayHandle,
+                                excludeSemantics: true,
+                                child: InkResponse(
+                                  key: Key(
+                                    cell.isInvitation
+                                        ? 'chat-picker-invite-${cell.user!.id}'
+                                        : 'chat-picker-friend-${cell.user!.id}',
                                   ),
-                                ),
-                                const SizedBox(height: _labelGap),
-                                Column(
-                                  mainAxisSize: MainAxisSize.min,
-                                  children: [
-                                    Text(
-                                      cell.user.username,
-                                      softWrap: false,
-                                      maxLines: 1,
-                                      overflow: TextOverflow.ellipsis,
-                                      textAlign: TextAlign.center,
-                                      style: labelStyle,
-                                    ),
-                                    if (cell.isInvitation)
-                                      Text(
-                                        l10n.invitationStatusPending,
-                                        softWrap: false,
-                                        maxLines: 1,
-                                        overflow: TextOverflow.ellipsis,
-                                        textAlign: TextAlign.center,
-                                        style: labelStyle.copyWith(
+                                  onTap: () => onSelected(cell),
+                                  radius: hexHeight / 2,
+                                  child: Column(
+                                    mainAxisSize: MainAxisSize.min,
+                                    children: [
+                                      HexAvatar(
+                                        size: hexHeight,
+                                        displayName: cell.user!.username,
+                                        imageUrl: cell.user!.profilePictureUrl,
+                                        surface: colorScheme.surface,
+                                        borderColor: cell.isInvitation
+                                            ? colorScheme.primary
+                                            : glass.border,
+                                        // An inbound invitation is the one
+                                        // terminal in the comb that wants
+                                        // something from you.
+                                        ember: cell.isInvitation ? 1 : 0,
+                                        initialsStyle: RpgTheme.bodyFont(
+                                          fontSize: hexHeight * 0.25,
                                           fontWeight: FontWeight.w700,
-                                          color: colorScheme.primary,
+                                          color: colorScheme.onSurface,
                                         ),
                                       ),
-                                  ],
+                                      const SizedBox(height: _labelGap),
+                                      Column(
+                                        mainAxisSize: MainAxisSize.min,
+                                        children: [
+                                          Text(
+                                            cell.user!.username,
+                                            softWrap: false,
+                                            maxLines: 1,
+                                            overflow: TextOverflow.ellipsis,
+                                            textAlign: TextAlign.center,
+                                            style: labelStyle,
+                                          ),
+                                          if (cell.isInvitation)
+                                            Text(
+                                              l10n.invitationStatusPending,
+                                              softWrap: false,
+                                              maxLines: 1,
+                                              overflow: TextOverflow.ellipsis,
+                                              textAlign: TextAlign.center,
+                                              style: labelStyle.copyWith(
+                                                fontWeight: FontWeight.w700,
+                                                color: colorScheme.primary,
+                                              ),
+                                            ),
+                                        ],
+                                      ),
+                                    ],
+                                  ),
                                 ),
-                              ],
-                            ),
-                          ),
-                        ),
+                              ),
                       ),
                   ],
                 ),
@@ -353,13 +396,68 @@ class _HoneycombGrid extends StatelessWidget {
       },
     );
   }
+
+  /// The trailing empty socket: a dashed hex with a "+", same vocabulary as
+  /// the Contacts board's add cell, so both combs offer the same door.
+  Widget _buildAddCell(
+    BuildContext context,
+    AppLocalizations l10n,
+    FireplaceColors colors,
+    ColorScheme colorScheme,
+    TextStyle labelStyle,
+    double hexHeight,
+  ) {
+    return Semantics(
+      button: true,
+      label: l10n.contactNetworkAddSlotSemantic,
+      excludeSemantics: true,
+      child: InkResponse(
+        key: const Key('chat-picker-invite-new'),
+        onTap: () => onSelected(const _PickerCell.addSlot()),
+        radius: hexHeight / 2,
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            SizedBox(
+              width: hexHeight * kHexWidthRatio,
+              height: hexHeight,
+              child: CustomPaint(
+                painter: DashedHexPainter(
+                  outline: colorScheme.onSurface.withValues(alpha: 0.45),
+                ),
+                child: Center(
+                  child: Icon(Icons.add, size: 22, color: colors.mutedText),
+                ),
+              ),
+            ),
+            const SizedBox(height: _labelGap),
+            Text(
+              l10n.contactNetworkAddSlot,
+              softWrap: false,
+              maxLines: 1,
+              overflow: TextOverflow.ellipsis,
+              textAlign: TextAlign.center,
+              style: labelStyle.copyWith(color: colors.mutedText),
+            ),
+          ],
+        ),
+      ),
+    );
+  }
 }
 
 class _EmptyPickerState extends StatelessWidget {
-  const _EmptyPickerState({required this.title, required this.description});
+  const _EmptyPickerState({
+    required this.title,
+    required this.description,
+    required this.inviteLabel,
+    required this.onInvite,
+  });
 
   final String title;
   final String description;
+  final String inviteLabel;
+  final VoidCallback onInvite;
 
   @override
   Widget build(BuildContext context) {
@@ -392,6 +490,15 @@ class _EmptyPickerState extends StatelessWidget {
                   fontSize: 13,
                   color: glass.onGlassMuted,
                 ),
+              ),
+              const SizedBox(height: 16),
+              // The empty picker used to describe the fix ("add a friend")
+              // without offering it. The button IS the add socket's door.
+              ElevatedButton.icon(
+                key: const Key('chat-picker-invite-empty'),
+                onPressed: onInvite,
+                icon: const Icon(Icons.add, size: 18),
+                label: Text(inviteLabel),
               ),
             ],
           ),

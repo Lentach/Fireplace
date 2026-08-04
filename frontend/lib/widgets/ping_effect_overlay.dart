@@ -3,6 +3,7 @@ import 'dart:async';
 import 'package:flutter/material.dart';
 
 import '../utils/ping_sound.dart';
+import 'hex_avatar.dart';
 import 'ping_glyph.dart';
 
 class PingEffectOverlay extends StatefulWidget {
@@ -71,33 +72,33 @@ class _PingEffectOverlayState extends State<PingEffectOverlay>
   Widget build(BuildContext context) {
     // Static subtree: built ONCE (this build runs once — no setState/AnimatedBuilder
     // rebuild loop). The transitions below drive opacity/scale straight off the
-    // controller without rebuilding this subtree per frame, and the CustomPaint
-    // glyph is created once rather than per frame.
+    // controller without rebuilding this subtree per frame; both hex painters and
+    // the CustomPaint glyph are created once rather than per frame.
     final badge = SizedBox.square(
       dimension: 112,
       child: Stack(
         alignment: Alignment.center,
         children: [
-          Container(
-            width: 112,
+          // Concentric hex lattice, not circles: the ping propagates in the
+          // app's own shape language (owner ask 2026-08-03).
+          const SizedBox(
+            width: 112 * kHexWidthRatio,
             height: 112,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              border: Border.all(
-                color: Colors.orange.withValues(alpha: 0.28),
-                width: 1.5,
+            child: CustomPaint(
+              painter: _PingHexPainter(
+                border: Color(0x47FF9800), // orange, alpha 0.28
+                strokeWidth: 1.5,
               ),
             ),
           ),
-          Container(
-            width: 96,
+          const SizedBox(
+            width: 96 * kHexWidthRatio,
             height: 96,
-            decoration: BoxDecoration(
-              shape: BoxShape.circle,
-              color: Colors.orange.withValues(alpha: 0.16),
-              border: Border.all(
-                color: Colors.orange.withValues(alpha: 0.88),
-                width: 2.5,
+            child: CustomPaint(
+              painter: _PingHexPainter(
+                fill: Color(0x29FF9800), // orange, alpha 0.16
+                border: Color(0xE0FF9800), // orange, alpha 0.88
+                strokeWidth: 2.5,
               ),
             ),
           ),
@@ -120,4 +121,37 @@ class _PingEffectOverlayState extends State<PingEffectOverlay>
       ),
     );
   }
+}
+
+/// One static pointy-top hex ring of the ping lattice: optional fill plus a
+/// stroked `hexPath` outline. Constructed const so the ping subtree stays a
+/// build-once cached child under the Fade/Scale transitions.
+class _PingHexPainter extends CustomPainter {
+  const _PingHexPainter({this.fill, required this.border, required this.strokeWidth});
+
+  final Color? fill;
+  final Color border;
+  final double strokeWidth;
+
+  @override
+  void paint(Canvas canvas, Size size) {
+    final c = Offset(size.width / 2, size.height / 2);
+    final path = hexPath(c, size.height / 2 - strokeWidth / 2);
+    if (fill != null) {
+      canvas.drawPath(path, Paint()..color = fill!);
+    }
+    canvas.drawPath(
+      path,
+      Paint()
+        ..style = PaintingStyle.stroke
+        ..strokeWidth = strokeWidth
+        ..color = border,
+    );
+  }
+
+  @override
+  bool shouldRepaint(covariant _PingHexPainter oldDelegate) =>
+      oldDelegate.fill != fill ||
+      oldDelegate.border != border ||
+      oldDelegate.strokeWidth != strokeWidth;
 }
