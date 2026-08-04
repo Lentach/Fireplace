@@ -35,7 +35,9 @@ Round 1: `flutter analyze` clean; suite 1198 + 10 skipped (+2 picker tests). Rou
 
 ## Notes for next session
 
-- Branch pushed through `ab2ef05`, owner reviewed in the preview and approved ("all seems good") — NOT merged, no version bump; merge to master is the next step when owner says go.
+- **RELEASED: `0.1.7 / faa9dcd` then `0.1.8 / c01317c` same night (socket-first fix: the add socket now LEADS the comb — trailing, it fell below the fold with many friends; position test-pinned). Both BRANCH BUILDS, smoke 5/5 each, merge CI green.** Branch merged to master twice (`84737bc`, `dc5bfb5`); merged-tree suite **1236 + 10 skipped** green, CLAUDE.md §3 count synced 1229→1236.
+- **⛔ Prod frontend (`c01317c`) deliberately ≠ master:** master also carries the gated B2b sig sealing (needs `CANARY_OK {ageDays > 7}` dump + fresh owner OK); owner chose branch-only deploys to keep that gate intact. Next master frontend deploy ships B2b as 0.1.9.
+- Worktree `fireplace-invitations-ui` removed at session end (branch fully pushed/merged — no worktree zoo).
 - Review LOWs deliberately NOT acted on (owner-taste calls): picker accent text uses `colorScheme.primary` on glass (SPEC suggests `onGlassAccent`; pre-existing); "Pending" labels both directions; accepted-ready card stacks three accent elements; SPEC §10 "no title pills" contradicts the shipped app (doc drift, app-wide, predates this).
 - Chat-header hex is ~45px wide at 52px height vs the 52px back-circle — slight mass asymmetry; owner to judge on device.
 - Trap re-confirmed: the `edit` tool's auto-repair silently swallowed a `Transform.translate(offset:)` argument — re-read after any repaired hunk.
