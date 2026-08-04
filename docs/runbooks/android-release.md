@@ -1,8 +1,10 @@
 # Android release runbook
 
 Status: **Phase 1 (release plumbing) — DONE 2026-07-29. Phase 2 (encrypted local message store) —
-DONE 2026-07-29 on `feature/android-encrypted-store`, device-verified, not yet merged.**
-A release APK built from that branch keeps decrypted plaintext, media keys, pending-send plaintext
+DONE and ON MASTER** (verified 2026-08-04: `native_content_store.dart` etc. live in
+`frontend/lib/services/encryption/`; the old `feature/android-encrypted-store` branch ref is gone —
+an earlier revision of this header said "not yet merged", which was stale).
+A release APK keeps decrypted plaintext, media keys, pending-send plaintext
 and the JWT out of the SharedPreferences XML: content lives sealed in a SQLCipher database
 (`files/fp_content.db`) and the JWT lives in Keystore-backed secure storage. **Distribution is
 gated on two things, both owner tasks:** (1) the real-phone smoke — voice play/seek/cached
