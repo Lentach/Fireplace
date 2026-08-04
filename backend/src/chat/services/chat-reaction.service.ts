@@ -1,6 +1,7 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { MessagesService } from '../../messages/messages.service';
+import { BlockedService } from '../../blocked/blocked.service';
 import { validateDto } from '../utils/dto.validator';
 import { AddReactionDto, RemoveReactionDto } from '../dto/chat.dto';
 
@@ -8,7 +9,10 @@ import { AddReactionDto, RemoveReactionDto } from '../dto/chat.dto';
 export class ChatReactionService {
   private readonly logger = new Logger(ChatReactionService.name);
 
-  constructor(private readonly messagesService: MessagesService) {}
+  constructor(
+    private readonly messagesService: MessagesService,
+    private readonly blockedService: BlockedService,
+  ) {}
 
   async handleAddReaction(
     client: Socket,
@@ -27,24 +31,46 @@ export class ChatReactionService {
       return;
     }
 
-    const message = await this.messagesService.findByIdWithConversation(data.messageId);
-    if (!message) { client.emit('error', { message: 'Message not found' }); return; }
+    const message = await this.messagesService.findByIdWithConversation(
+      data.messageId,
+    );
+    if (!message) {
+      client.emit('error', { message: 'Message not found' });
+      return;
+    }
 
     const conv = message.conversation;
     if (conv.userOne.id !== userId && conv.userTwo.id !== userId) {
-      client.emit('error', { message: 'Unauthorized' }); return;
+      client.emit('error', { message: 'Unauthorized' });
+      return;
     }
 
-    const updated = await this.messagesService.addOrUpdateReaction(data.messageId, userId, data.emoji);
+    // Block gate: a block outlives the conversation (handleBlockUser deletes it best-effort
+    // only), so re-check here. Fail silently — never leak the block to the sender.
+    const otherId =
+      conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
+    if (await this.blockedService.isBlockedByEither(userId, otherId)) return;
+
+    const updated = await this.messagesService.addOrUpdateReaction(
+      data.messageId,
+      userId,
+      data.emoji,
+    );
     if (!updated) return;
 
     const reactions = updated.reactions ? JSON.parse(updated.reactions) : {};
-    const payload = { messageId: updated.id, conversationId: conv.id, reactions };
+    const payload = {
+      messageId: updated.id,
+      conversationId: conv.id,
+      reactions,
+    };
 
     client.emit('reactionUpdated', payload);
-    const otherUserId = conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
+    const otherUserId =
+      conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
     const otherSocketId = onlineUsers.get(otherUserId);
-    if (otherSocketId) server.to(otherSocketId).emit('reactionUpdated', payload);
+    if (otherSocketId)
+      server.to(otherSocketId).emit('reactionUpdated', payload);
   }
 
   async handleRemoveReaction(
@@ -64,23 +90,45 @@ export class ChatReactionService {
       return;
     }
 
-    const message = await this.messagesService.findByIdWithConversation(data.messageId);
-    if (!message) { client.emit('error', { message: 'Message not found' }); return; }
+    const message = await this.messagesService.findByIdWithConversation(
+      data.messageId,
+    );
+    if (!message) {
+      client.emit('error', { message: 'Message not found' });
+      return;
+    }
 
     const conv = message.conversation;
     if (conv.userOne.id !== userId && conv.userTwo.id !== userId) {
-      client.emit('error', { message: 'Unauthorized' }); return;
+      client.emit('error', { message: 'Unauthorized' });
+      return;
     }
 
-    const updated = await this.messagesService.removeReaction(data.messageId, userId, data.emoji);
+    // Block gate: a block outlives the conversation (handleBlockUser deletes it best-effort
+    // only), so re-check here. Fail silently — never leak the block to the sender.
+    const otherId =
+      conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
+    if (await this.blockedService.isBlockedByEither(userId, otherId)) return;
+
+    const updated = await this.messagesService.removeReaction(
+      data.messageId,
+      userId,
+      data.emoji,
+    );
     if (!updated) return;
 
     const reactions = updated.reactions ? JSON.parse(updated.reactions) : {};
-    const payload = { messageId: updated.id, conversationId: conv.id, reactions };
+    const payload = {
+      messageId: updated.id,
+      conversationId: conv.id,
+      reactions,
+    };
 
     client.emit('reactionUpdated', payload);
-    const otherUserId = conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
+    const otherUserId =
+      conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
     const otherSocketId = onlineUsers.get(otherUserId);
-    if (otherSocketId) server.to(otherSocketId).emit('reactionUpdated', payload);
+    if (otherSocketId)
+      server.to(otherSocketId).emit('reactionUpdated', payload);
   }
 }

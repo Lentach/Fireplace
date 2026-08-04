@@ -191,7 +191,9 @@ export class UsersController {
       profilePictureUrl: user.profilePictureUrl ?? null,
       about: user.about ?? null,
       profilePhotos: [...user.profilePhotos]
-        .sort((left, right) => left.position - right.position || left.id - right.id)
+        .sort(
+          (left, right) => left.position - right.position || left.id - right.id,
+        )
         .map((photo) => ({
           id: photo.id,
           url: photo.url,
@@ -247,6 +249,7 @@ export class UsersController {
 
   @Post('fcm-token')
   @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 30, ttl: 900000 } })
   async registerFcmToken(@Body() dto: RegisterFcmTokenDto, @Request() req) {
     const userId = req.user.id;
     await this.fcmTokensService.upsert(userId, dto.token, dto.platform);
@@ -255,6 +258,7 @@ export class UsersController {
 
   @Delete('fcm-token')
   @UseGuards(JwtAuthGuard)
+  @Throttle({ default: { limit: 30, ttl: 900000 } })
   async removeFcmToken(@Body() dto: RemoveFcmTokenDto, @Request() req) {
     await this.fcmTokensService.removeByTokenForUser(req.user.id, dto.token);
     return { message: 'FCM token removed' };

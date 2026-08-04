@@ -37,11 +37,14 @@ export class AuthService {
       const users = await this.usersService.findByUsername(identifier.trim());
       if (users.length === 1) user = users[0];
       else if (users.length > 1) {
+        // Ambiguous bare username: do NOT reveal that several accounts share
+        // this name (user enumeration) and do NOT short-circuit before the
+        // bcrypt compare below. Leaving `user` null routes this through the
+        // constant-time dummy-compare path, so an ambiguous username is
+        // indistinguishable — textually and by timing — from any other bad
+        // login. Username lookup stays case-insensitive (findByUsername).
         this.auditLogger.log(
           `login failed identifier=${identifier} (multiple users)`,
-        );
-        throw new UnauthorizedException(
-          'Multiple users found, please use username#tag',
         );
       }
     }

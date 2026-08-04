@@ -10,6 +10,7 @@ import {
   MESSAGE_NOT_EXPIRED_SQL,
 } from './message-expiry.util';
 import { MediaCleanupService } from '../media/media-cleanup.service';
+import { parseReactions } from './message-reactions.util';
 
 /** Projected row read by [MessagesService.findServedMessageIds]. */
 type ServedMessageRow = ExpirableMessage & {
@@ -696,47 +697,48 @@ export class MessagesService {
     return true;
   }
 
-  private static parseReactions(raw: string | null): Record<string, number[]> {
-    if (!raw) return {};
-    try {
-      const parsed = JSON.parse(raw);
-      return parsed && typeof parsed === 'object'
-        ? (parsed as Record<string, number[]>)
-        : {};
-    } catch {
-      // Corrupt reactions JSON must not 500 the reaction handler.
-      return {};
-    }
-  }
-
   async addOrUpdateReaction(
     messageId: number,
     userId: number,
     emoji: string,
   ): Promise<Message | null> {
-    const message = await this.msgRepo.findOne({
-      where: { id: messageId },
-      relations: {
-        sender: true,
-        conversation: true,
-      },
+    // BE-152/BE-201: serialize the read-modify-write. Two users reacting to the
+    // same message concurrently both load the old JSON and the later `save`
+    // clobbers the earlier writer's emoji. Row-lock the messages row (raw SQL,
+    // no join — the eager `sender` LEFT JOIN would make Postgres reject
+    // FOR UPDATE) so the second reaction waits, then reads the first's result.
+    return this.msgRepo.manager.transaction(async (manager) => {
+      const rows: Array<{ reactions: string | null }> = await manager.query(
+        `SELECT reactions FROM public.messages WHERE id = $1 FOR UPDATE`,
+        [messageId],
+      );
+      if (rows.length === 0) return null;
+
+      const reactions = parseReactions(rows[0].reactions);
+
+      // Remove user's previous emoji (max 1 per user)
+      for (const key of Object.keys(reactions)) {
+        reactions[key] = reactions[key].filter((id) => id !== userId);
+        if (reactions[key].length === 0) delete reactions[key];
+      }
+
+      // Add new emoji
+      if (!reactions[emoji]) reactions[emoji] = [];
+      reactions[emoji].push(userId);
+
+      await manager.query(
+        `UPDATE public.messages SET reactions = $2 WHERE id = $1`,
+        [messageId, JSON.stringify(reactions)],
+      );
+
+      return manager.findOne(Message, {
+        where: { id: messageId },
+        relations: {
+          sender: true,
+          conversation: true,
+        },
+      });
     });
-    if (!message) return null;
-
-    const reactions = MessagesService.parseReactions(message.reactions);
-
-    // Remove user's previous emoji (max 1 per user)
-    for (const key of Object.keys(reactions)) {
-      reactions[key] = reactions[key].filter((id) => id !== userId);
-      if (reactions[key].length === 0) delete reactions[key];
-    }
-
-    // Add new emoji
-    if (!reactions[emoji]) reactions[emoji] = [];
-    reactions[emoji].push(userId);
-
-    message.reactions = JSON.stringify(reactions);
-    return this.msgRepo.save(message);
   }
 
   async removeReaction(
@@ -744,24 +746,35 @@ export class MessagesService {
     userId: number,
     emoji: string,
   ): Promise<Message | null> {
-    const message = await this.msgRepo.findOne({
-      where: { id: messageId },
-      relations: {
-        sender: true,
-        conversation: true,
-      },
+    // BE-152/BE-201: same row-lock as addOrUpdateReaction — a remove racing an
+    // add must not clobber; the later writer must observe the earlier result.
+    return this.msgRepo.manager.transaction(async (manager) => {
+      const rows: Array<{ reactions: string | null }> = await manager.query(
+        `SELECT reactions FROM public.messages WHERE id = $1 FOR UPDATE`,
+        [messageId],
+      );
+      if (rows.length === 0) return null;
+
+      const reactions = parseReactions(rows[0].reactions);
+
+      if (reactions[emoji]) {
+        reactions[emoji] = reactions[emoji].filter((id) => id !== userId);
+        if (reactions[emoji].length === 0) delete reactions[emoji];
+      }
+
+      await manager.query(
+        `UPDATE public.messages SET reactions = $2 WHERE id = $1`,
+        [messageId, JSON.stringify(reactions)],
+      );
+
+      return manager.findOne(Message, {
+        where: { id: messageId },
+        relations: {
+          sender: true,
+          conversation: true,
+        },
+      });
     });
-    if (!message) return null;
-
-    const reactions = MessagesService.parseReactions(message.reactions);
-
-    if (reactions[emoji]) {
-      reactions[emoji] = reactions[emoji].filter((id) => id !== userId);
-      if (reactions[emoji].length === 0) delete reactions[emoji];
-    }
-
-    message.reactions = JSON.stringify(reactions);
-    return this.msgRepo.save(message);
   }
 
   async updateLinkPreview(

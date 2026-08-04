@@ -3,6 +3,7 @@ import { ChatReactionService } from './chat-reaction.service';
 describe('ChatReactionService', () => {
   let service: ChatReactionService;
   let mockMessagesService: any;
+  let mockBlockedService: any;
   let mockServer: any;
   let mockClient: any;
   let onlineUsers: Map<number, string>;
@@ -19,7 +20,10 @@ describe('ChatReactionService', () => {
       addOrUpdateReaction: jest.fn(),
       removeReaction: jest.fn(),
     };
-    service = new ChatReactionService(mockMessagesService);
+    mockBlockedService = {
+      isBlockedByEither: jest.fn().mockResolvedValue(false),
+    };
+    service = new ChatReactionService(mockMessagesService, mockBlockedService);
     mockServer = {
       to: jest.fn().mockReturnThis(),
       emit: jest.fn(),
@@ -46,7 +50,11 @@ describe('ChatReactionService', () => {
         onlineUsers,
       );
 
-      expect(mockMessagesService.addOrUpdateReaction).toHaveBeenCalledWith(5, 1, '👍');
+      expect(mockMessagesService.addOrUpdateReaction).toHaveBeenCalledWith(
+        5,
+        1,
+        '👍',
+      );
       expect(mockClient.emit).toHaveBeenCalledWith('reactionUpdated', {
         messageId: 5,
         conversationId: 10,
@@ -70,7 +78,9 @@ describe('ChatReactionService', () => {
         onlineUsers,
       );
 
-      expect(mockClient.emit).toHaveBeenCalledWith('error', { message: 'Message not found' });
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'Message not found',
+      });
       expect(mockMessagesService.addOrUpdateReaction).not.toHaveBeenCalled();
     });
 
@@ -82,7 +92,9 @@ describe('ChatReactionService', () => {
         onlineUsers,
       );
 
-      expect(mockMessagesService.findByIdWithConversation).not.toHaveBeenCalled();
+      expect(
+        mockMessagesService.findByIdWithConversation,
+      ).not.toHaveBeenCalled();
     });
 
     it('should emit error on invalid dto', async () => {
@@ -93,7 +105,10 @@ describe('ChatReactionService', () => {
         onlineUsers,
       );
 
-      expect(mockClient.emit).toHaveBeenCalledWith('error', expect.objectContaining({ message: expect.any(String) }));
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'error',
+        expect.objectContaining({ message: expect.any(String) }),
+      );
     });
 
     it('should emit Unauthorized and not react when user is not a conversation participant', async () => {
@@ -109,8 +124,37 @@ describe('ChatReactionService', () => {
         onlineUsers,
       );
 
-      expect(mockClient.emit).toHaveBeenCalledWith('error', { message: 'Unauthorized' });
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'Unauthorized',
+      });
       expect(mockMessagesService.addOrUpdateReaction).not.toHaveBeenCalled();
+    });
+
+    it('should not react or emit when either user has blocked the other', async () => {
+      mockMessagesService.findByIdWithConversation.mockResolvedValue({
+        id: 5,
+        conversation: mockConversation,
+      });
+      mockBlockedService.isBlockedByEither.mockResolvedValue(true);
+
+      await service.handleAddReaction(
+        mockClient,
+        { messageId: 5, emoji: '👍' },
+        mockServer,
+        onlineUsers,
+      );
+
+      expect(mockBlockedService.isBlockedByEither).toHaveBeenCalledWith(1, 2);
+      expect(mockMessagesService.addOrUpdateReaction).not.toHaveBeenCalled();
+      expect(mockClient.emit).not.toHaveBeenCalledWith(
+        'reactionUpdated',
+        expect.anything(),
+      );
+      expect(mockServer.emit).not.toHaveBeenCalled();
+      expect(mockClient.emit).not.toHaveBeenCalledWith(
+        'error',
+        expect.anything(),
+      );
     });
   });
 
@@ -132,7 +176,11 @@ describe('ChatReactionService', () => {
         onlineUsers,
       );
 
-      expect(mockMessagesService.removeReaction).toHaveBeenCalledWith(5, 1, '👍');
+      expect(mockMessagesService.removeReaction).toHaveBeenCalledWith(
+        5,
+        1,
+        '👍',
+      );
       expect(mockClient.emit).toHaveBeenCalledWith('reactionUpdated', {
         messageId: 5,
         conversationId: 10,
@@ -156,7 +204,9 @@ describe('ChatReactionService', () => {
         onlineUsers,
       );
 
-      expect(mockClient.emit).toHaveBeenCalledWith('error', { message: 'Message not found' });
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'Message not found',
+      });
       expect(mockMessagesService.removeReaction).not.toHaveBeenCalled();
     });
 
@@ -168,7 +218,9 @@ describe('ChatReactionService', () => {
         onlineUsers,
       );
 
-      expect(mockMessagesService.findByIdWithConversation).not.toHaveBeenCalled();
+      expect(
+        mockMessagesService.findByIdWithConversation,
+      ).not.toHaveBeenCalled();
     });
 
     it('should emit Unauthorized and not remove reaction when user is not a conversation participant', async () => {
@@ -184,8 +236,37 @@ describe('ChatReactionService', () => {
         onlineUsers,
       );
 
-      expect(mockClient.emit).toHaveBeenCalledWith('error', { message: 'Unauthorized' });
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'Unauthorized',
+      });
       expect(mockMessagesService.removeReaction).not.toHaveBeenCalled();
+    });
+
+    it('should not remove reaction or emit when either user has blocked the other', async () => {
+      mockMessagesService.findByIdWithConversation.mockResolvedValue({
+        id: 5,
+        conversation: mockConversation,
+      });
+      mockBlockedService.isBlockedByEither.mockResolvedValue(true);
+
+      await service.handleRemoveReaction(
+        mockClient,
+        { messageId: 5, emoji: '👍' },
+        mockServer,
+        onlineUsers,
+      );
+
+      expect(mockBlockedService.isBlockedByEither).toHaveBeenCalledWith(1, 2);
+      expect(mockMessagesService.removeReaction).not.toHaveBeenCalled();
+      expect(mockClient.emit).not.toHaveBeenCalledWith(
+        'reactionUpdated',
+        expect.anything(),
+      );
+      expect(mockServer.emit).not.toHaveBeenCalled();
+      expect(mockClient.emit).not.toHaveBeenCalledWith(
+        'error',
+        expect.anything(),
+      );
     });
   });
 });

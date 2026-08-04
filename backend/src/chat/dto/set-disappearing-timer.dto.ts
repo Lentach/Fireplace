@@ -1,11 +1,20 @@
-import { IsNumber, IsOptional, Max, Min, ValidateIf } from 'class-validator';
+import {
+  IsInt,
+  IsNumber,
+  IsOptional,
+  IsPositive,
+  Max,
+  Min,
+  ValidateIf,
+} from 'class-validator';
 import {
   DISAPPEARING_MAX_SECONDS,
   DISAPPEARING_MIN_SECONDS,
 } from '../../messages/disappearing.constants';
 
 export class SetDisappearingTimerDto {
-  @IsNumber()
+  @IsInt()
+  @IsPositive()
   conversationId: number;
 
   @IsOptional()

@@ -125,21 +125,22 @@ describe('AuthService', () => {
       });
     });
 
-    it('rejects ambiguous bare usernames before comparing passwords', async () => {
+    it('returns the generic failure and still runs a bcrypt compare for ambiguous bare usernames (no enumeration)', async () => {
       usersService.findByUsername.mockResolvedValue([
         mockUser as User,
         { ...mockUser, id: 2, tag: '9001' } as User,
       ]);
+      (bcrypt.compare as jest.Mock).mockResolvedValue(false);
 
+      // Must be indistinguishable from any other bad login: same message, and a
+      // real bcrypt compare so the branch is not measurably faster (timing enum).
       await expect(service.login('testuser', 'ValidPass1')).rejects.toThrow(
-        new UnauthorizedException(
-          'Multiple users found, please use username#tag',
-        ),
+        new UnauthorizedException('Invalid credentials'),
       );
 
       expect(usersService.findByUsername).toHaveBeenCalledWith('testuser');
       expect(usersService.findByUsernameAndTag).not.toHaveBeenCalled();
-      expect(bcrypt.compare).not.toHaveBeenCalled();
+      expect(bcrypt.compare).toHaveBeenCalledTimes(1);
       expect(refreshTokensService.createToken).not.toHaveBeenCalled();
       expect(jwtService.sign).not.toHaveBeenCalled();
     });

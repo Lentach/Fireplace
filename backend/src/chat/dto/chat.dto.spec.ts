@@ -1,6 +1,11 @@
 import { validate } from 'class-validator';
 import { plainToInstance } from 'class-transformer';
 import { AddReactionDto, RemoveReactionDto, SendMessageDto } from './chat.dto';
+import { ClearChatHistoryDto } from './clear-chat-history.dto';
+import { DeleteConversationOnlyDto } from './delete-conversation-only.dto';
+import { EditMessageDto } from './edit-message.dto';
+import { SetDisappearingTimerDto } from './set-disappearing-timer.dto';
+import { validateDto } from '../utils/dto.validator';
 
 function createDto(data: Partial<SendMessageDto>): SendMessageDto {
   return plainToInstance(SendMessageDto, data);
@@ -323,4 +328,59 @@ describe('Reaction DTOs', () => {
       expect(errors.length).toBeGreaterThan(0);
     },
   );
+});
+
+// BE-553: id fields were under-constrained (@IsNumber/@IsInt only), accepting
+// negative, zero and (for @IsNumber) float ids. They now match the house
+// standard `@IsInt() @IsPositive()` used by served-message-ids/pin-message.
+describe('Id-field constraints (BE-553)', () => {
+  // [dtoClass, id property name]
+  const idDtos: [new () => object, string][] = [
+    [ClearChatHistoryDto, 'conversationId'],
+    [DeleteConversationOnlyDto, 'conversationId'],
+    [SetDisappearingTimerDto, 'conversationId'],
+    [EditMessageDto, 'messageId'],
+  ];
+
+  // A valid sibling payload so only the id field under test can fail.
+  const validExtras = (prop: string): Record<string, unknown> =>
+    prop === 'messageId' ? { encryptedContent: '3:cipher==' } : {};
+
+  describe.each(idDtos)('%p', (dtoClass, prop) => {
+    it.each([-1, 0, 1.5, -2.5])(
+      'rejects a non-positive-int %s',
+      async (bad) => {
+        const dto = plainToInstance(dtoClass, {
+          [prop]: bad,
+          ...validExtras(prop),
+        });
+        const errors = await validate(dto);
+        expect(errors.some((e) => e.property === prop)).toBe(true);
+      },
+    );
+
+    it('accepts a positive integer id', async () => {
+      const dto = plainToInstance(dtoClass, {
+        [prop]: 42,
+        ...validExtras(prop),
+      });
+      const errors = await validate(dto);
+      expect(errors.some((e) => e.property === prop)).toBe(false);
+    });
+
+    it('coerces a string-numeric id from socket input (WS validator)', async () => {
+      // The WS validator uses enableImplicitConversion, so '42' -> 42 and passes.
+      const instance = validateDto(dtoClass, {
+        [prop]: '42',
+        ...validExtras(prop),
+      }) as Record<string, unknown>;
+      expect(instance[prop]).toBe(42);
+    });
+
+    it('rejects a string-numeric negative id from socket input (WS validator)', () => {
+      expect(() =>
+        validateDto(dtoClass, { [prop]: '-1', ...validExtras(prop) }),
+      ).toThrow();
+    });
+  });
 });

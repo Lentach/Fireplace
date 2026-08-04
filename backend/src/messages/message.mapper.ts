@@ -1,4 +1,5 @@
 import { Message } from './message.entity';
+import { parseReactions } from './message-reactions.util';
 
 export class MessageMapper {
   static toPayload(
@@ -6,8 +7,7 @@ export class MessageMapper {
     options?: { tempId?: string; conversationId?: number },
   ) {
     const sender = message.sender;
-    const convId =
-      options?.conversationId ?? message.conversation?.id ?? null;
+    const convId = options?.conversationId ?? message.conversation?.id ?? null;
     const payload: Record<string, unknown> = {
       id: message.id,
       content: message.content,
@@ -27,7 +27,7 @@ export class MessageMapper {
         ? new Date(message.editedAt as Date).toISOString()
         : null,
       tempId: options?.tempId ?? null,
-      reactions: message.reactions ? JSON.parse(message.reactions) : {},
+      reactions: parseReactions(message.reactions),
       encryptedContent: message.encryptedContent ?? null,
       linkPreviewUrl: message.linkPreviewUrl ?? null,
       linkPreviewTitle: message.linkPreviewTitle ?? null,
@@ -52,8 +52,8 @@ export class MessageMapper {
                   : rt.messageType === 'FILE'
                     ? 'File'
                     : rt.messageType === 'PING'
-                    ? 'Ping'
-                    : '';
+                      ? 'Ping'
+                      : '';
       payload.replyTo = {
         id: rt.id,
         content: contentPreview,

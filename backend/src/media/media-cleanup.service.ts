@@ -32,7 +32,13 @@ const DEFAULT_GRACE_MS = 15 * 60 * 1000;
 
 function resolveGraceMs(): number {
   const raw = process.env.MEDIA_CLEANUP_GRACE_MS;
-  const n = raw != null ? Number(raw) : NaN;
+  // Treat unset OR empty/whitespace-only as "not configured". A blank
+  // MEDIA_CLEANUP_GRACE_MS= (the ordinary docker-compose shape) must NOT
+  // collapse through Number('') === 0 and silently disable the in-flight-upload
+  // protection — that is the only permanent data-loss path in the media sweep.
+  // Only a genuinely numeric, non-negative value overrides the default.
+  if (raw == null || raw.trim() === '') return DEFAULT_GRACE_MS;
+  const n = Number(raw);
   return Number.isFinite(n) && n >= 0 ? n : DEFAULT_GRACE_MS;
 }
 

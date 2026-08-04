@@ -32,14 +32,22 @@ describe('UsersService.deleteAccount – cascade', () => {
   };
   const mockStorage = { deleteAvatar: jest.fn() };
   const mockFcm = { removeByUserId: jest.fn().mockResolvedValue(undefined) };
-  const mockWebPush = { removeByUserId: jest.fn().mockResolvedValue(undefined) };
-  const mockKeyBundles = { deleteByUserId: jest.fn().mockResolvedValue(undefined) };
+  const mockWebPush = {
+    removeByUserId: jest.fn().mockResolvedValue(undefined),
+  };
+  const mockKeyBundles = {
+    deleteByUserId: jest.fn().mockResolvedValue(undefined),
+  };
 
   const mockMessagesService = {
     findMediaUrlsByConversation: jest.fn().mockResolvedValue([]),
   };
-  const mockMediaCleanup = { deleteMediaFile: jest.fn().mockResolvedValue(undefined) };
-  const mockRefreshTokens = { revokeAllForUser: jest.fn().mockResolvedValue(undefined) };
+  const mockMediaCleanup = {
+    deleteMediaFile: jest.fn().mockResolvedValue(undefined),
+  };
+  const mockRefreshTokens = {
+    revokeAllForUser: jest.fn().mockResolvedValue(undefined),
+  };
 
   const mockManager = {
     find: jest.fn().mockResolvedValue([]),
@@ -48,9 +56,13 @@ describe('UsersService.deleteAccount – cascade', () => {
   };
 
   const mockDataSource = {
-    transaction: jest.fn().mockImplementation(async (fn: (m: typeof mockManager) => Promise<void>) => {
-      await fn(mockManager);
-    }),
+    transaction: jest
+      .fn()
+      .mockImplementation(
+        async (fn: (m: typeof mockManager) => Promise<void>) => {
+          await fn(mockManager);
+        },
+      ),
   };
 
   beforeEach(() => {
@@ -75,19 +87,21 @@ describe('UsersService.deleteAccount – cascade', () => {
     );
   });
 
-  it('calls deleteByUserId on key bundles service before user removal', async () => {
+  it('purges key bundles AFTER the user-removal transaction (post-commit backstop to the FK cascade)', async () => {
     (bcrypt.compare as jest.Mock).mockResolvedValue(true);
     mockRepo.findOne.mockResolvedValue(mockUser);
 
     await service.deleteAccount(7, 'correct-password');
 
     expect(mockKeyBundles.deleteByUserId).toHaveBeenCalledWith(7);
-    // The user-removal transaction must run after side-service cleanup, so a
-    // regression that removes the User before purging key bundles is caught.
     expect(mockManager.remove).toHaveBeenCalledWith(User, mockUser);
+    // Irreversible external cleanup must run only once the account is durably
+    // gone: the user row (and its ON DELETE CASCADE side rows) commits first,
+    // then the idempotent explicit purge runs as a backstop. A regression that
+    // destroys key bundles BEFORE the transaction re-opens the zombie window.
     expect(
       mockKeyBundles.deleteByUserId.mock.invocationCallOrder[0],
-    ).toBeLessThan(mockManager.remove.mock.invocationCallOrder[0]);
+    ).toBeGreaterThan(mockManager.remove.mock.invocationCallOrder[0]);
   });
 
   it('calls fcm removeByUserId', async () => {
@@ -138,7 +152,10 @@ describe('UsersService.deleteAccount – cascade', () => {
       conversation: { id: 11 },
     });
     expect(mockManager.delete).toHaveBeenCalledWith(Conversation, { id: 11 });
-    expect(mockManager.find).toHaveBeenCalledWith(FriendRequest, expect.anything());
+    expect(mockManager.find).toHaveBeenCalledWith(
+      FriendRequest,
+      expect.anything(),
+    );
     expect(mockManager.remove).toHaveBeenCalledWith([friendRequest]);
     expect(mockManager.remove).toHaveBeenCalledWith(User, mockUser);
     const userRemovals = mockManager.remove.mock.calls.filter(
@@ -164,5 +181,39 @@ describe('UsersService.deleteAccount – cascade', () => {
     expect(mockStorage.deleteAvatar).toHaveBeenCalledWith('avatars/b.jpg');
     // De-dup: a.jpg is both the avatar id and a photo key, purged only once.
     expect(mockStorage.deleteAvatar).toHaveBeenCalledTimes(2);
+  });
+
+  it('revokes refresh tokens before a failing transaction and performs no external destruction (no loginable zombie)', async () => {
+    (bcrypt.compare as jest.Mock).mockResolvedValue(true);
+    mockRepo.findOne.mockResolvedValue({
+      ...mockUser,
+      profilePicturePublicId: 'avatars/a.jpg',
+    });
+    mockRepo.manager.find.mockResolvedValue([{ id: 11 }]);
+    mockMessagesService.findMediaUrlsByConversation.mockResolvedValue([
+      'https://media.example/media/msgs/x.bin',
+    ]);
+    // The DB transaction aborts mid-delete (in prod a concurrent send trips the
+    // NO ACTION conversations FKs and rolls the whole thing back).
+    mockDataSource.transaction.mockRejectedValueOnce(new Error('tx aborted'));
+
+    await expect(service.deleteAccount(7, 'correct-password')).rejects.toThrow(
+      'tx aborted',
+    );
+
+    // Session is killed up front, so a stolen refresh token cannot be exchanged
+    // for a fresh access JWT: the "deleted" account is not loginable.
+    expect(mockRefreshTokens.revokeAllForUser).toHaveBeenCalledWith(7);
+    expect(
+      mockRefreshTokens.revokeAllForUser.mock.invocationCallOrder[0],
+    ).toBeLessThan(mockDataSource.transaction.mock.invocationCallOrder[0]);
+    // Nothing irreversible happened: no keys, media, tokens or subscriptions
+    // were destroyed, so the account is fully intact rather than a half-deleted
+    // zombie that is unmessageable yet still loginable.
+    expect(mockStorage.deleteAvatar).not.toHaveBeenCalled();
+    expect(mockMediaCleanup.deleteMediaFile).not.toHaveBeenCalled();
+    expect(mockKeyBundles.deleteByUserId).not.toHaveBeenCalled();
+    expect(mockFcm.removeByUserId).not.toHaveBeenCalled();
+    expect(mockWebPush.removeByUserId).not.toHaveBeenCalled();
   });
 });

@@ -306,10 +306,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   // ========== TYPING INDICATOR ==========
 
   @SubscribeMessage('typing')
-  handleTyping(
+  async handleTyping(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
-  ): void {
+  ): Promise<void> {
     return this.chatPresenceService.handleTyping(
       client,
       data,
@@ -349,10 +349,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @SubscribeMessage('recordingVoice')
-  handleRecordingVoice(
+  async handleRecordingVoice(
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
-  ): void {
+  ): Promise<void> {
     return this.chatPresenceService.handleRecordingVoice(
       client,
       data,

@@ -58,6 +58,35 @@ describe('MessageMapper', () => {
     });
   });
 
+  it('does not throw and degrades to empty reactions on corrupt JSON', () => {
+    const msg = createMockMessage({ reactions: '{not valid json' });
+    expect(() => MessageMapper.toPayload(msg)).not.toThrow();
+    expect(MessageMapper.toPayload(msg).reactions).toEqual({});
+  });
+
+  it('degrades to empty reactions when stored JSON is not an object', () => {
+    const msg = createMockMessage({ reactions: '42' });
+    expect(MessageMapper.toPayload(msg).reactions).toEqual({});
+  });
+
+  it('maps null reactions to an empty object', () => {
+    const msg = createMockMessage({ reactions: null });
+    expect(MessageMapper.toPayload(msg).reactions).toEqual({});
+  });
+
+  it('a corrupt reactions row does not blank sibling messages in a history response', () => {
+    const corrupt = createMockMessage({ id: 1, reactions: '<<corrupt' });
+    const healthy = createMockMessage({
+      id: 2,
+      reactions: JSON.stringify({ '👍': [7] }),
+    });
+    const history = [corrupt, healthy].map((msg) =>
+      MessageMapper.toPayload(msg),
+    );
+    expect(history[0].reactions).toEqual({});
+    expect(history[1].reactions).toEqual({ '👍': [7] });
+  });
+
   it('should include link preview metadata for encrypted messages', () => {
     const msg = createMockMessage({
       content: '[encrypted]',

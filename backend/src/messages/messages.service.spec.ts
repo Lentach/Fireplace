@@ -685,3 +685,81 @@ describe('MessagesService.deleteById', () => {
     expect(repo.remove).not.toHaveBeenCalled();
   });
 });
+
+describe('MessagesService reactions (BE-152/BE-201 atomicity)', () => {
+  let service: MessagesService;
+  let store: string | null;
+  let manager: { query: jest.Mock; findOne: jest.Mock };
+  let repo: { manager: { transaction: jest.Mock } };
+
+  beforeEach(async () => {
+    store = null;
+    // Stateful single-row store so a re-read inside the locked transaction sees
+    // the prior writer's UPDATE. Postgres shapes matter: SELECT returns plain
+    // rows, UPDATE returns [rows, rowCount].
+    manager = {
+      query: jest.fn((sql: string, params: unknown[]) => {
+        if (/FOR UPDATE/.test(sql)) {
+          return Promise.resolve([{ reactions: store }]);
+        }
+        store = params[1] as string;
+        return Promise.resolve([[], 1]);
+      }),
+      findOne: jest.fn(() =>
+        Promise.resolve({ id: 42, reactions: store } as unknown as Message),
+      ),
+    };
+    repo = { manager: { transaction: jest.fn((cb: any) => cb(manager)) } };
+
+    const module = await Test.createTestingModule({
+      providers: [
+        MessagesService,
+        { provide: getRepositoryToken(Message), useValue: repo },
+        mediaCleanupMock(),
+      ],
+    }).compile();
+    service = module.get(MessagesService);
+  });
+
+  it('locks the row with SELECT ... FOR UPDATE inside a transaction', async () => {
+    await service.addOrUpdateReaction(42, 1, '👍');
+    expect(repo.manager.transaction).toHaveBeenCalled();
+    const selectCall = manager.query.mock.calls.find(([sql]) =>
+      /FOR UPDATE/.test(sql as string),
+    );
+    expect(selectCall).toBeDefined();
+    expect(selectCall![1]).toEqual([42]);
+  });
+
+  it('returns null and issues no UPDATE when the message is missing', async () => {
+    manager.query.mockImplementation((sql: string) =>
+      /FOR UPDATE/.test(sql) ? Promise.resolve([]) : Promise.resolve([[], 0]),
+    );
+    const result = await service.addOrUpdateReaction(99, 1, '👍');
+    expect(result).toBeNull();
+    const updateCall = manager.query.mock.calls.find(([sql]) =>
+      /UPDATE public\.messages/.test(sql as string),
+    );
+    expect(updateCall).toBeUndefined();
+  });
+
+  it('two concurrent add-reactions both survive (no lost update)', async () => {
+    // Each call re-reads inside its own locked transaction, so the second sees
+    // the first's write. The old findOne+save (no lock) dropped one reaction.
+    await service.addOrUpdateReaction(42, 1, '👍');
+    await service.addOrUpdateReaction(42, 2, '❤️');
+    expect(JSON.parse(store as string)).toEqual({ '👍': [1], '❤️': [2] });
+  });
+
+  it('concurrent add then remove resolves without a ghost reaction', async () => {
+    await service.addOrUpdateReaction(42, 1, '👍');
+    await service.removeReaction(42, 1, '👍');
+    expect(JSON.parse(store as string)).toEqual({});
+  });
+
+  it('degrades corrupt stored reactions instead of throwing', async () => {
+    store = '{corrupt';
+    await service.addOrUpdateReaction(42, 1, '👍');
+    expect(JSON.parse(store as string)).toEqual({ '👍': [1] });
+  });
+});

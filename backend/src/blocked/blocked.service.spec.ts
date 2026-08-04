@@ -11,10 +11,18 @@ import { BlockedService } from './blocked.service';
 describe('BlockedService', () => {
   let service: BlockedService;
   let blockedRepo: jest.Mocked<Repository<BlockedUser>>;
-  let friendsService: jest.Mocked<Pick<FriendsService, 'unfriend'>>;
-  let conversationsService: jest.Mocked<Pick<ConversationsService, 'findByUsers' | 'delete'>>;
-  let messagesService: jest.Mocked<Pick<MessagesService, 'findMediaUrlsByConversation'>>;
-  let mediaCleanupService: jest.Mocked<Pick<MediaCleanupService, 'deleteMediaFile'>>;
+  let friendsService: jest.Mocked<
+    Pick<FriendsService, 'unfriend' | 'removeFriendRequestsForPair'>
+  >;
+  let conversationsService: jest.Mocked<
+    Pick<ConversationsService, 'findByUsers' | 'delete'>
+  >;
+  let messagesService: jest.Mocked<
+    Pick<MessagesService, 'findMediaUrlsByConversation'>
+  >;
+  let mediaCleanupService: jest.Mocked<
+    Pick<MediaCleanupService, 'deleteMediaFile'>
+  >;
 
   beforeEach(async () => {
     const module = await Test.createTestingModule({
@@ -35,6 +43,7 @@ describe('BlockedService', () => {
           provide: FriendsService,
           useValue: {
             unfriend: jest.fn().mockResolvedValue(undefined),
+            removeFriendRequestsForPair: jest.fn().mockResolvedValue(0),
           },
         },
         {
@@ -47,10 +56,12 @@ describe('BlockedService', () => {
         {
           provide: MessagesService,
           useValue: {
-            findMediaUrlsByConversation: jest.fn().mockResolvedValue([
-              'https://example.com/media/msgs/a.bin',
-              'https://example.com/media/msgs/b.bin',
-            ]),
+            findMediaUrlsByConversation: jest
+              .fn()
+              .mockResolvedValue([
+                'https://example.com/media/msgs/a.bin',
+                'https://example.com/media/msgs/b.bin',
+              ]),
           },
         },
         {
@@ -74,8 +85,14 @@ describe('BlockedService', () => {
     await service.block(1, 2);
 
     expect(blockedRepo.save).toHaveBeenCalled();
-    expect(friendsService.unfriend).toHaveBeenCalledWith(1, 2);
-    expect(messagesService.findMediaUrlsByConversation).toHaveBeenCalledWith(55);
+    expect(friendsService.removeFriendRequestsForPair).toHaveBeenCalledWith(
+      1,
+      2,
+    );
+    expect(friendsService.unfriend).not.toHaveBeenCalled();
+    expect(messagesService.findMediaUrlsByConversation).toHaveBeenCalledWith(
+      55,
+    );
     expect(mediaCleanupService.deleteMediaFile).toHaveBeenCalledWith(
       'https://example.com/media/msgs/a.bin',
     );
@@ -107,15 +124,35 @@ describe('BlockedService', () => {
     expect(conversationsService.delete).not.toHaveBeenCalled();
   });
 
-  it('is idempotent on an already-blocked pair: returns the existing row without side effects', async () => {
+  it('self-heals a partially-applied block on retry: re-runs teardown for an already-blocked pair without re-inserting', async () => {
     const existing = { id: 7 } as BlockedUser;
     blockedRepo.findOne.mockResolvedValueOnce(existing);
 
     await expect(service.block(1, 2)).resolves.toBe(existing);
 
+    // No duplicate block row is inserted...
     expect(blockedRepo.save).not.toHaveBeenCalled();
-    expect(friendsService.unfriend).not.toHaveBeenCalled();
-    expect(conversationsService.delete).not.toHaveBeenCalled();
+    // ...but the teardown MUST re-run so a prior block that committed the row
+    // and then failed to unfriend/clean up is repaired (BE-006). The old code
+    // early-returned here and left the split state permanent.
+    expect(friendsService.removeFriendRequestsForPair).toHaveBeenCalledWith(
+      1,
+      2,
+    );
+    expect(conversationsService.delete).toHaveBeenCalledWith(55);
+  });
+
+  it('propagates a friend-request removal failure so the block can be retried (BE-006)', async () => {
+    friendsService.removeFriendRequestsForPair.mockRejectedValueOnce(
+      new Error('lock wait timeout'),
+    );
+
+    await expect(service.block(1, 2)).rejects.toThrow('lock wait timeout');
+
+    // The block row is saved first (durable), and the critical friend-request
+    // removal failure surfaces to the caller instead of being swallowed, so a
+    // retry can self-heal the friendship rather than leaving it permanently.
+    expect(blockedRepo.save).toHaveBeenCalled();
   });
 
   it('treats conversation-cleanup failure as non-fatal and still returns the saved record', async () => {
