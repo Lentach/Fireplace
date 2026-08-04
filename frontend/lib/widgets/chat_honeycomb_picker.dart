@@ -122,14 +122,15 @@ class _ChatHoneycombPickerState extends State<ChatHoneycombPicker>
     final maxHeight = MediaQuery.sizeOf(context).height * 0.68;
 
     final cells = <_PickerCell>[
-      for (final inviter in widget.inviters) _PickerCell.invitation(inviter),
-      for (final friend in widget.friends) _PickerCell.friend(friend),
-      // The comb always ends in an empty socket: inviting someone new is a
-      // first-class terminal, not a hidden affordance on another tab. Only
-      // the fully empty picker drops it — a lone socket looks broken, so the
-      // empty state carries the same door as a button instead.
+      // The comb LEADS with the empty socket, exactly like the Contacts
+      // board's leading add cell (owner ruling 2026-08-04: with many friends
+      // a trailing socket ends up below the fold and the door disappears).
+      // Only the fully empty picker drops it — a lone socket looks broken,
+      // so the empty state carries the same door as a button instead.
       if (widget.inviters.isNotEmpty || widget.friends.isNotEmpty)
         const _PickerCell.addSlot(),
+      for (final inviter in widget.inviters) _PickerCell.invitation(inviter),
+      for (final friend in widget.friends) _PickerCell.friend(friend),
     ];
 
     return SafeArea(
