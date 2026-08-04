@@ -101,27 +101,43 @@ class MessageMetadataRow extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final staticRow = Row(
+      mainAxisSize: MainAxisSize.min,
+      children: [
+        if (message.editedAt != null) ...[
+          Text(
+            AppLocalizations.of(context).messageEditedLabel,
+            style: RpgTheme.bodyFont(fontSize: 10, color: timeColor),
+          ),
+          const SizedBox(width: 4),
+        ],
+        Text(
+          RpgTheme.formatMessageClock(message.createdAt),
+          style: RpgTheme.bodyFont(fontSize: 10, color: timeColor),
+        ),
+        const SizedBox(width: 4),
+        _buildDeliveryIcon(context),
+      ],
+    );
+
+    // countdownTickNotifier ticks once per second UNCONDITIONALLY. Subscribing
+    // regardless of the message rebuilt every visible bubble's metadata — plus
+    // a SettingsProvider read inside the delivery icon — at 1 Hz in chats with
+    // no ephemeral messages at all. Same gate as conversation_tile.dart.
+    if (!HearthFadeArcIndicator.showsEphemeralState(message)) {
+      return staticRow;
+    }
+
     return ValueListenableBuilder<int>(
       valueListenable: context.read<MessagingProvider>().countdownTickNotifier,
+      child: staticRow,
       builder: (ctx, tick, child) {
+        if (!HearthFadeArcIndicator.showsEphemeralState(message)) {
+          return child!;
+        }
         return Row(
           mainAxisSize: MainAxisSize.min,
-          children: [
-            if (message.editedAt != null) ...[
-              Text(
-                AppLocalizations.of(context).messageEditedLabel,
-                style: RpgTheme.bodyFont(fontSize: 10, color: timeColor),
-              ),
-              const SizedBox(width: 4),
-            ],
-            Text(
-              RpgTheme.formatMessageClock(message.createdAt),
-              style: RpgTheme.bodyFont(fontSize: 10, color: timeColor),
-            ),
-            const SizedBox(width: 4),
-            _buildDeliveryIcon(ctx),
-            _buildEphemeralIndicator(),
-          ],
+          children: [child!, _buildEphemeralIndicator()],
         );
       },
     );

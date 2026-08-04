@@ -384,8 +384,13 @@ extension MessagingSend on MessagingProvider {
     notifyListeners();
 
     try {
-      // 2. Download GIF bytes from Giphy
-      final response = await http.get(Uri.parse(gifUrl));
+      // 2. Download GIF bytes from Giphy. Without a timeout a stalled fetch
+      // never reaches the catch below, so _markMessageFailed never runs, the
+      // bubble sits on SENDING forever and retryFailedMessage refuses it
+      // because the status is not `failed`.
+      final response = await http
+          .get(Uri.parse(gifUrl))
+          .timeout(const Duration(seconds: 20));
       if (response.statusCode != 200) {
         throw Exception('Failed to download GIF');
       }

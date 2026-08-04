@@ -17,6 +17,7 @@ Future<RecordingControllerState> _pumpController(
   WidgetTester tester, {
   required Future<void> Function({
     required int duration,
+    int? conversationId,
     String? localAudioPath,
     Uint8List? audioBytes,
   }) onVoiceSent,
@@ -109,7 +110,13 @@ void main() {
       int? sentDuration;
       final state = await _pumpController(
         tester,
-        onVoiceSent: ({required duration, localAudioPath, audioBytes}) async {
+        onVoiceSent:
+            ({
+              required duration,
+              conversationId,
+              localAudioPath,
+              audioBytes,
+            }) async {
           sent++;
           sentDuration = duration;
         },
@@ -129,12 +136,48 @@ void main() {
       expect(state.isRecording, isFalse);
     });
 
+    testWidgets('a teardown mid-send still delivers the recording',
+        (tester) async {
+      var sent = 0;
+      late RecordingControllerState state;
+      state = await _pumpController(
+        tester,
+        onVoiceSent:
+            ({
+              required duration,
+              conversationId,
+              localAudioPath,
+              audioBytes,
+            }) async {
+          sent++;
+          // Back navigation, or ChatDetailScreen's unfriend/block auto-pop,
+          // landing while the send is in flight. Before the mounted guards this
+          // threw on the next setState and the voice note vanished silently.
+          await tester.pumpWidget(const SizedBox.shrink());
+        },
+        onRecordingStateChanged: (_) {},
+      );
+      state.testSkipHardware = true;
+      state.simulateRecordingForTest(elapsed: const Duration(seconds: 3));
+      await tester.pump();
+
+      await state.stopAndSend();
+
+      expect(sent, 1);
+    });
+
     testWidgets('stopAndSend under 500ms discards silently (no onVoiceSent)',
         (tester) async {
       var sent = 0;
       final state = await _pumpController(
         tester,
-        onVoiceSent: ({required duration, localAudioPath, audioBytes}) async {
+        onVoiceSent:
+            ({
+              required duration,
+              conversationId,
+              localAudioPath,
+              audioBytes,
+            }) async {
           sent++;
         },
         onRecordingStateChanged: (_) {},
@@ -154,7 +197,13 @@ void main() {
       var sent = 0;
       final state = await _pumpController(
         tester,
-        onVoiceSent: ({required duration, localAudioPath, audioBytes}) async {
+        onVoiceSent:
+            ({
+              required duration,
+              conversationId,
+              localAudioPath,
+              audioBytes,
+            }) async {
           sent++;
         },
         onRecordingStateChanged: (_) {},
@@ -177,7 +226,13 @@ void main() {
       var sent = 0;
       final state = await _pumpController(
         tester,
-        onVoiceSent: ({required duration, localAudioPath, audioBytes}) async {
+        onVoiceSent:
+            ({
+              required duration,
+              conversationId,
+              localAudioPath,
+              audioBytes,
+            }) async {
           sent++;
         },
         onRecordingStateChanged: (_) {},
@@ -199,7 +254,13 @@ void main() {
         (tester) async {
       final state = await _pumpController(
         tester,
-        onVoiceSent: ({required duration, localAudioPath, audioBytes}) async {},
+        onVoiceSent:
+            ({
+              required duration,
+              conversationId,
+              localAudioPath,
+              audioBytes,
+            }) async {},
         onRecordingStateChanged: (_) {},
       );
       state.debugSetStartingForTest(true);

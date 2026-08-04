@@ -299,12 +299,7 @@ class ConversationsProvider extends ChangeNotifier {
     final index = _conversations.indexWhere((c) => c.id == conversationId);
     if (index == -1) return;
     final oldConv = _conversations[index];
-    _conversations[index] = ConversationModel(
-      id: oldConv.id,
-      userOne: oldConv.userOne,
-      userTwo: oldConv.userTwo,
-      createdAt: oldConv.createdAt,
-      disappearingTimer: oldConv.disappearingTimer,
+    _conversations[index] = oldConv.copyWith(
       pinnedMessageId: messageId,
       pinnedMessagePreview: localPreview,
     );
@@ -335,14 +330,11 @@ class ConversationsProvider extends ChangeNotifier {
     final index = _conversations.indexWhere((c) => c.id == conversationId);
     if (index != -1) {
       final oldConv = _conversations[index];
-      _conversations[index] = ConversationModel(
-        id: oldConv.id,
-        userOne: oldConv.userOne,
-        userTwo: oldConv.userTwo,
-        createdAt: oldConv.createdAt,
-        disappearingTimer: oldConv.disappearingTimer,
+      _conversations[index] = oldConv.copyWith(
         pinnedMessageId: pinnedMessageId,
+        clearPinnedMessageId: pinnedMessageId == null,
         pinnedMessagePreview: preview,
+        clearPinnedMessagePreview: preview == null,
       );
     }
     notifyListeners();
@@ -354,14 +346,9 @@ class ConversationsProvider extends ChangeNotifier {
     final index = _conversations.indexWhere((c) => c.id == conversationId);
     if (index != -1) {
       final oldConv = _conversations[index];
-      _conversations[index] = ConversationModel(
-        id: oldConv.id,
-        userOne: oldConv.userOne,
-        userTwo: oldConv.userTwo,
-        createdAt: oldConv.createdAt,
-        disappearingTimer: oldConv.disappearingTimer,
-        pinnedMessageId: null,
-        pinnedMessagePreview: null,
+      _conversations[index] = oldConv.copyWith(
+        clearPinnedMessageId: true,
+        clearPinnedMessagePreview: true,
       );
     }
     notifyListeners();
@@ -395,14 +382,9 @@ class ConversationsProvider extends ChangeNotifier {
     final index = _conversations.indexWhere((c) => c.id == conversationId);
     if (index != -1) {
       final oldConv = _conversations[index];
-      _conversations[index] = ConversationModel(
-        id: oldConv.id,
-        userOne: oldConv.userOne,
-        userTwo: oldConv.userTwo,
-        createdAt: oldConv.createdAt,
+      _conversations[index] = oldConv.copyWith(
         disappearingTimer: timer,
-        pinnedMessageId: oldConv.pinnedMessageId,
-        pinnedMessagePreview: oldConv.pinnedMessagePreview,
+        clearDisappearingTimer: timer == null,
       );
       notifyListeners();
     }
@@ -426,18 +408,13 @@ class ConversationsProvider extends ChangeNotifier {
     if (index == -1) return;
     final old = _conversations[index];
     final muted = payload['muted'] as bool;
-    _conversations[index] = ConversationModel(
-      id: old.id,
-      userOne: old.userOne,
-      userTwo: old.userTwo,
-      createdAt: old.createdAt,
-      disappearingTimer: old.disappearingTimer,
-      pinnedMessageId: old.pinnedMessageId,
-      pinnedMessagePreview: old.pinnedMessagePreview,
+    final mutedUntilRaw = payload['mutedUntil'] as String?;
+    final mutedUntil =
+        mutedUntilRaw == null ? null : DateTime.tryParse(mutedUntilRaw);
+    _conversations[index] = old.copyWith(
       muted: muted,
-      mutedUntil: payload['mutedUntil'] == null
-          ? null
-          : DateTime.parse(payload['mutedUntil'] as String),
+      mutedUntil: mutedUntil,
+      clearMutedUntil: mutedUntil == null,
     );
     notifyListeners();
   }

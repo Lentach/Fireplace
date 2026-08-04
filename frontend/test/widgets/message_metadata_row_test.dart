@@ -131,4 +131,47 @@ void main() {
       expect(find.byType(HearthFadeArcIndicator), findsNothing);
     });
   });
+
+  group('MessageMetadataRow countdown ticker subscription', () {
+    Widget host(MessageModel message) => MaterialApp(
+      theme: RpgTheme.themeDataLight,
+      home: Scaffold(
+        body: MultiProvider(
+          providers: [
+            ChangeNotifierProvider(create: (_) => MessagingProvider()),
+            ChangeNotifierProvider(create: (_) => SettingsProvider()),
+          ],
+          child: MessageMetadataRow(
+            message: message,
+            isMine: false,
+            timeColor: Colors.grey,
+          ),
+        ),
+      ),
+    );
+
+    testWidgets('a non-ephemeral row never subscribes to the 1 Hz tick', (
+      tester,
+    ) async {
+      await tester.pumpWidget(host(_message()));
+
+      // countdownTickNotifier ticks once per second unconditionally, so a
+      // subscription here rebuilds every visible bubble's metadata forever.
+      expect(find.byType(ValueListenableBuilder<int>), findsNothing);
+    });
+
+    testWidgets('an ephemeral row still subscribes', (tester) async {
+      await tester.pumpWidget(
+        host(
+          _message(
+            disappearAfterSeconds: 3600,
+            expiresAt: DateTime.now().add(const Duration(minutes: 30)),
+          ),
+        ),
+      );
+
+      expect(find.byType(ValueListenableBuilder<int>), findsOneWidget);
+      expect(find.byType(HearthFadeArcIndicator), findsOneWidget);
+    });
+  });
 }

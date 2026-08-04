@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:typed_data';
 import 'package:http/http.dart' as http;
@@ -24,6 +25,20 @@ class ApiService {
     'X-App-Commit': appCommit,
   };
 
+  // No HTTP call may hang forever. A half-open socket is routine on mobile
+  // network handoff and PWA resume, and an un-timed-out await wedges the
+  // caller: a stalled refreshSession leaves AuthProvider._isRestoringSession
+  // true and AuthGate spinning until force-quit. Budgets are per class, not one
+  // global value — a tight media budget would fail large uploads on slow links
+  // that currently succeed.
+  //
+  // Future.timeout completes the await; it cannot abort the in-flight socket.
+  // That is the point: the caller stops waiting and its existing failure path
+  // becomes reachable.
+  static const Duration _kAuthTimeout = Duration(seconds: 15);
+  static const Duration _kUploadTimeout = Duration(seconds: 60);
+  static const Duration _kDefaultTimeout = Duration(seconds: 20);
+
   ApiService({required this.baseUrl, http.Client? httpClient})
       : _httpClient = httpClient ?? http.Client();
 
@@ -40,6 +55,18 @@ class ApiService {
     return '$fallback (${response.statusCode})';
   }
 
+  /// Multipart send under ONE deadline covering both the request and the body
+  /// drain — timing them separately would allow twice the intended budget.
+  Future<http.Response> _sendMultipart(
+    http.MultipartRequest request,
+    Duration timeout,
+  ) {
+    return Future(() async {
+      final streamedResponse = await _httpClient.send(request);
+      return http.Response.fromStream(streamedResponse);
+    }).timeout(timeout);
+  }
+
   Future<Map<String, dynamic>> register(
     String username,
     String password,
@@ -50,7 +77,7 @@ class ApiService {
       Uri.parse('$baseUrl/auth/register'),
       headers: _authJsonHeaders,
       body: jsonEncode(body),
-    );
+    ).timeout(_kAuthTimeout);
 
     if (response.statusCode != 201) {
       throw Exception(_errorMessage(response, 'Registration failed'));
@@ -64,7 +91,7 @@ class ApiService {
       Uri.parse('$baseUrl/auth/login'),
       headers: _authJsonHeaders,
       body: jsonEncode({'identifier': identifier, 'password': password}),
-    );
+    ).timeout(_kAuthTimeout);
 
     if (response.statusCode != 201 && response.statusCode != 200) {
       throw Exception(_errorMessage(response, 'Login failed'));
@@ -84,7 +111,7 @@ class ApiService {
         Uri.parse('$baseUrl/auth/refresh'),
         headers: _authJsonHeaders,
         body: jsonEncode({'refresh_token': refreshToken}),
-      );
+      ).timeout(_kAuthTimeout);
 
       final status = response.statusCode;
       if (status == 401 || status == 403) {
@@ -123,6 +150,11 @@ class ApiService {
       rethrow;
     } on SessionRefreshTransientException {
       rethrow;
+    } on TimeoutException {
+      // MUST be transient, never invalid: transient holds the session, invalid
+      // clears local auth state. Mapping a network timeout to invalid would
+      // convert a blip into a logout.
+      throw SessionRefreshTransientException('Session refresh timed out');
     } on http.ClientException catch (e) {
       throw SessionRefreshTransientException(e.message);
     }
@@ -133,7 +165,7 @@ class ApiService {
       Uri.parse('$baseUrl/auth/logout'),
       headers: _authJsonHeaders,
       body: jsonEncode({'refresh_token': refreshToken}),
-    );
+    ).timeout(_kAuthTimeout);
     if (response.statusCode != 204 && response.statusCode != 200) {
       try {
         final data = jsonDecode(response.body) as Map<String, dynamic>;
@@ -167,8 +199,7 @@ class ApiService {
       ),
     );
 
-    final streamedResponse = await _httpClient.send(request);
-    final response = await http.Response.fromStream(streamedResponse);
+    final response = await _sendMultipart(request, _kUploadTimeout);
 
     if (response.statusCode != 201 && response.statusCode != 200) {
       throw Exception(_errorMessage(response, 'Upload failed'));
@@ -184,7 +215,7 @@ class ApiService {
     final response = await _httpClient.post(
       Uri.parse('$baseUrl/users/profile-photos/$photoId/main'),
       headers: {'Authorization': 'Bearer $token'},
-    );
+    ).timeout(_kDefaultTimeout);
     // Nest returns 201 for POST by default.
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception(_errorMessage(response, 'Unable to set primary photo'));
@@ -202,7 +233,7 @@ class ApiService {
     final response = await _httpClient.delete(
       Uri.parse('$baseUrl/users/profile-photos/$photoId'),
       headers: {'Authorization': 'Bearer $token'},
-    );
+    ).timeout(_kDefaultTimeout);
     if (response.statusCode != 200) {
       throw Exception(_errorMessage(response, 'Unable to delete profile photo'));
     }
@@ -223,7 +254,7 @@ class ApiService {
         'Authorization': 'Bearer $token',
       },
       body: jsonEncode({'orderedIds': orderedIds}),
-    );
+    ).timeout(_kDefaultTimeout);
     // Nest returns 201 for POST by default.
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception(_errorMessage(response, 'Unable to reorder photos'));
@@ -242,7 +273,7 @@ class ApiService {
         'Authorization': 'Bearer $token',
       },
       body: jsonEncode({'about': about}),
-    );
+    ).timeout(_kDefaultTimeout);
     if (response.statusCode != 200) {
       throw Exception(_errorMessage(response, 'Unable to update profile'));
     }
@@ -265,7 +296,7 @@ class ApiService {
         'oldPassword': oldPassword,
         'newPassword': newPassword,
       }),
-    );
+    ).timeout(_kDefaultTimeout);
 
     if (response.statusCode != 201 && response.statusCode != 200) {
       throw Exception(_errorMessage(response, 'Password reset failed'));
@@ -280,7 +311,7 @@ class ApiService {
         'Authorization': 'Bearer $token',
       },
       body: jsonEncode({'password': password}),
-    );
+    ).timeout(_kDefaultTimeout);
 
     if (response.statusCode != 200) {
       throw Exception(_errorMessage(response, 'Account deletion failed'));
@@ -299,7 +330,7 @@ class ApiService {
         'Authorization': 'Bearer $jwtToken',
       },
       body: jsonEncode({'token': fcmToken, 'platform': platform}),
-    );
+    ).timeout(_kDefaultTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to register FCM token');
@@ -314,7 +345,7 @@ class ApiService {
         'Authorization': 'Bearer $jwtToken',
       },
       body: jsonEncode({'token': fcmToken}),
-    );
+    ).timeout(_kDefaultTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to remove FCM token');
@@ -332,7 +363,7 @@ class ApiService {
         'Authorization': 'Bearer $jwtToken',
       },
       body: jsonEncode(subscription),
-    );
+    ).timeout(_kDefaultTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to register Web Push subscription');
@@ -350,7 +381,7 @@ class ApiService {
         'Authorization': 'Bearer $jwtToken',
       },
       body: jsonEncode({'endpoint': endpoint}),
-    );
+    ).timeout(_kDefaultTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to remove Web Push subscription');
@@ -385,8 +416,7 @@ class ApiService {
       ),
     );
 
-    final streamedResponse = await _httpClient.send(request);
-    final response = await http.Response.fromStream(streamedResponse);
+    final response = await _sendMultipart(request, _kUploadTimeout);
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception(_errorMessage(response, 'Upload failed'));
     }
@@ -401,7 +431,7 @@ class ApiService {
         'Authorization': 'Bearer $token',
       },
       body: jsonEncode({'ciphertext': ciphertext, 'expiresIn': expiresIn}),
-    );
+    ).timeout(_kDefaultTimeout);
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception('Failed to create secret note: ${response.statusCode}');
     }
@@ -417,7 +447,7 @@ class ApiService {
     final response = await _httpClient.get(
       Uri.parse('$baseUrl/note/$noteToken/status'),
       headers: {'Authorization': 'Bearer $token'},
-    );
+    ).timeout(_kDefaultTimeout);
     if (response.statusCode != 200) {
       throw Exception('Note status check failed: ${response.statusCode}');
     }
@@ -434,7 +464,7 @@ class ApiService {
         'Authorization': 'Bearer $token',
       },
       body: jsonEncode({'text': text}),
-    );
+    ).timeout(_kDefaultTimeout);
 
     if (response.statusCode != 200 && response.statusCode != 201) return null;
 
@@ -480,7 +510,9 @@ class ApiService {
     final headers = sameOrigin && resolved.contains('/media/msgs/')
         ? {'Authorization': 'Bearer $token'}
         : <String, String>{};
-    final response = await _httpClient.get(Uri.parse(resolved), headers: headers);
+    final response = await _httpClient
+        .get(Uri.parse(resolved), headers: headers)
+        .timeout(_kDefaultTimeout);
     if (response.statusCode != 200) {
       throw Exception('Media fetch failed: ${response.statusCode}');
     }
@@ -491,7 +523,7 @@ class ApiService {
     final response = await _httpClient.get(
       Uri.parse('$baseUrl/users/me'),
       headers: {'Authorization': 'Bearer $token'},
-    );
+    ).timeout(_kDefaultTimeout);
     if (response.statusCode != 200) {
       throw Exception('HTTP_${response.statusCode}: fetchMe failed');
     }

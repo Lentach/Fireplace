@@ -156,6 +156,11 @@ class SettingsProvider extends ChangeNotifier {
   ChatBackgroundPreference _chatBackground =
       ChatBackgroundPreference.themeDefault;
 
+  /// Bumped by every explicit [setChatBackground]. [loadChatBackground] is a
+  /// read-modify-write spanning several awaits; a choice made inside that
+  /// window must not be overwritten by the migration's default.
+  int _chatBackgroundGeneration = 0;
+
   ChatBackgroundPreference get chatBackground => _chatBackground;
 
   ChatBackgroundLayer get resolvedChatBackground => resolveChatBackground(
@@ -208,6 +213,7 @@ class SettingsProvider extends ChangeNotifier {
   /// other accounts that may not have logged in on this device yet. It is no
   /// longer runtime state after this account gets an explicit new value.
   Future<void> loadChatBackground(int userId) async {
+    final generation = _chatBackgroundGeneration;
     final prefs = await SharedPreferences.getInstance();
     final key = _backgroundKey(userId);
     final stored = prefs.getString(key);
@@ -241,6 +247,7 @@ class SettingsProvider extends ChangeNotifier {
             ? ChatBackgroundPreference.glyphs
             : ChatBackgroundPreference.themeDefault;
       }
+      if (_chatBackgroundGeneration != generation) return;
       await prefs.setString(key, _serializeBackground(next));
     }
 
@@ -248,6 +255,7 @@ class SettingsProvider extends ChangeNotifier {
       await prefs.remove(legacyKey);
     }
 
+    if (_chatBackgroundGeneration != generation) return;
     if (next == _chatBackground) return;
     _chatBackground = next;
     notifyListeners();
@@ -258,6 +266,7 @@ class SettingsProvider extends ChangeNotifier {
     ChatBackgroundPreference preference,
   ) async {
     if (preference == _chatBackground) return;
+    _chatBackgroundGeneration++;
     _chatBackground = preference;
     notifyListeners();
     final prefs = await SharedPreferences.getInstance();

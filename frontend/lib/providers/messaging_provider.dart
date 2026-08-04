@@ -593,6 +593,11 @@ class MessagingProvider extends ChangeNotifier {
   @override
   void dispose() {
     _pingEffectConsumerDisposed = true;
+    // Mirror onDisconnect: none of onDisconnect / onConnect / clearAll is
+    // guaranteed to run before teardown, so a pending typing / delayed-retry /
+    // live-decrypt-retry timer would fire past super.dispose() and notify a
+    // disposed ChangeNotifier.
+    onDisconnect();
     _incomingSound.dispose();
     countdownTickNotifier.dispose();
     super.dispose();

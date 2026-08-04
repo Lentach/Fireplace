@@ -193,6 +193,12 @@ void main() {
     _expectExactlyOnePeerRow(tester, 2);
     expect(find.byKey(const Key('invitation-action-progress')), findsOneWidget);
     expect(find.text('Invitation accepted'), findsNothing);
+
+    // The in-flight frame is the assertion. Drain the action so its ack-timeout
+    // timer (FriendsProvider bounds every invitation round trip) does not
+    // outlive the widget tree.
+    friends.clearAll();
+    await tester.pump();
   });
 
   testWidgets(
