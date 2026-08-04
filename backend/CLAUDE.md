@@ -74,7 +74,7 @@ Entities in `backend/src/**/*.entity.ts` define the dev schema (TypeORM `synchro
 - FKs to `users` with `ON DELETE CASCADE` exist on `key_bundles.userId`, `one_time_pre_keys.userId`, `fcm_token.userId`, `web_push_subscription.userId`, `secret_notes.creatorId` (migration `0002_user_foreign_keys.sql`; entities carry matching `@ManyToOne` relations, scalar `userId`/`creatorId` columns stay the API). Account-delete service cleanup remains for media files and non-cascading tables; the FKs are the backstop against orphan rows.
 - Cascades present: friend request sender/receiver FKs, blocked blocker/blocked FKs, refresh token `user_id`. Conversations/messages do not cascade from users in entities.
 - `messages.reactions` is nullable text containing JSON string `{ emoji: [userId] }`, not a JSON column.
-- `messages.hiddenByUserIds` is comma-separated text for delete-for-me.
+- `messages.hiddenByUserIds` is comma-separated text for delete-for-me. Since 2026-08-03 it is also a DESTRUCTION trigger: `hideMessageForUser` hard-deletes the row (media before row, replies detached first — the `reply_to_message_id` self-FK has no ON DELETE) once EVERY participant id from the conversation relation appears in it. The append is one atomic `UPDATE … RETURNING`; the guard fails closed (missing relation/empty set = never delete) and a one-participant hide must NEVER delete — falsified tests pin all of this in `messages.service.spec.ts`.
 
 ## 5. Auth and sessions
 

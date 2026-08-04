@@ -515,11 +515,12 @@ describe('MessagesService.hideMessageForUser', () => {
     expect(detachCall).toBeDefined();
     expect(detachCall![0]).toContain('SET reply_to_message_id = NULL');
     const deleteOrder = repo.delete.mock.invocationCallOrder[0];
-    expect(
-      mediaCleanup.deleteMediaFile.mock.invocationCallOrder[0],
-    ).toBeLessThan(deleteOrder);
     const detachOrder =
       repo.query.mock.invocationCallOrder[repo.query.mock.calls.length - 1];
+    // Full pinned order: media unlink → reply detach → row delete.
+    expect(
+      mediaCleanup.deleteMediaFile.mock.invocationCallOrder[0],
+    ).toBeLessThan(detachOrder);
     expect(detachOrder).toBeLessThan(deleteOrder);
   });
 
