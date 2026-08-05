@@ -432,6 +432,75 @@ void main() {
       });
 
     });
+
+    group('mute survives unrelated conversation mutations', () {
+      ConversationsProvider mutedProvider() {
+        final provider = ConversationsProvider();
+        provider.onConnect(false);
+        provider.onConversationsList([
+          {
+            'id': 10,
+            'userOne': {'id': 1, 'username': 'alice', 'tag': '0001'},
+            'userTwo': {'id': 2, 'username': 'bob', 'tag': '0002'},
+            'createdAt': DateTime.utc(2026, 1, 1).toIso8601String(),
+            'muted': true,
+            'mutedUntil': DateTime.utc(2026, 6, 1).toIso8601String(),
+          },
+        ]);
+        return provider;
+      }
+
+      ConversationModel only(ConversationsProvider p) =>
+          p.conversations.firstWhere((c) => c.id == 10);
+
+      test('onMessagePinned keeps muted and mutedUntil', () {
+        final provider = mutedProvider();
+        provider.onMessagePinned({
+          'conversationId': 10,
+          'pinnedMessageId': 77,
+        });
+
+        expect(only(provider).pinnedMessageId, 77);
+        expect(only(provider).muted, isTrue);
+        expect(only(provider).mutedUntil, DateTime.utc(2026, 6, 1));
+      });
+
+      test('onMessageUnpinned clears the pin and keeps mute', () {
+        final provider = mutedProvider();
+        provider.onMessagePinned({
+          'conversationId': 10,
+          'pinnedMessageId': 77,
+        });
+        provider.onMessageUnpinned({'conversationId': 10});
+
+        expect(only(provider).pinnedMessageId, isNull);
+        expect(only(provider).pinnedMessagePreview, isNull);
+        expect(only(provider).muted, isTrue);
+      });
+
+      test('setDisappearingTimer keeps mute and can clear the timer', () {
+        final provider = mutedProvider();
+        provider.setDisappearingTimer(10, 3600);
+        expect(only(provider).disappearingTimer, 3600);
+        expect(only(provider).muted, isTrue);
+
+        provider.setDisappearingTimer(10, null);
+        expect(only(provider).disappearingTimer, isNull);
+        expect(only(provider).muted, isTrue);
+      });
+
+      test('onConversationMuteUpdated can clear mutedUntil', () {
+        final provider = mutedProvider();
+        provider.onConversationMuteUpdated({
+          'conversationId': 10,
+          'muted': false,
+          'mutedUntil': null,
+        });
+
+        expect(only(provider).muted, isFalse);
+        expect(only(provider).mutedUntil, isNull);
+      });
+    });
   });
 }
 

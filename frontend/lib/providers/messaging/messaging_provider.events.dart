@@ -176,7 +176,11 @@ extension MessagingEvents on MessagingProvider {
     DateTime? newExpiresAt;
     final expiresAtRaw = map['expiresAt'];
     if (expiresAtRaw is String) {
-      newExpiresAt = DateTime.parse(expiresAtRaw);
+      // tryParse, not parse: a malformed timestamp would throw inside this
+      // synchronous socket handler and abort the delivery-status update, the
+      // cache patch and the conversation-list update for this message.
+      // Same rule as ServerClock.observeIso.
+      newExpiresAt = DateTime.tryParse(expiresAtRaw);
     }
 
     // Keep the stored record's deadline authoritative. A read-mode
@@ -408,9 +412,9 @@ extension MessagingEvents on MessagingProvider {
     final messageId = m['messageId'] as int;
     final conversationId = m['conversationId'] as int?;
     final newCipher = m['encryptedContent'] as String?;
-    final editedAt = m['editedAt'] != null
-        ? DateTime.parse(m['editedAt'] as String)
-        : null;
+    final editedAtRaw = m['editedAt'];
+    final editedAt =
+        editedAtRaw is String ? DateTime.tryParse(editedAtRaw) : null;
 
     // Edit-vs-delete race: a deleted row must stay gone.
     if (_deletedMessageIds.contains(messageId)) return;

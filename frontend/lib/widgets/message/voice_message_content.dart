@@ -361,13 +361,20 @@ class VoiceMessageContent extends StatelessWidget {
                               ),
                               const SizedBox(width: 4),
                               _buildDeliveryIcon(context),
-                              ValueListenableBuilder<int>(
-                                valueListenable: context
-                                    .read<MessagingProvider>()
-                                    .countdownTickNotifier,
-                                builder: (context, tick, child) =>
-                                    _buildEphemeralMeta(metaColor),
-                              ),
+                              // Subscribe to the 1 Hz countdown tick only for
+                              // a genuinely ephemeral message; otherwise every
+                              // visible voice bubble rebuilt once per second
+                              // for a SizedBox.shrink.
+                              if (HearthFadeArcIndicator.showsEphemeralState(
+                                message,
+                              ))
+                                ValueListenableBuilder<int>(
+                                  valueListenable: context
+                                      .read<MessagingProvider>()
+                                      .countdownTickNotifier,
+                                  builder: (context, tick, child) =>
+                                      _buildEphemeralMeta(metaColor),
+                                ),
                             ],
                           ),
                         ),

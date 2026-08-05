@@ -219,6 +219,34 @@ void main() {
       expect(provider.messages.first.deliveryStatus, MessageDeliveryStatus.read);
     });
 
+    test('messageDelivered with a malformed expiresAt still applies', () {
+      final msg = MessageModel(
+        id: 1,
+        content: 'hello',
+        senderId: 2,
+        senderUsername: 'bob',
+        conversationId: 10,
+        deliveryStatus: MessageDeliveryStatus.sent,
+        createdAt: DateTime.utc(2026, 1, 1),
+      );
+      provider.seedCacheForTest(10, [msg]);
+      provider.setActiveConversationIdForTest(10);
+      provider.loadCachedMessages(10);
+
+      // An unguarded DateTime.parse threw inside this synchronous socket
+      // handler and aborted the delivery-status update, the cache patch and
+      // the conversation-list update for this message.
+      provider.onMessageDelivered({
+        'messageId': 1,
+        'conversationId': 10,
+        'deliveryStatus': 'READ',
+        'expiresAt': 'not-a-timestamp',
+      });
+
+      expect(provider.messages.first.deliveryStatus, MessageDeliveryStatus.read);
+      expect(provider.messages.first.expiresAt, isNull);
+    });
+
     test('plain incoming message updates cache for active conversation', () {
       provider.seedCacheForTest(10, [_msg(1, 10)]);
       provider.setActiveConversationIdForTest(10);

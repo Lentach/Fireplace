@@ -76,7 +76,14 @@ class _GifMessageContentState extends State<GifMessageContent> {
 
     if (kIsWeb) {
       final blobUrl = gif_blob.createGifObjectUrl(bytes);
-      if (mounted) setState(() => _objectUrl = blobUrl);
+      if (!mounted) {
+        // Disposed between create and here: dispose() already ran and saw a
+        // null _objectUrl, so nothing else will ever revoke this handle and it
+        // pins the full decoded GIF until the tab reloads.
+        gif_blob.revokeGifObjectUrl(blobUrl);
+        return const _GifDisplay.error();
+      }
+      setState(() => _objectUrl = blobUrl);
       return _GifDisplay.network(blobUrl);
     }
     return _GifDisplay.memory(bytes);

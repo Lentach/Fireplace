@@ -81,6 +81,9 @@ class ChatInputBarState extends State<ChatInputBar> {
 
   Timer? _typingDebounceTimer;
   MessagingProvider? _messagingProvider;
+  // Cached for _handleVoiceSent, which can run after this State is unmounted
+  // (RecordingController.stopAndSend deliberately outlives a mid-stop teardown).
+  ConversationsProvider? _conversationsProvider;
 
   // Cached so dispose removes the listener from the SAME instance initState
   // added it to, even when a test overrides the shared source between mounts.
@@ -324,6 +327,7 @@ class ChatInputBarState extends State<ChatInputBar> {
       _onReplyTargetChanged(messaging.replyingToMessage);
       _onEditTargetChanged(messaging.editingMessage);
     }
+    _conversationsProvider = context.read<ConversationsProvider>();
   }
 
   void _onReplyTargetChanged(MessageModel? replyingTo) {
@@ -556,6 +560,10 @@ class ChatInputBarState extends State<ChatInputBar> {
   /// Recording replaces the composer row — close the emoji panel with it
   /// (Telegram parity: mic tap dismisses the panel).
   void _onRecordingStateChanged(bool isRecording) {
+    if (!mounted) {
+      _isRecording = isRecording;
+      return;
+    }
     setState(() {
       _isRecording = isRecording;
       if (isRecording) _setEmojiPickerVisible(false);
@@ -633,28 +641,37 @@ class ChatInputBarState extends State<ChatInputBar> {
   }
 
   /// Called by [RecordingController] when a voice message is ready.
+  ///
+  /// May run after this State is unmounted: `stopAndSend` keeps going through a
+  /// mid-stop teardown so the recording is not silently destroyed. Providers are
+  /// therefore read from the cached references and every `context` use is
+  /// mounted-gated. [conversationId] is the id captured when send was tapped —
+  /// ChatDetailScreen.dispose has already cleared the provider's active id by
+  /// the time a post-teardown send lands here.
   Future<void> _handleVoiceSent({
     required int duration,
+    int? conversationId,
     String? localAudioPath,
     Uint8List? audioBytes,
   }) async {
-    final messaging = context.read<MessagingProvider>();
-    final convs = context.read<ConversationsProvider>();
-    final l10n = AppLocalizations.of(context);
-    final conversationId = convs.activeConversationId;
-    final failedToSendMessage = l10n.snackbarFailedToSendVoiceMessage;
-    final noActiveConversationMessage = l10n.snackbarNoActiveConversation;
+    final messaging = _messagingProvider ?? context.read<MessagingProvider>();
+    final convs =
+        _conversationsProvider ?? context.read<ConversationsProvider>();
+    final targetConversationId = conversationId ?? convs.activeConversationId;
 
-    setState(() => _isSendingVoice = true);
+    if (mounted) setState(() => _isSendingVoice = true);
     try {
-      if (conversationId == null) {
+      if (targetConversationId == null) {
         if (!mounted) return;
-        showTopSnackBar(context, noActiveConversationMessage);
+        showTopSnackBar(
+          context,
+          AppLocalizations.of(context).snackbarNoActiveConversation,
+        );
         return;
       }
 
       final conversation = convs.conversations.firstWhere(
-        (c) => c.id == conversationId,
+        (c) => c.id == targetConversationId,
       );
       final recipientId = conversation.userOne.id == convs.currentUserId
           ? conversation.userTwo.id
@@ -663,14 +680,17 @@ class ChatInputBarState extends State<ChatInputBar> {
       await messaging.sendVoiceMessage(
         recipientId: recipientId,
         duration: duration,
-        conversationId: conversationId,
+        conversationId: targetConversationId,
         localAudioPath: localAudioPath,
         localAudioBytes: audioBytes?.toList(),
       );
     } catch (e) {
-      if (!mounted) return;
-      showTopSnackBar(context, failedToSendMessage);
       debugPrint('Send voice error: $e');
+      if (!mounted) return;
+      showTopSnackBar(
+        context,
+        AppLocalizations.of(context).snackbarFailedToSendVoiceMessage,
+      );
     } finally {
       if (mounted) {
         setState(() => _isSendingVoice = false);
