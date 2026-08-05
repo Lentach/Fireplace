@@ -25,8 +25,10 @@ only the owner can make. Everything left over is written down, ordered, and safe
 | #133 | `41e2f0b` | Backend — 16 findings. Blocking someone now works correctly in every direction; several paths that could lose data or half-apply a change were made atomic. |
 | #134 | `195d894` | Frontend — 19 findings. Detail below. |
 | #135 | `2db65d9` | Backend — multi-tab delivery. Opening a second tab used to silently stop the first tab receiving messages. |
+| #130/#131/#132 | `953f98a` | Backend dependencies — undici, socket.io-parser, fast-uri. Three PRs that had been sitting open; merging them took GitHub's security alerts from **7 open (3 high, 4 moderate) to 0**. Backend-only; they ride the next backend deploy alongside migration `0011`. |
 
-CI was 4/4 green on each merge, including the end-to-end wire harness.
+CI was 4/4 green on each merge, including the end-to-end wire harness. There are now **zero open
+pull requests** and **zero open security alerts**.
 
 **The three frontend fixes that mattered most:**
 

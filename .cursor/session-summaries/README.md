@@ -1,12 +1,18 @@
 # Session summaries — how to read this directory
 
-225 dated files plus `LATEST.md`. All of them are tracked as of 2026-07-27.
+256 dated files plus `LATEST.md` (count verified 2026-08-05). All of them are tracked as of
+2026-07-27.
 
 ## Read this first
 
 - **`LATEST.md` is the skim layer.** Read it at session start. It holds at most the 5
   newest entries, ≤2600 words total and ≤700 per entry, enforced by `.githooks/pre-commit`.
   It is deliberately compressed — the dated file next to it has the full account.
+  **Entries are newest-first and the `**Date:**` line must match that order.** Two agents
+  working the same tree on 2026-08-04/05 each prepended an entry and left the block
+  chronologically scrambled, with the same PR described twice. If you land after another
+  agent, re-read the whole file before adding yours: fix the order, and fold your facts into
+  their entry rather than writing a competing one for the same day.
 - **Dated files are the archive.** `YYYY-MM-DD-session-<topic>.md`. Never delete one to
   "clean up"; the point of the archive is that a trap written down in April still applies
   in July.
