@@ -55,7 +55,9 @@ describe('ChatConversationService', () => {
         },
         {
           provide: ChatValidationService,
-          useValue: { validateCanMessage: jest.fn().mockResolvedValue({ valid: true }) },
+          useValue: {
+            validateCanMessage: jest.fn().mockResolvedValue({ valid: true }),
+          },
         },
         {
           provide: MediaCleanupService,
@@ -71,10 +73,16 @@ describe('ChatConversationService', () => {
     }).compile();
 
     service = module.get(ChatConversationService);
-    chatValidationService = module.get(ChatValidationService) as jest.Mocked<ChatValidationService>;
+    chatValidationService = module.get(
+      ChatValidationService,
+    ) as jest.Mocked<ChatValidationService>;
     usersService = module.get(UsersService) as jest.Mocked<UsersService>;
-    conversationsService = module.get(ConversationsService) as jest.Mocked<ConversationsService>;
-    messagesService = module.get(MessagesService) as jest.Mocked<MessagesService>;
+    conversationsService = module.get(
+      ConversationsService,
+    ) as jest.Mocked<ConversationsService>;
+    messagesService = module.get(
+      MessagesService,
+    ) as jest.Mocked<MessagesService>;
     notificationPreferences = module.get(
       ConversationNotificationPreferencesService,
     ) as jest.Mocked<ConversationNotificationPreferencesService>;
@@ -94,14 +102,15 @@ describe('ChatConversationService', () => {
         mockClient as any,
         { recipientId: 2 },
         mockServer as any,
-        new Map(),
       );
 
-      expect(chatValidationService.validateCanMessage).toHaveBeenCalledWith(1, 2);
-      expect(mockClient.emit).toHaveBeenCalledWith(
-        'error',
-        { message: 'You can only message friends' },
+      expect(chatValidationService.validateCanMessage).toHaveBeenCalledWith(
+        1,
+        2,
       );
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'You can only message friends',
+      });
       expect(conversationsService.findOrCreate).not.toHaveBeenCalled();
     });
 
@@ -109,14 +118,15 @@ describe('ChatConversationService', () => {
       usersService.findById
         .mockResolvedValueOnce({ id: 1, username: 'alice' } as any)
         .mockResolvedValueOnce({ id: 2, username: 'bob' } as any);
-      chatValidationService.validateCanMessage.mockResolvedValue({ valid: true });
+      chatValidationService.validateCanMessage.mockResolvedValue({
+        valid: true,
+      });
       conversationsService.findOrCreate.mockResolvedValue({ id: 10 } as any);
 
       await service.handleStartConversation(
         mockClient as any,
         { recipientId: 2 },
         mockServer as any,
-        new Map(),
       );
 
       expect(conversationsService.findOrCreate).toHaveBeenCalled();
@@ -168,13 +178,11 @@ describe('ChatConversationService', () => {
         mockClient as any,
         { conversationId: 10, messageId: 100 },
         mockServer as any,
-        new Map(),
       );
       await service.handlePinMessage(
         mockClient as any,
         { conversationId: 10, messageId: 101 },
         mockServer as any,
-        new Map(),
       );
 
       expect(conversationsService.setPinnedMessage).toHaveBeenNthCalledWith(
@@ -215,13 +223,11 @@ describe('ChatConversationService', () => {
         mockClient as any,
         { conversationId: 10, messageId: 100 },
         mockServer as any,
-        new Map(),
       );
 
-      expect(mockClient.emit).toHaveBeenCalledWith(
-        'error',
-        { message: 'Message not in conversation' },
-      );
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'Message not in conversation',
+      });
       expect(conversationsService.setPinnedMessage).not.toHaveBeenCalled();
     });
 
@@ -233,13 +239,11 @@ describe('ChatConversationService', () => {
         mockClient as any,
         { conversationId: 10, messageId: 100 },
         mockServer as any,
-        new Map(),
       );
 
-      expect(mockClient.emit).toHaveBeenCalledWith(
-        'error',
-        { message: 'Unauthorized' },
-      );
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'Unauthorized',
+      });
       expect(conversationsService.setPinnedMessage).not.toHaveBeenCalled();
     });
 
@@ -260,13 +264,11 @@ describe('ChatConversationService', () => {
         mockClient as any,
         { conversationId: 10, messageId: 100 },
         mockServer as any,
-        new Map(),
       );
 
-      expect(mockClient.emit).toHaveBeenCalledWith(
-        'error',
-        { message: 'Cannot pin expired message' },
-      );
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'Cannot pin expired message',
+      });
       expect(conversationsService.setPinnedMessage).not.toHaveBeenCalled();
     });
   });
@@ -278,10 +280,10 @@ describe('ChatConversationService', () => {
         userTwo: { id: 3 },
       } as never);
 
-      await service.handleSetConversationMute(
-        mockClient as unknown as Socket,
-        { conversationId: 10, duration: '8h' },
-      );
+      await service.handleSetConversationMute(mockClient as unknown as Socket, {
+        conversationId: 10,
+        duration: '8h',
+      });
 
       expect(mockClient.emit).toHaveBeenCalledWith('error', {
         message: 'Unauthorized',
@@ -300,10 +302,10 @@ describe('ChatConversationService', () => {
         until: new Date('2026-07-13T10:00:00.000Z'),
       });
 
-      await service.handleSetConversationMute(
-        mockClient as unknown as Socket,
-        { conversationId: 10, duration: '8h' },
-      );
+      await service.handleSetConversationMute(mockClient as unknown as Socket, {
+        conversationId: 10,
+        duration: '8h',
+      });
 
       expect(notificationPreferences.setMute).toHaveBeenCalledWith(1, 10, '8h');
       expect(mockClient.emit).toHaveBeenCalledWith('conversationMuteUpdated', {
@@ -311,6 +313,92 @@ describe('ChatConversationService', () => {
         muted: true,
         mutedUntil: new Date('2026-07-13T10:00:00.000Z'),
       });
+    });
+  });
+
+  describe('BE-007 multi-tab realtime delivery', () => {
+    // A per-user room whose membership set has TWO socket ids models a user
+    // with two tabs open. Addressing the room (not one socket id) is what the
+    // BE-007 fix guarantees: both tabs receive the event.
+    const onlineServer = (userId: number, socketIds: string[]) =>
+      ({
+        to: jest.fn().mockReturnThis(),
+        emit: jest.fn(),
+        sockets: {
+          adapter: { rooms: new Map([[`user:${userId}`, new Set(socketIds)]]) },
+          sockets: new Map(),
+        },
+      }) as unknown as Server;
+
+    it('delivers startConversation conversationsList to the recipient room, reaching every tab', async () => {
+      const server = onlineServer(2, ['tab-a', 'tab-b']);
+      usersService.findById
+        .mockResolvedValueOnce({ id: 1, username: 'alice' } as any)
+        .mockResolvedValueOnce({ id: 2, username: 'bob' } as any);
+      chatValidationService.validateCanMessage.mockResolvedValue({
+        valid: true,
+      });
+      conversationsService.findOrCreate.mockResolvedValue({ id: 10 } as any);
+
+      await service.handleStartConversation(
+        mockClient as any,
+        { recipientId: 2 },
+        server as any,
+      );
+
+      // Targets the room, not a socket id — a second tab would also receive.
+      expect(server.to).toHaveBeenCalledWith('user:2');
+      expect(server.to).not.toHaveBeenCalledWith('tab-a');
+    });
+
+    it('does NOT build the recipient conversations list when the recipient is offline', async () => {
+      const server = onlineServer(999, []); // recipient 2 is absent -> offline
+      usersService.findById
+        .mockResolvedValueOnce({ id: 1, username: 'alice' } as any)
+        .mockResolvedValueOnce({ id: 2, username: 'bob' } as any);
+      chatValidationService.validateCanMessage.mockResolvedValue({
+        valid: true,
+      });
+      conversationsService.findOrCreate.mockResolvedValue({ id: 10 } as any);
+
+      await service.handleStartConversation(
+        mockClient as any,
+        { recipientId: 2 },
+        server as any,
+      );
+
+      // Expensive build stays guarded: no conversations fetched for the offline peer.
+      expect(conversationsService.findByUser).not.toHaveBeenCalledWith(2);
+      expect(server.to).not.toHaveBeenCalledWith('user:2');
+    });
+
+    it('delivers messagePinned to the peer room, reaching every tab', async () => {
+      const server = onlineServer(2, ['tab-a', 'tab-b']);
+      const conv = { id: 10, userOne: { id: 1 }, userTwo: { id: 2 } };
+      conversationsService.findById.mockResolvedValue(conv as any);
+      conversationsService.setPinnedMessage.mockResolvedValue({
+        id: 10,
+        pinnedMessageId: 100,
+        pinnedAt: new Date(),
+        pinnedByUserId: 1,
+      } as any);
+      messagesService.findByIdWithConversation.mockResolvedValue({
+        id: 100,
+        content: 'a',
+        conversation: conv,
+        createdAt: new Date(),
+        expiresAt: null,
+        disappearAfterSeconds: null,
+      } as any);
+
+      await service.handlePinMessage(
+        mockClient as any,
+        { conversationId: 10, messageId: 100 },
+        server as any,
+      );
+
+      expect(server.to).toHaveBeenCalledWith('user:2');
+      expect(server.to).not.toHaveBeenCalledWith('tab-a');
     });
   });
 });

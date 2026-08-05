@@ -1,5 +1,6 @@
 import { ConflictException, Injectable, Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
+import { userRoom, isUserOnline } from '../utils/user-room';
 import { FriendsService } from '../../friends/friends.service';
 import { BlockedService } from '../../blocked/blocked.service';
 import { UsersService } from '../../users/users.service';
@@ -45,7 +46,6 @@ export class ChatFriendRequestService {
     client: Socket,
     server: Server,
     clientUserId: number,
-    otherSocketId: string | undefined,
     otherUserId: number | undefined,
   ): Promise<void> {
     try {
@@ -54,9 +54,9 @@ export class ChatFriendRequestService {
         'friendsList',
         clientFriends.map((u) => UserMapper.toPayload(u)),
       );
-      if (otherSocketId != null && otherUserId != null) {
+      if (otherUserId != null && isUserOnline(server, otherUserId)) {
         const otherFriends = await this.friendsService.getFriends(otherUserId);
-        server.to(otherSocketId).emit(
+        server.to(userRoom(otherUserId)).emit(
           'friendsList',
           otherFriends.map((u) => UserMapper.toPayload(u)),
         );
@@ -72,15 +72,14 @@ export class ChatFriendRequestService {
     client: Socket,
     server: Server,
     clientUserId: number,
-    otherSocketId: string | undefined,
     otherUserId: number | undefined,
   ): Promise<void> {
     try {
       const clientList = await this._buildConversationsList(clientUserId);
       client.emit('conversationsList', clientList);
-      if (otherSocketId != null && otherUserId != null) {
+      if (otherUserId != null && isUserOnline(server, otherUserId)) {
         const otherList = await this._buildConversationsList(otherUserId);
-        server.to(otherSocketId).emit('conversationsList', otherList);
+        server.to(userRoom(otherUserId)).emit('conversationsList', otherList);
       }
     } catch (error) {
       this.logger.error('emitConversationsListToBoth (non-critical):', error);
@@ -111,18 +110,17 @@ export class ChatFriendRequestService {
     client: Socket,
     server: Server,
     clientUserId: number,
-    otherSocketId: string | undefined,
     otherUserId: number | undefined,
   ): Promise<void> {
     try {
       const clientCount =
         await this.friendsService.getPendingRequestCount(clientUserId);
       client.emit('pendingRequestsCount', { count: clientCount });
-      if (otherSocketId != null && otherUserId != null) {
+      if (otherUserId != null && isUserOnline(server, otherUserId)) {
         const otherCount =
           await this.friendsService.getPendingRequestCount(otherUserId);
         server
-          .to(otherSocketId)
+          .to(userRoom(otherUserId))
           .emit('pendingRequestsCount', { count: otherCount });
       }
     } catch (error) {
@@ -135,7 +133,6 @@ export class ChatFriendRequestService {
     client: Socket,
     server: Server,
     clientUserId: number,
-    otherSocketId: string | undefined,
     otherUserId: number | undefined,
   ): Promise<void> {
     try {
@@ -145,11 +142,11 @@ export class ChatFriendRequestService {
         'sentRequestsList',
         clientSentRequests.map(FriendRequestMapper.toPayload),
       );
-      if (otherSocketId != null && otherUserId != null) {
+      if (otherUserId != null && isUserOnline(server, otherUserId)) {
         const otherSentRequests =
           await this.friendsService.getSentRequests(otherUserId);
         server
-          .to(otherSocketId)
+          .to(userRoom(otherUserId))
           .emit(
             'sentRequestsList',
             otherSentRequests.map(FriendRequestMapper.toPayload),
@@ -167,9 +164,7 @@ export class ChatFriendRequestService {
     sender: User,
     recipient: User,
     payload: any,
-    onlineUsers: Map<number, string>,
   ): Promise<void> {
-    const recipientSocketId = onlineUsers.get(recipient.id);
     let conversation: { id: number } | null = null;
     try {
       conversation = await this.conversationsService.findOrCreate(
@@ -190,7 +185,6 @@ export class ChatFriendRequestService {
       client,
       server,
       sender.id,
-      recipientSocketId,
       recipient.id,
     );
 
@@ -201,11 +195,9 @@ export class ChatFriendRequestService {
     };
     try {
       client.emit('friendRequestAccepted', acceptedPayload);
-      if (recipientSocketId) {
-        server
-          .to(recipientSocketId)
-          .emit('friendRequestAccepted', acceptedPayload);
-      }
+      server
+        .to(userRoom(recipient.id))
+        .emit('friendRequestAccepted', acceptedPayload);
     } catch (error) {
       this.logger.error(
         'emitAutoAcceptFlow: friendRequestAccepted (non-critical):',
@@ -213,35 +205,17 @@ export class ChatFriendRequestService {
       );
     }
 
-    await this.emitFriendsListToBoth(
-      client,
-      server,
-      sender.id,
-      recipientSocketId,
-      recipient.id,
-    );
+    await this.emitFriendsListToBoth(client, server, sender.id, recipient.id);
     await this.emitSentRequestsListToBoth(
       client,
       server,
       sender.id,
-      recipientSocketId,
       recipient.id,
     );
-    await this.emitPendingCountToBoth(
-      client,
-      server,
-      sender.id,
-      recipientSocketId,
-      recipient.id,
-    );
+    await this.emitPendingCountToBoth(client, server, sender.id, recipient.id);
   }
 
-  async handleSendFriendRequest(
-    client: Socket,
-    data: unknown,
-    server: Server,
-    onlineUsers: Map<number, string>,
-  ) {
+  async handleSendFriendRequest(client: Socket, data: unknown, server: Server) {
     const senderId: number = client.data.user?.id;
     if (!senderId) return;
 
@@ -340,14 +314,7 @@ export class ChatFriendRequestService {
       this.logger.debug(
         `Auto-accept: ${sender.username} <-> ${recipient.username}`,
       );
-      await this.emitAutoAcceptFlow(
-        client,
-        server,
-        sender,
-        recipient,
-        payload,
-        onlineUsers,
-      );
+      await this.emitAutoAcceptFlow(client, server, sender, recipient, payload);
     } else {
       // Normal pending request flow
       // Step 4a: Notify sender (important but not critical)
@@ -369,18 +336,24 @@ export class ChatFriendRequestService {
         );
       }
 
-      // Step 4b: Notify recipient if online (non-critical)
+      // Step 4b: Notify recipient (non-critical). newFriendRequest is a pure
+      // emit, so it goes to the per-user room unconditionally: a safe no-op
+      // when the recipient is offline, and delivered to every open tab (BE-007).
+      // The pending-count refresh runs a DB query, so it stays gated on presence
+      // to avoid work no live socket would consume.
       try {
-        const recipientSocketId = onlineUsers.get(recipient.id);
+        const recipientOnline = isUserOnline(server, recipient.id);
         this.logger.debug(
-          `sendFriendRequest: recipient ${recipient.username} (id=${recipient.id}) socketId=${recipientSocketId || 'OFFLINE'}`,
+          `sendFriendRequest: recipient ${recipient.username} (id=${recipient.id}) online=${recipientOnline}`,
         );
-        if (recipientSocketId) {
-          server.to(recipientSocketId).emit('newFriendRequest', payload);
+        server.to(userRoom(recipient.id)).emit('newFriendRequest', payload);
+        if (recipientOnline) {
           const count = await this.friendsService.getPendingRequestCount(
             recipient.id,
           );
-          server.to(recipientSocketId).emit('pendingRequestsCount', { count });
+          server
+            .to(userRoom(recipient.id))
+            .emit('pendingRequestsCount', { count });
           this.logger.debug(
             `sendFriendRequest: emitted newFriendRequest + pendingRequestsCount(${count}) to recipient`,
           );
@@ -398,7 +371,6 @@ export class ChatFriendRequestService {
     client: Socket,
     data: unknown,
     server: Server,
-    onlineUsers: Map<number, string>,
   ) {
     const userId: number = client.data.user?.id;
     if (!userId) return;
@@ -423,7 +395,6 @@ export class ChatFriendRequestService {
 
     // Step 1: Accept the friend request (CRITICAL - if this fails, entire operation fails)
     let friendRequest: FriendRequest;
-    let senderSocketId: string | undefined;
     try {
       this.logger.debug(
         `acceptFriendRequest: requestId=${dto.requestId}, userId=${userId}`,
@@ -435,8 +406,6 @@ export class ChatFriendRequestService {
       this.logger.debug(
         `acceptFriendRequest: accepted, sender=${friendRequest.sender.id} (${friendRequest.sender.username}), receiver=${friendRequest.receiver.id} (${friendRequest.receiver.username})`,
       );
-
-      senderSocketId = onlineUsers.get(friendRequest.sender.id);
     } catch (error) {
       this.logger.error(
         'acceptFriendRequest: Failed to accept request:',
@@ -482,7 +451,6 @@ export class ChatFriendRequestService {
       client,
       server,
       userId,
-      senderSocketId,
       friendRequest.sender.id,
     );
 
@@ -492,9 +460,9 @@ export class ChatFriendRequestService {
       chatReady: conversation !== null,
     };
     client.emit('friendRequestAccepted', acceptedPayload);
-    if (senderSocketId) {
-      server.to(senderSocketId).emit('friendRequestAccepted', acceptedPayload);
-    }
+    server
+      .to(userRoom(friendRequest.sender.id))
+      .emit('friendRequestAccepted', acceptedPayload);
 
     // Step 4: Update friend requests list and pending count (non-critical)
     try {
@@ -509,12 +477,12 @@ export class ChatFriendRequestService {
         'sentRequestsList',
         sentRequests.map(FriendRequestMapper.toPayload),
       );
-      if (senderSocketId) {
+      if (isUserOnline(server, friendRequest.sender.id)) {
         const senderSentRequests = await this.friendsService.getSentRequests(
           friendRequest.sender.id,
         );
         server
-          .to(senderSocketId)
+          .to(userRoom(friendRequest.sender.id))
           .emit(
             'sentRequestsList',
             senderSentRequests.map(FriendRequestMapper.toPayload),
@@ -535,7 +503,6 @@ export class ChatFriendRequestService {
       client,
       server,
       userId,
-      senderSocketId,
       friendRequest.sender.id,
     );
   }
@@ -544,7 +511,6 @@ export class ChatFriendRequestService {
     client: Socket,
     data: unknown,
     server: Server,
-    onlineUsers: Map<number, string>,
   ) {
     const userId: number = client.data.user?.id;
     if (!userId) return;
@@ -604,13 +570,12 @@ export class ChatFriendRequestService {
       sentRequests.map(FriendRequestMapper.toPayload),
     );
 
-    const senderSocketId = onlineUsers.get(friendRequest.sender.id);
-    if (senderSocketId) {
+    if (isUserOnline(server, friendRequest.sender.id)) {
       const senderSentRequests = await this.friendsService.getSentRequests(
         friendRequest.sender.id,
       );
       server
-        .to(senderSocketId)
+        .to(userRoom(friendRequest.sender.id))
         .emit(
           'sentRequestsList',
           senderSentRequests.map(FriendRequestMapper.toPayload),
@@ -626,7 +591,6 @@ export class ChatFriendRequestService {
     client: Socket,
     data: unknown,
     server: Server,
-    onlineUsers: Map<number, string>,
   ) {
     const userId: number = client.data.user?.id;
     if (!userId) return;
@@ -714,12 +678,10 @@ export class ChatFriendRequestService {
       return;
     }
 
-    const peerSocketId = onlineUsers.get(dto.peerUserId);
     await this.emitConversationsListToBoth(
       client,
       server,
       userId,
-      peerSocketId,
       dto.peerUserId,
     );
     client.emit('invitationChatReady', {
@@ -764,12 +726,7 @@ export class ChatFriendRequestService {
     client.emit('friendsList', list);
   }
 
-  async handleUnfriend(
-    client: Socket,
-    data: any,
-    server: Server,
-    onlineUsers: Map<number, string>,
-  ) {
+  async handleUnfriend(client: Socket, data: any, server: Server) {
     const currentUserId: number = client.data.user?.id;
     if (!currentUserId) return;
 
@@ -826,16 +783,12 @@ export class ChatFriendRequestService {
       // Continue - users are unfriended even if conversation deletion failed
     }
 
-    const otherUserSocketId = onlineUsers.get(data.userId);
-
     // Step 3: Notify both users (non-critical)
     try {
       client.emit('unfriended', { userId: currentUserId });
-      if (otherUserSocketId) {
-        server
-          .to(otherUserSocketId)
-          .emit('unfriended', { userId: currentUserId });
-      }
+      server
+        .to(userRoom(data.userId))
+        .emit('unfriended', { userId: currentUserId });
     } catch (error) {
       this.logger.error(
         'handleUnfriend: emit unfriended (non-critical):',
@@ -848,14 +801,12 @@ export class ChatFriendRequestService {
       client,
       server,
       currentUserId,
-      otherUserSocketId,
       data.userId,
     );
     await this.emitFriendsListToBoth(
       client,
       server,
       currentUserId,
-      otherUserSocketId,
       data.userId,
     );
   }

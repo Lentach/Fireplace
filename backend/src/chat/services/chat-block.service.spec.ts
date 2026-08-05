@@ -5,7 +5,6 @@ describe('ChatBlockService', () => {
   let mockBlockedService: any;
   let mockServer: any;
   let mockClient: any;
-  let onlineUsers: Map<number, string>;
 
   beforeEach(() => {
     mockBlockedService = {
@@ -19,41 +18,52 @@ describe('ChatBlockService', () => {
       emit: jest.fn(),
     };
     mockClient = { data: { user: { id: 1 } }, emit: jest.fn() };
-    onlineUsers = new Map([[2, 'socket-2']]);
   });
 
   describe('handleBlockUser', () => {
     it('should block user and emit blockedList + youWereBlocked', async () => {
-      await service.handleBlockUser(mockClient, { userId: 2 }, mockServer, onlineUsers);
+      await service.handleBlockUser(mockClient, { userId: 2 }, mockServer);
       expect(mockBlockedService.block).toHaveBeenCalledWith(1, 2);
       expect(mockClient.emit).toHaveBeenCalledWith('blockedList', []);
-      expect(mockServer.to).toHaveBeenCalledWith('socket-2');
-      expect(mockServer.emit).toHaveBeenCalledWith('youWereBlocked', { userId: 1 });
+      expect(mockServer.to).toHaveBeenCalledWith('user:2');
+      expect(mockServer.emit).toHaveBeenCalledWith('youWereBlocked', {
+        userId: 1,
+      });
     });
 
     it('should reject self-block', async () => {
-      await service.handleBlockUser(mockClient, { userId: 1 }, mockServer, onlineUsers);
+      await service.handleBlockUser(mockClient, { userId: 1 }, mockServer);
       expect(mockBlockedService.block).not.toHaveBeenCalled();
-      expect(mockClient.emit).toHaveBeenCalledWith('error', { message: 'Cannot block yourself' });
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'Cannot block yourself',
+      });
     });
 
     it('should not emit if no user on client', async () => {
-      await service.handleBlockUser({ data: {} } as any, { userId: 2 }, mockServer, onlineUsers);
+      await service.handleBlockUser(
+        { data: {} } as any,
+        { userId: 2 },
+        mockServer,
+      );
       expect(mockBlockedService.block).not.toHaveBeenCalled();
     });
 
-    it('should not emit youWereBlocked if blocked user is offline', async () => {
-      onlineUsers.clear();
-      await service.handleBlockUser(mockClient, { userId: 2 }, mockServer, onlineUsers);
+    it('should address youWereBlocked to the blocked user room (BE-007: safe no-op when they have no live socket)', async () => {
+      await service.handleBlockUser(mockClient, { userId: 2 }, mockServer);
       expect(mockBlockedService.block).toHaveBeenCalledWith(1, 2);
       expect(mockClient.emit).toHaveBeenCalledWith('blockedList', []);
-      expect(mockServer.to).not.toHaveBeenCalled();
+      // Room-addressed rather than socket-id: emitting to an empty room is harmless,
+      // and every open tab of the blocked user receives it.
+      expect(mockServer.to).toHaveBeenCalledWith('user:2');
+      expect(mockServer.to).not.toHaveBeenCalledWith('socket-2');
     });
 
     it('should emit error on failure', async () => {
       mockBlockedService.block.mockRejectedValue(new Error('DB error'));
-      await service.handleBlockUser(mockClient, { userId: 2 }, mockServer, onlineUsers);
-      expect(mockClient.emit).toHaveBeenCalledWith('error', { message: 'DB error' });
+      await service.handleBlockUser(mockClient, { userId: 2 }, mockServer);
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'DB error',
+      });
     });
   });
 
@@ -72,7 +82,9 @@ describe('ChatBlockService', () => {
     it('should emit error on failure', async () => {
       mockBlockedService.unblock.mockRejectedValue(new Error('DB error'));
       await service.handleUnblockUser(mockClient, { userId: 2 });
-      expect(mockClient.emit).toHaveBeenCalledWith('error', { message: 'DB error' });
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'DB error',
+      });
     });
   });
 

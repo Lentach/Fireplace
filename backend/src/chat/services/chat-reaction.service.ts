@@ -4,6 +4,7 @@ import { MessagesService } from '../../messages/messages.service';
 import { BlockedService } from '../../blocked/blocked.service';
 import { validateDto } from '../utils/dto.validator';
 import { AddReactionDto, RemoveReactionDto } from '../dto/chat.dto';
+import { userRoom } from '../utils/user-room';
 
 @Injectable()
 export class ChatReactionService {
@@ -18,7 +19,6 @@ export class ChatReactionService {
     client: Socket,
     data: any,
     server: Server,
-    onlineUsers: Map<number, string>,
   ): Promise<void> {
     const userId: number = client.data.user?.id;
     if (!userId) return;
@@ -68,16 +68,13 @@ export class ChatReactionService {
     client.emit('reactionUpdated', payload);
     const otherUserId =
       conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
-    const otherSocketId = onlineUsers.get(otherUserId);
-    if (otherSocketId)
-      server.to(otherSocketId).emit('reactionUpdated', payload);
+    server.to(userRoom(otherUserId)).emit('reactionUpdated', payload);
   }
 
   async handleRemoveReaction(
     client: Socket,
     data: any,
     server: Server,
-    onlineUsers: Map<number, string>,
   ): Promise<void> {
     const userId: number = client.data.user?.id;
     if (!userId) return;
@@ -127,8 +124,6 @@ export class ChatReactionService {
     client.emit('reactionUpdated', payload);
     const otherUserId =
       conv.userOne.id === userId ? conv.userTwo.id : conv.userOne.id;
-    const otherSocketId = onlineUsers.get(otherUserId);
-    if (otherSocketId)
-      server.to(otherSocketId).emit('reactionUpdated', payload);
+    server.to(userRoom(otherUserId)).emit('reactionUpdated', payload);
   }
 }

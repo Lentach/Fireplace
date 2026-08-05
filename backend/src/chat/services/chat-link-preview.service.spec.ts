@@ -41,7 +41,7 @@ describe('ChatLinkPreviewService', () => {
       messageId: 42,
       conversationId: 10,
       client: mockClient,
-      recipientSocketId: 'socket-2',
+      recipientId: 2,
       server: mockServer,
     });
 
@@ -68,7 +68,7 @@ describe('ChatLinkPreviewService', () => {
       'linkPreviewReady',
       expectedPayload,
     );
-    expect(mockServer.to).toHaveBeenCalledWith('socket-2');
+    expect(mockServer.to).toHaveBeenCalledWith('user:2');
     expect(mockServer.emit).toHaveBeenCalledWith(
       'linkPreviewReady',
       expectedPayload,
@@ -83,7 +83,7 @@ describe('ChatLinkPreviewService', () => {
       messageId: 42,
       conversationId: 10,
       client: mockClient,
-      recipientSocketId: 'socket-2',
+      recipientId: 2,
       server: mockServer,
     });
 
@@ -101,7 +101,7 @@ describe('ChatLinkPreviewService', () => {
       messageId: 42,
       conversationId: 10,
       client: mockClient,
-      recipientSocketId: undefined,
+      recipientId: 2,
       server: mockServer,
     });
 
@@ -122,7 +122,7 @@ describe('ChatLinkPreviewService', () => {
       messageId: 42,
       conversationId: 10,
       client: mockClient,
-      recipientSocketId: 'socket-2',
+      recipientId: 2,
       server: mockServer,
     });
 
@@ -149,7 +149,7 @@ describe('ChatLinkPreviewService', () => {
       messageId: 42,
       conversationId: 10,
       client: mockClient,
-      recipientSocketId: 'socket-2',
+      recipientId: 2,
       server: mockServer,
     });
 
@@ -173,7 +173,7 @@ describe('ChatLinkPreviewService', () => {
       messageId: 42,
       conversationId: 10,
       client: mockClient,
-      recipientSocketId: 'socket-2',
+      recipientId: 2,
       server: mockServer,
     });
 
@@ -183,7 +183,7 @@ describe('ChatLinkPreviewService', () => {
     expect(mockClient.emit).not.toHaveBeenCalled();
   });
 
-  it('should not emit to recipient when recipientSocketId is undefined', async () => {
+  it('should room-address linkPreviewReady to the recipient (BE-007), not a socket id', async () => {
     const preview = {
       url: 'https://example.com',
       title: 'Example',
@@ -199,13 +199,19 @@ describe('ChatLinkPreviewService', () => {
       messageId: 42,
       conversationId: 10,
       client: mockClient,
-      recipientSocketId: undefined,
+      recipientId: 2,
       server: mockServer,
     });
 
     await new Promise((r) => process.nextTick(r));
 
-    expect(mockClient.emit).toHaveBeenCalledWith('linkPreviewReady', expect.any(Object));
-    expect(mockServer.to).not.toHaveBeenCalled();
+    expect(mockClient.emit).toHaveBeenCalledWith(
+      'linkPreviewReady',
+      expect.any(Object),
+    );
+    // BE-007: recipient delivery is room-addressed, not a single socket id, so every
+    // open tab receives the preview card; the old undefined-socket guard is gone.
+    expect(mockServer.to).toHaveBeenCalledWith('user:2');
+    expect(mockServer.to).not.toHaveBeenCalledWith('socket-2');
   });
 });

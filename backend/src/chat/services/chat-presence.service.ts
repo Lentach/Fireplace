@@ -5,6 +5,7 @@ import { BlockedService } from '../../blocked/blocked.service';
 import { PushClientStateDto } from '../dto/push-client-state.dto';
 import { TypingDto } from '../dto/typing.dto';
 import { RecordingVoiceDto } from '../dto/recording-voice.dto';
+import { isUserOnline, userRoom } from '../utils/user-room';
 
 // Block-verdict cache for the high-frequency, un-throttled presence path. `typing` and
 // `recordingVoice` fire on every keystroke (backend/CLAUDE.md §6 — not throttled), so a DB
@@ -25,21 +26,15 @@ export class ChatPresenceService {
 
   constructor(private readonly blockedService: BlockedService) {}
 
-  async handleTyping(
-    client: Socket,
-    data: any,
-    server: Server,
-    onlineUsers: Map<number, string>,
-  ): Promise<void> {
+  async handleTyping(client: Socket, data: any, server: Server): Promise<void> {
     const senderId: number = client.data.user?.id;
     if (!senderId) return;
     try {
       const dto = validateDto(TypingDto, data);
-      const recipientSocketId = onlineUsers.get(dto.recipientId);
-      if (!recipientSocketId) return;
+      if (!isUserOnline(server, dto.recipientId)) return;
       // Block gate — fail silently so we never leak the moderation decision to the sender.
       if (await this.isBlockedByEitherCached(senderId, dto.recipientId)) return;
-      server.to(recipientSocketId).emit('partnerTyping', {
+      server.to(userRoom(dto.recipientId)).emit('partnerTyping', {
         senderId,
         conversationId: dto.conversationId,
       });
@@ -66,17 +61,15 @@ export class ChatPresenceService {
     client: Socket,
     data: any,
     server: Server,
-    onlineUsers: Map<number, string>,
   ): Promise<void> {
     const senderId: number = client.data.user?.id;
     if (!senderId) return;
     try {
       const dto = validateDto(RecordingVoiceDto, data);
-      const recipientSocketId = onlineUsers.get(dto.recipientId);
-      if (!recipientSocketId) return;
+      if (!isUserOnline(server, dto.recipientId)) return;
       // Block gate — fail silently so we never leak the moderation decision to the sender.
       if (await this.isBlockedByEitherCached(senderId, dto.recipientId)) return;
-      server.to(recipientSocketId).emit('partnerRecordingVoice', {
+      server.to(userRoom(dto.recipientId)).emit('partnerRecordingVoice', {
         senderId,
         conversationId: dto.conversationId,
         isRecording: dto.isRecording,

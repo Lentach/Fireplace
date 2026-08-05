@@ -5,7 +5,6 @@ describe('ChatPresenceService', () => {
   let mockBlockedService: any;
   let mockServer: any;
   let mockClient: any;
-  let onlineUsers: Map<number, string>;
 
   beforeEach(() => {
     mockBlockedService = {
@@ -15,9 +14,18 @@ describe('ChatPresenceService', () => {
     mockServer = {
       to: jest.fn().mockReturnThis(),
       emit: jest.fn(),
+      // Room occupancy drives isUserOnline (see utils/user-room.ts): users 1 and 2
+      // have a live socket; user 99 is absent, i.e. offline.
+      sockets: {
+        adapter: {
+          rooms: new Map([
+            ['user:1', new Set(['socket-1'])],
+            ['user:2', new Set(['socket-2'])],
+          ]),
+        },
+      },
     };
     mockClient = { data: { user: { id: 1 } } };
-    onlineUsers = new Map([[2, 'socket-2']]);
   });
 
   describe('handleTyping', () => {
@@ -29,10 +37,9 @@ describe('ChatPresenceService', () => {
           conversationId: 10,
         },
         mockServer,
-        onlineUsers,
       );
 
-      expect(mockServer.to).toHaveBeenCalledWith('socket-2');
+      expect(mockServer.to).toHaveBeenCalledWith('user:2');
       expect(mockServer.emit).toHaveBeenCalledWith('partnerTyping', {
         senderId: 1,
         conversationId: 10,
@@ -47,10 +54,12 @@ describe('ChatPresenceService', () => {
           conversationId: 10,
         },
         mockServer,
-        onlineUsers,
       );
 
       expect(mockServer.to).not.toHaveBeenCalled();
+      // Offline early-out fires before the block gate: the block check must be skipped
+      // entirely for offline peers (this is the high-frequency typing path).
+      expect(mockBlockedService.isBlockedByEither).not.toHaveBeenCalled();
     });
 
     it('should not emit if no user on client', async () => {
@@ -61,7 +70,6 @@ describe('ChatPresenceService', () => {
           conversationId: 10,
         },
         mockServer,
-        onlineUsers,
       );
 
       expect(mockServer.to).not.toHaveBeenCalled();
@@ -77,7 +85,6 @@ describe('ChatPresenceService', () => {
           conversationId: 10,
         },
         mockServer,
-        onlineUsers,
       );
 
       expect(mockBlockedService.isBlockedByEither).toHaveBeenCalledWith(1, 2);
@@ -87,7 +94,6 @@ describe('ChatPresenceService', () => {
 
     it('should emit partnerTyping for the reverse direction when not blocked', async () => {
       const reverseClient = { data: { user: { id: 2 } } };
-      const reverseOnline = new Map([[1, 'socket-1']]);
 
       await service.handleTyping(
         reverseClient as any,
@@ -96,11 +102,10 @@ describe('ChatPresenceService', () => {
           conversationId: 10,
         },
         mockServer,
-        reverseOnline,
       );
 
       expect(mockBlockedService.isBlockedByEither).toHaveBeenCalledWith(2, 1);
-      expect(mockServer.to).toHaveBeenCalledWith('socket-1');
+      expect(mockServer.to).toHaveBeenCalledWith('user:1');
       expect(mockServer.emit).toHaveBeenCalledWith('partnerTyping', {
         senderId: 2,
         conversationId: 10,
@@ -118,10 +123,9 @@ describe('ChatPresenceService', () => {
           isRecording: true,
         },
         mockServer,
-        onlineUsers,
       );
 
-      expect(mockServer.to).toHaveBeenCalledWith('socket-2');
+      expect(mockServer.to).toHaveBeenCalledWith('user:2');
       expect(mockServer.emit).toHaveBeenCalledWith('partnerRecordingVoice', {
         senderId: 1,
         conversationId: 10,
@@ -138,10 +142,11 @@ describe('ChatPresenceService', () => {
           isRecording: true,
         },
         mockServer,
-        onlineUsers,
       );
 
       expect(mockServer.to).not.toHaveBeenCalled();
+      // Offline early-out fires before the block gate: the block check must be skipped.
+      expect(mockBlockedService.isBlockedByEither).not.toHaveBeenCalled();
     });
 
     it('should not emit if no user on client', async () => {
@@ -153,7 +158,6 @@ describe('ChatPresenceService', () => {
           isRecording: true,
         },
         mockServer,
-        onlineUsers,
       );
 
       expect(mockServer.to).not.toHaveBeenCalled();
@@ -170,7 +174,6 @@ describe('ChatPresenceService', () => {
           isRecording: true,
         },
         mockServer,
-        onlineUsers,
       );
 
       expect(mockBlockedService.isBlockedByEither).toHaveBeenCalledWith(1, 2);

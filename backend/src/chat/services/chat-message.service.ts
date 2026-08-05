@@ -21,6 +21,11 @@ import { MessageMapper } from '../../messages/message.mapper';
 import { MediaCleanupService } from '../../media/media-cleanup.service';
 import { isMessageExpired } from '../../messages/message-expiry.util';
 import { EditMessageDto } from '../dto/edit-message.dto';
+import {
+  emitToNewestTab,
+  newestSocketForUser,
+  userRoom,
+} from '../utils/user-room';
 
 /** Editing a sent message is only allowed within this window after it was created. */
 const EDIT_WINDOW_MS = 15 * 60 * 1000;
@@ -56,12 +61,7 @@ export class ChatMessageService {
     private readonly mediaCleanup: MediaCleanupService,
   ) {}
 
-  async handleSendMessage(
-    client: Socket,
-    data: any,
-    server: Server,
-    onlineUsers: Map<number, string>,
-  ) {
+  async handleSendMessage(client: Socket, data: any, server: Server) {
     const senderId: number = client.data.user?.id;
     if (!senderId) return;
 
@@ -122,25 +122,29 @@ export class ChatMessageService {
     // Emit to sender (confirmation)
     client.emit('messageSent', messagePayload);
 
-    // Emit to recipient if online via WebSocket
-    const recipientSocketId = onlineUsers.get(data.recipientId);
-    if (recipientSocketId) {
-      server.to(recipientSocketId).emit('newMessage', messagePayload);
-      this.logger.debug(
-        `[sendMessage] newMessage emitted to recipient ${data.recipientId} (socket ${recipientSocketId})`,
-      );
-    } else {
-      this.logger.debug(
-        `[sendMessage] Recipient ${data.recipientId} NOT ONLINE - newMessage not emitted. Online userIds: [${Array.from(onlineUsers.keys()).join(', ')}]`,
-      );
-    }
+    // CIPHERTEXT — one tab only, deliberately NOT room-addressed (BE-007).
+    // Signal decryption consumes the message key and advances the ratchet, and
+    // the client's tabs share one session store, so fanning this out would make
+    // the second tab's decrypt of the same ciphertext FAIL into its decryption
+    // failure policy. `emitToNewestTab` reproduces the previous last-write-wins
+    // behaviour exactly. See `utils/user-room.ts`.
+    const delivered = emitToNewestTab(
+      server,
+      data.recipientId,
+      'newMessage',
+      messagePayload,
+    );
+    this.logger.debug(
+      delivered
+        ? `[sendMessage] newMessage emitted to recipient ${data.recipientId}`
+        : `[sendMessage] Recipient ${data.recipientId} NOT ONLINE - newMessage not emitted`,
+    );
 
     // Coalesced push: minimized tabs stay connected via WS but still need a wake-up;
     // skip scheduling when recipient reports foreground + same active conversation.
     if (
       !this.shouldSkipPushForFocusedRecipient(
         server,
-        onlineUsers,
         data.recipientId,
         conversation.id,
       )
@@ -158,7 +162,7 @@ export class ChatMessageService {
       messageId: message.id,
       conversationId: conversation.id,
       client,
-      recipientSocketId,
+      recipientId: data.recipientId,
       server,
     });
   }
@@ -271,12 +275,7 @@ export class ChatMessageService {
     }
   }
 
-  async handleMessageDelivered(
-    client: Socket,
-    data: any,
-    server: Server,
-    onlineUsers: Map<number, string>,
-  ) {
+  async handleMessageDelivered(client: Socket, data: any, server: Server) {
     const user = client.data.user;
     if (!user) return;
     const userId: number = user.id;
@@ -308,22 +307,14 @@ export class ChatMessageService {
     );
     if (!updated) return;
 
-    const senderSocketId = onlineUsers.get(updated.sender.id);
-    if (senderSocketId) {
-      server.to(senderSocketId).emit('messageDelivered', {
-        messageId: updated.id,
-        conversationId: updated.conversation?.id,
-        deliveryStatus: updated.deliveryStatus,
-      });
-    }
+    server.to(userRoom(updated.sender.id)).emit('messageDelivered', {
+      messageId: updated.id,
+      conversationId: updated.conversation?.id,
+      deliveryStatus: updated.deliveryStatus,
+    });
   }
 
-  async handleMarkConversationRead(
-    client: Socket,
-    data: any,
-    server: Server,
-    onlineUsers: Map<number, string>,
-  ) {
+  async handleMarkConversationRead(client: Socket, data: any, server: Server) {
     const user = client.data.user;
     if (!user) return;
 
@@ -362,8 +353,6 @@ export class ChatMessageService {
       otherUserId,
     );
 
-    const readerSocketId = onlineUsers.get(readerId);
-
     for (const message of updated) {
       const payload: Record<string, unknown> = {
         messageId: message.id,
@@ -374,22 +363,18 @@ export class ChatMessageService {
         payload.expiresAt = new Date(message.expiresAt as Date).toISOString();
       }
 
-      const senderSocketId = onlineUsers.get(message.sender.id);
-      if (senderSocketId) {
-        server.to(senderSocketId).emit('messageDelivered', payload);
-      }
-      if (readerSocketId && readerSocketId !== senderSocketId) {
-        server.to(readerSocketId).emit('messageDelivered', payload);
+      server.to(userRoom(message.sender.id)).emit('messageDelivered', payload);
+      // Compared by USER id, not socket id. The old socket-id comparison was
+      // incidentally correct because reader and sender are always different
+      // users here (you mark the OTHER party's messages read); with rooms the
+      // two are distinct rooms anyway, so this guard only documents that.
+      if (readerId !== message.sender.id) {
+        server.to(userRoom(readerId)).emit('messageDelivered', payload);
       }
     }
   }
 
-  async handleClearChatHistory(
-    client: Socket,
-    data: any,
-    server: Server,
-    onlineUsers: Map<number, string>,
-  ) {
+  async handleClearChatHistory(client: Socket, data: any, server: Server) {
     const userId: number = client.data.user?.id;
     if (!userId) return;
 
@@ -436,23 +421,14 @@ export class ChatMessageService {
     // Emit to initiating user
     client.emit('chatHistoryCleared', payload);
 
-    // Emit to other user if online
-    const otherUserSocketId = onlineUsers.get(otherUserId);
-    if (otherUserSocketId) {
-      server.to(otherUserSocketId).emit('chatHistoryCleared', payload);
-    }
+    server.to(userRoom(otherUserId)).emit('chatHistoryCleared', payload);
 
     this.logger.debug(
       `User ${userId} cleared chat history for conversation ${data.conversationId}`,
     );
   }
 
-  async handleDeleteMessage(
-    client: Socket,
-    data: any,
-    server: Server,
-    onlineUsers: Map<number, string>,
-  ) {
+  async handleDeleteMessage(client: Socket, data: any, server: Server) {
     const userId: number = client.data.user?.id;
     if (!userId) return;
 
@@ -523,36 +499,25 @@ export class ChatMessageService {
         await this.conversationsService.clearPinnedMessage(conversationId);
         const unpinPayload = { conversationId };
         client.emit('messageUnpinned', unpinPayload);
-        const otherSocketId = onlineUsers.get(otherUserId);
-        if (otherSocketId) {
-          server.to(otherSocketId).emit('messageUnpinned', unpinPayload);
-        }
+        server.to(userRoom(otherUserId)).emit('messageUnpinned', unpinPayload);
       }
       client.emit('messageDeleted', {
         messageId,
         conversationId,
         forEveryone: true,
       });
-      const otherSocketId = onlineUsers.get(otherUserId);
-      if (otherSocketId) {
-        server.to(otherSocketId).emit('messageDeleted', {
-          messageId,
-          conversationId,
-          forEveryone: true,
-        });
-      }
+      server.to(userRoom(otherUserId)).emit('messageDeleted', {
+        messageId,
+        conversationId,
+        forEveryone: true,
+      });
       this.logger.debug(
         `User ${userId} deleted message ${messageId} for everyone`,
       );
     }
   }
 
-  async handleEditMessage(
-    client: Socket,
-    data: any,
-    server: Server,
-    onlineUsers: Map<number, string>,
-  ) {
+  async handleEditMessage(client: Socket, data: any, server: Server) {
     const userId: number = client.data.user?.id;
     if (!userId) return;
 
@@ -630,27 +595,31 @@ export class ChatMessageService {
     };
 
     client.emit('messageEdited', payload);
-    const otherSocketId = onlineUsers.get(otherUserId);
-    if (otherSocketId) {
-      server.to(otherSocketId).emit('messageEdited', payload);
-    }
+    // CIPHERTEXT — one tab only, same reason as newMessage (BE-007): an edit
+    // carries a fresh Signal payload over the existing session, so a second
+    // tab decrypting it would consume a key the first already used.
+    emitToNewestTab(server, otherUserId, 'messageEdited', payload);
     this.logger.debug(`User ${userId} edited message ${messageId}`);
   }
 
   /**
-   * When recipient socket reports foreground + this conversation active, WS already delivers newMessage.
+   * When the tab that WILL RECEIVE the message reports foreground + this
+   * conversation active, WS already delivers `newMessage` — no push needed.
+   *
+   * Deliberately evaluates the SAME socket `emitToNewestTab` delivers to, not
+   * "any focused tab" (BE-007). Polling every tab would let a focused tab A
+   * suppress the push while the ciphertext went to background tab B, leaving
+   * the user with neither the live message nor a notification. When the
+   * ciphertext carve-out is lifted this must become room-wide in the SAME
+   * change, so delivery and suppression never disagree.
    */
   private shouldSkipPushForFocusedRecipient(
     server: Server,
-    onlineUsers: Map<number, string>,
     recipientId: number,
     conversationId: number,
   ): boolean {
-    const recipientSocketId = onlineUsers.get(recipientId);
-    if (!recipientSocketId) return false;
-    const recipientSocket =
-      server.sockets?.sockets?.get(recipientSocketId) ?? undefined;
-    const state = recipientSocket?.data?.pushClientState as
+    const state = newestSocketForUser(server, recipientId)?.data
+      ?.pushClientState as
       | { activeConversationId?: number | null; clientVisible?: boolean }
       | undefined;
     if (!state?.clientVisible) return false;

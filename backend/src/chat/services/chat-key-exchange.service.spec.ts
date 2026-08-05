@@ -12,7 +12,7 @@ describe('ChatKeyExchangeService', () => {
 
   let mockClient: Partial<Socket>;
   let mockServer: Partial<Server>;
-  let onlineUsers: Map<number, string>;
+  let roomsAdapter: Map<string, Set<string>>;
 
   const mockBundle: PreKeyBundleResponse = {
     registrationId: 12345,
@@ -29,8 +29,15 @@ describe('ChatKeyExchangeService', () => {
       data: { user: { id: 1 } },
       emit: jest.fn(),
     };
-    mockServer = { to: jest.fn().mockReturnThis(), emit: jest.fn() };
-    onlineUsers = new Map();
+    roomsAdapter = new Map<string, Set<string>>();
+    mockServer = {
+      to: jest.fn().mockReturnThis(),
+      emit: jest.fn(),
+      sockets: {
+        adapter: { rooms: roomsAdapter },
+        sockets: new Map(),
+      } as unknown as Server['sockets'],
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -180,7 +187,6 @@ describe('ChatKeyExchangeService', () => {
         mockClient as Socket,
         validData,
         mockServer as Server,
-        onlineUsers,
       );
 
       expect(keyBundlesService.fetchPreKeyBundle).toHaveBeenCalledWith(2);
@@ -190,53 +196,83 @@ describe('ChatKeyExchangeService', () => {
       });
     });
 
-    it('should emit preKeysLow when remaining count < 10 and target is online', async () => {
+    // Register socket ids as members of a user's per-user room (one entry
+    // per open tab), mirroring `sockets.adapter.rooms` in utils/user-room.ts.
+    const joinRoom = (userId: number, ...socketIds: string[]) => {
+      roomsAdapter.set(`user:${userId}`, new Set(socketIds));
+    };
+
+    it('should emit preKeysLow addressed to the user room when remaining count < 10', async () => {
       keyBundlesService.fetchPreKeyBundle.mockResolvedValue(mockBundle);
       keyBundlesService.countUnusedPreKeys.mockResolvedValue(5);
-      onlineUsers.set(2, 'socket-id-2');
+      joinRoom(2, 'socket-id-2');
 
       await service.handleFetchPreKeyBundle(
         mockClient as Socket,
         validData,
         mockServer as Server,
-        onlineUsers,
       );
 
       expect(keyBundlesService.countUnusedPreKeys).toHaveBeenCalledWith(2);
-      expect(mockServer.to).toHaveBeenCalledWith('socket-id-2');
+      // BE-007: addressed by room, never a single socket id.
+      expect(mockServer.to).toHaveBeenCalledWith('user:2');
+      expect(mockServer.to).not.toHaveBeenCalledWith('socket-id-2');
       expect(mockServer.emit).toHaveBeenCalledWith('preKeysLow', {
         remaining: 5,
+      });
+    });
+
+    it('should reach every open tab with a single room emit (BE-007 multi-tab regression)', async () => {
+      keyBundlesService.fetchPreKeyBundle.mockResolvedValue(mockBundle);
+      keyBundlesService.countUnusedPreKeys.mockResolvedValue(4);
+      // Two tabs for user 2 => two sockets in room `user:2`. The old
+      // userId->socketId map kept only the newest socket, so the first tab
+      // never learned to replenish its draining prekey pool.
+      joinRoom(2, 'socket-tab-a', 'socket-tab-b');
+
+      await service.handleFetchPreKeyBundle(
+        mockClient as Socket,
+        validData,
+        mockServer as Server,
+      );
+
+      // Exactly one room-addressed emit; a real adapter fans it out to both
+      // sockets in the room, so BOTH tabs receive preKeysLow.
+      expect(mockServer.to).toHaveBeenCalledTimes(1);
+      expect(mockServer.to).toHaveBeenCalledWith('user:2');
+      expect(roomsAdapter.get('user:2')!.size).toBe(2);
+      expect(mockServer.emit).toHaveBeenCalledWith('preKeysLow', {
+        remaining: 4,
       });
     });
 
     it('should not emit preKeysLow when remaining count >= 10', async () => {
       keyBundlesService.fetchPreKeyBundle.mockResolvedValue(mockBundle);
       keyBundlesService.countUnusedPreKeys.mockResolvedValue(10);
-      onlineUsers.set(2, 'socket-id-2');
+      joinRoom(2, 'socket-id-2');
 
       await service.handleFetchPreKeyBundle(
         mockClient as Socket,
         validData,
         mockServer as Server,
-        onlineUsers,
       );
 
       expect(mockServer.to).not.toHaveBeenCalled();
     });
 
-    it('should not emit preKeysLow when target user is offline', async () => {
+    it('should still address the user room when no tab is connected (empty-room no-op)', async () => {
       keyBundlesService.fetchPreKeyBundle.mockResolvedValue(mockBundle);
       keyBundlesService.countUnusedPreKeys.mockResolvedValue(3);
-      // onlineUsers does NOT contain userId 2
+      // No sockets in room `user:2`. Emitting to an empty room is a safe
+      // no-op, so there is no offline guard: delivery is still by room.
 
       await service.handleFetchPreKeyBundle(
         mockClient as Socket,
         validData,
         mockServer as Server,
-        onlineUsers,
       );
 
-      expect(mockServer.to).not.toHaveBeenCalled();
+      expect(mockServer.to).toHaveBeenCalledWith('user:2');
     });
 
     it('should not check pre-key count when bundle is null', async () => {
@@ -246,7 +282,6 @@ describe('ChatKeyExchangeService', () => {
         mockClient as Socket,
         validData,
         mockServer as Server,
-        onlineUsers,
       );
 
       expect(mockClient.emit).toHaveBeenCalledWith('preKeyBundleResponse', {
@@ -263,7 +298,6 @@ describe('ChatKeyExchangeService', () => {
         mockClient as Socket,
         invalidData,
         mockServer as Server,
-        onlineUsers,
       );
 
       expect(keyBundlesService.fetchPreKeyBundle).not.toHaveBeenCalled();
@@ -282,7 +316,6 @@ describe('ChatKeyExchangeService', () => {
         noUserClient as unknown as Socket,
         validData,
         mockServer as Server,
-        onlineUsers,
       );
 
       expect(keyBundlesService.fetchPreKeyBundle).not.toHaveBeenCalled();
@@ -297,14 +330,12 @@ describe('ChatKeyExchangeService', () => {
         mockClient as Socket,
         validData,
         mockServer as Server,
-        onlineUsers,
       );
 
       await service.handleFetchPreKeyBundle(
         mockClient as Socket,
         validData,
         mockServer as Server,
-        onlineUsers,
       );
 
       expect(keyBundlesService.fetchPreKeyBundle).toHaveBeenCalledTimes(1);
@@ -327,7 +358,6 @@ describe('ChatKeyExchangeService', () => {
         mockClient as Socket,
         validData,
         mockServer as Server,
-        onlineUsers,
       );
 
       const tracker: Map<string, number> = (service as any)
@@ -341,13 +371,10 @@ describe('ChatKeyExchangeService', () => {
     const validData = { recipientId: 2 };
 
     it('relays sessionRebuildNeeded to the recipient user room', async () => {
-      onlineUsers.set(2, 'socket-of-user-2');
-
       await service.handleRequestSessionRebuild(
         mockClient as Socket,
         validData,
         mockServer as Server,
-        onlineUsers,
       );
 
       expect(mockServer.to).toHaveBeenCalledWith('user:2');
@@ -361,7 +388,6 @@ describe('ChatKeyExchangeService', () => {
         mockClient as Socket,
         validData,
         mockServer as Server,
-        onlineUsers,
       );
 
       expect(mockServer.to).toHaveBeenCalledWith('user:2');
@@ -375,7 +401,6 @@ describe('ChatKeyExchangeService', () => {
         mockClient as Socket,
         validData,
         mockServer as Server,
-        onlineUsers,
       );
 
       const recipientClient = {
@@ -397,7 +422,6 @@ describe('ChatKeyExchangeService', () => {
         mockClient as Socket,
         validData,
         mockServer as Server,
-        onlineUsers,
       );
 
       keyBundlesService.fetchPreKeyBundle.mockResolvedValue(mockBundle);
@@ -410,7 +434,6 @@ describe('ChatKeyExchangeService', () => {
         recipientClient as unknown as Socket,
         { userId: 1 },
         mockServer as Server,
-        onlineUsers,
       );
 
       (recipientClient.emit as jest.Mock).mockClear();
@@ -429,7 +452,6 @@ describe('ChatKeyExchangeService', () => {
         mockClient as Socket,
         { recipientId: -1 },
         mockServer as Server,
-        onlineUsers,
       );
 
       expect(mockClient.emit).toHaveBeenCalledWith(
@@ -442,13 +464,11 @@ describe('ChatKeyExchangeService', () => {
 
     it('returns early when client has no userId', async () => {
       const noUserClient = { data: { user: null }, emit: jest.fn() };
-      onlineUsers.set(2, 'socket-of-user-2');
 
       await service.handleRequestSessionRebuild(
         noUserClient as unknown as Socket,
         validData,
         mockServer as Server,
-        onlineUsers,
       );
 
       expect(mockServer.to).not.toHaveBeenCalled();

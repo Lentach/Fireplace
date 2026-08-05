@@ -4,6 +4,7 @@ import { BlockedService } from '../../blocked/blocked.service';
 import { UserMapper } from '../mappers/user.mapper';
 import { validateDto } from '../utils/dto.validator';
 import { BlockUserDto } from '../dto/chat.dto';
+import { userRoom } from '../utils/user-room';
 
 @Injectable()
 export class ChatBlockService {
@@ -13,7 +14,6 @@ export class ChatBlockService {
     client: Socket,
     data: any,
     server: Server,
-    onlineUsers: Map<number, string>,
   ): Promise<void> {
     const userId: number = client.data.user?.id;
     if (!userId) return;
@@ -25,30 +25,34 @@ export class ChatBlockService {
       }
       await this.blockedService.block(userId, dto.userId);
       const blocked = await this.blockedService.getBlockedUsers(userId);
-      client.emit('blockedList', blocked.map((u) => UserMapper.toPayload(u)));
+      client.emit(
+        'blockedList',
+        blocked.map((u) => UserMapper.toPayload(u)),
+      );
       // Notify the blocked user so they can remove blocker from conversations/contacts
-      const blockedUserSocketId = onlineUsers.get(dto.userId);
-      if (blockedUserSocketId) {
-        server.to(blockedUserSocketId).emit('youWereBlocked', { userId });
-      }
+      server.to(userRoom(dto.userId)).emit('youWereBlocked', { userId });
     } catch (error) {
-      client.emit('error', { message: error?.message || 'Failed to block user' });
+      client.emit('error', {
+        message: error?.message || 'Failed to block user',
+      });
     }
   }
 
-  async handleUnblockUser(
-    client: Socket,
-    data: any,
-  ): Promise<void> {
+  async handleUnblockUser(client: Socket, data: any): Promise<void> {
     const userId: number = client.data.user?.id;
     if (!userId) return;
     try {
       const dto = validateDto(BlockUserDto, data);
       await this.blockedService.unblock(userId, dto.userId);
       const blocked = await this.blockedService.getBlockedUsers(userId);
-      client.emit('blockedList', blocked.map((u) => UserMapper.toPayload(u)));
+      client.emit(
+        'blockedList',
+        blocked.map((u) => UserMapper.toPayload(u)),
+      );
     } catch (error) {
-      client.emit('error', { message: error?.message || 'Failed to unblock user' });
+      client.emit('error', {
+        message: error?.message || 'Failed to unblock user',
+      });
     }
   }
 
@@ -56,6 +60,9 @@ export class ChatBlockService {
     const userId: number = client.data.user?.id;
     if (!userId) return;
     const blocked = await this.blockedService.getBlockedUsers(userId);
-    client.emit('blockedList', blocked.map((u) => UserMapper.toPayload(u)));
+    client.emit(
+      'blockedList',
+      blocked.map((u) => UserMapper.toPayload(u)),
+    );
   }
 }

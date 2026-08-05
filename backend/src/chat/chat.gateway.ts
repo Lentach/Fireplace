@@ -21,6 +21,7 @@ import { ChatPresenceService } from './services/chat-presence.service';
 import { ChatBlockService } from './services/chat-block.service';
 import { ChatSearchService } from './services/chat-search.service';
 import { ChatReactionService } from './services/chat-reaction.service';
+import { userRoom } from './utils/user-room';
 
 // CORS: In production only ALLOWED_ORIGINS. In dev also allow localhost + LAN (phone).
 function buildCorsOrigin() {
@@ -59,8 +60,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   @WebSocketServer()
   server: Server;
 
-  // Map: userId -> socketId, to track who is online
-  private onlineUsers = new Map<number, string>();
+  // Presence and delivery are derived from the per-user Socket.IO room
+  // (`user:<id>`), NOT from a userId -> socketId map. The map this replaced was
+  // last-write-wins, so a second tab silently made the first undeliverable
+  // (BE-007). See `utils/user-room.ts`.
 
   constructor(
     private jwtService: JwtService,
@@ -123,8 +126,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         username: user.username,
         tag: user.tag,
       };
-      client.join(ChatKeyExchangeService.userRoom(user.id));
-      this.onlineUsers.set(user.id, client.id);
+      client.join(userRoom(user.id));
       this.chatKeyExchangeService.deliverPendingSessionRebuilds(client);
 
       this.logger.debug(
@@ -160,15 +162,13 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   handleDisconnect(client: Socket) {
     const user = client.data.user;
     if (!user) return;
-    // Only unregister if THIS socket is still the user's current one. On iOS
-    // suspend/resume the device reconnects with a NEW socket while the abandoned
-    // OLD socket lingers until its ping times out (~20s); that stale disconnect
-    // must NOT evict the live socket — otherwise onlineUsers.get(userId) goes
-    // undefined and peers' newMessage emits silently fall back to push (the
-    // "notification arrives but the message never appears live" bug).
-    if (this.onlineUsers.get(user.id) === client.id) {
-      this.onlineUsers.delete(user.id);
-    }
+    // No presence bookkeeping needed: Socket.IO removes the socket from its
+    // rooms on disconnect, so `user:<id>` empties only when the LAST tab goes.
+    // This is what retired the old guarded-delete dance, which existed because
+    // an iOS suspend/resume reconnects with a NEW socket while the abandoned
+    // OLD socket lingers to ping-timeout (~20s) — with a single-socket map that
+    // stale disconnect could evict the live socket and silently drop peers'
+    // newMessage emits to push. Room membership has no such failure mode.
     this.logger.debug(
       `User disconnected: ${user.username} (socket: ${client.id})`,
     );
@@ -184,12 +184,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    return this.chatMessageService.handleSendMessage(
-      client,
-      data,
-      this.server,
-      this.onlineUsers,
-    );
+    return this.chatMessageService.handleSendMessage(client, data, this.server);
   }
 
   @UseGuards(WsThrottlerGuard)
@@ -241,7 +236,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -254,7 +248,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -269,7 +262,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -284,7 +276,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -295,12 +286,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    return this.chatMessageService.handleEditMessage(
-      client,
-      data,
-      this.server,
-      this.onlineUsers,
-    );
+    return this.chatMessageService.handleEditMessage(client, data, this.server);
   }
 
   // ========== TYPING INDICATOR ==========
@@ -310,12 +296,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ): Promise<void> {
-    return this.chatPresenceService.handleTyping(
-      client,
-      data,
-      this.server,
-      this.onlineUsers,
-    );
+    return this.chatPresenceService.handleTyping(client, data, this.server);
   }
 
   @UseGuards(WsThrottlerGuard)
@@ -329,7 +310,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -344,7 +324,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -357,7 +336,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -402,7 +380,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -417,7 +394,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -434,7 +410,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -456,7 +431,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -471,7 +445,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -496,7 +469,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -511,7 +483,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -538,7 +509,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -551,7 +521,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -564,7 +533,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -579,7 +547,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -608,7 +575,6 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
       client,
       data,
       this.server,
-      this.onlineUsers,
     );
   }
 
@@ -619,12 +585,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    return this.chatBlockService.handleBlockUser(
-      client,
-      data,
-      this.server,
-      this.onlineUsers,
-    );
+    return this.chatBlockService.handleBlockUser(client, data, this.server);
   }
 
   @SubscribeMessage('unblockUser')

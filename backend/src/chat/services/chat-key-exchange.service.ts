@@ -6,6 +6,7 @@ import { UploadKeyBundleDto } from '../dto/upload-key-bundle.dto';
 import { UploadOneTimePreKeysDto } from '../dto/upload-one-time-pre-keys.dto';
 import { FetchPreKeyBundleDto } from '../dto/fetch-pre-key-bundle.dto';
 import { RequestSessionRebuildDto } from '../dto/request-session-rebuild.dto';
+import { userRoom } from '../utils/user-room';
 
 const PRE_KEY_LOW_THRESHOLD = 10;
 const PRE_KEY_FETCH_MIN_INTERVAL_MS = 750;
@@ -22,10 +23,6 @@ export class ChatKeyExchangeService {
     number,
     Map<number, number>
   >();
-
-  static userRoom(userId: number): string {
-    return `user:${userId}`;
-  }
 
   constructor(private readonly keyBundlesService: KeyBundlesService) {}
 
@@ -79,7 +76,6 @@ export class ChatKeyExchangeService {
     client: Socket,
     data: any,
     server: Server,
-    onlineUsers: Map<number, string>,
   ): Promise<void> {
     const requesterId: number = client.data.user?.id;
     if (!requesterId) return;
@@ -109,10 +105,7 @@ export class ChatKeyExchangeService {
           dto.userId,
         );
         if (remaining < PRE_KEY_LOW_THRESHOLD) {
-          const targetSocketId = onlineUsers.get(dto.userId);
-          if (targetSocketId) {
-            server.to(targetSocketId).emit('preKeysLow', { remaining });
-          }
+          server.to(userRoom(dto.userId)).emit('preKeysLow', { remaining });
         }
       }
     } catch (error) {
@@ -248,20 +241,16 @@ export class ChatKeyExchangeService {
     client: Socket,
     data: any,
     server: Server,
-    onlineUsers: Map<number, string>,
   ): Promise<void> {
-    void onlineUsers;
     const requesterId: number = client.data.user?.id;
     if (!requesterId) return;
 
     try {
       const dto = validateDto(RequestSessionRebuildDto, data);
       this.rememberSessionRebuildRequest(dto.recipientId, requesterId);
-      server
-        .to(ChatKeyExchangeService.userRoom(dto.recipientId))
-        .emit('sessionRebuildNeeded', {
-          fromUserId: requesterId,
-        });
+      server.to(userRoom(dto.recipientId)).emit('sessionRebuildNeeded', {
+        fromUserId: requesterId,
+      });
     } catch (error) {
       this.logger.error(
         `requestSessionRebuild failed requesterId=${requesterId}: ${error.message}`,
