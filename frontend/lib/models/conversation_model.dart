@@ -48,13 +48,20 @@ class ConversationModel {
     );
   }
 
+  /// Clear flags exist because `x ?? this.x` cannot express "set this back to
+  /// null". Without them a caller has to hand-roll the full constructor, and
+  /// every field it forgets is silently reset to its default — that is how
+  /// `muted`/`mutedUntil` used to be dropped by the pin handlers.
   ConversationModel copyWith({
     int? disappearingTimer,
     bool clearDisappearingTimer = false,
     int? pinnedMessageId,
+    bool clearPinnedMessageId = false,
     MessageModel? pinnedMessagePreview,
+    bool clearPinnedMessagePreview = false,
     bool? muted,
     DateTime? mutedUntil,
+    bool clearMutedUntil = false,
   }) {
     return ConversationModel(
       id: id,
@@ -64,10 +71,14 @@ class ConversationModel {
       disappearingTimer: clearDisappearingTimer
           ? null
           : disappearingTimer ?? this.disappearingTimer,
-      pinnedMessageId: pinnedMessageId ?? this.pinnedMessageId,
-      pinnedMessagePreview: pinnedMessagePreview ?? this.pinnedMessagePreview,
+      pinnedMessageId: clearPinnedMessageId
+          ? null
+          : pinnedMessageId ?? this.pinnedMessageId,
+      pinnedMessagePreview: clearPinnedMessagePreview
+          ? null
+          : pinnedMessagePreview ?? this.pinnedMessagePreview,
       muted: muted ?? this.muted,
-      mutedUntil: mutedUntil ?? this.mutedUntil,
+      mutedUntil: clearMutedUntil ? null : mutedUntil ?? this.mutedUntil,
     );
   }
 }

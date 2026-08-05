@@ -775,10 +775,26 @@ class EncryptionProvider extends ChangeNotifier {
     _persistProbed = true;
     try {
       final r = await requestPersistentStorage();
+      final supported = r['supported'] ?? false;
+      final granted = r['granted'] ?? false;
       _e2eFlowLog('STORAGE_PERSIST', {
-        'supported': r['supported'] ?? false,
-        'granted': r['granted'] ?? false,
+        'supported': supported,
+        'granted': granted,
       });
+      // A denied grant is the one storage fact that can end in unrecoverable
+      // Signal key loss: iOS evicts a non-persistent origin and there is no
+      // key recovery. The in-memory ring rotates long before any field dump is
+      // taken, so the evidence has to be durable. Deduped, or the cap-80 log
+      // would re-burn a slot every boot; eviction re-arms it by design.
+      // Web only — the native stub always answers {supported:false} and native
+      // keys live in secure storage, not a browser origin.
+      if (kIsWeb && !granted) {
+        E2ePersistentDiag.recordDeduped(
+          'STORAGE_PERSIST_DENIED',
+          {'supported': supported, 'granted': granted},
+          matchAll: ['{supported: $supported,'],
+        );
+      }
     } catch (_) {}
   }
 

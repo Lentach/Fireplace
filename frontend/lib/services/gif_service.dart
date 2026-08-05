@@ -32,17 +32,19 @@ class GifService {
       : _clientFactory = clientFactory ?? http.Client.new;
 
   static const _baseUrl = 'https://api.giphy.com/v1/gifs';
+  static const Duration _kRequestTimeout = Duration(seconds: 20);
   final http.Client Function() _clientFactory;
-  http.Client? _client;
 
   /// Test-only override for the compile-time [AppConfig.giphyApiKey].
   @visibleForTesting
   String? apiKeyOverride;
 
-  void dispose() {
-    _client?.close();
-    _client = null;
-  }
+  /// Nothing outlives a request — each [_fetch] owns its client and closes it
+  /// in a finally — so there is nothing left to tear down. Kept because
+  /// callers own the service lifecycle. A single shared client used to be
+  /// closed and recreated per call, so typing a search while [fetchTrending]
+  /// was in flight killed the trending request and silently returned [].
+  void dispose() {}
 
   Future<List<GifModel>> fetchTrending({int limit = 25, int offset = 0}) async {
     return _fetch('$_baseUrl/trending', limit: limit, offset: offset);
@@ -58,8 +60,6 @@ class GifService {
       debugPrint('[GifService] GIPHY_API_KEY not set. Pass --dart-define=GIPHY_API_KEY=your_key');
       return [];
     }
-    _client?.close();
-    _client = _clientFactory();
     final params = {
       'api_key': apiKey,
       'limit': '$limit',
@@ -68,14 +68,18 @@ class GifService {
       'q': ?query,
     };
     final uri = Uri.parse(url).replace(queryParameters: params);
+    final client = _clientFactory();
     try {
-      final response = await _client!.get(uri);
+      final response = await client.get(uri).timeout(_kRequestTimeout);
       if (response.statusCode != 200) return [];
       final data = jsonDecode(response.body) as Map<String, dynamic>;
       final list = data['data'] as List<dynamic>? ?? [];
       return list.map((e) => GifModel.fromJson(e as Map<String, dynamic>)).toList();
-    } catch (_) {
+    } catch (e) {
+      debugPrint('[GifService] fetch failed: $e');
       return [];
+    } finally {
+      client.close();
     }
   }
 }

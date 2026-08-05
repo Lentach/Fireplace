@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/foundation.dart';
 
 import '../models/friend_request_model.dart';
@@ -28,6 +30,14 @@ class FriendsProvider extends ChangeNotifier {
           .toRadixString(16)
           .padLeft(8, '0');
   int _invitationCorrelationCounter = 0;
+
+  /// A dropped accept/decline/send ack used to strand the row: the in-flight
+  /// entry is cleared only by the matching socket response, and a lost frame
+  /// on a socket that stays connected schedules no reconnect. Bounded here,
+  /// mirroring the 20 s round-trip budget of `_askServedMessageIds`.
+  static const Duration _kInvitationAckTimeout = Duration(seconds: 20);
+  final Map<int, Timer> _requestActionTimers = {};
+  final Map<int, Timer> _sendActionTimers = {};
   List<UserModel>? _searchResults;
 
   int? _currentUserId;
@@ -127,13 +137,16 @@ class FriendsProvider extends ChangeNotifier {
 
   void onNewFriendRequest(dynamic data) {
     final request = FriendRequestModel.fromJson(data as Map<String, dynamic>);
+    // Dedup by id like onFriendRequestSent: a socket re-emit would otherwise
+    // add a duplicate incoming row until the next full snapshot.
+    _friendRequests.removeWhere((existing) => existing.id == request.id);
     _friendRequests.insert(0, request);
     notifyListeners();
   }
 
   void onFriendRequestSent(dynamic data) {
     final request = FriendRequestModel.fromJson(data as Map<String, dynamic>);
-    _sendActions.remove(request.receiver.id);
+    _clearSendAction(request.receiver.id);
     _sentRequests.removeWhere((existing) => existing.id == request.id);
     _sentRequests.insert(0, request);
     notifyListeners();
@@ -171,10 +184,10 @@ class FriendsProvider extends ChangeNotifier {
     final chatReady = payload['chatReady'] as bool? ?? conversationId != null;
 
     for (final pending in pendingForPeer) {
-      _requestActions.remove(pending.id);
+      _clearRequestAction(pending.id);
     }
-    _requestActions.remove(request.id);
-    _sendActions.remove(peer.id);
+    _clearRequestAction(request.id);
+    _clearSendAction(peer.id);
     _friendRequests.removeWhere((pending) => _requestHasPeer(pending, peer.id));
     _sentRequests.removeWhere((pending) => _requestHasPeer(pending, peer.id));
     _acceptedOutcomes[peer.id] = InvitationOutcome(
@@ -203,7 +216,7 @@ class FriendsProvider extends ChangeNotifier {
 
   void onFriendRequestRejected(dynamic data) {
     final request = FriendRequestModel.fromJson(data as Map<String, dynamic>);
-    _requestActions.remove(request.id);
+    _clearRequestAction(request.id);
     _friendRequests.removeWhere((pending) => pending.id == request.id);
     notifyListeners();
   }
@@ -233,11 +246,11 @@ class FriendsProvider extends ChangeNotifier {
     switch (action) {
       case InvitationAction.accept:
       case InvitationAction.decline:
-        if (requestId != null) _requestActions.remove(requestId);
+        if (requestId != null) _clearRequestAction(requestId);
         break;
       case InvitationAction.send:
       case InvitationAction.ensureChat:
-        if (recipientId != null) _sendActions.remove(recipientId);
+        if (recipientId != null) _clearSendAction(recipientId);
         break;
     }
     if (action == InvitationAction.ensureChat && recipientId != null) {
@@ -349,20 +362,79 @@ class FriendsProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Bounds an in-flight invitation action. On expiry the row's buttons come
+  /// back and the existing failure surface reports it, so the user can retry.
+  /// A late ack afterwards still applies — it is server truth, not a re-apply.
+  void _armRequestActionTimeout(int requestId, InvitationAction action) {
+    _requestActionTimers.remove(requestId)?.cancel();
+    _requestActionTimers[requestId] = Timer(_kInvitationAckTimeout, () {
+      _requestActionTimers.remove(requestId);
+      if (_requestActions.remove(requestId) == null) return;
+      _lastInvitationFailure = InvitationFailure(
+        action: action,
+        requestId: requestId,
+        recipientId: null,
+        reason: action == InvitationAction.accept
+            ? 'accept_failed'
+            : 'reject_failed',
+      );
+      notifyListeners();
+    });
+  }
+
+  void _armSendActionTimeout(int userId) {
+    _sendActionTimers.remove(userId)?.cancel();
+    _sendActionTimers[userId] = Timer(_kInvitationAckTimeout, () {
+      _sendActionTimers.remove(userId);
+      if (_sendActions.remove(userId) == null) return;
+      _lastInvitationFailure = InvitationFailure(
+        action: InvitationAction.send,
+        requestId: null,
+        recipientId: userId,
+        reason: 'send_failed',
+      );
+      notifyListeners();
+    });
+  }
+
+  void _clearRequestAction(int requestId) {
+    _requestActionTimers.remove(requestId)?.cancel();
+    _requestActions.remove(requestId);
+  }
+
+  void _clearSendAction(int userId) {
+    _sendActionTimers.remove(userId)?.cancel();
+    _sendActions.remove(userId);
+  }
+
+  void _cancelAllInvitationActionTimers() {
+    for (final timer in _requestActionTimers.values) {
+      timer.cancel();
+    }
+    _requestActionTimers.clear();
+    for (final timer in _sendActionTimers.values) {
+      timer.cancel();
+    }
+    _sendActionTimers.clear();
+  }
+
   void sendFriendRequest(int userId) {
     _sendActions[userId] = InvitationActionStatus.inFlight;
+    _armSendActionTimeout(userId);
     notifyListeners();
     _emit?.call('sendFriendRequest', {'recipientId': userId});
   }
 
   void acceptFriendRequest(int requestId) {
     _requestActions[requestId] = InvitationActionStatus.inFlight;
+    _armRequestActionTimeout(requestId, InvitationAction.accept);
     notifyListeners();
     _emit?.call('acceptFriendRequest', {'requestId': requestId});
   }
 
   void rejectFriendRequest(int requestId) {
     _requestActions[requestId] = InvitationActionStatus.inFlight;
+    _armRequestActionTimeout(requestId, InvitationAction.decline);
     notifyListeners();
     _emit?.call('rejectFriendRequest', {'requestId': requestId});
   }
@@ -422,6 +494,7 @@ class FriendsProvider extends ChangeNotifier {
   void onConnect(bool isReconnect) {
     _currentUserId = null; // will be set by setCurrentUserId
     _blockedByUserIds.clear();
+    _cancelAllInvitationActionTimers();
     _requestActions.clear();
     _sendActions.clear();
     _lastInvitationFailure = null;
@@ -462,6 +535,7 @@ class FriendsProvider extends ChangeNotifier {
     _pendingRequestsCount = 0;
     _blockedUsers = [];
     _blockedByUserIds.clear();
+    _cancelAllInvitationActionTimers();
     _requestActions.clear();
     _sendActions.clear();
     _acceptedOutcomes.clear();
@@ -472,5 +546,11 @@ class FriendsProvider extends ChangeNotifier {
     _searchResults = null;
     _currentUserId = null;
     notifyListeners();
+  }
+
+  @override
+  void dispose() {
+    _cancelAllInvitationActionTimers();
+    super.dispose();
   }
 }

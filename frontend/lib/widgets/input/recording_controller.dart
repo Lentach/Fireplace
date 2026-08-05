@@ -91,6 +91,7 @@ class RecordingController extends StatefulWidget {
   /// Called when a voice message has been recorded and is ready to send.
   final Future<void> Function({
     required int duration,
+    int? conversationId,
     String? localAudioPath,
     Uint8List? audioBytes,
   }) onVoiceSent;
@@ -183,6 +184,14 @@ class RecordingControllerState extends State<RecordingController>
     _waveformController.dispose();
     _recordingTimer?.cancel();
     _recordingTimer = null;
+    if (_isStopping) {
+      // stopAndSend / cancelRecording is suspended on recorder.stop(): it owns
+      // the recorder and the recording file, and it keeps running past this
+      // teardown. Releasing here would delete the very file the pending send is
+      // about to read, losing the voice note with no bubble and no error.
+      super.dispose();
+      return;
+    }
     if (_isRecording || _isStarting) {
       _messagingProvider?.setIsRecordingVoice(false);
       _emitRecordingVoiceToRecipient(false);
@@ -248,6 +257,19 @@ class RecordingControllerState extends State<RecordingController>
   void _showNotSentSnackBar(String message) {
     if (!mounted) return;
     showTopSnackBar(context, message);
+  }
+
+  /// [setState] that degrades to a plain field write once the State is gone.
+  ///
+  /// [stopAndSend] must run to completion after a mid-stop teardown so the
+  /// recording still reaches [RecordingController.onVoiceSent]; an unguarded
+  /// setState would throw there and skip the dispatch entirely.
+  void _setStateIfMounted(VoidCallback fn) {
+    if (mounted) {
+      setState(fn);
+    } else {
+      fn();
+    }
   }
 
   void _emitRecordingVoiceToRecipient(bool isRecording) {
@@ -410,6 +432,11 @@ class RecordingControllerState extends State<RecordingController>
   }
 
   /// Public: tap send. Stops, applies the 500 ms min (silent), uploads.
+  ///
+  /// Runs to completion even when the State is torn down mid-stop (back
+  /// navigation, or the unfriend/block auto-pop in ChatDetailScreen): the
+  /// callbacks and the conversation id are captured before the first await, and
+  /// every setState degrades to a plain field write once unmounted.
   Future<void> stopAndSend() async {
     if (!_isRecording || _isStopping) return;
     if (_audioRecorder == null && !testSkipHardware) return;
@@ -419,6 +446,11 @@ class RecordingControllerState extends State<RecordingController>
     final messaging = _messagingProvider ?? context.read<MessagingProvider>();
     messaging.setIsRecordingVoice(false);
     _emitRecordingVoiceToRecipient(false);
+    final onVoiceSent = widget.onVoiceSent;
+    final onRecordingStateChanged = widget.onRecordingStateChanged;
+    // ChatDetailScreen.dispose clears activeConversationId, so a send that
+    // outlives the screen has to carry the id captured here.
+    final conversationId = _conversationsProvider?.activeConversationId;
     _recordingTimer?.cancel();
     _recordingTimer = null;
     if (_waveformController.isAnimating) _waveformController.stop();
@@ -438,8 +470,8 @@ class RecordingControllerState extends State<RecordingController>
       } catch (_) {}
     }
 
-    setState(() => _isRecording = false);
-    widget.onRecordingStateChanged(false);
+    _setStateIfMounted(() => _isRecording = false);
+    onRecordingStateChanged(false);
 
     final durationMs = _recordingStartTime != null
         ? DateTime.now().difference(_recordingStartTime!).inMilliseconds
@@ -456,19 +488,22 @@ class RecordingControllerState extends State<RecordingController>
             if (await file.exists()) await file.delete();
           } catch (_) {}
         }
-        setState(() => _recordingPath = null);
+        _setStateIfMounted(() => _recordingPath = null);
         return;
       }
 
       if (testSkipHardware) {
-        await widget.onVoiceSent(duration: durationSeconds);
-        setState(() => _recordingPath = null);
+        await onVoiceSent(
+          duration: durationSeconds,
+          conversationId: conversationId,
+        );
+        _setStateIfMounted(() => _recordingPath = null);
         return;
       }
 
       if (path == null) {
         _showNotSentSnackBar(l10n.snackbarFailedToReadRecording);
-        setState(() => _recordingPath = null);
+        _setStateIfMounted(() => _recordingPath = null);
         return;
       }
 
@@ -476,8 +511,9 @@ class RecordingControllerState extends State<RecordingController>
         try {
           final response = await http.get(Uri.parse(path));
           if (response.statusCode == 200) {
-            await widget.onVoiceSent(
+            await onVoiceSent(
               duration: durationSeconds,
+              conversationId: conversationId,
               audioBytes: response.bodyBytes,
             );
           } else {
@@ -490,8 +526,9 @@ class RecordingControllerState extends State<RecordingController>
       } else {
         final file = File(path);
         if (await file.exists()) {
-          await widget.onVoiceSent(
+          await onVoiceSent(
             duration: durationSeconds,
+            conversationId: conversationId,
             localAudioPath: path,
           );
         } else {
@@ -499,7 +536,7 @@ class RecordingControllerState extends State<RecordingController>
         }
       }
 
-      setState(() => _recordingPath = null);
+      _setStateIfMounted(() => _recordingPath = null);
     } finally {
       _isStopping = false;
     }
@@ -542,7 +579,7 @@ class RecordingControllerState extends State<RecordingController>
         } catch (_) {}
       }
 
-      setState(() {
+      _setStateIfMounted(() {
         _isRecording = false;
         _recordingPath = null;
       });

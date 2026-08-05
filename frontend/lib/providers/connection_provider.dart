@@ -43,6 +43,13 @@ class ConnectionProvider extends ChangeNotifier {
   int _serverResponseCounter = 0;
   Timer? _resumeProbeTimer;
 
+  /// A transport connect that never reaches `socketReady` is invisible: the
+  /// socket stays "connected", so no `disconnect` event fires and no reconnect
+  /// is ever scheduled, while every authenticated fetch is gated behind ready.
+  /// Result is an authenticated-looking empty shell until the user force-quits.
+  static const Duration _kSocketReadyWindow = Duration(seconds: 10);
+  Timer? _socketReadyWatchdog;
+
   /// In-flight `getServedMessageIds` round trips, keyed by the id the server
   /// echoes back. Completing with null means "no usable answer".
   final Map<String, Completer<Set<int>?>> _servedIdRequests = {};
@@ -217,6 +224,8 @@ class ConnectionProvider extends ChangeNotifier {
           },
         );
       }
+      _socketReadyWatchdog?.cancel();
+      _socketReadyWatchdog = null;
     });
   }
 
@@ -232,6 +241,7 @@ class ConnectionProvider extends ChangeNotifier {
     _intentionalDisconnect = false;
     _isConnected = true;
     notifyListeners();
+    _armSocketReadyWatchdog();
 
     _encryptionProvider?.initializeE2E(userId);
 
@@ -246,6 +256,9 @@ class ConnectionProvider extends ChangeNotifier {
       _pushService
           .initialize(
             token,
+            // applyRefreshedAccessToken keeps this current across rotations;
+            // the FCM onTokenRefresh listener outlives many of them.
+            currentJwtToken: () => _reconnectManager.tokenForReconnect,
             onNavigateToConversation: onNavigateToConversation,
           )
           .catchError((_) {});
@@ -263,8 +276,31 @@ class ConnectionProvider extends ChangeNotifier {
     }
   }
 
+  /// Arms the [_kSocketReadyWindow] guard for the connect attempt that has just
+  /// completed its transport handshake. Cancelled by [_onSocketReady].
+  void _armSocketReadyWatchdog() {
+    _socketReadyWatchdog?.cancel();
+    final armedAt = _serverResponseCounter;
+    _socketReadyWatchdog = Timer(_kSocketReadyWindow, () {
+      _socketReadyWatchdog = null;
+      // Any server response since arming means the link works and ready was
+      // merely slow — the same liveness signal the resume probe uses.
+      if (_serverResponseCounter != armedAt) return;
+      if (_intentionalDisconnect || !_isConnected) return;
+      E2eDiagLog.add('SOCKET_READY_TIMEOUT', {
+        'windowMs': _kSocketReadyWindow.inMilliseconds,
+      });
+      // Drop the transport instead of calling connect() directly: the resulting
+      // `disconnect` event routes through ChatReconnectManager, so the retry
+      // inherits its bounded backoff rather than looping every window.
+      _socketService.disconnect();
+    });
+  }
+
   /// After JWT auth completes on the server (`socketReady` event).
   void _onSocketReady() {
+    _socketReadyWatchdog?.cancel();
+    _socketReadyWatchdog = null;
     final activeConvId = _conversationsProvider?.activeConversationId;
     E2eDiagLog.add('SOCKET_READY', {
       'activeConvId': activeConvId ?? -1,
@@ -477,6 +513,8 @@ class ConnectionProvider extends ChangeNotifier {
     _intentionalDisconnect = true;
     _debouncedConnectTimer?.cancel();
     _resumeProbeTimer?.cancel();
+    _socketReadyWatchdog?.cancel();
+    _socketReadyWatchdog = null;
     _plaintextSweepTimer?.cancel();
     _plaintextSweepTimer = null;
     _reconnectManager.cancel();
@@ -723,6 +761,8 @@ class ConnectionProvider extends ChangeNotifier {
   void dispose() {
     _debouncedConnectTimer?.cancel();
     _plaintextSweepTimer?.cancel();
+    _resumeProbeTimer?.cancel();
+    _socketReadyWatchdog?.cancel();
     _reconnectManager.cancel();
     _socketService.disconnect();
     super.dispose();

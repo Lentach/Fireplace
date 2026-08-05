@@ -2,7 +2,7 @@ import 'dart:async';
 
 import 'package:firebase_messaging/firebase_messaging.dart';
 import 'package:flutter/foundation.dart'
-    show defaultTargetPlatform, kIsWeb, TargetPlatform;
+    show debugPrint, defaultTargetPlatform, kIsWeb, TargetPlatform;
 import '../push_android_stub.dart'
     if (dart.library.io) 'android_fcm_local_notifications.dart' as push_android;
 import '../utils/pending_deep_link_stub.dart'
@@ -61,9 +61,16 @@ class PushService {
   /// Call after WebSocket connect so the user is authenticated.
   /// [jwtToken] is the current user's JWT for the backend API call.
   ///
+  /// [currentJwtToken] supplies the JWT that is current AT CALL TIME. The
+  /// `onTokenRefresh` listener below outlives many token rotations (initialize
+  /// runs once per app run), so capturing [jwtToken] there registered a rotated
+  /// device token with a stale JWT — 401, swallowed, push silently dead until
+  /// the next launch.
+  ///
   /// [onNavigateToConversation]: notification tap routing (Android FCM + web push).
   Future<void> initialize(
     String jwtToken, {
+    String? Function()? currentJwtToken,
     void Function(int conversationId)? onNavigateToConversation,
   }) async {
     if (kIsWeb) {
@@ -101,7 +108,10 @@ class PushService {
 
       // Handle token rotation — Firebase periodically refreshes tokens
       FirebaseMessaging.instance.onTokenRefresh.listen((newToken) {
-        _api.registerFcmToken(jwtToken, newToken, platform).catchError((_) {});
+        final token = currentJwtToken?.call() ?? jwtToken;
+        _api.registerFcmToken(token, newToken, platform).catchError((error) {
+          debugPrint('[PushService] FCM token re-registration failed: $error');
+        });
       });
 
       if (defaultTargetPlatform == TargetPlatform.android) {

@@ -1,4 +1,6 @@
+import 'package:fake_async/fake_async.dart';
 import 'package:flutter_test/flutter_test.dart';
+import 'package:fireplace/models/invitation_state.dart';
 import 'package:fireplace/providers/friends_provider.dart';
 import 'package:fireplace/models/user_model.dart';
 
@@ -142,6 +144,62 @@ void main() {
       expect(provider.blockedUsers.first.id, bob.id);
       expect(provider.friends.length, 1);
       expect(provider.friends.first.id, alice.id);
+    });
+  });
+
+  group('FriendsProvider invitation round trips', () {
+    Map<String, dynamic> request({int id = 10}) => {
+      'id': id,
+      'sender': {'id': 2, 'username': 'bob'},
+      'receiver': {'id': 1, 'username': 'alice'},
+      'status': 'pending',
+      'createdAt': '2026-01-01T00:00:00.000Z',
+    };
+
+    test('a re-emitted newFriendRequest does not duplicate the row', () {
+      final provider = FriendsProvider();
+      provider.onNewFriendRequest(request());
+      provider.onNewFriendRequest(request());
+
+      expect(provider.friendRequests, hasLength(1));
+      provider.dispose();
+    });
+
+    test('a dropped accept ack releases the row and reports a failure', () {
+      fakeAsync((async) {
+        final provider = FriendsProvider();
+        provider.onFriendRequestsList([request()]);
+        provider.acceptFriendRequest(10);
+
+        expect(provider.invitationActionFor(10), InvitationActionStatus.inFlight);
+
+        // No ack ever arrives while the socket stays connected: nothing else in
+        // the app would ever clear this, so the row stayed spinning forever.
+        async.elapse(const Duration(seconds: 21));
+
+        expect(provider.invitationActionFor(10), isNull);
+        final failure = provider.consumeInvitationFailure();
+        expect(failure, isNotNull);
+        expect(failure!.action, InvitationAction.accept);
+        expect(failure.requestId, 10);
+        provider.dispose();
+      });
+    });
+
+    test('an ack inside the window cancels the timeout', () {
+      fakeAsync((async) {
+        final provider = FriendsProvider();
+        final payload = request();
+        provider.onFriendRequestsList([payload]);
+        provider.rejectFriendRequest(10);
+        provider.onFriendRequestRejected(payload);
+
+        async.elapse(const Duration(seconds: 21));
+
+        expect(provider.invitationActionFor(10), isNull);
+        expect(provider.consumeInvitationFailure(), isNull);
+        provider.dispose();
+      });
     });
   });
 }

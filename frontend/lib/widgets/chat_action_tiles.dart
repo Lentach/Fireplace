@@ -455,14 +455,15 @@ class _LongPressActionTileState extends State<_LongPressActionTile>
   @override
   void initState() {
     super.initState();
+    // No per-frame listener here: build() renders a static icon and reads
+    // nothing controller-derived. The visible progress ring is painted by the
+    // overlay's own AnimatedBuilder, so a setState listener was ~90 wasted
+    // rebuilds per 1500 ms gesture.
     _animationController =
         AnimationController(
             vsync: this,
             duration: const Duration(milliseconds: 1500),
           )
-          ..addListener(() {
-            setState(() {});
-          })
           ..addStatusListener((status) {
             if (status == AnimationStatus.completed && _isPressed) {
               widget.onLongPressComplete();
