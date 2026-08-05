@@ -29,14 +29,15 @@ class ApiService {
   // network handoff and PWA resume, and an un-timed-out await wedges the
   // caller: a stalled refreshSession leaves AuthProvider._isRestoringSession
   // true and AuthGate spinning until force-quit. Budgets are per class, not one
-  // global value — a tight media budget would fail large uploads on slow links
-  // that currently succeed.
+  // global value — a tight media budget would fail large transfers on slow
+  // links that currently succeed, in EITHER direction: a received image is the
+  // same size class as a sent one, so download shares the media budget.
   //
   // Future.timeout completes the await; it cannot abort the in-flight socket.
   // That is the point: the caller stops waiting and its existing failure path
   // becomes reachable.
   static const Duration _kAuthTimeout = Duration(seconds: 15);
-  static const Duration _kUploadTimeout = Duration(seconds: 60);
+  static const Duration _kMediaTimeout = Duration(seconds: 60);
   static const Duration _kDefaultTimeout = Duration(seconds: 20);
 
   ApiService({required this.baseUrl, http.Client? httpClient})
@@ -199,7 +200,7 @@ class ApiService {
       ),
     );
 
-    final response = await _sendMultipart(request, _kUploadTimeout);
+    final response = await _sendMultipart(request, _kMediaTimeout);
 
     if (response.statusCode != 201 && response.statusCode != 200) {
       throw Exception(_errorMessage(response, 'Upload failed'));
@@ -416,7 +417,7 @@ class ApiService {
       ),
     );
 
-    final response = await _sendMultipart(request, _kUploadTimeout);
+    final response = await _sendMultipart(request, _kMediaTimeout);
     if (response.statusCode != 200 && response.statusCode != 201) {
       throw Exception(_errorMessage(response, 'Upload failed'));
     }
@@ -512,7 +513,7 @@ class ApiService {
         : <String, String>{};
     final response = await _httpClient
         .get(Uri.parse(resolved), headers: headers)
-        .timeout(_kDefaultTimeout);
+        .timeout(_kMediaTimeout);
     if (response.statusCode != 200) {
       throw Exception('Media fetch failed: ${response.statusCode}');
     }
