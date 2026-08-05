@@ -2,6 +2,8 @@
 
 **➡ FRESH AGENT: read `2026-08-03-HANDOFF-post-b2b-state.md` FIRST** — it carries the ⛔ B2b deploy gate (merged-but-undeployed sealing rides the NEXT frontend deploy), watch items, and the fresh traps. Its work queue is now DONE (§2 + §3 closed this session, entry below); what remains is owner blockers + the Android track. The older `2026-08-03-HANDOFF-signal-grade-queue.md` remains the long-form queue with dated addenda.
 
+**🗺 LOST? Read `2026-08-05-HANDOFF-audit-state.md`** — plain-language map of the 2026-08-04/05 full-codebase audit: what was found, what merged (#133/#134/#135, nothing deployed), what is deliberately parked, and the three owner-only decisions. The two ordered task queues are `.planning/full-audit/REMAINING-WORK.md` (backend) and `.planning/full-audit/frontend/REMAINING-WORK.md` (frontend), both local-only.
+
 **✅ P0 CLOSED AND CONFIRMED: `[Decryption failed]` fixed in 0.0.139, several days with zero new reports.** The four hypotheses in `2026-07-29-HANDOFF-decryption-failed-incident.md` are all DEAD (killed by measurement) — that file is historical, do not work from it. Root cause: `2026-07-29-session-decryption-failed-root-cause.md`. **Never uninstall / clear site data.**
 
 **🔴 FCM IS DISABLED IN PRODUCTION.** `FIREBASE_SERVICE_ACCOUNT` is absent from `~/fireplace/.env`, so every backend boot logs "FCM disabled". `google-services.json` IS tracked, so an APK would register tokens the server can never push to — **Android notifications are dead until that var is set.** Web Push VAPID is present, so the PWA is unaffected, which is why this went unnoticed. Fix it before any APK work.
