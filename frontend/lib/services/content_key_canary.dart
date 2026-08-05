@@ -59,13 +59,27 @@ class _SharedPreferencesContentKeyCanaryShadowStore
 
 /// #105 B2 phase 0: production durability canary for at-rest content-key storage.
 ///
-/// Future B2 sealing would store one content key in flutter_secure_storage on
-/// web. That backend uses IndexedDB + WebCrypto, which the Signal key store
-/// deliberately abandoned after keys vanished across tab closes or WebCrypto
-/// eviction. Losing this one key would make every sealed plaintext record on a
-/// device unreadable, so this canary measures the loss rate before B2 seals
-/// anything. If field diagnostics contain `CONTENT_KEY_CANARY_LOST`, B2 MUST
-/// NOT proceed on this storage.
+/// ⚠️ **THIS CANARY DOES NOT MEASURE WHAT ITS ORIGINAL COMMENT CLAIMED, and the
+/// B2b deploy gate built on it is therefore not evidence. Verified 2026-08-05.**
+/// The original text said flutter_secure_storage on web "uses IndexedDB +
+/// WebCrypto". It does not: the pinned `flutter_secure_storage_web` 1.2.1 keeps
+/// every value in `window.localStorage` and writes its raw AES master key there
+/// as well (`flutter_secure_storage_web.dart:110-116`; no IndexedDB anywhere in
+/// that package). So [_secureStore] (flutter_secure_storage) and [_shadowStore]
+/// (SharedPreferences) are BOTH localStorage on the same origin — they are
+/// evicted together, so `secure == null && shadow != null` (the only state that
+/// reports `CONTENT_KEY_CANARY_LOST`) is essentially unreachable. A long run of
+/// `CANARY_OK {ageDays: N}` demonstrates that localStorage survived N days; it
+/// says NOTHING about a distinct, more-durable key store, because there isn't
+/// one. Two consequences: (1) do not read `ageDays > 7` as clearance to seal
+/// irreplaceable key material; (2) sealing on web currently stores the lock and
+/// the key in the same drawer (see `signal_stores.dart` for the full note).
+/// Re-point this at a non-extractable IndexedDB `CryptoKey` before trusting it.
+///
+/// Original intent, kept for context: one content key would live in
+/// flutter_secure_storage on web; losing it makes every sealed plaintext record
+/// on a device unreadable, so this measures the loss rate before B2 seals
+/// anything. `CONTENT_KEY_CANARY_LOST` in field diagnostics still means STOP.
 ///
 /// Native Keychain/Keystore is already trusted; this is deliberately a no-op
 /// there. The localStorage shadow lets a later boot distinguish a fresh web

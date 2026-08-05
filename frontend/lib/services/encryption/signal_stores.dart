@@ -25,11 +25,27 @@ abstract class SigWebKv {
 
 /// Platform-aware key-value storage for Signal Protocol keys.
 ///
-/// **Web:** Uses ONLY SharedPreferences (localStorage). flutter_secure_storage
-/// on web uses IndexedDB+WebCrypto which loses data when browser tabs are closed
-/// or the WebCrypto key is evicted. Uses SharedPreferencesAsync so Signal
-/// session reads are not served from the legacy SharedPreferences in-memory
-/// cache after another tab/client updates localStorage.
+/// **Web:** Uses ONLY SharedPreferences (localStorage). Historical reason: keys
+/// vanished across tab closes. Uses SharedPreferencesAsync so Signal session
+/// reads are not served from the legacy SharedPreferences in-memory cache after
+/// another tab/client updates localStorage.
+///
+/// ⚠️ **The old rationale here — "flutter_secure_storage on web uses
+/// IndexedDB+WebCrypto" — is FALSE, verified 2026-08-05 against the pinned
+/// `flutter_secure_storage_web` 1.2.1 source.** That package uses
+/// `window.localStorage` for everything and stores its AES-GCM master key
+/// THERE TOO, raw and base64-encoded, under the `publicKey` option (default
+/// literal `FlutterSecureStorage`): `generateKey(algorithm, true /* extractable
+/// */, …)` → `exportKey("raw", …)` → `localStorage[key] = base64Encode(...)`
+/// (`flutter_secure_storage_web.dart:110-116`); zero IndexedDB references in
+/// the file. Consequences, both real: (1) moving Signal keys to
+/// flutter_secure_storage on web would NOT protect them from a localStorage
+/// read, because the unwrapping key is in the same store; (2) the same is true
+/// of the B2a content sealing that already ships, and of B2b. Web at-rest
+/// sealing is obfuscation against anyone who can read this origin's
+/// localStorage — not encryption. Fixing it needs a NON-EXTRACTABLE `CryptoKey`
+/// persisted in IndexedDB (or a passphrase-derived in-memory key), which 1.2.1
+/// cannot provide.
 ///
 /// **Mobile:** Uses flutter_secure_storage (Keychain on iOS, Keystore on Android)
 /// which is hardware-backed and reliable.

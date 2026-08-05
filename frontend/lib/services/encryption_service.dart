@@ -49,9 +49,11 @@ class EncryptionService {
 
   /// DualStorage: platform-branched Signal-key storage (see
   /// encryption/signal_stores.dart). On web, keys live ONLY in
-  /// SharedPreferences/localStorage — flutter_secure_storage's IndexedDB+
-  /// WebCrypto backing loses data when tabs close or the WebCrypto key is
-  /// evicted. On mobile, ONLY flutter_secure_storage (Keychain/Keystore).
+  /// SharedPreferences/localStorage — historically because keys vanished across
+  /// tab closes. NOTE: the old claim that flutter_secure_storage on web is
+  /// "IndexedDB+WebCrypto" is FALSE (1.2.1 is localStorage, master key
+  /// included) — full note in signal_stores.dart. On mobile, ONLY
+  /// flutter_secure_storage (Keychain/Keystore).
   DualStorage _storage = DualStorage(
     FlutterSecureStorage(webOptions: const WebOptions(dbName: 'FireplaceE2E')),
   );
