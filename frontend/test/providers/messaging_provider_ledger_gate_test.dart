@@ -216,7 +216,21 @@ void main() {
     // locally. _restoreFromPersistedPayload is the single point where every
     // served row meets its record, so it must repair the stamp from the
     // server-carried deadline.
-    final expiresAt = DateTime.utc(2026, 8, 5, 19);
+    // RELATIVE TO NOW, and it must stay that way. This hardcoded
+    // `DateTime.utc(2026, 8, 5, 19)` — a fixed instant that silently became a
+    // PAST deadline when the clock passed it on 2026-08-05T19:00Z, after which
+    // the test failed on every run: an already-expired served row is skipped
+    // before the self-heal is reached, so `stamped` stayed empty and the
+    // failure read as "the self-heal broke" rather than "the fixture rotted".
+    // Whole-hour precision keeps the ISO round-trip exact for the equality
+    // assertion below.
+    final nowUtc = DateTime.now().toUtc();
+    final expiresAt = DateTime.utc(
+      nowUtc.year,
+      nowUtc.month,
+      nowUtc.day,
+      nowUtc.hour,
+    ).add(const Duration(days: 1));
     final encryption = _LedgerEncryption(
       ledger: {lostId},
       exists: true,
