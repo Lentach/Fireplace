@@ -117,6 +117,34 @@ Three reviewers (backend, frontend, crypto/data-loss) went over the exact prod-v
 no socket event was renamed or repayloaded, and the four tightened DTOs all accept what 0.1.8
 sends. Then verify `/health`, `/version`, and the log line applying `0011`.
 
+### ✅ BACKEND DEPLOYED — 2026-08-05 10:44 UTC, `884f6d0c`
+
+All four preflight checks passed and the deploy is live. Prod backend went `ded8e1a2` (0.1.2) →
+`884f6d0c`. `APP_VERSION` still reads 0.1.8 because `pubspec.yaml` was deliberately not bumped —
+the bump belongs with the frontend deploy, since `deploy-backend.sh` derives its version from the
+same line.
+
+What was checked and what it said:
+- Duplicate unordered conversation pairs: **none** (55 conversations, 207 messages, 97 users).
+- `X-Real-IP`: **11 occurrences against 11 `proxy_pass` locations** — every proxied location sets
+  it, so the throttler change cannot cause a shared-bucket lockout.
+- Backup: `chatdb-20260805T103852Z.dump.gpg` (119K) + media (28M) + `.env`, all gpg-encrypted, no
+  "no passphrase" warning.
+- **Staging rehearsal against real production data.** Hit the documented cross-version restore
+  trap first (`pg_restore --clean` cannot drop a PK other FKs depend on); fixed exactly as the
+  deploy rule says — `DROP SCHEMA public CASCADE; CREATE SCHEMA public;` then restore. The
+  migration runner then applied `0011` **by itself at backend boot against the restored prod
+  rows**, which is the real rehearsal, and the E2E wire harness came back 13 passed / 2 skipped.
+
+Post-deploy state: `/version` → `884f6d0c`, `/health` → `{"status":"ok","db":"ok"}`, container
+`healthy`, `applied 0011_unique_conversation_user_pair.sql` in the log, `UQ_conversations_user_pair`
+present, `schema_migrations` at 0011, and **zero** errors/exceptions in the boot log.
+
+Still to do by hand: send one message and open a second tab, to confirm the multi-tab delivery fix
+in real use. Rollback if ever needed: `cd ~/fireplace && git checkout ded8e1a2 && ./deploy-backend.sh`
+— the index survives and is harmless, because `ded8e1a2`'s `findOrCreate` already wraps its insert
+in a catch that re-reads and returns the racing row (verified in that commit, not assumed).
+
 **The frontend is the one-way door.** The B2b sealing rewrites every Signal key row in the
 browser in place. The rewrite itself is safe (it verifies each seal by unsealing it in RAM before
 overwriting, and re-checks the row has not changed). But **rolling the frontend back afterwards
