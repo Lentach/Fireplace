@@ -25,7 +25,13 @@ describe('ChatFriendRequestService', () => {
   let mockClient: Partial<Socket>;
   let chatValidationService: jest.Mocked<ChatValidationService>;
   let mockServer: Partial<Server>;
-  let onlineUsers: Map<number, string>;
+  let onlineRooms: Map<string, Set<string>>;
+
+  // Mark a user online by placing a socket in their per-user room — the same
+  // structure isUserOnline/socketsForUser read. Two ids in one set = two tabs.
+  const setOnline = (userId: number) => {
+    onlineRooms.set(`user:${userId}`, new Set([`socket-${userId}`]));
+  };
 
   const mockSender = { id: 1, username: 'alice', tag: '0001' };
   const mockRecipient = { id: 2, username: 'bob', tag: '0002' };
@@ -38,8 +44,12 @@ describe('ChatFriendRequestService', () => {
 
   beforeEach(async () => {
     mockClient = { data: { user: { id: 1 } }, emit: jest.fn() };
-    mockServer = { to: jest.fn().mockReturnThis(), emit: jest.fn() };
-    onlineUsers = new Map();
+    onlineRooms = new Map();
+    mockServer = {
+      to: jest.fn().mockReturnThis(),
+      emit: jest.fn(),
+      sockets: { adapter: { rooms: onlineRooms } } as any,
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -134,7 +144,6 @@ describe('ChatFriendRequestService', () => {
         mockClient as any,
         { recipientId: 2 },
         mockServer as any,
-        onlineUsers,
       );
 
       expect(friendsService.sendRequest).toHaveBeenCalledWith(
@@ -147,6 +156,36 @@ describe('ChatFriendRequestService', () => {
       );
     });
 
+    it('addresses newFriendRequest to the recipient room so every open tab receives it (BE-007 multi-tab)', async () => {
+      usersService.findById
+        .mockResolvedValueOnce(mockSender as any)
+        .mockResolvedValueOnce(mockRecipient as any);
+      friendsService.sendRequest.mockResolvedValue({
+        ...mockFriendRequest,
+        status: 'pending',
+      } as any);
+      // Recipient is online on TWO tabs: both sockets share the one per-user
+      // room. The retired onlineUsers map was last-write-wins, so it could only
+      // ever hold one socket id and the other tab silently went dark (BE-007).
+      onlineRooms.set('user:2', new Set(['tab-a', 'tab-b']));
+
+      await service.handleSendFriendRequest(
+        mockClient as any,
+        { recipientId: 2 },
+        mockServer as any,
+      );
+
+      // Delivery targets the room, never an individual socket id, so both tabs
+      // receive. This is the assertion that would have caught BE-007.
+      expect(mockServer.to).toHaveBeenCalledWith('user:2');
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        'newFriendRequest',
+        expect.any(Object),
+      );
+      expect(mockServer.to).not.toHaveBeenCalledWith('tab-a');
+      expect(mockServer.to).not.toHaveBeenCalledWith('tab-b');
+    });
+
     it('emits accepted readiness to both users without opening a conversation when request is accepted (mutual)', async () => {
       usersService.findById
         .mockResolvedValueOnce(mockSender as any)
@@ -155,13 +194,12 @@ describe('ChatFriendRequestService', () => {
         ...mockFriendRequest,
         status: 'accepted',
       } as any);
-      onlineUsers.set(2, 'socket-2');
+      setOnline(2);
 
       await service.handleSendFriendRequest(
         mockClient as any,
         { recipientId: 2 },
         mockServer as any,
-        onlineUsers,
       );
 
       const acceptedPayload = expect.objectContaining({
@@ -173,7 +211,7 @@ describe('ChatFriendRequestService', () => {
         'friendRequestAccepted',
         acceptedPayload,
       );
-      expect(mockServer.to).toHaveBeenCalledWith('socket-2');
+      expect(mockServer.to).toHaveBeenCalledWith('user:2');
       expect(mockServer.emit).toHaveBeenCalledWith(
         'friendRequestAccepted',
         acceptedPayload,
@@ -203,13 +241,12 @@ describe('ChatFriendRequestService', () => {
       conversationsService.findOrCreate.mockRejectedValue(
         new Error('database unavailable'),
       );
-      onlineUsers.set(2, 'socket-2');
+      setOnline(2);
 
       await service.handleSendFriendRequest(
         mockClient as any,
         { recipientId: 2 },
         mockServer as any,
-        onlineUsers,
       );
 
       const acceptedPayload = expect.objectContaining({
@@ -242,7 +279,6 @@ describe('ChatFriendRequestService', () => {
         mockClient as any,
         data,
         mockServer as any,
-        onlineUsers,
       );
 
       expect(mockClient.emit).toHaveBeenCalledWith('friendRequestFailed', {
@@ -266,7 +302,6 @@ describe('ChatFriendRequestService', () => {
         mockClient as any,
         { recipientId: 1 },
         mockServer as any,
-        onlineUsers,
       );
 
       expect(friendsService.sendRequest).not.toHaveBeenCalled();
@@ -291,7 +326,6 @@ describe('ChatFriendRequestService', () => {
         mockClient as any,
         { recipientId: 999 },
         mockServer as any,
-        onlineUsers,
       );
 
       expect(mockClient.emit).toHaveBeenCalledWith('friendRequestFailed', {
@@ -324,7 +358,6 @@ describe('ChatFriendRequestService', () => {
         mockClient as any,
         { recipientId: 2 },
         mockServer as any,
-        onlineUsers,
       );
 
       expect(mockClient.emit).toHaveBeenCalledWith('friendRequestFailed', {
@@ -358,13 +391,12 @@ describe('ChatFriendRequestService', () => {
 
     it('emits accepted readiness to acceptor and online sender after creating the conversation', async () => {
       setUpAcceptedRequest();
-      onlineUsers.set(1, 'socket-1');
+      setOnline(1);
 
       await service.handleAcceptFriendRequest(
         mockClient as any,
         { requestId: 10 },
         mockServer as any,
-        onlineUsers,
       );
 
       const acceptedPayload = expect.objectContaining({
@@ -377,7 +409,7 @@ describe('ChatFriendRequestService', () => {
         'friendRequestAccepted',
         acceptedPayload,
       );
-      expect(mockServer.to).toHaveBeenCalledWith('socket-1');
+      expect(mockServer.to).toHaveBeenCalledWith('user:1');
       expect(mockServer.emit).toHaveBeenCalledWith(
         'friendRequestAccepted',
         acceptedPayload,
@@ -392,7 +424,6 @@ describe('ChatFriendRequestService', () => {
         mockClient as any,
         { requestId: 10 },
         mockServer as any,
-        onlineUsers,
       );
 
       expect(mockClient.emit).not.toHaveBeenCalledWith(
@@ -406,13 +437,12 @@ describe('ChatFriendRequestService', () => {
       conversationsService.findOrCreate.mockRejectedValue(
         new Error('database unavailable'),
       );
-      onlineUsers.set(1, 'socket-1');
+      setOnline(1);
 
       await service.handleAcceptFriendRequest(
         mockClient as any,
         { requestId: 10 },
         mockServer as any,
-        onlineUsers,
       );
 
       const acceptedPayload = expect.objectContaining({
@@ -447,7 +477,6 @@ describe('ChatFriendRequestService', () => {
         mockClient as any,
         { requestId: 10 },
         mockServer as any,
-        onlineUsers,
       );
 
       const callOrder = (event: string) =>
@@ -481,7 +510,6 @@ describe('ChatFriendRequestService', () => {
         mockClient as any,
         data,
         mockServer as any,
-        onlineUsers,
       );
 
       expect(mockClient.emit).toHaveBeenCalledWith('friendRequestFailed', {
@@ -506,13 +534,12 @@ describe('ChatFriendRequestService', () => {
       friendsService.getPendingRequests.mockResolvedValue([]);
       friendsService.getPendingRequestCount.mockResolvedValue(0);
       mockClient.data = { user: { id: 2 } };
-      onlineUsers.set(1, 'socket-1');
+      setOnline(1);
 
       await service.handleRejectFriendRequest(
         mockClient as Socket,
         { requestId: 10 },
         mockServer as Server,
-        onlineUsers,
       );
 
       expect(friendsService.rejectRequest).toHaveBeenCalledWith(10, 2);
@@ -525,7 +552,7 @@ describe('ChatFriendRequestService', () => {
       expect(mockClient.emit).toHaveBeenCalledWith('pendingRequestsCount', {
         count: 0,
       });
-      expect(mockServer.to).toHaveBeenCalledWith('socket-1');
+      expect(mockServer.to).toHaveBeenCalledWith('user:1');
       expect(mockServer.emit).toHaveBeenCalledWith('sentRequestsList', []);
     });
 
@@ -543,7 +570,6 @@ describe('ChatFriendRequestService', () => {
         mockClient as any,
         data,
         mockServer as any,
-        onlineUsers,
       );
 
       expect(mockClient.emit).toHaveBeenCalledWith('friendRequestFailed', {
@@ -573,13 +599,12 @@ describe('ChatFriendRequestService', () => {
 
     it('emits caller-only invitation chat readiness and conversation lists without opening a conversation', async () => {
       setUpFriendship();
-      onlineUsers.set(2, 'socket-2');
+      setOnline(2);
 
       await service.handleEnsureInvitationChat(
         mockClient as any,
         validRequest,
         mockServer as any,
-        onlineUsers,
       );
 
       expect(chatValidationService.validateCanMessage).toHaveBeenCalledWith(
@@ -593,7 +618,7 @@ describe('ChatFriendRequestService', () => {
         chatReady: true,
       });
       expect(mockClient.emit).toHaveBeenCalledWith('conversationsList', []);
-      expect(mockServer.to).toHaveBeenCalledWith('socket-2');
+      expect(mockServer.to).toHaveBeenCalledWith('user:2');
       expect(mockServer.emit).toHaveBeenCalledWith('conversationsList', []);
       expect(mockServer.emit).not.toHaveBeenCalledWith(
         'invitationChatReady',
@@ -615,7 +640,6 @@ describe('ChatFriendRequestService', () => {
         mockClient as any,
         validRequest,
         mockServer as any,
-        onlineUsers,
       );
 
       expect(mockClient.emit).toHaveBeenCalledWith('invitationChatReady', {
@@ -636,13 +660,11 @@ describe('ChatFriendRequestService', () => {
         mockClient as any,
         { peerUserId: 2, correlationId: 'first_token' },
         mockServer as any,
-        onlineUsers,
       );
       await service.handleEnsureInvitationChat(
         mockClient as any,
         { peerUserId: 2, correlationId: 'second_token' },
         mockServer as any,
-        onlineUsers,
       );
 
       expect(conversationsService.findOrCreate).toHaveBeenCalledTimes(2);
@@ -675,7 +697,6 @@ describe('ChatFriendRequestService', () => {
         mockClient as unknown as Socket,
         validRequest,
         mockServer as unknown as Server,
-        onlineUsers,
       );
 
       expect(mockClient.emit).toHaveBeenCalledWith('invitationChatReady', {
@@ -702,7 +723,6 @@ describe('ChatFriendRequestService', () => {
         mockClient as unknown as Socket,
         validRequest,
         mockServer as unknown as Server,
-        onlineUsers,
       );
 
       expect(mockClient.emit).toHaveBeenCalledWith('invitationChatReady', {
@@ -753,7 +773,6 @@ describe('ChatFriendRequestService', () => {
           mockClient as unknown as Socket,
           data,
           mockServer as unknown as Server,
-          onlineUsers,
         );
 
         expect(mockClient.emit).toHaveBeenCalledWith('friendRequestFailed', {
@@ -826,7 +845,6 @@ describe('ChatFriendRequestService', () => {
         mockClient as any,
         { userId: 2 },
         mockServer as any,
-        onlineUsers,
       );
 
       expect(friendsService.unfriend).toHaveBeenCalledWith(1, 2);
@@ -835,16 +853,15 @@ describe('ChatFriendRequestService', () => {
     });
 
     it('broadcasts unfriended to the other user when online', async () => {
-      onlineUsers.set(2, 'socket-2');
+      setOnline(2);
 
       await service.handleUnfriend(
         mockClient as any,
         { userId: 2 },
         mockServer as any,
-        onlineUsers,
       );
 
-      expect(mockServer.to).toHaveBeenCalledWith('socket-2');
+      expect(mockServer.to).toHaveBeenCalledWith('user:2');
       expect(mockServer.emit).toHaveBeenCalledWith('unfriended', { userId: 1 });
     });
 
@@ -855,7 +872,6 @@ describe('ChatFriendRequestService', () => {
         mockClient as any,
         { userId: 2 },
         mockServer as any,
-        onlineUsers,
       );
 
       expect(mockClient.emit).toHaveBeenCalledWith('error', {

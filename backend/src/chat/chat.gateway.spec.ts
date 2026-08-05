@@ -173,15 +173,26 @@ describe('ChatGateway handleConnection', () => {
   });
 });
 
-describe('ChatGateway handleDisconnect (stale-socket guard)', () => {
+describe('ChatGateway presence is room-based (BE-007)', () => {
   let gateway: ChatGateway;
   let jwtService: { verify: jest.Mock };
   let usersService: { findById: jest.Mock };
 
+  /** Mock clients are structural stand-ins; Socket has far more surface. */
+  interface GatewayInternals {
+    jwtService: { verify: jest.Mock };
+    usersService: { findById: jest.Mock };
+  }
+
+  /** Mock clients are structural stand-ins; Socket has far more surface. */
+  const asSocket = (client: unknown): Socket => client as Socket;
+
   beforeEach(() => {
     gateway = createGateway();
-    jwtService = (gateway as any).jwtService;
-    usersService = (gateway as any).usersService;
+    // Private collaborators, reachable only by assertion in a unit test.
+    const internals = gateway as unknown as GatewayInternals;
+    jwtService = internals.jwtService;
+    usersService = internals.usersService;
     jwtService.verify.mockReturnValue({ sub: 37 });
     usersService.findById.mockResolvedValue({
       id: 37,
@@ -192,30 +203,42 @@ describe('ChatGateway handleDisconnect (stale-socket guard)', () => {
 
   // iOS PWA suspend/resume: the device reconnects with a NEW socket while the
   // abandoned OLD socket lingers on the server until its ping times out (~20s).
-  // When that stale disconnect finally fires, it must NOT evict the live socket —
-  // otherwise onlineUsers.get(userId) goes undefined and peers' newMessage emits
-  // silently fall back to push (notification arrives, message never delivered live).
-  it('a stale old-socket disconnect does NOT unregister the live new socket', async () => {
+  // The gateway used to keep a userId -> socketId map, so that stale disconnect
+  // could evict the live socket and silently push peers' newMessage to push
+  // instead of delivering it. Room membership has no such failure mode: both
+  // sockets are in `user:37`, and Socket.IO removes each on its own disconnect.
+  it('every authenticated socket joins the per-user room, so a second tab is addressable', async () => {
     const oldSocket = createMockClient({ token: 'jwt', id: 'OLD' });
     const newSocket = createMockClient({ token: 'jwt', id: 'NEW' });
 
-    await gateway.handleConnection(oldSocket as any); // onlineUsers[37] = OLD
-    await gateway.handleConnection(newSocket as any); // reconnect → onlineUsers[37] = NEW
+    await gateway.handleConnection(asSocket(oldSocket));
+    await gateway.handleConnection(asSocket(newSocket));
 
-    gateway.handleDisconnect(oldSocket as any); // abandoned old socket times out
-
-    const onlineUsers = onlineUsersOf(gateway);
-    expect(onlineUsers.get(37)).toBe('NEW');
+    // Both tabs joined the SAME room — this is what makes multi-tab delivery
+    // work. Under the old map the second connect overwrote the first.
+    expect(oldSocket.join).toHaveBeenCalledWith('user:37');
+    expect(newSocket.join).toHaveBeenCalledWith('user:37');
   });
 
-  it('disconnect of the current socket DOES unregister the user', async () => {
-    const socket = createMockClient({ token: 'jwt', id: 'ONLY' });
+  it('a stale old-socket disconnect does not evict anything (no presence bookkeeping left)', async () => {
+    const oldSocket = createMockClient({ token: 'jwt', id: 'OLD' });
+    const newSocket = createMockClient({ token: 'jwt', id: 'NEW' });
 
-    await gateway.handleConnection(socket as any);
-    gateway.handleDisconnect(socket as any);
+    await gateway.handleConnection(asSocket(oldSocket));
+    await gateway.handleConnection(asSocket(newSocket));
 
-    const onlineUsers = onlineUsersOf(gateway);
-    expect(onlineUsers.has(37)).toBe(false);
+    // Must not throw and must not touch the live socket. The guarded-delete
+    // dance this replaced existed only because a single-socket map could be
+    // clobbered; there is nothing left to clobber.
+    expect(() => gateway.handleDisconnect(asSocket(oldSocket))).not.toThrow();
+    expect(newSocket.disconnect).not.toHaveBeenCalled();
+  });
+
+  it('disconnect of an unauthenticated socket is a no-op', () => {
+    const socket = createMockClient({ token: undefined, id: 'ANON' });
+    socket.data = {};
+
+    expect(() => gateway.handleDisconnect(asSocket(socket))).not.toThrow();
   });
 });
 

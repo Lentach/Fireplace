@@ -6,7 +6,6 @@ describe('ChatReactionService', () => {
   let mockBlockedService: any;
   let mockServer: any;
   let mockClient: any;
-  let onlineUsers: Map<number, string>;
 
   const mockConversation = {
     id: 10,
@@ -29,7 +28,6 @@ describe('ChatReactionService', () => {
       emit: jest.fn(),
     };
     mockClient = { data: { user: { id: 1 } }, emit: jest.fn() };
-    onlineUsers = new Map([[2, 'socket-2']]);
   });
 
   describe('handleAddReaction', () => {
@@ -47,7 +45,6 @@ describe('ChatReactionService', () => {
         mockClient,
         { messageId: 5, emoji: '👍' },
         mockServer,
-        onlineUsers,
       );
 
       expect(mockMessagesService.addOrUpdateReaction).toHaveBeenCalledWith(
@@ -60,7 +57,7 @@ describe('ChatReactionService', () => {
         conversationId: 10,
         reactions: { '👍': [1] },
       });
-      expect(mockServer.to).toHaveBeenCalledWith('socket-2');
+      expect(mockServer.to).toHaveBeenCalledWith('user:2');
       expect(mockServer.emit).toHaveBeenCalledWith('reactionUpdated', {
         messageId: 5,
         conversationId: 10,
@@ -75,7 +72,6 @@ describe('ChatReactionService', () => {
         mockClient,
         { messageId: 999, emoji: '👍' },
         mockServer,
-        onlineUsers,
       );
 
       expect(mockClient.emit).toHaveBeenCalledWith('error', {
@@ -89,7 +85,6 @@ describe('ChatReactionService', () => {
         { data: {} } as any,
         { messageId: 5, emoji: '👍' },
         mockServer,
-        onlineUsers,
       );
 
       expect(
@@ -102,7 +97,6 @@ describe('ChatReactionService', () => {
         mockClient,
         { messageId: -1, emoji: '👍' },
         mockServer,
-        onlineUsers,
       );
 
       expect(mockClient.emit).toHaveBeenCalledWith(
@@ -121,7 +115,6 @@ describe('ChatReactionService', () => {
         mockClient,
         { messageId: 5, emoji: '👍' },
         mockServer,
-        onlineUsers,
       );
 
       expect(mockClient.emit).toHaveBeenCalledWith('error', {
@@ -141,7 +134,6 @@ describe('ChatReactionService', () => {
         mockClient,
         { messageId: 5, emoji: '👍' },
         mockServer,
-        onlineUsers,
       );
 
       expect(mockBlockedService.isBlockedByEither).toHaveBeenCalledWith(1, 2);
@@ -155,6 +147,28 @@ describe('ChatReactionService', () => {
         'error',
         expect.anything(),
       );
+    });
+
+    // BE-007 multi-tab regression: delivery must target the recipient's per-user
+    // room so every open tab receives it, not a single last-write-wins socket id.
+    it('should deliver reactionUpdated to the recipient room, not a socket id (multi-tab)', async () => {
+      mockMessagesService.findByIdWithConversation.mockResolvedValue({
+        id: 5,
+        conversation: mockConversation,
+      });
+      mockMessagesService.addOrUpdateReaction.mockResolvedValue({
+        id: 5,
+        reactions: JSON.stringify({ '👍': [1] }),
+      });
+
+      await service.handleAddReaction(
+        mockClient,
+        { messageId: 5, emoji: '👍' },
+        mockServer,
+      );
+
+      expect(mockServer.to).toHaveBeenCalledWith('user:2');
+      expect(mockServer.to).not.toHaveBeenCalledWith('socket-2');
     });
   });
 
@@ -173,7 +187,6 @@ describe('ChatReactionService', () => {
         mockClient,
         { messageId: 5, emoji: '👍' },
         mockServer,
-        onlineUsers,
       );
 
       expect(mockMessagesService.removeReaction).toHaveBeenCalledWith(
@@ -186,7 +199,7 @@ describe('ChatReactionService', () => {
         conversationId: 10,
         reactions: {},
       });
-      expect(mockServer.to).toHaveBeenCalledWith('socket-2');
+      expect(mockServer.to).toHaveBeenCalledWith('user:2');
       expect(mockServer.emit).toHaveBeenCalledWith('reactionUpdated', {
         messageId: 5,
         conversationId: 10,
@@ -201,7 +214,6 @@ describe('ChatReactionService', () => {
         mockClient,
         { messageId: 999, emoji: '👍' },
         mockServer,
-        onlineUsers,
       );
 
       expect(mockClient.emit).toHaveBeenCalledWith('error', {
@@ -215,7 +227,6 @@ describe('ChatReactionService', () => {
         { data: {} } as any,
         { messageId: 5, emoji: '👍' },
         mockServer,
-        onlineUsers,
       );
 
       expect(
@@ -233,7 +244,6 @@ describe('ChatReactionService', () => {
         mockClient,
         { messageId: 5, emoji: '👍' },
         mockServer,
-        onlineUsers,
       );
 
       expect(mockClient.emit).toHaveBeenCalledWith('error', {
@@ -253,7 +263,6 @@ describe('ChatReactionService', () => {
         mockClient,
         { messageId: 5, emoji: '👍' },
         mockServer,
-        onlineUsers,
       );
 
       expect(mockBlockedService.isBlockedByEither).toHaveBeenCalledWith(1, 2);

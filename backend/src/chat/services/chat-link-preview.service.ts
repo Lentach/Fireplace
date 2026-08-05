@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { MessagesService } from '../../messages/messages.service';
 import { LinkPreviewService } from './link-preview.service';
+import { userRoom } from '../utils/user-room';
 
 @Injectable()
 export class ChatLinkPreviewService {
@@ -25,7 +26,7 @@ export class ChatLinkPreviewService {
     messageId: number;
     conversationId: number;
     client: Socket;
-    recipientSocketId: string | undefined;
+    recipientId: number;
     server: Server;
   }): void {
     const {
@@ -35,7 +36,7 @@ export class ChatLinkPreviewService {
       messageId,
       conversationId,
       client,
-      recipientSocketId,
+      recipientId,
       server,
     } = opts;
 
@@ -63,9 +64,12 @@ export class ChatLinkPreviewService {
           linkPreviewImageUrl: preview.imageUrl,
         };
         client.emit('linkPreviewReady', previewPayload);
-        if (recipientSocketId) {
-          server.to(recipientSocketId).emit('linkPreviewReady', previewPayload);
-        }
+        // Room-addressed so every open tab gets the card, not just the newest
+        // (BE-007). Safe to fan out: the payload is plaintext OG metadata, not
+        // ciphertext, so there is no ratchet state to consume.
+        server
+          .to(userRoom(recipientId))
+          .emit('linkPreviewReady', previewPayload);
       })
       .catch(() => {
         /* swallow — preview is best-effort */

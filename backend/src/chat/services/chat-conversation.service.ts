@@ -6,6 +6,7 @@ import { UsersService } from '../../users/users.service';
 import { BlockedService } from '../../blocked/blocked.service';
 import { ChatValidationService } from './chat-validation.service';
 import { validateDto } from '../utils/dto.validator';
+import { userRoom, isUserOnline } from '../utils/user-room';
 import {
   StartConversationDto,
   SetDisappearingTimerDto,
@@ -33,12 +34,7 @@ export class ChatConversationService {
     private readonly notificationPreferences: ConversationNotificationPreferencesService,
   ) {}
 
-  async handleStartConversation(
-    client: Socket,
-    data: any,
-    server: Server,
-    onlineUsers: Map<number, string>,
-  ) {
+  async handleStartConversation(client: Socket, data: any, server: Server) {
     const userId: number = client.data.user?.id;
     if (!userId) return;
 
@@ -88,8 +84,7 @@ export class ChatConversationService {
     client.emit('openConversation', { conversationId: conversation.id });
 
     // Emit only conversationsList to the other user (no openConversation — B should not auto-open chat)
-    const otherSocketId = onlineUsers.get(data.recipientId);
-    if (otherSocketId) {
+    if (isUserOnline(server, data.recipientId)) {
       const [rawOtherConvs, otherBlockedIds, otherBlockedByUserIds] =
         await Promise.all([
           this.conversationsService.findByUser(data.recipientId),
@@ -111,7 +106,9 @@ export class ChatConversationService {
         otherConvs,
         data.recipientId,
       );
-      server.to(otherSocketId).emit('conversationsList', otherList);
+      server
+        .to(userRoom(data.recipientId))
+        .emit('conversationsList', otherList);
     }
   }
 
@@ -124,18 +121,20 @@ export class ChatConversationService {
     const convIds = conversations
       .map((c) => Number(c.id))
       .filter((id) => !Number.isNaN(id));
-    const [unreadMap, lastMsgMap, pinnedMsgMap, muteStates] = await Promise.all([
-      this.messagesService.countUnreadForRecipientBatch(convIds, userId),
-      this.messagesService.getLastMessagesBatch(convIds, userId),
-      this.messagesService.getPinnedMessagesBatch(
-        conversations.map((c) => ({
-          conversationId: Number(c.id),
-          pinnedMessageId: c.pinnedMessageId ?? null,
-        })),
-        userId,
-      ),
-      this.notificationPreferences.getMuteStates(userId, convIds),
-    ]);
+    const [unreadMap, lastMsgMap, pinnedMsgMap, muteStates] = await Promise.all(
+      [
+        this.messagesService.countUnreadForRecipientBatch(convIds, userId),
+        this.messagesService.getLastMessagesBatch(convIds, userId),
+        this.messagesService.getPinnedMessagesBatch(
+          conversations.map((c) => ({
+            conversationId: Number(c.id),
+            pinnedMessageId: c.pinnedMessageId ?? null,
+          })),
+          userId,
+        ),
+        this.notificationPreferences.getMuteStates(userId, convIds),
+      ],
+    );
 
     const results = conversations.map((conv) => {
       const convId = Number(conv.id);
@@ -197,7 +196,6 @@ export class ChatConversationService {
     client: Socket,
     data: any,
     server: Server,
-    onlineUsers: Map<number, string>,
   ) {
     const userId = client.data.user?.id;
     if (!userId) return;
@@ -254,20 +252,19 @@ export class ChatConversationService {
     const payload = { conversationId: dto.conversationId };
     client.emit('conversationDeleted', payload);
 
-    const otherSocketId = onlineUsers.get(otherUserId);
-
     // 7. Refresh conversations list for both users
     const userConvs = await this.conversationsService.findByUser(userId);
     const userList = await this.conversationsWithUnread(userConvs, userId);
     client.emit('conversationsList', userList);
 
-    if (otherSocketId) {
-      const otherConvs = await this.conversationsService.findByUser(otherUserId);
+    if (isUserOnline(server, otherUserId)) {
+      const otherConvs =
+        await this.conversationsService.findByUser(otherUserId);
       const otherList = await this.conversationsWithUnread(
         otherConvs,
         otherUserId,
       );
-      server.to(otherSocketId).emit('conversationsList', otherList);
+      server.to(userRoom(otherUserId)).emit('conversationsList', otherList);
     }
 
     this.logger.debug(
@@ -277,12 +274,7 @@ export class ChatConversationService {
     // NOTE: friend_request is NOT deleted - remains ACCEPTED
   }
 
-  async handleSetDisappearingTimer(
-    client: Socket,
-    data: any,
-    server: Server,
-    onlineUsers: Map<number, string>,
-  ) {
+  async handleSetDisappearingTimer(client: Socket, data: any, server: Server) {
     const userId: number = client.data.user?.id;
     if (!userId) return;
 
@@ -330,22 +322,14 @@ export class ChatConversationService {
     // Emit to both users
     client.emit('disappearingTimerUpdated', payload);
 
-    const otherUserSocketId = onlineUsers.get(otherUserId);
-    if (otherUserSocketId) {
-      server.to(otherUserSocketId).emit('disappearingTimerUpdated', payload);
-    }
+    server.to(userRoom(otherUserId)).emit('disappearingTimerUpdated', payload);
 
     this.logger.debug(
       `User ${userId} set disappearing timer to ${data.seconds}s for conversation ${data.conversationId}`,
     );
   }
 
-  async handlePinMessage(
-    client: Socket,
-    data: any,
-    server: Server,
-    onlineUsers: Map<number, string>,
-  ) {
+  async handlePinMessage(client: Socket, data: any, server: Server) {
     const userId: number = client.data.user?.id;
     if (!userId) {
       client.emit('error', { message: 'Unauthorized' });
@@ -369,8 +353,7 @@ export class ChatConversationService {
     }
 
     const userBelongs =
-      conversation.userOne.id === userId ||
-      conversation.userTwo.id === userId;
+      conversation.userOne.id === userId || conversation.userTwo.id === userId;
     if (!userBelongs) {
       client.emit('error', { message: 'Unauthorized' });
       return;
@@ -409,22 +392,14 @@ export class ChatConversationService {
       conversation.userOne.id === userId
         ? conversation.userTwo.id
         : conversation.userOne.id;
-    const otherUserSocketId = onlineUsers.get(otherUserId);
-    if (otherUserSocketId) {
-      server.to(otherUserSocketId).emit('messagePinned', payload);
-    }
+    server.to(userRoom(otherUserId)).emit('messagePinned', payload);
 
     this.logger.debug(
       `User ${userId} pinned message ${dto.messageId} in conversation ${dto.conversationId}`,
     );
   }
 
-  async handleUnpinMessage(
-    client: Socket,
-    data: any,
-    server: Server,
-    onlineUsers: Map<number, string>,
-  ) {
+  async handleUnpinMessage(client: Socket, data: any, server: Server) {
     const userId: number = client.data.user?.id;
     if (!userId) {
       client.emit('error', { message: 'Unauthorized' });
@@ -448,8 +423,7 @@ export class ChatConversationService {
     }
 
     const userBelongs =
-      conversation.userOne.id === userId ||
-      conversation.userTwo.id === userId;
+      conversation.userOne.id === userId || conversation.userTwo.id === userId;
     if (!userBelongs) {
       client.emit('error', { message: 'Unauthorized' });
       return;
@@ -463,10 +437,7 @@ export class ChatConversationService {
       conversation.userOne.id === userId
         ? conversation.userTwo.id
         : conversation.userOne.id;
-    const otherUserSocketId = onlineUsers.get(otherUserId);
-    if (otherUserSocketId) {
-      server.to(otherUserSocketId).emit('messageUnpinned', payload);
-    }
+    server.to(userRoom(otherUserId)).emit('messageUnpinned', payload);
 
     this.logger.debug(
       `User ${userId} unpinned conversation ${dto.conversationId}`,
@@ -482,12 +453,17 @@ export class ChatConversationService {
       client.emit('error', { message: error.message });
       return;
     }
-    const conversation = await this.conversationsService.findById(dto.conversationId);
+    const conversation = await this.conversationsService.findById(
+      dto.conversationId,
+    );
     if (!conversation) {
       client.emit('error', { message: 'Conversation not found' });
       return;
     }
-    if (conversation.userOne.id !== userId && conversation.userTwo.id !== userId) {
+    if (
+      conversation.userOne.id !== userId &&
+      conversation.userTwo.id !== userId
+    ) {
       client.emit('error', { message: 'Unauthorized' });
       return;
     }
