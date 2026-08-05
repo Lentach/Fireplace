@@ -87,6 +87,58 @@ Backend went 589 → **670** across 49 suites.
 
 ---
 
+## The deploy, reviewed (2026-08-05)
+
+Three reviewers (backend, frontend, crypto/data-loss) went over the exact prod-vs-master delta.
+**All three: SHIP-WITH-CHECKS. No blocker.** What is undeployed:
+
+- Backend `ded8e1a2` (0.1.2, built 08-03) → master: 7 commits, 57 files.
+- Frontend `c01317c` (0.1.8) → master: 3 commits, 38 files — B2b sealing, sweep diagnostics,
+  the 19 audit fixes.
+
+**Four things to check before the backend deploy, in order:**
+
+1. Fresh encrypted backup on the VM: `cd ~/fireplace && ./backup-db.sh`. Non-negotiable — the
+   first boot of the new backend hard-deletes messages both participants had already hidden, and
+   that is irreversible.
+2. Zero duplicate conversation pairs, or migration `0011` aborts the boot (by design — it refuses
+   to dedupe rather than risk destroying messages):
+   `docker compose -f docker-compose.prod.yml exec db psql -U postgres -d chatdb -tAc "SELECT LEAST(user_one_id,user_two_id), GREATEST(user_one_id,user_two_id), count(*) FROM public.conversations GROUP BY 1,2 HAVING count(*)>1"`
+   → must print **nothing**. Failure is safe: the transaction rolls back, the container never goes
+   healthy, and the old backend keeps serving.
+3. Every proxied nginx location still sets `X-Real-IP`. The throttler dropped its
+   `X-Forwarded-For` fallback, so a location missing that header collapses all callers into one
+   rate-limit bucket — i.e. a site-wide login lockout. Verified on 2026-08-04 across 11 locations;
+   re-grep `/etc/nginx/sites-enabled/fireplace` because that config is not in this repo.
+4. Staging dress rehearsal (mandatory — the delta touches a migration and an entity):
+   `.\staging.ps1 up` → `restore <newest dump>` → `sql backend\migrations\0011_unique_conversation_user_pair.sql` → `harness` → `down`.
+
+**Deploy the backend first.** It is wire-compatible with the 0.1.8 clients already in the field —
+no socket event was renamed or repayloaded, and the four tightened DTOs all accept what 0.1.8
+sends. Then verify `/health`, `/version`, and the log line applying `0011`.
+
+**The frontend is the one-way door.** The B2b sealing rewrites every Signal key row in the
+browser in place. The rewrite itself is safe (it verifies each seal by unsealing it in RAM before
+overwriting, and re-checks the row has not changed). But **rolling the frontend back afterwards
+does not undo it**: the old 0.1.8 bundle cannot parse the sealed rows and end-to-end encryption
+goes down for every web user until you roll forward again. Nothing is destroyed — the old code
+throws rather than regenerating an identity, verified by reading `c01317c`'s own
+`encryption_service.dart` — but there is no going back. So: satisfy the canary gate first, bump
+`frontend/pubspec.yaml` to `0.1.9` (it still reads 0.1.8, which is exactly what prod serves), and
+treat the frontend deploy as a separate decision from the backend one.
+
+**Watch for the first few hours:** in the app's own diagnostics (Settings → Privacy & Safety →
+E2E Diagnostic Log → Copy) `SIG_SEAL_OPEN` with `legacy` marching to 0 and one
+`SIG_SEAL_DRAIN_DONE`; escalate on `SIG_KEY_UNAVAILABLE`, `SIG_ROWS_UNREADABLE` or
+`CONTENT_KEY_LOST`. In the VM logs, `applied 0011`, no `friendRequestFailed` storm, and no
+socket-addressing errors from the multi-tab change.
+
+One review finding was fixed rather than accepted: media *downloads* had been bounded at 20 s
+while uploads got 60 s, so a large received image on a slow link could newly fail. Both now share
+a 60 s media budget.
+
+---
+
 ## Where to look next
 
 | You want | Read |
