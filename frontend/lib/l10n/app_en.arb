@@ -131,6 +131,8 @@
     "placeholders": { "name": { "type": "String" } }
   },
   "peerIdentityVerifyAction": "Verify",
+  "peerIdentityMarkVerifiedAction": "Fingerprints match",
+  "peerIdentityVerifyMenuAction": "Verify security keys",
   "peerIdentityFingerprintDialogTitle": "Verify security keys",
   "peerIdentityFingerprintDialogDescription": "Compare these fingerprints with {name} over another channel. They must match.",
   "@peerIdentityFingerprintDialogDescription": {

@@ -20,6 +20,7 @@ import '../widgets/glass/glass_menu.dart';
 import '../widgets/glass/glass_sheet.dart';
 import '../widgets/top_snackbar.dart' show showTopSnackBar;
 import '../widgets/user_card/shared_media_section.dart';
+import '../widgets/peer_identity_fingerprint_dialog.dart';
 import 'edit_about_screen.dart';
 
 /// Relationship-aware card presentation for a contact or the current user
@@ -688,6 +689,20 @@ class _UserCardScreenState extends State<UserCardScreen> {
                       title: l10n.userCardSafety,
                       child: Column(
                         children: [
+                          // FIRST in Safety, and non-danger: this is the only
+                          // defence against a server-side key substitution, and
+                          // it must be reachable BEFORE anything looks wrong —
+                          // a first-contact substitution produces no change to
+                          // warn about.
+                          _ActionRow(
+                            icon: Icons.verified_user_outlined,
+                            label: l10n.peerIdentityVerifyMenuAction,
+                            onTap: () => showPeerIdentityFingerprintDialog(
+                              context: context,
+                              peerId: data.userId!,
+                              peerName: data.username,
+                            ),
+                          ),
                           _ActionRow(
                             icon: Icons.person_remove_outlined,
                             label: l10n.userCardRemoveContact,

@@ -1093,6 +1093,14 @@ class EncryptionProvider extends ChangeNotifier {
   Future<String?> getPeerIdentityFingerprint(int peerId) =>
       _encryptionService.getPeerIdentityFingerprint(peerId);
 
+  /// The user compared fingerprints out of band and accepted [peerId]'s current
+  /// key. Clears the standing identity-change warning — the ONLY thing that
+  /// does, so an unacknowledged warning survives restarts.
+  Future<void> acknowledgePeerIdentity(int peerId) async {
+    await _encryptionService.acknowledgePeerIdentity(peerId);
+    notifyListeners();
+  }
+
   /// Clear all E2E encryption keys. Call on account deletion only.
   Future<void> clearEncryptionKeys() async {
     _e2eFlowLog('CACHE_CLEAR', {'scope': 'allE2EKeys'});

@@ -728,6 +728,18 @@ abstract class AppLocalizations {
   /// **'Zweryfikuj'**
   String get peerIdentityVerifyAction;
 
+  /// No description provided for @peerIdentityMarkVerifiedAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odciski się zgadzają'**
+  String get peerIdentityMarkVerifiedAction;
+
+  /// No description provided for @peerIdentityVerifyMenuAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zweryfikuj klucze bezpieczeństwa'**
+  String get peerIdentityVerifyMenuAction;
+
   /// No description provided for @peerIdentityFingerprintDialogTitle.
   ///
   /// In pl, this message translates to:

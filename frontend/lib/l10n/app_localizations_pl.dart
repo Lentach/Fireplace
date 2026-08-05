@@ -357,6 +357,12 @@ class AppLocalizationsPl extends AppLocalizations {
   String get peerIdentityVerifyAction => 'Zweryfikuj';
 
   @override
+  String get peerIdentityMarkVerifiedAction => 'Odciski się zgadzają';
+
+  @override
+  String get peerIdentityVerifyMenuAction => 'Zweryfikuj klucze bezpieczeństwa';
+
+  @override
   String get peerIdentityFingerprintDialogTitle =>
       'Zweryfikuj klucze bezpieczeństwa';
 

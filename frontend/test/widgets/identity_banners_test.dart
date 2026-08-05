@@ -3,6 +3,7 @@ import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/identity_damaged_banner.dart';
 import 'package:fireplace/widgets/peer_identity_changed_banner.dart';
+import 'package:fireplace/widgets/peer_identity_fingerprint_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
@@ -25,6 +26,7 @@ class _FakeEncryption extends EncryptionProvider {
   String? peerFingerprint;
   String? ownFingerprint;
   int recoverCalls = 0;
+  final List<int> acknowledged = <int>[];
   bool recovering = false;
 
   @override
@@ -46,6 +48,13 @@ class _FakeEncryption extends EncryptionProvider {
   @override
   Future<void> recoverFromIncompleteIdentity() async {
     recoverCalls++;
+  }
+
+  @override
+  Future<void> acknowledgePeerIdentity(int peerId) async {
+    acknowledged.add(peerId);
+    changedPeers = changedPeers.where((id) => id != peerId).toSet();
+    notifyListeners();
   }
 }
 
@@ -225,6 +234,67 @@ void main() {
         findsOneWidget,
       );
       expect(find.byType(SelectableText), findsOneWidget);
+    });
+  });
+
+  group('showPeerIdentityFingerprintDialog', () {
+    /// Opens the dialog the way the peer's Safety section does — with no
+    /// standing warning. This is the door that catches a FIRST-CONTACT
+    /// substitution, which produces no key change to warn about.
+    Widget proactiveHost(EncryptionProvider encryption) => _host(
+      encryption,
+      Builder(
+        builder: (context) => TextButton(
+          onPressed: () => showPeerIdentityFingerprintDialog(
+            context: context,
+            peerId: 7,
+            peerName: 'bob',
+          ),
+          child: const Text('open'),
+        ),
+      ),
+    );
+
+    testWidgets('shows fingerprints with no warning standing, and offers no '
+        'acknowledge action', (tester) async {
+      final encryption = _FakeEncryption(
+        peerFingerprint: '0123 4567 89ab cdef',
+        ownFingerprint: 'fedc ba98 7654 3210',
+      );
+      await tester.pumpWidget(proactiveHost(encryption));
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      expect(find.byType(AlertDialog), findsOneWidget);
+      expect(find.text('0123 4567 89ab cdef'), findsOneWidget);
+      // Nothing to acknowledge: offering it would train the habit of clearing
+      // a warning that was never raised.
+      expect(find.text(l10n.peerIdentityMarkVerifiedAction), findsNothing);
+      expect(encryption.acknowledged, isEmpty);
+    });
+
+    testWidgets('acknowledging a standing warning clears it exactly once', (
+      tester,
+    ) async {
+      final encryption = _FakeEncryption(
+        changedPeers: {7},
+        peerFingerprint: '0123 4567 89ab cdef',
+        ownFingerprint: 'fedc ba98 7654 3210',
+      );
+      await tester.pumpWidget(proactiveHost(encryption));
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      await tester.tap(find.text(l10n.peerIdentityMarkVerifiedAction));
+      await tester.pumpAndSettle();
+
+      expect(encryption.acknowledged, [7]);
+      expect(encryption.peersWithChangedIdentity, isEmpty);
+      expect(find.byType(AlertDialog), findsNothing, reason: 'dialog closes');
     });
   });
 }

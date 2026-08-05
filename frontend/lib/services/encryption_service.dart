@@ -185,14 +185,64 @@ class EncryptionService {
   /// [regenerateIdentityAfterConfirmedLoss], which the USER must consent to.
   bool identityIncomplete = false;
 
-  /// Peers whose identity key changed under us this session, surfaced so the
-  /// UI can warn instead of silently trusting the new key.
+  /// Peers whose identity key changed under us, surfaced so the UI can warn
+  /// instead of silently trusting the new key.
+  ///
+  /// PERSISTED (`e2e_<uid>_peer_identity_changed_v1`) and cleared ONLY by
+  /// [acknowledgePeerIdentity], i.e. by the user saying "I verified this".
+  /// It used to be session-only, so the single warning this product has for a
+  /// possible machine-in-the-middle vanished on the next PWA reopen — a user
+  /// who was not looking at that chat never learned it happened. Best-effort by
+  /// design: a failed read means the warning does not survive a restart (the
+  /// pre-2026-08-05 behaviour), never that a change is invented.
   final Set<int> _peersWithChangedIdentity = <int>{};
   Set<int> get peersWithChangedIdentity =>
       Set.unmodifiable(_peersWithChangedIdentity);
 
+  static const int _identityChangedCap = 200;
+
+  String _identityChangedKey(int userId) =>
+      'e2e_${userId}_peer_identity_changed_v1';
+
   /// Called when a peer's identity key changes. Set by the provider.
   void Function(int peerId)? onPeerIdentityChanged;
+
+  /// The user verified [peerId]'s fingerprint out of band. Drops the warning
+  /// for good — this is the ONLY thing that clears it.
+  Future<void> acknowledgePeerIdentity(int peerId) async {
+    if (!_peersWithChangedIdentity.remove(peerId)) return;
+    E2ePersistentDiag.record('PEER_IDENTITY_ACKNOWLEDGED', {'peerId': peerId});
+    await _persistIdentityChanged();
+    onPeerIdentityChanged?.call(peerId);
+  }
+
+  Future<void> _persistIdentityChanged() async {
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      // Highest ids kept, same rule as the retired set: bounded degradation (an
+      // old warning drops off) beats an unbounded key competing with the Signal
+      // session records for quota.
+      final sorted = _peersWithChangedIdentity.toList()..sort();
+      final kept = sorted.length > _identityChangedCap
+          ? sorted.sublist(sorted.length - _identityChangedCap)
+          : sorted;
+      await prefs.setString(_identityChangedKey(userId), jsonEncode(kept));
+    } catch (_) {}
+  }
+
+  Future<void> _loadIdentityChanged(int userId) async {
+    try {
+      final prefs = await _sharedPrefs;
+      await _reloadPrefsForCrossContext(prefs);
+      final raw = prefs.getString(_identityChangedKey(userId));
+      if (raw == null) return;
+      final decoded = jsonDecode(raw);
+      if (decoded is! List) return;
+      _peersWithChangedIdentity.addAll(decoded.whereType<int>());
+    } catch (_) {}
+  }
 
   /// Construct the four Signal stores for prefix [p].
   ///
@@ -208,7 +258,11 @@ class EncryptionService {
         if (peerId == null) return;
         if (!_peersWithChangedIdentity.add(peerId)) return;
         E2ePersistentDiag.record('PEER_IDENTITY_CHANGED', {'peerId': peerId});
+        // Fire the UI first, persist after: the warning must reach the user
+        // even if the write fails, and this callback is not awaited by the
+        // Signal path (it runs inside isTrustedIdentity).
         onPeerIdentityChanged?.call(peerId);
+        _persistIdentityChanged();
       },
     );
     _preKeyStore = SecurePreKeyStore(_storage, p);
@@ -224,6 +278,9 @@ class EncryptionService {
     final p = 'e2e_${userId}_'; // per-user storage key prefix
 
     _buildStores(p);
+    // Restore warnings the user has not acknowledged yet, before any session
+    // work can add to the set.
+    await _loadIdentityChanged(userId);
 
     // A THROWING read propagates: a storage error must never be read as "no
     // keys". Only a definitive absence reaches the generate branch.
@@ -335,7 +392,11 @@ class EncryptionService {
     } catch (_) {}
 
     _buildStores(p);
+    // Our own identity is new, so every peer will legitimately see a change and
+    // every stored warning about THEM is now noise. Clear the persisted copy
+    // too, or the banners outlive the event that explains them.
     _peersWithChangedIdentity.clear();
+    await _persistIdentityChanged();
 
     await _generateKeys();
     needsKeyUpload = true;
@@ -458,9 +519,21 @@ class EncryptionService {
       base64Decode(preKeyBundle['identityPublicKey'] as String),
       0,
     );
-    // Trust the identity from the bundle so we don't throw UntrustedIdentityException
-    // when the peer has rotated keys (e.g. after they regenerated keys).
-    await _identityStore.saveIdentity(address, identityKey);
+
+    // DO NOT pre-save the bundle's identity here. This code did that until
+    // 2026-08-05, and it silently disabled the MITM warning on the ONE path
+    // that matters:
+    //   saveIdentity(bundle key) → processPreKeyBundle → isTrustedIdentity
+    //   → getIdentity() returns the key we just wrote → _sameIdentity → true
+    //   → early return → onIdentityChanged NEVER fires.
+    // So a server serving its own (self-signed, therefore signature-valid)
+    // bundle was accepted with no banner and no diagnostic — against this
+    // store's own stated contract (signal_stores.dart: "a CHANGE is no longer
+    // silent"). The pre-save was redundant twice over: our isTrustedIdentity is
+    // TOFU and never throws UntrustedIdentityException (the exception the old
+    // comment feared), and processPreKeyBundle itself persists the identity on
+    // success (session_builder.dart: saveIdentity before storeSession).
+    // Leave the store able to see the OLD key and decide.
 
     final bundle = PreKeyBundle(
       preKeyBundle['registrationId'] as int,

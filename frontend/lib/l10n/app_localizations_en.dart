@@ -357,6 +357,12 @@ class AppLocalizationsEn extends AppLocalizations {
   String get peerIdentityVerifyAction => 'Verify';
 
   @override
+  String get peerIdentityMarkVerifiedAction => 'Fingerprints match';
+
+  @override
+  String get peerIdentityVerifyMenuAction => 'Verify security keys';
+
+  @override
   String get peerIdentityFingerprintDialogTitle => 'Verify security keys';
 
   @override

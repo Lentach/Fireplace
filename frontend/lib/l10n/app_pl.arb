@@ -131,6 +131,8 @@
     "placeholders": { "name": { "type": "String" } }
   },
   "peerIdentityVerifyAction": "Zweryfikuj",
+  "peerIdentityMarkVerifiedAction": "Odciski się zgadzają",
+  "peerIdentityVerifyMenuAction": "Zweryfikuj klucze bezpieczeństwa",
   "peerIdentityFingerprintDialogTitle": "Zweryfikuj klucze bezpieczeństwa",
   "peerIdentityFingerprintDialogDescription": "Porównaj te odciski z użytkownikiem {name} za pośrednictwem innego kanału. Muszą być identyczne.",
   "@peerIdentityFingerprintDialogDescription": {
