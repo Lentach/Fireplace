@@ -127,6 +127,28 @@ throws rather than regenerating an identity, verified by reading `c01317c`'s own
 `frontend/pubspec.yaml` to `0.1.9` (it still reads 0.1.8, which is exactly what prod serves), and
 treat the frontend deploy as a separate decision from the backend one.
 
+### Canary reading — 2026-08-05 12:29, dev PWA (owner device)
+
+**`CANARY_OK {ageDays: 7}` — the gate is `> 7`, so it is NOT met. It tips over on 2026-08-06.**
+No `CONTENT_KEY_CANARY_LOST` and no `CONTENT_KEY_LOST` anywhere in the durable log, so nothing
+here is a stop signal — the counter is simply one day short.
+
+Everything else in that dump is healthy or already-known:
+- `WEB_SEAL_OPEN {sealed: 202, legacy: 0, unreadable: 0, lostRows: 0, ms: 116}` — the B2a
+  **content** sealing is fully drained on this device with zero unreadable and zero lost rows,
+  in the same IndexedDB/WebCrypto store family B2b will use. This is the strongest field
+  evidence we have that the sealed-storage machinery survives real use.
+- `STORAGE_PERSIST {supported: true, granted: true}`, `SESSION_INVENTORY {count: 33}` — storage
+  is persistent and every session survived.
+- The five `LEDGER_RECORD_LOST` at 08-02 23:55 are the **already-diagnosed and fixed** expiry-stamp
+  destruction bug (`2026-08-03-session-expiry-stamp-destruction-fix.md`;
+  `encryption_service.dart:2073-2077` documents them by name). Not new, not recurring.
+- One `badMac` + `SESSION_RESET {peerId: 60}` on 08-01, and `PEER_IDENTITY_CHANGED` for peers 90
+  and 54 — handled by the existing policy.
+
+**So: re-dump on 2026-08-06.** If it reads `ageDays: 8` with still no loss, the gate is met. The
+backend deploy does not depend on this and can go first.
+
 **Watch for the first few hours:** in the app's own diagnostics (Settings → Privacy & Safety →
 E2E Diagnostic Log → Copy) `SIG_SEAL_OPEN` with `legacy` marching to 0 and one
 `SIG_SEAL_DRAIN_DONE`; escalate on `SIG_KEY_UNAVAILABLE`, `SIG_ROWS_UNREADABLE` or
