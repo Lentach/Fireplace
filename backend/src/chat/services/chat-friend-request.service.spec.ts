@@ -840,7 +840,7 @@ describe('ChatFriendRequestService', () => {
   });
 
   describe('handleUnfriend', () => {
-    it('calls unfriend and emits unfriended', async () => {
+    it('tells the initiator WHICH PEER left, never their own id', async () => {
       await service.handleUnfriend(
         mockClient as any,
         { userId: 2 },
@@ -849,7 +849,16 @@ describe('ChatFriendRequestService', () => {
 
       expect(friendsService.unfriend).toHaveBeenCalledWith(1, 2);
       expect(conversationsService.findByUsers).toHaveBeenCalledWith(1, 2);
-      expect(mockClient.emit).toHaveBeenCalledWith('unfriended', { userId: 1 });
+      expect(mockClient.emit).toHaveBeenCalledWith('unfriended', { userId: 2 });
+      // Regression guard, and the reason this test exists. The client feeds this
+      // id into removeConversationsForUser, whose predicate matches userOne OR
+      // userTwo — and the caller is a participant in every one of their own
+      // conversations. So echoing `currentUserId` back to the initiator matched
+      // ALL of them and irreversibly destroyed the decrypted plaintext of every
+      // chat on that device. It was live in production.
+      expect(mockClient.emit).not.toHaveBeenCalledWith('unfriended', {
+        userId: 1,
+      });
     });
 
     it('broadcasts unfriended to the other user when online', async () => {
@@ -861,6 +870,7 @@ describe('ChatFriendRequestService', () => {
         mockServer as any,
       );
 
+      // The peer is told who removed THEM — the initiator's id.
       expect(mockServer.to).toHaveBeenCalledWith('user:2');
       expect(mockServer.emit).toHaveBeenCalledWith('unfriended', { userId: 1 });
     });

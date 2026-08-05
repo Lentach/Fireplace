@@ -145,6 +145,42 @@ void main() {
       expect(provider.friends.length, 1);
       expect(provider.friends.first.id, alice.id);
     });
+
+    test('onUnfriended purges only the named peer', () {
+      final provider = FriendsProvider();
+      provider.setCurrentUserId(1);
+      provider.onFriendsList([
+        {'id': 2, 'username': 'bob', 'tag': '0002'},
+        {'id': 3, 'username': 'carol', 'tag': '0003'},
+      ]);
+      final purged = <int>[];
+      provider.onRemoveConversationsForUser = purged.add;
+
+      provider.onUnfriended({'userId': 2});
+
+      expect(purged, [2]);
+      expect(provider.friends.map((f) => f.id), [3]);
+    });
+
+    test('onUnfriended ignores our OWN id — it would purge every chat', () {
+      // `removeConversationsForUser` matches `userOne.id == id || userTwo.id == id`
+      // and we are a participant in EVERY one of our conversations, so acting on
+      // our own id destroys the decrypted plaintext of the whole local history —
+      // irreversibly, because the ratchet consumed the message keys. Production
+      // echoed our own id back to us until 2026-08-05, so this stays pinned.
+      final provider = FriendsProvider();
+      provider.setCurrentUserId(1);
+      provider.onFriendsList([
+        {'id': 2, 'username': 'bob', 'tag': '0002'},
+      ]);
+      final purged = <int>[];
+      provider.onRemoveConversationsForUser = purged.add;
+
+      provider.onUnfriended({'userId': 1});
+
+      expect(purged, isEmpty);
+      expect(provider.friends.map((f) => f.id), [2]);
+    });
   });
 
   group('FriendsProvider invitation round trips', () {

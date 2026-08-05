@@ -83,15 +83,28 @@ if (-not $SkipBuild) {
   Push-Location frontend
   flutter clean
   # --no-wasm-dry-run avoids the memory-heavy wasm probe + its noisy stderr.
-  flutter build web --release --no-wasm-dry-run @defines
+  # --no-web-resources-cdn keeps the CanvasKit renderer on OUR origin. Without it
+  # flutter_bootstrap.js fetches the WASM renderer from
+  # https://www.gstatic.com/flutter-canvaskit/<engineRevision> on every visit —
+  # a third-party origin executing script in the origin that holds the Signal
+  # keys and both auth tokens, with no SRI and (today) no CSP to constrain it.
+  # The same assets are already published under build/web/canvaskit/, so this
+  # costs nothing and removes the dependency outright.
+  flutter build web --release --no-wasm-dry-run --no-web-resources-cdn @defines
   $buildExit = $LASTEXITCODE
   Pop-Location
   if ($buildExit -ne 0 -or -not (Test-Path frontend/build/web/version.json)) {
     throw "Build failed (flutter exit=$buildExit) or output missing (frontend/build/web/version.json)."
   }
-  # Inject the build commit into version.json: the app's stale-bundle nudge
-  # compares this served value against its compiled-in GIT_COMMIT dart-define.
+  # Inject the build commit into version.json so the DEPLOY side can prove what
+  # is being served (post-deploy-smoke.mjs greps it, and you can curl it).
   # Flutter's generated version.json has no commit field of its own.
+  # NOT a client feature: no code in frontend/lib fetches or compares this value.
+  # The client shows its COMPILED-IN GIT_COMMIT instead, deliberately — see
+  # auth_screen.dart:205-207, "on web that fetches the SERVER's version.json and
+  # can lie about the running bundle; the compiled commit cannot." An earlier
+  # revision of this comment claimed a client-side stale-bundle nudge exists. It
+  # does not; staleness is caught by comparing the footer commit against this.
   $vjPath = "frontend/build/web/version.json"
   $vj = Get-Content $vjPath -Raw | ConvertFrom-Json
   $vj | Add-Member -NotePropertyName gitCommit -NotePropertyValue $commit -Force

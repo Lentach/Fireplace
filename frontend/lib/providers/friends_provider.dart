@@ -314,6 +314,21 @@ class FriendsProvider extends ChangeNotifier {
 
   void onUnfriended(dynamic data) {
     final unfriendUserId = (data as Map<String, dynamic>)['userId'] as int;
+    // Fail closed on a self-addressed id. `onRemoveConversationsForUser` ends in
+    // an IRREVERSIBLE purge of decrypted plaintext (the ratchet consumed the
+    // message keys, so the server's ciphertext can never be re-read), and
+    // `removeConversationsForUser` matches `userOne.id == id || userTwo.id == id`
+    // — we are a participant in EVERY one of our conversations, so our own id
+    // matches all of them and wipes the entire local history. A server that
+    // echoes our id back (as prod did until 2026-08-05) must never be able to
+    // trigger that, so the client refuses it here rather than trusting the wire.
+    if (_currentUserId != null && unfriendUserId == _currentUserId) {
+      debugPrint(
+        '[FriendsProvider] Ignoring self-addressed unfriended event '
+        '(userId=$unfriendUserId) — would purge all local history',
+      );
+      return;
+    }
     _friends.removeWhere((f) => f.id == unfriendUserId);
     _friendRequests.removeWhere(
       (r) => r.sender.id == unfriendUserId || r.receiver.id == unfriendUserId,

@@ -730,21 +730,24 @@ export class ChatFriendRequestService {
     const currentUserId: number = client.data.user?.id;
     if (!currentUserId) return;
 
+    // `data` is `any` on the wire, so bind the VALIDATED id to a typed local and
+    // use that everywhere below — reassigning `data` left every `data.userId`
+    // read unchecked (and unsafe-typed) despite the DTO having already run.
+    let peerId: number;
     try {
-      const dto = validateDto(UnfriendDto, data);
-      data = dto;
+      peerId = validateDto(UnfriendDto, data).userId;
     } catch (error) {
       client.emit('error', { message: error.message });
       return;
     }
 
     this.logger.debug(
-      `handleUnfriend: currentUserId=${currentUserId}, targetUserId=${data.userId}`,
+      `handleUnfriend: currentUserId=${currentUserId}, targetUserId=${peerId}`,
     );
 
     // Step 1: Delete the friend relationship (CRITICAL - if this fails, operation fails)
     try {
-      await this.friendsService.unfriend(currentUserId, data.userId);
+      await this.friendsService.unfriend(currentUserId, peerId);
     } catch (error) {
       this.logger.error('handleUnfriend: Failed to unfriend:', error);
       client.emit('error', {
@@ -757,7 +760,7 @@ export class ChatFriendRequestService {
     try {
       const conversation = await this.conversationsService.findByUsers(
         currentUserId,
-        data.userId,
+        peerId,
       );
       if (conversation) {
         const mediaUrls =
@@ -777,17 +780,26 @@ export class ChatFriendRequestService {
       // failure here orphans the conversation and its encrypted messages. Log
       // both user ids so the orphaned rows can be reconciled by hand.
       this.logger.error(
-        `handleUnfriend: Failed to delete conversation between ${currentUserId} and ${data.userId} (conversation/messages may be orphaned):`,
+        `handleUnfriend: Failed to delete conversation between ${currentUserId} and ${peerId} (conversation/messages may be orphaned):`,
         error,
       );
       // Continue - users are unfriended even if conversation deletion failed
     }
 
-    // Step 3: Notify both users (non-critical)
+    // Step 3: Notify both users (non-critical).
+    //
+    // Each side is told WHO LEFT THEIR LIST — i.e. the OTHER party's id. Do not
+    // "simplify" this to one shared payload: the client feeds this id straight
+    // into ConversationsProvider.removeConversationsForUser, whose predicate is
+    // `userOne.id == id || userTwo.id == id`. The caller is a participant in
+    // EVERY one of their own conversations, so sending the initiator its own id
+    // matched all of them and irreversibly destroyed the decrypted plaintext of
+    // the user's ENTIRE local history (the ratchet consumed the message keys, so
+    // the server's ciphertext can never be re-read). That was live in prod.
     try {
-      client.emit('unfriended', { userId: currentUserId });
+      client.emit('unfriended', { userId: peerId });
       server
-        .to(userRoom(data.userId))
+        .to(userRoom(peerId))
         .emit('unfriended', { userId: currentUserId });
     } catch (error) {
       this.logger.error(
