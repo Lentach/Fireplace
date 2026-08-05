@@ -24,6 +24,7 @@ approval per the decrypt-path rule.**
   **This repairs the already-deployed 0.1.8 clients on the next backend deploy — no frontend release
   needed.** Client guard added too (`friends_provider.dart:317-331`: a self-addressed id is refused,
   so no server can ever trigger it again). New test proven RED against the old service first.
+
 - `deploy-web.ps1`: **`--no-web-resources-cdn`** — CanvasKit (the renderer, full script privileges)
   was fetched from `https://www.gstatic.com/flutter-canvaskit/<rev>` on every visit, into the origin
   holding the Signal keys, with no SRI and no CSP. Verified by a real build: emitted config now
@@ -31,6 +32,52 @@ approval per the decrypt-path rule.**
 - Corrected the false `flutter_secure_storage web = IndexedDB+WebCrypto` premise in three
   load-bearing comments, and the false "client-side stale-bundle nudge" claim in `deploy-web.ps1`.
 - `handleUnfriend` now binds the validated DTO id to a typed local — **lint-ratchet 912 → 907**.
+
+## ✅ Owner decisions taken, and what shipped
+
+Owner chose **"fix it properly"** for the MITM finding and **"backend now, hold frontend"**.
+
+### The MITM fix shipped (`3d30b88`) — three parts
+1. **Deleted the pre-save.** It was redundant twice over: our `isTrustedIdentity` is TOFU and never
+   throws `UntrustedIdentityException` (the exception the old comment feared), and
+   `processPreKeyBundle` persists the identity itself on success (`session_builder.dart`,
+   `saveIdentity` before `storeSession`). The store now sees the OLD key and decides, so
+   `onIdentityChanged` fires again.
+2. **Persisted the warning** (`e2e_<uid>_peer_identity_changed_v1`), cleared ONLY by the new
+   `acknowledgePeerIdentity()`. It was session-only, so the one MITM signal the product has vanished
+   on the next PWA reopen. Cleared wholesale on our own identity regeneration (every peer
+   legitimately re-keys then).
+3. **Added a proactive door.** Verification was reachable only AFTER a change, so a first-contact
+   substitution could never be caught. One shared `showPeerIdentityFingerprintDialog()` now serves
+   both the banner and a new "Verify security keys" row at the top of the peer's Safety section; it
+   offers "Fingerprints match" only when a warning actually stands.
+
+**Falsification:** the 4 detection tests in `encryption_identity_substitution_test.dart` were run
+against the restored pre-save and FAIL; only "first contact does NOT warn" stays green (correctly
+insensitive). They drive the real `buildSession` with a real substituted bundle from a third
+`EncryptionService` — testing the store directly does not cover this, which is why the bug survived.
+
+### ⏰ A CI red that was NOT the crypto change (`7a84543`)
+`messaging_provider_ledger_gate_test` hardcoded `expiresAt = DateTime.utc(2026, 8, 5, 19)`. **At
+19:00 UTC today that fixed instant became a PAST deadline and the test began failing on every run**
+— an already-expired served row is skipped before the self-heal is reached, so `stamped` stayed
+empty and it read as "the expiry self-heal broke". Proven pre-existing: the same test fails in
+isolation at `edaca33`, and passes the moment the constant moves to a future instant. Fixture is now
+derived from `DateTime.now()` (hour-truncated so the ISO round-trip stays exact); the assertion is
+untouched. `encryption_service_decrypt_ledger_test`'s `2026-08-10` deadlines were probed as the next
+candidates — inert, they pass with a past date too.
+
+### ✅ BACKEND DEPLOYED 2026-08-05 19:26Z — prod is `7a845430` (was `884f6d0c`)
+No migration, no entity change, no compose change ⇒ **no rehearsal gate** (delta was 2 files).
+Fresh encrypted backup taken first (`chatdb-20260805T190051Z.dump.gpg`), CI 4/4 green on the
+deployed commit. Post-deploy: `/version` → `0.1.8/7a845430`, `/health` ok, container healthy,
+**0 errors in the boot log**, smoke **5/5** (bundle still the intended `c01317c`).
+**Verified in the deployed artifact, not just assumed** — `dist/chat/services/chat-friend-request.service.js`
+emits `{ userId: peerId }` to the initiator and `{ userId: currentUserId }` to the peer's room. So
+the history-wipe bug is repaired for the 0.1.8 clients already in the field, with no frontend deploy.
+
+**Frontend deliberately still `c01317c`.** 0.1.9 (B2b + the MITM fix + everything merged since) is
+held per the owner's call, and the canary gate is not the reason to ship it — see below.
 
 ### 🔴 The finding that changes the 0.1.9 deploy decision
 
