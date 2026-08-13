@@ -138,9 +138,16 @@ export class MediaCleanupService {
       // Grace period: skip files written within the grace window — a recent
       // upload's send emit may still be in flight. Such a file is deleted on a
       // later run once it ages past the window and is still unreferenced.
+      //
+      // Age is clamped at 0 because mtime can legitimately exceed the nowMs
+      // captured before this loop: filesystem timestamp granularity (notably
+      // NTFS) rounds a just-written mtime UP, so a raw subtraction goes
+      // NEGATIVE and reports an orphan as "fresh" even when graceMs is 0. That
+      // made the graceMs=0 spec flaky, and for a file stamped far in the future
+      // it leaked the orphan forever. A file cannot be younger than zero.
       try {
         const stat = await fs.stat(filePath);
-        if (nowMs - stat.mtimeMs < graceMs) {
+        if (Math.max(0, nowMs - stat.mtimeMs) < graceMs) {
           summary.graceSkipped++;
           continue;
         }

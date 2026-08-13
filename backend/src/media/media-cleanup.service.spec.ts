@@ -287,6 +287,22 @@ describe('MediaCleanupService', () => {
           fs.access(path.join(msgsDir, 'fresh-orphan.bin')),
         ).rejects.toThrow();
       });
+
+      it('sweeps an orphan whose mtime is in the future (age clamped at 0)', async () => {
+        // NTFS rounds a just-written mtime up past the captured nowMs, so a raw
+        // nowMs - mtimeMs goes negative and reports the orphan as "fresh".
+        // Exaggerated here to a full hour ahead so the assertion is not a race.
+        process.env[GRACE_VAR] = '0';
+        const target = path.join(msgsDir, 'fresh-orphan.bin');
+        await fs.writeFile(target, 'x');
+        const future = new Date(Date.now() + 3_600_000);
+        await fs.utimes(target, future, future);
+        mockMediaUrls({ valid: [], referenced: [] });
+        const summary = await cronService.cleanupOrphanedFiles();
+        expect(summary.graceSkipped).toBe(0);
+        expect(summary.deleted).toBe(1);
+        await expect(fs.access(target)).rejects.toThrow();
+      });
     });
 
     it('skips cleanup when msgs dir is missing', async () => {
