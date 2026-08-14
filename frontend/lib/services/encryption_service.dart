@@ -535,10 +535,17 @@ class EncryptionService {
     // success (session_builder.dart: saveIdentity before storeSession).
     // Leave the store able to see the OLD key and decide.
 
+    // `oneTimePreKeyId` stays NULL when the server had no unused OTP left —
+    // never coerced to 0. libsignal only embeds the id when the public half is
+    // present, so 0 is inert today, but 0 is also a REAL slot id (the first
+    // batch is 0..19): the coercion made a "no OTP" bundle indistinguishable
+    // from "OTP id 0" one library revision away from being trusted, and the
+    // peer's every message on that session would then die on our
+    // InvalidKeyIdException.
     final bundle = PreKeyBundle(
       preKeyBundle['registrationId'] as int,
       _deviceId,
-      preKeyBundle['oneTimePreKeyId'] as int? ?? 0,
+      preKeyBundle['oneTimePreKeyId'] as int?,
       oneTimePreKey,
       preKeyBundle['signedPreKeyId'] as int,
       Curve.decodePoint(

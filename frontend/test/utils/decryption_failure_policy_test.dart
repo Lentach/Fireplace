@@ -49,6 +49,34 @@ void main() {
     });
 
     test(
+      'missingPreKey → persist + terminal, NO retry, notify peer, in every '
+      'history/identity-reset combination',
+      () {
+        for (final hadReset in [false, true]) {
+          for (final isHistory in [false, true]) {
+            final d = decideDecryptionFailure(
+              DecryptionFailureKind.missingPreKey,
+              hadIdentityReset: hadReset,
+              isHistory: isHistory,
+            );
+            expect(d.rule, DecryptionFailureRule.missingPreKey);
+            // MUST persist: the referenced one-time pre-key is gone (consumed by
+            // an earlier X3DH or lost with the identity), so re-attempting on a
+            // later pass or boot can only re-fail. While this fell through to
+            // `unknown` (persist:false) every re-fail scheduled a live retry
+            // ending in SESSION_RESET — one wasted peer re-key per boot.
+            expect(d.persistTerminalFailure, isTrue);
+            expect(d.markContentFailed, isTrue);
+            expect(d.retryAction, DecryptionRetryAction.none);
+            // The row is dead, but the peer's whole session is pinned to that
+            // pre-key: without a re-key their next messages die too.
+            expect(d.notifyPeerRebuild, isTrue);
+          }
+        }
+      },
+    );
+
+    test(
       'identity reset overrides noSession/unknown → terminal, no persist, no retry, notify peer',
       () {
         for (final kind in [

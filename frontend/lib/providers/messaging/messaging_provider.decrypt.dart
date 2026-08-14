@@ -18,12 +18,22 @@ extension MessagingDecrypt on MessagingProvider {
   bool _isNoSessionDecryptError(Object e) =>
       e.toString().contains('NoSessionException');
 
+  /// `InvalidKeyIdException` — the pre-key this PreKeySignalMessage names is
+  /// absent from our store (consumed by an earlier X3DH, or lost with the
+  /// identity). Never transient: an unsealable value throws `SigStoreUnreadable`
+  /// instead, which stays `unknown`.
+  bool _isMissingPreKeyDecryptError(Object e) =>
+      e.toString().contains('InvalidKeyIdException');
+
   /// Classify a raw decrypt exception (string-matched). Precedence:
-  /// duplicate → badMac → noSession → unknown. Identity-reset is orthogonal and
-  /// applied by [decideDecryptionFailure], not here.
+  /// duplicate → badMac → missingPreKey → noSession → unknown. Identity-reset
+  /// is orthogonal and applied by [decideDecryptionFailure], not here.
   DecryptionFailureKind _classifyDecryptError(Object e) {
     if (_isDuplicateDecryptError(e)) return DecryptionFailureKind.duplicate;
     if (_isBadMacDecryptError(e)) return DecryptionFailureKind.badMac;
+    if (_isMissingPreKeyDecryptError(e)) {
+      return DecryptionFailureKind.missingPreKey;
+    }
     if (_isNoSessionDecryptError(e)) return DecryptionFailureKind.noSession;
     return DecryptionFailureKind.unknown;
   }
@@ -42,6 +52,14 @@ extension MessagingDecrypt on MessagingProvider {
       case DecryptionFailureRule.badMac:
         // MAC mismatch: encrypted for a different/old session key; session valid.
         _e2eFlowLog('DECRYPT_BAD_MAC', {'msgId': msg.id});
+        break;
+      case DecryptionFailureRule.missingPreKey:
+        // Their session is built on a pre-key we no longer hold — this row is
+        // dead and so is every later message on that session until they re-key.
+        _e2eFlowLog('DECRYPT_MISSING_PREKEY', {
+          'msgId': msg.id,
+          'error': e.toString(),
+        });
         break;
       case DecryptionFailureRule.identityReset:
         // Identity regenerated (reinstall / storage loss) — old messages unrecoverable.
@@ -1241,11 +1259,18 @@ extension MessagingDecrypt on MessagingProvider {
               'peerId': msg.senderId,
             });
           }
-        } else if (decision.rule == DecryptionFailureRule.badMac) {
+        } else if (decision.rule == DecryptionFailureRule.badMac ||
+            decision.rule == DecryptionFailureRule.missingPreKey) {
           // The failed row is unrecoverable, but a Bad MAC on a fresh type-2
           // message is evidence the peer is encrypting from a stale sender
-          // ratchet. Ask them to build over their session on the next send.
-          _requestSessionRebuildForPeer(msg.senderId, trigger: 'badMac');
+          // ratchet, and a missing pre-key means their session was built on key
+          // material we cannot complete. Ask them to build over their session
+          // on the next send. Throttled once per peer until a decrypt from them
+          // succeeds, so a burst of dead rows costs exactly one re-key.
+          _requestSessionRebuildForPeer(
+            msg.senderId,
+            trigger: decision.rule.name,
+          );
         }
       }
       switch (decision.retryAction) {
