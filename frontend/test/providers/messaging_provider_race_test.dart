@@ -174,30 +174,6 @@ class _AlwaysBadMacDecryptEncryption extends _FakeEncryptionProvider {
   }
 }
 
-/// Always throws `InvalidKeyIdException` — the field case of 2026-08-14 msg
-/// 20277: the peer built their session on a one-time pre-key this device had
-/// already consumed (and Signal deleted), so the row is a permanent dead end
-/// and only a peer re-key restores the conversation.
-class _AlwaysMissingPreKeyEncryption extends _FakeEncryptionProvider {
-  int deleteSessionCalls = 0;
-  int decryptCalls = 0;
-
-  @override
-  Future<void> deleteSessionWithPeer(int peerUserId) async {
-    deleteSessionCalls++;
-  }
-
-  @override
-  Future<String> decrypt(
-    int senderId,
-    String ciphertext, {
-    int? messageId,
-  }) async {
-    decryptCalls++;
-    throw Exception('InvalidKeyIdException - No pre-key found for id: 0');
-  }
-}
-
 /// Simulates fresh install / storage loss: new identity was generated, all
 /// existing messages are encrypted for the old identity and unrecoverable.
 class _IdentityResetEncryption extends _FakeEncryptionProvider {
@@ -1320,47 +1296,6 @@ void main() {
           reason: 'the sender must re-key after a stale type-2 Bad MAC',
         );
         expect((rebuilds.single['data'] as Map)['recipientId'], 2);
-      },
-    );
-
-    test(
-      'live InvalidKeyIdException: one immediate re-key request, no retry loop, '
-      'no session delete',
-      () {
-        fakeAsync((async) {
-          final enc = _AlwaysMissingPreKeyEncryption();
-          provider.setEncryptionProvider(enc);
-          provider.setActiveConversationIdForTest(10);
-          emitted.clear();
-
-          provider.onNewMessage(
-            incomingJson(id: 20277, createdAt: '2026-08-14T18:20:33.000Z'),
-          );
-          async.flushMicrotasks();
-
-          expect(provider.messages.single.content, '[Decryption failed]');
-          // Immediate, NOT debounced behind the live-retry timer: the retry can
-          // only re-fail, so the peer re-key is the whole recovery.
-          expect(
-            emitted
-                .where((e) => e['event'] == 'requestSessionRebuild')
-                .map((e) => (e['data'] as Map)['recipientId']),
-            [2],
-          );
-
-          // Past the live-retry debounce: pre-fix this classified as `unknown`,
-          // which re-decrypted the same dead ciphertext and fired a second
-          // SESSION_RESET — one wasted peer re-key per pass, forever.
-          async.elapse(const Duration(seconds: 2));
-          async.flushMicrotasks();
-
-          expect(enc.decryptCalls, 1);
-          expect(
-            emitted.where((e) => e['event'] == 'requestSessionRebuild').length,
-            1,
-          );
-          expect(enc.deleteSessionCalls, 0);
-        });
       },
     );
 

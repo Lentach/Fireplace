@@ -18,13 +18,6 @@ enum DecryptionFailureKind {
   /// `Bad Mac` — message was encrypted for a different/old session key.
   badMac,
 
-  /// `InvalidKeyIdException` — the one-time (or signed) pre-key this
-  /// PreKeySignalMessage was built on is no longer in our store. The private
-  /// half is gone for good: Signal deletes a one-time pre-key the moment it
-  /// completes an X3DH, and the server marks it used when it serves it. So
-  /// this ciphertext is undecryptable FOREVER — nothing about it is transient.
-  missingPreKey,
-
   /// `NoSessionException` — no Signal session with the peer yet.
   noSession,
 
@@ -38,7 +31,6 @@ enum DecryptionFailureKind {
 enum DecryptionFailureRule {
   duplicate,
   badMac,
-  missingPreKey,
   identityReset,
   noSession,
   unknown,
@@ -62,8 +54,7 @@ class DecryptionFailureDecision {
   final DecryptionFailureRule rule;
 
   /// Persist `[Decryption failed]` so future app starts skip re-attempting.
-  /// Only badMac/missingPreKey persist — the two provably permanent dead ends.
-  /// Identity-reset and retryable kinds do not.
+  /// Only duplicate/badMac persist; identity-reset and retryable kinds do not.
   final bool persistTerminalFailure;
 
   /// Set the in-memory message content to `[Decryption failed]` (terminal).
@@ -76,10 +67,8 @@ class DecryptionFailureDecision {
 
   /// Emit `requestSessionRebuild` to the peer WITHOUT touching any local state.
   /// Bad-MAC sends indicate their sender ratchet is stale; identity-reset sends
-  /// target keys we no longer have; a missing pre-key means their whole session
-  /// was built on a key we cannot complete, so every later message on it would
-  /// fail too. In all three cases their next send must use a fresh PreKey
-  /// message.
+  /// target keys we no longer have. In both cases their next send must use a
+  /// fresh PreKey message.
   final bool notifyPeerRebuild;
 
   const DecryptionFailureDecision({
@@ -102,14 +91,6 @@ class DecryptionFailureDecision {
 ///    would poison that cache and make a merely-transiently-unreadable (or
 ///    late-written) plaintext unrecoverable forever. Both win even when
 ///    [hadIdentityReset] is true. `duplicate` never asks the peer to re-key.
-/// 1b. `missingPreKey` → terminal + persist, no retry, asks the peer to re-key.
-///    Same tier as `badMac` and for the same reason: the referenced pre-key is
-///    unrecoverable, so a retry can only re-fail. It MUST persist — while this
-///    fell through to `unknown` (persist:false) the row re-failed on every
-///    history pass and every boot, and each live re-fail scheduled a retry that
-///    ended in `SESSION_RESET`, burning one of the peer's OTP fetches and
-///    forcing another re-key. That is the observed 2026-08-14 loop (msg 20277,
-///    `InvalidKeyIdException - No pre-key found for id: 0`).
 /// 2. `hadIdentityReset` → terminal, NOT persisted, no retry. All messages for the
 ///    old identity are unrecoverable; a fresh session will be built by the next
 ///    PreKey message.
@@ -143,19 +124,6 @@ DecryptionFailureDecision decideDecryptionFailure(
     case DecryptionFailureKind.badMac:
       return const DecryptionFailureDecision(
         rule: DecryptionFailureRule.badMac,
-        persistTerminalFailure: true,
-        markContentFailed: true,
-        retryAction: DecryptionRetryAction.none,
-        notifyPeerRebuild: true,
-      );
-    case DecryptionFailureKind.missingPreKey:
-      // Deliberately ABOVE the identity-reset override, like badMac: whether or
-      // not our identity was just regenerated, this specific ciphertext is
-      // dead, and persisting that fact is what stops the cross-boot re-fail
-      // loop. Peer notify is what actually recovers the CONVERSATION — their
-      // session is pinned to a pre-key we no longer hold.
-      return const DecryptionFailureDecision(
-        rule: DecryptionFailureRule.missingPreKey,
         persistTerminalFailure: true,
         markContentFailed: true,
         retryAction: DecryptionRetryAction.none,
