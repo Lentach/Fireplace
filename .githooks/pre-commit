@@ -40,46 +40,27 @@ else
   fi
 fi
 
-# --- Gate 2: LATEST.md budget -------------------------------------------
-# Entry COUNT was the wrong unit: five entries passed while the file sat at
-# ~8.7k tokens, because one 2026-07-25 entry alone was ~4.8k. Every agent AND
-# every subagent reads this file at session start (AGENTS.md step 3), so what
-# actually costs us is SIZE. Word budget ~= tokens * 3/4.
+# --- Gate 2: LATEST.md rotation ------------------------------------------
+# ONE rule, deliberately: at most 5 dated entries. Newest goes on TOP and the
+# agent adding it DELETES THE OLDEST. Nothing is lost — every entry's full text
+# already lives in its dated per-session file, which is what the entry links.
 #
-# The three caps MUST stay arithmetically consistent, or the total silently
-# becomes the only real limit and the per-entry cap is a lie. At 2600 total the
-# shared header (~560 words of still-binding banners) left (2600-560)/5 = 408
-# words per entry against a documented 700 — so every session hit the total
-# first and "fixed" it by deleting evidence from a summary written minutes
-# earlier. Raised 2026-08-14 to satisfy MAX_ENTRIES * MAX_ENTRY_WORDS + header:
-# 5 * 700 + 600 = 4100, set to 3900 because entries average well under the cap.
-# If you raise MAX_ENTRIES or MAX_ENTRY_WORDS, re-derive this number too.
+# The word budgets that used to live here (3900 total / 700 per entry) are GONE
+# by owner decision 2026-08-14. They cost more than they saved: because the
+# shared banner block counts as an "entry", any session that added a genuinely
+# new binding fact to the banner got BLOCKED, and the cheapest way out was
+# always to delete evidence from a summary written minutes earlier. Three
+# sessions in a row burned time fighting the arithmetic instead of writing the
+# handoff. Rotation bounds the file well enough; judgement bounds the prose.
 LATEST=.cursor/session-summaries/LATEST.md
 LATEST_MAX_ENTRIES=5
-LATEST_MAX_WORDS=3900   # ~5.2k tokens total
-LATEST_MAX_ENTRY_WORDS=700   # ~950 tokens for any single entry
 if git diff --cached --name-only | grep -qx "$LATEST"; then
   staged=$(git show ":$LATEST" 2>/dev/null)
   n=$(printf '%s\n' "$staged" | grep -cE '^\*\*Date:\*\*' || echo 0)
-  words=$(printf '%s\n' "$staged" | wc -w)
-  # Largest single entry: split on the **Date:** markers and take the max.
-  biggest=$(printf '%s\n' "$staged" | awk '
-    /^\*\*Date:\*\*/ { if (w > m) m = w; w = 0 }
-    { w += NF }
-    END { if (w > m) m = w; print m }')
   if [ "$n" -gt "$LATEST_MAX_ENTRIES" ]; then
-    echo "BLOCKED: $LATEST has $n entries (cap $LATEST_MAX_ENTRIES). Move older entries to their dated files."
-    fail=1
-  fi
-  if [ "$words" -gt "$LATEST_MAX_WORDS" ]; then
-    echo "BLOCKED: $LATEST is $words words (cap $LATEST_MAX_WORDS, ~$((words * 4 / 3)) tokens)."
-    echo "  Every agent and subagent pays this on read. Summarise older entries down to a"
-    echo "  few lines + a pointer; the full text already lives in the dated per-session file."
-    fail=1
-  fi
-  if [ "$biggest" -gt "$LATEST_MAX_ENTRY_WORDS" ]; then
-    echo "BLOCKED: $LATEST has a single entry of $biggest words (cap $LATEST_MAX_ENTRY_WORDS)."
-    echo "  LATEST is the skim layer, not the archive. See CLAUDE.md 1."
+    echo "BLOCKED: $LATEST has $n dated entries (cap $LATEST_MAX_ENTRIES)."
+    echo "  Put your entry on top and DELETE THE OLDEST one — its full text is"
+    echo "  already in its own dated file. Do not trim a fresh entry to fit."
     fail=1
   fi
 fi
