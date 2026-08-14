@@ -21,7 +21,14 @@ user's only path is uninstall, which destroys their Signal keys and history.
    ```powershell
    Get-FileHash frontend/android/keystore/fireplace-release.jks -Algorithm SHA256
    ```
-   Write the hash down (password manager note is fine).
+   Write the hash down (password manager note is fine). **Measured 2026-08-14,
+   the file is present and untracked (`.gitignore:47`):**
+   ```
+   9559773E3232D091F5CECB2149B8D5A1B937E2540DC2F31F6370AA8E6421052C
+   ```
+   If your copy hashes to that, it is the right file. If `Get-FileHash` ever
+   disagrees with this line, STOP — either the keystore changed (it must not)
+   or you are looking at the wrong file.
 2. Copy `frontend/android/keystore/fireplace-release.jks` to TWO places that
    are not this PC and not each other's failure domain:
    - encrypted attachment in your password manager, AND
@@ -41,9 +48,14 @@ user's only path is uninstall, which destroys their Signal keys and history.
 ## Part 1 — `FIREBASE_SERVICE_ACCOUNT` on the VM
 
 ⚠️ Heads-up before you start: step 5 runs `./deploy-backend.sh`, which pulls
-master — this deploy SHIPS the reviewed §2 delete-for-me hard-delete fix and
-stamps `APP_VERSION 0.1.8`. That is intended. It does NOT touch the frontend,
-so the ⛔ B2b web gate is unaffected.
+master. **Updated 2026-08-14:** the §2 hard-delete fix and `APP_VERSION 0.1.8`
+this used to warn about shipped on 2026-08-05 (prod backend `7a845430`). Today
+the only unshipped backend commit is `f6e4aa8` (dev-dep lockfile + a
+media-cleanup mtime clamp) — no migration, no entity change, so the deploy is
+routine. It will also re-stamp `APP_VERSION` to `0.1.9`, since
+`deploy-backend.sh` reads `frontend/pubspec.yaml`. It does NOT touch the
+frontend. The old ⛔ B2b web gate is gone: **0.1.9 shipped 2026-08-14** and
+sig-sealing is live and drained.
 
 1. **Get the key.** Firebase console → gear icon → *Project settings* →
    *Service accounts* tab → button *Generate new private key* → Generate.
@@ -91,12 +103,24 @@ the real verification** — that's Part 3, a push to a real device.
 
 ## Part 2 — Sideload the APK on an Android phone
 
-The built artifact (all gates passed 2026-08-04):
+The artifact below was built 2026-08-04 and is now **STALE — rebuild before
+sideloading.** It predates the `0.1.9` release, so it is missing the
+server-MITM warning fix, the "Verify security keys" door, B2b sig sealing, and
+the 19 frontend audit fixes. It is also no longer on disk
+(`frontend/build/app/outputs/flutter-apk/` is empty as of 2026-08-14).
 
 ```
+STALE — do not ship:
 frontend/build/app/outputs/flutter-apk/app-release.apk   (84 MB)
 version 0.1.8 (6762a00) · versionCode 10008
 SHA256  62baf8ff5bbb4bc433893a064215f84400e7ccbea34bef83ea30e6056fbe0035
+```
+
+Rebuild at the current release first, then record the new hash here:
+
+```powershell
+cd frontend ; flutter build apk --release
+Get-FileHash build/app/outputs/flutter-apk/app-release.apk -Algorithm SHA256
 ```
 
 1. Transfer `app-release.apk` to the Android phone (USB cable, or upload to
@@ -152,25 +176,52 @@ distribution (GitHub Release + SHA256, `android-release.md` §Distribution).
 
 ---
 
-## Part 5 — Fingerprint-verify peers 54 and 90
+## Part 5 — Fingerprint-verify peers 90, 54 and 92
 
-For each of the two peers (from the standing `PEER_IDENTITY_CHANGED` events,
-07-31 and 08-03), on YOUR iPhone PWA:
+**Updated 2026-08-14 — the peer list grew and the UI path changed.** Three
+standing `PEER_IDENTITY_CHANGED` events: peer **90** (07-31 19:21), peer **54**
+(08-03 17:55), peer **92** (08-11 15:24).
 
-1. Open the chat → tap the identity-changed banner (or the peer's profile →
-   security/fingerprint entry).
+⚠️ **Do not wait for a banner — none will appear for these three.** `0.1.9`
+persists identity warnings in `e2e_<uid>_peer_identity_changed_v1`, but `0.1.8`
+never wrote that key, so the set restored at boot is empty for changes detected
+before the upgrade. Peer 90 no longer even has a durable log line: the
+`E2ePersistentDiag` ring is capped at 80 entries (`e2e_persistent_diag.dart:29`)
+and `SIG_SEAL_DRAIN_DONE` evicted it on 08-14. Only NEW changes from now on
+raise a banner that survives a reopen.
+
+For each of the three peers, on YOUR iPhone PWA:
+
+1. Open the peer's profile → **Safety** section → **"Verify security keys"**
+   (top row — new in `0.1.9`; it did not exist on the previously served build,
+   where the fingerprint had exactly one caller, the banner).
 2. Read the fingerprint to the peer over a channel that is NOT Fireplace
    (call them, or in person).
-3. Match → mark verified / dismiss the banner. Mismatch → STOP, do not chat,
-   report it — a mismatch is what a server-in-the-middle looks like.
+3. Match → mark verified. Mismatch → STOP, do not chat, report it — a mismatch
+   is what a server-in-the-middle looks like.
 
-✅ Done when: both peers verified (or a mismatch reported immediately).
+**"Mark verified" is the ONLY thing that clears a warning** — never tap it on a
+fingerprint you have not actually compared out of band.
+
+✅ Done when: all three peers verified (or a mismatch reported immediately).
 
 ---
 
 ## What I still owe you after this
 
-- On your next diag dump: 0.1.6 retire-rollout check (≤14 one-time
-  `DUP_TERMINAL_RETIRED` for the known ids) + `CANARY_OK.ageDays`.
-- When `ageDays > 7` and you give the word: master web deploy **0.1.9**
-  ships B2b + the sweep diags (full close+reopen of the PWA after).
+**Updated 2026-08-14 — both original items are DONE, so this section is now the
+forward queue.**
+
+- ~~0.1.6 retire-rollout check~~ — done by observation: durable
+  `DECRYPT_DECISION` stops at 08-03 17:44 with nothing since, so the
+  terminal-duplicate retirement cleared peers 60/52/83/49.
+- ~~`ageDays > 7` gate, then ship 0.1.9~~ — the gate was proven to be
+  **non-evidence** (both stores are localStorage; see `content_key_canary.dart`)
+  and `0.1.9 / 9e27ed4` shipped 2026-08-14. Field result: one
+  `SIG_SEAL_DRAIN_DONE {sealed: 265}`, `SIG_SEAL_OPEN {legacy: 0, ms: 60}`,
+  `WEB_SEAL_OPEN {sealed: 241, unreadable: 0, lostRows: 0}`, 33/33 sessions
+  preserved.
+- Open, in order: nginx `Cache-Control` (+ commit the VM's untracked config into
+  `infra/nginx/`), app lock (PIN/biometric — absent on BOTH platforms and it
+  bypasses every at-rest protection above), non-extractable IndexedDB
+  `CryptoKey` for web key custody, `getServedMessageIds` mass-purge guard.
