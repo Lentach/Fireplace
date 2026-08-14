@@ -62,9 +62,10 @@ present) but 0 is a real slot id, so the coercion made "no OTP left" indistingui
 
 ## Notes for next session
 
-- **No version bump, not deployed.** This rides the still-undeployed 0.1.9 frontend
-  (`/version.json` was `0.1.8/c01317c` on 08-13). Master is ahead of prod; `deploy-web.ps1` is
-  still the outstanding owner action.
+- **NOT IN PROD.** Live frontend re-measured this session: `0.1.9/9e27ed4`, i.e. 0.1.9 DID ship
+  earlier today and this fix (`4beb1bd`) is not in it. His dump shows `SIG_SEAL_OPEN`, so he was
+  already running 0.1.9 when this happened. Reaching him needs a PATCH bump (0.1.10) +
+  `deploy-web.ps1`; left to the owner, nothing here is urgent enough for an unattended release.
 - **ruchens69's pre-17:31 history with the owner is gone forever.** Do not tell him to
   reinstall/clear data — that is the action that caused this. His remaining OTP pool is 18.
 - **Unresolved, one hop deep:** why msg 20277's `preKeyId 0` re-entered full X3DH at all. Only
