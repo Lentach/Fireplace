@@ -45,9 +45,18 @@ fi
 # ~8.7k tokens, because one 2026-07-25 entry alone was ~4.8k. Every agent AND
 # every subagent reads this file at session start (AGENTS.md step 3), so what
 # actually costs us is SIZE. Word budget ~= tokens * 3/4.
+#
+# The three caps MUST stay arithmetically consistent, or the total silently
+# becomes the only real limit and the per-entry cap is a lie. At 2600 total the
+# shared header (~560 words of still-binding banners) left (2600-560)/5 = 408
+# words per entry against a documented 700 — so every session hit the total
+# first and "fixed" it by deleting evidence from a summary written minutes
+# earlier. Raised 2026-08-14 to satisfy MAX_ENTRIES * MAX_ENTRY_WORDS + header:
+# 5 * 700 + 600 = 4100, set to 3900 because entries average well under the cap.
+# If you raise MAX_ENTRIES or MAX_ENTRY_WORDS, re-derive this number too.
 LATEST=.cursor/session-summaries/LATEST.md
 LATEST_MAX_ENTRIES=5
-LATEST_MAX_WORDS=2600   # ~3.5k tokens total
+LATEST_MAX_WORDS=3900   # ~5.2k tokens total
 LATEST_MAX_ENTRY_WORDS=700   # ~950 tokens for any single entry
 if git diff --cached --name-only | grep -qx "$LATEST"; then
   staged=$(git show ":$LATEST" 2>/dev/null)
