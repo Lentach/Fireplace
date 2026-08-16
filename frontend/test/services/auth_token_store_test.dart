@@ -3,6 +3,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 import 'package:fireplace/services/auth_token_store.dart';
 import 'package:fireplace/services/secure_kv.dart';
+import 'package:fireplace/utils/e2e_persistent_diag.dart';
 
 class _FakeSecureKv implements SecureKv {
   final Map<String, String> data = {};
@@ -11,15 +12,26 @@ class _FakeSecureKv implements SecureKv {
   /// must then refuse to delete the prefs copy.
   bool dropWrites = false;
   bool throwOnRead = false;
+  bool throwOnWrite = false;
+
+  /// Fail this many individual reads, then behave — models the transient
+  /// plugin faults (Keystore after OS update, early-boot contention) that
+  /// the store's retry exists for.
+  int failReadsRemaining = 0;
 
   @override
   Future<String?> read(String key) async {
     if (throwOnRead) throw Exception('secure storage unavailable');
+    if (failReadsRemaining > 0) {
+      failReadsRemaining--;
+      throw Exception('secure storage transiently unavailable');
+    }
     return data[key];
   }
 
   @override
   Future<void> write(String key, String value) async {
+    if (throwOnWrite) throw Exception('secure storage write refused');
     if (dropWrites) return;
     data[key] = value;
   }
@@ -150,6 +162,64 @@ void main() {
       expect(read.access, 'secure-access');
       final prefs = await SharedPreferences.getInstance();
       expect(prefs.getString('jwt_token'), isNull);
+    });
+  });
+
+  /// §5.4: a storage ERROR must never read as "logged out". These pin the
+  /// tri-state contract — readFailed is a distinct answer, retries recover
+  /// transients, and invisible failures now leave durable evidence.
+  group('failure honesty (0.1.11)', () {
+    test('a read that keeps erroring reports readFailed, never absence',
+        () async {
+      secure.data['jwt_token'] = 'a1';
+      secure.data['refresh_token'] = 'r1';
+      secure.throwOnRead = true;
+
+      final read = await nativeStore().read();
+
+      expect(read.readFailed, isTrue);
+      expect(read.access, isNull);
+      expect(read.refresh, isNull);
+      expect(
+        secure.data['refresh_token'],
+        'r1',
+        reason: 'the tokens are intact behind the fault — nothing may '
+            'delete or overwrite them',
+      );
+      expect(
+        E2ePersistentDiag.entries.any(
+          (e) => e.contains('AUTH_TOKENS_UNREADABLE'),
+        ),
+        isTrue,
+        reason: 'an unreadable store must leave durable evidence',
+      );
+    });
+
+    test('a transient read error is retried and recovered', () async {
+      secure.data['jwt_token'] = 'a1';
+      secure.data['refresh_token'] = 'r1';
+      secure.failReadsRemaining = 1;
+
+      final read = await nativeStore().read();
+
+      expect(read.readFailed, isFalse);
+      expect(read.access, 'a1');
+      expect(read.refresh, 'r1');
+    });
+
+    test('a persistently refused write records a durable diagnostic',
+        () async {
+      secure.throwOnWrite = true;
+
+      await nativeStore().write(access: 'a2', refresh: 'r2');
+
+      expect(
+        E2ePersistentDiag.entries.any(
+          (e) => e.contains('AUTH_TOKEN_WRITE_FAILED'),
+        ),
+        isTrue,
+        reason: '"logged out next boot" must have a paper trail',
+      );
     });
   });
 }
