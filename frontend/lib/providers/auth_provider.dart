@@ -190,12 +190,30 @@ class AuthProvider extends ChangeNotifier {
     // Involuntary session ends are failure-class field evidence (the 2026-07
     // logout incident was undiagnosable client-side); explicit logout is not.
     if (reason != 'explicit_logout') {
-      E2ePersistentDiag.record('AUTH_SESSION_END', {
+      final payload = {
         'reason': reason,
         'source': source,
         'hasRefresh': _refreshToken != null,
         'accessExpired': accessExpired,
-      });
+      };
+      // The locally-derived reasons fire on EVERY boot while a dead access
+      // token lingers in storage (the §5.4 keep-the-store tradeoff), and the
+      // durable log is an 80-entry FIFO — plain records would churn out the
+      // BOOT_MARKERS forensics planted to diagnose the next storage wipe.
+      // Dedup them; eviction re-arms, so recurrence is never lost for good.
+      const repeatProne = {
+        'expired_access_without_refresh',
+        'access_401_without_refresh',
+      };
+      if (repeatProne.contains(reason)) {
+        E2ePersistentDiag.recordDeduped(
+          'AUTH_SESSION_END',
+          payload,
+          matchAll: ['reason: $reason,'],
+        );
+      } else {
+        E2ePersistentDiag.record('AUTH_SESSION_END', payload);
+      }
     }
   }
 

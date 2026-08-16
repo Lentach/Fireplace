@@ -61,8 +61,11 @@ Future<void> _waitRestored(AuthProvider auth) async {
 void main() {
   TestWidgetsFlutterBinding.ensureInitialized();
 
-  setUp(() {
+  setUp(() async {
     SharedPreferences.setMockInitialValues({});
+    // The durable diag cache is static — isolate it or dedup assertions
+    // observe records from earlier tests in this file.
+    await E2ePersistentDiag.clear();
   });
 
   test('an unreadable token store concedes the boot WITHOUT a fake logout',
@@ -130,5 +133,42 @@ void main() {
       reason: 'the involuntary session end is still recorded durably',
     );
     auth.dispose();
+  });
+
+  test('repeated no-op session ends are deduped in the durable log',
+      () async {
+    // The §5.4 keep-the-store tradeoff makes this boot repeat forever for a
+    // user holding only a dead access token. The durable log is an 80-entry
+    // FIFO: without dedup, ~80 boots evict the BOOT_MARKERS forensics that
+    // 0.1.10 planted to diagnose the next storage wipe.
+    final kv = _ThrowingKv()..data['jwt_token'] = _expiredAccessJwt;
+    ApiService api() => _apiWith(
+          (req) => req.url.path == '/users/me'
+              ? http.Response(jsonEncode({'message': 'unauthorized'}), 401)
+              : http.Response('unexpected ${req.url.path}', 500),
+        );
+    for (var boot = 0; boot < 3; boot++) {
+      final auth = AuthProvider(
+        api: api(),
+        tokenStore: AuthTokenStore(secure: kv, useSecureStorage: true),
+        tokenReadRetryDelays: const [],
+      );
+      await _waitRestored(auth);
+      auth.dispose();
+    }
+
+    final durable = E2ePersistentDiag.entries
+        .where(
+          (e) =>
+              e.contains('AUTH_SESSION_END') &&
+              e.contains('access_401_without_refresh'),
+        )
+        .length;
+    expect(
+      durable,
+      1,
+      reason: 'boot-loop repeats must not churn the FIFO; eviction re-arms '
+          'the event so recurrence is never permanently lost',
+    );
   });
 }
