@@ -37,7 +37,9 @@ export class SendMessageDto {
 
   @IsString()
   @ValidateIf(
-    (o) => !o.encryptedContent && !['VOICE', 'PING'].includes(o?.messageType),
+    (o) =>
+      !o.encryptedContent &&
+      !['VOICE', 'PING', 'VIDEO'].includes(o?.messageType),
   )
   @MinLength(1, { message: 'Message cannot be empty' })
   @MaxLength(5000, { message: 'Message cannot exceed 5000 characters' })
@@ -63,7 +65,7 @@ export class SendMessageDto {
   @IsOptional()
   @IsString()
   @IsIn(Object.values(MessageType))
-  messageType?: string; // TEXT | PING | IMAGE | VOICE | GIF | FILE
+  messageType?: string; // TEXT | PING | IMAGE | VOICE | GIF | FILE | VIDEO
 
   @IsOptional()
   @IsString()

@@ -42,8 +42,8 @@ void main() {
     await pumpAppearance(tester);
 
     expect(find.text('COLOR THEME'), findsOneWidget);
-    expect(find.text('Hot Stone'), findsOneWidget);
-    expect(find.text('Cosmic'), findsOneWidget);
+    expect(find.text('Alabaster'), findsOneWidget);
+    expect(find.text('Cosmos'), findsOneWidget);
     expect(find.byType(AppearancePreview), findsWidgets);
     expect(find.byIcon(Icons.palette_outlined), findsNothing);
     expect(find.byIcon(Icons.auto_awesome), findsNothing);

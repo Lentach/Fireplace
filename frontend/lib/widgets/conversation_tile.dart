@@ -57,6 +57,9 @@ class ConversationTile extends StatelessWidget {
       return l10n.attachment;
     }
     if (lastMessage.messageType == MessageType.gif) return 'GIF';
+    if (lastMessage.messageType == MessageType.video) {
+      return l10n.videoMessage;
+    }
     if (lastMessage.messageType == MessageType.file) {
       return l10n.attachmentOptionDocument;
     }

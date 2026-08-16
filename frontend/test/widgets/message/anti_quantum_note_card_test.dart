@@ -1,4 +1,8 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
 import 'package:fireplace/config/app_config.dart';
+import 'package:fireplace/widgets/message/anti_quantum_note_reveal_sheet.dart';
 import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/message/anti_quantum_note_card.dart';
@@ -80,6 +84,28 @@ void main() {
       expect(find.text('This note has self-destructed'), findsNothing);
     },
   );
+  group('tap routing', () {
+    testWidgets(
+      'tapping an own-origin card opens the in-app reveal sheet on the '
+      'confirm step — never an external launch',
+      (tester) async {
+        final validKey =
+            base64Url.encode(Uint8List.fromList(List.filled(32, 7)));
+        final url = '${AppConfig.baseUrl}/note/$hex#$validKey';
+        await tester.pumpWidget(wrap(url));
+        await tester.pump();
+
+        await tester.tap(find.byKey(const Key('anti-quantum-note-card')));
+        await tester.pumpAndSettle();
+
+        expect(find.byType(AntiQuantumNoteRevealSheet), findsOneWidget);
+        expect(find.byKey(const Key('note-reveal-confirm')), findsOneWidget);
+        // Confirm-first: no plaintext, nothing burned yet.
+        expect(find.byKey(const Key('note-reveal-plaintext')), findsNothing);
+      },
+    );
+  });
+
   group('burned-after-read state', () {
     final pillKey = const Key('anti-quantum-note-burned-pill');
     final cardKey = const Key('anti-quantum-note-card');

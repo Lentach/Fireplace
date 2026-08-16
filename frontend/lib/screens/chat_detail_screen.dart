@@ -37,7 +37,6 @@ import '../services/notification_cleaner_stub.dart'
     if (dart.library.html) '../services/notification_cleaner_web.dart'
     if (dart.library.io) '../services/notification_cleaner_io.dart';
 import '../utils/instant_opaque_route.dart';
-import '../widgets/peer_identity_changed_banner.dart';
 import 'user_card_screen.dart';
 
 class ChatDetailScreen extends StatefulWidget {
@@ -325,9 +324,18 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     }
     if (_conversations.activeConversationId == widget.conversationId) {
       _conversations.closeConversation(notify: false);
-      _messaging.clearMessages();
       WidgetsBinding.instance.addPostFrameCallback((_) {
         _conversations.notifyActiveConversationChanged();
+        // Deferred off the pop's teardown frame so the reverse route
+        // transition stays light. Guarded: if anything re-opened a
+        // conversation before this frame ended (e.g. the iOS PWA resume
+        // reassert), clearing now would wipe its freshly asserted state.
+        // isDisposed: the whole app tree can go down in this same frame
+        // (hot restart, test teardown) — never notify a dead provider.
+        if (!_messaging.isDisposed &&
+            _conversations.activeConversationId == null) {
+          _messaging.clearMessages();
+        }
       });
     }
   }
@@ -924,11 +932,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
       final hasInFlowTopBanner = pinnedBanner != null;
       body = Column(
         children: [
-          if (otherUser != null)
-            PeerIdentityChangedBanner(
-              peerId: otherUser.id,
-              peerName: contactName,
-            ),
           if (pinnedBanner != null)
             SafeArea(bottom: false, child: pinnedBanner),
           Expanded(
@@ -982,11 +985,6 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               ],
             ),
           ),
-          if (otherUser != null)
-            PeerIdentityChangedBanner(
-              peerId: otherUser.id,
-              peerName: contactName,
-            ),
           ?pinnedBanner,
           Expanded(child: _buildChatBodyStack(body, messaging)),
         ],

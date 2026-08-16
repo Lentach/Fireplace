@@ -12,11 +12,11 @@ import '../providers/encryption_provider.dart';
 /// in person or over a call where they recognise the voice — is what separates
 /// "encrypted" from "encrypted to whoever the server said".
 ///
-/// Reachable two ways on purpose:
-///  * reactively, from [PeerIdentityChangedBanner] after a key change, and
-///  * proactively, from the peer's Safety section, BEFORE anything goes wrong.
-/// The proactive door matters because a first-contact substitution never
-/// produces a change to warn about — there is no earlier key to differ from.
+/// Opened proactively from the peer's Safety section ("Verify security keys"
+/// on the user card), BEFORE anything goes wrong. The proactive door matters
+/// because a first-contact substitution never produces a change to warn about
+/// — there is no earlier key to differ from. (The in-chat reactive banner was
+/// removed by owner ruling 2026-08-15; this dialog is the surviving surface.)
 Future<void> showPeerIdentityFingerprintDialog({
   required BuildContext context,
   required int peerId,

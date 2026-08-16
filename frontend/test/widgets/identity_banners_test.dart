@@ -2,17 +2,16 @@ import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/identity_damaged_banner.dart';
-import 'package:fireplace/widgets/peer_identity_changed_banner.dart';
 import 'package:fireplace/widgets/peer_identity_fingerprint_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
 import 'package:provider/provider.dart';
 
-/// Both banners are warnings about broken or suspicious cryptography, and one
-/// of them offers a DESTRUCTIVE action. Showing either when nothing is wrong is
-/// worse than not shipping them: a permanent red "your keys are damaged" bar
-/// with a "start fresh" button would push healthy users into wiping their own
-/// sessions. So the off-state is tested first and hardest.
+/// Both surfaces here are warnings about broken or suspicious cryptography,
+/// and one of them offers a DESTRUCTIVE action. Showing either when nothing is
+/// wrong is worse than not shipping them: a permanent red "your keys are
+/// damaged" bar with a "start fresh" button would push healthy users into
+/// wiping their own sessions. So the off-state is tested first and hardest.
 class _FakeEncryption extends EncryptionProvider {
   _FakeEncryption({
     this.damaged = false,
@@ -146,97 +145,6 @@ void main() {
     });
   });
 
-  group('PeerIdentityChangedBanner', () {
-    testWidgets('renders NOTHING for a peer whose key never changed', (
-      tester,
-    ) async {
-      final encryption = _FakeEncryption();
-      await tester.pumpWidget(
-        _host(
-          encryption,
-          const PeerIdentityChangedBanner(peerId: 7, peerName: 'bob'),
-        ),
-      );
-
-      expect(find.byIcon(Icons.privacy_tip_outlined), findsNothing);
-    });
-
-    testWidgets('warns only in the conversation whose peer re-keyed', (
-      tester,
-    ) async {
-      final encryption = _FakeEncryption(changedPeers: {7});
-      await tester.pumpWidget(
-        _host(
-          encryption,
-          const Column(
-            children: [
-              PeerIdentityChangedBanner(peerId: 7, peerName: 'bob'),
-              PeerIdentityChangedBanner(peerId: 9, peerName: 'carol'),
-            ],
-          ),
-        ),
-      );
-
-      expect(find.byIcon(Icons.privacy_tip_outlined), findsOneWidget);
-      expect(find.textContaining('bob'), findsOneWidget);
-      expect(find.textContaining('carol'), findsNothing);
-    });
-
-    testWidgets('verify shows the peer and own fingerprints', (tester) async {
-      final encryption = _FakeEncryption(
-        changedPeers: {7},
-        peerFingerprint: '0123 4567 89ab cdef',
-        ownFingerprint: 'fedc ba98 7654 3210',
-      );
-      await tester.pumpWidget(
-        _host(
-          encryption,
-          const PeerIdentityChangedBanner(peerId: 7, peerName: 'bob'),
-        ),
-      );
-
-      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-      await tester.tap(find.text(l10n.peerIdentityVerifyAction));
-      await tester.pumpAndSettle();
-
-      expect(find.byType(AlertDialog), findsOneWidget);
-      expect(
-        find.text(l10n.peerIdentityFingerprintDialogDescription('bob')),
-        findsOneWidget,
-      );
-      final fingerprints = tester.widgetList<SelectableText>(
-        find.byType(SelectableText),
-      );
-      expect(
-        fingerprints.map((fingerprint) => fingerprint.data),
-        containsAll(<String>['0123 4567 89ab cdef', 'fedc ba98 7654 3210']),
-      );
-    });
-
-    testWidgets('verify names a missing stored peer key', (tester) async {
-      final encryption = _FakeEncryption(
-        changedPeers: {7},
-        ownFingerprint: 'fedc ba98 7654 3210',
-      );
-      await tester.pumpWidget(
-        _host(
-          encryption,
-          const PeerIdentityChangedBanner(peerId: 7, peerName: 'bob'),
-        ),
-      );
-
-      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
-      await tester.tap(find.text(l10n.peerIdentityVerifyAction));
-      await tester.pumpAndSettle();
-
-      expect(
-        find.text(l10n.peerIdentityFingerprintNoStoredKey),
-        findsOneWidget,
-      );
-      expect(find.byType(SelectableText), findsOneWidget);
-    });
-  });
-
   group('showPeerIdentityFingerprintDialog', () {
     /// Opens the dialog the way the peer's Safety section does — with no
     /// standing warning. This is the door that catches a FIRST-CONTACT
@@ -273,6 +181,23 @@ void main() {
       // a warning that was never raised.
       expect(find.text(l10n.peerIdentityMarkVerifiedAction), findsNothing);
       expect(encryption.acknowledged, isEmpty);
+    });
+
+    testWidgets('verify names a missing stored peer key', (tester) async {
+      final encryption = _FakeEncryption(
+        ownFingerprint: 'fedc ba98 7654 3210',
+      );
+      await tester.pumpWidget(proactiveHost(encryption));
+
+      await tester.tap(find.text('open'));
+      await tester.pumpAndSettle();
+
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      expect(
+        find.text(l10n.peerIdentityFingerprintNoStoredKey),
+        findsOneWidget,
+      );
+      expect(find.byType(SelectableText), findsOneWidget);
     });
 
     testWidgets('acknowledging a standing warning clears it exactly once', (

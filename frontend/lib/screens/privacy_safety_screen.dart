@@ -23,7 +23,6 @@ class PrivacySafetyScreen extends StatefulWidget {
 class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
   String? _fingerprint;
   bool _loading = true;
-  bool _clearingLocalCache = false;
   bool _deletingAllLocalHistory = false;
   bool _diagLogUnlocked = false;
   String _diagFilter = 'current';
@@ -181,13 +180,8 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
               title: l10n.serverStoresMetadata,
               body: l10n.serverStoresMetadataDescription,
             ),
-            ConsoleInfoRow(
-              glyph: ConsoleGlyph.quantum,
-              title: l10n.privacyAntiQuantumNoteTitle,
-              body: l10n.privacyAntiQuantumNoteDescription,
-            ),
+            _buildAntiQuantumNoteExplainer(context),
             SettingsSectionCaption(label: l10n.settingsSectionPreferences),
-            _buildLocalCacheCard(context),
             _buildDeleteAllLocalHistoryCard(context),
             if (_loading || _fingerprint != null) ...[
               SettingsSectionCaption(label: l10n.yourIdentityFingerprint),
@@ -264,49 +258,95 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
     );
   }
 
-  Widget _buildLocalCacheCard(BuildContext context) {
+  /// Bespoke structured explainer for Anti-Quantum Notes: the single ~90-word
+  /// paragraph became a short lead + four scannable glyph rows, preserving
+  /// every security claim of the old `privacyAntiQuantumNoteDescription`.
+  /// Same console grammar as [ConsoleInfoRow] (hex terminal, top-aligned),
+  /// which stays shared and untouched.
+  Widget _buildAntiQuantumNoteExplainer(BuildContext context) {
+    final colorScheme = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
+    final points = <(IconData, String)>[
+      (Icons.lock_outline, l10n.privacyAntiQuantumNotePointDevice),
+      (Icons.tag, l10n.privacyAntiQuantumNotePointKey),
+      (Icons.local_fire_department, l10n.privacyAntiQuantumNotePointOnce),
+      (Icons.hourglass_bottom, l10n.privacyAntiQuantumNotePointTimer),
+    ];
 
-    return Column(
-      crossAxisAlignment: CrossAxisAlignment.stretch,
-      children: [
-        ConsoleInfoRow(
-          glyph: ConsoleGlyph.cache,
-          title: l10n.localMessageCache,
-          body: l10n.localMessageCacheDescription,
-        ),
-        Padding(
-          padding: EdgeInsets.fromLTRB(
-            kConsoleHexLeft + kConsoleHexWidth + 12,
-            0,
-            16,
-            12,
-          ),
-          child: SizedBox(
-            height: 48,
-            child: OutlinedButton(
-              onPressed: _clearingLocalCache ? null : _clearLocalMessageCache,
-              child: Row(
-                mainAxisAlignment: MainAxisAlignment.center,
+    return Semantics(
+      container: true,
+      label: l10n.privacyAntiQuantumNoteTitle,
+      value:
+          '${l10n.privacyAntiQuantumNoteLead} '
+          '${points.map((p) => p.$2).join(' ')}',
+      excludeSemantics: true,
+      child: Padding(
+        padding: const EdgeInsets.symmetric(vertical: 10),
+        child: Row(
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            const SizedBox(width: kConsoleHexLeft),
+            const ConsoleHexIcon(glyph: ConsoleGlyph.quantum),
+            const SizedBox(width: 12),
+            Expanded(
+              child: Column(
                 mainAxisSize: MainAxisSize.min,
+                crossAxisAlignment: CrossAxisAlignment.start,
                 children: [
-                  if (_clearingLocalCache) ...[
-                    const SizedBox(
-                      width: 16,
-                      height: 16,
-                      child: CircularProgressIndicator(strokeWidth: 2),
+                  Text(
+                    l10n.privacyAntiQuantumNoteTitle,
+                    style: RpgTheme.bodyFont(
+                      fontSize: 14,
+                      fontWeight: FontWeight.w600,
+                      color: colorScheme.onSurface,
                     ),
-                    const SizedBox(width: 8),
-                  ],
-                  Text(l10n.clearLocalMessageCache),
+                  ),
+                  const SizedBox(height: 4),
+                  Text(
+                    l10n.privacyAntiQuantumNoteLead,
+                    style: RpgTheme.bodyFont(
+                      fontSize: 13,
+                      color: colorScheme.onSurfaceVariant,
+                    ).copyWith(height: 1.35),
+                  ),
+                  const SizedBox(height: 10),
+                  for (final (icon, text) in points)
+                    Padding(
+                      padding: const EdgeInsets.only(bottom: 8),
+                      child: Row(
+                        crossAxisAlignment: CrossAxisAlignment.start,
+                        children: [
+                          Padding(
+                            padding: const EdgeInsets.only(top: 1),
+                            child: Icon(
+                              icon,
+                              size: 16,
+                              color: colorScheme.primary,
+                            ),
+                          ),
+                          const SizedBox(width: 8),
+                          Expanded(
+                            child: Text(
+                              text,
+                              style: RpgTheme.bodyFont(
+                                fontSize: 12.5,
+                                color: colorScheme.onSurfaceVariant,
+                              ).copyWith(height: 1.35),
+                            ),
+                          ),
+                        ],
+                      ),
+                    ),
                 ],
               ),
             ),
-          ),
+            const SizedBox(width: 16),
+          ],
         ),
-      ],
+      ),
     );
   }
+
   Widget _buildDeleteAllLocalHistoryCard(BuildContext context) {
     final colorScheme = Theme.of(context).colorScheme;
     final l10n = AppLocalizations.of(context);
@@ -351,7 +391,14 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
                     ),
                     const SizedBox(width: 8),
                   ],
-                  Text(l10n.deleteAllLocalHistoryButton),
+                  // Flexible + scaleDown: the PL label overflows a 412px
+                  // viewport by ~4px; shrink slightly instead of clipping.
+                  Flexible(
+                    child: FittedBox(
+                      fit: BoxFit.scaleDown,
+                      child: Text(l10n.deleteAllLocalHistoryButton),
+                    ),
+                  ),
                 ],
               ),
             ),
@@ -681,23 +728,6 @@ class _PrivacySafetyScreenState extends State<PrivacySafetyScreen> {
     } finally {
       if (mounted) {
         setState(() => _deletingAllLocalHistory = false);
-      }
-    }
-  }
-
-  Future<void> _clearLocalMessageCache() async {
-    final l10n = AppLocalizations.of(context);
-    setState(() => _clearingLocalCache = true);
-    try {
-      await PlaybackController.clearAudioCache();
-      if (!mounted) return;
-      showTopSnackBar(context, l10n.snackbarLocalMessageCacheCleared);
-    } catch (_) {
-      if (!mounted) return;
-      showTopSnackBar(context, l10n.snackbarFailedToClearLocalMessageCache);
-    } finally {
-      if (mounted) {
-        setState(() => _clearingLocalCache = false);
       }
     }
   }

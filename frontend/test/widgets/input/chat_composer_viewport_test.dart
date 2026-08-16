@@ -74,6 +74,61 @@ void main() {
     expect(padding, lessThan(48 + 300));
     expect(padding, greaterThanOrEqualTo(48));
   });
+  testWidgets(
+    'single-step dismiss eases the composer PAINT down while layout collapses',
+    (tester) async {
+      composerKeyboardCollapseGuard.value = false;
+      var padding = 0.0;
+      await tester.pumpWidget(_insetHarness(300, onPadding: (p) => padding = p));
+      await tester.pumpAndSettle();
+      final screenBottom = tester.getSize(find.byType(MaterialApp)).height;
+      final raisedBottom = tester.getBottomLeft(find.byKey(_composerKey)).dy;
+      expect(raisedBottom, moreOrLessEquals(screenBottom - 300, epsilon: 0.01));
+
+      await tester.pumpWidget(_insetHarness(0, onPadding: (p) => padding = p));
+      // Layout half: padding collapses in the SAME frame (Symptom B guard)...
+      expect(padding, moreOrLessEquals(48, epsilon: 0.01));
+      // ...paint half: the composer still PAINTS at the old raised position.
+      expect(
+        tester.getBottomLeft(find.byKey(_composerKey)).dy,
+        moreOrLessEquals(raisedBottom, epsilon: 0.01),
+      );
+
+      // Mid-slide: strictly between the raised and resting positions.
+      await tester.pump(const Duration(milliseconds: 100));
+      final midway = tester.getBottomLeft(find.byKey(_composerKey)).dy;
+      expect(midway, greaterThan(raisedBottom));
+      expect(midway, lessThan(screenBottom));
+
+      // Slide over (~200ms): painted exactly at the layout position.
+      await tester.pumpAndSettle();
+      expect(
+        tester.getBottomLeft(find.byKey(_composerKey)).dy,
+        moreOrLessEquals(screenBottom, epsilon: 0.01),
+      );
+    },
+  );
+
+  testWidgets('reduce motion skips the dismiss slide entirely', (tester) async {
+    composerKeyboardCollapseGuard.value = false;
+    var padding = 0.0;
+    await tester.pumpWidget(
+      _insetHarness(300, onPadding: (p) => padding = p, reduceMotion: true),
+    );
+    await tester.pumpAndSettle();
+    final screenBottom = tester.getSize(find.byType(MaterialApp)).height;
+
+    await tester.pumpWidget(
+      _insetHarness(0, onPadding: (p) => padding = p, reduceMotion: true),
+    );
+    // Instant: painted at the collapsed layout position in the same frame.
+    expect(
+      tester.getBottomLeft(find.byKey(_composerKey)).dy,
+      moreOrLessEquals(screenBottom, epsilon: 0.01),
+    );
+    expect(padding, moreOrLessEquals(48, epsilon: 0.01));
+    expect(tester.hasRunningAnimations, isFalse);
+  });
 
   testWidgets('send bounce defers the collapse for the debounce window', (
     tester,
@@ -169,13 +224,18 @@ class _GrowingComposerHarnessState extends State<_GrowingComposerHarness> {
   }
 }
 
-Widget _insetHarness(double inset, {required ValueChanged<double> onPadding}) {
+Widget _insetHarness(
+  double inset, {
+  required ValueChanged<double> onPadding,
+  bool reduceMotion = false,
+}) {
   return MaterialApp(
     home: Builder(
       builder: (context) => MediaQuery(
-        data: MediaQuery.of(
-          context,
-        ).copyWith(viewInsets: EdgeInsets.only(bottom: inset)),
+        data: MediaQuery.of(context).copyWith(
+          viewInsets: EdgeInsets.only(bottom: inset),
+          disableAnimations: reduceMotion,
+        ),
         child: Scaffold(
           // Production uses resizeToAvoidBottomInset:false so the composer
           // viewport owns the keyboard inset; default true would let Scaffold

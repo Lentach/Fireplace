@@ -1,4 +1,4 @@
-import { Message } from './message.entity';
+import { Message, MessageType } from './message.entity';
 import { parseReactions } from './message-reactions.util';
 
 export class MessageMapper {
@@ -41,19 +41,21 @@ export class MessageMapper {
       const contentPreview =
         rt.encryptedContent != null
           ? 'Encrypted message'
-          : rt.content && rt.messageType === 'TEXT'
+          : rt.content && rt.messageType === MessageType.TEXT
             ? rt.content.substring(0, 150)
-            : rt.messageType === 'VOICE'
+            : rt.messageType === MessageType.VOICE
               ? 'Voice message'
-              : rt.messageType === 'IMAGE'
+              : rt.messageType === MessageType.IMAGE
                 ? 'Image'
-                : rt.messageType === 'GIF'
+                : rt.messageType === MessageType.GIF
                   ? 'GIF'
-                  : rt.messageType === 'FILE'
+                  : rt.messageType === MessageType.FILE
                     ? 'File'
-                    : rt.messageType === 'PING'
-                      ? 'Ping'
-                      : '';
+                    : rt.messageType === MessageType.VIDEO
+                      ? 'Video'
+                      : rt.messageType === MessageType.PING
+                        ? 'Ping'
+                        : '';
       payload.replyTo = {
         id: rt.id,
         content: contentPreview,

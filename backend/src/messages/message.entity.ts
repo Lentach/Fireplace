@@ -24,6 +24,7 @@ export enum MessageType {
   VOICE = 'VOICE',
   GIF = 'GIF',
   FILE = 'FILE',
+  VIDEO = 'VIDEO',
 }
 
 @Index('idx_messages_conv_created', ['conversation', 'createdAt'])

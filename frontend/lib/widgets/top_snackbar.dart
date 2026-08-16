@@ -15,12 +15,23 @@ void showTopSnackBar(
   assert(onTap == null || actionLabel != null);
   final overlay = Overlay.of(context);
   final theme = Theme.of(context);
-  final bg = backgroundColor ?? theme.colorScheme.inverseSurface;
+  // Default (no explicit color): themed console-style surface — the old
+  // inverseSurface default rendered near-white on every dark theme. An
+  // EXPLICIT backgroundColor (error red, accent blue) keeps the legacy
+  // borderless look and its readableOn foreground untouched.
+  final themedDefault = backgroundColor == null;
+  final bg = backgroundColor ?? theme.colorScheme.surfaceContainerHighest;
   // Pick the readable foreground for the actual fill: hardwired white failed
   // 4.5:1 on bright fills (#FF4444, #2AABEE).
-  final textColor = backgroundColor == null
-      ? theme.colorScheme.onInverseSurface
+  final textColor = themedDefault
+      ? theme.colorScheme.onSurface
       : RpgTheme.readableOn(bg);
+  final shape = RoundedRectangleBorder(
+    borderRadius: BorderRadius.circular(8),
+    side: themedDefault
+        ? BorderSide(color: theme.colorScheme.outlineVariant)
+        : BorderSide.none,
+  );
   // Snapshot the inset from the CALLER context (not the root OverlayEntry ctx)
   // so the toast clears the same app-bar band the triggering screen sees.
   final topInset = MediaQuery.paddingOf(context).top;
@@ -39,23 +50,36 @@ void showTopSnackBar(
           ? IgnorePointer(
               child: Material(
                 elevation: 6,
-                borderRadius: BorderRadius.circular(8),
+                shape: shape,
                 color: bg,
                 child: Padding(
                   padding: const EdgeInsets.symmetric(
                     horizontal: 16,
                     vertical: 14,
                   ),
-                  child: Text(
-                    message,
-                    style: RpgTheme.bodyFont(fontSize: 14, color: textColor),
+                  child: Row(
+                    children: [
+                      if (themedDefault) ...[
+                        Icon(Icons.info_outline, size: 20, color: textColor),
+                        const SizedBox(width: 12),
+                      ],
+                      Expanded(
+                        child: Text(
+                          message,
+                          style: RpgTheme.bodyFont(
+                            fontSize: 14,
+                            color: textColor,
+                          ),
+                        ),
+                      ),
+                    ],
                   ),
                 ),
               ),
             )
           : Material(
               elevation: 6,
-              borderRadius: BorderRadius.circular(8),
+              shape: shape,
               color: bg,
               child: Padding(
                 padding: const EdgeInsets.symmetric(
@@ -64,6 +88,10 @@ void showTopSnackBar(
                 ),
                 child: Row(
                   children: [
+                    if (themedDefault) ...[
+                      Icon(Icons.info_outline, size: 20, color: textColor),
+                      const SizedBox(width: 12),
+                    ],
                     Expanded(
                       child: Text(
                         message,

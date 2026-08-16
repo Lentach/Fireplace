@@ -14,8 +14,10 @@ bool messageBubbleUsesInlineTime({
 }) {
   if (message.replyTo != null || message.linkPreviewUrl != null) return false;
   // Anti-Quantum Note links render as a banner card; time stacks below it
-  // like link-preview bubbles, never inline beside the card.
-  if (isAntiQuantumNoteUrl(displayContent)) return false;
+  // like link-preview bubbles, never inline beside the card. Own-origin
+  // (this build OR production) mirrors the card gate in TextMessageContent —
+  // a dev build receiving a production link still renders the card.
+  if (isOwnOriginNoteUrl(displayContent)) return false;
   switch (message.messageType) {
     case MessageType.text:
       return !displayContent.contains('\n');

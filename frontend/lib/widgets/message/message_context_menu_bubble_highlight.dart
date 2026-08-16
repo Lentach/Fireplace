@@ -84,9 +84,11 @@ class MessageContextMenuBubbleHighlight extends StatelessWidget {
         color: Colors.black26,
         child: Center(
           child: Icon(
-            message.messageType == MessageType.gif
-                ? Icons.gif_box_outlined
-                : Icons.image_outlined,
+            switch (message.messageType) {
+              MessageType.gif => Icons.gif_box_outlined,
+              MessageType.video => Icons.videocam_outlined,
+              _ => Icons.image_outlined,
+            },
             color: timeColor,
             size: 40,
           ),
@@ -154,7 +156,8 @@ class MessageContextMenuBubbleHighlight extends StatelessWidget {
 
     final isMediaMessage =
         message.messageType == MessageType.image ||
-        message.messageType == MessageType.gif;
+        message.messageType == MessageType.gif ||
+        message.messageType == MessageType.video;
     if (isMediaMessage) {
       return _buildMediaHighlight(context, safeWidth, timeColor);
     }

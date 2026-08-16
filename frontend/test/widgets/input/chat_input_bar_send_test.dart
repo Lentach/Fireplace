@@ -841,6 +841,92 @@ void main() {
 
     expect(find.byType(FireplaceEmojiPicker), findsNothing);
   });
+  testWidgets(
+    'emoji panel reserves full layout on open while its content slides up',
+    (tester) async {
+      await _pump(tester);
+
+      await tester.tap(find.byKey(const ValueKey('composer-emoji-toggle')));
+      await tester.pump(); // first frame of the entrance
+      // Layout half: panel mounted at full height, viewport pin already set —
+      // the keyboard's space is reserved from this exact frame.
+      expect(find.byType(FireplaceEmojiPicker), findsOneWidget);
+      expect(composerBottomPanelPinned.value, isTrue);
+      // Paint half: content starts a full panel-height below (pure transform).
+      final slide = tester.widget<SlideTransition>(
+        find
+            .ancestor(
+              of: find.byType(FireplaceEmojiPicker),
+              matching: find.byType(SlideTransition),
+            )
+            .first, // nearest ancestor: the panel's own slide
+      );
+      expect(slide.position.value, const Offset(0, 1));
+
+      await tester.pumpAndSettle();
+      expect(slide.position.value, Offset.zero);
+    },
+  );
+
+  testWidgets(
+    'chat-surface tap keeps the emoji panel mounted through the exit slide',
+    (tester) async {
+      final state = await _pumpWithChatSurface(tester);
+      await _openEmojiPanel(tester);
+
+      await tester.tap(find.byKey(const ValueKey('chat-surface')));
+      await tester.pump(); // first frame of the exit
+      // Logical state flips instantly...
+      expect(state.isEmojiPickerOpenForTest, isFalse);
+      // ...but the panel still occupies layout (pin held) while the content
+      // slides out; it unmounts and releases the pin when the exit completes.
+      expect(find.byType(FireplaceEmojiPicker), findsOneWidget);
+      expect(composerBottomPanelPinned.value, isTrue);
+
+      await tester.pumpAndSettle();
+      expect(find.byType(FireplaceEmojiPicker), findsNothing);
+      expect(composerBottomPanelPinned.value, isFalse);
+    },
+  );
+
+  testWidgets('reduce motion mounts the emoji panel with no entrance slide', (
+    tester,
+  ) async {
+    final key = GlobalKey<ChatInputBarState>();
+    await tester.pumpWidget(
+      MaterialApp(
+        theme: RpgTheme.themeDataLight,
+        localizationsDelegates: AppLocalizations.localizationsDelegates,
+        supportedLocales: AppLocalizations.supportedLocales,
+        locale: const Locale('en'),
+        home: Builder(
+          builder: (context) => MediaQuery(
+            data: MediaQuery.of(context).copyWith(disableAnimations: true),
+            child: Scaffold(
+              body: _providerScope(child: ChatInputBar(key: key)),
+            ),
+          ),
+        ),
+      ),
+    );
+    await tester.pump();
+
+    await tester.tap(find.byKey(const ValueKey('composer-emoji-toggle')));
+    await tester.pump(); // single frame: content already at rest
+    expect(find.byType(FireplaceEmojiPicker), findsOneWidget);
+    final slide = tester.widget<SlideTransition>(
+      find
+          .ancestor(
+            of: find.byType(FireplaceEmojiPicker),
+            matching: find.byType(SlideTransition),
+          )
+          .first, // nearest ancestor: the panel's own slide
+    );
+    expect(slide.position.value, Offset.zero);
+    // Flush the picker's internal init timer; the assertions above already
+    // proved the single-frame mount.
+    await tester.pumpAndSettle();
+  });
 }
 
 /// Fake iOS-WebKit shared inset source (isActive true) with a fixed inset, so

@@ -456,6 +456,27 @@ class ApiService {
     return data['alive'] == true;
   }
 
+  /// One-time reveal of an Anti-Quantum Note: atomically destroys the note
+  /// server-side and returns its ciphertext (`base64(iv):base64(ct||tag)`).
+  /// Deliberately public — the endpoint takes no JWT, mirroring the server
+  /// landing page. [origin] is the note link's own origin, which may differ
+  /// from [baseUrl] (a production link opened in a dev build).
+  ///
+  /// Returns null when the note is gone (already read or expired — the server
+  /// answers 404 for both); throws on transport/other HTTP failures so callers
+  /// can show a network state DISTINCT from "destroyed".
+  Future<String?> revealSecretNote(String noteToken, {String? origin}) async {
+    final response = await _httpClient
+        .post(Uri.parse('${origin ?? baseUrl}/note/$noteToken/reveal'))
+        .timeout(_kDefaultTimeout);
+    if (response.statusCode == 404) return null;
+    if (response.statusCode != 200 && response.statusCode != 201) {
+      throw Exception('Note reveal failed: ${response.statusCode}');
+    }
+    final data = jsonDecode(response.body) as Map<String, dynamic>;
+    return data['ciphertext'] as String;
+  }
+
   /// Proxy link preview fetch (for web where CORS blocks direct requests).
   Future<Map<String, String?>?> fetchLinkPreview(String token, String text) async {
     final response = await _httpClient.post(

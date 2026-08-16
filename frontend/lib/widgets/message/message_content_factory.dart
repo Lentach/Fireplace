@@ -9,6 +9,7 @@ import 'gif_message_content.dart';
 import 'image_message_content.dart';
 import 'ping_message_content.dart';
 import 'text_message_content.dart';
+import 'video_message_content.dart';
 
 /// Factory that picks the right content widget based on message type.
 class MessageContentFactory {
@@ -60,6 +61,9 @@ class MessageContentFactory {
 
       case MessageType.file:
         return FileMessageContent(message: message, textColor: textColor);
+
+      case MessageType.video:
+        return VideoMessageContent(message: message);
     }
   }
 }

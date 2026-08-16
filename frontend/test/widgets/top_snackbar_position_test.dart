@@ -132,4 +132,93 @@ void main() {
       await tester.pump(const Duration(seconds: 3));
     },
   );
+
+  testWidgets(
+    'default toast uses themed surface with border and info icon',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: RpgTheme.themeDataDarkGray,
+          home: Scaffold(
+            body: Builder(
+              builder: (ctx) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  showTopSnackBar(ctx, 'Themed notification');
+                });
+                return const SizedBox.expand();
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final context = tester.element(find.text('Themed notification'));
+      final scheme = Theme.of(context).colorScheme;
+
+      final material = tester.widget<Material>(
+        find
+            .ancestor(
+              of: find.text('Themed notification'),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      expect(material.color, scheme.surfaceContainerHighest);
+      final shape = material.shape! as RoundedRectangleBorder;
+      expect(shape.side.color, scheme.outlineVariant);
+      expect(find.byIcon(Icons.info_outline), findsOneWidget);
+
+      final text = tester.widget<Text>(find.text('Themed notification'));
+      expect(text.style?.color, scheme.onSurface);
+
+      await tester.pump(const Duration(seconds: 3));
+    },
+  );
+
+  testWidgets(
+    'explicit backgroundColor keeps the legacy borderless look',
+    (tester) async {
+      await tester.pumpWidget(
+        MaterialApp(
+          theme: RpgTheme.themeDataDarkGray,
+          home: Scaffold(
+            body: Builder(
+              builder: (ctx) {
+                WidgetsBinding.instance.addPostFrameCallback((_) {
+                  showTopSnackBar(
+                    ctx,
+                    'Error notification',
+                    backgroundColor: RpgTheme.errorColor,
+                  );
+                });
+                return const SizedBox.expand();
+              },
+            ),
+          ),
+        ),
+      );
+      await tester.pump();
+      await tester.pump();
+
+      final material = tester.widget<Material>(
+        find
+            .ancestor(
+              of: find.text('Error notification'),
+              matching: find.byType(Material),
+            )
+            .first,
+      );
+      expect(material.color, RpgTheme.errorColor);
+      final shape = material.shape! as RoundedRectangleBorder;
+      expect(shape.side, BorderSide.none);
+      expect(find.byIcon(Icons.info_outline), findsNothing);
+
+      final text = tester.widget<Text>(find.text('Error notification'));
+      expect(text.style?.color, RpgTheme.readableOn(RpgTheme.errorColor));
+
+      await tester.pump(const Duration(seconds: 3));
+    },
+  );
 }

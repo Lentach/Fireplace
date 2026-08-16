@@ -1,6 +1,6 @@
 enum MessageDeliveryStatus { sending, sent, delivered, read, failed }
 
-enum MessageType { text, ping, image, voice, gif, file }
+enum MessageType { text, ping, image, voice, gif, file, video }
 
 /// Preview of a message being replied to (sent in payload).
 class ReplyToPreview {
@@ -200,6 +200,8 @@ class MessageModel {
         return MessageType.gif;
       case 'FILE':
         return MessageType.file;
+      case 'VIDEO':
+        return MessageType.video;
       default:
         return MessageType.text;
     }

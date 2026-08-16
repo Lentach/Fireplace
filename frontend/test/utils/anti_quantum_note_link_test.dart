@@ -1,3 +1,7 @@
+import 'dart:convert';
+import 'dart:typed_data';
+
+import 'package:fireplace/config/app_config.dart';
 import 'package:fireplace/utils/anti_quantum_note_link.dart';
 import 'package:flutter_test/flutter_test.dart';
 
@@ -187,6 +191,89 @@ void main() {
       expect(link, isNotNull);
       expect(link!.url, noteUrl);
       expect(link.expiresAt, DateTime.fromMillisecondsSinceEpoch(ms));
+    });
+  });
+
+  group('own-origin detection', () {
+    // In the test VM AppConfig.baseUrl resolves from Uri.base (no BASE_URL
+    // dart-define), so build-origin URLs must be constructed from it.
+    final buildUrl = '${AppConfig.baseUrl}/note/$hex#abcABC012_-';
+    const prodUrl = '$kFireplaceProductionOrigin/note/$hex#abcABC012_-';
+
+    test('accepts a note URL on this build\'s BASE_URL', () {
+      expect(isOwnOriginNoteUrl(buildUrl), isTrue);
+      expect(parseOwnOriginNoteLink(buildUrl), isNotNull);
+    });
+
+    test('accepts a production-origin URL even when the build origin differs',
+        () {
+      expect(isOwnOriginNoteUrl(prodUrl), isTrue);
+      final link = parseOwnOriginNoteLink(prodUrl);
+      expect(link, isNotNull);
+      expect(link!.origin, kFireplaceProductionOrigin);
+      expect(link.token, hex);
+    });
+
+    test('rejects a foreign origin: it must never wear the trusted banner',
+        () {
+      const foreign = 'https://evil.example.org/note/$hex#abcABC012_-';
+      expect(isOwnOriginNoteUrl(foreign), isFalse);
+      expect(parseOwnOriginNoteLink(foreign), isNull);
+    });
+
+    test('rejects a lookalike host sharing the production prefix', () {
+      const lookalike =
+          '$kFireplaceProductionOrigin.evil.org/note/$hex#abcABC012_-';
+      expect(isOwnOriginNoteUrl(lookalike), isFalse);
+    });
+
+    test('origin getter points reveal calls at the note\'s own host', () {
+      final link = parseOwnOriginNoteLink(buildUrl);
+      expect(link, isNotNull);
+      expect(link!.origin, AppConfig.baseUrl);
+    });
+  });
+
+  group('decodeAntiQuantumNoteKey', () {
+    final keyBytes = Uint8List.fromList(List.generate(32, (i) => i * 7 % 256));
+
+    test('round-trips a base64url 32-byte key', () {
+      final url = '$baseUrl/note/$hex#${base64Url.encode(keyBytes)}';
+      expect(decodeAntiQuantumNoteKey(url), keyBytes);
+    });
+
+    test('reads only the first &-segment: c=/e= params never corrupt the key',
+        () {
+      final url =
+          '$baseUrl/note/$hex#${base64Url.encode(keyBytes)}&c=42&e=1720000000000';
+      expect(decodeAntiQuantumNoteKey(url), keyBytes);
+    });
+
+    test('accepts an unpadded base64url fragment (normalize before decode)',
+        () {
+      final unpadded = base64Url.encode(keyBytes).replaceAll('=', '');
+      final url = '$baseUrl/note/$hex#$unpadded';
+      expect(decodeAntiQuantumNoteKey(url), keyBytes);
+    });
+
+    test('rejects a key that is not exactly 32 bytes — pre-flight burn guard',
+        () {
+      for (final len in [8, 31, 33]) {
+        final url =
+            '$baseUrl/note/$hex#${base64Url.encode(List.filled(len, 1))}';
+        expect(decodeAntiQuantumNoteKey(url), isNull, reason: 'len $len');
+      }
+    });
+
+    test('rejects a missing or empty fragment', () {
+      expect(decodeAntiQuantumNoteKey('$baseUrl/note/$hex'), isNull);
+      expect(decodeAntiQuantumNoteKey('$baseUrl/note/$hex#'), isNull);
+      expect(decodeAntiQuantumNoteKey('$baseUrl/note/$hex#&e=1'), isNull);
+    });
+
+    test('rejects an undecodable fragment instead of throwing', () {
+      expect(decodeAntiQuantumNoteKey('$baseUrl/note/$hex#!!not-base64!!'),
+          isNull);
     });
   });
 }

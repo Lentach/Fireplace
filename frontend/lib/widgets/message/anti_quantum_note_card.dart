@@ -9,6 +9,7 @@ import '../../providers/auth_provider.dart';
 import '../../services/api_service.dart';
 import '../../theme/rpg_theme.dart';
 import '../../utils/anti_quantum_note_link.dart';
+import 'anti_quantum_note_reveal_sheet.dart';
 
 const Color _kNoteRed = Color(0xFFC0392B);
 const Color _kNoteRedDark = Color(0xFF922B21);
@@ -20,8 +21,10 @@ const kNoteAliveProbeInterval = Duration(seconds: 30);
 typedef NoteAliveProbe = Future<bool> Function(String token);
 
 /// In-chat banner for an Anti-Quantum Note link. Replaces the raw URL text
-/// (and any link-preview card) inside the TEXT bubble; tapping opens the
-/// one-time reveal page exactly like tapping the link did.
+/// (and any link-preview card) inside the TEXT bubble. Tapping an own-origin
+/// link opens the in-app reveal sheet (burn-confirm first — see
+/// anti_quantum_note_reveal_sheet.dart); a foreign-origin URL keeps the
+/// external browser launch the plain-link path uses.
 ///
 /// When the link carries an `e=` expiry (see anti_quantum_note_link.dart) the
 /// banner shows a live self-destruct countdown, and flips to a "destroyed"
@@ -206,10 +209,17 @@ class _AntiQuantumNoteCardState extends State<AntiQuantumNoteCard> {
       constraints: BoxConstraints(maxWidth: widget.maxWidth),
       child: GestureDetector(
         key: const Key('anti-quantum-note-card'),
-        onTap: () => launchUrl(
-          Uri.parse(widget.noteUrl),
-          mode: LaunchMode.externalApplication,
-        ),
+        onTap: () {
+          final link = parseOwnOriginNoteLink(widget.noteUrl);
+          if (link != null) {
+            showAntiQuantumNoteRevealSheet(context, link: link);
+          } else {
+            launchUrl(
+              Uri.parse(widget.noteUrl),
+              mode: LaunchMode.externalApplication,
+            );
+          }
+        },
         child: Container(
           decoration: BoxDecoration(
             color: cardBg,

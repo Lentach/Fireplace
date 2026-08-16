@@ -68,6 +68,16 @@ export class MediaController {
         fileName: dto.fileName ?? file.originalname,
       };
     }
+    if (dto.mediaType === 'video') {
+      // Same opaque encrypted-blob msgs/ path as 'file' — the server never
+      // inspects the bytes; duration is client-reported seconds, echoed back.
+      const result = await this.storage.uploadRawFile(
+        userId,
+        file.buffer,
+        file.mimetype,
+      );
+      return { mediaUrl: result.secureUrl, mediaDuration: dto.duration ?? 0 };
+    }
     if (dto.mediaType === 'avatar') {
       validateAvatarMagicBytes(file.buffer);
       const result = await this.storage.uploadAvatar(
