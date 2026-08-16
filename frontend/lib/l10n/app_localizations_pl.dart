@@ -586,6 +586,18 @@ class AppLocalizationsPl extends AppLocalizations {
   String get actionTileGif => 'GIF';
 
   @override
+  String get actionTileGallery => 'Galeria';
+
+  @override
+  String get actionTileCamera => 'Aparat';
+
+  @override
+  String get cameraModePhoto => 'Zdjęcie';
+
+  @override
+  String get cameraModeVideo => 'Wideo';
+
+  @override
   String get actionTileAntiQuantumNote => 'Notatka antykwantowa';
 
   @override
@@ -1297,9 +1309,6 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get videoMessage => 'Wideo';
-
-  @override
-  String get actionTileVideo => 'Wideo';
 
   @override
   String get videoTooLarge => 'Wideo jest za duże (maks. 20 MB)';

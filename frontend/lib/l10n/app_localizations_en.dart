@@ -576,6 +576,18 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actionTileGif => 'GIF';
 
   @override
+  String get actionTileGallery => 'Gallery';
+
+  @override
+  String get actionTileCamera => 'Camera';
+
+  @override
+  String get cameraModePhoto => 'Photo';
+
+  @override
+  String get cameraModeVideo => 'Video';
+
+  @override
   String get actionTileAntiQuantumNote => 'Anti-Quantum Note';
 
   @override
@@ -1279,9 +1291,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get videoMessage => 'Video';
-
-  @override
-  String get actionTileVideo => 'Video';
 
   @override
   String get videoTooLarge => 'Video is too large (max 20 MB)';

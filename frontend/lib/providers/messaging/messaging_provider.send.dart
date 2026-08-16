@@ -360,14 +360,18 @@ extension MessagingSend on MessagingProvider {
   /// _pendingSendContent BEFORE any await — durability invariant), then the
   /// E2E envelope send. [duration] is seconds, when the picker knows it
   /// (native gallery picks and some web files don't expose it — omitted then).
-  Future<void> sendVideoMessage(
+  ///
+  /// Returns true only AFTER the video's `sendMessage` socket emit (same
+  /// caption-ordering contract as [sendImageMessage]); false = failed before
+  /// the emit (the optimistic bubble is marked failed internally).
+  Future<bool> sendVideoMessage(
     String token,
     List<int> videoBytes,
     int recipientId, {
     int? duration,
   }) async {
     final activeConversationId = _conversationsProvider?.activeConversationId;
-    if (activeConversationId == null || _currentUserId == null) return;
+    if (activeConversationId == null || _currentUserId == null) return false;
 
     final effectiveExpiresIn =
         _conversationsProvider!.conversationDisappearingTimer;
@@ -397,14 +401,14 @@ extension MessagingSend on MessagingProvider {
     try {
       if (videoBytes.length > MediaCryptoService.maxBytes) {
         _markMessageFailed(tempId, 'Video too large (max 20 MB)');
-        return;
+        return false;
       }
       // Client policy: 60 s cap. The composer already rejects with a toast
       // when it knows the duration; this is the defensive backstop for
       // programmatic callers.
       if (duration != null && duration > 60) {
         _markMessageFailed(tempId, 'Video too long (max 60 seconds)');
-        return;
+        return false;
       }
 
       final upload = await _mediaUpload.encryptAndUpload(
@@ -437,7 +441,7 @@ extension MessagingSend on MessagingProvider {
         notifyListeners();
       }
 
-      _encryptAndSend(
+      return await _encryptAndSend(
         recipientId: recipientId,
         content: '',
         tempId: tempId,
@@ -452,6 +456,7 @@ extension MessagingSend on MessagingProvider {
     } catch (e) {
       debugPrint('[MessagingProvider] Video send failed: $e');
       _markMessageFailed(tempId, 'Video send failed: ${e.toString()}');
+      return false;
     }
   }
 

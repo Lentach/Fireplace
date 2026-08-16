@@ -9,9 +9,6 @@ import 'package:image_picker/image_picker.dart';
 import '../utils/file_utils_stub.dart'
     if (dart.library.io) '../utils/file_utils_io.dart'
     as file_utils;
-import '../utils/video_probe_stub.dart'
-    if (dart.library.html) '../utils/video_probe_web.dart' as video_probe;
-import '../services/media_crypto_service.dart';
 import '../models/conversation_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/conversations_provider.dart';
@@ -29,6 +26,19 @@ import 'anti_quantum_note_dialog.dart';
 import 'gif_picker_sheet.dart';
 import 'ping_glyph.dart';
 
+/// Stages a picked image into the composer (existing staged-image flow).
+typedef StageImageCallback =
+    void Function({
+      required Uint8List bytes,
+      required String mimeType,
+      required String filename,
+    });
+
+/// Stages a picked video into the composer (staged-video flow; policy checks
+/// and rejection toasts happen inside).
+typedef StageVideoCallback =
+    Future<void> Function({required Uint8List bytes, required String filename});
+
 class ChatActionTiles extends StatelessWidget {
   final double bottomPadding;
 
@@ -38,7 +48,19 @@ class ChatActionTiles extends StatelessWidget {
   /// composer heals the blur post-frame through this callback.
   final VoidCallback? onPingSent;
 
-  const ChatActionTiles({super.key, this.bottomPadding = 0, this.onPingSent});
+  /// Composer staging seams (null only in standalone test mounts — the
+  /// gallery/camera tiles then no-op). One gallery entry routes BOTH media
+  /// kinds: image → staged-image flow, video → staged-video flow.
+  final StageImageCallback? onStageImage;
+  final StageVideoCallback? onStageVideo;
+
+  const ChatActionTiles({
+    super.key,
+    this.bottomPadding = 0,
+    this.onPingSent,
+    this.onStageImage,
+    this.onStageVideo,
+  });
 
   @override
   Widget build(BuildContext context) {
@@ -102,17 +124,24 @@ class ChatActionTiles extends StatelessWidget {
                     ),
                     const SizedBox(width: 12),
                     _ActionTile(
-                      icon: Icons.attach_file,
-                      tooltip: l10n.attachment,
+                      icon: Icons.photo_library_outlined,
+                      tooltip: l10n.actionTileGallery,
                       color: iconColor,
-                      onTap: () => _pickAttachment(context),
+                      onTap: () => _pickFromGallery(context),
                     ),
                     const SizedBox(width: 12),
                     _ActionTile(
-                      icon: Icons.videocam_outlined,
-                      tooltip: l10n.actionTileVideo,
+                      icon: Icons.attach_file,
+                      tooltip: l10n.attachment,
                       color: iconColor,
-                      onTap: () => _pickVideo(context),
+                      onTap: () => _pickDocument(context),
+                    ),
+                    const SizedBox(width: 12),
+                    _ActionTile(
+                      icon: Icons.camera_alt_outlined,
+                      tooltip: l10n.actionTileCamera,
+                      color: iconColor,
+                      onTap: () => _pickWithCamera(context),
                     ),
                     const SizedBox(width: 12),
                     _ActionTile(
@@ -158,18 +187,127 @@ class ChatActionTiles extends StatelessWidget {
     onPingSent?.call();
   }
 
-  /// Single tap opens system picker (gallery / folder). User chooses file; we send as image or document by type.
-  Future<void> _pickAttachment(BuildContext context) async {
+  static const _galleryImageExtensions = ['jpg', 'jpeg', 'png', 'gif', 'webp'];
+  static const _galleryVideoExtensions = ['mp4', 'm4v', 'mov'];
+
+  static bool get _isNativeMobile =>
+      !kIsWeb &&
+      (defaultTargetPlatform == TargetPlatform.android ||
+          defaultTargetPlatform == TargetPlatform.iOS);
+
+  /// One gallery door for BOTH media kinds (messenger convergence, owner
+  /// ruling): native mobile opens the system photo+video picker; web/desktop
+  /// opens a file dialog filtered to the supported extensions. The result is
+  /// routed by extension — image → staged-image flow, everything else →
+  /// staged-video flow, whose whitelist check owns the unsupported-format
+  /// toast. Picking STAGES; the trailing send button sends.
+  Future<void> _pickFromGallery(BuildContext context) async {
+    if (onStageImage == null || onStageVideo == null) return;
+    if (_requireActiveConversation(context) == null) return;
+
+    String fileName;
+    List<int>? bytes;
+    if (_isNativeMobile) {
+      final picked = await ImagePicker().pickMedia();
+      if (picked == null) return;
+      fileName = picked.name;
+      bytes = await picked.readAsBytes();
+    } else {
+      final pickResult = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: [
+          ..._galleryImageExtensions,
+          ..._galleryVideoExtensions,
+        ],
+        withData: true,
+      );
+      if (pickResult == null || pickResult.files.isEmpty) return;
+      final file = pickResult.files.single;
+      fileName = file.name;
+      if (file.bytes != null) {
+        bytes = file.bytes!;
+      } else if (!kIsWeb && file.path != null) {
+        bytes = await file_utils.readFileBytes(file.path!);
+      }
+    }
+
+    if (!context.mounted) return;
+    await _stagePickedMedia(context, fileName: fileName, bytes: bytes);
+  }
+
+  /// Routes picked media bytes into the composer by extension.
+  Future<void> _stagePickedMedia(
+    BuildContext context, {
+    required String fileName,
+    required List<int>? bytes,
+  }) async {
+    if (bytes == null) {
+      showTopSnackBar(
+        context,
+        AppLocalizations.of(context).snackbarCouldNotReadFile,
+        backgroundColor: Colors.red,
+      );
+      return;
+    }
+    final ext = fileName.contains('.')
+        ? fileName.split('.').last.toLowerCase()
+        : '';
+    if (_galleryImageExtensions.contains(ext)) {
+      onStageImage!(
+        bytes: Uint8List.fromList(bytes),
+        mimeType: _imageMimeForExtension(ext),
+        filename: fileName,
+      );
+      return;
+    }
+    await onStageVideo!(bytes: Uint8List.fromList(bytes), filename: fileName);
+  }
+
+  /// Camera door: minimal Photo/Video chooser, then the system camera. Both
+  /// results land in the same staged flows as the gallery. On web,
+  /// image_picker sets the HTML capture attribute so phones open the camera;
+  /// desktop web degrades to a file dialog (acceptable, no special-casing).
+  Future<void> _pickWithCamera(BuildContext context) async {
+    if (onStageImage == null || onStageVideo == null) return;
+    if (_requireActiveConversation(context) == null) return;
+
+    final mode = await showGlassSheet<_CameraMode>(
+      context,
+      builder: (_) => const _CameraModeSheet(),
+    );
+    if (mode == null || !context.mounted) return;
+
+    if (mode == _CameraMode.photo) {
+      final picked = await ImagePicker().pickImage(source: ImageSource.camera);
+      if (picked == null || !context.mounted) return;
+      final bytes = await picked.readAsBytes();
+      if (!context.mounted) return;
+      await _stagePickedMedia(context, fileName: picked.name, bytes: bytes);
+    } else {
+      final picked = await ImagePicker().pickVideo(
+        source: ImageSource.camera,
+        maxDuration: const Duration(seconds: 60),
+      );
+      if (picked == null || !context.mounted) return;
+      final bytes = await picked.readAsBytes();
+      if (!context.mounted) return;
+      // Camera MP4/MOV output passes the whitelist inside the staging seam.
+      await onStageVideo!(
+        bytes: Uint8List.fromList(bytes),
+        filename: picked.name,
+      );
+    }
+  }
+
+  /// Paperclip = documents only (images and videos go through the gallery
+  /// tile). Always [MessagingProvider.sendFileMessage] — never image routing.
+  Future<void> _pickDocument(BuildContext context) async {
     final result = _requireActiveConversation(context);
     if (result == null) return;
 
     final pickResult = await FilePicker.pickFiles(
       type: FileType.custom,
       allowedExtensions: [
-        'jpg',
-        'jpeg',
-        'png',
-        'gif',
         'pdf',
         'doc',
         'docx',
@@ -207,146 +345,23 @@ class ChatActionTiles extends StatelessWidget {
 
     final messaging = context.read<MessagingProvider>();
     final auth = context.read<AuthProvider>();
-    final recipientId = result.$2;
     final fileName = file.name;
     final ext = fileName.contains('.')
         ? fileName.split('.').last.toLowerCase()
         : '';
-    final isImage = ['jpg', 'jpeg', 'png', 'gif'].contains(ext);
 
-    if (isImage) {
-      showTopSnackBar(context, l10n.snackbarUploadingImage);
-      try {
-        final xfile = XFile.fromData(
-          Uint8List.fromList(bytes),
-          name: fileName,
-          mimeType: _imageMimeForExtension(ext),
-        );
-        await messaging.sendImageMessage(auth.token!, xfile, recipientId);
-        if (context.mounted) {
-          showTopSnackBar(context, l10n.snackbarImageSent);
-        }
-      } catch (e) {
-        if (context.mounted) {
-          showTopSnackBar(
-            context,
-            '${l10n.uploadFailed}: $e',
-            backgroundColor: Colors.red,
-          );
-        }
-      }
-    } else {
-      showTopSnackBar(context, l10n.snackbarUploadingDocument);
-      try {
-        await messaging.sendFileMessage(
-          auth.token!,
-          bytes,
-          fileName,
-          _mimeForExtension(ext),
-          recipientId,
-        );
-        if (context.mounted) {
-          showTopSnackBar(context, l10n.snackbarDocumentSent);
-        }
-      } catch (e) {
-        if (context.mounted) {
-          showTopSnackBar(
-            context,
-            '${l10n.uploadFailed}: $e',
-            backgroundColor: Colors.red,
-          );
-        }
-      }
-    }
-  }
-
-  /// Video tile: gallery pick (native mobile, picker-capped at 60 s) or file
-  /// pick (web/desktop). Client policy — 20 MB, .mp4/.m4v/.mov, 60 s — is
-  /// enforced here with localized toasts; sendVideoMessage keeps a defensive
-  /// backstop for programmatic callers.
-  Future<void> _pickVideo(BuildContext context) async {
-    final result = _requireActiveConversation(context);
-    if (result == null) return;
-
-    final isNativeMobile =
-        !kIsWeb &&
-        (defaultTargetPlatform == TargetPlatform.android ||
-            defaultTargetPlatform == TargetPlatform.iOS);
-
-    String fileName;
-    List<int>? bytes;
-    if (isNativeMobile) {
-      final picked = await ImagePicker().pickVideo(
-        source: ImageSource.gallery,
-        maxDuration: const Duration(seconds: 60),
-      );
-      if (picked == null) return;
-      fileName = picked.name;
-      bytes = await picked.readAsBytes();
-    } else {
-      final pickResult = await FilePicker.pickFiles(
-        type: FileType.custom,
-        allowedExtensions: ['mp4', 'm4v', 'mov'],
-        withData: true,
-      );
-      if (pickResult == null || pickResult.files.isEmpty) return;
-      final file = pickResult.files.single;
-      fileName = file.name;
-      if (file.bytes != null) {
-        bytes = file.bytes!;
-      } else if (!kIsWeb && file.path != null) {
-        bytes = await file_utils.readFileBytes(file.path!);
-      }
-    }
-
-    if (!context.mounted) return;
-    final l10n = AppLocalizations.of(context);
-    if (bytes == null) {
-      showTopSnackBar(
-        context,
-        l10n.snackbarCouldNotReadFile,
-        backgroundColor: Colors.red,
-      );
-      return;
-    }
-
-    final ext = fileName.contains('.')
-        ? fileName.split('.').last.toLowerCase()
-        : '';
-    if (!['mp4', 'm4v', 'mov'].contains(ext)) {
-      showTopSnackBar(
-        context,
-        l10n.videoUnsupportedFormat,
-        backgroundColor: Colors.red,
-      );
-      return;
-    }
-    if (bytes.length > MediaCryptoService.maxBytes) {
-      showTopSnackBar(context, l10n.videoTooLarge, backgroundColor: Colors.red);
-      return;
-    }
-
-    // Web probes duration from metadata only (no frame decode); the native
-    // stub answers null — there the gallery picker's maxDuration is the cap.
-    final probed = await video_probe.probeVideoDurationSeconds(
-      Uint8List.fromList(bytes),
-    );
-    if (!context.mounted) return;
-    final duration = probed?.round();
-    if (duration != null && duration > 60) {
-      showTopSnackBar(context, l10n.videoTooLong, backgroundColor: Colors.red);
-      return;
-    }
-
-    final messaging = context.read<MessagingProvider>();
-    final auth = context.read<AuthProvider>();
+    showTopSnackBar(context, l10n.snackbarUploadingDocument);
     try {
-      await messaging.sendVideoMessage(
+      await messaging.sendFileMessage(
         auth.token!,
         bytes,
+        fileName,
+        _mimeForExtension(ext),
         result.$2,
-        duration: duration,
       );
+      if (context.mounted) {
+        showTopSnackBar(context, l10n.snackbarDocumentSent);
+      }
     } catch (e) {
       if (context.mounted) {
         showTopSnackBar(
@@ -364,6 +379,8 @@ class ChatActionTiles extends StatelessWidget {
         return 'image/png';
       case 'gif':
         return 'image/gif';
+      case 'webp':
+        return 'image/webp';
       case 'jpg':
       case 'jpeg':
         return 'image/jpeg';
@@ -476,6 +493,54 @@ class ChatActionTiles extends StatelessWidget {
     if (context.mounted && Navigator.of(context).canPop()) {
       Navigator.of(context).pop();
     }
+  }
+}
+
+enum _CameraMode { photo, video }
+
+/// Minimal two-option chooser behind the camera tile: Photo → system camera
+/// still, Video → system camera clip (60 s picker cap). Theme tokens only.
+class _CameraModeSheet extends StatelessWidget {
+  const _CameraModeSheet();
+
+  @override
+  Widget build(BuildContext context) {
+    final l10n = AppLocalizations.of(context);
+    final glass = GlassTheme.of(context);
+    final colorScheme = Theme.of(context).colorScheme;
+
+    return SafeArea(
+      child: Column(
+        mainAxisSize: MainAxisSize.min,
+        children: [
+          ListTile(
+            key: const ValueKey('camera-mode-photo'),
+            leading: Icon(Icons.photo_camera_outlined, color: glass.onGlassAccent),
+            title: Text(
+              l10n.cameraModePhoto,
+              style: RpgTheme.bodyFont(
+                fontSize: 14,
+                color: colorScheme.onSurface,
+              ),
+            ),
+            onTap: () => Navigator.of(context).pop(_CameraMode.photo),
+          ),
+          ListTile(
+            key: const ValueKey('camera-mode-video'),
+            leading: Icon(Icons.videocam_outlined, color: glass.onGlassAccent),
+            title: Text(
+              l10n.cameraModeVideo,
+              style: RpgTheme.bodyFont(
+                fontSize: 14,
+                color: colorScheme.onSurface,
+              ),
+            ),
+            onTap: () => Navigator.of(context).pop(_CameraMode.video),
+          ),
+          const SizedBox(height: 8),
+        ],
+      ),
+    );
   }
 }
 
