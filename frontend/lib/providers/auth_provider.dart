@@ -13,12 +13,23 @@ import '../config/app_config.dart';
 import '../utils/e2e_persistent_diag.dart';
 
 class AuthProvider extends ChangeNotifier {
-  AuthProvider({ApiService? api, AuthTokenStore? tokenStore})
+  AuthProvider({
+    ApiService? api,
+    AuthTokenStore? tokenStore,
+    List<Duration>? tokenReadRetryDelays,
+  })
     : _api = api ?? ApiService(baseUrl: AppConfig.baseUrl),
+      _tokenReadRetryDelays =
+          tokenReadRetryDelays ??
+          const [Duration(seconds: 2), Duration(seconds: 5)],
       _tokens = tokenStore ?? AuthTokenStore() {
     _pushService = PushService(_api);
     _loadSavedToken();
   }
+
+  /// Slow second-chance delays when the token store reports `readFailed` at
+  /// boot. Injectable so tests need not wait real seconds.
+  final List<Duration> _tokenReadRetryDelays;
 
   final ApiService _api;
   final AuthTokenStore _tokens;
@@ -200,10 +211,20 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// [wipeStoredTokens]: only SERVER-AUTHORITATIVE reasons (`refresh_invalid*`,
+  /// explicit logout, password change) may delete the persisted tokens. The
+  /// locally-derived reasons (`expired_access_without_refresh`,
+  /// `access_401_without_refresh`) are inferred from in-memory ABSENCE — if
+  /// that absence was ever an artifact (a glitched read, a lost hydration),
+  /// wiping storage here converts a transient fault into a permanent logout,
+  /// destroying a refresh token the server still honors (user 54's row was
+  /// valid to 2027 while he sat on a login screen). They clear the SESSION,
+  /// never the STORE; the next cold boot re-reads storage and recovers.
   Future<void> _clearLocalAuthState(
     String reason, {
     required String source,
     Object? error,
+    bool wipeStoredTokens = true,
   }) async {
     _logSessionEnd(reason, source: source, error: error);
     _cancelSessionRefreshTimer();
@@ -213,7 +234,9 @@ class AuthProvider extends ChangeNotifier {
     _currentUser = null;
     _statusMessage = null;
     _isError = false;
-    await _tokens.clear();
+    if (wipeStoredTokens) {
+      await _tokens.clear();
+    }
     await clearPwaAppBadgeOnLogout();
     notifyListeners();
   }
@@ -229,6 +252,7 @@ class AuthProvider extends ChangeNotifier {
         await _clearLocalAuthState(
           'expired_access_without_refresh',
           source: 'ensureSessionReady',
+          wipeStoredTokens: false,
         );
       }
       return;
@@ -265,7 +289,26 @@ class AuthProvider extends ChangeNotifier {
 
   Future<void> _loadSavedToken() async {
     try {
-      final saved = await _tokens.read();
+      var saved = await _tokens.read();
+      // Bounded retry-before-decide: a read that ERRORS is not a logout —
+      // the tokens may be sitting intact behind a transient plugin fault
+      // (handoff §5.4). The store already retried fast; these are the slow
+      // second chances before we concede the boot.
+      for (var i = 0; saved.readFailed && i < _tokenReadRetryDelays.length; i++) {
+        await Future<void>.delayed(_tokenReadRetryDelays[i]);
+        saved = await _tokens.read();
+      }
+      if (saved.readFailed) {
+        // Storage answered with errors on every attempt. Concede the boot to
+        // the login screen but LEAVE THE STORE UNTOUCHED — the next launch
+        // re-reads it — and say what happened instead of feigning a logout.
+        // Durable AUTH_TOKENS_UNREADABLE was recorded by the store.
+        _statusMessage =
+            'Could not read the saved session from device storage. '
+            'Your login may still be there — restart the app to retry.';
+        _isError = true;
+        return;
+      }
       final savedToken = saved.access;
       final savedRefresh = saved.refresh;
       _refreshToken = savedRefresh;
@@ -385,6 +428,7 @@ class AuthProvider extends ChangeNotifier {
             'access_401_without_refresh',
             source: 'boot_fetch_me',
             error: e,
+            wipeStoredTokens: false,
           );
           return true;
         }

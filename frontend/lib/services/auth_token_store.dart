@@ -4,6 +4,7 @@ import 'package:flutter/foundation.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:shared_preferences/shared_preferences.dart';
 
+import '../utils/e2e_persistent_diag.dart';
 import 'secure_kv.dart';
 
 /// Where the JWT + refresh token live at rest.
@@ -23,8 +24,13 @@ import 'secure_kv.dart';
 /// "logged out on next launch" is a real cost and prefs is merely the status
 /// quo, not a regression.
 ///
-/// Every failure is soft: a broken store reads as "no tokens" (login screen),
-/// never a crash in the auth path.
+/// Failure honesty (0.1.11, handoff §5.4): a broken store used to read as
+/// "no tokens" — the error-as-absence inversion that manufactures a permanent
+/// logout out of a transient storage hiccup (the app then DELETED the intact
+/// token it believed absent). [read] now retries briefly and, if storage still
+/// answers with errors, reports `readFailed: true` — a state the caller MUST
+/// treat as "do not decide", never as logged-out. Failed writes are recorded
+/// durably so a "logged out next boot" finally has a paper trail.
 class AuthTokenStore {
   AuthTokenStore({SecureKv? secure, bool? useSecureStorage})
     : _secure = secure ?? const FlutterSecureStorageKv(FlutterSecureStorage()),
@@ -40,53 +46,89 @@ class AuthTokenStore {
   static const String _accessKey = 'jwt_token';
   static const String _refreshKey = 'refresh_token';
 
-  Future<({String? access, String? refresh})> read() async {
-    if (!_useSecure) {
+  /// Retry cadence for [read]: storage plugins fail transiently (Android
+  /// Keystore after OS updates/backup restores; browser storage under early
+  /// boot contention). Three quick attempts before conceding.
+  static const List<Duration> _readRetryDelays = [
+    Duration(milliseconds: 150),
+    Duration(milliseconds: 400),
+  ];
+
+  /// `readFailed: true` means storage ERRORED on every attempt — the tokens
+  /// may well exist. Callers MUST NOT treat that as "logged out" and MUST NOT
+  /// clear anything in response.
+  Future<({String? access, String? refresh, bool readFailed})> read() async {
+    Object? lastError;
+    for (var attempt = 0; attempt <= _readRetryDelays.length; attempt++) {
+      if (attempt > 0) {
+        await Future<void>.delayed(_readRetryDelays[attempt - 1]);
+      }
       try {
-        final prefs = await SharedPreferences.getInstance();
-        return (
-          access: prefs.getString(_accessKey),
-          refresh: prefs.getString(_refreshKey),
-        );
-      } catch (_) {
-        return (access: null, refresh: null);
+        final r = await _readOnce();
+        return (access: r.access, refresh: r.refresh, readFailed: false);
+      } catch (e) {
+        lastError = e;
       }
     }
-    try {
-      var access = await _secure.read(_accessKey);
-      var refresh = await _secure.read(_refreshKey);
-      if (access == null && refresh == null) {
-        final migrated = await _migrateFromPrefs();
-        access = migrated.access;
-        refresh = migrated.refresh;
-      } else {
-        // Tokens already secure: any prefs copy is residue from the
-        // pre-migration build. Best-effort cleanup, never gating.
-        await _removePrefsCopies();
-      }
-      return (access: access, refresh: refresh);
-    } catch (_) {
-      return (access: null, refresh: null);
+    E2ePersistentDiag.record('AUTH_TOKENS_UNREADABLE', {
+      'errorType': lastError.runtimeType.toString(),
+      'platform': _useSecure ? 'secure' : 'prefs',
+    });
+    return (access: null, refresh: null, readFailed: true);
+  }
+
+  Future<({String? access, String? refresh})> _readOnce() async {
+    if (!_useSecure) {
+      final prefs = await SharedPreferences.getInstance();
+      return (
+        access: prefs.getString(_accessKey),
+        refresh: prefs.getString(_refreshKey),
+      );
     }
+    var access = await _secure.read(_accessKey);
+    var refresh = await _secure.read(_refreshKey);
+    if (access == null && refresh == null) {
+      final migrated = await _migrateFromPrefs();
+      access = migrated.access;
+      refresh = migrated.refresh;
+    } else {
+      // Tokens already secure: any prefs copy is residue from the
+      // pre-migration build. Best-effort cleanup, never gating (it catches
+      // internally, so it cannot fail this read).
+      await _removePrefsCopies();
+    }
+    return (access: access, refresh: refresh);
   }
 
   Future<void> write({required String access, required String refresh}) async {
-    if (!_useSecure) {
+    for (var attempt = 0; attempt < 2; attempt++) {
       try {
-        final prefs = await SharedPreferences.getInstance();
-        await prefs.setString(_accessKey, access);
-        await prefs.setString(_refreshKey, refresh);
-      } catch (_) {}
+        await _writeOnce(access, refresh);
+        return;
+      } catch (_) {
+        if (attempt == 0) {
+          await Future<void>.delayed(const Duration(milliseconds: 150));
+        }
+      }
+    }
+    // A refused write costs a re-login on the next cold start; the session in
+    // memory is unaffected. It used to also be INVISIBLE — record it so the
+    // next "logged out overnight" dump explains itself.
+    E2ePersistentDiag.record('AUTH_TOKEN_WRITE_FAILED', {
+      'platform': _useSecure ? 'secure' : 'prefs',
+    });
+  }
+
+  Future<void> _writeOnce(String access, String refresh) async {
+    if (!_useSecure) {
+      final prefs = await SharedPreferences.getInstance();
+      await prefs.setString(_accessKey, access);
+      await prefs.setString(_refreshKey, refresh);
       return;
     }
-    try {
-      await _secure.write(_accessKey, access);
-      await _secure.write(_refreshKey, refresh);
-      await _removePrefsCopies();
-    } catch (_) {
-      // A refused write costs a re-login on the next cold start; the session
-      // in memory is unaffected. Nothing useful to do here.
-    }
+    await _secure.write(_accessKey, access);
+    await _secure.write(_refreshKey, refresh);
+    await _removePrefsCopies();
   }
 
   Future<void> clear() async {
