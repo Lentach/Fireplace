@@ -89,6 +89,7 @@ extension MessagingHistory on MessagingProvider {
       case MessageType.gif:
       case MessageType.voice:
       case MessageType.file:
+      case MessageType.video:
         return true;
       default:
         return false;

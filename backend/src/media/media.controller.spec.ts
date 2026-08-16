@@ -179,6 +179,23 @@ describe('MediaController', () => {
     expect(mockStorage.uploadRawFile).toHaveBeenCalled();
   });
 
+  it('upload video routes through the opaque msgs/ blob path and echoes mediaDuration', async () => {
+    const result = await controller.upload(
+      fakeFile(),
+      { mediaType: 'video', duration: 30 },
+      fakeReq,
+    );
+    expect(result).toEqual({
+      mediaUrl: 'https://example.com/media/msgs/abc.bin',
+      mediaDuration: 30,
+    });
+    expect(mockStorage.uploadRawFile).toHaveBeenCalledWith(
+      1,
+      expect.any(Buffer),
+      'application/octet-stream',
+    );
+  });
+
   it('upload without file throws BadRequestException', async () => {
     await expect(
       controller.upload(

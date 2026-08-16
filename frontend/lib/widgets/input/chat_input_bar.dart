@@ -48,7 +48,8 @@ class ChatInputBar extends StatefulWidget {
   State<ChatInputBar> createState() => ChatInputBarState();
 }
 
-class ChatInputBarState extends State<ChatInputBar> {
+class ChatInputBarState extends State<ChatInputBar>
+    with SingleTickerProviderStateMixin {
   static const Duration _kTrailingSendFadeDuration = Duration(
     milliseconds: 175,
   );
@@ -60,6 +61,21 @@ class ChatInputBarState extends State<ChatInputBar> {
   MessageModel? _lastEditingMessage;
   bool _showActionPanel = false;
   bool _showEmojiPicker = false;
+  // Emoji panel slide (owner-approved motion in the composer zone because it
+  // is PAINT-ONLY): the panel occupies its full 320px layout from the first
+  // frame (composerBottomPanelPinned semantics unchanged — the viewport
+  // anchors bottom:0 instantly); only the CONTENT slides via SlideTransition
+  // under a ClipRect. Never a SizeTransition / height tween — a ~300px block
+  // relayouting per frame through the keyboard window is the deleted H3 trap
+  // (.cursor/session-summaries/2026-07-09-session-action-panel-transitions.md).
+  late final AnimationController _emojiPanelController;
+  late final Animation<Offset> _emojiPanelOffset;
+  // True while the panel is still mounted playing its exit slide after
+  // _showEmojiPicker flipped false: it keeps occupying layout (pin held)
+  // until the reverse completes, then unmounts in one relayout.
+  bool _emojiPanelExiting = false;
+
+  bool get _emojiPanelOccupiesLayout => _showEmojiPicker || _emojiPanelExiting;
   bool _ignoreComposerTapOutsideForChatSurfaceTap = false;
   // Captured on pointer-down inside the action panel, BEFORE the tap's DOM
   // blur can reach the framework: tells ping's keyboard-neutral refocus
@@ -113,6 +129,17 @@ class ChatInputBarState extends State<ChatInputBar> {
   @override
   void initState() {
     super.initState();
+    _emojiPanelController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 220),
+    );
+    _emojiPanelOffset =
+        Tween<Offset>(begin: const Offset(0, 1), end: Offset.zero).animate(
+          CurvedAnimation(
+            parent: _emojiPanelController,
+            curve: Curves.easeOutCubic,
+          ),
+        );
     _controller.addListener(() {
       if (_controller.text.trim().isEmpty) return;
       _typingDebounceTimer?.cancel();
@@ -148,11 +175,58 @@ class ChatInputBarState extends State<ChatInputBar> {
   }
 
   /// Single mutation point for emoji-panel visibility so the viewport bottom
-  /// pin ([composerBottomPanelPinned]) can never drift out of sync with
-  /// [_showEmojiPicker]. Call inside setState.
-  void _setEmojiPickerVisible(bool value) {
+  /// pin ([composerBottomPanelPinned]) can never drift out of sync with the
+  /// panel's LAYOUT presence. Call inside setState.
+  ///
+  /// Open always slides the content up from below (instant under reduce
+  /// motion). On close, keyboard-NEUTRAL callers (chat-surface tap, tap
+  /// outside, system back) pass [animateExit] to keep the panel mounted
+  /// through the reverse slide — the pin holds bottom:0, and with the
+  /// keyboard down that is a no-op for layout. Keyboard-REPLACEMENT closes
+  /// (focus gain, toggle back to keyboard) and recording start stay INSTANT:
+  /// their unmount must land before the keyboard show/hide window, not
+  /// inside it.
+  void _setEmojiPickerVisible(bool value, {bool animateExit = false}) {
     _showEmojiPicker = value;
-    composerBottomPanelPinned.value = value;
+    final reduceMotion = MediaQuery.disableAnimationsOf(context);
+    if (value) {
+      _emojiPanelExiting = false;
+      composerBottomPanelPinned.value = true;
+      if (reduceMotion) {
+        _emojiPanelController.value = 1.0;
+      } else {
+        final status = _emojiPanelController.status;
+        if (status == AnimationStatus.reverse) {
+          // Reopened mid-exit: resume the slide from where it is.
+          _emojiPanelController.forward();
+        } else if (status == AnimationStatus.dismissed) {
+          _emojiPanelController.forward(from: 0);
+        }
+        // forward/completed: already opening/open — idempotent.
+      }
+    } else if (animateExit &&
+        !reduceMotion &&
+        _emojiPanelController.value > 0) {
+      if (!_emojiPanelExiting) {
+        _emojiPanelExiting = true;
+        // Pin stays true: the panel still occupies layout until the exit ends.
+        _emojiPanelController.reverse().whenComplete(_onEmojiPanelExitDone);
+      }
+    } else {
+      _emojiPanelExiting = false;
+      _emojiPanelController.value = 0;
+      composerBottomPanelPinned.value = false;
+    }
+  }
+
+  void _onEmojiPanelExitDone() {
+    // A TickerFuture completes only on an uninterrupted reverse; a reopen or
+    // an instant close mid-exit leaves it forever pending — no stale unmount.
+    if (!mounted || _showEmojiPicker || !_emojiPanelExiting) return;
+    setState(() {
+      _emojiPanelExiting = false;
+      composerBottomPanelPinned.value = false;
+    });
   }
 
   void _closeEmojiPickerOnFocusGain() {
@@ -189,7 +263,7 @@ class ChatInputBarState extends State<ChatInputBar> {
       // iOS + Android). Unfocusing the framework node lets the dismiss stick.
       _ignoreComposerTapOutsideForChatSurfaceTap = true;
       if (_showEmojiPicker) {
-        setState(() => _setEmojiPickerVisible(false));
+        setState(() => _setEmojiPickerVisible(false, animateExit: true));
       }
       _focusNode.unfocus();
       WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -211,7 +285,7 @@ class ChatInputBarState extends State<ChatInputBar> {
     if (!_showEmojiPicker && !_showActionPanel) return;
     setState(() {
       if (_showEmojiPicker) {
-        _setEmojiPickerVisible(false);
+        _setEmojiPickerVisible(false, animateExit: true);
       }
       _showActionPanel = false;
     });
@@ -389,6 +463,7 @@ class ChatInputBarState extends State<ChatInputBar> {
     _controller.dispose();
     _focusNode.dispose();
     _typingDebounceTimer?.cancel();
+    _emojiPanelController.dispose();
     super.dispose();
   }
 
@@ -920,7 +995,7 @@ class ChatInputBarState extends State<ChatInputBar> {
       canPop: !_showEmojiPicker,
       onPopInvokedWithResult: (didPop, _) {
         if (!didPop && _showEmojiPicker) {
-          setState(() => _setEmojiPickerVisible(false));
+          setState(() => _setEmojiPickerVisible(false, animateExit: true));
         }
       },
       child: TapRegion(
@@ -1192,7 +1267,7 @@ class ChatInputBarState extends State<ChatInputBar> {
             ),
 
             if (!_showActionPanel &&
-                !_showEmojiPicker &&
+                !_emojiPanelOccupiesLayout &&
                 bottomInteractivePadding > 0)
               SizedBox(height: bottomInteractivePadding),
 
@@ -1214,11 +1289,20 @@ class ChatInputBarState extends State<ChatInputBar> {
                 ),
               ),
 
-            if (_showEmojiPicker)
-              FireplaceEmojiPicker(
-                onEmojiSelected: _insertEmoji,
-                onBackspacePressed: _deletePreviousEmoji,
-                height: 320,
+            // Emoji panel: full 320px layout from the first frame (the bottom
+            // pin reserves the keyboard's space instantly); only the CONTENT
+            // slides, clipped to the panel's box — a pure paint transform,
+            // for the same H3 reason the action panel above stays instant.
+            if (_emojiPanelOccupiesLayout)
+              ClipRect(
+                child: SlideTransition(
+                  position: _emojiPanelOffset,
+                  child: FireplaceEmojiPicker(
+                    onEmojiSelected: _insertEmoji,
+                    onBackspacePressed: _deletePreviousEmoji,
+                    height: 320,
+                  ),
+                ),
               ),
           ],
         ), // Column

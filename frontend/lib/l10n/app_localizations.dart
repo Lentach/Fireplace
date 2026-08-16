@@ -368,24 +368,6 @@ abstract class AppLocalizations {
   /// **'Aby dostarczać wiadomości, serwer przechowuje: kto jest w danej rozmowie, kiedy wiadomości zostały wysłane oraz status dostarczenia. Treść wiadomości nigdy nie jest widoczna dla serwera.'**
   String get serverStoresMetadataDescription;
 
-  /// No description provided for @localMessageCache.
-  ///
-  /// In pl, this message translates to:
-  /// **'Lokalna pamięć wiadomości'**
-  String get localMessageCache;
-
-  /// No description provided for @localMessageCacheDescription.
-  ///
-  /// In pl, this message translates to:
-  /// **'To urządzenie może przechowywać lokalnie pobrane wiadomości głosowe. Wyczyszczenie usuwa tylko pobrane audio; nie usuwa czytelnej historii, kluczy mediów, kluczy szyfrowania, sesji ani pamięci przeglądarki.'**
-  String get localMessageCacheDescription;
-
-  /// No description provided for @clearLocalMessageCache.
-  ///
-  /// In pl, this message translates to:
-  /// **'Wyczyść pobrane audio'**
-  String get clearLocalMessageCache;
-
   /// No description provided for @deleteAllLocalHistoryTitle.
   ///
   /// In pl, this message translates to:
@@ -683,13 +665,13 @@ abstract class AppLocalizations {
   /// No description provided for @identityDamagedTitle.
   ///
   /// In pl, this message translates to:
-  /// **'Klucze szyfrowania uszkodzone'**
+  /// **'Brak kluczy szyfrowania na tym urządzeniu'**
   String get identityDamagedTitle;
 
   /// No description provided for @identityDamagedBody.
   ///
   /// In pl, this message translates to:
-  /// **'Brakuje części tożsamości szyfrowania tego urządzenia, więc nie można odszyfrować ani wysyłać wiadomości. Klucze NIE zostały odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby historię.'**
+  /// **'Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania gdzie indziej, a to urządzenie ich nie ma. Jeśli to Twoje dotychczasowe urządzenie, zapisane klucze zostały utracone. Tak czy inaczej nic nie zostało odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.'**
   String get identityDamagedBody;
 
   /// No description provided for @identityDamagedAction.
@@ -715,18 +697,6 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Utwórz nowe klucze'**
   String get identityDamagedConfirmAction;
-
-  /// No description provided for @peerIdentityChangedWarning.
-  ///
-  /// In pl, this message translates to:
-  /// **'Klucze bezpieczeństwa użytkownika {name} uległy zmianie. Zwykle oznacza to ponowną instalację, ale może też oznaczać podsłuch. Potwierdź to z nim innym kanałem.'**
-  String peerIdentityChangedWarning(String name);
-
-  /// No description provided for @peerIdentityVerifyAction.
-  ///
-  /// In pl, this message translates to:
-  /// **'Zweryfikuj'**
-  String get peerIdentityVerifyAction;
 
   /// No description provided for @peerIdentityMarkVerifiedAction.
   ///
@@ -1472,17 +1442,131 @@ abstract class AppLocalizations {
   /// **'została odczytana'**
   String get antiQuantumNoteBurnedSubtitle;
 
+  /// No description provided for @antiQuantumNoteRevealWarning.
+  ///
+  /// In pl, this message translates to:
+  /// **'Tę notatkę można odczytać tylko raz. Odsłonięcie zniszczy ją trwale — dla wszystkich, na zawsze.'**
+  String get antiQuantumNoteRevealWarning;
+
+  /// No description provided for @antiQuantumNoteRevealConfirm.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odsłoń i zniszcz'**
+  String get antiQuantumNoteRevealConfirm;
+
+  /// No description provided for @antiQuantumNoteRevealLoading.
+  ///
+  /// In pl, this message translates to:
+  /// **'Odszyfrowywanie…'**
+  String get antiQuantumNoteRevealLoading;
+
+  /// No description provided for @antiQuantumNoteRevealedHeader.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wiadomość odsłonięta · trwale zniszczona'**
+  String get antiQuantumNoteRevealedHeader;
+
+  /// No description provided for @antiQuantumNoteRevealedFooter.
+  ///
+  /// In pl, this message translates to:
+  /// **'Notatka została usunięta z serwera. Widać ją już tylko na tym ekranie.'**
+  String get antiQuantumNoteRevealedFooter;
+
+  /// No description provided for @antiQuantumNoteRevealClose.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zamknij'**
+  String get antiQuantumNoteRevealClose;
+
+  /// No description provided for @antiQuantumNoteRevealRetry.
+  ///
+  /// In pl, this message translates to:
+  /// **'Spróbuj ponownie'**
+  String get antiQuantumNoteRevealRetry;
+
+  /// No description provided for @antiQuantumNoteRevealDestroyedBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ta notatka została już odczytana i zniszczona. Nie da się jej przywrócić.'**
+  String get antiQuantumNoteRevealDestroyedBody;
+
+  /// No description provided for @antiQuantumNoteRevealExpiredTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Notatka wygasła'**
+  String get antiQuantumNoteRevealExpiredTitle;
+
+  /// No description provided for @antiQuantumNoteRevealExpiredBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ta notatka wygasła i zniszczyła się, zanim została odczytana.'**
+  String get antiQuantumNoteRevealExpiredBody;
+
+  /// No description provided for @antiQuantumNoteRevealCorruptBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Notatka została zniszczona, ale nie udało się jej odszyfrować. Link może być uszkodzony.'**
+  String get antiQuantumNoteRevealCorruptBody;
+
+  /// No description provided for @antiQuantumNoteRevealInvalidLinkTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Uszkodzony link'**
+  String get antiQuantumNoteRevealInvalidLinkTitle;
+
+  /// No description provided for @antiQuantumNoteRevealInvalidLinkBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'W tym linku brakuje prawidłowego klucza deszyfrującego. Notatka nie została zniszczona.'**
+  String get antiQuantumNoteRevealInvalidLinkBody;
+
+  /// No description provided for @antiQuantumNoteRevealNetworkErrorTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Brak połączenia'**
+  String get antiQuantumNoteRevealNetworkErrorTitle;
+
+  /// No description provided for @antiQuantumNoteRevealNetworkErrorBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się połączyć z serwerem. Sprawdź połączenie i spróbuj ponownie.'**
+  String get antiQuantumNoteRevealNetworkErrorBody;
+
   /// No description provided for @privacyAntiQuantumNoteTitle.
   ///
   /// In pl, this message translates to:
   /// **'Notatki antykwantowe'**
   String get privacyAntiQuantumNoteTitle;
 
-  /// No description provided for @privacyAntiQuantumNoteDescription.
+  /// No description provided for @privacyAntiQuantumNoteLead.
   ///
   /// In pl, this message translates to:
-  /// **'Notatki są szyfrowane na Twoim urządzeniu przed wysłaniem — serwer przechowuje wyłącznie nieczytelny szyfrogram, a klucz deszyfrujący podróżuje jedynie we fragmencie linku (#), którego przeglądarki nigdy nie wysyłają do żadnego serwera. Notatkę można odczytać dokładnie raz, po czym jest trwale usuwana. Nieotwarte notatki niszczą się same po upływie timera (1h–24h), a wiadomość w czacie znika razem z nimi.'**
-  String get privacyAntiQuantumNoteDescription;
+  /// **'Samoniszczące wiadomości z własną, drugą warstwą szyfrowania — nawet link nie zdradza sekretu.'**
+  String get privacyAntiQuantumNoteLead;
+
+  /// No description provided for @privacyAntiQuantumNotePointDevice.
+  ///
+  /// In pl, this message translates to:
+  /// **'Szyfrowane na Twoim urządzeniu przed wysłaniem — serwer przechowuje wyłącznie nieczytelny szyfrogram.'**
+  String get privacyAntiQuantumNotePointDevice;
+
+  /// No description provided for @privacyAntiQuantumNotePointKey.
+  ///
+  /// In pl, this message translates to:
+  /// **'Klucz deszyfrujący podróżuje jedynie we fragmencie linku (#), którego przeglądarki nigdy nie wysyłają do żadnego serwera.'**
+  String get privacyAntiQuantumNotePointKey;
+
+  /// No description provided for @privacyAntiQuantumNotePointOnce.
+  ///
+  /// In pl, this message translates to:
+  /// **'Notatkę można odczytać dokładnie raz — po czym jest trwale usuwana.'**
+  String get privacyAntiQuantumNotePointOnce;
+
+  /// No description provided for @privacyAntiQuantumNotePointTimer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nieotwarte notatki niszczą się same po upływie timera (1h–24h), a wiadomość w czacie znika razem z nimi.'**
+  String get privacyAntiQuantumNotePointTimer;
 
   /// No description provided for @documentDownloaded.
   ///
@@ -1694,18 +1778,6 @@ abstract class AppLocalizations {
   /// **'Nie udało się wczytać dźwięku'**
   String get snackbarFailedToLoadAudio;
 
-  /// No description provided for @snackbarLocalMessageCacheCleared.
-  ///
-  /// In pl, this message translates to:
-  /// **'Lokalna pamięć wiadomości wyczyszczona'**
-  String get snackbarLocalMessageCacheCleared;
-
-  /// No description provided for @snackbarFailedToClearLocalMessageCache.
-  ///
-  /// In pl, this message translates to:
-  /// **'Nie udało się wyczyścić lokalnej pamięci wiadomości'**
-  String get snackbarFailedToClearLocalMessageCache;
-
   /// No description provided for @snackbarAllLocalHistoryDeleted.
   ///
   /// In pl, this message translates to:
@@ -1745,25 +1817,25 @@ abstract class AppLocalizations {
   /// No description provided for @appearanceThemeLight.
   ///
   /// In pl, this message translates to:
-  /// **'Gorący kamień'**
+  /// **'Alabaster'**
   String get appearanceThemeLight;
 
   /// No description provided for @appearanceThemeTeal.
   ///
   /// In pl, this message translates to:
-  /// **'Turkus i kamień'**
+  /// **'Turkus'**
   String get appearanceThemeTeal;
 
   /// No description provided for @appearanceThemeDark.
   ///
   /// In pl, this message translates to:
-  /// **'Wire'**
+  /// **'Grafit'**
   String get appearanceThemeDark;
 
   /// No description provided for @appearanceThemeBlue.
   ///
   /// In pl, this message translates to:
-  /// **'Niebieski'**
+  /// **'Błękit'**
   String get appearanceThemeBlue;
 
   /// No description provided for @appearanceThemeCosmic.
@@ -1775,25 +1847,25 @@ abstract class AppLocalizations {
   /// No description provided for @themeOptionLight.
   ///
   /// In pl, this message translates to:
-  /// **'Ciepły papier z żarowymi akcentami'**
+  /// **'Jasny ciepły papier z żarowymi akcentami'**
   String get themeOptionLight;
 
   /// No description provided for @themeOptionDark.
   ///
   /// In pl, this message translates to:
-  /// **'Neutralny grafit z turkusowymi akcentami'**
+  /// **'Ciemny neutralny grafit z turkusowymi akcentami'**
   String get themeOptionDark;
 
   /// No description provided for @themeOptionBlue.
   ///
   /// In pl, this message translates to:
-  /// **'Głęboki granat z jasnym błękitem'**
+  /// **'Głęboki granat z błękitnymi akcentami'**
   String get themeOptionBlue;
 
   /// No description provided for @themeOptionTealStone.
   ///
   /// In pl, this message translates to:
-  /// **'Chłodny kamień z nowoczesnym turkusem'**
+  /// **'Jasny chłodny kamień z turkusowymi akcentami'**
   String get themeOptionTealStone;
 
   /// No description provided for @themeOptionCosmic.
@@ -2263,6 +2335,36 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Zaproś kogoś'**
   String get chatPickerInviteButton;
+
+  /// No description provided for @videoMessage.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wideo'**
+  String get videoMessage;
+
+  /// No description provided for @actionTileVideo.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wideo'**
+  String get actionTileVideo;
+
+  /// No description provided for @videoTooLarge.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wideo jest za duże (maks. 20 MB)'**
+  String get videoTooLarge;
+
+  /// No description provided for @videoTooLong.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wideo jest za długie (maks. 60 sekund)'**
+  String get videoTooLong;
+
+  /// No description provided for @videoUnsupportedFormat.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nieobsługiwany format wideo (tylko MP4)'**
+  String get videoUnsupportedFormat;
 }
 
 class _AppLocalizationsDelegate

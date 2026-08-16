@@ -355,6 +355,106 @@ extension MessagingSend on MessagingProvider {
     }
   }
 
+  /// Send a video message. Mirrors [sendVoiceMessage]/[sendFileMessage]:
+  /// optimistic bubble, AES-GCM encrypt+upload (keys stashed into
+  /// _pendingSendContent BEFORE any await — durability invariant), then the
+  /// E2E envelope send. [duration] is seconds, when the picker knows it
+  /// (native gallery picks and some web files don't expose it — omitted then).
+  Future<void> sendVideoMessage(
+    String token,
+    List<int> videoBytes,
+    int recipientId, {
+    int? duration,
+  }) async {
+    final activeConversationId = _conversationsProvider?.activeConversationId;
+    if (activeConversationId == null || _currentUserId == null) return;
+
+    final effectiveExpiresIn =
+        _conversationsProvider!.conversationDisappearingTimer;
+    final tempId =
+        'temp_${DateTime.now().millisecondsSinceEpoch}_$_currentUserId';
+    final effectiveReplyToId = _replyingToMessage?.id;
+
+    _messages.add(
+      _buildOptimisticMediaMessage(
+        tempId: tempId,
+        conversationId: activeConversationId,
+        messageType: MessageType.video,
+        content: '',
+        effectiveExpiresIn: effectiveExpiresIn,
+        effectiveReplyToId: effectiveReplyToId,
+        mediaDuration: duration,
+      ),
+    );
+    _pendingSendContent[tempId] = <String, dynamic>{
+      'content': '',
+      'messageType': 'VIDEO',
+      'mediaDuration': ?duration,
+    };
+    _clearReplyingToAfterSendStart();
+    notifyListeners();
+
+    try {
+      if (videoBytes.length > MediaCryptoService.maxBytes) {
+        _markMessageFailed(tempId, 'Video too large (max 20 MB)');
+        return;
+      }
+      // Client policy: 60 s cap. The composer already rejects with a toast
+      // when it knows the duration; this is the defensive backstop for
+      // programmatic callers.
+      if (duration != null && duration > 60) {
+        _markMessageFailed(tempId, 'Video too long (max 60 seconds)');
+        return;
+      }
+
+      final upload = await _mediaUpload.encryptAndUpload(
+        bytes: Uint8List.fromList(videoBytes),
+        token: token,
+        mediaType: 'video',
+        duration: duration,
+        expiresIn: effectiveExpiresIn,
+        onEncrypted: (key, iv) {
+          _pendingSendContent[tempId] = <String, dynamic>{
+            'content': '',
+            'messageType': 'VIDEO',
+            'mediaDuration': ?duration,
+            'mediaKey': key,
+            'mediaIv': iv,
+          };
+        },
+      );
+      final serverDuration = upload.mediaDuration ?? duration;
+      _pendingSendContent[tempId]!['mediaUrl'] = upload.mediaUrl;
+
+      final idx = _messages.indexWhere((m) => m.tempId == tempId);
+      if (idx != -1) {
+        _messages[idx] = _messages[idx].copyWith(
+          mediaUrl: upload.mediaUrl,
+          mediaDuration: serverDuration,
+          mediaKey: upload.keyBase64,
+          mediaIv: upload.ivBase64,
+        );
+        notifyListeners();
+      }
+
+      _encryptAndSend(
+        recipientId: recipientId,
+        content: '',
+        tempId: tempId,
+        effectiveExpiresIn: effectiveExpiresIn,
+        effectiveReplyToId: effectiveReplyToId,
+        messageType: 'VIDEO',
+        mediaUrl: upload.mediaUrl,
+        mediaDuration: serverDuration,
+        mediaKey: upload.keyBase64,
+        mediaIv: upload.ivBase64,
+      );
+    } catch (e) {
+      debugPrint('[MessagingProvider] Video send failed: $e');
+      _markMessageFailed(tempId, 'Video send failed: ${e.toString()}');
+    }
+  }
+
   /// Send a GIF message. Downloads from Giphy, encrypts bytes, uploads blob, E2E envelope.
   Future<void> sendGif(String token, String gifUrl, int recipientId) async {
     final activeConversationId = _conversationsProvider?.activeConversationId;
@@ -723,6 +823,41 @@ extension MessagingSend on MessagingProvider {
           localAudioPath: localPath,
           duration: message.mediaDuration ?? 0,
           conversationId: message.conversationId,
+        );
+      }
+      return;
+    }
+
+    if (message.messageType == MessageType.video) {
+      final vUrl = message.mediaUrl;
+      final vKey = message.mediaKey;
+      final vIv = message.mediaIv;
+      // After encrypt+upload, blob URL and keys live on the model — retry the
+      // E2E send only; pre-upload failures have no local copy to re-upload.
+      if (vUrl != null && vUrl.isNotEmpty && vKey != null && vIv != null) {
+        _messages[index] = _messages[index].copyWith(
+          deliveryStatus: MessageDeliveryStatus.sending,
+        );
+        _pendingSendContent[tempId] = <String, dynamic>{
+          'content': '',
+          'messageType': 'VIDEO',
+          'mediaUrl': vUrl,
+          if (message.mediaDuration != null)
+            'mediaDuration': message.mediaDuration,
+          'mediaKey': vKey,
+          'mediaIv': vIv,
+        };
+        notifyListeners();
+        _encryptAndSend(
+          recipientId: recipientId,
+          content: '',
+          tempId: tempId,
+          effectiveExpiresIn: conv.disappearingTimer,
+          messageType: 'VIDEO',
+          mediaUrl: vUrl,
+          mediaDuration: message.mediaDuration,
+          mediaKey: vKey,
+          mediaIv: vIv,
         );
       }
       return;

@@ -486,6 +486,11 @@ describe('ChatMessageService', () => {
         '3:base64encryptedFileData',
         'http://localhost:3000/media/msgs/file.bin',
       ],
+      [
+        'VIDEO',
+        '3:base64encryptedVideoData',
+        'http://localhost:3000/media/msgs/video.bin',
+      ],
     ])(
       'should persist mediaUrl and messageType for encrypted %s',
       async (messageType, encryptedContent, mediaUrl) => {

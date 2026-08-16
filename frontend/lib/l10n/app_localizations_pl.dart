@@ -154,16 +154,6 @@ class AppLocalizationsPl extends AppLocalizations {
       'Aby dostarczać wiadomości, serwer przechowuje: kto jest w danej rozmowie, kiedy wiadomości zostały wysłane oraz status dostarczenia. Treść wiadomości nigdy nie jest widoczna dla serwera.';
 
   @override
-  String get localMessageCache => 'Lokalna pamięć wiadomości';
-
-  @override
-  String get localMessageCacheDescription =>
-      'To urządzenie może przechowywać lokalnie pobrane wiadomości głosowe. Wyczyszczenie usuwa tylko pobrane audio; nie usuwa czytelnej historii, kluczy mediów, kluczy szyfrowania, sesji ani pamięci przeglądarki.';
-
-  @override
-  String get clearLocalMessageCache => 'Wyczyść pobrane audio';
-
-  @override
   String get deleteAllLocalHistoryTitle =>
       'Usuń wszystkie wiadomości z tego urządzenia';
 
@@ -329,11 +319,12 @@ class AppLocalizationsPl extends AppLocalizations {
   String get encryptionNotInitialized => 'Szyfrowanie niezainicjowane';
 
   @override
-  String get identityDamagedTitle => 'Klucze szyfrowania uszkodzone';
+  String get identityDamagedTitle =>
+      'Brak kluczy szyfrowania na tym urządzeniu';
 
   @override
   String get identityDamagedBody =>
-      'Brakuje części tożsamości szyfrowania tego urządzenia, więc nie można odszyfrować ani wysyłać wiadomości. Klucze NIE zostały odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby historię.';
+      'Logujesz się na nowym urządzeniu lub w nowej przeglądarce? Twoje konto ma już klucze szyfrowania gdzie indziej, a to urządzenie ich nie ma. Jeśli to Twoje dotychczasowe urządzenie, zapisane klucze zostały utracone. Tak czy inaczej nic nie zostało odtworzone automatycznie — zrobienie tego po cichu zniszczyłoby możliwość odczytania historii.';
 
   @override
   String get identityDamagedAction => 'Zacznij od nowa';
@@ -347,14 +338,6 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get identityDamagedConfirmAction => 'Utwórz nowe klucze';
-
-  @override
-  String peerIdentityChangedWarning(String name) {
-    return 'Klucze bezpieczeństwa użytkownika $name uległy zmianie. Zwykle oznacza to ponowną instalację, ale może też oznaczać podsłuch. Potwierdź to z nim innym kanałem.';
-  }
-
-  @override
-  String get peerIdentityVerifyAction => 'Zweryfikuj';
 
   @override
   String get peerIdentityMarkVerifiedAction => 'Odciski się zgadzają';
@@ -819,11 +802,80 @@ class AppLocalizationsPl extends AppLocalizations {
   String get antiQuantumNoteBurnedSubtitle => 'została odczytana';
 
   @override
+  String get antiQuantumNoteRevealWarning =>
+      'Tę notatkę można odczytać tylko raz. Odsłonięcie zniszczy ją trwale — dla wszystkich, na zawsze.';
+
+  @override
+  String get antiQuantumNoteRevealConfirm => 'Odsłoń i zniszcz';
+
+  @override
+  String get antiQuantumNoteRevealLoading => 'Odszyfrowywanie…';
+
+  @override
+  String get antiQuantumNoteRevealedHeader =>
+      'Wiadomość odsłonięta · trwale zniszczona';
+
+  @override
+  String get antiQuantumNoteRevealedFooter =>
+      'Notatka została usunięta z serwera. Widać ją już tylko na tym ekranie.';
+
+  @override
+  String get antiQuantumNoteRevealClose => 'Zamknij';
+
+  @override
+  String get antiQuantumNoteRevealRetry => 'Spróbuj ponownie';
+
+  @override
+  String get antiQuantumNoteRevealDestroyedBody =>
+      'Ta notatka została już odczytana i zniszczona. Nie da się jej przywrócić.';
+
+  @override
+  String get antiQuantumNoteRevealExpiredTitle => 'Notatka wygasła';
+
+  @override
+  String get antiQuantumNoteRevealExpiredBody =>
+      'Ta notatka wygasła i zniszczyła się, zanim została odczytana.';
+
+  @override
+  String get antiQuantumNoteRevealCorruptBody =>
+      'Notatka została zniszczona, ale nie udało się jej odszyfrować. Link może być uszkodzony.';
+
+  @override
+  String get antiQuantumNoteRevealInvalidLinkTitle => 'Uszkodzony link';
+
+  @override
+  String get antiQuantumNoteRevealInvalidLinkBody =>
+      'W tym linku brakuje prawidłowego klucza deszyfrującego. Notatka nie została zniszczona.';
+
+  @override
+  String get antiQuantumNoteRevealNetworkErrorTitle => 'Brak połączenia';
+
+  @override
+  String get antiQuantumNoteRevealNetworkErrorBody =>
+      'Nie udało się połączyć z serwerem. Sprawdź połączenie i spróbuj ponownie.';
+
+  @override
   String get privacyAntiQuantumNoteTitle => 'Notatki antykwantowe';
 
   @override
-  String get privacyAntiQuantumNoteDescription =>
-      'Notatki są szyfrowane na Twoim urządzeniu przed wysłaniem — serwer przechowuje wyłącznie nieczytelny szyfrogram, a klucz deszyfrujący podróżuje jedynie we fragmencie linku (#), którego przeglądarki nigdy nie wysyłają do żadnego serwera. Notatkę można odczytać dokładnie raz, po czym jest trwale usuwana. Nieotwarte notatki niszczą się same po upływie timera (1h–24h), a wiadomość w czacie znika razem z nimi.';
+  String get privacyAntiQuantumNoteLead =>
+      'Samoniszczące wiadomości z własną, drugą warstwą szyfrowania — nawet link nie zdradza sekretu.';
+
+  @override
+  String get privacyAntiQuantumNotePointDevice =>
+      'Szyfrowane na Twoim urządzeniu przed wysłaniem — serwer przechowuje wyłącznie nieczytelny szyfrogram.';
+
+  @override
+  String get privacyAntiQuantumNotePointKey =>
+      'Klucz deszyfrujący podróżuje jedynie we fragmencie linku (#), którego przeglądarki nigdy nie wysyłają do żadnego serwera.';
+
+  @override
+  String get privacyAntiQuantumNotePointOnce =>
+      'Notatkę można odczytać dokładnie raz — po czym jest trwale usuwana.';
+
+  @override
+  String get privacyAntiQuantumNotePointTimer =>
+      'Nieotwarte notatki niszczą się same po upływie timera (1h–24h), a wiadomość w czacie znika razem z nimi.';
 
   @override
   String get documentDownloaded => 'Dokument pobrany';
@@ -938,14 +990,6 @@ class AppLocalizationsPl extends AppLocalizations {
   String get snackbarFailedToLoadAudio => 'Nie udało się wczytać dźwięku';
 
   @override
-  String get snackbarLocalMessageCacheCleared =>
-      'Lokalna pamięć wiadomości wyczyszczona';
-
-  @override
-  String get snackbarFailedToClearLocalMessageCache =>
-      'Nie udało się wyczyścić lokalnej pamięci wiadomości';
-
-  @override
   String get snackbarAllLocalHistoryDeleted =>
       'Wszystkie wiadomości zapisane na tym urządzeniu zostały trwale usunięte';
 
@@ -970,31 +1014,33 @@ class AppLocalizationsPl extends AppLocalizations {
   String get appearanceColorTheme => 'MOTYW KOLORYSTYCZNY';
 
   @override
-  String get appearanceThemeLight => 'Gorący kamień';
+  String get appearanceThemeLight => 'Alabaster';
 
   @override
-  String get appearanceThemeTeal => 'Turkus i kamień';
+  String get appearanceThemeTeal => 'Turkus';
 
   @override
-  String get appearanceThemeDark => 'Wire';
+  String get appearanceThemeDark => 'Grafit';
 
   @override
-  String get appearanceThemeBlue => 'Niebieski';
+  String get appearanceThemeBlue => 'Błękit';
 
   @override
   String get appearanceThemeCosmic => 'Kosmos';
 
   @override
-  String get themeOptionLight => 'Ciepły papier z żarowymi akcentami';
+  String get themeOptionLight => 'Jasny ciepły papier z żarowymi akcentami';
 
   @override
-  String get themeOptionDark => 'Neutralny grafit z turkusowymi akcentami';
+  String get themeOptionDark =>
+      'Ciemny neutralny grafit z turkusowymi akcentami';
 
   @override
-  String get themeOptionBlue => 'Głęboki granat z jasnym błękitem';
+  String get themeOptionBlue => 'Głęboki granat z błękitnymi akcentami';
 
   @override
-  String get themeOptionTealStone => 'Chłodny kamień z nowoczesnym turkusem';
+  String get themeOptionTealStone =>
+      'Jasny chłodny kamień z turkusowymi akcentami';
 
   @override
   String get themeOptionCosmic => 'Ciemny kosmos z lodowoniebieskim światłem';
@@ -1248,4 +1294,20 @@ class AppLocalizationsPl extends AppLocalizations {
 
   @override
   String get chatPickerInviteButton => 'Zaproś kogoś';
+
+  @override
+  String get videoMessage => 'Wideo';
+
+  @override
+  String get actionTileVideo => 'Wideo';
+
+  @override
+  String get videoTooLarge => 'Wideo jest za duże (maks. 20 MB)';
+
+  @override
+  String get videoTooLong => 'Wideo jest za długie (maks. 60 sekund)';
+
+  @override
+  String get videoUnsupportedFormat =>
+      'Nieobsługiwany format wideo (tylko MP4)';
 }

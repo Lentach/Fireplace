@@ -291,6 +291,7 @@ class MessagingProvider extends ChangeNotifier {
         gifLabel: labels.gifLabel,
         documentLabel: labels.documentLabel,
         pingLabel: labels.pingLabel,
+        videoLabel: labels.videoLabel,
       ),
       senderUsername: rt.senderUsername,
       messageType: rt.messageType,
@@ -477,6 +478,8 @@ class MessagingProvider extends ChangeNotifier {
         return MessageType.gif;
       case 'FILE':
         return MessageType.file;
+      case 'VIDEO':
+        return MessageType.video;
       default:
         return null;
     }
@@ -590,8 +593,15 @@ class MessagingProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// True once [dispose] ran. Deferred (post-frame) callers that outlive the
+  /// provider — e.g. ChatDetailScreen's teardown-deferred [clearMessages] —
+  /// must check this instead of notifying a disposed ChangeNotifier.
+  bool get isDisposed => _isDisposed;
+  bool _isDisposed = false;
+
   @override
   void dispose() {
+    _isDisposed = true;
     _pingEffectConsumerDisposed = true;
     // Mirror onDisconnect: none of onDisconnect / onConnect / clearAll is
     // guaranteed to run before teardown, so a pending typing / delayed-retry /

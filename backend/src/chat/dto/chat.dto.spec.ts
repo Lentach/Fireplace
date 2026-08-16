@@ -45,6 +45,18 @@ describe('SendMessageDto', () => {
       const errors = await validate(dto);
       expect(errors).toHaveLength(0);
     });
+
+    it('should accept empty content for VIDEO', async () => {
+      const dto = createDto({
+        recipientId: 1,
+        content: '',
+        messageType: 'VIDEO',
+        mediaUrl: 'http://localhost:3000/media/msgs/video.bin',
+        mediaDuration: 30,
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
   });
 
   describe('encrypted messages (E2E)', () => {
@@ -88,6 +100,19 @@ describe('SendMessageDto', () => {
         messageType: 'VOICE',
         mediaUrl: 'http://localhost:3000/media/msgs/voice.bin',
         mediaDuration: 5,
+      });
+      const errors = await validate(dto);
+      expect(errors).toHaveLength(0);
+    });
+
+    it('should accept encrypted VIDEO with self-hosted mediaUrl', async () => {
+      const dto = createDto({
+        recipientId: 1,
+        content: '[encrypted]',
+        encryptedContent: '3:videoCipher==',
+        messageType: 'VIDEO',
+        mediaUrl: 'http://localhost:3000/media/msgs/video.bin',
+        mediaDuration: 30,
       });
       const errors = await validate(dto);
       expect(errors).toHaveLength(0);

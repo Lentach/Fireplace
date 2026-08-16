@@ -238,8 +238,10 @@ class _TextMessageContentState extends State<TextMessageContent> {
   Widget build(BuildContext context) {
     final message = widget.message;
     // An Anti-Quantum Note link renders as a trusted banner card, not as a
-    // raw URL + generic preview. Tap behavior matches the plain-link path.
-    if (isAntiQuantumNoteUrl(message.content)) {
+    // raw URL + generic preview. Own-origin covers both this build's BASE_URL
+    // and the production origin (a prod link received in a dev build is still
+    // OURS); genuinely foreign URLs stay plain links with external launch.
+    if (isOwnOriginNoteUrl(message.content)) {
       return AntiQuantumNoteCard(
         noteUrl: message.content.trim(),
         isMine: widget.isMine,

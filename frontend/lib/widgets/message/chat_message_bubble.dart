@@ -275,7 +275,8 @@ class ChatMessageBubble extends StatelessWidget {
 
                   final isMediaMessage =
                       message.messageType == MessageType.gif ||
-                      message.messageType == MessageType.image;
+                      message.messageType == MessageType.image ||
+                      message.messageType == MessageType.video;
                   final useTextOverlay =
                       message.messageType == MessageType.text &&
                       message.linkPreviewUrl == null;

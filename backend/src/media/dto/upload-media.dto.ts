@@ -2,8 +2,8 @@ import { IsIn, IsNumber, IsOptional, IsString, MaxLength, Matches } from 'class-
 import { Type } from 'class-transformer';
 
 export class UploadMediaDto {
-  @IsIn(['image', 'voice', 'gif', 'file', 'avatar'])
-  mediaType: 'image' | 'voice' | 'gif' | 'file' | 'avatar';
+  @IsIn(['image', 'voice', 'gif', 'file', 'avatar', 'video'])
+  mediaType: 'image' | 'voice' | 'gif' | 'file' | 'avatar' | 'video';
 
   @IsOptional()
   @IsNumber()

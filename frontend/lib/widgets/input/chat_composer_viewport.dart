@@ -3,6 +3,7 @@ import 'dart:math' as math;
 
 import 'package:flutter/material.dart';
 
+import '../../utils/keyboard_inset_math.dart';
 import '../../utils/web_keyboard_inset.dart';
 import 'composer_diagnostics_overlay.dart';
 import 'composer_keyboard_signals.dart';
@@ -32,7 +33,8 @@ class ChatComposerViewport extends StatefulWidget {
   State<ChatComposerViewport> createState() => _ChatComposerViewportState();
 }
 
-class _ChatComposerViewportState extends State<ChatComposerViewport> {
+class _ChatComposerViewportState extends State<ChatComposerViewport>
+    with SingleTickerProviderStateMixin {
   final GlobalKey _composerKey = GlobalKey();
   double _composerHeight = 0;
 
@@ -42,6 +44,19 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
   // keyboard animation (~300ms) so the layout stays stable during the bounce.
   double _keyboardInset = 0;
   Timer? _insetCollapseTimer;
+
+  // Keyboard-dismiss ease-down (owner-approved banned-zone exception,
+  // 2026-08-15): when the platform reports hide as ONE 0 event (Android PWA —
+  // iOS visualViewport and native Android deliver progressive drops), the
+  // composer used to teleport down a full keyboard height in one frame.
+  // PAINT-ONLY by contract: layout (`_keyboardInset` → `effectiveInset`, list
+  // bottom padding) still collapses in ONE frame — the immediate collapse is
+  // what fixed the laggy dark gap (Symptom B); only the composer's painted
+  // position eases from the old inset to 0 via Transform.translate. Never
+  // tween the layout inset itself.
+  late final AnimationController _dismissSlideController;
+  late final CurvedAnimation _dismissSlide;
+  double _dismissSlideFrom = 0;
 
   // iOS WebKit reports MediaQuery.viewInsets.bottom = 0 even while the keyboard
   // is up, so derive the real inset from visualViewport. Inactive (and ignored)
@@ -54,6 +69,14 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
     _kbInsetSource = sharedKeyboardInsetSource();
     _kbInsetSource.inset.addListener(_onKeyboardInsetChanged);
     composerBottomPanelPinned.addListener(_onBottomPanelPinnedChanged);
+    _dismissSlideController = AnimationController(
+      vsync: this,
+      duration: const Duration(milliseconds: 200),
+    );
+    _dismissSlide = CurvedAnimation(
+      parent: _dismissSlideController,
+      curve: Curves.easeOutCubic,
+    );
     WidgetsBinding.instance.addPostFrameCallback(_measureComposer);
   }
 
@@ -64,7 +87,16 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
   }
 
   void _onBottomPanelPinnedChanged() {
+    // A pinned bottom panel anchors the composer at bottom: 0 regardless of
+    // the inset, so a running dismiss slide would offset the pinned block.
+    if (composerBottomPanelPinned.value) _cancelDismissSlide();
     if (mounted) setState(() {});
+  }
+
+  void _cancelDismissSlide() {
+    if (!_dismissSlideController.isAnimating) return;
+    _dismissSlideController.stop();
+    _dismissSlideController.value = 1.0; // paint at the layout position
   }
 
   @override
@@ -76,6 +108,7 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
   @override
   void dispose() {
     _insetCollapseTimer?.cancel();
+    _dismissSlideController.dispose();
     composerBottomPanelPinned.removeListener(_onBottomPanelPinnedChanged);
     _kbInsetSource.inset.removeListener(_onKeyboardInsetChanged);
     super.dispose();
@@ -106,10 +139,13 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
         : flutterInset;
 
     if (raw > _keyboardInset) {
-      // Keyboard growing or appearing: apply immediately, cancel any pending collapse.
+      // Keyboard growing or appearing: apply immediately, cancel any pending
+      // collapse. A running dismiss slide would paint the composer above its
+      // new (raised) layout position — snap it to the layout.
       _insetCollapseTimer?.cancel();
       _insetCollapseTimer = null;
       _keyboardInset = raw;
+      _cancelDismissSlide();
     } else if (raw < _keyboardInset) {
       if (composerKeyboardCollapseGuard.value) {
         // A send / refocus is in flight: the keyboard may bounce straight back
@@ -121,11 +157,23 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
           if (mounted) setState(() => _keyboardInset = 0);
         });
       } else {
-        // Genuine user dismiss: collapse immediately so the composer tracks the
-        // keyboard down with no laggy dark gap on hide (Symptom B).
+        // Genuine user dismiss: collapse layout immediately so the list and
+        // its padding track the keyboard down with no laggy dark gap on hide
+        // (Symptom B). Only the PAINT eases: a single-step full drop to 0
+        // (Android PWA reports hide as one event) starts the dismiss slide;
+        // progressive dismissals (iOS visualViewport, native Android) pass
+        // through small intermediate insets and never qualify.
         _insetCollapseTimer?.cancel();
         _insetCollapseTimer = null;
+        final droppedFrom = _keyboardInset;
         _keyboardInset = raw;
+        if (raw == 0 &&
+            droppedFrom >= kMinKeyboardInset &&
+            !composerBottomPanelPinned.value &&
+            !MediaQuery.disableAnimationsOf(context)) {
+          _dismissSlideFrom = droppedFrom;
+          _dismissSlideController.forward(from: 0);
+        }
       }
     }
 
@@ -157,11 +205,28 @@ class _ChatComposerViewportState extends State<ChatComposerViewport> {
           left: 0,
           right: 0,
           bottom: effectiveInset,
-          child: NotificationListener<SizeChangedLayoutNotification>(
-            onNotification: _onComposerSizeChanged,
-            child: KeyedSubtree(
-              key: _composerKey,
-              child: SizeChangedLayoutNotifier(child: widget.composer),
+          // Keyboard-dismiss ease-down: layout is already at the collapsed
+          // inset; while the slide runs, paint the composer up by the not-yet
+          // traveled remainder of the old inset so it visually eases down.
+          // Pure paint transform — never affects layout or the list padding.
+          child: AnimatedBuilder(
+            animation: _dismissSlide,
+            builder: (context, child) {
+              final remaining = (1 - _dismissSlide.value) * _dismissSlideFrom;
+              if (remaining <= 0 || !_dismissSlideController.isAnimating) {
+                return child!;
+              }
+              return Transform.translate(
+                offset: Offset(0, -remaining),
+                child: child,
+              );
+            },
+            child: NotificationListener<SizeChangedLayoutNotification>(
+              onNotification: _onComposerSizeChanged,
+              child: KeyedSubtree(
+                key: _composerKey,
+                child: SizeChangedLayoutNotifier(child: widget.composer),
+              ),
             ),
           ),
         ),

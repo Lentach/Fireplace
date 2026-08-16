@@ -103,6 +103,7 @@ String replyPreviewForMessageModel(
   required String gifLabel,
   required String documentLabel,
   required String pingLabel,
+  String videoLabel = 'Video',
   String antiQuantumNoteLabel = 'Anti-Quantum Note',
 }) {
   final decrypted = _decryptedPreviewText(encryption, message.id);
@@ -118,6 +119,7 @@ String replyPreviewForMessageModel(
     gifLabel: gifLabel,
     documentLabel: documentLabel,
     pingLabel: pingLabel,
+    videoLabel: videoLabel,
     encryptedMessageLabel: encryptedMessageLabel,
   );
 
@@ -147,6 +149,7 @@ String replyTypeLabel(
   required String documentLabel,
   required String pingLabel,
   required String encryptedMessageLabel,
+  String videoLabel = 'Video',
 }) {
   switch (type) {
     case MessageType.voice:
@@ -157,6 +160,8 @@ String replyTypeLabel(
       return gifLabel;
     case MessageType.file:
       return documentLabel;
+    case MessageType.video:
+      return videoLabel;
     case MessageType.ping:
       return pingLabel;
     case MessageType.text:
@@ -181,6 +186,7 @@ String replyPreviewForMessage(
     gifLabel: l10n.actionTileGif,
     documentLabel: l10n.attachmentOptionDocument,
     pingLabel: l10n.ping,
+    videoLabel: l10n.videoMessage,
     antiQuantumNoteLabel: l10n.antiQuantumNoteTitle,
   );
 }
@@ -193,6 +199,7 @@ const kReplyPreviewLabels = (
   gifLabel: 'GIF',
   documentLabel: 'Document',
   pingLabel: 'Ping',
+  videoLabel: 'Video',
   antiQuantumNoteLabel: 'Anti-Quantum Note',
 );
 
@@ -249,6 +256,7 @@ ReplyToPreview enrichReplyToPreview(
   required String gifLabel,
   required String documentLabel,
   required String pingLabel,
+  String videoLabel = 'Video',
   String antiQuantumNoteLabel = 'Anti-Quantum Note',
   Iterable<MessageModel>? messagesForLookup,
 }) {
@@ -263,6 +271,7 @@ ReplyToPreview enrichReplyToPreview(
       gifLabel: gifLabel,
       documentLabel: documentLabel,
       pingLabel: pingLabel,
+      videoLabel: videoLabel,
       antiQuantumNoteLabel: antiQuantumNoteLabel,
     );
     if (fromList.isNotEmpty && fromList != encryptedMessageLabel) {
@@ -303,6 +312,7 @@ ReplyToPreview enrichReplyToPreview(
       gifLabel: gifLabel,
       documentLabel: documentLabel,
       pingLabel: pingLabel,
+      videoLabel: videoLabel,
       encryptedMessageLabel: encryptedMessageLabel,
     ),
     senderUsername: replyTo.senderUsername,
@@ -327,6 +337,7 @@ MessageModel enrichMessageReplyPreview(
     gifLabel: labels.gifLabel,
     documentLabel: labels.documentLabel,
     pingLabel: labels.pingLabel,
+    videoLabel: labels.videoLabel,
     antiQuantumNoteLabel: labels.antiQuantumNoteLabel,
     messagesForLookup: messagesForLookup,
   );

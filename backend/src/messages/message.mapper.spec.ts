@@ -153,6 +153,7 @@ describe('MessageMapper', () => {
     MessageType.PING,
     MessageType.GIF,
     MessageType.FILE,
+    MessageType.VIDEO,
   ])(
     'shows "Encrypted message" for encrypted %s reply-to (never a type label)',
     (messageType) => {
@@ -178,6 +179,7 @@ describe('MessageMapper', () => {
       { messageType: MessageType.PING, expected: 'Ping' },
       { messageType: MessageType.GIF, expected: 'GIF' },
       { messageType: MessageType.FILE, expected: 'File' },
+      { messageType: MessageType.VIDEO, expected: 'Video' },
     ];
     for (const { messageType, expected } of cases) {
       const replyToMsg = {

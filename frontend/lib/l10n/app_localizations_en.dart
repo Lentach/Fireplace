@@ -154,16 +154,6 @@ class AppLocalizationsEn extends AppLocalizations {
       'To deliver messages, the server stores: who is in each conversation, when messages were sent, and delivery status. Message content is never visible to the server.';
 
   @override
-  String get localMessageCache => 'Local message cache';
-
-  @override
-  String get localMessageCacheDescription =>
-      'This device may keep downloaded voice audio locally. Clearing this cache removes downloaded audio only; it does not delete readable message history, media keys, encryption keys, sessions, or browser storage.';
-
-  @override
-  String get clearLocalMessageCache => 'Clear downloaded audio cache';
-
-  @override
   String get deleteAllLocalHistoryTitle =>
       'Delete all messages stored on this device';
 
@@ -329,11 +319,11 @@ class AppLocalizationsEn extends AppLocalizations {
   String get encryptionNotInitialized => 'Encryption not initialized';
 
   @override
-  String get identityDamagedTitle => 'Encryption keys damaged';
+  String get identityDamagedTitle => 'Encryption keys missing on this device';
 
   @override
   String get identityDamagedBody =>
-      'Part of this device\'s encryption identity is missing, so messages can\'t be decrypted or sent. Your keys were NOT regenerated automatically — doing that silently would destroy your history.';
+      'Signed in on a new device or browser? Your account already has encryption keys elsewhere, and this device does not have them. If this is your usual device, its stored keys were lost. Either way nothing was regenerated automatically — doing that silently would destroy your ability to read your history.';
 
   @override
   String get identityDamagedAction => 'Start fresh';
@@ -347,14 +337,6 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get identityDamagedConfirmAction => 'Create new keys';
-
-  @override
-  String peerIdentityChangedWarning(String name) {
-    return '$name\'s security keys changed. This happens after a reinstall, but it can also mean someone is intercepting. Verify with them over another channel.';
-  }
-
-  @override
-  String get peerIdentityVerifyAction => 'Verify';
 
   @override
   String get peerIdentityMarkVerifiedAction => 'Fingerprints match';
@@ -806,11 +788,80 @@ class AppLocalizationsEn extends AppLocalizations {
   String get antiQuantumNoteBurnedSubtitle => 'it was read';
 
   @override
+  String get antiQuantumNoteRevealWarning =>
+      'This note can be read only once. Revealing it destroys it permanently — for everyone, forever.';
+
+  @override
+  String get antiQuantumNoteRevealConfirm => 'Reveal & destroy';
+
+  @override
+  String get antiQuantumNoteRevealLoading => 'Decrypting…';
+
+  @override
+  String get antiQuantumNoteRevealedHeader =>
+      'Message revealed · now permanently destroyed';
+
+  @override
+  String get antiQuantumNoteRevealedFooter =>
+      'This note has been deleted from the server. Only this screen still shows it.';
+
+  @override
+  String get antiQuantumNoteRevealClose => 'Close';
+
+  @override
+  String get antiQuantumNoteRevealRetry => 'Try again';
+
+  @override
+  String get antiQuantumNoteRevealDestroyedBody =>
+      'This note has already been read and destroyed. Nothing can bring it back.';
+
+  @override
+  String get antiQuantumNoteRevealExpiredTitle => 'Note expired';
+
+  @override
+  String get antiQuantumNoteRevealExpiredBody =>
+      'This note expired and destroyed itself before being read.';
+
+  @override
+  String get antiQuantumNoteRevealCorruptBody =>
+      'The note was destroyed, but it could not be decrypted. The link may be damaged.';
+
+  @override
+  String get antiQuantumNoteRevealInvalidLinkTitle => 'Damaged link';
+
+  @override
+  String get antiQuantumNoteRevealInvalidLinkBody =>
+      'This link is missing a valid decryption key. The note has not been destroyed.';
+
+  @override
+  String get antiQuantumNoteRevealNetworkErrorTitle => 'No connection';
+
+  @override
+  String get antiQuantumNoteRevealNetworkErrorBody =>
+      'The server could not be reached. Check your connection and try again.';
+
+  @override
   String get privacyAntiQuantumNoteTitle => 'Anti-Quantum Notes';
 
   @override
-  String get privacyAntiQuantumNoteDescription =>
-      'Notes are encrypted on your device before upload — the server stores only unreadable ciphertext, and the decryption key travels solely inside the link\'s #fragment, which browsers never send to any server. A note can be revealed exactly once, then it is permanently deleted. Unopened notes self-destruct when their timer (1h–24h) runs out, and the chat message disappears with them.';
+  String get privacyAntiQuantumNoteLead =>
+      'Self-destructing messages with their own second layer of encryption — even the link keeps the secret.';
+
+  @override
+  String get privacyAntiQuantumNotePointDevice =>
+      'Encrypted on your device before upload — the server stores only unreadable ciphertext.';
+
+  @override
+  String get privacyAntiQuantumNotePointKey =>
+      'The decryption key travels solely inside the link\'s #fragment, which browsers never send to any server.';
+
+  @override
+  String get privacyAntiQuantumNotePointOnce =>
+      'A note can be revealed exactly once — then it is permanently deleted.';
+
+  @override
+  String get privacyAntiQuantumNotePointTimer =>
+      'Unopened notes self-destruct when their timer (1h–24h) runs out, and the chat message disappears with them.';
 
   @override
   String get documentDownloaded => 'Document downloaded';
@@ -924,13 +975,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get snackbarFailedToLoadAudio => 'Failed to load audio';
 
   @override
-  String get snackbarLocalMessageCacheCleared => 'Local message cache cleared';
-
-  @override
-  String get snackbarFailedToClearLocalMessageCache =>
-      'Failed to clear local message cache';
-
-  @override
   String get snackbarAllLocalHistoryDeleted =>
       'All messages stored on this device were permanently deleted';
 
@@ -955,31 +999,31 @@ class AppLocalizationsEn extends AppLocalizations {
   String get appearanceColorTheme => 'COLOR THEME';
 
   @override
-  String get appearanceThemeLight => 'Hot Stone';
+  String get appearanceThemeLight => 'Alabaster';
 
   @override
-  String get appearanceThemeTeal => 'Teal Stone';
+  String get appearanceThemeTeal => 'Turquoise';
 
   @override
-  String get appearanceThemeDark => 'Wire';
+  String get appearanceThemeDark => 'Graphite';
 
   @override
-  String get appearanceThemeBlue => 'Blue';
+  String get appearanceThemeBlue => 'Azure';
 
   @override
-  String get appearanceThemeCosmic => 'Cosmic';
+  String get appearanceThemeCosmic => 'Cosmos';
 
   @override
-  String get themeOptionLight => 'Warm paper with ember accents';
+  String get themeOptionLight => 'Light warm ivory with ember accents';
 
   @override
-  String get themeOptionDark => 'Neutral charcoal with teal accents';
+  String get themeOptionDark => 'Dark neutral graphite with teal accents';
 
   @override
-  String get themeOptionBlue => 'Deep blue messenger palette';
+  String get themeOptionBlue => 'Deep dark blue with azure accents';
 
   @override
-  String get themeOptionTealStone => 'Cool stone with modern teal';
+  String get themeOptionTealStone => 'Light cool stone with turquoise accents';
 
   @override
   String get themeOptionCosmic => 'Dark space with ice-blue light';
@@ -1232,4 +1276,19 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get chatPickerInviteButton => 'Invite someone';
+
+  @override
+  String get videoMessage => 'Video';
+
+  @override
+  String get actionTileVideo => 'Video';
+
+  @override
+  String get videoTooLarge => 'Video is too large (max 20 MB)';
+
+  @override
+  String get videoTooLong => 'Video is too long (max 60 seconds)';
+
+  @override
+  String get videoUnsupportedFormat => 'Unsupported video format (MP4 only)';
 }
