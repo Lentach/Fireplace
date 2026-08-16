@@ -842,10 +842,35 @@ class EncryptionProvider extends ChangeNotifier {
   /// generates/loads keys and uploads them. On reconnect (same user),
   /// skips re-initialization but still re-uploads the key bundle.
   ///
+  /// Re-entrancy latch (review finding, 0.1.10): this is fired on every
+  /// socket connect, and the identity guard's server round-trip widened the
+  /// window in which a reconnect enters a second concurrent init — hanging
+  /// on the shared bundle check or racing a double `_generateKeys()`.
+  /// Concurrent calls for the same user share one run; a different user
+  /// waits its turn.
+  Future<void> initializeE2E(int userId) async {
+    while (true) {
+      final inFlight = _e2eInitInFlight;
+      if (inFlight == null) break;
+      if (_currentUserId == userId) return inFlight;
+      await inFlight;
+    }
+    final run = _initializeE2EInner(userId);
+    _e2eInitInFlight = run;
+    try {
+      await run;
+    } finally {
+      _e2eInitInFlight = null;
+    }
+  }
+
+  Future<void>? _e2eInitInFlight;
+
   /// CLAUDE.md gotcha: skips `_encryptionService.initialize()` when
   /// `_e2eInitialized = true` (reconnect path) to prevent transient
   /// mobile storage errors from setting `_e2eInitialized = false`.
-  Future<void> initializeE2E(int userId) async {
+  /// Never throws — every failure mode is caught and logged inside.
+  Future<void> _initializeE2EInner(int userId) async {
     _currentUserId = userId;
     _e2eFlowLog('E2E_INIT_START', {'alreadyInitialized': _e2eInitialized});
     try {
@@ -1074,17 +1099,25 @@ class EncryptionProvider extends ChangeNotifier {
     if (existing != null) return existing.future;
     final completer = Completer<bool?>();
     _pendingOwnBundleCheck = completer;
+    // The timeout completes the SHARED completer, not a per-caller wrapper:
+    // a per-caller `.timeout()` resolves only the first awaiter and orphans
+    // any concurrent one forever (review finding). Completing the completer
+    // itself resolves every awaiter to UNKNOWN together.
+    final timeout = Timer(const Duration(seconds: 6), () {
+      if (!completer.isCompleted) completer.complete(null);
+    });
     try {
       _e2eFlowLog('OWN_BUNDLE_CHECK_EMIT', {});
       emit('checkOwnKeyBundle', <String, dynamic>{});
-      return await completer.future.timeout(
-        const Duration(seconds: 6),
-        onTimeout: () => null,
-      );
+      return await completer.future;
     } catch (_) {
       return null;
     } finally {
-      _pendingOwnBundleCheck = null;
+      timeout.cancel();
+      // A newer check may already own the field — never clobber it.
+      if (identical(_pendingOwnBundleCheck, completer)) {
+        _pendingOwnBundleCheck = null;
+      }
     }
   }
 

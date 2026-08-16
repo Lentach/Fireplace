@@ -73,4 +73,30 @@ void main() {
     expect(provider.isE2EReady, isFalse);
     expect(provider.identityIncomplete, isFalse);
   });
+
+  test('concurrent initializeE2E calls share one run (no double init)',
+      () async {
+    final provider = EncryptionProvider(service: EncryptionService());
+    var uploads = 0;
+    provider.setEmitCallback((event, data) {
+      if (event == 'checkOwnKeyBundle') {
+        // Answer asynchronously so both calls overlap inside the check
+        // window — the exact reconnect race from the review finding.
+        Future<void>.delayed(const Duration(milliseconds: 20), () {
+          provider.onOwnKeyBundleStatus({'exists': false});
+        });
+      }
+      if (event == 'uploadKeyBundle') uploads++;
+    });
+
+    await Future.wait([provider.initializeE2E(5), provider.initializeE2E(5)]);
+
+    expect(provider.isE2EReady, isTrue);
+    expect(
+      uploads,
+      1,
+      reason: 'a reconnect during init must not re-run key generation '
+          'or double-upload the bundle',
+    );
+  });
 }
