@@ -70,12 +70,17 @@ class _SendReadyEncryption extends EncryptionProvider {
       null;
 }
 
-Future<({GlobalKey<ChatInputBarState> key, List<String> emitted})> pumpComposer(
-  WidgetTester tester, {
-  Object? throwOnUpload,
-}) async {
+Future<
+  ({
+    GlobalKey<ChatInputBarState> key,
+    List<String> emitted,
+    List<Map<String, dynamic>> emittedData,
+  })
+>
+pumpComposer(WidgetTester tester, {Object? throwOnUpload}) async {
   final key = GlobalKey<ChatInputBarState>();
   final emitted = <String>[];
+  final emittedData = <Map<String, dynamic>>[];
 
   final convs = ConversationsProvider();
   convs.onConversationsList([
@@ -101,7 +106,9 @@ Future<({GlobalKey<ChatInputBarState> key, List<String> emitted})> pumpComposer(
   messaging.setEncryptionProvider(_SendReadyEncryption());
   messaging.setEmitCallback((event, data) {
     if (event == 'sendMessage') {
-      emitted.add((data as Map)['messageType'] as String? ?? 'TEXT');
+      final map = Map<String, dynamic>.from(data as Map);
+      emitted.add(map['messageType'] as String? ?? 'TEXT');
+      emittedData.add(map);
     }
   });
 
@@ -128,7 +135,7 @@ Future<({GlobalKey<ChatInputBarState> key, List<String> emitted})> pumpComposer(
       ),
     ),
   );
-  return (key: key, emitted: emitted);
+  return (key: key, emitted: emitted, emittedData: emittedData);
 }
 
 void main() {
@@ -363,5 +370,138 @@ void main() {
       findsNothing,
     );
     await tester.pump(const Duration(seconds: 3)); // flush snackbar timer
+  });
+
+  group('staged video (media-picker redesign)', () {
+    testWidgets('picking a video STAGES it — chip visible, nothing sent', (
+      tester,
+    ) async {
+      final h = await pumpComposer(tester);
+
+      await h.key.currentState!.stagePickedVideo(
+        bytes: Uint8List(64),
+        filename: 'clip.mp4',
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('composer_attachment_video_thumb')),
+        findsOneWidget,
+      );
+      expect(find.text('clip.mp4'), findsOneWidget);
+      expect(h.emitted, isEmpty); // staged, NOT auto-sent
+
+      // Trailing control shows the text-send state with staged video + empty text.
+      final layer = find.byKey(const ValueKey('composer_text_send_layer'));
+      final opacity = tester.widget<AnimatedOpacity>(
+        find.descendant(of: layer, matching: find.byType(AnimatedOpacity)),
+      );
+      expect(opacity.opacity, 1.0);
+    });
+
+    testWidgets('discard clears the staged video', (tester) async {
+      final h = await pumpComposer(tester);
+
+      await h.key.currentState!.stagePickedVideo(
+        bytes: Uint8List(64),
+        filename: 'clip.mp4',
+      );
+      await tester.pumpAndSettle();
+
+      await tester.tap(
+        find.byKey(const ValueKey('composer_attachment_remove')),
+      );
+      await tester.pumpAndSettle();
+
+      expect(
+        find.byKey(const ValueKey('composer_attachment_video_thumb')),
+        findsNothing,
+      );
+      expect(h.key.currentState!.attachmentControllerForTest.staged, isNull);
+    });
+
+    testWidgets('send emits VIDEO with the staged bytes and duration', (
+      tester,
+    ) async {
+      final h = await pumpComposer(tester);
+
+      h.key.currentState!.attachmentControllerForTest.stageVideo(
+        bytes: Uint8List(64),
+        filename: 'clip.mp4',
+        durationSeconds: 12,
+      );
+      await tester.pumpAndSettle();
+
+      await tester.runAsync(() => h.key.currentState!.sendForTest());
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(h.emitted, ['VIDEO']);
+      expect(h.emittedData.single['mediaDuration'], 12);
+      expect(
+        find.byKey(const ValueKey('composer_attachment_video_thumb')),
+        findsNothing, // composer drained
+      );
+    });
+
+    testWidgets('video-then-caption keeps the media-first ordering contract', (
+      tester,
+    ) async {
+      final h = await pumpComposer(tester);
+
+      h.key.currentState!.attachmentControllerForTest.stageVideo(
+        bytes: Uint8List(64),
+        filename: 'clip.mp4',
+        durationSeconds: 5,
+      );
+      await tester.pumpAndSettle();
+      await tester.enterText(find.byType(TextField), 'video caption');
+
+      await tester.runAsync(() => h.key.currentState!.sendForTest());
+      await tester.pumpAndSettle();
+      await tester.pump(const Duration(milliseconds: 200));
+
+      expect(h.emitted, ['VIDEO', 'TEXT']);
+      expect(
+        tester.widget<TextField>(find.byType(TextField)).controller!.text,
+        isEmpty,
+      );
+    });
+
+    testWidgets('oversize video: toast, nothing staged', (tester) async {
+      final h = await pumpComposer(tester);
+
+      await h.key.currentState!.stagePickedVideo(
+        bytes: Uint8List(MediaCryptoService.maxBytes + 1),
+        filename: 'huge.mp4',
+      );
+      await tester.pump();
+
+      expect(find.text('Video is too large (max 20 MB)'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('composer_attachment_video_thumb')),
+        findsNothing,
+      );
+      expect(h.key.currentState!.attachmentControllerForTest.staged, isNull);
+      await tester.pump(const Duration(seconds: 3)); // flush snackbar timer
+    });
+
+    testWidgets('wrong extension: toast, nothing staged', (tester) async {
+      final h = await pumpComposer(tester);
+
+      await h.key.currentState!.stagePickedVideo(
+        bytes: Uint8List(64),
+        filename: 'clip.avi',
+      );
+      await tester.pump();
+
+      expect(find.text('Unsupported video format (MP4 only)'), findsOneWidget);
+      expect(
+        find.byKey(const ValueKey('composer_attachment_video_thumb')),
+        findsNothing,
+      );
+      expect(h.key.currentState!.attachmentControllerForTest.staged, isNull);
+      await tester.pump(const Duration(seconds: 3));
+    });
   });
 }

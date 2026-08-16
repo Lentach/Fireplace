@@ -67,6 +67,39 @@ class AttachmentHandler {
     }
   }
 
+  // ── video sending ─────────────────────────────────────────────────────────
+
+  /// Sends a staged video from bytes. Mirrors [sendImage]: returns true only
+  /// after the video's socket emit (caption ordering contract); false when
+  /// the send failed before the emit (the optimistic bubble owns retry).
+  static Future<bool> sendVideo(
+    BuildContext context, {
+    required Uint8List videoBytes,
+    int? durationSeconds,
+  }) async {
+    final messaging = context.read<MessagingProvider>();
+    final auth = context.read<AuthProvider>();
+    final convs = context.read<ConversationsProvider>();
+
+    final conversationId = convs.activeConversationId;
+    if (conversationId == null) {
+      showTopSnackBar(
+          context, AppLocalizations.of(context).snackbarNoActiveConversation);
+      return false;
+    }
+
+    final conv = convs.getConversationById(conversationId);
+    if (conv == null) return false;
+    final recipientId = convs.getOtherUserId(conv);
+
+    return messaging.sendVideoMessage(
+      auth.token!,
+      videoBytes,
+      recipientId,
+      duration: durationSeconds,
+    );
+  }
+
   // ── GIF picker ────────────────────────────────────────────────────────────
 
   /// Opens the GIF picker sheet and, on selection, calls

@@ -1064,6 +1064,30 @@ abstract class AppLocalizations {
   /// **'GIF'**
   String get actionTileGif;
 
+  /// No description provided for @actionTileGallery.
+  ///
+  /// In pl, this message translates to:
+  /// **'Galeria'**
+  String get actionTileGallery;
+
+  /// No description provided for @actionTileCamera.
+  ///
+  /// In pl, this message translates to:
+  /// **'Aparat'**
+  String get actionTileCamera;
+
+  /// No description provided for @cameraModePhoto.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zdjęcie'**
+  String get cameraModePhoto;
+
+  /// No description provided for @cameraModeVideo.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wideo'**
+  String get cameraModeVideo;
+
   /// No description provided for @actionTileAntiQuantumNote.
   ///
   /// In pl, this message translates to:
@@ -2341,12 +2365,6 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Wideo'**
   String get videoMessage;
-
-  /// No description provided for @actionTileVideo.
-  ///
-  /// In pl, this message translates to:
-  /// **'Wideo'**
-  String get actionTileVideo;
 
   /// No description provided for @videoTooLarge.
   ///

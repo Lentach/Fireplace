@@ -26,6 +26,9 @@ import '../../utils/web_focus_guard.dart';
 import '../../utils/web_ios_webkit.dart';
 import '../../utils/web_viewport_scroll.dart';
 import '../../utils/web_ios_viewport_pin.dart';
+import '../../utils/video_probe_stub.dart'
+    if (dart.library.html) '../../utils/video_probe_web.dart'
+    as video_probe;
 import '../chat_action_tiles.dart';
 import '../hearth_fade_arc.dart';
 import '../top_snackbar.dart' show showTopSnackBar;
@@ -120,11 +123,11 @@ class ChatInputBarState extends State<ChatInputBar>
   // GlobalKey to access RecordingControllerState.buildRecordingBar() + methods.
   final _recordingKey = GlobalKey<RecordingControllerState>();
 
-  // Staged pasted image (Clipboard Phase 2). Chip renders above the input
-  // row; _sendStaged() drains it honoring the image-then-caption ordering
-  // contract (spec §3).
+  // Staged media (Clipboard Phase 2 image; video via the media-picker
+  // redesign). Chip renders above the input row; _sendStaged() drains it
+  // honoring the media-then-caption ordering contract (spec §3).
   final _attachment = ComposerAttachmentController();
-  bool _isSendingStagedImage = false;
+  bool _isSendingStagedMedia = false;
 
   @override
   void initState() {
@@ -323,7 +326,7 @@ class ChatInputBarState extends State<ChatInputBar>
     if (mounted) setState(() {});
   }
 
-  bool _canAcceptPaste() => mounted && !_isRecording && !_isSendingStagedImage;
+  bool _canAcceptPaste() => mounted && !_isRecording && !_isSendingStagedMedia;
 
   void _onPastedImage(Uint8List bytes, String mimeType, String filename) {
     if (!mounted) return;
@@ -359,6 +362,50 @@ class ChatInputBarState extends State<ChatInputBar>
       content.data!,
       content.mimeType,
       pastedFilenameForMime(content.mimeType),
+    );
+  }
+
+  /// Gallery/camera image pick → the same staged-image flow as paste
+  /// (stage, chip, send on the trailing button). Toasts on rejection.
+  void stagePickedImage({
+    required Uint8List bytes,
+    required String mimeType,
+    required String filename,
+  }) {
+    if (!_canAcceptPaste()) return;
+    _onPastedImage(bytes, mimeType, filename);
+  }
+
+  /// Gallery/camera video pick → staged-video flow. Enforces the client
+  /// video policy before staging: extension whitelist → videoUnsupportedFormat,
+  /// 20 MB → videoTooLarge, probed duration >60s → videoTooLong. The web
+  /// probe reads duration from metadata; the native stub answers null (there
+  /// the picker's maxDuration is the cap).
+  Future<void> stagePickedVideo({
+    required Uint8List bytes,
+    required String filename,
+  }) async {
+    if (!_canAcceptPaste()) return;
+    final l10n = AppLocalizations.of(context);
+    final probed = await video_probe.probeVideoDurationSeconds(bytes);
+    if (!mounted) return;
+    final duration = probed?.round();
+    if (duration != null && duration > 60) {
+      showTopSnackBar(context, l10n.videoTooLong, backgroundColor: Colors.red);
+      return;
+    }
+    final result = _attachment.stageVideo(
+      bytes: bytes,
+      filename: filename,
+      durationSeconds: duration,
+    );
+    if (result == StageResult.ok) return;
+    showTopSnackBar(
+      context,
+      result == StageResult.tooLarge
+          ? l10n.videoTooLarge
+          : l10n.videoUnsupportedFormat,
+      backgroundColor: Colors.red,
     );
   }
 
@@ -528,11 +575,11 @@ class ChatInputBarState extends State<ChatInputBar>
     });
   }
 
-  /// Image-then-caption send (spec §3 ordering contract): await the image's
-  /// post-emit completion, only then emit the caption; on image failure the
-  /// caption is restored to the field (the failed bubble owns retry).
+  /// Media-then-caption send (spec §3 ordering contract): await the staged
+  /// item's post-emit completion, only then emit the caption; on media failure
+  /// the caption is restored to the field (the failed bubble owns retry).
   Future<void> _sendStaged() async {
-    if (_isSendingStagedImage) return;
+    if (_isSendingStagedMedia) return;
     final staged = _attachment.staged;
     if (staged == null) return;
     final keepEmojiPanel = _showEmojiPicker;
@@ -544,16 +591,22 @@ class ChatInputBarState extends State<ChatInputBar>
         .read<ConversationsProvider>()
         .conversationDisappearingTimer;
 
-    setState(() => _isSendingStagedImage = true);
+    setState(() => _isSendingStagedMedia = true);
     _attachment.clear();
     _controller.clear();
     try {
-      final sent = await AttachmentHandler.sendImage(
-        context,
-        imageBytes: staged.bytes,
-        filename: staged.filename,
-        mimeType: staged.mimeType,
-      );
+      final sent = staged.kind == StagedAttachmentKind.video
+          ? await AttachmentHandler.sendVideo(
+              context,
+              videoBytes: staged.bytes,
+              durationSeconds: staged.durationSeconds,
+            )
+          : await AttachmentHandler.sendImage(
+              context,
+              imageBytes: staged.bytes,
+              filename: staged.filename,
+              mimeType: staged.mimeType,
+            );
       if (!mounted) return;
       if (caption.isNotEmpty) {
         if (sent) {
@@ -564,7 +617,7 @@ class ChatInputBarState extends State<ChatInputBar>
         }
       }
     } finally {
-      if (mounted) setState(() => _isSendingStagedImage = false);
+      if (mounted) setState(() => _isSendingStagedMedia = false);
     }
     if (keepEmojiPanel) return;
     WidgetsBinding.instance.addPostFrameCallback((_) {
@@ -783,7 +836,7 @@ class ChatInputBarState extends State<ChatInputBar>
         final showTextSend =
             !_isRecording &&
             !_isSendingVoice &&
-            !_isSendingStagedImage &&
+            !_isSendingStagedMedia &&
             (value.text.trim().isNotEmpty || _attachment.staged != null);
         final showVoiceSend = _isRecording && !_isSendingVoice;
 
@@ -1286,6 +1339,8 @@ class ChatInputBarState extends State<ChatInputBar>
                 child: ChatActionTiles(
                   bottomPadding: bottomInteractivePadding,
                   onPingSent: _refocusComposerAfterPing,
+                  onStageImage: stagePickedImage,
+                  onStageVideo: stagePickedVideo,
                 ),
               ),
 

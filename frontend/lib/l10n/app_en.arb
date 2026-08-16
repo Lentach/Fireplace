@@ -217,6 +217,10 @@
     "placeholders": { "count": { "type": "num" } }
   },
   "actionTileGif": "GIF",
+  "actionTileGallery": "Gallery",
+  "actionTileCamera": "Camera",
+  "cameraModePhoto": "Photo",
+  "cameraModeVideo": "Video",
   "actionTileAntiQuantumNote": "Anti-Quantum Note",
   "unknown": "Unknown",
   "noBlockedUsers": "No blocked users",
@@ -503,7 +507,6 @@
   "chatPickerOpenTooltip": "New chat",
   "chatPickerInviteButton": "Invite someone",
   "videoMessage": "Video",
-  "actionTileVideo": "Video",
   "videoTooLarge": "Video is too large (max 20 MB)",
   "videoTooLong": "Video is too long (max 60 seconds)",
   "videoUnsupportedFormat": "Unsupported video format (MP4 only)"
