@@ -55,10 +55,12 @@ void main() {
 
   AuthTokenStore prefsStore() =>
       AuthTokenStore(secure: secure, useSecureStorage: false);
-
-  setUp(() {
+  setUp(() async {
     secure = _FakeSecureKv();
     SharedPreferences.setMockInitialValues({});
+    // The durable diag cache is static — isolate it so dedup/absence
+    // assertions never observe records from earlier tests in this file.
+    await E2ePersistentDiag.clear();
   });
 
   group('prefs path (web / non-Android)', () {
@@ -219,6 +221,26 @@ void main() {
         ),
         isTrue,
         reason: '"logged out next boot" must have a paper trail',
+      );
+    });
+
+    test('repeated unreadable reads are deduped in the durable log',
+        () async {
+      secure.throwOnRead = true;
+      final store = nativeStore();
+
+      await store.read();
+      await store.read();
+      await store.read();
+
+      expect(
+        E2ePersistentDiag.entries
+            .where((e) => e.contains('AUTH_TOKENS_UNREADABLE'))
+            .length,
+        1,
+        reason: 'the provider reads up to 3× per failed boot — plain records '
+            'from a chronically failing store would churn the 80-entry FIFO '
+            'and evict the BOOT_MARKERS wipe forensics',
       );
     });
   });

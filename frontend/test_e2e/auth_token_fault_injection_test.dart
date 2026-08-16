@@ -87,7 +87,11 @@ void main() {
   });
   test('storage faults never cost a real session (live backend)', () async {
     kv = _FlakyKv();
-    final username = 'authfault${DateTime.now().millisecondsSinceEpoch % 1000000}';
+    // Full timestamp + microsecond suffix: a modulo-truncated name collides
+    // across runs in the same ~16-minute window and fails register() (review).
+    final username =
+        'af${DateTime.now().millisecondsSinceEpoch}'
+        '${DateTime.now().microsecond % 100}';
     const password = 'AuthFault1!';
 
     // Real registration + login through the real provider stack.
