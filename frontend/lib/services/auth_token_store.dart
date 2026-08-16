@@ -70,10 +70,14 @@ class AuthTokenStore {
         lastError = e;
       }
     }
-    E2ePersistentDiag.record('AUTH_TOKENS_UNREADABLE', {
+    // Deduped for the same reason AUTH_SESSION_END's repeat-prone reasons
+    // are: the provider reads up to 3× per failed boot and the durable log
+    // is an 80-entry FIFO — plain records from a chronically failing store
+    // would evict the BOOT_MARKERS wipe forensics. Eviction re-arms it.
+    E2ePersistentDiag.recordDeduped('AUTH_TOKENS_UNREADABLE', {
       'errorType': lastError.runtimeType.toString(),
       'platform': _useSecure ? 'secure' : 'prefs',
-    });
+    }, matchAll: ['platform: ${_useSecure ? 'secure' : 'prefs'}']);
     return (access: null, refresh: null, readFailed: true);
   }
 
@@ -150,15 +154,22 @@ class AuthTokenStore {
   /// One-time move of a pre-Phase-2 install's tokens into secure storage.
   /// Copy -> fresh read-back -> only then remove from prefs.
   Future<({String? access, String? refresh})> _migrateFromPrefs() async {
-    String? access;
-    String? refresh;
+    // The initial prefs READ is deliberately OUTSIDE the try: swallowing a
+    // read failure here reported a storage ERROR as clean absence
+    // (readFailed: false, null tokens) for exactly the installs whose tokens
+    // still live in prefs — the error-as-absence hole this class exists to
+    // close. A throw propagates to read()'s retry/readFailed machinery.
+    final prefs = await SharedPreferences.getInstance();
+    final access = prefs.getString(_accessKey);
+    final refresh = prefs.getString(_refreshKey);
+    if (access == null && refresh == null) {
+      return (access: null, refresh: null);
+    }
+    // From here on the tokens ARE in hand: any migration failure serves the
+    // prefs copy rather than failing the read. Copy -> fresh read-back ->
+    // only then delete; a failed secure write leaves the working set where
+    // it was.
     try {
-      final prefs = await SharedPreferences.getInstance();
-      access = prefs.getString(_accessKey);
-      refresh = prefs.getString(_refreshKey);
-      if (access == null && refresh == null) {
-        return (access: null, refresh: null);
-      }
       var verified = true;
       if (access != null) {
         await _secure.write(_accessKey, access);
