@@ -3,10 +3,17 @@ import { ChatGateway } from './chat.gateway';
 import { UsersService } from '../users/users.service';
 import { Socket } from 'socket.io';
 
+interface GatewayWithKeyExchange {
+  chatKeyExchangeService: {
+    handleCheckOwnKeyBundle: jest.Mock;
+  };
+}
+
 function createGateway(): ChatGateway {
   const noop = {} as any;
   const keyExchange = {
     deliverPendingSessionRebuilds: jest.fn(),
+    handleCheckOwnKeyBundle: jest.fn(),
   } as any;
   return new ChatGateway(
     { verify: jest.fn() } as unknown as JwtService,
@@ -239,6 +246,21 @@ describe('ChatGateway presence is room-based (BE-007)', () => {
     socket.data = {};
 
     expect(() => gateway.handleDisconnect(asSocket(socket))).not.toThrow();
+  });
+});
+
+describe('ChatGateway handleCheckOwnKeyBundle', () => {
+  it('delegates the authenticated caller socket without accepting a user id', async () => {
+    const gateway = createGateway();
+    const client = createMockClient();
+    // Test-only access to the gateway's injected service.
+    const gatewayWithKeyExchange =
+      gateway as unknown as GatewayWithKeyExchange;
+    const keyExchange = gatewayWithKeyExchange.chatKeyExchangeService;
+
+    await gateway.handleCheckOwnKeyBundle(client as unknown as Socket);
+
+    expect(keyExchange.handleCheckOwnKeyBundle).toHaveBeenCalledWith(client);
   });
 });
 

@@ -64,6 +64,25 @@ describe('KeyBundlesService', () => {
     jest.clearAllMocks();
   });
 
+  describe('hasKeyBundle', () => {
+    it.each([
+      [{ id: 1 }, true],
+      [null, false],
+    ])(
+      'returns %s existence without touching one-time pre-keys',
+      async (bundle, expected) => {
+        keyBundleRepo.findOne.mockResolvedValue(bundle);
+
+        await expect(service.hasKeyBundle(1)).resolves.toBe(expected);
+
+        expect(keyBundleRepo.findOne).toHaveBeenCalledWith({
+          where: { userId: 1 },
+        });
+        expect(otpRepo.query).not.toHaveBeenCalled();
+      },
+    );
+  });
+
   describe('upsertKeyBundle', () => {
     it('upserts the key bundle atomically (insert-or-update)', async () => {
       keyBundleRepo.upsert.mockResolvedValue({ raw: [] });

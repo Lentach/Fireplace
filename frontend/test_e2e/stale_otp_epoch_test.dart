@@ -167,7 +167,7 @@ void main() {
         // 1. alice regenerates identity (fresh install / key loss), SAME account.
         //    She now holds only epoch-2 private keys; epoch-1 OTP privates gone.
         await alice.encryption.clearAllKeys();
-        await alice.encryption.initialize(alice.userId);
+        await alice.encryption.initialize(alice.userId, checkServerBundleExists: () async => false);
         final epoch2Identity =
             (alice.encryption.getKeysForUpload()!['keyBundle'] as Map)['identityPublicKey']
                 as String;

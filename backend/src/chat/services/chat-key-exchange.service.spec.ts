@@ -49,6 +49,7 @@ describe('ChatKeyExchangeService', () => {
             uploadOneTimePreKeys: jest.fn().mockResolvedValue(undefined),
             fetchPreKeyBundle: jest.fn(),
             countUnusedPreKeys: jest.fn(),
+            hasKeyBundle: jest.fn(),
           },
         },
       ],
@@ -174,6 +175,24 @@ describe('ChatKeyExchangeService', () => {
       expect(keyBundlesService.uploadOneTimePreKeys).not.toHaveBeenCalled();
       expect(noUserClient.emit).not.toHaveBeenCalled();
     });
+  });
+
+  describe('handleCheckOwnKeyBundle', () => {
+    it.each([true, false])(
+      'returns exists=%s only to the authenticated caller without fetching a pre-key',
+      async (exists) => {
+        keyBundlesService.hasKeyBundle.mockResolvedValue(exists);
+
+        await service.handleCheckOwnKeyBundle(mockClient as Socket);
+
+        expect(keyBundlesService.hasKeyBundle).toHaveBeenCalledWith(1);
+        expect(mockClient.emit).toHaveBeenCalledTimes(1);
+        expect(mockClient.emit).toHaveBeenCalledWith('ownKeyBundleStatus', {
+          exists,
+        });
+        expect(keyBundlesService.fetchPreKeyBundle).not.toHaveBeenCalled();
+      },
+    );
   });
 
   describe('handleFetchPreKeyBundle', () => {

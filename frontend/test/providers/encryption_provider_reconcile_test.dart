@@ -28,7 +28,7 @@ void main() {
     FlutterSecureStorage.setMockInitialValues({});
     SharedPreferences.setMockInitialValues({});
     service = EncryptionService();
-    await service.initialize(42);
+    await service.initialize(42, checkServerBundleExists: () async => false);
     provider = EncryptionProvider(service: service);
     asked = [];
   });
@@ -199,11 +199,11 @@ void main() {
 
       await provider.reconcileStoredPlaintext((batch) async {
         asked.add(batch);
-        await service.initialize(43);
+        await service.initialize(43, checkServerBundleExists: () async => false);
         return <int>{};
       });
 
-      await service.initialize(42);
+      await service.initialize(42, checkServerBundleExists: () async => false);
       expect(await stored(1), isTrue);
       expect(await stored(2), isTrue);
     });
@@ -237,7 +237,7 @@ void main() {
         'e2e_43_decrypted_9': '{"content":"not mine"}',
       });
       final scanner = EncryptionService();
-      await scanner.initialize(42);
+      await scanner.initialize(42, checkServerBundleExists: () async => false);
 
       expect(await scanner.storedMessageIds(), {7, 8});
     });

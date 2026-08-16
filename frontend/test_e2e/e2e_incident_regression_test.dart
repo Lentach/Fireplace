@@ -134,8 +134,8 @@ void main() {
       () async {
         final alice = EncryptionService();
         final bob = EncryptionService();
-        await alice.initialize(91001);
-        await bob.initialize(91002);
+        await alice.initialize(91001, checkServerBundleExists: () async => false);
+        await bob.initialize(91002, checkServerBundleExists: () async => false);
 
         final bobKeys = bob.getKeysForUpload()!;
         final bobBundle = (bobKeys['keyBundle'] as Map).cast<String, dynamic>();
@@ -205,8 +205,8 @@ void main() {
       () async {
         final alice = EncryptionService();
         final bob = EncryptionService();
-        await alice.initialize(92001);
-        await bob.initialize(92002);
+        await alice.initialize(92001, checkServerBundleExists: () async => false);
+        await bob.initialize(92002, checkServerBundleExists: () async => false);
         final keys = bob.getKeysForUpload()!;
         final bundle = (keys['keyBundle'] as Map).cast<String, dynamic>();
         final otp = ((keys['oneTimePreKeys'] as List).first as Map)
@@ -241,7 +241,7 @@ void main() {
         await PlaybackController.clearAudioCache();
 
         final reloaded = EncryptionService();
-        await reloaded.initialize(92002);
+        await reloaded.initialize(92002, checkServerBundleExists: () async => false);
         final saved = await reloaded.getDecryptedContent(80001);
         expect(saved?['content'], 'durable text');
         expect(saved?['editedAt'], '2026-07-12T00:00:00Z');

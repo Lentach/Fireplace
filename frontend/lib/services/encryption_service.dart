@@ -32,6 +32,21 @@ class E2eIdentityIncompleteException implements Exception {
       'refusing to regenerate without explicit consent';
 }
 
+/// Thrown when a missing local identity cannot be checked against the server.
+///
+/// This is intentionally distinct from [E2eIdentityIncompleteException]:
+/// UNKNOWN is transient and must retry on the next connection, while an
+/// incomplete identity needs the user's explicit destructive consent.
+class E2eIdentityCheckUnavailableException implements Exception {
+  const E2eIdentityCheckUnavailableException();
+
+  @override
+  String toString() =>
+      'E2eIdentityCheckUnavailableException: unable to verify whether '
+      'the missing identity is a fresh install';
+}
+
+
 class EncryptionService {
   EncryptionService({
     int decryptedContentCacheLimit = 2000,
@@ -273,7 +288,10 @@ class EncryptionService {
 
   /// Initialize the encryption service for the given user. Loads keys from
   /// secure storage or generates new ones if this is a fresh install.
-  Future<void> initialize(int userId) async {
+  Future<void> initialize(
+    int userId, {
+    Future<bool?> Function()? checkServerBundleExists,
+  }) async {
     _userId = userId;
     final p = 'e2e_${userId}_'; // per-user storage key prefix
 
@@ -283,12 +301,36 @@ class EncryptionService {
     await _loadIdentityChanged(userId);
 
     // A THROWING read propagates: a storage error must never be read as "no
-    // keys". Only a definitive absence reaches the generate branch.
+    // keys". Only a definitive absence reaches the server-backed fresh-install
+    // guard.
     var load = await _identityStore.loadFromStorage();
-    if (load == IdentityLoadResult.absent && await _hasPriorInstallResidue(p)) {
-      // No identity, yet sessions/prekeys from a previous install survive.
-      // That is partial storage loss, not a fresh install.
-      load = IdentityLoadResult.partial;
+    if (load == IdentityLoadResult.absent) {
+      if (await _hasPriorInstallResidue(p)) {
+        // No identity, yet sessions/prekeys from a previous install survive.
+        // That is partial storage loss, not a fresh install.
+        load = IdentityLoadResult.partial;
+      } else {
+        bool? serverBundleExists;
+        try {
+          serverBundleExists = await checkServerBundleExists?.call();
+        } catch (_) {
+          // A failed check is UNKNOWN, never evidence of a fresh install.
+        }
+
+        if (serverBundleExists == true) {
+          E2ePersistentDiag.record('IDENTITY_GUARD_SERVER_BUNDLE_EXISTS', {
+            'userId': userId,
+          });
+          identityIncomplete = true;
+          throw const E2eIdentityIncompleteException();
+        }
+        if (serverBundleExists != false) {
+          E2ePersistentDiag.record('IDENTITY_GUARD_UNKNOWN', {
+            'userId': userId,
+          });
+          throw const E2eIdentityCheckUnavailableException();
+        }
+      }
     }
 
     switch (load) {

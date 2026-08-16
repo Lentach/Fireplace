@@ -51,7 +51,7 @@ void main() {
 
     // Epoch 1: alice's original identity + one-time pre-keys.
     alice = EncryptionService();
-    await alice.initialize(aliceId);
+    await alice.initialize(aliceId, checkServerBundleExists: () async => false);
     final v1 = flatBundle(alice);
     epoch1Identity = v1['identityPublicKey'] as String;
     staleOtp = {
@@ -62,7 +62,7 @@ void main() {
     // Regenerate identity (fresh install / storage loss), SAME account id.
     // alice now holds ONLY epoch-2 private keys; the epoch-1 OTP private is gone.
     await alice.clearAllKeys();
-    await alice.initialize(aliceId);
+    await alice.initialize(aliceId, checkServerBundleExists: () async => false);
   });
 
   test('epoch-2 identity differs from epoch-1 (regeneration really happened)',
@@ -83,7 +83,7 @@ void main() {
     );
 
     final bob = EncryptionService();
-    await bob.initialize(bobStaleId);
+    await bob.initialize(bobStaleId, checkServerBundleExists: () async => false);
     await bob.buildSession(aliceId, poisoned);
 
     final wire = await bob.encrypt(aliceId, 'this must fail to decrypt');
@@ -105,7 +105,7 @@ void main() {
     final clean = flatBundle(alice);
 
     final bob = EncryptionService();
-    await bob.initialize(bobFreshId);
+    await bob.initialize(bobFreshId, checkServerBundleExists: () async => false);
     await bob.buildSession(aliceId, clean);
 
     const plaintext = 'current-epoch OTP decrypts cleanly';

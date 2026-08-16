@@ -81,6 +81,14 @@ export class KeyBundlesService {
     this.logger.debug(`Key bundle upserted for userId=${userId}`);
   }
 
+  /**
+   * Read-only existence check for the caller's public key bundle. This MUST
+   * not call fetchPreKeyBundle: fetching atomically consumes a one-time key.
+   */
+  async hasKeyBundle(userId: number): Promise<boolean> {
+    return (await this.keyBundleRepo.findOne({ where: { userId } })) !== null;
+  }
+
   async uploadOneTimePreKeys(
     userId: number,
     keys: OneTimePreKeyData[],

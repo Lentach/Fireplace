@@ -242,7 +242,7 @@ class E2eClient {
   /// Generates or loads this instance's Signal state and returns the exact
   /// public upload payload without touching the server.
   Future<Map<String, dynamic>> initializeKeys() async {
-    await encryption.initialize(userId);
+    await encryption.initialize(userId, checkServerBundleExists: () async => false);
     final keys = encryption.getKeysForUpload();
     if (keys == null) {
       throw StateError(
@@ -325,7 +325,7 @@ class E2eClient {
   /// uploads bundle + one-time pre-keys over WS, exactly like
   /// EncryptionProvider does on first run.
   Future<void> initializeAndUploadKeys() async {
-    await encryption.initialize(userId);
+    await encryption.initialize(userId, checkServerBundleExists: () async => false);
     final keys = encryption.getKeysForUpload();
     if (keys == null) {
       throw StateError(

@@ -80,17 +80,21 @@ Future<void> main() async {
   // Ask the browser for persistent (eviction-proof) storage at every boot —
   // not only mid-E2E-flow. A whole-origin eviction wiped a user's tokens AND
   // Signal identity (2026-07-24 incident); installed PWAs are usually granted
-  // this silently. Fire-and-forget: boot must never block on it, and only the
-  // failure case is worth persisting (it is the risk marker).
-  unawaited(
-    requestPersistentStorage().then((r) {
-      if (r['granted'] != true) {
-        E2ePersistentDiag.record('STORAGE_NOT_PERSISTENT', {
-          'supported': r['supported'] ?? false,
-        });
-      }
-    }),
-  );
+  // this silently. Awaited with a hard bound (08-16 handoff §5.3): firing it
+  // unawaited meant the keystore could be created before persistence was even
+  // requested, and every field `granted: true` reading was post-loss. Boot
+  // still cannot hang on a browser prompt — 3 s and we move on.
+  try {
+    final r = await requestPersistentStorage().timeout(
+      const Duration(seconds: 3),
+      onTimeout: () => const {'supported': false, 'granted': false},
+    );
+    if (r['granted'] != true) {
+      E2ePersistentDiag.record('STORAGE_NOT_PERSISTENT', {
+        'supported': r['supported'] ?? false,
+      });
+    }
+  } catch (_) {}
   // Resolve the saved theme BEFORE runApp so frame 1 paints the right theme:
   // without this, returning users flash the fresh-install default (Hot Stone)
   // for a frame while the async prefs load runs. NON-CRITICAL: a prefs/plugin

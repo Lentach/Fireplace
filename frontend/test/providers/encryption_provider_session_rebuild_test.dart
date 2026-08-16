@@ -41,7 +41,10 @@ void main() {
       var ourUploadedOtps = <Map<String, dynamic>>[];
       Map<String, dynamic>? peerBundleToServe;
       provider.setEmitCallback((event, data) {
-        if (event == 'uploadKeyBundle') {
+        if (event == 'checkOwnKeyBundle') {
+          // Fresh install: the server has no bundle for us yet.
+          provider.onOwnKeyBundleStatus({'exists': false});
+        } else if (event == 'uploadKeyBundle') {
           ourUploadedBundle = (data as Map).cast<String, dynamic>();
         } else if (event == 'uploadOneTimePreKeys') {
           ourUploadedOtps = ((data as Map)['keys'] as List)

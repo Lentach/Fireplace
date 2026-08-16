@@ -34,7 +34,7 @@ void main() {
   group('identity load', () {
     test('fresh install with nothing stored generates an identity', () async {
       final svc = EncryptionService();
-      await svc.initialize(1);
+      await svc.initialize(1, checkServerBundleExists: () async => false);
 
       expect(svc.needsKeyUpload, isTrue);
       expect(svc.identityIncomplete, isFalse);
@@ -58,7 +58,7 @@ void main() {
       });
 
       final svc = EncryptionService();
-      await svc.initialize(5);
+      await svc.initialize(5, checkServerBundleExists: () async => false);
 
       expect(
         svc.needsKeyUpload,
@@ -79,11 +79,11 @@ void main() {
 
     test('an identity written today survives a reload', () async {
       final first = EncryptionService();
-      await first.initialize(11);
+      await first.initialize(11, checkServerBundleExists: () async => false);
       final record = await secure.read(key: 'e2e_11_identity_record_v1');
 
       final second = EncryptionService();
-      await second.initialize(11);
+      await second.initialize(11, checkServerBundleExists: () async => false);
 
       expect(second.needsKeyUpload, isFalse);
       expect(await secure.read(key: 'e2e_11_identity_record_v1'), record);
@@ -101,7 +101,7 @@ void main() {
 
       final svc = EncryptionService();
       await expectLater(
-        svc.initialize(2),
+        svc.initialize(2, checkServerBundleExists: () async => false),
         throwsA(isA<E2eIdentityIncompleteException>()),
       );
       expect(svc.identityIncomplete, isTrue);
@@ -124,7 +124,7 @@ void main() {
 
       final svc = EncryptionService();
       await expectLater(
-        svc.initialize(3),
+        svc.initialize(3, checkServerBundleExists: () async => false),
         throwsA(isA<E2eIdentityIncompleteException>()),
       );
     });
@@ -138,7 +138,7 @@ void main() {
 
       final svc = EncryptionService();
       await expectLater(
-        svc.initialize(4),
+        svc.initialize(4, checkServerBundleExists: () async => false),
         throwsA(isA<E2eIdentityIncompleteException>()),
       );
       expect(await secure.read(key: 'e2e_4_identity_record_v1'), isNull);
@@ -151,7 +151,7 @@ void main() {
 
       final svc = EncryptionService();
       await expectLater(
-        svc.initialize(6),
+        svc.initialize(6, checkServerBundleExists: () async => false),
         throwsA(isA<E2eIdentityIncompleteException>()),
       );
     });
@@ -165,10 +165,101 @@ void main() {
       });
 
       final svc = EncryptionService();
-      await svc.initialize(8);
+      await svc.initialize(8, checkServerBundleExists: () async => false);
 
       expect(svc.needsKeyUpload, isTrue);
       expect(svc.identityIncomplete, isFalse);
+    });
+  });
+
+  /// The server-backed fresh-install guard (0.1.10). A truly empty store is
+  /// NOT proof of a fresh install: the same emptiness is produced by a storage
+  /// wipe and by a second-device login, and generating keys in either case
+  /// silently destroys every peer's history. Only an explicit server
+  /// "no bundle" may authorize generation; everything else fails closed.
+  group('server-backed fresh-install guard', () {
+    test('empty store + server bundle exists -> refuses, mints nothing',
+        () async {
+      final svc = EncryptionService();
+      await expectLater(
+        svc.initialize(21, checkServerBundleExists: () async => true),
+        throwsA(isA<E2eIdentityIncompleteException>()),
+      );
+      expect(svc.identityIncomplete, isTrue);
+      expect(
+        await secure.read(key: 'e2e_21_identity_record_v1'),
+        isNull,
+        reason: 'a wipe or second-device login must never silently re-mint',
+      );
+    });
+
+    test('empty store + server says no bundle -> genuine fresh install',
+        () async {
+      final svc = EncryptionService();
+      await svc.initialize(22, checkServerBundleExists: () async => false);
+
+      expect(svc.needsKeyUpload, isTrue);
+      expect(svc.identityIncomplete, isFalse);
+      expect(await secure.read(key: 'e2e_22_identity_record_v1'), isNotNull);
+    });
+
+    test('UNKNOWN (null) defers: no keys, not damaged, retryable', () async {
+      final svc = EncryptionService();
+      await expectLater(
+        svc.initialize(23, checkServerBundleExists: () async => null),
+        throwsA(isA<E2eIdentityCheckUnavailableException>()),
+      );
+      expect(
+        svc.identityIncomplete,
+        isFalse,
+        reason: 'UNKNOWN is transient — it must not raise the '
+            'destructive-recovery surface',
+      );
+      expect(await secure.read(key: 'e2e_23_identity_record_v1'), isNull);
+    });
+
+    test('a throwing check is UNKNOWN, never a fresh install', () async {
+      final svc = EncryptionService();
+      await expectLater(
+        svc.initialize(
+          24,
+          checkServerBundleExists: () async => throw StateError('offline'),
+        ),
+        throwsA(isA<E2eIdentityCheckUnavailableException>()),
+      );
+      expect(await secure.read(key: 'e2e_24_identity_record_v1'), isNull);
+    });
+
+    test('an absent callback is UNKNOWN: no caller may skip the check',
+        () async {
+      final svc = EncryptionService();
+      await expectLater(
+        svc.initialize(25),
+        throwsA(isA<E2eIdentityCheckUnavailableException>()),
+      );
+    });
+
+    test('an existing identity never consults the server', () async {
+      final svc = EncryptionService();
+      await svc.initialize(26, checkServerBundleExists: () async => false);
+
+      final reloaded = EncryptionService();
+      var consulted = false;
+      await reloaded.initialize(
+        26,
+        checkServerBundleExists: () async {
+          consulted = true;
+          return true;
+        },
+      );
+
+      expect(
+        consulted,
+        isFalse,
+        reason: 'the guard runs only on a truly empty store — a boot-time '
+            'round trip on every healthy start would be a regression',
+      );
+      expect(reloaded.needsKeyUpload, isFalse);
     });
   });
 
@@ -185,7 +276,7 @@ void main() {
 
       final svc = EncryptionService();
       await expectLater(
-        svc.initialize(9),
+        svc.initialize(9, checkServerBundleExists: () async => false),
         throwsA(isA<E2eIdentityIncompleteException>()),
       );
 
@@ -211,7 +302,7 @@ void main() {
 
       // And the service is usable again.
       final reloaded = EncryptionService();
-      await reloaded.initialize(9);
+      await reloaded.initialize(9, checkServerBundleExists: () async => false);
       expect(reloaded.needsKeyUpload, isFalse);
     });
   });

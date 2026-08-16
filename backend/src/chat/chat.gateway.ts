@@ -384,6 +384,12 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
   }
 
   @UseGuards(WsThrottlerGuard)
+  @SubscribeMessage('checkOwnKeyBundle')
+  async handleCheckOwnKeyBundle(@ConnectedSocket() client: Socket) {
+    return this.chatKeyExchangeService.handleCheckOwnKeyBundle(client);
+  }
+
+  @UseGuards(WsThrottlerGuard)
   @Throttle({ default: { limit: 30, ttl: 900000 } })
   @SubscribeMessage('requestSessionRebuild')
   async handleRequestSessionRebuild(

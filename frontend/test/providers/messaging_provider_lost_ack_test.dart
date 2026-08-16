@@ -103,7 +103,7 @@ void main() {
       provider = MessagingProvider();
       conversations = ConversationsProvider();
       encryption = _RealStoreEncryption();
-      await encryption.service.initialize(1); // "me" = user 1
+      await encryption.service.initialize(1, checkServerBundleExists: () async => false); // "me" = user 1
       emitted = <Map<String, dynamic>>[];
 
       conversations.setCurrentUserId(1);

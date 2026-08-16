@@ -72,6 +72,26 @@ export class ChatKeyExchangeService {
     }
   }
 
+  /**
+   * Answers only whether the authenticated caller already has a public bundle.
+   * This deliberately does not fetch a bundle: fetchPreKeyBundle consumes an
+   * one-time pre-key.
+   */
+  async handleCheckOwnKeyBundle(client: Socket): Promise<void> {
+    const userId: number = client.data.user?.id;
+    if (!userId) return;
+
+    try {
+      const exists = await this.keyBundlesService.hasKeyBundle(userId);
+      client.emit('ownKeyBundleStatus', { exists });
+    } catch (error) {
+      // Silence is fail-closed on the client: it treats no status as UNKNOWN.
+      this.logger.error(
+        `checkOwnKeyBundle failed userId=${userId}: ${error.message}`,
+      );
+    }
+  }
+
   async handleFetchPreKeyBundle(
     client: Socket,
     data: any,

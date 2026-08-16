@@ -66,7 +66,7 @@ void main() {
     storage.throwReadAll = true;
 
     await expectLater(
-      service.initialize(37),
+      service.initialize(37, checkServerBundleExists: () async => false),
       throwsA(isA<E2eIdentityIncompleteException>()),
     );
     expect(storage.writeCount, 0,
@@ -81,7 +81,7 @@ void main() {
 
   test('identity absent + enumeration SUCCEEDING empty still regenerates '
       '(fresh installs must keep working)', () async {
-    await service.initialize(37);
+    await service.initialize(37, checkServerBundleExists: () async => false);
     expect(storage.store.keys, contains('e2e_37_identity_record_v1'));
   });
 
@@ -90,7 +90,7 @@ void main() {
     storage.store['e2e_37_session_2_1'] = 'ratchet';
 
     await expectLater(
-      service.initialize(37),
+      service.initialize(37, checkServerBundleExists: () async => false),
       throwsA(isA<E2eIdentityIncompleteException>()),
     );
     expect(storage.store.keys, isNot(contains('e2e_37_identity_record_v1')));
@@ -98,7 +98,7 @@ void main() {
 
   test('§5.12 R3: lost counter + enumeration FAILING skips the prekey mint '
       'instead of defaulting into id reuse', () async {
-    await service.initialize(37); // fresh install; writes keys + counter
+    await service.initialize(37, checkServerBundleExists: () async => false); // fresh install; writes keys + counter
     final writesAfterInit = storage.writeCount;
 
     storage.store.remove('e2e_37_next_pre_key_id'); // the lost-counter case
@@ -119,7 +119,7 @@ void main() {
   test('lost counter + enumeration SUCCEEDING derives from the highest '
       'stored id (the fallback keeps working when it can be trusted)',
       () async {
-    await service.initialize(37);
+    await service.initialize(37, checkServerBundleExists: () async => false);
     storage.store.remove('e2e_37_next_pre_key_id');
 
     final minted = await service.generateMorePreKeys();

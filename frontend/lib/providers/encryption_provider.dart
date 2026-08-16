@@ -10,6 +10,7 @@ import '../utils/e2e_diag_log.dart';
 import '../utils/e2e_persistent_diag.dart';
 import '../utils/message_expiry.dart' show kExpiryPurgeGrace;
 import '../utils/storage_persist.dart';
+import '../utils/boot_markers.dart';
 
 /// EncryptionProvider — owns all E2E encryption state, initialization,
 class EncryptionProvider extends ChangeNotifier {
@@ -770,6 +771,38 @@ class EncryptionProvider extends ChangeNotifier {
     } catch (_) {}
   }
 
+  /// Logged once per app run.
+  static bool _bootMarkersProbed = false;
+
+  /// Boot-marker forensics (§5.3 of the 08-16 handoff): read which of the
+  /// three in-bucket stores still hold last boot's marker, THEN replant all
+  /// three, and record the read durably. All three absent on a container that
+  /// ran before = whole-bucket eviction; IDB or Cache alive while
+  /// localStorage reads empty = localStorage-only loss = ours. Must run
+  /// BEFORE the keystore is opened so the evidence predates any writes.
+  Future<void> _recordBootMarkersOnce() async {
+    if (_bootMarkersProbed) return;
+    _bootMarkersProbed = true;
+    try {
+      // Bounded: IndexedDB/CacheStorage can hang (a second live context on
+      // this origin is a proven state here — Morion). Boot must not; a
+      // timeout records ERROR on every arm, which is honest: inconclusive.
+      final triple = await readAndPlantBootMarkers().timeout(
+        const Duration(seconds: 4),
+        onTimeout: () => const BootMarkerTriple(
+          localStorage: BootMarkerState.error,
+          indexedDb: BootMarkerState.error,
+          cacheStorage: BootMarkerState.error,
+        ),
+      );
+      final payload = triple.toDiagnosticPayload();
+      _e2eFlowLog('BOOT_MARKERS', payload);
+      if (kIsWeb) {
+        E2ePersistentDiag.record('BOOT_MARKERS', payload);
+      }
+    } catch (_) {}
+  }
+
   Future<void> _probeStoragePersistenceOnce() async {
     if (_persistProbed) return;
     _persistProbed = true;
@@ -777,9 +810,14 @@ class EncryptionProvider extends ChangeNotifier {
       final r = await requestPersistentStorage();
       final supported = r['supported'] ?? false;
       final granted = r['granted'] ?? false;
+      // Quota telemetry: the app used to be completely blind to how full the
+      // bucket was (nothing ever called estimate()). Diagnostic only.
+      final estimate = await storageEstimate();
       _e2eFlowLog('STORAGE_PERSIST', {
         'supported': supported,
         'granted': granted,
+        if (estimate != null) 'usage': estimate['usage'],
+        if (estimate != null) 'quota': estimate['quota'],
       });
       // A denied grant is the one storage fact that can end in unrecoverable
       // Signal key loss: iOS evicts a non-persistent origin and there is no
@@ -811,12 +849,21 @@ class EncryptionProvider extends ChangeNotifier {
     _currentUserId = userId;
     _e2eFlowLog('E2E_INIT_START', {'alreadyInitialized': _e2eInitialized});
     try {
+      // Forensics + persistence BEFORE the keystore is created: every prior
+      // `granted: true` reading was post-loss, and the ordering defect (probe
+      // after initialize) is exactly what kept the persistence premise
+      // unverifiable in the field. Both are once-per-run.
+      await _recordBootMarkersOnce();
+      await _probeStoragePersistenceOnce();
       if (!_e2eInitialized) {
         // Rebuild the UI when a peer's identity key changes so the warning can
         // appear without waiting for the next message.
         _encryptionService.onPeerIdentityChanged = (_) => notifyListeners();
         // Fresh session: load keys from storage (or generate on first install).
-        await _encryptionService.initialize(userId);
+        await _encryptionService.initialize(
+          userId,
+          checkServerBundleExists: _checkServerBundleExists,
+        );
         _identityIncomplete = false;
         // Load the retired-id set BEFORE flipping the ready flag. This is the
         // only point that provably precedes any decrypt attempt: decrypting
@@ -842,11 +889,10 @@ class EncryptionProvider extends ChangeNotifier {
         _e2eFlowLog('E2E_RECONNECT_SKIP_INIT', {});
       }
 
-      // TEMP storage-durability probe — snapshot which sessions survived to this
-      // start (compare across reloads), and once per app run ask the browser to
-      // stop evicting our keystore. Remove with the rest of the SESSION_* probes.
+      // TEMP storage-durability probe — snapshot which sessions survived to
+      // this start (compare across reloads). Remove with the rest of the
+      // SESSION_* probes.
       await _logSessionInventory();
-      await _probeStoragePersistenceOnce();
 
       if (_encryptionService.needsKeyUpload) {
         final keys = _encryptionService.getKeysForUpload();
@@ -882,6 +928,16 @@ class EncryptionProvider extends ChangeNotifier {
           );
         }
       }
+    } on E2eIdentityCheckUnavailableException {
+      // UNKNOWN is transient by contract: the server could not be asked
+      // whether this account already has a bundle, so neither generating keys
+      // nor declaring the identity damaged is safe. E2E stays down for this
+      // session; the next connect re-runs initializeE2E because
+      // _e2eInitialized is still false. Treating UNKNOWN as "no bundle" would
+      // re-mint an identity on every flaky boot — the exact data-loss bug.
+      debugPrint('[E2E] Identity check unavailable — deferring E2E init');
+      _e2eFlowLog('E2E_INIT_GUARD_UNKNOWN', {});
+      _e2eInitialized = false;
     } on E2eIdentityIncompleteException catch (e) {
       // NOT a transient failure and NOT recoverable by retrying: the stored
       // identity is damaged and we refused to regenerate over it. Surface it
@@ -989,6 +1045,47 @@ class EncryptionProvider extends ChangeNotifier {
       return;
     }
     completer.complete(bundle);
+  }
+
+  /// Handler for `ownKeyBundleStatus` server event — the answer to
+  /// `checkOwnKeyBundle`. A malformed payload completes as null (UNKNOWN),
+  /// never as false: only an explicit server "no bundle" may authorize key
+  /// generation.
+  void onOwnKeyBundleStatus(dynamic data) {
+    final exists = data is Map && data['exists'] is bool
+        ? data['exists'] as bool
+        : null;
+    _e2eFlowLog('OWN_BUNDLE_STATUS', {'exists': exists});
+    final completer = _pendingOwnBundleCheck;
+    if (completer == null || completer.isCompleted) return;
+    completer.complete(exists);
+  }
+
+  Completer<bool?>? _pendingOwnBundleCheck;
+
+  /// Tri-state server check backing the identity guard in
+  /// [EncryptionService.initialize]: true/false only on an explicit server
+  /// answer; null (UNKNOWN) on no socket, timeout, or any error. Callers MUST
+  /// treat null as "do not decide".
+  Future<bool?> _checkServerBundleExists() async {
+    final emit = _emit;
+    if (emit == null) return null;
+    final existing = _pendingOwnBundleCheck;
+    if (existing != null) return existing.future;
+    final completer = Completer<bool?>();
+    _pendingOwnBundleCheck = completer;
+    try {
+      _e2eFlowLog('OWN_BUNDLE_CHECK_EMIT', {});
+      emit('checkOwnKeyBundle', <String, dynamic>{});
+      return await completer.future.timeout(
+        const Duration(seconds: 6),
+        onTimeout: () => null,
+      );
+    } catch (_) {
+      return null;
+    } finally {
+      _pendingOwnBundleCheck = null;
+    }
   }
 
   void onPreKeysLow(dynamic data) {

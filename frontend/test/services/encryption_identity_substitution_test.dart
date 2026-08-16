@@ -53,9 +53,9 @@ void main() {
     alice = EncryptionService();
     bob = EncryptionService();
     mallory = EncryptionService();
-    await alice.initialize(aliceId);
-    await bob.initialize(bobId);
-    await mallory.initialize(malloryId);
+    await alice.initialize(aliceId, checkServerBundleExists: () async => false);
+    await bob.initialize(bobId, checkServerBundleExists: () async => false);
+    await mallory.initialize(malloryId, checkServerBundleExists: () async => false);
   });
 
   group('peer identity substitution', () {
@@ -95,7 +95,7 @@ void main() {
       // Same user, fresh process: the persisted warning must come back, or a
       // user who was not looking at that chat never learns it happened.
       final restarted = EncryptionService();
-      await restarted.initialize(aliceId);
+      await restarted.initialize(aliceId, checkServerBundleExists: () async => false);
 
       expect(restarted.peersWithChangedIdentity, contains(bobId));
     });
@@ -110,7 +110,7 @@ void main() {
       expect(alice.peersWithChangedIdentity, isEmpty);
 
       final restarted = EncryptionService();
-      await restarted.initialize(aliceId);
+      await restarted.initialize(aliceId, checkServerBundleExists: () async => false);
       expect(restarted.peersWithChangedIdentity, isEmpty);
     });
 
@@ -118,7 +118,7 @@ void main() {
         () async {
       const carolId = 4;
       final carol = EncryptionService();
-      await carol.initialize(carolId);
+      await carol.initialize(carolId, checkServerBundleExists: () async => false);
 
       await alice.buildSession(bobId, flatBundleFrom(bob));
       await alice.buildSession(carolId, flatBundleFrom(carol));

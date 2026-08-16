@@ -620,6 +620,9 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.on('preKeyBundleResponse', (data) {
       _encryptionProvider?.onPreKeyBundleResponse(data);
     });
+    _socketService.on('ownKeyBundleStatus', (data) {
+      _encryptionProvider?.onOwnKeyBundleStatus(data);
+    });
     _socketService.on('preKeysLow', (data) {
       _encryptionProvider?.onPreKeysLow(data);
     });

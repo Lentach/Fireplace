@@ -25,7 +25,7 @@ void main() {
     'formats a stored peer identity exactly like the own identity',
     () async {
       final service = EncryptionService();
-      await service.initialize(17);
+      await service.initialize(17, checkServerBundleExists: () async => false);
 
       final ownFingerprint = await service.getIdentityFingerprint();
       final ownKeyBase64 = await service.currentIdentityPublicKeyBase64();
@@ -48,7 +48,7 @@ void main() {
     'returns null when no trusted identity is stored for the peer',
     () async {
       final service = EncryptionService();
-      await service.initialize(17);
+      await service.initialize(17, checkServerBundleExists: () async => false);
 
       expect(await service.getPeerIdentityFingerprint(42), isNull);
     },

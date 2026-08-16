@@ -14,8 +14,13 @@ void main() {
       FlutterSecureStorage.setMockInitialValues({});
       SharedPreferences.setMockInitialValues({});
       provider = EncryptionProvider();
-      // initializeE2E loads keys from storage; emit callback is nullable so
-      // socket events are silently ignored in tests.
+      // The identity guard needs an explicit server "no bundle" before it
+      // will generate keys; every other socket event is silently ignored.
+      provider.setEmitCallback((event, data) {
+        if (event == 'checkOwnKeyBundle') {
+          provider.onOwnKeyBundleStatus({'exists': false});
+        }
+      });
       await provider.initializeE2E(42);
     });
 
@@ -139,6 +144,9 @@ void main() {
       provider = EncryptionProvider();
       provider.setEmitCallback((event, data) {
         emitted.add({'event': event, 'data': data});
+        if (event == 'checkOwnKeyBundle') {
+          provider.onOwnKeyBundleStatus({'exists': false});
+        }
       });
       await provider.initializeE2E(7);
     });
@@ -195,10 +203,13 @@ void main() {
         );
 
         final taggedEmits = <Map<String, dynamic>>[];
-        final ready = EncryptionProvider()
-          ..setEmitCallback((event, data) {
-            taggedEmits.add({'event': event, 'data': data});
-          });
+        final ready = EncryptionProvider();
+        ready.setEmitCallback((event, data) {
+          taggedEmits.add({'event': event, 'data': data});
+          if (event == 'checkOwnKeyBundle') {
+            ready.onOwnKeyBundleStatus({'exists': false});
+          }
+        });
         await ready.initializeE2E(8);
         ready.onPreKeysLow({'remaining': 0});
         await Future<void>.delayed(const Duration(milliseconds: 50));

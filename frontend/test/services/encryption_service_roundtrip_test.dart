@@ -54,8 +54,8 @@ void main() {
     SharedPreferences.setMockInitialValues({});
     alice = EncryptionService();
     bob = EncryptionService();
-    await alice.initialize(aliceId);
-    await bob.initialize(bobId);
+    await alice.initialize(aliceId, checkServerBundleExists: () async => false);
+    await bob.initialize(bobId, checkServerBundleExists: () async => false);
   });
 
   group('EncryptionService two-party round trip', () {

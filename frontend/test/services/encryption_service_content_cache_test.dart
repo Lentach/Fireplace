@@ -16,7 +16,7 @@ void main() {
       FlutterSecureStorage.setMockInitialValues({});
       SharedPreferences.setMockInitialValues({});
       service = EncryptionService();
-      await service.initialize(42);
+      await service.initialize(42, checkServerBundleExists: () async => false);
     });
 
     test('saveDecryptedContent then getDecryptedContent returns stored data', () async {
@@ -47,7 +47,7 @@ void main() {
 
       // Different user
       final other = EncryptionService();
-      await other.initialize(99);
+      await other.initialize(99, checkServerBundleExists: () async => false);
       final result = await other.getDecryptedContent(1003);
       expect(result, isNull);
     });
@@ -59,14 +59,14 @@ void main() {
       // Re-initialize the SAME service against the real post-clear store
       // (like the pending-send Contract 7a) so a stale read here would fail
       // if clearAllKeys left the content behind.
-      await service.initialize(42);
+      await service.initialize(42, checkServerBundleExists: () async => false);
       final result = await service.getDecryptedContent(1004);
       expect(result, isNull);
     });
 
     test('saveDecryptedContent prunes oldest entries above the cache limit', () async {
       final limited = EncryptionService(decryptedContentCacheLimit: 2);
-      await limited.initialize(42);
+      await limited.initialize(42, checkServerBundleExists: () async => false);
 
       await limited.saveDecryptedContent(1001, {'content': 'oldest'});
       await limited.saveDecryptedContent(1002, {'content': 'middle'});
@@ -90,7 +90,7 @@ void main() {
       );
 
       final limited = EncryptionService(decryptedContentCacheLimit: 2);
-      await limited.initialize(42);
+      await limited.initialize(42, checkServerBundleExists: () async => false);
       await limited.saveDecryptedContent(1003, {'content': 'newest'});
 
       expect(await limited.getDecryptedContent(1001), isNull);
@@ -163,7 +163,7 @@ void main() {
     /// identity records.
     test('the cache stays bounded across service restarts', () async {
       final first = EncryptionService(decryptedContentCacheLimit: 10);
-      await first.initialize(42);
+      await first.initialize(42, checkServerBundleExists: () async => false);
       for (var id = 0; id < 10; id++) {
         await first.saveDecryptedContent(id, {'content': 'seed $id'});
       }
@@ -171,7 +171,7 @@ void main() {
       // A NEW instance models an app restart: any per-session write counter
       // resets here, and a few writes must still not push the cache over.
       final restarted = EncryptionService(decryptedContentCacheLimit: 10);
-      await restarted.initialize(42);
+      await restarted.initialize(42, checkServerBundleExists: () async => false);
       for (var id = 10; id < 15; id++) {
         await restarted.saveDecryptedContent(id, {'content': 'after $id'});
       }
@@ -253,7 +253,7 @@ void main() {
       });
       SharedPreferences.setMockInitialValues({});
       final svc = EncryptionService();
-      await svc.initialize(77);
+      await svc.initialize(77, checkServerBundleExists: () async => false);
 
       final peers = await svc.sessionInventoryPeerIds();
       expect(peers.toSet(), {'49', '580'},
