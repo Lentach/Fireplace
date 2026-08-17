@@ -1,8 +1,9 @@
 # Multi-device (linked devices) — design
 
-**Status: DRAFT v3 — first internal review round DONE (security + data-loss, 2026-08-17, both
-blocking; all findings folded below, see §12). Awaiting owner ratification + second review pass at
-Phase-2 spec level. NO CODE until the gauntlet passes.**
+**Status: DRAFT v4 — TWO full review rounds done (round 1: security + data-loss on v2; round 2:
+coherence + security + data-loss on v3, plus independent SAS literature check). All 16 round-2
+findings folded; §11 owner questions ALL ratified 2026-08-17. Remaining gate: Phase-2 spec-level
+review at implementation time. NO CODE until then.**
 Research record: `.cursor/session-summaries/2026-08-17-session-multidevice-research.md` and
 `.planning/multi-device/findings.md`.
 
@@ -22,7 +23,7 @@ Research record: `.cursor/session-summaries/2026-08-17-session-multidevice-resea
 - Sealed sender, groups, iOS native app, history-transfer-on-link (Phase 4, optional, own doc).
 - Remote wipe of a revoked device's local data.
 - Any change to disappearing-message semantics, the reconcile protocol's fail-closed rules, or the
-  plaintext-store invariants (`frontend/CLAUDE.md` §5) beyond what §5.4/§5.6 state explicitly.
+  plaintext-store invariants (`frontend/CLAUDE.md` §5) beyond what §5.4/§5.6/§5.7 state explicitly.
 
 ## 2. Threat model and the invariant matrix
 
@@ -49,38 +50,49 @@ but not DAK; both server and peers refuse IK-signed mutations by construction.
 detect. Bounded by the end-to-end version cross-check in §5.2: every encrypted envelope carries the
 sender's view of both list versions *inside the plaintext*, so any message from any honest device
 exposes the freeze to the frozen peer. S must then also block those messages entirely — degrading
-to denial of service, which S can always do anyway. (Security review finding 2, folded.)
+to denial of service, which S can always do anyway.
 
 **Non-negotiable invariants** (each gets a red-first test, §10):
 
 - **I1** — The server NEVER holds a private key: not IK, not DAK, not per-device keys. Provisioning
-  transports IK device-to-device encrypted to an ephemeral key; the server relays opaque bytes.
+  transports IK device-to-device encrypted under a human-verified DH secret; the server relays
+  opaque bytes. An ABORTED provisioning obliges the new device to DISCARD IK and every minted key
+  (§5.1) — a failed link leaves no keyed residue anywhere.
 - **I2** — Every device-list mutation carries a signature by the account's **DAK**, whose private
   half exists ONLY on the current primary, in platform Keystore. The shared identity key is NEVER a
   device-list signing authority (a linked PWA holds IK in web storage; one XSS must not mint
   devices). Primary handover ROTATES the DAK (§6.3); the private half never leaves its origin
   device, and a demoted primary's DAK has no remaining authority.
-- **I3** — Linking requires possession: QR scan + SAS confirmation + explicit approve on the
-  primary, AND a valid password login on the new device. Neither alone suffices. No password-only
-  fallback, ever.
-- **I4** — Identity/DAK *reset* (all devices lost) is the only credential-only path, and it is slow
-  and loud: fixed delay, rate-limited, every live session AND every push endpoint notified before
-  it takes effect; cancel wins any race with expiry (§6.2).
+- **I3** — Linking requires possession: QR scan + DH-bound SAS confirmation + explicit approve on
+  the primary, AND a valid password login on the new device. Neither alone suffices. No
+  password-only fallback, ever. No secret leaves the primary before the SAS is human-confirmed.
+- **I4** — Identity/DAK *reset* (all devices lost) is credential-gated, slow and loud: fixed delay,
+  rate-limited, every live session AND every push endpoint notified before it takes effect; cancel
+  wins any race with expiry (§6.2). The recovery key (§6.2.1) shortens the delay but is NEVER
+  silent: same notifications, non-zero cancel window, slow-hashed, single-use, rate-limited.
 - **I5** — Fail-closed inheritance: every existing UNKNOWN-is-not-absence rule survives per-device
   (the 0.1.10 guard's tri-state, reconcile's null-answer-purges-nothing, ledger fail-open rules).
   A device-list fetch failure means "cannot send", never "send to fewer devices".
 - **I6** — A revoked device stops receiving new envelopes at revocation commit, atomically with the
   signed list mutation. Its local history remains its own; **the server answers a revoked device's
   `getServedMessageIds` with SILENCE** (a missing reply purges nothing — never an empty/partial
-  answer, which would read as "destroy all"). (Data-loss review finding 3, folded.)
+  answer, which would read as "destroy all"). Verified consequence: the revoked device's expiry
+  sweep also fails closed forever (no fresh server clock) — over-retention on a device the user
+  chose to cut off, consistent with the root §7 asymmetry. Re-linking the same physical device
+  under a new deviceId is safe: the local content store keys by `(uid, msgId)`, not deviceId, and
+  reconcile stays per-user (I8).
 - **I7** — Peers verify the device list against the IK→DAK chain, monotonic version, AND the
   end-to-end version cross-check of §5.2; the server is untrusted for list content and freshness.
-  Rollback, invalid chain, or a cross-check mismatch = loud identity-changed surface.
+  Rollback, invalid chain, or an INDEPENDENTLY VERIFIED cross-check staleness = loud
+  identity-changed surface. An unverifiable peer claim alone NEVER alarms (§5.2).
 - **I8** — The reconcile contract is UNTOUCHED: "served" remains row-existence + participant based
   (per user, metadata-blind — `messages.service.ts:194-243`), independent of the envelope
   dimension. Envelopes gate realtime routing and per-device delivery stamps ONLY, never reconcile,
-  never history visibility of an existing row. (Data-loss review finding 1/6 — the v2 per-device
-  predicate would have mass-destroyed senders' own plaintext; reverted.)
+  never history visibility of an existing row.
+- **I9** — Read-based disappearing TTL starts ONLY on the recipient user's `markConversationRead`
+  over the PEER's rows (today's `markConversationAsReadFromSender` semantics). It NEVER starts from
+  envelope `deliveredAt`/`readAt`, and NEVER from the sender's own device reading its self-sync
+  copy. The delivery projection is decoupled from expiry by construction (§4).
 
 ## 3. Keys
 
@@ -98,10 +110,15 @@ verification chain is *their TOFU'd IK → E → DAK → list*.
 
 **Signed device list**: canonical bytes of
 `{ userId, version (monotonic int), devices: [{deviceId, name?, platform, addedAt, revokedAt?}] }`,
-signature by DAK over the canonical serialization (byte layout fixed in Phase 1 spec: JSON, sorted
-keys, no whitespace, userId and version first). Every mutation increments `version`. `listHash =
-SHA-256(canonical)` is the compact reference used in the §5.2 cross-check. `name` is user-chosen,
-length-capped, server-readable metadata — said plainly in UI.
+signature by DAK over the canonical serialization. **Canonical-form constraints (enforced at sign
+time AND re-validated at parse time):** JSON with sorted keys, no whitespace, userId and version
+first; duplicate keys REJECTED; `version`/timestamps integer-only; `name` NFC-normalized,
+length-capped, control-characters rejected. `listHash = SHA-256(canonical)`.
+**Transport rule:** `listCanonical` travels and is stored as OPAQUE BASE64 BYTES everywhere
+(`deviceListStale`, `getDeviceList`, DB column) — never a nested JSON object a transport layer
+could re-serialize; hash and signature are always computed over the decoded bytes verbatim.
+(Round-2 security finding 4, folded.) `name` is user-chosen, server-readable metadata — said
+plainly in UI.
 
 Library caveats honored: `calculateVrfSignature` is stubbed — never referenced; `sign`/`verifySig`
 mutate passed buffers — always pass copies of retained key/signature buffers.
@@ -114,8 +131,7 @@ New/changed tables (numbered migrations, staging rehearsal mandatory — root `C
   `lastSeenAt`. `deviceId` per-account small int from 1 (existing accounts = device 1 implicitly,
   §8).
 - **`account_authorizations`**: `userId` PK, `dakPub`, `enrollmentSig`, `listVersion`,
-  `listSignature`, `listCanonical` (the exact signed bytes — peers verify what was signed, never a
-  re-serialization), `updatedAt`.
+  `listSignature`, `listCanonical` (opaque bytes, §3), `updatedAt`.
 - **`key_bundles`**: UNIQUE becomes `(userId, deviceId)`. The **identity-epoch invariant is
   re-keyed** at all three sites (`key-bundles.service.ts:60-189`): partition dimension becomes
   `(identityPublicKey, deviceId)` — purge/claim/count operate strictly within one device's
@@ -126,12 +142,16 @@ New/changed tables (numbered migrations, staging rehearsal mandatory — root `C
   mailbox-deleted — they live exactly as long as the message row (expiry cron, delete-for-*,
   clear-history cascade). Storage ×N accepted at cap 3.
 - **`messages`**: keeps metadata; gains `originDeviceId` and `sendToken` (client-generated UUID,
-  §5.4). Single `deliveryStatus` stays as a **projection** (delivered = first envelope delivered;
-  read = any envelope read — wire shape unchanged), written ONLY as a column-scoped UPDATE of
-  `deliveryStatus`, NEVER a full-entity save — a hydrated re-save would clobber
-  `expiresAt`/`disappearAfterSeconds` and break read-based TTL (data-loss finding 5, folded).
-  Legacy `encryptedContent` retained for pre-migration rows and legacy-client sends (§8); new
-  multi-device sends write envelopes only.
+  §5.4; **UNIQUE per (senderId) — server rejects a duplicate token as a duplicate send**, round-2
+  data-loss finding 1). Single `deliveryStatus` stays as a **projection over RECIPIENT envelopes
+  ONLY** (`recipientUserId != senderId` — self-sync envelopes NEVER count, or the sender's own
+  second device would fake a read receipt; round-2 coherence finding 3): delivered = first
+  recipient envelope delivered; read = any recipient envelope read. The projection is written ONLY
+  as a column-scoped UPDATE of `deliveryStatus`, NEVER a full-entity save — **the existing
+  `MessagesService.updateDeliveryStatus` full-entity `save()` (`messages.service.ts:319-320`) is a
+  named conversion target**; the mark-read path (`:568-570`) already uses a scoped update (round-2
+  coherence finding 5). Legacy `encryptedContent` retained for pre-migration rows and
+  legacy-client sends (§8); new multi-device sends write envelopes only.
 - **`refresh_tokens`**: + `deviceId`, `deviceName` — the per-device session anchor; per-device
   revoke = delete that device's rows + kick its sockets. JWT payload gains `deviceId`.
 - **`fcm_tokens`** / **`web_push_subscriptions`**: + `deviceId` → per-device push targeting and
@@ -139,42 +159,60 @@ New/changed tables (numbered migrations, staging rehearsal mandatory — root `C
 
 ## 5. Protocols
 
-### 5.1 Provisioning (linking) ceremony
+### 5.1 Provisioning (linking) ceremony — two-round, DH-bound SAS, secrets last
 
-Transport: existing socket + relay events; envelope crypto: the lib's `ProvisioningCipher`
-(X25519 ECDH → HKDFv3 → AES-CBC+HMAC-SHA256, `src/provisioning_cipher.dart`; the Mixin info label
-is fine — no interop with Signal's wire).
+The v3 single-shot SAS (`KDF(ephPubN ‖ provisioningId)`) was cryptographically unsound: one-party
+public input, ~20-bit human comparison → offline-grindable collision (Vaudenay/ZRTP literature;
+confirmed independently by round-2 security review). v4 replaces it with a two-round DH-bound
+ceremony. Soundness argument: the QR is an out-of-band channel for `ephPubN` (physical scan), and
+the SAS is derived from the ECDH secret — an attacker substituting either ephemeral on the relayed
+leg cannot COMPUTE the honest side's SAS target (it needs a private key it doesn't have), so a
+short SAS cannot be ground against, and no commitment round is required. No secret leaves the
+primary before the human confirms.
 
 ```mermaid
 sequenceDiagram
     participant N as New device (logged in, deviceId pending)
     participant S as Server (blind relay)
     participant P as Primary (holds DAK)
-    N->>N: ephemeral keypair ephN
+    N->>N: ephemeral pair ephN
     N->>S: openProvisioning → {provisioningId (UUID, 10 min TTL)}
-    N->>N: show QR {provisioningId, ephPubN}; display SAS = KDF(ephPubN ‖ provisioningId)
-    P->>N: user scans QR (camera = possession)
-    P->>P: recompute SAS from the SCANNED ephPubN; user compares digits shown on BOTH screens, then approves
-    P->>S: provisionDevice {provisioningId, blob = ProvisioningCipher(ephPubN).encrypt({IK pair, dakPub, E, assigned deviceId}), stagedMutation = {list v+1 adding deviceId, sig_DAK}}
+    N->>N: show QR {provisioningId, ephPubN}
+    P->>N: user scans QR (out-of-band ephPubN)
+    P->>P: ephemeral pair ephP; S_dh = DH(ephPrivP, ephPubN); SAS = KDF(S_dh, "fp-link-sas", provisioningId ‖ ephPubN ‖ ephPubP)
+    P->>S: provisioningHello {provisioningId, ephPubP}   — NO secrets
+    S->>N: provisioningHello relay
+    N->>N: S_dh = DH(ephPrivN, ephPubP); display SAS (same derivation)
+    Note over N,P: HUMAN compares SAS on both screens; P user approves
+    P->>S: provisionDevice {provisioningId, blob = AEAD_{HKDF(S_dh)}({IK pair, dakPub, E, assigned deviceId}), stagedMutation = {list v+1 adding deviceId, sig_DAK}}
     S->>S: verify sig_DAK vs pinned dakPub; verify v+1; STAGE mutation (not committed)
     S->>N: provisioningBlob {blob}
-    N->>N: decrypt; store IK; mint registrationId/signedPreKey/OTPs
-    N->>S: provisioningComplete {provisioningId} + per-device bundle upload (tagged deviceId)
+    N->>N: decrypt under HKDF(S_dh); store IK; mint registrationId/signedPreKey/OTPs
+    N->>S: provisioningComplete {provisioningId} + per-device bundle upload (tagged deviceId) — accepted ONLY from N's originating authenticated session
     S->>S: ONE transaction: commit staged mutation + devices row + activate deviceId + bundle
     S-->>P: deviceListChanged (all own sessions; peers pick it up via §5.2)
 ```
 
-Rules (security findings 1 and 4, folded):
-- **The SAS is never transmitted.** Both sides derive it independently from `(ephPubN,
-  provisioningId)`; an ephPub substitution changes P's SAS and the human comparison fails. The QR
-  carries only `{provisioningId, ephPubN}` — no secrets.
-- **Two-phase commit.** The list mutation is STAGED at `provisionDevice` and committed only on N's
-  `provisioningComplete` (which requires successful blob decryption — it carries the assigned
-  deviceId). No state exists where a device is listed/active but keyless. Until completion the blob
-  MAY be re-fetched against the same `provisioningId`; TTL expiry or a P-side cancel discards the
-  stage. `provisioningComplete` is the one-shot consumer of the id.
+Rules:
+- **Secrets last (I3):** the IK-bearing blob exists only AFTER the human SAS confirmation, and it
+  is encrypted under the SAS-verified DH secret itself (HKDF → AEAD, using the lib's
+  `calculateAgreement` + `HKDFv3` + AES-CBC/HMAC primitives — the stock `ProvisioningCipher`
+  generates its own internal ephemeral, which would bypass the verified secret, so the explicit
+  construction is REQUIRED).
+- **Two-phase commit:** mutation STAGED at `provisionDevice`, committed only on
+  `provisioningComplete`. Until completion the blob may be re-fetched against the same
+  `provisioningId`; TTL expiry or a primary-side cancel discards the stage.
+  `provisioningComplete` is bound to the SAME authenticated socket session that called
+  `openProvisioning` — knowledge of `provisioningId` alone drives nothing (round-2 security
+  finding 6).
+- **Revoke preempts linking:** a `revokeDevice` mutation AUTO-CANCELS any pending stage and takes
+  the version slot — a security action never waits on a stuck link. Cancel is primary-only.
+- **Abort hygiene (I1, round-2 data-loss finding 2):** on TTL expiry, cancel, or
+  `provisioningComplete` failure, N MUST discard IK, all minted key material, and the assigned
+  deviceId — a failed link leaves N exactly as unkeyed as before it started. The server likewise
+  rejects any bundle upload tagged with a never-activated deviceId.
 - Concurrent link attempts: two staged mutations both at `v+1` — the second commit loses on the
-  version check; primary re-signs at `v+2` and re-submits (bounded retry, then surface failure).
+  version check; primary re-signs at `v+2` and re-submits (bounded retry, then surfaced failure).
 - Both ceremony sides are new clients by definition; no legacy compat needed here.
 
 ### 5.2 Send fan-out and device-list freshness (Sesame §3.3 + E2E cross-check)
@@ -186,26 +224,31 @@ device)* plus one per *(sender's other devices)* (self-sync), each from its own 
 
 Freshness is checked at TWO layers:
 1. **Server-side (liveness):** stale stamps → reject `deviceListStale { userId, version,
-   listCanonical, listSignature, enrollment }`; client verifies the signature chain (I7), updates
-   its cache, re-encrypts, resends. Retry cap 3, then a surfaced send failure — never silently
-   dropping devices (I5).
-2. **End-to-end (trust — security finding 2, folded):** the E2E plaintext envelope (the existing
-   `{content, …}` JSON that gets Signal-encrypted) gains
+   listCanonical (base64), listSignature, enrollment }`; client verifies the signature chain (I7),
+   updates its cache, re-encrypts, resends. Retry cap 3, then a surfaced send failure — never
+   silently dropping devices (I5).
+2. **End-to-end (trust):** the E2E plaintext envelope gains
    `senderListInfo: {ownVersion, ownListHash, peerVersion, peerListHash}` — the sender's view of
-   BOTH lists at encrypt time. Each receiving device compares `peerVersion/peerListHash` (the
-   sender's view of the RECIPIENT's list) against its own current list: if the sender was fed an
-   older version than the recipient knows to be current, the recipient renders the stale-list
-   alarm — a server freezing a peer at an old list is exposed by the first message from any honest
-   device, and can only stay hidden by blocking messages entirely (plain DoS). Same check on
-   `ownVersion` guards the reverse direction. Older clients ignore the extra field
-   (root `CLAUDE.md` §7 envelope-compat convention).
+   BOTH lists at encrypt time. Escalation discipline (round-2 security finding 3 — the field is
+   attacker-controlled plaintext):
+   - Sender's view OLDER than recipient's own current list → candidate freeze signal: recipient
+     re-fetches its own signed list; the alarm renders ONLY after the recipient independently
+     confirms the discrepancy against DAK-signed data. A bare peer claim NEVER alarms (I7).
+   - Sender CLAIMS NEWER than the recipient knows → unverifiable: triggers one rate-limited
+     re-fetch; if the server confirms the recipient is current, the claim is DISCARDED as noise.
+     Never a standalone alarm — a lying peer gets one bounded fetch, not an alarm oracle.
+   - **Self-sync envelopes** (peer == self): both halves reference the same account list; a
+     legitimate link/revoke race puts own devices briefly at different versions. Bounded own-list
+     skew renders as a benign "syncing devices…" state, NEVER the identity-changed surface
+     (round-2 security finding 5).
+   - Older clients ignore the extra field (root `CLAUDE.md` §7 envelope-compat convention).
 
-Version match → one message row + N envelope rows in ONE transaction (no crash window stranding
-envelopes vs rows), then per-device delivery (§5.3). Sessions to a newly-seen deviceId are built
-lazily via `fetchPreKeyBundle {userId, deviceId}` (per-device OTP claim; `preKeysLow {remaining}`
-becomes per-device, routed to that device).
+Version match → one message row + N envelope rows in ONE transaction, then per-device delivery
+(§5.3). Sessions to a newly-seen deviceId are built lazily via `fetchPreKeyBundle {userId,
+deviceId}` (per-device OTP claim; `preKeysLow {remaining}` becomes per-device, routed to that
+device).
 
-### 5.3 Realtime delivery, rooms, push
+### 5.3 Realtime delivery, rooms, push, history reads
 
 - Socket auth carries `deviceId` (JWT claim); socket joins `user:<uid>` (metadata: reactions,
   delivery, list changes, deletes) **and** `device:<uid>:<did>` (ciphertext: `newMessage`,
@@ -213,28 +256,44 @@ becomes per-device, routed to that device).
 - `emitToNewestTab` survives, demoted to *within one web device*: tabs of a linked PWA share one
   session store, so ciphertext to a device room targets that device's newest socket (renamed
   `emitToDeviceNewestSocket`; its documented removal condition is unchanged, now per-device).
+- **Per-device history read (round-2 coherence finding 2):** `getMessages`/`findByConversation`
+  joins `message_envelopes` on the REQUESTING `(userId, deviceId)` and serves that device ITS
+  ciphertext. Fallback order per row: this device's envelope → legacy `encryptedContent`
+  (pre-migration and legacy-client rows) → explicit `envelopeStatus: "none_for_device"` marker
+  (the row predates this device's link). The marker is the discriminator that lets the client
+  render the honest "sent before this device was linked" placeholder instead of
+  `[Decryption failed]` or a stuck "Decrypting…" (round-2 data-loss finding 4).
 - Push suppression: skip push only for the device whose own socket has the conversation focused.
   Envelope `deliveredAt`/`readAt` stamped per device; wire keeps the projected single
-  `deliveryStatus` (no client change for peers).
+  `deliveryStatus` (recipient-envelopes-only projection, §4).
 
 ### 5.4 Self-sync, lost-ack, and the reconcile — coexistence rules (the danger zone)
 
 Own-sent messages: device B receives an envelope with `senderId == me` and
 `originDeviceId != myDeviceId` — decrypted like any inbound message (pairwise session between own
-devices), persisted normally. The existing early-return on own senderId
-(`messaging_provider.decrypt.dart:975`) becomes: skip ONLY when `originDeviceId == myDeviceId`.
+devices), persisted normally.
+
+**Every own-sender guard that switches from `senderId == me` to `originDeviceId == myDeviceId`**
+(round-2 coherence finding 4 — fixing only one leaves self-sync dead): the live-path queue guard
+(`messaging_provider.decrypt.dart:962-963`), the decrypt guard (`:975`), the third guard
+(`:1290`), and the history own-message branches (`history.dart:529`, `decrypt.dart:642`). The
+Phase-2 implementation checklist enumerates all five; missing one is a red falsification-6 run.
 
 **Rules, each with a falsification test (§10):**
 - **Reconcile untouched (I8).** `getServedMessageIds` stays per-user, row-existence based. The
-  origin device is served for its own rows like today (the row exists; envelopes are irrelevant).
-  A device linked AFTER a message existed sees the row in history (metadata; content shows as
-  undecryptable-by-absence-of-envelope → rendered as "sent before this device was linked", a new
-  honest placeholder — NOT `[Decryption failed]`, NOT retired, and NEVER a destruction trigger).
-- **Lost-ack keyed by `sendToken`** (data-loss finding 4, folded): the client mints a UUID per
-  send, stores it in the durable pending-send record, and the server echoes it on own-message
-  history rows. The own-message reconcile branch matches by `sendToken` (exact-ciphertext equality
-  retained as the legacy fallback for pre-migration records). This survives the envelope model,
-  where the origin's own row carries no origin-readable ciphertext.
+  origin device is served for its own rows like today. A device linked AFTER a message existed
+  sees the row via the `none_for_device` marker (§5.3) — an honest placeholder, NEVER a
+  destruction trigger, never `[Decryption failed]`, never retired. (Round-2 data-loss review
+  verified: no path through the ledger gate, terminal-duplicate retirement, or reconcile can
+  destroy on this marker — there is no ciphertext and no stored plaintext to act on.)
+- **Lost-ack keyed by `sendToken`, with uniqueness law (round-2 data-loss finding 1 — the token
+  guards the ONLY plaintext copy):** client mints a UUID per send; server enforces per-sender
+  uniqueness (duplicate token = duplicate send, rejected); the own-message reconcile branch
+  matches on `(senderId, originDeviceId, sendToken)` and MUST resolve to EXACTLY ONE row — an
+  ambiguous match is a no-op that NEVER consumes the pending record. Retry of the SAME send
+  (same pending record, same ciphertexts) reuses its token — same row either way. An EDIT mints
+  new ciphertexts but is a mutation of an already-acked row and never touches pending-send.
+  Exact-ciphertext equality remains the legacy fallback for pre-migration records.
 - A self-sync row must NEVER consume a pending-send record (origin-device scoping).
 - The `messageSent` ack goes only to the origin device; other own devices get envelopes.
 - Own-device sessions run through the same `_sessionTails` serialization, keyed
@@ -242,7 +301,8 @@ devices), persisted normally. The existing early-return on own senderId
 
 ### 5.5 Revocation
 
-Primary-only action (DAK-signed mutation, `revokedAt` set, version+1, one transaction):
+Primary-only action (DAK-signed mutation, `revokedAt` set, version+1, one transaction; preempts
+any pending provisioning stage — §5.1):
 - server stops routing envelopes to the device, deletes its refresh tokens + push rows, kicks its
   sockets; its still-valid access JWT gets SILENCE from `getServedMessageIds` (I6) and rejection
   from mutating handlers until natural expiry;
@@ -252,16 +312,30 @@ Primary-only action (DAK-signed mutation, `revokedAt` set, version+1, one transa
 - the revoked device's OTPs are purged (only that device could complete those handshakes; it is no
   longer served envelopes).
 
-### 5.6 Disappearing messages — deliberate ruling (data-loss finding 2, resolved by ruling)
+### 5.6 Disappearing messages — deliberate ruling
 
-Row-level expiry is RETAINED: the read-based TTL starts when the recipient USER first reads
-(any device), and at the deadline the row + ALL envelopes are destroyed — including an envelope a
-linked device never fetched. **Disappear means disappear, on every device, at one deadline.**
-Per-envelope expiry was considered and rejected: it would keep "disappeared" content alive on idle
-devices past the deadline, trading a privacy guarantee for sync completeness. Consequence, stated
-honestly in docs and UI: a linked device offline past the deadline never shows that message (same
-behavior as Signal). Falsification 11 asserts no error artifact is produced — the row is simply
-absent; client-side destruction rules (server-clock gating, §7 root) are unchanged and per-device.
+Row-level expiry is RETAINED: the read-based TTL starts ONLY per invariant **I9** — the recipient
+user's `markConversationRead` over the PEER's rows, exactly today's
+`markConversationAsReadFromSender` semantics. It never starts from envelope stamps and never from
+the sender's own device reading its self-sync copy (round-2 data-loss finding 3). At the deadline
+the row + ALL envelopes are destroyed — including an envelope a linked device never fetched.
+**Disappear means disappear, on every device, at one deadline.** Per-envelope expiry was
+considered and rejected: it would keep "disappeared" content alive on idle devices past the
+deadline. Consequence, stated honestly in docs and UI: a linked device offline past the deadline
+never shows that message (same behavior as Signal). Falsification 11 asserts no error artifact is
+produced; client-side destruction rules (server-clock gating, root §7) are unchanged and
+per-device.
+
+### 5.7 Edit under envelopes (round-2 coherence finding 1)
+
+Editing is sender-only, any of the sender's devices (they all hold the plaintext via self-sync),
+within the existing 15-minute window checked server-side against the row. The inbound wire becomes
+`editMessage { messageId, envelopes: [{userId, deviceId, ciphertext}] }` — a full re-fan: one new
+ciphertext per recipient device AND per sender's other devices. The server verifies sender + window
++ device-list coverage (same staleness bounce as §5.2), REPLACES each `message_envelopes.ciphertext`
+row in one transaction (legacy `encryptedContent` updated too while mixed-model rows exist), stamps
+`editedAt`, and fans each device its own edited envelope via `messageEdited`. Reject paths
+(`editMessageFailed`) unchanged. An edit never mints or consumes a `sendToken` (§5.4).
 
 ## 6. Registration lock and reset (Phase 0, ships before any device work)
 
@@ -269,40 +343,50 @@ absent; client-side destruction rules (server-clock gating, §7 root) are unchan
 Promote the existing `[identity-churn]` branch (`key-bundles.service.ts:46-53`) to: durable
 server-side audit row; WS + push notice to the account's other sessions/endpoints ("your security
 identity was replaced from a new sign-in"); peer-visible flag corroborating the client's
-`PEER_IDENTITY_CHANGED` state; **in-conversation timeline row on peer clients** (restores the
-takeover alarm removed 2026-08-15 — re-raised on new evidence, owner may re-overrule). Wording
-follows the 08-16 consented-recovery framing ("new device/browser sign-in", wipe variant).
+`PEER_IDENTITY_CHANGED` state; **in-conversation timeline row on peer clients** (owner-ratified
+2026-08-17, explicitly superseding the 2026-08-15 banner-removal ruling for this narrower
+event-driven row). Wording follows the 08-16 consented-recovery framing.
 
 ### 6.1 Single-device registration lock (pre-multi-device)
 `upsertKeyBundle` with a DIFFERENT `identityPublicKey` than stored requires
 `sig_oldIK(newIdentityPublicKey ‖ userId ‖ serverNonce)`. Same-identity re-uploads (today's
 every-connect re-upload) pass unchanged. Genuine loss → §6.2.
-**Nonce spec** (security finding 6, folded): CSPRNG-generated (unpredictable, never
-counter/timestamp), single-use, TTL ≤ 5 min, bound to the issuing authenticated socket session —
-a nonce issued to one session is invalid on any other. Scope honesty: this measure defends against
-**P** (password thief) under an HONEST server; a colluding **S** can issue chosen nonces — that
-threat is handled by the peer-side chain (I7), not by §6.1.
+**Nonce spec:** CSPRNG-generated (unpredictable, never counter/timestamp), single-use, TTL ≤ 5 min,
+bound to the issuing authenticated socket session. Scope honesty: defends against **P** under an
+HONEST server; a colluding **S** can issue chosen nonces — that threat is handled by the peer-side
+chain (I7), not by §6.1.
 
 ### 6.2 Reset ceremony (all devices / identity lost)
 Credential login → `resetIdentityRequest` → server starts a **72 h** timer, immediately notifying
 every live session AND every registered push endpoint (FCM + Web Push; this app has no email —
 push is the only offline channel, which is WHY the delay is 72 h and not 24). Any session can
 CANCEL with one tap (no key required). Peers' conversations are marked pending-reset.
-Hardening (security finding 5, folded):
+Hardening:
 - **Rate limit**: one pending request per account; a new request while one is pending is a no-op
-  returning the existing deadline; after a cancel, cooldown 24 h before the next request (a
-  credentialed attacker cannot spam notification fatigue).
+  returning the existing deadline; after a cancel, cooldown 24 h before the next request.
 - **Cancel/expiry serialization**: expiry-commit runs in one transaction that re-checks
   not-cancelled; states are terminal (`completed` / `cancelled`) — a late cancel after commit is a
   no-op, never an identity rollback; a cancel that wins the race aborts the commit.
 On expiry the server accepts a fresh IK + fresh enrollment; peers get the loud identity-changed
-surface. Optional recovery key (owner-undecided, §11) shortcuts the timer.
+surface.
+
+#### 6.2.1 Recovery key (owner-ratified for 0b; spec per round-2 security finding 2)
+Generated client-side on demand: **12-word BIP39-style phrase from ≥128 bits CSPRNG**, shown once,
+never stored on-device or transmitted except as a verifier. Server stores an **Argon2id** hash
+(memory-hard parameters pinned at implementation; NEVER a fast hash — a DB dump must not make the
+phrase brute-forceable). Semantics:
+- **Shortens, never silences:** presenting the phrase reduces the reset delay from 72 h to a
+  **1 h cancel window** with the SAME notifications to every session and push endpoint (I4). There
+  is no zero-delay path — a stolen phrase still rings every bell and leaves an hour to cancel.
+- **Single-use:** invalidated on use AND on any completed reset; a new phrase must be generated
+  afterward.
+- **Online guessing bounded:** attempts rate-limited with lockout/cooldown per account.
+- Users without a phrase: exactly the 72 h path, unchanged.
 
 ### 6.3 Primary migration (planned handover) — ROTATION, never copy
-(Security finding 3, folded — a copied DAK would leave the demoted primary with permanent minting
-authority.) New primary candidate generates a fresh **DAK′** in its own Keystore; old primary signs
-the replacement enrollment `E′ = sig_oldDAK(userId ‖ dakPub′ ‖ createdAt′)` after the same
-QR + SAS ceremony as §5.1; server pins `E′`; peers re-pin on next fetch via the E→E′ chain (old DAK
+New primary candidate generates a fresh **DAK′** in its own Keystore; old primary signs the
+replacement enrollment `E′ = sig_oldDAK(userId ‖ dakPub′ ‖ createdAt′)` after the same QR + SAS
+ceremony as §5.1; server pins `E′`; peers re-pin on next fetch via the E→E′ chain (old DAK
 authority dies at that instant); a DAK′-signed mutation flips `isPrimary`. The DAK private half
 never leaves the device that minted it, ever. Old primary lost → reset §6.2 (the DAK is gone —
 that is the designed outcome).
@@ -311,14 +395,15 @@ that is the designed outcome).
 
 | Surface | Today | After |
 |---|---|---|
-| `sendMessage` | one `encryptedContent` | `envelopes[]` + `sendToken` + two list-version stamps; reject path `deviceListStale` |
-| E2E plaintext envelope | `{content, messageType?, media…}` | + `senderListInfo {ownVersion, ownListHash, peerVersion, peerListHash}` (older clients ignore) |
+| `sendMessage` | one `encryptedContent` | `envelopes[]` + `sendToken` (unique per sender) + two list-version stamps; reject path `deviceListStale` (listCanonical as base64) |
+| `editMessage` | one new `encryptedContent` | `envelopes[]` full re-fan; per-device envelope-row replacement; window/sender checks unchanged (§5.7) |
+| E2E plaintext envelope | `{content, messageType?, media…}` | + `senderListInfo {ownVersion, ownListHash, peerVersion, peerListHash}` (older clients ignore; escalation discipline §5.2) |
 | `newMessage` / `messageEdited` | newest tab of user | device room, newest socket within device; payload + `originDeviceId` |
-| own-message history rows | ciphertext echo | + `originDeviceId`, `sendToken` (lost-ack match key) |
-| `uploadKeyBundle` / `fetchPreKeyBundle` / `uploadOneTimePreKeys` / `preKeysLow` / `checkOwnKeyBundle` | per user | per `(user, device)`; bundle mutation rules of §6.1 |
-| `messageDelivered` / read events | per message | unchanged shape; server projects from envelopes (column-scoped UPDATE only) |
+| `getMessages` history rows | `encryptedContent` echo | requesting device's envelope ciphertext → legacy fallback → `envelopeStatus: "none_for_device"` marker (§5.3); own rows + `originDeviceId`, `sendToken` |
+| `uploadKeyBundle` / `fetchPreKeyBundle` / `uploadOneTimePreKeys` / `preKeysLow` / `checkOwnKeyBundle` | per user | per `(user, device)`; bundle mutation rules of §6.1; uploads for never-activated deviceIds rejected (§5.1) |
+| `messageDelivered` / read events | per message | unchanged shape; server projects from RECIPIENT envelopes only, column-scoped UPDATE (§4) |
 | `getServedMessageIds` | per user, row-existence | **UNCHANGED (I8)**; SILENCE to revoked devices (I6) |
-| NEW | — | `openProvisioning`, `provisionDevice`, `provisioningBlob`, `provisioningComplete`, `deviceListChanged`, `getDeviceList`, `revokeDevice`, `resetIdentityRequest/Cancel` |
+| NEW | — | `openProvisioning`, `provisioningHello`, `provisionDevice`, `provisioningBlob`, `provisioningComplete` (session-bound), `deviceListChanged`, `getDeviceList`, `revokeDevice` (preempts stages), `resetIdentityRequest/Cancel` |
 | `socketReady`, `getServerTime`, delete/clear/unfriend, reactions | per user | unchanged (delete fan-out cascades envelopes) |
 
 ## 8. Compatibility and rollout
@@ -328,16 +413,20 @@ that is the designed outcome).
 - **Only a Keystore-capable device may become primary** (I2) — in practice the Android APK. A
   PWA-only account (today's iOS users) stays single-device until an iOS app exists; the web client
   can be a *linked* device only. Stated to the user at enable time.
-- **Reconcile safety across the mixed model (I8, data-loss finding 6):** "served" is row-existence
-  based for every row shape — pre-migration rows (legacy `encryptedContent`, no envelopes),
-  legacy-client sends (stored as a device-1 envelope), and new envelope-only rows all reconcile
-  identically. No first-launch mass-purge shape exists by construction; falsification 13 pins it.
-- Legacy client → new server: single-ciphertext sends accepted, stored as a device-1 envelope. A
-  legacy sender cannot encrypt to linked devices — window kept small by rollout ORDER: server first
-  (accepts both), clients next (send envelopes), linking UI enabled LAST, gated on
-  min-client-version per account.
+- **Reconcile safety across the mixed model (I8):** "served" is row-existence based for every row
+  shape — pre-migration rows, legacy-client sends (stored as a device-1 envelope), and new
+  envelope-only rows reconcile identically. No first-launch mass-purge shape exists by
+  construction; falsification 13 pins it.
+- Legacy client → new server: single-ciphertext sends accepted, stored as a device-1 envelope.
+  Window kept small by rollout ORDER: server first (accepts both), clients next (send envelopes),
+  linking UI enabled LAST, gated on min-client-version per account.
 - New client → old server: capability-probed (no `getDeviceList` answer = legacy server); client
   stays single-device, fail-closed.
+- **Phase-1 migration transactionality (round-2 data-loss finding 5):** the schema+backfill
+  migration runs as ONE Postgres transaction with PLAIN (non-CONCURRENTLY) index creation — the
+  runner's abort-on-boot then guarantees clean rollback and idempotent re-run; table sizes here do
+  not justify `CONCURRENTLY`'s non-transactional risk (an INVALID index blocking bundle upserts =
+  key-delivery outage).
 - e2e-wire harness grows the two-devices-one-account suite BEFORE Phase 1 merges (§10). Staging
   dress rehearsal for every schema phase (root §6).
 
@@ -346,9 +435,9 @@ that is the designed outcome).
 | Phase | Content | Ships value alone? | Acceptance |
 |---|---|---|---|
 | **0a** | churn alarm: audit row + session/push notify + peer timeline row | YES — takeover detection | live-fire: bundle replace on a test account alerts second session + peer within 5 s |
-| **0b** | registration lock §6.1 + reset ceremony §6.2 | YES — takeover prevention | red-first: password-only bundle replace rejected; reset honors 72 h, rate limit, cancel/expiry serialization |
-| **1** | schema: `devices`, `(userId,deviceId)` bundles/OTPs, re-keyed 3-site epoch, JWT `deviceId`, refresh/push device columns, `originDeviceId`+`sendToken`; every account = device 1 | invisible; unblocks all | full suites + wire harness green single-device; falsifications 1, 13 |
-| **2** | provisioning §5.1, DAK + signed list + cross-check §5.2, envelopes, self-sync §5.4, rooms §5.3, revocation §5.5 | the feature | two-device harness: link → both receive → self-sync → revoke → stale bounce; ALL §10 falsifications green; own Phase-2 spec review first |
+| **0b** | registration lock §6.1 + reset ceremony §6.2 + recovery key §6.2.1 | YES — takeover prevention | red-first: password-only bundle replace rejected; reset honors 72 h/rate limit/serialization; recovery path slow-hashed, single-use, still-loud (falsification 21) |
+| **1** | schema: `devices`, `(userId,deviceId)` bundles/OTPs, re-keyed 3-site epoch, JWT `deviceId`, refresh/push device columns, `originDeviceId`+`sendToken` (unique); single-transaction migration | invisible; unblocks all | full suites + wire harness green single-device; falsifications 1, 13 |
+| **2** | provisioning §5.1, DAK + signed list + cross-check §5.2, envelopes + history reads §5.3, self-sync §5.4, revocation §5.5, edit re-fan §5.7 | the feature | two-device harness: link → both receive → self-sync → edit re-fan → revoke → stale bounce; ALL §10 falsifications green; own Phase-2 spec review first |
 | **3** | device management UI (list, rename, revoke, last-seen), migration comms | usability | device-proven on owner's hardware |
 | **4** | history-on-link via sealed-store archive (own design doc) | optional | — |
 
@@ -361,17 +450,17 @@ that is the designed outcome).
 4. `deviceListStale` answer with an INVALID signature chain → client refuses the list and fails the
    send (I7 — never the server's bare word).
 5. Send addressed to a stale list → rejected atomically; zero envelopes written.
-6. Self-sync row must NOT consume a pending-send record (origin-device scoping) — red if the
-   `originDeviceId` guard is removed.
+6. Self-sync: EVERY own-sender guard (`decrypt.dart:962, :975, :1290`, `history.dart:529`,
+   `decrypt.dart:642`) switched to origin-device scoping — a self-sync row decrypts AND must not
+   consume a pending-send record; red if any single guard is missed.
 7. Concurrent send + revoke: revoked device receives no envelope for a message committed after the
    revocation transaction.
 8. Provisioning blob replayed to a different ephemeral key → undecryptable; expired TTL → rejected;
-   `provisioningComplete` is one-shot.
+   `provisioningComplete` one-shot AND rejected from any session other than the opener's.
 9. Fail-closed inheritance: device-list fetch timeout on send → send FAILS; per-device
    `checkOwnKeyBundle` UNKNOWN → no key generation (0.1.10 invariant).
-10. Reset: cancel from a live session halts the timer; cancel racing expiry-commit is serialized
-    (terminal states; late cancel = no-op, never rollback); repeated requests rate-limited; peers
-    never see identity-changed on a cancelled reset.
+10. Reset: cancel halts; cancel racing expiry-commit serialized (terminal states); repeated
+    requests rate-limited; peers never see identity-changed on a cancelled reset.
 11. Expiry: at deadline row + ALL envelopes destroyed; a device that never fetched its envelope
     shows NO error artifact (row absent, §5.6); devices that decrypted destroy plaintext per
     existing clock rules.
@@ -379,64 +468,80 @@ that is the designed outcome).
     `(identity, deviceId)`.
 13. **Reconcile mass-purge guard (I8):** origin device's own new-model sends, pre-migration rows,
     and legacy-client rows ALL reconcile as served; a revoked device's reconcile gets SILENCE and
-    purges nothing; a device linked after a message existed never treats that row as a destruction
-    trigger.
-14. **Lost-ack via `sendToken`:** drop the `messageSent` ack on an envelope-model send → history
-    pass recovers plaintext by token match, persists under real id, read-back verified (mirror of
-    `messaging_provider_lost_ack_test.dart`).
-15. **ephPub substitution:** swap ephPub in the QR relay while keeping all other fields → P's
-    recomputed SAS differs (human check fails); assert SAS derivation binds ephPub AND
-    provisioningId.
+    purges nothing; a `none_for_device` row is never a destruction trigger.
+14. **Lost-ack via `sendToken`:** drop the ack → recovery by token match, read-back verified.
+    COLLISION case: a duplicate token is rejected server-side; an artificially ambiguous match is
+    a no-op that does NOT consume the pending record (round-2 data-loss finding 1).
+15. **SAS grinding (rewritten):** an adversary substituting an ephemeral on the relayed leg cannot
+    produce a COLLIDING SAS — the test derives both honest SAS values and asserts the adversary,
+    holding only public transcript values plus its own private keys, cannot compute either target
+    (DH-bound SAS; not the v3 naive-swap test).
 16. **Split-view/freeze:** server serves peer A a frozen validly-signed old list (v3) after B
-    revoked a device (v5) → the first message A receives from any of B's devices carries
-    `senderListInfo` exposing v5; A renders the stale-list alarm. Red without the E2E cross-check.
+    revoked a device (v5) → first message from any of B's devices exposes v5 via `senderListInfo`;
+    A re-fetches, independently confirms, alarms. Red without the E2E cross-check.
 17. **DAK rotation:** after §6.3 handover, a mutation signed by the OLD DAK → rejected by server
-    AND peers (proves rotation, not copy).
-18. **Two-phase provisioning:** kill N's socket between blob relay and `provisioningComplete` →
-    no device row, no list mutation, blob re-fetchable until TTL; peers never see the device.
-19. **Projection safety:** delivery projection updates change ONLY `deliveryStatus`;
-    `expiresAt`/`disappearAfterSeconds` byte-identical before/after (data-loss finding 5).
-20. **Concurrent double-link:** two staged mutations at v+1 → second rejected on version; primary
-    re-signs at v+2; exactly one device added per ceremony.
+    AND peers.
+18. **Two-phase provisioning:** kill N between blob and `provisioningComplete` → no device row, no
+    list mutation, blob re-fetchable until TTL; AND **N discards IK + minted keys + deviceId on
+    abort** — post-abort N's keystore is empty and its bundle upload is rejected (I1).
+19. **Projection safety:** delivery projection changes ONLY `deliveryStatus` via scoped UPDATE
+    (incl. the converted `updateDeliveryStatus`); `expiresAt`/`disappearAfterSeconds`
+    byte-identical; **self-sync envelopes never flip the projection** (a sender's second device
+    reading its copy produces no DELIVERED/READ receipt); **read-TTL never starts from envelope
+    stamps or self-sync reads (I9)**.
+20. **Concurrent double-link:** two staged mutations at v+1 → second rejected; primary re-signs at
+    v+2; exactly one device added per ceremony. Revoke PREEMPTS a pending stage.
+21. **Recovery key:** verifier is Argon2id (fast-hash red test); phrase single-use; attempts
+    rate-limited; the shortened path still notifies every session + push endpoint and honors the
+    1 h cancel window.
+22. **False-alarm discipline:** a malicious peer sending bogus `senderListInfo` (older AND newer
+    claims) produces at most one rate-limited re-fetch and NO alarm when the server's signed list
+    confirms the recipient is current; own-device bounded skew renders "syncing devices", never
+    identity-changed.
+23. **Canonical bytes:** `listCanonical` survives transport byte-exact (re-serialization must not
+    change `listHash`); duplicate-key / ambiguous canonical bytes rejected at parse.
+24. **Edit re-fan (§5.7):** an edit replaces EVERY device's envelope in one transaction; a device
+    offline during the edit receives the edited ciphertext on next history read; edit from a
+    non-origin own device succeeds; `editMessageFailed` paths unchanged; no `sendToken` minted.
 
-## 11. Open questions (owner)
+## 11. Open questions (owner) — ALL RATIFIED 2026-08-17
 
-1. Restore the in-conversation identity-changed timeline row (0a includes it; prior ruling removed
-   the banner — this is a narrower, event-driven row, re-raised on takeover-alarm evidence). Y/N?
-   **OPEN — owner asked for explanation 2026-08-17, decision pending.**
-2. Optional recovery key (client-generated words, hash-only server-side) to shortcut the 72 h reset
-   — adopt in 0b, later, or never?
-   **OPEN — owner asked for explanation 2026-08-17, decision pending.**
-3. Device cap 3 (1 primary + 2 linked) — **CONFIRMED (owner, 2026-08-17).**
-4. Reset delay 72 h (push-only offline channel; no email exists in this app) —
-   **CONFIRMED (owner, 2026-08-17).**
-5. "iOS-PWA users cannot be primaries / cannot link until an iOS app exists" (web-held DAK rejected
-   under I2) — **CONFIRMED (owner, 2026-08-17).**
-6. §5.6 ruling — disappear-at-one-deadline beats per-device retention —
-   **CONFIRMED (owner, 2026-08-17).**
+1. In-conversation identity-changed timeline row — **YES** (supersedes the 2026-08-15
+   banner-removal ruling for this narrower event-driven row; 0a ships it).
+2. Recovery key — **YES, in 0b** (spec §6.2.1).
+3. Device cap 3 — **CONFIRMED.**
+4. Reset delay 72 h — **CONFIRMED.**
+5. iOS-PWA users cannot be primaries until an iOS app exists — **CONFIRMED.**
+6. Disappear-at-one-deadline (§5.6) — **CONFIRMED.**
 
 ## 12. Review record
 
-- **2026-08-17 — data-loss review (reviewer subagent): REVISE (blocking).** 6 findings, all folded:
-  (P0) v2's per-device "served" predicate would have destroyed senders' own plaintext on every send
-  — reverted to row-existence reconcile, now invariant **I8** + falsification 13; (P1) row expiry
-  cascading away an unfetched envelope — resolved by explicit §5.6 ruling (disappear-at-deadline is
-  the product semantic) + falsification 11; (P1) revoked device's reconcile would mass-purge its
-  local history — server SILENCE rule in I6/§5.5 + falsification 13; (P1) lost-ack exact-ciphertext
-  match cannot fire under the envelope model — `sendToken` match key, §5.4 + falsification 14;
-  (P2) delivery projection could clobber expiry stamps — column-scoped UPDATE rule, §4 +
-  falsification 19; (P2) mixed-model reconcile mass-purge on migration — I8/§8 + falsification 13.
-- **2026-08-17 — security review (reviewer subagent, defensive framing; first spawn was refused by
-  a content filter and re-dispatched): SHIP-WITH-FIXES leaning REVISE.** 6 findings, all folded:
-  (MAJOR) SAS digits carried in the QR don't bind ephPub → SAS now derived both sides from
-  `(ephPubN, provisioningId)`, never transmitted, §5.1 + falsification 15; (MAJOR) list freshness
-  verified only by the untrusted server → end-to-end `senderListInfo` cross-check inside the E2E
-  envelope, §5.2/I7 + falsification 16, threat-matrix row³; (MAJOR) §6.3 DAK copy left demoted
-  primary with permanent authority → rotation-only handover, §6.3/I2 + falsification 17;
-  (MINOR) keyless-listed-device on post-commit blob loss → two-phase staged commit on
-  `provisioningComplete`, §5.1 + falsification 18; (MINOR) reset DoS/races/offline notification →
-  rate limit + cancel/expiry serialization + push channel + delay rationale, §6.2/I4 +
-  falsification 10; (MINOR) §6.1 nonce underspecified → CSPRNG/TTL/session-bound spec + honest-
-  server scope note, §6.1.
-- **Owner ratification: §11 items 3/4/5/6 CONFIRMED 2026-08-17; items 1/2 pending.** Phase 2 gets
-  its own spec-level review round before implementation, per phase plan.
+- **Round 1 (2026-08-17, on v2):**
+  - Data-loss review (reviewer subagent): REVISE — 6 findings folded into v3 (I8 origin, SILENCE
+    rule, sendToken concept, column-scoped projection, §5.6 ruling, mixed-model reconcile).
+  - Security review (reviewer subagent; first spawn refused by a content filter, re-dispatched
+    defensively framed): SHIP-WITH-FIXES — 6 findings folded into v3 (SAS concept, E2E list
+    cross-check, DAK rotation, two-phase commit, reset hardening, nonce spec).
+- **Round 2 (2026-08-17, on v3 — three fresh reviewers + independent SAS literature check):**
+  - Coherence + feasibility review: REVISE — 5 findings, all folded into v4: edit-under-envelopes
+    was unspecified (§5.7 + falsification 24); per-device history read path missing (§5.3 +
+    `none_for_device` marker); projection counted self-sync envelopes → false read receipts
+    (recipient-only rule, §4); only 1 of 5 own-sender guards named (§5.4 enumeration +
+    falsification 6); existing `updateDeliveryStatus` full-entity save named as conversion target.
+    Also re-verified v3's code claims against source — all accurate.
+  - Security review: SHIP-WITH-FIXES leaning REVISE — 6 findings, all folded: **v3's SAS was
+    offline-grindable** (single-party public input; independently confirmed against
+    Vaudenay/ZRTP literature) → two-round DH-bound SAS with secrets-last ordering (§5.1 +
+    falsification 15 rewritten); recovery key was adopted but unspecified → §6.2.1 (Argon2id,
+    single-use, still-loud, 1 h window; falsification 21); `senderListInfo` false-alarm/claims-
+    newer discipline (§5.2 + falsification 22); `listCanonical` byte-exact transport + canonical
+    constraints (§3 + falsification 23); self-sync listInfo skew (§5.2); revoke-preempts-stage +
+    session-bound `provisioningComplete` (§5.1/§5.5 + falsifications 8, 20).
+  - Data-loss review (first spawn failed before emitting; re-run): SHIP-WITH-FIXES — 5 findings,
+    all folded: sendToken uniqueness/ambiguity law (P1 — sole-plaintext-copy misbinding; §4/§5.4 +
+    falsification 14); abort-discard of IK on failed provisioning (I1/§5.1 + falsification 18);
+    I9 read-TTL start conditions (§5.6 + falsification 19); `none_for_device` discriminator
+    (§5.3); Phase-1 single-transaction migration, no `CONCURRENTLY` (§8). Verified clean: SILENCE
+    fail-closed semantics; re-link of same physical device.
+- **Owner ratification: §11 items 1–6 ALL CONFIRMED 2026-08-17.**
+- **Next gate:** Phase-2 spec-level review round at implementation time, per phase plan.

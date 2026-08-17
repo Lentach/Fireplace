@@ -88,3 +88,36 @@ Meta engineering (WhatsApp multi-device + ADV), eprint 2021/626, Cremers USENIX 
   this in the doc so nobody "fixes" it.
 - Standing blockers unchanged and prerequisite to any APK/device work: `FIREBASE_SERVICE_ACCOUNT`
   absent on the VM (Android push dead), `.jks` keystore still single-copy on the dev PC.
+
+## Addendum — v4 round (same day, owner ordered full re-think)
+
+All §11 questions RATIFIED (1: timeline row YES — supersedes the 08-15 banner ruling for the
+narrower event-driven row; 2: recovery key YES in 0b; 3/4/5/6 confirmed). Three fresh reviewers on
+v3 plus an independent SAS literature check (Vaudenay/ZRTP: short auth strings need commitment or
+both-party/DH binding, else offline-grindable):
+
+- Coherence REVISE (5): edit-under-envelopes unspecified → new §5.7 full re-fan; per-device
+  history read path missing → §5.3 envelope-join + `none_for_device` marker; delivery projection
+  counted self-sync envelopes → FALSE READ RECEIPTS → recipient-only rule; own-sender guards are
+  FIVE sites (`decrypt.dart:962/:975/:1290`, `history.dart:529`, `decrypt.dart:642`), doc named
+  one; `updateDeliveryStatus` full-entity save (`messages.service.ts:319-320`) named as the
+  concrete column-scoped-UPDATE conversion target.
+- Security SHIP-WITH-FIXES→REVISE (6): **v3 SAS offline-grindable** → v4 two-round DH-bound SAS
+  (`provisioningHello`; SAS over the ECDH secret; IK blob only after human confirm, encrypted
+  under the verified secret — stock `ProvisioningCipher` mints its own ephemeral and would bypass
+  it); recovery key specced (§6.2.1); senderListInfo alarm discipline (verify-before-alarm,
+  claims-newer = one rate-limited fetch); listCanonical as opaque base64 + canonical constraints;
+  self-sync listInfo skew = benign "syncing devices"; revoke preempts stages +
+  `provisioningComplete` session-bound.
+- Data-loss SHIP-WITH-FIXES (5; first spawn died after grounding, respawn worked): sendToken
+  uniqueness/1:1/ambiguous-no-op law (P1 — the token guards the ONLY plaintext copy); abort =
+  N discards IK + minted keys (new I1 clause); I9 (read-TTL only from recipient
+  markConversationRead, never envelope stamps or self-sync reads); `none_for_device`
+  discriminator; Phase-1 migration single-transaction, no `CREATE INDEX CONCURRENTLY`.
+  Verified clean: SILENCE-to-revoked fail-closed semantics; same-device re-link.
+
+**v4 written with all 16 findings folded; falsifications 20 → 24 (15 rewritten as a true grinding
+test). Harness traps: security-reviewer agent tripped a content-filter refusal on adversarial
+framing (re-dispatch as `reviewer`, defensive wording); one reviewer exited 1 after grounding
+without emitting — respawn once.** Next: Phase 0a dispatch (own review cycle); Phase-2 spec review
+before its implementation.
