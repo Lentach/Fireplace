@@ -1,4 +1,4 @@
-# 2026-08-17 — Attachment sheet: Gallery/Camera tiles collapsed into the paperclip (0.1.14)
+# 2026-08-17 — Attachment picker: 0.1.14 (in-app sheet) then 0.1.15 (sheet deleted, OS picker direct)
 
 Owner follow-up to the 0.1.12 picker redesign: the separate Gallery and Camera action tiles
 are deleted; the paperclip is the single attachment door again, opening a three-option glass
@@ -82,3 +82,54 @@ Keep this trick: **capture/file-input platform questions need only a static page
 - Owner's device A/B of the two composer-motion changes — still owed.
 - `deploy-web.ps1` exit-21 publish halt — 7th manual publish this train; still un-root-caused.
 - Phase-2 video candidates (posters, shared-media tiles, custom camera) — do not build unasked.
+
+---
+
+# Same session, second release — 0.1.15: the flatten (PR #143, `9cdf916`)
+
+Owner spotted that 0.1.14's in-app sheet was a redundant hop on iOS: a plain
+`<input type=file>` (NO capture attribute) with a mixed media+document accept list makes
+iOS Safari itself present **Photo Library / Take Photo or Video / Choose File** — camera
+photo/video toggle included. Device-proven via `probe2.html` (LAN, beaconed) BEFORE
+building: trio appears for both extension-style and MIME-style accept; owner picked
+successfully from both; the `cancel` event fired twice (closing 0.1.14's residual unknown).
+
+## What shipped
+
+- Paperclip → ONE `FilePicker.pickFiles(type: custom, allowedExtensions: images+videos+docs,
+  withData: true)`. No in-app sheet.
+- `_routePickedFile`: image whitelist → stage, video whitelist → stage, document whitelist →
+  `_sendDocument` (immediate send, extracted from the old `_pickDocument`), anything else →
+  `attachmentUnsupportedFileType` toast.
+- DELETED: `_AttachmentSheet`, `_AttachmentAction`, `camera_capture_stub/web.dart`,
+  ARB keys `attachmentOptionPhotoLibrary`/`attachmentOptionTakePhoto`. Net −238 lines.
+- Trade-offs (owner-informed): **Android loses the in-chat camera shortcut** (mixed accept →
+  generic file UI); a native APP build would get a file browser instead of the photo gallery
+  (`pickMedia()` branch deleted; PWA-only surface, reviewer-flagged, accepted).
+
+## Verification
+
+- Analyze clean; suite 1315/10sk; CI 4/4 on all three branch commits.
+- Browser E2E: paperclip opens the chooser DIRECTLY (no sheet); PDF → sent document bubble;
+  mp4 → staged video chip; fake `.heic` → unsupported toast, nothing staged.
+- **Evidence-precision episode (advisory challenged the heic claim):** the challenge said
+  CDP-fed files are accept-filtered before Dart runs, making the toast unreachable —
+  DISPROVEN by re-demo with screenshot (CDP `DOM.setFileInputFiles` bypasses accept
+  filtering; the earlier chooser timeout was a stale-ref misclick that opened the timer
+  sheet). Honest residue, noted on the PR: the branch is code-exercised; its REAL-WORLD
+  trigger (an iOS HEIC Safari didn't transcode) has never been observed on a device.
+- Independent reviewer (reviewer agent): verdict SHIP; 1 stale doc comment fixed (`23afe08`).
+
+## Deploy + the Giphy-key incident
+
+- Merge `318bdf3` (a parallel-session docs commit `64ca12e` rode along), bump `9cdf916`,
+  build in worktree, manual staged publish, smoke 5/5.
+- **⚠️ The FIRST 0.1.15 publish shipped without the Giphy key** — `deploy-web.config.ps1`
+  (gitignored) wasn't copied into the fp-flatten worktree; the script's BaseUrl/VAPID
+  parameter defaults masked the miss and smoke passed (smoke has no GIF check). GIF search
+  was dead in prod for ~15 minutes. Caught by advisory, rebuilt with the config,
+  republished, key presence verified in the LIVE `main.dart.js` (1 occurrence, md5-matched
+  to the local build), smoke re-run 5/5.
+- **Rule going forward: before publishing any worktree build, grep the built
+  `main.dart.js` for the Giphy key** (and remember the `bash` tool mangles `$var` in ssh
+  command strings — the false-negative remote grep here; verify via python subprocess).
