@@ -46,10 +46,10 @@ class ChatActionTiles extends StatelessWidget {
   /// composer heals the blur post-frame through this callback.
   final VoidCallback? onPingSent;
 
-  /// Composer staging seams (null only in standalone test mounts — the
-  /// Photo library / Take photo sheet options then no-op). The Photo library
-  /// entry routes BOTH media kinds: image → staged-image flow, video →
-  /// staged-video flow.
+  /// Composer staging seams (null only in standalone test mounts —
+  /// [_routePickedFile]'s media branches then no-op per branch; the
+  /// document branch is seam-free and still works). Media routes by
+  /// extension: image → staged-image flow, video → staged-video flow.
   final StageImageCallback? onStageImage;
   final StageVideoCallback? onStageVideo;
 
