@@ -2371,6 +2371,12 @@ abstract class AppLocalizations {
   /// In pl, this message translates to:
   /// **'Nieobsługiwany format wideo (tylko MP4)'**
   String get videoUnsupportedFormat;
+
+  /// No description provided for @attachmentUnsupportedFileType.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nieobsługiwany typ pliku'**
+  String get attachmentUnsupportedFileType;
 }
 
 class _AppLocalizationsDelegate

@@ -225,16 +225,21 @@ class ChatActionTiles extends StatelessWidget {
     await _stagePickedMedia(context, fileName: fileName, bytes: bytes);
   }
 
-  /// Routes picked media bytes into the composer by extension.
+  /// Routes picked media bytes into the composer by extension. Routing is
+  /// EXPLICIT both ways: only whitelisted image extensions stage as image,
+  /// only whitelisted video extensions stage as video, and anything else
+  /// (e.g. an iOS HEIC still the device did not transcode) gets an honest
+  /// unsupported-file toast — never a video-shaped error for an image.
   Future<void> _stagePickedMedia(
     BuildContext context, {
     required String fileName,
     required List<int>? bytes,
   }) async {
+    final l10n = AppLocalizations.of(context);
     if (bytes == null) {
       showTopSnackBar(
         context,
-        AppLocalizations.of(context).snackbarCouldNotReadFile,
+        l10n.snackbarCouldNotReadFile,
         backgroundColor: Colors.red,
       );
       return;
@@ -250,7 +255,15 @@ class ChatActionTiles extends StatelessWidget {
       );
       return;
     }
-    await onStageVideo!(bytes: Uint8List.fromList(bytes), filename: fileName);
+    if (_galleryVideoExtensions.contains(ext)) {
+      await onStageVideo!(bytes: Uint8List.fromList(bytes), filename: fileName);
+      return;
+    }
+    showTopSnackBar(
+      context,
+      l10n.attachmentUnsupportedFileType,
+      backgroundColor: Colors.red,
+    );
   }
 
   /// Paperclip door: one glass sheet routing all three attachment kinds

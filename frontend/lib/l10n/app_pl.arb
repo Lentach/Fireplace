@@ -489,5 +489,6 @@
   "videoMessage": "Wideo",
   "videoTooLarge": "Wideo jest za duże (maks. 20 MB)",
   "videoTooLong": "Wideo jest za długie (maks. 60 sekund)",
-  "videoUnsupportedFormat": "Nieobsługiwany format wideo (tylko MP4)"
+  "videoUnsupportedFormat": "Nieobsługiwany format wideo (tylko MP4)",
+  "attachmentUnsupportedFileType": "Nieobsługiwany typ pliku"
 }

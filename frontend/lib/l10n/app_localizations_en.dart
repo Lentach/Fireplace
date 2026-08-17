@@ -1294,4 +1294,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get videoUnsupportedFormat => 'Unsupported video format (MP4 only)';
+
+  @override
+  String get attachmentUnsupportedFileType => 'Unsupported file type';
 }

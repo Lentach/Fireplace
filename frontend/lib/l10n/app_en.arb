@@ -507,5 +507,6 @@
   "videoMessage": "Video",
   "videoTooLarge": "Video is too large (max 20 MB)",
   "videoTooLong": "Video is too long (max 60 seconds)",
-  "videoUnsupportedFormat": "Unsupported video format (MP4 only)"
+  "videoUnsupportedFormat": "Unsupported video format (MP4 only)",
+  "attachmentUnsupportedFileType": "Unsupported file type"
 }

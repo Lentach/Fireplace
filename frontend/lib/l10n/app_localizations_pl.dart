@@ -1313,4 +1313,7 @@ class AppLocalizationsPl extends AppLocalizations {
   @override
   String get videoUnsupportedFormat =>
       'Nieobsługiwany format wideo (tylko MP4)';
+
+  @override
+  String get attachmentUnsupportedFileType => 'Nieobsługiwany typ pliku';
 }
