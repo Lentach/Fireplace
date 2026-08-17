@@ -1,9 +1,10 @@
 # Multi-device (linked devices) — design
 
-**Status: DRAFT v4 — TWO full review rounds done (round 1: security + data-loss on v2; round 2:
-coherence + security + data-loss on v3, plus independent SAS literature check). All 16 round-2
-findings folded; §11 owner questions ALL ratified 2026-08-17. Remaining gate: Phase-2 spec-level
-review at implementation time. NO CODE until then.**
+**Status: v5 — FROZEN 2026-08-17 after THREE review rounds + a delta micro-verification (round 1
+on v2; round 2 on v3 + SAS literature check; round 3 delta-scoped termination round on v4; final
+micro-check on the round-3 folds returned FREEZE with zero mechanism findings). §11 owner
+questions ALL ratified. Design review is CLOSED at doc level; all further review happens at phase
+gates (spec-level, with code in hand — Phase 2 mandatory). NO CODE until Phase-0a dispatch.**
 Research record: `.cursor/session-summaries/2026-08-17-session-multidevice-research.md` and
 `.planning/multi-device/findings.md`.
 
@@ -150,8 +151,9 @@ New/changed tables (numbered migrations, staging rehearsal mandatory — root `C
   as a column-scoped UPDATE of `deliveryStatus`, NEVER a full-entity save — **the existing
   `MessagesService.updateDeliveryStatus` full-entity `save()` (`messages.service.ts:319-320`) is a
   named conversion target**; the mark-read path (`:568-570`) already uses a scoped update (round-2
-  coherence finding 5). Legacy `encryptedContent` retained for pre-migration rows and
-  legacy-client sends (§8); new multi-device sends write envelopes only.
+  coherence finding 5). Legacy `encryptedContent` retained for pre-migration rows ONLY —
+  legacy-client sends are converted to a device-1 envelope at ingest (§8), so new-model rows have
+  exactly one storage shape; new multi-device sends write envelopes only.
 - **`refresh_tokens`**: + `deviceId`, `deviceName` — the per-device session anchor; per-device
   revoke = delete that device's rows + kick its sockets. JWT payload gains `deviceId`.
 - **`fcm_tokens`** / **`web_push_subscriptions`**: + `deviceId` → per-device push targeting and
@@ -179,15 +181,15 @@ sequenceDiagram
     N->>S: openProvisioning → {provisioningId (UUID, 10 min TTL)}
     N->>N: show QR {provisioningId, ephPubN}
     P->>N: user scans QR (out-of-band ephPubN)
-    P->>P: ephemeral pair ephP; S_dh = DH(ephPrivP, ephPubN); SAS = KDF(S_dh, "fp-link-sas", provisioningId ‖ ephPubN ‖ ephPubP)
+    P->>P: ephemeral pair ephP; S_dh = DH(ephPrivP, ephPubN); SAS = HKDF(S_dh, info="fp-link-sas", provisioningId ‖ ephPubN ‖ ephPubP)
     P->>S: provisioningHello {provisioningId, ephPubP}   — NO secrets
     S->>N: provisioningHello relay
     N->>N: S_dh = DH(ephPrivN, ephPubP); display SAS (same derivation)
     Note over N,P: HUMAN compares SAS on both screens; P user approves
-    P->>S: provisionDevice {provisioningId, blob = AEAD_{HKDF(S_dh)}({IK pair, dakPub, E, assigned deviceId}), stagedMutation = {list v+1 adding deviceId, sig_DAK}}
+    P->>S: provisionDevice {provisioningId, blob = AEAD under HKDF(S_dh, info="fp-link-blob") of {IK pair, dakPub, E, assigned deviceId}, stagedMutation = {list v+1 adding deviceId, sig_DAK}}
     S->>S: verify sig_DAK vs pinned dakPub; verify v+1; STAGE mutation (not committed)
     S->>N: provisioningBlob {blob}
-    N->>N: decrypt under HKDF(S_dh); store IK; mint registrationId/signedPreKey/OTPs
+    N->>N: decrypt under HKDF(S_dh, info="fp-link-blob"); store IK; mint registrationId/signedPreKey/OTPs
     N->>S: provisioningComplete {provisioningId} + per-device bundle upload (tagged deviceId) — accepted ONLY from N's originating authenticated session
     S->>S: ONE transaction: commit staged mutation + devices row + activate deviceId + bundle
     S-->>P: deviceListChanged (all own sessions; peers pick it up via §5.2)
@@ -258,11 +260,20 @@ device).
   `emitToDeviceNewestSocket`; its documented removal condition is unchanged, now per-device).
 - **Per-device history read (round-2 coherence finding 2):** `getMessages`/`findByConversation`
   joins `message_envelopes` on the REQUESTING `(userId, deviceId)` and serves that device ITS
-  ciphertext. Fallback order per row: this device's envelope → legacy `encryptedContent`
-  (pre-migration and legacy-client rows) → explicit `envelopeStatus: "none_for_device"` marker
-  (the row predates this device's link). The marker is the discriminator that lets the client
-  render the honest "sent before this device was linked" placeholder instead of
-  `[Decryption failed]` or a stuck "Decrypting…" (round-2 data-loss finding 4).
+  ciphertext. Fallback order per row is DEVICE-GATED (round-3 termination finding 1 — legacy
+  ciphertext is bound to the ORIGINAL device's ratchet, so serving it to any other device yields a
+  terminal `[Decryption failed]` across the entire pre-link history):
+  1. this device's envelope;
+  2. legacy `encryptedContent` (pre-migration rows only, §4) — served ONLY to the row's session
+     owner: `deviceId == 1`, or `deviceId == originDeviceId` for own rows (backfilled rows carry
+     `originDeviceId` NULL = device 1). **Load-bearing invariant: deviceIds are monotonic per
+     account and NEVER reused, including across a §6.2 reset** — device 1 permanently names the
+     account's original device; a reused id would resurrect the foreign-ratchet decrypt this gate
+     exists to prevent;
+  3. every other device falls through to the explicit `envelopeStatus: "none_for_device"` marker
+     (the row predates this device's link). The marker is the discriminator that lets the client
+     render the honest "sent before this device was linked" placeholder instead of
+     `[Decryption failed]` or a stuck "Decrypting…" (round-2 data-loss finding 4).
 - Push suppression: skip push only for the device whose own socket has the conversation focused.
   Envelope `deliveredAt`/`readAt` stamped per device; wire keeps the projected single
   `deliveryStatus` (recipient-envelopes-only projection, §4).
@@ -332,9 +343,16 @@ Editing is sender-only, any of the sender's devices (they all hold the plaintext
 within the existing 15-minute window checked server-side against the row. The inbound wire becomes
 `editMessage { messageId, envelopes: [{userId, deviceId, ciphertext}] }` — a full re-fan: one new
 ciphertext per recipient device AND per sender's other devices. The server verifies sender + window
-+ device-list coverage (same staleness bounce as §5.2), REPLACES each `message_envelopes.ciphertext`
-row in one transaction (legacy `encryptedContent` updated too while mixed-model rows exist), stamps
-`editedAt`, and fans each device its own edited envelope via `messageEdited`. Reject paths
+ + device-list coverage (same staleness bounce as §5.2), then writes each device's edited
+ ciphertext in one transaction — **UPSERT semantics** (round-3 termination finding 2): an existing
+ `message_envelopes` row is replaced **content-only — `deliveredAt`/`readAt` stamps SURVIVE the
+ replacement** (an edit is not an un-delivery; the §4 projection must never regress on edit); a
+ recipient device that linked AFTER the original send (and therefore had no row,
+ `none_for_device`) gets a row INSERTED and renders the edited message with its edited marker —
+ the sender's client deliberately encrypted to the CURRENT device list, so the edit is delivered
+ like any current send; the placeholder upgrades, never the reverse. Legacy
+ `encryptedContent` is updated too while mixed-model rows exist. The server stamps `editedAt` and
+ fans each device its own edited envelope via `messageEdited`. Reject paths
 (`editMessageFailed`) unchanged. An edit never mints or consumes a `sendToken` (§5.4).
 
 ## 6. Registration lock and reset (Phase 0, ships before any device work)
@@ -399,7 +417,7 @@ that is the designed outcome).
 | `editMessage` | one new `encryptedContent` | `envelopes[]` full re-fan; per-device envelope-row replacement; window/sender checks unchanged (§5.7) |
 | E2E plaintext envelope | `{content, messageType?, media…}` | + `senderListInfo {ownVersion, ownListHash, peerVersion, peerListHash}` (older clients ignore; escalation discipline §5.2) |
 | `newMessage` / `messageEdited` | newest tab of user | device room, newest socket within device; payload + `originDeviceId` |
-| `getMessages` history rows | `encryptedContent` echo | requesting device's envelope ciphertext → legacy fallback → `envelopeStatus: "none_for_device"` marker (§5.3); own rows + `originDeviceId`, `sendToken` |
+| `getMessages` history rows | `encryptedContent` echo | requesting device's envelope ciphertext → legacy fallback GATED to the session-owner device → `envelopeStatus: "none_for_device"` marker (§5.3); own rows + `originDeviceId`, `sendToken` |
 | `uploadKeyBundle` / `fetchPreKeyBundle` / `uploadOneTimePreKeys` / `preKeysLow` / `checkOwnKeyBundle` | per user | per `(user, device)`; bundle mutation rules of §6.1; uploads for never-activated deviceIds rejected (§5.1) |
 | `messageDelivered` / read events | per message | unchanged shape; server projects from RECIPIENT envelopes only, column-scoped UPDATE (§4) |
 | `getServedMessageIds` | per user, row-existence | **UNCHANGED (I8)**; SILENCE to revoked devices (I6) |
@@ -468,7 +486,11 @@ that is the designed outcome).
     `(identity, deviceId)`.
 13. **Reconcile mass-purge guard (I8):** origin device's own new-model sends, pre-migration rows,
     and legacy-client rows ALL reconcile as served; a revoked device's reconcile gets SILENCE and
-    purges nothing; a `none_for_device` row is never a destruction trigger.
+    purges nothing; a `none_for_device` row is never a destruction trigger; **a linked non-owner
+    device on a legacy row gets the marker, never the legacy ciphertext — it must NOT attempt (and
+    terminally fail) a foreign-session decrypt; the session OWNER is positively served and
+    decrypts its legacy row; after revoke/re-link leaves the account with no device 1, EVERY
+    device gets the marker** (round-3 finding 1/4 + micro-check).
 14. **Lost-ack via `sendToken`:** drop the ack → recovery by token match, read-back verified.
     COLLISION case: a duplicate token is rejected server-side; an artificially ambiguous match is
     a no-op that does NOT consume the pending record (round-2 data-loss finding 1).
@@ -500,9 +522,13 @@ that is the designed outcome).
     identity-changed.
 23. **Canonical bytes:** `listCanonical` survives transport byte-exact (re-serialization must not
     change `listHash`); duplicate-key / ambiguous canonical bytes rejected at parse.
-24. **Edit re-fan (§5.7):** an edit replaces EVERY device's envelope in one transaction; a device
-    offline during the edit receives the edited ciphertext on next history read; edit from a
-    non-origin own device succeeds; `editMessageFailed` paths unchanged; no `sendToken` minted.
+24. **Edit re-fan (§5.7):** an edit UPSERTs EVERY current device's envelope in one transaction; a
+    device offline during the edit receives the edited ciphertext on next history read; **a device
+    that linked AFTER the original send gets an INSERTED envelope and upgrades its placeholder to
+    the edited message; replacing an already-delivered/read envelope preserves its
+    `deliveredAt`/`readAt` stamps — the projection never regresses on edit** (round-3 finding 2/4
+    + micro-check); edit from a non-origin own device succeeds;
+    `editMessageFailed` paths unchanged; no `sendToken` minted.
 
 ## 11. Open questions (owner) — ALL RATIFIED 2026-08-17
 
@@ -543,5 +569,23 @@ that is the designed outcome).
     I9 read-TTL start conditions (§5.6 + falsification 19); `none_for_device` discriminator
     (§5.3); Phase-1 single-transaction migration, no `CONCURRENTLY` (§8). Verified clean: SILENCE
     fail-closed semantics; re-link of same physical device.
+- **Round 3 (2026-08-17, on v4 — delta-scoped TERMINATION round: §5.1/§5.7/§6.2.1/I9/§5.3 marker
+  only; stopping rule = zero mechanism findings ⇒ freeze):** DO-NOT-FREEZE — 2 MECHANISM + 1
+  SPEC-WORDING + 1 TEST-GAP, all folded same day: (MECH) legacy `encryptedContent` fallback
+  preceded `none_for_device` unconditionally, so a linked device would terminally
+  `[Decryption failed]` its entire pre-link history → fallback now DEVICE-GATED to the session
+  owner (§5.3, falsification 13 extended); (MECH) edit re-fan was ambiguous for a device linked
+  after the send → UPSERT semantics, placeholder upgrades to the edited message (§5.7,
+  falsification 24 extended); (WORDING) distinct HKDF info labels `fp-link-sas` / `fp-link-blob`
+  for domain separation (§5.1); (TEST-GAP) both mechanism cases added to the falsification plan.
+  Round 3 also verified: the two-round DH-bound SAS is sound incl. the blind-approve case (blob
+  stays encrypted to the authentic ephPubN), and the 1 h recovery window is consistent with I4.
+- **Micro-verification (2026-08-17, on the two round-3 folds only): FREEZE — zero MECHANISM
+  findings.** Verified the device-gated fallback resolves every §8 mixed-model case (incl.
+  reset/re-link with no device 1 → marker everywhere) and UPSERT edit is consistent with §5.2/§4/
+  I8/I9. Four non-blocking items folded same day: deviceIds-never-reused invariant stated at the
+  §5.3 gate; legacy-client sends pinned to device-1-envelope-at-ingest (dead branch removed,
+  §4/§8 wording unified); edit UPSERT preserves delivery stamps (§5.7); falsifications 13/24
+  extended (positive owner-serve, no-device-1 case, stamp preservation). **Doc frozen at v5.**
 - **Owner ratification: §11 items 1–6 ALL CONFIRMED 2026-08-17.**
 - **Next gate:** Phase-2 spec-level review round at implementation time, per phase plan.
