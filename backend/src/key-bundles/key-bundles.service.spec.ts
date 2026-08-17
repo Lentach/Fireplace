@@ -5,12 +5,14 @@ import { KeyBundlesService, KeyBundleData } from './key-bundles.service';
 import { KeyBundle } from './key-bundle.entity';
 import { OneTimePreKey } from './one-time-pre-key.entity';
 import { IdentityChangeAudit } from './identity-change-audit.entity';
+import { IdentityResetService } from './identity-reset.service';
 
 describe('KeyBundlesService', () => {
   let service: KeyBundlesService;
   let keyBundleRepo: Record<string, jest.Mock>;
   let otpRepo: Record<string, jest.Mock>;
   let auditRepo: Record<string, jest.Mock>;
+  let identityResetService: Record<string, jest.Mock>;
   // Chainable query-builder mock for the stale-OTP purge in upsertKeyBundle.
   let purgeBuilder: {
     delete: jest.Mock;
@@ -58,6 +60,13 @@ describe('KeyBundlesService', () => {
       insert: jest.fn().mockResolvedValue({ identifiers: [{ id: 1 }] }),
     };
 
+    // Default: no completed reset ceremony exists, so an unsigned identity
+    // replacement is refused. Tests that model a LEGITIMATE replacement opt in
+    // explicitly, which keeps the locked case the default everywhere.
+    identityResetService = {
+      consumeCompletedReset: jest.fn().mockResolvedValue(false),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         KeyBundlesService,
@@ -66,6 +75,10 @@ describe('KeyBundlesService', () => {
         {
           provide: getRepositoryToken(IdentityChangeAudit),
           useValue: auditRepo,
+        },
+        {
+          provide: IdentityResetService,
+          useValue: identityResetService,
         },
       ],
     }).compile();
@@ -115,6 +128,9 @@ describe('KeyBundlesService', () => {
         identityPublicKey: oldIdentity,
       });
       keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
+      // Authorized by a completed reset ceremony (§6.2) — the legitimate path
+      // for someone who lost their device keys.
+      identityResetService.consumeCompletedReset.mockResolvedValue(true);
       const warnSpy = jest
         .spyOn(Logger.prototype, 'warn')
         .mockImplementation(() => undefined);
@@ -149,6 +165,7 @@ describe('KeyBundlesService', () => {
         identityPublicKey: 'old-identity',
       });
       keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
+      identityResetService.consumeCompletedReset.mockResolvedValue(true);
       auditRepo.insert.mockRejectedValue(new Error('db down'));
       const warnSpy = jest
         .spyOn(Logger.prototype, 'warn')
@@ -227,6 +244,123 @@ describe('KeyBundlesService', () => {
     });
   });
 
+  // Registration lock (multi-device spec §6.1). Before 0b, ANY upload with a
+  // valid session could replace the stored identity key — which is what
+  // silently redirects every future conversation to different keys. These pin
+  // the refusal and both authorized paths.
+  describe('registration lock (§6.1)', () => {
+    const STORED = 'BdYgkTwp7ZAWQHWKYxQtsMQZxtVQEtVs1Fo63JM3EKJQ';
+    const REPLACEMENT = 'BV/AuiEQx2o3p6cfoebDWHomEc5VTzNsyNNcuYxf3BVF';
+    // Real client-produced proof: STORED signs REPLACEMENT ‖ 4242 ‖ NONCE.
+    const NONCE = 'AwoRGB8mLTQ7QklQV15lbHN6gYiPlp2kq7K5wMfO1dw=';
+    const SIGNATURE =
+      '+eSga6vQusMMR5gjRe2rk/XQspEwDVXBmFmGy/1iH2P8kBGS+xQ+vE+xTbnzF+3m878LvYXbIooBi4sAmes7hA==';
+    const SIGNED_USER_ID = 4242;
+
+    beforeEach(() => {
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: SIGNED_USER_ID,
+        ...mockKeyBundleData,
+        identityPublicKey: STORED,
+      });
+      keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
+    });
+
+    it('refuses an unauthorized identity replacement and writes NOTHING', async () => {
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+
+      await expect(
+        service.upsertKeyBundle(SIGNED_USER_ID, {
+          ...mockKeyBundleData,
+          identityPublicKey: REPLACEMENT,
+        }),
+      ).rejects.toThrow('identity_locked');
+
+      // No bundle written, no OTP epoch purged, no audit row, no alarm state:
+      // a refused attempt must leave the account byte-identical.
+      expect(keyBundleRepo.upsert).not.toHaveBeenCalled();
+      expect(purgeBuilder.execute).not.toHaveBeenCalled();
+      expect(auditRepo.insert).not.toHaveBeenCalled();
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('[identity-lock] REFUSED'),
+      );
+      warnSpy.mockRestore();
+    });
+
+    it('accepts a replacement proven by the previous identity key', async () => {
+      const result = await service.upsertKeyBundle(
+        SIGNED_USER_ID,
+        { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
+        { signature: SIGNATURE, nonce: NONCE },
+      );
+
+      expect(result.identityChanged).toBe(true);
+      expect(keyBundleRepo.upsert).toHaveBeenCalledTimes(1);
+      // A valid signature must NOT burn a reset ceremony.
+      expect(identityResetService.consumeCompletedReset).not.toHaveBeenCalled();
+    });
+
+    it('refuses when the signature is valid but for a different account', async () => {
+      await expect(
+        service.upsertKeyBundle(
+          SIGNED_USER_ID + 1,
+          { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
+          { signature: SIGNATURE, nonce: NONCE },
+        ),
+      ).rejects.toThrow('identity_locked');
+      expect(keyBundleRepo.upsert).not.toHaveBeenCalled();
+    });
+
+    it('refuses when the nonce does not match the signed one', async () => {
+      await expect(
+        service.upsertKeyBundle(
+          SIGNED_USER_ID,
+          { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
+          {
+            signature: SIGNATURE,
+            nonce: Buffer.alloc(32, 1).toString('base64'),
+          },
+        ),
+      ).rejects.toThrow('identity_locked');
+    });
+
+    it('falls back to a completed reset ceremony when the signature is unusable', async () => {
+      identityResetService.consumeCompletedReset.mockResolvedValue(true);
+
+      const result = await service.upsertKeyBundle(
+        SIGNED_USER_ID,
+        { ...mockKeyBundleData, identityPublicKey: REPLACEMENT },
+        { signature: 'not-a-signature', nonce: NONCE },
+      );
+
+      expect(result.identityChanged).toBe(true);
+      expect(identityResetService.consumeCompletedReset).toHaveBeenCalledWith(
+        SIGNED_USER_ID,
+      );
+    });
+
+    it('never consults the ceremony for a same-identity re-upload', async () => {
+      await service.upsertKeyBundle(SIGNED_USER_ID, {
+        ...mockKeyBundleData,
+        identityPublicKey: STORED,
+      });
+
+      expect(identityResetService.consumeCompletedReset).not.toHaveBeenCalled();
+      expect(keyBundleRepo.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it('never consults the ceremony for a first-ever upload', async () => {
+      keyBundleRepo.findOne.mockResolvedValue(null);
+
+      await service.upsertKeyBundle(SIGNED_USER_ID, mockKeyBundleData);
+
+      expect(identityResetService.consumeCompletedReset).not.toHaveBeenCalled();
+      expect(keyBundleRepo.upsert).toHaveBeenCalledTimes(1);
+    });
+  });
+
   describe('uploadOneTimePreKeys', () => {
     const keys = [
       { keyId: 0, publicKey: 'pk-0' },
@@ -268,9 +402,11 @@ describe('KeyBundlesService', () => {
         ...mockKeyBundleData,
       });
 
-      await expect(service.uploadOneTimePreKeys(5, keys)).rejects.toMatchObject({
-        message: 'identity_epoch_required',
-      });
+      await expect(service.uploadOneTimePreKeys(5, keys)).rejects.toMatchObject(
+        {
+          message: 'identity_epoch_required',
+        },
+      );
 
       expect(otpRepo.upsert).not.toHaveBeenCalled();
     });
@@ -303,7 +439,10 @@ describe('KeyBundlesService', () => {
     it('claims an OTP filtered by the CURRENT identity epoch ($1 user, $2 identity)', async () => {
       keyBundleRepo.findOne.mockResolvedValue(bundle);
       // Real Postgres shape for UPDATE ... RETURNING: [rows, rowCount].
-      otpRepo.query.mockResolvedValue([[{ id: 10, keyId: 7, publicKey: 'otp-pk-7' }], 1]);
+      otpRepo.query.mockResolvedValue([
+        [{ id: 10, keyId: 7, publicKey: 'otp-pk-7' }],
+        1,
+      ]);
 
       const result = await service.fetchPreKeyBundle(5);
 
@@ -333,13 +472,18 @@ describe('KeyBundlesService', () => {
       expect(result?.oneTimePreKeyId).toBeNull();
       expect(result?.oneTimePreKeyPublic).toBeNull();
       // OTP-less bundle is still valid — X3DH completes without a one-time key.
-      expect(result?.identityPublicKey).toBe(mockKeyBundleData.identityPublicKey);
+      expect(result?.identityPublicKey).toBe(
+        mockKeyBundleData.identityPublicKey,
+      );
     });
   });
 
   describe('countUnusedPreKeys', () => {
     it('counts only unused OTPs of the CURRENT identity epoch', async () => {
-      keyBundleRepo.findOne.mockResolvedValue({ userId: 5, ...mockKeyBundleData });
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 5,
+        ...mockKeyBundleData,
+      });
       otpRepo.count.mockResolvedValue(15);
 
       const count = await service.countUnusedPreKeys(5);

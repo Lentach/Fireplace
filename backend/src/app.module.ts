@@ -23,6 +23,8 @@ import { FcmToken } from './fcm-tokens/fcm-token.entity';
 import { KeyBundle } from './key-bundles/key-bundle.entity';
 import { OneTimePreKey } from './key-bundles/one-time-pre-key.entity';
 import { IdentityChangeAudit } from './key-bundles/identity-change-audit.entity';
+import { IdentityResetRequest } from './key-bundles/identity-reset-request.entity';
+import { RecoveryKey } from './key-bundles/recovery-key.entity';
 import { SecretNote } from './secret-notes/secret-note.entity';
 import { SecretNotesModule } from './secret-notes/secret-notes.module';
 import { validate } from './config/env.validation';
@@ -78,6 +80,8 @@ import { ProfilePhoto } from './users/profile-photo.entity';
           KeyBundle,
           OneTimePreKey,
           IdentityChangeAudit,
+          IdentityResetRequest,
+          RecoveryKey,
           SecretNote,
           ConversationNotificationPreference,
           ProfilePhoto,

@@ -118,6 +118,49 @@ export class PushNotificationsService implements OnModuleInit {
     }
   }
 
+  /**
+   * Phase 0b reset ceremony (multi-device spec §6.2): content-free notice that
+   * an account-identity reset was requested, or that it was cancelled.
+   *
+   * Push is the ONLY channel that reaches a device whose app is closed, and
+   * this app has no email — which is precisely why the ceremony's delay is
+   * long. Bypasses the message coalescer (not conversation-scoped, must never
+   * debounce) and carries only a type; the client renders its own copy and
+   * offers the one-tap cancel.
+   */
+  async notifyIdentityReset(
+    userId: number,
+    type: 'identity_reset_pending' | 'identity_reset_cancelled',
+  ): Promise<void> {
+    await Promise.all([
+      this.notifyIdentityResetFcm(userId, type),
+      this.sendWebPushToUser(userId, { type }),
+    ]);
+  }
+
+  private async notifyIdentityResetFcm(
+    userId: number,
+    type: 'identity_reset_pending' | 'identity_reset_cancelled',
+  ): Promise<void> {
+    if (!this.fcmInitialized) return;
+    const tokens = await this.fcmTokensService.findTokensByUserId(userId, [
+      'android',
+      'ios',
+    ]);
+    if (!tokens.length) return;
+    try {
+      await admin.messaging().sendEachForMulticast({
+        tokens,
+        data: { type }, // content-free, Google-readable
+        android: { priority: 'high' },
+        apns: { payload: { aps: { contentAvailable: true } } },
+      });
+    } catch {
+      // BE-502: no userId in prod-visible logs.
+      this.logger.warn('FCM identity-reset send failed');
+    }
+  }
+
   private async notifyFcm(
     userId: number,
     options: NotifyOptions,

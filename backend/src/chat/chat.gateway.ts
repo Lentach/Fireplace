@@ -393,6 +393,60 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     return this.chatKeyExchangeService.handleCheckOwnKeyBundle(client);
   }
 
+  /**
+   * Registration lock (§6.1). Throttled: a nonce is cheap, but an unbounded
+   * issue loop is still an issue loop.
+   */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 30, ttl: 900000 } })
+  @SubscribeMessage('getRegistrationLockNonce')
+  handleGetRegistrationLockNonce(@ConnectedSocket() client: Socket) {
+    return this.chatKeyExchangeService.handleGetRegistrationLockNonce(client);
+  }
+
+  /**
+   * Reset ceremony (§6.2). Tight limit: the ceremony is already rate-limited by
+   * its own one-pending/cooldown rules, and each call may run a memory-hard
+   * verification when a recovery phrase is supplied.
+   */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 900000 } })
+  @SubscribeMessage('resetIdentityRequest')
+  async handleResetIdentityRequest(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
+  ) {
+    return this.chatKeyExchangeService.handleResetIdentityRequest(
+      client,
+      data,
+      this.server,
+    );
+  }
+
+  /**
+   * Cancelling must stay generously available — it is the protective action,
+   * and a user tapping it twice in a panic must not be throttled out of it.
+   */
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 60, ttl: 900000 } })
+  @SubscribeMessage('resetIdentityCancel')
+  async handleResetIdentityCancel(@ConnectedSocket() client: Socket) {
+    return this.chatKeyExchangeService.handleResetIdentityCancel(
+      client,
+      this.server,
+    );
+  }
+
+  @UseGuards(WsThrottlerGuard)
+  @Throttle({ default: { limit: 10, ttl: 900000 } })
+  @SubscribeMessage('setRecoveryKey')
+  async handleSetRecoveryKey(
+    @ConnectedSocket() client: Socket,
+    @MessageBody() data: any,
+  ) {
+    return this.chatKeyExchangeService.handleSetRecoveryKey(client, data);
+  }
+
   @UseGuards(WsThrottlerGuard)
   @Throttle({ default: { limit: 30, ttl: 900000 } })
   @SubscribeMessage('requestSessionRebuild')

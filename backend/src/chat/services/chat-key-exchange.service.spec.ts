@@ -1,21 +1,47 @@
 import { Test, TestingModule } from '@nestjs/testing';
 import { ChatKeyExchangeService } from './chat-key-exchange.service';
 import {
+  IdentityLockedError,
   KeyBundlesService,
   PreKeyBundleResponse,
 } from '../../key-bundles/key-bundles.service';
 import { ConversationsService } from '../../conversations/conversations.service';
 import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
+import { IdentityResetService } from '../../key-bundles/identity-reset.service';
 import { Socket, Server } from 'socket.io';
 
 describe('ChatKeyExchangeService', () => {
   let service: ChatKeyExchangeService;
   let keyBundlesService: jest.Mocked<KeyBundlesService>;
   let conversationsService: { findByUser: jest.Mock };
-  let pushNotificationsService: { notifyIdentityChanged: jest.Mock };
+  let pushNotificationsService: {
+    notifyIdentityChanged: jest.Mock;
+    notifyIdentityReset: jest.Mock;
+  };
+  let identityResetService: {
+    requestReset: jest.Mock;
+    cancelReset: jest.Mock;
+    getStatusForUser: jest.Mock;
+    setRecoveryKey: jest.Mock;
+  };
   let clientRoomEmit: jest.Mock;
 
-  let mockClient: Partial<Socket>;
+  /** Nonce the registration lock issues onto a socket session (§6.1). */
+  interface LockNonce {
+    nonce: string;
+    expiresAt: number;
+  }
+  /**
+   * The per-socket bag the gateway populates. Declared here so tests can read
+   * what the service wrote without asserting a shape at each access.
+   */
+  interface MockSocketData {
+    user: { id: number } | null;
+    registrationLockNonce?: LockNonce;
+  }
+  // `Socket.data` is `any`, and `any & T` collapses back to `any` — omit it
+  // first so the typed shape actually survives the intersection.
+  let mockClient: Omit<Partial<Socket>, 'data'> & { data: MockSocketData };
   let mockServer: Partial<Server>;
   let roomsAdapter: Map<string, Set<string>>;
 
@@ -50,6 +76,13 @@ describe('ChatKeyExchangeService', () => {
     };
     pushNotificationsService = {
       notifyIdentityChanged: jest.fn().mockResolvedValue(undefined),
+      notifyIdentityReset: jest.fn().mockResolvedValue(undefined),
+    };
+    identityResetService = {
+      requestReset: jest.fn(),
+      cancelReset: jest.fn().mockResolvedValue(false),
+      getStatusForUser: jest.fn().mockResolvedValue(null),
+      setRecoveryKey: jest.fn().mockResolvedValue(undefined),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -66,6 +99,7 @@ describe('ChatKeyExchangeService', () => {
             fetchPreKeyBundle: jest.fn(),
             countUnusedPreKeys: jest.fn(),
             hasKeyBundle: jest.fn(),
+            latestIdentityChangeAt: jest.fn().mockResolvedValue(null),
           },
         },
         { provide: ConversationsService, useValue: conversationsService },
@@ -73,6 +107,7 @@ describe('ChatKeyExchangeService', () => {
           provide: PushNotificationsService,
           useValue: pushNotificationsService,
         },
+        { provide: IdentityResetService, useValue: identityResetService },
       ],
     }).compile();
 
@@ -97,13 +132,18 @@ describe('ChatKeyExchangeService', () => {
         mockServer as Server,
       );
 
-      expect(keyBundlesService.upsertKeyBundle).toHaveBeenCalledWith(1, {
-        registrationId: validData.registrationId,
-        identityPublicKey: validData.identityPublicKey,
-        signedPreKeyId: validData.signedPreKeyId,
-        signedPreKeyPublic: validData.signedPreKeyPublic,
-        signedPreKeySignature: validData.signedPreKeySignature,
-      });
+      expect(keyBundlesService.upsertKeyBundle).toHaveBeenCalledWith(
+        1,
+        {
+          registrationId: validData.registrationId,
+          identityPublicKey: validData.identityPublicKey,
+          signedPreKeyId: validData.signedPreKeyId,
+          signedPreKeyPublic: validData.signedPreKeyPublic,
+          signedPreKeySignature: validData.signedPreKeySignature,
+        },
+        // No registration-lock proof on the normal re-upload path.
+        undefined,
+      );
       expect(mockClient.emit).toHaveBeenCalledWith('keyBundleUploaded', {
         success: true,
       });
@@ -146,7 +186,6 @@ describe('ChatKeyExchangeService', () => {
       expect(keyBundlesService.upsertKeyBundle).not.toHaveBeenCalled();
       expect(noUserClient.emit).not.toHaveBeenCalled();
     });
-
 
     // expect.any(String) is typed `any`; the unknown hop keeps the ratchet flat.
     const anyIsoString: unknown = expect.any(String);
@@ -294,6 +333,9 @@ describe('ChatKeyExchangeService', () => {
         expect(mockClient.emit).toHaveBeenCalledTimes(1);
         expect(mockClient.emit).toHaveBeenCalledWith('ownKeyBundleStatus', {
           exists,
+          // 0b additions: additive, and null when the account is quiet.
+          identityReset: null,
+          identityReplacedAt: null,
         });
         expect(keyBundlesService.fetchPreKeyBundle).not.toHaveBeenCalled();
       },
@@ -596,6 +638,409 @@ describe('ChatKeyExchangeService', () => {
       );
 
       expect(mockServer.to).not.toHaveBeenCalled();
+    });
+  });
+
+  // Phase 0b: registration lock nonce lifecycle (§6.1).
+  describe('registration lock nonce', () => {
+    /**
+     * The nonce this socket session currently holds. Non-null assertion is the
+     * assertion under test: every caller here has just issued one.
+     */
+    const lockNonce = (): LockNonce => mockClient.data.registrationLockNonce!;
+
+    /** Arguments of the most recent upsertKeyBundle call. */
+    const lastUpsertArgs = (): unknown[] => {
+      const calls = (keyBundlesService.upsertKeyBundle as unknown as jest.Mock)
+        .mock.calls as unknown[][];
+      return calls[calls.length - 1];
+    };
+
+    const proofPayload = (nonce: string) => ({
+      registrationId: 12345,
+      identityPublicKey: 'new-identity',
+      signedPreKeyId: 1,
+      signedPreKeyPublic: 'spk',
+      signedPreKeySignature: 'sig',
+      identitySignature: 'client-signature',
+      nonce,
+    });
+
+    it('issues an unpredictable nonce bound to this socket session', () => {
+      service.handleGetRegistrationLockNonce(mockClient as Socket);
+
+      const calls = (mockClient.emit as jest.Mock).mock.calls as Array<
+        [string, { nonce: string }]
+      >;
+      const payload = calls.find(
+        (call) => call[0] === 'registrationLockNonce',
+      )?.[1];
+      expect(payload?.nonce).toEqual(expect.any(String));
+      expect(Buffer.from(payload?.nonce ?? '', 'base64').length).toBe(32);
+      // Held on the socket, so it dies with the connection.
+      expect(lockNonce().nonce).toBe(payload?.nonce);
+    });
+
+    it('issues a different nonce every time', () => {
+      service.handleGetRegistrationLockNonce(mockClient as Socket);
+      const first = lockNonce().nonce;
+      service.handleGetRegistrationLockNonce(mockClient as Socket);
+
+      expect(lockNonce().nonce).not.toBe(first);
+    });
+
+    it('forwards a matching nonce and signature as the upload proof', async () => {
+      service.handleGetRegistrationLockNonce(mockClient as Socket);
+      const nonce = lockNonce().nonce;
+
+      await service.handleUploadKeyBundle(
+        mockClient as Socket,
+        proofPayload(nonce),
+        mockServer as Server,
+      );
+
+      expect(lastUpsertArgs()).toEqual([
+        1,
+        expect.any(Object),
+        { signature: 'client-signature', nonce },
+      ]);
+    });
+
+    it('consumes the nonce, so a replay cannot reuse it', async () => {
+      service.handleGetRegistrationLockNonce(mockClient as Socket);
+      const nonce = lockNonce().nonce;
+
+      await service.handleUploadKeyBundle(
+        mockClient as Socket,
+        proofPayload(nonce),
+        mockServer as Server,
+      );
+      await service.handleUploadKeyBundle(
+        mockClient as Socket,
+        proofPayload(nonce),
+        mockServer as Server,
+      );
+
+      // One nonce buys exactly one attempt.
+      expect(lastUpsertArgs()).toEqual([1, expect.any(Object), undefined]);
+    });
+
+    it('ignores a nonce never issued to this session', async () => {
+      await service.handleUploadKeyBundle(
+        mockClient as Socket,
+        proofPayload(Buffer.alloc(32, 3).toString('base64')),
+        mockServer as Server,
+      );
+
+      expect(lastUpsertArgs()).toEqual([1, expect.any(Object), undefined]);
+    });
+
+    it('ignores an expired nonce', async () => {
+      service.handleGetRegistrationLockNonce(mockClient as Socket);
+      const nonce = lockNonce().nonce;
+      lockNonce().expiresAt = Date.now() - 1;
+
+      await service.handleUploadKeyBundle(
+        mockClient as Socket,
+        proofPayload(nonce),
+        mockServer as Server,
+      );
+
+      expect(lastUpsertArgs()).toEqual([1, expect.any(Object), undefined]);
+    });
+  });
+
+  describe('refused identity replacement', () => {
+    const lockedPayload = {
+      registrationId: 12345,
+      identityPublicKey: 'unauthorized-identity',
+      signedPreKeyId: 1,
+      signedPreKeyPublic: 'spk',
+      signedPreKeySignature: 'sig',
+    };
+
+    beforeEach(() => {
+      keyBundlesService.upsertKeyBundle.mockRejectedValue(
+        new IdentityLockedError(),
+      );
+    });
+
+    it('reports the refusal on the upload channel, not as a generic error', async () => {
+      await service.handleUploadKeyBundle(
+        mockClient as Socket,
+        lockedPayload,
+        mockServer as Server,
+      );
+
+      expect(mockClient.emit).toHaveBeenCalledWith('keyBundleUploaded', {
+        success: false,
+        error: 'identity_locked',
+      });
+      expect(mockClient.emit).not.toHaveBeenCalledWith(
+        'error',
+        expect.anything(),
+      );
+    });
+
+    it('raises no replacement alarm for an attempt that changed nothing', async () => {
+      await service.handleUploadKeyBundle(
+        mockClient as Socket,
+        lockedPayload,
+        mockServer as Server,
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(mockClient.to).not.toHaveBeenCalled();
+      expect(
+        pushNotificationsService.notifyIdentityChanged,
+      ).not.toHaveBeenCalled();
+    });
+  });
+
+  // Phase 0b: reset ceremony (§6.2).
+  describe('handleResetIdentityRequest', () => {
+    it('notifies every session and push endpoint when a ceremony starts', async () => {
+      const deadlineAt = new Date(Date.now() + 1000);
+      identityResetService.requestReset.mockResolvedValue({
+        status: 'pending',
+        deadlineAt,
+        shortened: false,
+      });
+
+      await service.handleResetIdentityRequest(
+        mockClient as Socket,
+        {},
+        mockServer as Server,
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(mockClient.emit).toHaveBeenCalledWith('identityResetStatus', {
+        status: 'pending',
+        deadlineAt: deadlineAt.toISOString(),
+        shortened: false,
+      });
+      // Whole room, including the requesting session.
+      expect(mockServer.to).toHaveBeenCalledWith('user:1');
+      expect(mockServer.emit).toHaveBeenCalledWith('identityResetPending', {
+        deadlineAt: deadlineAt.toISOString(),
+        shortened: false,
+        occurredAt: expect.any(String) as unknown,
+      });
+      expect(pushNotificationsService.notifyIdentityReset).toHaveBeenCalledWith(
+        1,
+        'identity_reset_pending',
+      );
+    });
+
+    it('passes a recovery phrase through and still rings every bell', async () => {
+      const deadlineAt = new Date(Date.now() + 1000);
+      const phrase =
+        'legal winner thank year wave sausage worth useful legal winner thank yellow';
+      identityResetService.requestReset.mockResolvedValue({
+        status: 'pending',
+        deadlineAt,
+        shortened: true,
+      });
+
+      await service.handleResetIdentityRequest(
+        mockClient as Socket,
+        { recoveryPhrase: phrase },
+        mockServer as Server,
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(identityResetService.requestReset).toHaveBeenCalledWith(1, phrase);
+      // Shortened shortens the delay; it never silences the notifications.
+      expect(pushNotificationsService.notifyIdentityReset).toHaveBeenCalledWith(
+        1,
+        'identity_reset_pending',
+      );
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        'identityResetPending',
+        expect.objectContaining({ shortened: true }),
+      );
+    });
+
+    it.each(['existing', 'cooldown', 'invalid_phrase', 'locked'])(
+      're-notifies nobody when the answer is %s',
+      async (status) => {
+        identityResetService.requestReset.mockResolvedValue({
+          status,
+          deadlineAt: status === 'existing' ? new Date() : null,
+          shortened: false,
+        });
+
+        await service.handleResetIdentityRequest(
+          mockClient as Socket,
+          {},
+          mockServer as Server,
+        );
+        await new Promise((resolve) => setImmediate(resolve));
+
+        expect(mockClient.emit).toHaveBeenCalledWith(
+          'identityResetStatus',
+          expect.objectContaining({ status }),
+        );
+        expect(
+          pushNotificationsService.notifyIdentityReset,
+        ).not.toHaveBeenCalled();
+        expect(mockServer.emit).not.toHaveBeenCalledWith(
+          'identityResetPending',
+          expect.anything(),
+        );
+      },
+    );
+
+    it('rejects a malformed payload without starting anything', async () => {
+      await service.handleResetIdentityRequest(
+        mockClient as Socket,
+        // Over the length cap: the memory-hard verifier must never be handed an
+        // unbounded payload. (Scalars are implicitly coerced to strings by
+        // validateDto, so a number is NOT a validation failure here.)
+        { recoveryPhrase: 'x'.repeat(300) },
+        mockServer as Server,
+      );
+
+      expect(identityResetService.requestReset).not.toHaveBeenCalled();
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'error',
+        expect.objectContaining({ message: expect.any(String) as unknown }),
+      );
+    });
+  });
+
+  describe('handleResetIdentityCancel', () => {
+    it('clears every surface and notifies endpoints on a real cancel', async () => {
+      identityResetService.cancelReset.mockResolvedValue(true);
+
+      await service.handleResetIdentityCancel(
+        mockClient as Socket,
+        mockServer as Server,
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'identityResetCancelResult',
+        { cancelled: true },
+      );
+      expect(mockServer.to).toHaveBeenCalledWith('user:1');
+      expect(mockServer.emit).toHaveBeenCalledWith('identityResetCancelled', {
+        occurredAt: expect.any(String) as unknown,
+      });
+      expect(pushNotificationsService.notifyIdentityReset).toHaveBeenCalledWith(
+        1,
+        'identity_reset_cancelled',
+      );
+    });
+
+    it('stays silent when there was nothing pending to cancel', async () => {
+      identityResetService.cancelReset.mockResolvedValue(false);
+
+      await service.handleResetIdentityCancel(
+        mockClient as Socket,
+        mockServer as Server,
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(mockClient.emit).toHaveBeenCalledWith(
+        'identityResetCancelResult',
+        { cancelled: false },
+      );
+      expect(mockServer.emit).not.toHaveBeenCalledWith(
+        'identityResetCancelled',
+        expect.anything(),
+      );
+      expect(
+        pushNotificationsService.notifyIdentityReset,
+      ).not.toHaveBeenCalled();
+    });
+  });
+
+  describe('handleSetRecoveryKey', () => {
+    const phrase =
+      'legal winner thank year wave sausage worth useful legal winner thank yellow';
+
+    it('stores the phrase verifier and confirms', async () => {
+      await service.handleSetRecoveryKey(mockClient as Socket, { phrase });
+
+      expect(identityResetService.setRecoveryKey).toHaveBeenCalledWith(
+        1,
+        phrase,
+      );
+      expect(mockClient.emit).toHaveBeenCalledWith('recoveryKeySet', {
+        success: true,
+      });
+    });
+
+    it('reports failure without leaking the reason', async () => {
+      identityResetService.setRecoveryKey.mockRejectedValue(
+        new Error('db down'),
+      );
+
+      await service.handleSetRecoveryKey(mockClient as Socket, { phrase });
+
+      expect(mockClient.emit).toHaveBeenCalledWith('recoveryKeySet', {
+        success: false,
+      });
+    });
+
+    it('rejects a too-short phrase', async () => {
+      await service.handleSetRecoveryKey(mockClient as Socket, {
+        phrase: 'short',
+      });
+
+      expect(identityResetService.setRecoveryKey).not.toHaveBeenCalled();
+      expect(mockClient.emit).toHaveBeenCalledWith('recoveryKeySet', {
+        success: false,
+      });
+    });
+  });
+
+  describe('handleCheckOwnKeyBundle (0b additions)', () => {
+    it('reports a pending ceremony and the last identity replacement', async () => {
+      const deadlineAt = new Date(Date.now() + 1000);
+      const replacedAt = new Date(Date.now() - 5000);
+      keyBundlesService.hasKeyBundle.mockResolvedValue(true);
+      keyBundlesService.latestIdentityChangeAt.mockResolvedValue(replacedAt);
+      identityResetService.getStatusForUser.mockResolvedValue({
+        status: 'pending',
+        deadlineAt,
+      });
+
+      await service.handleCheckOwnKeyBundle(mockClient as Socket);
+
+      expect(mockClient.emit).toHaveBeenCalledWith('ownKeyBundleStatus', {
+        exists: true,
+        identityReset: {
+          status: 'pending',
+          deadlineAt: deadlineAt.toISOString(),
+        },
+        // This is what gives a session offline at the time its banner.
+        identityReplacedAt: replacedAt.toISOString(),
+      });
+    });
+
+    it('reports nulls when there is no ceremony and no replacement', async () => {
+      keyBundlesService.hasKeyBundle.mockResolvedValue(false);
+
+      await service.handleCheckOwnKeyBundle(mockClient as Socket);
+
+      expect(mockClient.emit).toHaveBeenCalledWith('ownKeyBundleStatus', {
+        exists: false,
+        identityReset: null,
+        identityReplacedAt: null,
+      });
+    });
+
+    it('stays silent on failure so the client keeps treating it as UNKNOWN', async () => {
+      keyBundlesService.hasKeyBundle.mockRejectedValue(new Error('db down'));
+
+      await service.handleCheckOwnKeyBundle(mockClient as Socket);
+
+      expect(mockClient.emit).not.toHaveBeenCalledWith(
+        'ownKeyBundleStatus',
+        expect.anything(),
+      );
     });
   });
 });
