@@ -734,6 +734,30 @@ abstract class AppLocalizations {
   /// **'Brak zapisanego klucza tożsamości dla tego kontaktu.'**
   String get peerIdentityFingerprintNoStoredKey;
 
+  /// No description provided for @peerIdentityChangedTimelineRow.
+  ///
+  /// In pl, this message translates to:
+  /// **'Klucze bezpieczeństwa {name} uległy zmianie — zwykle to logowanie z nowego urządzenia lub przeglądarki. Dotknij, aby zweryfikować.'**
+  String peerIdentityChangedTimelineRow(String name);
+
+  /// No description provided for @ownIdentityReplacedTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nowe klucze szyfrowania na Twoim koncie'**
+  String get ownIdentityReplacedTitle;
+
+  /// No description provided for @ownIdentityReplacedBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Inne logowanie przesłało nowe klucze szyfrowania dla Twojego konta — zwykle to nowe urządzenie, przeglądarka lub ponowna instalacja. Jeśli to nie Ty, natychmiast zmień hasło.'**
+  String get ownIdentityReplacedBody;
+
+  /// No description provided for @ownIdentityReplacedDismissAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Rozumiem'**
+  String get ownIdentityReplacedDismissAction;
+
   /// No description provided for @identityFingerprintUnavailable.
   ///
   /// In pl, this message translates to:

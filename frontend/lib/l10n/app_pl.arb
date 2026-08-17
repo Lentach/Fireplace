@@ -135,6 +135,13 @@
     "placeholders": { "name": { "type": "String" } }
   },
   "peerIdentityFingerprintNoStoredKey": "Brak zapisanego klucza tożsamości dla tego kontaktu.",
+  "peerIdentityChangedTimelineRow": "Klucze bezpieczeństwa {name} uległy zmianie — zwykle to logowanie z nowego urządzenia lub przeglądarki. Dotknij, aby zweryfikować.",
+  "@peerIdentityChangedTimelineRow": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "ownIdentityReplacedTitle": "Nowe klucze szyfrowania na Twoim koncie",
+  "ownIdentityReplacedBody": "Inne logowanie przesłało nowe klucze szyfrowania dla Twojego konta — zwykle to nowe urządzenie, przeglądarka lub ponowna instalacja. Jeśli to nie Ty, natychmiast zmień hasło.",
+  "ownIdentityReplacedDismissAction": "Rozumiem",
   "identityFingerprintUnavailable": "Odcisk tożsamości jest niedostępny.",
   "blockUser": "Zablokuj użytkownika",
   "conversationDeletedByOther": "Rozmowa usunięta przez drugą osobę",

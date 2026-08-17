@@ -111,6 +111,32 @@ Future<void> showFireplaceMessageNotificationWithPlugin({
   required FlutterLocalNotificationsPlugin plugin,
   required Map<String, dynamic> data,
 }) async {
+  // Phase 0a takeover alarm: content-free security notice (see
+  // push-notifications.service.ts notifyIdentityChanged). Same wording rule
+  // as the PWA service worker: this fires on legitimate reinstalls/new
+  // sign-ins too, so it must not scream "hacked".
+  if (data['type'] == 'identity_changed') {
+    const androidDetails = AndroidNotificationDetails(
+      _androidChannelId,
+      'Fireplace',
+      channelDescription: _androidChannelDescription,
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@drawable/ic_stat_fireplace',
+      tag: 'identity-changed',
+    );
+    await plugin.show(
+      // Fixed id well outside the conversation-id space so it replaces
+      // itself and never collides with a message notification.
+      id: 0x40000000,
+      title: 'Fireplace',
+      body:
+          'New encryption keys on your account — usually a new device or '
+          'browser sign-in. Open the app to review.',
+      notificationDetails: const NotificationDetails(android: androidDetails),
+    );
+    return;
+  }
   if (data['type'] != 'new_message') return;
 
   final convRaw = data['conversationId'];

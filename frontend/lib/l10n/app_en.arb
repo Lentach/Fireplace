@@ -135,6 +135,13 @@
     "placeholders": { "name": { "type": "String" } }
   },
   "peerIdentityFingerprintNoStoredKey": "No stored identity key is available for this contact.",
+  "peerIdentityChangedTimelineRow": "{name}'s security keys have changed — usually a sign-in from a new device or browser. Tap to verify.",
+  "@peerIdentityChangedTimelineRow": {
+    "placeholders": { "name": { "type": "String" } }
+  },
+  "ownIdentityReplacedTitle": "New encryption keys on your account",
+  "ownIdentityReplacedBody": "Another sign-in uploaded new encryption keys for your account — usually a new device, browser, or reinstall. If this wasn't you, change your password immediately.",
+  "ownIdentityReplacedDismissAction": "Got it",
   "identityFingerprintUnavailable": "Fingerprint unavailable.",
   "blockUser": "Block user",
   "conversationDeletedByOther": "Conversation deleted by the other user",

@@ -2,6 +2,8 @@ import 'package:fireplace/l10n/app_localizations.dart';
 import 'package:fireplace/providers/encryption_provider.dart';
 import 'package:fireplace/theme/rpg_theme.dart';
 import 'package:fireplace/widgets/identity_damaged_banner.dart';
+import 'package:fireplace/widgets/own_identity_replaced_banner.dart';
+import 'package:fireplace/widgets/peer_identity_changed_row.dart';
 import 'package:fireplace/widgets/peer_identity_fingerprint_dialog.dart';
 import 'package:flutter/material.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -18,6 +20,7 @@ class _FakeEncryption extends EncryptionProvider {
     this.changedPeers = const <int>{},
     this.peerFingerprint,
     this.ownFingerprint,
+    this.replacedAt,
   });
 
   bool damaged;
@@ -27,6 +30,8 @@ class _FakeEncryption extends EncryptionProvider {
   int recoverCalls = 0;
   final List<int> acknowledged = <int>[];
   bool recovering = false;
+  String? replacedAt;
+  int dismissCalls = 0;
 
   @override
   bool get identityIncomplete => damaged;
@@ -36,6 +41,16 @@ class _FakeEncryption extends EncryptionProvider {
 
   @override
   Set<int> get peersWithChangedIdentity => changedPeers;
+
+  @override
+  String? get ownIdentityReplacedAt => replacedAt;
+
+  @override
+  Future<void> dismissOwnIdentityReplaced() async {
+    dismissCalls++;
+    replacedAt = null;
+    notifyListeners();
+  }
 
   @override
   Future<String?> getPeerIdentityFingerprint(int peerId) async =>
@@ -142,6 +157,75 @@ void main() {
       await tester.tap(find.text(l10n.identityDamagedConfirmAction));
       await tester.pumpAndSettle();
       expect(encryption.recoverCalls, 1);
+    });
+  });
+
+  group('OwnIdentityReplacedBanner', () {
+    testWidgets('renders NOTHING when no replacement is pending', (
+      tester,
+    ) async {
+      final encryption = _FakeEncryption();
+      await tester.pumpWidget(
+        _host(encryption, const OwnIdentityReplacedBanner()),
+      );
+
+      expect(find.byIcon(Icons.phonelink_lock_outlined), findsNothing);
+      expect(find.byType(TextButton), findsNothing);
+    });
+
+    testWidgets('warns while a replacement is pending and dismiss clears it', (
+      tester,
+    ) async {
+      final encryption = _FakeEncryption(
+        replacedAt: '2026-08-17T12:00:00.000Z',
+      );
+      await tester.pumpWidget(
+        _host(encryption, const OwnIdentityReplacedBanner()),
+      );
+
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      expect(find.text(l10n.ownIdentityReplacedTitle), findsOneWidget);
+      expect(find.byIcon(Icons.phonelink_lock_outlined), findsOneWidget);
+
+      await tester.tap(find.text(l10n.ownIdentityReplacedDismissAction));
+      await tester.pumpAndSettle();
+      expect(encryption.dismissCalls, 1);
+      expect(
+        find.text(l10n.ownIdentityReplacedTitle),
+        findsNothing,
+        reason: 'dismissal is the only thing that clears the alarm',
+      );
+    });
+  });
+
+  group('PeerIdentityChangedRow', () {
+    testWidgets('tap opens the fingerprint verify dialog', (tester) async {
+      final encryption = _FakeEncryption(
+        changedPeers: {7},
+        peerFingerprint: '0123 4567 89ab cdef',
+        ownFingerprint: 'fedc ba98 7654 3210',
+      );
+      await tester.pumpWidget(
+        _host(
+          encryption,
+          const PeerIdentityChangedRow(peerId: 7, peerName: 'bob'),
+        ),
+      );
+
+      final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+      expect(
+        find.text(l10n.peerIdentityChangedTimelineRow('bob')),
+        findsOneWidget,
+      );
+
+      await tester.tap(find.byType(InkWell));
+      await tester.pumpAndSettle();
+      expect(find.byType(AlertDialog), findsOneWidget);
+
+      // The verify door still clears the warning exactly once from here.
+      await tester.tap(find.text(l10n.peerIdentityMarkVerifiedAction));
+      await tester.pumpAndSettle();
+      expect(encryption.acknowledged, [7]);
     });
   });
 

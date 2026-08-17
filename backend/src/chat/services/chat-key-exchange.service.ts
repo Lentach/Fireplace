@@ -1,6 +1,8 @@
 import { Injectable, Logger } from '@nestjs/common';
 import { Server, Socket } from 'socket.io';
 import { KeyBundlesService } from '../../key-bundles/key-bundles.service';
+import { ConversationsService } from '../../conversations/conversations.service';
+import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
 import { validateDto } from '../utils/dto.validator';
 import { UploadKeyBundleDto } from '../dto/upload-key-bundle.dto';
 import { UploadOneTimePreKeysDto } from '../dto/upload-one-time-pre-keys.dto';
@@ -24,15 +26,23 @@ export class ChatKeyExchangeService {
     Map<number, number>
   >();
 
-  constructor(private readonly keyBundlesService: KeyBundlesService) {}
+  constructor(
+    private readonly keyBundlesService: KeyBundlesService,
+    private readonly conversationsService: ConversationsService,
+    private readonly pushNotificationsService: PushNotificationsService,
+  ) {}
 
-  async handleUploadKeyBundle(client: Socket, data: any): Promise<void> {
+  async handleUploadKeyBundle(
+    client: Socket,
+    data: unknown,
+    server: Server,
+  ): Promise<void> {
     const userId: number = client.data.user?.id;
     if (!userId) return;
 
     try {
       const dto = validateDto(UploadKeyBundleDto, data);
-      await this.keyBundlesService.upsertKeyBundle(userId, {
+      const result = await this.keyBundlesService.upsertKeyBundle(userId, {
         registrationId: dto.registrationId,
         identityPublicKey: dto.identityPublicKey,
         signedPreKeyId: dto.signedPreKeyId,
@@ -40,6 +50,10 @@ export class ChatKeyExchangeService {
         signedPreKeySignature: dto.signedPreKeySignature,
       });
       client.emit('keyBundleUploaded', { success: true });
+      if (result.identityChanged) {
+        // Fire-and-forget: the alarm must never fail or delay the upload ack.
+        void this.notifyIdentityChanged(client, userId, server);
+      }
     } catch (error) {
       this.logger.error(
         `uploadKeyBundle failed userId=${userId}: ${error.message}`,
@@ -47,6 +61,51 @@ export class ChatKeyExchangeService {
       client.emit('error', {
         message: error?.message || 'Failed to upload key bundle',
       });
+    }
+  }
+
+  /**
+   * Phase 0a takeover alarm (multi-device spec §6.0). After a key-bundle
+   * upload REPLACED the stored identity:
+   * 1. `ownIdentityReplaced` to the account's OTHER live sessions
+   *    (`client.to(room)` excludes the uploading socket — it caused the event).
+   * 2. Content-free push to every registered endpoint (offline sessions).
+   * 3. `peerIdentityChanged` to every conversation peer's room, feeding the
+   *    in-conversation timeline row (owner-ratified 2026-08-17).
+   * Wording rule: clients render this as "new device/browser sign-in" — the
+   * same branch fires on every legitimate reinstall/migration, not just
+   * takeover. Same-identity re-uploads (the every-connect path) never reach
+   * here: upsertKeyBundle only reports identityChanged on a differing key.
+   */
+  private async notifyIdentityChanged(
+    client: Socket,
+    userId: number,
+    server: Server,
+  ): Promise<void> {
+    const occurredAt = new Date().toISOString();
+    try {
+      client.to(userRoom(userId)).emit('ownIdentityReplaced', { occurredAt });
+      const pushPromise = this.pushNotificationsService
+        .notifyIdentityChanged(userId)
+        .catch(() => this.logger.warn('identity-changed push failed'));
+      const conversations = await this.conversationsService.findByUser(userId);
+      const peerIds = new Set<number>();
+      for (const conv of conversations) {
+        const peerId =
+          conv.userOne?.id === userId ? conv.userTwo?.id : conv.userOne?.id;
+        if (peerId != null && peerId !== userId) peerIds.add(peerId);
+      }
+      for (const peerId of peerIds) {
+        server
+          .to(userRoom(peerId))
+          .emit('peerIdentityChanged', { userId, occurredAt });
+      }
+      await pushPromise;
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      this.logger.error(
+        `identity-changed notify failed userId=${userId}: ${message}`,
+      );
     }
   }
 

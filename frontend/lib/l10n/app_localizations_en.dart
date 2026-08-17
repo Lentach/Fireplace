@@ -362,6 +362,21 @@ class AppLocalizationsEn extends AppLocalizations {
       'No stored identity key is available for this contact.';
 
   @override
+  String peerIdentityChangedTimelineRow(String name) {
+    return '$name\'s security keys have changed — usually a sign-in from a new device or browser. Tap to verify.';
+  }
+
+  @override
+  String get ownIdentityReplacedTitle => 'New encryption keys on your account';
+
+  @override
+  String get ownIdentityReplacedBody =>
+      'Another sign-in uploaded new encryption keys for your account — usually a new device, browser, or reinstall. If this wasn\'t you, change your password immediately.';
+
+  @override
+  String get ownIdentityReplacedDismissAction => 'Got it';
+
+  @override
   String get identityFingerprintUnavailable => 'Fingerprint unavailable.';
 
   @override

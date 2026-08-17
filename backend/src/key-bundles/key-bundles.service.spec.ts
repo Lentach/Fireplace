@@ -4,11 +4,13 @@ import { getRepositoryToken } from '@nestjs/typeorm';
 import { KeyBundlesService, KeyBundleData } from './key-bundles.service';
 import { KeyBundle } from './key-bundle.entity';
 import { OneTimePreKey } from './one-time-pre-key.entity';
+import { IdentityChangeAudit } from './identity-change-audit.entity';
 
 describe('KeyBundlesService', () => {
   let service: KeyBundlesService;
   let keyBundleRepo: Record<string, jest.Mock>;
   let otpRepo: Record<string, jest.Mock>;
+  let auditRepo: Record<string, jest.Mock>;
   // Chainable query-builder mock for the stale-OTP purge in upsertKeyBundle.
   let purgeBuilder: {
     delete: jest.Mock;
@@ -52,11 +54,19 @@ describe('KeyBundlesService', () => {
       createQueryBuilder: jest.fn(() => purgeBuilder),
     };
 
+    auditRepo = {
+      insert: jest.fn().mockResolvedValue({ identifiers: [{ id: 1 }] }),
+    };
+
     const module: TestingModule = await Test.createTestingModule({
       providers: [
         KeyBundlesService,
         { provide: getRepositoryToken(KeyBundle), useValue: keyBundleRepo },
         { provide: getRepositoryToken(OneTimePreKey), useValue: otpRepo },
+        {
+          provide: getRepositoryToken(IdentityChangeAudit),
+          useValue: auditRepo,
+        },
       ],
     }).compile();
 
@@ -96,7 +106,7 @@ describe('KeyBundlesService', () => {
       expect(keyBundleRepo.save).not.toHaveBeenCalled();
     });
 
-    it('warns when an upload replaces an existing identity', async () => {
+    it('warns, writes a durable audit row, and reports the churn when an upload replaces an existing identity', async () => {
       const oldIdentity = 'old-identity-public-key-material';
       const newIdentity = 'new-identity-public-key-material';
       keyBundleRepo.findOne.mockResolvedValue({
@@ -109,7 +119,7 @@ describe('KeyBundlesService', () => {
         .spyOn(Logger.prototype, 'warn')
         .mockImplementation(() => undefined);
 
-      await service.upsertKeyBundle(9, {
+      const result = await service.upsertKeyBundle(9, {
         ...mockKeyBundleData,
         identityPublicKey: newIdentity,
       });
@@ -118,10 +128,47 @@ describe('KeyBundlesService', () => {
       expect(warnSpy).toHaveBeenCalledWith(
         '[identity-churn] userId=9 oldIdentityPrefix=old-identity newIdentityPrefix=new-identity',
       );
+      // Phase 0a: the churn is durable — a full audit row, not just a log line.
+      expect(auditRepo.insert).toHaveBeenCalledTimes(1);
+      expect(auditRepo.insert).toHaveBeenCalledWith({
+        userId: 9,
+        previousIdentityPublicKey: oldIdentity,
+        newIdentityPublicKey: newIdentity,
+      });
+      expect(result).toEqual({
+        identityChanged: true,
+        previousIdentityPublicKey: oldIdentity,
+      });
       warnSpy.mockRestore();
     });
 
-    it('does not warn when an upload retains the existing identity', async () => {
+    it('an audit-row insert failure never fails the upload (loud log, upload acked)', async () => {
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 9,
+        ...mockKeyBundleData,
+        identityPublicKey: 'old-identity',
+      });
+      keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
+      auditRepo.insert.mockRejectedValue(new Error('db down'));
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      const errorSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+
+      const result = await service.upsertKeyBundle(9, {
+        ...mockKeyBundleData,
+        identityPublicKey: 'new-identity',
+      });
+
+      expect(result.identityChanged).toBe(true);
+      expect(errorSpy).toHaveBeenCalled();
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
+    });
+
+    it('does not warn or audit when an upload retains the existing identity', async () => {
       keyBundleRepo.findOne.mockResolvedValue({
         userId: 10,
         ...mockKeyBundleData,
@@ -134,7 +181,22 @@ describe('KeyBundlesService', () => {
       await service.upsertKeyBundle(10, mockKeyBundleData);
 
       expect(warnSpy).not.toHaveBeenCalled();
+      // Same-identity re-upload (the normal every-connect path) stays silent.
+      expect(auditRepo.insert).not.toHaveBeenCalled();
       warnSpy.mockRestore();
+    });
+
+    it('does not audit a first-time bundle upload (no prior identity)', async () => {
+      keyBundleRepo.findOne.mockResolvedValue(null);
+      keyBundleRepo.upsert.mockResolvedValue({ raw: [] });
+
+      const result = await service.upsertKeyBundle(7, mockKeyBundleData);
+
+      expect(auditRepo.insert).not.toHaveBeenCalled();
+      expect(result).toEqual({
+        identityChanged: false,
+        previousIdentityPublicKey: null,
+      });
     });
 
     it('purges unused OTPs from superseded identity epochs (durable stale-OTP fix)', async () => {

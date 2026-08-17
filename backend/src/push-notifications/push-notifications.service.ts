@@ -82,6 +82,42 @@ export class PushNotificationsService implements OnModuleInit {
     ]);
   }
 
+  /**
+   * Phase 0a takeover alarm (multi-device spec §6.0): content-free security
+   * notice to EVERY registered endpoint of the account after its key-bundle
+   * identity was replaced. Deliberately bypasses the message coalescer (not
+   * conversation-scoped, must not debounce) and carries only a type — the
+   * client wakes and shows the "new device/browser sign-in" copy itself.
+   * Endpoint sets are per-token/per-endpoint, so the replacing device may
+   * receive its own alarm — harmless.
+   */
+  async notifyIdentityChanged(userId: number): Promise<void> {
+    await Promise.all([
+      this.notifyIdentityChangedFcm(userId),
+      this.sendWebPushToUser(userId, { type: 'identity_changed' }),
+    ]);
+  }
+
+  private async notifyIdentityChangedFcm(userId: number): Promise<void> {
+    if (!this.fcmInitialized) return;
+    const tokens = await this.fcmTokensService.findTokensByUserId(userId, [
+      'android',
+      'ios',
+    ]);
+    if (!tokens.length) return;
+    try {
+      await admin.messaging().sendEachForMulticast({
+        tokens,
+        data: { type: 'identity_changed' }, // content-free, Google-readable
+        android: { priority: 'high' },
+        apns: { payload: { aps: { contentAvailable: true } } },
+      });
+    } catch {
+      // BE-502: no userId in prod-visible logs.
+      this.logger.warn('FCM identity-changed send failed');
+    }
+  }
+
   private async notifyFcm(
     userId: number,
     options: NotifyOptions,

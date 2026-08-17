@@ -4,11 +4,16 @@ import {
   KeyBundlesService,
   PreKeyBundleResponse,
 } from '../../key-bundles/key-bundles.service';
+import { ConversationsService } from '../../conversations/conversations.service';
+import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
 import { Socket, Server } from 'socket.io';
 
 describe('ChatKeyExchangeService', () => {
   let service: ChatKeyExchangeService;
   let keyBundlesService: jest.Mocked<KeyBundlesService>;
+  let conversationsService: { findByUser: jest.Mock };
+  let pushNotificationsService: { notifyIdentityChanged: jest.Mock };
+  let clientRoomEmit: jest.Mock;
 
   let mockClient: Partial<Socket>;
   let mockServer: Partial<Server>;
@@ -25,9 +30,11 @@ describe('ChatKeyExchangeService', () => {
   };
 
   beforeEach(async () => {
+    clientRoomEmit = jest.fn();
     mockClient = {
       data: { user: { id: 1 } },
       emit: jest.fn(),
+      to: jest.fn().mockReturnValue({ emit: clientRoomEmit }),
     };
     roomsAdapter = new Map<string, Set<string>>();
     mockServer = {
@@ -38,6 +45,12 @@ describe('ChatKeyExchangeService', () => {
         sockets: new Map(),
       } as unknown as Server['sockets'],
     };
+    conversationsService = {
+      findByUser: jest.fn().mockResolvedValue([]),
+    };
+    pushNotificationsService = {
+      notifyIdentityChanged: jest.fn().mockResolvedValue(undefined),
+    };
 
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -45,12 +58,20 @@ describe('ChatKeyExchangeService', () => {
         {
           provide: KeyBundlesService,
           useValue: {
-            upsertKeyBundle: jest.fn().mockResolvedValue(undefined),
+            upsertKeyBundle: jest.fn().mockResolvedValue({
+              identityChanged: false,
+              previousIdentityPublicKey: null,
+            }),
             uploadOneTimePreKeys: jest.fn().mockResolvedValue(undefined),
             fetchPreKeyBundle: jest.fn(),
             countUnusedPreKeys: jest.fn(),
             hasKeyBundle: jest.fn(),
           },
+        },
+        { provide: ConversationsService, useValue: conversationsService },
+        {
+          provide: PushNotificationsService,
+          useValue: pushNotificationsService,
         },
       ],
     }).compile();
@@ -70,7 +91,11 @@ describe('ChatKeyExchangeService', () => {
     };
 
     it('should call upsertKeyBundle and emit keyBundleUploaded on success', async () => {
-      await service.handleUploadKeyBundle(mockClient as Socket, validData);
+      await service.handleUploadKeyBundle(
+        mockClient as Socket,
+        validData,
+        mockServer as Server,
+      );
 
       expect(keyBundlesService.upsertKeyBundle).toHaveBeenCalledWith(1, {
         registrationId: validData.registrationId,
@@ -82,12 +107,23 @@ describe('ChatKeyExchangeService', () => {
       expect(mockClient.emit).toHaveBeenCalledWith('keyBundleUploaded', {
         success: true,
       });
+      // Same-identity upload (the normal every-connect re-upload): NO alarm.
+      await new Promise((resolve) => setImmediate(resolve));
+      expect(mockClient.to).not.toHaveBeenCalled();
+      expect(
+        pushNotificationsService.notifyIdentityChanged,
+      ).not.toHaveBeenCalled();
+      expect(conversationsService.findByUser).not.toHaveBeenCalled();
     });
 
     it('should emit error when DTO validation fails', async () => {
       const invalidData = { registrationId: -1 };
 
-      await service.handleUploadKeyBundle(mockClient as Socket, invalidData);
+      await service.handleUploadKeyBundle(
+        mockClient as Socket,
+        invalidData,
+        mockServer as Server,
+      );
 
       expect(keyBundlesService.upsertKeyBundle).not.toHaveBeenCalled();
       expect(mockClient.emit).toHaveBeenCalledWith(
@@ -104,10 +140,79 @@ describe('ChatKeyExchangeService', () => {
       await service.handleUploadKeyBundle(
         noUserClient as unknown as Socket,
         validData,
+        mockServer as Server,
       );
 
       expect(keyBundlesService.upsertKeyBundle).not.toHaveBeenCalled();
       expect(noUserClient.emit).not.toHaveBeenCalled();
+    });
+
+
+    // expect.any(String) is typed `any`; the unknown hop keeps the ratchet flat.
+    const anyIsoString: unknown = expect.any(String);
+    it('identity replacement alarms other sessions, pushes, and flags conversation peers', async () => {
+      keyBundlesService.upsertKeyBundle.mockResolvedValue({
+        identityChanged: true,
+        previousIdentityPublicKey: 'old-identity',
+      });
+      conversationsService.findByUser.mockResolvedValue([
+        { userOne: { id: 1 }, userTwo: { id: 2 } },
+        { userOne: { id: 3 }, userTwo: { id: 1 } },
+      ]);
+
+      await service.handleUploadKeyBundle(
+        mockClient as Socket,
+        validData,
+        mockServer as Server,
+      );
+      // The alarm is fire-and-forget — drain it.
+      await new Promise((resolve) => setImmediate(resolve));
+
+      // Upload is still acked normally.
+      expect(mockClient.emit).toHaveBeenCalledWith('keyBundleUploaded', {
+        success: true,
+      });
+      // Other sessions: client.to(room) EXCLUDES the uploading socket.
+      expect(mockClient.to).toHaveBeenCalledWith('user:1');
+      expect(clientRoomEmit).toHaveBeenCalledWith(
+        'ownIdentityReplaced',
+        expect.objectContaining({ occurredAt: anyIsoString }),
+      );
+      // Offline sessions: content-free push to every endpoint.
+      expect(
+        pushNotificationsService.notifyIdentityChanged,
+      ).toHaveBeenCalledWith(1);
+      // Conversation peers get the corroborating event in their rooms.
+      expect(mockServer.to).toHaveBeenCalledWith('user:2');
+      expect(mockServer.to).toHaveBeenCalledWith('user:3');
+      expect(mockServer.to).not.toHaveBeenCalledWith('user:1');
+      expect(mockServer.emit).toHaveBeenCalledWith(
+        'peerIdentityChanged',
+        expect.objectContaining({ userId: 1, occurredAt: anyIsoString }),
+      );
+    });
+
+    it('a notify failure never breaks the upload ack', async () => {
+      keyBundlesService.upsertKeyBundle.mockResolvedValue({
+        identityChanged: true,
+        previousIdentityPublicKey: 'old-identity',
+      });
+      conversationsService.findByUser.mockRejectedValue(new Error('db down'));
+
+      await service.handleUploadKeyBundle(
+        mockClient as Socket,
+        validData,
+        mockServer as Server,
+      );
+      await new Promise((resolve) => setImmediate(resolve));
+
+      expect(mockClient.emit).toHaveBeenCalledWith('keyBundleUploaded', {
+        success: true,
+      });
+      expect(mockClient.emit).not.toHaveBeenCalledWith(
+        'error',
+        expect.anything(),
+      );
     });
   });
 

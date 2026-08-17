@@ -194,6 +194,8 @@ class E2eClient {
     'preKeyBundleResponse',
     'preKeysLow',
     'sessionRebuildNeeded',
+    'ownIdentityReplaced',
+    'peerIdentityChanged',
     'newFriendRequest',
     'friendRequestSent',
     'friendRequestFailed',

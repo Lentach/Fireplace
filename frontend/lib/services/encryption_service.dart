@@ -231,6 +231,75 @@ class EncryptionService {
     onPeerIdentityChanged?.call(peerId);
   }
 
+  /// Server-corroborated peer identity change (Phase 0a `peerIdentityChanged`
+  /// WS event): the peer's key bundle was REPLACED server-side. Feeds the SAME
+  /// state and persistence as the local libsignal detection — one warning
+  /// surface, cleared only by [acknowledgePeerIdentity]. Usually a legitimate
+  /// new device/browser sign-in on the peer's side, so callers must not word
+  /// it as an attack.
+  Future<void> recordPeerIdentityChangedFromServer(int peerId) async {
+    if (!_peersWithChangedIdentity.add(peerId)) return;
+    E2ePersistentDiag.record('PEER_IDENTITY_CHANGED', {
+      'peerId': peerId,
+      'source': 'server_event',
+    });
+    onPeerIdentityChanged?.call(peerId);
+    await _persistIdentityChanged();
+  }
+
+  // ---------- Own-identity-replaced alarm (Phase 0a, spec §6.0) ----------
+
+  /// ISO-8601 instant of the last server-reported replacement of THIS
+  /// account's key bundle by ANOTHER session (`ownIdentityReplaced` WS event
+  /// or `identity_changed` push). Null when none pending. Persisted per user
+  /// until explicitly dismissed — the alarm must survive a restart.
+  String? _ownIdentityReplacedAt;
+  String? get ownIdentityReplacedAt => _ownIdentityReplacedAt;
+
+  /// Fired when the own-identity-replaced state changes. Set by the provider.
+  void Function()? onOwnIdentityReplaced;
+
+  String _ownIdentityReplacedKey(int userId) =>
+      'e2e_${userId}_own_identity_replaced_v1';
+
+  Future<void> recordOwnIdentityReplaced(String occurredAt) async {
+    _ownIdentityReplacedAt = occurredAt;
+    E2ePersistentDiag.record('OWN_IDENTITY_REPLACED', {
+      'occurredAt': occurredAt,
+    });
+    // UI first, persistence after: the alarm must reach the user even when
+    // the write fails (same rule as the peer warning above).
+    onOwnIdentityReplaced?.call();
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      await prefs.setString(_ownIdentityReplacedKey(userId), occurredAt);
+    } catch (_) {}
+  }
+
+  Future<void> dismissOwnIdentityReplaced() async {
+    if (_ownIdentityReplacedAt == null) return;
+    _ownIdentityReplacedAt = null;
+    E2ePersistentDiag.record('OWN_IDENTITY_REPLACED_DISMISSED', {});
+    onOwnIdentityReplaced?.call();
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      await prefs.remove(_ownIdentityReplacedKey(userId));
+    } catch (_) {}
+  }
+
+  Future<void> _loadOwnIdentityReplaced(int userId) async {
+    try {
+      final prefs = await _sharedPrefs;
+      _ownIdentityReplacedAt = prefs.getString(
+        _ownIdentityReplacedKey(userId),
+      );
+    } catch (_) {}
+  }
+
   Future<void> _persistIdentityChanged() async {
     final userId = _userId;
     if (userId == null) return;
@@ -299,6 +368,7 @@ class EncryptionService {
     // Restore warnings the user has not acknowledged yet, before any session
     // work can add to the set.
     await _loadIdentityChanged(userId);
+    await _loadOwnIdentityReplaced(userId);
 
     // A THROWING read propagates: a storage error must never be read as "no
     // keys". Only a definitive absence reaches the server-backed fresh-install

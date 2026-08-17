@@ -82,6 +82,11 @@ class EncryptionProvider extends ChangeNotifier {
   Set<int> get peersWithChangedIdentity =>
       _encryptionService.peersWithChangedIdentity;
 
+  /// ISO-8601 instant of the last server-reported replacement of this
+  /// account's key bundle by ANOTHER session (Phase 0a takeover alarm), or
+  /// null. Drives the account-level notice; persisted until dismissed.
+  String? get ownIdentityReplacedAt => _encryptionService.ownIdentityReplacedAt;
+
   /// The pending pre-key fetch completers, keyed by recipient user ID.
   Map<int, Completer<Map<String, dynamic>>> get pendingPreKeyFetches =>
       _pendingPreKeyFetches;
@@ -884,6 +889,8 @@ class EncryptionProvider extends ChangeNotifier {
         // Rebuild the UI when a peer's identity key changes so the warning can
         // appear without waiting for the next message.
         _encryptionService.onPeerIdentityChanged = (_) => notifyListeners();
+        // Same for the account-level own-identity-replaced alarm.
+        _encryptionService.onOwnIdentityReplaced = notifyListeners;
         // Fresh session: load keys from storage (or generate on first install).
         await _encryptionService.initialize(
           userId,
@@ -1044,6 +1051,31 @@ class EncryptionProvider extends ChangeNotifier {
   /// Handler for `keyBundleUploaded` server event.
   void onKeyBundleUploaded(dynamic data) {
     debugPrint('[E2E] Key bundle uploaded to server');
+  }
+
+  /// Handler for the `ownIdentityReplaced` server event (Phase 0a): ANOTHER
+  /// sign-in replaced this account's key bundle. Usually a legitimate new
+  /// device/browser sign-in or reinstall — the UI copy must say so — but it is
+  /// also exactly what a password-only takeover looks like, so it is durable
+  /// and survives restarts until dismissed.
+  void onOwnIdentityReplaced(dynamic data) {
+    final occurredAt = data is Map && data['occurredAt'] is String
+        ? data['occurredAt'] as String
+        : DateTime.now().toUtc().toIso8601String();
+    _e2eFlowLog('OWN_IDENTITY_REPLACED_EVENT', {'occurredAt': occurredAt});
+    _encryptionService.recordOwnIdentityReplaced(occurredAt);
+    notifyListeners();
+  }
+
+  /// Handler for the `peerIdentityChanged` server event (Phase 0a): a peer's
+  /// key bundle was replaced server-side. Feeds the same warning state as the
+  /// local libsignal detection (in-conversation timeline row + verify door).
+  void onPeerIdentityChanged(dynamic data) {
+    final peerId = data is Map ? data['userId'] : null;
+    if (peerId is! int) return;
+    _e2eFlowLog('PEER_IDENTITY_CHANGED_EVENT', {'peerId': peerId});
+    _encryptionService.recordPeerIdentityChangedFromServer(peerId);
+    notifyListeners();
   }
 
   /// Handler for `oneTimePreKeysUploaded` server event.
@@ -1228,6 +1260,12 @@ class EncryptionProvider extends ChangeNotifier {
   /// does, so an unacknowledged warning survives restarts.
   Future<void> acknowledgePeerIdentity(int peerId) async {
     await _encryptionService.acknowledgePeerIdentity(peerId);
+    notifyListeners();
+  }
+
+  /// User dismissed the own-identity-replaced notice.
+  Future<void> dismissOwnIdentityReplaced() async {
+    await _encryptionService.dismissOwnIdentityReplaced();
     notifyListeners();
   }
 

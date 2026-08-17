@@ -22,6 +22,7 @@ import { BlockedUser } from './blocked/blocked-user.entity';
 import { FcmToken } from './fcm-tokens/fcm-token.entity';
 import { KeyBundle } from './key-bundles/key-bundle.entity';
 import { OneTimePreKey } from './key-bundles/one-time-pre-key.entity';
+import { IdentityChangeAudit } from './key-bundles/identity-change-audit.entity';
 import { SecretNote } from './secret-notes/secret-note.entity';
 import { SecretNotesModule } from './secret-notes/secret-notes.module';
 import { validate } from './config/env.validation';
@@ -76,6 +77,7 @@ import { ProfilePhoto } from './users/profile-photo.entity';
           RefreshToken,
           KeyBundle,
           OneTimePreKey,
+          IdentityChangeAudit,
           SecretNote,
           ConversationNotificationPreference,
           ProfilePhoto,

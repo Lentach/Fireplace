@@ -25,6 +25,7 @@ import '../widgets/top_snackbar.dart';
 import '../widgets/console_glyphs.dart';
 import '../widgets/glass/glass_bottom_nav.dart';
 import '../widgets/identity_damaged_banner.dart';
+import '../widgets/own_identity_replaced_banner.dart';
 import 'user_card_screen.dart';
 
 /// Shell after login: bottom nav with Conversations, Contacts, Settings.
@@ -274,6 +275,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           // commit. Without this banner the user would just see "[encrypted]"
           // on every message forever with no explanation and no way out.
           const IdentityDamagedBanner(),
+          // Phase 0a takeover alarm: another sign-in replaced this account's
+          // key bundle. Usually a legitimate new device/browser sign-in;
+          // durable until dismissed.
+          const OwnIdentityReplacedBanner(),
           Expanded(
             child: IndexedStack(
               index: _selectedIndex,

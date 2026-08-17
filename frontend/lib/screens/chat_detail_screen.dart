@@ -33,6 +33,7 @@ import '../utils/chat_resume_reassert.dart';
 import '../utils/ping_sound.dart';
 import '../utils/web_keyboard_inset.dart';
 import '../providers/encryption_provider.dart';
+import '../widgets/peer_identity_changed_row.dart';
 import '../services/notification_cleaner_stub.dart'
     if (dart.library.html) '../services/notification_cleaner_web.dart'
     if (dart.library.io) '../services/notification_cleaner_io.dart';
@@ -672,6 +673,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
     required List<MessageModel> messages,
     required Color mutedColor,
     required Color messagesAreaBg,
+    required UserModel? peer,
+    required bool peerIdentityChanged,
     required int currentUserId,
   }) {
     // Wallpaper runs full-bleed behind the floating top chrome
@@ -681,6 +684,12 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         ? 8.0
         : MediaQuery.paddingOf(context).top + 8.0;
     final settings = context.watch<SettingsProvider>();
+    // Phase 0a: unacknowledged peer identity change renders a system row at
+    // the newest end of the timeline (reverse list => index 0). Clears the
+    // moment the user confirms fingerprints in the verify dialog. The flag is
+    // computed (and subscribed) in build() — this helper also runs inside
+    // ChatComposerViewport's build, where context.select is illegal.
+    final identityRowOffset = peerIdentityChanged ? 1 : 0;
     return ChatBackgroundPattern(
       backgroundColor: messagesAreaBg,
       layer: settings.resolvedChatBackground,
@@ -715,7 +724,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                           (m) => m.id == key.value,
                         );
                         if (idx == -1) return null;
-                        return messages.length - 1 - idx;
+                        return messages.length - 1 - idx + identityRowOffset;
                       }
                       return null;
                     },
@@ -725,15 +734,27 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                       top: topClearance,
                       bottom: 8 + listBottomPadding,
                     ),
-                    itemCount: messages.length + (_isLoadingMoreLocal ? 1 : 0),
+                    itemCount:
+                        messages.length +
+                        (_isLoadingMoreLocal ? 1 : 0) +
+                        identityRowOffset,
                     itemBuilder: (context, index) {
-                      if (_isLoadingMoreLocal && index == messages.length) {
+                      if (peerIdentityChanged && index == 0) {
+                        return PeerIdentityChangedRow(
+                          // peerIdentityChanged is only computed true in
+                          // build() when otherUser (this `peer`) is non-null.
+                          peerId: peer!.id,
+                          peerName: _getContactName(),
+                        );
+                      }
+                      final effIndex = index - identityRowOffset;
+                      if (_isLoadingMoreLocal && effIndex == messages.length) {
                         return const Padding(
                           padding: EdgeInsets.symmetric(vertical: 8),
                           child: Center(child: CircularProgressIndicator()),
                         );
                       }
-                      final msgIndex = messages.length - 1 - index;
+                      final msgIndex = messages.length - 1 - effIndex;
                       final msg = messages[msgIndex];
                       final showDate =
                           msgIndex == 0 ||
@@ -742,7 +763,7 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                             msg.createdAt,
                           );
                       return _buildMessageListItem(
-                        listIndex: index,
+                        listIndex: effIndex,
                         msg: msg,
                         showDate: showDate,
                         isMine: msg.senderId == currentUserId,
@@ -844,6 +865,13 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
         ? RpgTheme.mutedDark
         : RpgTheme.textSecondaryLight;
     final otherUser = _getOtherUser();
+    // Rebuilds when the peer's identity-change warning appears or clears
+    // (Phase 0a timeline row).
+    final peerIdentityChanged =
+        otherUser != null &&
+        context.select<EncryptionProvider, bool>(
+          (e) => e.peersWithChangedIdentity.contains(otherUser.id),
+        );
     final activeConv = convs.getConversationById(widget.conversationId);
     final statusText = _getHeaderStatusText(context, messaging);
     // Long-press the title toggles the iOS keyboard-diagnostics overlay (dev
@@ -920,6 +948,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
               mutedColor: mutedColor,
               messagesAreaBg: messagesAreaBg,
               currentUserId: currentUserId,
+              peer: otherUser,
+              peerIdentityChanged: peerIdentityChanged,
             ),
           ),
           composerFooter,
@@ -943,6 +973,8 @@ class _ChatDetailScreenState extends State<ChatDetailScreen>
                 mutedColor: mutedColor,
                 messagesAreaBg: messagesAreaBg,
                 currentUserId: currentUserId,
+                peer: otherUser,
+                peerIdentityChanged: peerIdentityChanged,
               ),
               composer: composerFooter,
             ),

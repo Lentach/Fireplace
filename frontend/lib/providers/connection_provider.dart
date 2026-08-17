@@ -629,6 +629,14 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.on('sessionRebuildNeeded', (data) {
       _encryptionProvider?.onSessionRebuildNeeded(data);
     });
+    // Phase 0a takeover alarm (multi-device spec §6.0): another sign-in
+    // replaced this account's key bundle / a peer's bundle was replaced.
+    _socketService.on('ownIdentityReplaced', (data) {
+      _encryptionProvider?.onOwnIdentityReplaced(data);
+    });
+    _socketService.on('peerIdentityChanged', (data) {
+      _encryptionProvider?.onPeerIdentityChanged(data);
+    });
 
     // --- Friend events ---
     _socketService.on('friendRequestsList', (data) {

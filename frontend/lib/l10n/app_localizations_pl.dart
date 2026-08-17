@@ -364,6 +364,22 @@ class AppLocalizationsPl extends AppLocalizations {
       'Brak zapisanego klucza tożsamości dla tego kontaktu.';
 
   @override
+  String peerIdentityChangedTimelineRow(String name) {
+    return 'Klucze bezpieczeństwa $name uległy zmianie — zwykle to logowanie z nowego urządzenia lub przeglądarki. Dotknij, aby zweryfikować.';
+  }
+
+  @override
+  String get ownIdentityReplacedTitle =>
+      'Nowe klucze szyfrowania na Twoim koncie';
+
+  @override
+  String get ownIdentityReplacedBody =>
+      'Inne logowanie przesłało nowe klucze szyfrowania dla Twojego konta — zwykle to nowe urządzenie, przeglądarka lub ponowna instalacja. Jeśli to nie Ty, natychmiast zmień hasło.';
+
+  @override
+  String get ownIdentityReplacedDismissAction => 'Rozumiem';
+
+  @override
   String get identityFingerprintUnavailable =>
       'Odcisk tożsamości jest niedostępny.';
 

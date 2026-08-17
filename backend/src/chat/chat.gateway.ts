@@ -357,7 +357,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     @ConnectedSocket() client: Socket,
     @MessageBody() data: any,
   ) {
-    return this.chatKeyExchangeService.handleUploadKeyBundle(client, data);
+    return this.chatKeyExchangeService.handleUploadKeyBundle(
+      client,
+      data,
+      this.server,
+    );
   }
 
   @UseGuards(WsThrottlerGuard)

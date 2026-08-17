@@ -171,6 +171,27 @@ self.addEventListener('push', function (event) {
   var payload = {};
   try { payload = event.data ? event.data.json() : {}; } catch (_) {}
 
+  // Phase 0a takeover alarm: content-free security notice — the account's
+  // key bundle was replaced by another sign-in. No conversation, no unread
+  // math, no sweep/badge writes; the app shows the durable banner itself on
+  // next open. Wording is the consented-recovery framing: this fires on every
+  // legitimate reinstall/new-browser sign-in too, so it must not say "hacked".
+  if (payload.type === 'identity_changed') {
+    event.waitUntil(
+      closeNotificationsForTag('identity-changed').then(function () {
+        return self.registration.showNotification('Fireplace', {
+          body: 'New encryption keys on your account — usually a new device or browser sign-in. Open the app to review.',
+          icon: '/icons/notification-icon-512.png',
+          badge: '/icons/notification-badge-96.png',
+          tag: 'identity-changed',
+          data: payload,
+          renotify: true,
+        });
+      })
+    );
+    return;
+  }
+
   var convId = payload.conversationId != null ? Number(payload.conversationId) : null;
   // Per-conversation unread — card text only.
   var unreadCount = typeof payload.unreadCount === 'number'

@@ -3,6 +3,7 @@ import { InjectRepository } from '@nestjs/typeorm';
 import { Repository } from 'typeorm';
 import { KeyBundle } from './key-bundle.entity';
 import { OneTimePreKey } from './one-time-pre-key.entity';
+import { IdentityChangeAudit } from './identity-change-audit.entity';
 
 export interface KeyBundleData {
   registrationId: number;
@@ -27,6 +28,13 @@ export interface PreKeyBundleResponse {
   oneTimePreKeyPublic: string | null;
 }
 
+export interface UpsertKeyBundleResult {
+  /** True when the upload REPLACED a stored bundle with a different identity. */
+  identityChanged: boolean;
+  /** The superseded identity public key when identityChanged, else null. */
+  previousIdentityPublicKey: string | null;
+}
+
 @Injectable()
 export class KeyBundlesService {
   private readonly logger = new Logger(KeyBundlesService.name);
@@ -36,17 +44,24 @@ export class KeyBundlesService {
     private readonly keyBundleRepo: Repository<KeyBundle>,
     @InjectRepository(OneTimePreKey)
     private readonly otpRepo: Repository<OneTimePreKey>,
+    @InjectRepository(IdentityChangeAudit)
+    private readonly identityChangeAuditRepo: Repository<IdentityChangeAudit>,
   ) {}
 
-  async upsertKeyBundle(userId: number, data: KeyBundleData): Promise<void> {
-    // Telemetry pre-check only; races with concurrent uploads are acceptable.
+  async upsertKeyBundle(
+    userId: number,
+    data: KeyBundleData,
+  ): Promise<UpsertKeyBundleResult> {
+    // Detection pre-check only; races with concurrent uploads are acceptable
+    // (duplicate audit rows under a race are tolerated by design — do NOT
+    // serialize the upsert around this).
     const existingBundle = await this.keyBundleRepo.findOne({
       where: { userId },
     });
-    if (
-      existingBundle &&
-      existingBundle.identityPublicKey !== data.identityPublicKey
-    ) {
+    const identityChanged =
+      existingBundle != null &&
+      existingBundle.identityPublicKey !== data.identityPublicKey;
+    if (identityChanged) {
       this.logger.warn(
         `[identity-churn] userId=${userId} oldIdentityPrefix=${existingBundle.identityPublicKey.slice(0, 12)} newIdentityPrefix=${data.identityPublicKey.slice(0, 12)}`,
       );
@@ -78,7 +93,32 @@ export class KeyBundlesService {
         { identity: data.identityPublicKey },
       )
       .execute();
+    // Phase 0a takeover alarm (spec §6.0): durable audit row for the identity
+    // replacement. Written AFTER the upsert so a failed upload never leaves a
+    // phantom audit row. An audit-write failure must not fail the upload (that
+    // would break E2E setup for the client), but it is loud — the alarm's
+    // durability depends on this row.
+    if (identityChanged) {
+      try {
+        await this.identityChangeAuditRepo.insert({
+          userId,
+          previousIdentityPublicKey: existingBundle.identityPublicKey,
+          newIdentityPublicKey: data.identityPublicKey,
+        });
+      } catch (err) {
+        this.logger.error(
+          `[identity-churn] audit row insert FAILED userId=${userId}`,
+          err instanceof Error ? err.stack : String(err),
+        );
+      }
+    }
     this.logger.debug(`Key bundle upserted for userId=${userId}`);
+    return {
+      identityChanged,
+      previousIdentityPublicKey: identityChanged
+        ? existingBundle.identityPublicKey
+        : null,
+    };
   }
 
   /**
