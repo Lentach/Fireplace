@@ -1064,18 +1064,6 @@ abstract class AppLocalizations {
   /// **'GIF'**
   String get actionTileGif;
 
-  /// No description provided for @attachmentOptionPhotoLibrary.
-  ///
-  /// In pl, this message translates to:
-  /// **'Biblioteka zdjęć'**
-  String get attachmentOptionPhotoLibrary;
-
-  /// No description provided for @attachmentOptionTakePhoto.
-  ///
-  /// In pl, this message translates to:
-  /// **'Zrób zdjęcie'**
-  String get attachmentOptionTakePhoto;
-
   /// No description provided for @actionTileAntiQuantumNote.
   ///
   /// In pl, this message translates to:
