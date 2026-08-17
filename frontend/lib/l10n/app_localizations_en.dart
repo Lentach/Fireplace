@@ -576,12 +576,6 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actionTileGif => 'GIF';
 
   @override
-  String get attachmentOptionPhotoLibrary => 'Photo library';
-
-  @override
-  String get attachmentOptionTakePhoto => 'Take photo';
-
-  @override
   String get actionTileAntiQuantumNote => 'Anti-Quantum Note';
 
   @override

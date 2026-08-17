@@ -205,8 +205,6 @@
   "disappearingTimerMinutes": "{count, plural, one{1 minuta} few{{count} minuty} many{{count} minut} other{{count} minuty}}",
   "disappearingTimerSeconds": "{count, plural, one{1 sekunda} few{{count} sekundy} many{{count} sekund} other{{count} sekundy}}",
   "actionTileGif": "GIF",
-  "attachmentOptionPhotoLibrary": "Biblioteka zdjęć",
-  "attachmentOptionTakePhoto": "Zrób zdjęcie",
   "actionTileAntiQuantumNote": "Notatka antykwantowa",
   "unknown": "Nieznany",
   "noBlockedUsers": "Brak zablokowanych użytkowników",
