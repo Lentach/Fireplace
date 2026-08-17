@@ -62,6 +62,25 @@ Harness: `test_e2e/takeover_alarm_test.dart` (new), `_trackedEvents` +2. Docs: r
   bundle replace alerted the victim's second session AND the conversation peer within seconds,
   uploader NOT self-alarmed, same-identity re-upload silent both ways, and exactly ONE
   `identity_change_audit` row existed afterwards. Full `test_e2e` suite 16 passed / 2 skipped.
+- **Independent review (reviewer subagent, defensive framing, full `b56719f..HEAD` diff, mandatory
+  reading order enforced): verdict SHIP, ZERO mechanism findings, confidence 0.88.** Verified all
+  six axes: spec §6.0 contract, data-safety (no decrypt/reconcile/emitToNewestTab touch, handlers
+  cannot mutate Signal state), ChatDetailScreen index math, push privacy (content-free FCM, no
+  topic header), migration-vs-runner contract, race/failure paths. One POLISH finding, deferred
+  by design: a session OFFLINE at replacement time gets only the OS push — there is no
+  connect-time replay of the server audit row, so its in-app banner never appears. Candidate for
+  0b/later (`checkOwnKeyBundle`-style status fetch on connect); recorded, not fixed in 0a.
+- **Visual browser live-fire (owner-approved browser use, 3 isolated Chromium contexts on the
+  local stack + `flutter run -d web-server`):** victim logged in (consented-recovery flow made
+  that browser the key owner — the 0.1.10 guard banner and confirm dialog render exactly as
+  shipped), second victim tab auto-logged in cleanly, peer recovered + opened the chat. Then an
+  attacker context logged into the victim's account and consented to new keys: within seconds
+  BOTH victim tabs showed `OwnIdentityReplacedBanner` (PL copy verbatim, "Rozumiem" dismiss
+  works) and the peer's OPEN chat grew the `PeerIdentityChangedRow` live at the newest end; tap
+  opened the fingerprint dialog (both fingerprints + "Odciski się zgadzają"), acknowledge closed
+  the dialog and removed the row. `identity_change_audit` afterwards held exactly one row per
+  churn event (victim recovery, peer recovery, attacker replace) — timestamps match the actions.
+  Throwaway seed script + screenshots deleted; nothing of the demo is committed.
 
 ## Notes for next session
 
