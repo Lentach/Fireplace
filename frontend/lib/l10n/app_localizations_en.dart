@@ -576,16 +576,10 @@ class AppLocalizationsEn extends AppLocalizations {
   String get actionTileGif => 'GIF';
 
   @override
-  String get actionTileGallery => 'Gallery';
+  String get attachmentOptionPhotoLibrary => 'Photo library';
 
   @override
-  String get actionTileCamera => 'Camera';
-
-  @override
-  String get cameraModePhoto => 'Photo';
-
-  @override
-  String get cameraModeVideo => 'Video';
+  String get attachmentOptionTakePhoto => 'Take photo';
 
   @override
   String get actionTileAntiQuantumNote => 'Anti-Quantum Note';
@@ -1300,4 +1294,7 @@ class AppLocalizationsEn extends AppLocalizations {
 
   @override
   String get videoUnsupportedFormat => 'Unsupported video format (MP4 only)';
+
+  @override
+  String get attachmentUnsupportedFileType => 'Unsupported file type';
 }

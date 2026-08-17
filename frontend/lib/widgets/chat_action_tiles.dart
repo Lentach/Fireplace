@@ -9,6 +9,9 @@ import 'package:image_picker/image_picker.dart';
 import '../utils/file_utils_stub.dart'
     if (dart.library.io) '../utils/file_utils_io.dart'
     as file_utils;
+import '../utils/camera_capture_stub.dart'
+    if (dart.library.html) '../utils/camera_capture_web.dart'
+    as camera_capture;
 import '../models/conversation_model.dart';
 import '../providers/auth_provider.dart';
 import '../providers/conversations_provider.dart';
@@ -49,8 +52,9 @@ class ChatActionTiles extends StatelessWidget {
   final VoidCallback? onPingSent;
 
   /// Composer staging seams (null only in standalone test mounts — the
-  /// gallery/camera tiles then no-op). One gallery entry routes BOTH media
-  /// kinds: image → staged-image flow, video → staged-video flow.
+  /// Photo library / Take photo sheet options then no-op). The Photo library
+  /// entry routes BOTH media kinds: image → staged-image flow, video →
+  /// staged-video flow.
   final StageImageCallback? onStageImage;
   final StageVideoCallback? onStageVideo;
 
@@ -124,24 +128,10 @@ class ChatActionTiles extends StatelessWidget {
                     ),
                     const SizedBox(width: 12),
                     _ActionTile(
-                      icon: Icons.photo_library_outlined,
-                      tooltip: l10n.actionTileGallery,
-                      color: iconColor,
-                      onTap: () => _pickFromGallery(context),
-                    ),
-                    const SizedBox(width: 12),
-                    _ActionTile(
                       icon: Icons.attach_file,
                       tooltip: l10n.attachment,
                       color: iconColor,
-                      onTap: () => _pickDocument(context),
-                    ),
-                    const SizedBox(width: 12),
-                    _ActionTile(
-                      icon: Icons.camera_alt_outlined,
-                      tooltip: l10n.actionTileCamera,
-                      color: iconColor,
-                      onTap: () => _pickWithCamera(context),
+                      onTap: () => _showAttachmentSheet(context),
                     ),
                     const SizedBox(width: 12),
                     _ActionTile(
@@ -195,8 +185,8 @@ class ChatActionTiles extends StatelessWidget {
       (defaultTargetPlatform == TargetPlatform.android ||
           defaultTargetPlatform == TargetPlatform.iOS);
 
-  /// One gallery door for BOTH media kinds (messenger convergence, owner
-  /// ruling): native mobile opens the system photo+video picker; web/desktop
+  /// Photo library option — one door for BOTH media kinds (messenger
+  /// convergence): native mobile opens the system photo+video picker; web/desktop
   /// opens a file dialog filtered to the supported extensions. The result is
   /// routed by extension — image → staged-image flow, everything else →
   /// staged-video flow, whose whitelist check owns the unsupported-format
@@ -235,16 +225,21 @@ class ChatActionTiles extends StatelessWidget {
     await _stagePickedMedia(context, fileName: fileName, bytes: bytes);
   }
 
-  /// Routes picked media bytes into the composer by extension.
+  /// Routes picked media bytes into the composer by extension. Routing is
+  /// EXPLICIT both ways: only whitelisted image extensions stage as image,
+  /// only whitelisted video extensions stage as video, and anything else
+  /// (e.g. an iOS HEIC still the device did not transcode) gets an honest
+  /// unsupported-file toast — never a video-shaped error for an image.
   Future<void> _stagePickedMedia(
     BuildContext context, {
     required String fileName,
     required List<int>? bytes,
   }) async {
+    final l10n = AppLocalizations.of(context);
     if (bytes == null) {
       showTopSnackBar(
         context,
-        AppLocalizations.of(context).snackbarCouldNotReadFile,
+        l10n.snackbarCouldNotReadFile,
         backgroundColor: Colors.red,
       );
       return;
@@ -260,47 +255,72 @@ class ChatActionTiles extends StatelessWidget {
       );
       return;
     }
-    await onStageVideo!(bytes: Uint8List.fromList(bytes), filename: fileName);
+    if (_galleryVideoExtensions.contains(ext)) {
+      await onStageVideo!(bytes: Uint8List.fromList(bytes), filename: fileName);
+      return;
+    }
+    showTopSnackBar(
+      context,
+      l10n.attachmentUnsupportedFileType,
+      backgroundColor: Colors.red,
+    );
   }
 
-  /// Camera door: minimal Photo/Video chooser, then the system camera. Both
-  /// results land in the same staged flows as the gallery. On web,
-  /// image_picker sets the HTML capture attribute so phones open the camera;
-  /// desktop web degrades to a file dialog (acceptable, no special-casing).
-  Future<void> _pickWithCamera(BuildContext context) async {
-    if (onStageImage == null || onStageVideo == null) return;
+  /// Paperclip door: one glass sheet routing all three attachment kinds
+  /// (owner ruling 2026-08-16 — Gallery/Camera tiles collapsed back into the
+  /// paperclip). Photo library → [_pickFromGallery], Take photo →
+  /// [_takePhoto], Choose a file → [_pickDocument].
+  Future<void> _showAttachmentSheet(BuildContext context) async {
     if (_requireActiveConversation(context) == null) return;
 
-    final mode = await showGlassSheet<_CameraMode>(
+    final action = await showGlassSheet<_AttachmentAction>(
       context,
-      builder: (_) => const _CameraModeSheet(),
+      builder: (_) => const _AttachmentSheet(),
     );
-    if (mode == null || !context.mounted) return;
+    if (action == null || !context.mounted) return;
 
-    if (mode == _CameraMode.photo) {
-      final picked = await ImagePicker().pickImage(source: ImageSource.camera);
-      if (picked == null || !context.mounted) return;
-      final bytes = await picked.readAsBytes();
-      if (!context.mounted) return;
-      await _stagePickedMedia(context, fileName: picked.name, bytes: bytes);
-    } else {
-      final picked = await ImagePicker().pickVideo(
-        source: ImageSource.camera,
-        maxDuration: const Duration(seconds: 60),
-      );
-      if (picked == null || !context.mounted) return;
-      final bytes = await picked.readAsBytes();
-      if (!context.mounted) return;
-      // Camera MP4/MOV output passes the whitelist inside the staging seam.
-      await onStageVideo!(
-        bytes: Uint8List.fromList(bytes),
-        filename: picked.name,
-      );
+    switch (action) {
+      case _AttachmentAction.photoLibrary:
+        await _pickFromGallery(context);
+      case _AttachmentAction.takePhoto:
+        await _takePhoto(context);
+      case _AttachmentAction.document:
+        await _pickDocument(context);
     }
   }
 
-  /// Paperclip = documents only (images and videos go through the gallery
-  /// tile). Always [MessagingProvider.sendFileMessage] — never image routing.
+  /// Single "Take photo" door covering BOTH stills and clips: on web the
+  /// capture input accepts `image/*,video/*`, so the OS camera UI itself
+  /// offers the photo/video toggle (iOS Safari) or a camera/camcorder choice
+  /// (Android) — no in-app mode sheet. Desktop web degrades to a file dialog
+  /// (accepted in 0.1.12). Native mobile falls back to a still capture
+  /// (image_picker has no dual-mode camera API; the PWA is the shipped
+  /// surface). Results route by extension into the same staged flows; the
+  /// staging seam owns the whitelist/size/60s-duration rejections.
+  Future<void> _takePhoto(BuildContext context) async {
+    if (onStageImage == null || onStageVideo == null) return;
+
+    String fileName;
+    List<int>? bytes;
+    if (kIsWeb) {
+      final captured = await camera_capture.captureCameraMedia();
+      if (captured == null) return;
+      fileName = captured.name;
+      bytes = captured.bytes;
+    } else {
+      final picked = await ImagePicker().pickImage(source: ImageSource.camera);
+      if (picked == null) return;
+      fileName = picked.name;
+      bytes = await picked.readAsBytes();
+    }
+
+    if (!context.mounted) return;
+    await _stagePickedMedia(context, fileName: fileName, bytes: bytes);
+  }
+
+  /// Documents branch of the attachment sheet (images and videos go through
+  /// Photo library / Take photo). Always [MessagingProvider.sendFileMessage]
+  /// — never image routing.
   Future<void> _pickDocument(BuildContext context) async {
     final result = _requireActiveConversation(context);
     if (result == null) return;
@@ -496,12 +516,13 @@ class ChatActionTiles extends StatelessWidget {
   }
 }
 
-enum _CameraMode { photo, video }
+enum _AttachmentAction { photoLibrary, takePhoto, document }
 
-/// Minimal two-option chooser behind the camera tile: Photo → system camera
-/// still, Video → system camera clip (60 s picker cap). Theme tokens only.
-class _CameraModeSheet extends StatelessWidget {
-  const _CameraModeSheet();
+/// Three-option chooser behind the paperclip: Photo library → system media
+/// picker (photos AND videos), Take photo → OS camera (its own photo/video
+/// toggle on phones), Choose a file → document picker. Theme tokens only.
+class _AttachmentSheet extends StatelessWidget {
+  const _AttachmentSheet();
 
   @override
   Widget build(BuildContext context) {
@@ -509,33 +530,42 @@ class _CameraModeSheet extends StatelessWidget {
     final glass = GlassTheme.of(context);
     final colorScheme = Theme.of(context).colorScheme;
 
+    Widget option({
+      required Key key,
+      required IconData icon,
+      required String label,
+      required _AttachmentAction action,
+    }) => ListTile(
+      key: key,
+      leading: Icon(icon, color: glass.onGlassAccent),
+      title: Text(
+        label,
+        style: RpgTheme.bodyFont(fontSize: 14, color: colorScheme.onSurface),
+      ),
+      onTap: () => Navigator.of(context).pop(action),
+    );
+
     return SafeArea(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          ListTile(
-            key: const ValueKey('camera-mode-photo'),
-            leading: Icon(Icons.photo_camera_outlined, color: glass.onGlassAccent),
-            title: Text(
-              l10n.cameraModePhoto,
-              style: RpgTheme.bodyFont(
-                fontSize: 14,
-                color: colorScheme.onSurface,
-              ),
-            ),
-            onTap: () => Navigator.of(context).pop(_CameraMode.photo),
+          option(
+            key: const ValueKey('attachment-photo-library'),
+            icon: Icons.photo_library_outlined,
+            label: l10n.attachmentOptionPhotoLibrary,
+            action: _AttachmentAction.photoLibrary,
           ),
-          ListTile(
-            key: const ValueKey('camera-mode-video'),
-            leading: Icon(Icons.videocam_outlined, color: glass.onGlassAccent),
-            title: Text(
-              l10n.cameraModeVideo,
-              style: RpgTheme.bodyFont(
-                fontSize: 14,
-                color: colorScheme.onSurface,
-              ),
-            ),
-            onTap: () => Navigator.of(context).pop(_CameraMode.video),
+          option(
+            key: const ValueKey('attachment-take-photo'),
+            icon: Icons.photo_camera_outlined,
+            label: l10n.attachmentOptionTakePhoto,
+            action: _AttachmentAction.takePhoto,
+          ),
+          option(
+            key: const ValueKey('attachment-document'),
+            icon: Icons.insert_drive_file_outlined,
+            label: l10n.attachmentOptionDocument,
+            action: _AttachmentAction.document,
           ),
           const SizedBox(height: 8),
         ],
