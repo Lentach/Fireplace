@@ -586,16 +586,10 @@ class AppLocalizationsPl extends AppLocalizations {
   String get actionTileGif => 'GIF';
 
   @override
-  String get actionTileGallery => 'Galeria';
+  String get attachmentOptionPhotoLibrary => 'Biblioteka zdjęć';
 
   @override
-  String get actionTileCamera => 'Aparat';
-
-  @override
-  String get cameraModePhoto => 'Zdjęcie';
-
-  @override
-  String get cameraModeVideo => 'Wideo';
+  String get attachmentOptionTakePhoto => 'Zrób zdjęcie';
 
   @override
   String get actionTileAntiQuantumNote => 'Notatka antykwantowa';
