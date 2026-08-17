@@ -403,13 +403,17 @@ that is the designed outcome).
 
 1. Restore the in-conversation identity-changed timeline row (0a includes it; prior ruling removed
    the banner — this is a narrower, event-driven row, re-raised on takeover-alarm evidence). Y/N?
+   **OPEN — owner asked for explanation 2026-08-17, decision pending.**
 2. Optional recovery key (client-generated words, hash-only server-side) to shortcut the 72 h reset
    — adopt in 0b, later, or never?
-3. Device cap 3 (1 primary + 2 linked) — confirm.
-4. Reset delay 72 h (push-only offline channel; no email exists in this app) — confirm or adjust.
-5. Accept "iOS-PWA users cannot be primaries / cannot link until an iOS app exists"? (Web-held DAK
-   is rejected under I2.)
-6. §5.6 ruling — disappear-at-one-deadline beats per-device retention. Confirm.
+   **OPEN — owner asked for explanation 2026-08-17, decision pending.**
+3. Device cap 3 (1 primary + 2 linked) — **CONFIRMED (owner, 2026-08-17).**
+4. Reset delay 72 h (push-only offline channel; no email exists in this app) —
+   **CONFIRMED (owner, 2026-08-17).**
+5. "iOS-PWA users cannot be primaries / cannot link until an iOS app exists" (web-held DAK rejected
+   under I2) — **CONFIRMED (owner, 2026-08-17).**
+6. §5.6 ruling — disappear-at-one-deadline beats per-device retention —
+   **CONFIRMED (owner, 2026-08-17).**
 
 ## 12. Review record
 
@@ -434,5 +438,5 @@ that is the designed outcome).
   rate limit + cancel/expiry serialization + push channel + delay rationale, §6.2/I4 +
   falsification 10; (MINOR) §6.1 nonce underspecified → CSPRNG/TTL/session-bound spec + honest-
   server scope note, §6.1.
-- **Owner ratification: PENDING** (§11 questions). Phase 2 gets its own spec-level review round
-  before implementation, per phase plan.
+- **Owner ratification: §11 items 3/4/5/6 CONFIRMED 2026-08-17; items 1/2 pending.** Phase 2 gets
+  its own spec-level review round before implementation, per phase plan.
