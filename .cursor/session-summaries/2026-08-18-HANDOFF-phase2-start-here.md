@@ -168,10 +168,21 @@ cd frontend && E2E_BASE_URL=http://127.0.0.1:3000 flutter test test_e2e
 
 ## 4. Owner-blocked, still open
 
-- **GitHub Actions schedules nothing.** Six-plus pushes, zero runs; earlier runs
-  died in 2–4 s with no logs on every branch. Almost certainly an Actions
-  minutes / spending limit → github.com/settings/billing. **Never merge on red,
-  and not at all until the program ends.**
+- **CI is BACK — the blackout was billing and it is fixed on master.** A
+  parallel session measured it (2084 billable minutes since Aug 1 against the
+  2000-minute free private-repo allowance, which is why jobs died in 2–4 s with
+  `steps: []`), the owner flipped the repo **public** after a clean
+  full-history secret audit, and PR #147 added `paths-ignore` for prose-only
+  commits plus `concurrency: cancel-in-progress`. Unlimited runners now.
+  **This branch still showed no runs for a different reason: it had drifted
+  and no longer merged cleanly with master, so GitHub could not build the PR
+  merge commit.** That is fixed by the merge in this handoff's HEAD — keep the
+  branch merged up with master or CI silently stops reporting again. Never
+  merge on red, and not at all until the program ends.
+- **Note for whoever enables required status checks** (branch protection is
+  free now that the repo is public): a workflow skipped by `paths-ignore`
+  never reports, so a docs-only PR would hang on "Expected — waiting for
+  status". Use the dummy-job pattern.
 - `FIREBASE_SERVICE_ACCOUNT` absent from `~/fireplace/.env` on the VM → FCM is
   dead in prod, so 0b's pushes reach PWA endpoints only.
 - `.jks` keystore off-PC backup (`docs/runbooks/android-release.md`).

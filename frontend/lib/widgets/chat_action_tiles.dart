@@ -8,6 +8,9 @@ import '../utils/file_utils_stub.dart'
     if (dart.library.io) '../utils/file_utils_io.dart'
     as file_utils;
 import '../models/conversation_model.dart';
+import '../utils/attachment_picker_stub.dart'
+    if (dart.library.html) '../utils/attachment_picker_web.dart'
+    as attachment_picker;
 import '../providers/auth_provider.dart';
 import '../providers/conversations_provider.dart';
 import '../providers/messaging_provider.dart';
@@ -122,11 +125,13 @@ class ChatActionTiles extends StatelessWidget {
                       ),
                     ),
                     const SizedBox(width: 12),
-                    _ActionTile(
-                      icon: Icons.attach_file,
-                      tooltip: l10n.attachment,
-                      color: iconColor,
-                      onTap: () => _pickAttachment(context),
+                    Builder(
+                      builder: (tileContext) => _ActionTile(
+                        icon: Icons.attach_file,
+                        tooltip: l10n.attachment,
+                        color: iconColor,
+                        onTap: () => _pickAttachment(context, tileContext),
+                      ),
                     ),
                     const SizedBox(width: 12),
                     _ActionTile(
@@ -192,29 +197,59 @@ class ChatActionTiles extends StatelessWidget {
   /// the in-chat camera shortcut; accepted trade-off, iOS-first). The result
   /// routes by extension: image/video STAGE (send button sends), documents
   /// send immediately.
-  Future<void> _pickAttachment(BuildContext context) async {
+  ///
+  /// On web the input is POSITIONED at the paperclip tile's rect
+  /// ([tileContext]) so iOS anchors the picker popover to the tile instead
+  /// of centering it mid-screen — Flutter taps carry no DOM interaction
+  /// Safari could anchor to (probe3, 2026-08-17). Off web, FilePicker.
+  Future<void> _pickAttachment(
+    BuildContext context,
+    BuildContext tileContext,
+  ) async {
     if (_requireActiveConversation(context) == null) return;
 
-    final pickResult = await FilePicker.pickFiles(
-      type: FileType.custom,
-      allowedExtensions: [
-        ..._galleryImageExtensions,
-        ..._galleryVideoExtensions,
-        ..._documentExtensions,
-      ],
-      withData: true,
-    );
-    if (pickResult == null || pickResult.files.isEmpty) return;
-    final file = pickResult.files.single;
+    String fileName;
     List<int>? bytes;
-    if (file.bytes != null) {
-      bytes = file.bytes!;
-    } else if (!kIsWeb && file.path != null) {
-      bytes = await file_utils.readFileBytes(file.path!);
+    if (kIsWeb) {
+      final box = tileContext.findRenderObject() as RenderBox?;
+      final origin = box?.localToGlobal(Offset.zero) ?? Offset.zero;
+      final size = box?.size ?? Size.zero;
+      final picked = await attachment_picker.pickAttachmentFileAt(
+        left: origin.dx,
+        top: origin.dy,
+        width: size.width,
+        height: size.height,
+        accept: [
+          ..._galleryImageExtensions,
+          ..._galleryVideoExtensions,
+          ..._documentExtensions,
+        ].map((e) => '.$e').join(','),
+      );
+      if (picked == null) return;
+      fileName = picked.name;
+      bytes = picked.bytes;
+    } else {
+      final pickResult = await FilePicker.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: [
+          ..._galleryImageExtensions,
+          ..._galleryVideoExtensions,
+          ..._documentExtensions,
+        ],
+        withData: true,
+      );
+      if (pickResult == null || pickResult.files.isEmpty) return;
+      final file = pickResult.files.single;
+      fileName = file.name;
+      if (file.bytes != null) {
+        bytes = file.bytes!;
+      } else if (file.path != null) {
+        bytes = await file_utils.readFileBytes(file.path!);
+      }
     }
 
     if (!context.mounted) return;
-    await _routePickedFile(context, fileName: file.name, bytes: bytes);
+    await _routePickedFile(context, fileName: fileName, bytes: bytes);
   }
 
   /// Routes a picked file by extension. Routing is EXPLICIT: whitelisted

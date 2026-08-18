@@ -803,7 +803,21 @@ class EncryptionProvider extends ChangeNotifier {
       final payload = triple.toDiagnosticPayload();
       _e2eFlowLog('BOOT_MARKERS', payload);
       if (kIsWeb) {
-        E2ePersistentDiag.record('BOOT_MARKERS', payload);
+        // Deduped on the WHOLE triple: field data (owner's device, 08-16..18)
+        // showed ~25 healthy identical records/day — the durable log is an
+        // 80-entry FIFO, so healthy boots alone would evict the very history
+        // this forensic exists to preserve. Only TRANSITIONS carry
+        // information; an unchanged triple re-records only after eviction
+        // re-arms it, which also timestamps "still healthy" every cycle.
+        E2ePersistentDiag.recordDeduped(
+          'BOOT_MARKERS',
+          payload,
+          matchAll: [
+            'ls: ${payload['ls']},',
+            'idb: ${payload['idb']},',
+            'cache: ${payload['cache']}',
+          ],
+        );
       }
     } catch (_) {}
   }

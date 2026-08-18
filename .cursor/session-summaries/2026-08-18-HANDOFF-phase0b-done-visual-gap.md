@@ -266,12 +266,13 @@ coverage only**. Re-create it from §0's psql snippet if you touch the sweep.
 
 ### Blocked on the owner
 
-- **GitHub Actions is not scheduling runs at all.** Six pushes to a
-  `pull_request`-triggered workflow produced ZERO runs; earlier runs died in
-  2–4 s with no logs, on ALL branches, while githubstatus was green. Almost
-  certainly an Actions minutes / spending limit →
-  **github.com/settings/billing**. Never merge on red (and never merge at all
-  until program end).
+- **✅ RESOLVED on master 2026-08-18: the Actions blackout WAS billing.** Another
+  session measured it — 2084 billable minutes since Aug 1 against the
+  2000-minute free private-repo allowance, which is why jobs died in 2–4 s with
+  `steps: []`. The owner flipped the repo PUBLIC after a clean full-history
+  secret audit, so runners are unlimited again, and PR #147 `paths-ignore`s
+  prose-only commits so it cannot recur. Never merge on red still stands (and
+  never merge at all until program end).
 - `FIREBASE_SERVICE_ACCOUNT` absent from `~/fireplace/.env` on the VM → FCM dead
   in prod. 0b's pushes reach PWA endpoints only. Verify with a REAL device push.
 - `.jks` keystore off-PC backup (`docs/runbooks/android-release.md`).
