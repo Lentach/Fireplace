@@ -62,21 +62,36 @@ void main() {
 
   /// Pins the server clock field which protects irreversible expiry purges.
   void expectSocketReadyServerTime(dynamic payload, String clientLabel) {
-    expect(payload, isA<Map>(),
-        reason: '$clientLabel socketReady must carry an object payload');
+    expect(
+      payload,
+      isA<Map>(),
+      reason: '$clientLabel socketReady must carry an object payload',
+    );
     final serverTime = (payload as Map)['serverTime'];
-    expect(serverTime, isA<String>(),
-        reason: '$clientLabel socketReady.serverTime must be a string');
+    expect(
+      serverTime,
+      isA<String>(),
+      reason: '$clientLabel socketReady.serverTime must be a string',
+    );
 
     final serverTimeString = serverTime as String;
-    expect(serverTimeString, isNotEmpty,
-        reason: '$clientLabel socketReady.serverTime must not be empty');
+    expect(
+      serverTimeString,
+      isNotEmpty,
+      reason: '$clientLabel socketReady.serverTime must not be empty',
+    );
     final parsed = DateTime.tryParse(serverTimeString);
-    expect(parsed, isNotNull,
-        reason:
-            '$clientLabel socketReady.serverTime must be a parseable ISO-8601 instant');
-    expect(parsed!.isUtc, isTrue,
-        reason: '$clientLabel socketReady.serverTime must be UTC');
+    expect(
+      parsed,
+      isNotNull,
+      reason:
+          '$clientLabel socketReady.serverTime must be a parseable ISO-8601 instant',
+    );
+    expect(
+      parsed!.isUtc,
+      isTrue,
+      reason: '$clientLabel socketReady.serverTime must be UTC',
+    );
     expect(
       parsed.difference(DateTime.now().toUtc()).abs(),
       lessThan(const Duration(minutes: 5)),
@@ -96,13 +111,22 @@ void main() {
     required int expectedWireType,
   }) async {
     final ciphertext = await sender.encryptText(recipient.userId, content);
-    expect(wireType(ciphertext), expectedWireType,
-        reason: 'unexpected ciphertext type for tempId=$tempId');
+    expect(
+      wireType(ciphertext),
+      expectedWireType,
+      reason: 'unexpected ciphertext type for tempId=$tempId',
+    );
 
-    final sent = await sender.sendEncrypted(recipient.userId, ciphertext,
-        tempId: tempId);
-    expect(sent['content'], '[encrypted]',
-        reason: 'server must never store plaintext');
+    final sent = await sender.sendEncrypted(
+      recipient.userId,
+      ciphertext,
+      tempId: tempId,
+    );
+    expect(
+      sent['content'],
+      '[encrypted]',
+      reason: 'server must never store plaintext',
+    );
     expect(sent['encryptedContent'], ciphertext);
     expect(sent['senderId'], sender.userId);
     expect(sent['conversationId'], conversationId);
@@ -118,7 +142,9 @@ void main() {
     expect(received['encryptedContent'], ciphertext);
 
     final plaintext = await recipient.decryptText(
-        sender.userId, received['encryptedContent'] as String);
+      sender.userId,
+      received['encryptedContent'] as String,
+    );
     expect(plaintext, content);
     return messageId;
   }
@@ -167,32 +193,36 @@ void main() {
     alice.events.discard('sentRequestsList');
     alice.socketService.sendFriendRequest(bob.userId);
 
-    final aliceGhosts = await alice.events.next(
-      'sentRequestsList',
-      where: (p) =>
-          p is List &&
-          p.any(
-            (e) =>
-                e is Map &&
-                e['receiver'] is Map &&
-                (e['receiver'] as Map)['id'] == bob.userId,
-          ),
-      reason: 'sender must see their own outbound invite as a ghost',
-    ) as List;
+    final aliceGhosts =
+        await alice.events.next(
+              'sentRequestsList',
+              where: (p) =>
+                  p is List &&
+                  p.any(
+                    (e) =>
+                        e is Map &&
+                        e['receiver'] is Map &&
+                        (e['receiver'] as Map)['id'] == bob.userId,
+                  ),
+              reason: 'sender must see their own outbound invite as a ghost',
+            )
+            as List;
     expect(
       aliceGhosts.length,
       1,
       reason: 'exactly the one invite alice just sent',
     );
 
-    final rejected = await bob.events.next(
-      'newFriendRequest',
-      where: (p) =>
-          p is Map &&
-          p['sender'] is Map &&
-          (p['sender'] as Map)['id'] == alice.userId,
-      reason: 'bob receiving alice first friend request',
-    ) as Map;
+    final rejected =
+        await bob.events.next(
+              'newFriendRequest',
+              where: (p) =>
+                  p is Map &&
+                  p['sender'] is Map &&
+                  (p['sender'] as Map)['id'] == alice.userId,
+              reason: 'bob receiving alice first friend request',
+            )
+            as Map;
 
     // REJECT first. This is the riskier half of the lifecycle: the reject
     // path had to have `server` + `onlineUsers` threaded into it to reach the
@@ -221,29 +251,35 @@ void main() {
       reason: 'the re-sent invite is a ghost again',
     );
 
-    final request = await bob.events.next(
-      'newFriendRequest',
-      where: (p) =>
-          p is Map &&
-          p['sender'] is Map &&
-          (p['sender'] as Map)['id'] == alice.userId &&
-          p['id'] != rejected['id'],
-      reason: 'bob receiving the re-sent request',
-    ) as Map;
+    final request =
+        await bob.events.next(
+              'newFriendRequest',
+              where: (p) =>
+                  p is Map &&
+                  p['sender'] is Map &&
+                  (p['sender'] as Map)['id'] == alice.userId &&
+                  p['id'] != rejected['id'],
+              reason: 'bob receiving the re-sent request',
+            )
+            as Map;
     alice.events.discard('sentRequestsList');
     bob.events.discard('friendRequestAccepted');
     alice.events.discard('friendRequestAccepted');
     bob.events.discard('openConversation');
     alice.events.discard('openConversation');
     bob.socketService.acceptFriendRequest(request['id'] as int);
-    final aliceAccepted = await alice.events.next(
-      'friendRequestAccepted',
-      reason: 'alice accept confirmation',
-    ) as Map;
-    final bobAccepted = await bob.events.next(
-      'friendRequestAccepted',
-      reason: 'bob accept confirmation',
-    ) as Map;
+    final aliceAccepted =
+        await alice.events.next(
+              'friendRequestAccepted',
+              reason: 'alice accept confirmation',
+            )
+            as Map;
+    final bobAccepted =
+        await bob.events.next(
+              'friendRequestAccepted',
+              reason: 'bob accept confirmation',
+            )
+            as Map;
     expect(
       aliceAccepted['conversationId'],
       isA<int>(),
@@ -254,10 +290,16 @@ void main() {
       isA<int>(),
       reason: 'bob accepted payload must carry a conversation id',
     );
-    expect(aliceAccepted['chatReady'], isTrue,
-        reason: 'alice accepted payload must report chat readiness');
-    expect(bobAccepted['chatReady'], isTrue,
-        reason: 'bob accepted payload must report chat readiness');
+    expect(
+      aliceAccepted['chatReady'],
+      isTrue,
+      reason: 'alice accepted payload must report chat readiness',
+    );
+    expect(
+      bobAccepted['chatReady'],
+      isTrue,
+      reason: 'bob accepted payload must report chat readiness',
+    );
     final aliceConversationId = aliceAccepted['conversationId'] as int;
     final bobConversationId = bobAccepted['conversationId'] as int;
     expect(
@@ -282,13 +324,18 @@ void main() {
     );
     alice.events.discard('openConversation');
     alice.socketService.startConversation(bob.userId);
-    final aliceOpen = await alice.events.next(
-      'openConversation',
-      reason: 'alice startConversation',
-    ) as Map;
+    final aliceOpen =
+        await alice.events.next(
+              'openConversation',
+              reason: 'alice startConversation',
+            )
+            as Map;
     conversationId = bobConversationId;
-    expect(aliceOpen['conversationId'], conversationId,
-        reason: 'startConversation must use the accepted conversation');
+    expect(
+      aliceOpen['conversationId'],
+      conversationId,
+      reason: 'startConversation must use the accepted conversation',
+    );
   });
 
   tearDownAll(() {
@@ -302,12 +349,20 @@ void main() {
       () async {
         final bundle = await alice.fetchBundleFor(bob.userId);
         expect(bundle['identityPublicKey'], isA<String>());
-        expect(bundle['oneTimePreKeyId'], isNotNull,
-            reason: 'fresh account must have unused one-time pre-keys');
+        expect(
+          bundle['oneTimePreKeyId'],
+          isNotNull,
+          reason: 'fresh account must have unused one-time pre-keys',
+        );
         await alice.encryption.buildSession(bob.userId, bundle);
 
-        await roundTrip(alice, bob, 'first-contact-$runTag',
-            tempId: 't1-$runTag', expectedWireType: 3);
+        await roundTrip(
+          alice,
+          bob,
+          'first-contact-$runTag',
+          tempId: 't1-$runTag',
+          expectedWireType: 3,
+        );
       },
       timeout: const Timeout(Duration(minutes: 1)),
     );
@@ -315,12 +370,27 @@ void main() {
     test(
       'replies ratchet to whisper (2:) in both directions, in order',
       () async {
-        await roundTrip(bob, alice, 'reply-1-$runTag',
-            tempId: 't2-$runTag', expectedWireType: 2);
-        await roundTrip(alice, bob, 'msg-2-$runTag',
-            tempId: 't3-$runTag', expectedWireType: 2);
-        await roundTrip(bob, alice, 'reply-2-$runTag',
-            tempId: 't4-$runTag', expectedWireType: 2);
+        await roundTrip(
+          bob,
+          alice,
+          'reply-1-$runTag',
+          tempId: 't2-$runTag',
+          expectedWireType: 2,
+        );
+        await roundTrip(
+          alice,
+          bob,
+          'msg-2-$runTag',
+          tempId: 't3-$runTag',
+          expectedWireType: 2,
+        );
+        await roundTrip(
+          bob,
+          alice,
+          'reply-2-$runTag',
+          tempId: 't4-$runTag',
+          expectedWireType: 2,
+        );
 
         // Same plaintext twice must produce different ciphertexts (ratchet
         // advanced), and both must decrypt.
@@ -332,13 +402,13 @@ void main() {
         final r1 = await bob.awaitNewMessage('t5-$runTag');
         final r2 = await bob.awaitNewMessage('t6-$runTag');
         expect(
-            await bob.decryptText(
-                alice.userId, r1['encryptedContent'] as String),
-            'twin-$runTag');
+          await bob.decryptText(alice.userId, r1['encryptedContent'] as String),
+          'twin-$runTag',
+        );
         expect(
-            await bob.decryptText(
-                alice.userId, r2['encryptedContent'] as String),
-            'twin-$runTag');
+          await bob.decryptText(alice.userId, r2['encryptedContent'] as String),
+          'twin-$runTag',
+        );
       },
       timeout: const Timeout(Duration(minutes: 1)),
     );
@@ -353,12 +423,22 @@ void main() {
         final bundle = await alice.fetchBundleFor(bob.userId);
         await alice.encryption.buildSession(bob.userId, bundle);
 
-        await roundTrip(alice, bob, 'post-rebuild-$runTag',
-            tempId: 't7-$runTag', expectedWireType: 3);
+        await roundTrip(
+          alice,
+          bob,
+          'post-rebuild-$runTag',
+          tempId: 't7-$runTag',
+          expectedWireType: 3,
+        );
 
         // Bidirectional sanity after the rebuild.
-        await roundTrip(bob, alice, 'post-rebuild-reply-$runTag',
-            tempId: 't8-$runTag', expectedWireType: 2);
+        await roundTrip(
+          bob,
+          alice,
+          'post-rebuild-reply-$runTag',
+          tempId: 't8-$runTag',
+          expectedWireType: 2,
+        );
       },
       timeout: const Timeout(Duration(minutes: 1)),
     );
@@ -366,31 +446,48 @@ void main() {
     test(
       'edit swaps ciphertext; both sides get messageEdited; peer re-decrypts',
       () async {
-        final messageId = await roundTrip(alice, bob, 'original-$runTag',
-            tempId: 't9-$runTag', expectedWireType: 2);
+        final messageId = await roundTrip(
+          alice,
+          bob,
+          'original-$runTag',
+          tempId: 't9-$runTag',
+          expectedWireType: 2,
+        );
 
         final editedPlaintext = 'edited-$runTag';
-        final newCiphertext =
-            await alice.encryptText(bob.userId, editedPlaintext);
-        expect(wireType(newCiphertext), 2,
-            reason: 'edit rides the existing session');
+        final newCiphertext = await alice.encryptText(
+          bob.userId,
+          editedPlaintext,
+        );
+        expect(
+          wireType(newCiphertext),
+          2,
+          reason: 'edit rides the existing session',
+        );
         alice.emitEditMessage(messageId, newCiphertext);
 
         for (final client in [alice, bob]) {
-          final edited = await client.events.next(
-            'messageEdited',
-            where: (p) => p is Map && p['messageId'] == messageId,
-            reason: '${client.label} messageEdited',
-          ) as Map;
+          final edited =
+              await client.events.next(
+                    'messageEdited',
+                    where: (p) => p is Map && p['messageId'] == messageId,
+                    reason: '${client.label} messageEdited',
+                  )
+                  as Map;
           expect(edited['conversationId'], conversationId);
           expect(edited['content'], '[encrypted]');
           expect(edited['encryptedContent'], newCiphertext);
-          expect(DateTime.tryParse(edited['editedAt'] as String), isNotNull,
-              reason: 'editedAt must be an ISO timestamp');
+          expect(
+            DateTime.tryParse(edited['editedAt'] as String),
+            isNotNull,
+            reason: 'editedAt must be an ISO timestamp',
+          );
         }
 
-        expect(await bob.decryptText(alice.userId, newCiphertext),
-            editedPlaintext);
+        expect(
+          await bob.decryptText(alice.userId, newCiphertext),
+          editedPlaintext,
+        );
       },
       timeout: const Timeout(Duration(minutes: 1)),
     );
@@ -398,17 +495,24 @@ void main() {
     test(
       'edit by non-sender is rejected with not_sender',
       () async {
-        final messageId = await roundTrip(alice, bob, 'no-touching-$runTag',
-            tempId: 't10-$runTag', expectedWireType: 2);
+        final messageId = await roundTrip(
+          alice,
+          bob,
+          'no-touching-$runTag',
+          tempId: 't10-$runTag',
+          expectedWireType: 2,
+        );
 
         // Rejected before any store/decrypt, so a placeholder string is fine
         // (and never advances either ratchet).
         bob.emitEditMessage(messageId, 'rejected-probe-$runTag');
-        final failed = await bob.events.next(
-          'editMessageFailed',
-          where: (p) => p is Map && p['messageId'] == messageId,
-          reason: 'bob edit rejection',
-        ) as Map;
+        final failed =
+            await bob.events.next(
+                  'editMessageFailed',
+                  where: (p) => p is Map && p['messageId'] == messageId,
+                  reason: 'bob edit rejection',
+                )
+                as Map;
         expect(failed['reason'], 'not_sender');
       },
       timeout: const Timeout(Duration(minutes: 1)),
@@ -417,27 +521,36 @@ void main() {
     test(
       'reactions round-trip to both sides and clear on removal',
       () async {
-        final messageId = await roundTrip(alice, bob, 'react-target-$runTag',
-            tempId: 't11-$runTag', expectedWireType: 2);
+        final messageId = await roundTrip(
+          alice,
+          bob,
+          'react-target-$runTag',
+          tempId: 't11-$runTag',
+          expectedWireType: 2,
+        );
 
         bob.socketService.emitAddReaction(messageId, '🔥');
         for (final client in [alice, bob]) {
-          final updated = await client.events.next(
-            'reactionUpdated',
-            where: (p) => p is Map && p['messageId'] == messageId,
-            reason: '${client.label} reaction add',
-          ) as Map;
+          final updated =
+              await client.events.next(
+                    'reactionUpdated',
+                    where: (p) => p is Map && p['messageId'] == messageId,
+                    reason: '${client.label} reaction add',
+                  )
+                  as Map;
           expect(updated['conversationId'], conversationId);
           expect((updated['reactions'] as Map)['🔥'], [bob.userId]);
         }
 
         bob.socketService.emitRemoveReaction(messageId, '🔥');
         for (final client in [alice, bob]) {
-          final updated = await client.events.next(
-            'reactionUpdated',
-            where: (p) => p is Map && p['messageId'] == messageId,
-            reason: '${client.label} reaction remove',
-          ) as Map;
+          final updated =
+              await client.events.next(
+                    'reactionUpdated',
+                    where: (p) => p is Map && p['messageId'] == messageId,
+                    reason: '${client.label} reaction remove',
+                  )
+                  as Map;
           expect(updated['reactions'], isEmpty);
         }
       },
@@ -448,8 +561,13 @@ void main() {
       'delete destroys the local plaintext and leaves the Signal session alive',
       () async {
         final plaintext = 'purge-me-$runTag';
-        final messageId = await roundTrip(alice, bob, plaintext,
-            tempId: 't12-$runTag', expectedWireType: 2);
+        final messageId = await roundTrip(
+          alice,
+          bob,
+          plaintext,
+          tempId: 't12-$runTag',
+          expectedWireType: 2,
+        );
 
         // Persist exactly as the app does at decrypt time, including the
         // envelope metadata the sweeps select on.
@@ -462,7 +580,8 @@ void main() {
         expect(
           (await bob.encryption.getDecryptedContent(messageId))?['content'],
           plaintext,
-          reason: 'precondition: the only copy of the plaintext is on the device',
+          reason:
+              'precondition: the only copy of the plaintext is on the device',
         );
 
         // Real server delete over the real wire, hard-deleting the row.
@@ -490,8 +609,13 @@ void main() {
 
         // The session survived: new traffic still ratchets and decrypts. A
         // purge that quietly broke this would trade one bug for a worse one.
-        await roundTrip(alice, bob, 'after-purge-$runTag',
-            tempId: 't13-$runTag', expectedWireType: 2);
+        await roundTrip(
+          alice,
+          bob,
+          'after-purge-$runTag',
+          tempId: 't13-$runTag',
+          expectedWireType: 2,
+        );
       },
       timeout: const Timeout(Duration(minutes: 1)),
     );
@@ -502,14 +626,34 @@ void main() {
         // The reconcile pass destroys the local plaintext of every id MISSING
         // from this answer, so a wrong "not served" is permanent data loss.
         // Mocked unit tests cannot see the assembled SQL; this can.
-        final mine = await roundTrip(alice, bob, 'served-mine-$runTag',
-            tempId: 't14-$runTag', expectedWireType: 2);
-        final theirs = await roundTrip(bob, alice, 'served-theirs-$runTag',
-            tempId: 't15-$runTag', expectedWireType: 2);
-        final deleted = await roundTrip(alice, bob, 'served-deleted-$runTag',
-            tempId: 't16-$runTag', expectedWireType: 2);
-        final hiddenForBob = await roundTrip(alice, bob, 'served-hidden-$runTag',
-            tempId: 't17-$runTag', expectedWireType: 2);
+        final mine = await roundTrip(
+          alice,
+          bob,
+          'served-mine-$runTag',
+          tempId: 't14-$runTag',
+          expectedWireType: 2,
+        );
+        final theirs = await roundTrip(
+          bob,
+          alice,
+          'served-theirs-$runTag',
+          tempId: 't15-$runTag',
+          expectedWireType: 2,
+        );
+        final deleted = await roundTrip(
+          alice,
+          bob,
+          'served-deleted-$runTag',
+          tempId: 't16-$runTag',
+          expectedWireType: 2,
+        );
+        final hiddenForBob = await roundTrip(
+          alice,
+          bob,
+          'served-hidden-$runTag',
+          tempId: 't17-$runTag',
+          expectedWireType: 2,
+        );
 
         alice.emitDeleteMessage(deleted, forEveryone: true);
         for (final client in [alice, bob]) {
@@ -528,78 +672,96 @@ void main() {
         );
 
         const unknownId = 2147483000;
-        final forAlice = await alice.servedMessageIds(
-          [mine, theirs, deleted, hiddenForBob, unknownId],
-        );
+        final forAlice = await alice.servedMessageIds([
+          mine,
+          theirs,
+          deleted,
+          hiddenForBob,
+          unknownId,
+        ]);
 
         // THE trap: every unread-count query in MessagesService carries
         // `sender != me`. Copying one into the existence check would report
         // the user's entire outgoing history as gone and destroy it.
-        expect(forAlice, contains(mine),
-            reason: 'a message the caller SENT is still served');
+        expect(
+          forAlice,
+          contains(mine),
+          reason: 'a message the caller SENT is still served',
+        );
         expect(forAlice, contains(theirs));
-        expect(forAlice, contains(hiddenForBob),
-            reason: "bob's delete-for-me must not affect alice");
+        expect(
+          forAlice,
+          contains(hiddenForBob),
+          reason: "bob's delete-for-me must not affect alice",
+        );
         expect(forAlice, isNot(contains(deleted)));
         expect(forAlice, isNot(contains(unknownId)));
 
-        final forBob = await bob.servedMessageIds(
-          [mine, theirs, deleted, hiddenForBob],
-        );
+        final forBob = await bob.servedMessageIds([
+          mine,
+          theirs,
+          deleted,
+          hiddenForBob,
+        ]);
         expect(forBob, contains(mine));
         expect(forBob, contains(theirs));
         expect(forBob, isNot(contains(deleted)));
-        expect(forBob, isNot(contains(hiddenForBob)),
-            reason: 'delete-for-me must read as gone for the user who did it');
+        expect(
+          forBob,
+          isNot(contains(hiddenForBob)),
+          reason: 'delete-for-me must read as gone for the user who did it',
+        );
       },
       timeout: const Timeout(Duration(minutes: 1)),
     );
 
-    test(
-      'a retry carrying the same sendToken re-acks the committed row and '
-      'writes no second message (Phase 1 §5.4)',
-      () async {
-        // A lost ack is the dangerous case: the sending device holds the ONLY
-        // plaintext copy until the ack lands, so a retry must recover the row
-        // the server already wrote instead of duplicating the message.
-        final token = 'tok-$runTag-${DateTime.now().microsecondsSinceEpoch}';
-        final ciphertext = await alice.encryptText(
-          bob.userId,
-          'idempotent-$runTag',
-        );
+    test('a retry carrying the same sendToken re-acks the committed row and '
+        'writes no second message (Phase 1 §5.4)', () async {
+      // A lost ack is the dangerous case: the sending device holds the ONLY
+      // plaintext copy until the ack lands, so a retry must recover the row
+      // the server already wrote instead of duplicating the message.
+      final token = 'tok-$runTag-${DateTime.now().microsecondsSinceEpoch}';
+      final ciphertext = await alice.encryptText(
+        bob.userId,
+        'idempotent-$runTag',
+      );
 
-        final first = await alice.sendWithToken(
-          bob.userId,
-          ciphertext,
-          tempId: 'tok-a-$runTag',
-          sendToken: token,
-        );
-        final messageId = (first['id'] as num).toInt();
-        expect(first['originDeviceId'], 1,
-            reason: 'the server records which device produced the message');
+      final first = await alice.sendWithToken(
+        bob.userId,
+        ciphertext,
+        tempId: 'tok-a-$runTag',
+        sendToken: token,
+      );
+      final messageId = (first['id'] as num).toInt();
+      expect(
+        first['originDeviceId'],
+        1,
+        reason: 'the server records which device produced the message',
+      );
 
-        // Same token, new tempId: this is the client retrying, not a new send.
-        final retry = await alice.sendWithToken(
-          bob.userId,
-          ciphertext,
-          tempId: 'tok-b-$runTag',
-          sendToken: token,
-        );
+      // Same token, new tempId: this is the client retrying, not a new send.
+      final retry = await alice.sendWithToken(
+        bob.userId,
+        ciphertext,
+        tempId: 'tok-b-$runTag',
+        sendToken: token,
+      );
 
-        expect((retry['id'] as num).toInt(), messageId,
-            reason: 'the retry must resolve to the committed row');
-        // And the recipient must not see it twice — Signal decryption is not
-        // idempotent, so a second delivery of the same ciphertext would fail
-        // into the session-destroying policy.
-        await bob.events.none(
-          'newMessage',
-          within: const Duration(seconds: 3),
-          where: (p) => p is Map && p['tempId'] == 'tok-b-$runTag',
-          reason: 'a retry must not deliver the message a second time',
-        );
-      },
-      timeout: const Timeout(Duration(minutes: 2)),
-    );
+      expect(
+        (retry['id'] as num).toInt(),
+        messageId,
+        reason: 'the retry must resolve to the committed row',
+      );
+      // And the recipient must not see it twice — Signal decryption is not
+      // idempotent, so a second delivery of the same ciphertext would fail
+      // into the session-destroying policy.
+      await bob.events.none(
+        'newMessage',
+        within: const Duration(seconds: 3),
+        where: (p) => p is Map && p['tempId'] == 'tok-b-$runTag',
+        reason: 'a retry must not deliver the message a second time',
+      );
+    }, timeout: const Timeout(Duration(minutes: 2)));
 
     // Phase 1 (spec §4 + §5.1 + §8): key material is namespaced by
     // (userId, deviceId), the device a bundle lands in comes from the
@@ -634,8 +796,11 @@ void main() {
           // It went to device 1 — this session's device...
           final one = await alice.fetchBundleFor(alice.userId, deviceId: 1);
           expect(one['registrationId'], deviceOneRegistration + 1);
-          expect(one['identityPublicKey'], sharedIdentity,
-              reason: 'the account identity is unchanged, so no lock refusal');
+          expect(
+            one['identityPublicKey'],
+            sharedIdentity,
+            reason: 'the account identity is unchanged, so no lock refusal',
+          );
 
           // ...and device 2 still does not exist.
           final two = await alice.fetchBundleRawFor(alice.userId, deviceId: 2);
@@ -668,6 +833,37 @@ void main() {
       );
 
       test(
+        'one-time pre-keys under an UNPUBLISHED identity are refused and the '
+        'published pool survives (§5.1)',
+        () async {
+          // Observed live 2026-08-18: the lock refused a session's identity and
+          // that same session still upserted 20 OTPs over the legitimate
+          // device's keyId 0..19 slots. Unservable (the fetch filter pins the
+          // published identity) but the victim's pool went empty until a peer
+          // fetch re-triggered replenishment.
+          await alice.uploadDeviceOneTimePreKeys(
+            deviceId: 1,
+            identityPublicKey: 'unpublished-identity-$runTag',
+            keyIds: const [0, 1],
+            publicKeyPrefix: 'foreign-otp-',
+            expectRefusal: 'identity_locked',
+          );
+
+          // The account still serves a key, and never the refused epoch's.
+          final served = await alice.fetchBundleFor(alice.userId, deviceId: 1);
+          expect(served['identityPublicKey'], sharedIdentity);
+          final otp = served['oneTimePreKeyPublic'] as String?;
+          expect(
+            otp,
+            isNotNull,
+            reason: 'the refusal must not have emptied the pool',
+          );
+          expect(otp, isNot(startsWith('foreign-otp-')));
+        },
+        timeout: const Timeout(Duration(minutes: 1)),
+      );
+
+      test(
         'an unknown device is served nothing, never another device\'s keys',
         () async {
           // Fail-closed: serving device 1's bundle for a device that never
@@ -695,10 +891,16 @@ void main() {
     });
 
     test('no unexpected socket errors surfaced during the run', () {
-      expect(alice.events.errors, isEmpty,
-          reason: 'alice received server error events');
-      expect(bob.events.errors, isEmpty,
-          reason: 'bob received server error events');
+      expect(
+        alice.events.errors,
+        isEmpty,
+        reason: 'alice received server error events',
+      );
+      expect(
+        bob.events.errors,
+        isEmpty,
+        reason: 'bob received server error events',
+      );
     });
   });
 }

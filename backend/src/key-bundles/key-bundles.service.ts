@@ -329,6 +329,42 @@ export class KeyBundlesService {
       throw new Error('identity_epoch_required');
     }
 
+    // The registration lock guards which identity an account PUBLISHES; this
+    // guards which identity may deposit key material under it. Without it a
+    // session whose bundle the lock just refused still upserts over the
+    // legitimate device's keyId slots (proven live 2026-08-18, user 168): the
+    // rows are unservable, because `fetchPreKeyBundle` claims only rows tagged
+    // with the published identity, but the victim's pool is emptied until a
+    // peer fetch triggers `preKeysLow`.
+    //
+    // Account-scoped comparison (lowest device row) because every device of an
+    // account shares one identity key (§3) — a Phase 2 device that has not
+    // published its own bundle yet still uploads under the account identity.
+    const published = await this.keyBundleRepo.findOne({
+      where: { userId },
+      order: { deviceId: 'ASC' },
+    });
+    if (
+      published != null &&
+      published.identityPublicKey !== identityPublicKey
+    ) {
+      // Two races are legitimate and must NOT be refused: a first upload whose
+      // own bundle has not landed yet (no published row at all, handled above),
+      // and an authorized rotation in flight — the client emits the bundle and
+      // the keys back to back, and socket.io does not await handlers, so the
+      // new epoch's keys can arrive first. A COMPLETED, unspent ceremony is
+      // that authorization; reading it never spends it (the bundle upload
+      // does). A merely PENDING ceremony authorizes nothing — the countdown
+      // exists so the owner can cancel it.
+      const reset = await this.identityResetService.getStatusForUser(userId);
+      if (reset?.status !== 'completed') {
+        this.logger.warn(
+          `[identity-lock] REFUSED one-time pre-keys under an unpublished identity userId=${userId} deviceId=${deviceId} publishedPrefix=${published.identityPublicKey.slice(0, 12)} attemptedPrefix=${identityPublicKey.slice(0, 12)}`,
+        );
+        throw new IdentityLockedError();
+      }
+    }
+
     // UPSERT on (userId, deviceId, keyId): a regenerated epoch reuses keyId
     // slots 0..N, so refresh this device's existing row rather than piling up
     // duplicates — and never touch the identically-numbered slot of another
