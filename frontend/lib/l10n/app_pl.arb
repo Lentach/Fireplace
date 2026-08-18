@@ -142,6 +142,21 @@
   "ownIdentityReplacedTitle": "Nowe klucze szyfrowania na Twoim koncie",
   "ownIdentityReplacedBody": "Inne logowanie przesłało nowe klucze szyfrowania dla Twojego konta — zwykle to nowe urządzenie, przeglądarka lub ponowna instalacja. Jeśli to nie Ty, natychmiast zmień hasło.",
   "ownIdentityReplacedDismissAction": "Rozumiem",
+  "identityResetPendingTitle": "Ktoś poprosił o zresetowanie Twoich kluczy szyfrowania",
+  "identityResetPendingBody": "Jeśli to nie Ty, anuluj teraz — w przeciwnym razie za {remaining} Twoje konto otrzyma nowe klucze szyfrowania, a historia wiadomości stanie się nieczytelna.",
+  "@identityResetPendingBody": {
+    "placeholders": { "remaining": { "type": "String" } }
+  },
+  "identityResetCancelAction": "Anuluj",
+  "identityResetHoursLeft": "{hours, plural, =1{1 godzinę} few{{hours} godziny} other{{hours} godzin}}",
+  "@identityResetHoursLeft": {
+    "placeholders": { "hours": { "type": "int" } }
+  },
+  "identityResetMinutesLeft": "{minutes, plural, =0{niecałą minutę} =1{1 minutę} few{{minutes} minuty} other{{minutes} minut}}",
+  "@identityResetMinutesLeft": {
+    "placeholders": { "minutes": { "type": "int" } }
+  },
+  "identityResetAnyMoment": "lada chwila",
   "identityFingerprintUnavailable": "Odcisk tożsamości jest niedostępny.",
   "blockUser": "Zablokuj użytkownika",
   "conversationDeletedByOther": "Rozmowa usunięta przez drugą osobę",

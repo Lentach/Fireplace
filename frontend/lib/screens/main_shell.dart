@@ -26,6 +26,7 @@ import '../widgets/console_glyphs.dart';
 import '../widgets/glass/glass_bottom_nav.dart';
 import '../widgets/identity_damaged_banner.dart';
 import '../widgets/own_identity_replaced_banner.dart';
+import '../widgets/identity_reset_pending_banner.dart';
 import 'user_card_screen.dart';
 
 /// Shell after login: bottom nav with Conversations, Contacts, Settings.
@@ -279,6 +280,10 @@ class _MainShellState extends State<MainShell> with WidgetsBindingObserver {
           // key bundle. Usually a legitimate new device/browser sign-in;
           // durable until dismissed.
           const OwnIdentityReplacedBanner(),
+          // Phase 0b reset ceremony: a countdown is running toward replacing
+          // this account's keys. Above the fold with a one-tap cancel, because
+          // the delay only protects anyone who actually sees it.
+          const IdentityResetPendingBanner(),
           Expanded(
             child: IndexedStack(
               index: _selectedIndex,

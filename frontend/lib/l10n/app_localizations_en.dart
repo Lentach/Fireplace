@@ -377,6 +377,44 @@ class AppLocalizationsEn extends AppLocalizations {
   String get ownIdentityReplacedDismissAction => 'Got it';
 
   @override
+  String get identityResetPendingTitle =>
+      'Someone asked to reset your encryption keys';
+
+  @override
+  String identityResetPendingBody(String remaining) {
+    return 'If this wasn\'t you, cancel now — otherwise your account gets new encryption keys in $remaining and your message history becomes unreadable.';
+  }
+
+  @override
+  String get identityResetCancelAction => 'Cancel it';
+
+  @override
+  String identityResetHoursLeft(int hours) {
+    String _temp0 = intl.Intl.pluralLogic(
+      hours,
+      locale: localeName,
+      other: '$hours hours',
+      one: '1 hour',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String identityResetMinutesLeft(int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes minutes',
+      one: '1 minute',
+      zero: 'under a minute',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get identityResetAnyMoment => 'any moment now';
+
+  @override
   String get identityFingerprintUnavailable => 'Fingerprint unavailable.';
 
   @override

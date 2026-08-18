@@ -137,6 +137,37 @@ Future<void> showFireplaceMessageNotificationWithPlugin({
     );
     return;
   }
+  // Phase 0b reset ceremony: a countdown toward new account keys started, or
+  // was cancelled. Push is the only channel that reaches a closed app, which
+  // is what makes the delay meaningful. Both share one tag/id so the cancel
+  // notice REPLACES the warning instead of leaving a stale "act now" card.
+  final resetType = data['type'];
+  if (resetType == 'identity_reset_pending' ||
+      resetType == 'identity_reset_cancelled') {
+    final pending = resetType == 'identity_reset_pending';
+    final androidDetails = AndroidNotificationDetails(
+      _androidChannelId,
+      'Fireplace',
+      channelDescription: _androidChannelDescription,
+      importance: Importance.high,
+      priority: Priority.high,
+      icon: '@drawable/ic_stat_fireplace',
+      tag: 'identity-reset',
+      ongoing: pending,
+    );
+    await plugin.show(
+      // Fixed id, distinct from the replacement alarm's, well outside the
+      // conversation-id space.
+      id: 0x40000001,
+      title: 'Fireplace',
+      body: pending
+          ? 'Someone asked to reset your account encryption keys. If this '
+                'was not you, open the app and cancel it.'
+          : 'The encryption key reset was cancelled.',
+      notificationDetails: NotificationDetails(android: androidDetails),
+    );
+    return;
+  }
   if (data['type'] != 'new_message') return;
 
   final convRaw = data['conversationId'];

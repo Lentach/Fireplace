@@ -758,6 +758,42 @@ abstract class AppLocalizations {
   /// **'Rozumiem'**
   String get ownIdentityReplacedDismissAction;
 
+  /// No description provided for @identityResetPendingTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Ktoś poprosił o zresetowanie Twoich kluczy szyfrowania'**
+  String get identityResetPendingTitle;
+
+  /// No description provided for @identityResetPendingBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Jeśli to nie Ty, anuluj teraz — w przeciwnym razie za {remaining} Twoje konto otrzyma nowe klucze szyfrowania, a historia wiadomości stanie się nieczytelna.'**
+  String identityResetPendingBody(String remaining);
+
+  /// No description provided for @identityResetCancelAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Anuluj'**
+  String get identityResetCancelAction;
+
+  /// No description provided for @identityResetHoursLeft.
+  ///
+  /// In pl, this message translates to:
+  /// **'{hours, plural, =1{1 godzinę} few{{hours} godziny} other{{hours} godzin}}'**
+  String identityResetHoursLeft(int hours);
+
+  /// No description provided for @identityResetMinutesLeft.
+  ///
+  /// In pl, this message translates to:
+  /// **'{minutes, plural, =0{niecałą minutę} =1{1 minutę} few{{minutes} minuty} other{{minutes} minut}}'**
+  String identityResetMinutesLeft(int minutes);
+
+  /// No description provided for @identityResetAnyMoment.
+  ///
+  /// In pl, this message translates to:
+  /// **'lada chwila'**
+  String get identityResetAnyMoment;
+
   /// No description provided for @identityFingerprintUnavailable.
   ///
   /// In pl, this message translates to:

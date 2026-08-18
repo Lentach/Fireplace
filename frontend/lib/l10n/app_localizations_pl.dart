@@ -380,6 +380,46 @@ class AppLocalizationsPl extends AppLocalizations {
   String get ownIdentityReplacedDismissAction => 'Rozumiem';
 
   @override
+  String get identityResetPendingTitle =>
+      'Ktoś poprosił o zresetowanie Twoich kluczy szyfrowania';
+
+  @override
+  String identityResetPendingBody(String remaining) {
+    return 'Jeśli to nie Ty, anuluj teraz — w przeciwnym razie za $remaining Twoje konto otrzyma nowe klucze szyfrowania, a historia wiadomości stanie się nieczytelna.';
+  }
+
+  @override
+  String get identityResetCancelAction => 'Anuluj';
+
+  @override
+  String identityResetHoursLeft(int hours) {
+    String _temp0 = intl.Intl.pluralLogic(
+      hours,
+      locale: localeName,
+      other: '$hours godzin',
+      few: '$hours godziny',
+      one: '1 godzinę',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String identityResetMinutesLeft(int minutes) {
+    String _temp0 = intl.Intl.pluralLogic(
+      minutes,
+      locale: localeName,
+      other: '$minutes minut',
+      few: '$minutes minuty',
+      one: '1 minutę',
+      zero: 'niecałą minutę',
+    );
+    return '$_temp0';
+  }
+
+  @override
+  String get identityResetAnyMoment => 'lada chwila';
+
+  @override
   String get identityFingerprintUnavailable =>
       'Odcisk tożsamości jest niedostępny.';
 

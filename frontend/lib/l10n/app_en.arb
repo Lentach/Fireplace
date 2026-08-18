@@ -142,6 +142,21 @@
   "ownIdentityReplacedTitle": "New encryption keys on your account",
   "ownIdentityReplacedBody": "Another sign-in uploaded new encryption keys for your account — usually a new device, browser, or reinstall. If this wasn't you, change your password immediately.",
   "ownIdentityReplacedDismissAction": "Got it",
+  "identityResetPendingTitle": "Someone asked to reset your encryption keys",
+  "identityResetPendingBody": "If this wasn't you, cancel now — otherwise your account gets new encryption keys in {remaining} and your message history becomes unreadable.",
+  "@identityResetPendingBody": {
+    "placeholders": { "remaining": { "type": "String" } }
+  },
+  "identityResetCancelAction": "Cancel it",
+  "identityResetHoursLeft": "{hours, plural, =1{1 hour} other{{hours} hours}}",
+  "@identityResetHoursLeft": {
+    "placeholders": { "hours": { "type": "int" } }
+  },
+  "identityResetMinutesLeft": "{minutes, plural, =0{under a minute} =1{1 minute} other{{minutes} minutes}}",
+  "@identityResetMinutesLeft": {
+    "placeholders": { "minutes": { "type": "int" } }
+  },
+  "identityResetAnyMoment": "any moment now",
   "identityFingerprintUnavailable": "Fingerprint unavailable.",
   "blockUser": "Block user",
   "conversationDeletedByOther": "Conversation deleted by the other user",

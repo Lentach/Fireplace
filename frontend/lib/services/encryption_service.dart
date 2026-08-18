@@ -262,6 +262,18 @@ class EncryptionService {
   String _ownIdentityReplacedKey(int userId) =>
       'e2e_${userId}_own_identity_replaced_v1';
 
+  /// Watermark of the newest replacement the user already dismissed.
+  ///
+  /// Needed because the server now reports the last replacement at connect
+  /// time (so a session that was offline when it happened still learns about
+  /// it). Without this, every reconnect would resurrect an alarm the user
+  /// already acknowledged; with it, only a replacement NEWER than the
+  /// dismissed one can raise the banner again.
+  String? _ownIdentityReplacedSeenAt;
+
+  String _ownIdentityReplacedSeenKey(int userId) =>
+      'e2e_${userId}_own_identity_replaced_seen_v1';
+
   Future<void> recordOwnIdentityReplaced(String occurredAt) async {
     _ownIdentityReplacedAt = occurredAt;
     E2ePersistentDiag.record('OWN_IDENTITY_REPLACED', {
@@ -278,9 +290,24 @@ class EncryptionService {
     } catch (_) {}
   }
 
+  /// Connect-time hydration from the server's durable audit row (Phase 0b).
+  ///
+  /// Ignores anything the user already dismissed, and anything not newer than
+  /// what is already showing, so reconnect churn cannot re-raise a handled
+  /// alarm. String comparison is sound here: both sides are ISO-8601 UTC.
+  Future<void> recordOwnIdentityReplacedFromServer(String occurredAt) async {
+    final seen = _ownIdentityReplacedSeenAt;
+    if (seen != null && occurredAt.compareTo(seen) <= 0) return;
+    final current = _ownIdentityReplacedAt;
+    if (current != null && occurredAt.compareTo(current) <= 0) return;
+    await recordOwnIdentityReplaced(occurredAt);
+  }
+
   Future<void> dismissOwnIdentityReplaced() async {
-    if (_ownIdentityReplacedAt == null) return;
+    final dismissed = _ownIdentityReplacedAt;
+    if (dismissed == null) return;
     _ownIdentityReplacedAt = null;
+    _ownIdentityReplacedSeenAt = dismissed;
     E2ePersistentDiag.record('OWN_IDENTITY_REPLACED_DISMISSED', {});
     onOwnIdentityReplaced?.call();
     final userId = _userId;
@@ -288,6 +315,7 @@ class EncryptionService {
     try {
       final prefs = await _sharedPrefs;
       await prefs.remove(_ownIdentityReplacedKey(userId));
+      await prefs.setString(_ownIdentityReplacedSeenKey(userId), dismissed);
     } catch (_) {}
   }
 
@@ -296,6 +324,9 @@ class EncryptionService {
       final prefs = await _sharedPrefs;
       _ownIdentityReplacedAt = prefs.getString(
         _ownIdentityReplacedKey(userId),
+      );
+      _ownIdentityReplacedSeenAt = prefs.getString(
+        _ownIdentityReplacedSeenKey(userId),
       );
     } catch (_) {}
   }

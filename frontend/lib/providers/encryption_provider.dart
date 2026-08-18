@@ -1049,8 +1049,150 @@ class EncryptionProvider extends ChangeNotifier {
   // ---------- Key Exchange Event Handlers ----------
 
   /// Handler for `keyBundleUploaded` server event.
+  ///
+  /// Phase 0b: a `success:false` answer with `identity_locked` means the
+  /// registration lock refused to replace this account's stored identity key.
+  /// That is terminal for this attempt — retrying mints nothing and would just
+  /// loop. The user's route forward is the reset ceremony, so surface it.
   void onKeyBundleUploaded(dynamic data) {
+    if (data is Map && data['success'] == false) {
+      final error = data['error'];
+      if (error == 'identity_locked') {
+        _e2eFlowLog('KEY_BUNDLE_IDENTITY_LOCKED', {});
+        _identityUploadLocked = true;
+        notifyListeners();
+        return;
+      }
+      debugPrint('[E2E] Key bundle upload refused: $error');
+      return;
+    }
+    _identityUploadLocked = false;
     debugPrint('[E2E] Key bundle uploaded to server');
+  }
+
+  /// True once the server refused an identity replacement for this account.
+  /// Cleared by a successful upload (which a completed ceremony enables).
+  bool _identityUploadLocked = false;
+  bool get identityUploadLocked => _identityUploadLocked;
+
+  // ---------- Identity reset ceremony (Phase 0b, spec §6.2) ----------
+
+  DateTime? _identityResetDeadline;
+  bool _identityResetShortened = false;
+  String? _identityResetRequestStatus;
+
+  /// Deadline of the pending ceremony, or null when none is running. Server
+  /// authoritative: re-hydrated from `ownKeyBundleStatus` on every connect, so
+  /// it never needs local persistence.
+  DateTime? get identityResetDeadline => _identityResetDeadline;
+
+  /// Whether the pending ceremony used a recovery key (1 h instead of 72 h).
+  bool get identityResetShortened => _identityResetShortened;
+
+  /// Last answer to a reset request: 'pending', 'existing', 'cooldown',
+  /// 'invalid_phrase' or 'locked'. Null once consumed by the UI.
+  String? get identityResetRequestStatus => _identityResetRequestStatus;
+
+  /// A completed ceremony is waiting to be spent by a key upload.
+  bool _identityResetCompleted = false;
+  bool get identityResetCompleted => _identityResetCompleted;
+
+  void clearIdentityResetRequestStatus() {
+    if (_identityResetRequestStatus == null) return;
+    _identityResetRequestStatus = null;
+    notifyListeners();
+  }
+
+  /// Starts the ceremony. A recovery phrase shortens the wait but never
+  /// silences the notifications, and never grants an instant replacement.
+  void requestIdentityReset({String? recoveryPhrase}) {
+    _e2eFlowLog('IDENTITY_RESET_REQUEST', {
+      'withPhrase': recoveryPhrase != null,
+    });
+    _emit?.call('resetIdentityRequest', <String, dynamic>{
+      if (recoveryPhrase != null && recoveryPhrase.isNotEmpty)
+        'recoveryPhrase': recoveryPhrase,
+    });
+  }
+
+  /// Stops a pending ceremony. Any signed-in session may do this, with no key
+  /// required — that is the whole point of the delay.
+  void cancelIdentityReset() {
+    _e2eFlowLog('IDENTITY_RESET_CANCEL', {});
+    _emit?.call('resetIdentityCancel', <String, dynamic>{});
+  }
+
+  /// Enrolls or replaces the recovery phrase. The phrase is generated on this
+  /// device, shown once, and never stored locally.
+  void setRecoveryKey(String phrase) {
+    _emit?.call('setRecoveryKey', <String, dynamic>{'phrase': phrase});
+  }
+
+  /// Handler for `identityResetStatus` — the answer to our own request.
+  void onIdentityResetStatus(dynamic data) {
+    if (data is! Map) return;
+    final status = data['status'];
+    if (status is! String) return;
+    _identityResetRequestStatus = status;
+    if (status == 'pending' || status == 'existing') {
+      _applyResetDeadline(data['deadlineAt'], data['shortened'] == true);
+    }
+    _e2eFlowLog('IDENTITY_RESET_STATUS', {'status': status});
+    notifyListeners();
+  }
+
+  /// Handler for `identityResetPending` — broadcast to EVERY session of the
+  /// account, including sessions that did not ask for it. That is the alarm.
+  void onIdentityResetPending(dynamic data) {
+    if (data is! Map) return;
+    _applyResetDeadline(data['deadlineAt'], data['shortened'] == true);
+    _e2eFlowLog('IDENTITY_RESET_PENDING', {
+      'shortened': _identityResetShortened,
+    });
+    notifyListeners();
+  }
+
+  /// Handler for `identityResetCancelled` — room-wide, so every surface clears
+  /// together no matter which session tapped cancel.
+  void onIdentityResetCancelled(dynamic data) {
+    _identityResetDeadline = null;
+    _identityResetShortened = false;
+    _identityResetCompleted = false;
+    _e2eFlowLog('IDENTITY_RESET_CANCELLED', {});
+    notifyListeners();
+  }
+
+  /// Handler for `identityResetCancelResult` — this session's own answer.
+  void onIdentityResetCancelResult(dynamic data) {
+    final cancelled = data is Map && data['cancelled'] == true;
+    if (!cancelled) {
+      // Nothing pending: the ceremony already reached a terminal state.
+      _e2eFlowLog('IDENTITY_RESET_CANCEL_NOOP', {});
+    }
+  }
+
+  /// Handler for `recoveryKeySet`.
+  bool? _recoveryKeySetResult;
+  bool? get recoveryKeySetResult => _recoveryKeySetResult;
+
+  void onRecoveryKeySet(dynamic data) {
+    _recoveryKeySetResult = data is Map && data['success'] == true;
+    notifyListeners();
+  }
+
+  void clearRecoveryKeySetResult() {
+    if (_recoveryKeySetResult == null) return;
+    _recoveryKeySetResult = null;
+    notifyListeners();
+  }
+
+  void _applyResetDeadline(dynamic deadlineAt, bool shortened) {
+    if (deadlineAt is! String) return;
+    final parsed = DateTime.tryParse(deadlineAt);
+    if (parsed == null) return;
+    _identityResetDeadline = parsed.toLocal();
+    _identityResetShortened = shortened;
+    _identityResetCompleted = false;
   }
 
   /// Handler for the `ownIdentityReplaced` server event (Phase 0a): ANOTHER
@@ -1108,14 +1250,55 @@ class EncryptionProvider extends ChangeNotifier {
   /// `checkOwnKeyBundle`. A malformed payload completes as null (UNKNOWN),
   /// never as false: only an explicit server "no bundle" may authorize key
   /// generation.
+  ///
+  /// Phase 0b also carries the account-protection state, which is how a
+  /// session that was offline at the time still learns about a pending reset
+  /// ceremony or a replacement of its identity key.
   void onOwnKeyBundleStatus(dynamic data) {
     final exists = data is Map && data['exists'] is bool
         ? data['exists'] as bool
         : null;
     _e2eFlowLog('OWN_BUNDLE_STATUS', {'exists': exists});
+    if (data is Map) {
+      _hydrateIdentityResetState(data['identityReset']);
+      final replacedAt = data['identityReplacedAt'];
+      if (replacedAt is String && replacedAt.isNotEmpty) {
+        // Respects the user's dismissal watermark inside the service.
+        unawaited(
+          _encryptionService
+              .recordOwnIdentityReplacedFromServer(replacedAt)
+              .then((_) => notifyListeners()),
+        );
+      }
+    }
     final completer = _pendingOwnBundleCheck;
     if (completer == null || completer.isCompleted) return;
     completer.complete(exists);
+  }
+
+  /// Applies the server's view of the ceremony. Absent field (older server)
+  /// leaves local state untouched; explicit null means "nothing running".
+  void _hydrateIdentityResetState(dynamic identityReset) {
+    if (identityReset == null) {
+      if (_identityResetDeadline == null && !_identityResetCompleted) return;
+      _identityResetDeadline = null;
+      _identityResetShortened = false;
+      _identityResetCompleted = false;
+      notifyListeners();
+      return;
+    }
+    if (identityReset is! Map) return;
+    final status = identityReset['status'];
+    if (status == 'pending') {
+      _applyResetDeadline(identityReset['deadlineAt'], false);
+      notifyListeners();
+      return;
+    }
+    if (status == 'completed') {
+      _identityResetDeadline = null;
+      _identityResetCompleted = true;
+      notifyListeners();
+    }
   }
 
   Completer<bool?>? _pendingOwnBundleCheck;

@@ -637,6 +637,23 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.on('peerIdentityChanged', (data) {
       _encryptionProvider?.onPeerIdentityChanged(data);
     });
+    // Phase 0b reset ceremony (spec §6.2): every session of the account is
+    // told, so any of them can cancel during the delay.
+    _socketService.on('identityResetPending', (data) {
+      _encryptionProvider?.onIdentityResetPending(data);
+    });
+    _socketService.on('identityResetCancelled', (data) {
+      _encryptionProvider?.onIdentityResetCancelled(data);
+    });
+    _socketService.on('identityResetStatus', (data) {
+      _encryptionProvider?.onIdentityResetStatus(data);
+    });
+    _socketService.on('identityResetCancelResult', (data) {
+      _encryptionProvider?.onIdentityResetCancelResult(data);
+    });
+    _socketService.on('recoveryKeySet', (data) {
+      _encryptionProvider?.onRecoveryKeySet(data);
+    });
 
     // --- Friend events ---
     _socketService.on('friendRequestsList', (data) {

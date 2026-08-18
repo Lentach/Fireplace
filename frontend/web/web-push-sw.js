@@ -192,6 +192,44 @@ self.addEventListener('push', function (event) {
     return;
   }
 
+  // Phase 0b reset ceremony: content-free notice that a countdown toward new
+  // account keys has started. Push is the ONLY channel that reaches a closed
+  // app, and the delay exists precisely so this can arrive in time — so it is
+  // required interaction and does not auto-dismiss.
+  if (payload.type === 'identity_reset_pending') {
+    event.waitUntil(
+      closeNotificationsForTag('identity-reset').then(function () {
+        return self.registration.showNotification('Fireplace', {
+          body: 'Someone asked to reset your account encryption keys. If this was not you, open the app and cancel it.',
+          icon: '/icons/notification-icon-512.png',
+          badge: '/icons/notification-badge-96.png',
+          tag: 'identity-reset',
+          data: payload,
+          renotify: true,
+          requireInteraction: true,
+        });
+      })
+    );
+    return;
+  }
+
+  // The ceremony was cancelled: replace the standing warning rather than
+  // leaving a stale "act now" notification on the lock screen.
+  if (payload.type === 'identity_reset_cancelled') {
+    event.waitUntil(
+      closeNotificationsForTag('identity-reset').then(function () {
+        return self.registration.showNotification('Fireplace', {
+          body: 'The encryption key reset was cancelled.',
+          icon: '/icons/notification-icon-512.png',
+          badge: '/icons/notification-badge-96.png',
+          tag: 'identity-reset',
+          data: payload,
+        });
+      })
+    );
+    return;
+  }
+
   var convId = payload.conversationId != null ? Number(payload.conversationId) : null;
   // Per-conversation unread — card text only.
   var unreadCount = typeof payload.unreadCount === 'number'
