@@ -68,11 +68,17 @@ refresh rows store `deviceId`/`deviceName`. `DevicesService.touch` keeps the
 device row alive on every connect — fire-and-forget, a failure costs a
 `lastSeenAt`, never the session.
 
-**Send path.** `sendMessage` accepts `sendToken`; a retry carrying a token the
-server already committed re-acks that row and fans out NOTHING (Signal
-decryption is not idempotent, so a second delivery of the same ciphertext would
-fail into the session-destroying policy). `originDeviceId` is stored and echoed
-in every message payload — self-sync scoping in Phase 2 needs it.
+**Send path — SERVER SIDE ONLY.** `sendMessage` accepts `sendToken`; a retry
+carrying a token the server already committed for the SAME conversation re-acks
+that row and fans out NOTHING (Signal decryption is not idempotent, so a second
+delivery of the same ciphertext would fail into the session-destroying policy),
+and the same token aimed at a different conversation is refused as
+`duplicate_send_token`. **No production client emits a token yet** — `grep
+sendToken frontend/lib` returns nothing; the only emitter is the wire harness.
+So a lost ack today behaves exactly as it always has; minting tokens in the
+real send path is Phase 2 work (§5.4). `originDeviceId` IS live on every send:
+it is server-derived from the JWT, stored, and echoed in every message payload
+— self-sync scoping in Phase 2 needs it.
 
 ---
 
