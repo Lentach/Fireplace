@@ -1,10 +1,55 @@
 name: CI
 
+# `paths-ignore` is duplicated per trigger on purpose: GitHub Actions does NOT
+# support YAML anchors in workflow files.
+#
+# WHY: measured on 2026-08-18 over 188 runs / 689 jobs since Aug 1 (job
+# started_at -> completed_at, rounded up per minute, GitHub's own billing rule):
+# 2084 billable minutes against a 2000-minute free private-repo allowance, which
+# is exactly why every job started failing in 2s with `steps: []`. 609 of those
+# minutes were spent on commits that changed ONLY prose. 583 of the 609 came
+# from commits touching NO CLAUDE.md at all - almost all of them session
+# summaries under `.cursor/session-summaries/`.
+#
+# CLAUDE.md is deliberately NOT ignored. `scripts/verify-claude-*-test-counts.mjs`
+# gate the test counts written in those files; skipping CI on a CLAUDE.md edit
+# would let a wrong count sit unverified until the next code push. 26 minutes a
+# month is a fair price for keeping that guard armed.
+#
+# A mixed commit (prose + code) still runs everything: `paths-ignore` only skips
+# when EVERY changed path matches.
+#
+# CAVEAT for whoever makes this repo public: branch protection is a paid feature
+# and returns 403 today, so no check here can be "required". Once the repo is
+# public, protection becomes available - and if you then mark these jobs as
+# required status checks, a docs-only PR will hang forever on "Expected -
+# waiting for status" because a skipped workflow never reports. In that case
+# replace this with the dummy-job pattern (a second workflow with inverted
+# `paths` exposing the same four job names and exiting 0).
 on:
   push:
     branches:
       - master
+    paths-ignore:
+      - '.cursor/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'CONTEXT-MAP.md'
   pull_request:
+    paths-ignore:
+      - '.cursor/**'
+      - 'docs/**'
+      - 'README.md'
+      - 'AGENTS.md'
+      - 'CONTEXT-MAP.md'
+
+# One in-flight run per ref. Pushing twice in a minute used to pay for both; now
+# the superseded run is cancelled and only the tip is validated - which is the
+# only commit anyone acts on anyway.
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 # Least privilege: CI only reads the repo; no job needs write access.
 permissions:
