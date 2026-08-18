@@ -195,6 +195,32 @@ void main() {
       expect(provider.identityResetDeadline, isNull);
       expect(provider.identityResetCompleted, isFalse);
     });
+
+    test('a payload that omits the field leaves a live countdown alone', () {
+      provider.onIdentityResetPending({
+        'deadlineAt': DateTime.now()
+            .toUtc()
+            .add(const Duration(hours: 72))
+            .toIso8601String(),
+        'shortened': false,
+      });
+
+      // Absent is not the same answer as explicit null: only the latter says
+      // "nothing running". Wiping the banner on a partial payload would remove
+      // the cancel button while the ceremony kept running.
+      provider.onOwnKeyBundleStatus({'exists': true});
+
+      expect(provider.identityResetDeadline, isNotNull);
+    });
+
+    test('every connect re-asks the server for the ceremony state', () {
+      provider.refreshOwnAccountStatus();
+
+      // Without this the deadline — which lives in memory only — is lost on
+      // restart, and the push that says "open the app and cancel" leads to a
+      // screen with nothing to cancel.
+      expect(emitted.map((e) => e.event), contains('checkOwnKeyBundle'));
+    });
   });
 
   group('own-replacement hydration respects dismissal', () {

@@ -318,6 +318,12 @@ class ConnectionProvider extends ChangeNotifier {
     _socketService.getFriends();
     _socketService.getBlockedList();
 
+    // Phase 0b: the ceremony countdown and its cancel button are in-memory
+    // only, so every connect re-asks who is trying to replace this account's
+    // keys. A session that was closed when the request landed opens straight
+    // into the banner instead of a silent, un-cancellable delay.
+    _encryptionProvider?.refreshOwnAccountStatus();
+
     if (activeConvId != null) {
       _conversationsProvider?.reemitPushClientState();
       E2eDiagLog.add('ACTIVE_REASSERT', {

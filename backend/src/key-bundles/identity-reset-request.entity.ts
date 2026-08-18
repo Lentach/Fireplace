@@ -20,10 +20,18 @@ export type IdentityResetStatus = 'pending' | 'cancelled' | 'completed';
  * commit — whichever statement lands first makes the other a no-op. A late
  * cancel after completion is therefore never an identity rollback.
  *
- * Prod truth is migration 0014.
+ * Prod truth is migration 0014. The partial unique index below is mirrored
+ * from it deliberately: TypeORM `synchronize` (on everywhere except
+ * production) DROPS indexes the entity does not declare, so leaving it out
+ * removed the one-pending-per-account guard from every dev and CI database —
+ * exactly the environments meant to catch a regression in it.
  */
 @Entity('identity_reset_requests')
 @Index('idx_identity_reset_requests_user_status', ['userId', 'status'])
+@Index('uq_identity_reset_requests_one_pending', ['userId'], {
+  unique: true,
+  where: `"status" = 'pending'`,
+})
 export class IdentityResetRequest {
   @PrimaryGeneratedColumn()
   id: number;

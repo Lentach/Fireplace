@@ -68,6 +68,22 @@ export interface IdentityResetStatusSummary {
 }
 
 /**
+ * Internal: the partial unique index refused a second pending row because a
+ * concurrent request won the race.
+ *
+ * Thrown so the transaction ROLLS BACK. The loser may have presented a valid
+ * recovery phrase, and that phrase is single-use: committing here would spend
+ * it on a ceremony it did not create, leaving the account on the winner's
+ * un-shortened 72 h deadline with no phrase left to shorten a retry.
+ */
+class PendingResetConflict extends Error {
+  constructor(readonly insertError: unknown) {
+    super('a pending reset already exists for this account');
+    this.name = 'PendingResetConflict';
+  }
+}
+
+/**
  * The account-identity reset ceremony (Phase 0b, multi-device spec §6.2) and
  * its optional recovery key (§6.2.1).
  *
@@ -122,51 +138,60 @@ export class IdentityResetService {
       return { status: 'cooldown', deadlineAt: null, shortened: false };
     }
 
-    return this.dataSource.transaction(async (manager) => {
-      let shortened = false;
-      if (recoveryPhrase != null && recoveryPhrase.length > 0) {
-        const outcome = await this.spendRecoveryPhrase(
-          manager.getRepository(RecoveryKey),
-          userId,
-          recoveryPhrase,
-        );
-        if (outcome !== 'accepted') {
-          return { status: outcome, deadlineAt: null, shortened: false };
+    try {
+      return await this.dataSource.transaction(async (manager) => {
+        let shortened = false;
+        if (recoveryPhrase != null && recoveryPhrase.length > 0) {
+          const outcome = await this.spendRecoveryPhrase(
+            manager.getRepository(RecoveryKey),
+            userId,
+            recoveryPhrase,
+          );
+          if (outcome !== 'accepted') {
+            return { status: outcome, deadlineAt: null, shortened: false };
+          }
+          shortened = true;
         }
-        shortened = true;
-      }
 
-      const deadlineAt = new Date(
-        Date.now() + (shortened ? RESET_DELAY_RECOVERY_MS : RESET_DELAY_MS),
-      );
-      const resetRepo = manager.getRepository(IdentityResetRequest);
-      try {
-        await resetRepo.insert({
-          userId,
-          status: 'pending',
-          deadlineAt,
-          shortened,
-        });
-      } catch (error) {
-        // The partial unique index refused a second pending row: a concurrent
-        // request won the race. Report ITS deadline instead of inventing one.
-        const winner = await resetRepo.findOne({
-          where: { userId, status: 'pending' },
-        });
-        if (winner) {
-          return {
-            status: 'existing' as const,
-            deadlineAt: winner.deadlineAt,
-            shortened: winner.shortened,
-          };
+        const deadlineAt = new Date(
+          Date.now() + (shortened ? RESET_DELAY_RECOVERY_MS : RESET_DELAY_MS),
+        );
+        try {
+          await manager.getRepository(IdentityResetRequest).insert({
+            userId,
+            status: 'pending',
+            deadlineAt,
+            shortened,
+          });
+        } catch (error) {
+          // Leave the transaction by throwing: the winner's row is not visible
+          // to this one anyway, and rolling back is what un-spends a recovery
+          // phrase this request paid but got no ceremony for.
+          throw new PendingResetConflict(error);
         }
-        throw error;
+        this.logger.warn(
+          `[identity-reset] ceremony started userId=${userId} shortened=${shortened} deadlineAt=${deadlineAt.toISOString()}`,
+        );
+        return { status: 'pending' as const, deadlineAt, shortened };
+      });
+    } catch (error) {
+      if (!(error instanceof PendingResetConflict)) throw error;
+      // Read the winner AFTER the rollback, on a fresh transaction: report its
+      // deadline rather than inventing one.
+      const winner = await this.resetRepo.findOne({
+        where: { userId, status: 'pending' },
+      });
+      if (winner) {
+        return {
+          status: 'existing',
+          deadlineAt: winner.deadlineAt,
+          shortened: winner.shortened,
+        };
       }
-      this.logger.warn(
-        `[identity-reset] ceremony started userId=${userId} shortened=${shortened} deadlineAt=${deadlineAt.toISOString()}`,
-      );
-      return { status: 'pending' as const, deadlineAt, shortened };
-    });
+      // No winner: the insert failed for some other reason (or the race winner
+      // was cancelled in between). Nothing was spent, so surface the fault.
+      throw error.insertError;
+    }
   }
 
   /**
@@ -200,18 +225,30 @@ export class IdentityResetService {
       });
 
     if (!valid) {
-      const failedAttempts = row.failedAttempts + 1;
-      const locked = failedAttempts >= RECOVERY_MAX_FAILED_ATTEMPTS;
-      await recoveryRepo.update(
-        { id: row.id },
-        {
-          failedAttempts,
-          lockedUntil: locked
-            ? new Date(Date.now() + RECOVERY_LOCKOUT_MS)
-            : row.lockedUntil,
-        },
-      );
-      return locked ? 'locked' : 'invalid_phrase';
+      // Counted in SQL, not read-modify-write: two failures landing together
+      // would otherwise both read the same count and both store count+1,
+      // quietly buying extra attempts before the lockout.
+      const updated = await recoveryRepo
+        .createQueryBuilder()
+        .update(RecoveryKey)
+        .set({
+          failedAttempts: () => '"failedAttempts" + 1',
+          lockedUntil: () =>
+            `CASE WHEN "failedAttempts" + 1 >= ${RECOVERY_MAX_FAILED_ATTEMPTS}` +
+            ` THEN :lockedUntil ELSE "lockedUntil" END`,
+        })
+        .where('id = :id', {
+          id: row.id,
+          lockedUntil: new Date(Date.now() + RECOVERY_LOCKOUT_MS),
+        })
+        .returning(['failedAttempts'])
+        .execute();
+      const stored = (updated.raw as Array<{ failedAttempts?: number }>)[0]
+        ?.failedAttempts;
+      const failedAttempts = Number(stored ?? row.failedAttempts + 1);
+      return failedAttempts >= RECOVERY_MAX_FAILED_ATTEMPTS
+        ? 'locked'
+        : 'invalid_phrase';
     }
 
     // Single-use: spent in the same transaction that creates the ceremony.

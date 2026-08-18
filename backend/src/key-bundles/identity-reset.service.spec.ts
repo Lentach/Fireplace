@@ -84,6 +84,20 @@ function sqlFragments(mock: jest.Mock): string[] {
   return calls.map((call) => String(call[0]));
 }
 
+/**
+ * SQL produced by an UPDATE ... SET object. Values are either literals or
+ * functions returning a raw fragment; only the fragments are of interest.
+ */
+function setSql(mock: jest.Mock): string {
+  const calls = mock.mock.calls as Array<[Record<string, unknown>]>;
+  return calls
+    .flatMap((call) => Object.values(call[0] ?? {}))
+    .map((value) =>
+      typeof value === 'function' ? (value as () => string)() : '',
+    )
+    .join(' ');
+}
+
 /** The row object handed to a repository insert/update call. */
 function rowArg(mock: jest.Mock, callIndex = 0): Record<string, unknown> {
   const calls = mock.mock.calls as Array<[Record<string, unknown>]>;
@@ -97,8 +111,13 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
   let resetBuilder: BuilderMock;
   let recoveryBuilder: BuilderMock;
   let warnSpy: jest.SpyInstance;
+  // Errors that escaped the transaction callback — a real transaction ROLLS
+  // BACK on each of these, undoing anything it wrote (a spent phrase above
+  // all).
+  let rolledBack: unknown[];
 
   beforeEach(async () => {
+    rolledBack = [];
     resetBuilder = makeBuilder({ affected: 0 });
     recoveryBuilder = makeBuilder({ affected: 0 });
     resetRepo = {
@@ -121,9 +140,14 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
       ),
     };
     const dataSource = {
-      transaction: jest.fn((cb: (m: unknown) => unknown) =>
-        Promise.resolve(cb(manager)),
-      ),
+      transaction: jest.fn(async (cb: (m: unknown) => unknown) => {
+        try {
+          return await cb(manager);
+        } catch (error) {
+          rolledBack.push(error);
+          throw error;
+        }
+      }),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -251,33 +275,66 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
         );
       });
 
+      it('rolls the phrase spend back when a concurrent request wins the race', async () => {
+        recoveryRepo.findOne.mockResolvedValue(enrolled());
+        // The partial unique index refuses the second pending row...
+        resetRepo.insert.mockRejectedValue(
+          new Error('duplicate key value violates unique constraint'),
+        );
+        const winnerDeadline = new Date(Date.now() + RESET_DELAY_MS);
+        // ...and the winner is read back after the rollback, on this.resetRepo.
+        resetRepo.findOne
+          .mockResolvedValueOnce(null)
+          .mockResolvedValue({ deadlineAt: winnerDeadline, shortened: false });
+
+        const result = await service.requestReset(7, phrase);
+
+        // The loser reports the winner's ceremony, not one of its own.
+        expect(result.status).toBe('existing');
+        expect(result.deadlineAt).toEqual(winnerDeadline);
+        expect(result.shortened).toBe(false);
+        // And the transaction was rolled back, so the single-use phrase is NOT
+        // spent: committing here would leave the account on the winner's 72 h
+        // deadline with nothing left to shorten a retry.
+        expect(rolledBack).toHaveLength(1);
+      });
+
       it('refuses a wrong phrase, counts it, and creates no ceremony', async () => {
         recoveryRepo.findOne.mockResolvedValue(enrolled({ failedAttempts: 1 }));
+        recoveryBuilder.execute.mockResolvedValue({
+          affected: 1,
+          raw: [{ failedAttempts: 2 }],
+        });
 
         const result = await service.requestReset(7, 'not the right phrase');
 
         expect(result.status).toBe('invalid_phrase');
         expect(resetRepo.insert).not.toHaveBeenCalled();
-        expect(recoveryRepo.update).toHaveBeenCalledWith(
-          { id: 3 },
-          expect.objectContaining({ failedAttempts: 2 }),
-        );
+        // Counted by the database, not by a read-modify-write: two failures
+        // landing together must not both store the same count.
+        expect(setSql(recoveryBuilder.set)).toContain('"failedAttempts" + 1');
+        expect(recoveryRepo.update).not.toHaveBeenCalled();
       });
 
-      it('locks out after the configured number of failures', async () => {
+      it('locks out on the attempt whose stored count reaches the limit', async () => {
         recoveryRepo.findOne.mockResolvedValue(
           enrolled({ failedAttempts: RECOVERY_MAX_FAILED_ATTEMPTS - 1 }),
         );
+        // The lockout follows the value the UPDATE actually stored, so a
+        // concurrent failure that already advanced the counter still locks.
+        recoveryBuilder.execute.mockResolvedValue({
+          affected: 1,
+          raw: [{ failedAttempts: RECOVERY_MAX_FAILED_ATTEMPTS }],
+        });
 
         const result = await service.requestReset(7, 'wrong again');
 
         expect(result.status).toBe('locked');
-        expect(recoveryRepo.update).toHaveBeenCalledWith(
-          { id: 3 },
-          expect.objectContaining({
-            failedAttempts: RECOVERY_MAX_FAILED_ATTEMPTS,
-            lockedUntil: expect.any(Date) as unknown,
-          }),
+        const params = boundParams(recoveryBuilder.where, 'lockedUntil');
+        expect(params?.lockedUntil).toBeInstanceOf(Date);
+        // The threshold is applied in SQL against the row's own value.
+        expect(setSql(recoveryBuilder.set)).toContain(
+          `"failedAttempts" + 1 >= ${RECOVERY_MAX_FAILED_ATTEMPTS}`,
         );
       });
 

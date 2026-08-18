@@ -1140,6 +1140,19 @@ class EncryptionProvider extends ChangeNotifier {
     });
   }
 
+  /// Re-asks the server for this account's protection state.
+  ///
+  /// Called on every `socketReady`, NOT only when this device is missing its
+  /// identity. The ceremony deadline lives in memory only, so without this a
+  /// session that restarts (or was closed when the request was made) shows no
+  /// countdown and no cancel button — while the push it received says to open
+  /// the app and cancel. The cancel affordance is the entire point of the
+  /// delay, so it has to survive a restart. Costs one small event per connect,
+  /// alongside the four list fetches already made there.
+  void refreshOwnAccountStatus() {
+    _emit?.call('checkOwnKeyBundle', <String, dynamic>{});
+  }
+
   /// Stops a pending ceremony. Any signed-in session may do this, with no key
   /// required — that is the whole point of the delay.
   void cancelIdentityReset() {
@@ -1285,7 +1298,7 @@ class EncryptionProvider extends ChangeNotifier {
         : null;
     _e2eFlowLog('OWN_BUNDLE_STATUS', {'exists': exists});
     if (data is Map) {
-      _hydrateIdentityResetState(data['identityReset']);
+      _hydrateIdentityResetState(data);
       final replacedAt = data['identityReplacedAt'];
       if (replacedAt is String && replacedAt.isNotEmpty) {
         // Respects the user's dismissal watermark inside the service.
@@ -1303,7 +1316,13 @@ class EncryptionProvider extends ChangeNotifier {
 
   /// Applies the server's view of the ceremony. Absent field (older server)
   /// leaves local state untouched; explicit null means "nothing running".
-  void _hydrateIdentityResetState(dynamic identityReset) {
+  ///
+  /// Dart returns null for both, so absence is asked of the MAP, not the
+  /// lookup: a payload that simply omits the field must never wipe a live
+  /// countdown banner.
+  void _hydrateIdentityResetState(Map<dynamic, dynamic> data) {
+    if (!data.containsKey('identityReset')) return;
+    final identityReset = data['identityReset'];
     if (identityReset == null) {
       if (_identityResetDeadline == null && !_identityResetCompleted) return;
       _identityResetDeadline = null;

@@ -1,69 +1,68 @@
-# HANDOFF — Multi-device: 0a + 0b BUILT. One verification gap. Start here.
+# HANDOFF — Multi-device: 0a + 0b BUILT, live-fired and gate-reviewed. Start here.
 
-**Date:** 2026-08-18 (written ~05:00 CEST)
+**Date:** 2026-08-18 (written ~05:00 CEST, §0/§7 rewritten ~07:00 after the
+live-fire and the phase-gate review)
 
 **⛔ Do NOT rebuild 0a or 0b. Both are done, pushed, and evidence-backed.**
-Your first job is a 40-minute visual verification, then the review. Everything
-you need is below; nothing here is guessed — every claim was produced by a
-command run on this machine.
+The visual gap this handoff was written around is CLOSED. Everything below is
+still current; nothing here is guessed — every claim was produced by a command
+run on this machine.
 
 ---
 
-## 0. THE ONE THING TO DO FIRST
+## 0. THE VISUAL GAP IS CLOSED — what the live-fire proved (and broke)
 
-**Phase 0b's UI has never been rendered.** Backend, wire and logic are proven
-against real infrastructure; the three new UI surfaces have only ever been
-exercised by widget tests with FAKE providers. The owner approved a full
-browser live-fire and the session ended before it ran.
+Run in a real headless Chromium against the dockerized stack, 2026-08-18
+~06:20–06:45 CEST, owner-approved.
 
-Unverified, and each is plausibly broken in a way no test would catch:
+**Proven working, end to end:**
 
-1. **Settings → Recovery key row** — never seen; may not render or navigate.
-2. **`RecoveryKeyScreen`** — never rendered. Layout/theme/overflow unknown.
-3. **`showRecoveryPhrasePrompt`** (a `GlassDialog`) — never rendered. I
-   corrected its API from a wrong first guess; only the analyzer confirms it.
-4. **The ack round-trip.** `RecoveryKeyScreen._confirmSaved` polls
-   `encryption.recoveryKeySetResult` for ~6 s. Against a real socket that value
-   arrives via `setRecoveryKey` → server → `recoveryKeySet` →
-   `ConnectionProvider` → `EncryptionProvider.onRecoveryKeySet`. **If that
-   routing is wrong the screen spins and then reports failure, and NO test I
-   wrote would notice** — the wire harness never constructs a provider.
+1. **Settings → Recovery key row** renders under BEZPIECZEŃSTWO and navigates.
+2. **`RecoveryKeyScreen`** renders; "Wygeneruj klucz odzyskiwania" produces 12
+   BIP39 words in a read-only field with the show-once warning.
+3. **The ack round-trip — the one nothing tested — IS correctly wired.**
+   "Zapisałem/am" returned the success toast in ~1.2 s (the 6 s poll never got
+   near its bound) and Postgres held
+   `$argon2id$v=19$m=19456,p=1,t=2` for that user: the OWASP profile, live.
+4. **The registration lock refuses an unauthorized re-mint in the real client.**
+   Deleting the `sig_e2e_<uid>_*` keys and reloading reproduces a keyless
+   device; consenting to "Utwórz nowe klucze" now ends in the locked banner
+   ("your new keys were not published"), not a silent identity swap.
+5. **The recovery key shortens the ceremony:** "Użyj klucza" → banner reading
+   "za 59 minut", DB row `shortened=t`, deadline exactly 1 h after the request.
+6. **Cancel is room-wide:** clicking it in one tab cleared the countdown in a
+   second open tab, and the row went `cancelled` server-side.
 
-**⚠️ Ask the owner before opening the browser tool. Every time.** He approved it
-for this specific task, but the standing rule is ask-each-time.
+**Two real defects the live-fire and the review found — both now FIXED and
+re-verified live:**
 
-### Copy-paste live-fire
+- **The countdown did not survive a restart.** Reloading the page with a
+  pending ceremony showed the *locked* banner claiming 72 h and offering to
+  start a reset that was already running — no countdown, no Cancel. The
+  deadline lives in memory only and was hydrated exclusively by
+  `checkOwnKeyBundle`, which the client emitted ONLY when its local identity
+  was absent. So the push that says "open the app and cancel" led to a screen
+  with nothing to cancel. `ConnectionProvider._onSocketReady` now calls
+  `EncryptionProvider.refreshOwnAccountStatus()` on every connect. Re-verified:
+  after a reload the banner reads "za 43 minuty" with Cancel.
+- **`synchronize` was deleting the one-pending guard in every non-prod
+  database.** Migration 0014 creates the partial unique index
+  `uq_identity_reset_requests_one_pending`, but the entity did not declare it,
+  and TypeORM `synchronize` (on everywhere except production) DROPS indexes it
+  does not know. Proven by hand: created the index, restarted the backend,
+  watched it disappear once Nest finished booting. Every dev and CI run — and
+  therefore the earlier "partial index proven behaviourally" claim — had no
+  index; the only thing refusing a second pending row was the application-level
+  pre-check, which is exactly the read-then-write the index exists to replace.
+  The entity now mirrors it; after a restart the index survives and a manual
+  double `INSERT ... 'pending'` is refused by the constraint.
 
-```bash
-# 1. Stack (worktree = project name fireplace-0a)
-cd C:/Users/Lentach/Desktop/fireplace-0a
-docker compose up -d
-docker compose restart backend          # resets the 10/hr register throttle
-# wait for health (nest --watch needs ~2-4 min to compile):
-curl -s -o /dev/null -w "%{http_code}" http://127.0.0.1:3000/health   # want 200
-
-# 2. App — direct `flutter` spawn fails with os error 193, use cmd /c
-cd frontend
-cmd /c flutter run -d web-server --web-port 8080 --dart-define=BASE_URL=http://127.0.0.1:3000
-```
-
-Then in the browser at `http://localhost:8080`: register a fresh account →
-Settings → Recovery key → Generate → confirm 12 words render → "I saved it" →
-expect the success toast, **and prove it server-side**:
-
-```bash
-docker compose exec -T db psql -U postgres -d chatdb \
-  -c 'SELECT "userId", left("verifierHash",14) FROM public.recovery_keys;'
-# want one row, hash starting $argon2id$
-```
-
-Then exercise the ceremony: trigger the reset flow, choose "Use recovery key",
-paste the words → expect a **1 h** deadline (not 72 h), the countdown banner,
-and that Cancel clears it on every open tab.
-
-**CanvasKit trap:** the accessibility tree is EMPTY until you click Flutter's
-"Enable accessibility" button, so `tab.observe()` returns nothing. Either click
-that first, or drive by viewport coordinates from a screenshot.
+**CanvasKit traps (still true):** the accessibility tree is EMPTY until you
+click Flutter's "Enable accessibility" placeholder (`flt-semantics-placeholder`);
+`tab.click('aria-ref=…')` sometimes times out on banner buttons — read the
+`flt-semantics` node's bounding box and use `page.mouse.click`; typing into a
+freshly-focused field can drop characters (a registration typed `lf2` instead of
+the full name), so snapshot the field before submitting.
 
 ---
 
@@ -246,16 +245,16 @@ still mean UNKNOWN and must never authorize key generation (0.1.10 invariant).
 
 | Claim | Evidence |
 |---|---|
-| Backend suite | **762 tests / 51 suites** green (`cd backend && npm test`) |
+| Backend suite | **763 tests / 51 suites** green (`cd backend && npm test`) |
 | Lint ratchet | **PASS, held at 906** baseline; formatting improved 154 → 147 |
-| Frontend suite | **1359 / 10 skipped**, `flutter analyze` clean |
+| Frontend suite | **1361 / 10 skipped**, `flutter analyze` clean |
 | Wire harness | **19 / 2 skipped** against real backend + real Postgres |
 | Signature compatibility | vector generated by the REAL Flutter client verifies under `curve25519-js`; tamper / replay / wrong-key all fail; 33-byte key throws unless the `0x05` prefix is stripped. **Pinned as `identity-signature.util.spec.ts`** so a dependency swap fails loudly |
 | Red-first | pre-0b code ACCEPTED an attacker-chosen identity with no authorization; post-0b the same attempt throws `IdentityLockedError`. Demonstrated by reverting the gate file and re-running |
 | Migration 0014 | applied in the REAL boot path — `applying` → `applied` in container logs |
-| One-pending index | live Postgres: 2nd pending insert rejected by `uq_identity_reset_requests_one_pending`; allowed again after a cancel |
+| One-pending index | live Postgres: with the index present a 2nd pending insert is refused by `uq_identity_reset_requests_one_pending`. **⚠️ Until 2026-08-18 07:00 the index was NOT present in dev/CI at all** — `synchronize` dropped it on every boot because the entity did not declare it (§0). Now mirrored on the entity and re-proven to survive a restart |
 | Completed ceremony | live-fire: backdated the deadline, the REAL per-minute cron committed it, unsigned replacement then ACCEPTED once, second REFUSED, `consumedAt` set |
-| **0b UI rendering** | **NOT VERIFIED — see §0** |
+| **0b UI rendering** | **VERIFIED live in Chromium — §0.** Enrolment round trip, `$argon2id$v=19$m=19456,p=1,t=2` row, lock refusal in the real client, 1 h shortened ceremony, room-wide cancel across two tabs |
 
 The completed-ceremony probe was a throwaway (it shells out to
 `docker compose exec`) and was deleted, so that cron→gate path now has **unit
@@ -277,13 +276,31 @@ coverage only**. Re-create it from §0's psql snippet if you touch the sweep.
   in prod. 0b's pushes reach PWA endpoints only. Verify with a REAL device push.
 - `.jks` keystore off-PC backup (`docs/runbooks/android-release.md`).
 
-### Blocked on quota
+### Phase-gate review — DONE 2026-08-18 ~06:30 CEST
 
-- **Independent phase-gate review of 0b never ran.** Both writer subagents died
-  instantly on an account rate limit (`retry-after` ≈ 9.8 h from ~01:05 CEST, so
-  free ~10:54). The owner chose scope: **full 0b delta `50434a8..HEAD`**,
-  reviewer agent, defensively framed. This is REQUIRED before the phase counts
-  as gated.
+Two `reviewer` subagents over the full delta `50434a8..HEAD`, split
+backend/protocol and frontend, defensively framed.
+
+- **Backend verdict: GATE PASS.** State machine terminal and correctly
+  serialized, completed-grant bound genuinely closes the standing-grant hole,
+  signature verification fail-closed with buffer copies and a single-use
+  socket-bound nonce, Argon2id at the pinned profile with no phrase logging,
+  and exactly one caller of the bundle-write gate (no REST bypass).
+- **Frontend verdict: one Priority-1 protection gap** — the pending-reset
+  banner never re-hydrated for a healthy device. Reproduced live, fixed, and
+  re-verified live (§0). The reviewer also confirmed by static trace what the
+  live-fire then confirmed by execution: the recovery-key enrolment round trip
+  IS correctly wired.
+- **Findings fixed on the branch:** connect-time hydration; `containsKey` so an
+  ABSENT `identityReset` field cannot wipe a live countdown (Dart returns null
+  for both absent and explicit-null); the phrase-spend rollback when a
+  concurrent request wins the insert race (the loser used to commit its spent
+  single-use phrase and still get the winner's un-shortened 72 h); the
+  failed-attempt counter is now incremented in SQL instead of read-modify-write.
+- **Findings ACCEPTED, not fixed** (both Priority-3, owner's call): the reset
+  banner is not a `Semantics(liveRegion: true)`, so a screen reader does not
+  announce it; and a recovery-key save with a down socket shows the generic
+  failure toast after ~6 s rather than "you are offline".
 
 ### Gaps in OUR OWN 0b code — read before trusting the green suites
 
@@ -327,9 +344,9 @@ redden CI intermittently. Deserves its own session; do not drive-by fix it.
 **Verification commands**
 
 ```bash
-cd backend && npm test                       # 762/51
+cd backend && npm test                       # 763/51
 node ../scripts/lint-ratchet.mjs             # must stay ≤ 906 real errors
-cd frontend && flutter analyze --no-fatal-infos && flutter test   # 1359/10sk
+cd frontend && flutter analyze --no-fatal-infos && flutter test   # 1361/10sk
 # wire harness (needs the stack up):
 cd frontend && E2E_BASE_URL=http://127.0.0.1:3000 flutter test test_e2e   # 19/2sk
 ```
