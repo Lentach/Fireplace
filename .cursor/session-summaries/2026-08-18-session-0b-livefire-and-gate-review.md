@@ -136,10 +136,67 @@ backend/protocol and frontend, defensively framed.
   execution), and that alarm-suppression clearing, phrase hygiene, push
   branches, the UNKNOWN invariant and en/pl ARB parity are all correct.
 
-**Accepted, not fixed** (both Priority 3, owner's call): the reset banner is
+**Accepted from round one, not fixed** (both Priority 3): the reset banner is
 not a `Semantics(liveRegion: true)`, so a screen reader does not announce it;
 and a recovery-key save attempted with a down socket shows the generic failure
 toast after ~6 s instead of "you are offline".
+
+---
+
+## 6b. Second review round — three independent reviewers, same scope
+
+Owner asked for the review to be run again by three independent agents and
+their findings compared. Same delta (`50434a8..HEAD`), same instructions, three
+`reviewer` subagents with different attention biases (invariants, seams,
+spec-conformance). Verdicts: **PASS**, **PASS with defects**, **FAIL** — the
+disagreement was entirely about whether the two honesty defects below gate the
+phase, not about the security core, which all three independently cleared
+(single bundle-write caller, fail-closed signature verification with buffer
+copies, single-use socket-bound nonce, terminal state machine, 24 h grant TTL,
+Argon2id verifier, UNKNOWN invariant, entity registration in BOTH places).
+
+**Found by two of three, confirmed by reading the code, FIXED:**
+
+- **A legitimate recovery raised the takeover alarm at the person who
+  performed it.** `markOwnIdentityPublished()` was reached only when
+  `_expectingOwnIdentityPublish` was set, and the only place that set it was
+  the immediate self-publish inside `_runIdentityRecovery` — which the
+  registration lock REFUSES, clearing the flag. The upload that actually lands
+  after the ceremony is a routine reconnect re-upload, which set nothing. So
+  the recovering device read its own audit row back at the next connect and
+  told the user "another sign-in replaced your keys — change your password".
+  That trains people to dismiss the one alarm that catches a real takeover.
+  Fixed server-authoritatively: `keyBundleUploaded` now carries
+  `identityChanged`, and the client stamps the watermark exactly when its own
+  upload replaced the stored identity. The fragile in-flight flag is gone.
+  Blanket-stamping on every successful upload (the reviewers' suggestion) was
+  rejected: it would keep a fresh watermark alive at all times and mute a
+  genuine replacement by someone else inside the 10-minute skew window.
+- **Every refusal was silent.** `identityResetRequestStatus` was stored,
+  exposed and cleared — and read by nothing. A genuine owner who mistypes a
+  phrase that still passes the local BIP39 checksum, who is locked out after
+  five of those, or who is inside the 24 h post-cancel cooldown, saw *nothing
+  at all*: the button looked dead while the account stayed unreachable. Now
+  `IdentityResetPendingBanner` reports every answer (en + pl), refusals in the
+  error colour, and the provider synthesises `no_answer` after 6 s so a down
+  socket cannot look like success. Reporting lives in the banner, not in the
+  dialog that sent the request, because the answer can arrive after that dialog
+  is gone and `existing` can arrive because another session started the
+  ceremony.
+
+**Found by one, ACCEPTED as a residual with the owner flagged:** a password
+thief can loop start+cancel and keep the 24 h cooldown armed, holding the
+owner out of recovery. The cooldown is spec-mandated (§6.2) and the spec is
+frozen, so the protocol was left alone; the cooldown message now names the way
+out ("change your password to sign them out first") instead of leaving the
+owner stuck and uninformed. **Owner decision needed:** whether a password
+change should clear the cooldown.
+
+**Also corrected:** a comment claimed the recovery-key lookup does not reveal
+whether an account has a phrase enrolled. The wording does not, but the timing
+does (19 MiB Argon2id vs an immediate return) — and it does not matter, since
+the caller is already authenticated as that account. The comment now says so.
+
 
 ---
 
@@ -147,16 +204,15 @@ toast after ~6 s instead of "you are offline".
 
 | Check | Result |
 |---|---|
-| `cd backend && npm test` | **763 / 51 suites** green (+1 new test) |
-| `node scripts/lint-ratchet.mjs` | **PASS**, real errors held at 906, formatting 147 |
+| `cd backend && npm test` | **763 / 51 suites** green |
+| `node scripts/lint-ratchet.mjs` | **PASS**, real errors held at 906 |
 | `cd frontend && flutter analyze --no-fatal-infos` | clean |
-| `cd frontend && flutter test` | **1361 / 10 skipped** (+2 new tests) |
+| `cd frontend && flutter test` | **1370 / 10 skipped** (+11 tests over the two rounds) |
 | `E2E_BASE_URL=http://127.0.0.1:3000 flutter test test_e2e` | **19 / 2 skipped** against real backend + Postgres |
 | Index survives a backend boot | `pg_indexes` after restart + refused duplicate insert |
 | 0b UI | live-fired, §1 |
 
-Root `CLAUDE.md` §3 counts updated to 763 / 1361 in the same commit, per the
-per-tree truth rule.
+Root `CLAUDE.md` §3 counts updated to 763 / 1370, per the per-tree truth rule.
 
 ---
 

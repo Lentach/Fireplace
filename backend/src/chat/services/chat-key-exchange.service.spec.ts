@@ -144,8 +144,11 @@ describe('ChatKeyExchangeService', () => {
         // No registration-lock proof on the normal re-upload path.
         undefined,
       );
+      // The ack tells the uploader whether ITS upload replaced the stored
+      // identity, so a device never alarms about its own replacement.
       expect(mockClient.emit).toHaveBeenCalledWith('keyBundleUploaded', {
         success: true,
+        identityChanged: false,
       });
       // Same-identity upload (the normal every-connect re-upload): NO alarm.
       await new Promise((resolve) => setImmediate(resolve));
@@ -210,6 +213,7 @@ describe('ChatKeyExchangeService', () => {
       // Upload is still acked normally.
       expect(mockClient.emit).toHaveBeenCalledWith('keyBundleUploaded', {
         success: true,
+        identityChanged: true,
       });
       // Other sessions: client.to(room) EXCLUDES the uploading socket.
       expect(mockClient.to).toHaveBeenCalledWith('user:1');
@@ -247,6 +251,7 @@ describe('ChatKeyExchangeService', () => {
 
       expect(mockClient.emit).toHaveBeenCalledWith('keyBundleUploaded', {
         success: true,
+        identityChanged: true,
       });
       expect(mockClient.emit).not.toHaveBeenCalledWith(
         'error',

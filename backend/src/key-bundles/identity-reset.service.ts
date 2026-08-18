@@ -205,8 +205,12 @@ export class IdentityResetService {
     phrase: string,
   ): Promise<'accepted' | 'invalid_phrase' | 'locked'> {
     const row = await recoveryRepo.findOne({ where: { userId } });
-    // No phrase enrolled, or already spent: the caller gets the same answer
-    // either way — neither response should reveal whether an account has one.
+    // No phrase enrolled, or already spent: same answer either way, so the
+    // wording never distinguishes the two. It is not constant TIME — an
+    // enrolled account pays a 19 MiB Argon2id verify and an un-enrolled one
+    // returns at once — and it does not need to be: this path is reachable
+    // only by a caller already authenticated AS the account, who can read the
+    // enrolment state from their own settings screen anyway.
     if (!row || row.usedAt != null) return 'invalid_phrase';
     if (row.lockedUntil != null && row.lockedUntil.getTime() > Date.now()) {
       return 'locked';

@@ -118,12 +118,55 @@ class _RecoveryPhrasePromptState extends State<_RecoveryPhrasePrompt> {
   }
 }
 
+/// The server's answer to a reset request, as a sentence for the user.
+///
+/// Pure on purpose: the refusals are exactly the ones a genuine owner hits
+/// while recovering (a mistyped phrase that still passes the local checksum,
+/// the lockout after five of those, the post-cancel cooldown), so the mapping
+/// is worth pinning by test rather than burying in a widget callback. `null`
+/// for an unrecognised status: say nothing rather than guess.
+String? identityResetAnswerMessage(AppLocalizations l10n, String? status) {
+  switch (status) {
+    case 'pending':
+      return l10n.identityResetStarted;
+    case 'existing':
+      return l10n.identityResetAlreadyRunning;
+    case 'cooldown':
+      return l10n.identityResetCooldown;
+    case 'invalid_phrase':
+      return l10n.identityResetPhraseRejected;
+    case 'locked':
+      return l10n.identityResetPhraseLocked;
+    case EncryptionProvider.identityResetNoAnswerStatus:
+    case null:
+      // Silence is an answer too: nothing was started, and saying "started"
+      // (or nothing at all) would leave the account unreachable and the user
+      // believing otherwise.
+      return l10n.identityResetNoAnswer;
+    default:
+      return null;
+  }
+}
+
+/// True for the answers that mean nothing was started.
+bool identityResetAnswerIsRefusal(String? status) =>
+    status == null ||
+    status == EncryptionProvider.identityResetNoAnswerStatus ||
+    status == 'cooldown' ||
+    status == 'invalid_phrase' ||
+    status == 'locked';
+
 /// Starts a reset, offering the recovery-key path first.
 ///
 /// Every entry point into the ceremony goes through here so the question is
 /// always asked in the same order: someone holding a phrase must never be
 /// dropped into the 72-hour path just because the button they found was the
 /// plain one. Backing out starts nothing at all.
+///
+/// The server's answer is surfaced by [IdentityResetPendingBanner], which is
+/// mounted for the whole session: the answer can arrive after this dialog is
+/// gone, and `existing` can arrive because another session started the
+/// ceremony.
 Future<void> startIdentityResetFlow(BuildContext context) async {
   final encryption = context.read<EncryptionProvider>();
   final result = await showRecoveryPhrasePrompt(context);

@@ -126,17 +126,45 @@ void main() {
       expect(provider.identityUploadLocked, isFalse);
     });
 
-    test('a refused upload does not leave a self-publish claim behind', () {
-      // The refusal path is the DESIGNED route now (refused upload → banner →
-      // ceremony → retry), so a stale expectation here would be consumed by a
-      // later success and suppress a genuine replacement alarm.
-      provider.onKeyBundleUploaded({
-        'success': false,
-        'error': 'identity_locked',
-      });
-      provider.onKeyBundleUploaded({'success': true});
+    test('the upload that REPLACED the identity is marked as our own work',
+        () async {
+      final service = EncryptionService();
+      final own = EncryptionProvider(service: service);
 
-      expect(provider.identityUploadLocked, isFalse);
+      // The designed recovery path: the immediate self-publish is refused, the
+      // ceremony runs, and the upload that finally lands is a later routine
+      // re-upload. The server says that one changed the identity, which is the
+      // only signal tying the audit row to this device.
+      own.onKeyBundleUploaded({'success': false, 'error': 'identity_locked'});
+      own.onKeyBundleUploaded({'success': true, 'identityChanged': true});
+      await Future<void>.delayed(Duration.zero);
+
+      await service.recordOwnIdentityReplacedFromServer(
+        DateTime.now().toUtc().toIso8601String(),
+      );
+
+      expect(
+        service.ownIdentityReplacedAt,
+        isNull,
+        reason: 'warning a user about the recovery they just performed trains '
+            'them to dismiss the alarm that catches a real takeover',
+      );
+    });
+
+    test('a routine same-identity re-upload claims nothing', () async {
+      final service = EncryptionService();
+      final own = EncryptionProvider(service: service);
+
+      // Stamping a watermark on every connect would keep a fresh one alive at
+      // all times and mute a genuine replacement by someone else.
+      own.onKeyBundleUploaded({'success': true, 'identityChanged': false});
+      await Future<void>.delayed(Duration.zero);
+
+      await service.recordOwnIdentityReplacedFromServer(
+        DateTime.now().toUtc().toIso8601String(),
+      );
+
+      expect(service.ownIdentityReplacedAt, isNotNull);
     });
   });
 

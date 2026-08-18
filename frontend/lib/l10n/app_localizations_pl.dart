@@ -484,6 +484,30 @@ class AppLocalizationsPl extends AppLocalizations {
   String get recoveryPhraseNoneAction => 'Nie mam go';
 
   @override
+  String get identityResetStarted =>
+      'Reset rozpoczęty. Wszystkie zalogowane sesje zostały powiadomione, a do końca odliczania można go anulować.';
+
+  @override
+  String get identityResetAlreadyRunning =>
+      'Dla tego konta reset już trwa. Odliczanie na górze ekranu pokazuje, ile zostało czasu.';
+
+  @override
+  String get identityResetCooldown =>
+      'Reset został niedawno anulowany, więc nowy nie może ruszyć przez maksymalnie 24 godziny. Jeśli ktoś inny wciąż go anuluje, najpierw zmień hasło, aby go wylogować.';
+
+  @override
+  String get identityResetPhraseRejected =>
+      'Te 12 słów nie pasuje do klucza odzyskiwania zapisanego dla tego konta. Możesz spróbować ponownie albo rozpocząć reset bez klucza i poczekać 72 godziny.';
+
+  @override
+  String get identityResetPhraseLocked =>
+      'Zbyt wiele prób z kluczem odzyskiwania. Spróbuj ponownie za około godzinę albo rozpocznij reset bez klucza i poczekaj 72 godziny.';
+
+  @override
+  String get identityResetNoAnswer =>
+      'Brak odpowiedzi serwera, więc nic nie zostało rozpoczęte. Sprawdź połączenie i spróbuj ponownie.';
+
+  @override
   String get identityFingerprintUnavailable =>
       'Odcisk tożsamości jest niedostępny.';
 

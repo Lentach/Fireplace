@@ -5,6 +5,7 @@ import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
 import 'recovery_phrase_prompt.dart';
+import 'top_snackbar.dart';
 import '../providers/encryption_provider.dart';
 
 /// Phase 0b reset ceremony (multi-device spec §6.2): somebody asked the server
@@ -29,6 +30,9 @@ class _IdentityResetPendingBannerState
     extends State<IdentityResetPendingBanner> {
   Timer? _ticker;
 
+  /// The last request answer already shown, so a rebuild does not repeat it.
+  String? _reportedAnswer;
+
   @override
   void initState() {
     super.initState();
@@ -43,6 +47,33 @@ class _IdentityResetPendingBannerState
   void dispose() {
     _ticker?.cancel();
     super.dispose();
+  }
+
+  /// Says out loud what the server answered.
+  ///
+  /// Three of the five answers REFUSE to start anything, and a user who lost
+  /// their keys can hit all three — a mistyped phrase, the lockout after five
+  /// of those, or the cooldown that follows a cancel. Without this the button
+  /// simply appears dead while the account stays unreachable.
+  void _reportAnswer(String status) {
+    if (_reportedAnswer == status) return;
+    _reportedAnswer = status;
+    WidgetsBinding.instance.addPostFrameCallback((_) {
+      if (!mounted) return;
+      final message = identityResetAnswerMessage(
+        AppLocalizations.of(context),
+        status,
+      );
+      context.read<EncryptionProvider>().clearIdentityResetRequestStatus();
+      if (message == null) return;
+      showTopSnackBar(
+        context,
+        message,
+        backgroundColor: identityResetAnswerIsRefusal(status)
+            ? Theme.of(context).colorScheme.error
+            : null,
+      );
+    });
   }
 
   /// Coarse, human remaining time: hours while there is more than one left,
@@ -67,6 +98,17 @@ class _IdentityResetPendingBannerState
     final locked = context.select<EncryptionProvider, bool>(
       (e) => e.identityUploadLocked,
     );
+    // Watched here rather than in the dialog that sent the request: the answer
+    // can land after that dialog is gone, and `existing` can arrive because
+    // ANOTHER session started the ceremony.
+    final answer = context.select<EncryptionProvider, String?>(
+      (e) => e.identityResetRequestStatus,
+    );
+    if (answer != null) {
+      _reportAnswer(answer);
+    } else {
+      _reportedAnswer = null;
+    }
     if (deadline == null && !locked) return const SizedBox.shrink();
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);

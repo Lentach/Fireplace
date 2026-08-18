@@ -908,6 +908,42 @@ abstract class AppLocalizations {
   /// **'Nie mam go'**
   String get recoveryPhraseNoneAction;
 
+  /// No description provided for @identityResetStarted.
+  ///
+  /// In pl, this message translates to:
+  /// **'Reset rozpoczęty. Wszystkie zalogowane sesje zostały powiadomione, a do końca odliczania można go anulować.'**
+  String get identityResetStarted;
+
+  /// No description provided for @identityResetAlreadyRunning.
+  ///
+  /// In pl, this message translates to:
+  /// **'Dla tego konta reset już trwa. Odliczanie na górze ekranu pokazuje, ile zostało czasu.'**
+  String get identityResetAlreadyRunning;
+
+  /// No description provided for @identityResetCooldown.
+  ///
+  /// In pl, this message translates to:
+  /// **'Reset został niedawno anulowany, więc nowy nie może ruszyć przez maksymalnie 24 godziny. Jeśli ktoś inny wciąż go anuluje, najpierw zmień hasło, aby go wylogować.'**
+  String get identityResetCooldown;
+
+  /// No description provided for @identityResetPhraseRejected.
+  ///
+  /// In pl, this message translates to:
+  /// **'Te 12 słów nie pasuje do klucza odzyskiwania zapisanego dla tego konta. Możesz spróbować ponownie albo rozpocząć reset bez klucza i poczekać 72 godziny.'**
+  String get identityResetPhraseRejected;
+
+  /// No description provided for @identityResetPhraseLocked.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zbyt wiele prób z kluczem odzyskiwania. Spróbuj ponownie za około godzinę albo rozpocznij reset bez klucza i poczekaj 72 godziny.'**
+  String get identityResetPhraseLocked;
+
+  /// No description provided for @identityResetNoAnswer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Brak odpowiedzi serwera, więc nic nie zostało rozpoczęte. Sprawdź połączenie i spróbuj ponownie.'**
+  String get identityResetNoAnswer;
+
   /// No description provided for @identityFingerprintUnavailable.
   ///
   /// In pl, this message translates to:

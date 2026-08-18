@@ -138,7 +138,17 @@ export class ChatKeyExchangeService {
           ? { signature: dto.identitySignature, nonce }
           : undefined,
       );
-      client.emit('keyBundleUploaded', { success: true });
+      // `identityChanged` tells THIS device that its own upload is what
+      // replaced the stored identity — and therefore what wrote the audit row
+      // it will read back at the next connect. Without it the device that just
+      // recovered through the reset ceremony warns its own user that "another
+      // sign-in replaced your keys", which trains people to dismiss the one
+      // alarm that detects a real takeover. Additive field: an older client
+      // ignores it.
+      client.emit('keyBundleUploaded', {
+        success: true,
+        identityChanged: result.identityChanged,
+      });
       if (result.identityChanged) {
         // Fire-and-forget: the alarm must never fail or delay the upload ack.
         void this.notifyIdentityChanged(client, userId, server);

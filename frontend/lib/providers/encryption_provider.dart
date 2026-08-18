@@ -1035,10 +1035,10 @@ class EncryptionProvider extends ChangeNotifier {
       final keyBundle = keys['keyBundle'] as Map<String, dynamic>;
       final identity = keyBundle['identityPublicKey'];
       if (identity is String && identity.isNotEmpty) {
-        // This device is the one replacing the identity, so the resulting
-        // audit row must not come back at us as "another sign-in replaced
-        // your keys" on the next connect.
-        _expectingOwnIdentityPublish = true;
+        // Whether this replacement ends up watermarked is decided by the
+        // server's answer (`identityChanged`), not by a flag set here: under
+        // the registration lock this very upload is usually REFUSED, and the
+        // one that finally lands is a later reconnect re-upload.
         _emit?.call('uploadKeyBundle', keyBundle);
         _emit?.call('uploadOneTimePreKeys', {
           'keys': (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
@@ -1058,13 +1058,16 @@ class EncryptionProvider extends ChangeNotifier {
   /// registration lock refused to replace this account's stored identity key.
   /// That is terminal for this attempt — retrying mints nothing and would just
   /// loop. The user's route forward is the reset ceremony, so surface it.
+  ///
+  /// A `success:true` answer carrying `identityChanged:true` means THIS
+  /// upload is what replaced the stored identity, so the audit row the server
+  /// just wrote is this device's own doing. Watermarking it here — rather than
+  /// from a flag set before the emit — is what keeps the 0a alarm quiet on the
+  /// designed recovery path, where the upload that finally lands is a routine
+  /// reconnect re-upload spending a completed ceremony, not the refused
+  /// self-publish that started it.
   void onKeyBundleUploaded(dynamic data) {
     if (data is Map && data['success'] == false) {
-      // Nothing was published, so any pending self-publish expectation is
-      // void. Leaving it set would let a LATER unrelated success stamp a
-      // self-publish watermark it never earned, silently suppressing a
-      // genuine replacement alarm for the length of the skew allowance.
-      _expectingOwnIdentityPublish = false;
       final error = data['error'];
       if (error == 'identity_locked') {
         // This is the dangerous case for a user who just re-minted keys after
@@ -1084,16 +1087,15 @@ class EncryptionProvider extends ChangeNotifier {
       return;
     }
     _identityUploadLocked = false;
-    if (_expectingOwnIdentityPublish) {
-      _expectingOwnIdentityPublish = false;
+    // Only an upload that actually CHANGED the stored identity produces an
+    // audit row, so only that one may stamp the watermark. Stamping on every
+    // routine same-identity re-upload would keep a fresh watermark alive at
+    // all times and mute a genuine replacement by someone else.
+    if (data is Map && data['identityChanged'] == true) {
       unawaited(_encryptionService.markOwnIdentityPublished());
     }
     debugPrint('[E2E] Key bundle uploaded to server');
   }
-
-  /// Set while an identity THIS device minted is in flight, so the resulting
-  /// audit row is not replayed back to it as a warning at connect time.
-  bool _expectingOwnIdentityPublish = false;
 
   /// True once the server refused an identity replacement for this account.
   /// Cleared by a successful upload (which a completed ceremony enables).
@@ -1128,11 +1130,31 @@ class EncryptionProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Answer the server owes us for a reset request we just sent.
+  ///
+  /// Silence is itself an answer the user needs: without this the request
+  /// button looks broken (or worse, looks successful) when the socket is down.
+  Timer? _identityResetAnswerTimeout;
+  static const Duration _identityResetAnswerWindow = Duration(seconds: 6);
+
+  /// The synthetic status used when the server never answered. Not a server
+  /// value — the UI maps it like any refusal, because nothing was started.
+  static const String identityResetNoAnswerStatus = 'no_answer';
+
   /// Starts the ceremony. A recovery phrase shortens the wait but never
   /// silences the notifications, and never grants an instant replacement.
   void requestIdentityReset({String? recoveryPhrase}) {
     _e2eFlowLog('IDENTITY_RESET_REQUEST', {
       'withPhrase': recoveryPhrase != null,
+    });
+    _identityResetRequestStatus = null;
+    _identityResetAnswerTimeout?.cancel();
+    _identityResetAnswerTimeout = Timer(_identityResetAnswerWindow, () {
+      _identityResetAnswerTimeout = null;
+      if (_identityResetRequestStatus != null) return;
+      _identityResetRequestStatus = identityResetNoAnswerStatus;
+      _e2eFlowLog('IDENTITY_RESET_NO_ANSWER', {});
+      notifyListeners();
     });
     _emit?.call('resetIdentityRequest', <String, dynamic>{
       if (recoveryPhrase != null && recoveryPhrase.isNotEmpty)
@@ -1171,6 +1193,8 @@ class EncryptionProvider extends ChangeNotifier {
     if (data is! Map) return;
     final status = data['status'];
     if (status is! String) return;
+    _identityResetAnswerTimeout?.cancel();
+    _identityResetAnswerTimeout = null;
     _identityResetRequestStatus = status;
     if (status == 'pending' || status == 'existing') {
       _applyResetDeadline(data['deadlineAt'], data['shortened'] == true);
@@ -1507,6 +1531,8 @@ class EncryptionProvider extends ChangeNotifier {
   @override
   void dispose() {
     _cancelPendingFetches();
+    _identityResetAnswerTimeout?.cancel();
+    _identityResetAnswerTimeout = null;
     super.dispose();
   }
 

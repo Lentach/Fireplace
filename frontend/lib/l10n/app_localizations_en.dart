@@ -479,6 +479,30 @@ class AppLocalizationsEn extends AppLocalizations {
   String get recoveryPhraseNoneAction => 'I don\'t have one';
 
   @override
+  String get identityResetStarted =>
+      'Reset started. Everyone signed in has been told, and it can be cancelled until the countdown ends.';
+
+  @override
+  String get identityResetAlreadyRunning =>
+      'A reset is already running for this account. The countdown at the top of the screen shows how long is left.';
+
+  @override
+  String get identityResetCooldown =>
+      'A reset was cancelled recently, so a new one cannot start for up to 24 hours. If someone else keeps cancelling it, change your password to sign them out first.';
+
+  @override
+  String get identityResetPhraseRejected =>
+      'Those 12 words did not match the recovery key stored for this account. You can try again, or start the reset without it and wait 72 hours.';
+
+  @override
+  String get identityResetPhraseLocked =>
+      'Too many recovery-key attempts. Try again in about an hour, or start the reset without the key and wait 72 hours.';
+
+  @override
+  String get identityResetNoAnswer =>
+      'No answer from the server, so nothing was started. Check your connection and try again.';
+
+  @override
   String get identityFingerprintUnavailable => 'Fingerprint unavailable.';
 
   @override

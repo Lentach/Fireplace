@@ -20,6 +20,18 @@ class _FakeEncryption extends EncryptionProvider {
   bool locked;
   int cancelCalls = 0;
   int startCalls = 0;
+  String? answer;
+  int clearAnswerCalls = 0;
+
+  @override
+  String? get identityResetRequestStatus => answer;
+
+  @override
+  void clearIdentityResetRequestStatus() {
+    clearAnswerCalls++;
+    answer = null;
+    notifyListeners();
+  }
 
   @override
   DateTime? get identityResetDeadline => deadline;
@@ -185,5 +197,32 @@ void main() {
 
     expect(encryption.cancelCalls, 1);
     expect(encryption.startCalls, 0);
+  });
+
+  testWidgets('a refused request is said out loud, not swallowed', (
+    tester,
+  ) async {
+    // A genuine owner recovering lost keys meets every refusal: a mistyped
+    // phrase, the lockout after five of those, the post-cancel cooldown. With
+    // no message the button looks broken while the account stays unreachable.
+    final encryption = _FakeEncryption(locked: true)..answer = 'invalid_phrase';
+    await tester.pumpWidget(_host(encryption));
+    await tester.pumpAndSettle();
+
+    final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+    expect(find.text(l10n.identityResetPhraseRejected), findsOneWidget);
+    // Consumed, so a rebuild cannot replay it.
+    expect(encryption.clearAnswerCalls, 1);
+    // Let the toast retire; it owns a dismissal timer.
+    await tester.pump(const Duration(seconds: 3));
+  });
+
+  testWidgets('the cooldown answer names the way out of it', (tester) async {
+    final encryption = _FakeEncryption(locked: true)..answer = 'cooldown';
+    await tester.pumpWidget(_host(encryption));
+    await tester.pumpAndSettle();
+    final l10n = await AppLocalizations.delegate.load(const Locale('en'));
+    expect(find.text(l10n.identityResetCooldown), findsOneWidget);
+    await tester.pump(const Duration(seconds: 3));
   });
 }
