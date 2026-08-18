@@ -794,6 +794,24 @@ abstract class AppLocalizations {
   /// **'lada chwila'**
   String get identityResetAnyMoment;
 
+  /// No description provided for @identityUploadLockedTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Twoje nowe klucze szyfrowania nie zostały opublikowane'**
+  String get identityUploadLockedTitle;
+
+  /// No description provided for @identityUploadLockedBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'To urządzenie utworzyło nowe klucze, ale konto nadal używa poprzednich, więc inne osoby nie mogą się z Tobą bezpiecznie skontaktować. Rozpocznij reset, aby opublikować te klucze — trwa 72 godziny, a wszystkie zalogowane sesje otrzymają powiadomienie.'**
+  String get identityUploadLockedBody;
+
+  /// No description provided for @identityResetStartAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Rozpocznij reset'**
+  String get identityResetStartAction;
+
   /// No description provided for @identityFingerprintUnavailable.
   ///
   /// In pl, this message translates to:

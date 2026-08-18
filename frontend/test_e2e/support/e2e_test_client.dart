@@ -18,6 +18,10 @@ import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 import 'dart:math';
+import 'dart:typed_data';
+
+import 'package:flutter_secure_storage/flutter_secure_storage.dart';
+import 'package:libsignal_protocol_dart/libsignal_protocol_dart.dart';
 
 import 'package:fireplace/services/api_service.dart';
 import 'package:fireplace/services/encryption_service.dart';
@@ -196,6 +200,14 @@ class E2eClient {
     'sessionRebuildNeeded',
     'ownIdentityReplaced',
     'peerIdentityChanged',
+    // Phase 0b: registration lock + reset ceremony.
+    'registrationLockNonce',
+    'identityResetStatus',
+    'identityResetPending',
+    'identityResetCancelled',
+    'identityResetCancelResult',
+    'recoveryKeySet',
+    'ownKeyBundleStatus',
     'newFriendRequest',
     'friendRequestSent',
     'friendRequestFailed',
@@ -260,6 +272,133 @@ class E2eClient {
       (keys['keyBundle'] as Map).cast<String, dynamic>(),
     );
     await events.next('keyBundleUploaded', reason: '$label key bundle');
+  }
+
+  /// Uploads a bundle WITHOUT any registration-lock proof and returns the
+  /// server's answer payload (success or refusal) instead of asserting.
+  Future<Map<String, dynamic>> uploadKeyBundleRaw(
+    Map<String, dynamic> keys, {
+    String? identitySignature,
+    String? nonce,
+  }) async {
+    final bundle = (keys['keyBundle'] as Map).cast<String, dynamic>();
+    events.discard('keyBundleUploaded');
+    socketService.socket!.emit('uploadKeyBundle', {
+      ...bundle,
+      'identitySignature': ?identitySignature,
+      'nonce': ?nonce,
+    });
+    final answer = await events.next(
+      'keyBundleUploaded',
+      reason: '$label key bundle answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Asks the server for a registration-lock nonce (§6.1).
+  Future<String> fetchRegistrationLockNonce() async {
+    events.discard('registrationLockNonce');
+    socketService.socket!.emit('getRegistrationLockNonce', <String, dynamic>{});
+    final payload = await events.next(
+      'registrationLockNonce',
+      reason: '$label registration lock nonce',
+    );
+    return (payload as Map)['nonce'] as String;
+  }
+
+  /// Signs `newIdentityPublicKey ‖ userId ‖ nonce` with the identity key this
+  /// instance currently holds — i.e. produces the proof a legitimate key
+  /// rotation would carry (§6.1).
+  ///
+  /// Reads the key pair out of storage rather than widening the production
+  /// API: nothing in the app has a reason to hand out a private key.
+  ///
+  /// Sound here specifically because this harness only ever runs on the VM:
+  /// `DualStorage` branches on `kIsWeb || _debugForceSealedWeb`, and on the
+  /// non-web side it reads and writes exactly `FlutterSecureStorage`
+  /// (signal_stores.dart:151-157), whose test mock is a static map shared by
+  /// every instance. On web this would read the wrong backend.
+  /// Serialized identity key pair currently in this instance's storage.
+  ///
+  /// Capture this BEFORE any test wipes the shared mock stores to build a
+  /// second installation — the wipe destroys the record, and signing with
+  /// whatever replaced it produces a proof the server correctly refuses.
+  Future<String> exportIdentityPair() async {
+    const storage = FlutterSecureStorage();
+    final raw = await storage.read(key: 'e2e_${userId}_identity_record_v1');
+    if (raw == null) {
+      throw StateError('$label: no identity record to export');
+    }
+    return (jsonDecode(raw) as Map)['pair'] as String;
+  }
+
+  Future<String> signIdentityChange({
+    required String signerPairBase64,
+    required String newIdentityPublicKeyBase64,
+    required String nonceBase64,
+  }) async {
+    final pair = IdentityKeyPair.fromSerialized(
+      base64Decode(signerPairBase64),
+    );
+    final message = Uint8List.fromList([
+      ...base64Decode(newIdentityPublicKeyBase64),
+      ...utf8.encode(userId.toString()),
+      ...base64Decode(nonceBase64),
+    ]);
+    // Curve.calculateSignature MUTATES its input — hand it a copy.
+    final signature = Curve.calculateSignature(
+      pair.getPrivateKey(),
+      Uint8List.fromList(message),
+    );
+    return base64Encode(signature);
+  }
+
+  /// Starts a reset ceremony (§6.2) and returns the server's status answer.
+  Future<Map<String, dynamic>> requestIdentityReset({
+    String? recoveryPhrase,
+  }) async {
+    events.discard('identityResetStatus');
+    socketService.socket!.emit('resetIdentityRequest', <String, dynamic>{
+      'recoveryPhrase': ?recoveryPhrase,
+    });
+    final payload = await events.next(
+      'identityResetStatus',
+      reason: '$label reset request answer',
+    );
+    return (payload as Map).cast<String, dynamic>();
+  }
+
+  /// Cancels the pending ceremony and returns whether anything was cancelled.
+  Future<bool> cancelIdentityReset() async {
+    events.discard('identityResetCancelResult');
+    socketService.socket!.emit('resetIdentityCancel', <String, dynamic>{});
+    final payload = await events.next(
+      'identityResetCancelResult',
+      reason: '$label reset cancel answer',
+    );
+    return (payload as Map)['cancelled'] == true;
+  }
+
+  /// Enrolls a recovery phrase (§6.2.1).
+  Future<bool> setRecoveryKey(String phrase) async {
+    events.discard('recoveryKeySet');
+    socketService.socket!.emit('setRecoveryKey', {'phrase': phrase});
+    final payload = await events.next(
+      'recoveryKeySet',
+      reason: '$label recovery key answer',
+    );
+    return (payload as Map)['success'] == true;
+  }
+
+  /// Reads the server's view of this account's key/protection state.
+  Future<Map<String, dynamic>> checkOwnKeyBundle() async {
+    events.discard('ownKeyBundleStatus');
+    socketService.socket!.emit('checkOwnKeyBundle', <String, dynamic>{});
+    final payload = await events.next(
+      'ownKeyBundleStatus',
+      reason: '$label own bundle status',
+    );
+    return (payload as Map).cast<String, dynamic>();
   }
 
   /// Uploads staged OTPs. [tagIdentityEpoch] selects the current client wire

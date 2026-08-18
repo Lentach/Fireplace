@@ -157,6 +157,9 @@
     "placeholders": { "minutes": { "type": "int" } }
   },
   "identityResetAnyMoment": "lada chwila",
+  "identityUploadLockedTitle": "Twoje nowe klucze szyfrowania nie zostały opublikowane",
+  "identityUploadLockedBody": "To urządzenie utworzyło nowe klucze, ale konto nadal używa poprzednich, więc inne osoby nie mogą się z Tobą bezpiecznie skontaktować. Rozpocznij reset, aby opublikować te klucze — trwa 72 godziny, a wszystkie zalogowane sesje otrzymają powiadomienie.",
+  "identityResetStartAction": "Rozpocznij reset",
   "identityFingerprintUnavailable": "Odcisk tożsamości jest niedostępny.",
   "blockUser": "Zablokuj użytkownika",
   "conversationDeletedByOther": "Rozmowa usunięta przez drugą osobę",

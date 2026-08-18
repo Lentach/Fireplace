@@ -415,6 +415,17 @@ class AppLocalizationsEn extends AppLocalizations {
   String get identityResetAnyMoment => 'any moment now';
 
   @override
+  String get identityUploadLockedTitle =>
+      'Your new encryption keys were not published';
+
+  @override
+  String get identityUploadLockedBody =>
+      'This device made new keys, but the account still uses the previous ones, so other people cannot reach you securely. Start a reset to publish these keys — it takes 72 hours and everyone signed in is notified.';
+
+  @override
+  String get identityResetStartAction => 'Start reset';
+
+  @override
   String get identityFingerprintUnavailable => 'Fingerprint unavailable.';
 
   @override

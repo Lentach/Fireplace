@@ -6,6 +6,13 @@
 // caused the event — and (2) alert every conversation peer via
 // `peerIdentityChanged`. The same-identity re-upload (the client's normal
 // every-connect path) must stay silent on both events.
+//
+// PHASE 0b INTERACTION: the registration lock (§6.1) now REFUSES an
+// unauthorized identity replacement outright, writing nothing — so there is no
+// longer any such thing as an unannounced replacement to alarm about. The
+// alarm therefore fires for AUTHORIZED replacements, and this test carries the
+// proof the lock demands (old key signs the new one against a session nonce).
+// Refusal itself is covered by registration_lock_test.dart.
 
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
 import 'package:flutter_test/flutter_test.dart';
@@ -23,6 +30,9 @@ void main() {
     late E2eClient peer;
     late E2eClient victimTab;
     E2eClient? replacement;
+    // Captured before the storage wipe below destroys the record: the 0b lock
+    // requires the PREVIOUS identity key to authorize the replacement.
+    late String victimPair;
 
     setUpAll(() async {
       await requireBackendUp(baseUrl);
@@ -39,6 +49,7 @@ void main() {
       await peer.connectSocket();
       await victim.initializeAndUploadKeys();
       await peer.initializeAndUploadKeys();
+      victimPair = await victim.exportIdentityPair();
 
       // Friendship + conversation: `peerIdentityChanged` goes to CONVERSATION
       // peers, so the pair must actually share one.
@@ -85,12 +96,28 @@ void main() {
       'same-identity re-upload stays silent',
       () async {
         final replacementKeys = await replacement!.initializeKeys();
+        final replacementIdentity =
+            (replacementKeys['keyBundle'] as Map)['identityPublicKey']
+                as String;
 
         victim.events.discard('ownIdentityReplaced');
         victimTab.events.discard('ownIdentityReplaced');
         peer.events.discard('peerIdentityChanged');
 
-        await replacement!.uploadKeyBundle(replacementKeys);
+        // Authorized under the 0b lock: the previous identity key signs the
+        // new one against a nonce issued to the uploading session.
+        final nonce = await replacement!.fetchRegistrationLockNonce();
+        final proof = await replacement!.signIdentityChange(
+          signerPairBase64: victimPair,
+          newIdentityPublicKeyBase64: replacementIdentity,
+          nonceBase64: nonce,
+        );
+        final answer = await replacement!.uploadKeyBundleRaw(
+          replacementKeys,
+          identitySignature: proof,
+          nonce: nonce,
+        );
+        expect(answer['success'], isTrue);
 
         // Both of the account's OTHER live sessions are alerted.
         final tabAlarm = await victimTab.events.next(

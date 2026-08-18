@@ -44,6 +44,11 @@ void main() {
   late E2eClient bob; // sender
   late int conversationId;
   late String epoch1Identity;
+  // The 0b registration lock (§6.1) requires the PREVIOUS identity key to
+  // authorize a replacement, and clearAllKeys() below destroys it. This file's
+  // subject is the OTP epoch invariant, not the lock, so it carries the proof
+  // a legitimate rotation would; registration_lock_test covers the refusal.
+  late String epoch1Pair;
 
   int wireType(String ciphertext) =>
       int.parse(ciphertext.substring(0, ciphertext.indexOf(':')));
@@ -52,7 +57,11 @@ void main() {
   /// order: emit the one-time pre-keys (identity-tagged, like the real client)
   /// and the key bundle back-to-back with NO await between them, then wait for
   /// both server acks. Mirrors EncryptionProvider's two consecutive emits.
-  Future<void> reuploadUnsafeConcurrent(E2eClient c) async {
+  Future<void> reuploadUnsafeConcurrent(
+    E2eClient c, {
+    String? identitySignature,
+    String? nonce,
+  }) async {
     final keys = c.encryption.getKeysForUpload()!;
     final keyBundle = (keys['keyBundle'] as Map).cast<String, dynamic>();
     final otps = (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>();
@@ -64,12 +73,19 @@ void main() {
       'keys': otps,
       'identityPublicKey': identity,
     });
-    c.socketService.socket!.emit('uploadKeyBundle', keyBundle);
+    c.socketService.socket!.emit('uploadKeyBundle', {
+      ...keyBundle,
+      'identitySignature': ?identitySignature,
+      'nonce': ?nonce,
+    });
 
     await c.events.next('oneTimePreKeysUploaded',
         reason: '${c.label} epoch-2 OTP ack');
-    await c.events.next('keyBundleUploaded',
+    final ack = await c.events.next('keyBundleUploaded',
         reason: '${c.label} epoch-2 bundle ack');
+    if ((ack as Map)['success'] != true) {
+      throw StateError('${c.label} epoch-2 bundle refused: $ack');
+    }
   }
 
   setUpAll(() async {
@@ -93,6 +109,7 @@ void main() {
     epoch1Identity =
         (alice.encryption.getKeysForUpload()!['keyBundle'] as Map)['identityPublicKey']
             as String;
+    epoch1Pair = await alice.exportIdentityPair();
 
     // Friendship + conversation.
     alice.socketService.sendFriendRequest(bob.userId);
@@ -174,8 +191,19 @@ void main() {
         expect(epoch2Identity, isNot(epoch1Identity),
             reason: 'regeneration must mint a new identity epoch');
 
-        // 2. Re-upload in the unsafe production order (OTPs racing the bundle).
-        await reuploadUnsafeConcurrent(alice);
+        // 2. Re-upload in the unsafe production order (OTPs racing the bundle),
+        //    carrying the 0b proof so the replacement is authorized.
+        final nonce = await alice.fetchRegistrationLockNonce();
+        final proof = await alice.signIdentityChange(
+          signerPairBase64: epoch1Pair,
+          newIdentityPublicKeyBase64: epoch2Identity,
+          nonceBase64: nonce,
+        );
+        await reuploadUnsafeConcurrent(
+          alice,
+          identitySignature: proof,
+          nonce: nonce,
+        );
 
         // 3. bob -> alice PreKey, repeated to drain several current-epoch OTPs.
         //    Every claim must be epoch-2 and must decrypt.

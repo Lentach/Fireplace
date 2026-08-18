@@ -157,6 +157,9 @@
     "placeholders": { "minutes": { "type": "int" } }
   },
   "identityResetAnyMoment": "any moment now",
+  "identityUploadLockedTitle": "Your new encryption keys were not published",
+  "identityUploadLockedBody": "This device made new keys, but the account still uses the previous ones, so other people cannot reach you securely. Start a reset to publish these keys — it takes 72 hours and everyone signed in is notified.",
+  "identityResetStartAction": "Start reset",
   "identityFingerprintUnavailable": "Fingerprint unavailable.",
   "blockUser": "Block user",
   "conversationDeletedByOther": "Conversation deleted by the other user",

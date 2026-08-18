@@ -26,6 +26,9 @@ void main() {
     late E2eClient observer;
     late E2eClient legacy;
     E2eClient? replacement;
+    // The 0b registration lock needs the PREVIOUS identity key to authorize a
+    // replacement; capture it before the wipe below removes the record.
+    late String legacyPair;
 
     setUpAll(() async {
       await requireBackendUp(baseUrl);
@@ -48,6 +51,7 @@ void main() {
       final legacyKeys = await legacy.initializeKeys();
       await legacy.uploadKeyBundle(legacyKeys);
       await legacy.uploadOneTimePreKeys(legacyKeys, tagIdentityEpoch: true);
+      legacyPair = await legacy.exportIdentityPair();
 
       // Simulate reinstall/site-state loss without destroying the still-running
       // legacy instance's in-memory key objects. The replacement instance logs
@@ -87,7 +91,22 @@ void main() {
         // pre-epoch client uploads OTP-A without an epoch tag. The server must
         // fail closed; reading current bundle B and stamping it onto OTP-A would
         // manufacture the exact {identity B, stale OTP-A} bad-MAC bundle.
-        await replacement!.uploadKeyBundle(replacementKeys);
+        // The replacement must now carry the 0b proof to win the epoch; the
+        // invariant under test is about the untagged OTP that follows it, not
+        // about whether an unauthorized bundle can land (registration_lock_test
+        // covers that).
+        final nonce = await replacement!.fetchRegistrationLockNonce();
+        final proof = await replacement!.signIdentityChange(
+          signerPairBase64: legacyPair,
+          newIdentityPublicKeyBase64: replacementIdentity,
+          nonceBase64: nonce,
+        );
+        final replaced = await replacement!.uploadKeyBundleRaw(
+          replacementKeys,
+          identitySignature: proof,
+          nonce: nonce,
+        );
+        expect(replaced['success'], isTrue);
 
         await legacy.uploadOneTimePreKeys(
           oldKeys,

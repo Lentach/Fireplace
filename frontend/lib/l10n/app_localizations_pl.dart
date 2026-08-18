@@ -420,6 +420,17 @@ class AppLocalizationsPl extends AppLocalizations {
   String get identityResetAnyMoment => 'lada chwila';
 
   @override
+  String get identityUploadLockedTitle =>
+      'Twoje nowe klucze szyfrowania nie zostały opublikowane';
+
+  @override
+  String get identityUploadLockedBody =>
+      'To urządzenie utworzyło nowe klucze, ale konto nadal używa poprzednich, więc inne osoby nie mogą się z Tobą bezpiecznie skontaktować. Rozpocznij reset, aby opublikować te klucze — trwa 72 godziny, a wszystkie zalogowane sesje otrzymają powiadomienie.';
+
+  @override
+  String get identityResetStartAction => 'Rozpocznij reset';
+
+  @override
   String get identityFingerprintUnavailable =>
       'Odcisk tożsamości jest niedostępny.';
 

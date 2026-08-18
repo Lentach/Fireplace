@@ -59,10 +59,18 @@ class _IdentityResetPendingBannerState
     final deadline = context.select<EncryptionProvider, DateTime?>(
       (e) => e.identityResetDeadline,
     );
-    if (deadline == null) return const SizedBox.shrink();
+    // The server refused to publish this device's new keys. Without a surface
+    // the user is left believing they recovered while peers keep encrypting to
+    // an identity they no longer hold, so this state is as loud as a pending
+    // ceremony — and its action is the only way out.
+    final locked = context.select<EncryptionProvider, bool>(
+      (e) => e.identityUploadLocked,
+    );
+    if (deadline == null && !locked) return const SizedBox.shrink();
     final l10n = AppLocalizations.of(context);
     final theme = Theme.of(context);
     final colors = theme.colorScheme;
+    final pending = deadline != null;
     return Material(
       color: colors.errorContainer,
       child: SafeArea(
@@ -73,7 +81,7 @@ class _IdentityResetPendingBannerState
             crossAxisAlignment: CrossAxisAlignment.start,
             children: [
               Icon(
-                Icons.lock_reset_outlined,
+                pending ? Icons.lock_reset_outlined : Icons.key_off_outlined,
                 color: colors.onErrorContainer,
                 size: 20,
               ),
@@ -83,7 +91,9 @@ class _IdentityResetPendingBannerState
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
                     Text(
-                      l10n.identityResetPendingTitle,
+                      pending
+                          ? l10n.identityResetPendingTitle
+                          : l10n.identityUploadLockedTitle,
                       style: theme.textTheme.titleSmall?.copyWith(
                         color: colors.onErrorContainer,
                         fontWeight: FontWeight.w700,
@@ -91,9 +101,11 @@ class _IdentityResetPendingBannerState
                     ),
                     const SizedBox(height: 4),
                     Text(
-                      l10n.identityResetPendingBody(
-                        _remaining(l10n, deadline),
-                      ),
+                      pending
+                          ? l10n.identityResetPendingBody(
+                              _remaining(l10n, deadline),
+                            )
+                          : l10n.identityUploadLockedBody,
                       style: theme.textTheme.bodySmall?.copyWith(
                         color: colors.onErrorContainer,
                       ),
@@ -104,13 +116,23 @@ class _IdentityResetPendingBannerState
               // Foreground pinned to onErrorContainer: theme primary is nearly
               // invisible on the error container (same reason as the 0a banner).
               TextButton(
-                onPressed: () =>
-                    context.read<EncryptionProvider>().cancelIdentityReset(),
+                onPressed: () {
+                  final encryption = context.read<EncryptionProvider>();
+                  if (pending) {
+                    encryption.cancelIdentityReset();
+                  } else {
+                    encryption.requestIdentityReset();
+                  }
+                },
                 style: TextButton.styleFrom(
                   foregroundColor: colors.onErrorContainer,
                   textStyle: const TextStyle(fontWeight: FontWeight.w700),
                 ),
-                child: Text(l10n.identityResetCancelAction),
+                child: Text(
+                  pending
+                      ? l10n.identityResetCancelAction
+                      : l10n.identityResetStartAction,
+                ),
               ),
             ],
           ),

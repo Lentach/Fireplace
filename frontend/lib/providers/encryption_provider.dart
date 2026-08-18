@@ -1058,7 +1058,15 @@ class EncryptionProvider extends ChangeNotifier {
     if (data is Map && data['success'] == false) {
       final error = data['error'];
       if (error == 'identity_locked') {
+        // This is the dangerous case for a user who just re-minted keys after
+        // losing theirs: the local device now believes it is healthy, but the
+        // server still publishes the PREVIOUS identity, so peers keep
+        // encrypting to keys this device cannot read. Recording it drives the
+        // banner that routes them to the reset ceremony — the only thing that
+        // can make these keys land — instead of leaving them silently
+        // unreachable behind a "recovered" UI.
         _e2eFlowLog('KEY_BUNDLE_IDENTITY_LOCKED', {});
+        E2ePersistentDiag.record('KEY_BUNDLE_IDENTITY_LOCKED', {});
         _identityUploadLocked = true;
         notifyListeners();
         return;

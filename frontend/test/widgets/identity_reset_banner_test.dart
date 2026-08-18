@@ -14,18 +14,29 @@ import 'package:provider/provider.dart';
 /// resetting your keys" bar would train users to ignore the real one), and
 /// when it does appear the cancel action must actually reach the server.
 class _FakeEncryption extends EncryptionProvider {
-  _FakeEncryption({this.deadline});
+  _FakeEncryption({this.deadline, this.locked = false});
 
   DateTime? deadline;
+  bool locked;
   int cancelCalls = 0;
+  int startCalls = 0;
 
   @override
   DateTime? get identityResetDeadline => deadline;
 
   @override
+  bool get identityUploadLocked => locked;
+
+  @override
   void cancelIdentityReset() {
     cancelCalls++;
     deadline = null;
+    notifyListeners();
+  }
+
+  @override
+  void requestIdentityReset({String? recoveryPhrase}) {
+    startCalls++;
     notifyListeners();
   }
 }
@@ -103,5 +114,49 @@ void main() {
 
     expect(find.byIcon(Icons.lock_reset_outlined), findsOneWidget);
     expect(find.byType(TextButton), findsOneWidget);
+  });
+
+  // The most damaging 0b failure mode: a user who lost their keys re-mints
+  // them, the server refuses to publish because the account still holds the
+  // previous identity, and nothing tells them. Peers then keep encrypting to
+  // keys this device cannot read, behind a UI that claims recovery worked.
+  testWidgets('a refused key publication is surfaced with a way out', (
+    tester,
+  ) async {
+    final encryption = _FakeEncryption(locked: true);
+    await tester.pumpWidget(_host(encryption));
+
+    expect(find.byIcon(Icons.key_off_outlined), findsOneWidget);
+    expect(find.textContaining('not published'), findsOneWidget);
+
+    await tester.tap(find.byType(TextButton));
+    await tester.pumpAndSettle();
+
+    expect(
+      encryption.startCalls,
+      1,
+      reason: 'the only route out is the reset ceremony',
+    );
+    expect(encryption.cancelCalls, 0);
+  });
+
+  testWidgets('a running ceremony takes precedence over the locked notice', (
+    tester,
+  ) async {
+    final encryption = _FakeEncryption(
+      deadline: DateTime.now().add(const Duration(hours: 3)),
+      locked: true,
+    );
+    await tester.pumpWidget(_host(encryption));
+
+    // Already fixing it — offering "start reset" again would be nonsense.
+    expect(find.byIcon(Icons.lock_reset_outlined), findsOneWidget);
+    expect(find.byIcon(Icons.key_off_outlined), findsNothing);
+
+    await tester.tap(find.byType(TextButton));
+    await tester.pumpAndSettle();
+
+    expect(encryption.cancelCalls, 1);
+    expect(encryption.startCalls, 0);
   });
 }
