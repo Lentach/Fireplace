@@ -1060,6 +1060,11 @@ class EncryptionProvider extends ChangeNotifier {
   /// loop. The user's route forward is the reset ceremony, so surface it.
   void onKeyBundleUploaded(dynamic data) {
     if (data is Map && data['success'] == false) {
+      // Nothing was published, so any pending self-publish expectation is
+      // void. Leaving it set would let a LATER unrelated success stamp a
+      // self-publish watermark it never earned, silently suppressing a
+      // genuine replacement alarm for the length of the skew allowance.
+      _expectingOwnIdentityPublish = false;
       final error = data['error'];
       if (error == 'identity_locked') {
         // This is the dangerous case for a user who just re-minted keys after

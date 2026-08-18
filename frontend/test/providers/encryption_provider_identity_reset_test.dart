@@ -125,6 +125,19 @@ void main() {
 
       expect(provider.identityUploadLocked, isFalse);
     });
+
+    test('a refused upload does not leave a self-publish claim behind', () {
+      // The refusal path is the DESIGNED route now (refused upload → banner →
+      // ceremony → retry), so a stale expectation here would be consumed by a
+      // later success and suppress a genuine replacement alarm.
+      provider.onKeyBundleUploaded({
+        'success': false,
+        'error': 'identity_locked',
+      });
+      provider.onKeyBundleUploaded({'success': true});
+
+      expect(provider.identityUploadLocked, isFalse);
+    });
   });
 
   group('connect-time hydration', () {

@@ -25,6 +25,15 @@ void main() {
       final second = RecoveryPhrase.generate().join(' ');
       expect(first, isNot(second));
     });
+
+    test('generated output survives normalize unchanged', () {
+      // Enrolment stores a hash of the normalized phrase and verification
+      // hashes the normalized input. If normalize ever altered a freshly
+      // generated phrase, the two would disagree and the user would burn
+      // lockout attempts on words the client had just called valid.
+      final joined = RecoveryPhrase.generate().join(' ');
+      expect(RecoveryPhrase.normalize(joined), joined);
+    });
   });
 
   group('isValid', () {

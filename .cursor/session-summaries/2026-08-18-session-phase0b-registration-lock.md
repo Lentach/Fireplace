@@ -114,7 +114,7 @@ replacement by another session inside that window is not surfaced by THIS path
   there meant writing the new code and its specs to a stricter standard than the
   file it sits in — typed socket-data accessor, typed mock-call helpers — rather
   than raising the floor.
-- Frontend **1357 tests / 10 skipped** (was 1318/10), analyze clean.
+- Frontend **1359 tests / 10 skipped** (was 1318/10), analyze clean.
 - Migration applied cleanly in the REAL boot path (`applying` → `applied`), and
   the partial unique index was behaviourally proven against live Postgres: a
   second pending row is rejected, and a new one is allowed after a cancel.

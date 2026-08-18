@@ -49,7 +49,11 @@ class _RecoveryKeyScreenState extends State<RecoveryKeyScreen> {
 
     setState(() => _saving = true);
     encryption.clearRecoveryKeySetResult();
-    encryption.setRecoveryKey(words.join(' '));
+    // Enrolment and later verification MUST produce byte-identical strings —
+    // the server compares an Argon2id hash, so any divergence fails the check
+    // and burns one of the few attempts before lockout. Both sides go through
+    // normalize() so they cannot drift apart.
+    encryption.setRecoveryKey(RecoveryPhrase.normalize(words.join(' ')));
 
     // The server answers on the socket; wait briefly rather than claiming
     // success the moment the emit returns.
