@@ -220,5 +220,21 @@ void main() {
 
       expect(service.ownIdentityReplacedAt, '2026-08-19T00:00:00.000Z');
     });
+
+    test('a replacement THIS device published is not replayed back at it',
+        () async {
+      // The recovery case: a fresh install completes a ceremony, publishes new
+      // keys, and reconnects. The server dutifully reports the audit row it
+      // just wrote — but warning the user about the recovery they themselves
+      // performed, on an install with no dismissal history, is a false alarm.
+      final service = EncryptionService();
+      await service.markOwnIdentityPublished();
+
+      await service.recordOwnIdentityReplacedFromServer(
+        DateTime.now().toUtc().toIso8601String(),
+      );
+
+      expect(service.ownIdentityReplacedAt, isNull);
+    });
   });
 }

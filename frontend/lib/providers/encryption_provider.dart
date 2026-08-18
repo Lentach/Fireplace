@@ -1035,6 +1035,10 @@ class EncryptionProvider extends ChangeNotifier {
       final keyBundle = keys['keyBundle'] as Map<String, dynamic>;
       final identity = keyBundle['identityPublicKey'];
       if (identity is String && identity.isNotEmpty) {
+        // This device is the one replacing the identity, so the resulting
+        // audit row must not come back at us as "another sign-in replaced
+        // your keys" on the next connect.
+        _expectingOwnIdentityPublish = true;
         _emit?.call('uploadKeyBundle', keyBundle);
         _emit?.call('uploadOneTimePreKeys', {
           'keys': (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
@@ -1075,8 +1079,16 @@ class EncryptionProvider extends ChangeNotifier {
       return;
     }
     _identityUploadLocked = false;
+    if (_expectingOwnIdentityPublish) {
+      _expectingOwnIdentityPublish = false;
+      unawaited(_encryptionService.markOwnIdentityPublished());
+    }
     debugPrint('[E2E] Key bundle uploaded to server');
   }
+
+  /// Set while an identity THIS device minted is in flight, so the resulting
+  /// audit row is not replayed back to it as a warning at connect time.
+  bool _expectingOwnIdentityPublish = false;
 
   /// True once the server refused an identity replacement for this account.
   /// Cleared by a successful upload (which a completed ceremony enables).

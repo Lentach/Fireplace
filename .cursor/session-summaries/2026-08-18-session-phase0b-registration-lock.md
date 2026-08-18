@@ -52,9 +52,16 @@ a stale "act now" card); client state mirrors the server and re-hydrates from
 
 **Closed the 0a reviewer gap.** `ownKeyBundleStatus` now carries
 `identityReplacedAt`, so a session that was offline when its identity was
-replaced still raises the banner at connect time. Guarded by a dismissal
-watermark: the same replacement never returns after being dismissed, a newer
-one still alarms.
+replaced still raises the banner at connect time. Two suppressions keep that
+from becoming noise: a dismissal watermark (the same replacement never returns
+after being dismissed; a newer one still alarms), and a self-publish watermark
+— without it the device that just completed a ceremony and re-published its
+keys would be warned, on its very next connect, about the recovery it had just
+performed, on a fresh install with no dismissal history to suppress it. The
+self-publish watermark carries a 10-minute clock-skew allowance because the
+audit row is stamped by the server and the watermark by the device, so a
+replacement by another session inside that window is not surfaced by THIS path
+(it is still refused by the lock unless signed or ceremony-backed).
 
 ## Two defects found and fixed during the build
 
@@ -107,7 +114,7 @@ one still alarms.
   there meant writing the new code and its specs to a stricter standard than the
   file it sits in — typed socket-data accessor, typed mock-call helpers — rather
   than raising the floor.
-- Frontend **1342 tests / 10 skipped** (was 1318/10), analyze clean.
+- Frontend **1343 tests / 10 skipped** (was 1318/10), analyze clean.
 - Migration applied cleanly in the REAL boot path (`applying` → `applied`), and
   the partial unique index was behaviourally proven against live Postgres: a
   second pending row is rejected, and a new one is allowed after a cancel.
@@ -116,7 +123,13 @@ one still alarms.
 - **Completed-ceremony live-fire.** Started a ceremony (deadline +72 h),
   backdated the row in Postgres, let the REAL per-minute cron commit it
   (`pending` → `completed`), then an unsigned replacement was ACCEPTED, a second
-  one was REFUSED, and `consumedAt` was set. Throwaway probe, deleted after.
+  one was REFUSED, and `consumedAt` was set. **The probe was a throwaway and is
+  deleted** (it backdates a row via `docker compose exec`, which does not belong
+  in CI), so that end-to-end path — cron commit feeding the gate — now has NO
+  automated coverage. What remains is unit coverage of `consumeCompletedReset`
+  (spends once, filtered on completed + unconsumed + inside the grace window)
+  and of the gate's fallback to it. Re-run the probe from this summary if the
+  ceremony or the sweep is touched.
 
 ## Notes for next session
 

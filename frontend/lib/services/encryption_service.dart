@@ -303,6 +303,37 @@ class EncryptionService {
     await recordOwnIdentityReplaced(occurredAt);
   }
 
+  /// Clock skew allowed when suppressing the alarm for a replacement THIS
+  /// device performed: the audit row is stamped by the server, the watermark by
+  /// this device, and the two clocks are not the same clock.
+  static const Duration _ownPublishSkewAllowance = Duration(minutes: 10);
+
+  /// Records that THIS device published a new identity, so the connect-time
+  /// hydration does not report that replacement back as a warning.
+  ///
+  /// Without it a user who just completed a reset ceremony and re-published
+  /// their keys is told, on their very next connect, that "another sign-in"
+  /// replaced them — an alarm about the recovery they just performed, on a
+  /// fresh install that has no dismissal watermark to suppress it.
+  ///
+  /// The margin means a genuine replacement by another session within ten
+  /// minutes of our own publish is not surfaced by THIS path. That is a narrow
+  /// window, and one an unauthorized replacement cannot even reach: the
+  /// registration lock refuses it unless it is signed or spends a ceremony.
+  Future<void> markOwnIdentityPublished() async {
+    final watermark = DateTime.now()
+        .toUtc()
+        .add(_ownPublishSkewAllowance)
+        .toIso8601String();
+    _ownIdentityReplacedSeenAt = watermark;
+    final userId = _userId;
+    if (userId == null) return;
+    try {
+      final prefs = await _sharedPrefs;
+      await prefs.setString(_ownIdentityReplacedSeenKey(userId), watermark);
+    } catch (_) {}
+  }
+
   Future<void> dismissOwnIdentityReplaced() async {
     final dismissed = _ownIdentityReplacedAt;
     if (dismissed == null) return;
