@@ -83,7 +83,30 @@ identity-stamped; `refresh_tokens.device_id=1`.
 
 ## 3. Finding: OTP uploads are not gated on the identity being published
 
-**Status: PROVEN, NOT FIXED. Owner decision pending — do not fix without an OK.**
+**Status: PROVEN, FIX BUILT AND APP-PROVEN, PARKED on `wip/otp-identity-gate` (`8d61bde`,
+pushed) awaiting one owner decision. It is NOT on the review branch — `feat/takeover-alarm-0a`
+still carries the unfixed behaviour, deliberately, because the strict gate reddens
+`stale_otp_epoch_test`.**
+
+The branch carries: the service gate + carve-outs, the `warn`-not-`error` handler mapping,
+5 unit tests, 1 wire falsification, `EventLog.takeError`, `CLAUDE.md` §3 at 774/52, and
+`BRANCH-NOTE-otp-identity-gate.md` with the full rationale, the app proof table, the three
+rejected rescues, and the A/B decision. Read that note before touching this.
+
+**App proof (2026-08-19, gate confirmed running inside the container):** same UI actions
+that clobbered user 168's pool now leave user 193's intact — `REFUSED unauthorized identity
+replacement` AND `REFUSED one-time pre-keys under an unpublished identity`, pool still 20
+rows tagged `BTKvz9Dx56yY` (before: 20 rows flipped to `BdfLnk…`, then purged to 0). Fresh
+registration still provisions 20 OTPs (the race carve-out), and a live message still
+decrypted peer-side under the gate.
+
+**Why it is not merged:** `stale_otp_epoch_test.dart:72,76` pins the real client emitting
+OTPs BEFORE the bundle, so a signature-authorized rotation is refused too and starts with
+an empty pool. Rejected rescues: awaiting the socket's in-flight bundle upload after one
+macrotask (proven insufficient — the trailing frame lands a tick later), a timed poll (makes
+a lock's verdict depend on wall-clock latency), and blacklisting refused identities (fails
+open — upload OTPs before ever attempting a bundle). Real fix is client-side ordering
+(publish identity, then keys), best done inside Phase 2.
 
 `uploadOneTimePreKeys` is a separate socket event with no check that the caller's identity
 is the account's published one, so the session whose bundle upload the lock had *just*
