@@ -28,7 +28,7 @@ UNKNOWN (90).
 | 08-14 01:17 | 58 | **owner incognito** (known) | cold fetch, `canvaskit/canvaskit.js` (WebKit), iPhone OS 26_6 — the build-check account. |
 | 08-14 15:31 | 90 | **UNKNOWN** | 187.13.29.35 Android Chrome/151: ALL 200 at 15:30:58 incl. `favicon` 485/`Icon-192` 18483 (unchanged by 0.1.9 — the deploy-day 200 excuse does not apply to them), `/users/me` **200**. **No push POST on boot** (Chromium's subscription is in-bucket) → that context held no subscription; new endpoint minted next morning 08-15 08:39 via user gesture. Fresh profile/device, user-cleared browsing data, and **dormant-profile Chrome eviction + independent HTTP-cache LRU** all fit; same Chrome/151 as his 08-15 row, so the version trick cannot separate devices. **Not decidable server-side.** |
 | 08-14 16:38 | 54 | **SAME-CONTAINER WIPE** (already proven in the handoff §3.3) | 304s on `/users/me`+avatars, push POST updated the 05-13 row at 16:38:43. |
-| 08-15 09:20 | 43 | **SECOND BROWSER/DEVICE — proven** | 194.187.72.34: full cold fetch on a non-deploy day (every asset 200), **UA = Chrome/150** while his established context (push row updated 08-14 11:47) is **Chrome/151** — Chrome never downgrades, so this is a different browser/device. No push POST. Google `GoogleAssociationService` fetched `/.well-known/assetlinks.json` at 09:19:40 mid-boot — WebAPK/install-flow fingerprint. |
+| 08-15 09:20 | 43 | **SECOND DEVICE — proven, then OWNER-CONFIRMED (08-18: "he got a new phone")** | 194.187.72.34: full cold fetch on a non-deploy day (every asset 200), **UA = Chrome/150** while his established context (push row updated 08-14 11:47) is **Chrome/151** — Chrome never downgrades, so this is a different browser/device. No push POST. Google `GoogleAssociationService` fetched `/.well-known/assetlinks.json` at 09:19:40 mid-boot — WebAPK/install-flow fingerprint. The audit's method called it before the user did. |
 | 08-15 18:23 | 54 | **WIPE, and DEEPER than 08-14's** | iPhone 18_5, warm cache (`/users/me` 304, avatars 304) — but **NO push POST at login (18:23) or at the 18:27 refresh**, unlike every prior boot of this container (08-03 ×2, 08-14; the owner's PWA POSTs on every refresh). `getSubscription()` returned null. Per retraction #10, only four things kill an iOS subscription: full website-data wipe, **web-clip removal/reinstall**, `unsubscribe()`, permission revocation. The 08-14 wipe spared the subscription; the 08-15 event did not. |
 
 Supporting facts: an iPhone-18_5 page load exists at **08-15 17:07:16** (37.248.169.24, `GET /` 304 +
@@ -49,6 +49,15 @@ app left sitting open is **undetermined**. Backend audit shows him failing login
   device/browser-level. **The app-level defect stands regardless**: silent regeneration on the
   `absent` branch turns any environmental wipe into permanent history loss for peers — the §5.1
   guard is what makes the trigger not matter.
+- **43 (GuyFawkes) CONFIRMED 08-18: he bought a new phone** — the audit's Chrome/150-vs-151 verdict
+  was correct. First field validation of the classification method.
+- **First 0.1.13-era dump (owner's device, 08-18): everything checks.** `BOOT_MARKERS` all-absent on
+  first new-build boot then all-present across ~50 boots; zero `AUTH_TOKENS_UNREADABLE` /
+  `AUTH_TOKEN_WRITE_FAILED` / guard events; clean reconnects; `PEER_IDENTITY_CHANGED {43}` fired and
+  was acknowledged — the banner did its job for a legitimate new device. One finding: healthy
+  identical `BOOT_MARKERS` records were churning the 80-entry FIFO (~25/day) — deduped on the whole
+  triple (transitions still record; eviction re-arms). Recurring `EXPIRY_STAMP_MISS` on every live
+  message from peer 48 — still parked, decrypts fine, worth a look when that area is next open.
 
 ## What this does to the hypothesis space
 
