@@ -16,7 +16,7 @@ import {
 } from '../dto/chat.dto';
 import { MessageDeliveredDto } from '../dto/message-delivered.dto';
 import { MarkConversationReadDto } from '../dto/mark-conversation-read.dto';
-import { MessageDeliveryStatus } from '../../messages/message.entity';
+import { Message, MessageDeliveryStatus } from '../../messages/message.entity';
 import { MessageMapper } from '../../messages/message.mapper';
 import { MediaCleanupService } from '../../media/media-cleanup.service';
 import { isMessageExpired } from '../../messages/message-expiry.util';
@@ -117,12 +117,34 @@ export class ChatMessageService {
     // ack lands, so creating a second row here would duplicate the message and
     // leave the client unable to tell which one its record belongs to
     // (Phase 1, spec §5.4).
-    const existing = send.sendToken
+    //
+    // The token is UNIQUE PER SENDER by spec, not per conversation, so a token
+    // already spent on a DIFFERENT conversation is not a retry of this send:
+    // re-acking it would report success for a message this conversation never
+    // received, and writing it would violate the index. Say so instead.
+    const committed = send.sendToken
       ? await this.messagesService.findBySendToken(senderId, send.sendToken)
       : null;
-    const message =
-      existing ??
-      (await this.messagesService.create(
+    if (committed) {
+      if (committed.conversation?.id !== conversation.id) {
+        client.emit('error', { message: 'duplicate_send_token' });
+        return;
+      }
+      // Re-ack the committed row and stop: fanning it out again would deliver
+      // the same ciphertext twice, and Signal decryption is not idempotent.
+      client.emit(
+        'messageSent',
+        MessageMapper.toPayload(committed, {
+          tempId: send.tempId,
+          conversationId: conversation.id,
+        }),
+      );
+      return;
+    }
+
+    let message: Message;
+    try {
+      message = await this.messagesService.create(
         data.encryptedContent ? '[encrypted]' : data.content,
         sender,
         conversation,
@@ -137,13 +159,22 @@ export class ChatMessageService {
           originDeviceId: socketDeviceId(client) ?? null,
           sendToken: send.sendToken ?? null,
         },
-      ));
-    if (existing) {
-      // Re-ack the committed row and stop: fanning it out again would deliver
-      // the same ciphertext twice, and Signal decryption is not idempotent.
+      );
+    } catch (error) {
+      // Two retries can race past the read above; the partial unique index is
+      // what actually decides. The loser re-acks the winner rather than
+      // surfacing a write error for a message that WAS committed.
+      const raced = send.sendToken
+        ? await this.messagesService.findBySendToken(senderId, send.sendToken)
+        : null;
+      if (!raced) throw error;
+      if (raced.conversation?.id !== conversation.id) {
+        client.emit('error', { message: 'duplicate_send_token' });
+        return;
+      }
       client.emit(
         'messageSent',
-        MessageMapper.toPayload(existing, {
+        MessageMapper.toPayload(raced, {
           tempId: send.tempId,
           conversationId: conversation.id,
         }),

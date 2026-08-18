@@ -142,7 +142,11 @@ export class ChatKeyExchangeService {
         nonce != null && dto.identitySignature != null
           ? { signature: dto.identitySignature, nonce }
           : undefined,
-        dto.deviceId ?? DEFAULT_DEVICE_ID,
+        // The device comes from the SESSION, never from the payload: a
+        // bundle belongs to the device whose authenticated socket uploaded
+        // it (spec §5.1). A client-named device would let one session
+        // scatter key material across namespaces peers later fetch.
+        socketData(client).user?.deviceId ?? DEFAULT_DEVICE_ID,
       );
       // `identityChanged` tells THIS device that its own upload is what
       // replaced the stored identity — and therefore what wrote the audit row
@@ -236,7 +240,8 @@ export class ChatKeyExchangeService {
         userId,
         dto.keys,
         dto.identityPublicKey,
-        dto.deviceId ?? DEFAULT_DEVICE_ID,
+        // Session-bound, like the bundle above.
+        socketData(client).user?.deviceId ?? DEFAULT_DEVICE_ID,
       );
       client.emit('oneTimePreKeysUploaded', { count: dto.keys.length });
     } catch (error) {

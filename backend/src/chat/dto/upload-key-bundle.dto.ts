@@ -1,4 +1,5 @@
 import {
+  IsInt,
   IsNumber,
   IsOptional,
   IsPositive,
@@ -17,7 +18,7 @@ export class UploadKeyBundleDto {
    * account's original one (§8 rollout — server first, clients later).
    */
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @IsPositive()
   @Max(MAX_DEVICE_ID)
   deviceId?: number;

@@ -1,4 +1,4 @@
-import { IsNumber, IsOptional, IsPositive, Max } from 'class-validator';
+import { IsInt, IsNumber, IsOptional, IsPositive, Max } from 'class-validator';
 import { MAX_DEVICE_ID } from '../../key-bundles/key-bundles.service';
 
 export class FetchPreKeyBundleDto {
@@ -11,7 +11,7 @@ export class FetchPreKeyBundleDto {
    * Absent means device 1, so a client that predates devices keeps working.
    */
   @IsOptional()
-  @IsNumber()
+  @IsInt()
   @IsPositive()
   @Max(MAX_DEVICE_ID)
   deviceId?: number;

@@ -18,7 +18,8 @@ describe('DevicesService', () => {
 
   beforeEach(async () => {
     repo = {
-      upsert: jest.fn().mockResolvedValue({ identifiers: [] }),
+      update: jest.fn().mockResolvedValue({ affected: 0 }),
+      insert: jest.fn().mockResolvedValue({ identifiers: [] }),
       find: jest.fn().mockResolvedValue([]),
     };
     const module: TestingModule = await Test.createTestingModule({
@@ -38,14 +39,13 @@ describe('DevicesService', () => {
   it('creates the row on first sight and marks device 1 primary', async () => {
     await service.touch(7);
 
-    expect(repo.upsert).toHaveBeenCalledWith(
+    expect(repo.insert).toHaveBeenCalledWith(
       expect.objectContaining({
         userId: 7,
         deviceId: 1,
         isPrimary: true,
         lastSeenAt: expect.any(Date) as unknown,
       }),
-      { conflictPaths: ['userId', 'deviceId'] },
     );
   });
 
@@ -54,14 +54,28 @@ describe('DevicesService', () => {
     // primary is the account's original device until §6.3 hands it over.
     await service.touch(7, 2);
 
-    expect(repo.upsert).toHaveBeenCalledWith(
+    expect(repo.insert).toHaveBeenCalledWith(
       expect.objectContaining({ deviceId: 2, isPrimary: false }),
-      expect.anything(),
     );
   });
 
+  it('an existing row is only touched, never re-primaried or re-platformed', async () => {
+    // Rewriting isPrimary on every connect would undo a primary handover the
+    // moment the new primary reconnects, and rewriting platform would erase
+    // what the row already knows.
+    repo.update.mockResolvedValue({ affected: 1 });
+
+    await service.touch(7, 1, 'android');
+
+    expect(repo.update).toHaveBeenCalledWith(
+      { userId: 7, deviceId: 1 },
+      { lastSeenAt: expect.any(Date) as unknown },
+    );
+    expect(repo.insert).not.toHaveBeenCalled();
+  });
+
   it('a write failure costs a lastSeenAt, never the connection', async () => {
-    repo.upsert.mockRejectedValue(new Error('db down'));
+    repo.update.mockRejectedValue(new Error('db down'));
 
     await expect(service.touch(7)).resolves.toBeUndefined();
     expect(warnSpy).toHaveBeenCalledTimes(1);

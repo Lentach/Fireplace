@@ -601,11 +601,9 @@ void main() {
       timeout: const Timeout(Duration(minutes: 2)),
     );
 
-    // Phase 1 falsification 1 (spec §4 + §10): key material is namespaced by
-    // (userId, deviceId). Under the old schema a second device's bundle
-    // OVERWROTE the first and its one-time pre-keys took over the first
-    // device's keyId slots, so a peer drew a key whose private half the other
-    // device held — the bad-MAC shape migrations 0003-0005 already paid for.
+    // Phase 1 (spec §4 + §5.1 + §8): key material is namespaced by
+    // (userId, deviceId), the device a bundle lands in comes from the
+    // SESSION, and a device that published nothing is served nothing.
     //
     // Hosted here rather than in a file of its own because /auth/register is
     // throttled 10/hr per IP and this suite already spends every one of them;
@@ -618,46 +616,53 @@ void main() {
         final deviceOne = await alice.fetchBundleFor(alice.userId, deviceId: 1);
         sharedIdentity = deviceOne['identityPublicKey'] as String;
         deviceOneRegistration = deviceOne['registrationId'] as int;
-
-        // A second device of the SAME account: shared account identity (spec
-        // §3 — one IK, many devices), its own registration id and signed
-        // pre-key, and one-time pre-keys reusing the SAME keyId range, which
-        // is exactly what collided before.
-        await alice.uploadDeviceKeyBundle(
-          deviceId: 2,
-          identityPublicKey: sharedIdentity,
-          registrationId: deviceOneRegistration + 1,
-        );
-        await alice.uploadDeviceOneTimePreKeys(
-          deviceId: 2,
-          identityPublicKey: sharedIdentity,
-          keyIds: const [0, 1, 2],
-          publicKeyPrefix: 'dev2-otp-',
-        );
       });
 
       test(
-        'a second device does not overwrite the first',
+        'an upload lands on the SESSION\'s device, whatever the payload claims',
         () async {
-          final one = await alice.fetchBundleFor(alice.userId, deviceId: 1);
+          // A client naming someone else's device could scatter key material
+          // across namespaces peers later fetch, or park a bundle where the
+          // account's real device-1 lookup never sees it (spec §5.1).
+          final claimed = await alice.uploadDeviceKeyBundle(
+            deviceId: 2,
+            identityPublicKey: sharedIdentity,
+            registrationId: deviceOneRegistration + 1,
+          );
+          expect(claimed['success'], isTrue);
 
-          expect(one['registrationId'], deviceOneRegistration,
-              reason: "device 2's upload overwrote device 1's bundle");
-          expect(one['oneTimePreKeyPublic'], isNot(startsWith('dev2-otp-')),
-              reason: "device 1's one-time pre-key slot was taken by device 2");
+          // It went to device 1 — this session's device...
+          final one = await alice.fetchBundleFor(alice.userId, deviceId: 1);
+          expect(one['registrationId'], deviceOneRegistration + 1);
+          expect(one['identityPublicKey'], sharedIdentity,
+              reason: 'the account identity is unchanged, so no lock refusal');
+
+          // ...and device 2 still does not exist.
+          final two = await alice.fetchBundleRawFor(alice.userId, deviceId: 2);
+          expect(two['bundle'], isNull);
+
+          deviceOneRegistration = deviceOneRegistration + 1;
         },
         timeout: const Timeout(Duration(minutes: 1)),
       );
 
       test(
-        'each device is served its own bundle and its own pre-keys',
+        'one-time pre-keys follow the session device too',
         () async {
-          final two = await alice.fetchBundleFor(alice.userId, deviceId: 2);
+          await alice.uploadDeviceOneTimePreKeys(
+            deviceId: 2,
+            identityPublicKey: sharedIdentity,
+            keyIds: const [900, 901],
+            publicKeyPrefix: 'claimed-dev2-otp-',
+          );
 
-          expect(two['registrationId'], deviceOneRegistration + 1);
-          expect(two['oneTimePreKeyPublic'], startsWith('dev2-otp-'));
-          expect(two['identityPublicKey'], sharedIdentity,
-              reason: 'devices of one account share the account identity key');
+          // Device 2 has no bundle, so nothing is served for it at all.
+          final two = await alice.fetchBundleRawFor(alice.userId, deviceId: 2);
+          expect(two['bundle'], isNull);
+
+          // The keys landed in device 1's namespace, where this session lives.
+          final one = await alice.fetchBundleFor(alice.userId, deviceId: 1);
+          expect(one['oneTimePreKeyPublic'], isNotNull);
         },
         timeout: const Timeout(Duration(minutes: 1)),
       );
@@ -683,7 +688,7 @@ void main() {
           final legacy = await alice.fetchBundleFor(alice.userId);
 
           expect(legacy['identityPublicKey'], sharedIdentity);
-          expect(legacy['oneTimePreKeyPublic'], isNot(startsWith('dev2-otp-')));
+          expect(legacy['registrationId'], deviceOneRegistration);
         },
         timeout: const Timeout(Duration(minutes: 1)),
       );

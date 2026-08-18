@@ -126,6 +126,58 @@ origins for two independent storages:
 
 ---
 
+## 4b. Phase-1 gate review — three independent reviewers
+
+Same delta (`2bf60ea..d08d4ab`), three `reviewer` subagents, different attention
+biases (migration/epoch sites, sessions + send path, spec conformance).
+**All three returned GATE: PASS** and independently cleared the migration's
+production safety, entity/migration agreement, the three re-keyed epoch sites,
+fail-closed fetch, the single-device regression surface, and that Phase 0a/0b
+protections are untouched. Four findings were fixed:
+
+- **Uploads trusted a client-supplied `deviceId`** (two reviewers). An
+  authenticated client could write its own account's key material into any of
+  100 device namespaces — no cross-account reach and no lock bypass, but it
+  contradicts §5.1 ("accepted ONLY from the originating authenticated
+  session") and would have been inherited by Phase 2. `uploadKeyBundle` and
+  `uploadOneTimePreKeys` now take the device from the JWT; only `fetchPreKeyBundle`
+  still names a device, which is the point of it. The wire tests were rewritten
+  to prove the binding (an upload claiming device 2 lands on device 1 and
+  device 2 stays absent) instead of exploiting the hole to fake a second
+  device.
+- **A `sendToken` reused against a DIFFERENT conversation** would have re-acked
+  the older row and silently dropped the new message (§5.4 says the token is
+  unique per SENDER, so this is a duplicate, not a retry). It is now refused as
+  `error { message: 'duplicate_send_token' }`; a genuine same-conversation
+  retry still re-acks.
+- **The read-then-create idempotency check could race** two retries into a
+  unique-violation that threw instead of re-acking. The insert is now wrapped:
+  on conflict the winner is re-read and re-acked.
+- **`DevicesService.touch` rewrote `isPrimary` and `platform` on every
+  connect**, which would have undone a Phase-2 primary handover the moment the
+  new primary reconnected, and erased the migration's `platform='legacy'`
+  marker. It now refreshes `lastSeenAt` on an existing row and sets the other
+  columns only on insert.
+- Also: the `deviceId` DTO fields use `@IsInt` rather than `@IsNumber`, so a
+  fractional value can no longer reach an integer column.
+
+**Collision proof after the upload fix.** With uploads session-bound, the wire
+suite can no longer create a second device, so the "two devices do not collide"
+claim is proven directly against live Postgres instead:
+
+```
+INSERT key_bundles (136, device 2)                 -> ok, account now has 2 bundles
+INSERT key_bundles (136, device 2) again           -> refused, UQ_key_bundles_user_device
+INSERT one_time_pre_keys (136, device 2, keyId 0)  -> ok, coexists with device 1 keyId 0
+INSERT one_time_pre_keys (136, device 2, keyId 0)  -> refused, UQ_one_time_pre_keys_user_device_key
+```
+
+Post-fix verification: backend **769 / 52**, ratchet **PASS at 906**, wire
+harness **24 / 2 skipped** against the real stack, `dart analyze test_e2e`
+clean.
+
+---
+
 ## 5. What Phase 1 deliberately does NOT do
 
 No provisioning, no device list, no DAK, no envelopes, no self-sync — all

@@ -37,16 +37,24 @@ export class DevicesService {
     platform?: string,
   ): Promise<void> {
     try {
-      await this.deviceRepo.upsert(
-        {
-          userId,
-          deviceId,
-          isPrimary: deviceId === DEFAULT_DEVICE_ID,
-          platform: platform ?? null,
-          lastSeenAt: new Date(),
-        },
-        { conflictPaths: ['userId', 'deviceId'] },
+      // An existing row gets ONLY a fresh `lastSeenAt`. Rewriting `isPrimary`
+      // would undo a primary handover (§6.3) on the new primary's next
+      // connect, and rewriting `platform` would erase what the row already
+      // knows — this connect does not carry it.
+      const refreshed = await this.deviceRepo.update(
+        { userId, deviceId },
+        { lastSeenAt: new Date() },
       );
+      if ((refreshed.affected ?? 0) > 0) return;
+      await this.deviceRepo.insert({
+        userId,
+        deviceId,
+        // First sight of device 1 IS the account's primary; a linked device
+        // never claims that for itself (invariant I2).
+        isPrimary: deviceId === DEFAULT_DEVICE_ID,
+        platform: platform ?? null,
+        lastSeenAt: new Date(),
+      });
     } catch (error) {
       this.logger.warn(
         `[devices] touch failed userId=${userId} deviceId=${deviceId}: ${
