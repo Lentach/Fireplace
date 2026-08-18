@@ -147,17 +147,21 @@ class EventLog {
       },
     );
   }
+
   /// Fails if [event] is already buffered or arrives within [within].
   ///
   /// This delegates matching and waiter cleanup to [next], so it observes the
   /// same whole buffer and future socket events as a positive assertion.
+  /// [where] narrows it to one payload shape, so "no SECOND delivery of this
+  /// message" does not trip over unrelated traffic on the same event.
   Future<void> none(
     String event, {
     required Duration within,
+    bool Function(dynamic payload)? where,
     String? reason,
   }) async {
     try {
-      final payload = await next(event, timeout: within);
+      final payload = await next(event, where: where, timeout: within);
       throw StateError(
         'Unexpected "$event" event'
         '${reason != null ? ' ($reason)' : ''}: $payload',
@@ -492,7 +496,30 @@ class E2eClient {
 
   /// Fetches the peer's pre-key bundle over WS. The response bundle is
   /// already flat — directly consumable by EncryptionService.buildSession.
-  Future<Map<String, dynamic>> fetchBundleFor(int peerUserId) async {
+  ///
+  /// [deviceId] omitted reproduces a client that has never heard of devices;
+  /// the server must answer for the account's default device (§8 rollout).
+  Future<Map<String, dynamic>> fetchBundleFor(
+    int peerUserId, {
+    int? deviceId,
+  }) async {
+    final payload = await fetchBundleRawFor(peerUserId, deviceId: deviceId);
+    final bundle = payload['bundle'];
+    if (bundle is! Map) {
+      throw StateError(
+        '$label: no key bundle on server for user $peerUserId'
+        '${deviceId == null ? '' : ' device $deviceId'}: $payload',
+      );
+    }
+    return bundle.cast<String, dynamic>();
+  }
+
+  /// Same fetch, returning the whole `preKeyBundleResponse` payload so a test
+  /// can assert on a MISSING bundle instead of throwing on it.
+  Future<Map<String, dynamic>> fetchBundleRawFor(
+    int peerUserId, {
+    int? deviceId,
+  }) async {
     final last = _lastBundleFetch[peerUserId];
     if (last != null) {
       final wait = _bundleFetchGap - DateTime.now().difference(last);
@@ -501,7 +528,11 @@ class E2eClient {
       }
     }
     _lastBundleFetch[peerUserId] = DateTime.now();
-    socketService.fetchPreKeyBundle(peerUserId);
+    events.discard('preKeyBundleResponse');
+    socketService.socket!.emit('fetchPreKeyBundle', <String, dynamic>{
+      'userId': peerUserId,
+      'deviceId': ?deviceId,
+    });
     final payload =
         await events.next(
               'preKeyBundleResponse',
@@ -509,13 +540,56 @@ class E2eClient {
               reason: '$label fetching bundle for user $peerUserId',
             )
             as Map;
-    final bundle = payload['bundle'];
-    if (bundle is! Map) {
-      throw StateError(
-        '$label: no key bundle on server for user $peerUserId: $payload',
-      );
-    }
-    return bundle.cast<String, dynamic>();
+    return payload.cast<String, dynamic>();
+  }
+
+  /// Uploads a key bundle FOR a named device of this account, without going
+  /// through the local Signal store: a second device's registration id and
+  /// signed pre-key are just opaque strings to the server, and minting a real
+  /// second installation would need Phase 2 provisioning.
+  Future<Map<String, dynamic>> uploadDeviceKeyBundle({
+    required int deviceId,
+    required String identityPublicKey,
+    required int registrationId,
+  }) async {
+    events.discard('keyBundleUploaded');
+    socketService.socket!.emit('uploadKeyBundle', <String, dynamic>{
+      'deviceId': deviceId,
+      'registrationId': registrationId,
+      'identityPublicKey': identityPublicKey,
+      'signedPreKeyId': 0,
+      'signedPreKeyPublic': 'dev$deviceId-spk-public',
+      'signedPreKeySignature': 'dev$deviceId-spk-signature',
+    });
+    final answer = await events.next(
+      'keyBundleUploaded',
+      reason: '$label device $deviceId key bundle',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Uploads one-time pre-keys FOR a named device, reusing whatever keyIds the
+  /// caller asks for — the point of falsification 1 is that two devices may
+  /// both hold keyId 0.
+  Future<void> uploadDeviceOneTimePreKeys({
+    required int deviceId,
+    required String identityPublicKey,
+    required List<int> keyIds,
+    required String publicKeyPrefix,
+  }) async {
+    events.discard('oneTimePreKeysUploaded');
+    socketService.socket!.emit('uploadOneTimePreKeys', <String, dynamic>{
+      'deviceId': deviceId,
+      'identityPublicKey': identityPublicKey,
+      'keys': [
+        for (final keyId in keyIds)
+          {'keyId': keyId, 'publicKey': '$publicKeyPrefix$keyId'},
+      ],
+    });
+    await events.next(
+      'oneTimePreKeysUploaded',
+      reason: '$label device $deviceId OTPs',
+    );
   }
 
   /// Encrypts [content] in the app's real E2E envelope wire format.
@@ -548,6 +622,35 @@ class E2eClient {
               'messageSent',
               where: (p) => p is Map && p['tempId'] == tempId,
               reason: '$label sendMessage tempId=$tempId',
+            )
+            as Map;
+    return payload.cast<String, dynamic>();
+  }
+
+  /// Emits `sendMessage` carrying a `sendToken` (Phase 1, spec §5.4) and
+  /// returns the server's `messageSent` confirmation for [tempId].
+  ///
+  /// Raw emit rather than `SocketService.sendMessage`: the token is a wire
+  /// field the app does not send yet, and the point is to exercise the
+  /// SERVER's idempotency, not the client's send path.
+  Future<Map<String, dynamic>> sendWithToken(
+    int recipientId,
+    String ciphertext, {
+    required String tempId,
+    required String sendToken,
+  }) async {
+    socketService.socket!.emit('sendMessage', <String, dynamic>{
+      'recipientId': recipientId,
+      'content': '[encrypted]',
+      'encryptedContent': ciphertext,
+      'tempId': tempId,
+      'sendToken': sendToken,
+    });
+    final payload =
+        await events.next(
+              'messageSent',
+              where: (p) => p is Map && p['tempId'] == tempId,
+              reason: '$label sendMessage tempId=$tempId token=$sendToken',
             )
             as Map;
     return payload.cast<String, dynamic>();

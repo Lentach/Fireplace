@@ -22,6 +22,8 @@ import { ChatBlockService } from './services/chat-block.service';
 import { ChatSearchService } from './services/chat-search.service';
 import { ChatReactionService } from './services/chat-reaction.service';
 import { userRoom } from './utils/user-room';
+import { DEFAULT_DEVICE_ID } from '../key-bundles/key-bundles.service';
+import { DevicesService } from '../key-bundles/devices.service';
 
 // CORS: In production only ALLOWED_ORIGINS. In dev also allow localhost + LAN (phone).
 function buildCorsOrigin() {
@@ -76,6 +78,7 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
     private chatBlockService: ChatBlockService,
     private chatSearchService: ChatSearchService,
     private chatReactionService: ChatReactionService,
+    private devicesService: DevicesService,
   ) {}
 
   // On WebSocket connection — verify the JWT token.
@@ -91,9 +94,11 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         return;
       }
 
-      const payload = this.jwtService.verify<{ sub: number; iat?: number }>(
-        token,
-      );
+      const payload = this.jwtService.verify<{
+        sub: number;
+        iat?: number;
+        deviceId?: number;
+      }>(token);
       const user = await this.usersService.findById(payload.sub);
 
       if (!user) {
@@ -125,8 +130,19 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         id: user.id,
         username: user.username,
         tag: user.tag,
+        // Which device this session is (Phase 1, spec §4). A token issued
+        // before the claim existed is device 1 (§8), never "unknown" — key
+        // material has to land somewhere and that somewhere is the account's
+        // original device.
+        deviceId: payload.deviceId ?? DEFAULT_DEVICE_ID,
       };
       client.join(userRoom(user.id));
+      // Keep the account's device row alive (Phase 1, spec §4). Fire-and-
+      // forget: a failed write costs a `lastSeenAt`, never the session.
+      void this.devicesService.touch(
+        user.id,
+        payload.deviceId ?? DEFAULT_DEVICE_ID,
+      );
       this.chatKeyExchangeService.deliverPendingSessionRebuilds(client);
 
       this.logger.debug(

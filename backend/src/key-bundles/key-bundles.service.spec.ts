@@ -30,19 +30,21 @@ describe('KeyBundlesService', () => {
   };
 
   beforeEach(async () => {
+    purgeBuilder = {
+      delete: jest.fn().mockReturnThis(),
+      where: jest.fn().mockReturnThis(),
+      andWhere: jest.fn().mockReturnThis(),
+      execute: jest.fn().mockResolvedValue({ affected: 0 }),
+    };
+
     keyBundleRepo = {
       findOne: jest.fn(),
       create: jest.fn(),
       save: jest.fn(),
       delete: jest.fn(),
       upsert: jest.fn(),
-    };
-
-    purgeBuilder = {
-      delete: jest.fn().mockReturnThis(),
-      where: jest.fn().mockReturnThis(),
-      andWhere: jest.fn().mockReturnThis(),
-      execute: jest.fn().mockResolvedValue({ affected: 0 }),
+      // An authorized identity change drops every OTHER device's bundle.
+      createQueryBuilder: jest.fn(() => purgeBuilder),
     };
 
     otpRepo = {
@@ -98,8 +100,10 @@ describe('KeyBundlesService', () => {
 
         await expect(service.hasKeyBundle(1)).resolves.toBe(expected);
 
+        // Per device: a device with no bundle of its own has published
+        // nothing, whatever its siblings did.
         expect(keyBundleRepo.findOne).toHaveBeenCalledWith({
-          where: { userId: 1 },
+          where: { userId: 1, deviceId: 1 },
         });
         expect(otpRepo.query).not.toHaveBeenCalled();
       },
@@ -112,9 +116,11 @@ describe('KeyBundlesService', () => {
 
       await service.upsertKeyBundle(1, mockKeyBundleData);
 
+      // (userId, deviceId): the old account-wide conflict target made a
+      // second device's upload overwrite the first device's bundle.
       expect(keyBundleRepo.upsert).toHaveBeenCalledWith(
-        { userId: 1, ...mockKeyBundleData },
-        { conflictPaths: ['userId'] },
+        { userId: 1, deviceId: 1, ...mockKeyBundleData },
+        { conflictPaths: ['userId', 'deviceId'] },
       );
       expect(keyBundleRepo.save).not.toHaveBeenCalled();
     });
@@ -142,7 +148,7 @@ describe('KeyBundlesService', () => {
 
       expect(warnSpy).toHaveBeenCalledTimes(1);
       expect(warnSpy).toHaveBeenCalledWith(
-        '[identity-churn] userId=9 oldIdentityPrefix=old-identity newIdentityPrefix=new-identity',
+        '[identity-churn] userId=9 deviceId=1 oldIdentityPrefix=old-identity newIdentityPrefix=new-identity',
       );
       // Phase 0a: the churn is durable — a full audit row, not just a log line.
       expect(auditRepo.insert).toHaveBeenCalledTimes(1);
@@ -367,7 +373,7 @@ describe('KeyBundlesService', () => {
       { keyId: 1, publicKey: 'pk-1' },
     ];
 
-    it('upserts on (userId,keyId) and tags rows with the explicit identity', async () => {
+    it('upserts on (userId,deviceId,keyId) and tags rows with the explicit identity', async () => {
       otpRepo.upsert.mockResolvedValue({ raw: [] });
 
       await service.uploadOneTimePreKeys(5, keys, 'epoch-2-identity');
@@ -379,6 +385,7 @@ describe('KeyBundlesService', () => {
         [
           {
             userId: 5,
+            deviceId: 1,
             keyId: 0,
             publicKey: 'pk-0',
             identityPublicKey: 'epoch-2-identity',
@@ -386,13 +393,16 @@ describe('KeyBundlesService', () => {
           },
           {
             userId: 5,
+            deviceId: 1,
             keyId: 1,
             publicKey: 'pk-1',
             identityPublicKey: 'epoch-2-identity',
             used: false,
           },
         ],
-        { conflictPaths: ['userId', 'keyId'] },
+        // keyId slots belong to a DEVICE: two devices may both hold keyId 0,
+        // and neither upload may overwrite the other's private half.
+        { conflictPaths: ['userId', 'deviceId', 'keyId'] },
       );
     });
 
@@ -460,7 +470,10 @@ describe('KeyBundlesService', () => {
       const [sql, params] = otpRepo.query.mock.calls[0];
       expect(sql).toContain('UPDATE one_time_pre_keys');
       expect(sql).toContain('"identityPublicKey" = $2');
-      expect(params).toEqual([5, mockKeyBundleData.identityPublicKey]);
+      // $3 is the Phase 1 re-key: one device's claim must never consume the
+      // keyId slot another device minted.
+      expect(sql).toContain('"deviceId" = $3');
+      expect(params).toEqual([5, mockKeyBundleData.identityPublicKey, 1]);
     });
 
     it('returns null OTP fields when the current epoch has no unused pre-keys', async () => {
@@ -492,6 +505,7 @@ describe('KeyBundlesService', () => {
       expect(otpRepo.count).toHaveBeenCalledWith({
         where: {
           userId: 5,
+          deviceId: 1,
           used: false,
           identityPublicKey: mockKeyBundleData.identityPublicKey,
         },

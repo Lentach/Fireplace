@@ -143,6 +143,8 @@ describe('ChatKeyExchangeService', () => {
         },
         // No registration-lock proof on the normal re-upload path.
         undefined,
+        // Device 1: this session's JWT names no other (§8).
+        1,
       );
       // The ack tells the uploader whether ITS upload replaced the stored
       // identity, so a device never alarms about its own replacement.
@@ -277,6 +279,7 @@ describe('ChatKeyExchangeService', () => {
         1,
         validData.keys,
         undefined,
+        1,
       );
       expect(mockClient.emit).toHaveBeenCalledWith('oneTimePreKeysUploaded', {
         count: 2,
@@ -293,6 +296,7 @@ describe('ChatKeyExchangeService', () => {
         1,
         validData.keys,
         'epoch-2-identity',
+        1,
       );
     });
 
@@ -334,7 +338,7 @@ describe('ChatKeyExchangeService', () => {
 
         await service.handleCheckOwnKeyBundle(mockClient as Socket);
 
-        expect(keyBundlesService.hasKeyBundle).toHaveBeenCalledWith(1);
+        expect(keyBundlesService.hasKeyBundle).toHaveBeenCalledWith(1, 1);
         expect(mockClient.emit).toHaveBeenCalledTimes(1);
         expect(mockClient.emit).toHaveBeenCalledWith('ownKeyBundleStatus', {
           exists,
@@ -360,7 +364,7 @@ describe('ChatKeyExchangeService', () => {
         mockServer as Server,
       );
 
-      expect(keyBundlesService.fetchPreKeyBundle).toHaveBeenCalledWith(2);
+      expect(keyBundlesService.fetchPreKeyBundle).toHaveBeenCalledWith(2, 1);
       expect(mockClient.emit).toHaveBeenCalledWith('preKeyBundleResponse', {
         userId: 2,
         bundle: mockBundle,
@@ -384,7 +388,7 @@ describe('ChatKeyExchangeService', () => {
         mockServer as Server,
       );
 
-      expect(keyBundlesService.countUnusedPreKeys).toHaveBeenCalledWith(2);
+      expect(keyBundlesService.countUnusedPreKeys).toHaveBeenCalledWith(2, 1);
       // BE-007: addressed by room, never a single socket id.
       expect(mockServer.to).toHaveBeenCalledWith('user:2');
       expect(mockServer.to).not.toHaveBeenCalledWith('socket-id-2');
@@ -708,6 +712,8 @@ describe('ChatKeyExchangeService', () => {
         1,
         expect.any(Object),
         { signature: 'client-signature', nonce },
+        // Device the session's JWT names (§4); 1 until provisioning ships.
+        1,
       ]);
     });
 
@@ -727,7 +733,7 @@ describe('ChatKeyExchangeService', () => {
       );
 
       // One nonce buys exactly one attempt.
-      expect(lastUpsertArgs()).toEqual([1, expect.any(Object), undefined]);
+      expect(lastUpsertArgs()).toEqual([1, expect.any(Object), undefined, 1]);
     });
 
     it('ignores a nonce never issued to this session', async () => {
@@ -737,7 +743,7 @@ describe('ChatKeyExchangeService', () => {
         mockServer as Server,
       );
 
-      expect(lastUpsertArgs()).toEqual([1, expect.any(Object), undefined]);
+      expect(lastUpsertArgs()).toEqual([1, expect.any(Object), undefined, 1]);
     });
 
     it('ignores an expired nonce', async () => {
@@ -751,7 +757,7 @@ describe('ChatKeyExchangeService', () => {
         mockServer as Server,
       );
 
-      expect(lastUpsertArgs()).toEqual([1, expect.any(Object), undefined]);
+      expect(lastUpsertArgs()).toEqual([1, expect.any(Object), undefined, 1]);
     });
   });
 

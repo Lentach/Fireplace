@@ -57,6 +57,10 @@ export class MessagesService {
       mediaDuration?: number | null;
       replyToMessageId?: number | null;
       encryptedContent?: string | null;
+      /** Which of the sender's devices produced this (Phase 1, spec §5.4). */
+      originDeviceId?: number | null;
+      /** Client token making a retry idempotent (Phase 1, spec §5.4). */
+      sendToken?: string | null;
     },
   ): Promise<Message> {
     let replyTo: Message | null = null;
@@ -86,11 +90,30 @@ export class MessagesService {
       mediaUrl: options?.mediaUrl || null,
       mediaDuration: options?.mediaDuration || null,
       encryptedContent: options?.encryptedContent || null,
+      originDeviceId: options?.originDeviceId ?? null,
+      sendToken: options?.sendToken ?? null,
       replyTo,
     });
     const saved = await this.msgRepo.save(msg);
     if (replyTo) saved.replyTo = replyTo;
     return saved;
+  }
+
+  /**
+   * The message a sender already committed under [sendToken], if any.
+   *
+   * A lost ack makes the client retry with the same token; answering with the
+   * committed row keeps the send idempotent (Phase 1, spec §5.4) instead of
+   * duplicating the message the sender cannot yet see.
+   */
+  async findBySendToken(
+    senderId: number,
+    sendToken: string,
+  ): Promise<Message | null> {
+    return this.msgRepo.findOne({
+      where: { sender: { id: senderId }, sendToken },
+      relations: { sender: true, conversation: true },
+    });
   }
 
   /**

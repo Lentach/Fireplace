@@ -95,6 +95,7 @@ describe('AuthService', () => {
         sub: 1,
         username: 'testuser',
         tag: '0427',
+        deviceId: 1,
       });
     });
 
@@ -113,11 +114,13 @@ describe('AuthService', () => {
         'ValidPass1',
         'hashed_password',
       );
-      expect(refreshTokensService.createToken).toHaveBeenCalledWith(1);
+      // Session and token agree on the device from the first login (§4).
+      expect(refreshTokensService.createToken).toHaveBeenCalledWith(1, 1);
       expect(jwtService.sign).toHaveBeenCalledWith({
         sub: 1,
         username: 'testuser',
         tag: '0427',
+        deviceId: 1,
       });
       expect(result).toEqual({
         access_token: 'mock_jwt_token',
@@ -186,7 +189,10 @@ describe('AuthService', () => {
 
   describe('refreshWithToken', () => {
     it('returns new access_token and slid refresh_token when refresh valid', async () => {
-      refreshTokensService.consumeAndSlide.mockResolvedValue(1);
+      refreshTokensService.consumeAndSlide.mockResolvedValue({
+        userId: 1,
+        deviceId: 2,
+      });
       usersService.findById.mockResolvedValue(mockUser as User);
 
       const result = await service.refreshWithToken('incoming_refresh');
@@ -199,15 +205,39 @@ describe('AuthService', () => {
         access_token: 'mock_jwt_token',
         refresh_token: 'incoming_refresh',
       });
+      // The reissued token keeps naming the SAME device: silently becoming
+      // device 1 would hand this session another device's key namespace.
       expect(jwtService.sign).toHaveBeenCalledWith({
         sub: 1,
         username: 'testuser',
         tag: '0427',
+        deviceId: 2,
       });
     });
 
+    it('treats a session predating the device column as device 1', async () => {
+      refreshTokensService.consumeAndSlide.mockResolvedValue({
+        userId: 1,
+        deviceId: null,
+      });
+      usersService.findById.mockResolvedValue(mockUser as User);
+
+      await service.refreshWithToken('legacy_refresh');
+
+      // Read the recorded call rather than referencing the mocked method
+      // again: an unbound method reference is the lint debt this file already
+      // carries, and new code should not add to it.
+      const signed = jwtService.sign.mock.calls.at(-1)?.[0] as {
+        deviceId?: number;
+      };
+      expect(signed.deviceId).toBe(1);
+    });
+
     it('throws when user row missing after sliding refresh', async () => {
-      refreshTokensService.consumeAndSlide.mockResolvedValue(99);
+      refreshTokensService.consumeAndSlide.mockResolvedValue({
+        userId: 99,
+        deviceId: 1,
+      });
       usersService.findById.mockResolvedValue(null);
 
       await expect(service.refreshWithToken('r')).rejects.toThrow(

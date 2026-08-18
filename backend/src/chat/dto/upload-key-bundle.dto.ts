@@ -3,12 +3,25 @@ import {
   IsOptional,
   IsPositive,
   IsString,
+  Max,
   MaxLength,
   Min,
   MinLength,
 } from 'class-validator';
+import { MAX_DEVICE_ID } from '../../key-bundles/key-bundles.service';
 
 export class UploadKeyBundleDto {
+  /**
+   * Which device of the caller's account this is about (Phase 1, spec §4).
+   * Absent means device 1: a client that has never heard of devices is the
+   * account's original one (§8 rollout — server first, clients later).
+   */
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  @Max(MAX_DEVICE_ID)
+  deviceId?: number;
+
   @IsNumber()
   @IsPositive()
   registrationId: number;

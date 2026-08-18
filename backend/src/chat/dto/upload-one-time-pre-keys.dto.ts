@@ -2,12 +2,15 @@ import {
   IsArray,
   IsNumber,
   IsOptional,
+  IsPositive,
   IsString,
+  Max,
   MaxLength,
   Min,
   MinLength,
   ValidateNested,
 } from 'class-validator';
+import { MAX_DEVICE_ID } from '../../key-bundles/key-bundles.service';
 import { Type } from 'class-transformer';
 
 export class OneTimePreKeyDto {
@@ -21,6 +24,17 @@ export class OneTimePreKeyDto {
 }
 
 export class UploadOneTimePreKeysDto {
+  /**
+   * Which device of the caller's account this is about (Phase 1, spec §4).
+   * Absent means device 1: a client that has never heard of devices is the
+   * account's original one (§8 rollout — server first, clients later).
+   */
+  @IsOptional()
+  @IsNumber()
+  @IsPositive()
+  @Max(MAX_DEVICE_ID)
+  deviceId?: number;
+
   @IsArray()
   @ValidateNested({ each: true })
   @Type(() => OneTimePreKeyDto)

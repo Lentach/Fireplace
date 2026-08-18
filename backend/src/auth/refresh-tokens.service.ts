@@ -28,25 +28,38 @@ export class RefreshTokensService {
   }
 
   /**
-   * Persists a new refresh session and returns the plaintext token (client-only).
+   * Persists a new refresh session and returns the plaintext token
+   * (client-only).
+   *
+   * [deviceId] is the per-device anchor a revoke will use (Phase 1, spec §4):
+   * delete that device's rows and kick its sockets, leaving every other device
+   * signed in. NULL keeps a pre-Phase-1 session honest instead of guessing.
    */
-  async createToken(userId: number): Promise<string> {
+  async createToken(
+    userId: number,
+    deviceId: number | null = null,
+    deviceName: string | null = null,
+  ): Promise<string> {
     const plain = randomBytes(REFRESH_TOKEN_BYTE_LENGTH).toString('base64url');
     const tokenHash = RefreshTokensService.hashToken(plain);
     const expiresAt = this.expiresAtFromNow();
-
     await this.refreshRepo.save(
       this.refreshRepo.create({
         userId,
         tokenHash,
         expiresAt,
+        deviceId,
+        deviceName,
       }),
     );
     return plain;
   }
 
   /**
-   * Validates a plaintext refresh token and extends its expiry.
+   * Validates a plaintext refresh token, extends its expiry, and reports whose
+   * session it is — account AND device (Phase 1, spec §4), so the reissued
+   * access token keeps naming the same device instead of silently becoming
+   * device 1.
    *
    * This deliberately keeps the opaque refresh token stable. Hard single-use
    * rotation turns a lost `/auth/refresh` response into a self-inflicted logout:
@@ -54,7 +67,9 @@ export class RefreshTokensService {
    * old token. Sliding the existing row preserves sticky sessions without
    * weakening explicit revoke/password-change invalidation.
    */
-  async consumeAndSlide(plain: string): Promise<number> {
+  async consumeAndSlide(
+    plain: string,
+  ): Promise<{ userId: number; deviceId: number | null }> {
     const tokenHash = RefreshTokensService.hashToken(plain);
     const row = await this.refreshRepo.findOne({ where: { tokenHash } });
     if (!row) {
@@ -73,7 +88,7 @@ export class RefreshTokensService {
 
     row.expiresAt = this.expiresAtFromNow();
     await this.refreshRepo.save(row);
-    return row.userId;
+    return { userId: row.userId, deviceId: row.deviceId };
   }
 
   async revokeByPlain(plain: string): Promise<void> {

@@ -555,6 +555,140 @@ void main() {
       timeout: const Timeout(Duration(minutes: 1)),
     );
 
+    test(
+      'a retry carrying the same sendToken re-acks the committed row and '
+      'writes no second message (Phase 1 §5.4)',
+      () async {
+        // A lost ack is the dangerous case: the sending device holds the ONLY
+        // plaintext copy until the ack lands, so a retry must recover the row
+        // the server already wrote instead of duplicating the message.
+        final token = 'tok-$runTag-${DateTime.now().microsecondsSinceEpoch}';
+        final ciphertext = await alice.encryptText(
+          bob.userId,
+          'idempotent-$runTag',
+        );
+
+        final first = await alice.sendWithToken(
+          bob.userId,
+          ciphertext,
+          tempId: 'tok-a-$runTag',
+          sendToken: token,
+        );
+        final messageId = (first['id'] as num).toInt();
+        expect(first['originDeviceId'], 1,
+            reason: 'the server records which device produced the message');
+
+        // Same token, new tempId: this is the client retrying, not a new send.
+        final retry = await alice.sendWithToken(
+          bob.userId,
+          ciphertext,
+          tempId: 'tok-b-$runTag',
+          sendToken: token,
+        );
+
+        expect((retry['id'] as num).toInt(), messageId,
+            reason: 'the retry must resolve to the committed row');
+        // And the recipient must not see it twice — Signal decryption is not
+        // idempotent, so a second delivery of the same ciphertext would fail
+        // into the session-destroying policy.
+        await bob.events.none(
+          'newMessage',
+          within: const Duration(seconds: 3),
+          where: (p) => p is Map && p['tempId'] == 'tok-b-$runTag',
+          reason: 'a retry must not deliver the message a second time',
+        );
+      },
+      timeout: const Timeout(Duration(minutes: 2)),
+    );
+
+    // Phase 1 falsification 1 (spec §4 + §10): key material is namespaced by
+    // (userId, deviceId). Under the old schema a second device's bundle
+    // OVERWROTE the first and its one-time pre-keys took over the first
+    // device's keyId slots, so a peer drew a key whose private half the other
+    // device held — the bad-MAC shape migrations 0003-0005 already paid for.
+    //
+    // Hosted here rather than in a file of its own because /auth/register is
+    // throttled 10/hr per IP and this suite already spends every one of them;
+    // alice is an account with real published keys, which is all this needs.
+    group('per-device key material (Phase 1 §4)', () {
+      late String sharedIdentity;
+      late int deviceOneRegistration;
+
+      setUpAll(() async {
+        final deviceOne = await alice.fetchBundleFor(alice.userId, deviceId: 1);
+        sharedIdentity = deviceOne['identityPublicKey'] as String;
+        deviceOneRegistration = deviceOne['registrationId'] as int;
+
+        // A second device of the SAME account: shared account identity (spec
+        // §3 — one IK, many devices), its own registration id and signed
+        // pre-key, and one-time pre-keys reusing the SAME keyId range, which
+        // is exactly what collided before.
+        await alice.uploadDeviceKeyBundle(
+          deviceId: 2,
+          identityPublicKey: sharedIdentity,
+          registrationId: deviceOneRegistration + 1,
+        );
+        await alice.uploadDeviceOneTimePreKeys(
+          deviceId: 2,
+          identityPublicKey: sharedIdentity,
+          keyIds: const [0, 1, 2],
+          publicKeyPrefix: 'dev2-otp-',
+        );
+      });
+
+      test(
+        'a second device does not overwrite the first',
+        () async {
+          final one = await alice.fetchBundleFor(alice.userId, deviceId: 1);
+
+          expect(one['registrationId'], deviceOneRegistration,
+              reason: "device 2's upload overwrote device 1's bundle");
+          expect(one['oneTimePreKeyPublic'], isNot(startsWith('dev2-otp-')),
+              reason: "device 1's one-time pre-key slot was taken by device 2");
+        },
+        timeout: const Timeout(Duration(minutes: 1)),
+      );
+
+      test(
+        'each device is served its own bundle and its own pre-keys',
+        () async {
+          final two = await alice.fetchBundleFor(alice.userId, deviceId: 2);
+
+          expect(two['registrationId'], deviceOneRegistration + 1);
+          expect(two['oneTimePreKeyPublic'], startsWith('dev2-otp-'));
+          expect(two['identityPublicKey'], sharedIdentity,
+              reason: 'devices of one account share the account identity key');
+        },
+        timeout: const Timeout(Duration(minutes: 1)),
+      );
+
+      test(
+        'an unknown device is served nothing, never another device\'s keys',
+        () async {
+          // Fail-closed: serving device 1's bundle for a device that never
+          // uploaded one would build a session no such device can decrypt.
+          final missing = await alice.fetchBundleRawFor(
+            alice.userId,
+            deviceId: 97,
+          );
+
+          expect(missing['bundle'], isNull);
+        },
+        timeout: const Timeout(Duration(minutes: 1)),
+      );
+
+      test(
+        'a client that names no device still gets device 1 (§8 rollout)',
+        () async {
+          final legacy = await alice.fetchBundleFor(alice.userId);
+
+          expect(legacy['identityPublicKey'], sharedIdentity);
+          expect(legacy['oneTimePreKeyPublic'], isNot(startsWith('dev2-otp-')));
+        },
+        timeout: const Timeout(Duration(minutes: 1)),
+      );
+    });
+
     test('no unexpected socket errors surfaced during the run', () {
       expect(alice.events.errors, isEmpty,
           reason: 'alice received server error events');

@@ -7,6 +7,23 @@ import { IdentityChangeAudit } from './identity-change-audit.entity';
 import { IdentityResetService } from './identity-reset.service';
 import { verifyIdentityChangeSignature } from './identity-signature.util';
 
+/**
+ * The device a request is about. Phase 1: absent means device 1, because a
+ * client that has never heard of devices is the account's original one (§8
+ * rollout — server first, clients later).
+ */
+export const DEFAULT_DEVICE_ID = 1;
+
+/**
+ * Upper bound on a device number the wire will accept.
+ *
+ * The account cap is 3 devices (spec §1) and numbers are assigned by the
+ * server at provisioning (Phase 2), so anything large is either a bug or an
+ * attempt to scatter rows across a huge keyspace. Bounded here rather than in
+ * each handler so every entry point inherits it.
+ */
+export const MAX_DEVICE_ID = 100;
+
 export interface KeyBundleData {
   registrationId: number;
   identityPublicKey: string;
@@ -92,12 +109,19 @@ export class KeyBundlesService {
     userId: number,
     data: KeyBundleData,
     proof?: IdentityChangeProof,
+    deviceId: number = DEFAULT_DEVICE_ID,
   ): Promise<UpsertKeyBundleResult> {
+    // The identity key belongs to the ACCOUNT, not to one device (spec §3:
+    // every device of an account shares one IK), so the lock compares against
+    // whatever identity the account currently publishes — from any device —
+    // while the row written below belongs to THIS device alone.
+    //
     // Detection pre-check only; races with concurrent uploads are acceptable
     // (duplicate audit rows under a race are tolerated by design — do NOT
     // serialize the upsert around this).
     const existingBundle = await this.keyBundleRepo.findOne({
       where: { userId },
+      order: { deviceId: 'ASC' },
     });
     const identityChanged =
       existingBundle != null &&
@@ -113,19 +137,27 @@ export class KeyBundlesService {
         // Loud, and deliberately before any write: an unauthorized replacement
         // attempt is exactly the event this lock exists to stop.
         this.logger.warn(
-          `[identity-lock] REFUSED unauthorized identity replacement userId=${userId} storedPrefix=${existingBundle.identityPublicKey.slice(0, 12)} attemptedPrefix=${data.identityPublicKey.slice(0, 12)}`,
+          `[identity-lock] REFUSED unauthorized identity replacement userId=${userId} deviceId=${deviceId} storedPrefix=${existingBundle.identityPublicKey.slice(0, 12)} attemptedPrefix=${data.identityPublicKey.slice(0, 12)}`,
         );
         throw new IdentityLockedError();
       }
       this.logger.warn(
-        `[identity-churn] userId=${userId} oldIdentityPrefix=${existingBundle.identityPublicKey.slice(0, 12)} newIdentityPrefix=${data.identityPublicKey.slice(0, 12)}`,
+        `[identity-churn] userId=${userId} deviceId=${deviceId} oldIdentityPrefix=${existingBundle.identityPublicKey.slice(0, 12)} newIdentityPrefix=${data.identityPublicKey.slice(0, 12)}`,
       );
     }
-    // Atomic upsert — handles concurrent connections from same user (e.g. two tabs)
+    // Atomic upsert — handles concurrent connections from the same device
+    // (e.g. two tabs), and keeps other devices' bundles untouched.
     await this.keyBundleRepo.upsert(
-      { userId, ...data },
-      { conflictPaths: ['userId'] },
+      { userId, deviceId, ...data },
+      { conflictPaths: ['userId', 'deviceId'] },
     );
+    if (identityChanged) {
+      // The account identity moved, so every OTHER device still publishes keys
+      // minted under a dead identity. Serving those to a peer would encrypt to
+      // a key nobody holds; the device itself re-uploads under the new identity
+      // when it next connects (or is re-provisioned).
+      await this.purgeSupersededDevices(userId, deviceId);
+    }
     // Purge unused OTPs from any SUPERSEDED identity epoch (or untagged legacy
     // rows). Belt-and-suspenders with the fetch identity filter: the filter
     // already refuses to serve them; this reclaims the slots so replenishment
@@ -138,10 +170,17 @@ export class KeyBundlesService {
     // sync: (1) here — purge non-current-epoch unused rows; (2) fetchPreKeyBundle
     // — claim only current-epoch rows; (3) countUnusedPreKeys — count only
     // current-epoch rows. Change the epoch semantics in all three or none.
+    //
+    // Phase 1 re-keys the partition from `identityPublicKey` to
+    // `(identityPublicKey, deviceId)`: purge/claim/count operate strictly
+    // inside ONE device's namespace, so this device's upload can never reclaim
+    // (or serve) another device's slots. Under the shared account identity the
+    // identity half only moves on a reset.
     await this.otpRepo
       .createQueryBuilder()
       .delete()
       .where('"userId" = :userId', { userId })
+      .andWhere('"deviceId" = :deviceId', { deviceId })
       .andWhere('used = false')
       .andWhere(
         '("identityPublicKey" IS NULL OR "identityPublicKey" != :identity)',
@@ -167,13 +206,48 @@ export class KeyBundlesService {
         );
       }
     }
-    this.logger.debug(`Key bundle upserted for userId=${userId}`);
+    this.logger.debug(
+      `Key bundle upserted for userId=${userId} deviceId=${deviceId}`,
+    );
     return {
       identityChanged,
       previousIdentityPublicKey: identityChanged
         ? existingBundle.identityPublicKey
         : null,
     };
+  }
+
+  /**
+   * Drops every OTHER device's key material after an authorized identity
+   * change (§6.2 reset, or a signed rotation).
+   *
+   * Those devices published keys minted under an identity the account no
+   * longer has. Serving such a bundle would tell a peer to encrypt to a key
+   * nobody holds — the stale-epoch failure this codebase already paid for,
+   * one level up. A surviving device re-uploads under the new identity on its
+   * next connect; one that cannot is exactly the device the reset removed.
+   */
+  private async purgeSupersededDevices(
+    userId: number,
+    keepDeviceId: number,
+  ): Promise<void> {
+    const removed = await this.keyBundleRepo
+      .createQueryBuilder()
+      .delete()
+      .where('"userId" = :userId', { userId })
+      .andWhere('"deviceId" != :keepDeviceId', { keepDeviceId })
+      .execute();
+    await this.otpRepo
+      .createQueryBuilder()
+      .delete()
+      .where('"userId" = :userId', { userId })
+      .andWhere('"deviceId" != :keepDeviceId', { keepDeviceId })
+      .execute();
+    if ((removed.affected ?? 0) > 0) {
+      this.logger.warn(
+        `[identity-churn] dropped ${removed.affected} superseded device bundle(s) userId=${userId} keptDeviceId=${keepDeviceId}`,
+      );
+    }
   }
 
   /**
@@ -205,11 +279,22 @@ export class KeyBundlesService {
   }
 
   /**
-   * Read-only existence check for the caller's public key bundle. This MUST
-   * not call fetchPreKeyBundle: fetching atomically consumes a one-time key.
+   * Read-only existence check for the CALLING DEVICE's public key bundle. This
+   * MUST not call fetchPreKeyBundle: fetching atomically consumes a one-time
+   * key.
+   *
+   * Per device on purpose: a device with no bundle of its own has not
+   * published anything, whatever its siblings did — and this answer gates key
+   * generation on the client (the 0.1.10 invariant).
    */
-  async hasKeyBundle(userId: number): Promise<boolean> {
-    return (await this.keyBundleRepo.findOne({ where: { userId } })) !== null;
+  async hasKeyBundle(
+    userId: number,
+    deviceId: number = DEFAULT_DEVICE_ID,
+  ): Promise<boolean> {
+    return (
+      (await this.keyBundleRepo.findOne({ where: { userId, deviceId } })) !==
+      null
+    );
   }
 
   /**
@@ -231,6 +316,7 @@ export class KeyBundlesService {
     userId: number,
     keys: OneTimePreKeyData[],
     identityPublicKey?: string,
+    deviceId: number = DEFAULT_DEVICE_ID,
   ): Promise<void> {
     // Untagged OTPs are cryptographic material whose identity epoch cannot be
     // proven. Never infer an epoch from the currently stored bundle: a legacy
@@ -243,27 +329,36 @@ export class KeyBundlesService {
       throw new Error('identity_epoch_required');
     }
 
-    // UPSERT on (userId, keyId): a regenerated epoch reuses keyId slots 0..N,
-    // so refresh the existing row rather than piling up duplicates.
+    // UPSERT on (userId, deviceId, keyId): a regenerated epoch reuses keyId
+    // slots 0..N, so refresh this device's existing row rather than piling up
+    // duplicates — and never touch the identically-numbered slot of another
+    // device, which holds a different private half.
     await this.otpRepo.upsert(
       keys.map((k) => ({
         userId,
+        deviceId,
         keyId: k.keyId,
         publicKey: k.publicKey,
         identityPublicKey,
         used: false,
       })),
-      { conflictPaths: ['userId', 'keyId'] },
+      { conflictPaths: ['userId', 'deviceId', 'keyId'] },
     );
     this.logger.debug(
-      `Uploaded ${keys.length} one-time pre-keys for userId=${userId}`,
+      `Uploaded ${keys.length} one-time pre-keys for userId=${userId} deviceId=${deviceId}`,
     );
   }
 
   async fetchPreKeyBundle(
     userId: number,
+    deviceId: number = DEFAULT_DEVICE_ID,
   ): Promise<PreKeyBundleResponse | null> {
-    const bundle = await this.keyBundleRepo.findOne({ where: { userId } });
+    // No fallback to another device: serving device 1's bundle for a device
+    // that never published one would build a session that device cannot
+    // decrypt. Absent means absent.
+    const bundle = await this.keyBundleRepo.findOne({
+      where: { userId, deviceId },
+    });
     if (!bundle) return null;
 
     // Atomic claim: UPDATE ... WHERE id = (SELECT id ... LIMIT 1) RETURNING *
@@ -277,6 +372,9 @@ export class KeyBundlesService {
     // upload order — the tag, not timing, decides. See the identity-epoch
     // invariant note in upsertKeyBundle; fail-closed pinned by the unit spec.
     //
+    // The "deviceId" = $3 half is the Phase 1 re-key: one device's claim must
+    // never consume the keyId slot another device minted.
+    //
     // Postgres repo.query() returns [rows, rowCount] for UPDATE ... RETURNING
     // (see backend/CLAUDE.md §4) — destructuring the row directly reads the
     // rows ARRAY and silently serves oneTimePreKey* as null while still
@@ -287,17 +385,18 @@ export class KeyBundlesService {
        WHERE id = (
          SELECT id FROM one_time_pre_keys
          WHERE "userId" = $1 AND used = false AND "identityPublicKey" = $2
+           AND "deviceId" = $3
          ORDER BY id ASC
          LIMIT 1
        )
        RETURNING id, "keyId", "publicKey"`,
-      [userId, bundle.identityPublicKey],
+      [userId, bundle.identityPublicKey, deviceId],
     )) as [Array<{ id: number; keyId: number; publicKey: string }>, number];
     const otp = rows[0];
 
     if (!otp) {
       this.logger.warn(
-        `OTP exhausted for userId=${userId}: serving bundle without one-time pre-key`,
+        `OTP exhausted for userId=${userId} deviceId=${deviceId}: serving bundle without one-time pre-key`,
       );
     }
 
@@ -312,15 +411,22 @@ export class KeyBundlesService {
     };
   }
 
-  async countUnusedPreKeys(userId: number): Promise<number> {
-    // Count only the CURRENT epoch — stale rows from a superseded identity are
-    // never served, so they must not inflate the count and suppress the
-    // preKeysLow replenishment signal.
-    const bundle = await this.keyBundleRepo.findOne({ where: { userId } });
+  async countUnusedPreKeys(
+    userId: number,
+    deviceId: number = DEFAULT_DEVICE_ID,
+  ): Promise<number> {
+    // Count only the CURRENT epoch of THIS device — stale rows from a
+    // superseded identity are never served, and another device's rows are not
+    // this device's to spend, so neither may inflate the count and suppress
+    // the preKeysLow replenishment signal.
+    const bundle = await this.keyBundleRepo.findOne({
+      where: { userId, deviceId },
+    });
     if (!bundle) return 0;
     return this.otpRepo.count({
       where: {
         userId,
+        deviceId,
         used: false,
         identityPublicKey: bundle.identityPublicKey,
       },

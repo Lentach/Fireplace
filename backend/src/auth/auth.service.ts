@@ -4,6 +4,7 @@ import * as bcrypt from 'bcrypt';
 import { User } from '../users/user.entity';
 import { UsersService } from '../users/users.service';
 import { RefreshTokensService } from './refresh-tokens.service';
+import { DEFAULT_DEVICE_ID } from '../key-bundles/key-bundles.service';
 
 // Precomputed bcrypt hash used for a constant-time comparison when the
 // identifier matches no user, so "no such user" takes the same time as a wrong
@@ -66,12 +67,21 @@ export class AuthService {
       `login success userId=${user.id} username=${user.username}`,
     );
 
+    // Every session belongs to a device (Phase 1, spec §4). Until provisioning
+    // ships (Phase 2) an account has exactly one device, so every login is
+    // device 1 — the claim exists now so the socket, key material and push
+    // targeting can all key on it without another token migration later.
+    const deviceId = DEFAULT_DEVICE_ID;
     const payload = {
       sub: user.id,
       username: user.username,
       tag: user.tag,
+      deviceId,
     };
-    const refresh_token = await this.refreshTokensService.createToken(user.id);
+    const refresh_token = await this.refreshTokensService.createToken(
+      user.id,
+      deviceId,
+    );
     return {
       access_token: this.jwtService.sign(payload),
       refresh_token,
@@ -79,9 +89,9 @@ export class AuthService {
   }
 
   async refreshWithToken(refreshTokenPlain: string) {
-    const userId =
+    const session =
       await this.refreshTokensService.consumeAndSlide(refreshTokenPlain);
-    const user = await this.usersService.findById(userId);
+    const user = await this.usersService.findById(session.userId);
     if (!user) {
       throw new UnauthorizedException();
     }
@@ -89,6 +99,9 @@ export class AuthService {
       sub: user.id,
       username: user.username,
       tag: user.tag,
+      // The refresh row remembers which device the session belongs to; a row
+      // predating the column is device 1 (§8).
+      deviceId: session.deviceId ?? DEFAULT_DEVICE_ID,
     };
     return {
       access_token: this.jwtService.sign(payload),

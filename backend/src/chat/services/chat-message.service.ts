@@ -47,6 +47,15 @@ function servedIdsCallerId(client: Socket): number | null {
   return typeof user.id === 'number' ? user.id : null;
 }
 
+/**
+ * Which device this socket session is (Phase 1, spec §4). Absent on a token
+ * issued before the claim existed; the column then stays NULL rather than
+ * claiming a device the sender may not have used.
+ */
+function socketDeviceId(client: Socket): number | undefined {
+  return (client.data as { user?: { deviceId?: number } }).user?.deviceId;
+}
+
 @Injectable()
 export class ChatMessageService {
   private readonly logger = new Logger(ChatMessageService.name);
@@ -65,9 +74,13 @@ export class ChatMessageService {
     const senderId: number = client.data.user?.id;
     if (!senderId) return;
 
+    // `data` stays `any` for the pre-existing reads below; the new Phase 1
+    // fields go through the validated DTO so they are typed at the point of
+    // use rather than adding more unchecked member access.
+    let send: SendMessageDto;
     try {
-      const dto = validateDto(SendMessageDto, data);
-      data = dto;
+      send = validateDto(SendMessageDto, data);
+      data = send;
     } catch (error) {
       client.emit('error', { message: error.message });
       return;
@@ -99,20 +112,44 @@ export class ChatMessageService {
     const disappearAfterSeconds =
       ttlSeconds != null && ttlSeconds > 0 ? ttlSeconds : null;
 
-    const message = await this.messagesService.create(
-      data.encryptedContent ? '[encrypted]' : data.content,
-      sender,
-      conversation,
-      {
-        expiresAt: null,
-        disappearAfterSeconds,
-        messageType: data.messageType,
-        mediaUrl: data.mediaUrl,
-        mediaDuration: data.mediaDuration,
-        replyToMessageId: data.replyToMessageId ?? null,
-        encryptedContent: data.encryptedContent ?? null,
-      },
-    );
+    // A retry of a send whose ack was lost must find the row it already
+    // committed. The sending device holds the ONLY plaintext copy until that
+    // ack lands, so creating a second row here would duplicate the message and
+    // leave the client unable to tell which one its record belongs to
+    // (Phase 1, spec §5.4).
+    const existing = send.sendToken
+      ? await this.messagesService.findBySendToken(senderId, send.sendToken)
+      : null;
+    const message =
+      existing ??
+      (await this.messagesService.create(
+        data.encryptedContent ? '[encrypted]' : data.content,
+        sender,
+        conversation,
+        {
+          expiresAt: null,
+          disappearAfterSeconds,
+          messageType: data.messageType,
+          mediaUrl: data.mediaUrl,
+          mediaDuration: data.mediaDuration,
+          replyToMessageId: data.replyToMessageId ?? null,
+          encryptedContent: data.encryptedContent ?? null,
+          originDeviceId: socketDeviceId(client) ?? null,
+          sendToken: send.sendToken ?? null,
+        },
+      ));
+    if (existing) {
+      // Re-ack the committed row and stop: fanning it out again would deliver
+      // the same ciphertext twice, and Signal decryption is not idempotent.
+      client.emit(
+        'messageSent',
+        MessageMapper.toPayload(existing, {
+          tempId: send.tempId,
+          conversationId: conversation.id,
+        }),
+      );
+      return;
+    }
 
     const messagePayload = MessageMapper.toPayload(message, {
       tempId: data.tempId,

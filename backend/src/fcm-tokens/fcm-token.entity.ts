@@ -25,6 +25,14 @@ export class FcmToken {
   @Column({ unique: true })
   token: string;
 
+  /**
+   * Which device registered this endpoint (Phase 1, spec §4). NULL for
+   * endpoints registered before the column existed. Per-device targeting lets
+   * a revoked device stop receiving without touching the others.
+   */
+  @Column({ type: 'int', nullable: true })
+  deviceId: number | null;
+
   @Column({ default: 'web' })
   platform: string; // 'web' | 'android' | 'ios'
 

@@ -27,6 +27,13 @@ export class MessageMapper {
         ? new Date(message.editedAt as Date).toISOString()
         : null,
       tempId: options?.tempId ?? null,
+      /**
+       * Which of the sender's devices produced this (Phase 1, spec §5.4).
+       * Null on pre-migration rows and legacy-client sends. Self-sync scoping
+       * needs it — "is this mine?" becomes "is this MY DEVICE's?" — so it
+       * travels with every message rather than only on the sender's ack.
+       */
+      originDeviceId: message.originDeviceId ?? null,
       reactions: parseReactions(message.reactions),
       encryptedContent: message.encryptedContent ?? null,
       linkPreviewUrl: message.linkPreviewUrl ?? null,

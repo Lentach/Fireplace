@@ -1,6 +1,7 @@
 import { JwtService } from '@nestjs/jwt';
 import { ChatGateway } from './chat.gateway';
 import { UsersService } from '../users/users.service';
+import { DevicesService } from '../key-bundles/devices.service';
 import { Socket } from 'socket.io';
 
 interface GatewayWithKeyExchange {
@@ -15,6 +16,11 @@ function createGateway(): ChatGateway {
     deliverPendingSessionRebuilds: jest.fn(),
     handleCheckOwnKeyBundle: jest.fn(),
   } as any;
+  // The device row is touched on every connect (Phase 1, spec §4); it must
+  // never be able to break the connection, so it is stubbed and ignored here.
+  const devices: Pick<DevicesService, 'touch'> = {
+    touch: jest.fn(),
+  };
   return new ChatGateway(
     { verify: jest.fn() } as unknown as JwtService,
     { findById: jest.fn() } as unknown as UsersService,
@@ -26,6 +32,7 @@ function createGateway(): ChatGateway {
     noop,
     noop,
     noop,
+    devices as DevicesService,
   );
 }
 
@@ -114,6 +121,10 @@ describe('ChatGateway handleConnection', () => {
       id: 42,
       username: 'alice',
       tag: '0001',
+      // A token issued before the claim existed is device 1 (§8) — key
+      // material has to land in the account's original namespace, never in
+      // an "unknown" one.
+      deviceId: 1,
     });
   });
 
@@ -128,6 +139,22 @@ describe('ChatGateway handleConnection', () => {
     );
     expect(client.disconnect).toHaveBeenCalled();
     expect(jwtService.verify).not.toHaveBeenCalled();
+  });
+
+  it('takes the device from the token claim when the session names one', async () => {
+    const client = createMockClient({ token: 'valid-jwt' });
+    jwtService.verify.mockReturnValue({ sub: 42, deviceId: 3 });
+    usersService.findById.mockResolvedValue({
+      id: 42,
+      username: 'alice',
+      tag: '0001',
+    });
+
+    await gateway.handleConnection(client as any);
+
+    // Defaulting to 1 here would hand this session another device's key
+    // namespace: its bundle, its one-time pre-keys, its epoch.
+    expect((client.data.user as { deviceId?: number }).deviceId).toBe(3);
   });
 
   it('does not emit socketReady when user is not found', async () => {
@@ -254,8 +281,7 @@ describe('ChatGateway handleCheckOwnKeyBundle', () => {
     const gateway = createGateway();
     const client = createMockClient();
     // Test-only access to the gateway's injected service.
-    const gatewayWithKeyExchange =
-      gateway as unknown as GatewayWithKeyExchange;
+    const gatewayWithKeyExchange = gateway as unknown as GatewayWithKeyExchange;
     const keyExchange = gatewayWithKeyExchange.chatKeyExchangeService;
 
     await gateway.handleCheckOwnKeyBundle(client as unknown as Socket);

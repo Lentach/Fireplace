@@ -2,6 +2,7 @@ import { Injectable, Logger } from '@nestjs/common';
 import { randomBytes } from 'crypto';
 import { Server, Socket } from 'socket.io';
 import {
+  DEFAULT_DEVICE_ID,
   IdentityLockedError,
   KeyBundlesService,
 } from '../../key-bundles/key-bundles.service';
@@ -41,7 +42,11 @@ interface RegistrationLockNonce {
 
 /** The per-socket bag the gateway populates once a session is authenticated. */
 interface AuthenticatedSocketData {
-  user?: { id: number };
+  /**
+   * `deviceId` comes from the JWT (Phase 1, spec §4). Absent on a token issued
+   * before the claim existed — device 1 by definition (§8).
+   */
+  user?: { id: number; deviceId?: number };
   registrationLockNonce?: RegistrationLockNonce;
 }
 
@@ -137,6 +142,7 @@ export class ChatKeyExchangeService {
         nonce != null && dto.identitySignature != null
           ? { signature: dto.identitySignature, nonce }
           : undefined,
+        dto.deviceId ?? DEFAULT_DEVICE_ID,
       );
       // `identityChanged` tells THIS device that its own upload is what
       // replaced the stored identity — and therefore what wrote the audit row
@@ -230,6 +236,7 @@ export class ChatKeyExchangeService {
         userId,
         dto.keys,
         dto.identityPublicKey,
+        dto.deviceId ?? DEFAULT_DEVICE_ID,
       );
       client.emit('oneTimePreKeysUploaded', { count: dto.keys.length });
     } catch (error) {
@@ -255,7 +262,14 @@ export class ChatKeyExchangeService {
     if (!userId) return;
 
     try {
-      const exists = await this.keyBundlesService.hasKeyBundle(userId);
+      // Per device: this answer gates key generation on the client, and a
+      // device that never published its own bundle must not be told one exists
+      // just because a sibling device has one.
+      const deviceId = socketData(client).user?.deviceId ?? DEFAULT_DEVICE_ID;
+      const exists = await this.keyBundlesService.hasKeyBundle(
+        userId,
+        deviceId,
+      );
       // Additive fields: an older client ignores them, and a newer client
       // treats a missing payload as UNKNOWN rather than as "nothing pending".
       const [reset, identityReplacedAt] = await Promise.all([
@@ -434,7 +448,11 @@ export class ChatKeyExchangeService {
         });
         return;
       }
-      const bundle = await this.keyBundlesService.fetchPreKeyBundle(dto.userId);
+      const targetDeviceId = dto.deviceId ?? DEFAULT_DEVICE_ID;
+      const bundle = await this.keyBundlesService.fetchPreKeyBundle(
+        dto.userId,
+        targetDeviceId,
+      );
       if (bundle) {
         this.clearPendingSessionRebuildRequest(requesterId, dto.userId);
       }
@@ -448,6 +466,7 @@ export class ChatKeyExchangeService {
       if (bundle) {
         const remaining = await this.keyBundlesService.countUnusedPreKeys(
           dto.userId,
+          targetDeviceId,
         );
         if (remaining < PRE_KEY_LOW_THRESHOLD) {
           server.to(userRoom(dto.userId)).emit('preKeysLow', { remaining });

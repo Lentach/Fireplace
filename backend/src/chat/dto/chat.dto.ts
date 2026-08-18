@@ -62,6 +62,18 @@ export class SendMessageDto {
   @IsString()
   tempId?: string; // Client-generated ID for optimistic message matching
 
+  /**
+   * Client-generated token making a send idempotent across a lost ack
+   * (Phase 1, spec §5.4). The sending device holds the ONLY plaintext copy
+   * until the ack lands, so a retry must match the row the server already
+   * committed instead of creating a second message. UNIQUE per sender.
+   */
+  @IsOptional()
+  @IsString()
+  @MinLength(8)
+  @MaxLength(64)
+  sendToken?: string;
+
   @IsOptional()
   @IsString()
   @IsIn(Object.values(MessageType))

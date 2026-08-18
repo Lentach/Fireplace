@@ -28,6 +28,13 @@ export enum MessageType {
 }
 
 @Index('idx_messages_conv_created', ['conversation', 'createdAt'])
+// A duplicate token from one sender is a RETRY of a send the server already
+// committed, never a second message. Mirrored from migration 0015 so
+// `synchronize` (on everywhere but production) cannot drop it in dev/CI.
+@Index('UQ_messages_sender_send_token', ['sender', 'sendToken'], {
+  unique: true,
+  where: '"sendToken" IS NOT NULL',
+})
 @Entity('messages')
 export class Message {
   @PrimaryGeneratedColumn()
@@ -96,6 +103,24 @@ export class Message {
   @ManyToOne(() => User, { eager: true })
   @JoinColumn({ name: 'sender_id' })
   sender: User;
+
+  /**
+   * Which of the sender's devices produced this message (Phase 1, spec §5.4).
+   * NULL on pre-migration rows and on legacy-client sends. Self-sync scoping
+   * reads this — "is this mine?" becomes "is this MY DEVICE's?" — so a
+   * sender's other device can decrypt its own account's message.
+   */
+  @Column({ type: 'int', nullable: true })
+  originDeviceId: number | null;
+
+  /**
+   * Client-generated token making a send idempotent across a lost ack: the
+   * sending device holds the ONLY plaintext copy until the ack lands, so a
+   * retry must match the committed row rather than create a second one.
+   * UNIQUE per sender (partial index, migration 0015).
+   */
+  @Column({ type: 'text', nullable: true })
+  sendToken: string | null;
 
   @ManyToOne(() => Conversation, { eager: false })
   @JoinColumn({ name: 'conversation_id' })
