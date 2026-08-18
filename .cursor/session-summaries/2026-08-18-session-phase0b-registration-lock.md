@@ -114,7 +114,7 @@ replacement by another session inside that window is not surfaced by THIS path
   there meant writing the new code and its specs to a stricter standard than the
   file it sits in — typed socket-data accessor, typed mock-call helpers — rather
   than raising the floor.
-- Frontend **1343 tests / 10 skipped** (was 1318/10), analyze clean.
+- Frontend **1357 tests / 10 skipped** (was 1318/10), analyze clean.
 - Migration applied cleanly in the REAL boot path (`applying` → `applied`), and
   the partial unique index was behaviourally proven against live Postgres: a
   second pending row is rejected, and a new one is allowed after a cancel.
@@ -133,19 +133,32 @@ replacement by another session inside that window is not surfaced by THIS path
 
 ## Notes for next session
 
-- **Two harness tests now carry a rotation proof** (`takeover_alarm`,
-  `stale_otp_epoch`, plus `e2e_incident_regression`). That is the intended
+- **Recovery-key enrolment UI shipped** (owner approved mid-session): Settings →
+  Recovery key generates a 12-word BIP39 phrase locally, shows it once, and
+  sends it only so the server can store an Argon2id verifier. Every entry into
+  the ceremony now goes through `startIdentityResetFlow`, which asks for a
+  phrase FIRST — dropping someone who holds one into the 72 h path because they
+  found the plain button would waste three days. Backing out of that prompt
+  starts nothing.
+  - Package is `bip39_mnemonic` 4.1.0, NOT the `bip39` the owner named: that one
+    pins `sdk <3.0.0` (pre-null-safety) and cannot resolve. Same standard, same
+    2048-word English list, `Random.secure` entropy.
+- **⚠️ Pre-existing flake, NOT from this work:**
+  `test/widgets/input/chat_input_bar_attachment_test.dart` →
+  "video-then-caption keeps the media-first ordering contract" fails roughly two
+  runs in three (`Expected: ['VIDEO','TEXT'] Actual: ['VIDEO']`). Proven
+  independent of 0b by stashing every `lib/` change and reproducing it. It will
+  redden CI intermittently; worth a session of its own.
+- **Three harness tests now carry a rotation proof** (`takeover_alarm`,
+  `stale_otp_epoch`, `e2e_incident_regression`). That is the intended
   consequence of 0b: unannounced replacements no longer exist, so the 0a alarm
   covers AUTHORIZED ones and `registration_lock_test` covers the refusal.
 - **⚠️ Registration ceiling.** `/auth/register` is throttled 10/hour per IP and
   the harness now spends exactly 10. Adding an account to ANY harness file trips
   the suite. The 0b file deliberately runs its whole ceremony on one account and
   reuses the second session it already had.
-- **Not built (deliberate, owner-deferred or unreachable):** the recovery-key
-  ENROLMENT UI (settings screen + BIP39 generation) — the wire contract and the
-  server side are done and proven, but no screen offers the phrase yet, so users
-  cannot enrol one and every reset today takes the full 72 h. That is the top
-  0b follow-up. Also deferred: the peer-visible pending-reset surface.
+- **Still deferred:** the peer-visible pending-reset surface (owner ruling —
+  0b notifies the account's own sessions only).
 - The client never signs a rotation in production: `_generateKeys()` only runs
   on an EMPTY keystore, so a real client that changes identity never holds the
   old key. The signature path exists for spec compliance, the harness, and §6.3

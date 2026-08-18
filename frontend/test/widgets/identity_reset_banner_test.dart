@@ -132,12 +132,39 @@ void main() {
     await tester.tap(find.byType(TextButton));
     await tester.pumpAndSettle();
 
+    // The recovery key is asked for FIRST: it is the difference between
+    // waiting an hour and waiting three days, so the slow path must never be
+    // started silently on someone who holds a phrase.
+    expect(find.textContaining('recovery key'), findsWidgets);
+    expect(encryption.startCalls, 0);
+
+    await tester.tap(find.text("I don't have one"));
+    await tester.pumpAndSettle();
+
     expect(
       encryption.startCalls,
       1,
-      reason: 'the only route out is the reset ceremony',
+      reason: 'declining the phrase still leaves the 72 h route open',
     );
     expect(encryption.cancelCalls, 0);
+  });
+
+  testWidgets('dismissing the phrase prompt starts nothing at all', (
+    tester,
+  ) async {
+    final encryption = _FakeEncryption(locked: true);
+    await tester.pumpWidget(_host(encryption));
+
+    await tester.tap(find.byType(TextButton));
+    await tester.pumpAndSettle();
+    await tester.tap(find.text('Cancel'));
+    await tester.pumpAndSettle();
+
+    expect(
+      encryption.startCalls,
+      0,
+      reason: 'backing out must not commit the account to a 72 h ceremony',
+    );
   });
 
   testWidgets('a running ceremony takes precedence over the locked notice', (

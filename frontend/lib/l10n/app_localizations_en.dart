@@ -426,6 +426,59 @@ class AppLocalizationsEn extends AppLocalizations {
   String get identityResetStartAction => 'Start reset';
 
   @override
+  String get recoveryKeyTitle => 'Recovery key';
+
+  @override
+  String get recoveryKeySubtitle => 'Get back in faster if you lose your keys';
+
+  @override
+  String get recoveryKeyExplainer =>
+      'If you ever lose access to your encryption keys, getting new ones takes 72 hours — a deliberate delay, so nobody else can quietly take over your account without you having time to stop it. A recovery key shortens that wait to 1 hour. It never skips the wait, and everyone signed in is still notified.\n\nThe words are shown once and never stored on this device — keeping them here would lose them to the very thing they protect against. Write them down somewhere safe and offline.';
+
+  @override
+  String get recoveryKeyGenerateAction => 'Generate recovery key';
+
+  @override
+  String get recoveryKeyShownOnceWarning =>
+      'These words are shown once. Save them before continuing — generating a new key replaces this one.';
+
+  @override
+  String get recoveryKeyCopyAction => 'Copy words';
+
+  @override
+  String get recoveryKeyCopied => 'Recovery key copied';
+
+  @override
+  String get recoveryKeySavedAction => 'I saved it';
+
+  @override
+  String get recoveryKeySaved => 'Recovery key saved';
+
+  @override
+  String get recoveryKeySaveFailed =>
+      'Could not save the recovery key — nothing was stored, so those words will not work. Please try again.';
+
+  @override
+  String get recoveryPhrasePromptTitle => 'Do you have a recovery key?';
+
+  @override
+  String get recoveryPhrasePromptBody =>
+      'Entering your 12 words shortens the wait from 72 hours to 1. Everyone signed in is notified either way, and the reset can still be cancelled.';
+
+  @override
+  String get recoveryPhrasePromptHint => 'twelve words separated by spaces';
+
+  @override
+  String get recoveryPhraseMalformed =>
+      'That does not look like a complete 12-word recovery key. Check for typos.';
+
+  @override
+  String get recoveryPhraseUseAction => 'Use recovery key';
+
+  @override
+  String get recoveryPhraseNoneAction => 'I don\'t have one';
+
+  @override
   String get identityFingerprintUnavailable => 'Fingerprint unavailable.';
 
   @override

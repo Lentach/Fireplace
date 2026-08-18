@@ -431,6 +431,59 @@ class AppLocalizationsPl extends AppLocalizations {
   String get identityResetStartAction => 'Rozpocznij reset';
 
   @override
+  String get recoveryKeyTitle => 'Klucz odzyskiwania';
+
+  @override
+  String get recoveryKeySubtitle => 'Szybszy powrót, jeśli stracisz klucze';
+
+  @override
+  String get recoveryKeyExplainer =>
+      'Jeśli kiedykolwiek stracisz dostęp do swoich kluczy szyfrowania, uzyskanie nowych trwa 72 godziny — to celowe opóźnienie, dzięki któremu nikt inny nie przejmie po cichu Twojego konta, zanim zdążysz zareagować. Klucz odzyskiwania skraca to oczekiwanie do 1 godziny. Nigdy go nie pomija, a wszystkie zalogowane sesje i tak otrzymają powiadomienie.\n\nSłowa pokazujemy tylko raz i nie zapisujemy ich na tym urządzeniu — przechowywanie ich tutaj oznaczałoby utratę dokładnie wtedy, gdy są potrzebne. Zapisz je w bezpiecznym miejscu, poza urządzeniem.';
+
+  @override
+  String get recoveryKeyGenerateAction => 'Wygeneruj klucz odzyskiwania';
+
+  @override
+  String get recoveryKeyShownOnceWarning =>
+      'Te słowa pokazujemy tylko raz. Zapisz je, zanim przejdziesz dalej — wygenerowanie nowego klucza zastąpi ten.';
+
+  @override
+  String get recoveryKeyCopyAction => 'Kopiuj słowa';
+
+  @override
+  String get recoveryKeyCopied => 'Skopiowano klucz odzyskiwania';
+
+  @override
+  String get recoveryKeySavedAction => 'Zapisałem/am';
+
+  @override
+  String get recoveryKeySaved => 'Zapisano klucz odzyskiwania';
+
+  @override
+  String get recoveryKeySaveFailed =>
+      'Nie udało się zapisać klucza odzyskiwania — nic nie zostało zapisane, więc te słowa nie zadziałają. Spróbuj ponownie.';
+
+  @override
+  String get recoveryPhrasePromptTitle => 'Masz klucz odzyskiwania?';
+
+  @override
+  String get recoveryPhrasePromptBody =>
+      'Wpisanie 12 słów skraca oczekiwanie z 72 godzin do 1. Tak czy inaczej wszystkie zalogowane sesje otrzymają powiadomienie, a reset nadal można anulować.';
+
+  @override
+  String get recoveryPhrasePromptHint => 'dwanaście słów oddzielonych spacjami';
+
+  @override
+  String get recoveryPhraseMalformed =>
+      'To nie wygląda na kompletny 12-słowny klucz odzyskiwania. Sprawdź literówki.';
+
+  @override
+  String get recoveryPhraseUseAction => 'Użyj klucza';
+
+  @override
+  String get recoveryPhraseNoneAction => 'Nie mam go';
+
+  @override
   String get identityFingerprintUnavailable =>
       'Odcisk tożsamości jest niedostępny.';
 

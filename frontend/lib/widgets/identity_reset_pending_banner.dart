@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:provider/provider.dart';
 
 import '../l10n/app_localizations.dart';
+import 'recovery_phrase_prompt.dart';
 import '../providers/encryption_provider.dart';
 
 /// Phase 0b reset ceremony (multi-device spec §6.2): somebody asked the server
@@ -117,11 +118,12 @@ class _IdentityResetPendingBannerState
               // invisible on the error container (same reason as the 0a banner).
               TextButton(
                 onPressed: () {
-                  final encryption = context.read<EncryptionProvider>();
                   if (pending) {
-                    encryption.cancelIdentityReset();
+                    context.read<EncryptionProvider>().cancelIdentityReset();
                   } else {
-                    encryption.requestIdentityReset();
+                    // Ask for a recovery key first: it is the difference
+                    // between waiting an hour and waiting three days.
+                    startIdentityResetFlow(context);
                   }
                 },
                 style: TextButton.styleFrom(

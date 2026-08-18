@@ -812,6 +812,102 @@ abstract class AppLocalizations {
   /// **'Rozpocznij reset'**
   String get identityResetStartAction;
 
+  /// No description provided for @recoveryKeyTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Klucz odzyskiwania'**
+  String get recoveryKeyTitle;
+
+  /// No description provided for @recoveryKeySubtitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Szybszy powrót, jeśli stracisz klucze'**
+  String get recoveryKeySubtitle;
+
+  /// No description provided for @recoveryKeyExplainer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Jeśli kiedykolwiek stracisz dostęp do swoich kluczy szyfrowania, uzyskanie nowych trwa 72 godziny — to celowe opóźnienie, dzięki któremu nikt inny nie przejmie po cichu Twojego konta, zanim zdążysz zareagować. Klucz odzyskiwania skraca to oczekiwanie do 1 godziny. Nigdy go nie pomija, a wszystkie zalogowane sesje i tak otrzymają powiadomienie.\n\nSłowa pokazujemy tylko raz i nie zapisujemy ich na tym urządzeniu — przechowywanie ich tutaj oznaczałoby utratę dokładnie wtedy, gdy są potrzebne. Zapisz je w bezpiecznym miejscu, poza urządzeniem.'**
+  String get recoveryKeyExplainer;
+
+  /// No description provided for @recoveryKeyGenerateAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wygeneruj klucz odzyskiwania'**
+  String get recoveryKeyGenerateAction;
+
+  /// No description provided for @recoveryKeyShownOnceWarning.
+  ///
+  /// In pl, this message translates to:
+  /// **'Te słowa pokazujemy tylko raz. Zapisz je, zanim przejdziesz dalej — wygenerowanie nowego klucza zastąpi ten.'**
+  String get recoveryKeyShownOnceWarning;
+
+  /// No description provided for @recoveryKeyCopyAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kopiuj słowa'**
+  String get recoveryKeyCopyAction;
+
+  /// No description provided for @recoveryKeyCopied.
+  ///
+  /// In pl, this message translates to:
+  /// **'Skopiowano klucz odzyskiwania'**
+  String get recoveryKeyCopied;
+
+  /// No description provided for @recoveryKeySavedAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zapisałem/am'**
+  String get recoveryKeySavedAction;
+
+  /// No description provided for @recoveryKeySaved.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zapisano klucz odzyskiwania'**
+  String get recoveryKeySaved;
+
+  /// No description provided for @recoveryKeySaveFailed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się zapisać klucza odzyskiwania — nic nie zostało zapisane, więc te słowa nie zadziałają. Spróbuj ponownie.'**
+  String get recoveryKeySaveFailed;
+
+  /// No description provided for @recoveryPhrasePromptTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Masz klucz odzyskiwania?'**
+  String get recoveryPhrasePromptTitle;
+
+  /// No description provided for @recoveryPhrasePromptBody.
+  ///
+  /// In pl, this message translates to:
+  /// **'Wpisanie 12 słów skraca oczekiwanie z 72 godzin do 1. Tak czy inaczej wszystkie zalogowane sesje otrzymają powiadomienie, a reset nadal można anulować.'**
+  String get recoveryPhrasePromptBody;
+
+  /// No description provided for @recoveryPhrasePromptHint.
+  ///
+  /// In pl, this message translates to:
+  /// **'dwanaście słów oddzielonych spacjami'**
+  String get recoveryPhrasePromptHint;
+
+  /// No description provided for @recoveryPhraseMalformed.
+  ///
+  /// In pl, this message translates to:
+  /// **'To nie wygląda na kompletny 12-słowny klucz odzyskiwania. Sprawdź literówki.'**
+  String get recoveryPhraseMalformed;
+
+  /// No description provided for @recoveryPhraseUseAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Użyj klucza'**
+  String get recoveryPhraseUseAction;
+
+  /// No description provided for @recoveryPhraseNoneAction.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie mam go'**
+  String get recoveryPhraseNoneAction;
+
   /// No description provided for @identityFingerprintUnavailable.
   ///
   /// In pl, this message translates to:

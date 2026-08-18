@@ -24,6 +24,7 @@ import '../l10n/app_localizations.dart';
 import 'appearance_screen.dart';
 import 'blocked_users_screen.dart';
 import 'privacy_safety_screen.dart';
+import 'recovery_key_screen.dart';
 import '../utils/instant_opaque_route.dart';
 import 'user_card_screen.dart';
 
@@ -522,6 +523,18 @@ class _SettingsScreenState extends State<SettingsScreen> {
                       Navigator.of(context).push(
                         MaterialPageRoute(
                           builder: (_) => const PrivacySafetyScreen(),
+                        ),
+                      );
+                    },
+                  ),
+                  SettingsConsoleRow(
+                    glyph: ConsoleGlyph.keys,
+                    title: l10n.recoveryKeyTitle,
+                    subtitle: l10n.recoveryKeySubtitle,
+                    onTap: () {
+                      Navigator.of(context).push(
+                        MaterialPageRoute(
+                          builder: (_) => const RecoveryKeyScreen(),
                         ),
                       );
                     },
