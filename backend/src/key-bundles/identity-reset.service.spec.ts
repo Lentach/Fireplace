@@ -528,11 +528,18 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
   describe('getStatusForUser', () => {
     it('reports a pending ceremony with its deadline', async () => {
       const deadlineAt = new Date(Date.now() + 1000);
-      resetRepo.findOne.mockResolvedValue({ status: 'pending', deadlineAt });
+      resetRepo.findOne.mockResolvedValue({
+        status: 'pending',
+        deadlineAt,
+        shortened: true,
+      });
 
+      // `shortened` travels with the summary: a session reconnecting INTO a
+      // recovery-key ceremony must not describe the 1 h wait as the 72 h one.
       await expect(service.getStatusForUser(7)).resolves.toEqual({
         status: 'pending',
         deadlineAt,
+        shortened: true,
       });
     });
 
@@ -541,11 +548,13 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
       resetBuilder.getOne.mockResolvedValue({
         status: 'completed',
         deadlineAt,
+        shortened: false,
       });
 
       await expect(service.getStatusForUser(7)).resolves.toEqual({
         status: 'completed',
         deadlineAt,
+        shortened: false,
       });
     });
 

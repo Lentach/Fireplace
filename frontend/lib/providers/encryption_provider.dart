@@ -1358,7 +1358,13 @@ class EncryptionProvider extends ChangeNotifier {
     if (identityReset is! Map) return;
     final status = identityReset['status'];
     if (status == 'pending') {
-      _applyResetDeadline(identityReset['deadlineAt'], false);
+      // `shortened` comes back too: a session that reconnects INTO a 1 h
+      // recovery-key ceremony must not describe it as the 72 h one. Absent on
+      // an older server, which reads as the un-shortened default.
+      _applyResetDeadline(
+        identityReset['deadlineAt'],
+        identityReset['shortened'] == true,
+      );
       notifyListeners();
       return;
     }

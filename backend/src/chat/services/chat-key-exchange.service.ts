@@ -287,6 +287,10 @@ export class ChatKeyExchangeService {
           ? {
               status: reset.status,
               deadlineAt: reset.deadlineAt.toISOString(),
+              // Same flag the live broadcast carries, so a session that
+              // reconnects INTO a recovery-key ceremony describes the 1 h
+              // wait as 1 h rather than as the default 72 h.
+              shortened: reset.shortened,
             }
           : null,
         identityReplacedAt: identityReplacedAt

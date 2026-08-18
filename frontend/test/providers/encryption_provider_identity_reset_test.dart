@@ -200,6 +200,26 @@ void main() {
       expect(provider.identityResetDeadline, isNull);
     });
 
+    test('reconnecting into a shortened ceremony keeps that label', () {
+      // The countdown is right either way (the deadline is authoritative), but
+      // calling a 1 h recovery-key ceremony "72 hours" is a lie the user would
+      // act on.
+      provider.onOwnKeyBundleStatus({
+        'exists': true,
+        'identityReset': {
+          'status': 'pending',
+          'deadlineAt': DateTime.now()
+              .toUtc()
+              .add(const Duration(hours: 1))
+              .toIso8601String(),
+          'shortened': true,
+        },
+        'identityReplacedAt': null,
+      });
+
+      expect(provider.identityResetShortened, isTrue);
+    });
+
     test('a completed ceremony is reported as spendable', () {
       provider.onOwnKeyBundleStatus({
         'exists': true,

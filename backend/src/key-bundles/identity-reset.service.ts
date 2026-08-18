@@ -65,6 +65,12 @@ export interface RequestResetResult {
 export interface IdentityResetStatusSummary {
   status: 'pending' | 'completed';
   deadlineAt: Date;
+  /**
+   * Whether a recovery key shortened this ceremony (§6.2.1). Carried so a
+   * session that reconnects INTO a running ceremony can say the same thing the
+   * live broadcast said, instead of describing a 1 h wait as the 72 h one.
+   */
+  shortened: boolean;
 }
 
 /**
@@ -320,7 +326,11 @@ export class IdentityResetService {
       where: { userId, status: 'pending' },
     });
     if (pending) {
-      return { status: 'pending', deadlineAt: pending.deadlineAt };
+      return {
+        status: 'pending',
+        deadlineAt: pending.deadlineAt,
+        shortened: pending.shortened,
+      };
     }
     const completed = await this.resetRepo
       .createQueryBuilder('r')
@@ -333,7 +343,11 @@ export class IdentityResetService {
       .orderBy('r."completedAt"', 'DESC')
       .getOne();
     if (completed) {
-      return { status: 'completed', deadlineAt: completed.deadlineAt };
+      return {
+        status: 'completed',
+        deadlineAt: completed.deadlineAt,
+        shortened: completed.shortened,
+      };
     }
     return null;
   }

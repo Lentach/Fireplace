@@ -1016,6 +1016,7 @@ describe('ChatKeyExchangeService', () => {
       identityResetService.getStatusForUser.mockResolvedValue({
         status: 'pending',
         deadlineAt,
+        shortened: true,
       });
 
       await service.handleCheckOwnKeyBundle(mockClient as Socket);
@@ -1025,6 +1026,9 @@ describe('ChatKeyExchangeService', () => {
         identityReset: {
           status: 'pending',
           deadlineAt: deadlineAt.toISOString(),
+          // Without this a session reconnecting into a 1 h recovery-key
+          // ceremony would describe it as the 72 h one.
+          shortened: true,
         },
         // This is what gives a session offline at the time its banner.
         identityReplacedAt: replacedAt.toISOString(),
