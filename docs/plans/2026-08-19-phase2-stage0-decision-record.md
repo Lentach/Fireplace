@@ -61,7 +61,7 @@ Two mechanism gaps were found independently by two reviewers each:
 | **T1** (0016) | Amendment (g) verbatim; allocator returns PRE-increment (durability F4); do NOT widen `purgeSupersededDevices` here (F11); pin context prefixes (d) wherever T1 stores signature inputs |
 | **T2** (signed list) | Context prefixes (d); falsification 25 |
 | **T3** (provisioning) | Amendments (a)(b)(c); never-activated-deviceId upload rejection is a NAMED deliverable (coherence F4 — `DevicesService.touch` auto-inserts today); optional SAS-UX /prototype |
-| **T4** (envelopes/rooms) | `preKeysLow` is counted per-device but ROUTED per-user — route to `device:<uid>:<did>` (coherence F5); legacy fallback treats `originDeviceId IS NULL` as device 1 (durability F5a); red test that a device-2 bundle upload under the shared IK does not trip `[identity-churn]` (landmine 2, coherence F7); envelope stamps never enter expiry/read-TTL (durability F9); `updateDeliveryStatus` full-entity `save()` → column-scoped UPDATE (coherence F6, falsification 19) |
+| **T4** (envelopes/rooms) | `preKeysLow` is counted per-device but ROUTED per-user — route to `device:<uid>:<did>` (coherence F5); legacy fallback treats `originDeviceId IS NULL` as device 1 (durability F5a); red test that a device-2 bundle upload under the shared IK does not trip `[identity-churn]` (landmine 2, coherence F7); envelope stamps never enter expiry/read-TTL (durability F9); `updateDeliveryStatus` full-entity `save()` → column-scoped UPDATE (coherence F6, falsification 19); **T1-review rider:** `message_envelopes.recipientUserId` carries NO FK to `users` — when the T4 write path lands, confirm recipient-user deletion cannot orphan envelopes (their messages must cascade via the `messageId` FK) or add the FK then |
 | **T5** (self-sync/lost-ack) | Preserve `tempId != null` in the `history.dart:529` guard flip — dropping it lets a self-sync row consume a pending-send record (durability F6, falsification 6); keep re-ack-WITHOUT-re-fan when the retry path goes envelope-shaped (durability F7, falsification 14) |
 | **T6** (revocation) | Amendment (e) receive-time check + falsification 7 send-direction case; reset teardown widening of `purgeSupersededDevices` lands HERE, blocked on T1 columns (durability F11); I6 SILENCE is not yet in `handleGetServedMessageIds` (`chat.gateway.ts:223`) (durability F5b) |
 | **T7** (edit re-fan) | Envelope UPSERT is content-only — never a full-row replace that zeroes `deliveredAt`/`readAt`; new envelope-only rows do not write a stale `encryptedContent` (durability F8) |
@@ -73,3 +73,15 @@ Two mechanism gaps were found independently by two reviewers each:
 - Protection: findings preserved in this record + `agent://Stage0Protection` (its local file write
   failed; the agent output carries the complete findings).
 - Durability: `agent://Stage0Durability`.
+
+## 6. T1 closure (2026-08-19/20)
+
+T1 landed at `584f2d3` and passed its per-ticket review (one reviewer, GATE PASS, zero
+BLOCKER/FIX; the single NOTE became the T4 rider above). Verified by the orchestrator:
+backend **780/52** (+4 allocator specs, red-first), ratchet **PASS 906**, backend count
+verifier OK, full wire suite **26/2sk** against the 0016 schema, migration exercised in the
+REAL boot path across three backend restarts (indexes survive `synchronize`, both tables
+empty, cascade proven live, concurrent allocations distinct, allocator returns the
+pre-increment value). Declared deviation accepted: `account_authorizations.enrollmentCreatedAt`
+stores the signed `createdAt` so peers can re-verify enrollment `E`. Next ticket: **T2**
+(signed device list + E2E cross-check) under its riders.
