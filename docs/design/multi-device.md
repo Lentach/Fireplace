@@ -588,4 +588,27 @@ that is the designed outcome).
   §4/§8 wording unified); edit UPSERT preserves delivery stamps (§5.7); falsifications 13/24
   extended (positive owner-serve, no-device-1 case, stamp preservation). **Doc frozen at v5.**
 - **Owner ratification: §11 items 1–6 ALL CONFIRMED 2026-08-17.**
+- **Amendment 2026-08-19 (owner-ratified decision record; doc remains frozen — this adds
+  mechanism to an existing invariant, changes no protocol):** the §5.3 deviceIds-never-reused
+  invariant is implemented by a **per-account allocator column `users.nextDeviceId`**
+  (migration `0016`, `int`, default 2; allocation = one atomic
+  `UPDATE users SET "nextDeviceId" = "nextDeviceId" + 1 WHERE id = $1 RETURNING …`).
+  Deriving ids from `MAX(deviceId)+1` over `devices` is REJECTED: it silently converts a row-
+  retention convention into a cryptographic invariant (any future purge of a `devices` row
+  re-enables reuse). Grounded in prior-art research
+  (`docs/plans/2026-08-19-multi-device-prior-art-research.md` §2): Signal's lowest-free reuse is
+  survivable only via per-device registrationId disambiguation + total per-id purge on relink +
+  a stale-session bounce, none of which exist here, and §5.3's device-gated legacy fallback makes
+  a reused id actively dangerous; Matrix (Synapse #17375) documents reuse reattaching stale
+  id-keyed attestations; WhatsApp/MLS allocate monotonically.
+- **Amendment 2026-08-19 (§6.2 cooldown carve-out; owner-ratified):** the 24 h post-cancel
+  cooldown is VOID if the account's password changed after the cancel: the cooldown predicate
+  additionally requires `(u."passwordChangedAt" IS NULL OR r."cancelledAt" > u."passwordChangedAt")`.
+  Rationale: the cooldown refusal's own copy directs a user whose ceremony was cancelled by an
+  intruder to change their password; once they have (which revokes every refresh token and
+  invalidates every prior JWT), the attacker-authored cancel must not keep the owner locked out
+  of starting a legitimate ceremony. Deliberately narrow: a pending ceremony is NEVER cancelled
+  by a password change (rows carry no requester attribution, so cancelling could discard the
+  owner's own in-flight 72 h wait), and a cooldown armed AFTER the password change still binds.
+  A cooldown refusal now logs a `warn` (previously the branch logged nothing).
 - **Next gate:** Phase-2 spec-level review round at implementation time, per phase plan.

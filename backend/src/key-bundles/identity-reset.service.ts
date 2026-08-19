@@ -131,16 +131,32 @@ export class IdentityResetService {
       };
     }
 
+    // 24h post-cancel cooldown (§6.2), with the 2026-08-19 carve-out: a
+    // password change VOIDS a cooldown armed before it. The refusal copy tells
+    // a user whose ceremony an intruder cancelled to change their password;
+    // once they have (revoking every refresh token), the attacker-authored
+    // cancel must not keep the owner locked out of a legitimate ceremony.
+    // Deliberately narrow: a PENDING ceremony is never cancelled here (rows
+    // carry no requester attribution — cancelling could discard the owner's
+    // own in-flight 72h wait), and a cancel AFTER the password change still
+    // cools down as before.
     const recentCancel = await this.resetRepo
       .createQueryBuilder('r')
+      .innerJoin('users', 'u', 'u.id = r."userId"')
       .where('r."userId" = :userId', { userId })
       .andWhere('r.status = :status', { status: 'cancelled' })
       .andWhere('r."cancelledAt" > :since', {
         since: new Date(Date.now() - CANCEL_COOLDOWN_MS),
       })
+      .andWhere(
+        '(u."passwordChangedAt" IS NULL OR r."cancelledAt" > u."passwordChangedAt")',
+      )
       .orderBy('r."cancelledAt"', 'DESC')
       .getOne();
     if (recentCancel) {
+      this.logger.warn(
+        `[identity-reset] request refused by post-cancel cooldown userId=${userId}`,
+      );
       return { status: 'cooldown', deadlineAt: null, shortened: false };
     }
 

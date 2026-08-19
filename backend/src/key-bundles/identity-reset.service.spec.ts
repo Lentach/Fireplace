@@ -20,6 +20,7 @@ interface BuilderMock {
   set: jest.Mock;
   where: jest.Mock;
   andWhere: jest.Mock;
+  innerJoin: jest.Mock;
   orderBy: jest.Mock;
   returning: jest.Mock;
   execute: jest.Mock;
@@ -43,6 +44,7 @@ function makeBuilder(result: {
     set: jest.fn(),
     where: jest.fn(),
     andWhere: jest.fn(),
+    innerJoin: jest.fn(),
     orderBy: jest.fn(),
     returning: jest.fn(),
     execute: jest.fn().mockResolvedValue({
@@ -55,6 +57,7 @@ function makeBuilder(result: {
   builder.set.mockReturnValue(builder);
   builder.where.mockReturnValue(builder);
   builder.andWhere.mockReturnValue(builder);
+  builder.innerJoin.mockReturnValue(builder);
   builder.orderBy.mockReturnValue(builder);
   builder.returning.mockReturnValue(builder);
   return builder;
@@ -223,6 +226,36 @@ describe('IdentityResetService (reset ceremony §6.2 / recovery key §6.2.1)', (
 
       expect(result.status).toBe('cooldown');
       expect(resetRepo.insert).not.toHaveBeenCalled();
+    });
+
+    it('logs a warn when the cooldown refuses (the branch used to be silent)', async () => {
+      resetBuilder.getOne.mockResolvedValue({
+        userId: 7,
+        status: 'cancelled',
+        cancelledAt: new Date(Date.now() - 1000),
+      });
+
+      await service.requestReset(7);
+
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('post-cancel cooldown userId=7'),
+      );
+    });
+
+    it('voids a cooldown armed before the last password change (2026-08-19 carve-out)', async () => {
+      // Mocks can only prove the predicate is PRESENT in the query — the
+      // behavioural proof lives in the wire suite (start→cancel→cooldown,
+      // change password, request→pending). Assert both halves of the SQL:
+      // the users join and the passwordChangedAt comparison.
+      await service.requestReset(7);
+
+      const joins = resetBuilder.innerJoin.mock.calls as Array<
+        [string, string, string]
+      >;
+      expect(joins).toContainEqual(['users', 'u', 'u.id = r."userId"']);
+      const fragments = sqlFragments(resetBuilder.andWhere).join(' ');
+      expect(fragments).toContain('u."passwordChangedAt" IS NULL');
+      expect(fragments).toContain('r."cancelledAt" > u."passwordChangedAt"');
     });
 
     it('queries the cooldown window against the documented 24 h bound', async () => {
