@@ -1,3 +1,10 @@
+> **⚠️ SUPERSEDED 2026-08-19 — read `2026-08-19-HANDOFF-phase2-start-here.md` FIRST.**
+> HEAD has moved on (`edd3bb4` → `573458b`): a Phase-1 finding was found, fixed and
+> app-proven (one-time pre-keys now wait for their identity to be published), test
+> counts changed (774/52 · 1375/10sk · wire 25/2sk), and two owner decisions are
+> open. This file remains the authority for its §1 inherited preconditions and its
+> trap list; everything else here may be stale.
+
 # HANDOFF — 0a + 0b + Phase 1 are DONE and reviewed. You are starting Phase 2.
 
 **Date:** 2026-08-18 · branch `feat/takeover-alarm-0a` · worktree
