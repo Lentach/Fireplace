@@ -1,8 +1,8 @@
 # 2026-08-19 — Multi-device prior-art research; both Phase-2-blocking decisions locked
 
-**Branch:** `feat/takeover-alarm-0a` (worktree `fireplace-0a`). Research committed and pushed at
-`250c619`. NOT merged, NOT deployed. This session follows `2026-08-19-session-otp-identity-gate.md`
-and precedes the cooldown patch + Phase 2 Stage 0 (see §4).
+**Branch:** `feat/takeover-alarm-0a` (worktree `fireplace-0a`). Research pushed at `250c619`; the
+cooldown carve-out LANDED at `94d030d`, wire-proven. NOT merged, NOT deployed. This session
+follows `2026-08-19-session-otp-identity-gate.md`.
 
 ## 1. What happened
 
@@ -58,3 +58,34 @@ our tickets T1–T8 and the two decisions, with the four fully-cited reports as 
   upgraded from design-doc scope to program scope (phases, decisions, errors, next steps).
 - Next work in order: dated §12 spec amendments for both decisions → cooldown patch (unit + wire
   tests, §3 counts, full suites) → Phase 2 Stage 0 spec review with three independent reviewers.
+
+## 6. The cooldown carve-out, landed (`94d030d`)
+
+- **Server** (`identity-reset.service.ts:143-155`): the cooldown query now inner-joins `users` and
+  adds `(u."passwordChangedAt" IS NULL OR r."cancelledAt" > u."passwordChangedAt")` — a cooldown
+  armed BEFORE the last password change no longer binds; one armed AFTER still does. The refusal
+  branch logs `warn [identity-reset] request refused by post-cancel cooldown userId=…` (it used to
+  log nothing; the wire run showed it firing 4×, once per refusal the tests provoke).
+- **Unit spec** (+2; mocks prove predicate presence only): the join + both SQL halves asserted,
+  and the warn asserted on refusal. 31/31 in the file.
+- **Wire test** (`registration_lock_test.dart`, +1, runs LAST in the file because it retires the
+  harness account's original password): cooldown binds → `POST /users/reset-password` (production
+  route: revokes every refresh token, stamps `passwordChangedAt`) → 1.5 s guard for the JWT
+  one-second `iat` granularity → re-login → new session's request = `pending` → cancel → a FRESH
+  cooldown binds again, proving the carve-out is not "password change disables cooldowns forever".
+  The re-login session reuses the account (`adoptAccountFrom`) — zero register-throttle spend.
+- **Suites on `94d030d`:** backend **776/52** (774+2), ratchet **PASS 906**, analyze clean,
+  flutter **1375/10sk** (one run tripped the KNOWN `chat_input_bar_attachment_test` flake; clean on
+  re-run), wire **26/2sk** (25+1), both count verifiers OK, root `CLAUDE.md` §3 bumped (776 / 26).
+- **Spec:** two dated §12 amendments (deviceId-allocator decision record; cooldown carve-out).
+  The doc remains frozen — amendments add mechanism/rationale, change no protocol.
+
+## 7. Environment notes
+
+- Master moved to `cc8442b` — 0.1.17 shipped (PR #148 reverts the #145 popover anchor).
+- A `fireplace-emu` stack (`C:\tmp\fp-emu`, detached HEAD at cc8442b) held ports 3000/5433
+  mid-session; owner approved stop-and-restore, but it was downed externally before I acted, and a
+  `fireplace-repro` stack also came and went. Check `docker ps` for squatters before assuming
+  `fireplace-0a-*` owns :3000. Backend took 210 s to reach healthy after `docker compose up -d`.
+- Phase 2 Stage 0 review dispatched at session end: three independent reviewers (coherence + §7
+  re-ratification / protection incl. the 5 research items / durability incl. migration 0016 shape).
