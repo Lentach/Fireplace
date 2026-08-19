@@ -40,6 +40,8 @@ import { ConversationNotificationPreference } from './conversation-notification-
 import { ConversationNotificationPreferencesModule } from './conversation-notification-preferences/conversation-notification-preferences.module';
 import { ProfilePhoto } from './users/profile-photo.entity';
 import { Device } from './key-bundles/device.entity';
+import { AccountAuthorization } from './key-bundles/account-authorization.entity';
+import { MessageEnvelope } from './messages/message-envelope.entity';
 @Module({
   imports: [
     // Load and validate environment variables
@@ -79,6 +81,8 @@ import { Device } from './key-bundles/device.entity';
           WebPushSubscription,
           RefreshToken,
           Device,
+          AccountAuthorization,
+          MessageEnvelope,
           KeyBundle,
           OneTimePreKey,
           IdentityChangeAudit,

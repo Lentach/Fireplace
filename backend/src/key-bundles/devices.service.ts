@@ -64,6 +64,41 @@ export class DevicesService {
     }
   }
 
+  /**
+   * Allocates the next deviceId of an account (spec §12 Stage-0 amendment (a),
+   * migration 0016).
+   *
+   * ONE atomic UPDATE ... RETURNING: concurrent allocations serialize on the
+   * user row's lock, so two ceremonies can never be handed the same id. The
+   * allocated id is the PRE-increment value — the column starts at 2 (every
+   * existing account is single-device device 1), so the first allocation
+   * returns 2 (decision record F4's off-by-one rider).
+   *
+   * The counter is NEVER decremented: an aborted provisioning ceremony leaves
+   * a gap, and gaps are expected and safe — the invariant is
+   * monotonic-never-reused, not dense (spec §12 Stage-0 amendment (a)).
+   * Callers arrive in T3 (`openProvisioning` memoizes one allocation per
+   * provisioningId) and in T6 (§6.2 reset never re-mints device 1).
+   */
+  async allocateDeviceId(userId: number): Promise<number> {
+    // repo.query() returns [rows, rowCount] for UPDATE ... RETURNING
+    // (backend/CLAUDE.md §4) — reading the bare result would be the rows
+    // ARRAY, the trap that broke OTP claims once already.
+    const [rows] = await this.deviceRepo.query<
+      [Array<{ allocatedId: number }>, number]
+    >(
+      `UPDATE users
+          SET "nextDeviceId" = "nextDeviceId" + 1
+        WHERE id = $1
+        RETURNING "nextDeviceId" - 1 AS "allocatedId"`,
+      [userId],
+    );
+    if (rows.length === 0) {
+      throw new Error(`allocateDeviceId: user ${userId} not found`);
+    }
+    return rows[0].allocatedId;
+  }
+
   /** Every device of an account, oldest first. Revoked rows included. */
   async listForUser(userId: number): Promise<Device[]> {
     return this.deviceRepo.find({

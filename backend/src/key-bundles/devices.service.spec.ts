@@ -21,6 +21,7 @@ describe('DevicesService', () => {
       update: jest.fn().mockResolvedValue({ affected: 0 }),
       insert: jest.fn().mockResolvedValue({ identifiers: [] }),
       find: jest.fn().mockResolvedValue([]),
+      query: jest.fn().mockResolvedValue([[], 0]),
     };
     const module: TestingModule = await Test.createTestingModule({
       providers: [
@@ -79,5 +80,54 @@ describe('DevicesService', () => {
 
     await expect(service.touch(7)).resolves.toBeUndefined();
     expect(warnSpy).toHaveBeenCalledTimes(1);
+  });
+
+  describe('allocateDeviceId', () => {
+    // Real Postgres shape for UPDATE ... RETURNING: [rows, rowCount].
+    const returning = (allocatedId: number) => [[{ allocatedId }], 1];
+
+    it('returns the PRE-increment value (first allocation on a fresh column is 2)', async () => {
+      // The column starts at 2 (migration 0016 default: every existing
+      // account is single-device device 1), so the first allocated id IS 2 —
+      // decision record F4's off-by-one rider.
+      repo.query.mockResolvedValue(returning(2));
+
+      await expect(service.allocateDeviceId(7)).resolves.toBe(2);
+    });
+
+    it('two sequential allocations return N then N+1', async () => {
+      repo.query
+        .mockResolvedValueOnce(returning(2))
+        .mockResolvedValueOnce(returning(3));
+
+      await expect(service.allocateDeviceId(7)).resolves.toBe(2);
+      await expect(service.allocateDeviceId(7)).resolves.toBe(3);
+    });
+
+    it('throws when the user does not exist (0 rows updated)', async () => {
+      repo.query.mockResolvedValue([[], 0]);
+
+      await expect(service.allocateDeviceId(999)).rejects.toThrow(
+        /user.*999.*not found|not found.*999/i,
+      );
+    });
+
+    it('allocates in ONE atomic UPDATE ... RETURNING statement', async () => {
+      // The whole point of the allocator (spec §12 Stage-0 amendment (a)) is
+      // that concurrent allocations serialize on the row lock of a single
+      // statement — a read-then-write would hand two ceremonies the same id.
+      repo.query.mockResolvedValue(returning(2));
+
+      await service.allocateDeviceId(7);
+
+      expect(repo.query).toHaveBeenCalledTimes(1);
+      const [sql, params] = repo.query.mock.calls[0] as [string, unknown[]];
+      expect(sql).toContain('UPDATE');
+      expect(sql).toContain('"nextDeviceId" + 1');
+      expect(sql).toContain('RETURNING');
+      expect(sql).toContain('"nextDeviceId" - 1');
+      expect(sql).not.toContain('SELECT'); // no read-then-write
+      expect(params).toEqual([7]);
+    });
   });
 });

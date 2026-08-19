@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { TypeOrmModule } from '@nestjs/typeorm';
+import { AccountAuthorization } from './account-authorization.entity';
 import { Device } from './device.entity';
 import { KeyBundle } from './key-bundle.entity';
 import { OneTimePreKey } from './one-time-pre-key.entity';
@@ -16,6 +17,7 @@ import { IdentityResetService } from './identity-reset.service';
     // missing the second throws EntityMetadataNotFoundError at runtime while
     // every mocked unit test stays green (cost Phase 0a a live debug session).
     TypeOrmModule.forFeature([
+      AccountAuthorization,
       Device,
       KeyBundle,
       OneTimePreKey,
