@@ -611,4 +611,80 @@ that is the designed outcome).
   by a password change (rows carry no requester attribution, so cancelling could discard the
   owner's own in-flight 72 h wait), and a cooldown armed AFTER the password change still binds.
   A cooldown refusal now logs a `warn` (previously the branch logged nothing).
-- **Next gate:** Phase-2 spec-level review round at implementation time, per phase plan.
+- **Phase 2 Stage 0 review (2026-08-19, three independent reviewers: coherence + §7
+  re-ratification / protection / data-durability): PASS-WITH-AMENDMENTS.** Every §7 delta
+  re-ratified against the landed handlers; §8 compat re-verified under the landed OTP gate
+  ordering; the DH-bound §5.1 SAS CONFIRMED to subsume an m.sas.v1-style commitment round
+  (no /prototype needed for security — the argument rests on `ephPubN` being QR-only, see
+  amendment c); the cooldown carve-out CONFIRMED to grant an attacker nothing new. Full
+  finding-to-ticket map: `docs/plans/2026-08-19-phase2-stage0-decision-record.md`. The
+  following NORMATIVE amendments bind Phase 2 (doc remains frozen; amendments complete
+  mechanisms, none contradicts a frozen ruling):
+  - **(a) §5.1 allocator ordering + idempotency.** The SERVER runs the `nextDeviceId`
+    allocator exactly ONCE per `provisioningId` (memoized on the stage, allocated at
+    `openProvisioning`) and delivers the assigned id to the primary BEFORE the primary signs
+    `provisionDevice` — as drawn, the primary had no way to learn the id it must sign. The
+    allocated id is the PRE-increment value (`RETURNING "nextDeviceId" - 1`). A duplicated or
+    retried `provisionDevice` re-uses the memoized id, never re-allocates.
+    `provisioningComplete` consumes the stage via an atomic compare-and-set inside the ONE
+    commit transaction (two concurrent duplicates commit exactly one device row) and RETIRES
+    the `provisioningId` (no blob refetch after commit). An aborted ceremony does NOT
+    decrement the counter: gaps in the id space are expected and safe — the invariant is
+    monotonic-never-reused, not dense.
+  - **(b) §5.1 session rebind.** At `provisioningComplete` the server re-issues N's access +
+    refresh tokens BOUND to the assigned deviceId (`refresh_tokens.device_id`,
+    `createToken(userId, deviceId)` plumbing already landed in Phase 1); N MUST NOT upload key
+    material until its socket is authenticated under that id (every per-device wire path keys
+    off the JWT deviceId on the socket — a bundle uploaded before rebind would land on
+    device 1 and overwrite the primary's). `uploadKeyBundle`/`uploadOneTimePreKeys` for a
+    never-activated deviceId are rejected (§7 row already says so; this names it a T3
+    deliverable — today `DevicesService.touch` auto-inserts any presented id).
+  - **(c) §5.1 ephPubN is QR-only.** `ephPubN` MUST NEVER transit the server: not echoed in
+    the `openProvisioning` response, not in any relayed frame, not logged. The
+    no-commitment-round SAS soundness argument rests on the QR channel giving BOTH
+    authenticity AND confidentiality of `ephPubN`; a leak reopens the offline grind and would
+    force an m.sas.v1-style commitment round. `provisioningHello` pins the FIRST `ephPubP`
+    received (later hellos for the same stage rejected) and is accepted only from an
+    authenticated session of the account.
+  - **(d) Signature domain separation (§3/§6.1).** Every NEW signature construction carries an
+    explicit ASCII context prefix whose first byte ≠ 0x05, keeping it provably disjoint from
+    the FROZEN §6.1 registration-lock layout (`newIK(33, leading 0x05) ‖ utf8(userId) ‖ nonce`,
+    which stays byte-exact as landed): enrollment `E` signs
+    `"fp-enroll-v1\0" ‖ userId ‖ dakPub ‖ createdAt` under IK; the signed device list signs
+    `"fp-list-v1\0" ‖ listCanonical` under DAK; DAK rotation signs
+    `"fp-dak-rotate-v1\0" ‖ …` under the old DAK. Rationale: enrollment and §6.1 share sig_IK,
+    list and rotation share sig_DAK — without contexts, a signature minted for one
+    construction could reinterpret as another (the Matrix CVE-2022-39250 class). NEW
+    falsification 25: a signature minted for any one construction is REJECTED by every other
+    construction's verifier.
+  - **(e) §5.5 accept-side revocation.** Revocation is bidirectional: at decrypt time a peer
+    (and an own device, for self-sync envelopes) MUST verify the inbound envelope's
+    `originDeviceId` is present-and-not-revoked in the CURRENT DAK-signed device list and
+    FAIL CLOSED on absent/revoked; the revoked device's inbound pairwise session state is
+    dropped on the next staleness bounce. Falsification 7 extended: a message SENT by a
+    revoked device after revocation is refused at receive time, not just unrouted.
+  - **(f) §6.2 reset × device roster.** A completed reset (i) allocates the recovering
+    device's id from `users.nextDeviceId` — it NEVER re-mints device 1 (a fresh IK under a
+    reused id 1 would be positively served the old device 1's legacy ciphertext by the §5.3
+    fallback — the exact foreign-ratchet decrypt L269-272 forbids; post-reset pre-reset
+    history is `none_for_device` markers everywhere, per falsification 13's no-device-1
+    case); (ii) marks every surviving `devices` row revoked so the fresh device is the only
+    live one; (iii) replaces `account_authorizations` with the fresh enrollment, the list
+    version CONTINUING monotonically (never restarting at 1); (iv) leaves `users.nextDeviceId`
+    untouched. The `purgeSupersededDevices` widening that implements (ii)/(iii) belongs to
+    T6 (it is a device-list mutation), blocked on T1's columns — do NOT widen it inside T1.
+  - **(g) Migration `0016` determinism.** `message_envelopes` starts EMPTY — NO backfill of
+    pre-migration rows (they are served by the §5.3 device-gated legacy fallback; a backfilled
+    device-1 envelope would change which device fallback order 1 serves).
+    `account_authorizations` is NOT backfilled — rows appear lazily at enrollment,
+    first-write-wins. `message_envelopes.messageId` FK is `ON DELETE CASCADE` — this cascade
+    is the SOLE mechanism destroying never-fetched envelopes at the §5.6 deadline (every
+    landed destruction path is a DB DELETE on `messages`); `(recipientUserId,
+    recipientDeviceId)` carries NO FK to `devices` (envelopes outlive device-row lifecycle).
+    Single transaction, plain indexes, no `CONCURRENTLY` (§8), like `0015`.
+  - **(h) List freshness TTL: DEFERRED past Phase 2** (recorded so it is not silently
+    forgotten). A WhatsApp-style signed-list TTL only bounds a silent server-freeze window
+    while no honest message flows; §5.2's cross-check + I7 already collapse that window to
+    the first honest message, and sustaining a freeze degrades to plain DoS. At the ratified
+    cap-3 scale, version-stamp divergence detection suffices.
+- **Next gate:** per-ticket implementation reviews (T1–T8); Stage 0 is CLOSED 2026-08-19.

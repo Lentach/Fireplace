@@ -89,3 +89,30 @@ our tickets T1–T8 and the two decisions, with the four fully-cited reports as 
   `fireplace-0a-*` owns :3000. Backend took 210 s to reach healthy after `docker compose up -d`.
 - Phase 2 Stage 0 review dispatched at session end: three independent reviewers (coherence + §7
   re-ratification / protection incl. the 5 research items / durability incl. migration 0016 shape).
+
+## 8. Phase 2 Stage 0 — CLOSED, PASS-WITH-AMENDMENTS
+
+Three independent read-only reviewers at `94d030d` (coherence + §7 re-ratification / protection /
+data-durability). Normative output = the spec's §12 Stage-0 amendment block, items (a)–(h);
+the full finding-to-ticket map is `docs/plans/2026-08-19-phase2-stage0-decision-record.md`.
+
+- **Two gaps found independently twice** (the review earned its keep): §5.1's allocator ordering
+  (the primary signs an id the ceremony never delivers to it) and §6.2's reset-vs-roster hole
+  (reset re-minted device 1 — a fresh IK under a reused id 1 would be SERVED the old device 1's
+  legacy ciphertext by the §5.3 fallback; plus stale `devices` rows under a dead DAK list).
+- **Amendments (a)–(h):** allocator once-per-provisioningId at `openProvisioning`, PRE-increment
+  RETURNING, atomic one-shot complete, gaps-are-safe; session token rebind at
+  `provisioningComplete` before any key upload; `ephPubN` QR-only (the SAS soundness rests on it);
+  domain-separation prefixes `fp-enroll-v1\0` / `fp-list-v1\0` / `fp-dak-rotate-v1\0` + NEW
+  falsification 25; bidirectional revocation (receive-time origin-device check, fail closed,
+  falsification 7 extended); §6.2 reset allocates from `nextDeviceId`, revokes surviving rows,
+  fresh enrollment with monotonic list version; 0016 determinism (no backfills, envelope FK
+  ON DELETE CASCADE = the sole §5.6 destruction mechanism, no FK on the recipient-device pair);
+  list-TTL freshness DEFERRED past Phase 2 with rationale.
+- **CONFIRMED, do not re-review:** DH-bound SAS subsumes the m.sas.v1 commitment (no security
+  /prototype; UX prototype optional); cooldown carve-out gives an attacker nothing; every §7
+  delta composes with a named landed handler; §8 compat holds under the OTP gate ordering; all
+  five §5.4 own-sender guards located at their drifted paths; sendToken law composes with the
+  landed re-ack; I9/expiry need zero sweep changes once the CASCADE FK exists.
+- **Next:** T1 (migration 0016) under its decision-record riders; owner wants a fresh agent per
+  ticket, context cleared between, `/handoff` at boundaries.
