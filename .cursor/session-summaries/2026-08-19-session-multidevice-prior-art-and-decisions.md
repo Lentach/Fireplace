@@ -116,3 +116,27 @@ the full finding-to-ticket map is `docs/plans/2026-08-19-phase2-stage0-decision-
   landed re-ack; I9/expiry need zero sweep changes once the CASCADE FK exists.
 - **Next:** T1 (migration 0016) under its decision-record riders; owner wants a fresh agent per
   ticket, context cleared between, `/handoff` at boundaries.
+
+## 9. Live-fire of the carve-out in the REAL app (browser + docker, owner-authorized)
+
+Release build (`--dart-define=BASE_URL=http://127.0.0.1:3000`) served on a FRESH origin (:8091),
+account 193, every step a real UI click except the password change (production REST route):
+
+1. Login on the keyless origin → keyless banner, **no silent overwrite**; no upload even attempted.
+2. Consented re-mint → **lock REFUSED** (`storedPrefix=BTKvz9Dx56yY attemptedPrefix=BVVFJ/DuqMwR`)
+   and **ZERO OTP traffic** — pool stayed 20 rows under the OLD identity. The option-A gate live.
+3. Durable "keys not published" banner → phrase-first dialog → "Nie mam go" → **72 h ceremony**
+   (`ceremony started`, banner "za 71 godzin").
+4. Cancel → `ceremony cancelled`; request again → **`request refused by post-cancel cooldown`**
+   (the new warn line, from a real click).
+5. `POST /users/reset-password` (2614→**`Fireplace!2620`** — 193's password is now this;
+   `passwordChangedAt` 22:34:23) → app reload kicked to login (dead tokens) → re-login →
+   **same request now `pending`** (row 30) — THE CARVE-OUT, LIVE.
+6. Backdated deadline → real cron `delay elapsed, identity replacement authorized` → reload →
+   `completed ceremony consumed by identity upload` + `[identity-churn]
+   old=BTKvz9Dx56yY new=BVVFJ/DuqMwR` (the SAME key the lock refused in step 2, now authorized) +
+   **`Uploaded 100 one-time pre-keys` two seconds AFTER the publish** — publish-then-keys held.
+   Pool = 100 rows under the new identity; audit row written; banner gone.
+
+Traps re-confirmed: click `flt-semantics-placeholder` after EVERY reload or the tree is empty;
+the refusal snackbar is too transient for semantics sampling — backend logs are the ground truth.
