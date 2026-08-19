@@ -40,28 +40,32 @@ void main() {
       expect(provider.identityResetShortened, isFalse);
     });
 
-    test('a shortened ceremony is still surfaced, just with a nearer deadline',
-        () {
-      final deadline = DateTime.now().toUtc().add(const Duration(hours: 1));
+    test(
+      'a shortened ceremony is still surfaced, just with a nearer deadline',
+      () {
+        final deadline = DateTime.now().toUtc().add(const Duration(hours: 1));
 
-      provider.onIdentityResetPending({
-        'deadlineAt': deadline.toIso8601String(),
-        'shortened': true,
-        'occurredAt': DateTime.now().toUtc().toIso8601String(),
-      });
+        provider.onIdentityResetPending({
+          'deadlineAt': deadline.toIso8601String(),
+          'shortened': true,
+          'occurredAt': DateTime.now().toUtc().toIso8601String(),
+        });
 
-      expect(provider.identityResetDeadline, isNotNull);
-      expect(
-        provider.identityResetShortened,
-        isTrue,
-        reason: 'a recovery key shortens the wait; it never silences it',
-      );
-    });
+        expect(provider.identityResetDeadline, isNotNull);
+        expect(
+          provider.identityResetShortened,
+          isTrue,
+          reason: 'a recovery key shortens the wait; it never silences it',
+        );
+      },
+    );
 
     test('the cancelled broadcast clears the countdown', () {
       provider.onIdentityResetPending({
-        'deadlineAt':
-            DateTime.now().toUtc().add(const Duration(hours: 72)).toIso8601String(),
+        'deadlineAt': DateTime.now()
+            .toUtc()
+            .add(const Duration(hours: 72))
+            .toIso8601String(),
         'shortened': false,
       });
 
@@ -80,7 +84,10 @@ void main() {
       provider.requestIdentityReset();
 
       expect(emitted.single.event, 'resetIdentityRequest');
-      expect((emitted.single.data as Map).containsKey('recoveryPhrase'), isFalse);
+      expect(
+        (emitted.single.data as Map).containsKey('recoveryPhrase'),
+        isFalse,
+      );
     });
 
     test('requesting with a phrase forwards it once', () {
@@ -116,6 +123,109 @@ void main() {
       expect(provider.identityUploadLocked, isTrue);
     });
 
+    // Ordering contract (2026-08-19): one-time pre-keys are material FOR an
+    // identity, so they are emitted only after the server confirms that
+    // identity is published. Emitting both back to back raced them, the keys
+    // usually arrived first, and the server then had to judge key material
+    // against an identity that was still the OLD one.
+    test('stashed pre-keys are released only by a successful bundle ack', () {
+      provider.stashOneTimePreKeysForTest([
+        {'keyId': 0, 'publicKey': 'pk-0'},
+      ], 'epoch-2-identity');
+
+      expect(
+        emitted.where((e) => e.event == 'uploadOneTimePreKeys'),
+        isEmpty,
+        reason: 'nothing may be uploaded before the identity is published',
+      );
+
+      provider.onKeyBundleUploaded({'success': true});
+
+      final uploads = emitted
+          .where((e) => e.event == 'uploadOneTimePreKeys')
+          .toList();
+      expect(uploads, hasLength(1));
+      expect(
+        (uploads.single.data as Map)['identityPublicKey'],
+        'epoch-2-identity',
+      );
+
+      // Consumed exactly once — a later ack must not re-upload a spent batch.
+      provider.onKeyBundleUploaded({'success': true});
+      expect(
+        emitted.where((e) => e.event == 'uploadOneTimePreKeys'),
+        hasLength(1),
+      );
+    });
+
+    test('a refused bundle DROPS its pre-keys instead of depositing them', () {
+      provider.stashOneTimePreKeysForTest([
+        {'keyId': 0, 'publicKey': 'pk-0'},
+      ], 'unpublished-identity');
+
+      provider.onKeyBundleUploaded({
+        'success': false,
+        'error': 'identity_locked',
+      });
+
+      expect(
+        emitted.where((e) => e.event == 'uploadOneTimePreKeys'),
+        isEmpty,
+        reason:
+            'the account does not publish this identity, so its keys would '
+            'overwrite the pool the live identity is served from',
+      );
+
+      // And they are gone, not merely deferred: the next successful ack belongs
+      // to a different (published) identity.
+      provider.onKeyBundleUploaded({'success': true});
+      expect(emitted.where((e) => e.event == 'uploadOneTimePreKeys'), isEmpty);
+    });
+
+    test('publishing a REPLACED identity refills its empty pool', () async {
+      // The epoch purge empties the pool, and the reconnect re-upload that
+      // spends a completed ceremony carries no keys — so without this the
+      // recovered device publishes an identity nobody can open a session to
+      // with a one-time pre-key until the first peer fetch says `preKeysLow`.
+      final service = EncryptionService();
+      await service.initialize(31, checkServerBundleExists: () async => false);
+      final recovered = EncryptionProvider(service: service);
+      final sent = <({String event, dynamic data})>[];
+      recovered.setEmitCallback((event, data) {
+        sent.add((event: event, data: data));
+      });
+
+      recovered.onKeyBundleUploaded({'success': true, 'identityChanged': true});
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      final uploads = sent.where((e) => e.event == 'uploadOneTimePreKeys');
+      expect(
+        uploads,
+        hasLength(1),
+        reason: 'a freshly published identity must get its own pool',
+      );
+      expect((uploads.single.data as Map)['keys'], isNotEmpty);
+    });
+
+    test('a routine same-identity re-upload mints nothing', () async {
+      final service = EncryptionService();
+      await service.initialize(32, checkServerBundleExists: () async => false);
+      final steady = EncryptionProvider(service: service);
+      final sent = <({String event, dynamic data})>[];
+      steady.setEmitCallback((event, data) {
+        sent.add((event: event, data: data));
+      });
+
+      steady.onKeyBundleUploaded({'success': true, 'identityChanged': false});
+      await Future<void>.delayed(const Duration(milliseconds: 200));
+
+      expect(
+        sent.where((e) => e.event == 'uploadOneTimePreKeys'),
+        isEmpty,
+        reason: 'every connect re-uploads the bundle; that is not a new epoch',
+      );
+    });
+
     test('a successful upload clears the locked state', () {
       provider.onKeyBundleUploaded({
         'success': false,
@@ -126,30 +236,33 @@ void main() {
       expect(provider.identityUploadLocked, isFalse);
     });
 
-    test('the upload that REPLACED the identity is marked as our own work',
-        () async {
-      final service = EncryptionService();
-      final own = EncryptionProvider(service: service);
+    test(
+      'the upload that REPLACED the identity is marked as our own work',
+      () async {
+        final service = EncryptionService();
+        final own = EncryptionProvider(service: service);
 
-      // The designed recovery path: the immediate self-publish is refused, the
-      // ceremony runs, and the upload that finally lands is a later routine
-      // re-upload. The server says that one changed the identity, which is the
-      // only signal tying the audit row to this device.
-      own.onKeyBundleUploaded({'success': false, 'error': 'identity_locked'});
-      own.onKeyBundleUploaded({'success': true, 'identityChanged': true});
-      await Future<void>.delayed(Duration.zero);
+        // The designed recovery path: the immediate self-publish is refused, the
+        // ceremony runs, and the upload that finally lands is a later routine
+        // re-upload. The server says that one changed the identity, which is the
+        // only signal tying the audit row to this device.
+        own.onKeyBundleUploaded({'success': false, 'error': 'identity_locked'});
+        own.onKeyBundleUploaded({'success': true, 'identityChanged': true});
+        await Future<void>.delayed(Duration.zero);
 
-      await service.recordOwnIdentityReplacedFromServer(
-        DateTime.now().toUtc().toIso8601String(),
-      );
+        await service.recordOwnIdentityReplacedFromServer(
+          DateTime.now().toUtc().toIso8601String(),
+        );
 
-      expect(
-        service.ownIdentityReplacedAt,
-        isNull,
-        reason: 'warning a user about the recovery they just performed trains '
-            'them to dismiss the alarm that catches a real takeover',
-      );
-    });
+        expect(
+          service.ownIdentityReplacedAt,
+          isNull,
+          reason:
+              'warning a user about the recovery they just performed trains '
+              'them to dismiss the alarm that catches a real takeover',
+        );
+      },
+    );
 
     test('a routine same-identity re-upload claims nothing', () async {
       final service = EncryptionService();
@@ -186,8 +299,10 @@ void main() {
 
     test('an explicit null clears a stale local countdown', () {
       provider.onIdentityResetPending({
-        'deadlineAt':
-            DateTime.now().toUtc().add(const Duration(hours: 72)).toIso8601String(),
+        'deadlineAt': DateTime.now()
+            .toUtc()
+            .add(const Duration(hours: 72))
+            .toIso8601String(),
         'shortened': false,
       });
 
@@ -234,15 +349,17 @@ void main() {
       expect(provider.identityResetDeadline, isNull);
     });
 
-    test('an older server answer (no 0b fields) keeps the UNKNOWN invariant',
-        () async {
-      // Absent fields must not be read as "nothing pending" for key generation
-      // purposes: `exists` still drives that decision, unchanged from 0.1.10.
-      provider.onOwnKeyBundleStatus({'exists': true});
+    test(
+      'an older server answer (no 0b fields) keeps the UNKNOWN invariant',
+      () async {
+        // Absent fields must not be read as "nothing pending" for key generation
+        // purposes: `exists` still drives that decision, unchanged from 0.1.10.
+        provider.onOwnKeyBundleStatus({'exists': true});
 
-      expect(provider.identityResetDeadline, isNull);
-      expect(provider.identityResetCompleted, isFalse);
-    });
+        expect(provider.identityResetDeadline, isNull);
+        expect(provider.identityResetCompleted, isFalse);
+      },
+    );
 
     test('a payload that omits the field leaves a live countdown alone', () {
       provider.onIdentityResetPending({
@@ -295,33 +412,37 @@ void main() {
       expect(service.ownIdentityReplacedAt, isNull);
     });
 
-    test('a NEWER replacement still alarms after an earlier dismissal',
-        () async {
-      final service = EncryptionService();
-      await service.recordOwnIdentityReplaced('2026-08-18T00:00:00.000Z');
-      await service.dismissOwnIdentityReplaced();
+    test(
+      'a NEWER replacement still alarms after an earlier dismissal',
+      () async {
+        final service = EncryptionService();
+        await service.recordOwnIdentityReplaced('2026-08-18T00:00:00.000Z');
+        await service.dismissOwnIdentityReplaced();
 
-      await service.recordOwnIdentityReplacedFromServer(
-        '2026-08-19T00:00:00.000Z',
-      );
+        await service.recordOwnIdentityReplacedFromServer(
+          '2026-08-19T00:00:00.000Z',
+        );
 
-      expect(service.ownIdentityReplacedAt, '2026-08-19T00:00:00.000Z');
-    });
+        expect(service.ownIdentityReplacedAt, '2026-08-19T00:00:00.000Z');
+      },
+    );
 
-    test('a replacement THIS device published is not replayed back at it',
-        () async {
-      // The recovery case: a fresh install completes a ceremony, publishes new
-      // keys, and reconnects. The server dutifully reports the audit row it
-      // just wrote — but warning the user about the recovery they themselves
-      // performed, on an install with no dismissal history, is a false alarm.
-      final service = EncryptionService();
-      await service.markOwnIdentityPublished();
+    test(
+      'a replacement THIS device published is not replayed back at it',
+      () async {
+        // The recovery case: a fresh install completes a ceremony, publishes new
+        // keys, and reconnects. The server dutifully reports the audit row it
+        // just wrote — but warning the user about the recovery they themselves
+        // performed, on an install with no dismissal history, is a false alarm.
+        final service = EncryptionService();
+        await service.markOwnIdentityPublished();
 
-      await service.recordOwnIdentityReplacedFromServer(
-        DateTime.now().toUtc().toIso8601String(),
-      );
+        await service.recordOwnIdentityReplacedFromServer(
+          DateTime.now().toUtc().toIso8601String(),
+        );
 
-      expect(service.ownIdentityReplacedAt, isNull);
-    });
+        expect(service.ownIdentityReplacedAt, isNull);
+      },
+    );
   });
 }

@@ -67,6 +67,7 @@ describe('KeyBundlesService', () => {
     // explicitly, which keeps the locked case the default everywhere.
     identityResetService = {
       consumeCompletedReset: jest.fn().mockResolvedValue(false),
+      getStatusForUser: jest.fn().mockResolvedValue(null),
     };
 
     const module: TestingModule = await Test.createTestingModule({
@@ -374,12 +375,24 @@ describe('KeyBundlesService', () => {
     ];
 
     it('upserts on (userId,deviceId,keyId) and tags rows with the explicit identity', async () => {
+      // The tag must match what the account actually publishes — see the
+      // refusal test below for why an unpublished tag is not key material the
+      // account can ever serve.
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 5,
+        deviceId: 1,
+        identityPublicKey: 'epoch-2-identity',
+      });
       otpRepo.upsert.mockResolvedValue({ raw: [] });
 
       await service.uploadOneTimePreKeys(5, keys, 'epoch-2-identity');
 
-      // No bundle lookup needed — the client supplied the identity tag.
-      expect(keyBundleRepo.findOne).not.toHaveBeenCalled();
+      // Account-scoped lookup: every device shares one IK (§3), so the lowest
+      // device's row IS the account identity.
+      expect(keyBundleRepo.findOne).toHaveBeenCalledWith({
+        where: { userId: 5 },
+        order: { deviceId: 'ASC' },
+      });
       expect(otpRepo.save).not.toHaveBeenCalled();
       expect(otpRepo.upsert).toHaveBeenCalledWith(
         [
@@ -404,6 +417,89 @@ describe('KeyBundlesService', () => {
         // and neither upload may overwrite the other's private half.
         { conflictPaths: ['userId', 'deviceId', 'keyId'] },
       );
+    });
+
+    // Proven live 2026-08-18: the lock refused a session's identity and the
+    // very same session still deposited 20 OTPs into the account's device-1
+    // slots, overwriting the legitimate device's keyId 0..19 and stamping them
+    // with the REFUSED identity. Those rows are unservable (the fetch filter
+    // pins the published identity) but the victim's pool is emptied until a
+    // peer fetch triggers preKeysLow. Publishing an identity is locked, so
+    // depositing key material under one must be too (§5.1).
+    it('refuses one-time pre-keys tagged with an identity the account has not published', async () => {
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 5,
+        deviceId: 1,
+        identityPublicKey: 'published-identity',
+      });
+
+      await expect(
+        service.uploadOneTimePreKeys(5, keys, 'refused-identity'),
+      ).rejects.toMatchObject({ message: 'identity_locked' });
+
+      // Nothing written and nothing destroyed: the legitimate pool survives.
+      expect(otpRepo.upsert).not.toHaveBeenCalled();
+      expect(otpRepo.delete).not.toHaveBeenCalled();
+      expect(otpRepo.createQueryBuilder).not.toHaveBeenCalled();
+    });
+
+    it('accepts a first upload that races its own key bundle (nothing published yet)', async () => {
+      // The client emits uploadKeyBundle and uploadOneTimePreKeys back to back
+      // and socket.io does not await handlers, so the OTP upload can win. With
+      // no published identity there is no victim, and refusing here would
+      // break every fresh registration.
+      keyBundleRepo.findOne.mockResolvedValue(null);
+      otpRepo.upsert.mockResolvedValue({ raw: [] });
+
+      await service.uploadOneTimePreKeys(5, keys, 'epoch-1-identity');
+
+      expect(otpRepo.upsert).toHaveBeenCalledTimes(1);
+    });
+
+    it('accepts an in-flight authorized rotation whose bundle upsert has not landed yet', async () => {
+      // Same race, one step later in an account's life: a completed ceremony
+      // authorizes exactly one replacement, and the new epoch's OTPs may reach
+      // the server before the new bundle commits. Refusing here would strip
+      // the pool of the ONE flow that exists to rescue a user who lost their
+      // keys — the reset-completion path.
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 5,
+        deviceId: 1,
+        identityPublicKey: 'old-identity',
+      });
+      identityResetService.getStatusForUser.mockResolvedValue({
+        status: 'completed',
+        deadlineAt: new Date(),
+        shortened: false,
+      });
+      otpRepo.upsert.mockResolvedValue({ raw: [] });
+
+      await service.uploadOneTimePreKeys(5, keys, 'new-identity');
+
+      expect(otpRepo.upsert).toHaveBeenCalledTimes(1);
+      // Reading the grant must never spend it — the bundle upload does that.
+      expect(identityResetService.consumeCompletedReset).not.toHaveBeenCalled();
+    });
+
+    it('still refuses an unpublished tag while a ceremony is merely PENDING', async () => {
+      // A pending ceremony is an alarm, not an authorization: the countdown
+      // exists precisely so the owner can cancel it.
+      keyBundleRepo.findOne.mockResolvedValue({
+        userId: 5,
+        deviceId: 1,
+        identityPublicKey: 'published-identity',
+      });
+      identityResetService.getStatusForUser.mockResolvedValue({
+        status: 'pending',
+        deadlineAt: new Date(),
+        shortened: false,
+      });
+
+      await expect(
+        service.uploadOneTimePreKeys(5, keys, 'refused-identity'),
+      ).rejects.toMatchObject({ message: 'identity_locked' });
+
+      expect(otpRepo.upsert).not.toHaveBeenCalled();
     });
 
     it('rejects untagged OTP uploads instead of inferring the current identity epoch', async () => {

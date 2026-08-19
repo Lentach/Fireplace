@@ -572,12 +572,12 @@ class EncryptionProvider extends ChangeNotifier {
   Future<bool?> recordExists(int messageId) =>
       _encryptionService.recordExists(messageId);
 
-
   /// True when the raw replay cache can still serve [messageId] without any
   /// ratchet work. Delegates to [EncryptionService.rawReplayExists]. A missing
   /// `_decrypted_` record is NOT proof of loss while this answers true.
   Future<bool?> rawReplayExists(int messageId) =>
       _encryptionService.rawReplayExists(messageId);
+
   /// Batched persisted-plaintext lookup for a bounded id set (one cross-engine
   /// reload for the whole set). Delegates to
   /// [EncryptionService.getDecryptedContentMany] — see the safety note there
@@ -952,13 +952,18 @@ class EncryptionProvider extends ChangeNotifier {
             _e2eFlowLog('E2E_KEYS_UPLOAD_DEFERRED', {'reason': reason});
             return;
           }
+          // Publish the identity FIRST and let its ack release the keys: a
+          // one-time pre-key is material FOR an identity, so the server (which
+          // refuses keys tagged with an identity it does not publish) must
+          // never have to judge them before this device's own bundle landed.
+          // Emitting both back to back raced them — the keys frequently
+          // arrived first.
+          _stashOneTimePreKeyUpload(
+            (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
+            identity,
+          );
           _emit?.call('uploadKeyBundle', keyBundle);
-          _emit?.call('uploadOneTimePreKeys', {
-            'keys': (keys['oneTimePreKeys'] as List)
-                .cast<Map<String, dynamic>>(),
-            'identityPublicKey': identity,
-          });
-          debugPrint('[E2E] Uploaded key bundle + one-time pre-keys');
+          debugPrint('[E2E] Key bundle emitted; pre-keys wait for its ack');
           _e2eFlowLog('E2E_KEYS_UPLOADED', {});
         }
       } else {
@@ -1053,11 +1058,16 @@ class EncryptionProvider extends ChangeNotifier {
         // server's answer (`identityChanged`), not by a flag set here: under
         // the registration lock this very upload is usually REFUSED, and the
         // one that finally lands is a later reconnect re-upload.
+        // Keys follow the ack, never race it — and on this path the bundle is
+        // usually REFUSED by the lock, in which case the pre-keys must not
+        // land at all: they belong to an identity the account does not
+        // publish, and depositing them would overwrite the pool the still-live
+        // identity is serving from.
+        _stashOneTimePreKeyUpload(
+          (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
+          identity,
+        );
         _emit?.call('uploadKeyBundle', keyBundle);
-        _emit?.call('uploadOneTimePreKeys', {
-          'keys': (keys['oneTimePreKeys'] as List).cast<Map<String, dynamic>>(),
-          'identityPublicKey': identity,
-        });
       }
     }
     _e2eFlowLog('E2E_IDENTITY_RECOVERY_DONE', {'userId': userId});
@@ -1094,10 +1104,17 @@ class EncryptionProvider extends ChangeNotifier {
         _e2eFlowLog('KEY_BUNDLE_IDENTITY_LOCKED', {});
         E2ePersistentDiag.record('KEY_BUNDLE_IDENTITY_LOCKED', {});
         _identityUploadLocked = true;
+        // The pre-keys of an identity the account does not publish are dropped,
+        // never uploaded: peers can only be served material for the PUBLISHED
+        // identity, and depositing these would overwrite the pool the live
+        // identity is still serving from. They come back with the upload that
+        // finally lands (a completed ceremony), or via `preKeysLow`.
+        _dropStashedOneTimePreKeyUpload('identity_locked');
         notifyListeners();
         return;
       }
       debugPrint('[E2E] Key bundle upload refused: $error');
+      _dropStashedOneTimePreKeyUpload(error is String ? error : 'refused');
       return;
     }
     _identityUploadLocked = false;
@@ -1109,7 +1126,69 @@ class EncryptionProvider extends ChangeNotifier {
       unawaited(_encryptionService.markOwnIdentityPublished());
     }
     debugPrint('[E2E] Key bundle uploaded to server');
+    // The identity is published now, so its one-time pre-keys may follow.
+    final released = _flushStashedOneTimePreKeyUpload();
+    // A REPLACED identity starts with an empty pool: the upsert purges every
+    // row of the superseded epoch, and the reconnect re-upload that spends a
+    // completed ceremony carries no keys of its own. Left alone, the first peer
+    // to fetch this account gets a bundle with no one-time pre-key (weaker
+    // initial-message properties) and only THEN triggers `preKeysLow`. The
+    // device that just recovered is exactly the one that must not look
+    // half-published, so mint the new epoch's pool right here.
+    if (!released && data is Map && data['identityChanged'] == true) {
+      _replenishOneTimePreKeys(reason: 'identity_published');
+    }
   }
+
+  /// One-time pre-keys waiting for their identity to be published, plus the
+  /// identity that owns them. Replaced by a newer stash, consumed by the next
+  /// `keyBundleUploaded`, dropped when that answer is a refusal.
+  ///
+  /// A LOST ack loses nothing permanently: the next connect re-uploads the
+  /// bundle and the fresh ack releases whatever is stashed then, and a depleted
+  /// pool is refilled by `preKeysLow` on the first peer fetch.
+  Map<String, dynamic>? _pendingOneTimePreKeyUpload;
+
+  void _stashOneTimePreKeyUpload(
+    List<Map<String, dynamic>> keys,
+    String identityPublicKey,
+  ) {
+    _pendingOneTimePreKeyUpload = {
+      'keys': keys,
+      'identityPublicKey': identityPublicKey,
+    };
+  }
+
+  /// Emits the stashed batch, if any. Returns whether something was released,
+  /// so the caller can tell "keys already on their way" from "this epoch has no
+  /// pool yet".
+  bool _flushStashedOneTimePreKeyUpload() {
+    final pending = _pendingOneTimePreKeyUpload;
+    if (pending == null) return false;
+    _pendingOneTimePreKeyUpload = null;
+    _emit?.call('uploadOneTimePreKeys', pending);
+    final count = (pending['keys'] as List).length;
+    debugPrint('[E2E] Uploaded $count one-time pre-keys after the bundle ack');
+    _e2eFlowLog('OTP_UPLOAD_AFTER_ACK', {'count': count});
+    return true;
+  }
+
+  void _dropStashedOneTimePreKeyUpload(String reason) {
+    if (_pendingOneTimePreKeyUpload == null) return;
+    _pendingOneTimePreKeyUpload = null;
+    E2ePersistentDiag.record('OTP_UPLOAD_DROPPED', {'reason': reason});
+    _e2eFlowLog('OTP_UPLOAD_DROPPED', {'reason': reason});
+  }
+
+  /// Test-only: seeds the stash the way `initializeE2E` and the recovery path
+  /// do, so the ORDERING contract (keys wait for the bundle's ack, and a
+  /// refusal drops them) can be pinned without standing up a live socket and a
+  /// full Signal store.
+  @visibleForTesting
+  void stashOneTimePreKeysForTest(
+    List<Map<String, dynamic>> keys,
+    String identityPublicKey,
+  ) => _stashOneTimePreKeyUpload(keys, identityPublicKey);
 
   /// True once the server refused an identity replacement for this account.
   /// Cleared by a successful upload (which a completed ceremony enables).
@@ -1424,20 +1503,31 @@ class EncryptionProvider extends ChangeNotifier {
     }
   }
 
-  void onPreKeysLow(dynamic data) {
+  void onPreKeysLow(dynamic data) =>
+      _replenishOneTimePreKeys(reason: 'server_low');
+
+  /// Mints a fresh batch under the CURRENT identity and uploads it.
+  ///
+  /// Two callers, one invariant — the account must always have servable
+  /// one-time pre-keys for the identity it publishes: the server's `preKeysLow`
+  /// signal, and the moment a REPLACED identity gets published (whose pool the
+  /// upsert's epoch purge just emptied). Safe to call spuriously: the identity
+  /// is read fresh, `_generatingMoreKeys` collapses concurrent calls, and the
+  /// server refuses a batch tagged with an identity it does not publish.
+  void _replenishOneTimePreKeys({required String reason}) {
     if (_generatingMoreKeys) return;
     _generatingMoreKeys = true;
-    debugPrint('[E2E] Server reports pre-keys low, generating more...');
+    debugPrint('[E2E] Replenishing one-time pre-keys (reason=$reason)');
     Future<void>(() async {
           final identity = await _encryptionService
               .currentIdentityPublicKeyBase64();
           if (identity == null || identity.isEmpty) {
-            const reason = 'identity_epoch_required';
-            debugPrint('[E2E] OTP replenishment deferred: $reason');
+            const deferred = 'identity_epoch_required';
+            debugPrint('[E2E] OTP replenishment deferred: $deferred');
             E2ePersistentDiag.record('OTP_REPLENISH_DEFERRED', {
-              'reason': reason,
+              'reason': deferred,
             });
-            _e2eFlowLog('OTP_REPLENISH_DEFERRED', {'reason': reason});
+            _e2eFlowLog('OTP_REPLENISH_DEFERRED', {'reason': deferred});
             return;
           }
           final keys = await _encryptionService.generateMorePreKeys();
@@ -1445,7 +1535,13 @@ class EncryptionProvider extends ChangeNotifier {
             'keys': keys,
             'identityPublicKey': identity,
           });
-          debugPrint('[E2E] Uploaded ${keys.length} new one-time pre-keys');
+          debugPrint(
+            '[E2E] Uploaded ${keys.length} new one-time pre-keys ($reason)',
+          );
+          _e2eFlowLog('OTP_REPLENISHED', {
+            'count': keys.length,
+            'reason': reason,
+          });
         })
         .catchError((e) {
           debugPrint('[E2E] Failed to replenish pre-keys: $e');

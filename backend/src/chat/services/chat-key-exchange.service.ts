@@ -235,6 +235,19 @@ export class ChatKeyExchangeService {
     if (!userId) return;
 
     try {
+      // NOTE (open decision, 2026-08-19): the real client emits
+      // `uploadKeyBundle` and `uploadOneTimePreKeys` back to back without
+      // awaiting either, and the keys are frequently dispatched FIRST — pinned
+      // as production reality by `stale_otp_epoch_test.dart:72,76`. The service
+      // refuses a tag the account does not publish, so a signature-authorized
+      // rotation whose bundle has not landed yet is refused too and starts with
+      // an empty pool until the next peer fetch triggers `preKeysLow`. Two
+      // order-based rescues were tried and rejected: awaiting this socket's
+      // in-flight bundle upload after one macrotask (the trailing frame is
+      // dispatched later, so the marker is unset — proven insufficient), and a
+      // timed poll for it (makes a lock's verdict depend on wall-clock latency).
+      // The real fix is client-side ordering: publish the identity, THEN the
+      // keys. Owner decision pending.
       const dto = validateDto(UploadOneTimePreKeysDto, data);
       await this.keyBundlesService.uploadOneTimePreKeys(
         userId,
@@ -245,9 +258,18 @@ export class ChatKeyExchangeService {
       );
       client.emit('oneTimePreKeysUploaded', { count: dto.keys.length });
     } catch (error) {
-      this.logger.error(
-        `uploadOneTimePreKeys failed userId=${userId}: ${error.message}`,
-      );
+      if (error instanceof IdentityLockedError) {
+        // The lock did its job, so this is not a server fault: the caller's
+        // identity is not the one this account publishes. Same vocabulary as
+        // the bundle refusal — the route forward is the reset ceremony.
+        this.logger.warn(
+          `uploadOneTimePreKeys refused by registration lock userId=${userId}`,
+        );
+      } else {
+        this.logger.error(
+          `uploadOneTimePreKeys failed userId=${userId}: ${error.message}`,
+        );
+      }
       client.emit('error', {
         message: error?.message || 'Failed to upload one-time pre-keys',
       });

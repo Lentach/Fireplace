@@ -9,6 +9,7 @@ import { ConversationsService } from '../../conversations/conversations.service'
 import { PushNotificationsService } from '../../push-notifications/push-notifications.service';
 import { IdentityResetService } from '../../key-bundles/identity-reset.service';
 import { Socket, Server } from 'socket.io';
+import { Logger } from '@nestjs/common';
 
 describe('ChatKeyExchangeService', () => {
   let service: ChatKeyExchangeService;
@@ -315,6 +316,31 @@ describe('ChatKeyExchangeService', () => {
           message: expect.stringContaining('Validation failed'),
         }),
       );
+    });
+
+    it('reports a lock refusal as identity_locked and logs it as a guard, not a fault', async () => {
+      keyBundlesService.uploadOneTimePreKeys.mockRejectedValue(
+        new IdentityLockedError(),
+      );
+      const warnSpy = jest
+        .spyOn(Logger.prototype, 'warn')
+        .mockImplementation(() => undefined);
+      const errorSpy = jest
+        .spyOn(Logger.prototype, 'error')
+        .mockImplementation(() => undefined);
+
+      await service.handleUploadOneTimePreKeys(mockClient as Socket, validData);
+
+      expect(mockClient.emit).toHaveBeenCalledWith('error', {
+        message: 'identity_locked',
+      });
+      expect(warnSpy).toHaveBeenCalledWith(
+        expect.stringContaining('refused by registration lock'),
+      );
+      expect(errorSpy).not.toHaveBeenCalled();
+
+      warnSpy.mockRestore();
+      errorSpy.mockRestore();
     });
 
     it('should return early when client has no userId', async () => {

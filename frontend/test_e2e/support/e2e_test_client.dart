@@ -110,6 +110,23 @@ class EventLog {
   /// triggering the action, or it proves nothing.
   void discard(String event) => _buffer.remove(event);
 
+  /// Awaits an `error` payload whose text contains [marker] and takes it OFF
+  /// [errors].
+  ///
+  /// A refusal the test ASKED for is not an unexpected server error, but
+  /// `record` cannot tell the difference — so without this the end-of-run
+  /// "no unexpected socket errors" assertion would fail on every deliberate
+  /// refusal, and tests would be pushed into not asserting refusals at all.
+  Future<dynamic> takeError(String marker, {String? reason}) async {
+    final payload = await next(
+      'error',
+      where: (p) => p.toString().contains(marker),
+      reason: reason ?? 'error containing "$marker"',
+    );
+    errors.remove(payload);
+    return payload;
+  }
+
   /// Waits for the next [event] payload (optionally matching [where]).
   /// Buffered payloads are consumed first, in arrival order.
   Future<dynamic> next(
@@ -170,7 +187,6 @@ class EventLog {
       // No matching event arrived during the requested window.
     }
   }
-
 }
 
 /// One headless account running the real client service stack.
@@ -260,7 +276,10 @@ class E2eClient {
   /// Generates or loads this instance's Signal state and returns the exact
   /// public upload payload without touching the server.
   Future<Map<String, dynamic>> initializeKeys() async {
-    await encryption.initialize(userId, checkServerBundleExists: () async => false);
+    await encryption.initialize(
+      userId,
+      checkServerBundleExists: () async => false,
+    );
     final keys = encryption.getKeysForUpload();
     if (keys == null) {
       throw StateError(
@@ -341,9 +360,7 @@ class E2eClient {
     required String newIdentityPublicKeyBase64,
     required String nonceBase64,
   }) async {
-    final pair = IdentityKeyPair.fromSerialized(
-      base64Decode(signerPairBase64),
-    );
+    final pair = IdentityKeyPair.fromSerialized(base64Decode(signerPairBase64));
     final message = Uint8List.fromList([
       ...base64Decode(newIdentityPublicKeyBase64),
       ...utf8.encode(userId.toString()),
@@ -451,7 +468,9 @@ class E2eClient {
     dynamic socketReadyPayload;
     try {
       final firstError = await Future.any<dynamic>([
-        events.next('socketReady', reason: '$label socket auth').then((payload) {
+        events.next('socketReady', reason: '$label socket auth').then((
+          payload,
+        ) {
           socketReadyPayload = payload;
           return null;
         }),
@@ -470,7 +489,10 @@ class E2eClient {
   /// uploads bundle + one-time pre-keys over WS, exactly like
   /// EncryptionProvider does on first run.
   Future<void> initializeAndUploadKeys() async {
-    await encryption.initialize(userId, checkServerBundleExists: () async => false);
+    await encryption.initialize(
+      userId,
+      checkServerBundleExists: () async => false,
+    );
     final keys = encryption.getKeysForUpload();
     if (keys == null) {
       throw StateError(
@@ -576,6 +598,7 @@ class E2eClient {
     required String identityPublicKey,
     required List<int> keyIds,
     required String publicKeyPrefix,
+    String? expectRefusal,
   }) async {
     events.discard('oneTimePreKeysUploaded');
     socketService.socket!.emit('uploadOneTimePreKeys', <String, dynamic>{
@@ -586,6 +609,19 @@ class E2eClient {
           {'keyId': keyId, 'publicKey': '$publicKeyPrefix$keyId'},
       ],
     });
+    if (expectRefusal != null) {
+      await events.takeError(
+        expectRefusal,
+        reason: '$label device $deviceId OTP refusal',
+      );
+      // A refusal must not also ack: the keys were not stored.
+      await events.none(
+        'oneTimePreKeysUploaded',
+        within: const Duration(milliseconds: 750),
+        reason: '$label device $deviceId OTPs were refused',
+      );
+      return;
+    }
     await events.next(
       'oneTimePreKeysUploaded',
       reason: '$label device $deviceId OTPs',
@@ -699,11 +735,13 @@ class E2eClient {
     final requestId = 'e2e-${_randomHex(6)}';
     events.discard('servedMessageIds');
     socketService.getServedMessageIds(requestId, messageIds);
-    final payload = await events.next(
-      'servedMessageIds',
-      where: (p) => p is Map && p['requestId'] == requestId,
-      reason: '$label servedMessageIds',
-    ) as Map;
+    final payload =
+        await events.next(
+              'servedMessageIds',
+              where: (p) => p is Map && p['requestId'] == requestId,
+              reason: '$label servedMessageIds',
+            )
+            as Map;
     return {
       for (final id in payload['messageIds'] as List) (id as num).toInt(),
     };
