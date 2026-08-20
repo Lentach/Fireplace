@@ -60,7 +60,7 @@ Two mechanism gaps were found independently by two reviewers each:
 |---|---|
 | **T1** (0016) | Amendment (g) verbatim; allocator returns PRE-increment (durability F4); do NOT widen `purgeSupersededDevices` here (F11); pin context prefixes (d) wherever T1 stores signature inputs |
 | **T2** (signed list) | Context prefixes (d); falsification 25 |
-| **T3** (provisioning) | Amendments (a)(b)(c); never-activated-deviceId upload rejection is a NAMED deliverable (coherence F4 — `DevicesService.touch` auto-inserts today); optional SAS-UX /prototype |
+| **T3** (provisioning) | Amendments (a)(b)(c); never-activated-deviceId upload rejection is a NAMED deliverable (coherence F4 — `DevicesService.touch` auto-inserts today); optional SAS-UX /prototype; **T2-review riders:** land client-side NFC normalization of device names alongside the rename UI (the Dart canonical parser deliberately accepts non-NFC today — server is the sole storage gate and only stores NFC, so the client accepted-set is a safe superset until T3 writes names); DAK Keystore persistence (the T2 engine keeps the DAK pair in memory only); wire the T2 `DeviceAuthorityEngine` to the real enable-linking UI |
 | **T4** (envelopes/rooms) | `preKeysLow` is counted per-device but ROUTED per-user — route to `device:<uid>:<did>` (coherence F5); legacy fallback treats `originDeviceId IS NULL` as device 1 (durability F5a); red test that a device-2 bundle upload under the shared IK does not trip `[identity-churn]` (landmine 2, coherence F7); envelope stamps never enter expiry/read-TTL (durability F9); `updateDeliveryStatus` full-entity `save()` → column-scoped UPDATE (coherence F6, falsification 19); **T1-review rider:** `message_envelopes.recipientUserId` carries NO FK to `users` — when the T4 write path lands, confirm recipient-user deletion cannot orphan envelopes (their messages must cascade via the `messageId` FK) or add the FK then |
 | **T5** (self-sync/lost-ack) | Preserve `tempId != null` in the `history.dart:529` guard flip — dropping it lets a self-sync row consume a pending-send record (durability F6, falsification 6); keep re-ack-WITHOUT-re-fan when the retry path goes envelope-shaped (durability F7, falsification 14) |
 | **T6** (revocation) | Amendment (e) receive-time check + falsification 7 send-direction case; reset teardown widening of `purgeSupersededDevices` lands HERE, blocked on T1 columns (durability F11); I6 SILENCE is not yet in `handleGetServedMessageIds` (`chat.gateway.ts:223`) (durability F5b) |
@@ -85,3 +85,24 @@ empty, cascade proven live, concurrent allocations distinct, allocator returns t
 pre-increment value). Declared deviation accepted: `account_authorizations.enrollmentCreatedAt`
 stores the signed `createdAt` so peers can re-verify enrollment `E`. Next ticket: **T2**
 (signed device list + E2E cross-check) under its riders.
+
+## 7. T2 closure (2026-08-20)
+
+T2 landed at `6101774` (21 files, +3439). The implementing agent was killed by a rate limit
+after backend-green; the orchestrator finished the remainder (analyzer fixes, full suites,
+counts, formatting, commit). Per-ticket review: GATE PASS, zero BLOCKER/FIX, three P3 NOTEs
+(NFC asymmetry → T3 rider above; redundant double parse in `device-list.service.ts`
+enroll/apply — informational; falsifications 16/22 deferral CONFIRMED spec-justified — both
+consume `senderListInfo`/`deviceListStale`, which exist only with envelope sends, T4/T5).
+Delivered: enrollment (first-write-wins via `userId` PK INSERT + 23505 → `already_enrolled`),
+byte-exact `listCanonical` storage with parse-then-reencode ambiguity rejection, version law
+with atomic CAS (`stale_version`), wire surface `enrollDeviceAuthority`/`updateDeviceList`/
+`getDeviceList` → `deviceAuthorityEnrolled`/`deviceListUpdated`/`deviceList` +
+`deviceListChanged` broadcast, cross-construction rejection pinned BOTH directions against the
+frozen §6.1 layout with real-Dart vectors (falsification 25), client I7 chain verifier with
+buffer-copy discipline, `DeviceAuthorityEngine` (harness-driven, no UI, DAK in-memory — T3
+persists it). Verified by the orchestrator: backend **850/55**, flutter **1405/10sk**, wire
+**32/2sk**, ratchet 906, analyze clean, both verifiers OK. New flake sighting (2nd class):
+`test/services/unread_badge_sync_test.dart` "falls back to the window Badging API" failed once
+under back-to-back suite load, green on two other full runs — pre-existing, not T2's.
+Next ticket: **T3** (provisioning two-round DH-bound SAS) under amendments (a)(b)(c) + riders.
