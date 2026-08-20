@@ -88,6 +88,7 @@ dependencies:
   # pointycastle as a dev dep), so this is promotion, not a new pin.
   crypto: ^3.0.0
   pointycastle: ^4.0.0
+  qr_flutter: ^4.1.0
 
 dependency_overrides:
   record_linux: ^1.3.0

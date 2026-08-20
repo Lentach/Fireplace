@@ -24,6 +24,11 @@ class EncryptionProvider extends ChangeNotifier {
 
   // ---------- E2E Encryption State ----------
   final EncryptionService _encryptionService;
+
+  /// The one EncryptionService instance, for the §5.1 link ceremony's
+  /// identity gateway (services/device_link). Screens must not use this to
+  /// bypass provider state.
+  EncryptionService get encryptionService => _encryptionService;
   bool _e2eInitialized = false;
   final Map<int, Completer<Map<String, dynamic>>> _pendingPreKeyFetches = {};
   bool _generatingMoreKeys = false;

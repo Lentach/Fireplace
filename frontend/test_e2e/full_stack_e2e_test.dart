@@ -33,6 +33,7 @@
 import 'dart:convert';
 import 'dart:typed_data';
 
+import 'package:fireplace/services/device_link/link_crypto.dart';
 import 'package:fireplace/services/device_list/device_authority_engine.dart';
 import 'package:fireplace/services/device_list/device_list_canonical.dart';
 import 'package:flutter_secure_storage/flutter_secure_storage.dart';
@@ -54,6 +55,10 @@ void main() {
   late E2eClient alice;
   late E2eClient bob;
   late int conversationId;
+  // Shared by the T2 device-list group (which enrolls alice) and the T3
+  // provisioning group (which signs later mutations): the DAK private key
+  // exists ONLY inside this engine instance.
+  final engine = DeviceAuthorityEngine();
 
   /// Asserts the `"{type}:{base64}"` wire format and returns the type
   /// (3 = PreKeySignalMessage, 2 = SignalMessage/whisper).
@@ -903,7 +908,6 @@ void main() {
     // bob (verifying peer): the register throttle budget is spent
     // (10/hr/IP across the suite), so NO new accounts here.
     group('DAK-signed device list (Phase 2 T2)', () {
-      final engine = DeviceAuthorityEngine();
       late IdentityKeyPair aliceIdentity;
       late int enrolledCreatedAt;
       late Map<String, dynamic> enrollPayload;
@@ -1228,6 +1232,486 @@ void main() {
         final bobOwn = await bob.fetchDeviceList(bob.userId);
         expect(bobOwn['authorization'], isNull);
       }, timeout: const Timeout(Duration(minutes: 1)));
+    });
+
+    // Phase 2 T3 (spec §5.1 + §12 amendments (a)-(c)/(i)-(iv)): the
+    // provisioning ceremony — two-round DH-bound SAS, secrets last,
+    // two-phase commit. Falsifications 8 (session-bound one-shot complete),
+    // 18 (two-phase kill + abort), 20 (concurrent double-link) and the
+    // amendment (a) idempotency extensions. Reuses alice (the T2 group left
+    // her ENROLLED and the shared `engine` holds her real DAK) — the
+    // register throttle budget is spent, so the "new device" is a second
+    // authenticated session of her account (adoptAccountFrom), exactly the
+    // §5.1 shape: N is logged in, deviceId pending.
+    group('provisioning ceremony (Phase 2 T3 §5.1)', () {
+      late IdentityKeyPair aliceIdentity;
+
+      setUpAll(() async {
+        aliceIdentity = IdentityKeyPair.fromSerialized(
+          base64Decode(await alice.exportIdentityPair()),
+        );
+      });
+
+      /// Alice's authorization as the server currently serves it.
+      Future<Map<String, dynamic>> currentAuth() async {
+        final own = await alice.fetchDeviceList(alice.userId);
+        return (own['authorization'] as Map).cast<String, dynamic>();
+      }
+
+      /// DAK-signs the STORED list plus one new entry for [deviceId]
+      /// (platform label, NO name — amendment (i)) at version stored+1.
+      Future<Map<String, dynamic>> signAddedDevice(int deviceId) async {
+        final auth = await currentAuth();
+        final stored = parseCanonicalDeviceList(
+          base64Decode(auth['listCanonical'] as String),
+        );
+        return engine.signList(
+          DeviceList(
+            userId: alice.userId,
+            version: stored.version + 1,
+            devices: [
+              ...stored.devices,
+              DeviceListEntry(
+                deviceId: deviceId,
+                platform: 'harness',
+                addedAtMs: DateTime.now().millisecondsSinceEpoch,
+              ),
+            ],
+          ),
+        );
+      }
+
+      /// The IK-bearing blob payload the primary seals for the new device.
+      LinkBlobPayload blobPayloadFor(int deviceId, Map<String, dynamic> auth) =>
+          LinkBlobPayload(
+            userId: alice.userId,
+            deviceId: deviceId,
+            ikPub: base64Encode(aliceIdentity.getPublicKey().serialize()),
+            ikPriv: base64Encode(aliceIdentity.getPrivateKey().serialize()),
+            dakPub: auth['dakPub'] as String,
+            enrollmentCreatedAt: auth['enrollmentCreatedAt'] as int,
+            enrollmentSig: auth['enrollmentSig'] as String,
+          );
+
+      test('full link: open → OOB code → hello → equal SAS → staged blob+list '
+          '→ one-shot session-bound commit → rebind → keys land on the new '
+          'device, device 1 untouched (§5.1, falsification 8, amendments '
+          '(a)/(b)/(iii))', () async {
+        final n = E2eClient('linkN', baseUrl);
+        n.adoptAccountFrom(alice);
+        await n.connectSocket();
+        addTearDown(n.dispose);
+
+        // Device 1's bundle as served BEFORE the ceremony: the primary's key
+        // material must be byte-identical after N uploads its own.
+        final deviceOneBefore = await bob.fetchBundleFor(
+          alice.userId,
+          deviceId: 1,
+        );
+
+        // N opens. The answer carries NO deviceId — N learns its id from the
+        // decrypted blob only (amendment (a)).
+        final ephN = generateLinkEphemeral();
+        final opened = await n.openProvisioning();
+        expect(opened['success'], isTrue, reason: '$opened');
+        expect(opened.containsKey('deviceId'), isFalse);
+        final provisioningId = opened['provisioningId'] as String;
+
+        // The OOB code round-trips ephPubN WITHOUT the server (amendment
+        // (c)): this string is the only channel it ever travels.
+        final code = LinkOobCode(
+          provisioningId: provisioningId,
+          ephPubN: linkEphemeralPublicBytes(ephN),
+          platform: 'harness',
+        ).encode();
+        final scanned = LinkOobCode.tryParse(code);
+        expect(scanned, isNotNull);
+        expect(scanned!.provisioningId, provisioningId);
+
+        // Primary hello: the ack is how the primary learns the id it must
+        // sign; the relay reaches N's opener socket.
+        final ephP = generateLinkEphemeral();
+        final ephPubP = base64Encode(linkEphemeralPublicBytes(ephP));
+        final ack = await alice.provisioningHello(
+          provisioningId: provisioningId,
+          ephPubP: ephPubP,
+        );
+        expect(ack['success'], isTrue, reason: '$ack');
+        final assignedId = ack['deviceId'] as int;
+        expect(assignedId, greaterThanOrEqualTo(2));
+        final relayed = await n.events.next(
+          'provisioningHello',
+          where: (p) => p is Map && p['provisioningId'] == provisioningId,
+          reason: 'hello relay to the opener socket',
+        );
+        expect((relayed as Map)['ephPubP'], ephPubP);
+
+        // Idempotency (amendment (a)): the SAME ephemeral re-acks success
+        // with the SAME memoized id; a DIFFERENT one is refused.
+        final retried = await alice.provisioningHello(
+          provisioningId: provisioningId,
+          ephPubP: ephPubP,
+        );
+        expect(retried['success'], isTrue);
+        expect(retried['deviceId'], assignedId);
+        final rogue = await alice.provisioningHello(
+          provisioningId: provisioningId,
+          ephPubP: base64Encode(
+            linkEphemeralPublicBytes(generateLinkEphemeral()),
+          ),
+        );
+        expect(rogue['success'], isFalse);
+        expect(rogue['error'], 'ephemeral_already_pinned');
+
+        // Both sides derive the SAS from their OWN DH computation over the
+        // pinned transcript — equal, and formatted for humans (§12 (ii)).
+        final transcript = linkTranscript(
+          provisioningId: provisioningId,
+          ephPubN: scanned.ephPubN,
+          ephPubP: base64Decode(ephPubP),
+        );
+        final sdhP = linkSharedSecret(
+          theirEphPub: scanned.ephPubN,
+          ownEphPriv: ephP.privateKey,
+        );
+        final sdhN = linkSharedSecret(
+          theirEphPub: base64Decode(relayed['ephPubP'] as String),
+          ownEphPriv: ephN.privateKey,
+        );
+        final sasP = deriveLinkSas(sharedSecret: sdhP, transcript: transcript);
+        final sasN = deriveLinkSas(sharedSecret: sdhN, transcript: transcript);
+        expect(sasP, sasN, reason: 'both humans must read the same code');
+        expect(sasP, matches(RegExp(r'^\d{3} \d{3}$')));
+
+        // Primary approves: blob under the SAS-verified secret + the signed
+        // v+1 list adding EXACTLY the assigned id. N receives the blob push.
+        final auth = await currentAuth();
+        final versionBefore = auth['listVersion'] as int;
+        final blob = sealLinkBlob(
+          keys: deriveLinkBlobKeys(sharedSecret: sdhP, transcript: transcript),
+          payload: blobPayloadFor(assignedId, auth),
+        );
+        final staged = await signAddedDevice(assignedId);
+        final acked = await alice.provisionDevice({
+          'provisioningId': provisioningId,
+          'blob': base64Encode(blob),
+          'listCanonical': staged['listCanonical'],
+          'listSignature': staged['listSignature'],
+        });
+        expect(acked['success'], isTrue, reason: '$acked');
+        final pushed = await n.events.next(
+          'provisioningBlob',
+          where: (p) => p is Map && p['provisioningId'] == provisioningId,
+          reason: 'blob push to the opener socket',
+        );
+
+        // N opens the blob under ITS OWN derivation: the identity, the DAK
+        // pin, and the assigned id arrive intact (secrets-last, I3) — and N
+        // can re-verify its own enrollment chain from the blob alone.
+        final payload = openLinkBlob(
+          keys: deriveLinkBlobKeys(sharedSecret: sdhN, transcript: transcript),
+          blob: base64Decode((pushed as Map)['blob'] as String),
+        );
+        expect(payload.deviceId, assignedId);
+        expect(payload.userId, alice.userId);
+        expect(
+          payload.ikPub,
+          base64Encode(aliceIdentity.getPublicKey().serialize()),
+        );
+        expect(payload.dakPub, auth['dakPub']);
+        expect(
+          verifyEnrollmentSignature(
+            identityPubSerialized: base64Decode(payload.ikPub),
+            userId: payload.userId,
+            dakPubSerialized: base64Decode(payload.dakPub),
+            createdAtMs: payload.enrollmentCreatedAt,
+            signature: base64Decode(payload.enrollmentSig),
+          ),
+          isTrue,
+          reason: 'N re-verifies IK→E→DAK from the blob fields',
+        );
+
+        // Falsification 8: a complete from ANOTHER session of the same
+        // account — authenticated, primary, knows the id — is refused.
+        final foreign = await alice.provisioningComplete(provisioningId);
+        expect(foreign['success'], isFalse);
+        expect(foreign['error'], 'not_opener');
+
+        // One-shot commit on the opener socket. The deviceId-bound token
+        // pair travels in the answer (amendments (b)/(iii)).
+        alice.events.discard('deviceListChanged');
+        final completed = await n.provisioningComplete(provisioningId);
+        expect(completed['success'], isTrue, reason: '$completed');
+        expect(completed['deviceId'], assignedId);
+        final rebindToken = completed['access_token'] as String;
+        expect(completed['refresh_token'], isA<String>());
+        expect(rebindToken, isNot(alice.accessToken));
+
+        // The stage is retired, not forgotten: a duplicate complete is
+        // answered as such, and the blob can NEVER be re-fetched after
+        // commit (amendment (a)).
+        final duplicate = await n.provisioningComplete(provisioningId);
+        expect(duplicate['success'], isFalse);
+        expect(duplicate['error'], 'already_completed');
+        final refetch = await n.fetchProvisioningBlobAnswer(provisioningId);
+        expect(refetch['error'], 'no_blob');
+
+        // Every session of the account learns about the committed mutation,
+        // and the list advanced by exactly the staged bytes.
+        final changed = await alice.events.next(
+          'deviceListChanged',
+          where: (p) => p is Map && p['listVersion'] == versionBefore + 1,
+          reason: 'commit broadcast',
+        );
+        expect((changed as Map)['userId'], alice.userId);
+        final after = await currentAuth();
+        expect(after['listVersion'], versionBefore + 1);
+        expect(after['listCanonical'], staged['listCanonical']);
+
+        // Rebind (amendment (b)): N reconnects under the deviceId-bound
+        // token and only THEN uploads key material — which lands on ITS
+        // device (the session id rules; the payload id is ignored).
+        n.socketService.disconnect();
+        n.accessToken = rebindToken;
+        await n.connectSocket();
+        final uploaded = await n.uploadDeviceKeyBundle(
+          deviceId: assignedId,
+          identityPublicKey: deviceOneBefore['identityPublicKey'] as String,
+          registrationId: 7777,
+        );
+        expect(uploaded['success'], isTrue, reason: '$uploaded');
+        await n.uploadDeviceOneTimePreKeys(
+          deviceId: assignedId,
+          identityPublicKey: deviceOneBefore['identityPublicKey'] as String,
+          keyIds: const [0, 1],
+          publicKeyPrefix: 'link-n-otp-',
+        );
+        final deviceN = await bob.fetchBundleFor(
+          alice.userId,
+          deviceId: assignedId,
+        );
+        expect(deviceN['registrationId'], 7777);
+
+        // The primary's device-1 bundle is untouched by all of it.
+        final deviceOneAfter = await bob.fetchBundleFor(
+          alice.userId,
+          deviceId: 1,
+        );
+        expect(
+          deviceOneAfter['identityPublicKey'],
+          deviceOneBefore['identityPublicKey'],
+        );
+        expect(
+          deviceOneAfter['registrationId'],
+          deviceOneBefore['registrationId'],
+        );
+        expect(
+          deviceOneAfter['signedPreKeyPublic'],
+          deviceOneBefore['signedPreKeyPublic'],
+        );
+      }, timeout: const Timeout(Duration(minutes: 3)));
+
+      test('two-phase kill: no complete → nothing committed, blob '
+          're-fetchable by the opener ONLY; cancel discards the stage '
+          '(falsification 18, §5.1 abort hygiene)', () async {
+        final n = E2eClient('linkAbort', baseUrl);
+        n.adoptAccountFrom(alice);
+        await n.connectSocket();
+        addTearDown(n.dispose);
+
+        // An unenrolled account cannot even open (§5.1 needs a pinned DAK).
+        final unenrolled = await bob.openProvisioning();
+        expect(unenrolled['success'], isFalse);
+        expect(unenrolled['error'], 'not_enrolled');
+
+        final ephN = generateLinkEphemeral();
+        final opened = await n.openProvisioning();
+        expect(opened['success'], isTrue, reason: '$opened');
+        final provisioningId = opened['provisioningId'] as String;
+        final ephP = generateLinkEphemeral();
+        final ephPubP = base64Encode(linkEphemeralPublicBytes(ephP));
+        final ack = await alice.provisioningHello(
+          provisioningId: provisioningId,
+          ephPubP: ephPubP,
+        );
+        expect(ack['success'], isTrue, reason: '$ack');
+        final assignedId = ack['deviceId'] as int;
+
+        final transcript = linkTranscript(
+          provisioningId: provisioningId,
+          ephPubN: linkEphemeralPublicBytes(ephN),
+          ephPubP: base64Decode(ephPubP),
+        );
+        final sdh = linkSharedSecret(
+          theirEphPub: linkEphemeralPublicBytes(ephN),
+          ownEphPriv: ephP.privateKey,
+        );
+        final auth = await currentAuth();
+        final versionBefore = auth['listVersion'] as int;
+        final staged = await signAddedDevice(assignedId);
+        final acked = await alice.provisionDevice({
+          'provisioningId': provisioningId,
+          'blob': base64Encode(
+            sealLinkBlob(
+              keys: deriveLinkBlobKeys(sharedSecret: sdh, transcript: transcript),
+              payload: blobPayloadFor(assignedId, auth),
+            ),
+          ),
+          'listCanonical': staged['listCanonical'],
+          'listSignature': staged['listSignature'],
+        });
+        expect(acked['success'], isTrue, reason: '$acked');
+        await n.events.next(
+          'provisioningBlob',
+          where: (p) => p is Map && p['provisioningId'] == provisioningId,
+          reason: 'blob push before the kill',
+        );
+
+        // The ceremony dies HERE — N never completes. Nothing committed:
+        final after = await currentAuth();
+        expect(after['listVersion'], versionBefore);
+        // The allocated id was never activated; no bundle is served for it.
+        final ghost = await bob.fetchBundleRawFor(
+          alice.userId,
+          deviceId: assignedId,
+        );
+        expect(ghost['bundle'], isNull);
+
+        // The blob stays re-fetchable until TTL — from the opener ONLY.
+        final refetch = await n.fetchProvisioningBlobAnswer(provisioningId);
+        expect(refetch['blob'], isA<String>());
+        final foreignFetch = await alice.fetchProvisioningBlobAnswer(
+          provisioningId,
+        );
+        expect(foreignFetch['success'], isFalse);
+        expect(foreignFetch['error'], 'not_opener');
+
+        // Stage existence never leaks: a bogus id and a FOREIGN ACCOUNT's
+        // probe of the real id are answered identically (falsification 8's
+        // "knowledge of provisioningId alone drives nothing").
+        final bogus = await n.provisioningComplete(
+          '00000000-0000-4000-8000-000000000000',
+        );
+        expect(bogus['error'], 'unknown_stage');
+        final crossAccount = await bob.provisioningComplete(provisioningId);
+        expect(crossAccount['error'], 'unknown_stage');
+
+        // Cancel — from another authenticated session of the account —
+        // discards the stage and tells the opener (I1 abort hygiene).
+        n.events.discard('provisioningCancelled');
+        final cancelled = await alice.cancelProvisioning(provisioningId);
+        expect(cancelled['success'], isTrue, reason: '$cancelled');
+        await n.events.next(
+          'provisioningCancelled',
+          where: (p) => p is Map && p['provisioningId'] == provisioningId,
+          reason: 'cancel notice to the opener',
+        );
+        final gone = await n.fetchProvisioningBlobAnswer(provisioningId);
+        expect(gone['error'], 'unknown_stage');
+      }, timeout: const Timeout(Duration(minutes: 3)));
+
+      test('concurrent double-link: two stages race one version slot; the '
+          'loser re-signs v+2 against the SAME stage and lands; exactly one '
+          'device per ceremony (falsification 20)', () async {
+        final n1 = E2eClient('linkRace1', baseUrl)..adoptAccountFrom(alice);
+        final n2 = E2eClient('linkRace2', baseUrl)..adoptAccountFrom(alice);
+        await n1.connectSocket();
+        await n2.connectSocket();
+        addTearDown(n1.dispose);
+        addTearDown(n2.dispose);
+
+        // Open + hello both ceremonies.
+        Future<(String, int, Uint8List, Uint8List)> openAndHello(
+          E2eClient n,
+        ) async {
+          final ephN = generateLinkEphemeral();
+          final opened = await n.openProvisioning();
+          expect(opened['success'], isTrue, reason: '$opened');
+          final provisioningId = opened['provisioningId'] as String;
+          final ephP = generateLinkEphemeral();
+          final ephPubP = linkEphemeralPublicBytes(ephP);
+          final ack = await alice.provisioningHello(
+            provisioningId: provisioningId,
+            ephPubP: base64Encode(ephPubP),
+          );
+          expect(ack['success'], isTrue, reason: '$ack');
+          final sdh = linkSharedSecret(
+            theirEphPub: linkEphemeralPublicBytes(ephN),
+            ownEphPriv: ephP.privateKey,
+          );
+          final transcript = linkTranscript(
+            provisioningId: provisioningId,
+            ephPubN: linkEphemeralPublicBytes(ephN),
+            ephPubP: ephPubP,
+          );
+          return (provisioningId, ack['deviceId'] as int, sdh, transcript);
+        }
+
+        final (idA, deviceA, sdhA, transcriptA) = await openAndHello(n1);
+        final (idB, deviceB, sdhB, transcriptB) = await openAndHello(n2);
+        expect(deviceA, isNot(deviceB), reason: 'ids never collide');
+
+        // Both staged against the SAME stored version → both sign v+1.
+        final auth = await currentAuth();
+        final versionBefore = auth['listVersion'] as int;
+        Future<Map<String, dynamic>> stage(
+          String provisioningId,
+          int deviceId,
+          Uint8List sdh,
+          Uint8List transcript,
+        ) async {
+          final staged = await signAddedDevice(deviceId);
+          final acked = await alice.provisionDevice({
+            'provisioningId': provisioningId,
+            'blob': base64Encode(
+              sealLinkBlob(
+                keys: deriveLinkBlobKeys(
+                  sharedSecret: sdh,
+                  transcript: transcript,
+                ),
+                payload: blobPayloadFor(deviceId, auth),
+              ),
+            ),
+            'listCanonical': staged['listCanonical'],
+            'listSignature': staged['listSignature'],
+          });
+          expect(acked['success'], isTrue, reason: '$acked');
+          return staged;
+        }
+
+        await stage(idA, deviceA, sdhA, transcriptA);
+        await stage(idB, deviceB, sdhB, transcriptB);
+
+        // First complete wins the version slot.
+        final wonA = await n1.provisioningComplete(idA);
+        expect(wonA['success'], isTrue, reason: '$wonA');
+        expect((await currentAuth())['listVersion'], versionBefore + 1);
+
+        // Second complete LOSES on the version law — stage restored, not
+        // burned (amendment (a)).
+        final lostB = await n2.provisioningComplete(idB);
+        expect(lostB['success'], isFalse);
+        expect(lostB['error'], 'stale_version');
+
+        // The primary re-signs v+2 against the SAME stage (a retried
+        // provisionDevice overwrites the staged mutation and re-uses the
+        // memoized id) and the retried complete lands.
+        await stage(idB, deviceB, sdhB, transcriptB);
+        final retriedB = await n2.provisioningComplete(idB);
+        expect(retriedB['success'], isTrue, reason: '$retriedB');
+        expect(retriedB['deviceId'], deviceB);
+
+        // Exactly one device per ceremony: the final list carries BOTH new
+        // ids, at exactly two committed versions past the start.
+        final after = await currentAuth();
+        expect(after['listVersion'], versionBefore + 2);
+        final list = parseCanonicalDeviceList(
+          base64Decode(after['listCanonical'] as String),
+        );
+        final ids = list.devices.map((d) => d.deviceId).toSet();
+        expect(ids.contains(deviceA), isTrue);
+        expect(ids.contains(deviceB), isTrue);
+      }, timeout: const Timeout(Duration(minutes: 3)));
     });
 
     test('no unexpected socket errors surfaced during the run', () {

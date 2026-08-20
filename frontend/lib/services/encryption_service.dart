@@ -468,7 +468,13 @@ class EncryptionService {
     switch (load) {
       case IdentityLoadResult.loaded:
         debugPrint('[EncryptionService] Loaded existing keys from storage');
-        needsKeyUpload = false;
+        // A non-null _keysForUpload means THIS process minted key material
+        // that may not have reached the server yet — above all the §5.1
+        // adopt path, whose init previously failed (keyless) so the
+        // provider re-enters here after the ceremony. Dropping the flag
+        // would strand the minted signed-prekey/OTPs unpublished until a
+        // preKeysLow bounce.
+        needsKeyUpload = _keysForUpload != null;
       case IdentityLoadResult.partial:
         E2ePersistentDiag.record('IDENTITY_INCOMPLETE', {'userId': userId});
         debugPrint(
@@ -576,6 +582,114 @@ class EncryptionService {
     needsKeyUpload = true;
     identityIncomplete = false;
     _initialized = true;
+  }
+
+  /// §5.1 provisioning adopt (Phase 2 T3, spec §12 item (ii)): install the
+  /// account identity the primary transported in the ceremony blob, on a
+  /// device that has NO identity of its own.
+  ///
+  /// Discipline (frontend/CLAUDE.md §5): the identity record is ONE atomic
+  /// write of the ADOPTED pair plus a locally-minted registrationId — never
+  /// regenerated, and storage is untouched until every input has parsed.
+  /// Signed pre-key and one-time pre-keys are minted into the local stores
+  /// but NOT uploaded — the upload rides the existing OTP-gate path after
+  /// the session rebinds to the assigned deviceId (amendment (b)).
+  Future<void> adoptProvisionedIdentity({
+    required int userId,
+    required String ikPubBase64,
+    required String ikPrivBase64,
+    required String dakPubBase64,
+  }) async {
+    // Parse EVERYTHING first: a malformed blob must fail before any write.
+    final identityKeyPair = IdentityKeyPair(
+      IdentityKey.fromBytes(base64Decode(ikPubBase64), 0),
+      Curve.decodePrivatePoint(
+        // Library caveat: curve calls mutate handed buffers — fresh copy.
+        Uint8List.fromList(base64Decode(ikPrivBase64)),
+      ),
+    );
+    base64Decode(dakPubBase64); // validity gate only
+
+    _userId = userId;
+    final p = 'e2e_${userId}_';
+    _buildStores(p);
+
+    final registrationId = generateRegistrationId(false);
+    await _identityStore.initialize(identityKeyPair, registrationId);
+
+    final signedPreKey = generateSignedPreKey(identityKeyPair, 0);
+    await _signedPreKeyStore.storeSignedPreKey(signedPreKey.id, signedPreKey);
+    final preKeys = generatePreKeys(0, _initialPreKeyBatchSize);
+    await Future.wait(preKeys.map((pk) => _preKeyStore.storePreKey(pk.id, pk)));
+    await _storage.write(
+      key: '${p}next_pre_key_id',
+      value: _initialPreKeyBatchSize.toString(),
+    );
+
+    // The account's device-authority public key, for verifying own signed
+    // lists along the I7 chain (a linked device never holds the private
+    // half, invariant I2).
+    await _storage.write(key: '${p}dak_pub_v1', value: dakPubBase64);
+
+    _keysForUpload = {
+      'keyBundle': {
+        'registrationId': registrationId,
+        'identityPublicKey': base64Encode(
+          identityKeyPair.getPublicKey().serialize(),
+        ),
+        'signedPreKeyId': signedPreKey.id,
+        'signedPreKeyPublic': base64Encode(
+          signedPreKey.getKeyPair().publicKey.serialize(),
+        ),
+        'signedPreKeySignature': base64Encode(signedPreKey.signature),
+      },
+      'oneTimePreKeys': preKeys.map(_preKeyToUploadFormat).toList(),
+    };
+    await _storage.write(key: '${p}setup_complete', value: 'true');
+
+    needsKeyUpload = true;
+    identityIncomplete = false;
+    _initialized = true;
+    E2ePersistentDiag.record('LINK_IDENTITY_ADOPTED', {'userId': userId});
+  }
+
+  /// Abort hygiene of a failed §5.1 ceremony (I1, falsification 18): delete
+  /// EXACTLY what [adoptProvisionedIdentity] wrote, so N ends as unkeyed as
+  /// it started. Only runs on a device whose ceremony this process started —
+  /// the adopt path is reachable only while the device holds no identity.
+  Future<void> discardProvisionedIdentity(int userId) async {
+    final p = 'e2e_${userId}_';
+    final all = await _storage.readAll();
+    for (final key in all.keys.toList()) {
+      if (!key.startsWith(p)) continue;
+      final suffix = key.substring(p.length);
+      final wroteByAdopt =
+          suffix == 'identity_record_v1' ||
+          suffix == 'identity_key_pair' ||
+          suffix == 'registration_id' ||
+          suffix == 'next_pre_key_id' ||
+          suffix == 'setup_complete' ||
+          suffix == 'dak_pub_v1' ||
+          suffix.startsWith('signed_pre_key_') ||
+          suffix.startsWith('pre_key_');
+      if (wroteByAdopt) {
+        await _storage.delete(key: key);
+      }
+    }
+    _keysForUpload = null;
+    needsKeyUpload = false;
+    _initialized = false;
+    E2ePersistentDiag.record('LINK_IDENTITY_DISCARDED', {'userId': userId});
+  }
+
+  /// The full identity pair, for the §5.1 primary side building the
+  /// ceremony blob. READ ONLY — the ceremony must never mint identity
+  /// material of its own.
+  Future<IdentityKeyPair> identityKeyPairForLinking() async {
+    if (!_initialized) {
+      throw StateError('encryption service not initialized');
+    }
+    return _identityStore.getIdentityKeyPair();
   }
 
   /// Get the public key data to upload to the server.

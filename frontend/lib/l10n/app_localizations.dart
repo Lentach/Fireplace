@@ -260,6 +260,234 @@ abstract class AppLocalizations {
   /// **'Ładowanie…'**
   String get devicesLoading;
 
+  /// No description provided for @devicesExplainer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Urządzenia połączone z tym kontem. Nowe urządzenie można dodać tylko z tego, głównego urządzenia.'**
+  String get devicesExplainer;
+
+  /// No description provided for @devicesNotEnrolled.
+  ///
+  /// In pl, this message translates to:
+  /// **'Łączenie urządzeń nie jest jeszcze włączone dla tego konta.'**
+  String get devicesNotEnrolled;
+
+  /// No description provided for @devicesEnableLinking.
+  ///
+  /// In pl, this message translates to:
+  /// **'Włącz łączenie'**
+  String get devicesEnableLinking;
+
+  /// No description provided for @devicesLinkADevice.
+  ///
+  /// In pl, this message translates to:
+  /// **'Połącz urządzenie'**
+  String get devicesLinkADevice;
+
+  /// No description provided for @devicesLinkThisDevice.
+  ///
+  /// In pl, this message translates to:
+  /// **'Połącz to urządzenie'**
+  String get devicesLinkThisDevice;
+
+  /// No description provided for @devicesAlreadyEnrolled.
+  ///
+  /// In pl, this message translates to:
+  /// **'Inna instalacja tego konta już włączyła łączenie. Urządzenia można dodawać tylko z tamtego urządzenia.'**
+  String get devicesAlreadyEnrolled;
+
+  /// No description provided for @devicesEnrollFailed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie udało się włączyć łączenia. Spróbuj ponownie.'**
+  String get devicesEnrollFailed;
+
+  /// No description provided for @devicesChainInvalid.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nie można zweryfikować listy urządzeń. Spróbuj ponownie później.'**
+  String get devicesChainInvalid;
+
+  /// No description provided for @devicesRevokedBadge.
+  ///
+  /// In pl, this message translates to:
+  /// **'cofnięte'**
+  String get devicesRevokedBadge;
+
+  /// No description provided for @devicesPrimaryBadge.
+  ///
+  /// In pl, this message translates to:
+  /// **'główne'**
+  String get devicesPrimaryBadge;
+
+  /// No description provided for @devicesThisDeviceKeyless.
+  ///
+  /// In pl, this message translates to:
+  /// **'To urządzenie nie ma jeszcze kluczy. Połącz je ze swoim głównym urządzeniem.'**
+  String get devicesThisDeviceKeyless;
+
+  /// No description provided for @linkPrimaryTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Połącz urządzenie'**
+  String get linkPrimaryTitle;
+
+  /// No description provided for @linkPrimaryExplainer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Na nowym urządzeniu wybierz „Połącz to urządzenie”, a potem wpisz tutaj wyświetlony kod.'**
+  String get linkPrimaryExplainer;
+
+  /// No description provided for @linkPrimaryCodeLabel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kod z nowego urządzenia'**
+  String get linkPrimaryCodeLabel;
+
+  /// No description provided for @linkPrimaryContinue.
+  ///
+  /// In pl, this message translates to:
+  /// **'Dalej'**
+  String get linkPrimaryContinue;
+
+  /// No description provided for @linkSasHeading.
+  ///
+  /// In pl, this message translates to:
+  /// **'Porównaj kody'**
+  String get linkSasHeading;
+
+  /// No description provided for @linkSasExplainer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Oba urządzenia muszą pokazywać ten sam kod. Zatwierdź tylko wtedy, gdy są identyczne.'**
+  String get linkSasExplainer;
+
+  /// No description provided for @linkApprove.
+  ///
+  /// In pl, this message translates to:
+  /// **'Zatwierdź'**
+  String get linkApprove;
+
+  /// No description provided for @linkCancel.
+  ///
+  /// In pl, this message translates to:
+  /// **'Anuluj'**
+  String get linkCancel;
+
+  /// No description provided for @linkWaitingForDevice.
+  ///
+  /// In pl, this message translates to:
+  /// **'Czekam na nowe urządzenie…'**
+  String get linkWaitingForDevice;
+
+  /// No description provided for @linkPrimaryDone.
+  ///
+  /// In pl, this message translates to:
+  /// **'Urządzenie zostało połączone.'**
+  String get linkPrimaryDone;
+
+  /// No description provided for @linkInvalidCode.
+  ///
+  /// In pl, this message translates to:
+  /// **'Nieprawidłowy kod. Przepisz go dokładnie z nowego urządzenia.'**
+  String get linkInvalidCode;
+
+  /// No description provided for @linkNoDak.
+  ///
+  /// In pl, this message translates to:
+  /// **'Brak klucza autoryzacji na tym urządzeniu. Łączyć można tylko z urządzenia, które włączyło łączenie.'**
+  String get linkNoDak;
+
+  /// No description provided for @linkFailed.
+  ///
+  /// In pl, this message translates to:
+  /// **'Łączenie nie powiodło się'**
+  String get linkFailed;
+
+  /// No description provided for @linkStaleVersionRetry.
+  ///
+  /// In pl, this message translates to:
+  /// **'Lista urządzeń zmieniła się w trakcie — podpisuję ponownie…'**
+  String get linkStaleVersionRetry;
+
+  /// No description provided for @linkNewTitle.
+  ///
+  /// In pl, this message translates to:
+  /// **'Połącz to urządzenie'**
+  String get linkNewTitle;
+
+  /// No description provided for @linkNewExplainer.
+  ///
+  /// In pl, this message translates to:
+  /// **'Pokaż ten kod na głównym urządzeniu: wybierz tam „Połącz urządzenie” i przepisz kod (albo zeskanuj QR).'**
+  String get linkNewExplainer;
+
+  /// No description provided for @linkNewWaitingHello.
+  ///
+  /// In pl, this message translates to:
+  /// **'Czekam na główne urządzenie…'**
+  String get linkNewWaitingHello;
+
+  /// No description provided for @linkNewCopy.
+  ///
+  /// In pl, this message translates to:
+  /// **'Skopiuj kod'**
+  String get linkNewCopy;
+
+  /// No description provided for @linkNewCopied.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kod skopiowany'**
+  String get linkNewCopied;
+
+  /// No description provided for @linkNewCompleting.
+  ///
+  /// In pl, this message translates to:
+  /// **'Łączenie…'**
+  String get linkNewCompleting;
+
+  /// No description provided for @linkNewRebinding.
+  ///
+  /// In pl, this message translates to:
+  /// **'Przełączam sesję na nowe urządzenie…'**
+  String get linkNewRebinding;
+
+  /// No description provided for @linkNewDone.
+  ///
+  /// In pl, this message translates to:
+  /// **'To urządzenie jest połączone i gotowe.'**
+  String get linkNewDone;
+
+  /// No description provided for @linkNewAborted.
+  ///
+  /// In pl, this message translates to:
+  /// **'Łączenie przerwane'**
+  String get linkNewAborted;
+
+  /// No description provided for @linkNewRetry.
+  ///
+  /// In pl, this message translates to:
+  /// **'Spróbuj ponownie'**
+  String get linkNewRetry;
+
+  /// No description provided for @linkAbortReasonExpired.
+  ///
+  /// In pl, this message translates to:
+  /// **'Kod wygasł.'**
+  String get linkAbortReasonExpired;
+
+  /// No description provided for @linkAbortReasonCancelled.
+  ///
+  /// In pl, this message translates to:
+  /// **'Łączenie anulowano na drugim urządzeniu.'**
+  String get linkAbortReasonCancelled;
+
+  /// No description provided for @linkAbortReasonBadBlob.
+  ///
+  /// In pl, this message translates to:
+  /// **'Weryfikacja danych nie powiodła się. Klucze zostały usunięte z tego urządzenia.'**
+  String get linkAbortReasonBadBlob;
+
   /// No description provided for @settingsAppVersion.
   ///
   /// In pl, this message translates to:

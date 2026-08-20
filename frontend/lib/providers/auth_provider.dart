@@ -130,6 +130,12 @@ class AuthProvider extends ChangeNotifier {
     notifyListeners();
   }
 
+  /// Installs the deviceId-bound session a §5.1 provisioning ceremony
+  /// returned in `provisioningCompleted` (spec §12 item (iii)). Same storage
+  /// path as login/refresh — a second token path would drift.
+  Future<void> adoptProvisionedSession(Map<String, dynamic> tokens) =>
+      _persistTokens(tokens);
+
   Future<void> _silentRefresh() async {
     final r = _refreshToken;
     if (r == null) {

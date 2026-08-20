@@ -233,6 +233,14 @@ class E2eClient {
     'deviceListUpdated',
     'deviceList',
     'deviceListChanged',
+    // Phase 2 T3: §5.1 provisioning ceremony.
+    'provisioningOpened',
+    'provisioningHelloAck',
+    'provisioningHello',
+    'provisionDeviceAck',
+    'provisioningBlob',
+    'provisioningCompleted',
+    'provisioningCancelled',
     'newFriendRequest',
     'friendRequestSent',
     'friendRequestFailed',
@@ -464,6 +472,98 @@ class E2eClient {
       'deviceList',
       where: (p) => p is Map && p['userId'] == targetUserId,
       reason: '$label device list for user $targetUserId',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `openProvisioning` (§5.1 — N opens a ceremony) and returns the
+  /// `provisioningOpened` answer. The answer deliberately carries NO
+  /// deviceId (spec §12 amendment (a)).
+  Future<Map<String, dynamic>> openProvisioning() async {
+    events.discard('provisioningOpened');
+    socketService.socket!.emit('openProvisioning', <String, dynamic>{});
+    final answer = await events.next(
+      'provisioningOpened',
+      reason: '$label openProvisioning answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `provisioningHello` (the primary presents its ephemeral) and
+  /// returns the `provisioningHelloAck` answer — the ack is how the primary
+  /// learns the assigned deviceId (amendment (a)).
+  Future<Map<String, dynamic>> provisioningHello({
+    required String provisioningId,
+    required String ephPubP,
+  }) async {
+    events.discard('provisioningHelloAck');
+    socketService.socket!.emit('provisioningHello', {
+      'provisioningId': provisioningId,
+      'ephPubP': ephPubP,
+    });
+    final answer = await events.next(
+      'provisioningHelloAck',
+      reason: '$label provisioningHello answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `provisionDevice` (blob + signed v+1 mutation, staged not
+  /// committed) and returns the `provisionDeviceAck` answer.
+  Future<Map<String, dynamic>> provisionDevice(
+    Map<String, dynamic> payload,
+  ) async {
+    events.discard('provisionDeviceAck');
+    socketService.socket!.emit('provisionDevice', payload);
+    final answer = await events.next(
+      'provisionDeviceAck',
+      reason: '$label provisionDevice answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `fetchProvisioningBlob` and returns the `provisioningBlob`
+  /// answer — a blob re-fetch (falsification 18) or a refusal.
+  Future<Map<String, dynamic>> fetchProvisioningBlobAnswer(
+    String provisioningId,
+  ) async {
+    events.discard('provisioningBlob');
+    socketService.socket!.emit('fetchProvisioningBlob', {
+      'provisioningId': provisioningId,
+    });
+    final answer = await events.next(
+      'provisioningBlob',
+      reason: '$label fetchProvisioningBlob answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `provisioningComplete` (two-phase commit, phase two) and returns
+  /// the `provisioningCompleted` answer — on success it carries the
+  /// deviceId-bound token pair (spec §12 amendment (iii)).
+  Future<Map<String, dynamic>> provisioningComplete(
+    String provisioningId,
+  ) async {
+    events.discard('provisioningCompleted');
+    socketService.socket!.emit('provisioningComplete', {
+      'provisioningId': provisioningId,
+    });
+    final answer = await events.next(
+      'provisioningCompleted',
+      reason: '$label provisioningComplete answer',
+    );
+    return (answer as Map).cast<String, dynamic>();
+  }
+
+  /// Emits `cancelProvisioning` and returns the caller's ack.
+  Future<Map<String, dynamic>> cancelProvisioning(String provisioningId) async {
+    events.discard('provisioningCancelled');
+    socketService.socket!.emit('cancelProvisioning', {
+      'provisioningId': provisioningId,
+    });
+    final answer = await events.next(
+      'provisioningCancelled',
+      reason: '$label cancelProvisioning answer',
     );
     return (answer as Map).cast<String, dynamic>();
   }

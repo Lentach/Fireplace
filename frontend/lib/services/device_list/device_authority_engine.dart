@@ -173,6 +173,32 @@ class DeviceAuthorityEngine {
   /// Serialized DAK public key, available after [mintEnrollment].
   Uint8List? get dakPubSerialized => _dakPair?.publicKey.serialize();
 
+  /// The minted pair for Keystore persistence (T3's DakStore). base64
+  /// `{dakPub, dakPriv}` — the ONLY reader is the armed persist that gates
+  /// the enroll emit; nothing else may see the private half.
+  Map<String, String> exportDakForPersistence() {
+    final dakPair = _dakPair;
+    if (dakPair == null) {
+      throw StateError('no DAK minted — call mintEnrollment first');
+    }
+    return {
+      'dakPub': base64Encode(dakPair.publicKey.serialize()),
+      'dakPriv': base64Encode(dakPair.privateKey.serialize()),
+    };
+  }
+
+  /// Rehydrates a persisted DAK (T3: the primary signs later list mutations
+  /// across process restarts). Copies keep the library's in-place buffer
+  /// mutation off the caller's strings.
+  void restoreDak({required String dakPubBase64, required String dakPrivBase64}) {
+    _dakPair = ECKeyPair(
+      Curve.decodePoint(Uint8List.fromList(base64Decode(dakPubBase64)), 0),
+      Curve.decodePrivatePoint(
+        Uint8List.fromList(base64Decode(dakPrivBase64)),
+      ),
+    );
+  }
+
   /// Builds the complete enrollment wire payload: fresh DAK, enrollment
   /// record E signed by [identity], and the DAK-signed canonical v1 list of
   /// the CURRENT device set — device 1 only, until T3 links devices.

@@ -7,6 +7,8 @@ import '../config/app_config.dart';
 import '../constants/app_constants.dart';
 import '../services/api_service.dart';
 import '../services/push_service.dart';
+import '../services/device_link/link_ceremony_controller.dart'
+    show ProvisioningEventSink;
 import '../services/server_clock.dart';
 import '../services/socket_service.dart';
 import '../utils/e2e_diag_log.dart';
@@ -86,6 +88,7 @@ class ConnectionProvider extends ChangeNotifier {
   ConversationsProvider? _conversationsProvider;
   MessagingProvider? _messagingProvider;
 
+  ProvisioningEventSink? _provisioningSink;
   // ---------- Public Getters ----------
 
   int? get currentUserId => _currentUserId;
@@ -106,6 +109,22 @@ class ConnectionProvider extends ChangeNotifier {
     _friendsProvider = friends;
     _conversationsProvider = conversations;
     _messagingProvider = messaging;
+  }
+
+  /// Registers the screen-scoped §5.1 ceremony controller as the receiver of
+  /// provisioning + device-list events. ONE sink at a time by design — the
+  /// ceremony surface is a single navigation stack, and routing through this
+  /// provider keeps [_registerEventListeners] the only event-routing seam.
+  void registerProvisioningSink(ProvisioningEventSink sink) {
+    _provisioningSink = sink;
+  }
+
+  /// Unregisters [sink] if it is still the active one (a later screen may
+  /// have replaced it before this dispose ran).
+  void unregisterProvisioningSink(ProvisioningEventSink sink) {
+    if (identical(_provisioningSink, sink)) {
+      _provisioningSink = null;
+    }
   }
 
   // ---------- Emit ----------
@@ -659,6 +678,40 @@ class ConnectionProvider extends ChangeNotifier {
     });
     _socketService.on('recoveryKeySet', (data) {
       _encryptionProvider?.onRecoveryKeySet(data);
+    });
+
+    // --- Device list + §5.1 provisioning ceremony (Phase 2 T3) ---
+    // Forwarded to the screen-scoped ceremony controller (registered by
+    // DevicesScreen for its lifetime). No controller = no listener work.
+    _socketService.on('provisioningOpened', (data) {
+      _provisioningSink?.onProvisioningOpened(data);
+    });
+    _socketService.on('provisioningHelloAck', (data) {
+      _provisioningSink?.onProvisioningHelloAck(data);
+    });
+    _socketService.on('provisioningHello', (data) {
+      _provisioningSink?.onProvisioningHelloRelay(data);
+    });
+    _socketService.on('provisionDeviceAck', (data) {
+      _provisioningSink?.onProvisionDeviceAck(data);
+    });
+    _socketService.on('provisioningBlob', (data) {
+      _provisioningSink?.onProvisioningBlob(data);
+    });
+    _socketService.on('provisioningCompleted', (data) {
+      _provisioningSink?.onProvisioningCompleted(data);
+    });
+    _socketService.on('provisioningCancelled', (data) {
+      _provisioningSink?.onProvisioningCancelled(data);
+    });
+    _socketService.on('deviceAuthorityEnrolled', (data) {
+      _provisioningSink?.onDeviceAuthorityEnrolled(data);
+    });
+    _socketService.on('deviceList', (data) {
+      _provisioningSink?.onDeviceList(data);
+    });
+    _socketService.on('deviceListChanged', (data) {
+      _provisioningSink?.onDeviceListChanged(data);
     });
 
     // --- Friend events ---

@@ -94,6 +94,134 @@ class AppLocalizationsPl extends AppLocalizations {
   String get devicesLoading => 'Ładowanie…';
 
   @override
+  String get devicesExplainer =>
+      'Urządzenia połączone z tym kontem. Nowe urządzenie można dodać tylko z tego, głównego urządzenia.';
+
+  @override
+  String get devicesNotEnrolled =>
+      'Łączenie urządzeń nie jest jeszcze włączone dla tego konta.';
+
+  @override
+  String get devicesEnableLinking => 'Włącz łączenie';
+
+  @override
+  String get devicesLinkADevice => 'Połącz urządzenie';
+
+  @override
+  String get devicesLinkThisDevice => 'Połącz to urządzenie';
+
+  @override
+  String get devicesAlreadyEnrolled =>
+      'Inna instalacja tego konta już włączyła łączenie. Urządzenia można dodawać tylko z tamtego urządzenia.';
+
+  @override
+  String get devicesEnrollFailed =>
+      'Nie udało się włączyć łączenia. Spróbuj ponownie.';
+
+  @override
+  String get devicesChainInvalid =>
+      'Nie można zweryfikować listy urządzeń. Spróbuj ponownie później.';
+
+  @override
+  String get devicesRevokedBadge => 'cofnięte';
+
+  @override
+  String get devicesPrimaryBadge => 'główne';
+
+  @override
+  String get devicesThisDeviceKeyless =>
+      'To urządzenie nie ma jeszcze kluczy. Połącz je ze swoim głównym urządzeniem.';
+
+  @override
+  String get linkPrimaryTitle => 'Połącz urządzenie';
+
+  @override
+  String get linkPrimaryExplainer =>
+      'Na nowym urządzeniu wybierz „Połącz to urządzenie”, a potem wpisz tutaj wyświetlony kod.';
+
+  @override
+  String get linkPrimaryCodeLabel => 'Kod z nowego urządzenia';
+
+  @override
+  String get linkPrimaryContinue => 'Dalej';
+
+  @override
+  String get linkSasHeading => 'Porównaj kody';
+
+  @override
+  String get linkSasExplainer =>
+      'Oba urządzenia muszą pokazywać ten sam kod. Zatwierdź tylko wtedy, gdy są identyczne.';
+
+  @override
+  String get linkApprove => 'Zatwierdź';
+
+  @override
+  String get linkCancel => 'Anuluj';
+
+  @override
+  String get linkWaitingForDevice => 'Czekam na nowe urządzenie…';
+
+  @override
+  String get linkPrimaryDone => 'Urządzenie zostało połączone.';
+
+  @override
+  String get linkInvalidCode =>
+      'Nieprawidłowy kod. Przepisz go dokładnie z nowego urządzenia.';
+
+  @override
+  String get linkNoDak =>
+      'Brak klucza autoryzacji na tym urządzeniu. Łączyć można tylko z urządzenia, które włączyło łączenie.';
+
+  @override
+  String get linkFailed => 'Łączenie nie powiodło się';
+
+  @override
+  String get linkStaleVersionRetry =>
+      'Lista urządzeń zmieniła się w trakcie — podpisuję ponownie…';
+
+  @override
+  String get linkNewTitle => 'Połącz to urządzenie';
+
+  @override
+  String get linkNewExplainer =>
+      'Pokaż ten kod na głównym urządzeniu: wybierz tam „Połącz urządzenie” i przepisz kod (albo zeskanuj QR).';
+
+  @override
+  String get linkNewWaitingHello => 'Czekam na główne urządzenie…';
+
+  @override
+  String get linkNewCopy => 'Skopiuj kod';
+
+  @override
+  String get linkNewCopied => 'Kod skopiowany';
+
+  @override
+  String get linkNewCompleting => 'Łączenie…';
+
+  @override
+  String get linkNewRebinding => 'Przełączam sesję na nowe urządzenie…';
+
+  @override
+  String get linkNewDone => 'To urządzenie jest połączone i gotowe.';
+
+  @override
+  String get linkNewAborted => 'Łączenie przerwane';
+
+  @override
+  String get linkNewRetry => 'Spróbuj ponownie';
+
+  @override
+  String get linkAbortReasonExpired => 'Kod wygasł.';
+
+  @override
+  String get linkAbortReasonCancelled =>
+      'Łączenie anulowano na drugim urządzeniu.';
+
+  @override
+  String get linkAbortReasonBadBlob =>
+      'Weryfikacja danych nie powiodła się. Klucze zostały usunięte z tego urządzenia.';
+
+  @override
   String get settingsAppVersion => 'Wersja aplikacji';
 
   @override

@@ -94,6 +94,133 @@ class AppLocalizationsEn extends AppLocalizations {
   String get devicesLoading => 'Loading…';
 
   @override
+  String get devicesExplainer =>
+      'Devices linked to this account. A new device can only be added from this, the primary device.';
+
+  @override
+  String get devicesNotEnrolled =>
+      'Device linking is not enabled for this account yet.';
+
+  @override
+  String get devicesEnableLinking => 'Enable linking';
+
+  @override
+  String get devicesLinkADevice => 'Link a device';
+
+  @override
+  String get devicesLinkThisDevice => 'Link this device';
+
+  @override
+  String get devicesAlreadyEnrolled =>
+      'Another installation of this account already enabled linking. Devices can only be added from that device.';
+
+  @override
+  String get devicesEnrollFailed => 'Could not enable linking. Try again.';
+
+  @override
+  String get devicesChainInvalid =>
+      'The device list could not be verified. Try again later.';
+
+  @override
+  String get devicesRevokedBadge => 'revoked';
+
+  @override
+  String get devicesPrimaryBadge => 'primary';
+
+  @override
+  String get devicesThisDeviceKeyless =>
+      'This device holds no keys yet. Link it to your primary device.';
+
+  @override
+  String get linkPrimaryTitle => 'Link a device';
+
+  @override
+  String get linkPrimaryExplainer =>
+      'On the new device choose “Link this device”, then type the code it shows here.';
+
+  @override
+  String get linkPrimaryCodeLabel => 'Code from the new device';
+
+  @override
+  String get linkPrimaryContinue => 'Continue';
+
+  @override
+  String get linkSasHeading => 'Compare the codes';
+
+  @override
+  String get linkSasExplainer =>
+      'Both devices must show the same code. Approve only if they match exactly.';
+
+  @override
+  String get linkApprove => 'Approve';
+
+  @override
+  String get linkCancel => 'Cancel';
+
+  @override
+  String get linkWaitingForDevice => 'Waiting for the new device…';
+
+  @override
+  String get linkPrimaryDone => 'The device has been linked.';
+
+  @override
+  String get linkInvalidCode =>
+      'Invalid code. Copy it exactly from the new device.';
+
+  @override
+  String get linkNoDak =>
+      'No authorization key on this device. Linking is only possible from the device that enabled linking.';
+
+  @override
+  String get linkFailed => 'Linking failed';
+
+  @override
+  String get linkStaleVersionRetry =>
+      'The device list changed mid-flight — re-signing…';
+
+  @override
+  String get linkNewTitle => 'Link this device';
+
+  @override
+  String get linkNewExplainer =>
+      'Show this code on your primary device: choose “Link a device” there and type the code (or scan the QR).';
+
+  @override
+  String get linkNewWaitingHello => 'Waiting for your primary device…';
+
+  @override
+  String get linkNewCopy => 'Copy code';
+
+  @override
+  String get linkNewCopied => 'Code copied';
+
+  @override
+  String get linkNewCompleting => 'Linking…';
+
+  @override
+  String get linkNewRebinding => 'Switching the session to the new device…';
+
+  @override
+  String get linkNewDone => 'This device is linked and ready.';
+
+  @override
+  String get linkNewAborted => 'Linking aborted';
+
+  @override
+  String get linkNewRetry => 'Try again';
+
+  @override
+  String get linkAbortReasonExpired => 'The code expired.';
+
+  @override
+  String get linkAbortReasonCancelled =>
+      'Linking was cancelled on the other device.';
+
+  @override
+  String get linkAbortReasonBadBlob =>
+      'Verification failed. Every key was removed from this device.';
+
+  @override
   String get settingsAppVersion => 'App version';
 
   @override
