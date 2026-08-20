@@ -256,6 +256,18 @@ describe('ChatGateway presence is room-based (BE-007)', () => {
     expect(newSocket.join).toHaveBeenCalledWith('user:37');
   });
 
+  // Ciphertext is addressed per device (spec §5.3), so the socket must be in a
+  // device room too — otherwise a fan-out send reaches nobody.
+  it('every authenticated socket also joins its per-DEVICE room', async () => {
+    const client = createMockClient({ token: 'jwt' });
+
+    await gateway.handleConnection(asSocket(client));
+
+    expect(client.join).toHaveBeenCalledWith('user:37');
+    // A token predating the deviceId claim is device 1 (§8), never "unknown".
+    expect(client.join).toHaveBeenCalledWith('device:37:1');
+  });
+
   it('a stale old-socket disconnect does not evict anything (no presence bookkeeping left)', async () => {
     const oldSocket = createMockClient({ token: 'jwt', id: 'OLD' });
     const newSocket = createMockClient({ token: 'jwt', id: 'NEW' });

@@ -23,7 +23,7 @@ import { ChatSearchService } from './services/chat-search.service';
 import { ChatReactionService } from './services/chat-reaction.service';
 import { ChatDeviceListService } from './services/chat-device-list.service';
 import { ChatProvisioningService } from './services/chat-provisioning.service';
-import { userRoom } from './utils/user-room';
+import { deviceRoom, userRoom } from './utils/user-room';
 import { DEFAULT_DEVICE_ID } from '../key-bundles/key-bundles.service';
 import { DevicesService } from '../key-bundles/devices.service';
 
@@ -141,6 +141,10 @@ export class ChatGateway implements OnGatewayConnection, OnGatewayDisconnect {
         deviceId: payload.deviceId ?? DEFAULT_DEVICE_ID,
       };
       client.join(userRoom(user.id));
+      // Ciphertext is addressed PER DEVICE (spec §5.3): each device gets its
+      // own envelope, so it needs its own room. Metadata keeps using the user
+      // room above so every device still sees it.
+      client.join(deviceRoom(user.id, payload.deviceId ?? DEFAULT_DEVICE_ID));
       // Keep the account's device row alive (Phase 1, spec §4). Fire-and-
       // forget: a failed write costs a `lastSeenAt`, never the session.
       void this.devicesService.touch(

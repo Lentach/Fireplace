@@ -18,10 +18,15 @@ import { Server } from 'socket.io';
 import { SERVED_MESSAGE_IDS_MAX_BATCH } from '../dto/served-message-ids.dto';
 
 /**
- * Join a mock socket to a user room, mirroring the real adapter shape that
- * newestSocketForUser/emitToNewestTab read (see utils/user-room.ts): rooms is a
- * Map<roomKey, Set<socketId>> and sockets is a Map<socketId, Socket>. Set preserves
- * insertion order, so the LAST socket installed for a user is the newest tab.
+ * Join a mock socket to its user room AND its device room, mirroring the real
+ * adapter shape that newestSocketForDevice/emitToDeviceNewestSocket read (see
+ * utils/user-room.ts): rooms is a Map<roomKey, Set<socketId>> and sockets is a
+ * Map<socketId, Socket>. Set preserves insertion order, so the LAST socket
+ * installed for a device is that device's newest tab.
+ *
+ * `deviceId` defaults to 1 because that is what a socket authenticated with a
+ * token predating the claim gets (§8), which is every socket in the tests that
+ * do not care about multi-device.
  */
 type MockSocket = { id: string; data: any; emit: jest.Mock };
 function installSocket(
@@ -29,6 +34,7 @@ function installSocket(
   userId: number,
   socketId: string,
   data: any = {},
+  deviceId = 1,
 ): MockSocket {
   const s = (server.sockets ??= {
     adapter: { rooms: new Map() },
@@ -38,13 +44,14 @@ function installSocket(
   s.adapter.rooms ??= new Map();
   s.sockets ??= new Map();
   const socket: MockSocket = { id: socketId, data, emit: jest.fn() };
-  const roomKey = 'user:' + userId;
-  let room: Set<string> | undefined = s.adapter.rooms.get(roomKey);
-  if (!room) {
-    room = new Set<string>();
-    s.adapter.rooms.set(roomKey, room);
+  for (const roomKey of [`user:${userId}`, `device:${userId}:${deviceId}`]) {
+    let room: Set<string> | undefined = s.adapter.rooms.get(roomKey);
+    if (!room) {
+      room = new Set<string>();
+      s.adapter.rooms.set(roomKey, room);
+    }
+    room.add(socketId);
   }
-  room.add(socketId);
   s.sockets.set(socketId, socket);
   return socket;
 }
@@ -91,6 +98,7 @@ describe('ChatMessageService', () => {
   let createMock: jest.Mock;
   let isActiveMock: jest.Mock;
   let getAuthorizationMock: jest.Mock;
+  let schedulePushMock: jest.Mock;
   let mockClient: Partial<Socket>;
   let mockServer: Partial<Server>;
 
@@ -99,6 +107,7 @@ describe('ChatMessageService', () => {
     createMock = jest.fn();
     isActiveMock = jest.fn().mockResolvedValue(true);
     getAuthorizationMock = jest.fn().mockResolvedValue(null);
+    schedulePushMock = jest.fn().mockResolvedValue(undefined);
     mockClient = {
       data: { user: { id: 1 } },
       emit: jest.fn(),
@@ -147,7 +156,7 @@ describe('ChatMessageService', () => {
         {
           provide: PushNotificationCoalescingService,
           useValue: {
-            scheduleMessagePush: jest.fn().mockResolvedValue(undefined),
+            scheduleMessagePush: schedulePushMock,
           },
         },
         {
@@ -454,7 +463,7 @@ describe('ChatMessageService', () => {
       conversationsService.findOrCreate.mockResolvedValue(
         mockConversation as Conversation,
       );
-      createMock.mockResolvedValue(mockMessage as Message);
+      createMock.mockResolvedValue(mockMessage);
     };
 
     /** An enrolled account whose current signed list is at [version]. */
@@ -721,6 +730,119 @@ describe('ChatMessageService', () => {
 
       expect(getAuthorizationMock).not.toHaveBeenCalled();
       expect(createMock).toHaveBeenCalled();
+    });
+
+    it('delivers each device its OWN ciphertext in its own device room', async () => {
+      arrangeSend();
+      const bobDevice1 = installSocket(mockServer, 2, 'socket-bob-d1', {}, 1);
+      const bobDevice2 = installSocket(mockServer, 2, 'socket-bob-d2', {}, 2);
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        envelopes: [
+          { userId: 2, deviceId: 1, ciphertext: '3:for-bob-1' },
+          { userId: 2, deviceId: 2, ciphertext: '3:for-bob-2' },
+        ],
+      });
+
+      expect(bobDevice1.emit).toHaveBeenCalledWith(
+        'newMessage',
+        expect.objectContaining({ encryptedContent: '3:for-bob-1' }),
+      );
+      expect(bobDevice2.emit).toHaveBeenCalledWith(
+        'newMessage',
+        expect.objectContaining({ encryptedContent: '3:for-bob-2' }),
+      );
+      // Never the other device's ciphertext: decrypting a foreign envelope
+      // consumes a key that device does not own and fails terminally.
+      expect(bobDevice1.emit).not.toHaveBeenCalledWith(
+        'newMessage',
+        expect.objectContaining({ encryptedContent: '3:for-bob-2' }),
+      );
+      expect(bobDevice2.emit).not.toHaveBeenCalledWith(
+        'newMessage',
+        expect.objectContaining({ encryptedContent: '3:for-bob-1' }),
+      );
+      // Ciphertext is never room-broadcast to the account.
+      expect(mockServer.to).not.toHaveBeenCalledWith('user:2');
+    });
+
+    it("delivers a self-sync envelope to the sender's OTHER device", async () => {
+      arrangeSend();
+      const aliceDevice2 = installSocket(
+        mockServer,
+        1,
+        'socket-alice-d2',
+        {},
+        2,
+      );
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        envelopes: [
+          { userId: 2, deviceId: 1, ciphertext: '3:for-bob-1' },
+          { userId: 1, deviceId: 2, ciphertext: '2:self-sync' },
+        ],
+      });
+
+      expect(aliceDevice2.emit).toHaveBeenCalledWith(
+        'newMessage',
+        expect.objectContaining({ encryptedContent: '2:self-sync' }),
+      );
+    });
+
+    it('still pushes when only ONE of the recipient devices has the chat focused', async () => {
+      arrangeSend();
+      installSocket(
+        mockServer,
+        2,
+        'socket-bob-d1',
+        { pushClientState: { activeConversationId: 10, clientVisible: true } },
+        1,
+      );
+      installSocket(
+        mockServer,
+        2,
+        'socket-bob-d2',
+        {
+          pushClientState: { activeConversationId: null, clientVisible: false },
+        },
+        2,
+      );
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        envelopes: [
+          { userId: 2, deviceId: 1, ciphertext: '3:for-bob-1' },
+          { userId: 2, deviceId: 2, ciphertext: '3:for-bob-2' },
+        ],
+      });
+
+      // Device 2 is not looking at the chat, so it still deserves a wake-up.
+      expect(schedulePushMock).toHaveBeenCalledWith(2, 10, 'alice');
+    });
+
+    it('suppresses the push only when EVERY delivered device has the chat focused', async () => {
+      arrangeSend();
+      const focused = {
+        pushClientState: { activeConversationId: 10, clientVisible: true },
+      };
+      installSocket(mockServer, 2, 'socket-bob-d1', focused, 1);
+      installSocket(mockServer, 2, 'socket-bob-d2', focused, 2);
+
+      await send({
+        recipientId: 2,
+        content: '[encrypted]',
+        envelopes: [
+          { userId: 2, deviceId: 1, ciphertext: '3:for-bob-1' },
+          { userId: 2, deviceId: 2, ciphertext: '3:for-bob-2' },
+        ],
+      });
+
+      expect(schedulePushMock).not.toHaveBeenCalled();
     });
   });
 

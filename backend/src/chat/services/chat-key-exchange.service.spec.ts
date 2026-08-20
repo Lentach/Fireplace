@@ -480,20 +480,28 @@ describe('ChatKeyExchangeService', () => {
       expect(keyBundlesService.fetchPreKeyBundle).toHaveBeenCalledWith(2, 1);
       expect(mockClient.emit).toHaveBeenCalledWith('preKeyBundleResponse', {
         userId: 2,
+        deviceId: 1,
         bundle: mockBundle,
       });
     });
 
-    // Register socket ids as members of a user's per-user room (one entry
-    // per open tab), mirroring `sockets.adapter.rooms` in utils/user-room.ts.
+    // Register socket ids as members of a room (one entry per open tab),
+    // mirroring `sockets.adapter.rooms` in utils/user-room.ts.
     const joinRoom = (userId: number, ...socketIds: string[]) => {
       roomsAdapter.set(`user:${userId}`, new Set(socketIds));
     };
+    const joinDeviceRoom = (
+      userId: number,
+      deviceId: number,
+      ...socketIds: string[]
+    ) => {
+      roomsAdapter.set(`device:${userId}:${deviceId}`, new Set(socketIds));
+    };
 
-    it('should emit preKeysLow addressed to the user room when remaining count < 10', async () => {
+    it('routes preKeysLow to the LOW DEVICE room, not the whole account', async () => {
       keyBundlesService.fetchPreKeyBundle.mockResolvedValue(mockBundle);
       keyBundlesService.countUnusedPreKeys.mockResolvedValue(5);
-      joinRoom(2, 'socket-id-2');
+      joinDeviceRoom(2, 1, 'socket-id-2');
 
       await service.handleFetchPreKeyBundle(
         mockClient as Socket,
@@ -502,21 +510,23 @@ describe('ChatKeyExchangeService', () => {
       );
 
       expect(keyBundlesService.countUnusedPreKeys).toHaveBeenCalledWith(2, 1);
-      // BE-007: addressed by room, never a single socket id.
-      expect(mockServer.to).toHaveBeenCalledWith('user:2');
+      // Per device (spec §5.2 rider): only the device whose pool is draining
+      // can act on this, so telling every device would be noise.
+      expect(mockServer.to).toHaveBeenCalledWith('device:2:1');
+      expect(mockServer.to).not.toHaveBeenCalledWith('user:2');
       expect(mockServer.to).not.toHaveBeenCalledWith('socket-id-2');
       expect(mockServer.emit).toHaveBeenCalledWith('preKeysLow', {
         remaining: 5,
       });
     });
 
-    it('should reach every open tab with a single room emit (BE-007 multi-tab regression)', async () => {
+    it('should reach every tab of the low device with a single room emit (BE-007 multi-tab regression)', async () => {
       keyBundlesService.fetchPreKeyBundle.mockResolvedValue(mockBundle);
       keyBundlesService.countUnusedPreKeys.mockResolvedValue(4);
-      // Two tabs for user 2 => two sockets in room `user:2`. The old
+      // Two tabs of device 1 => two sockets in room `device:2:1`. The old
       // userId->socketId map kept only the newest socket, so the first tab
       // never learned to replenish its draining prekey pool.
-      joinRoom(2, 'socket-tab-a', 'socket-tab-b');
+      joinDeviceRoom(2, 1, 'socket-tab-a', 'socket-tab-b');
 
       await service.handleFetchPreKeyBundle(
         mockClient as Socket,
@@ -525,10 +535,10 @@ describe('ChatKeyExchangeService', () => {
       );
 
       // Exactly one room-addressed emit; a real adapter fans it out to both
-      // sockets in the room, so BOTH tabs receive preKeysLow.
+      // sockets in the room, so BOTH tabs of that device receive preKeysLow.
       expect(mockServer.to).toHaveBeenCalledTimes(1);
-      expect(mockServer.to).toHaveBeenCalledWith('user:2');
-      expect(roomsAdapter.get('user:2')!.size).toBe(2);
+      expect(mockServer.to).toHaveBeenCalledWith('device:2:1');
+      expect(roomsAdapter.get('device:2:1')!.size).toBe(2);
       expect(mockServer.emit).toHaveBeenCalledWith('preKeysLow', {
         remaining: 4,
       });
@@ -548,10 +558,10 @@ describe('ChatKeyExchangeService', () => {
       expect(mockServer.to).not.toHaveBeenCalled();
     });
 
-    it('should still address the user room when no tab is connected (empty-room no-op)', async () => {
+    it('should still address the device room when no socket is connected (empty-room no-op)', async () => {
       keyBundlesService.fetchPreKeyBundle.mockResolvedValue(mockBundle);
       keyBundlesService.countUnusedPreKeys.mockResolvedValue(3);
-      // No sockets in room `user:2`. Emitting to an empty room is a safe
+      // No sockets in room `device:2:1`. Emitting to an empty room is a safe
       // no-op, so there is no offline guard: delivery is still by room.
 
       await service.handleFetchPreKeyBundle(
@@ -560,7 +570,75 @@ describe('ChatKeyExchangeService', () => {
         mockServer as Server,
       );
 
-      expect(mockServer.to).toHaveBeenCalledWith('user:2');
+      expect(mockServer.to).toHaveBeenCalledWith('device:2:1');
+    });
+
+    /** How many times the caller was refused for pacing. */
+    const rateLimitRefusals = () =>
+      ((mockClient.emit as jest.Mock).mock.calls as unknown[][]).filter(
+        (call) => {
+          if (call[0] !== 'error') return false;
+          const payload = call[1];
+          if (
+            !payload ||
+            typeof payload !== 'object' ||
+            !('message' in payload)
+          ) {
+            return false;
+          }
+          const message = payload.message;
+          return typeof message === 'string' && message.includes('rate limit');
+        },
+      ).length;
+
+    it('paces bundle fetches PER DEVICE — fan-out to a two-device peer is not throttled', async () => {
+      keyBundlesService.fetchPreKeyBundle.mockResolvedValue(mockBundle);
+      keyBundlesService.countUnusedPreKeys.mockResolvedValue(20);
+
+      // Back-to-back fetches for two devices of ONE peer: both must succeed, or
+      // a client can never build the sessions a fan-out send needs (spec §5.2).
+      await service.handleFetchPreKeyBundle(
+        mockClient as Socket,
+        { userId: 2, deviceId: 1 },
+        mockServer as Server,
+      );
+      await service.handleFetchPreKeyBundle(
+        mockClient as Socket,
+        { userId: 2, deviceId: 2 },
+        mockServer as Server,
+      );
+
+      // Asserted through the answers rather than the service method, so the
+      // deviceId echo is pinned at the same time.
+      expect(mockClient.emit).toHaveBeenCalledWith('preKeyBundleResponse', {
+        userId: 2,
+        deviceId: 1,
+        bundle: mockBundle,
+      });
+      expect(mockClient.emit).toHaveBeenCalledWith('preKeyBundleResponse', {
+        userId: 2,
+        deviceId: 2,
+        bundle: mockBundle,
+      });
+      expect(rateLimitRefusals()).toBe(0);
+    });
+
+    it('still paces repeat fetches for the SAME device', async () => {
+      keyBundlesService.fetchPreKeyBundle.mockResolvedValue(mockBundle);
+      keyBundlesService.countUnusedPreKeys.mockResolvedValue(20);
+
+      await service.handleFetchPreKeyBundle(
+        mockClient as Socket,
+        { userId: 2, deviceId: 2 },
+        mockServer as Server,
+      );
+      await service.handleFetchPreKeyBundle(
+        mockClient as Socket,
+        { userId: 2, deviceId: 2 },
+        mockServer as Server,
+      );
+
+      expect(rateLimitRefusals()).toBe(1);
     });
 
     it('should not check pre-key count when bundle is null', async () => {
@@ -574,6 +652,7 @@ describe('ChatKeyExchangeService', () => {
 
       expect(mockClient.emit).toHaveBeenCalledWith('preKeyBundleResponse', {
         userId: 2,
+        deviceId: 1,
         bundle: null,
       });
       expect(keyBundlesService.countUnusedPreKeys).not.toHaveBeenCalled();

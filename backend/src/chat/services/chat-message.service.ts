@@ -22,8 +22,8 @@ import { MediaCleanupService } from '../../media/media-cleanup.service';
 import { isMessageExpired } from '../../messages/message-expiry.util';
 import { EditMessageDto } from '../dto/edit-message.dto';
 import {
-  emitToNewestTab,
-  newestSocketForUser,
+  emitToDeviceNewestSocket,
+  newestSocketForDevice,
   userRoom,
 } from '../utils/user-room';
 import { DEFAULT_DEVICE_ID } from '../../key-bundles/key-bundles.service';
@@ -380,35 +380,75 @@ export class ChatMessageService {
     // Emit to sender (confirmation)
     client.emit('messageSent', messagePayload);
 
-    // CIPHERTEXT — one tab only, deliberately NOT room-addressed (BE-007).
-    // Signal decryption consumes the message key and advances the ratchet, and
-    // the client's tabs share one session store, so fanning this out would make
-    // the second tab's decrypt of the same ciphertext FAIL into its decryption
-    // failure policy. `emitToNewestTab` reproduces the previous last-write-wins
-    // behaviour exactly. See `utils/user-room.ts`.
-    const delivered = emitToNewestTab(
-      server,
-      data.recipientId,
-      'newMessage',
-      messagePayload,
-    );
+    // CIPHERTEXT — addressed PER DEVICE (spec §5.3), never room-broadcast.
+    // Every device holds a DIFFERENT ciphertext, and Signal decryption is not
+    // idempotent (it consumes the message key and advances the ratchet), so a
+    // device must receive exactly its own envelope, once. Within one device the
+    // newest socket wins, because tabs of one device share a session store.
+    // See `utils/user-room.ts`.
+    //
+    // A send with NO ciphertext at all (PING and today's plaintext shapes)
+    // produces no envelope, so it keeps its historical single-target delivery,
+    // now named explicitly as the recipient's device 1 (§8: an account with no
+    // enrollment is single-device by construction).
+    const recipientId = send.recipientId;
+    const deliveryTargets =
+      envelopes.length > 0
+        ? envelopes.map((envelope) => ({
+            userId: envelope.userId,
+            deviceId: envelope.deviceId,
+            payload: {
+              ...messagePayload,
+              encryptedContent: envelope.ciphertext,
+            },
+          }))
+        : [
+            {
+              userId: recipientId,
+              deviceId: DEFAULT_DEVICE_ID,
+              payload: messagePayload,
+            },
+          ];
+
+    let deliveredToRecipient = false;
+    for (const target of deliveryTargets) {
+      const delivered = emitToDeviceNewestSocket(
+        server,
+        target.userId,
+        target.deviceId,
+        'newMessage',
+        target.payload,
+      );
+      if (target.userId === recipientId && delivered) {
+        deliveredToRecipient = true;
+      }
+    }
     this.logger.debug(
-      delivered
-        ? `[sendMessage] newMessage emitted to recipient ${data.recipientId}`
-        : `[sendMessage] Recipient ${data.recipientId} NOT ONLINE - newMessage not emitted`,
+      deliveredToRecipient
+        ? `[sendMessage] newMessage emitted to recipient ${recipientId}`
+        : `[sendMessage] Recipient ${recipientId} NOT ONLINE - newMessage not emitted`,
     );
 
-    // Coalesced push: minimized tabs stay connected via WS but still need a wake-up;
-    // skip scheduling when recipient reports foreground + same active conversation.
-    if (
-      !this.shouldSkipPushForFocusedRecipient(
-        server,
-        data.recipientId,
-        conversation.id,
-      )
-    ) {
+    // Coalesced push: minimized tabs stay connected via WS but still need a
+    // wake-up. Suppression is PER DEVICE (spec §5.3): skip only when EVERY
+    // device that was delivered to has this conversation focused, so a second
+    // device that is not looking at the chat still gets its notification.
+    const recipientDeviceIds = deliveryTargets
+      .filter((target) => target.userId === recipientId)
+      .map((target) => target.deviceId);
+    const everyRecipientDeviceFocused =
+      recipientDeviceIds.length > 0 &&
+      recipientDeviceIds.every((deviceId) =>
+        this.shouldSkipPushForFocusedRecipient(
+          server,
+          recipientId,
+          deviceId,
+          conversation.id,
+        ),
+      );
+    if (!everyRecipientDeviceFocused) {
       this.pushCoalescingService
-        .scheduleMessagePush(data.recipientId, conversation.id, sender.username)
+        .scheduleMessagePush(recipientId, conversation.id, sender.username)
         .catch(() => {});
     }
 
@@ -853,30 +893,40 @@ export class ChatMessageService {
     };
 
     client.emit('messageEdited', payload);
-    // CIPHERTEXT — one tab only, same reason as newMessage (BE-007): an edit
+    // CIPHERTEXT — per device, same reason as newMessage (spec §5.3): an edit
     // carries a fresh Signal payload over the existing session, so a second
-    // tab decrypting it would consume a key the first already used.
-    emitToNewestTab(server, otherUserId, 'messageEdited', payload);
+    // socket decrypting it would consume a key the first already used. T7
+    // turns this into a full per-device re-fan (§5.7); until then the edit
+    // reaches the peer's device 1, which is where a legacy edit already went.
+    emitToDeviceNewestSocket(
+      server,
+      otherUserId,
+      DEFAULT_DEVICE_ID,
+      'messageEdited',
+      payload,
+    );
     this.logger.debug(`User ${userId} edited message ${messageId}`);
   }
 
   /**
-   * When the tab that WILL RECEIVE the message reports foreground + this
+   * When the socket that WILL RECEIVE the message reports foreground + this
    * conversation active, WS already delivers `newMessage` — no push needed.
    *
-   * Deliberately evaluates the SAME socket `emitToNewestTab` delivers to, not
-   * "any focused tab" (BE-007). Polling every tab would let a focused tab A
-   * suppress the push while the ciphertext went to background tab B, leaving
-   * the user with neither the live message nor a notification. When the
-   * ciphertext carve-out is lifted this must become room-wide in the SAME
-   * change, so delivery and suppression never disagree.
+   * Evaluated PER DEVICE (spec §5.3) against the SAME socket
+   * `emitToDeviceNewestSocket` delivers to, never "any focused tab". Polling
+   * every tab would let a focused tab A suppress the push while the ciphertext
+   * went to background tab B, leaving the user with neither the live message
+   * nor a notification. Push is suppressed only when EVERY device that got an
+   * envelope is focused on this conversation — a second device that is not
+   * looking at the chat still deserves its notification.
    */
   private shouldSkipPushForFocusedRecipient(
     server: Server,
     recipientId: number,
+    deviceId: number,
     conversationId: number,
   ): boolean {
-    const state = newestSocketForUser(server, recipientId)?.data
+    const state = newestSocketForDevice(server, recipientId, deviceId)?.data
       ?.pushClientState as
       | { activeConversationId?: number | null; clientVisible?: boolean }
       | undefined;

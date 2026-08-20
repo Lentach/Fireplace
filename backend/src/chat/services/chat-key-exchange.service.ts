@@ -19,7 +19,7 @@ import {
 import { UploadOneTimePreKeysDto } from '../dto/upload-one-time-pre-keys.dto';
 import { FetchPreKeyBundleDto } from '../dto/fetch-pre-key-bundle.dto';
 import { RequestSessionRebuildDto } from '../dto/request-session-rebuild.dto';
-import { userRoom } from '../utils/user-room';
+import { deviceRoom, userRoom } from '../utils/user-room';
 
 const PRE_KEY_LOW_THRESHOLD = 10;
 const PRE_KEY_FETCH_MIN_INTERVAL_MS = 750;
@@ -504,14 +504,16 @@ export class ChatKeyExchangeService {
 
     try {
       const dto = validateDto(FetchPreKeyBundleDto, data);
-      if (this.isPreKeyFetchRateLimited(requesterId, dto.userId)) {
+      const targetDeviceId = dto.deviceId ?? DEFAULT_DEVICE_ID;
+      if (
+        this.isPreKeyFetchRateLimited(requesterId, dto.userId, targetDeviceId)
+      ) {
         client.emit('error', {
           message:
             'Pre-key bundle fetch rate limit exceeded. Please retry shortly.',
         });
         return;
       }
-      const targetDeviceId = dto.deviceId ?? DEFAULT_DEVICE_ID;
       const bundle = await this.keyBundlesService.fetchPreKeyBundle(
         dto.userId,
         targetDeviceId,
@@ -522,17 +524,25 @@ export class ChatKeyExchangeService {
 
       client.emit('preKeyBundleResponse', {
         userId: dto.userId,
+        // Echoed so a fan-out client can tell two in-flight per-device fetches
+        // for one peer apart (spec §5.2).
+        deviceId: targetDeviceId,
         bundle,
       });
 
-      // Notify target user to replenish pre-keys if running low
+      // Notify the LOW DEVICE to replenish — counted per device since Phase 1,
+      // and now routed to that device's room too (spec §5.2, decision-record
+      // T4 rider): telling every device to mint keys for one device's empty
+      // pool is noise the other devices cannot act on.
       if (bundle) {
         const remaining = await this.keyBundlesService.countUnusedPreKeys(
           dto.userId,
           targetDeviceId,
         );
         if (remaining < PRE_KEY_LOW_THRESHOLD) {
-          server.to(userRoom(dto.userId)).emit('preKeysLow', { remaining });
+          server
+            .to(deviceRoom(dto.userId, targetDeviceId))
+            .emit('preKeysLow', { remaining });
         }
       }
     } catch (error) {
@@ -545,13 +555,22 @@ export class ChatKeyExchangeService {
     }
   }
 
+  /**
+   * Paces bundle fetches per (requester, target USER, target DEVICE).
+   *
+   * The device dimension is load-bearing since Phase 1 made bundles and OTP
+   * pools per-device: establishing sessions to a two-device peer needs two
+   * fetches back to back, and a per-user key would REFUSE the second one
+   * outright — making lawful multi-device fan-out impossible (spec §5.2).
+   */
   private isPreKeyFetchRateLimited(
     requesterId: number,
     recipientId: number,
+    recipientDeviceId: number,
   ): boolean {
     const now = Date.now();
     this.cleanupPreKeyFetchTracker(now);
-    const key = `${requesterId}:${recipientId}`;
+    const key = `${requesterId}:${recipientId}:${recipientDeviceId}`;
     const lastSeen = this.lastPreKeyFetchByPair.get(key);
     if (
       lastSeen !== undefined &&
