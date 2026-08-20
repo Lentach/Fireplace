@@ -687,4 +687,50 @@ that is the designed outcome).
     while no honest message flows; §5.2's cross-check + I7 already collapse that window to
     the first honest message, and sustaining a freeze degrades to plain DoS. At the ratified
     cap-3 scale, version-stamp divergence detection suffices.
+- **Amendment 2026-08-20 (T3 pre-implementation settlement, per the Stage-0 "settle before
+  code" rule; doc remains frozen — these pin byte layouts and transport for mechanisms §5.1
+  already mandates, changing no protocol):**
+  - **(i) OOB payload + manual-code equivalence.** The §5.1 QR payload is the exact ASCII
+    string `fp-link.v1.<provisioningId>.<base64url(ephPubN), no padding>.<platform>` (the
+    trailing segment is N's self-reported platform label, ≤32 chars, informational metadata
+    for the signed list entry). N renders it BOTH as a QR code and as a copyable text code;
+    the primary MAY ingest it by camera scan or by manual paste — both are the same
+    out-of-band channel (N's screen → human → primary), preserving amendment (c)'s
+    authenticity AND confidentiality of `ephPubN`, which still never transits the server.
+    T3 ships the manual path (required; it is also the only app-provable path on two web
+    origins); camera scanning is Phase 3 UI. The new device's list entry is written with
+    this platform label and NO `name` — user-chosen names arrive with the Phase 3 rename UI
+    (which is where the client-side NFC-normalization rider lands, since T3 writes no name).
+  - **(ii) SAS + blob derivations (byte-exact).** Ephemerals are Curve25519 pairs
+    (`Curve.generateKeyPair()`); public keys travel in the 33-byte type-prefixed libsignal
+    encoding everywhere (QR and `provisioningHello`). `S_dh =
+    Curve.calculateAgreement(theirEphPub, ownEphPriv)` (32 B).
+    `transcript = utf8(provisioningId) ‖ ephPubN(33) ‖ ephPubP(33)`.
+    SAS bytes = `HKDF(ikm = S_dh, info = utf8("fp-link-sas") ‖ transcript, len = 32)`;
+    the human code is the first 4 SAS bytes read as a big-endian uint32,
+    mod 10^6, zero-padded to 6 decimal digits, displayed as two groups of three (`XXX XXX`
+    — ~20-bit comparison, §5.1). Blob keys = `HKDF(ikm = S_dh, info =
+    utf8("fp-link-blob") ‖ transcript, len = 64)`: bytes 0–31 = AES-256-CBC key, bytes
+    32–63 = HMAC-SHA-256 key. Blob = `0x01 ‖ IV(16) ‖ AES-CBC ciphertext ‖
+    HMAC(macKey, 0x01 ‖ IV ‖ ciphertext)(32)` — encrypt-then-MAC, MAC verified in constant
+    time BEFORE any decrypt. Blob plaintext is UTF-8 JSON `{userId, deviceId, ikPub(b64),
+    ikPriv(b64), dakPub(b64), enrollmentCreatedAt, enrollmentSig(b64)}`. The two HKDF info
+    labels are distinct from each other (round-3 domain-separation ruling) and disjoint
+    from every (d) signature context by construction (KDF inputs, not signature messages;
+    first byte `f` ≠ 0x05 regardless).
+    HKDF here is RFC-5869 HKDF-SHA256 with `salt = 32 zero bytes`, implemented locally
+    over `package:crypto` (byte-identical to libsignal's HKDFv3 with null salt — that
+    class is NOT exported from the `libsignal_protocol_dart` 0.8.2 barrel, and a `src/`
+    implementation import is forbidden).
+  - **(iii) Rebind delivery.** The (b) re-issued access + refresh tokens travel in the
+    `provisioningCompleted` success answer on N's opener socket — TLS-protected and
+    authenticated, the same trust surface as login's answer. N then disconnects, reconnects
+    under the deviceId-bound access token, and only THEN uploads its per-device bundle/OTPs.
+  - **(iv) Stage residency.** The provisioning stage (memoized deviceId, pinned `ephPubP`,
+    staged blob + list mutation, 10-min TTL, consumed flag) lives in server-process memory
+    keyed by `provisioningId` and bound to the opener socket — the durable §4 data model
+    deliberately has NO stage table, because §5.1 already binds the stage to a socket
+    session that cannot outlive the process. A backend restart drops every pending stage,
+    indistinguishable from TTL expiry and handled by I1 abort hygiene; nothing durable
+    leaks (counter gaps are safe per (a)).
 - **Next gate:** per-ticket implementation reviews (T1–T8); Stage 0 is CLOSED 2026-08-19.
